@@ -10,22 +10,60 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from functools import lru_cache
+from typing import Any, ClassVar
 
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
 
 from apps.core.services.error_manager import ErrorManager
-from apps.amm_software.constants import (
-    DEFAULT_LIMIT, RUOLO_ADMIN, RUOLO_DISABILITATO, RUOLO_OPERATIVO,
-)
+from apps.amm_software.constants import DEFAULT_LIMIT
 from apps.amm_software.types import OperatoreDetailRow, OperatoreRow
 
-# Colonne ammesse per ordinamento lista operatori
+# Colonne ammesse per ordinamento lista operatori. Niente piu' "ruolo_sistema":
+# il campo legacy non e' esposto. Per ordinare per stato amministrativo si usa
+# `is_super_admin` o `ruolo_applicativo`.
 ALLOWED_ORDER_COLUMNS = frozenset({
-    "last_name", "soggetto_cognome", "username", "ruolo_sistema",
-    "is_active", "unita_organizzativa_nome", "valido_dal", "valido_al",
+    "last_name", "soggetto_cognome", "username", "is_super_admin",
+    "ruolo_applicativo", "is_active", "unita_organizzativa_nome",
+    "valido_dal", "valido_al",
+})
+
+
+# Fase 8 — Model riservati: non possono essere target di override granulari.
+# Sono il kernel del sistema permessi: ammettere override a livello model
+# qui aprirebbe scenari di lockout ricorsivo (es. negare a un admin
+# l'accesso a `profili_accesso_bindings` => non puo' piu' rimuovere il
+# proprio binding => bypass automatico).
+#
+# Convenzione tuple: `(schema_db, model_logical_name)` — stessa del seed
+# `config.area_model_overrides` (es. `('anagrafiche', 'soggetto')`).
+# NOTA: alla data del 2026-04-29 NESSUN model di kernel e' presente in
+# `area_model_overrides` (verifica: il seed `20260410-11` registra solo
+# 12 model business). Questa blacklist e' quindi PREVENTIVA — defense
+# in depth contro futuri seed che includessero per errore tabelle di
+# kernel. Se la convenzione di registrazione cambia (es. uso di
+# Django app_label invece dello schema), aggiornare le tuple di
+# conseguenza.
+_MODEL_OVERRIDE_RISERVATI: frozenset[tuple[str, str]] = frozenset({
+    # Identita digitali (anagrafiche) — modificarla via override-oggetti
+    # lascerebbe l'utente bypassare i guard sul ruolo applicativo.
+    ("anagrafiche", "identita_digitali"),
+    # Catalogo profili accesso e binding SUPER_ADMIN.
+    ("config", "profili_accesso"),
+    ("config", "profili_accesso_bindings"),
+    # Catalogo del lookup stesso: override-abile solo via DDL.
+    ("config", "area_model_overrides"),
+    # Tabelle override granulari: ricorsione semantica.
+    ("config", "user_override_aree"),
+    ("config", "user_override_azioni"),
+    ("config", "user_override_oggetti"),
+    # Scope emittenti utente: cambiarlo cambia i dati visibili.
+    ("config", "user_emittenti_fiscali"),
+    # Profili reparto: livello sopra ai singoli operatori.
+    ("config", "profili_reparto_aree"),
+    ("config", "profili_reparto_azioni"),
 })
 
 
@@ -34,14 +72,15 @@ class AmmSoftwareRepository:
 
     # Scopo: Restituisce la lista paginata degli operatori con filtri opzionali.
     # JOIN: auth_user + identita_digitali (OPERATORE) + soggetti_ruoli +
-    # risorse_umane + unita_organizzative. Il ruolo legacy (ADMIN /
-    # OPERATIVO / DISABILITATO) e' ricostruito via script.fn_get_ruolo_sistema.
+    # risorse_umane + unita_organizzative. Il modello identitario e' multi-face:
+    # `is_super_admin` da `script.fn_is_super_admin`, `ruolo_applicativo` da
+    # `identita_digitali`, `is_active` da `auth_user`. Niente piu' enum
+    # legacy `config.ruolo_sistema` esposto in output (Fase 7).
     # Risultato: (lista righe, conteggio totale).
     def list_operatori(
         self,
         *,
         search: str | None = None,
-        ruolo_sistema: str | None = None,
         is_super_admin: bool | None = None,
         unita_organizzativa_id: int | None = None,
         is_active: bool | None = None,
@@ -68,19 +107,9 @@ class AmmSoftwareRepository:
             like_term = f"%{search}%"
             params.extend([like_term] * 5)
 
-        if ruolo_sistema:
-            # Filtro su ruolo legacy ricostruito dal wrapper DB. Il
-            # filtro e' semantico (ADMIN / OPERATIVO / DISABILITATO),
-            # indipendente dalla tabella sottostante.
-            conditions.append(
-                "script.fn_get_ruolo_sistema(au.id) = %s::config.ruolo_sistema"
-            )
-            params.append(ruolo_sistema)
-
         if is_super_admin is not None:
             # Multi-face auth: filtro binario sul binding SUPER_ADMIN.
-            # Ortogonale a ruolo_sistema (che include anche "attivo") e a
-            # is_active. Delega a script.fn_is_super_admin.
+            # Ortogonale a is_active. Delega a script.fn_is_super_admin.
             conditions.append("script.fn_is_super_admin(au.id) = %s")
             params.append(is_super_admin)
 
@@ -109,7 +138,6 @@ class AmmSoftwareRepository:
                    au.last_name,
                    COALESCE(s.cognome, au.last_name) AS soggetto_cognome,
                    COALESCE(s.nome, au.first_name) AS soggetto_nome,
-                   script.fn_get_ruolo_sistema(au.id)::text AS ruolo_sistema,
                    script.fn_is_super_admin(au.id) AS is_super_admin,
                    id.ruolo_applicativo::text AS ruolo_applicativo,
                    au.is_active,
@@ -165,62 +193,33 @@ class AmmSoftwareRepository:
 
         return results, total_count
 
-    # Scopo: Restituisce il dettaglio completo di un operatore con conteggi override.
+    # Scopo: Restituisce il dettaglio completo di un operatore con conteggi
+    # override e i 6 campi capability (can_invite/disable/demote + reason).
+    #
+    # Delega interamente a `script.fn_get_operatore_detail(p_auth_user_id)`
+    # (Fase 1 multi-face): la fn DB e' single source of truth per la
+    # composizione del dettaglio. Lo SQL inline precedente e' eliminato per
+    # evitare drift tra Python e regole DB.
+    #
+    # Semantica lookup-by-id: la fn ritorna 0 righe per id NULL/<=0/inesistenti
+    # (idioma standard per i lookup; diverge dalla regola AGENTS "guard
+    # NULL/<=0" volutamente — i chiamanti gestiscono `None` come "non
+    # trovato"). I 3 service consumer (`get_operatore`, `update_operatore`,
+    # `disabilita_operatore`, `riattiva_operatore`) trasformano None in
+    # E_AMM_OPERATORE_NOT_FOUND quando rilevante.
+    #
+    # GUC awareness: la fn DB usa `script.fn_is_super_admin` che e' gated
+    # su `app.ruolo_applicativo` (post 2026-04-21) e ritorna false per
+    # contesti non-OPERATORE (portale/shop). Questo repo e' richiamato solo
+    # da `AdminAPIView` (drawer admin-only), quindi il contesto e' sempre
+    # OPERATORE. Se in futuro la fn fosse esposta altrove, la GUC va
+    # garantita prima della chiamata.
     def get_operatore_detail(self, auth_user_id: int) -> OperatoreDetailRow | None:
-        sql = """
-            SELECT au.id AS auth_user_id,
-                   au.username,
-                   au.email,
-                   au.first_name,
-                   au.last_name,
-                   COALESCE(s.cognome, au.last_name) AS soggetto_cognome,
-                   COALESCE(s.nome, au.first_name) AS soggetto_nome,
-                   s.id AS soggetto_id,
-                   s.ragione_sociale_completa,
-                   s.codice_fiscale,
-                   script.fn_get_ruolo_sistema(au.id)::text AS ruolo_sistema,
-                   script.fn_is_super_admin(au.id) AS is_super_admin,
-                   id.ruolo_applicativo::text AS ruolo_applicativo,
-                   au.is_active,
-                   ru.unita_organizzativa_id,
-                   uo.descrizione AS unita_organizzativa_nome,
-                   ru.id AS risorsa_umana_id,
-                   ru.attivo,
-                   ru.valido_dal::text,
-                   ru.valido_al::text,
-                   COALESCE((SELECT COUNT(*) FROM config.user_override_aree uoa
-                             WHERE uoa.auth_user_id = au.id), 0) AS override_aree_count,
-                   COALESCE((SELECT COUNT(*) FROM config.user_override_azioni uoz
-                             WHERE uoz.auth_user_id = au.id), 0) AS override_azioni_count,
-                   COALESCE((SELECT COUNT(*) FROM config.user_emittenti_fiscali uef
-                             WHERE uef.auth_user_id = au.id), 0) AS emittenti_count,
-                   (SELECT string_agg(COALESCE(s_ef.ragione_sociale_completa, ef.descrizione), ', '
-                                      ORDER BY COALESCE(s_ef.ragione_sociale_completa, ef.descrizione))
-                      FROM config.user_emittenti_fiscali uef
-                      JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
-                      LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
-                      LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
-                     WHERE uef.auth_user_id = au.id
-                   ) AS emittenti_descrizione,
-                   au.last_login,
-                   id.invito_inviato_at,
-                   id.deve_cambiare_password
-              FROM auth_user au
-              LEFT JOIN anagrafiche.identita_digitali id
-                ON id.auth_user_id = au.id
-               AND id.ruolo_applicativo = 'OPERATORE'
-              LEFT JOIN anagrafiche.soggetti_ruoli sr
-                ON sr.id = id.soggetto_ruolo_id
-              LEFT JOIN anagrafiche.risorse_umane ru
-                ON ru.soggetto_ruolo_id = sr.id
-              LEFT JOIN anagrafiche.soggetti s
-                ON s.id = sr.soggetto_id
-              LEFT JOIN config.unita_organizzative uo
-                ON uo.id = ru.unita_organizzativa_id
-             WHERE au.id = %s
-        """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [auth_user_id])
+            cursor.execute(
+                "SELECT * FROM script.fn_get_operatore_detail(%s)",
+                [auth_user_id],
+            )
             if not cursor.description:
                 return None
             cols = [c.name for c in cursor.description]
@@ -300,10 +299,16 @@ class AmmSoftwareRepository:
     # Transazione atomica: i 4-5 step devono succedere insieme o
     # nessuno (nessuno stato parziale inconsistente).
     #
-    # Traduzione ruolo_sistema -> nuovo modello (retrocompat API):
-    #   - ADMIN        -> identita attiva, ruolo_appl=OPERATORE, binding SUPER_ADMIN UPSERT
-    #   - OPERATIVO    -> identita attiva, ruolo_appl=OPERATORE, binding SUPER_ADMIN DELETE
-    #   - DISABILITATO -> identita inattiva, ruolo_appl=DISABILITATO
+    # Contract Fase 7 multi-face — solo campi nuovi:
+    #   - `is_super_admin=True`  -> binding SUPER_ADMIN UPSERT (identita
+    #                               OPERATORE attiva)
+    #   - `is_super_admin=False` -> binding SUPER_ADMIN DELETE (identita
+    #                               OPERATORE attiva)
+    #   - `attivo=False`         -> identita_digitali.attivo=False +
+    #                               ruolo_applicativo=DISABILITATO
+    #   - `attivo=True`          -> identita_digitali.attivo=True +
+    #                               ruolo_applicativo=OPERATORE
+    # `is_super_admin` e `attivo` sono ortogonali e indipendenti.
     def update_operatore(
         self,
         auth_user_id: int,
@@ -311,7 +316,7 @@ class AmmSoftwareRepository:
         email: str | None = None,
         first_name: str | None = None,
         last_name: str | None = None,
-        ruolo_sistema: str | None = None,
+        is_super_admin: bool | None = None,
         unita_organizzativa_id: int | None = None,
         attivo: bool | None = None,
         valido_al: str | None = None,
@@ -338,27 +343,24 @@ class AmmSoftwareRepository:
                         auth_params,
                     )
 
-            # 2) Traduci ruolo_sistema in stato identita + binding SUPER_ADMIN
-            if ruolo_sistema == RUOLO_ADMIN:
+            # 2) Stato identita_digitali pilotato da `attivo` (cambio
+            #    simmetrico a disabilita/riattiva):
+            #    attivo=True  -> ruolo_applicativo=OPERATORE attivo
+            #    attivo=False -> ruolo_applicativo=DISABILITATO + attivo=false
+            if attivo is True:
                 self._set_identita_state(
                     auth_user_id, attivo=True, ruolo_applicativo="OPERATORE"
                 )
-                self._set_super_admin_binding(auth_user_id, enabled=True)
-            elif ruolo_sistema == RUOLO_OPERATIVO:
+            elif attivo is False:
                 self._set_identita_state(
-                    auth_user_id, attivo=True, ruolo_applicativo="OPERATORE"
-                )
-                self._set_super_admin_binding(auth_user_id, enabled=False)
-            elif ruolo_sistema == RUOLO_DISABILITATO:
-                self._set_identita_state(
-                    auth_user_id,
-                    attivo=False,
-                    ruolo_applicativo="DISABILITATO",
+                    auth_user_id, attivo=False, ruolo_applicativo="DISABILITATO"
                 )
 
-            # 3) Override esplicito di attivo (prevale sulla traduzione ruolo)
-            if attivo is not None:
-                self._set_identita_state(auth_user_id, attivo=attivo)
+            # 3) Binding SUPER_ADMIN (ortogonale ad `attivo`).
+            if is_super_admin is True:
+                self._set_super_admin_binding(auth_user_id, enabled=True)
+            elif is_super_admin is False:
+                self._set_super_admin_binding(auth_user_id, enabled=False)
 
             # 4) Aggiorna risorse_umane via catena identita -> soggetto_ruolo
             ru_fields: list[str] = []
@@ -384,8 +386,8 @@ class AmmSoftwareRepository:
                         ru_params + [auth_user_id],
                     )
 
-            # 5) Sync auth_user.is_active se stato o ruolo cambiati
-            if ruolo_sistema is not None or attivo is not None:
+            # 5) Sync auth_user.is_active se stato cambiato
+            if attivo is not None or is_super_admin is not None:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "SELECT anagrafiche.fn_sync_auth_user_is_active(%s)",
@@ -475,11 +477,17 @@ class AmmSoftwareRepository:
                 [auth_user_id],
             )
 
-    # Scopo: Crea un operatore completo invocando l'orchestratore DB fn_crea_operatore.
-    # Chiama i building block: fn_crea_auth_user, fn_crea_soggetto_pf, fn_crea_risorsa_umana.
+    # Scopo: Crea un operatore completo invocando l'orchestratore DB
+    # `anagrafiche.fn_crea_operatore`. Chiama i building block: fn_crea_auth_user,
+    # fn_crea_soggetto_pf, fn_crea_risorsa_umana.
     # Parametri Sprint 3: comune_nascita_id, indirizzo_resid_dettaglio_id,
     # indirizzo_domfisc_dettaglio_id (normalizzati via stradario).
     # Due flussi: soggetto_id NULL (crea soggetto nuovo) o valorizzato (usa esistente).
+    #
+    # Contract multi-face puro (Fase 7-DB step 6): la fn DB v2 accetta
+    # `p_is_super_admin bool` + `p_attivo bool` al posto del legacy
+    # `p_ruolo_sistema config.ruolo_sistema`. Il translator interno e'
+    # stato rimosso. Compat layer DB legacy chiuso.
     # Ritorna l'auth_user_id del nuovo operatore.
     def crea_operatore(
         self,
@@ -495,7 +503,8 @@ class AmmSoftwareRepository:
         unita_organizzativa_id: int | None = None,
         data_nascita: str | None = None,
         sesso: str = "M",
-        ruolo_sistema: str = "OPERATIVO",
+        is_super_admin: bool = False,
+        attivo: bool = True,
         valido_dal: str | None = None,
         valido_al: str | None = None,
         comune_nascita_id: int | None = None,
@@ -515,7 +524,8 @@ class AmmSoftwareRepository:
                 p_unita_organizzativa_id         := %s,
                 p_data_nascita                   := %s::date,
                 p_sesso                          := %s,
-                p_ruolo_sistema                  := %s::config.ruolo_sistema,
+                p_is_super_admin                 := %s,
+                p_attivo                         := %s,
                 p_valido_dal                     := COALESCE(%s::date, CURRENT_DATE),
                 p_valido_al                      := %s::date,
                 p_comune_nascita_id              := %s,
@@ -528,7 +538,7 @@ class AmmSoftwareRepository:
             cognome, nome, codice_fiscale,
             username, email, password_hash,
             qualifica_id, unita_organizzativa_id,
-            data_nascita, sesso, ruolo_sistema,
+            data_nascita, sesso, is_super_admin, attivo,
             valido_dal, valido_al,
             comune_nascita_id,
             indirizzo_resid_dettaglio_id,
@@ -685,6 +695,12 @@ class AmmSoftwareRepository:
                 )
 
     # Scopo: Lista model registrati in area_model_overrides (lookup per dropdown admin).
+    #        Ogni riga e' arricchita con capability `can_override` (bool) +
+    #        `reason` (chiave i18n|None) — Fase 8: i model che afferiscono al
+    #        kernel del sistema permessi (auth_user, identita, bindings, override
+    #        stessi) NON possono essere target di override per evitare lockout
+    #        ricorsivi. Pattern simmetrico a `can_change_scope`/`change_scope_reason`
+    #        di Fase 2.
     def list_model_overrides(self) -> list[dict[str, Any]]:
         sql = """
             SELECT amo.id, amo.app_label, amo.model_name,
@@ -695,41 +711,69 @@ class AmmSoftwareRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql)
-            return rows_to_list(cursor)
+            rows = rows_to_list(cursor)
+
+        for row in rows:
+            riservato = (row["app_label"], row["model_name"]) in _MODEL_OVERRIDE_RISERVATI
+            row["can_override"] = not riservato
+            row["reason"] = "amm.model_override_reason_riservato" if riservato else None
+        return rows
 
     # ================================================================== #
-    # Emittenti scope per operatore                                         #
+    # Emittenti scope per operatore (Fase 2 multi-face)                     #
     # ================================================================== #
 
-    # Scopo: Restituisce gli emittenti fiscali associati a un operatore.
-    def get_emittenti_scope(self, auth_user_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT uef.id, uef.emittente_fiscale_id,
-                   ef.codice AS emittente_codice,
-                   ef.descrizione AS emittente_descrizione
-              FROM config.user_emittenti_fiscali uef
-              JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
-             WHERE uef.auth_user_id = %s
-             ORDER BY ef.descrizione
-        """
+    # Scopo: Restituisce lo scope emittenti dichiarativo dell'operatore via
+    # `script.fn_get_user_emittenti_scope`. La fn DB e' single source of truth
+    # per:
+    #   - scope_mode ('GLOBAL'|'SINGLE') derivato dal numero di righe in
+    #     config.user_emittenti_fiscali (post Q2: max 1 riga per UNIQUE)
+    #   - emittente_id + emittente_descrizione (NULL se GLOBAL)
+    #   - allowed_scope_modes (sempre ['GLOBAL','SINGLE'] post Q2; MULTI
+    #     architetturalmente chiuso)
+    #   - can_change_scope: false sse l'operatore e' SA e l'unico attivo
+    #     (delega a fn_check_ultimo_super_admin_attivo di Fase 1)
+    #   - change_scope_reason: testo it-IT free-form, NULL se can=true
+    #
+    # Idioma lookup-by-id: 0 righe per p_auth_user_id non valido (None lato
+    # Python), coerente con fn_get_operatore_detail. Il chiamante service
+    # gestisce None come E_AMM_OPERATORE_NOT_FOUND quando rilevante.
+    def get_user_emittenti_scope(self, auth_user_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [auth_user_id])
-            return rows_to_list(cursor)
-
-    # Scopo: Sostituisce gli emittenti scope di un operatore (replace semantics).
-    def put_emittenti_scope(self, auth_user_id: int, emittente_ids: list[int]) -> None:
-        with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
-                "DELETE FROM config.user_emittenti_fiscali WHERE auth_user_id = %s",
+                "SELECT * FROM script.fn_get_user_emittenti_scope(%s)",
                 [auth_user_id],
             )
-            for eid in emittente_ids:
-                cursor.execute(
-                    """INSERT INTO config.user_emittenti_fiscali
-                       (auth_user_id, emittente_fiscale_id)
-                       VALUES (%s, %s)""",
-                    [auth_user_id, eid],
-                )
+            if not cursor.description:
+                return None
+            cols = [c.name for c in cursor.description]
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return dict(zip(cols, row))
+
+    # Scopo: Cambio scope emittenti atomico via
+    # `script.fn_change_user_emittenti_scope(p_auth_user_id, p_emittente_ids)`.
+    # La fn DB esegue in transazione:
+    #   1. Validazione array_length IN (NULL|0|1) — altrimenti RAISE con
+    #      marker E_AMM_VALIDAZIONE / E_AMM_SCOPE_NON_AMMESSO (no MULTI).
+    #   2. Guard `fn_check_ultimo_super_admin_attivo` se SA -> RAISE
+    #      E_PROFILO_ULTIMO_SUPER_ADMIN (riuso Fase 1).
+    #   3. DELETE + INSERT condizionale.
+    # Ritorna jsonb con lo stato post-change. Per il consumer Python ci
+    # interessa solo l'esito (errori sollevati come DatabaseError gestiti
+    # dal service); il return jsonb non viene proiettato perche' il service
+    # rilegge tramite get_user_emittenti_scope per consistenza con il GET.
+    def change_user_emittenti_scope(
+        self, auth_user_id: int, emittente_ids: list[int]
+    ) -> None:
+        with connection.cursor() as cursor:
+            # GLOBAL = array vuoto []; SINGLE = [id]. La fn DB Q2 valida
+            # array_length <= 1 e solleva E_AMM_SCOPE_NON_AMMESSO altrimenti.
+            cursor.execute(
+                "SELECT script.fn_change_user_emittenti_scope(%s, %s::bigint[])",
+                [auth_user_id, list(emittente_ids)],
+            )
 
     # ================================================================== #
     # Reparti e profili                                                    #
@@ -825,25 +869,97 @@ class AmmSoftwareRepository:
     # Audit log globale permessi                                           #
     # ================================================================== #
 
-    _AUDIT_TABLES: list[tuple[str, str]] = [
-        ("storico.user_override_aree", "user_override_aree"),
-        ("storico.user_override_azioni", "user_override_azioni"),
-        ("storico.user_emittenti_fiscali", "user_emittenti_fiscali"),
-        ("storico.risorse_umane_auth_user", "risorse_umane_auth_user"),
-        ("storico.profili_reparto_aree", "profili_reparto_aree"),
-        ("storico.profili_reparto_azioni", "profili_reparto_azioni"),
-    ]
-
     _OP_LABELS: dict[int, str] = {1: "INIZIALE", 2: "MODIFICA", 3: "ELIMINAZIONE"}
 
-    # Scopo: Restituisce la timeline globale degli eventi audit permessi.
-    # Paginata, filtri opzionali: data_da, data_a, tabella.
-    # Colonne ammesse per ordinamento audit log (whitelist)
+    # Colonne ammesse per ordinamento audit log (whitelist).
     _AUDIT_ORDER_COLUMNS: frozenset[str] = frozenset({
         "timestamp", "valid_from", "user_modifica", "user_insert",
         "tabella", "tipo_operazione",
     })
 
+    # Scopo: Restituisce le sorgenti audit ammesse (Fase 5).
+    #        Single source of truth lato DB: `script.vw_audit_sources` gia'
+    #        filtrata `attivo=true` e ordinata per `code`. Sostituisce l'ex
+    #        `_AUDIT_TABLES` hardcoded. La vista include 8 sorgenti (incluse
+    #        `user_override_oggetti` permessi v2 e `identita_digitali`
+    #        multi-face). Cardinalita' bassa, no paginazione.
+    #
+    #        Cache modulo-level via `lru_cache`: la vista cambia solo con
+    #        migration (no mutazioni runtime), 8 righe immutabili durante
+    #        il processo. Evita 2 round-trip DB per ogni `get_audit_summary`
+    #        (validazione code + fn call). Test/hot-reload: `cache_clear()`.
+    @staticmethod
+    @lru_cache(maxsize=1)
+    def _list_audit_sources_cached() -> tuple[tuple[str, str, str], ...]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT code, label_key, area_funzionale
+                  FROM script.vw_audit_sources
+                """
+            )
+            return tuple((r[0], r[1], r[2]) for r in cursor.fetchall())
+
+    def list_audit_sources(self) -> list[dict[str, Any]]:
+        return [
+            {"code": code, "label_key": label_key, "area_funzionale": area}
+            for code, label_key, area in self._list_audit_sources_cached()
+        ]
+
+    # Scopo: Calcola summary + diff per uno snapshot audit (Fase 5).
+    #        Wrapper su `script.fn_audit_summary(p_audit_source_code, p_storico_id)`.
+    #        Ritorna dict {"summary": "<N> modifiche", "diff": [{field, old, new}]}.
+    #        Convenzione "snapshot mancante -> None": il fn DB solleva
+    #        `E_AUDIT_SNAPSHOT_NON_TROVATO` come marker stabile; il repo lo
+    #        traduce in None per coerenza con il pattern lookup-by-id (idiom
+    #        `feedback_db_doc_first`). Il service mappa None ->
+    #        ServiceError(E_AUDIT_SNAPSHOT_NON_TROVATO) preservando il code.
+    #        Altri DatabaseError sono ri-sollevati (gestiti dal middleware).
+    def get_audit_summary(self, code: str, storico_id: int) -> dict[str, Any] | None:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT script.fn_audit_summary(%s, %s) AS audit",
+                    [code, storico_id],
+                )
+                row = cursor.fetchone()
+        except DatabaseError as exc:
+            if "E_AUDIT_SNAPSHOT_NON_TROVATO" in str(exc):
+                return None
+            raise
+        if not row or row[0] is None:
+            return None
+        # Il driver Postgres ritorna jsonb come dict Python.
+        return row[0]
+
+    # Defensive: i `code` e `area_funzionale` arrivano da `script.vw_audit_sources`
+    # (whitelist DB) ma vengono interpolati in f-string nella query
+    # (`storico.{code}`, `fn_audit_summary('{code}', ...)`,
+    # `'{area}' AS area_funzionale`). Se in futuro la vista esponesse valori
+    # con caratteri inattesi (improbabile, ma mitigation lowcost), l'iniezione
+    # SQL diventerebbe possibile. Le regex riflettono la convenzione naming:
+    #   - code: nomi tabella PG snake_case lowercase
+    #   - area: enum chiuso UPPERCASE (PERMESSI/AUTH/ANAGRAFICHE/...)
+    _AUDIT_CODE_RE: ClassVar = re.compile(r"^[a-z_][a-z0-9_]*$")
+    _AUDIT_AREA_RE: ClassVar = re.compile(r"^[A-Z][A-Z_]*$")
+
+    # Scopo: Restituisce la timeline globale degli eventi audit permessi (Fase 5).
+    # Paginata, filtri opzionali: data_da, data_a, tabella.
+    #
+    # Build dinamico delle UNION ALL dalla vista `script.vw_audit_sources`:
+    # niente piu' lista hardcoded `_AUDIT_TABLES`. Quando il team DB aggiunge
+    # una sorgente alla vista, l'audit log la vede automaticamente.
+    #
+    # Ogni branch UNION espone:
+    #   - `code` (= label_key sorgente, era `tabella`),
+    #   - `storico_id` = `s.id` (PK riga in storico.<tabella>, NECESSARIO per
+    #     `fn_audit_summary` — l'id della riga sorgente non basta),
+    #   - `area_funzionale` (5 valori: PERMESSI/AUTH/ANAGRAFICHE/EMITTENTI/FATTURAZIONE),
+    #   - `summary` + `diff` calcolati inline via LATERAL `fn_audit_summary`
+    #     (1 query, no N+1 sulle pagine).
+    #
+    # Whitelist `vw_audit_sources` controllata dal DB + regex paranoia
+    # `_AUDIT_CODE_RE` per defense-in-depth.
     def list_audit_log(
         self,
         *,
@@ -855,26 +971,45 @@ class AmmSoftwareRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        unions: list[str] = []
-        params: list[Any] = []
+        sources = self.list_audit_sources()
+        if not sources:
+            return [], 0
 
-        for schema_table, label in self._AUDIT_TABLES:
-            if tabella and tabella != label:
+        unions: list[str] = []
+        for src in sources:
+            code = src["code"]
+            area = src["area_funzionale"]
+            if tabella and tabella != code:
+                continue
+            # Defensive: code/area arrivano da vw_audit_sources (whitelist DB)
+            # ma sono interpolati in f-string. Regex check come safety net se
+            # la vista esponesse mai un nome anomalo. Salta la sorgente: log
+            # la dropperebbe silenziosamente, ma la vista e' under DB control.
+            if not self._AUDIT_CODE_RE.match(code):
+                continue
+            if not self._AUDIT_AREA_RE.match(area):
                 continue
             unions.append(
-                f"SELECT '{label}' AS tabella, "
+                f"SELECT '{code}' AS code, "
+                f"'{area}' AS area_funzionale, "
+                f"s.id AS storico_id, "
                 f"s.valid_from, s.tipo_operazione, s.user_insert, "
-                f"s.snapshot "
-                f"FROM {schema_table} s"
+                f"s.snapshot, "
+                f"script.fn_audit_summary('{code}', s.id) AS audit "
+                f"FROM storico.{code} s"  # noqa: S608
             )
 
         if not unions:
             return [], 0
 
-        sql = f"WITH events AS ({' UNION ALL '.join(unions)}) "
-        sql += "SELECT tabella, valid_from, tipo_operazione, user_insert, "
-        sql += "snapshot, COUNT(*) OVER() AS total_count "
-        sql += "FROM events WHERE true "
+        params: list[Any] = []
+        sql = f"WITH events AS ({' UNION ALL '.join(unions)}) "  # noqa: S608
+        sql += (
+            "SELECT code, area_funzionale, storico_id, valid_from, "
+            "tipo_operazione, user_insert, snapshot, audit, "
+            "COUNT(*) OVER() AS total_count "
+            "FROM events WHERE true "
+        )
 
         if data_da:
             sql += "AND valid_from >= %s::timestamptz "
@@ -883,13 +1018,17 @@ class AmmSoftwareRepository:
             sql += "AND valid_from < (%s::date + INTERVAL '1 day') "
             params.append(data_a)
 
-        # Ordinamento sicuro (whitelist). Il frontend manda il nome campo
-        # come appare nel risultato; mappiamo al nome colonna SQL.
-        _col_map = {"timestamp": "valid_from", "user_modifica": "user_insert"}
+        # Ordinamento sicuro (whitelist). Il FE manda il nome campo come
+        # appare nel risultato; mappiamo al nome colonna SQL.
+        _col_map = {
+            "timestamp": "valid_from",
+            "user_modifica": "user_insert",
+            "tabella": "code",
+        }
         safe_col = _col_map.get(order_by, order_by) if order_by else None
         if safe_col and safe_col in self._AUDIT_ORDER_COLUMNS:
             direction = "ASC" if order_dir and order_dir.upper() == "ASC" else "DESC"
-            sql += f"ORDER BY {safe_col} {direction}, valid_from DESC "
+            sql += f"ORDER BY {safe_col} {direction}, valid_from DESC "  # noqa: S608
         else:
             sql += "ORDER BY valid_from DESC "
         sql += "LIMIT %s OFFSET %s"
@@ -902,14 +1041,20 @@ class AmmSoftwareRepository:
         if not rows:
             return [], 0
 
-        total_count = rows[0][5]
+        total_count = rows[0][8]
         events = [
             {
+                "code": row[0],
+                # Manteniamo `tabella` come alias di `code` per retrocompat
+                # con consumer FE legacy. Nuovi consumer usano `code`.
                 "tabella": row[0],
-                "timestamp": row[1].isoformat() if row[1] else None,
-                "tipo_operazione": self._OP_LABELS.get(row[2], str(row[2])),
-                "user_modifica": row[3],
-                "snapshot": row[4],
+                "area_funzionale": row[1],
+                "storico_id": row[2],
+                "timestamp": row[3].isoformat() if row[3] else None,
+                "tipo_operazione": self._OP_LABELS.get(row[4], str(row[4])),
+                "user_modifica": row[5],
+                "snapshot": row[6],
+                "audit": row[7],  # {"summary": "...", "diff": [...]}
             }
             for row in rows
         ]
@@ -922,12 +1067,13 @@ class AmmSoftwareRepository:
     # Scopo: Restituisce la matrice permessi effettivi per tutti gli operatori attivi.
     # Ogni riga contiene dati operatore + una colonna per ogni area funzionale
     # con il livello effettivo (TUTTO/LETTURA/BLOCCATO) calcolato dalla funzione SQL.
-    # Filtri opzionali: reparto, ruolo_sistema.
+    # Filtri opzionali: reparto, is_super_admin, emittente. Niente piu' enum
+    # legacy `ruolo_sistema` (Fase 7).
     def get_permessi_riepilogo(
         self,
         *,
         unita_organizzativa_id: int | None = None,
-        ruolo_sistema: str | None = None,
+        is_super_admin: bool | None = None,
         emittente_fiscale_id: int | None = None,
     ) -> dict[str, Any]:
         # 1. Recupera aree funzionali attive (per le colonne)
@@ -941,11 +1087,9 @@ class AmmSoftwareRepository:
             conditions.append("ru.unita_organizzativa_id = %s")
             params.append(unita_organizzativa_id)
 
-        if ruolo_sistema:
-            conditions.append(
-                "script.fn_get_ruolo_sistema(au.id) = %s::config.ruolo_sistema"
-            )
-            params.append(ruolo_sistema)
+        if is_super_admin is not None:
+            conditions.append("script.fn_is_super_admin(au.id) = %s")
+            params.append(is_super_admin)
 
         if emittente_fiscale_id is not None:
             conditions.append(
@@ -971,7 +1115,9 @@ class AmmSoftwareRepository:
                    au.username,
                    COALESCE(s.cognome, au.last_name) AS cognome,
                    COALESCE(s.nome, au.first_name) AS nome,
-                   script.fn_get_ruolo_sistema(au.id)::text AS ruolo_sistema,
+                   script.fn_is_super_admin(au.id) AS is_super_admin,
+                   id.ruolo_applicativo::text AS ruolo_applicativo,
+                   au.is_active,
                    uo.descrizione AS reparto,
                    {area_columns}
               FROM auth_user au

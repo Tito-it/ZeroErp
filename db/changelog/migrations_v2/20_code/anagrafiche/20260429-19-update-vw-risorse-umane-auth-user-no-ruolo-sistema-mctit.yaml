@@ -1,0 +1,93 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260429-19-update-vw-risorse-umane-auth-user-no-ruolo-sistema-mctit.yaml
+
+  - changeSet:
+      id: 20260429-19-update-vw-risorse-umane-auth-user-no-ruolo-sistema
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Fase 7 step 8b (2026-04-29): rimuove la colonna calcolata
+        'ruolo_sistema' (CASE WHEN inline) dalla vista
+        anagrafiche.risorse_umane_auth_user. Sparisce anche la subquery
+        'sa' (LEFT JOIN su profili_accesso_bindings + profili_accesso
+        SUPER_ADMIN) che serviva esclusivamente al CASE.
+
+        Riduzione body:
+          - 1 colonna calcolata in meno (CASE WHEN su 4 condizioni)
+          - 1 LEFT JOIN in meno (subquery 'sa')
+          - 1 cast a config.ruolo_sistema in meno (sblocca step 9 DROP TYPE)
+
+        Le altre colonne restano invariate. La vista resta
+        security_invoker = true post-cutover §13.3.
+
+        Verifica zero dipendenze residue sulla colonna:
+          - fn_get_setup_status: NON la legge piu' (refactor §4.6.B.10).
+          - fn_get_user_profile: chiave 'ruolo_sistema' rimossa da
+            20260429-14.
+          - fn_get_operatore_detail: colonna 'ruolo_sistema' rimossa da
+            20260429-11.
+          - fn_get_ruolo_sistema: droppata da 20260429-18.
+          - 5 fn permessi: gia' migrate da §4.6.B (non usavano la
+            colonna ma la fn wrapper).
+          - BE Python: post-Fase 7 LANDED, nessun consumer.
+          - pgTAP: ~7 file ancora in pending (non bloccanti per il
+            DROP della colonna; vanno comunque migrate prima di
+            ri-runnare i test, vedi handoff sezione "pgTAP residui").
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: anagrafiche, tableName: identita_digitali }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'anagrafiche'
+                   AND c.relname = 'risorse_umane_auth_user'
+                   AND c.relkind = 'v';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- DROP esplicito + CREATE: necessario perche' CREATE OR REPLACE
+              -- VIEW non puo' rimuovere colonne (puo' solo aggiungerle in
+              -- coda). Mantenuto security_invoker = true (cutover §13.3.2).
+              DROP VIEW IF EXISTS anagrafiche.risorse_umane_auth_user;
+
+              CREATE VIEW anagrafiche.risorse_umane_auth_user
+                  WITH (security_invoker = true)
+              AS
+              SELECT
+                  id.id,
+                  ru.id                       AS risorsa_umana_id,
+                  id.auth_user_id,
+                  id.attivo,
+                  id.meta,
+                  id.data_insert,
+                  id.user_insert,
+                  id.data_update,
+                  id.user_update,
+                  id.storicizza,
+                  id.tx_id,
+                  id.tentativi_falliti,
+                  id.bloccato_fino_a,
+                  id.deve_cambiare_password,
+                  id.invito_inviato_at,
+                  id.totp_obbligatorio
+                FROM anagrafiche.identita_digitali id
+                LEFT JOIN anagrafiche.risorse_umane ru
+                  ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+               WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo;
+
+              COMMENT ON VIEW anagrafiche.risorse_umane_auth_user IS
+                  'Vista compat post-cutover §13.3 (security_invoker=true). Fase 7 (29-04-2026): rimossa colonna calcolata ruolo_sistema (CASE inline su attivo/ruolo_applicativo/finestra/binding SA) e relativa subquery sa, sblocca DROP TYPE config.ruolo_sistema. Body ridotto a proiezione liscia su identita_digitali (filtro ruolo_applicativo=OPERATORE) + LEFT JOIN risorse_umane via soggetto_ruolo_id.';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: riapplicare la vista pre-Fase 7 (con colonna
+              -- ruolo_sistema CASE-calcolata + subquery sa).
+              -- In dev no-produzione il rollback non e' previsto.
+              SELECT 1;

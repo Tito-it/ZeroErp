@@ -7,7 +7,7 @@
 //   soggetto-ruolo-id valorizzato → context 'ruolo' (cascata ruolo + soggetto)
 //   soggetto-id valorizzato (senza ruolo) → context 'soggetto' (lista piatta)
 //   preview=true → drawer in sola lettura (creazione)
-import { ref, computed, watch, provide } from 'vue'
+import { ref, computed, watch, provide, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { READONLY_KEY } from '../composables/useReadonlyMode'
 import {
@@ -23,8 +23,11 @@ import Button from 'primevue/button'
 
 const { t } = useI18n()
 
-// In modalita' preview (creazione), forza sola lettura per i drawer figli
-provide(READONLY_KEY, computed(() => props.preview))
+// Readonly per i sub-drawer aperti dai badge: OR fra parent (split o
+// LETTURA area/oggetto, propagato da useReadonlyMode) e preview di
+// creazione. Non sovrascrivere il parent: vedi useReadonlyMode.
+const parentReadonly = inject(READONLY_KEY, ref(false))
+provide(READONLY_KEY, computed(() => parentReadonly.value || props.preview))
 
 const props = defineProps({
   soggettoRuoloId: { type: Number, default: null },

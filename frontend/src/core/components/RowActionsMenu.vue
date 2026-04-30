@@ -16,12 +16,16 @@
 // Uso tipico nelle liste:
 //   <Column :header="t('dominio.col_azioni')" class="app-col-actions" :exportable="false">
 //     <template #body="{ data }">
-//       <RowActionsMenu :actions="buildRowActions(data)" />
+//       <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
 //     </template>
 //   </Column>
 //
 // Formato azione:
-//   { key, label, icon, severity?, visible?: bool, disabled?: bool, command: () => void }
+//   { key, label, icon, severity?, visible?: bool, disabled?: bool, tooltip?: string, allowWhenInactive?: bool, command: () => void }
+// Quando `tooltip` e' valorizzato sostituisce `label` come tooltip del bottone
+// inline (utile per spiegare il motivo di un disabled, es. capability di riga).
+// Se `row` ha `attivo=false` o `is_active=false`, le azioni sono disabilitate
+// salvo `allowWhenInactive: true`.
 //
 // Severity supportate (controllano colore inline + colore voce menu):
 //   undefined     -> blu    (app-manage-btn)  — default
@@ -36,8 +40,10 @@ import { MANAGE_ICONS } from '../constants'
 
 const props = defineProps({
   actions: { type: Array, required: true },
+  row: { type: Object, default: null },
   tooltip: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
+  disableWhenInactive: { type: Boolean, default: true },
 })
 
 const { t } = useI18n()
@@ -48,19 +54,50 @@ const visibleActions = computed(() =>
   props.actions.filter(a => a.visible !== false),
 )
 
+// Scopo: riconosce lo stato inattivo standard delle righe lista.
+const isInactiveRow = computed(() => (
+  props.disableWhenInactive
+  && props.row != null
+  && (props.row.attivo === false || props.row.is_active === false)
+))
+
+// Scopo: disabilita azioni operative su righe inattive, salvo escape esplicito.
+function isActionDisabled(action) {
+  return props.disabled
+    || action.disabled === true
+    || (isInactiveRow.value && action.allowWhenInactive !== true)
+}
+
+function actionTooltip(action) {
+  if (isInactiveRow.value && action.allowWhenInactive !== true) {
+    return t('common.azione_non_disponibile_record_inattivo')
+  }
+  return action.tooltip || action.label
+}
+
 // Scopo: mappa per il formato PrimeVue Menu (variante compact).
 const menuItems = computed(() =>
   visibleActions.value.map(a => ({
     label: a.label,
     icon: a.icon,
-    disabled: a.disabled === true,
+    disabled: isActionDisabled(a),
     class: a.severity === 'danger' ? 'app-menu-item-danger' : undefined,
-    command: () => a.command?.(),
+    command: () => {
+      if (!isActionDisabled(a)) a.command?.()
+    },
   })),
 )
 
-const buttonTooltip = computed(() => props.tooltip || t('common.altre_azioni'))
 const isEmpty = computed(() => visibleActions.value.length === 0)
+const allActionsDisabled = computed(() =>
+  !isEmpty.value && visibleActions.value.every(a => isActionDisabled(a)),
+)
+const buttonTooltip = computed(() => {
+  if (isInactiveRow.value && allActionsDisabled.value) {
+    return t('common.azione_non_disponibile_record_inattivo')
+  }
+  return props.tooltip || t('common.altre_azioni')
+})
 
 // Scopo: classe colore bottone inline in base a severity.
 // 'warn' non ha classe custom: usa la severity nativa PrimeVue.
@@ -80,7 +117,7 @@ function inlineButtonSeverity(action) {
 
 function runAction(action, event) {
   event.stopPropagation()
-  if (action.disabled === true) return
+  if (isActionDisabled(action)) return
   action.command?.()
 }
 
@@ -102,8 +139,8 @@ function toggle(event) {
       size="small"
       :severity="inlineButtonSeverity(a)"
       :class="inlineButtonClass(a)"
-      :disabled="disabled || a.disabled === true"
-      v-tooltip.top="a.label"
+      :disabled="isActionDisabled(a)"
+      v-tooltip.top="actionTooltip(a)"
       @click="runAction(a, $event)"
     />
   </span>

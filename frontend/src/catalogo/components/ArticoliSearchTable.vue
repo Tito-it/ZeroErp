@@ -22,7 +22,7 @@ import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { buildBoolOptions } from '../../core/utils/options'
 
 const emit = defineEmits(['new', 'row-click', 'manage-uom', 'manage-bom', 'manage-note'])
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useArticoliStore()
 const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
@@ -60,7 +60,18 @@ function onGruppoChange() {
 function onRowClick(event) { emit('row-click', event.data) }
 
 // Scopo: azioni di riga dell'articolo (sub-drawer gestionali).
-// BoM disabilitato su articoli non compositi (guard gia' presente nel drawer).
+// Capability BoM (Fase 6) letta dalla vista DB: data.puo_gestire_bom +
+// data.motivo_non_gestibile_bom. Tooltip mostra il motivo quando disabled.
+function manageBomTooltip(data) {
+  if (data.puo_gestire_bom) return t('catalogo.gestisci_bom')
+  const motivo = data.motivo_non_gestibile_bom
+  if (!motivo) return t('catalogo.gestisci_bom')
+  // Difensivo: se il DB introduce un nuovo motivo non mappato i18n,
+  // fallback alla label generica invece di mostrare la chiave raw.
+  const key = `catalogo.motivo_${motivo.toLowerCase()}`
+  return te(key) ? t(key) : t('catalogo.gestisci_bom')
+}
+
 function buildRowActions(data) {
   return [
     {
@@ -73,7 +84,8 @@ function buildRowActions(data) {
       key: 'manage-bom',
       label: t('catalogo.gestisci_bom'),
       icon: MANAGE_ICONS.BOM,
-      disabled: !data.is_composito,
+      disabled: !data.puo_gestire_bom,
+      tooltip: manageBomTooltip(data),
       command: () => emit('manage-bom', data),
     },
     {
@@ -157,7 +169,7 @@ onMounted(() => {
       </Column>
       <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
-          <RowActionsMenu :actions="buildRowActions(data)" />
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>

@@ -26,7 +26,9 @@ temporale, per un dato ruolo applicativo".
 
 Introdotta nel refactor §4.6.B.0 WIP multi-face-auth per eliminare la
 duplicazione dello stesso `EXISTS` ripetuto in oltre una decina di funzioni
-(`fn_resolve_livello_*`, `fn_check_*`, `fn_get_*_map`, `fn_get_ruolo_sistema`).
+(`fn_resolve_livello_*`, `fn_check_*`, `fn_get_*_map`). Fra i caller
+storici figurava anche `fn_get_ruolo_sistema` (wrapper retrocompat),
+droppata in Fase 7 cleanup (2026-04-29).
 
 ---
 
@@ -115,7 +117,6 @@ Al deploy di §4.6 (PR1 DB) la helper è usata da:
 * `script.fn_get_emittenti_scope_sr_ids`
 * `script.fn_get_user_permissions_map`
 * `script.fn_get_user_actions_map`
-* `script.fn_get_ruolo_sistema` (wrapper retrocompatibile)
 
 ---
 

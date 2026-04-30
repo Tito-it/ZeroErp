@@ -8,9 +8,15 @@ import { usePreventiviStore } from '../stores/preventivi'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
+import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
-import { displayDate, toDateString } from '../../../core/utils/date'
-import { DRAWER_WIDTH, STATO_PREVENTIVO } from '../../../core/constants'
+import { addDaysToToday, displayDate, toDateString } from '../../../core/utils/date'
+import { formatCurrency } from '../../../core/utils/format'
+import { paramBool, paramInt } from '../../../core/utils/parameterCast'
+import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
+import { getPreventivoFormDefaults } from '../../api/formDefaults'
+import { getBillingAccountLookupById } from '../../../core/apiCore'
+import { DRAWER_WIDTH } from '../../../core/constants'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../../core/components/DrawerFooter.vue'
 import PreventiviForm from './PreventiviForm.vue'
@@ -20,6 +26,7 @@ import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import Divider from 'primevue/divider'
+import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = usePreventiviStore()
@@ -37,29 +44,55 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
-const righeRef = ref(null)
-const integrazioneRef = ref(null)
 
-// Stato corrente del preventivo (codice_interno)
-const statoCodice = computed(() => detail.value?.stato_codice_interno || '')
+// Deferimento contenuto: i LookupSelect/AutoComplete montano dopo l'animazione
+// di apertura del drawer per evitare il rimbalzo iniziale (pattern adottato
+// da ContrattoDrawer + memoria feedback_content_ready_after_show).
+const contentReady = ref(false)
+function onAfterShow() { contentReady.value = true }
 
-// Il preventivo e' modificabile solo in BOZZA (DRAFT)
-const isModificabile = computed(() => statoCodice.value === STATO_PREVENTIVO.BOZZA)
+// Capability dal detail backend (Fase 1: script.fn_available_actions_preventivo).
+// Il drawer NON ricalcola lo stato: tutto deriva dai metadata API.
+// Composable centralizzato (Fase 4.F2): availableActions/canEdit/flag/isLocked/
+// nonEditableFields uniformi a Contratti/Promo. Qui editFlag = can_edit_testata.
+const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const availableActions = caps.availableActions
+const canEditTestata = caps.canEdit
+const canEditRighe = computed(() => caps.flag('can_edit_righe'))
+const canCreateRevisione = computed(() => caps.flag('can_create_revisione'))
+const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
+const pushCommessaReasonKey = computed(() => detail.value?.can_push_commessa_reason_key || null)
+// Per PreventiviForm passiamo l'array originale (no Set): il prop e' typed Array.
+const nonEditableFields = computed(() => detail.value?.non_editable_fields || [])
 
-// Il preventivo e' in stato ACCETTATO — abilita integrazione
-const isAccettato = computed(() => statoCodice.value === STATO_PREVENTIVO.ACCETTATO)
+// Defaults non-BA da config.parameters (Fase 2 refactor frontend vendite).
+// Caricati on-open drawer prima di resetForm; cache modulo `useParameterDefaults`.
+// I defaults BA-dipendenti (valuta_id, termine_pagamento_id) NON stanno qui:
+// arriveranno dall'endpoint dedicato form-defaults?billing_account_id=... (2.B4).
+const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefaults([
+  'VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG',
+  'VENDITE_PREVENTIVO_DEFAULT_FATTURAZIONE_IMMEDIATA',
+])
 
 function defaultForm() {
+  const p = paramDefaults.value
+  // validita_al = oggi + N gg dal parameter; validita_dal resta null finche'
+  // l'operatore non lo conferma (no presupposto di emissione immediata).
+  const validitaGg = paramInt(p.VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG, 30)
   return {
     utility_id: null,
     billing_account_id: null,
+    // _obj per BillingAccountLookup AutoComplete (pattern restore lookup ricco,
+    // memoria feedback_autocomplete_restore). Popolato da onBaSelected (FE)
+    // o da loadDetail() via getBillingAccountLookupById in edit.
+    billing_account_obj: null,
     istanza_utility_id: null,
     valuta_id: null,
     termine_pagamento_id: null,
     validita_dal: null,
-    validita_al: null,
+    validita_al: addDaysToToday(validitaGg),
     competenza_mese: null,
-    fatturazione_immediata: false,
+    fatturazione_immediata: paramBool(p.VENDITE_PREVENTIVO_DEFAULT_FATTURAZIONE_IMMEDIATA, false),
   }
 }
 
@@ -76,6 +109,7 @@ async function loadDetail() {
   form.value = {
     utility_id: data.utility_id,
     billing_account_id: data.billing_account_id,
+    billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
     istanza_utility_id: data.istanza_utility_id,
     valuta_id: data.valuta_id,
     termine_pagamento_id: data.termine_pagamento_id,
@@ -84,14 +118,59 @@ async function loadDetail() {
     competenza_mese: data.competenza_mese ? new Date(data.competenza_mese + 'T00:00:00') : null,
     fatturazione_immediata: data.fatturazione_immediata || false,
   }
+  // Restore BillingAccountLookup _obj per visualizzazione ricca (codice, ragione
+  // sociale, id fiscale, PDP). Best-effort: in caso di failure il drawer mostra
+  // l'autocomplete vuoto e l'operatore puo' ri-selezionare. Skip se BA assente.
+  if (data.billing_account_id) {
+    try {
+      const res = await getBillingAccountLookupById(data.billing_account_id)
+      const ba = res?.data?.data
+      if (ba) form.value.billing_account_obj = ba
+    } catch {
+      // Resto: form parte senza _obj, l'utente puo' rieseguire la ricerca.
+    }
+  }
 }
 
-watch(() => props.visible, (v) => {
-  if (!v) return
+watch(() => props.visible, async (v) => {
+  if (!v) {
+    contentReady.value = false
+    return
+  }
+  // Carica i parameters una sola volta (cache nel composable). Sequenza:
+  // load defaults -> reset/loadDetail, cosi' il form parte gia' valorizzato.
+  await loadParamDefaults()
   if (isEdit.value) {
     loadDetail()
   } else {
     resetForm()
+  }
+})
+
+// Fase 2.B4 + 2.F6: quando l'operatore valorizza/cambia il BA in create,
+// chiediamo al BE i defaults BA-derived (valuta_id, termine_pagamento_id,
+// iva_id) dal cliente associato. Sovrascriviamo i campi solo se vuoti, per
+// non distruggere scelte gia' fatte dall'utente. Skippiamo in edit (i campi
+// sono gia' persistiti dal payload preventivo).
+let _baDefaultsToken = 0
+watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
+  if (isEdit.value) return
+  if (!newBaId || newBaId === oldBaId) return
+  const tk = ++_baDefaultsToken
+  let res
+  try {
+    res = await getPreventivoFormDefaults(newBaId)
+  } catch {
+    return  // Best-effort: il fallback resta "form vuoto, l'operatore valorizza".
+  }
+  if (tk !== _baDefaultsToken) return  // Apertura/chiusura veloce: scarta stantio.
+  const data = res?.data?.data
+  if (!data) return
+  if (form.value.valuta_id == null && data.valuta_id != null) {
+    form.value.valuta_id = data.valuta_id
+  }
+  if (form.value.termine_pagamento_id == null && data.termine_pagamento_id != null) {
+    form.value.termine_pagamento_id = data.termine_pagamento_id
   }
 })
 
@@ -100,17 +179,28 @@ const canSave = computed(() => form.value.utility_id != null)
 async function handleSave() {
   const f = form.value
   if (isEdit.value) {
-    const payload = {}
-    if (f.billing_account_id != null) payload.billing_account_id = f.billing_account_id
-    if (f.validita_dal != null) payload.validita_dal = toDateString(f.validita_dal)
-    if (f.validita_al != null) payload.validita_al = toDateString(f.validita_al)
-    if (f.competenza_mese != null) payload.competenza_mese = toDateString(f.competenza_mese)
-    payload.fatturazione_immediata = f.fatturazione_immediata
+    // Backend whitelist (preventivi_service.aggiorna_preventivo): billing_account_id,
+    // istanza_utility_id, valuta_id, termine_pagamento_id, validita_dal,
+    // validita_al, competenza_mese, fatturazione_immediata, meta. utility_id
+    // NON viene spedito: e' immutabile post-create (regola di dominio,
+    // script.fn_available_actions_preventivo lo mette sempre in non_editable_fields).
+    // Inviamo sempre tutti i campi della whitelist: il backend e' tollerante a NULL
+    // (empty_to_none), cosi' un clear di valuta/termine viene davvero persistito.
+    const payload = {
+      billing_account_id: f.billing_account_id ?? null,
+      istanza_utility_id: f.istanza_utility_id ?? null,
+      valuta_id: f.valuta_id ?? null,
+      termine_pagamento_id: f.termine_pagamento_id ?? null,
+      validita_dal: f.validita_dal ? toDateString(f.validita_dal) : null,
+      validita_al: f.validita_al ? toDateString(f.validita_al) : null,
+      competenza_mese: f.competenza_mese ? toDateString(f.competenza_mese) : null,
+      fatturazione_immediata: f.fatturazione_immediata,
+    }
     const result = await execute(
       () => store.update(props.preventivoId, payload),
       { successMessage: t('preventivi.preventivo_salvato') }
     )
-    if (result) {
+    if (result !== null) {
       await loadDetail()
       emit('saved', result)
     }
@@ -130,7 +220,7 @@ async function handleSave() {
       () => store.create(payload),
       { successMessage: t('preventivi.preventivo_creato') }
     )
-    if (result) emit('saved', result)
+    if (result !== null) emit('saved', result)
   }
 }
 
@@ -139,33 +229,19 @@ function close() {
   emit('cancelled')
 }
 
-// --- Azioni stato ---
+// --- Azioni stato (data-driven da detail.available_actions) ---
 
-function transizioni() {
-  const stato = statoCodice.value
-  const list = []
-  if (stato === STATO_PREVENTIVO.BOZZA) {
-    list.push({ codice: 'EMESSO', label: t('preventivi.azione_emetti'), severity: 'info', icon: 'pi pi-send' })
-    list.push({ codice: 'ANNULLATO', label: t('preventivi.azione_annulla'), severity: 'danger', icon: 'pi pi-times' })
-  } else if (stato === STATO_PREVENTIVO.EMESSO) {
-    list.push({ codice: 'ACCETTATO', label: t('preventivi.azione_accetta'), severity: 'success', icon: 'pi pi-check' })
-    list.push({ codice: 'RIFIUTATO', label: t('preventivi.azione_rifiuta'), severity: 'danger', icon: 'pi pi-ban' })
-    list.push({ codice: 'ANNULLATO', label: t('preventivi.azione_annulla'), severity: 'danger', icon: 'pi pi-times' })
-  } else if (stato === STATO_PREVENTIVO.ACCETTATO) {
-    list.push({ codice: 'ANNULLATO', label: t('preventivi.azione_annulla'), severity: 'danger', icon: 'pi pi-times' })
-  }
-  return list
-}
-
-function onCambiaStato(nuovoStato) {
-  const isIrreversibile = ['RIFIUTATO', 'ANNULLATO', 'SCADUTO'].includes(nuovoStato)
-  if (isIrreversibile) {
+// Scopo: handler unico bottone azione. Usa requires_confirm dai metadata
+//        per decidere se mostrare il dialog di conferma. La label nel
+//        messaggio di conferma e' tradotta dalla label_key dell'azione.
+function onCambiaStato(action) {
+  if (action.requires_confirm) {
     confirmAction({
-      message: t('preventivi.conferma_cambio_stato', { stato: nuovoStato }),
-      accept: () => eseguiCambioStato(nuovoStato)
+      message: t('preventivi.conferma_cambio_stato', { stato: t(action.label_key) }),
+      accept: () => eseguiCambioStato(action.target_state),
     })
   } else {
-    eseguiCambioStato(nuovoStato)
+    eseguiCambioStato(action.target_state)
   }
 }
 
@@ -194,14 +270,11 @@ function onNuovaRevisione() {
   })
 }
 
-function formatCurrency(value) {
-  if (value == null) return '-'
-  return Number(value).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })
-}
 </script>
 
 <template>
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+    @after-show="onAfterShow"
     position="right" :style="{ width: DRAWER_WIDTH.WIDE }" :dismissable="true">
     <template #header>
       <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('preventivi.preventivo')" />
@@ -221,43 +294,53 @@ function formatCurrency(value) {
         </span>
       </div>
 
-      <!-- Azioni stato (solo edit, non readonly) -->
-      <div v-if="isEdit && detail && !isReadonly" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
-        <Button v-for="tr in transizioni()" :key="tr.codice"
-          :icon="tr.icon" :label="tr.label" :severity="tr.severity"
-          size="small" @click="onCambiaStato(tr.codice)" />
-        <Button v-if="statoCodice === STATO_PREVENTIVO.EMESSO || statoCodice === STATO_PREVENTIVO.ACCETTATO"
+      <!-- Azioni stato (solo edit, non readonly): bottoni dai metadata API -->
+      <div v-if="isEdit && detail && !isReadonly && (availableActions.length || canCreateRevisione)"
+        style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+        <Button v-for="action in availableActions" :key="action.key"
+          :icon="action.icon" :label="t(action.label_key)" :severity="action.severity"
+          size="small" @click="onCambiaStato(action)" />
+        <Button v-if="canCreateRevisione"
           icon="pi pi-copy" :label="t('preventivi.azione_revisione')" severity="secondary"
           size="small" @click="onNuovaRevisione" />
       </div>
 
       <Divider v-if="isEdit && detail" />
 
-      <!-- Form testata -->
-      <PreventiviForm :form="form" :is-edit="isEdit" :is-modificabile="isModificabile && !isReadonly" />
+      <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup -->
+      <PreventiviForm v-if="contentReady"
+        :form="form" :is-modificabile="canEditTestata && !isReadonly"
+        :non-editable-fields="nonEditableFields" />
 
       <!-- Righe (solo edit) -->
-      <template v-if="isEdit && detail">
+      <template v-if="contentReady && isEdit && detail">
         <Divider />
-        <PreventiviRigheTable ref="righeRef"
+        <PreventiviRigheTable
           :preventivo-id="preventivoId"
-          :is-modificabile="isModificabile && !isReadonly" />
+          :is-modificabile="canEditRighe && !isReadonly" />
 
         <!-- Totali -->
         <div style="display: flex; justify-content: flex-end; gap: 1.5rem; padding: 0.75rem 0; font-size: 0.9rem;">
-          <div><strong>{{ t('preventivi.totale_imponibile') }}:</strong> {{ formatCurrency(detail.totale_imponibile) }}</div>
-          <div><strong>{{ t('preventivi.totale_iva') }}:</strong> {{ formatCurrency(detail.totale_iva) }}</div>
-          <div><strong>{{ t('preventivi.totale_documento') }}:</strong> {{ formatCurrency(detail.totale_documento) }}</div>
+          <div><strong>{{ t('preventivi.totale_imponibile') }}:</strong> {{ formatCurrency(detail.totale_imponibile, { placeholder: '-' }) }}</div>
+          <div><strong>{{ t('preventivi.totale_iva') }}:</strong> {{ formatCurrency(detail.totale_iva, { placeholder: '-' }) }}</div>
+          <div><strong>{{ t('preventivi.totale_documento') }}:</strong> {{ formatCurrency(detail.totale_documento, { placeholder: '-' }) }}</div>
         </div>
       </template>
 
-      <!-- Integrazione (solo stato ACCETTATO) -->
-      <template v-if="isEdit && detail && isAccettato">
-        <Divider />
-        <PreventiviIntegrazione ref="integrazioneRef" :preventivo-id="preventivoId" />
+      <!-- Integrazione: visibile quando il backend conferma can_push_commessa.
+           Se non ammessa ma con reason i18n-ready, mostriamo un Message hint. -->
+      <template v-if="contentReady && isEdit && detail">
+        <template v-if="canPushCommessa">
+          <Divider />
+          <PreventiviIntegrazione :preventivo-id="preventivoId" />
+        </template>
+        <Message v-else-if="pushCommessaReasonKey" severity="info" :closable="false"
+          class="mt-1">
+          {{ t(pushCommessaReasonKey) }}
+        </Message>
       </template>
 
-      <DrawerFooter v-if="isModificabile" :loading="loading" :disabled="!canSave"
+      <DrawerFooter v-if="canEditTestata && !isReadonly" :loading="loading" :disabled="!canSave"
         @save="handleSave" @cancel="close" />
     </div>
   </Drawer>

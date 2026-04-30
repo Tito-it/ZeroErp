@@ -21,8 +21,16 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoStato,
     ApiPreventivoStatoFatturazione,
 )
+from apps.vendite.api.views_form_defaults import ApiPreventivoFormDefaults
 
 urlpatterns = [
+    # Form-defaults BA-aware (Fase 2.B4 refactor frontend vendite).
+    # Risolve valuta/termini/iva dal cliente del BA + validita_al da parameter.
+    path(
+        "form-defaults/",
+        ApiPreventivoFormDefaults.as_view(),
+        name="vendite-preventivi-form-defaults",
+    ),
     # Testata: lista + creazione
     path("", ApiPreventiviList.as_view(), name="vendite-preventivi-list"),
     # Testata: dettaglio + aggiornamento

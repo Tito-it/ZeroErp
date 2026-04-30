@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
-import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -12,8 +11,9 @@ import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { READONLY_DOMAINS } from '../../core/constants'
 import { useEmailLogsStore } from '../stores/emailLogs'
 import { useSearchTable } from '../../core/composables/useSearchTable'
-import { buildEmailLogStatoOptions, getEmailLogStatoSeverity } from '../constants'
+import { getEmailLogStatoSeverity } from '../constants'
 import { displayTimestamp, toDateString } from '../../core/utils/date'
+import EmailLogStatoSelect from '../components/EmailLogStatoSelect.vue'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
@@ -26,7 +26,9 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 // Email logs e' read-only (nessun create/update/delete) quindi non serve
 // ascoltare eventi cross-tab: nessuno store emette EMAIL_LOGS.
 
-const statoOptions = buildEmailLogStatoOptions(t)
+// Fase 5 — il filtro stato usa EmailLogStatoSelect, lookup BE cached con
+// useGlobalLookup. Sostituisce buildEmailLogStatoOptions hardcoded.
+// `getEmailLogStatoSeverity` resta locale (puro mapping CSS, non semantico).
 
 // Filtro data: default ultimi 30 giorni
 const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
@@ -58,13 +60,10 @@ onMounted(() => {
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('common.search')" style="width: 250px;" />
-        <Select
+        <EmailLogStatoSelect
           :modelValue="store.filters.stato"
-          :options="statoOptions"
-          optionLabel="label"
-          optionValue="value"
           :placeholder="t('amm.email_stato')"
-          style="width: 160px;"
+          style="width: 200px;"
           @update:modelValue="onStatoChange"
         />
         <DatePicker

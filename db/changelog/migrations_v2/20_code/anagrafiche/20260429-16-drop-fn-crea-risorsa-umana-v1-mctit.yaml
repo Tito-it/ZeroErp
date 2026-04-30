@@ -1,0 +1,54 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260429-16-drop-fn-crea-risorsa-umana-v1-mctit.yaml
+
+  - changeSet:
+      id: 20260429-16-drop-fn-crea-risorsa-umana-v1
+      author: mctit
+      comment: >
+        Fase 7 step 7 (2026-04-29): drop di anagrafiche.fn_crea_risorsa_umana
+        v1 (firma con p_ruolo_sistema config.ruolo_sistema). Sostituita da
+        fn_crea_risorsa_umana_v2 (20260429-12) con firma multi-face native
+        p_is_super_admin/p_attivo.
+
+        Prerequisiti gia' soddisfatti:
+          - 20260429-12: v2 creata
+          - PR Python LANDED 2026-04-29: BE chiama gia' v2, _legacy_ruolo_from_contract
+            rimosso dai 2 repo (amm_software + risorse_umane_core).
+
+        Sblocca:
+          - 20260429-20 (DROP TYPE config.ruolo_sistema): senza il drop di
+            v1 qui, il tipo enum resterebbe referenziato nel parametro
+            p_ruolo_sistema.
+
+        ⚠️ Atomicita' merge: questa migration deve essere mergiata
+        contestualmente al PR Python (LANDED) - vedi brief BE Fase 7
+        sezione "Coordinazione di merge".
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'fn_crea_risorsa_umana_v2';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Drop esplicito della firma v1 con p_ruolo_sistema.
+              -- La firma e' deterministica (vedi 20260308-* originale +
+              -- doc anagrafiche/funzioni/fn_crea_risorsa_umana.md).
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_risorsa_umana(
+                  uuid, integer, integer, date, date, integer, config.ruolo_sistema
+              );
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: riapplicare la migration originale di v1
+              -- (esiste come file gia' eseguito nel changelog).
+              -- In dev no-produzione il rollback non e' previsto:
+              -- per ripristinare v1 ricreare manualmente il file YAML.
+              SELECT 1;

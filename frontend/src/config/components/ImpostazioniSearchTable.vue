@@ -128,7 +128,7 @@ onMounted(() => store.fetchList())
       </Column>
       <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
         <template #body="{ data }">
-          <RowActionsMenu :actions="buildRowActions(data)" />
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>

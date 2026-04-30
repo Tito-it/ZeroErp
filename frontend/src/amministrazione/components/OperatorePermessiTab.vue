@@ -9,18 +9,24 @@ import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useNotify } from '../../core/composables/useNotify'
 import { useLookup } from '../../core/composables/useLookup'
+import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { listAreeFunzionali, listAzioniProcesso, listEmittentiFiscali, getModelOverridesLookup } from '../api/amministrazione'
 import { LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
+import RadioButton from 'primevue/radiobutton'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = useOperatoriStore()
 const notify = useNotify()
+// Readonly inject: il tab puo' essere usato dentro OperatoreDrawer in modalita'
+// readonly o dentro OperatorePermessiDrawer; in entrambi i casi i pulsanti
+// add/save/trash e i Select/ToggleSwitch di riga vanno disattivati.
+const isReadonly = useInjectReadonly()
 
 // Lookup via useLookup (non piu' dallo store)
 const areeFunzionali = useLookup(listAreeFunzionali, { immediate: true })
@@ -44,7 +50,13 @@ const isSuperAdmin = computed(() => store.currentOperatore?.is_super_admin === t
 const localAree = ref([])
 const localAzioni = ref([])
 const localOggetti = ref([])
-const localEmittentiIds = ref([])
+
+// Fase 2 multi-face: scope dichiarativo. `localScopeMode` e' la radio
+// attualmente selezionata; `localEmittenteId` e' l'id selezionato quando
+// scope_mode='SINGLE'. Salvataggio costruisce il payload
+// `{scope_mode, emittenti_ids}` dal couple.
+const localScopeMode = ref('GLOBAL')
+const localEmittenteId = ref(null)
 
 // Scopo: Carica tutto lo stato necessario per il componente.
 //        Viene chiamato dal watch su authUserId (immediate) e garantisce
@@ -69,51 +81,99 @@ function syncLocal() {
   localAree.value = store.overrideAree.map(a => ({ ...a }))
   localAzioni.value = store.overrideAzioni.map(a => ({ ...a }))
   localOggetti.value = store.overrideOggetti.map(o => ({ ...o }))
-  localEmittentiIds.value = store.emittentiScope.map(e => e.emittente_fiscale_id)
+  localScopeMode.value = store.emittentiScope.scope_mode || 'GLOBAL'
+  localEmittenteId.value = (store.emittentiScope.emittenti_ids || [])[0] ?? null
 }
+
+// Capability esposte dal BE: render condizionale e disable/tooltip.
+const allowedScopeModes = computed(() => store.emittentiScope.allowed_scope_modes || ['GLOBAL', 'SINGLE'])
+const canChangeScope = computed(() => store.emittentiScope.can_change_scope !== false)
+const changeScopeReason = computed(() => store.emittentiScope.change_scope_reason || null)
+const scopeModeOptions = computed(() => [
+  { value: 'GLOBAL', label: t('amm.scope_mode_global'), disabled: !allowedScopeModes.value.includes('GLOBAL') },
+  { value: 'SINGLE', label: t('amm.scope_mode_single'), disabled: !allowedScopeModes.value.includes('SINGLE') },
+])
 
 // Pattern: store action gia' unwrappate → chiamata diretta + try/catch.
 // useApiHandler.execute() e' SOLO per response axios (feedback_useapihandler_solo_axios).
-async function saveAree() {
-  const items = localAree.value.map(a => ({
-    area_id: a.area_id,
-    livello: a.livello,
-    motivo: a.motivo || null,
-    valido_dal: a.valido_dal || null,
-    valido_al: a.valido_al || null
-  }))
+//
+// Helper consolidato per saveAree/Azioni/Oggetti/Emittenti: ogni save ha la
+// stessa struttura (guard readonly + chiamata store + notify success +
+// catch silente per delegare all'interceptor globale). Estraendo l'helper
+// evitiamo la copia-incolla che renderebbe fragile un eventuale fix di pattern.
+async function _saveOverride(action, items, afterSuccess) {
+  if (isReadonly.value) return
   try {
-    await store.saveOverrideAree(props.authUserId, items)
+    await action(props.authUserId, items)
     notify.success(t('notifications.save_success'))
+    afterSuccess?.()
   } catch {
     // Errore gestito dall'interceptor axios globale.
   }
 }
 
-async function saveAzioni() {
-  const items = localAzioni.value.map(a => ({
-    azione_id: a.azione_id,
-    abilitata: a.abilitata,
-    motivo: a.motivo || null,
-    valido_dal: a.valido_dal || null,
-    valido_al: a.valido_al || null
-  }))
-  try {
-    await store.saveOverrideAzioni(props.authUserId, items)
-    notify.success(t('notifications.save_success'))
-  } catch {
-    // Errore gestito dall'interceptor axios globale.
+// Mapper per la riga area override -> payload BE.
+const _toAreaItem = (a) => ({
+  area_id: a.area_id,
+  livello: a.livello,
+  motivo: a.motivo || null,
+  valido_dal: a.valido_dal || null,
+  valido_al: a.valido_al || null,
+})
+
+const _toAzioneItem = (a) => ({
+  azione_id: a.azione_id,
+  abilitata: a.abilitata,
+  motivo: a.motivo || null,
+  valido_dal: a.valido_dal || null,
+  valido_al: a.valido_al || null,
+})
+
+const _toOggettoItem = (o) => ({
+  app_label: o.app_label,
+  model_name: o.model_name,
+  livello: o.livello,
+  motivo: o.motivo || null,
+  valido_dal: o.valido_dal || null,
+  valido_al: o.valido_al || null,
+})
+
+const saveAree = () =>
+  _saveOverride(store.saveOverrideAree, localAree.value.map(_toAreaItem))
+
+const saveAzioni = () =>
+  _saveOverride(store.saveOverrideAzioni, localAzioni.value.map(_toAzioneItem))
+
+// Costruzione payload Fase 2: GLOBAL -> emittenti_ids: []; SINGLE -> [id].
+// La validazione e' centralizzata sul BE (E_AMM_SCOPE_NON_AMMESSO se SINGLE
+// senza emittente). Qui blocchiamo solo lato UX per evitare round-trip.
+function _buildScopePayload() {
+  if (localScopeMode.value === 'GLOBAL') {
+    return { scope_mode: 'GLOBAL', emittenti_ids: [] }
   }
+  return { scope_mode: 'SINGLE', emittenti_ids: localEmittenteId.value != null ? [localEmittenteId.value] : [] }
 }
 
-async function saveEmittenti() {
-  try {
-    await store.saveEmittentiScope(props.authUserId, localEmittentiIds.value)
-    notify.success(t('notifications.save_success'))
-    nextTick(() => store.fetchList().catch(() => {}))
-  } catch {
-    // Errore gestito dall'interceptor axios globale.
-  }
+const canSaveEmittenti = computed(() => {
+  if (!canChangeScope.value) return false
+  // Defense-in-depth: la modalita' selezionata deve essere ammessa dal BE.
+  // Se in futuro `allowed_scope_modes` venisse ridotto (es. lockdown sul
+  // SUPER_ADMIN), evita un round-trip che ritorna E_AMM_SCOPE_NON_AMMESSO.
+  if (!allowedScopeModes.value.includes(localScopeMode.value)) return false
+  if (localScopeMode.value === 'SINGLE' && localEmittenteId.value == null) return false
+  return true
+})
+
+const saveEmittenti = () => {
+  if (!canSaveEmittenti.value) return
+  return _saveOverride(
+    store.saveEmittentiScope,
+    _buildScopePayload(),
+    // Refresh asincrono lista operatori (la `emittenti_descrizione` puo'
+    // essere cambiata): dopo il prossimo render frame per non interrompere
+    // l'animazione del toast.
+    () => nextTick(() => store.fetchList().catch(() => {})),
+  )
 }
 
 function addAreaOverride() {
@@ -137,29 +197,43 @@ function removeAzioneOverride(index) {
 }
 
 // Scopo: Label per il dropdown model override (es. "anagrafiche.conto_bancario — Anagrafiche").
+//        Fase 8: filtra solo i model con `can_override === true`. I model
+//        riservati al kernel permessi (identita_digitali, profili_accesso,
+//        bindings, override stessi) NON appaiono nel dropdown — il BE
+//        rifiuterebbe comunque la scrittura come defense-in-depth.
 const modelOverrideOptions = computed(() =>
-  modelOverrides.items.value.map(m => ({
-    ...m,
-    label: `${m.app_label}.${m.model_name} — ${m.area_descrizione}`
-  }))
+  modelOverrides.items.value
+    .filter(m => m.can_override === true)
+    .map(m => ({
+      ...m,
+      label: `${m.app_label}.${m.model_name} — ${m.area_descrizione}`
+    }))
 )
 
-async function saveOggetti() {
-  const items = localOggetti.value.map(o => ({
-    app_label: o.app_label,
-    model_name: o.model_name,
-    livello: o.livello,
-    motivo: o.motivo || null,
-    valido_dal: o.valido_dal || null,
-    valido_al: o.valido_al || null
-  }))
-  try {
-    await store.saveOverrideOggetti(props.authUserId, items)
-    notify.success(t('notifications.save_success'))
-  } catch {
-    // Errore gestito dall'interceptor axios globale.
+// Scopo: Mappa indicizzata `(app_label, model_name) -> {can_override, reason}`
+//        per evitare scansioni lineari nelle template cells. Ricomputata
+//        solo quando l'array di model cambia.
+const modelOverrideIndex = computed(() => {
+  const m = new Map()
+  for (const row of modelOverrides.items.value) {
+    m.set(`${row.app_label}.${row.model_name}`, row)
   }
+  return m
+})
+
+// Scopo: Per le righe pre-esistenti che puntano a un model diventato
+//        riservato (drift dati storico), risolve la chiave i18n del motivo
+//        per mostrarla come tooltip sul Select disabilitato. Lookup O(1)
+//        via la mappa indicizzata.
+function modelOverrideReason(row) {
+  if (!row.app_label || !row.model_name) return null
+  const entry = modelOverrideIndex.value.get(`${row.app_label}.${row.model_name}`)
+  if (!entry || entry.can_override === true) return null
+  return entry.reason ? t(entry.reason) : null
 }
+
+const saveOggetti = () =>
+  _saveOverride(store.saveOverrideOggetti, localOggetti.value.map(_toOggettoItem))
 
 function addOggettoOverride() {
   localOggetti.value.push({
@@ -192,22 +266,24 @@ function onModelSelect(item, row) {
       <Column :header="t('amm.col_area')">
         <template #body="{ data }">
           <Select v-model="data.area_id" :options="areeFunzionali.items.value"
-            option-label="descrizione" option-value="id" class="w-full" />
+            option-label="descrizione" option-value="id" class="w-full"
+            :disabled="isReadonly" />
         </template>
       </Column>
       <Column :header="t('amm.col_livello')">
         <template #body="{ data }">
           <Select v-model="data.livello" :options="livelloOptions"
-            option-label="label" option-value="value" class="w-full" />
+            option-label="label" option-value="value" class="w-full"
+            :disabled="isReadonly" />
         </template>
       </Column>
-      <Column style="width: 3rem">
+      <Column v-if="!isReadonly" style="width: 3rem">
         <template #body="{ index }">
           <Button icon="pi pi-trash" severity="danger" text @click="removeAreaOverride(index)" />
         </template>
       </Column>
     </DataTable>
-    <div class="flex justify-between mb-4">
+    <div v-if="!isReadonly" class="flex justify-between mb-4">
       <Button :label="t('amm.add_override')" icon="pi pi-plus" text @click="addAreaOverride" />
       <Button :label="t('common.save')" icon="pi pi-check" size="small" @click="saveAree" />
     </div>
@@ -218,21 +294,22 @@ function onModelSelect(item, row) {
       <Column :header="t('amm.col_azione')">
         <template #body="{ data }">
           <Select v-model="data.azione_id" :options="azioniProcesso.items.value"
-            option-label="descrizione" option-value="id" class="w-full" />
+            option-label="descrizione" option-value="id" class="w-full"
+            :disabled="isReadonly" />
         </template>
       </Column>
       <Column :header="t('amm.col_abilitata')" style="width: 6rem">
         <template #body="{ data }">
-          <ToggleSwitch v-model="data.abilitata" />
+          <ToggleSwitch v-model="data.abilitata" :disabled="isReadonly" />
         </template>
       </Column>
-      <Column style="width: 3rem">
+      <Column v-if="!isReadonly" style="width: 3rem">
         <template #body="{ index }">
           <Button icon="pi pi-trash" severity="danger" text @click="removeAzioneOverride(index)" />
         </template>
       </Column>
     </DataTable>
-    <div class="flex justify-between mb-4">
+    <div v-if="!isReadonly" class="flex justify-between mb-4">
       <Button :label="t('amm.add_override')" icon="pi pi-plus" text @click="addAzioneOverride" />
       <Button :label="t('common.save')" icon="pi pi-check" size="small" @click="saveAzioni" />
     </div>
@@ -242,48 +319,83 @@ function onModelSelect(item, row) {
     <DataTable :value="localOggetti" class="mb-2" size="small">
       <Column :header="t('amm.col_model')">
         <template #body="{ data }">
-          <Select
-            :modelValue="data.app_label && data.model_name ? modelOverrideOptions.find(m => m.app_label === data.app_label && m.model_name === data.model_name) : null"
-            :options="modelOverrideOptions"
-            option-label="label"
-            :placeholder="t('amm.select_model')"
-            class="w-full"
-            @update:modelValue="v => onModelSelect(v, data)"
-          />
+          <span v-tooltip.top="modelOverrideReason(data)" class="block w-full">
+            <Select
+              :modelValue="data.app_label && data.model_name ? modelOverrideOptions.find(m => m.app_label === data.app_label && m.model_name === data.model_name) : null"
+              :options="modelOverrideOptions"
+              option-label="label"
+              :placeholder="t('amm.select_model')"
+              class="w-full"
+              :disabled="isReadonly || !!modelOverrideReason(data)"
+              @update:modelValue="v => onModelSelect(v, data)"
+            />
+          </span>
         </template>
       </Column>
       <Column :header="t('amm.col_livello')">
         <template #body="{ data }">
           <Select v-model="data.livello" :options="livelloOptions"
-            option-label="label" option-value="value" class="w-full" />
+            option-label="label" option-value="value" class="w-full"
+            :disabled="isReadonly" />
         </template>
       </Column>
-      <Column style="width: 3rem">
+      <Column v-if="!isReadonly" style="width: 3rem">
         <template #body="{ index }">
           <Button icon="pi pi-trash" severity="danger" text @click="removeOggettoOverride(index)" />
         </template>
       </Column>
     </DataTable>
-    <div class="flex justify-between mb-4">
+    <div v-if="!isReadonly" class="flex justify-between mb-4">
       <Button :label="t('amm.add_override')" icon="pi pi-plus" text @click="addOggettoOverride" />
       <Button :label="t('common.save')" icon="pi pi-check" size="small" @click="saveOggetti" />
     </div>
 
-    <!-- Emittenti Scope -->
+    <!-- Emittenti Scope (Fase 2 multi-face) -->
     <h4>{{ t('amm.emittenti_scope_title') }}</h4>
     <p class="text-sm text-color-secondary mb-2">{{ t('amm.emittenti_scope_hint') }}</p>
+
+    <!-- Radio scope: GLOBAL/SINGLE. `MULTI` non e' incluso in
+         allowed_scope_modes post Q2 (architetturalmente chiuso). -->
+    <div
+      class="scope-radio-group mb-2"
+      v-tooltip.bottom="!canChangeScope ? changeScopeReason : null"
+    >
+      <div
+        v-for="opt in scopeModeOptions"
+        :key="opt.value"
+        class="scope-radio-row"
+      >
+        <RadioButton
+          v-model="localScopeMode"
+          :value="opt.value"
+          :input-id="'scope-mode-' + opt.value"
+          :disabled="isReadonly || !canChangeScope || opt.disabled"
+        />
+        <label :for="'scope-mode-' + opt.value" class="scope-radio-label">{{ opt.label }}</label>
+      </div>
+    </div>
+
+    <!-- Select emittente: visibile solo in SINGLE -->
     <Select
-      :modelValue="localEmittentiIds.length ? localEmittentiIds[0] : null"
+      v-if="localScopeMode === 'SINGLE'"
+      v-model="localEmittenteId"
       :options="emittentiFiscali.items.value"
       option-label="ragione_sociale"
       option-value="id"
       :placeholder="t('amm.select_emittenti')"
       show-clear
       class="w-full mb-2"
-      @update:modelValue="v => localEmittentiIds = v != null ? [v] : []"
+      :disabled="isReadonly || !canChangeScope"
     />
-    <div class="flex justify-end">
-      <Button :label="t('common.save')" icon="pi pi-check" size="small" @click="saveEmittenti" />
+
+    <div v-if="!isReadonly" class="flex justify-end">
+      <Button
+        :label="t('common.save')"
+        icon="pi pi-check"
+        size="small"
+        :disabled="!canSaveEmittenti"
+        @click="saveEmittenti"
+      />
     </div>
   </div>
 </template>
@@ -298,5 +410,18 @@ h4 {
 }
 h4:first-child {
   margin-top: 0;
+}
+.scope-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.scope-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.scope-radio-label {
+  cursor: pointer;
 }
 </style>

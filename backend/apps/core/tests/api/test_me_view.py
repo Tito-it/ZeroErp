@@ -41,7 +41,8 @@ _PROFILE_FULL = {
         "last_name": "Titini",
         "email": "m@example.com",
     },
-    "ruolo_sistema": "ADMIN",
+    "is_super_admin": True,
+    "ruolo_applicativo": "OPERATORE",
     "risorse_umane": {
         "risorsa_umana_id": 5,
         "risorse_umane_auth_user_id": 3,
@@ -143,16 +144,17 @@ class UserProfileViewTests(TestCase):
         self.assertIsNone(profile_arg["emittente"])
         self.assertIn("is_admin_globale", profile_arg)
 
-    # Scopo: ADMIN senza riga in user_emittenti_fiscali → is_admin_globale=True.
-    # Caso "admin globale" del refactor operatore-emittenti (Q1).
+    # Scopo: super admin senza riga in user_emittenti_fiscali →
+    # is_admin_globale=True. Caso "admin globale" del refactor
+    # operatore-emittenti (Q1).
     @patch(_REPO_PATH)
     def test_is_admin_globale_admin_senza_emittente(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
-        # Profilo ADMIN con emittente del gestore globale (cascata 4b di
-        # fn_get_user_profile) ma user_emittente_fiscale_id NULL.
+        # Profilo super admin con emittente del gestore globale (cascata 4b
+        # di fn_get_user_profile) ma user_emittente_fiscale_id NULL.
         profile = dict(_PROFILE_FULL)
-        profile["ruolo_sistema"] = "ADMIN"
+        profile["is_super_admin"] = True
         profile["emittente"] = {**profile["emittente"], "user_emittente_fiscale_id": None}
         mock_repo = MagicMock()
         mock_repo.get_user_profile.return_value = profile
@@ -164,14 +166,14 @@ class UserProfileViewTests(TestCase):
             view.get(request)
         self.assertTrue(mock_resp.call_args[0][0]["is_admin_globale"])
 
-    # Scopo: ADMIN con riga in user_emittenti_fiscali → is_admin_globale=False.
-    # Caso "admin di emittente" del refactor.
+    # Scopo: super admin con riga in user_emittenti_fiscali →
+    # is_admin_globale=False. Caso "admin di emittente" del refactor.
     @patch(_REPO_PATH)
     def test_is_admin_globale_admin_con_emittente(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
         profile = dict(_PROFILE_FULL)
-        profile["ruolo_sistema"] = "ADMIN"
+        profile["is_super_admin"] = True
         profile["emittente"] = {**profile["emittente"], "user_emittente_fiscale_id": 42}
         mock_repo = MagicMock()
         mock_repo.get_user_profile.return_value = profile
@@ -183,13 +185,14 @@ class UserProfileViewTests(TestCase):
             view.get(request)
         self.assertFalse(mock_resp.call_args[0][0]["is_admin_globale"])
 
-    # Scopo: OPERATIVO non e' mai admin (anche senza riga in user_emittenti_fiscali).
+    # Scopo: non super admin non e' mai admin globale (anche senza riga
+    # in user_emittenti_fiscali).
     @patch(_REPO_PATH)
     def test_is_admin_globale_operativo(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
         profile = dict(_PROFILE_FULL)
-        profile["ruolo_sistema"] = "OPERATIVO"
+        profile["is_super_admin"] = False
         profile["emittente"] = {**profile["emittente"], "user_emittente_fiscale_id": None}
         mock_repo = MagicMock()
         mock_repo.get_user_profile.return_value = profile
@@ -201,19 +204,23 @@ class UserProfileViewTests(TestCase):
             view.get(request)
         self.assertFalse(mock_resp.call_args[0][0]["is_admin_globale"])
 
-    # Scopo: Verifica che il profilo espone i campi nativi multi-face
-    # (is_super_admin + ruolo_applicativo) risolti via PermissionResolver.
-    # Copre il contract Stage B: il FE legge direttamente questi campi
-    # senza ricostruire ruolo_sistema legacy.
+    # Scopo: Fallback resolver — quando il profilo dal repo NON contiene
+    # is_super_admin/ruolo_applicativo (scenari pre-migration o fn DB
+    # vecchie), la view usa PermissionResolver. Single source of truth
+    # multi-face nel BE (no ricostruzione legacy ruolo_sistema).
     @patch("apps.core.api.me_view.PermissionResolver")
     @patch(_REPO_PATH)
-    def test_profile_include_is_super_admin_e_ruolo_applicativo(
+    def test_profile_fallback_resolver_se_campi_assenti(
         self, MockRepo, MockResolver
     ):
         from apps.core.api.me_view import UserProfileView
 
+        # Profilo SENZA i campi multi-face (caso fallback).
+        profile = dict(_PROFILE_FULL)
+        profile.pop("is_super_admin", None)
+        profile.pop("ruolo_applicativo", None)
         mock_repo = MagicMock()
-        mock_repo.get_user_profile.return_value = dict(_PROFILE_FULL)
+        mock_repo.get_user_profile.return_value = profile
         MockRepo.return_value = mock_repo
         MockResolver.is_super_admin.return_value = True
         MockResolver.get_ruolo_applicativo.return_value = "OPERATORE"

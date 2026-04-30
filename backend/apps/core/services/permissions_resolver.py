@@ -48,8 +48,8 @@ class PermissionResolver:
 
         Delega a `script.fn_is_super_admin` (PR1 §4.6.B.1). Ritorna
         False per utenti senza binding, con identita inattiva o
-        finestra temporale scaduta (fail-closed). Sostituisce il check
-        legacy `get_ruolo_sistema(user) == "ADMIN"` nei caller.
+        finestra temporale scaduta (fail-closed). Source of truth
+        unica per il privilegio admin (post Fase 7 amm-software).
 
         §8.3.7 multi-face: la fn DB filtra esplicitamente per
         `ruolo_applicativo = 'OPERATORE'` (post migration 20260420-*).

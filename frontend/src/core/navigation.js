@@ -40,10 +40,8 @@ export const DOMAIN_MENUS = {
     { key: 'profili-reparto', icon: 'pi pi-sitemap', to: '/amm-software/profili-reparto' },
     { key: 'permessi', icon: 'pi pi-shield', to: '/amm-software/permessi' },
     { key: 'emittenti-fiscali', icon: 'pi pi-id-card', to: '/amm-software/emittenti-fiscali' },
-    { key: 'matrice-utilities-ruoli', icon: 'pi pi-table', to: '/amm-software/matrice-utilities-ruoli' },
-    { key: 'matrice-indirizzi-ruoli', icon: 'pi pi-map', to: '/amm-software/matrice-indirizzi-ruoli' },
     { key: 'categorie-clienti', icon: 'pi pi-tags', to: '/amm-software/categorie-clienti' },
-    { key: 'matrice-categorie-listini', icon: 'pi pi-th-large', to: '/amm-software/matrice-categorie-listini' },
+    { key: 'matrici', icon: 'pi pi-table', to: '/amm-software/matrici' },
     { key: 'audit-log', icon: 'pi pi-history', to: '/amm-software/audit-log' },
     { key: 'email-accounts', icon: 'pi pi-at', to: '/amm-software/email-accounts' },
     { key: 'email-templates', icon: 'pi pi-file-edit', to: '/amm-software/email-templates' },
@@ -58,7 +56,8 @@ export const DOMAIN_MENUS = {
   'catalogo': [
     { key: 'articoli', icon: 'pi pi-box', to: '/catalogo/articoli' },
     { key: 'unita-misura', icon: 'pi pi-arrows-h', to: '/catalogo/unita-misura' },
-    { key: 'conversioni-uom', icon: 'pi pi-sync', to: '/catalogo/conversioni-uom' }
+    { key: 'conversioni-uom', icon: 'pi pi-sync', to: '/catalogo/conversioni-uom' },
+    { key: 'uom-tipi', icon: 'pi pi-tags', to: '/catalogo/uom-tipi' }
   ],
   'vendite': [
     { key: 'preventivi', icon: 'pi pi-file', to: '/vendite/preventivi' },
@@ -85,11 +84,23 @@ export const HOME_ITEM = { key: 'home', icon: 'pi pi-home', to: '/' }
 
 // Risolve la label tab/breadcrumb dalla route meta usando i18n.
 // Usato da router guard e AppBreadcrumb per evitare duplicazione.
-export function resolveTabLabel(meta, t) {
-  const { domain, menuKey } = meta
-  if (menuKey) return t(`nav_menu.${domain}.${menuKey}`)
-  if (domain && domain !== 'home') return t(`nav.${domain}`)
+export function resolveNavigationLabel({ domain, menuKey }, t, te = null) {
+  if (menuKey && domain) {
+    const key = `nav_menu.${domain}.${menuKey}`
+    if (!te || te(key)) return t(key)
+  }
+  if (domain && domain !== 'home') {
+    const key = `nav.${domain}`
+    if (!te || te(key)) return t(key)
+  }
   return null
+}
+
+// Risolve la label tab/breadcrumb dalla route meta usando i18n.
+// Usato da router guard, AppBreadcrumb, SidebarDomain e ContentTabs per
+// mantenere le label allineate alla sidebar.
+export function resolveTabLabel(meta, t, te = null) {
+  return resolveNavigationLabel(meta, t, te)
 }
 
 // Risolve l'icona tab dalla route meta.
@@ -97,7 +108,9 @@ export function resolveTabLabel(meta, t) {
 export function resolveTabIcon(meta) {
   const { domain, menuKey } = meta
   if (menuKey && DOMAIN_MENUS[domain]) {
-    const item = DOMAIN_MENUS[domain].find(m => m.key === menuKey)
+    const item = DOMAIN_MENUS[domain]
+      .flatMap(m => m.children ? [m, ...m.children] : [m])
+      .find(m => m.key === menuKey)
     if (item) return item.icon
   }
   if (domain) {

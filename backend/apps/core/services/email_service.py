@@ -28,8 +28,10 @@ logger = logging.getLogger("zeroerp.email")
 
 E_EMAIL = "E_EMAIL"
 
-# Marker per account placeholder (seed iniziale senza SMTP reale)
-_SMTP_PLACEHOLDER_HOST = "smtp.example.com"
+# Marker per account placeholder (seed iniziale senza SMTP reale).
+# Esposto come pubblico: consumato anche da `email_views._derive_test_capability`
+# (Fase 6). Centralizzare qui evita drift della definizione di "console mode".
+SMTP_PLACEHOLDER_HOST = "smtp.example.com"
 _SMTP_TIMEOUT_SEND = 30
 _SMTP_TIMEOUT_TEST = 10
 
@@ -54,7 +56,7 @@ class EmailDispatchService:
     #        oppure DEBUG=True con qualsiasi account.
     def is_console_mode(self, account: dict[str, Any]) -> bool:
         smtp_host = account.get("smtp_host", "")
-        if not smtp_host or smtp_host == _SMTP_PLACEHOLDER_HOST:
+        if not smtp_host or smtp_host == SMTP_PLACEHOLDER_HOST:
             return True
         return settings.DEBUG
 

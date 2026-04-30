@@ -5,21 +5,42 @@
 -- Test: tutte le funzioni di risoluzione permessi e trigger
 --       defense-in-depth guard emittente scope.
 --
+-- Migrazione Fase 7 Chunk A (2026-04-29):
+--   Pre-cutover il test forzava lo stato dell'utente via UPDATE su
+--   rau.ruolo_sistema (OPERATIVO/ADMIN/DISABILITATO). Post-cutover
+--   §13.3 RAU e' vista non updatable + ruolo_sistema CASE calcolato.
+--   Sostituzioni:
+--     UPDATE rau SET ruolo_sistema='OPERATIVO' (forzatura iniziale)
+--       -> setup pesca identita OPERATORE attiva non-SA (filtro
+--          NOT EXISTS, pattern §4.bis): stato gia' "OPERATIVO".
+--     UPDATE rau SET ruolo_sistema='ADMIN' (cicli temporanei)
+--       -> INSERT binding SUPER_ADMIN (helper pg_temp.set_admin).
+--     UPDATE rau SET ruolo_sistema='OPERATIVO' (ripristino post-ADMIN)
+--       -> DELETE del binding (helper pg_temp.unset_admin). Filtro
+--          vergine garantisce che il nuovo SA non sia l'unico ->
+--          guard 384 anti-lockout non scatta.
+--     UPDATE rau SET ruolo_sistema='DISABILITATO' (test 29)
+--       -> UPDATE id.ruolo_applicativo='DISABILITATO'
+--          (helper pg_temp.set_disabilitato).
+--     Ripristino post-DISABILITATO -> UPDATE id.ruolo_applicativo
+--          ='OPERATORE' (helper pg_temp.unset_disabilitato).
+--
 -- Funzioni testate:
---   script.fn_get_ruolo_sistema
---   script.fn_resolve_livello_area
---   script.fn_resolve_livello_oggetto
---   script.fn_get_user_object_permissions_map
---   script.fn_check_azione_processo
---   script.fn_get_emittenti_scope
---   script.fn_check_user_emittente_scope
---   script.fn_get_override_scaduti
---   script.fn_get_emittenti_scope_sr_ids
---   script.trgfn_guard_emittente_scope (+ 2 trigger)
+--   script.fn_is_super_admin (sostituisce fn_get_ruolo_sistema
+--     droppata in Fase 7 cleanup 2026-04-29),
+--   script.fn_resolve_livello_area,
+--   script.fn_resolve_livello_oggetto,
+--   script.fn_get_user_object_permissions_map,
+--   script.fn_check_azione_processo,
+--   script.fn_get_emittenti_scope,
+--   script.fn_check_user_emittente_scope,
+--   script.fn_get_override_scaduti,
+--   script.fn_get_emittenti_scope_sr_ids,
+--   script.trgfn_guard_emittente_scope (+ 2 trigger).
 --
 -- Elenco test:
---  1) fn_get_ruolo_sistema: utente OPERATIVO → 'OPERATIVO'
---  2) fn_get_ruolo_sistema: utente inesistente → NULL
+--  1) fn_is_super_admin: utente OPERATORE non-SA → false
+--  2) fn_is_super_admin: utente inesistente → false (fail-closed)
 --  3) fn_resolve_livello_area: OPERATIVO default → BLOCCATO
 --  4) fn_resolve_livello_area: ADMIN → TUTTO
 --  5) fn_resolve_livello_area: override area LETTURA → LETTURA
@@ -59,20 +80,64 @@ BEGIN;
 SELECT plan(34);
 
 -- ============================================================
--- 0. Setup: raccolta riferimenti e forzatura OPERATIVO
+-- Helper pg_temp per il refactor multi-face:
+--   set_admin / unset_admin    -> INSERT/DELETE binding SUPER_ADMIN
+--   set_disabilitato / unset_disabilitato -> UPDATE id.ruolo_applicativo
+-- ============================================================
+CREATE OR REPLACE FUNCTION pg_temp.set_admin(p_identita_id bigint)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    INSERT INTO config.profili_accesso_bindings
+        (profilo_accesso_id, identita_digitale_id, attivo)
+    VALUES (9100, p_identita_id, true)
+    ON CONFLICT DO NOTHING;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION pg_temp.unset_admin(p_identita_id bigint)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    DELETE FROM config.profili_accesso_bindings
+     WHERE identita_digitale_id = p_identita_id
+       AND profilo_accesso_id = 9100;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION pg_temp.set_disabilitato(p_identita_id bigint)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE anagrafiche.identita_digitali
+       SET ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
+     WHERE id = p_identita_id;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION pg_temp.unset_disabilitato(p_identita_id bigint)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE anagrafiche.identita_digitali
+       SET ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+     WHERE id = p_identita_id;
+END
+$$;
+
+-- ============================================================
+-- 0. Setup: identita OPERATORE attiva non-SA (filtro vergine)
+--    + area_funzionali + azioni_processo + emittente reale.
 -- ============================================================
 
 CREATE TEMP TABLE tmp_ctx AS
 SELECT
-    rau.auth_user_id  AS user_id,
-    af.id             AS area_id,
-    af.schema_db      AS area_schema_db,
-    ap.id             AS azione_id,
+    id.auth_user_id        AS user_id,
+    id.id                  AS identita_id,
+    af.id                  AS area_id,
+    af.schema_db           AS area_schema_db,
+    ap.id                  AS azione_id,
     ap.permission_codename,
     ef.id                  AS emittente_id,
     ef.soggetto_ruolo_id   AS emittente_sr_id,
     -1::bigint             AS emittente_ko_id
-FROM anagrafiche.risorse_umane_auth_user rau
+FROM anagrafiche.identita_digitali id
 CROSS JOIN (
     SELECT id, schema_db FROM config.aree_funzionali
     WHERE attivo = true AND schema_db = 'vendite'
@@ -85,13 +150,28 @@ CROSS JOIN (
     SELECT id, soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
     WHERE attivo = true ORDER BY id LIMIT 1
 ) ef
-ORDER BY rau.id
+WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+  AND id.attivo = true
+  AND NOT EXISTS (
+      SELECT 1
+        FROM config.profili_accesso_bindings pab
+        JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
+       WHERE pab.identita_digitale_id = id.id
+         AND pab.attivo = true
+         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+  )
+  -- Esclude utenti con profili (AD_HOC/PORTALE/REPARTO) che concedono
+  -- accesso a 'vendite': fn_resolve_livello_area step 4 li promuoverebbe
+  -- oltre BLOCCATO, rompendo i test 3/6/7 che aspettano il default.
+  AND NOT EXISTS (
+      SELECT 1
+        FROM script.fn_get_profili_accesso_applicabili(id.auth_user_id) h
+        JOIN config.profili_accesso_aree paa ON paa.profilo_accesso_id = h.profilo_accesso_id
+        JOIN config.aree_funzionali af2 ON af2.id = paa.area_id
+       WHERE af2.schema_db = 'vendite'
+  )
+ORDER BY id.id
 LIMIT 1;
-
--- Forza OPERATIVO (ROLLBACK ripristina)
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'OPERATIVO'
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
 
 -- Rimuovi eventuali override/whitelist preesistenti per utente test
 DELETE FROM config.user_override_aree
@@ -109,23 +189,24 @@ DELETE FROM config.user_emittenti_fiscali
 SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 -- ============================================================
--- A. fn_get_ruolo_sistema
+-- A. fn_is_super_admin (sostituisce fn_get_ruolo_sistema droppata
+--    in Fase 7 cleanup 2026-04-29)
 -- ============================================================
 
--- 1) Utente OPERATIVO
+-- 1) Utente OPERATORE non-SA (filtro vergine al setup) → false
 SELECT is(
-    script.fn_get_ruolo_sistema(
+    script.fn_is_super_admin(
         (SELECT user_id FROM tmp_ctx)
     ),
-    'OPERATIVO'::config.ruolo_sistema,
-    'fn_get_ruolo_sistema: utente forzato OPERATIVO'
+    false,
+    '1) fn_is_super_admin: utente OPERATORE non-SA → false'
 );
 
--- 2) Utente inesistente → NULL
+-- 2) Utente inesistente → false (fail-closed)
 SELECT is(
-    script.fn_get_ruolo_sistema(99999999),
-    NULL::config.ruolo_sistema,
-    'fn_get_ruolo_sistema: utente inesistente → NULL'
+    script.fn_is_super_admin(99999999),
+    false,
+    '2) fn_is_super_admin: utente inesistente → false (fail-closed)'
 );
 
 -- ============================================================
@@ -139,13 +220,11 @@ SELECT is(
         (SELECT area_schema_db FROM tmp_ctx)
     ),
     'BLOCCATO'::config.livello_accesso,
-    'fn_resolve_livello_area: OPERATIVO default → BLOCCATO'
+    '3) fn_resolve_livello_area: OPERATIVO default → BLOCCATO'
 );
 
 -- 4) ADMIN → TUTTO
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'ADMIN'
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SELECT pg_temp.set_admin((SELECT identita_id FROM tmp_ctx));
 
 SELECT is(
     script.fn_resolve_livello_area(
@@ -153,12 +232,10 @@ SELECT is(
         (SELECT area_schema_db FROM tmp_ctx)
     ),
     'TUTTO'::config.livello_accesso,
-    'fn_resolve_livello_area: ADMIN → TUTTO'
+    '4) fn_resolve_livello_area: ADMIN → TUTTO'
 );
 
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'OPERATIVO'
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SELECT pg_temp.unset_admin((SELECT identita_id FROM tmp_ctx));
 
 -- 5) Override area LETTURA → LETTURA
 INSERT INTO config.user_override_aree
@@ -173,7 +250,7 @@ SELECT is(
         (SELECT area_schema_db FROM tmp_ctx)
     ),
     'LETTURA'::config.livello_accesso,
-    'fn_resolve_livello_area: override area LETTURA → LETTURA'
+    '5) fn_resolve_livello_area: override area LETTURA → LETTURA'
 );
 
 -- 6) Override scaduto (valido_al = ieri) → ignorato → BLOCCATO
@@ -189,7 +266,7 @@ SELECT is(
         (SELECT area_schema_db FROM tmp_ctx)
     ),
     'BLOCCATO'::config.livello_accesso,
-    'fn_resolve_livello_area: override scaduto → BLOCCATO'
+    '6) fn_resolve_livello_area: override scaduto → BLOCCATO'
 );
 
 -- Pulizia override area per test successivi
@@ -208,7 +285,7 @@ SELECT is(
         (SELECT area_schema_db FROM tmp_ctx)
     ),
     'BLOCCATO'::config.livello_accesso,
-    'fn_resolve_livello_oggetto: OPERATIVO default → BLOCCATO'
+    '7) fn_resolve_livello_oggetto: OPERATIVO default → BLOCCATO'
 );
 
 -- 8) Override oggetto LETTURA → LETTURA
@@ -225,7 +302,7 @@ SELECT is(
         (SELECT area_schema_db FROM tmp_ctx)
     ),
     'LETTURA'::config.livello_accesso,
-    'fn_resolve_livello_oggetto: override oggetto LETTURA → LETTURA'
+    '8) fn_resolve_livello_oggetto: override oggetto LETTURA → LETTURA'
 );
 
 DELETE FROM config.user_override_oggetti
@@ -245,7 +322,7 @@ SELECT is(
         (SELECT area_schema_db FROM tmp_ctx)
     ),
     'TUTTO'::config.livello_accesso,
-    'fn_resolve_livello_oggetto: fallback ad area TUTTO → TUTTO'
+    '9) fn_resolve_livello_oggetto: fallback ad area TUTTO → TUTTO'
 );
 
 DELETE FROM config.user_override_aree
@@ -262,13 +339,11 @@ SELECT is(
         (SELECT permission_codename FROM tmp_ctx)
     ),
     false,
-    'fn_check_azione_processo: OPERATIVO default → false'
+    '10) fn_check_azione_processo: OPERATIVO default → false'
 );
 
 -- 11) ADMIN → true
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'ADMIN'
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SELECT pg_temp.set_admin((SELECT identita_id FROM tmp_ctx));
 
 SELECT is(
     script.fn_check_azione_processo(
@@ -276,12 +351,10 @@ SELECT is(
         (SELECT permission_codename FROM tmp_ctx)
     ),
     true,
-    'fn_check_azione_processo: ADMIN → true'
+    '11) fn_check_azione_processo: ADMIN → true'
 );
 
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'OPERATIVO'
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SELECT pg_temp.unset_admin((SELECT identita_id FROM tmp_ctx));
 
 -- 12) Override azione abilitata → true
 INSERT INTO config.user_override_azioni
@@ -296,7 +369,7 @@ SELECT is(
         (SELECT permission_codename FROM tmp_ctx)
     ),
     true,
-    'fn_check_azione_processo: override abilitata → true'
+    '12) fn_check_azione_processo: override abilitata → true'
 );
 
 DELETE FROM config.user_override_azioni
@@ -312,7 +385,7 @@ SELECT is(
         (SELECT user_id FROM tmp_ctx)
     ),
     NULL::bigint[],
-    'fn_get_emittenti_scope: senza whitelist → NULL'
+    '13) fn_get_emittenti_scope: senza whitelist → NULL'
 );
 
 -- 14) fn_check NULL user → true (batch job)
@@ -322,13 +395,11 @@ SELECT is(
         (SELECT emittente_id FROM tmp_ctx)
     ),
     true,
-    'fn_check_user_emittente_scope: NULL user → true (batch)'
+    '14) fn_check_user_emittente_scope: NULL user → true (batch)'
 );
 
 -- 15) fn_check ADMIN → true
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'ADMIN'
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SELECT pg_temp.set_admin((SELECT identita_id FROM tmp_ctx));
 
 SELECT is(
     script.fn_check_user_emittente_scope(
@@ -336,12 +407,10 @@ SELECT is(
         (SELECT emittente_id FROM tmp_ctx)
     ),
     true,
-    'fn_check_user_emittente_scope: ADMIN → true'
+    '15) fn_check_user_emittente_scope: ADMIN → true'
 );
 
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'OPERATIVO'
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SELECT pg_temp.unset_admin((SELECT identita_id FROM tmp_ctx));
 
 -- 16) OPERATIVO senza whitelist → true (nessuna restrizione)
 SELECT is(
@@ -350,7 +419,7 @@ SELECT is(
         (SELECT emittente_id FROM tmp_ctx)
     ),
     true,
-    'fn_check_user_emittente_scope: OPERATIVO senza whitelist → true'
+    '16) fn_check_user_emittente_scope: OPERATIVO senza whitelist → true'
 );
 
 -- Inserisce whitelist per emittente_id (reale)
@@ -367,7 +436,7 @@ SELECT is(
         (SELECT emittente_id FROM tmp_ctx)
     ),
     true,
-    'fn_check_user_emittente_scope: emittente in whitelist → true'
+    '17) fn_check_user_emittente_scope: emittente in whitelist → true'
 );
 
 -- 18) Emittente fuori whitelist → false
@@ -377,7 +446,7 @@ SELECT is(
         (SELECT emittente_ko_id FROM tmp_ctx)
     ),
     false,
-    'fn_check_user_emittente_scope: emittente fuori whitelist → false'
+    '18) fn_check_user_emittente_scope: emittente fuori whitelist → false'
 );
 
 -- 19) fn_get_emittenti_scope: array contiene emittente
@@ -387,7 +456,7 @@ SELECT ok(
             (SELECT user_id FROM tmp_ctx)
         )
     ),
-    'fn_get_emittenti_scope: con whitelist → array contiene emittente'
+    '19) fn_get_emittenti_scope: con whitelist → array contiene emittente'
 );
 
 -- ============================================================
@@ -409,7 +478,7 @@ SELECT ok(
         WHERE auth_user_id = (SELECT user_id FROM tmp_ctx)
           AND tipo_override = 'user_override_aree'
     ),
-    'fn_get_override_scaduti(0): override scaduto trovato'
+    '20) fn_get_override_scaduti(0): override scaduto trovato'
 );
 
 -- 21) Tolleranza 30 → non trova (scaduto solo da 10 giorni)
@@ -419,7 +488,7 @@ SELECT ok(
         WHERE auth_user_id = (SELECT user_id FROM tmp_ctx)
           AND tipo_override = 'user_override_aree'
     ),
-    'fn_get_override_scaduti(30): override recente escluso da tolleranza'
+    '21) fn_get_override_scaduti(30): override recente escluso da tolleranza'
 );
 
 -- ============================================================
@@ -435,7 +504,7 @@ SELECT ok(
         WHERE n.nspname = 'script'
           AND p.proname = 'trgfn_guard_emittente_scope'
     ),
-    'Trigger function script.trgfn_guard_emittente_scope esiste'
+    '22) Trigger function script.trgfn_guard_emittente_scope esiste'
 );
 
 -- 23) Trigger su vendite.fatture esiste (BEFORE INSERT OR UPDATE)
@@ -453,7 +522,7 @@ SELECT ok(
           AND (t.tgtype::int & 4)  > 0  -- INSERT
           AND (t.tgtype::int & 16) > 0  -- UPDATE
     ),
-    'Trigger vendite.fatture: BEFORE INSERT OR UPDATE esiste'
+    '23) Trigger vendite.fatture: BEFORE INSERT OR UPDATE esiste'
 );
 
 -- 24) Trigger su pagamenti.vendite_movimenti esiste
@@ -468,12 +537,11 @@ SELECT ok(
           AND t.tgname  = 'trg_vendite_movimenti_a10_guard_emittente_scope_ins_upd'
           AND NOT t.tgisinternal
     ),
-    'Trigger pagamenti.vendite_movimenti esiste'
+    '24) Trigger pagamenti.vendite_movimenti esiste'
 );
 
 -- 25) Integrazione: fn_check blocca emittente fuori scope
---     La whitelist e gia inserita (emittente_id in scope).
---     Setta sessione e verifica che emittente_ko sia bloccato.
+--     La whitelist e' gia inserita (emittente_id in scope).
 SELECT set_config('app.current_user_id',
     (SELECT user_id::text FROM tmp_ctx), true);
 
@@ -483,7 +551,7 @@ SELECT is(
         (SELECT emittente_ko_id FROM tmp_ctx)
     ),
     false,
-    'Integrazione: fn_check blocca emittente fuori scope (catena trigger)'
+    '25) Integrazione: fn_check blocca emittente fuori scope (catena trigger)'
 );
 
 -- ============================================================
@@ -498,25 +566,21 @@ SELECT ok(
             (SELECT user_id FROM tmp_ctx)
         )
     ),
-    'fn_get_emittenti_scope_sr_ids: OPERATIVO con whitelist → array con sr_id'
+    '26) fn_get_emittenti_scope_sr_ids: OPERATIVO con whitelist → array con sr_id'
 );
 
 -- 27) ADMIN → NULL (nessuna restrizione)
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'ADMIN'
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SELECT pg_temp.set_admin((SELECT identita_id FROM tmp_ctx));
 
 SELECT is(
     script.fn_get_emittenti_scope_sr_ids(
         (SELECT user_id FROM tmp_ctx)
     ),
     NULL::bigint[],
-    'fn_get_emittenti_scope_sr_ids: ADMIN → NULL'
+    '27) fn_get_emittenti_scope_sr_ids: ADMIN → NULL'
 );
 
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'OPERATIVO'
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SELECT pg_temp.unset_admin((SELECT identita_id FROM tmp_ctx));
 
 -- Rimuovi whitelist per test "senza whitelist"
 SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
@@ -530,25 +594,21 @@ SELECT is(
         (SELECT user_id FROM tmp_ctx)
     ),
     NULL::bigint[],
-    'fn_get_emittenti_scope_sr_ids: OPERATIVO senza whitelist → NULL'
+    '28) fn_get_emittenti_scope_sr_ids: OPERATIVO senza whitelist → NULL'
 );
 
 -- 29) DISABILITATO → array vuoto (nessun accesso)
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'DISABILITATO'
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SELECT pg_temp.set_disabilitato((SELECT identita_id FROM tmp_ctx));
 
 SELECT is(
     script.fn_get_emittenti_scope_sr_ids(
         (SELECT user_id FROM tmp_ctx)
     ),
     '{}'::bigint[],
-    'fn_get_emittenti_scope_sr_ids: DISABILITATO → array vuoto'
+    '29) fn_get_emittenti_scope_sr_ids: DISABILITATO → array vuoto'
 );
 
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'OPERATIVO'
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SELECT pg_temp.unset_disabilitato((SELECT identita_id FROM tmp_ctx));
 
 -- ============================================================
 -- I. Seed azioni_processo — nuovi codename
@@ -566,7 +626,7 @@ SELECT is(
         AND attivo = true
     ),
     3,
-    'Seed: 3 nuovi codename azioni_processo presenti e attivi'
+    '30) Seed: 3 nuovi codename azioni_processo presenti e attivi'
 );
 
 -- ============================================================
@@ -582,7 +642,7 @@ SELECT is(
         (SELECT user_id FROM tmp_ctx)
     ),
     '{}'::jsonb,
-    'fn_get_user_object_permissions_map: nessun override → {}'
+    '31) fn_get_user_object_permissions_map: nessun override → {}'
 );
 
 -- 32) Override attivo → chiave presente
@@ -597,7 +657,7 @@ SELECT is(
         (SELECT user_id FROM tmp_ctx)
     ) ->> 'vendite.fattura',
     'LETTURA',
-    'fn_get_user_object_permissions_map: override attivo → chiave presente'
+    '32) fn_get_user_object_permissions_map: override attivo → chiave presente'
 );
 
 -- 33) Override scaduto → escluso
@@ -613,7 +673,7 @@ SELECT is(
         (SELECT user_id FROM tmp_ctx)
     ),
     '{}'::jsonb,
-    'fn_get_user_object_permissions_map: override scaduto → escluso'
+    '33) fn_get_user_object_permissions_map: override scaduto → escluso'
 );
 
 -- 34) Override futuro → escluso
@@ -629,7 +689,7 @@ SELECT is(
         (SELECT user_id FROM tmp_ctx)
     ),
     '{}'::jsonb,
-    'fn_get_user_object_permissions_map: override futuro → escluso'
+    '34) fn_get_user_object_permissions_map: override futuro → escluso'
 );
 
 SELECT * FROM finish();

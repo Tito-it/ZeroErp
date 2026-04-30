@@ -47,6 +47,7 @@ riceve `403 Forbidden`.
 | 5.1 | `GET` | `/emittenti-fiscali/<id>/billing-account/` | Lista mapping BA |
 | 5.2 | `POST` | `/emittenti-fiscali/<id>/billing-account/` | Crea mapping BA o default globale |
 | 5.3 | `DELETE` | `/emittenti-fiscali/<id>/billing-account/<mapping_id>/` | Elimina mapping BA |
+| 5.4 | `GET` | `/emittenti-fiscali/<id>/billing-account/summary/` | Summary mapping (has_default + count_specifici) |
 | 6.1 | `GET` | `/emittenti-fiscali/<id>/utilities/` | Lista record utility per emittente |
 | 6.2 | `POST` | `/emittenti-fiscali/<id>/utilities/` | Crea record utility |
 | 6.3 | `PATCH` | `/emittenti-fiscali/<id>/utilities/<record_id>/` | Aggiorna record utility |
@@ -170,6 +171,11 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/?searc
 
 Restituisce lo stesso oggetto della lista, con in piu' `valuta_descrizione` e
 `brand_meta` (jsonb opzionale per branding/metadati emittente).
+
+**Fase 4 — `non_editable_fields` nel detail**: il dict di response include
+`non_editable_fields: ["codice", "soggetto_id"]`. Il FE consuma il campo
+nel drawer di edit per gating dei Select dimensionali. Pattern coerente con
+altre matrici amm-software (categorie clienti listini, tipi ruolo indirizzi).
 
 ### 2.1 Esempio cURL
 
@@ -355,7 +361,8 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bill
         "billing_account_codice": null,
         "billing_account_ragione_sociale": null,
         "data_insert": "2026-04-07T10:00:00Z",
-        "data_update": "2026-04-07T10:00:00Z"
+        "data_update": "2026-04-07T10:00:00Z",
+        "can_remove": true
       },
       {
         "id": 11,
@@ -364,7 +371,8 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bill
         "billing_account_codice": "BA-005",
         "billing_account_ragione_sociale": "Acme Energia Srl",
         "data_insert": "2026-04-07T10:05:00Z",
-        "data_update": "2026-04-07T10:05:00Z"
+        "data_update": "2026-04-07T10:05:00Z",
+        "can_remove": true
       }
     ]
   }
@@ -372,6 +380,12 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bill
 ```
 
 Ordinamento: default per primo, poi per codice BA crescente.
+
+**Fase 4 — capability di riga BA mapping**: ogni riga include `can_remove: bool`
+(sempre `true` oggi). Il BA mapping non ha PATCH (solo CREATE/DELETE), quindi
+`can_update`/`can_configure` non sono applicabili. La capability esplicita
+allinea la UI col pattern utility e prepara espansioni future
+(es. policy "default non rimovibile se l'unico mapping").
 
 ### 5.2 Crea mapping
 
@@ -452,6 +466,41 @@ curl -X DELETE "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/b
 | --- | --- | --- |
 | `E_ANAG_NOT_FOUND` | 404 | Mapping non esiste o non appartiene all'emittente indicato |
 
+### 5.4 Summary mapping BA
+
+| | |
+| --- | --- |
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/billing-account/summary/` |
+
+Riepilogo dei mapping BA per l'emittente, **indipendente dalla pagina/search**
+della lista paginata. Risolve il bug A8/C3 dell'analisi frontend amm-software:
+il pulsante "default" lato FE non puo' affidarsi a `store.items.some(is_default)`
+perche' il record default puo' trovarsi fuori dalla pagina corrente.
+
+#### Esempio cURL — GET summary
+
+```bash
+curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/billing-account/summary/" \
+     -H "Authorization: Bearer $TOKEN"
+```
+
+#### Risposta — summary
+
+```json
+{
+  "data": {
+    "has_default": true,
+    "count_specifici": 7
+  }
+}
+```
+
+| Campo | Tipo | Descrizione |
+| --- | --- | --- |
+| `has_default` | bool | True se esiste il mapping default globale per l'emittente |
+| `count_specifici` | int | Numero mapping specifici (con `billing_account_id` valorizzato) |
+
 ---
 
 ## 6. Sub-resource: utilities per emittente fiscale
@@ -501,6 +550,7 @@ LEFT JOIN dal building block `LookupRepository.list_entity_utility_matrix`.
         "utility_id": 1,
         "utility_codice": "EE",
         "utility_descrizione": "Energia Elettrica",
+        "utility_attiva": true,
         "record_id": 100,
         "minimo_soglia_min": 0.50,
         "minimo_soglia_max": null,
@@ -508,12 +558,16 @@ LEFT JOIN dal building block `LookupRepository.list_entity_utility_matrix`.
         "metodo_arrotondamento_importi": "HALF_UP",
         "record_attivo": true,
         "record_data_insert": "2026-04-07T10:00:00Z",
-        "record_data_update": "2026-04-07T10:00:00Z"
+        "record_data_update": "2026-04-07T10:00:00Z",
+        "can_configure": false,
+        "can_update": true,
+        "can_remove": true
       },
       {
         "utility_id": 2,
         "utility_codice": "GAS",
         "utility_descrizione": "Gas Naturale",
+        "utility_attiva": true,
         "record_id": null,
         "minimo_soglia_min": null,
         "minimo_soglia_max": null,
@@ -521,7 +575,10 @@ LEFT JOIN dal building block `LookupRepository.list_entity_utility_matrix`.
         "metodo_arrotondamento_importi": null,
         "record_attivo": null,
         "record_data_insert": null,
-        "record_data_update": null
+        "record_data_update": null,
+        "can_configure": true,
+        "can_update": false,
+        "can_remove": false
       }
     ]
   }
@@ -531,6 +588,22 @@ LEFT JOIN dal building block `LookupRepository.list_entity_utility_matrix`.
 > **Stato della riga**: `record_id != null` -> riga configurata (esiste override);
 > `record_id == null` -> riga ammessa ma non personalizzata (l'emittente usa i default
 > di sistema).
+
+**Fase 4 — capability di riga data-driven**:
+
+| Campo | Tipo | Quando `true` |
+| --- | --- | --- |
+| `can_configure` | bool | Slot vuoto (`record_id == null`) + `emittente.attivo == true` + `utility_attiva == true`. L'admin puo' creare la configurazione |
+| `can_update` | bool | Record configurato (`record_id != null`). L'admin puo' modificare i parametri |
+| `can_remove` | bool | Record configurato (`record_id != null`). L'admin puo' rimuovere |
+
+Il FE consuma le capability per gating UI (mostra/nasconde "Configura"/"Modifica"/"Rimuovi"
+nel `RowActionsMenu`) invece di derivare da `record_id`. **L'autorita' resta il
+trigger DB** (`child_requires_active_parent`, `guard_utility_tipo_ruolo`): le
+capability sono preview UX, non garanzia (race tra sessioni).
+
+Il campo `utility_attiva: bool` proietta `config.utilities.attivo` (fonte primaria
+del flag globale di disattivazione utility).
 
 ### 6.2 Crea record
 

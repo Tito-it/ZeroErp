@@ -11,6 +11,7 @@ from apps.anagrafiche.api.views_categorie_clienti import (
 )
 from apps.anagrafiche.api.views_categorie_clienti_listini import (
     CategorieClientiListiniDetailView,
+    CategorieClientiListiniTipiVariazioneLookupView,
     CategorieClientiListiniView,
 )
 from apps.anagrafiche.api.views_clienti import ClientiDetailView, ClientiView, UtilitiesManualLookupView
@@ -26,6 +27,7 @@ from apps.anagrafiche.api.views_invito_portale import (
 )
 from apps.anagrafiche.api.views_emittenti_fiscali import (
     EmittentiFiscaliBillingAccountDetailView,
+    EmittentiFiscaliBillingAccountSummaryView,
     EmittentiFiscaliBillingAccountView,
     EmittentiFiscaliDetailView,
     EmittentiFiscaliUtilitiesDetailView,
@@ -33,7 +35,6 @@ from apps.anagrafiche.api.views_emittenti_fiscali import (
     EmittentiFiscaliView,
 )
 from apps.anagrafiche.api.views_fornitori import FornitoriDetailView, FornitoriView
-from apps.anagrafiche.api.views_matrice_indirizzi import MatriceIndirizziDetailView, MatriceIndirizziView
 from apps.anagrafiche.api.views_contatti_ruolo import RuoloContattiDetailView, RuoloContattiView
 from apps.anagrafiche.api.views_indirizzi_ruolo import RuoloIndirizziDetailView, RuoloIndirizziView
 from apps.anagrafiche.api.views_codici_postali import CodiciPostaliDetailView, CodiciPostaliView
@@ -116,13 +117,11 @@ urlpatterns = [
     path("emittenti-fiscali/<int:emittente_id>/", EmittentiFiscaliDetailView.as_view(), name="anagrafiche-emittenti-fiscali-detail"),
     # Sub-resource: mapping BA -> emittente
     path("emittenti-fiscali/<int:emittente_id>/billing-account/", EmittentiFiscaliBillingAccountView.as_view(), name="anagrafiche-emittenti-fiscali-ba-list"),
+    path("emittenti-fiscali/<int:emittente_id>/billing-account/summary/", EmittentiFiscaliBillingAccountSummaryView.as_view(), name="anagrafiche-emittenti-fiscali-ba-summary"),
     path("emittenti-fiscali/<int:emittente_id>/billing-account/<int:mapping_id>/", EmittentiFiscaliBillingAccountDetailView.as_view(), name="anagrafiche-emittenti-fiscali-ba-detail"),
     # Sub-resource: utilities per emittente
     path("emittenti-fiscali/<int:emittente_id>/utilities/", EmittentiFiscaliUtilitiesView.as_view(), name="anagrafiche-emittenti-fiscali-utilities-list"),
     path("emittenti-fiscali/<int:emittente_id>/utilities/<int:record_id>/", EmittentiFiscaliUtilitiesDetailView.as_view(), name="anagrafiche-emittenti-fiscali-utilities-detail"),
-    # Matrice indirizzi per ruolo
-    path("matrice-indirizzi-ruolo/", MatriceIndirizziView.as_view(), name="anagrafiche-matrice-indirizzi-list"),
-    path("matrice-indirizzi-ruolo/<int:regola_id>/", MatriceIndirizziDetailView.as_view(), name="anagrafiche-matrice-indirizzi-detail"),
     # Utility ammesse per creazione manuale
     path("utilities/manual-lookup/", UtilitiesManualLookupView.as_view(), name="anagrafiche-utilities-manual-lookup"),
     # Billing account — lookup ricco per autocomplete cross-dominio
@@ -195,5 +194,6 @@ urlpatterns = [
     #   GET /api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti_listini
     # (tabella inserita in apps/core/db/dbops_repository.py:_REL_CONSENTITE).
     path("categorie-clienti-listini/", CategorieClientiListiniView.as_view(), name="anagrafiche-categorie-clienti-listini-list"),
+    path("categorie-clienti-listini/lookup/tipi-variazione/", CategorieClientiListiniTipiVariazioneLookupView.as_view(), name="anagrafiche-categorie-clienti-listini-tipi-variazione"),
     path("categorie-clienti-listini/<int:record_id>/", CategorieClientiListiniDetailView.as_view(), name="anagrafiche-categorie-clienti-listini-detail"),
 ]

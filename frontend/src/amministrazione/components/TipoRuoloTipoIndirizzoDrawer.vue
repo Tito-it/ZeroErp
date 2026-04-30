@@ -12,9 +12,12 @@ import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import { displayDate } from '../../core/utils/date'
 import Drawer from 'primevue/drawer'
+import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
+import InputText from 'primevue/inputtext'
 
 const { t } = useI18n()
 const store = useTipiRuoloTipiIndirizzoStore()
@@ -32,6 +35,20 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const isEdit = computed(() => props.mode === 'edit')
 const isReadOnlyEffective = computed(() => props.readonly || isReadonly.value)
 
+// Fase 4 — Campi non editabili e fallback options letti dal BE detail.
+// `nonEditableFields`: lista delle dimensioni immutabili (in edit: ['tipo_ruolo_id', 'tipo_indirizzo_id']).
+// `fallbackOptions`: lista candidati pre-filtrati (no self-ref + no cicli);
+// in create resta vuota e si usa il LookupSelect generico (l'admin deve
+// poter scegliere un qualsiasi tipo_indirizzo perche' la riga non esiste
+// ancora e il guard ciclo non e' computabile fino a save).
+const nonEditableFields = ref([])
+const fallbackOptions = ref([])
+const detail = ref(null)
+
+function isFieldImmutable(field) {
+  return nonEditableFields.value.includes(field)
+}
+
 const form = ref({
   tipo_ruolo_id: null,
   tipo_indirizzo_id: null,
@@ -48,12 +65,19 @@ function resetForm() {
     fallback_tipo_indirizzo_id: null,
     attivo: true
   }
+  nonEditableFields.value = []
+  fallbackOptions.value = []
+  detail.value = null
 }
 
 async function loadDetail() {
   if (!props.recordId) return
   const data = await store.fetchDetail(props.recordId)
+  // Race cancellation: chiudi+riapri in create prima del completion ->
+  // mutazione post-await sovrascrive form vuoto. Pattern Fase 3.
+  if (!props.visible || !isEdit.value) return
   if (!data) return
+  detail.value = data
   form.value = {
     tipo_ruolo_id: data.tipo_ruolo_id,
     tipo_indirizzo_id: data.tipo_indirizzo_id,
@@ -61,6 +85,12 @@ async function loadDetail() {
     fallback_tipo_indirizzo_id: data.fallback_tipo_indirizzo_id,
     attivo: data.attivo ?? true
   }
+  nonEditableFields.value = Array.isArray(data.non_editable_fields)
+    ? data.non_editable_fields
+    : []
+  fallbackOptions.value = Array.isArray(data.fallback_options)
+    ? data.fallback_options
+    : []
 }
 
 watch(() => props.visible, (v) => {
@@ -73,11 +103,24 @@ watch(() => props.visible, (v) => {
 })
 
 const canSave = computed(() => {
+  if (isReadOnlyEffective.value) return false
+  // Fase 4 — Guard UX: blocca self-ref fallback prima del submit (in create
+  // la lista candidati non e' filtrata BE-side perche' la riga non esiste
+  // ancora). In edit il filtraggio e' gestito da `fallbackOptions` data-driven.
+  // Il BE comunque rifiuta col CHECK constraint, ma evitiamo un round-trip
+  // di errore.
+  if (
+    form.value.fallback_tipo_indirizzo_id != null &&
+    form.value.fallback_tipo_indirizzo_id === form.value.tipo_indirizzo_id
+  ) {
+    return false
+  }
   if (isEdit.value) return true
   return form.value.tipo_ruolo_id && form.value.tipo_indirizzo_id
 })
 
 async function handleSave() {
+  if (isReadOnlyEffective.value) return
   if (isEdit.value) {
     const payload = {
       attivo: form.value.attivo,
@@ -129,13 +172,13 @@ function close() {
           <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_tipo_ruolo') }}</label>
           <LookupSelect v-model="form.tipo_ruolo_id" rel="config.tipi_ruoli"
             :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_tipo_ruolo_placeholder')"
-            :disabled="isEdit || isReadOnlyEffective" />
+            :disabled="isFieldImmutable('tipo_ruolo_id') || isReadOnlyEffective" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_tipo_indirizzo') }}</label>
           <LookupSelect v-model="form.tipo_indirizzo_id" rel="config.tipi_indirizzi"
             :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_tipo_indirizzo_placeholder')"
-            :disabled="isEdit || isReadOnlyEffective" />
+            :disabled="isFieldImmutable('tipo_indirizzo_id') || isReadOnlyEffective" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_obbligatorio') }}</label>
@@ -143,7 +186,17 @@ function close() {
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.matrice_indirizzi_ruoli.field_fallback') }}</label>
-          <LookupSelect v-model="form.fallback_tipo_indirizzo_id" rel="config.tipi_indirizzi"
+          <!-- Fase 4: in edit usa fallback_options pre-filtrate dal BE
+               (no self-ref + no cicli). In create il record non esiste ancora,
+               il guard ciclo non e' computabile: fallback al LookupSelect generico
+               sui tipi_indirizzi (BE rifiuta self-ref via FK constraint). -->
+          <Select v-if="isEdit" v-model="form.fallback_tipo_indirizzo_id"
+            :options="fallbackOptions"
+            option-label="descrizione"
+            option-value="tipo_indirizzo_id"
+            :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_fallback_placeholder')"
+            :disabled="isReadOnlyEffective" show-clear filter />
+          <LookupSelect v-else v-model="form.fallback_tipo_indirizzo_id" rel="config.tipi_indirizzi"
             :placeholder="t('amministrazione.matrice_indirizzi_ruoli.field_fallback_placeholder')"
             :disabled="isReadOnlyEffective" show-clear />
         </div>
@@ -154,6 +207,28 @@ function close() {
         <Message v-if="isEdit" severity="info" :closable="false" class="mt-2">
           {{ t('amministrazione.matrice_indirizzi_ruoli.fk_immutable_hint') }}
         </Message>
+        <template v-if="isEdit && detail">
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('amministrazione.matrice_indirizzi_ruoli.col_valido_dal') }}</label>
+              <InputText :model-value="displayDate(detail.valido_dal)" disabled class="w-full" />
+            </div>
+            <div class="form-field">
+              <label>{{ t('amministrazione.matrice_indirizzi_ruoli.col_valido_al') }}</label>
+              <InputText :model-value="displayDate(detail.valido_al)" disabled class="w-full" />
+            </div>
+          </div>
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('common.data_insert') }}</label>
+              <InputText :model-value="displayDate(detail.data_insert)" disabled class="w-full" />
+            </div>
+            <div class="form-field">
+              <label>{{ t('common.data_update') }}</label>
+              <InputText :model-value="displayDate(detail.data_update)" disabled class="w-full" />
+            </div>
+          </div>
+        </template>
       </div>
 
       <DrawerFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />

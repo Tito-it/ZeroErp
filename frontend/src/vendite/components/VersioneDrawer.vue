@@ -14,7 +14,7 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { displayDate } from '../../core/utils/date'
 import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
 import { createRiga, updateRiga, deleteRiga } from '../api/listini'
-import { listArticoloUom } from '../../catalogo/api/catalogo'
+import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
 import { useListiniRigheStore } from '../stores/listiniRighe'
 import { DRAWER_WIDTH } from '../../core/constants'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
@@ -41,6 +41,7 @@ const store = useListiniRigheStore()
 const props = defineProps({
   visible: Boolean,
   listinoId: { type: [Number, null], required: true },
+  listinoCodice: { type: String, default: '' },
   listinoDescrizione: { type: String, default: '' },
   listinoUtilityId: { type: [Number, null], default: null },
   versione: { type: Object, required: true }
@@ -60,31 +61,21 @@ const form = ref({})
 const selectedRow = ref(null)
 
 // UoM operative dell'articolo selezionato (pattern ContrattoRigheDrawer).
-const uomOptions = ref([])
-const uomLoading = ref(false)
+// Composable centralizzato (Fase 4.F1): autopick base solo in create.
+const {
+  uomOptions, uomLoading, loadUomPerArticolo, pickBaseUomId, resetUomOptions,
+} = useArticoloUomOptions()
 
 function uomLabel(uom) {
   const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
   return `${uom.uom_codice} — ${uom.uom_descrizione}${base}`
 }
 
-// Scopo: carica le UoM operative dell'articolo e pre-seleziona la base.
-async function loadUomPerArticolo(articoloId) {
-  uomOptions.value = []
-  if (!articoloId) return
-  uomLoading.value = true
-  try {
-    const res = await listArticoloUom(articoloId)
-    const list = res.data.data?.results || res.data.data || []
-    uomOptions.value = list
-    if (formMode.value === 'create' && !form.value.uom_id) {
-      const base = list.find(u => u.is_base)
-      form.value.uom_id = base ? base.uom_id : (list.length === 1 ? list[0].uom_id : null)
-    }
-  } catch {
-    uomOptions.value = []
-  } finally {
-    uomLoading.value = false
+// Scopo: carica le UoM e in create pre-seleziona la base.
+async function caricaUomConPickBase(articoloId) {
+  const list = await loadUomPerArticolo(articoloId)
+  if (formMode.value === 'create' && !form.value.uom_id) {
+    form.value.uom_id = pickBaseUomId(list)
   }
 }
 
@@ -121,7 +112,7 @@ function onNew() {
   formMode.value = 'create'
   rigaEditId.value = null
   selectedRow.value = null
-  uomOptions.value = []
+  resetUomOptions()
 }
 
 function onRowSelect(event) {
@@ -144,13 +135,15 @@ function onRowSelect(event) {
   }
   formMode.value = 'edit'
   rigaEditId.value = r.id
+  // Edit: UoM gia' nel form, no autopick.
   loadUomPerArticolo(r.articolo_id)
 }
 
 function onArticoloSelected(item) {
   form.value.articolo_id = item?.id || null
   form.value.uom_id = null
-  loadUomPerArticolo(item?.id)
+  // Create: autopick base.
+  caricaUomConPickBase(item?.id)
 }
 
 function closeForm() {
@@ -158,7 +151,7 @@ function closeForm() {
   rigaEditId.value = null
   form.value = {}
   selectedRow.value = null
-  uomOptions.value = []
+  resetUomOptions()
 }
 
 // === Validazione form ===
@@ -229,6 +222,7 @@ function buildRigaActions(row) {
       label: t('common.edit'),
       icon: 'pi pi-pencil',
       visible: isBozza.value && !isReadonly.value,
+      allowWhenInactive: true,
       command: () => onRowSelect({ data: row }),
     },
     {
@@ -260,15 +254,31 @@ function onClose() {
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
     position="right" :style="{ width: DRAWER_WIDTH.WIDE }" :dismissable="!hasChildOpen">
     <template #header>
-      <DrawerTitle :action="versione?.codice_versione || `#${versione?.id}`"
-        :title="`${t('listini.tab_righe')} — ${listinoDescrizione}`" />
+      <DrawerTitle :title="t('listini.tab_righe')" icon="pi pi-list" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
       <!-- === Intestazione contesto versione === -->
-      <div style="text-align: right;" class="mb-2">
-        <Tag :value="statoVersioneVisibile(versione)" :severity="statoVersioneListinoSeverity(statoVersioneVisibile(versione))" />
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem; align-items: end;">
+        <div class="form-grid-3col">
+          <div class="form-field">
+            <label>{{ t('listini.field_codice') }}</label>
+            <span>{{ listinoCodice || '—' }}</span>
+          </div>
+          <div class="form-field">
+            <label>{{ t('listini.field_descrizione') }}</label>
+            <span>{{ listinoDescrizione || '—' }}</span>
+          </div>
+          <div class="form-field">
+            <label>{{ t('listini.versione') }}</label>
+            <span>{{ versione?.codice_versione || `#${versione?.id}` }}</span>
+          </div>
+        </div>
+        <div class="form-field">
+          <label>{{ t('listini.col_stato') }}</label>
+          <Tag :value="statoVersioneVisibile(versione)" :severity="statoVersioneListinoSeverity(statoVersioneVisibile(versione))" />
+        </div>
       </div>
       <div class="form-grid-2col">
         <div class="form-field">
@@ -308,7 +318,7 @@ function onClose() {
         </Column>
         <Column v-if="isBozza" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
           <template #body="{ data }">
-            <RowActionsMenu :actions="buildRigaActions(data)" />
+            <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
           </template>
         </Column>
       </DataTable>

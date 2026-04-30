@@ -1,0 +1,162 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# ------------------------------------------------------------
+# Tabella dbops.audit_sources (Fase 5 P1 2026-04-29).
+#
+# Lookup table delle "tabelle audit-abili" esposte al drawer admin
+# (AuditLogView). Sostituisce la lista hardcoded oggi in
+# apps.amm_software.db.amm_software_repository._AUDIT_TABLES e
+# le costanti FE buildAuditTabellaOptions.
+#
+# Pattern: dati-non-codice. Una nuova tabella diventa audit-source
+# aggiungendo una riga in 80_data/sql/dbops/audit_sources.csv,
+# senza modifiche di schema o codice.
+#
+# La vista script.vw_audit_sources espone solo (code, label_key,
+# area_funzionale) come contratto API. Le colonne storico_table /
+# storico_pk_col sono tecniche, lette solo dalla fn dispatch
+# script.fn_audit_summary.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260429-05-create-audit-sources-mctit.yaml
+
+  - changeSet:
+      id: 20260429-05-01-create-table-audit-sources
+      author: mctit
+      comment: >
+        Crea dbops.audit_sources: lookup delle tabelle audit-abili
+        per il drawer admin. Single source of truth della lista
+        "quali storico.* sono navigabili da UI" + metadata per
+        i18n (label_key) e raggruppamento UI (area_funzionale).
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: audit_sources
+            remarks: >
+              Lookup table audit-sources. Ogni riga descrive una
+              storico.* navigabile dal drawer admin.
+            columns:
+              - column:
+                  name: id
+                  type: smallserial
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_audit_sources
+                    nullable: false
+              - column:
+                  name: code
+                  type: text
+                  constraints:
+                    nullable: false
+                  remarks: >
+                    Codice stabile usato dal BE/FE (es. 'user_override_aree').
+                    Coincide tipicamente con il nome della tabella sorgente
+                    senza schema.
+              - column:
+                  name: storico_table
+                  type: text
+                  constraints:
+                    nullable: false
+                  remarks: >
+                    Nome qualificato schema.tabella della storico target
+                    (es. 'storico.user_override_aree'). Letto solo da
+                    script.fn_audit_summary per dispatch dinamico
+                    (format %I.%I). NON esposto dalla vista pubblica.
+              - column:
+                  name: storico_pk_col
+                  type: text
+                  constraints:
+                    nullable: false
+                  remarks: >
+                    Nome della colonna che identifica la riga originale
+                    nello storico (es. 'user_override_aree_id'). Usata
+                    da fn_audit_summary per il PARTITION BY del LAG diff.
+              - column:
+                  name: label_key
+                  type: text
+                  constraints:
+                    nullable: false
+                  remarks: >
+                    Chiave i18n usata dal FE per il display
+                    (es. 'amm.audit_tabella_override_aree'). Il DB
+                    non traduce; espone la chiave, il FE la mappa a
+                    locale.
+              - column:
+                  name: area_funzionale
+                  type: text
+                  constraints:
+                    nullable: false
+                  remarks: >
+                    Raggruppamento UI. Vocabolario controllato (no CHECK
+                    constraint, validato in pgTAP):
+                    PERMESSI | AUTH | ANAGRAFICHE | EMITTENTI | FATTURAZIONE.
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              # ----- audit standard -----
+              - column:
+                  name: data_insert
+                  type: timestamptz
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamptz
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+                  remarks: >
+                    Tabella a basso volume di scritture (configurazione).
+                    Storicizzazione abilitata da default - il framework
+                    automazioni providerà storico.audit_sources e i
+                    trigger relativi.
+      rollback:
+        - dropTable:
+            schemaName: dbops
+            tableName: audit_sources
+
+  - changeSet:
+      id: 20260429-05-02-add-uniq-audit-sources-code
+      author: mctit
+      comment: UNIQUE su code (lookup principale + idempotenza upsert CSV).
+      changes:
+        - addUniqueConstraint:
+            schemaName: dbops
+            tableName: audit_sources
+            columnNames: code
+            constraintName: uq_audit_sources_code
+      rollback:
+        - dropUniqueConstraint:
+            schemaName: dbops
+            tableName: audit_sources
+            constraintName: uq_audit_sources_code

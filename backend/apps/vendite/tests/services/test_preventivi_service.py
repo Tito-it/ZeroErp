@@ -23,6 +23,7 @@ Indice test eseguiti:
 14) test_genera_pratica_stato_non_ammesso — guard su stato BOZZA
 15) test_genera_pratica_ba_mancante — guard billing_account_id obbligatorio
 16) test_get_preventivo_not_found — preventivo inesistente
+16b) test_get_preventivo_include_capabilities — Fase 1: capabilities + righe + indirizzi nel detail
 17) test_list_preventivi_paginazione_invalida — page < 1
 18) test_gestisci_riga_auto_fill_da_resolver — prezzo popolato da resolver se assente
 19) test_gestisci_riga_prezzo_uguale_resolver_ok — payload = resolver ok senza permesso
@@ -55,6 +56,9 @@ class TestPreventiviService(unittest.TestCase):
         # Default: lookup config
         self.mock_repo.get_stato_bozza_id.return_value = 1
         self.mock_repo.get_sorgente_tipo_preventivo_id.return_value = 10
+        # Default: capabilities vuote per i test che non si interessano del blob
+        # (Fase 1 refactor frontend vendite: get_preventivo invoca la fn DB).
+        self.mock_repo.get_capabilities.return_value = {}
 
     def tearDown(self):
         self.repo_patcher.stop()
@@ -272,6 +276,50 @@ class TestPreventiviService(unittest.TestCase):
             get_preventivo(999)
         self.assertEqual(ctx.exception.code, "E_PREV_NOT_FOUND")
 
+    # Scopo: Verifica che get_preventivo includa capabilities + righe_count + indirizzi
+    #        senza embeddare le righe (Fase 3.F6 refactor frontend vendite: il FE
+    #        legge le righe via endpoint /righe/ autonomo).
+    def test_get_preventivo_include_capabilities(self):
+        from apps.vendite.services.preventivi_service import get_preventivo
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 42, "uid": "abc", "numero": "P-0042",
+            "stato_codice": "ACCETTATO", "stato_codice_interno": "ACCETTATO",
+            "billing_account_id": 10, "utility_id": 3,
+        }
+        self.mock_repo.list_righe.return_value = [{"id": 1, "ordine": 1}, {"id": 2, "ordine": 2}]
+        self.mock_repo.list_indirizzi.return_value = []
+        self.mock_repo.get_capabilities.return_value = {
+            "stato_codice": "ACCETTATO",
+            "available_actions": [{"key": "annulla", "target_state": "ANNULLATO",
+                                    "label_key": "preventivi.azione_annulla",
+                                    "severity": "danger", "icon": "pi pi-times",
+                                    "requires_confirm": True}],
+            "can_edit_testata": False,
+            "can_edit_righe": False,
+            "can_create_revisione": True,
+            "can_push_commessa": True,
+            "can_push_commessa_reason": None,
+            "non_editable_fields": ["billing_account_id", "utility_id"],
+        }
+
+        result = get_preventivo(42)
+
+        # Testata + capability + summary leggero. NO `righe` embeddate.
+        self.assertEqual(result["id"], 42)
+        self.assertEqual(result["can_edit_testata"], False)
+        self.assertEqual(result["can_edit_righe"], False)
+        self.assertEqual(result["can_create_revisione"], True)
+        self.assertEqual(result["can_push_commessa"], True)
+        self.assertEqual(len(result["available_actions"]), 1)
+        self.assertEqual(result["available_actions"][0]["key"], "annulla")
+        self.assertIn("billing_account_id", result["non_editable_fields"])
+        # Fase 3.F6: detail non include `righe` ma solo `righe_count` (summary).
+        self.assertNotIn("righe", result)
+        self.assertEqual(result["righe_count"], 2)
+        self.assertEqual(result["indirizzi"], [])
+        self.mock_repo.get_capabilities.assert_called_once_with(42)
+
     # ── Paginazione ──
 
     # Scopo: Verifica errore paginazione invalida.
@@ -482,6 +530,9 @@ class TestPreventiviService(unittest.TestCase):
                 auth_user_id=42,
             )
         self.assertEqual(ctx.exception.code, "E_PREV_SCONTO_ECCESSIVO")
+        # Fase 5.B2: errore L2 retryable=True (utente puo' ritentare con
+        # flag richiesta_approvazione=true per attivare workflow L3).
+        self.assertTrue(ctx.exception.retryable)
         self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: L2 — maggiorazione oltre il limite blocca con
@@ -517,6 +568,8 @@ class TestPreventiviService(unittest.TestCase):
                 auth_user_id=42,
             )
         self.assertEqual(ctx.exception.code, "E_PREV_MAGGIORAZIONE_ECCESSIVA")
+        # Fase 5.B2: errore L2 retryable=True (vedi commento test sconto).
+        self.assertTrue(ctx.exception.retryable)
         self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: L2 — superuser salta sia L1 che L2 anche con limiti a 0.

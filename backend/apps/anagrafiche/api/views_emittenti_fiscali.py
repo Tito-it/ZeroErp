@@ -206,6 +206,34 @@ class EmittentiFiscaliBillingAccountDetailView(AdminAPIView):
         return success_response(result)
 
 
+class EmittentiFiscaliBillingAccountSummaryView(AdminAPIView):
+    """GET summary mapping BA per un emittente (admin only)."""
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="EmittenteFiscaleBASummaryResp",
+            fields={"data": inline_serializer(
+                name="EmittenteFiscaleBASummaryData",
+                fields={
+                    "has_default": serializers.BooleanField(
+                        help_text="True se esiste il mapping default globale per l'emittente.",
+                    ),
+                    "count_specifici": serializers.IntegerField(
+                        help_text="Numero mapping specifici (con billing_account_id valorizzato).",
+                    ),
+                },
+            )},
+        )},
+    )
+    # Scopo: Riepilogo mapping BA per un emittente, indipendente dalla pagina FE.
+    #        Risolve il bug A8/C3 in cui il pulsante "default" si riabilita se
+    #        il record default non e' nella pagina corrente della lista paginata.
+    def get(self, request: Request, emittente_id: int) -> JsonResponse:
+        svc = EmittentiFiscaliBillingAccountService()
+        result = svc.summary_mapping(emittente_id)
+        return success_response(result)
+
+
 # =================================================================
 # Sub-resource: utilities per emittente fiscale
 # =================================================================

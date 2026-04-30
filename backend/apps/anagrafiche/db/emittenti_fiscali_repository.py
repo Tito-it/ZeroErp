@@ -358,6 +358,29 @@ class EmittentiFiscaliBillingAccountRepository:
             )
             return cursor.fetchone() is not None
 
+    # Scopo: Riepilogo dei mapping per un emittente, indipendente da paginazione/search.
+    #        Usato dal FE per disabilitare il pulsante "default" senza dipendere dalla
+    #        pagina corrente: vedi analisi-refactor.frontend-amm-software (A8/C3).
+    def summary_by_emittente(
+        self,
+        emittente_soggetto_ruolo_id: int,
+    ) -> dict[str, Any]:
+        sql = """
+            SELECT
+                COUNT(*) FILTER (WHERE is_default)              AS default_count,
+                COUNT(*) FILTER (WHERE NOT is_default)          AS specifici_count
+              FROM anagrafiche.emittenti_fiscali_billing_account
+             WHERE emittente_soggetto_ruolo_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [emittente_soggetto_ruolo_id])
+            row = cursor.fetchone()
+            assert row is not None
+            return {
+                "has_default": bool(row[0]),
+                "count_specifici": int(row[1]),
+            }
+
 
 # =================================================================
 # Sotto-tabella: emittenti_fiscali_utilities (parametri per emittente+utility)

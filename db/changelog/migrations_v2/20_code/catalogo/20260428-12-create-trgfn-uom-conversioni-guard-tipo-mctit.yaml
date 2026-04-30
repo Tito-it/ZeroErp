@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Guard DB sulle conversioni globali UoM per imporre stessa tipologia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260428-12-create-trgfn-uom-conversioni-guard-tipo-mctit.yaml
+
+  - changeSet:
+      id: 20260428-12-create-trgfn-uom-conversioni-guard-tipo
+      author: mctit
+      comment: >
+        Impone che catalogo.unita_misura_conversioni contenga solo conversioni
+        globali fra UoM della stessa tipologia e blocca cambi tipo su UoM gia'
+        coinvolte in conversioni globali.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: catalogo, tableName: unita_misura }
+        - tableExists: { schemaName: catalogo, tableName: uom_tipi }
+        - tableExists: { schemaName: catalogo, tableName: unita_misura_conversioni }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_uom_conversioni_guard_tipo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_from_tipo_id catalogo.uom_tipi.id%TYPE;
+                v_to_tipo_id   catalogo.uom_tipi.id%TYPE;
+                v_from_tipo    catalogo.uom_tipi.codice%TYPE;
+                v_to_tipo      catalogo.uom_tipi.codice%TYPE;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Bloccare conversioni globali tra UoM di tipologia diversa.
+                --
+                -- Regole:
+                --   - packaging e conversioni articolo-specifiche restano in
+                --     catalogo.articoli_uom_operativa
+                --   - qui si ammettono solo conversioni globali same-type
+                -- ==========================================================
+                SELECT ut.id, ut.codice
+                  INTO v_from_tipo_id, v_from_tipo
+                  FROM catalogo.unita_misura u
+                  JOIN catalogo.uom_tipi ut
+                    ON ut.id = u.tipo_uom_id
+                 WHERE u.id = NEW.uom_from_id;
+
+                SELECT ut.id, ut.codice
+                  INTO v_to_tipo_id, v_to_tipo
+                  FROM catalogo.unita_misura u
+                  JOIN catalogo.uom_tipi ut
+                    ON ut.id = u.tipo_uom_id
+                 WHERE u.id = NEW.uom_to_id;
+
+                IF v_from_tipo_id IS NULL OR v_to_tipo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                IF v_from_tipo_id IS DISTINCT FROM v_to_tipo_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'catalogo',
+                    TG_NAME,
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'uom_from_id', NEW.uom_from_id,
+                      'uom_to_id', NEW.uom_to_id,
+                      'tipo_from', v_from_tipo,
+                      'tipo_to', v_to_tipo,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    NULL::uuid,
+                    'Conversione globale non ammessa tra UoM di tipologia diversa.'
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_uom_conversioni_guard_tipo() IS
+                'Blocca conversioni globali tra UoM di tipologia diversa in catalogo.unita_misura_conversioni.';
+
+              DROP TRIGGER IF EXISTS trg_uom_conversioni_a10_guard_tipo_ins_upd
+                ON catalogo.unita_misura_conversioni;
+
+              CREATE TRIGGER trg_uom_conversioni_a10_guard_tipo_ins_upd
+                BEFORE INSERT OR UPDATE OF uom_from_id, uom_to_id
+                ON catalogo.unita_misura_conversioni
+                FOR EACH ROW
+                EXECUTE FUNCTION catalogo.trgfn_uom_conversioni_guard_tipo();
+
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_unita_misura_guard_tipo_update()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_count bigint;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Evitare che il cambio di tipo su una UoM gia' usata in
+                --   conversioni globali aggiri il vincolo same-type.
+                -- ==========================================================
+                SELECT COUNT(*)
+                  INTO v_count
+                  FROM catalogo.unita_misura_conversioni c
+                 WHERE c.uom_from_id = NEW.id
+                    OR c.uom_to_id   = NEW.id;
+
+                IF COALESCE(v_count, 0) > 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'catalogo',
+                    TG_NAME,
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'uom_id', NEW.id,
+                      'tipo_uom_old_id', OLD.tipo_uom_id,
+                      'tipo_uom_new_id', NEW.tipo_uom_id,
+                      'conversioni_collegate', v_count,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    NULL::uuid,
+                    'Cambio tipo UoM non ammesso: la UoM partecipa a conversioni globali.'
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_unita_misura_guard_tipo_update() IS
+                'Blocca il cambio di tipo_uom_id su UoM gia'' coinvolte in conversioni globali.';
+
+              DROP TRIGGER IF EXISTS trg_unita_misura_a10_guard_tipo_uom_upd
+                ON catalogo.unita_misura;
+
+              CREATE TRIGGER trg_unita_misura_a10_guard_tipo_uom_upd
+                BEFORE UPDATE OF tipo_uom_id
+                ON catalogo.unita_misura
+                FOR EACH ROW
+                WHEN (OLD.tipo_uom_id IS DISTINCT FROM NEW.tipo_uom_id)
+                EXECUTE FUNCTION catalogo.trgfn_unita_misura_guard_tipo_update();

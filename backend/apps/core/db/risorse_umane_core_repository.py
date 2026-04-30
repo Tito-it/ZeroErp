@@ -19,6 +19,10 @@ class RisorseUmaneCoreRepository:
 
     # Scopo: Crea una risorsa umana invocando fn_crea_risorsa_umana.
     # Se auth_user_id fornito, crea anche il bridge risorse_umane_auth_user.
+    # Contract multi-face puro (Fase 7-DB step 6): la fn DB v2 accetta
+    # `p_is_super_admin bool` + `p_attivo bool` al posto del legacy
+    # `p_ruolo_sistema config.ruolo_sistema`. Il translator interno e'
+    # stato rimosso.
     # Ritorna risorse_umane.id.
     def crea_risorsa_umana(
         self,
@@ -29,7 +33,8 @@ class RisorseUmaneCoreRepository:
         valido_dal: str | None = None,
         valido_al: str | None = None,
         auth_user_id: int | None = None,
-        ruolo_sistema: str = "OPERATIVO",
+        is_super_admin: bool = False,
+        attivo: bool = True,
     ) -> int:
         sql = """
             SELECT anagrafiche.fn_crea_risorsa_umana(
@@ -39,12 +44,14 @@ class RisorseUmaneCoreRepository:
                 p_valido_dal             := %s::date,
                 p_valido_al              := %s::date,
                 p_auth_user_id           := %s,
-                p_ruolo_sistema          := %s::config.ruolo_sistema
+                p_is_super_admin         := %s,
+                p_attivo                 := %s
             )
         """
         params = [
             soggetto_id, qualifica_id, unita_organizzativa_id,
-            valido_dal, valido_al, auth_user_id, ruolo_sistema,
+            valido_dal, valido_al, auth_user_id,
+            is_super_admin, attivo,
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)

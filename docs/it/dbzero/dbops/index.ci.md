@@ -2,6 +2,7 @@
 
 ## 📚 Tabelle (manuale)
 - [audit_log](manual/audit_log.md) — (latest review 10-01-26) * Monitorare e storicizzare ogni chiamata a funzioni, job e API interne. * Fornire dettagli su utente, parametri e performance di esecuzione. * Collegare gli eventi di audit agli errori e ad altri log tramite `tx_id` gestito dal trigger.
+- [audit_sources](manual/audit_sources.md)
 - [automation_cleanup_exclusions](manual/automation_cleanup_exclusions.md) — (latest review 07-02-26) * Consentire esclusioni esplicite dal **calcolo `cleanup_at`** e dalla **purge**. * Fornire tracciabilità e motivazione (`reason`) delle eccezioni.
 - [automation_delete_block](manual/automation_delete_block.md) — (latest review 23-01-2026) `dbops.automation_delete_block` centralizza la configurazione dei trigger che **bloccano** le DELETE sulle tabelle sensibili (es. ruoli), con possibilità di bypass tramite **GUC**.
 - [automation_lock_columns](manual/automation_lock_columns.md) — (latest review 10-01-26) Centralizzare la configurazione delle **colonne extra** da bloccare con `script.trgfn_lock_columns`.
@@ -83,6 +84,7 @@
 - [vw_fk_con_indice_missing_policy](manual/vw_fk_con_indice_missing_policy.md) — (latest review 16-01-26) * **Identificare gli indici esistenti**   Trova le FK già indicizzate che non dispongono di una policy dedicata. * **Suggerimento DDL**   Genera automaticamente la stringa `CREATE INDEX ...` per uniformare naming e struttura. * **Supporto auditing e governance**   Permette di scoprire eventuali indici non tracciati, inserendoli poi in `fk_index_policy`.
 - [vw_fk_senza_indice](manual/vw_fk_senza_indice.md) — (latest review 16-01-26) * Individuare automaticamente vincoli di integrità referenziale (FK) privi di indice, potenziali colli di bottiglia nelle operazioni di JOIN e DELETE. * Fornire suggerimenti di creazione indice coerenti, facilitando l’ottimizzazione delle performance. * Applicare eventuali policy di esclusione gestite in `dbops.fk_index_policy`.
 - [vw_function_list](manual/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
+- [vw_non_editable_fields](manual/vw_non_editable_fields.md) — (latest review 28-04-2026)
 - [vw_trigger_functions](manual/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:
 
 ## 📘 Altri contenuti manuali

@@ -15,23 +15,32 @@ CREATE OR REPLACE FUNCTION script.fn_get_ruolo_sistema(p_auth_user_id integer)
 AS $function$
 BEGIN
     -- =========================================================
-    -- DEPRECATO (§4.6.C.1). Wrapper retrocompatibile che
-    -- ricostruisce ruolo_sistema dal nuovo modello:
+    -- DEPRECATA (§4.6.C.1, deprecation warning Fase 7
+    -- 2026-04-29). Wrapper retrocompatibile che ricostruisce
+    -- ruolo_sistema dal nuovo modello multi-face:
     --   - Nessuna identita OPERATORE usabile -> DISABILITATO
     --   - SUPER_ADMIN binding attivo        -> ADMIN
     --   - Altrimenti                         -> OPERATIVO
-    -- Mantenere fino a PR2 (refactor Python PermissionResolver
-    -- + test). Rimuovere in §4.6.H.3 o successivo.
+    --
+    -- Migrazione consigliata per chiamanti:
+    --   ruolo_sistema = 'ADMIN'        -> script.fn_is_super_admin(au_id)
+    --   ruolo_sistema = 'DISABILITATO' -> NOT script.fn_has_identita_attiva(au_id, 'OPERATORE')
+    --   ruolo_sistema = 'OPERATIVO'    -> fn_has_identita_attiva AND NOT fn_is_super_admin
+    --
+    -- Rimozione pianificata: Sprint N+2 (post merge BE+FE).
+    -- Vedi WIP analisi-refactor.frontend-amm-software §Fase 7.
     -- =========================================================
+    RAISE WARNING
+        'script.fn_get_ruolo_sistema is DEPRECATED (Fase 7 cleanup). Migrate to script.fn_is_super_admin / script.fn_has_identita_attiva. Drop planned 2 sprints from 2026-04-29. Caller p_auth_user_id=%',
+        p_auth_user_id;
 
     IF p_auth_user_id IS NULL THEN
         RETURN NULL;
     END IF;
 
-    -- Copre sia "nessun record" sia "ruolo DISABILITATO"
-    -- sia "finestra scaduta": tutto si traduce in
-    -- DISABILITATO per retrocompat semantica.
-    -- Helper DRY §4.6.B.0.
+    -- Copre "nessun record" + "ruolo DISABILITATO" + "finestra
+    -- scaduta": tutto si traduce in DISABILITATO per
+    -- retrocompat semantica.
     IF NOT script.fn_has_identita_attiva(
                p_auth_user_id,
                'OPERATORE'::config.ruolo_applicativo) THEN
@@ -47,7 +56,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_get_ruolo_sistema(p_auth_user_id integer)
-IS 'DEPRECATO §4.6.C.1: wrapper retrocompatibile che ricostruisce ruolo_sistema dal nuovo modello (identita_digitali + binding SUPER_ADMIN). Mantenuto fino a PR2 backend. Nuovi chiamanti: usare fn_is_super_admin + check identita.';
+IS 'DEPRECATA §4.6.C.1 + Fase 7 (2026-04-29 deprecation warning). Wrapper retrocompatibile che ricostruisce ruolo_sistema dal nuovo modello multi-face (identita_digitali + binding SUPER_ADMIN). Solleva RAISE WARNING ad ogni chiamata fino al drop pianificato (Sprint N+2). Migrazione: usare fn_is_super_admin + fn_has_identita_attiva direttamente.';
 ```
 
 ---

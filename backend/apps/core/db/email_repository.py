@@ -93,6 +93,9 @@ class EmailRepository:
             return row_to_dict(cursor)
 
     # Scopo: Dettaglio singolo account email per ID (senza password in chiaro).
+    #        Include flag `has_smtp_password` (derivato da smtp_password_encrypted IS NOT NULL)
+    #        e `meta` jsonb decodificato — usati dalla view detail per derivare
+    #        capability `can_test` e ultimo esito test (Fase 6).
     def get_account(self, account_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT ea.id, ea.codice, ea.descrizione,
@@ -100,14 +103,19 @@ class EmailRepository:
                    uo.descrizione AS unita_organizzativa_descrizione,
                    ea.smtp_host, ea.smtp_port, ea.smtp_use_tls, ea.smtp_use_ssl,
                    ea.smtp_username, ea.email_from, ea.email_reply_to,
-                   ea.attivo
+                   ea.attivo,
+                   ea.smtp_password_encrypted IS NOT NULL AS has_smtp_password,
+                   ea.meta
               FROM config.email_account ea
               LEFT JOIN config.unita_organizzative uo ON uo.id = ea.unita_organizzativa_id
              WHERE ea.id = %s
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [account_id])
-            return row_to_dict(cursor)
+            result = row_to_dict(cursor)
+            if result:
+                _parse_jsonb_field(result, "meta")
+            return result
 
     # Scopo: Crea un nuovo account email. La password SMTP viene crittografata.
     def create_account(
@@ -189,6 +197,33 @@ class EmailRepository:
     def delete_account(self, account_id: int) -> bool:
         with connection.cursor() as cursor:
             cursor.execute("DELETE FROM config.email_account WHERE id = %s", [account_id])
+            return cursor.rowcount > 0
+
+    # Scopo: Persiste in `email_account.meta` l'esito dell'ultimo test SMTP.
+    #        outcome ∈ {"SUCCESS", "FAILED"}; tested_at ISO-8601 UTC.
+    #        message: testo opzionale (es. errore SMTP). Usa jsonb_set
+    #        per non sovrascrivere altre chiavi presenti in meta.
+    def update_account_last_test(
+        self,
+        account_id: int,
+        *,
+        outcome: str,
+        tested_at: str,
+        message: str | None = None,
+    ) -> bool:
+        sql = """
+            UPDATE config.email_account
+               SET meta = COALESCE(meta, '{}'::jsonb)
+                          || jsonb_build_object(
+                              'last_test_outcome', %s::text,
+                              'last_test_at', %s::text,
+                              'last_test_message', %s::text
+                          ),
+                   data_update = now()
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [outcome, tested_at, message, account_id])
             return cursor.rowcount > 0
 
     # Scopo: Risolve account email per reparto con fallback via funzione PG.

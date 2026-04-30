@@ -96,6 +96,7 @@ BEGIN
         codice,
         descrizione,
         descrizione_fattura,
+        tipo_uom_id,
         attivo
     )
     VALUES (
@@ -103,6 +104,7 @@ BEGIN
         (SELECT 'UTB' || right(ts, 6) FROM tmp_test_keys),
         'UNITA TEST BASE',
         'UNITA TEST BASE',
+        (SELECT id FROM catalogo.uom_tipi WHERE codice = 'QUANTITA'),
         true
     )
     RETURNING id INTO v_id;
@@ -127,6 +129,7 @@ BEGIN
         codice,
         descrizione,
         descrizione_fattura,
+        tipo_uom_id,
         attivo
     )
     VALUES (
@@ -134,6 +137,7 @@ BEGIN
         (SELECT 'UTA' || right(ts, 6) FROM tmp_test_keys),
         'UNITA TEST ALT',
         'UNITA TEST ALT',
+        (SELECT id FROM catalogo.uom_tipi WHERE codice = 'QUANTITA'),
         true
     )
     RETURNING id INTO v_id;

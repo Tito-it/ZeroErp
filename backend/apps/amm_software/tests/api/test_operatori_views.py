@@ -18,7 +18,7 @@ Indice test eseguiti:
  8) test_patch_operatore_success — PATCH modifica campi
  9) test_patch_operatore_invalidates_cache — PATCH invalida cache permessi
 10) test_patch_operatore_not_found — PATCH operatore inesistente -> errore
-11) test_patch_ruolo_sistema — PATCH cambio ruolo
+11) test_patch_is_super_admin — PATCH cambio super-admin (contract Fase 1 multi-face)
 12) test_patch_attivo — PATCH cambio attivo
 13) test_disabilita_success — POST disabilita operatore
 14) test_disabilita_invalidates_cache — POST disabilita invalida cache
@@ -41,7 +41,8 @@ SAMPLE_OPERATORE = {
     "email": "op1@test.it",
     "first_name": "Mario",
     "last_name": "Rossi",
-    "ruolo_sistema": "OPERATIVO",
+    "is_super_admin": False,
+    "ruolo_applicativo": "OPERATORE",
     "is_active": True,
     "unita_organizzativa_id": 10,
     "unita_organizzativa_nome": "Reparto A",
@@ -126,20 +127,25 @@ class TestOperatoriListView(TestCase):
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_list_operatori_with_filters(self, MockRepo: MagicMock) -> None:
-        """Scopo: I filtri query string vengono passati al repository."""
+        """Scopo: Fase 7 — i filtri multi-face arrivano al repository."""
         repo_instance = MockRepo.return_value
         repo_instance.list_operatori.return_value = ([], 0)
 
-        qp = {"search": "mario", "ruolo_sistema": "ADMIN", "is_active": "true", "limit": "10"}
+        qp = {
+            "search": "mario", "is_super_admin": "true",
+            "is_active": "true", "limit": "10",
+        }
         view = OperatoriListView()
         view.check_permissions = MagicMock()
         view.get(_admin_request(query_params=qp))
 
         call_kwargs = repo_instance.list_operatori.call_args.kwargs
         self.assertEqual(call_kwargs["search"], "mario")
-        self.assertEqual(call_kwargs["ruolo_sistema"], "ADMIN")
+        self.assertTrue(call_kwargs["is_super_admin"])
         self.assertTrue(call_kwargs["is_active"])
         self.assertEqual(call_kwargs["limit"], 10)
+        # Niente piu' ruolo_sistema nei filtri (Fase 7).
+        self.assertNotIn("ruolo_sistema", call_kwargs)
 
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
@@ -223,7 +229,11 @@ class TestOperatoriPatchView(TestCase):
 
         view = OperatoriDetailView()
         view.check_permissions = MagicMock()
-        view.patch(_admin_request(method="PATCH", data={"ruolo_sistema": "ADMIN"}), auth_user_id=1)
+        # Contract Fase 1: is_super_admin + attivo (no ruolo_sistema)
+        view.patch(
+            _admin_request(method="PATCH", data={"is_super_admin": True, "attivo": True}),
+            auth_user_id=1,
+        )
 
         mock_invalidate.assert_called_once_with(1)
 
@@ -242,17 +252,23 @@ class TestOperatoriPatchView(TestCase):
 
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
-    def test_patch_ruolo_sistema(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
-        """Scopo: PATCH cambio ruolo_sistema passa il valore corretto al repository."""
+    def test_patch_is_super_admin(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
+        """Scopo: Fase 7 — PATCH `is_super_admin: true, attivo: true` arriva
+        al repo come bool nel contract multi-face (no traduzione legacy)."""
         repo_instance = MockRepo.return_value
         repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
 
         view = OperatoriDetailView()
         view.check_permissions = MagicMock()
-        view.patch(_admin_request(method="PATCH", data={"ruolo_sistema": "ADMIN"}), auth_user_id=1)
+        view.patch(
+            _admin_request(method="PATCH", data={"is_super_admin": True, "attivo": True}),
+            auth_user_id=1,
+        )
 
         call_kwargs = repo_instance.update_operatore.call_args.kwargs
-        self.assertEqual(call_kwargs["ruolo_sistema"], "ADMIN")
+        self.assertTrue(call_kwargs["is_super_admin"])
+        self.assertTrue(call_kwargs["attivo"])
+        self.assertNotIn("ruolo_sistema", call_kwargs)
 
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
@@ -277,7 +293,7 @@ class TestOperatoriDisabilitaView(TestCase):
     def test_disabilita_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock, mock_blacklist: MagicMock) -> None:
         """Scopo: POST disabilita imposta stato e ritorna dettaglio aggiornato."""
         repo_instance = MockRepo.return_value
-        disabled = {**SAMPLE_DETAIL, "ruolo_sistema": "DISABILITATO", "attivo": False, "is_active": False}
+        disabled = {**SAMPLE_DETAIL, "ruolo_applicativo": "DISABILITATO", "attivo": False, "is_active": False}
         repo_instance.get_operatore_detail.side_effect = [SAMPLE_DETAIL, disabled]
 
         view = OperatoriDisabilitaView()

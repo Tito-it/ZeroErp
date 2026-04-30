@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260113-13-upsert-catalogo-unita-misura-table.yaml
+
+  - changeSet:
+      id: 20260113-13-upsert-catalogo-unita-misura-table
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: catalogo
+            tableName: unita_misura
+      changes:
+        # Upsert dei dati nella tabella unita_misura
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/catalogo/unita_misura.csv
+            tableName: unita_misura
+            schemaName: catalogo
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: codice, type: STRING }
+              #  - column: { name: codice_interno, type: STRING }
+
+              - column: { name: descrizione, type: STRING }
+              - column: { name: descrizione_fattura, type: STRING }
+              - column: { name: tipo_uom_id, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_insert, type: STRING }
+
+              - column: { name: user_update, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"

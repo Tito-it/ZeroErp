@@ -16,15 +16,18 @@ Architettura di riferimento:
 **Funzioni correlate:**
 >
 [script.fn_has_identita_attiva](/dbzero/script/funzioni/fn_has_identita_attiva)
-> [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+> [script.fn_check_ultimo_super_admin_attivo](/dbzero/script/funzioni/fn_check_ultimo_super_admin_attivo)
 
 ---
 ### 🎯 Scopo Principale
 (latest review 20-04-2026 — filtro OPERATORE)
 
 La funzione **`script.fn_is_super_admin`** verifica se un utente ha il
-privilegio di **bypass totale dei permessi** (equivalente al vecchio
-`ruolo_sistema = 'ADMIN'` sul bridge legacy `risorse_umane_auth_user`).
+privilegio di **bypass totale dei permessi**. Sostituisce
+semanticamente l'enum legacy `config.ruolo_sistema` (valori
+`ADMIN`/`OPERATIVO`/`DISABILITATO`) droppato in Fase 7 cleanup
+(2026-04-29) — il check `is_super_admin = true` corrisponde al vecchio
+`ruolo_sistema = 'ADMIN'`.
 
 Nel nuovo modello (§4.6 WIP multi-face-auth, decisione 2026-04-19 "ADMIN
 come profilo") il bypass non è più una colonna speciale ma un **binding
@@ -119,10 +122,11 @@ SELECT rau.ruolo_sistema = 'ADMIN'
 SELECT script.fn_is_super_admin(p_auth_user_id);
 ```
 
-Il wrapper `fn_get_ruolo_sistema` (deprecato) usa internamente questa
-funzione per ricostruire la stringa `'ADMIN'` / `'OPERATIVO'` /
-`'DISABILITATO'` a beneficio dei chiamanti legacy non ancora migrati
-(rimossi in PR2 backend).
+Il wrapper `fn_get_ruolo_sistema` esisteva come retrocompat fino a
+Fase 7 cleanup (2026-04-29), quando e' stato droppato insieme alla
+colonna `ruolo_sistema` della vista `risorse_umane_auth_user` e al
+type `config.ruolo_sistema`. Ogni consumer che voleva il vecchio
+`'ADMIN'` ora usa direttamente questa funzione (`fn_is_super_admin`).
 
 ---
 
@@ -146,16 +150,21 @@ CREATE POLICY rls_fatture_bypass_admin ON vendite.fatture
 
 ---
 
-### Evoluzione attesa
+### Storico evoluzione
 
-Quando il backend (PR2) e il frontend (PR2) verranno migrati, l'esperienza
-di "concedere ADMIN" passa dal radio `ruolo_sistema` nel drawer
-operatore a un toggle "Concedi accesso SUPER ADMIN" che crea/rimuove un
-binding verso il profilo 9100. Post-cutover §13.3.2 (19-04-2026) il
-bridge legacy `risorse_umane_auth_user` è stato sostituito dalla vista
-omonima (tabella rinominata `_legacy_...`); la vista ricostruisce il
-campo `ruolo_sistema` output via LEFT JOIN pre-aggregato, quindi non
-chiama direttamente questa funzione.
+* **§4.6.B (apr-19)**: introdotta come sostituto del check
+  `ruolo_sistema = 'ADMIN'` legacy.
+* **PR-B (21-04-2026)**: GUC-aware (fail-closed in contesti non-OPERATORE).
+* **Cutover §13.3.2 (19-04-2026)**: bridge legacy
+  `risorse_umane_auth_user` rinominato `_legacy_...` e sostituito da
+  vista. La vista esponeva ancora una colonna `ruolo_sistema`
+  CASE-calcolata via LEFT JOIN pre-aggregato (per non chiamare questa
+  fn N+1 volte).
+* **Fase 7 (29-04-2026)**: rimossa la colonna `ruolo_sistema` dalla
+  vista (e la subquery LEFT JOIN che la alimentava). Droppato il
+  wrapper `fn_get_ruolo_sistema` e il type `config.ruolo_sistema`.
+  Da qui in avanti `fn_is_super_admin` e' l'**unico** entry point
+  per il check "bypass totale".
 
 ---
 

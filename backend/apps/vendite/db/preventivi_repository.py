@@ -9,13 +9,12 @@
 # scritture dirette su tabelle, chiamate a funzioni DB per operazioni complesse.
 # Il ricalcolo totali e' gestito da trigger AFTER su preventivi_righe.
 
-import json
 from datetime import date
 from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.vendite.types import (
     PreventivoDetailRow,
     PreventivoIndirizzoRow,
@@ -196,6 +195,17 @@ class PreventiviRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
             return rows_to_list(cursor)
+
+    # Scopo: Capability del preventivo per il detail API (Fase 1 refactor
+    #        frontend vendite). Wrapper su `script.fn_available_actions_preventivo`
+    #        che ritorna jsonb con available_actions, can_edit_*,
+    #        can_push_commessa(+ reason), can_create_revisione, non_editable_fields,
+    #        stato_codice. Il blob e' opaco lato Python: viene passato al FE
+    #        intatto perche' la logica di rendering dipende solo dai metadata.
+    #        Ritorna {} se la fn ritorna NULL (preventivo inesistente — caller
+    #        deve aver gia' verificato l'esistenza).
+    def get_capabilities(self, preventivo_id: int) -> dict[str, Any]:
+        return call_jsonb_fn("script.fn_available_actions_preventivo", preventivo_id)
 
     # ══════════════════════════════════════════════════════════
     #  SCRITTURE — Testata

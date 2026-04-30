@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { TABS } from '../core/constants'
 import { session, STORAGE_KEYS } from '../core/storage'
+import { DOMAIN_MENUS } from '../core/navigation'
 
 let idCounter = 0
 
@@ -38,10 +39,20 @@ export const useTabsStore = defineStore('tabs', () => {
     tabs.value.filter(t => t.id !== activeTabId.value)
   )
 
+  function inferMenuKey(domain, path) {
+    if (!domain || !DOMAIN_MENUS[domain]) return null
+    return DOMAIN_MENUS[domain]
+      .flatMap(item => item.children ? [item, ...item.children] : [item])
+      .find(item => item.to === path)?.key || null
+  }
+
   // Apre una tab (o attiva quella esistente per la stessa route)
-  function openTab({ path, label, domain, icon }) {
+  function openTab({ path, label, domain, menuKey, icon }) {
     const existing = tabs.value.find(t => t.path === path)
     if (existing) {
+      existing.domain = existing.domain || domain || null
+      existing.menuKey = existing.menuKey || menuKey || inferMenuKey(existing.domain, path)
+      existing.icon = existing.icon || icon || null
       // Se la tab esistente e' quella pinnata nello split, chiudi lo split prima di attivarla
       if (isSplit.value && existing.id === pinnedTabId.value) {
         pinnedTabId.value = null
@@ -59,9 +70,11 @@ export const useTabsStore = defineStore('tabs', () => {
       path,
       label: label || path.split('/').pop() || 'Pagina',
       domain: domain || null,
+      menuKey: menuKey || inferMenuKey(domain, path),
       icon: icon || null,
       dirty: false,
-      contextAware: false
+      contextAware: false,
+      customLabel: false
     }
     tabs.value.push(tab)
     activeTabId.value = tab.id
@@ -117,7 +130,11 @@ export const useTabsStore = defineStore('tabs', () => {
   // Aggiorna la label di una tab
   function updateLabel(path, newLabel) {
     const tab = tabs.value.find(t => t.path === path)
-    if (tab) tab.label = newLabel
+    if (tab) {
+      tab.label = newLabel
+      tab.customLabel = true
+      persistTabs()
+    }
   }
 
   // Segna una tab come context-aware
@@ -176,7 +193,9 @@ export const useTabsStore = defineStore('tabs', () => {
         path: t.path,
         label: t.label,
         domain: t.domain,
-        icon: t.icon
+        menuKey: t.menuKey,
+        icon: t.icon,
+        customLabel: t.customLabel === true
       }))
       const payload = {
         tabs: data,
@@ -206,9 +225,11 @@ export const useTabsStore = defineStore('tabs', () => {
           path: t.path,
           label: t.label || t.path.split('/').pop() || 'Pagina',
           domain: t.domain || null,
+          menuKey: t.menuKey || inferMenuKey(t.domain, t.path),
           icon: t.icon || null,
           dirty: false,
-          contextAware: false
+          contextAware: false,
+          customLabel: t.customLabel === true
         })
       }
       // Ripristina tab attiva

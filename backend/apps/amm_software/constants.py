@@ -6,12 +6,6 @@
 # Evita magic numbers e stringhe hardcoded sparsi tra service/repository/views.
 # ------------------------------------------------------------
 
-# Ruoli sistema (enum config.ruolo_sistema nel DB)
-RUOLO_ADMIN = "ADMIN"
-RUOLO_OPERATIVO = "OPERATIVO"
-RUOLO_DISABILITATO = "DISABILITATO"
-DEFAULT_RUOLO_SISTEMA = RUOLO_OPERATIVO
-
 # Sesso default per creazione soggetto PF
 DEFAULT_SESSO = "M"
 

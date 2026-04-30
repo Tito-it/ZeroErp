@@ -10,13 +10,23 @@ Documenta l'aggiornamento della funzione `script.fn_get_user_profile` (changeset
 
 ## Modifiche rispetto alla versione precedente
 
-### Nuova variabile DECLARE
+> **Nota post-cutover §13.3 + post Fase 7 (2026-04-29):** lo snippet
+> SQL sotto rappresenta lo stato del changeset originale `-26`
+> (pre-cutover, quando `risorse_umane_auth_user` era una tabella e
+> `ruolo_sistema` un suo campo). Lo stato corrente del corpo della fn
+> e' in [`fn_get_user_profile`](/dbzero/script/funzioni/fn_get_user_profile):
+> oggi la `SELECT` legge `id.deve_cambiare_password` direttamente da
+> `anagrafiche.identita_digitali`, e la chiave JSONB `ruolo_sistema`
+> e' stata rimossa in Fase 7. La doc che segue resta **storica** sul
+> changeset originale.
+
+### Nuova variabile DECLARE (changeset -26, body originale)
 
 ```sql
 v_deve_cambiare_password  anagrafiche.risorse_umane_auth_user.deve_cambiare_password%TYPE;
 ```
 
-### Modifica SELECT sezione 2
+### Modifica SELECT sezione 2 (changeset -26, body originale)
 
 La query su `risorse_umane_auth_user` legge anche `deve_cambiare_password`:
 

@@ -9,7 +9,8 @@ import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { updateVersione } from '../api/listini'
-import { displayDate, toDateString } from '../../core/utils/date'
+import { getVersioneCloseDefaults } from '../api/formDefaults'
+import { displayDate, toDateString, addDaysToToday } from '../../core/utils/date'
 import Dialog from 'primevue/dialog'
 import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
@@ -37,14 +38,30 @@ const dataDopoLabel = computed(() => {
   return displayDate(d)
 })
 
-watch(() => props.visible, (v) => {
-  if (v && props.versione) {
-    // Default alla chiusura: valido_al esistente se gia' programmato,
-    // altrimenti oggi (chiusura immediata, stato sincronizzato dal DB).
-    dataChiusura.value = props.versione.valido_al
-      ? new Date(props.versione.valido_al)
-      : new Date()
+// Defaults BE (Fase 2.B5c): default_valido_al risolto dal service
+// (existing valido_al se programmata, altrimenti oggi+lead_gg). Single
+// source of truth: niente piu' lettura parameter cablata nel componente.
+async function loadDefaults() {
+  if (!props.listinoId || !props.versione?.id) return
+  const res = await execute(
+    () => getVersioneCloseDefaults(props.listinoId, props.versione.id),
+    { silent: true },
+  )
+  if (res === null) {
+    // Fallback resiliente: se il BE fallisce, parti da oggi.
+    dataChiusura.value = props.versione?.valido_al
+      ? new Date(props.versione.valido_al + 'T00:00:00')
+      : addDaysToToday(0)
+    return
   }
+  dataChiusura.value = res.default_valido_al
+    ? new Date(res.default_valido_al + 'T00:00:00')
+    : addDaysToToday(0)
+}
+
+watch(() => props.visible, async (v) => {
+  if (!v || !props.versione) return
+  await loadDefaults()
 })
 
 function onHide() {
@@ -61,7 +78,9 @@ async function conferma() {
         : t('listini.chiudi_versione_rimossa')
     }
   )
-  if (res) {
+  // Memoria feedback_drawer_result_check: useApiHandler.execute ritorna
+  // null SOLO su errore. Risultato falsy legit (es. {} vuoto) deve passare.
+  if (res !== null) {
     emit('saved', { listinoId: props.listinoId })
     onHide()
   }
@@ -73,7 +92,7 @@ async function rimuoviChiusura() {
     () => updateVersione(props.listinoId, props.versione.id, { valido_al: null }),
     { successMessage: t('listini.chiudi_versione_rimossa') }
   )
-  if (res) {
+  if (res !== null) {
     emit('saved', { listinoId: props.listinoId })
     onHide()
   }

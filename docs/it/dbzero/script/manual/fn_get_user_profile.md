@@ -82,19 +82,19 @@ single-veste non-operatore, il guard va reso condizionale.
 ---
 ### Struttura del JSONB
 
-La funzione restituisce un JSONB con 11 chiavi principali:
+La funzione restituisce un JSONB con 10 chiavi principali (post Fase 7
+2026-04-29: rimossa la chiave legacy `ruolo_sistema`).
 
 1. `utente`
-2. `ruolo_sistema` — ricostruito (ADMIN / OPERATIVO)
-3. `is_super_admin` — context-aware (post PR-B)
-4. `ruolo_applicativo` — top-level GUC-aware (post PR-B)
-5. `risorse_umane`
-6. `soggetto`
-7. `emittente`
-8. `permessi_area` — context-aware (post PR-B)
-9. `azioni_abilitate` — context-aware (post PR-B)
-10. `permessi_oggetto`
-11. `deve_cambiare_password`
+2. `is_super_admin` — context-aware (post PR-B)
+3. `ruolo_applicativo` — top-level GUC-aware (post PR-B)
+4. `risorse_umane`
+5. `soggetto`
+6. `emittente`
+7. `permessi_area` — context-aware (post PR-B)
+8. `azioni_abilitate` — context-aware (post PR-B)
+9. `permessi_oggetto`
+10. `deve_cambiare_password`
 
 ### Esempio di output
 
@@ -107,7 +107,6 @@ La funzione restituisce un JSONB con 11 chiavi principali:
     "last_name": "Titini",
     "email": "m@example.com"
   },
-  "ruolo_sistema": "ADMIN",
   "is_super_admin": true,
   "ruolo_applicativo": "OPERATORE",
   "risorse_umane": {
@@ -149,14 +148,6 @@ JSONB costruito da `django.auth_user`:
 - `first_name`
 - `last_name`
 - `email`
-
-#### `ruolo_sistema`
-
-Stringa ricostruita per retrocompatibilita' output: `ADMIN` se l'utente
-e' super admin nel contesto corrente, `OPERATIVO` altrimenti. Il campo
-non corrisponde a una colonna DB: il vecchio
-`risorse_umane_auth_user.ruolo_sistema` e' stato sostituito dal modello
-binding SUPER_ADMIN (post cutover §13.3).
 
 #### `is_super_admin`
 

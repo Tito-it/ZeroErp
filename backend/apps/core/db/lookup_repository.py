@@ -158,6 +158,7 @@ class LookupRepository:
             SELECT u.id                              AS utility_id,
                    u.codice                          AS utility_codice,
                    u.descrizione                     AS utility_descrizione,
+                   u.attivo                          AS utility_attiva,
                    o.id                              AS record_id,
                    o.minimo_soglia_min,
                    o.minimo_soglia_max,

@@ -1,0 +1,70 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260429-19a-alter-legacy-rua-drop-ruolo-sistema-mctit.yaml
+
+  - changeSet:
+      id: 20260429-19a-alter-legacy-rua-drop-ruolo-sistema
+      author: mctit
+      comment: >
+        Fase 7 step 8c (2026-04-29, gap-fix): drop della colonna
+        anagrafiche._legacy_risorse_umane_auth_user.ruolo_sistema.
+
+        Contesto: il cutover §13.3.2 (20260419-91) ha rinominato la
+        tabella ponte da risorse_umane_auth_user a
+        _legacy_risorse_umane_auth_user e l'ha sostituita con una vista.
+        La tabella legacy resta come snapshot del DB pre-cutover (no
+        scrittura, no lettura applicativa, solo backup forensico).
+
+        La colonna ruolo_sistema su quella tabella legacy referenzia
+        ancora config.ruolo_sistema (tipo enum), bloccando il DROP TYPE
+        di step 9.
+
+        Soluzione conservativa: ALTER TABLE DROP COLUMN ruolo_sistema.
+        Mantiene la tabella legacy per audit purposes (e gli altri
+        campi: id, risorsa_umana_id, auth_user_id, attivo, audit cols)
+        ma libera il type per il drop finale.
+
+        Posizionata in 90_end: deve girare DOPO il rename §13.3.2
+        (in 20_code/anagrafiche, gira prima di 90_end) e PRIMA di -20
+        (DROP TYPE, stesso 90_end ma -19a < -20 alfanumericamente).
+
+        Trigger residui sulla tabella legacy (storicizzazione, audit
+        data_user, tx_id) restano in piedi perche' inerti: nessuna
+        scrittura possibile (la "tabella attiva" e' la vista omonima).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'anagrafiche'
+                   AND c.relname = '_legacy_risorse_umane_auth_user'
+                   AND c.relkind = 'r';
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM information_schema.columns
+                 WHERE table_schema = 'anagrafiche'
+                   AND table_name   = '_legacy_risorse_umane_auth_user'
+                   AND column_name  = 'ruolo_sistema';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche._legacy_risorse_umane_auth_user
+                  DROP COLUMN ruolo_sistema;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE anagrafiche._legacy_risorse_umane_auth_user
+                  ADD COLUMN ruolo_sistema config.ruolo_sistema;
+              -- Il rollback non ripopola i valori (dato non recuperabile
+              -- senza ricostruzione da storico). Ricostruzione manuale:
+              --   UPDATE _legacy_rua SET ruolo_sistema = (CASE WHEN
+              --     EXISTS (binding SUPER_ADMIN attivo su identita
+              --     dell'auth_user) THEN 'ADMIN' WHEN attivo THEN
+              --     'OPERATIVO' ELSE 'DISABILITATO' END);

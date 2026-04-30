@@ -163,6 +163,7 @@ onMounted(() => {
       data-key="id"
     >
       <Column field="numero" :header="t('contratti.col_numero')" sortable style="width: 140px;" />
+      <Column field="ba_codice" :header="t('contratti.col_ba_codice')" sortable style="width: 120px;" />
       <Column field="ba_ragione_sociale" :header="t('contratti.col_ba')" sortable style="width: 220px;" />
       <Column field="utility_codice" :header="t('contratti.col_utility')" sortable style="width: 100px;" />
       <Column field="ambito" :header="t('contratti.col_ambito')" sortable style="width: 120px;" />
@@ -188,7 +189,7 @@ onMounted(() => {
       </Column>
       <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
-          <RowActionsMenu :actions="buildRowActions(data)" />
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>

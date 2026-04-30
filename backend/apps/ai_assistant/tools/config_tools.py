@@ -32,10 +32,9 @@ class CercaOperatoriTool(AITool):
                         "type": "string",
                         "description": "Ricerca libera su username, email, cognome, nome o ragione sociale",
                     },
-                    "ruolo_sistema": {
-                        "type": "string",
-                        "enum": ["ADMIN", "USER"],
-                        "description": "Filtro per ruolo sistema",
+                    "is_super_admin": {
+                        "type": "boolean",
+                        "description": "Se true, ritorna solo i super admin; se false, solo i non super admin",
                     },
                     "solo_attivi": {
                         "type": "boolean",
@@ -56,7 +55,8 @@ class CercaOperatoriTool(AITool):
         "id": "auth_user_id",
         "username": "username",
         "email": "email",
-        "ruolo": "ruolo_sistema",
+        "is_super_admin": "is_super_admin",
+        "ruolo_applicativo": "ruolo_applicativo",
         "reparto": "unita_organizzativa_nome",
         "attivo": "is_active",
     }
@@ -70,7 +70,7 @@ class CercaOperatoriTool(AITool):
 
         items, total = svc.list_operatori(
             search=params.get("search"),
-            ruolo_sistema=params.get("ruolo_sistema"),
+            is_super_admin=params.get("is_super_admin"),
             is_active=True if solo_attivi else None,
             limit=self.safe_page_size(params),
             offset=0,

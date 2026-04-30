@@ -127,7 +127,10 @@ Il workflow è composto da:
           "violazione": {"tipo_violazione": "SCONTO", "variazione_abs_pct": "25.00", "limite_pct": "10"},
           "richiedente_auth_user_id": 7,
           "riga_preventivo_id": 50
-        }
+        },
+        "can_approve": true,
+        "can_reject": true,
+        "action_reason": null
       }
     ],
     "count": 1,
@@ -141,6 +144,14 @@ Il workflow è composto da:
   - `tipo_prestazione_id = 9001` (codice `APPROVAZIONE_PREZZO`)
   - `stato_codice_interno = 'APERTA'`
   - `emittente_fiscale_id` derivato da `PermissionResolver.get_emittente_for_user` (operatore singolo emittente)
+- **Capability per item (Fase 5.B1)**: ogni item della coda ha `can_approve`/`can_reject`/`action_reason`. Permesso utente calcolato 1 volta (azione `approva_prezzo_override`); per-item solo la verifica `meta.riga_preventivo_id`. Codici stabili `action_reason` esposti come costanti modulo BE (`ACTION_REASON_PERMESSO_MANCANTE`, `ACTION_REASON_RIGA_NON_LINKATA`):
+
+| `action_reason` | Quando | Effetto FE |
+| --- | --- | --- |
+| `null` | Tutto OK: utente HA permesso + riga linkata | Bottoni Approva/Rifiuta abilitati |
+| `PERMESSO_MANCANTE` | Utente senza azione `approva_prezzo_override` (e non superuser) | Bottoni disabilitati + tooltip i18n `approvazioni_prezzo.reason_permesso_mancante` |
+| `RIGA_NON_LINKATA` | `meta.riga_preventivo_id` assente (pratica legacy o crash post-create_riga) | Bottoni disabilitati + tooltip i18n `approvazioni_prezzo.reason_riga_non_linkata` |
+
 - Errori:
   - `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403) — utente non autenticato
   - `E_APPROVAZIONE_PREZZO_NON_AMMESSA` (409) — admin globale senza emittente assegnato (la coda è multi-tenant per emittente; admin globale deve usare `cerca_pratiche` generico per cross-tenant)

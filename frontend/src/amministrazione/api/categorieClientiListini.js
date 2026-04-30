@@ -23,3 +23,11 @@ export function createCategoriaClienteListino(payload) {
 export function updateCategoriaClienteListino(id, payload) {
   return api.patch(`${BASE}/${id}/`, payload)
 }
+
+// Fase 4 — Lookup statico tipi di variazione (PERCENTUALE/VALORE_FISSO).
+// Single source of truth lato BE, nessuna tabella DB. Stessa shape di
+// /amm-software/lookup/rounding-modes/: data e' lista nuda di
+// {codice, descrizione, ordering}.
+export function lookupCategorieListiniTipiVariazione() {
+  return api.get(`${BASE}/lookup/tipi-variazione/`)
+}

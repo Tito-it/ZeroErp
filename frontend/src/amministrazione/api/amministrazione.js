@@ -71,12 +71,16 @@ export function getModelOverridesLookup() {
   return api.get(`${BASE}/lookup/model-overrides/`)
 }
 
+// Fase 2 multi-face: shape `{scope_mode, emittenti_ids, allowed_scope_modes,
+// can_change_scope, change_scope_reason, emittente_descrizione}`. La GET
+// e' coerente con la PUT: stesso shape in input e output.
 export function getEmittentiScope(authUserId) {
   return api.get(`${BASE}/operatori/${authUserId}/emittenti-scope/`)
 }
 
-export function putEmittentiScope(authUserId, emittenteIds) {
-  return api.put(`${BASE}/operatori/${authUserId}/emittenti-scope/`, { emittente_ids: emittenteIds })
+// payload: { scope_mode: 'GLOBAL'|'SINGLE', emittenti_ids?: number[] }
+export function putEmittentiScope(authUserId, payload) {
+  return api.put(`${BASE}/operatori/${authUserId}/emittenti-scope/`, payload)
 }
 
 // --- Riepilogo permessi ---
@@ -178,4 +182,41 @@ export function listEmittentiFiscali() {
 // operatori_admin_globali, operatori_non_assegnati }.
 export function getSetupStatus() {
   return api.get(`${BASE}/setup-status/`)
+}
+
+// --- Form-defaults emittente fiscale (Fase 3) ---
+
+// Defaults pre-compilazione form anagrafica emittente fiscale.
+// Cast tipi gia' applicato lato BE: bollo_auto bool, bollo_soglia
+// Decimal|null, rounding_policy str|null. Il FE non duplica il cast
+// generico di /core/parameters/defaults/.
+// Restituisce { defaults: { bollo_auto, bollo_soglia, rounding_policy },
+//               non_editable_fields: [...] }.
+export function getEmittenteFormDefaults() {
+  return api.get(`${BASE}/emittenti-fiscali/form-defaults/`)
+}
+
+// Lookup statico modi di arrotondamento ammessi per emittente fiscale
+// (4 codici fissi: UP/DOWN/HALF_UP/HALF_DOWN, niente HALF_EVEN).
+// Single source of truth lato BE in
+// amm_software_service._ROUNDING_MODE_VALIDI_EMITTENTE.
+// Restituisce lista nuda di { codice, descrizione, ordering }.
+export function lookupEmittenteRoundingModes() {
+  return api.get(`${BASE}/lookup/rounding-modes/`)
+}
+
+// --- Audit hardening + email log lookup (Fase 5) ---
+
+// Lookup sorgenti audit ammesse (8 righe). Single source of truth lato DB:
+// script.vw_audit_sources. Sostituisce buildAuditTabellaOptions hardcoded.
+// Restituisce lista nuda di { code, label_key, area_funzionale }.
+export function lookupAuditSources() {
+  return api.get(`${BASE}/lookup/audit-sources/`)
+}
+
+// Lookup statico stati email log (4 codici fissi: SENT/PENDING/RETRY/FAILED).
+// Single source of truth lato BE in amm_software_service._EMAIL_LOG_STATI_VALIDI.
+// Restituisce lista nuda di { codice, descrizione, ordering }.
+export function lookupEmailLogStati() {
+  return api.get(`${BASE}/lookup/email-log-stati/`)
 }

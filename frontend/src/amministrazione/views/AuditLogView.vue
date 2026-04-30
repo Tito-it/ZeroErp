@@ -2,12 +2,13 @@
 // Scopo: pagina audit log globale modifiche permessi.
 // DataTable paginata con lazy loading e sort server-side, filtri per tipo tabella.
 // Sola lettura — nessun drawer.
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { getAuditLog } from '../api/amministrazione'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { getAuditLog, lookupAuditSources } from '../api/amministrazione'
 import { displayTimestamp, toDateString } from '../../core/utils/date'
-import { buildAuditTabellaOptions, getAuditOpSeverity } from '../constants'
+import { getAuditOpSeverity } from '../constants'
 import { PAGINATION, DATE_FORMAT, READONLY_DOMAINS } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -31,7 +32,27 @@ const sortField = ref('timestamp')
 const sortOrder = ref(-1)
 
 const tabellaFilter = ref(null)
-const tabellaOptions = buildAuditTabellaOptions(t)
+
+// Fase 5 — Lookup sorgenti audit dal BE (single source of truth: vw_audit_sources).
+// Sostituisce buildAuditTabellaOptions hardcoded. Cache modulo-level via
+// useGlobalLookup (transform `(r) => r.data.data` perche' endpoint ritorna
+// lista nuda, non envelope paginato).
+const auditSourcesLookup = useGlobalLookup(
+  'amm.audit_sources',
+  lookupAuditSources,
+  { immediate: true, transform: (r) => r.data.data },
+)
+
+// Options Select: prepend voce 'Tutti' (filtro lista) + i codici dal BE.
+// `label_key` arriva come chiave i18n (es. 'amm.audit_tabella_identita') e
+// va risolto con t() per il display. `value` e' il `code` BE.
+const tabellaOptions = computed(() => [
+  { label: t('amm.audit_tabella_tutti'), value: null },
+  ...auditSourcesLookup.items.value.map((s) => ({
+    label: t(s.label_key),
+    value: s.code,
+  })),
+])
 
 // Filtro data: default ultimo mese
 const defaultDa = new Date()
@@ -90,20 +111,12 @@ function applyFilters() {
   fetchData()
 }
 
-// Scopo: Estrae un riepilogo leggibile dallo snapshot JSON.
-// Lo snapshot puo' arrivare come oggetto o stringa JSON.
-function snapshotSummary(snapshot) {
-  let obj = snapshot
-  if (typeof obj === 'string') {
-    try { obj = JSON.parse(obj) } catch { return '' }
-  }
-  if (!obj || typeof obj !== 'object') return ''
-  const keys = ['auth_user_id', 'area_id', 'azione_id', 'unita_organizzativa_id',
-    'livello', 'abilitata', 'ruolo_sistema', 'emittente_fiscale_id']
-  return keys
-    .filter(k => obj[k] !== undefined && obj[k] !== null)
-    .map(k => `${k}: ${obj[k]}`)
-    .join(', ')
+// Fase 5 — `summary` arriva direttamente dal BE in `data.audit.summary`
+// (calcolato da script.fn_audit_summary lato DB). Niente piu' parsing locale
+// dello snapshot. Per mostrare il dettaglio dei field, leggere `data.audit.diff`
+// (array di {field, old, new}) — lasciato come tooltip/expand opzionale.
+function rowSummary(data) {
+  return data?.audit?.summary || ''
 }
 </script>
 
@@ -183,7 +196,7 @@ function snapshotSummary(snapshot) {
       </Column>
       <Column :header="t('amm.audit_col_dettaglio')">
         <template #body="{ data }">
-          <span class="text-sm">{{ snapshotSummary(data.snapshot) }}</span>
+          <span class="text-sm">{{ rowSummary(data) }}</span>
         </template>
       </Column>
     </DataTable>

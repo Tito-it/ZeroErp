@@ -1,0 +1,9 @@
+id,code,storico_table,storico_pk_col,label_key,area_funzionale,attivo,data_insert,user_insert,data_update,user_update,tx_id,storicizza
+1,user_override_aree,storico.user_override_aree,user_override_aree_id,amm.audit_tabella_override_aree,PERMESSI,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
+2,user_override_azioni,storico.user_override_azioni,user_override_azioni_id,amm.audit_tabella_override_azioni,PERMESSI,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
+3,user_override_oggetti,storico.user_override_oggetti,user_override_oggetti_id,amm.audit_tabella_override_oggetti,PERMESSI,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
+4,user_emittenti_fiscali,storico.user_emittenti_fiscali,user_emittenti_fiscali_id,amm.audit_tabella_emittenti,EMITTENTI,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
+5,risorse_umane_auth_user,storico.risorse_umane_auth_user,risorse_umane_auth_user_id,amm.audit_tabella_ruolo,AUTH,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
+6,profili_reparto_aree,storico.profili_reparto_aree,profili_reparto_aree_id,amm.audit_tabella_profilo_aree,PERMESSI,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
+7,profili_reparto_azioni,storico.profili_reparto_azioni,profili_reparto_azioni_id,amm.audit_tabella_profilo_azioni,PERMESSI,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
+8,identita_digitali,storico.identita_digitali,identita_digitali_id,amm.audit_tabella_identita,AUTH,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t

@@ -3,7 +3,9 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listUnitaMisura, getUnitaMisura, createUnitaMisura, updateUnitaMisura, disattivaUnitaMisura } from '../api/catalogo'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { invalidateLookup } from '../../core/composables/useGlobalLookup'
 import { TAB_ENTITIES } from '../../core/constants'
+import { CATALOGO_LOOKUP_RELS } from '../constants'
 
 export const useUnitaMisuraStore = defineStore('catalogo-unita-misura', () => {
   const { emitDataChanged } = useTabEvents()
@@ -63,18 +65,21 @@ export const useUnitaMisuraStore = defineStore('catalogo-unita-misura', () => {
 
   async function create(payload) {
     const res = await createUnitaMisura(payload)
+    invalidateLookup(CATALOGO_LOOKUP_RELS.UNITA_MISURA)
     emitDataChanged(TAB_ENTITIES.UNITA_MISURA, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateUnitaMisura(id, payload)
+    invalidateLookup(CATALOGO_LOOKUP_RELS.UNITA_MISURA)
     emitDataChanged(TAB_ENTITIES.UNITA_MISURA, id)
     return res.data.data
   }
 
   async function disattiva(id) {
     const res = await disattivaUnitaMisura(id)
+    invalidateLookup(CATALOGO_LOOKUP_RELS.UNITA_MISURA)
     emitDataChanged(TAB_ENTITIES.UNITA_MISURA, id)
     return res.data.data
   }

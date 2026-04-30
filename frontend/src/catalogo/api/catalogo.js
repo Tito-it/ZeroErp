@@ -25,8 +25,19 @@ export function disattivaArticolo(id) {
   return api.post(`${BASE}/articoli/${id}/disattiva/`, {})
 }
 
+export function riattivaArticolo(id) {
+  return api.post(`${BASE}/articoli/${id}/riattiva/`, {})
+}
+
 export function lookupArticoli(params = {}) {
   return api.get(`${BASE}/articoli/lookup/`, { params })
+}
+
+// Fase 8 (A5): defaults pre-compilazione form articolo (oggi default_iva_id).
+// Tipi gia' castati lato BE: il FE non duplica il cast da stringa generico
+// di /core/parameters/defaults/.
+export function getArticoloFormDefaults() {
+  return api.get(`${BASE}/articoli/form-defaults/`)
 }
 
 // --- UoM operative articolo ---
@@ -65,6 +76,20 @@ export function deleteArticoloComponente(articoloId, compId) {
   return api.delete(`${BASE}/articoli/${articoloId}/componenti/${compId}/`)
 }
 
+// Scopo: Endpoint atomico Fase 3 — duplica versione corrente del componente.
+//        Il BE chiude la sorgente con valido_al=chiudi_al (default oggi) e
+//        crea una nuova riga con valido_dal=chiudi_al+1, copia verbatim
+//        della struttura. Tutto in singola TX DB con advisory lock.
+//        Idempotency-Key (UUID v4) e' obbligatoria: il BE rifiuta senza header.
+//        payload: { chiudi_al?: 'YYYY-MM-DD' }
+export function duplicaComponenteVersione(articoloId, compId, payload = {}) {
+  return api.post(
+    `${BASE}/articoli/${articoloId}/componenti/${compId}/duplica-versione/`,
+    payload,
+    { headers: { 'Idempotency-Key': crypto.randomUUID() } },
+  )
+}
+
 // --- Note articolo ---
 
 export function listArticoloNote(articoloId) {
@@ -84,6 +109,22 @@ export function deleteNota(notaId) {
 }
 
 // --- Unita' di misura (CRUD) ---
+
+export function listUomTipi(params = {}) {
+  return api.get(`${BASE}/uom-tipi/`, { params })
+}
+
+export function getUomTipo(id) {
+  return api.get(`${BASE}/uom-tipi/${id}/`)
+}
+
+export function createUomTipo(payload) {
+  return api.post(`${BASE}/uom-tipi/`, payload)
+}
+
+export function updateUomTipo(id, payload) {
+  return api.patch(`${BASE}/uom-tipi/${id}/`, payload)
+}
 
 export function listUnitaMisura(params = {}) {
   return api.get(`${BASE}/unita-misura/`, { params })

@@ -38,12 +38,35 @@ Indice test eseguiti:
 28) CatalogoServiceTests.test_fn_create_componente_esposto_in_fattura_ok
 29) CatalogoServiceTests.test_fn_list_uom_rounding_modes_ok
 30) CatalogoServiceTests.test_fn_list_uom_rounding_modes_coverage
+31) CatalogoServiceTests.test_fn_duplica_componente_versione_ok
+32) CatalogoServiceTests.test_fn_duplica_componente_versione_chiudi_al_passed
+33) CatalogoServiceTests.test_fn_duplica_componente_versione_chiave_non_consentita
+34) CatalogoServiceTests.test_fn_duplica_componente_versione_db_overlap
+35) CatalogoServiceTests.test_fn_duplica_componente_versione_db_sorgente_chiusa
+36) CatalogoServiceTests.test_fn_duplica_componente_versione_db_riga_not_found
+37) CatalogoServiceTests.test_fn_duplica_componente_versione_db_prodotto_mismatch
+38) CatalogoServiceTests.test_fn_duplica_componente_versione_db_unknown_falls_back_validation
+39) CatalogoServiceTests.test_fn_create_componente_valido_dal_fallback_today
+40) CatalogoServiceTests.test_fn_create_uom_operativa_valido_dal_fallback_today
+41) CatalogoServiceTests.test_fn_create_conversione_valido_dal_fallback_today
+42) CatalogoServiceTests.test_fn_get_articolo_includes_non_editable_fields
+43) CatalogoServiceTests.test_fn_list_uom_operative_envelope_non_editable_fields
+44) CatalogoServiceTests.test_fn_get_conversione_includes_non_editable_fields
+45) CatalogoServiceTests.test_fn_list_articoli_proietta_capability_bom
+46) CatalogoServiceTests.test_fn_list_uom_operative_proietta_capability_eliminabile
+47) CatalogoServiceTests.test_fn_riattiva_articolo_ok
+48) CatalogoServiceTests.test_fn_riattiva_articolo_already_active
+49) CatalogoServiceTests.test_fn_riattiva_articolo_not_found
+50) CatalogoServiceTests.test_fn_update_articolo_rifiuta_attivo
+51) CatalogoServiceTests.test_fn_get_articolo_form_defaults_ok
+52) CatalogoServiceTests.test_fn_get_articolo_form_defaults_missing_param
+53) CatalogoServiceTests.test_fn_get_articolo_form_defaults_malformed_param
 """
 
 from unittest import TestCase
 from unittest.mock import patch
 
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 
 from apps.core.services.service_errors import ServiceError
 
@@ -308,6 +331,112 @@ class CatalogoServiceTests(TestCase):
         self.assertFalse(result["attivo"])
         repo.deactivate_articolo.assert_not_called()
 
+    # Scopo: riattiva articolo inattivo -> chiama fn DB e restituisce dettaglio attivo.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_riattiva_articolo_ok(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_riattiva_articolo
+
+        repo = mock_repo_cls.return_value
+        repo.get_articolo.side_effect = [
+            {"id": "019bbee2-5f6a-704f-bbd0-34ed84db252d", "codice": "ART-001", "attivo": False},
+            {"id": "019bbee2-5f6a-704f-bbd0-34ed84db252d", "codice": "ART-001", "attivo": True},
+        ]
+        mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
+        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
+
+        result = fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
+
+        self.assertTrue(result["attivo"])
+        repo.reactivate_articolo.assert_called_once_with("019bbee2-5f6a-704f-bbd0-34ed84db252d")
+
+    # Scopo: articolo gia' attivo -> idempotente, fn DB non chiamata.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_riattiva_articolo_already_active(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_riattiva_articolo
+
+        repo = mock_repo_cls.return_value
+        repo.get_articolo.return_value = {
+            "id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+            "codice": "ART-001",
+            "attivo": True,
+        }
+        mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
+        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
+
+        result = fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
+
+        self.assertTrue(result["attivo"])
+        repo.reactivate_articolo.assert_not_called()
+
+    # Scopo: riattiva articolo inesistente -> NOT_FOUND uniforme dal pre-flight.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_riattiva_articolo_not_found(self, mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_riattiva_articolo
+
+        mock_repo_cls.return_value.get_articolo.return_value = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_ARTICOLO_NOT_FOUND")
+        mock_repo_cls.return_value.reactivate_articolo.assert_not_called()
+
+    # Scopo: PATCH articolo con `attivo` -> rifiutato (Fase 7: solo endpoint dedicati).
+    def test_fn_update_articolo_rifiuta_attivo(self):
+        from apps.catalogo.services.catalogo_service import fn_update_articolo
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_update_articolo(
+                "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+                {"attivo": False},
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertIn("attivo", ctx.exception.detail or "")
+
+    # Scopo: form-defaults articolo casta DEFAULT_IVA_ID a int (Fase 8).
+    @patch("apps.catalogo.services.catalogo_service.ParameterService")
+    def test_fn_get_articolo_form_defaults_ok(self, mock_ps_cls):
+        from apps.catalogo.services.catalogo_service import fn_get_articolo_form_defaults
+
+        mock_ps_cls.return_value.get_defaults.return_value = {"DEFAULT_IVA_ID": "42"}
+
+        result = fn_get_articolo_form_defaults()
+
+        self.assertEqual(result, {"default_iva_id": 42})
+        mock_ps_cls.return_value.get_defaults.assert_called_once_with(
+            ["DEFAULT_IVA_ID"],
+            django_user_id=None,
+            group_ids=None,
+            emittente_fiscale_id=None,
+        )
+
+    # Scopo: parametro mancante -> default_iva_id a None (best-effort, no raise).
+    @patch("apps.catalogo.services.catalogo_service.ParameterService")
+    def test_fn_get_articolo_form_defaults_missing_param(self, mock_ps_cls):
+        from apps.catalogo.services.catalogo_service import fn_get_articolo_form_defaults
+
+        mock_ps_cls.return_value.get_defaults.return_value = {}
+
+        result = fn_get_articolo_form_defaults()
+
+        self.assertEqual(result, {"default_iva_id": None})
+
+    # Scopo: parametro malformato -> default_iva_id a None (best-effort, no raise).
+    @patch("apps.catalogo.services.catalogo_service.ParameterService")
+    def test_fn_get_articolo_form_defaults_malformed_param(self, mock_ps_cls):
+        from apps.catalogo.services.catalogo_service import fn_get_articolo_form_defaults
+
+        mock_ps_cls.return_value.get_defaults.return_value = {"DEFAULT_IVA_ID": "non-numerico"}
+
+        result = fn_get_articolo_form_defaults()
+
+        self.assertEqual(result, {"default_iva_id": None})
+
     # Scopo: campi sconosciuti nel payload -> errore esplicito, non ignorati.
     def test_fn_create_articolo_unknown_key(self):
         from apps.catalogo.services.catalogo_service import fn_create_articolo
@@ -531,3 +660,301 @@ class CatalogoServiceTests(TestCase):
 
         descritti = {codice for codice, _desc, _ord in svc._ROUNDING_MODE_DESCRIZIONI}
         self.assertEqual(descritti, svc._ROUNDING_MODE_VALIDI)
+
+    # =================================================================
+    # Fase 3 — duplica versione componente BoM
+    # =================================================================
+
+    _ARTICOLO = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
+    _COMP_SRC = "019bbee2-5f6a-704f-bbd0-34ed84db252e"
+    _COMP_NEW = "019bbee2-5f6a-704f-bbd0-34ed84db252f"
+
+    # Scopo: payload vuoto -> service chiama repo con chiudi_al=None (default DB).
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_duplica_componente_versione_ok(self, mock_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_duplica_componente_versione
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": self._ARTICOLO}
+        bom_repo = mock_bom_repo_cls.return_value
+        bom_repo.duplica_versione.return_value = self._COMP_NEW
+        bom_repo.get_componente.return_value = {
+            "id": self._COMP_NEW,
+            "valido_dal": "2026-04-29",
+            "valido_al": None,
+        }
+
+        result = fn_duplica_componente_versione(self._ARTICOLO, self._COMP_SRC, {})
+
+        self.assertEqual(result["id"], self._COMP_NEW)
+        bom_repo.duplica_versione.assert_called_once_with(self._ARTICOLO, self._COMP_SRC, None)
+
+    # Scopo: payload con chiudi_al -> service propaga la data al repo.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_duplica_componente_versione_chiudi_al_passed(self, mock_repo_cls, mock_bom_repo_cls):
+        from datetime import date
+
+        from apps.catalogo.services.catalogo_service import fn_duplica_componente_versione
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": self._ARTICOLO}
+        bom_repo = mock_bom_repo_cls.return_value
+        bom_repo.duplica_versione.return_value = self._COMP_NEW
+        bom_repo.get_componente.return_value = {"id": self._COMP_NEW}
+
+        fn_duplica_componente_versione(self._ARTICOLO, self._COMP_SRC, {"chiudi_al": "2026-05-15"})
+
+        args = bom_repo.duplica_versione.call_args.args
+        self.assertEqual(args[0], self._ARTICOLO)
+        self.assertEqual(args[1], self._COMP_SRC)
+        self.assertEqual(args[2], date(2026, 5, 15))
+
+    # Scopo: chiave non whitelisted -> ServiceError validazione (sicurezza payload).
+    def test_fn_duplica_componente_versione_chiave_non_consentita(self):
+        from apps.catalogo.services.catalogo_service import fn_duplica_componente_versione
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_duplica_componente_versione(self._ARTICOLO, self._COMP_SRC, {"componente_id": "x"})
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+
+    # Scopo: 5 P0001 noti -> ServiceError con codice originale preservato.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def _assert_db_p0001_translated(
+        self, mock_repo_cls, mock_bom_repo_cls, *, db_message: str, expected_code: str
+    ):
+        from apps.catalogo.services.catalogo_service import fn_duplica_componente_versione
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": self._ARTICOLO}
+        mock_bom_repo_cls.return_value.duplica_versione.side_effect = DatabaseError(db_message)
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_duplica_componente_versione(self._ARTICOLO, self._COMP_SRC, {})
+        self.assertEqual(ctx.exception.code, expected_code)
+
+    def test_fn_duplica_componente_versione_db_overlap(self):
+        self._assert_db_p0001_translated(
+            db_message=(
+                "La nuova versione del componente con valido_dal=2026-05-29 "
+                "si sovrappone a una versione esistente per lo stesso prodotto/componente."
+            ),
+            expected_code="E_BOM_VERSIONE_OVERLAP",
+        )
+
+    def test_fn_duplica_componente_versione_db_sorgente_chiusa(self):
+        self._assert_db_p0001_translated(
+            db_message="La riga sorgente della BoM e' gia' chiusa (valido_al=2026-02-15): impossibile duplicarla.",
+            expected_code="E_BOM_SORGENTE_GIA_CHIUSA",
+        )
+
+    def test_fn_duplica_componente_versione_db_riga_not_found(self):
+        self._assert_db_p0001_translated(
+            db_message="Riga BoM non trovata: id=00000000-0000-0000-0000-000000000000.",
+            expected_code="E_BOM_RIGA_NOT_FOUND",
+        )
+
+    def test_fn_duplica_componente_versione_db_prodotto_mismatch(self):
+        self._assert_db_p0001_translated(
+            db_message=f"La riga BoM appartiene al prodotto {self._ARTICOLO}, atteso aaa-bbb.",
+            expected_code="E_BOM_PRODOTTO_MISMATCH",
+        )
+
+    # Scopo: P0001 sconosciuto -> fallback E_CATALOGO_VALIDATION (no leak DB raw).
+    def test_fn_duplica_componente_versione_db_unknown_falls_back_validation(self):
+        self._assert_db_p0001_translated(
+            db_message="Errore DB sconosciuto non riconducibile a marker.",
+            expected_code="E_CATALOGO_VALIDATION",
+        )
+
+    # =================================================================
+    # Fase 4 — fallback valido_dal=today lato service (DB declined)
+    # =================================================================
+
+    # Scopo: payload create componente senza valido_dal -> service applica
+    # date.today() prima del repository call. Il DDL DB non ha
+    # DEFAULT CURRENT_DATE, il fallback vive nel service (Fase 4 BE-only).
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_componente_valido_dal_fallback_today(self, mock_repo_cls, mock_bom_repo_cls):
+        from datetime import date
+
+        from apps.catalogo.services.catalogo_service import fn_create_componente
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1"}
+        bom_repo = mock_bom_repo_cls.return_value
+        bom_repo.create_componente.return_value = "comp-1"
+        bom_repo.get_componente.return_value = {"id": "comp-1"}
+
+        # Payload SENZA valido_dal: il service deve applicare today.
+        fn_create_componente(
+            "art-1",
+            {"componente_id": "019bbee2-5f6a-704f-bbd0-34ed84db252f", "coeff_qta": "1"},
+        )
+
+        args = bom_repo.create_componente.call_args.args
+        self.assertEqual(args[1]["valido_dal"], date.today())
+
+    # Scopo: payload create UoM operativa senza valido_dal -> service applica today.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_uom_operativa_valido_dal_fallback_today(self, mock_repo_cls, mock_uom_repo_cls):
+        from datetime import date
+
+        from apps.catalogo.services.catalogo_service import fn_create_uom_operativa
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1"}
+        uom_repo = mock_uom_repo_cls.return_value
+        uom_repo.create_uom_operativa.return_value = 99
+        uom_repo.get_uom_operativa.return_value = {"id": 99}
+
+        # Payload SENZA valido_dal.
+        fn_create_uom_operativa("art-1", {"uom_id": 1, "factor_to_base": "1"})
+
+        args = uom_repo.create_uom_operativa.call_args.args
+        self.assertEqual(args[1]["valido_dal"], date.today())
+
+    # Scopo: payload create conversione UoM senza valido_dal -> service applica today.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_conversione_valido_dal_fallback_today(self, mock_repo_cls):
+        from datetime import date
+
+        from apps.catalogo.services.catalogo_service import fn_create_conversione
+
+        repo = mock_repo_cls.return_value
+        repo.create_conversione.return_value = 42
+        repo.get_conversione.return_value = {"id": 42}
+
+        # Payload SENZA valido_dal.
+        fn_create_conversione({"uom_from_id": 1, "uom_to_id": 2, "fattore": "10"})
+
+        args = repo.create_conversione.call_args.args
+        self.assertEqual(args[0]["valido_dal"], date.today())
+
+    # =================================================================
+    # Fase 5 — non_editable_fields nei detail (cross-vista DB + gap Python)
+    # =================================================================
+
+    # Scopo: detail articolo include non_editable_fields. Almeno "codice" e
+    # "uom_id" devono essere presenti (dal gap Python; DB potrebbe arricchire).
+    # Mock LockColumnsRepository per evitare query DB reali sul testbed.
+    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_get_articolo_includes_non_editable_fields(
+        self, mock_repo_cls, mock_uom_cls, mock_bom_cls, mock_lock_cls,
+    ):
+        from apps.catalogo.services.catalogo_service import fn_get_articolo
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": 1, "is_composito": False}
+        mock_uom_cls.return_value.list_uom_operative.return_value = []
+        mock_bom_cls.return_value.list_note_articolo.return_value = []
+        # DB vuoto: il gap Python e' l'unica fonte.
+        mock_lock_cls.list_non_editable.return_value = ()
+
+        result = fn_get_articolo(1)
+
+        self.assertIn("non_editable_fields", result)
+        # Gap Python copre "codice"; DB esprime "uom_id" via vista (qui mock vuoto).
+        self.assertIn("codice", result["non_editable_fields"])
+
+    # Scopo: lista UoM operative espone non_editable_fields envelope-level.
+    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_list_uom_operative_envelope_non_editable_fields(
+        self, mock_repo_cls, mock_uom_cls, mock_lock_cls,
+    ):
+        from apps.catalogo.services.catalogo_service import fn_list_uom_operative
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": 1}
+        mock_uom_cls.return_value.list_uom_operative.return_value = []
+        mock_lock_cls.list_non_editable.return_value = ()
+
+        result = fn_list_uom_operative(1)
+
+        self.assertEqual(result["non_editable_fields"], ["uom_id"])
+
+    # Scopo: detail conversione UoM include non_editable_fields (uom_from_id, uom_to_id).
+    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_get_conversione_includes_non_editable_fields(self, mock_repo_cls, mock_lock_cls):
+        from apps.catalogo.services.catalogo_service import fn_get_conversione
+
+        mock_repo_cls.return_value.get_conversione.return_value = {"id": 7}
+        mock_lock_cls.list_non_editable.return_value = ()
+
+        result = fn_get_conversione(7)
+
+        self.assertEqual(result["non_editable_fields"], ["uom_from_id", "uom_to_id"])
+
+    # Scopo: lista articoli propaga capability BoM dalla vista DB (Fase 6).
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_list_articoli_proietta_capability_bom(self, mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_list_articoli
+
+        mock_repo_cls.return_value.list_articoli.return_value = (
+            [
+                {
+                    "id": 1,
+                    "codice": "ART-COMP",
+                    "is_composito": True,
+                    "is_solo_componente": False,
+                    "puo_gestire_bom": True,
+                    "motivo_non_gestibile_bom": None,
+                },
+                {
+                    "id": 2,
+                    "codice": "ART-FOGLIA",
+                    "is_composito": False,
+                    "is_solo_componente": False,
+                    "puo_gestire_bom": False,
+                    "motivo_non_gestibile_bom": "ARTICOLO_NON_COMPOSITO",
+                },
+            ],
+            2,
+        )
+
+        results, total = fn_list_articoli(limit=25, offset=0)
+
+        self.assertEqual(total, 2)
+        self.assertTrue(results[0]["puo_gestire_bom"])
+        self.assertIsNone(results[0]["motivo_non_gestibile_bom"])
+        self.assertFalse(results[1]["puo_gestire_bom"])
+        self.assertEqual(results[1]["motivo_non_gestibile_bom"], "ARTICOLO_NON_COMPOSITO")
+
+    # Scopo: lista UoM operative propaga capability eliminazione dalla vista DB (Fase 6).
+    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_list_uom_operative_proietta_capability_eliminabile(
+        self, mock_repo_cls, mock_uom_cls, mock_lock_cls,
+    ):
+        from apps.catalogo.services.catalogo_service import fn_list_uom_operative
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": 1}
+        mock_uom_cls.return_value.list_uom_operative.return_value = [
+            {
+                "id": 10,
+                "uom_codice": "PZ",
+                "is_base": True,
+                "puo_eliminarsi": False,
+                "motivo_non_eliminabile": "UOM_BASE_NON_ELIMINABILE",
+            },
+            {
+                "id": 11,
+                "uom_codice": "CT",
+                "is_base": False,
+                "puo_eliminarsi": True,
+                "motivo_non_eliminabile": None,
+            },
+        ]
+        mock_lock_cls.list_non_editable.return_value = ()
+
+        result = fn_list_uom_operative(1)
+
+        rows = result["results"]
+        self.assertFalse(rows[0]["puo_eliminarsi"])
+        self.assertEqual(rows[0]["motivo_non_eliminabile"], "UOM_BASE_NON_ELIMINABILE")
+        self.assertTrue(rows[1]["puo_eliminarsi"])
+        self.assertIsNone(rows[1]["motivo_non_eliminabile"])

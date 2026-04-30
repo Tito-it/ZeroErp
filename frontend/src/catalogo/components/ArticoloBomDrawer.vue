@@ -4,8 +4,11 @@
 // Pattern immutabilità (sviluppo-listini-v5 §14.4 / DEC-4):
 //   - i campi struttura (componente, coeff_qta, esposto_in_fattura, ecc.)
 //     non sono modificabili in place: trigger DB E_BOM_MODIFICA_VIETATA li
-//     blocca. Per correggere si usa "chiudi riga" + "duplica come nuova
-//     versione" (l'admin chiude la riga corrente e ne crea una nuova).
+//     blocca. Per cambiare valori si usa "chiudi riga" + nuovo "Aggiungi
+//     componente" con i nuovi parametri (operazioni esplicite, intenzionali).
+//   - "Duplica versione": dal Fase 3 e' un'azione **atomica DB** che chiude
+//     la sorgente e apre una nuova riga con stessi valori (nessun edit lato
+//     FE). Endpoint: POST .../duplica-versione/ con Idempotency-Key.
 //   - delete BoM bloccato dal trigger: il pattern di "rimozione" è chiusura
 //     con valido_al = oggi (chiusura immediata) o data futura (programmata).
 //   - valido_al è l'unico campo struttura editabile inline (chiusura riga)
@@ -23,6 +26,7 @@ import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import {
   listArticoloComponenti, createArticoloComponente,
   updateArticoloComponente,
+  duplicaComponenteVersione,
   listComponenteNote, createComponenteNota,
 } from '../api/catalogo'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
@@ -115,9 +119,24 @@ const chiudiDialogIsImmediata = computed(() => {
   return sel.getTime() === today.getTime()
 })
 
-// Flag UI: distingue "nuovo componente da zero" da "duplica come nuova versione".
-// Influenza il titolo del form e mostra l'hint dedicato versionamento.
-const formMode = ref('new')  // 'new' | 'duplicate'
+// Dialog "Duplica versione" (Fase 3): l'admin sceglie chiudi_al, il BE
+// chiude la sorgente e apre una nuova riga con stessi valori in singola TX.
+// Niente edit dei valori in questo flusso: per cambiarli si usa
+// "Chiudi riga" + nuovo "Aggiungi componente" (azioni intenzionali).
+// Min-date: BE espone `data_min_chiusura` su vw_articoli_componenti_dettaglio
+// (= valido_dal della sorgente).
+const duplicaDialogVisible = ref(false)
+const duplicaDialogRow = ref(null)
+const duplicaDialogChiudiAl = ref(null)
+const duplicaDialogMinDate = computed(() => parseDate(duplicaDialogRow.value?.data_min_chiusura))
+const duplicaDialogIsImmediata = computed(() => {
+  if (!duplicaDialogChiudiAl.value) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const sel = new Date(duplicaDialogChiudiAl.value)
+  sel.setHours(0, 0, 0, 0)
+  return sel.getTime() === today.getTime()
+})
 
 // Sub-drawer note per componente
 const noteDrawerVisible = ref(false)
@@ -140,19 +159,19 @@ function defaultForm() {
     obbligatorio: paramBool(p.CATALOGO_BOM_DEFAULT_OBBLIGATORIO, true),
     determina_qta_padre: paramBool(p.CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE, false),
     esposto_in_fattura: paramBool(p.CATALOGO_BOM_DEFAULT_ESPOSTO_IN_FATTURA, false),
-    // valido_dal e' un default di processo, non di policy: la nuova versione
-    // parte sempre da oggi. Sara' applicato lato BE (Fase 4 refactor) quando
-    // omesso. Per ora resta lato FE per coerenza UX.
-    valido_dal: new Date(),
+    // valido_dal: null (Fase 4 BE-only). Se l'admin non sceglie una data,
+    // il service applica today come default. Il DatePicker resta vuoto
+    // finche' l'utente non interagisce: piu' onesto rispetto al pre-fill che
+    // mascherava la responsabilita' del default.
+    valido_dal: null,
     valido_al: null,
   }
 }
 
-// Scopo: reset stato del form add/duplica. Comune a cancel, save-success
-// e apertura drawer: evita duplicazione delle 4 reassegnazioni.
+// Scopo: reset stato del form add. Comune a cancel, save-success
+// e apertura drawer: evita duplicazione delle reassegnazioni.
 function resetFormState() {
   adding.value = false
-  formMode.value = 'new'
   form.value = defaultForm()
   componenteObj.value = null
 }
@@ -220,33 +239,38 @@ function cancelAdd() {
   resetFormState()
 }
 
-// Scopo: pre-compila il form di inserimento con i valori di una riga
-// esistente, per creare una nuova versione senza ridigitare tutto.
-// La riga sorgente NON viene chiusa automaticamente: l'admin può scegliere
-// di farlo prima/dopo via "Chiudi riga". L'exclusion constraint daterange
-// del DB previene comunque sovrapposizioni.
-function startDuplicaComeNuovaVersione(row) {
-  formMode.value = 'duplicate'
-  // Pre-compila componente_obj per restore AutoComplete: ArticoloLookup
-  // usa optionLabel="_display" (formato "codice — descrizione"), senza
-  // questo campo l'AutoComplete cade in toString() e mostra "[object Object]".
-  componenteObj.value = {
-    id: row.componente_id,
-    codice: row.componente_codice,
-    descrizione: row.componente_descrizione,
-    _display: `${row.componente_codice} — ${row.componente_descrizione}`,
+// Scopo: apre il dialog "Duplica versione". L'operazione di chiusura+apertura
+// e' atomica lato DB (Fase 3, fn_duplica_componente_versione): il FE non
+// ricompone il flusso, manda solo `chiudi_al` e ricarica.
+// Default `chiudi_al = oggi` -> chiusura immediata, nuova riga apre domani.
+function onDuplicaVersione(row) {
+  duplicaDialogRow.value = row
+  duplicaDialogChiudiAl.value = new Date()
+  duplicaDialogVisible.value = true
+}
+
+function annullaDuplicaVersione() {
+  duplicaDialogVisible.value = false
+  duplicaDialogRow.value = null
+  duplicaDialogChiudiAl.value = null
+}
+
+// Scopo: invia POST /duplica-versione/ con Idempotency-Key (gestita dal
+// client API). I codici errore E_BOM_* (P0001 dal DB) vengono mappati
+// dalle policy lato BE a HTTP 409/404/400 e visualizzati via useApiHandler.
+async function confermaDuplicaVersione() {
+  if (!duplicaDialogRow.value || !duplicaDialogChiudiAl.value) return
+  const result = await execute(
+    () => duplicaComponenteVersione(props.articoloId, duplicaDialogRow.value.id, {
+      chiudi_al: toDateString(duplicaDialogChiudiAl.value),
+    }),
+    { successMessage: t('catalogo.duplica_versione_ok') },
+  )
+  if (result !== null) {
+    annullaDuplicaVersione()
+    await loadComponenti()
+    emit('saved')
   }
-  form.value = {
-    componente_id: row.componente_id,
-    coeff_qta: row.coeff_qta,
-    partecipa_qta: row.partecipa_qta,
-    obbligatorio: row.obbligatorio,
-    determina_qta_padre: row.determina_qta_padre,
-    esposto_in_fattura: row.esposto_in_fattura,
-    valido_dal: new Date(),  // nuova versione parte da oggi
-    valido_al: null,
-  }
-  adding.value = true
 }
 
 const canSaveForm = computed(() => {
@@ -349,10 +373,14 @@ function buildRigaActions(row) {
       command: () => openNoteDrawer(row),
     },
     {
-      key: 'duplica-nuova-versione',
+      key: 'duplica-versione',
       label: t('catalogo.duplica_come_nuova_versione'),
       icon: 'pi pi-clone',
-      command: () => startDuplicaComeNuovaVersione(row),
+      // Solo righe aperte si possono duplicare (BE solleva
+      // E_BOM_SORGENTE_GIA_CHIUSA su righe chiuse). Stesso check truthy
+      // di chiudi-riga e dell'inline edit valido_al.
+      visible: !!row.puo_chiudersi,
+      command: () => onDuplicaVersione(row),
     },
     {
       key: 'chiudi-riga',
@@ -469,7 +497,7 @@ function buildRigaActions(row) {
           </Column>
           <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
             <template #body="{ data }">
-              <RowActionsMenu :actions="buildRigaActions(data)" />
+              <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
             </template>
           </Column>
         </DataTable>
@@ -480,16 +508,8 @@ function buildRigaActions(row) {
         <template v-if="!isReadonly">
           <template v-if="adding">
             <div class="app-drawer-section">
-              <h4>{{ formMode === 'duplicate' ? t('catalogo.nuova_versione_componente') : t('catalogo.nuovo_componente') }}</h4>
+              <h4>{{ t('catalogo.nuovo_componente') }}</h4>
             </div>
-            <Message
-              v-if="formMode === 'duplicate'"
-              severity="warn"
-              :closable="false"
-              class="mt-025"
-            >
-              {{ t('catalogo.nuova_versione_hint') }}
-            </Message>
             <div class="form-grid">
               <div class="form-field">
                 <label>{{ t('catalogo.field_componente') }} *</label>
@@ -595,6 +615,57 @@ function buildRigaActions(row) {
         icon="pi pi-calendar-times" severity="warn"
         :disabled="!chiudiDialogData || loading" :loading="loading"
         @click="confermaChiusura" />
+    </div>
+  </Dialog>
+
+  <!-- Dialog "Duplica versione" (Fase 3): chiama l'endpoint atomico
+       /duplica-versione/. Il BE chiude la sorgente con valido_al=chiudi_al
+       e apre una nuova riga con valido_dal=chiudi_al+1, copia verbatim
+       della struttura. min-date = valido_dal sorgente (dal BE come
+       data_min_chiusura). Idempotency-Key generata client-side. -->
+  <Dialog
+    :visible="duplicaDialogVisible"
+    @update:visible="v => { if (!v) annullaDuplicaVersione() }"
+    modal
+    :header="t('catalogo.duplica_versione_dialog_titolo')"
+    :style="{ width: '480px' }"
+  >
+    <Message severity="info" :closable="false" class="mb-1">
+      {{ t('catalogo.duplica_versione_info') }}
+    </Message>
+    <Message
+      v-if="duplicaDialogIsImmediata"
+      severity="warn"
+      :closable="false"
+      class="mb-1"
+    >
+      {{ t('catalogo.duplica_versione_warn_immediata') }}
+    </Message>
+    <Message
+      v-else-if="duplicaDialogChiudiAl"
+      severity="info"
+      :closable="false"
+      class="mb-1"
+    >
+      {{ t('catalogo.duplica_versione_info_programmata', {
+        data: displayDate(duplicaDialogChiudiAl)
+      }) }}
+    </Message>
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t('catalogo.duplica_versione_chiudi_al') }}</label>
+        <DatePicker v-model="duplicaDialogChiudiAl" :date-format="DATE_FORMAT"
+          show-icon show-button-bar :min-date="duplicaDialogMinDate" />
+      </div>
+    </div>
+
+    <div class="flex justify-end gap-2 mt-1">
+      <Button :label="t('common.cancel')" text @click="annullaDuplicaVersione" />
+      <Button :label="t('catalogo.duplica_versione_conferma')"
+        icon="pi pi-clone"
+        :disabled="!duplicaDialogChiudiAl || loading" :loading="loading"
+        @click="confermaDuplicaVersione" />
     </div>
   </Dialog>
 </template>

@@ -5,24 +5,28 @@ import { useI18n } from 'vue-i18n'
 import { useTipiRuoloTipiIndirizzoStore } from '../stores/tipiRuoloTipiIndirizzo'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
+import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { TAB_ENTITIES } from '../../core/constants'
+import { buildBoolOptions } from '../../core/utils/options'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import Tag from 'primevue/tag'
+import ToggleSwitch from 'primevue/toggleswitch'
 import NewButton from '../../core/components/NewButton.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import ReloadButton from '../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import { displayDate } from '../../core/utils/date'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useTipiRuoloTipiIndirizzoStore()
 const isReadonly = useInjectReadonly()
 const isBlocked = useInjectBlocked()
+const { execute } = useApiHandler()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'tipo_ruolo_descrizione'
 })
@@ -31,12 +35,37 @@ useTabFreshness(store, TAB_ENTITIES.TIPI_RUOLO_TIPI_INDIRIZZO)
 
 const tipoRuoloFilter = ref(store.filters.tipo_ruolo_id)
 const tipoIndirizzoFilter = ref(store.filters.tipo_indirizzo_id)
-const attivoFilter = ref(store.filters.attivo)
+const attivoFilter = ref(true)
 
-const attivoOptions = [
-  { value: true, label: t('common.attivo') },
-  { value: false, label: t('common.non_attivo') }
-]
+const boolOptions = buildBoolOptions(t)
+
+const fallbackOptionsByRow = ref({})
+const fallbackOptionsLoadingByRow = ref({})
+
+// Scopo: opzioni fallback inline, riusando gli stessi metadata del drawer
+// (`fallback_options` calcolate dal backend sul detail: no self-ref + no cicli).
+function fallbackOptions(row) {
+  if (fallbackOptionsByRow.value[row.id]) return fallbackOptionsByRow.value[row.id]
+  if (!row.fallback_tipo_indirizzo_id) return []
+  return [{
+    tipo_indirizzo_id: row.fallback_tipo_indirizzo_id,
+    codice: row.fallback_codice,
+    descrizione: row.fallback_descrizione || row.fallback_codice
+  }]
+}
+
+async function loadFallbackOptions(row) {
+  if (fallbackOptionsByRow.value[row.id] || fallbackOptionsLoadingByRow.value[row.id]) return
+  fallbackOptionsLoadingByRow.value[row.id] = true
+  try {
+    const detail = await store.fetchDetail(row.id)
+    fallbackOptionsByRow.value[row.id] = Array.isArray(detail?.fallback_options)
+      ? detail.fallback_options
+      : []
+  } finally {
+    fallbackOptionsLoadingByRow.value[row.id] = false
+  }
+}
 
 function onTipoRuoloChange() {
   store.filters.tipo_ruolo_id = tipoRuoloFilter.value
@@ -49,6 +78,43 @@ function onTipoIndirizzoChange() {
 function onAttivoChange() {
   store.filters.attivo = attivoFilter.value
   applyFilters()
+}
+
+async function changeFallback(row, newFallbackId) {
+  const result = await execute(
+    () => store.update(row.id, { fallback_tipo_indirizzo_id: newFallbackId || null }),
+    { successMessage: t('amministrazione.matrice_indirizzi_ruoli.saved') }
+  )
+  if (result !== null) {
+    row.fallback_tipo_indirizzo_id = result.fallback_tipo_indirizzo_id
+    row.fallback_codice = result.fallback_codice
+    row.fallback_descrizione = result.fallback_descrizione
+    fallbackOptionsByRow.value[row.id] = Array.isArray(result.fallback_options)
+      ? result.fallback_options
+      : fallbackOptionsByRow.value[row.id]
+  }
+}
+
+async function toggleObbligatorio(row) {
+  if (isReadonly.value) return
+  const result = await execute(
+    () => store.update(row.id, { obbligatorio: !row.obbligatorio }),
+    { successMessage: t('amministrazione.matrice_indirizzi_ruoli.saved') }
+  )
+  if (result !== null) {
+    Object.assign(row, result)
+  }
+}
+
+async function toggleAttivo(row) {
+  if (isReadonly.value) return
+  const result = await execute(
+    () => store.update(row.id, { attivo: !row.attivo }),
+    { successMessage: t('amministrazione.matrice_indirizzi_ruoli.saved') }
+  )
+  if (result !== null) {
+    Object.assign(row, result)
+  }
 }
 
 onMounted(() => { if (!store.hasSearched) store.fetchList() })
@@ -69,8 +135,8 @@ onMounted(() => { if (!store.hasSearched) store.fetchList() })
         <LookupSelect v-model="tipoIndirizzoFilter" rel="config.tipi_indirizzi"
           :placeholder="t('amministrazione.matrice_indirizzi_ruoli.filter_tipo_indirizzo')"
           show-clear @change="onTipoIndirizzoChange" />
-        <Select v-model="attivoFilter" :options="attivoOptions" option-label="label" option-value="value"
-          :placeholder="t('common.tutti')" show-clear @change="onAttivoChange" />
+        <Select v-model="attivoFilter" :options="boolOptions" option-label="label" option-value="value"
+          :placeholder="t('common.attivo')" @change="onAttivoChange" style="width: 120px;" />
       </div>
       <div class="app-page-actions">
         <ReadonlyBadge />
@@ -93,20 +159,52 @@ onMounted(() => { if (!store.hasSearched) store.fetchList() })
       <Column field="tipo_indirizzo_descrizione" :header="t('amministrazione.matrice_indirizzi_ruoli.col_tipo_indirizzo_descrizione')" sortable style="min-width: 180px;" />
       <Column field="obbligatorio" :header="t('amministrazione.matrice_indirizzi_ruoli.col_obbligatorio')" style="width: 110px;">
         <template #body="{ data }">
-          <Tag :value="data.obbligatorio ? t('common.yes') : t('common.no')"
-            :severity="data.obbligatorio ? 'warn' : 'secondary'" />
+          <div @click.stop>
+            <ToggleSwitch
+              :modelValue="data.obbligatorio"
+              :disabled="isReadonly"
+              @update:modelValue="toggleObbligatorio(data)"
+            />
+          </div>
         </template>
       </Column>
-      <Column field="fallback_codice" :header="t('amministrazione.matrice_indirizzi_ruoli.col_fallback')" style="width: 140px;">
+      <Column field="fallback_codice" :header="t('amministrazione.matrice_indirizzi_ruoli.col_fallback')" style="width: 190px;">
         <template #body="{ data }">
-          {{ data.fallback_codice || '—' }}
+          <div @click.stop>
+            <Select
+              :modelValue="data.fallback_tipo_indirizzo_id"
+              @before-show="loadFallbackOptions(data)"
+              @focus="loadFallbackOptions(data)"
+              @update:modelValue="val => changeFallback(data, val)"
+              :options="fallbackOptions(data)"
+              option-label="descrizione"
+              option-value="tipo_indirizzo_id"
+              :placeholder="t('amministrazione.matrice_indirizzi_ruoli.no_fallback')"
+              :disabled="isReadonly || fallbackOptionsLoadingByRow[data.id]"
+              show-clear
+              filter
+              class="w-full"
+              style="min-width: 150px;"
+            />
+          </div>
         </template>
       </Column>
       <Column field="attivo" :header="t('amministrazione.matrice_indirizzi_ruoli.col_attivo')" sortable style="width: 100px;">
         <template #body="{ data }">
-          <Tag :value="data.attivo ? t('common.attivo') : t('common.non_attivo')"
-            :severity="data.attivo ? 'success' : 'danger'" />
+          <div @click.stop>
+            <ToggleSwitch
+              :modelValue="data.attivo"
+              :disabled="isReadonly"
+              @update:modelValue="toggleAttivo(data)"
+            />
+          </div>
         </template>
+      </Column>
+      <Column field="valido_dal" :header="t('amministrazione.matrice_indirizzi_ruoli.col_valido_dal')" sortable style="width: 120px;">
+        <template #body="{ data }">{{ displayDate(data.valido_dal) }}</template>
+      </Column>
+      <Column field="valido_al" :header="t('amministrazione.matrice_indirizzi_ruoli.col_valido_al')" sortable style="width: 120px;">
+        <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
       </Column>
     </DataTable>
     </template>

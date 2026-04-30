@@ -114,6 +114,47 @@ modifica rifiutati con `E_CONFIG_VALIDATION`.
 }
 ```
 
+**Fase 4 — `non_editable_fields` a livello envelope**: l'envelope GET lista
+include `data.non_editable_fields: ["tipo_indirizzo_id", "tipo_ruolo_id"]`
+(le 2 dimensioni della matrice sono semanticamente immutabili: cambiarle =
+rimpiazzare la riga). Il FE consuma questo campo per gating dei Select
+dimensionali nel drawer di edit.
+
+### `GET` dettaglio — proiezioni Fase 4
+
+Il `GET /{record_id}/` arricchisce il dict di response con:
+
+- `non_editable_fields: list[str]` — stessa lista dell'envelope.
+- `fallback_options: list[{tipo_indirizzo_id, codice, descrizione}]` — lista
+  pre-filtrata dei tipi indirizzo candidati come fallback per la riga corrente.
+  Il filtraggio applica:
+  - **No self-reference**: il tipo della riga e' escluso (un tipo non puo'
+    essere fallback di se stesso).
+  - **No cicli**: candidati la cui catena di fallback porta al tipo corrente
+    sono esclusi (DFS con `visited` set, gestisce anche cicli pre-esistenti
+    nel DB senza loop infinito).
+
+**Esempio response detail**:
+
+```json
+{
+  "data": {
+    "id": 1, "tipo_ruolo_id": 5, "tipo_indirizzo_id": 8,
+    "fallback_tipo_indirizzo_id": 3,
+    "non_editable_fields": ["tipo_indirizzo_id", "tipo_ruolo_id"],
+    "fallback_options": [
+      {"tipo_indirizzo_id": 3, "codice": "SEDEOP", "descrizione": "Sede operativa"},
+      {"tipo_indirizzo_id": 7, "codice": "CORR",   "descrizione": "Corrispondenza"}
+    ]
+  }
+}
+```
+
+In `GET` lista i campi `non_editable_fields` e `fallback_options` sono
+solo a livello envelope/dettaglio: la lista non li espone per riga (il
+calcolo `fallback_options` per N righe e' costoso e serve solo nel drawer
+di edit di una singola riga).
+
 ## Regole
 
 - Le coppie `(tipo_ruolo_id, tipo_indirizzo_id)` sono **immutabili** in update.

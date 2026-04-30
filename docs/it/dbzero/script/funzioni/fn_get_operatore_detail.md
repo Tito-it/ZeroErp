@@ -1,0 +1,119 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_operatore_detail.md" %}
+# ⚙️ Funzione `fn_get_operatore_detail`
+
+```sql
+CREATE FUNCTION fn_get_operatore_detail(p_auth_user_id integer)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
+ RETURNS TABLE(auth_user_id integer, username character varying, email character varying, first_name character varying, last_name character varying, soggetto_cognome text, soggetto_nome text, soggetto_id uuid, ragione_sociale_completa text, codice_fiscale text, is_super_admin boolean, ruolo_applicativo text, is_active boolean, unita_organizzativa_id integer, unita_organizzativa_nome text, risorsa_umana_id bigint, attivo boolean, valido_dal text, valido_al text, override_aree_count bigint, override_azioni_count bigint, emittenti_count bigint, emittenti_descrizione text, last_login timestamp with time zone, invito_inviato_at timestamp with time zone, deve_cambiare_password boolean, can_invite boolean, invite_reason text, can_disable boolean, disable_reason text, can_demote_super_admin boolean, demote_reason text)
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+BEGIN
+    -- =========================================================
+    -- Update Chunk A Fase 7 (2026-04-29):
+    --   Rimossa chiamata interna a script.fn_get_ruolo_sistema.
+    --   Il campo ruolo_sistema (output text, contratto BE
+    --   invariato) viene calcolato inline con CASE WHEN su
+    --   fn_has_identita_attiva + fn_is_super_admin - stessa
+    --   logica del wrapper legacy ma senza dispatch
+    --   intermedio (un livello di chiamata in meno).
+    --
+    --   Drop output column rinviato a Chunk B post BE migrato.
+    -- =========================================================
+    RETURN QUERY
+    WITH ctx AS (
+        SELECT
+            script.fn_check_operatore_invitabile(p_auth_user_id) AS inv_jsonb,
+            script.fn_is_super_admin(p_auth_user_id) AS is_sa,
+            script.fn_check_ultimo_super_admin_attivo(p_auth_user_id) AS is_last_sa
+    )
+    SELECT
+        au.id                                                  AS auth_user_id,
+        au.username,
+        au.email,
+        au.first_name,
+        au.last_name,
+        COALESCE(s.cognome, au.last_name)                      AS soggetto_cognome,
+        COALESCE(s.nome,    au.first_name)                     AS soggetto_nome,
+        s.id                                                   AS soggetto_id,
+        s.ragione_sociale_completa,
+        s.codice_fiscale,
+        ctx.is_sa                                              AS is_super_admin,
+        id.ruolo_applicativo::text                             AS ruolo_applicativo,
+        au.is_active,
+        ru.unita_organizzativa_id,
+        uo.descrizione                                         AS unita_organizzativa_nome,
+        ru.id                                                  AS risorsa_umana_id,
+        ru.attivo,
+        ru.valido_dal::text                                    AS valido_dal,
+        ru.valido_al::text                                     AS valido_al,
+        COALESCE((SELECT COUNT(*) FROM config.user_override_aree uoa
+                   WHERE uoa.auth_user_id = au.id), 0)         AS override_aree_count,
+        COALESCE((SELECT COUNT(*) FROM config.user_override_azioni uoz
+                   WHERE uoz.auth_user_id = au.id), 0)         AS override_azioni_count,
+        COALESCE(ef_agg.cnt, 0)                                AS emittenti_count,
+        ef_agg.descrizione                                     AS emittenti_descrizione,
+        au.last_login,
+        id.invito_inviato_at,
+        id.deve_cambiare_password,
+        (ctx.inv_jsonb ->> 'invitabile')::boolean              AS can_invite,
+        ctx.inv_jsonb ->> 'motivo'                             AS invite_reason,
+        NOT ctx.is_last_sa                                     AS can_disable,
+        CASE WHEN ctx.is_last_sa
+             THEN 'Ultimo SUPER_ADMIN attivo: disabilitarlo causerebbe il lockout del sistema'
+             ELSE NULL
+        END                                                    AS disable_reason,
+        CASE WHEN ctx.is_sa
+             THEN NOT ctx.is_last_sa
+             ELSE NULL
+        END                                                    AS can_demote_super_admin,
+        CASE
+             WHEN NOT ctx.is_sa  THEN NULL
+             WHEN ctx.is_last_sa THEN 'Ultimo SUPER_ADMIN attivo: la rimozione del binding causerebbe il lockout del sistema'
+             ELSE NULL
+        END                                                    AS demote_reason
+      FROM django.auth_user au
+      LEFT JOIN anagrafiche.identita_digitali id
+        ON id.auth_user_id      = au.id
+       AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+      LEFT JOIN anagrafiche.soggetti_ruoli sr
+        ON sr.id = id.soggetto_ruolo_id
+      LEFT JOIN anagrafiche.risorse_umane ru
+        ON ru.soggetto_ruolo_id = sr.id
+      LEFT JOIN anagrafiche.soggetti s
+        ON s.id = sr.soggetto_id
+      LEFT JOIN config.unita_organizzative uo
+        ON uo.id = ru.unita_organizzativa_id
+      LEFT JOIN LATERAL (
+          SELECT
+              COUNT(*) AS cnt,
+              string_agg(
+                  COALESCE(s_ef.ragione_sociale_completa, ef.descrizione),
+                  ', '
+                  ORDER BY COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+              ) AS descrizione
+            FROM config.user_emittenti_fiscali uef
+            JOIN anagrafiche.emittenti_fiscali ef
+              ON ef.id = uef.emittente_fiscale_id
+            LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+              ON sr_ef.id = ef.soggetto_ruolo_id
+            LEFT JOIN anagrafiche.soggetti s_ef
+              ON s_ef.id = sr_ef.soggetto_id
+           WHERE uef.auth_user_id = au.id
+      ) ef_agg ON true
+      CROSS JOIN ctx
+     WHERE au.id = p_auth_user_id;
+END;
+$function$
+
+COMMENT ON FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
+IS 'Riga di dettaglio operatore + 6 capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. LANGUAGE plpgsql STABLE.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

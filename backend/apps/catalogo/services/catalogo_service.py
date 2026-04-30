@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, NoReturn
 from uuid import UUID
 
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 
 from apps.catalogo.db.catalogo_bom_repository import (
     COMPONENTE_WRITE_COLUMNS,
@@ -30,7 +30,9 @@ from apps.catalogo.db.catalogo_uom_repository import (
     CatalogoUomRepository,
 )
 from apps.core.api.payload_validators import paginated_envelope
+from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.parameter_service import ParameterService
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset(ARTICOLI_ORDER_COLUMNS.keys())
 _ORDER_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
@@ -77,6 +79,57 @@ _ROUNDING_MODE_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
 )
 _NOTA_ANCHOR_VALIDI: frozenset[str] = frozenset({"DOCUMENTO", "RIGA"})
 _NOTA_POSIZIONE_VALIDI: frozenset[str] = frozenset({"HEADER", "FOOTER", "SEZIONE", "BEFORE", "AFTER"})
+
+# Gap conosciuti rispetto a `dbops.vw_non_editable_fields` (Fase 5 BE).
+# La vista DB oggi copre solo i lock_columns AUTO registrati nel CSV
+# `dbops.automation_lock_columns`. Mancano alcune colonne effettivamente
+# immutabili lato dominio (lock condizionali o non ancora registrati):
+#   - catalogo.articoli.codice (gestito da trgfn_articoli_protect_codice)
+#   - catalogo.articoli_uom_operativa.uom_id (immutabile per coppia)
+#   - catalogo.unita_misura_conversioni.uom_from_id / uom_to_id
+# Questo dict copre il gap fornendo al FE la lista completa. Quando il
+# team DB completera' il registro, le entries qui vanno rimosse: la lista
+# tornera' DB-driven al 100%. Drift visibile = self-documenting.
+_NON_EDITABLE_DB_GAPS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("catalogo", "articoli"): ("codice",),
+    ("catalogo", "articoli_uom_operativa"): ("uom_id",),
+    ("catalogo", "unita_misura_conversioni"): ("uom_from_id", "uom_to_id"),
+}
+
+
+# Scopo: Calcola la lista `non_editable_fields` per (schema, tabella)
+# unendo il registro DB (`dbops.vw_non_editable_fields`) col gap Python
+# `_NON_EDITABLE_DB_GAPS`. Single entry-point usato dai 3 detail (articolo,
+# uom_operativa, conversione) cosi' la regola del gap non si replica.
+def _compute_non_editable_fields(schema: str, table: str) -> list[str]:
+    db_locked = set(LockColumnsRepository.list_non_editable(schema, table))
+    db_locked.update(_NON_EDITABLE_DB_GAPS.get((schema, table), ()))
+    return sorted(db_locked)
+
+
+# Scopo: in create, applica il default `valido_dal=today` se il campo manca
+# o e' None. Centralizza la regola Fase 4 (BE-only) per i 3 service create
+# (componente, uom_operativa, conversione): il DDL DB non ha
+# `DEFAULT CURRENT_DATE` (DB declined), il fallback vive qui.
+# Restituisce sempre un `date | _MissingType` coerente per il chiamante.
+def _apply_valido_dal_default(valido_dal, *, for_create: bool):
+    if for_create and (valido_dal is _MISSING or valido_dal is None):
+        return date.today()
+    return valido_dal
+
+
+# Marker per riconoscere i codici di dominio sollevati da
+# `catalogo.fn_duplica_componente_versione` via P0001. Pattern simmetrico a
+# `vendite.pricing_service._KNOWN_DB_ERROR_MARKERS`: tutti i substring devono
+# matchare (no false positive da template generici). I template vivono in
+# `config.messaggi_errore`: cambi DB richiedono aggiornamento coordinato qui.
+_DUPLICA_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("E_BOM_VERSIONE_OVERLAP", ("La nuova versione del componente", "si sovrappone")),
+    ("E_BOM_SORGENTE_GIA_CHIUSA", ("La riga sorgente della BoM e' gia' chiusa",)),
+    ("E_BOM_PRODOTTO_MISMATCH", ("La riga BoM appartiene al prodotto",)),
+    ("E_BOM_RIGA_NOT_FOUND", ("Riga BoM non trovata",)),
+    ("E_BOM_VALIDO_AL_INVALIDO", ("valido_al", "non puo' essere precedente a valido_dal")),
+)
 
 
 class _MissingType:
@@ -569,6 +622,17 @@ def _extract_articolo_payload(
             function_name=function_name,
             log_to_db=True,
         )
+        # Fase 7: attivo non passa da PATCH, solo dagli endpoint dedicati
+        # /disattiva/ e /riattiva/ (azione di dominio, pattern AS/400).
+        ErrorManager.require(
+            "attivo" not in payload,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload articolo non valido.",
+            detail="attivo non e' modificabile via PATCH: usa gli endpoint /disattiva/ o /riattiva/.",
+            context={"field": "attivo"},
+            function_name=function_name,
+            log_to_db=True,
+        )
         _validate_payload_keys(
             payload,
             allowed_keys=_ARTICOLO_UPDATE_ALLOWED_KEYS | {"codice", "uom_id"},
@@ -813,6 +877,8 @@ def _extract_uom_operativa_payload(
         nullable=True,
         message=payload_message,
     )
+    # Fase 4 (BE-only): centralizzato in `_apply_valido_dal_default`.
+    valido_dal = _apply_valido_dal_default(valido_dal, for_create=not for_update)
     if valido_dal is not _MISSING:
         data["valido_dal"] = valido_dal
     if valido_al is not _MISSING:
@@ -942,7 +1008,7 @@ def _extract_componente_payload(
         payload,
         "valido_dal",
         function_name=function_name,
-        nullable=False,
+        nullable=True,
         message=payload_message,
     )
     valido_al = _extract_payload_date(
@@ -952,17 +1018,12 @@ def _extract_componente_payload(
         nullable=True,
         message=payload_message,
     )
+    # Fase 4 (BE-only): centralizzato in `_apply_valido_dal_default`.
+    # Applicato prima di _validate_date_interval cosi' la coerenza temporale
+    # con valido_al e' verificata sul valore effettivo (today), non `_MISSING`.
+    valido_dal = _apply_valido_dal_default(valido_dal, for_create=not for_update)
     if valido_dal is not _MISSING:
         data["valido_dal"] = valido_dal
-    elif not for_update:
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="Payload componente non valido.",
-            detail="valido_dal obbligatorio.",
-            context={"field": "valido_dal"},
-            function_name=function_name,
-            log_to_db=True,
-        )
     if valido_al is not _MISSING:
         data["valido_al"] = valido_al
     _validate_date_interval(
@@ -1256,7 +1317,8 @@ def _get_articolo_base(articolo_id: UUID | str) -> dict[str, object]:
     return articolo
 
 
-# Scopo: Restituisce il dettaglio completo di un articolo con UoM, componenti e note.
+# Scopo: Restituisce il dettaglio completo di un articolo con UoM, componenti,
+#        note e i metadata `non_editable_fields` (Fase 5) per il FE.
 def fn_get_articolo(articolo_id: UUID | str) -> dict[str, object]:
     articolo = _get_articolo_base(articolo_id)
     uom_repository = CatalogoUomRepository()
@@ -1269,6 +1331,7 @@ def fn_get_articolo(articolo_id: UUID | str) -> dict[str, object]:
         else []
     )
     articolo["note"] = bom_repository.list_note_articolo(articolo_id)
+    articolo["non_editable_fields"] = _compute_non_editable_fields("catalogo", "articoli")
     return articolo
 
 
@@ -1334,6 +1397,61 @@ def fn_disattiva_articolo(articolo_id: UUID | str) -> dict[str, object]:
     return fn_get_articolo(articolo_id)
 
 
+# Scopo: Riattiva un articolo (Fase 7) — pattern simmetrico a fn_disattiva.
+# La fn DB `catalogo.fn_riattiva_articolo` e' idempotente su gia' attivo
+# e raise E_ARTICOLO_NOT_FOUND se l'id non esiste. Pre-flight via
+# fn_get_articolo (uniforma il NOT_FOUND con il codice catalogo).
+# I figli (UoM operative, righe BoM) restano invariati: l'admin li
+# riattiva esplicitamente in azioni successive (pattern AS/400).
+def fn_riattiva_articolo(articolo_id: UUID | str) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_riattiva_articolo"
+    articolo = fn_get_articolo(articolo_id)
+    if articolo.get("attivo") is True:
+        return articolo
+
+    repository = CatalogoRepository()
+    # Eventuali violazioni di vincoli (es. nuovi UNIQUE su attivo) tradotte
+    # in errore applicativo coerente con create/update. I trigger plpgsql
+    # P0001 (parent inattivo) viaggiano come DatabaseError e li gestisce
+    # il middleware: cattura mirata qui solo per IntegrityError noti.
+    try:
+        repository.reactivate_articolo(articolo_id)
+    except IntegrityError as exc:
+        _translate_articolo_integrity_error(exc, function_name=function_name)
+    return fn_get_articolo(articolo_id)
+
+
+# Scopo: Restituisce defaults pre-compilazione form articolo (Fase 8 — A5).
+#        Centralizza il consumo dei parametri usati dal FE per il form di
+#        creazione articolo (oggi: DEFAULT_IVA_ID). Tipi gia' castati: il FE
+#        non duplica il cast da stringa generico di get_defaults. Parametri
+#        malformati ritornano None (best-effort, no raise: il form mostra
+#        comunque, l'utente seleziona manualmente).
+def fn_get_articolo_form_defaults(
+    *,
+    django_user_id: int | None = None,
+    group_ids: list[int] | None = None,
+    emittente_fiscale_id: int | None = None,
+) -> dict[str, object]:
+    service = ParameterService()
+    raw = service.get_defaults(
+        ["DEFAULT_IVA_ID"],
+        django_user_id=django_user_id,
+        group_ids=group_ids,
+        emittente_fiscale_id=emittente_fiscale_id,
+    )
+
+    default_iva_id: int | None = None
+    raw_iva = raw.get("DEFAULT_IVA_ID")
+    if raw_iva is not None:
+        try:
+            default_iva_id = int(raw_iva)
+        except (ValueError, TypeError):
+            default_iva_id = None
+
+    return {"default_iva_id": default_iva_id}
+
+
 # Scopo: Restituisce lookup articoli limitato per autocomplete cross-dominio.
 def fn_lookup_articoli(
     *,
@@ -1389,16 +1507,26 @@ def fn_list_uom_rounding_modes() -> list[dict[str, object]]:
 
 
 # Scopo: Lista UoM operative dell'articolo, previa verifica esistenza articolo.
+#        Envelope arricchito con `non_editable_fields` (Fase 5): il FE
+#        costruisce form di edit da una riga della lista, ha bisogno dei
+#        metadata immutabilita' al livello collezione.
 def fn_list_uom_operative(articolo_id: UUID | str) -> dict[str, object]:
     _get_articolo_base(articolo_id)
     repository = CatalogoUomRepository()
-    return _build_results_response(repository.list_uom_operative(articolo_id))
+    response = _build_results_response(repository.list_uom_operative(articolo_id))
+    response["non_editable_fields"] = _compute_non_editable_fields(
+        "catalogo", "articoli_uom_operativa",
+    )
+    return response
 
 
 # Scopo: Crea una UoM operativa per l'articolo e restituisce la riga arricchita.
 def fn_create_uom_operativa(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_create_uom_operativa"
     _get_articolo_base(articolo_id)
+    # Fase 4 (BE-only): il fallback `valido_dal=today` se omesso e' applicato
+    # internamente da `_extract_uom_operativa_payload` per garantire la
+    # validazione coerente con valido_al.
     data = _extract_uom_operativa_payload(payload, for_update=False, function_name=function_name)
     repository = CatalogoUomRepository()
     try:
@@ -1407,6 +1535,9 @@ def fn_create_uom_operativa(articolo_id: UUID | str, payload: dict[str, Any]) ->
         _translate_uom_integrity_error(exc, function_name=function_name)
     result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
     assert result is not None
+    result["non_editable_fields"] = _compute_non_editable_fields(
+        "catalogo", "articoli_uom_operativa",
+    )
     return result
 
 
@@ -1443,6 +1574,9 @@ def fn_update_uom_operativa(
     )
     result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
     assert result is not None
+    result["non_editable_fields"] = _compute_non_editable_fields(
+        "catalogo", "articoli_uom_operativa",
+    )
     return result
 
 
@@ -1488,6 +1622,8 @@ def fn_create_componente(articolo_id: UUID | str, payload: dict[str, Any]) -> di
         function_name=function_name,
         log_to_db=True,
     )
+    # Fase 4 (BE-only): fallback `valido_dal=today` applicato internamente da
+    # `_extract_componente_payload` (single source of truth, validato).
     repository = CatalogoBomRepository()
     try:
         componente_row_id = repository.create_componente(articolo_id, data)
@@ -1553,6 +1689,90 @@ def fn_delete_componente(articolo_id: UUID | str, componente_row_id: UUID | str)
         log_to_db=False,
     )
     return {"deleted": True}
+
+
+# Scopo: Duplica atomicamente la versione corrente di un componente BoM.
+#        Facade su `catalogo.fn_duplica_componente_versione`: chiude la riga
+#        sorgente con `valido_al = chiudi_al` (default oggi) e ne apre una
+#        nuova con `valido_dal = chiudi_al + 1`, copia verbatim della
+#        struttura. Tutto in singola TX, con advisory lock per articolo
+#        (no race con duplicazioni concorrenti sullo stesso prodotto).
+#        Eventuali raise applicativi del DB (P0001) vengono tradotti in
+#        ServiceError preservando il codice originale (E_BOM_*).
+#
+#        Restituisce il dettaglio della NUOVA riga (per UI: refresh + eventuale
+#        focus). La sorgente chiusa va recuperata con `fn_list_componenti`.
+#
+#        Payload: {"chiudi_al": "YYYY-MM-DD" | None}.
+def fn_duplica_componente_versione(
+    articolo_id: UUID | str,
+    componente_row_id: UUID | str,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_duplica_componente_versione"
+    _validate_payload_keys(
+        payload,
+        allowed_keys=frozenset({"chiudi_al"}),
+        function_name=function_name,
+        message="Payload duplica versione non valido.",
+    )
+    chiudi_al = _extract_payload_date(
+        payload,
+        "chiudi_al",
+        function_name=function_name,
+        nullable=True,
+        message="Payload duplica versione non valido.",
+    )
+    # _MISSING -> chiave assente: equivale a None (default DB = CURRENT_DATE).
+    if chiudi_al is _MISSING:
+        chiudi_al = None
+    _get_articolo_base(articolo_id)
+    repository = CatalogoBomRepository()
+    try:
+        new_id = repository.duplica_versione(articolo_id, componente_row_id, chiudi_al)
+    except DatabaseError as exc:
+        _raise_duplica_versione_error(
+            exc,
+            function_name=function_name,
+            context={
+                "articolo_id": str(articolo_id),
+                "componente_row_id": str(componente_row_id),
+                "chiudi_al": chiudi_al.isoformat() if isinstance(chiudi_al, date) else None,
+            },
+        )
+    result = repository.get_componente(articolo_id, new_id)
+    assert result is not None
+    return result
+
+
+# Scopo: Traduce una DatabaseError sollevata da fn_duplica_componente_versione
+#        (P0001 via fn_log_and_raise_error) in ServiceError. Riconosce i 5
+#        codici noti via marker multi-substring sul MESSAGE; se nessun match,
+#        propaga come E_CATALOGO_VALIDATION (catch-all consistente col resto
+#        del catalogo_service). Pattern simmetrico a
+#        `vendite.pricing_service._raise_pricing_error`.
+def _raise_duplica_versione_error(
+    exc: DatabaseError,
+    *,
+    function_name: str,
+    context: dict[str, Any],
+) -> None:
+    msg = str(exc)
+    matched_code: str | None = None
+    for code_candidate, markers in _DUPLICA_DB_ERROR_MARKERS:
+        if all(marker in msg for marker in markers):
+            matched_code = code_candidate
+            break
+    code = matched_code or "E_CATALOGO_VALIDATION"
+    ErrorManager.raise_error(
+        code=code,
+        message="Impossibile duplicare la versione del componente BoM.",
+        detail=msg,
+        context=context,
+        cause=exc,
+        log_to_db=True,
+        function_name=function_name,
+    )
 
 
 # Scopo: Lista note articolo con dati arricchiti.
@@ -1656,11 +1876,201 @@ def fn_delete_nota(nota_id: int) -> dict[str, object]:
 
 
 # ============================================================
-# Sezione CRUD unita_misura
+# Sezione CRUD uom_tipi / unita_misura
 # ============================================================
 
+_UOM_TIPO_ORDER_BY_VALIDI: frozenset[str] = frozenset({
+    "codice",
+    "codice_interno",
+    "descrizione",
+    "data_insert",
+    "data_update",
+})
+_UOM_TIPO_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "codice_interno", "descrizione"})
+_UOM_TIPO_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset({"descrizione", "attivo"})
 _UOM_ORDER_BY_VALIDI: frozenset[str] = frozenset({"codice", "descrizione", "data_insert", "data_update"})
-_UOM_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "descrizione", "descrizione_fattura"})
+_UOM_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "descrizione", "descrizione_fattura", "tipo_uom_id"})
+
+
+# Scopo: Valida ordinamento UoM/tipi UoM contro whitelist locale.
+def _validate_uom_order(
+    order_by: str,
+    order_dir: str,
+    *,
+    allowed: frozenset[str],
+    function_name: str,
+) -> tuple[str, str]:
+    ErrorManager.require(
+        order_by in allowed,
+        code="E_CATALOGO_VALIDATION",
+        message="Parametri ordinamento non validi.",
+        detail=f"order_by deve essere uno tra: {', '.join(sorted(allowed))}",
+        context={"order_by": order_by},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        order_dir in _ORDER_DIR_VALIDI,
+        code="E_CATALOGO_VALIDATION",
+        message="Parametri ordinamento non validi.",
+        detail="order_dir deve essere 'asc' o 'desc'",
+        context={"order_dir": order_dir},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return order_by, order_dir
+
+
+# Scopo: Traduce errori DB attesi nella scrittura UoM in ServiceError leggibili.
+def _raise_uom_write_error(
+    exc: DatabaseError,
+    *,
+    function_name: str,
+    context: dict[str, object],
+) -> NoReturn:
+    msg = str(exc).lower()
+    if "fk_unita_misura_tipo_uom" in msg:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Tipo UoM non valido.",
+            detail="tipo_uom_id non esiste in catalogo.uom_tipi.",
+            context=context,
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+    if "cambio tipo uom non ammesso" in msg:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Cambio tipo UoM non ammesso.",
+            detail="La UoM partecipa a conversioni globali.",
+            context=context,
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+    raise exc
+
+
+# Scopo: Lista paginata tipologie UoM con filtri e ordinamento.
+def fn_list_uom_tipi(
+    *,
+    attivo: bool | None = None,
+    search: str | None = None,
+    order_by: str = "descrizione",
+    order_dir: str = "asc",
+    limit: int = 25,
+    offset: int = 0,
+) -> tuple[list[dict[str, object]], int]:
+    function_name = "catalogo.catalogo_service.fn_list_uom_tipi"
+    order_by, order_dir = _validate_uom_order(
+        order_by,
+        order_dir,
+        allowed=_UOM_TIPO_ORDER_BY_VALIDI,
+        function_name=function_name,
+    )
+    repository = CatalogoRepository()
+    return repository.list_uom_tipi(
+        attivo=attivo,
+        search=search,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
+
+
+# Scopo: Dettaglio singola tipologia UoM.
+def fn_get_uom_tipo(tipo_id: int) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_get_uom_tipo"
+    repository = CatalogoRepository()
+    result = repository.get_uom_tipo(tipo_id)
+    ErrorManager.require(
+        result is not None,
+        code="E_CATALOGO_UOM_TIPO_NOT_FOUND",
+        message="Tipologia UoM non trovata.",
+        detail=f"Nessuna tipologia UoM con id={tipo_id}.",
+        context={"tipo_id": tipo_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    assert result is not None
+    return result
+
+
+# Scopo: Crea una nuova tipologia UoM.
+def fn_create_uom_tipo(payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_create_uom_tipo"
+    _validate_payload_keys(
+        payload,
+        allowed_keys=_UOM_TIPO_CREATE_ALLOWED_KEYS,
+        function_name=function_name,
+        message="Payload tipologia UoM non valido.",
+    )
+    codice = _require_string(payload, "codice", function_name=function_name, message="Codice obbligatorio.")
+    codice_interno = _require_string(
+        payload,
+        "codice_interno",
+        function_name=function_name,
+        message="Codice interno obbligatorio.",
+    )
+    descrizione = _require_string(payload, "descrizione", function_name=function_name, message="Descrizione obbligatoria.")
+
+    data: dict[str, Any] = {
+        "codice": codice.upper(),
+        "codice_interno": codice_interno.upper(),
+        "descrizione": descrizione,
+    }
+
+    repository = CatalogoRepository()
+    try:
+        new_id = repository.create_uom_tipo(data)
+    except IntegrityError as exc:
+        msg = str(exc).lower()
+        if "uq_uom_tipi_codice" in msg or "uq_uom_tipi_codice_interno" in msg or "unique" in msg:
+            ErrorManager.raise_error(
+                code="E_CATALOGO_VALIDATION",
+                message="Codice tipologia UoM gia' esistente.",
+                detail=f"codice={codice}, codice_interno={codice_interno}.",
+                context={"codice": codice, "codice_interno": codice_interno},
+                function_name=function_name,
+                log_to_db=True,
+                cause=exc,
+            )
+        raise
+    return fn_get_uom_tipo(new_id)
+
+
+# Scopo: Aggiorna una tipologia UoM.
+def fn_update_uom_tipo(tipo_id: int, payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_update_uom_tipo"
+    _validate_payload_keys(
+        payload,
+        allowed_keys=_UOM_TIPO_UPDATE_ALLOWED_KEYS,
+        function_name=function_name,
+        message="Payload tipologia UoM non valido.",
+    )
+    data: dict[str, Any] = {}
+    descrizione = _extract_string(payload, "descrizione", function_name=function_name, nullable=False)
+    if descrizione is not _MISSING:
+        data["descrizione"] = descrizione
+    attivo = _extract_present_bool(payload, "attivo", function_name=function_name, message="Payload tipologia UoM non valido.")
+    if attivo is not _MISSING:
+        data["attivo"] = attivo
+
+    if data:
+        repository = CatalogoRepository()
+        updated = repository.update_uom_tipo(tipo_id, data)
+        ErrorManager.require(
+            updated,
+            code="E_CATALOGO_UOM_TIPO_NOT_FOUND",
+            message="Tipologia UoM non trovata.",
+            detail=f"Nessuna tipologia UoM con id={tipo_id}.",
+            context={"tipo_id": tipo_id},
+            function_name=function_name,
+            log_to_db=False,
+        )
+    return fn_get_uom_tipo(tipo_id)
 
 
 # Scopo: Lista paginata unita' di misura con filtri e ordinamento.
@@ -1674,15 +2084,11 @@ def fn_list_unita_misura(
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
     function_name = "catalogo.catalogo_service.fn_list_unita_misura"
-    order_by, order_dir = _validate_order(order_by, order_dir, function_name)
-    ErrorManager.require(
-        order_by in _UOM_ORDER_BY_VALIDI,
-        code="E_CATALOGO_VALIDATION",
-        message="Parametri ordinamento non validi.",
-        detail=f"order_by deve essere uno tra: {', '.join(sorted(_UOM_ORDER_BY_VALIDI))}",
-        context={"order_by": order_by},
+    order_by, order_dir = _validate_uom_order(
+        order_by,
+        order_dir,
+        allowed=_UOM_ORDER_BY_VALIDI,
         function_name=function_name,
-        log_to_db=True,
     )
     repository = CatalogoRepository()
     return repository.list_unita_misura(
@@ -1720,15 +2126,25 @@ def fn_create_unita_misura(payload: dict[str, Any]) -> dict[str, object]:
     codice = _require_string(payload, "codice", function_name=function_name, message="Codice obbligatorio.")
     descrizione = _require_string(payload, "descrizione", function_name=function_name, message="Descrizione obbligatoria.")
     descrizione_fattura = _extract_string(payload, "descrizione_fattura", function_name=function_name, nullable=True)
+    tipo_uom_id = _extract_nullable_int(payload, "tipo_uom_id", function_name=function_name, message="Tipo UoM obbligatorio.")
+    ErrorManager.require(
+        isinstance(tipo_uom_id, int) and tipo_uom_id > 0,
+        code="E_CATALOGO_VALIDATION",
+        message="Tipo UoM obbligatorio.",
+        detail="tipo_uom_id deve essere un intero positivo.",
+        context={"tipo_uom_id": None if tipo_uom_id is _MISSING else tipo_uom_id},
+        function_name=function_name,
+        log_to_db=True,
+    )
 
-    data: dict[str, Any] = {"codice": codice.upper(), "descrizione": descrizione}
+    data: dict[str, Any] = {"codice": codice.upper(), "descrizione": descrizione, "tipo_uom_id": tipo_uom_id}
     if descrizione_fattura is not _MISSING:
         data["descrizione_fattura"] = descrizione_fattura
 
     repository = CatalogoRepository()
     try:
         new_id = repository.create_unita_misura(data)
-    except IntegrityError as exc:
+    except DatabaseError as exc:
         msg = str(exc).lower()
         if "uq_unita_misura_codice" in msg or "unique" in msg:
             ErrorManager.raise_error(
@@ -1740,23 +2156,23 @@ def fn_create_unita_misura(payload: dict[str, Any]) -> dict[str, object]:
                 log_to_db=True,
                 cause=exc,
             )
-        raise
+        _raise_uom_write_error(
+            exc,
+            function_name=function_name,
+            context={"codice": codice, "tipo_uom_id": tipo_uom_id},
+        )
     return fn_get_unita_misura(new_id)
 
 
 # Scopo: Aggiorna una unita' di misura.
 def fn_update_unita_misura(uom_id: int, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_update_unita_misura"
-    update_keys = frozenset({"descrizione", "descrizione_fattura", "attivo"})
-    unknown = sorted(k for k in payload if k not in update_keys)
-    ErrorManager.require(
-        not unknown,
-        code="E_CATALOGO_VALIDATION",
-        message="Payload UoM non valido.",
-        detail=f"Campi non supportati: {', '.join(unknown)}",
-        context={"unknown_keys": unknown},
+    update_keys = frozenset({"descrizione", "descrizione_fattura", "tipo_uom_id", "attivo"})
+    _validate_payload_keys(
+        payload,
+        allowed_keys=update_keys,
         function_name=function_name,
-        log_to_db=True,
+        message="Payload UoM non valido.",
     )
     data: dict[str, Any] = {}
     descrizione = _extract_string(payload, "descrizione", function_name=function_name, nullable=False)
@@ -1765,13 +2181,32 @@ def fn_update_unita_misura(uom_id: int, payload: dict[str, Any]) -> dict[str, ob
     descrizione_fattura = _extract_string(payload, "descrizione_fattura", function_name=function_name, nullable=True)
     if descrizione_fattura is not _MISSING:
         data["descrizione_fattura"] = descrizione_fattura
+    tipo_uom_id = _extract_nullable_int(payload, "tipo_uom_id", function_name=function_name, message="Payload UoM non valido.")
+    if tipo_uom_id is not _MISSING:
+        ErrorManager.require(
+            tipo_uom_id is not None and tipo_uom_id > 0,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload UoM non valido.",
+            detail="tipo_uom_id deve essere un intero positivo.",
+            context={"tipo_uom_id": tipo_uom_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        data["tipo_uom_id"] = tipo_uom_id
     attivo = _extract_present_bool(payload, "attivo", function_name=function_name, message="Payload UoM non valido.")
     if attivo is not _MISSING:
         data["attivo"] = attivo
 
     if data:
         repository = CatalogoRepository()
-        updated = repository.update_unita_misura(uom_id, data)
+        try:
+            updated = repository.update_unita_misura(uom_id, data)
+        except DatabaseError as exc:
+            _raise_uom_write_error(
+                exc,
+                function_name=function_name,
+                context={"uom_id": uom_id, "tipo_uom_id": data.get("tipo_uom_id")},
+            )
         ErrorManager.require(
             updated,
             code="E_CATALOGO_UOM_NOT_FOUND",
@@ -1859,6 +2294,11 @@ def fn_get_conversione(conv_id: int) -> dict[str, object]:
         log_to_db=False,
     )
     assert result is not None
+    # Fase 5: arricchisce il detail coi campi non editabili (uom_from_id,
+    # uom_to_id immutabili dopo create per coerenza con exclude daterange).
+    result["non_editable_fields"] = _compute_non_editable_fields(
+        "catalogo", "unita_misura_conversioni",
+    )
     return result
 
 
@@ -1901,22 +2341,23 @@ def fn_create_conversione(payload: dict[str, Any]) -> dict[str, object]:
     )
     valido_dal = _extract_payload_date(payload, "valido_dal", function_name=function_name, nullable=True, message="Payload conversione non valido.")
     valido_al = _extract_payload_date(payload, "valido_al", function_name=function_name, nullable=True, message="Payload conversione non valido.")
+    # Fase 4 (BE-only): centralizzato in `_apply_valido_dal_default`.
+    valido_dal = _apply_valido_dal_default(valido_dal, for_create=True)
     _validate_date_interval(valido_dal=valido_dal, valido_al=valido_al, function_name=function_name, payload_name="conversione")
 
     data: dict[str, Any] = {
         "uom_from_id": uom_from_id,
         "uom_to_id": uom_to_id,
         "fattore": fattore,
+        "valido_dal": valido_dal,
     }
-    if valido_dal is not _MISSING:
-        data["valido_dal"] = valido_dal
     if valido_al is not _MISSING:
         data["valido_al"] = valido_al
 
     repository = CatalogoRepository()
     try:
         new_id = repository.create_conversione(data)
-    except IntegrityError as exc:
+    except DatabaseError as exc:
         _translate_conversione_integrity_error(exc, function_name=function_name)
         raise
     return fn_get_conversione(new_id)
@@ -1947,7 +2388,7 @@ def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, ob
         repository = CatalogoRepository()
         try:
             updated = repository.update_conversione(conv_id, data)
-        except IntegrityError as exc:
+        except DatabaseError as exc:
             _translate_conversione_integrity_error(exc, function_name=function_name)
             raise
         ErrorManager.require(
@@ -1963,8 +2404,17 @@ def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, ob
 
 
 # Scopo: Traduce errori di integrita' DB per conversioni in messaggi utente.
-def _translate_conversione_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
+def _translate_conversione_integrity_error(exc: DatabaseError, *, function_name: str) -> None:
     msg = str(exc).lower()
+    if "tipologia diversa" in msg or "same-type" in msg:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Conversione UoM non ammessa.",
+            detail="Le conversioni globali sono consentite solo tra UoM della stessa tipologia.",
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
     if "overlap" in msg or "exclude" in msg:
         ErrorManager.raise_error(
             code="E_CATALOGO_VALIDATION",

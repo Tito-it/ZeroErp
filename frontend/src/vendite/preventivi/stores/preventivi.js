@@ -11,11 +11,9 @@ import {
 } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../../core/constants'
-import { useAuthStore } from '../../../stores/auth'
 
 export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   const { emitDataChanged } = useTabEvents()
-  const auth = useAuthStore()
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
@@ -206,4 +204,8 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     inviaACommessa, loadStatoFatturazione,
     creaPratica, loadPratiche,
   }
+}, {
+  // Reset automatico al logout (autoResetPlugin): items + filters dell'utente
+  // non devono persistere per l'eventuale utente successivo sullo stesso browser.
+  userScoped: true,
 })

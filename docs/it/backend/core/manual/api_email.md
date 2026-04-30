@@ -139,13 +139,71 @@ e' fornita, viene ri-crittografata.
 POST /api/v1/amm-software/email-accounts/{id}/test/
 ```
 
-Body vuoto. Tenta login SMTP senza inviare email. In console mode ritorna successo diretto.
+Body vuoto. Tenta login SMTP senza inviare email. In console mode (host vuoto
+o `smtp.example.com`) ritorna successo diretto.
 
-Risposta:
+L'esito viene **persistito** in `config.email_account.meta` (chiavi
+`last_test_outcome`, `last_test_at`, `last_test_message`) e ritornato nella
+stessa risposta come parte del detail arricchito (Fase 6).
+
+Risposta (success):
 
 ```json
-{ "data": { "success": true, "message": "Connessione SMTP riuscita." } }
+{
+  "data": {
+    "success": true,
+    "message": "Connessione SMTP riuscita.",
+    "id": 12,
+    "codice": "MAIN",
+    "attivo": true,
+    "smtp_host": "smtp.gmail.com",
+    "can_test": true,
+    "test_reason": null,
+    "last_test_outcome": "SUCCESS",
+    "last_test_at": "2026-04-29T22:00:00+00:00",
+    "last_test_message": "Connessione SMTP riuscita."
+  }
+}
 ```
+
+Risposta (failed):
+
+```json
+{
+  "data": {
+    "success": false,
+    "message": "Errore SMTP: timeout",
+    "id": 12,
+    "can_test": true,
+    "test_reason": null,
+    "last_test_outcome": "FAILED",
+    "last_test_at": "2026-04-29T22:01:00+00:00",
+    "last_test_message": "Errore SMTP: timeout"
+  }
+}
+```
+
+### Capability test connessione (`can_test` / `test_reason`)
+
+Il dettaglio account (`GET /email-accounts/{id}/`) include due campi che
+guidano l'abilitazione del pulsante "Testa connessione" lato UI:
+
+| Campo | Tipo | Significato |
+| --- | --- | --- |
+| `can_test` | bool | `true` se il pulsante test puo' essere abilitato |
+| `test_reason` | string\|null | Chiave i18n del motivo quando `can_test=false` (tooltip) |
+| `last_test_outcome` | string\|null | `SUCCESS`/`FAILED` dell'ultimo test, `null` se mai eseguito |
+| `last_test_at` | string\|null | ISO-8601 UTC dell'ultimo test |
+| `last_test_message` | string\|null | Messaggio diagnostico dell'ultimo test |
+
+Logica di derivazione (`_derive_test_capability` in `email_views.py`):
+
+1. Account non attivo → `can_test=False`, reason `amm.email_test_reason_inactive`.
+2. Host vuoto o placeholder (`smtp.example.com`) → console mode, `can_test=True`
+   anche senza password (nessuna connessione reale).
+3. Host SMTP reale + password non configurata → `can_test=False`, reason
+   `amm.email_test_reason_no_password`.
+4. Host SMTP reale + password configurata → `can_test=True`.
 
 ---
 
@@ -205,6 +263,27 @@ Body:
 ```
 
 Risposta: oggetto e corpo renderizzati con le variabili fornite (senza invio).
+Il `corpo_html` viene **sanificato** lato BE (Fase 6) tramite
+`apps.core.services.html_sanitizer_service.sanitize_email_html`:
+
+- Whitelist tag (`p`, `div`, `span`, `br`, `h1..h6`, `ul/ol/li`, `table/tr/td/th`,
+  `a`, `img`, ecc.) — niente `<script>`, `<iframe>`, `<object>`, `<embed>`,
+  `<form>`, `<style>`.
+- Whitelist attributi per tag — niente attributi globali permissivi
+  (rimossi `onclick`, `onerror`, ecc.).
+- Whitelist protocolli URL: `http`, `https`, `mailto` — rimossi
+  `javascript:`, `data:`, `file:`.
+- Blocchi `<script>` e `<style>` rimossi insieme al loro contenuto
+  (regex pre-bleach).
+- Commenti HTML rimossi.
+
+Il FE renderizza il `corpo_html` ricevuto dentro un `<iframe sandbox="" :srcdoc="">`
+come **defense-in-depth**: anche se la sanificazione lato BE avesse una falla,
+l'iframe sandbox (vuoto = nessun privilegio) impedisce esecuzione di script,
+form, navigation, plugin, popup.
+
+L'`oggetto` e' un header testuale (`Subject`) e non viene sanificato — solo
+renderizzato con `render_template`.
 
 ---
 

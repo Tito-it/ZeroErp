@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Popola meta UI su config.stati_doc_contratti
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260430-61-update-stati-doc-contratti-meta-ui-mctit.yaml
+
+  - changeSet:
+      id: 20260430-61-update-stati-doc-contratti-meta-ui
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      failOnError: true
+      comment: >
+        Popola il campo meta di config.stati_doc_contratti con i metadati UI
+        necessari a script.fn_available_actions_contratto
+        (Fase 1 refactor frontend vendite, 2026-04-30).
+
+        A differenza dei preventivi (che hanno config.transizioni_stati_preventivi
+        con meta per transizione), i contratti non hanno una tabella transizioni
+        dedicata: il grafo e' hardcodato nel trigger
+        trgfn_contratti_guard_transizione_stato (DRAFT->ATTIVO->CESSATO).
+        Si usa stati_doc_contratti.meta come store alternativo data-driven
+        senza DDL aggiuntive: il meta dello stato sorgente contiene i metadati
+        dell'azione in uscita manuale.
+
+        Struttura meta per stato con azione manuale in uscita:
+          outgoing_action:
+            key:              chiave semantica (usata dal FE come key)
+            target_state:     codice_interno dello stato destinazione
+            label_key:        chiave i18n per il label del bottone Vue
+            severity:         severity PrimeVue (info / success / danger)
+            icon:             classe PrimeIcons
+            requires_confirm: se true il drawer mostra dialog di conferma
+            requires_date:    se true l'azione richiede una data (es. cessazione)
+
+        Stati contratto (identificati via codice_interno, immutabile via
+        trigger lock_columns su stati_doc_contratti):
+          DRAFT   -> outgoing_action: attiva (-> ATTIVO)
+          ATTIVO  -> outgoing_action: cessa  (-> CESSATO, requires_date)
+          CESSATO -> terminale, nessuna azione (meta invariato)
+
+        UPDATE per codice_interno: nessuna ipotesi sugli id.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_contratti
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- DRAFT — azione in uscita: attiva (-> ATTIVO)
+              UPDATE config.stati_doc_contratti
+                 SET meta = '{"outgoing_action":{"key":"attiva","target_state":"ATTIVO","label_key":"contratti.azione_attiva","severity":"info","icon":"pi pi-play","requires_confirm":false,"requires_date":false}}'::jsonb
+               WHERE codice_interno = 'DRAFT';
+
+              -- ATTIVO — azione in uscita: cessa (-> CESSATO, richiede data).
+              -- default_date e min_date sono contestuali al contratto:
+              -- calcolati runtime da fn_available_actions_contratto.
+              UPDATE config.stati_doc_contratti
+                 SET meta = '{"outgoing_action":{"key":"cessa","target_state":"CESSATO","label_key":"contratti.azione_cessa","severity":"danger","icon":"pi pi-stop","requires_confirm":true,"requires_date":true}}'::jsonb
+               WHERE codice_interno = 'ATTIVO';
+
+              -- CESSATO — terminale, meta invariato ({}). Nessun UPDATE.

@@ -27,6 +27,9 @@ packaging>=26.0
 # Crittografia (Fernet per password SMTP, secret TOTP)
 cryptography>=44.0
 
+# Sanitizzazione HTML (preview template email — Fase 6 amm-software)
+bleach>=6.2
+
 # AI Assistant
 anthropic>=0.52
 

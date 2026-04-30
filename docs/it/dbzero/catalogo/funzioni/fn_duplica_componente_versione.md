@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/catalogo/manual/fn_duplica_componente_versione.md" %}
 # ⚙️ Funzione `fn_duplica_componente_versione`
 
 ```sql

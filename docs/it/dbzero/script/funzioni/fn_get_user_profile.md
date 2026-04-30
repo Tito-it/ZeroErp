@@ -24,7 +24,6 @@ DECLARE
     v_identita_val_dal        anagrafiche.identita_digitali.valido_dal%TYPE;
     v_identita_val_al         anagrafiche.identita_digitali.valido_al%TYPE;
     v_is_super_admin          boolean;
-    v_ruolo_sistema_out       text;
     -- Blocco risorse_umane
     v_risorsa_umana_id        anagrafiche.risorse_umane.id%TYPE;
     v_soggetto_ruolo_id       anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
@@ -58,14 +57,12 @@ DECLARE
     v_uo_descrizione            config.unita_organizzative.descrizione%TYPE;
 BEGIN
     -- =========================================================
-    -- Scopo (post 21-04-2026, multi-face context-aware):
-    --   Profilo utente completo (JSONB). Source of truth =
-    --   identita_digitali OPERATORE + risorse_umane via
-    --   soggetto_ruolo. Il campo top-level ruolo_applicativo
-    --   riflette il contesto di sessione (GUC
-    --   app.ruolo_applicativo); gli altri campi context-aware
-    --   (permessi_area/azioni_abilitate/is_super_admin) sono
-    --   gia' coerenti via 20260421-03/04.
+    -- Scopo (post Fase 7 step 3, 29-04-2026):
+    --   Profilo utente completo (JSONB) post-rimozione chiave
+    --   'ruolo_sistema'. Source of truth invariato: identita
+    --   OPERATORE + risorse_umane via soggetto_ruolo. Top-level
+    --   ruolo_applicativo GUC-aware (20260421-05); top-level
+    --   is_super_admin context-aware (20260421-03).
     -- =========================================================
 
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
@@ -78,10 +75,8 @@ BEGIN
         );
     END IF;
 
-    -- -------------------------------------------------------
     -- 1. Query accorpata: auth_user + identita_digitali
     --    (OPERATORE) + risorse_umane + qualifica + UO.
-    -- -------------------------------------------------------
     SELECT jsonb_build_object(
                'auth_user_id', au.id,
                'username',     au.username,
@@ -239,16 +234,11 @@ BEGIN
         );
     END IF;
 
-    -- Ruolo sistema ricostruito per retrocompatibilita' output.
-    v_is_super_admin   := script.fn_is_super_admin(p_auth_user_id);
-    v_ruolo_sistema_out := CASE WHEN v_is_super_admin THEN 'ADMIN' ELSE 'OPERATIVO' END;
+    -- is_super_admin top-level (GUC-aware via fn_is_super_admin).
+    v_is_super_admin := script.fn_is_super_admin(p_auth_user_id);
 
     -- Top-level ruolo_applicativo: GUC-first (veste del JWT
-    -- corrente), fallback al ruolo dell'identita OPERATORE
-    -- gia' caricata dalla query iniziale (tool/cron senza GUC).
-    -- Fix §13.7 pr-b: il vecchio output esponeva sempre
-    -- 'OPERATORE' per user multi-veste loggati su canale
-    -- portale -> guard namespace FE non redirigeva a /portale.
+    -- corrente), fallback al ruolo dell'identita OPERATORE.
     v_ruolo_applicativo_out := COALESCE(
         NULLIF(current_setting('app.ruolo_applicativo', true), ''),
         v_ruolo_applicativo::text
@@ -271,16 +261,12 @@ BEGIN
         'attivo',                          v_ru_attivo
     );
 
-    -- -------------------------------------------------------
     -- 2. Blocco soggetto via fn_get_soggetto_dati_by_ruolo
-    -- -------------------------------------------------------
     SELECT row_to_json(t.*)::jsonb
       INTO v_soggetto
       FROM script.fn_get_soggetto_dati_by_ruolo(v_soggetto_ruolo_id) t;
 
-    -- -------------------------------------------------------
     -- 3. Risolve emittente fiscale (priorita' whitelist -> gestore)
-    -- -------------------------------------------------------
     v_emittente := NULL;
 
     SELECT x.user_emittente_fiscale_id,
@@ -365,12 +351,9 @@ BEGIN
         END;
     END IF;
 
-    -- -------------------------------------------------------
-    -- 4. Risultato finale (top-level ruolo_applicativo GUC-aware)
-    -- -------------------------------------------------------
+    -- 4. Risultato finale (post-rimozione chiave 'ruolo_sistema').
     v_result := jsonb_build_object(
         'utente',                   v_utente,
-        'ruolo_sistema',            v_ruolo_sistema_out,
         'is_super_admin',           v_is_super_admin,
         'ruolo_applicativo',        v_ruolo_applicativo_out,
         'risorse_umane',            v_risorse_umane,
@@ -387,7 +370,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
-IS 'Profilo utente completo (JSONB). Post PR-B 21-04-2026: top-level ruolo_applicativo GUC-aware (app.ruolo_applicativo con fallback all''identita OPERATORE). Coerente con fn_is_super_admin / fn_get_user_permissions_map / fn_get_user_actions_map gia'' GUC-aware (20260421-03/04). Richiede ancora identita OPERATORE (guard invariato, raise E_ADMIN_VALIDAZIONE altrimenti).';
+IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti).';
 ```
 
 ---

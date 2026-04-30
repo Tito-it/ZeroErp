@@ -126,9 +126,13 @@ class TestGet(TestCase):
 
     @patch(_REPO_PATH)
     def test_get_ok(self, mock_repo_cls):
+        # Fase 4: get_matrice arricchisce la response con non_editable_fields.
         mock_repo_cls.return_value.get_matrice.return_value = {"id": 3}
         svc = CategorieClientiListiniService()
-        self.assertEqual(svc.get_matrice(3), {"id": 3})
+        result = svc.get_matrice(3)
+        self.assertEqual(result["id"], 3)
+        self.assertIn("non_editable_fields", result)
+        self.assertIn("categoria_cliente_id", result["non_editable_fields"])
 
     @patch(_REPO_PATH)
     def test_get_not_found(self, mock_repo_cls):
@@ -397,3 +401,47 @@ class TestUpdate(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             svc.update_matrice(3, {"attivo": None})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+
+
+# =================================================================
+# Fase 4 — lookup statici + non_editable_fields
+# =================================================================
+
+
+class TestListTipiVariazione(TestCase):
+    """Lookup statico dei tipi di variazione (Fase 4 — A7)."""
+
+    def test_list_tipi_variazione_ok(self):
+        # 2 codici nell'ordine canonico "default-first" (PERCENTUALE primo).
+        svc = CategorieClientiListiniService()
+        result = svc.list_tipi_variazione()
+        self.assertEqual(len(result), 2)
+        codici = [r["codice"] for r in result]
+        self.assertEqual(codici, ["PERCENTUALE", "VALORE_FISSO"])
+        for row in result:
+            self.assertTrue(row["descrizione"])
+            self.assertIsInstance(row["ordering"], int)
+
+    def test_list_tipi_variazione_coverage(self):
+        # Difesa coerenza enum/descrizioni: il lookup statico copre l'enum
+        # validation usato in create/update.
+        from apps.anagrafiche.services import categorie_clienti_listini_service as svc_mod
+        descritti = {codice for codice, _, _ in svc_mod._TIPI_VARIAZIONE_DESCRIZIONI}
+        self.assertEqual(descritti, svc_mod._TIPI_VARIAZIONE)
+
+
+class TestNonEditableFieldsCategorie(TestCase):
+    """non_editable_fields per matrice categorie/listini (Fase 4 — A9)."""
+
+    @patch("apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable")
+    def test_get_non_editable_fields_include_dimensions(self, mock_list):
+        # Le 4 dimensioni (categoria, utility, emittente, classe_utenza) sono
+        # esposte come metadata immutabili anche se il registro DB non le ha
+        # ancora registrate (gap dominio).
+        mock_list.return_value = ()  # registro DB vuoto
+        svc = CategorieClientiListiniService()
+        result = svc.get_non_editable_fields()
+        self.assertEqual(set(result), {
+            "categoria_cliente_id", "utility_id",
+            "emittente_soggetto_ruolo_id", "classe_utenza_id",
+        })

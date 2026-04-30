@@ -1,5 +1,10 @@
 from django.urls import path
 
+from apps.vendite.api.views_form_defaults import (
+    ApiListinoVersioneCloneDefaults,
+    ApiListinoVersioneCloseDefaults,
+    ApiListinoVersioneNewDefaults,
+)
 from apps.vendite.api.views_listini import (
     ApiListiniAlertScadenze,
     ApiListiniTipologiePerUtility,
@@ -26,8 +31,27 @@ urlpatterns = [
     path("<int:listino_id>/versioni/<int:ver_id>/righe/", ApiListinoVersioneRigheList.as_view(), name="vendite-listino-versione-righe-list"),
     path("<int:listino_id>/versioni/<int:ver_id>/applica-variazione/", ApiListinoVersioneApplicaVariazione.as_view(), name="vendite-listino-versione-applica-variazione"),
     path("<int:listino_id>/versioni/<int:ver_id>/stato/", ApiListinoVersioneStato.as_view(), name="vendite-listino-versione-stato"),
+    # Form-defaults (Fase 2.B5b/c refactor frontend vendite). Specifici PRIMA
+    # di clone-defaults/close-defaults per non collidere con il pattern <int:>.
+    path(
+        "<int:listino_id>/versioni/<int:src_versione_id>/clone-defaults/",
+        ApiListinoVersioneCloneDefaults.as_view(),
+        name="vendite-listino-versione-clone-defaults",
+    ),
+    path(
+        "<int:listino_id>/versioni/<int:versione_id>/close-defaults/",
+        ApiListinoVersioneCloseDefaults.as_view(),
+        name="vendite-listino-versione-close-defaults",
+    ),
     path("<int:listino_id>/versioni/<int:src_ver_id>/clona/", ApiListinoVersioneClona.as_view(), name="vendite-listino-versione-clona"),
     path("<int:listino_id>/versioni/<int:ver_id>/", ApiListinoVersioneDetail.as_view(), name="vendite-listino-versione-detail"),
+    # Form-defaults nuova versione (Fase 2.B5a). Su /versioni/ senza id, prima
+    # del path lista che intercetta tutto cio' che non e' un altro path.
+    path(
+        "<int:listino_id>/versioni/form-defaults/",
+        ApiListinoVersioneNewDefaults.as_view(),
+        name="vendite-listino-versione-new-defaults",
+    ),
     path("<int:listino_id>/versioni/", ApiListinoVersioniList.as_view(), name="vendite-listino-versioni-list"),
     path("<int:listino_id>/", ApiListinoDetail.as_view(), name="vendite-listino-detail"),
     path("", ApiListiniList.as_view(), name="vendite-listini-list"),

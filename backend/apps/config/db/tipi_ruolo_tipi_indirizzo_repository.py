@@ -24,6 +24,8 @@ _ORDER_COLS: dict[str, str] = {
     "tipo_indirizzo_descrizione": "ti.descrizione",
     "obbligatorio": "trti.obbligatorio",
     "attivo": "trti.attivo",
+    "valido_dal": "trti.valido_dal",
+    "valido_al": "trti.valido_al",
     "data_insert": "trti.data_insert",
     "data_update": "trti.data_update",
 }
@@ -42,6 +44,8 @@ _SELECT_COLS = """
     COALESCE(ti_fb.codice_interno, ti_fb.codice) AS fallback_codice,
     ti_fb.descrizione                             AS fallback_descrizione,
     trti.attivo,
+    trti.valido_dal,
+    trti.valido_al,
     trti.data_insert,
     trti.data_update,
     trti.user_insert,
@@ -162,6 +166,8 @@ class TipiRuoloTipiIndirizzoRepository:
             cols.append("attivo")
             vals.append(attivo)
         placeholders = ["%s"] * len(cols)
+        cols.append("valido_dal")
+        placeholders.append("CURRENT_DATE")
         sql = f"""
             INSERT INTO config.tipi_ruolo_tipi_indirizzo ({", ".join(cols)})
             VALUES ({", ".join(placeholders)})
@@ -179,7 +185,13 @@ class TipiRuoloTipiIndirizzoRepository:
         if not fields:
             return False
         set_clauses = [f"{k} = %s" for k in fields]
-        vals = list(fields.values()) + [record_id]
+        vals = list(fields.values())
+        if "attivo" in fields:
+            set_clauses.append(
+                "valido_al = CASE WHEN %s THEN NULL ELSE CURRENT_DATE END"
+            )
+            vals.append(fields["attivo"])
+        vals.append(record_id)
         sql = f"""
             UPDATE config.tipi_ruolo_tipi_indirizzo
                SET {", ".join(set_clauses)}
@@ -188,3 +200,26 @@ class TipiRuoloTipiIndirizzoRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, vals)
             return cursor.rowcount > 0
+
+    # Scopo: Sotto-matrice attiva del ruolo per il calcolo `fallback_options`
+    #        (Fase 4 — A10). Ritorna tutte le righe attive del ruolo con i
+    #        loro fallback, cosi' il service puo' costruire il grafo dei
+    #        fallback (DFS) ed escludere candidati in catena con la riga
+    #        corrente. Una sola query per detail, niente N+1.
+    def list_fallback_chain_for_ruolo(self, tipo_ruolo_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT trti.tipo_indirizzo_id,
+                       COALESCE(ti.codice_interno, ti.codice) AS codice,
+                       ti.descrizione,
+                       trti.fallback_tipo_indirizzo_id
+                  FROM config.tipi_ruolo_tipi_indirizzo trti
+                  JOIN config.tipi_indirizzi ti ON ti.id = trti.tipo_indirizzo_id
+                 WHERE trti.tipo_ruolo_id = %s
+                   AND trti.attivo = true
+                 ORDER BY ti.descrizione, trti.tipo_indirizzo_id
+                """,
+                [tipo_ruolo_id],
+            )
+            return rows_to_list(cursor)

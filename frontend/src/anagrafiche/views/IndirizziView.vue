@@ -1,5 +1,5 @@
 <script setup>
-// Scopo: vista principale Gestione Geografica con 8 tab.
+// Scopo: vista principale Gestione Geografica con 7 tab.
 import { ref, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
@@ -19,8 +19,6 @@ import RegioniSearchTable from '../../core/components/RegioniSearchTable.vue'
 import RegioniDrawer from '../../core/components/RegioniDrawer.vue'
 import StatiSearchTable from '../../core/components/StatiSearchTable.vue'
 import StatiDrawer from '../../core/components/StatiDrawer.vue'
-import MatriceIndirizziSearchTable from '../components/MatriceIndirizziSearchTable.vue'
-import MatriceIndirizziDrawer from '../components/MatriceIndirizziDrawer.vue'
 import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 
@@ -33,7 +31,6 @@ const capDrawer = useDrawerState()
 const provDrawer = useDrawerState()
 const regDrawer = useDrawerState()
 const statoDrawer = useDrawerState()
-const matriceDrawer = useDrawerState()
 
 // Scopo: forza remount TabView dopo mount per ink bar
 const tabViewKey = ref(0)
@@ -89,12 +86,6 @@ onMounted(() => { nextTick(() => { tabViewKey.value++ }) })
         />
       </TabPanel>
 
-      <TabPanel :header="t('matrice_indirizzi.tab_matrice')">
-        <MatriceIndirizziSearchTable
-          @new="matriceDrawer.openCreate"
-          @row-click="(data) => matriceDrawer.editRow(data)"
-        />
-      </TabPanel>
     </TabView>
 
     <IndirizzoDrawer
@@ -136,15 +127,6 @@ onMounted(() => { nextTick(() => { tabViewKey.value++ }) })
       @update:visible="v => statoDrawer.state.visible = v"
       :mode="statoDrawer.state.mode"
       :item="statoDrawer.state.itemData"
-    />
-    <MatriceIndirizziDrawer
-      :visible="matriceDrawer.state.visible"
-      @update:visible="v => matriceDrawer.state.visible = v"
-      :mode="matriceDrawer.state.mode"
-      :regola-id="matriceDrawer.state.itemId"
-      :item="matriceDrawer.state.itemData"
-      @saved="() => { matriceDrawer.close() }"
-      @cancelled="matriceDrawer.close"
     />
   </div>
 </template>

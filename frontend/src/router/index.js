@@ -144,6 +144,12 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'emittenti-fiscali' }
         },
         {
+          path: 'amm-software/matrici',
+          name: 'amm-software-matrici',
+          component: () => import('../amministrazione/views/MatriciListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'matrici' }
+        },
+        {
           path: 'amm-software/matrice-utilities-ruoli',
           name: 'amm-software-matrice-utilities-ruoli',
           component: () => import('../amministrazione/views/UtilitiesTipiRuoloListView.vue'),
@@ -250,6 +256,12 @@ const router = createRouter({
           name: 'catalogo-conversioni-uom',
           component: () => import('../catalogo/views/ConversioniUomView.vue'),
           meta: { domain: 'catalogo', menuKey: 'conversioni-uom' }
+        },
+        {
+          path: 'catalogo/uom-tipi',
+          name: 'catalogo-uom-tipi',
+          component: () => import('../catalogo/views/UomTipiView.vue'),
+          meta: { domain: 'catalogo', menuKey: 'uom-tipi' }
         },
 
         // --- Vendite ---
@@ -450,6 +462,7 @@ router.beforeEach(async (to) => {
       path: to.path,
       label: resolveTabLabel(to.meta, t) || to.path,
       domain: domain,
+      menuKey: to.meta.menuKey || null,
       icon: resolveTabIcon(to.meta)
     })
     // Limite raggiunto — blocca navigazione

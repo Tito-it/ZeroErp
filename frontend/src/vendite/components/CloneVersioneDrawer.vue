@@ -10,7 +10,8 @@ import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { cloneVersione } from '../api/listini'
-import { toDateString, displayDate } from '../../core/utils/date'
+import { getVersioneCloneDefaults } from '../api/formDefaults'
+import { toDateString, displayDate, addDaysToToday } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -32,21 +33,36 @@ const emit = defineEmits(['update:visible', 'cloned'])
 
 const form = ref({})
 
-// Default form: data inizio = oggi+1 (clone "in avanti" tipico),
-// codice_versione = sorgente + suffisso "-clone" come suggerimento editabile.
-function defaultForm() {
-  const tomorrow = new Date()
-  tomorrow.setDate(tomorrow.getDate() + 1)
+function emptyForm() {
+  // Form iniziale prima della risposta BE. Sovrascritto da loadDefaults sotto.
   const src = props.sourceVersione
   return {
-    codice_versione: src?.codice_versione ? `${src.codice_versione}-clone` : '',
-    valido_dal: tomorrow,
+    codice_versione: src?.codice_versione || '',
+    valido_dal: addDaysToToday(1),
     valido_al: null,
   }
 }
 
-watch(() => props.visible, (v) => {
-  if (v) form.value = defaultForm()
+// Defaults BE (Fase 2.B5b): suffisso codice + lead_gg + min_valido_dal
+// (vincolo D2: target.valido_dal >= source.valido_dal).
+async function loadDefaults() {
+  if (!props.listino?.id || !props.sourceVersione?.id) return
+  const res = await execute(
+    () => getVersioneCloneDefaults(props.listino.id, props.sourceVersione.id),
+    { silent: true },
+  )
+  if (res === null) return
+  form.value = {
+    codice_versione: res.default_codice_versione || '',
+    valido_dal: res.default_valido_dal ? new Date(res.default_valido_dal + 'T00:00:00') : null,
+    valido_al: res.default_valido_al ? new Date(res.default_valido_al + 'T00:00:00') : null,
+  }
+}
+
+watch(() => props.visible, async (v) => {
+  if (!v) return
+  form.value = emptyForm()
+  await loadDefaults()
 })
 
 const canSave = computed(() =>

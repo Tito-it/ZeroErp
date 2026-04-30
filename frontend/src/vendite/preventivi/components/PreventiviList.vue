@@ -7,6 +7,7 @@ import { useSearchTable } from '../../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
 import { displayDate, toDateString } from '../../../core/utils/date'
+import { formatCurrency } from '../../../core/utils/format'
 import { DATE_FORMAT, TAB_ENTITIES } from '../../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -51,11 +52,6 @@ function onDataAlChange() {
 }
 
 function onRowClick(event) { emit('row-click', event.data) }
-
-function formatCurrency(value) {
-  if (value == null) return ''
-  return Number(value).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })
-}
 
 useTabFreshness(store, TAB_ENTITIES.PREVENTIVO)
 

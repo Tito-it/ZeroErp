@@ -26,7 +26,7 @@ export const useAuthStore = defineStore('auth', () => {
   )
 
   // Profilo utente caricato dall'endpoint /me/
-  // Struttura JSONB: { utente, is_super_admin, ruolo_applicativo, ruolo_sistema (legacy),
+  // Struttura JSONB: { utente, is_super_admin, ruolo_applicativo,
   // risorse_umane, soggetto, emittente, permessi_area, azioni_abilitate,
   // deve_cambiare_password, is_admin_globale }
   const user = ref(null)

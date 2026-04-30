@@ -36,12 +36,11 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   const loadingDetail = ref(false)
 
   // Filtri attivi (sincronizzati con la toolbar).
-  // Multi-face auth Stage B: is_super_admin e' il filtro nativo. ruolo_sistema
-  // rimane supportato per retrocompat (BE traduce automaticamente).
+  // Multi-face auth (Fase 7): solo is_super_admin + is_active +
+  // unita_organizzativa_id. Il legacy ruolo_sistema e' rimosso.
   const filters = ref({
     search: '',
     is_super_admin: null,
-    ruolo_sistema: null,
     unita_organizzativa_id: null,
     is_active: null,
     limit: 25,
@@ -54,7 +53,16 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   const overrideAree = ref([])
   const overrideAzioni = ref([])
   const overrideOggetti = ref([])
-  const emittentiScope = ref([])
+  // Fase 2 multi-face: shape dichiarativo da fn DB
+  // `script.fn_get_user_emittenti_scope`. Sostituisce la vecchia lista grezza.
+  const emittentiScope = ref({
+    scope_mode: 'GLOBAL',
+    emittenti_ids: [],
+    emittente_descrizione: null,
+    allowed_scope_modes: ['GLOBAL', 'SINGLE'],
+    can_change_scope: true,
+    change_scope_reason: null,
+  })
 
   async function fetchList() {
     loading.value = true
@@ -63,7 +71,6 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
       const f = filters.value
       if (f.search) params.search = f.search
       if (f.is_super_admin != null) params.is_super_admin = f.is_super_admin
-      if (f.ruolo_sistema) params.ruolo_sistema = f.ruolo_sistema
       if (f.unita_organizzativa_id != null) params.unita_organizzativa_id = f.unita_organizzativa_id
       if (f.is_active != null) params.is_active = f.is_active
       params.limit = f.limit
@@ -155,15 +162,16 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
-  // --- Emittenti scope ---
+  // --- Emittenti scope (Fase 2 multi-face: scope dichiarativo) ---
   async function fetchEmittentiScope(authUserId) {
     const res = await getEmittentiScope(authUserId)
-    emittentiScope.value = res.data.data.results
+    emittentiScope.value = res.data.data
   }
 
-  async function saveEmittentiScope(authUserId, emittenteIds) {
-    const res = await putEmittentiScope(authUserId, emittenteIds)
-    emittentiScope.value = res.data.data.results
+  // payload: { scope_mode: 'GLOBAL'|'SINGLE', emittenti_ids?: number[] }
+  async function saveEmittentiScope(authUserId, payload) {
+    const res = await putEmittentiScope(authUserId, payload)
+    emittentiScope.value = res.data.data
     return res.data.data
   }
 
