@@ -20,6 +20,8 @@ attrs==26.1.0
     # via
     #   jsonschema
     #   referencing
+bleach==6.3.0
+    # via -r ../requirements.in
 certifi==2026.4.22
     # via
     #   httpcore
@@ -120,3 +122,5 @@ typing-inspection==0.4.2
     # via pydantic
 uritemplate==4.2.0
     # via drf-spectacular
+webencodings==0.5.1
+    # via bleach

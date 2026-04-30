@@ -21,13 +21,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
-from apps.amm_software.constants import (
-    DEFAULT_RUOLO_SISTEMA,
-    DEFAULT_SESSO,
-    RUOLO_ADMIN,
-    RUOLO_DISABILITATO,
-    RUOLO_OPERATIVO,
-)
+from apps.amm_software.constants import DEFAULT_SESSO
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 
 E_AMM_VALIDAZIONE = "E_AMM_VALIDAZIONE"
@@ -111,26 +105,6 @@ _EMAIL_LOG_STATI_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
 )
 
 
-# Scopo: Traduce il nuovo contract multi-face (is_super_admin + attivo) nel
-# legacy ruolo_sistema accettato dal repository. Regola:
-#   - attivo=False               -> DISABILITATO (a prescindere da super)
-#   - attivo=True,  super=True   -> ADMIN
-#   - attivo=True,  super=False  -> OPERATIVO
-# Ritorna None (NO-OP) quando almeno uno dei due flag e' None: il repo
-# vedra' ruolo=None e non tocchera' lo stato dell'identita'. Cosi' evitiamo
-# side-effect come riattivare silenziosamente un disabilitato quando il FE
-# invia solo is_super_admin. Il chiamante passa i flag `attivo` raw al repo:
-# lo stato viene aggiornato solo se fornito esplicitamente.
-def _ruolo_sistema_from_contract_nuovo(
-    is_super_admin: bool | None, attivo: bool | None
-) -> str | None:
-    if attivo is False:
-        return RUOLO_DISABILITATO
-    if is_super_admin is None or attivo is None:
-        return None
-    return RUOLO_ADMIN if is_super_admin else RUOLO_OPERATIVO
-
-
 # Scopo: Cast best-effort di un valore parameter (sempre str per BE) a bool.
 # `'true'`/`'false'` case-insensitive -> bool. Altro (None, '', stringhe non
 # parsabili) -> False (default-safe per `bollo_auto`: il form parte con flag
@@ -202,8 +176,9 @@ class AmmSoftwareService:
     # Flusso A (soggetto_id assente): crea soggetto PF nuovo — cognome/nome/CF obbligatori.
     # Flusso B (soggetto_id presente): associa soggetto esistente — dati persona non richiesti.
     # In entrambi: username, email, password, qualifica obbligatori.
-    # Contract pubblico Fase 1 multi-face: `is_super_admin?: bool` (default
-    # false). Il legacy `ruolo_sistema` non e' piu' accettato dal payload.
+    # Contract pubblico Fase 7 multi-face: `is_super_admin?: bool` (default
+    # false). L'operatore viene sempre creato con `attivo=true` (la
+    # disabilitazione e' un comando dedicato).
     def create_operatore(self, payload: dict) -> dict[str, Any]:
         ErrorManager.require(
             "ruolo_sistema" not in payload,
@@ -245,12 +220,11 @@ class AmmSoftwareService:
             ErrorManager.require(bool(nome), code=E_AMM_VALIDAZIONE, message="Nome obbligatorio per soggetto nuovo.")
             ErrorManager.require(bool(codice_fiscale), code=E_AMM_VALIDAZIONE, message="Codice fiscale obbligatorio per soggetto nuovo.")
 
-        # Traduzione interna is_super_admin -> ruolo_sistema legacy per la fn
-        # DB `fn_crea_operatore`, che resta sul dialetto pre-multi-face.
-        # Default (no flag): OPERATIVO. Il caller non puo' creare DISABILITATI
-        # via questo endpoint: la disabilitazione e' un comando dedicato.
+        # Contract Fase 7: il caller passa `is_super_admin` (default False).
+        # Il caller non puo' creare DISABILITATI via questo endpoint: la
+        # disabilitazione e' un comando dedicato. La traduzione verso
+        # l'enum legacy della fn DB e' incapsulata nel repository.
         is_super_admin = bool(payload.get("is_super_admin"))
-        ruolo_sistema_legacy = RUOLO_ADMIN if is_super_admin else DEFAULT_RUOLO_SISTEMA
 
         auth_user_id = self._repo.crea_operatore(
             soggetto_id=soggetto_id,
@@ -264,7 +238,8 @@ class AmmSoftwareService:
             unita_organizzativa_id=int(payload["unita_organizzativa_id"]) if payload.get("unita_organizzativa_id") else None,
             data_nascita=payload.get("data_nascita"),
             sesso=payload.get("sesso", DEFAULT_SESSO),
-            ruolo_sistema=ruolo_sistema_legacy,
+            is_super_admin=is_super_admin,
+            attivo=True,
             valido_dal=payload.get("valido_dal"),
             valido_al=payload.get("valido_al"),
             comune_nascita_id=optional_int(payload, "comune_nascita_id"),
@@ -281,16 +256,13 @@ class AmmSoftwareService:
         return operatore
 
     # Scopo: Aggiorna operatore e invalida cache permessi.
-    # Contract pubblico Fase 1 multi-face:
+    # Contract pubblico Fase 7 multi-face:
     #   {is_super_admin?: bool, attivo?: bool, email?, first_name?, last_name?,
     #    unita_organizzativa_id?, valido_al?}
-    # Il legacy `ruolo_sistema` non e' piu' accettato dal payload (breaking,
-    # vedi memoria progetto `project_no_produzione_solo_sviluppo`). Internamente
-    # `is_super_admin/attivo` vengono tradotti in `ruolo_sistema` per il repo
-    # (compat layer interno: il repo continua a parlare il dialetto legacy
-    # finche' il refactor delle write-path lato DB non e' chiuso).
-    # Il guard "ultimo super admin" e' centralizzato sul trigger DB; il
-    # service traduce l'errore in `E_PROFILO_ULTIMO_SUPER_ADMIN`.
+    # `is_super_admin` e `attivo` sono ortogonali: ognuno puo' essere
+    # presente da solo (NO-OP per il flag mancante). Il guard "ultimo super
+    # admin" e' centralizzato sul trigger DB; il service traduce l'errore in
+    # `E_PROFILO_ULTIMO_SUPER_ADMIN`.
     def update_operatore(self, auth_user_id: int, payload: dict) -> dict[str, Any]:
         ErrorManager.require(
             "ruolo_sistema" not in payload,
@@ -298,22 +270,15 @@ class AmmSoftwareService:
             message="Campo 'ruolo_sistema' non ammesso: usa is_super_admin + attivo.",
         )
         self.get_operatore(auth_user_id)  # verifica esistenza
-        attivo = payload.get("attivo")
-        # Translator gestisce tutti i NO-OP: payload {} -> None, {is_super_admin}
-        # senza attivo -> None, {attivo:false} -> 'DISABILITATO' anche senza
-        # is_super_admin (simmetria semantica). No guard `if in payload`.
-        ruolo_sistema = _ruolo_sistema_from_contract_nuovo(
-            payload.get("is_super_admin"), attivo
-        )
         _run_or_raise_super_admin_guard(
             lambda: self._repo.update_operatore(
                 auth_user_id,
                 email=payload.get("email"),
                 first_name=payload.get("first_name"),
                 last_name=payload.get("last_name"),
-                ruolo_sistema=ruolo_sistema,
+                is_super_admin=payload.get("is_super_admin"),
                 unita_organizzativa_id=payload.get("unita_organizzativa_id"),
-                attivo=attivo,
+                attivo=payload.get("attivo"),
                 valido_al=payload.get("valido_al"),
             )
         )
@@ -435,12 +400,18 @@ class AmmSoftwareService:
 
     # Scopo: Salva override oggetti e invalida cache.
     #        Valida che ogni app_label+model_name esista nel catalogo
-    #        area_model_overrides prima di scrivere.
+    #        area_model_overrides E sia override-abile (capability `can_override`
+    #        — Fase 8). I model riservati al kernel permessi sono rifiutati
+    #        anche se registrati in catalogo (defense-in-depth: il FE filtra
+    #        gia' le opzioni, ma una request crafted bypassa il dropdown).
     def put_override_oggetti(self, auth_user_id: int, items: list) -> list:
         if items:
-            registered = {
+            catalog = self._repo.list_model_overrides()
+            registered = {(m["app_label"], m["model_name"]) for m in catalog}
+            overridable = {
                 (m["app_label"], m["model_name"])
-                for m in self._repo.list_model_overrides()
+                for m in catalog
+                if m.get("can_override")
             }
             for item in items:
                 key = (item.get("app_label"), item.get("model_name"))
@@ -448,6 +419,11 @@ class AmmSoftwareService:
                     key[0] and key[1] and key in registered,
                     code="E_AMM_VALIDAZIONE",
                     message=f"Model {key[0]}.{key[1]} non registrato nel catalogo override.",
+                )
+                ErrorManager.require(
+                    key in overridable,
+                    code="E_AMM_VALIDAZIONE",
+                    message=f"Model {key[0]}.{key[1]} riservato: override non ammesso.",
                 )
         self._repo.put_override_oggetti(auth_user_id, items)
         invalidate_user(auth_user_id)

@@ -1,8 +1,10 @@
 <script setup>
 // Scopo: Drawer creazione/modifica account email SMTP (admin only).
 // Configura host/port/TLS/credenziali + email mittente/reply-to.
-// In edit: pulsante test connessione (gated su readonly + accountId).
-// La password non viene re-inviata in edit se vuota (preserva quella corrente).
+// In edit: pulsante test connessione gated su capability backend
+// `can_test`/`test_reason` (Fase 6). Mostra Tag con ultimo esito test
+// (last_test_outcome) quando disponibile. La password non viene
+// re-inviata in edit se vuota (preserva quella corrente).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
@@ -11,6 +13,7 @@ import InputNumber from 'primevue/inputnumber'
 import Password from 'primevue/password'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
+import Tag from 'primevue/tag'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -62,6 +65,37 @@ const canSave = computed(() => {
   return f.codice?.trim() && f.descrizione?.trim() && f.email_from?.trim()
 })
 
+// Capability test connessione: arrivano dal BE (Fase 6) come parte del detail.
+// `can_test` e' false su account inattivi o senza password SMTP; il
+// `test_reason` (chiave i18n) alimenta il tooltip del pulsante disabilitato.
+// `last_test_*` mostrano l'ultimo esito del test in un Tag.
+const canTest = computed(() => store.currentAccount?.can_test === true)
+const testReasonKey = computed(() => store.currentAccount?.test_reason || null)
+const lastTestOutcome = computed(() => store.currentAccount?.last_test_outcome || null)
+const lastTestAt = computed(() => store.currentAccount?.last_test_at || null)
+
+const lastTestSeverity = computed(() => {
+  if (lastTestOutcome.value === 'SUCCESS') return 'success'
+  if (lastTestOutcome.value === 'FAILED') return 'danger'
+  return 'secondary'
+})
+
+const lastTestLabel = computed(() => {
+  if (lastTestOutcome.value === 'SUCCESS') return t('amm.email_last_test_success')
+  if (lastTestOutcome.value === 'FAILED') return t('amm.email_last_test_failed')
+  return t('amm.email_last_test_never')
+})
+
+// Formattazione locale del timestamp ultimo test (solo se valorizzato).
+const lastTestAtFormatted = computed(() => {
+  if (!lastTestAt.value) return ''
+  try {
+    return new Date(lastTestAt.value).toLocaleString()
+  } catch {
+    return lastTestAt.value
+  }
+})
+
 watch(() => props.visible, async (vis) => {
   if (!vis) return
   if (isEdit.value && props.accountId) {
@@ -107,11 +141,16 @@ async function handleSave() {
 
 async function handleTest() {
   if (isReadonly.value) return
+  if (!canTest.value) return
   if (!props.accountId) return
   testLoading.value = true
   try {
     const res = await testEmailAccount(props.accountId)
     const data = res.data?.data
+    // Il BE ritorna detail arricchito (can_test, last_test_*) gia' aggiornato:
+    // sostituisce currentAccount cosi' il Tag riflette subito l'esito senza
+    // una GET aggiuntiva.
+    if (data) store.currentAccount = data
     if (data?.success) {
       success(t('amm.email_test_success'))
     } else {
@@ -205,15 +244,23 @@ async function handleTest() {
           </div>
         </div>
 
-        <div v-if="isEdit && !isReadonly" style="margin-top: 0.5rem;">
-          <Button
-            :label="t('amm.email_test_connection')"
-            icon="pi pi-wifi"
-            :loading="testLoading"
-            outlined
-            size="small"
-            @click="handleTest"
-          />
+        <div v-if="isEdit && !isReadonly" class="email-test-row">
+          <span v-tooltip.top="!canTest && testReasonKey ? t(testReasonKey) : null">
+            <Button
+              :label="t('amm.email_test_connection')"
+              icon="pi pi-wifi"
+              :loading="testLoading"
+              :disabled="!canTest"
+              outlined
+              size="small"
+              @click="handleTest"
+            />
+          </span>
+          <div class="email-last-test">
+            <span class="email-last-test-label">{{ t('amm.email_last_test_label') }}:</span>
+            <Tag :value="lastTestLabel" :severity="lastTestSeverity" />
+            <span v-if="lastTestAtFormatted" class="email-last-test-at">{{ lastTestAtFormatted }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -228,3 +275,26 @@ async function handleTest() {
     </template>
   </Drawer>
 </template>
+
+<style scoped>
+.email-test-row {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.email-last-test {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.email-last-test-label {
+  color: var(--app-text-muted, #6b7280);
+}
+.email-last-test-at {
+  color: var(--app-text-muted, #6b7280);
+  font-variant-numeric: tabular-nums;
+}
+</style>

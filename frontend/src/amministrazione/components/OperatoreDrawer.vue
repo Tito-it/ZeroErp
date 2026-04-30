@@ -154,9 +154,9 @@ function clearSoggetto() {
 }
 
 // Scopo: Salva operatore (crea o aggiorna).
-// Contract nuovo multi-face: {is_super_admin, attivo, ...}. Il backend
-// (amm_software_service.update_operatore) traduce internamente in
-// ruolo_sistema legacy e gestisce binding SUPER_ADMIN + stato identita.
+// Contract multi-face (Fase 7): {is_super_admin, attivo, ...}. Il backend
+// gestisce binding SUPER_ADMIN + stato identita_digitali in modo
+// ortogonale tra i due flag.
 async function onSave() {
   if (isEdit.value) {
     const payload = {
@@ -184,7 +184,7 @@ async function onSave() {
     }
 
     const sogg = soggettoSelezionato.value
-    // Contract Fase 1 multi-face: il payload create accetta `is_super_admin`
+    // Contract multi-face (Fase 7): il payload create accetta `is_super_admin`
     // direttamente. Il BE rifiuta `ruolo_sistema` con E_AMM_VALIDAZIONE.
     // L'utente creato e' sempre attivo (la disabilitazione passa dal comando
     // dedicato `/disabilita/` in un secondo momento).

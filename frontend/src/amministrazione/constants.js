@@ -3,28 +3,12 @@
 // Builder opzioni per Select centralizzati (zero duplicazione).
 
 // Re-export enum da core — usati anche da stores/auth.js e test.
-export { RUOLO_SISTEMA, LIVELLO_ACCESSO } from '../core/constants'
-import { RUOLO_SISTEMA, LIVELLO_ACCESSO } from '../core/constants'
+export { LIVELLO_ACCESSO } from '../core/constants'
+import { LIVELLO_ACCESSO } from '../core/constants'
 
 // --- Tipo ruolo per SoggettoResolver ---
 export const TIPO_RUOLO_CODICE = {
   RIS_UMANA: 'RIS_UMANA'
-}
-
-// Scopo: Costruisce le opzioni ruolo LEGACY per Select.
-// Usato ancora da PermessiRiepilogoView (legacy). Nuovi consumer operatori
-// usino buildFilterSuperAdminOptions + buildFilterStatoOptions.
-// includeAll: aggiunge "Tutti" (per filtri lista) e "Disabilitato".
-export function buildRuoloOptions(t, { includeAll = false } = {}) {
-  const opts = [
-    { label: t('amm.ruolo_admin'), value: RUOLO_SISTEMA.ADMIN },
-    { label: t('amm.ruolo_operativo'), value: RUOLO_SISTEMA.OPERATIVO }
-  ]
-  if (includeAll) {
-    opts.unshift({ label: t('amm.ruolo_all'), value: null })
-    opts.push({ label: t('amm.ruolo_disabilitato'), value: RUOLO_SISTEMA.DISABILITATO })
-  }
-  return opts
 }
 
 // Scopo: Opzioni filtro SUPER_ADMIN per toolbar lista operatori.
@@ -104,13 +88,6 @@ export function getLivelloLabel(t, livello) {
   if (livello === LIVELLO_ACCESSO.TUTTO) return t('amm.livello_tutto')
   if (livello === LIVELLO_ACCESSO.LETTURA) return t('amm.livello_lettura')
   return t('amm.livello_bloccato')
-}
-
-// Scopo: Restituisce la severity PrimeVue per un ruolo sistema.
-export function getRuoloSeverity(ruolo) {
-  if (ruolo === RUOLO_SISTEMA.ADMIN) return 'warn'
-  if (ruolo === RUOLO_SISTEMA.DISABILITATO) return 'danger'
-  return 'info'
 }
 
 // Scopo: Restituisce la severity PrimeVue per un tipo operazione audit.

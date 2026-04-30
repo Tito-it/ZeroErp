@@ -17,16 +17,16 @@ Indice test eseguiti:
  7) test_get_operatore_not_found — id inesistente
  8) test_update_operatore_ok — aggiorna e invalida cache
  9) test_update_operatore_not_found — id inesistente
- 9a) test_update_operatore_contract_nuovo_super_attivo — traduzione contract multi-face
- 9b) test_update_operatore_rifiuta_ruolo_sistema_legacy — Fase 1: contract pubblico ruolo_sistema-free
+ 9a) test_update_operatore_passa_flag_multiface_al_repo — Fase 7: contract is_super_admin/attivo
+ 9b) test_update_operatore_rifiuta_ruolo_sistema_legacy — guard fail-fast su payload legacy
  9c) test_update_operatore_super_admin_guard_dbtrigger — race condition trigger 384
- 9d) test_update_operatore_attivo_only_traduce_disabilitato — simmetria translator (fix audit B2)
+ 9d) test_update_operatore_attivo_only — solo attivo passa al repo
 10) test_disabilita_operatore_ok — disabilita e invalida cache + blacklist
 11) test_disabilita_operatore_not_found — id inesistente
 11a) test_disabilita_operatore_ultimo_super_admin_preview — preview Python (fast-path)
 11b) test_disabilita_operatore_ultimo_super_admin_dbtrigger — race condition trigger 384
-12) test_create_operatore_rifiuta_ruolo_sistema_legacy — Fase 1: ruolo_sistema-free
-12a) test_create_operatore_is_super_admin_traduce_admin — is_super_admin=true → ADMIN legacy
+12) test_create_operatore_rifiuta_ruolo_sistema_legacy — guard fail-fast su payload legacy
+12a) test_create_operatore_is_super_admin_passato_al_repo — Fase 7: bool al repo (no enum)
 12) test_put_override_aree_invalidates_cache — invalida cache dopo save
 13) test_put_override_azioni_invalidates_cache — invalida cache dopo save
 14) test_put_emittenti_scope_invalidates_cache — invalida cache dopo save
@@ -147,13 +147,13 @@ class TestCreateOperatore(TestCase):
         self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
         mock_repo_cls.return_value.crea_operatore.assert_not_called()
 
-    # Scopo: Traduzione interna `is_super_admin=True` -> ruolo_sistema legacy
-    # `ADMIN` per la fn DB `fn_crea_operatore` (compat layer interno mentre
-    # il refactor write-path lato DB e' in transizione). Default (no flag)
-    # = OPERATIVO.
+    # Scopo: Fase 7 — il contract pubblico passa `is_super_admin` come bool
+    # al repo, niente piu' `ruolo_sistema` legacy esposto. La traduzione
+    # verso l'enum legacy della fn DB e' un dettaglio di
+    # `AmmSoftwareRepository._legacy_ruolo_from_contract` (privato).
     @patch(MAKE_PW, return_value="hashed")
     @patch(REPO)
-    def test_create_operatore_is_super_admin_traduce_admin(
+    def test_create_operatore_is_super_admin_passato_al_repo(
         self, mock_repo_cls, _mock_pw
     ):
         mock_repo = mock_repo_cls.return_value
@@ -165,20 +165,21 @@ class TestCreateOperatore(TestCase):
             "username": "u", "email": "e@t.it", "password": "pw",
             "qualifica_id": 1, "is_super_admin": True,
         })
-        self.assertEqual(
-            mock_repo.crea_operatore.call_args.kwargs["ruolo_sistema"], "ADMIN"
-        )
+        kwargs = mock_repo.crea_operatore.call_args.kwargs
+        self.assertTrue(kwargs["is_super_admin"])
+        self.assertTrue(kwargs["attivo"])
+        self.assertNotIn("ruolo_sistema", kwargs)
 
-        # Caso default: nessun flag -> OPERATIVO.
+        # Caso default: nessun flag -> is_super_admin=False, attivo=True.
         mock_repo.crea_operatore.reset_mock()
         AmmSoftwareService().create_operatore({
             "cognome": "R", "nome": "M", "codice_fiscale": "CF",
             "username": "u", "email": "e@t.it", "password": "pw",
             "qualifica_id": 1,
         })
-        self.assertEqual(
-            mock_repo.crea_operatore.call_args.kwargs["ruolo_sistema"], "OPERATIVO"
-        )
+        kwargs = mock_repo.crea_operatore.call_args.kwargs
+        self.assertFalse(kwargs["is_super_admin"])
+        self.assertTrue(kwargs["attivo"])
 
 
 class TestGetOperatore(TestCase):
@@ -221,50 +222,49 @@ class TestUpdateOperatore(TestCase):
         with self.assertRaises(ServiceError):
             AmmSoftwareService().update_operatore(999, {"email": "x"})
 
-    # Scopo: Contract nuovo multi-face: payload {is_super_admin, attivo}
-    # viene tradotto in ruolo_sistema legacy per il repository. Copre i 4
-    # casi della matrice (ADMIN / OPERATIVO / DISABILITATO / NO-OP).
+    # Scopo: Fase 7 multi-face — il payload {is_super_admin, attivo} viene
+    # passato as-is al repository (no traduzione legacy nel service). Le 4
+    # combinazioni della matrice sono trasparenti: ogni flag e' ortogonale
+    # e indipendente nel repo.
     @patch(INVALIDATE_USER)
     @patch(REPO)
-    def test_update_operatore_contract_nuovo_super_attivo(
+    def test_update_operatore_passa_flag_multiface_al_repo(
         self, mock_repo_cls, _mock_invalidate
     ):
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
 
-        # Caso 1: super=true, attivo=true  -> ADMIN
+        # Caso 1: super=true, attivo=true
         AmmSoftwareService().update_operatore(
             1, {"is_super_admin": True, "attivo": True}
         )
-        self.assertEqual(
-            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"], "ADMIN"
-        )
-        self.assertTrue(mock_repo.update_operatore.call_args.kwargs["attivo"])
+        kwargs = mock_repo.update_operatore.call_args.kwargs
+        self.assertTrue(kwargs["is_super_admin"])
+        self.assertTrue(kwargs["attivo"])
+        self.assertNotIn("ruolo_sistema", kwargs)
 
-        # Caso 2: super=false, attivo=true -> OPERATIVO
+        # Caso 2: super=false, attivo=true
         AmmSoftwareService().update_operatore(
             1, {"is_super_admin": False, "attivo": True}
         )
-        self.assertEqual(
-            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"], "OPERATIVO"
-        )
+        kwargs = mock_repo.update_operatore.call_args.kwargs
+        self.assertFalse(kwargs["is_super_admin"])
+        self.assertTrue(kwargs["attivo"])
 
-        # Caso 3: super=*, attivo=false -> DISABILITATO
+        # Caso 3: super=true, attivo=false (disabilita un super)
         AmmSoftwareService().update_operatore(
             1, {"is_super_admin": True, "attivo": False}
         )
-        self.assertEqual(
-            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"],
-            "DISABILITATO",
-        )
+        kwargs = mock_repo.update_operatore.call_args.kwargs
+        self.assertTrue(kwargs["is_super_admin"])
+        self.assertFalse(kwargs["attivo"])
 
-        # Caso 4: super=true, attivo=None -> NO-OP (ruolo_sistema None)
-        # Guard contro side-effect: riattivazione silenziosa.
+        # Caso 4: solo is_super_admin (NO-OP su attivo).
         AmmSoftwareService().update_operatore(1, {"is_super_admin": True})
-        self.assertIsNone(
-            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"]
-        )
+        kwargs = mock_repo.update_operatore.call_args.kwargs
+        self.assertTrue(kwargs["is_super_admin"])
+        self.assertIsNone(kwargs["attivo"])
 
     # Scopo: Fase 1 multi-face — il contract pubblico non ammette piu'
     # `ruolo_sistema`. Il payload con la chiave legacy viene rifiutato
@@ -279,24 +279,23 @@ class TestUpdateOperatore(TestCase):
         # Il repo non viene neanche chiamato: validazione fallisce prima.
         mock_repo_cls.return_value.update_operatore.assert_not_called()
 
-    # Scopo: Audit fix B2 — il translator e' chiamato sempre (no guard
-    # `if "is_super_admin" in payload`). Payload con solo `attivo:false`
-    # produce `ruolo_sistema='DISABILITATO'`, simmetrico al payload
-    # `{is_super_admin:_, attivo:false}`. Senza il fix, il primo caso
-    # avrebbe lasciato `ruolo_applicativo` invariato (asimmetria).
+    # Scopo: Fase 7 — payload con solo `attivo:false` arriva al repo come
+    # is_super_admin=None (NO-OP) + attivo=False. La traduzione legacy
+    # verso DISABILITATO e' interna al repo (`_legacy_ruolo_from_contract`),
+    # invisibile dal service.
     @patch(INVALIDATE_USER)
     @patch(REPO)
-    def test_update_operatore_attivo_only_traduce_disabilitato(
+    def test_update_operatore_attivo_only(
         self, mock_repo_cls, _mock_invalidate
     ):
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         AmmSoftwareService().update_operatore(1, {"attivo": False})
-        self.assertEqual(
-            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"],
-            "DISABILITATO",
-        )
+        kwargs = mock_repo.update_operatore.call_args.kwargs
+        self.assertIsNone(kwargs["is_super_admin"])
+        self.assertFalse(kwargs["attivo"])
+        self.assertNotIn("ruolo_sistema", kwargs)
 
     # Scopo: Race condition trigger 384 — quando il preview `can_disable`
     # passa ma il trigger DB rifiuta (concorrenza tra sessioni), il service

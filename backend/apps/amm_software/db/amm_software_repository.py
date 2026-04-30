@@ -18,15 +18,52 @@ from django.db import DatabaseError, connection, transaction
 from apps.core.db._helpers import row_to_dict, rows_to_list
 
 from apps.core.services.error_manager import ErrorManager
-from apps.amm_software.constants import (
-    DEFAULT_LIMIT, RUOLO_ADMIN, RUOLO_DISABILITATO, RUOLO_OPERATIVO,
-)
+from apps.amm_software.constants import DEFAULT_LIMIT
 from apps.amm_software.types import OperatoreDetailRow, OperatoreRow
 
-# Colonne ammesse per ordinamento lista operatori
+# Colonne ammesse per ordinamento lista operatori. Niente piu' "ruolo_sistema":
+# il campo legacy non e' esposto. Per ordinare per stato amministrativo si usa
+# `is_super_admin` o `ruolo_applicativo`.
 ALLOWED_ORDER_COLUMNS = frozenset({
-    "last_name", "soggetto_cognome", "username", "ruolo_sistema",
-    "is_active", "unita_organizzativa_nome", "valido_dal", "valido_al",
+    "last_name", "soggetto_cognome", "username", "is_super_admin",
+    "ruolo_applicativo", "is_active", "unita_organizzativa_nome",
+    "valido_dal", "valido_al",
+})
+
+
+# Fase 8 — Model riservati: non possono essere target di override granulari.
+# Sono il kernel del sistema permessi: ammettere override a livello model
+# qui aprirebbe scenari di lockout ricorsivo (es. negare a un admin
+# l'accesso a `profili_accesso_bindings` => non puo' piu' rimuovere il
+# proprio binding => bypass automatico).
+#
+# Convenzione tuple: `(schema_db, model_logical_name)` — stessa del seed
+# `config.area_model_overrides` (es. `('anagrafiche', 'soggetto')`).
+# NOTA: alla data del 2026-04-29 NESSUN model di kernel e' presente in
+# `area_model_overrides` (verifica: il seed `20260410-11` registra solo
+# 12 model business). Questa blacklist e' quindi PREVENTIVA — defense
+# in depth contro futuri seed che includessero per errore tabelle di
+# kernel. Se la convenzione di registrazione cambia (es. uso di
+# Django app_label invece dello schema), aggiornare le tuple di
+# conseguenza.
+_MODEL_OVERRIDE_RISERVATI: frozenset[tuple[str, str]] = frozenset({
+    # Identita digitali (anagrafiche) — modificarla via override-oggetti
+    # lascerebbe l'utente bypassare i guard sul ruolo applicativo.
+    ("anagrafiche", "identita_digitali"),
+    # Catalogo profili accesso e binding SUPER_ADMIN.
+    ("config", "profili_accesso"),
+    ("config", "profili_accesso_bindings"),
+    # Catalogo del lookup stesso: override-abile solo via DDL.
+    ("config", "area_model_overrides"),
+    # Tabelle override granulari: ricorsione semantica.
+    ("config", "user_override_aree"),
+    ("config", "user_override_azioni"),
+    ("config", "user_override_oggetti"),
+    # Scope emittenti utente: cambiarlo cambia i dati visibili.
+    ("config", "user_emittenti_fiscali"),
+    # Profili reparto: livello sopra ai singoli operatori.
+    ("config", "profili_reparto_aree"),
+    ("config", "profili_reparto_azioni"),
 })
 
 
@@ -35,14 +72,15 @@ class AmmSoftwareRepository:
 
     # Scopo: Restituisce la lista paginata degli operatori con filtri opzionali.
     # JOIN: auth_user + identita_digitali (OPERATORE) + soggetti_ruoli +
-    # risorse_umane + unita_organizzative. Il ruolo legacy (ADMIN /
-    # OPERATIVO / DISABILITATO) e' ricostruito via script.fn_get_ruolo_sistema.
+    # risorse_umane + unita_organizzative. Il modello identitario e' multi-face:
+    # `is_super_admin` da `script.fn_is_super_admin`, `ruolo_applicativo` da
+    # `identita_digitali`, `is_active` da `auth_user`. Niente piu' enum
+    # legacy `config.ruolo_sistema` esposto in output (Fase 7).
     # Risultato: (lista righe, conteggio totale).
     def list_operatori(
         self,
         *,
         search: str | None = None,
-        ruolo_sistema: str | None = None,
         is_super_admin: bool | None = None,
         unita_organizzativa_id: int | None = None,
         is_active: bool | None = None,
@@ -69,19 +107,9 @@ class AmmSoftwareRepository:
             like_term = f"%{search}%"
             params.extend([like_term] * 5)
 
-        if ruolo_sistema:
-            # Filtro su ruolo legacy ricostruito dal wrapper DB. Il
-            # filtro e' semantico (ADMIN / OPERATIVO / DISABILITATO),
-            # indipendente dalla tabella sottostante.
-            conditions.append(
-                "script.fn_get_ruolo_sistema(au.id) = %s::config.ruolo_sistema"
-            )
-            params.append(ruolo_sistema)
-
         if is_super_admin is not None:
             # Multi-face auth: filtro binario sul binding SUPER_ADMIN.
-            # Ortogonale a ruolo_sistema (che include anche "attivo") e a
-            # is_active. Delega a script.fn_is_super_admin.
+            # Ortogonale a is_active. Delega a script.fn_is_super_admin.
             conditions.append("script.fn_is_super_admin(au.id) = %s")
             params.append(is_super_admin)
 
@@ -110,7 +138,6 @@ class AmmSoftwareRepository:
                    au.last_name,
                    COALESCE(s.cognome, au.last_name) AS soggetto_cognome,
                    COALESCE(s.nome, au.first_name) AS soggetto_nome,
-                   script.fn_get_ruolo_sistema(au.id)::text AS ruolo_sistema,
                    script.fn_is_super_admin(au.id) AS is_super_admin,
                    id.ruolo_applicativo::text AS ruolo_applicativo,
                    au.is_active,
@@ -272,10 +299,16 @@ class AmmSoftwareRepository:
     # Transazione atomica: i 4-5 step devono succedere insieme o
     # nessuno (nessuno stato parziale inconsistente).
     #
-    # Traduzione ruolo_sistema -> nuovo modello (retrocompat API):
-    #   - ADMIN        -> identita attiva, ruolo_appl=OPERATORE, binding SUPER_ADMIN UPSERT
-    #   - OPERATIVO    -> identita attiva, ruolo_appl=OPERATORE, binding SUPER_ADMIN DELETE
-    #   - DISABILITATO -> identita inattiva, ruolo_appl=DISABILITATO
+    # Contract Fase 7 multi-face — solo campi nuovi:
+    #   - `is_super_admin=True`  -> binding SUPER_ADMIN UPSERT (identita
+    #                               OPERATORE attiva)
+    #   - `is_super_admin=False` -> binding SUPER_ADMIN DELETE (identita
+    #                               OPERATORE attiva)
+    #   - `attivo=False`         -> identita_digitali.attivo=False +
+    #                               ruolo_applicativo=DISABILITATO
+    #   - `attivo=True`          -> identita_digitali.attivo=True +
+    #                               ruolo_applicativo=OPERATORE
+    # `is_super_admin` e `attivo` sono ortogonali e indipendenti.
     def update_operatore(
         self,
         auth_user_id: int,
@@ -283,7 +316,7 @@ class AmmSoftwareRepository:
         email: str | None = None,
         first_name: str | None = None,
         last_name: str | None = None,
-        ruolo_sistema: str | None = None,
+        is_super_admin: bool | None = None,
         unita_organizzativa_id: int | None = None,
         attivo: bool | None = None,
         valido_al: str | None = None,
@@ -310,27 +343,24 @@ class AmmSoftwareRepository:
                         auth_params,
                     )
 
-            # 2) Traduci ruolo_sistema in stato identita + binding SUPER_ADMIN
-            if ruolo_sistema == RUOLO_ADMIN:
+            # 2) Stato identita_digitali pilotato da `attivo` (cambio
+            #    simmetrico a disabilita/riattiva):
+            #    attivo=True  -> ruolo_applicativo=OPERATORE attivo
+            #    attivo=False -> ruolo_applicativo=DISABILITATO + attivo=false
+            if attivo is True:
                 self._set_identita_state(
                     auth_user_id, attivo=True, ruolo_applicativo="OPERATORE"
                 )
-                self._set_super_admin_binding(auth_user_id, enabled=True)
-            elif ruolo_sistema == RUOLO_OPERATIVO:
+            elif attivo is False:
                 self._set_identita_state(
-                    auth_user_id, attivo=True, ruolo_applicativo="OPERATORE"
-                )
-                self._set_super_admin_binding(auth_user_id, enabled=False)
-            elif ruolo_sistema == RUOLO_DISABILITATO:
-                self._set_identita_state(
-                    auth_user_id,
-                    attivo=False,
-                    ruolo_applicativo="DISABILITATO",
+                    auth_user_id, attivo=False, ruolo_applicativo="DISABILITATO"
                 )
 
-            # 3) Override esplicito di attivo (prevale sulla traduzione ruolo)
-            if attivo is not None:
-                self._set_identita_state(auth_user_id, attivo=attivo)
+            # 3) Binding SUPER_ADMIN (ortogonale ad `attivo`).
+            if is_super_admin is True:
+                self._set_super_admin_binding(auth_user_id, enabled=True)
+            elif is_super_admin is False:
+                self._set_super_admin_binding(auth_user_id, enabled=False)
 
             # 4) Aggiorna risorse_umane via catena identita -> soggetto_ruolo
             ru_fields: list[str] = []
@@ -356,8 +386,8 @@ class AmmSoftwareRepository:
                         ru_params + [auth_user_id],
                     )
 
-            # 5) Sync auth_user.is_active se stato o ruolo cambiati
-            if ruolo_sistema is not None or attivo is not None:
+            # 5) Sync auth_user.is_active se stato cambiato
+            if attivo is not None or is_super_admin is not None:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "SELECT anagrafiche.fn_sync_auth_user_is_active(%s)",
@@ -447,11 +477,17 @@ class AmmSoftwareRepository:
                 [auth_user_id],
             )
 
-    # Scopo: Crea un operatore completo invocando l'orchestratore DB fn_crea_operatore.
-    # Chiama i building block: fn_crea_auth_user, fn_crea_soggetto_pf, fn_crea_risorsa_umana.
+    # Scopo: Crea un operatore completo invocando l'orchestratore DB
+    # `anagrafiche.fn_crea_operatore`. Chiama i building block: fn_crea_auth_user,
+    # fn_crea_soggetto_pf, fn_crea_risorsa_umana.
     # Parametri Sprint 3: comune_nascita_id, indirizzo_resid_dettaglio_id,
     # indirizzo_domfisc_dettaglio_id (normalizzati via stradario).
     # Due flussi: soggetto_id NULL (crea soggetto nuovo) o valorizzato (usa esistente).
+    #
+    # Contract multi-face puro (Fase 7-DB step 6): la fn DB v2 accetta
+    # `p_is_super_admin bool` + `p_attivo bool` al posto del legacy
+    # `p_ruolo_sistema config.ruolo_sistema`. Il translator interno e'
+    # stato rimosso. Compat layer DB legacy chiuso.
     # Ritorna l'auth_user_id del nuovo operatore.
     def crea_operatore(
         self,
@@ -467,7 +503,8 @@ class AmmSoftwareRepository:
         unita_organizzativa_id: int | None = None,
         data_nascita: str | None = None,
         sesso: str = "M",
-        ruolo_sistema: str = "OPERATIVO",
+        is_super_admin: bool = False,
+        attivo: bool = True,
         valido_dal: str | None = None,
         valido_al: str | None = None,
         comune_nascita_id: int | None = None,
@@ -487,7 +524,8 @@ class AmmSoftwareRepository:
                 p_unita_organizzativa_id         := %s,
                 p_data_nascita                   := %s::date,
                 p_sesso                          := %s,
-                p_ruolo_sistema                  := %s::config.ruolo_sistema,
+                p_is_super_admin                 := %s,
+                p_attivo                         := %s,
                 p_valido_dal                     := COALESCE(%s::date, CURRENT_DATE),
                 p_valido_al                      := %s::date,
                 p_comune_nascita_id              := %s,
@@ -500,7 +538,7 @@ class AmmSoftwareRepository:
             cognome, nome, codice_fiscale,
             username, email, password_hash,
             qualifica_id, unita_organizzativa_id,
-            data_nascita, sesso, ruolo_sistema,
+            data_nascita, sesso, is_super_admin, attivo,
             valido_dal, valido_al,
             comune_nascita_id,
             indirizzo_resid_dettaglio_id,
@@ -657,6 +695,12 @@ class AmmSoftwareRepository:
                 )
 
     # Scopo: Lista model registrati in area_model_overrides (lookup per dropdown admin).
+    #        Ogni riga e' arricchita con capability `can_override` (bool) +
+    #        `reason` (chiave i18n|None) — Fase 8: i model che afferiscono al
+    #        kernel del sistema permessi (auth_user, identita, bindings, override
+    #        stessi) NON possono essere target di override per evitare lockout
+    #        ricorsivi. Pattern simmetrico a `can_change_scope`/`change_scope_reason`
+    #        di Fase 2.
     def list_model_overrides(self) -> list[dict[str, Any]]:
         sql = """
             SELECT amo.id, amo.app_label, amo.model_name,
@@ -667,7 +711,13 @@ class AmmSoftwareRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql)
-            return rows_to_list(cursor)
+            rows = rows_to_list(cursor)
+
+        for row in rows:
+            riservato = (row["app_label"], row["model_name"]) in _MODEL_OVERRIDE_RISERVATI
+            row["can_override"] = not riservato
+            row["reason"] = "amm.model_override_reason_riservato" if riservato else None
+        return rows
 
     # ================================================================== #
     # Emittenti scope per operatore (Fase 2 multi-face)                     #
@@ -1017,12 +1067,13 @@ class AmmSoftwareRepository:
     # Scopo: Restituisce la matrice permessi effettivi per tutti gli operatori attivi.
     # Ogni riga contiene dati operatore + una colonna per ogni area funzionale
     # con il livello effettivo (TUTTO/LETTURA/BLOCCATO) calcolato dalla funzione SQL.
-    # Filtri opzionali: reparto, ruolo_sistema.
+    # Filtri opzionali: reparto, is_super_admin, emittente. Niente piu' enum
+    # legacy `ruolo_sistema` (Fase 7).
     def get_permessi_riepilogo(
         self,
         *,
         unita_organizzativa_id: int | None = None,
-        ruolo_sistema: str | None = None,
+        is_super_admin: bool | None = None,
         emittente_fiscale_id: int | None = None,
     ) -> dict[str, Any]:
         # 1. Recupera aree funzionali attive (per le colonne)
@@ -1036,11 +1087,9 @@ class AmmSoftwareRepository:
             conditions.append("ru.unita_organizzativa_id = %s")
             params.append(unita_organizzativa_id)
 
-        if ruolo_sistema:
-            conditions.append(
-                "script.fn_get_ruolo_sistema(au.id) = %s::config.ruolo_sistema"
-            )
-            params.append(ruolo_sistema)
+        if is_super_admin is not None:
+            conditions.append("script.fn_is_super_admin(au.id) = %s")
+            params.append(is_super_admin)
 
         if emittente_fiscale_id is not None:
             conditions.append(
@@ -1066,7 +1115,9 @@ class AmmSoftwareRepository:
                    au.username,
                    COALESCE(s.cognome, au.last_name) AS cognome,
                    COALESCE(s.nome, au.first_name) AS nome,
-                   script.fn_get_ruolo_sistema(au.id)::text AS ruolo_sistema,
+                   script.fn_is_super_admin(au.id) AS is_super_admin,
+                   id.ruolo_applicativo::text AS ruolo_applicativo,
+                   au.is_active,
                    uo.descrizione AS reparto,
                    {area_columns}
               FROM auth_user au

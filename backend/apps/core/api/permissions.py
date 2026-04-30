@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Permission classes DRF per ZeroErp.
-# IsAdminZeroERP: check diretto ruolo_sistema = ADMIN (endpoint amministrazione).
+# IsAdminZeroERP: check binding SUPER_ADMIN (multi-face) per endpoint amministrazione.
 # ZeroERPPermission: risoluzione completa area funzionale + livello accesso.
 # ------------------------------------------------------------
 
@@ -123,7 +123,7 @@ class ZeroERPPermission(BasePermission):
                 )
                 self.message = "Utente disabilitato. Contattare l'amministratore."
                 return False
-            # SUPER_ADMIN bypass (sostituisce il vecchio check ruolo_sistema = ADMIN)
+            # SUPER_ADMIN bypass — single source of truth per il privilegio admin.
             if PermissionResolver.is_super_admin(user, cache=cache):
                 return True
 

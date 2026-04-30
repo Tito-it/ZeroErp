@@ -79,19 +79,17 @@ class IdentitaDigitale(models.Model):
 
 
 class RisorseUmaneAuthUser(models.Model):
-    """Ponte 1:1 tra risorsa umana e auth_user. Include ruolo_sistema per permessi.
+    """Ponte 1:1 tra risorsa umana e auth_user.
 
-    DEPRECATO: post-cutover §4.6.H.2 questa "tabella" e' in realta' una
-    vista su `identita_digitali` (leggibile, non scrivibile). I nuovi
-    writer usano `IdentitaDigitale` direttamente. Mantenuto come
-    `managed=False` per i reader legacy in transizione.
+    Post-cutover §4.6.H.2 questa "tabella" e' in realta' una vista su
+    `identita_digitali` (leggibile, non scrivibile). I writer usano
+    `IdentitaDigitale` direttamente. Mantenuto come `managed=False` per
+    i reader (es. `permissions_cache.invalidate_department` che mappa
+    UO -> auth_user_id).
+    Fase 7: il campo `ruolo_sistema` non e' piu' esposto sul modello
+    (multi-face puro). Per lo stato amministrativo si legge
+    `IdentitaDigitale.ruolo_applicativo` o `script.fn_is_super_admin`.
     """
-
-    RUOLO_SISTEMA_CHOICES = [
-        ("ADMIN", "Admin"),
-        ("OPERATIVO", "Operativo"),
-        ("DISABILITATO", "Disabilitato"),
-    ]
 
     id = models.BigAutoField(primary_key=True)
     risorsa_umana = models.OneToOneField(
@@ -102,11 +100,6 @@ class RisorseUmaneAuthUser(models.Model):
     )
     auth_user_id = models.IntegerField(unique=True)
     attivo = models.BooleanField(default=True)
-    ruolo_sistema = models.CharField(
-        max_length=15,
-        choices=RUOLO_SISTEMA_CHOICES,
-        default="OPERATIVO",
-    )
     meta = models.JSONField(default=dict)
     data_insert = models.DateTimeField(auto_now_add=True)
     user_insert = models.TextField(default="")

@@ -65,7 +65,7 @@ class TestRisorseUmaneCoreRepository(TestCase):
 
     @patch("apps.core.db.risorse_umane_core_repository.connection")
     def test_crea_risorsa_umana_with_auth_user(self, mock_conn):
-        """Verifica che auth_user_id venga passato al SQL quando fornito."""
+        """Verifica che auth_user_id + flag multi-face vengano passati al SQL."""
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = (200,)
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
@@ -76,13 +76,19 @@ class TestRisorseUmaneCoreRepository(TestCase):
         repo = RisorseUmaneCoreRepository()
         repo.crea_risorsa_umana(
             soggetto_id="uuid-test", qualifica_id=1,
-            auth_user_id=42, ruolo_sistema="ADMIN",
+            auth_user_id=42, is_super_admin=True, attivo=True,
         )
 
-        _, params = mock_cursor.execute.call_args[0]
-        # params[5] = auth_user_id, params[6] = ruolo_sistema
+        sql, params = mock_cursor.execute.call_args[0]
+        # Step 6 Fase 7: contract multi-face puro. La fn DB v2 accetta
+        # p_is_super_admin/p_attivo come bool. Niente piu' p_ruolo_sistema.
+        self.assertNotIn("p_ruolo_sistema", sql)
+        self.assertIn("p_is_super_admin", sql)
+        self.assertIn("p_attivo", sql)
+        # params[5] = auth_user_id, params[6] = is_super_admin, params[7] = attivo
         self.assertEqual(params[5], 42)
-        self.assertEqual(params[6], "ADMIN")
+        self.assertTrue(params[6])
+        self.assertTrue(params[7])
 
     @patch("apps.core.db.risorse_umane_core_repository.connection")
     def test_crea_risorsa_umana_without_auth_user(self, mock_conn):

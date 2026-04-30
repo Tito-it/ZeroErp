@@ -58,16 +58,6 @@ export const FIELD_LENGTH = {
   IBAN_MAX: 34  // ISO 13616: max 34 caratteri alfanumerici
 }
 
-// Enum ruolo sistema LEGACY (allineato a config.ruolo_sistema nel DB).
-// Mantenuto per retrocompat FE non ancora migrati al nuovo modello
-// multi-face auth. Nuovi consumer usino RUOLO_APPLICATIVO + is_super_admin
-// letti dal profilo /me/.
-export const RUOLO_SISTEMA = {
-  ADMIN: 'ADMIN',
-  OPERATIVO: 'OPERATIVO',
-  DISABILITATO: 'DISABILITATO'
-}
-
 // Enum ruolo applicativo (allineato a config.ruolo_applicativo nel DB).
 // Categoria dell'identita' digitale dell'utente. Letto da
 // anagrafiche.identita_digitali.ruolo_applicativo via GUC app.ruolo_applicativo
