@@ -2,6 +2,9 @@
 
 ## ⚙️ Funzioni (manuale)
 - [fn_audit_summary](manual/fn_audit_summary.md)
+- [fn_available_actions_contratto](manual/fn_available_actions_contratto.md)
+- [fn_available_actions_preventivo](manual/fn_available_actions_preventivo.md)
+- [fn_capability_promo_articolo](manual/fn_capability_promo_articolo.md)
 - [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (latest review 08-03-2026) La funzione **`script.fn_check_azione_processo`** verifica se un'azione di processo (identificata da `permission_codename`) e abilitata per un utente.
