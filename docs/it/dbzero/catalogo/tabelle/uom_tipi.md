@@ -30,5 +30,12 @@
 | uq_uom_tipi_codice | `CREATE UNIQUE INDEX uq_uom_tipi_codice ON catalogo.uom_tipi USING btree (codice)` |
 | uq_uom_tipi_codice_interno | `CREATE UNIQUE INDEX uq_uom_tipi_codice_interno ON catalogo.uom_tipi USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_uom_tipi_a10_unita_misura_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'unita_misura', 'tipo_uom_id', 'id', 'attivo')` |
+| trg_uom_tipi_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_uom_tipi_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

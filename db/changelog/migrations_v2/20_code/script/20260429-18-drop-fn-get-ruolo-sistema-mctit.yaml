@@ -1,0 +1,50 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260429-18-drop-fn-get-ruolo-sistema-mctit.yaml
+
+  - changeSet:
+      id: 20260429-18-drop-fn-get-ruolo-sistema
+      author: mctit
+      comment: >
+        Fase 7 step 8a (2026-04-29): drop di script.fn_get_ruolo_sistema
+        (DEPRECATA dal cutover §4.6.C.1, raise WARNING dal 20260429-10).
+
+        Verificato cross-repo che nessuno la chiama piu':
+          - 5 fn permessi: gia' migrate a fn_is_super_admin +
+            fn_has_identita_attiva da §4.6.B (apr-19).
+          - fn_get_setup_status: gia' migrata da §4.6.B.10.
+          - fn_get_user_profile: la chiamava per costruire 'ruolo_sistema'
+            jsonb key, rimossa da 20260429-14 in questa stessa Fase 7.
+          - fn_get_operatore_detail: la chiamava per output column
+            'ruolo_sistema', rimossa da 20260429-11 in questa stessa Fase 7.
+          - BE Python: PR Fase 7 LANDED, _legacy_ruolo_from_contract
+            rimosso dai 2 repo.
+
+        Sblocca:
+          - 20260429-19 (drop colonna ruolo_sistema da vista RAU):
+            la vista chiama la stessa logica inline, non la fn, quindi
+            non ha dipendenza diretta - ma la fn referenziava il TYPE
+            config.ruolo_sistema nel RETURNS, e il drop della fn libera
+            il TYPE per il successivo DROP TYPE (step 9).
+          - 20260429-20 (DROP TYPE config.ruolo_sistema).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_get_ruolo_sistema';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_ruolo_sistema(integer);
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: riapplicare 20260419-22 (wrapper retrocompat)
+              -- + 20260429-10 (deprecation WARNING).
+              SELECT 1;

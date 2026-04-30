@@ -56,18 +56,18 @@ Valori possibili (enum `config.livello_accesso`):
 
 1. Valida `p_auth_user_id`
 2. Legge una sola volta il contesto utente:
-   `ruolo_sistema` + `unita_organizzativa_id`
+   `is_super_admin` + `has_identita_attiva` + `unita_organizzativa_id`
 3. Esegue una query set-based su `config.aree_funzionali`
 4. Applica la catena di risoluzione con `LEFT JOIN` su:
    `config.user_override_aree` e `config.profili_reparto_aree`
 5. Compone il risultato con `jsonb_object_agg`
 
-## Catena di risoluzione
+## Catena di risoluzione (post Fase 7 cleanup)
 
 ```text
-1. ruolo_sistema:
-   - NULL / DISABILITATO -> BLOCCATO
-   - ADMIN -> TUTTO
+1. Stato identita (multi-face native, post Fase 7 2026-04-29):
+   - NOT fn_has_identita_attiva(au, 'OPERATORE') -> BLOCCATO
+   - fn_is_super_admin(au) -> TUTTO
 2. Override utente area (se presente e valido temporalmente)
 3. Profilo reparto area (ereditato dalla UO)
 4. Default -> BLOCCATO
@@ -80,7 +80,7 @@ una volta per ciascuna.
 
 La versione corrente:
 
-- legge `ruolo_sistema` una sola volta
+- legge `is_super_admin` + `has_identita_attiva` una sola volta (post Fase 7: era `ruolo_sistema` legacy)
 - legge `unita_organizzativa_id` una sola volta
 - evita il loop PL/pgSQL
 - costruisce la mappa completa in forma set-based

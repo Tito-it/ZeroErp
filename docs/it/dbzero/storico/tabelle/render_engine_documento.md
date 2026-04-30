@@ -1,0 +1,29 @@
+# 📚 Tabella `render_engine_documento`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO | nextval('storico.render_engine_documento_id_seq'::regclass) |
+| render_engine_documento_id | bigint | NO |  |
+| change_type | character | YES | 'A'::bpchar |
+| tipo_operazione | smallint | YES |  |
+| snapshot | jsonb | YES |  |
+| user_insert | text | YES | CURRENT_USER |
+| data_insert | timestamp with time zone | YES | now() |
+| tx_id | uuid | YES |  |
+| valid_from | timestamp with time zone | YES | now() |
+| valid_to | timestamp with time zone | YES |  |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| PRIMARY KEY | pk_storico_render_engine_documento | id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_render_engine_documento_render_engine_documento_id_fk | `CREATE INDEX ix_render_engine_documento_render_engine_documento_id_fk ON storico.render_engine_documento USING btree (render_engine_documento_id)` |
+| pk_storico_render_engine_documento | `CREATE UNIQUE INDEX pk_storico_render_engine_documento ON storico.render_engine_documento USING btree (id)` |
+
+---
+{% include-markdown "signature-core.md" %}

@@ -1,0 +1,7 @@
+id,codice,codice_interno,descrizione,attivo,meta,storicizza,data_insert,user_insert,data_update,user_update,tx_id
+1,LOGO,LOGO,Logo,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+2,FIRMA,FIRMA,Firma,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+3,IMMAGINE,IMMAGINE,Immagine,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+4,PDF,PDF,PDF,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+5,CSS,CSS,CSS,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+6,ALTRO,ALTRO,Altro,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL

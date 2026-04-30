@@ -107,26 +107,42 @@ SELECT ok(
 --    (verifica che la catena trgfn → fn_check funziona)
 -- ============================================================
 
--- Prepara contesto: prendi un utente e forzalo a OPERATIVO.
+-- Prepara contesto: pesco un'identita OPERATORE attiva NON super-admin
+-- (filtro NOT EXISTS binding SUPER_ADMIN, pattern §4.bis pgTAP).
+-- Pre-Fase 7: il setup leggeva da rau e forzava ruolo_sistema='OPERATIVO'
+-- via UPDATE (rotto post-cutover §13.3, vista non updatable).
+-- Post-Fase 7: il filtro garantisce gia' lo stato "OPERATIVO" semantico
+-- (identita OPERATORE attiva senza binding SA), nessun UPDATE forzato.
 -- emittente_ko_id = -1 (fittizio): la funzione verifica solo la whitelist,
 -- non che l'emittente esista in anagrafiche.emittenti_fiscali.
 CREATE TEMP TABLE tmp_guard_ctx AS
 SELECT
-    rau.auth_user_id AS user_id,
+    id.auth_user_id  AS user_id,
     ef.id            AS emittente_ok_id,
     -1::bigint       AS emittente_ko_id
-FROM anagrafiche.risorse_umane_auth_user rau
+FROM anagrafiche.identita_digitali id
 CROSS JOIN (
     SELECT id FROM anagrafiche.emittenti_fiscali
     WHERE attivo = true ORDER BY id LIMIT 1
 ) ef
-ORDER BY rau.id
+WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+  AND id.attivo = true
+  AND NOT EXISTS (
+      SELECT 1
+        FROM config.profili_accesso_bindings pab
+        JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
+       WHERE pab.identita_digitale_id = id.id
+         AND pab.attivo = true
+         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+  )
+ORDER BY id.id
 LIMIT 1;
 
--- Forza OPERATIVO per il test (ROLLBACK ripristina)
-UPDATE anagrafiche.risorse_umane_auth_user
-   SET ruolo_sistema = 'OPERATIVO'
+-- Pulisce whitelist preesistenti per l'utente di test (guard_delete override).
+SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+DELETE FROM config.user_emittenti_fiscali
  WHERE auth_user_id = (SELECT user_id FROM tmp_guard_ctx);
+SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 -- Aggiungi whitelist solo per emittente_ok
 INSERT INTO config.user_emittenti_fiscali

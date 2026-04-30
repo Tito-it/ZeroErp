@@ -1,0 +1,29 @@
+# 📚 Tabella `template_documenti`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO | nextval('storico.template_documenti_id_seq'::regclass) |
+| template_documenti_id | bigint | NO |  |
+| change_type | character | YES | 'A'::bpchar |
+| tipo_operazione | smallint | YES |  |
+| snapshot | jsonb | YES |  |
+| user_insert | text | YES | CURRENT_USER |
+| data_insert | timestamp with time zone | YES | now() |
+| tx_id | uuid | YES |  |
+| valid_from | timestamp with time zone | YES | now() |
+| valid_to | timestamp with time zone | YES |  |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| PRIMARY KEY | pk_storico_template_documenti | id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_template_documenti_template_documenti_id_fk | `CREATE INDEX ix_template_documenti_template_documenti_id_fk ON storico.template_documenti USING btree (template_documenti_id)` |
+| pk_storico_template_documenti | `CREATE UNIQUE INDEX pk_storico_template_documenti ON storico.template_documenti USING btree (id)` |
+
+---
+{% include-markdown "signature-core.md" %}

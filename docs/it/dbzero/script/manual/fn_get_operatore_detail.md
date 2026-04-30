@@ -21,7 +21,6 @@ concesse / vietate / non applicabili) e ne riportano il motivo:
 > - [fn_check_operatore_invitabile](/dbzero/script/funzioni/fn_check_operatore_invitabile) — capability `can_invite` riusa lo stesso JSONB
 > - [fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin) — flag `is_super_admin` (GUC-aware)
 > - [fn_check_ultimo_super_admin_attivo](/dbzero/script/funzioni/fn_check_ultimo_super_admin_attivo) — primitiva di `can_disable` / `can_demote_super_admin`
-> - [fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema) — wrapper retrocompat ruolo legacy
 
 ## Schema
 
@@ -72,7 +71,6 @@ Tabella a riga singola (0 righe se `p_auth_user_id` non esiste o è `NULL`/≤0)
 | `valido_al` | `TEXT` | `ru.valido_al::text` |
 | `unita_organizzativa_id` | `config.unita_organizzative.id%TYPE` | `ru.unita_organizzativa_id` |
 | `unita_organizzativa_nome` | `config.unita_organizzative.descrizione%TYPE` | `uo.descrizione` |
-| `ruolo_sistema` | `TEXT` | `script.fn_get_ruolo_sistema(au.id)::text` |
 | `ruolo_applicativo` | `TEXT` | `id.ruolo_applicativo::text` (enum `config.ruolo_applicativo`) |
 | `is_super_admin` | `BOOLEAN` | `script.fn_is_super_admin(au.id)` (GUC-aware) |
 | `invito_inviato_at` | `anagrafiche.identita_digitali.invito_inviato_at%TYPE` | `id.invito_inviato_at` |
@@ -160,8 +158,7 @@ Tabella a riga singola (0 righe se `p_auth_user_id` non esiste o è `NULL`/≤0)
 
 ### Funzioni
 
-* `script.fn_get_ruolo_sistema(integer)` — wrapper retrocompat
-* `script.fn_is_super_admin(integer)` — GUC-aware
+* `script.fn_is_super_admin(integer)` — GUC-aware (sostituisce la chiamata storica a `fn_get_ruolo_sistema`, droppata in Fase 7 2026-04-29)
 * `script.fn_check_operatore_invitabile(integer)` — capability invito
 * `script.fn_check_ultimo_super_admin_attivo(integer)` — capability lockout
 

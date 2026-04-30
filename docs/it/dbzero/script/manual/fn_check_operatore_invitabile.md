@@ -28,15 +28,20 @@ script.fn_check_operatore_invitabile(
 
 Tutte devono essere soddisfatte:
 
+Condizioni post §4.6.B + Fase 7 (2026-04-29): la fn legge da
+`anagrafiche.identita_digitali` (ruolo_applicativo='OPERATORE'), non
+piu' dal bridge legacy. Tutte devono essere soddisfatte:
+
 | # | Condizione | Motivo se non soddisfatta |
 |---|-----------|---------------------------|
 | 1 | `auth_user` esiste | `Utente non trovato` |
 | 2 | `auth_user.is_active = true` | `Utente disattivato (is_active=false)` |
-| 3 | Record `risorse_umane_auth_user` esiste | `Nessun record risorse_umane_auth_user` |
-| 4 | `risorse_umane_auth_user.attivo = true` | `Record risorse_umane_auth_user non attivo` |
-| 5 | `ruolo_sistema <> 'DISABILITATO'` | `Ruolo sistema DISABILITATO` |
-| 6 | `auth_user.email` valorizzata | `Nessun indirizzo email configurato` |
-| 7 | `auth_user.last_login IS NULL` | `Utente ha gia' effettuato login` |
+| 3 | Identita OPERATORE esiste | `Nessuna identita OPERATORE` |
+| 4 | `identita_digitali.attivo = true` | `Identita OPERATORE non attiva` |
+| 5 | `identita.ruolo_applicativo <> 'DISABILITATO'` | `Ruolo applicativo DISABILITATO` |
+| 6 | identita in finestra temporale (`valido_dal/al`) | `Identita fuori finestra temporale` |
+| 7 | `auth_user.email` valorizzata | `Nessun indirizzo email configurato` |
+| 8 | `auth_user.last_login IS NULL` | `Utente ha gia' effettuato login` |
 
 ## Caratteristiche
 

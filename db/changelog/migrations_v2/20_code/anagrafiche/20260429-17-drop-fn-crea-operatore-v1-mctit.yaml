@@ -1,0 +1,41 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260429-17-drop-fn-crea-operatore-v1-mctit.yaml
+
+  - changeSet:
+      id: 20260429-17-drop-fn-crea-operatore-v1
+      author: mctit
+      comment: >
+        Fase 7 step 7 (2026-04-29): drop di anagrafiche.fn_crea_operatore
+        v1 (firma con p_ruolo_sistema config.ruolo_sistema). Sostituita
+        da fn_crea_operatore_v2 (20260429-13) con firma multi-face native
+        p_is_super_admin/p_attivo.
+
+        Drop indipendente da 20260429-16 (fn_crea_risorsa_umana v1):
+        in PostgreSQL le chiamate a fn da plpgsql sono risolte a runtime,
+        quindi le 2 v1 possono essere droppate in qualsiasi ordine senza
+        dipendenza di compilazione.
+
+        Prerequisiti: PR Python LANDED 2026-04-29 (BE chiama v2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'fn_crea_operatore_v2';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_operatore(
+                  uuid, text, text, text, text, text, text, integer, integer,
+                  date, character, config.ruolo_sistema, date, date, integer,
+                  bigint, bigint
+              );
+      rollback:
+        - sql:
+            sql: SELECT 1;

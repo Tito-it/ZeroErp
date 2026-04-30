@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Popola meta UI su config.transizioni_stati_preventivi
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260430-60-update-transizioni-stati-preventivi-meta-ui-mctit.yaml
+
+  - changeSet:
+      id: 20260430-60-update-transizioni-stati-preventivi-meta-ui
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      failOnError: true
+      comment: >
+        Popola il campo meta di config.transizioni_stati_preventivi con i
+        metadati UI necessari a script.fn_available_actions_preventivo
+        (Fase 1 refactor frontend vendite, 2026-04-30).
+
+        Campi aggiunti in meta per ogni transizione manuale:
+          action_key:       chiave semantica dell'azione (usata dal FE come key)
+          label_key:        chiave i18n per il label del bottone Vue
+          severity:         severity PrimeVue (info / success / danger)
+          icon:             classe PrimeIcons (es. 'pi pi-send')
+          requires_confirm: se true, il drawer mostra dialog di conferma
+          manuale:          false per transizioni automatiche (job/trigger)
+                            che non devono comparire nella lista azioni UI
+
+        Transizioni manuali (identificate via codice_interno, immutabile
+        via trigger lock_columns su stati_doc_preventivi):
+          DRAFT     → EMESSO     (emetti)
+          DRAFT     → ANNULLATO  (annulla)
+          EMESSO    → ACCETTATO  (accetta)
+          EMESSO    → RIFIUTATO  (rifiuta)
+          EMESSO    → SCADUTO    (automatico — job notturno, manuale=false)
+          EMESSO    → ANNULLATO  (annulla)
+          ACCETTATO → ANNULLATO  (annulla)
+
+        UPDATE per coppia (stato_da.codice_interno, stato_a.codice_interno):
+        join su stati_doc_preventivi resolve gli id senza ipotesi sui valori.
+        codice_interno e' protetto da trigger lock_columns: cambia solo
+        DELETE+INSERT, scenario fuori scope per il seed.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: transizioni_stati_preventivi
+          - tableExists:
+              schemaName: config
+              tableName: stati_doc_preventivi
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- DRAFT → EMESSO
+              UPDATE config.transizioni_stati_preventivi t
+                 SET meta = '{"action_key":"emetti","label_key":"preventivi.azione_emetti","severity":"info","icon":"pi pi-send","requires_confirm":false,"manuale":true}'::jsonb
+                FROM config.stati_doc_preventivi sd,
+                     config.stati_doc_preventivi sa
+               WHERE sd.id = t.stato_da_id
+                 AND sa.id = t.stato_a_id
+                 AND sd.codice_interno = 'DRAFT'
+                 AND sa.codice_interno = 'EMESSO';
+
+              -- DRAFT → ANNULLATO
+              UPDATE config.transizioni_stati_preventivi t
+                 SET meta = '{"action_key":"annulla","label_key":"preventivi.azione_annulla","severity":"danger","icon":"pi pi-times","requires_confirm":true,"manuale":true}'::jsonb
+                FROM config.stati_doc_preventivi sd,
+                     config.stati_doc_preventivi sa
+               WHERE sd.id = t.stato_da_id
+                 AND sa.id = t.stato_a_id
+                 AND sd.codice_interno = 'DRAFT'
+                 AND sa.codice_interno = 'ANNULLATO';
+
+              -- EMESSO → ACCETTATO
+              UPDATE config.transizioni_stati_preventivi t
+                 SET meta = '{"action_key":"accetta","label_key":"preventivi.azione_accetta","severity":"success","icon":"pi pi-check","requires_confirm":false,"manuale":true}'::jsonb
+                FROM config.stati_doc_preventivi sd,
+                     config.stati_doc_preventivi sa
+               WHERE sd.id = t.stato_da_id
+                 AND sa.id = t.stato_a_id
+                 AND sd.codice_interno = 'EMESSO'
+                 AND sa.codice_interno = 'ACCETTATO';
+
+              -- EMESSO → RIFIUTATO
+              UPDATE config.transizioni_stati_preventivi t
+                 SET meta = '{"action_key":"rifiuta","label_key":"preventivi.azione_rifiuta","severity":"danger","icon":"pi pi-ban","requires_confirm":true,"manuale":true}'::jsonb
+                FROM config.stati_doc_preventivi sd,
+                     config.stati_doc_preventivi sa
+               WHERE sd.id = t.stato_da_id
+                 AND sa.id = t.stato_a_id
+                 AND sd.codice_interno = 'EMESSO'
+                 AND sa.codice_interno = 'RIFIUTATO';
+
+              -- EMESSO → SCADUTO (automatico — escluso dalla lista UI)
+              UPDATE config.transizioni_stati_preventivi t
+                 SET meta = '{"manuale":false}'::jsonb
+                FROM config.stati_doc_preventivi sd,
+                     config.stati_doc_preventivi sa
+               WHERE sd.id = t.stato_da_id
+                 AND sa.id = t.stato_a_id
+                 AND sd.codice_interno = 'EMESSO'
+                 AND sa.codice_interno = 'SCADUTO';
+
+              -- EMESSO → ANNULLATO
+              UPDATE config.transizioni_stati_preventivi t
+                 SET meta = '{"action_key":"annulla","label_key":"preventivi.azione_annulla","severity":"danger","icon":"pi pi-times","requires_confirm":true,"manuale":true}'::jsonb
+                FROM config.stati_doc_preventivi sd,
+                     config.stati_doc_preventivi sa
+               WHERE sd.id = t.stato_da_id
+                 AND sa.id = t.stato_a_id
+                 AND sd.codice_interno = 'EMESSO'
+                 AND sa.codice_interno = 'ANNULLATO';
+
+              -- ACCETTATO → ANNULLATO
+              UPDATE config.transizioni_stati_preventivi t
+                 SET meta = '{"action_key":"annulla","label_key":"preventivi.azione_annulla","severity":"danger","icon":"pi pi-times","requires_confirm":true,"manuale":true}'::jsonb
+                FROM config.stati_doc_preventivi sd,
+                     config.stati_doc_preventivi sa
+               WHERE sd.id = t.stato_da_id
+                 AND sa.id = t.stato_a_id
+                 AND sd.codice_interno = 'ACCETTATO'
+                 AND sa.codice_interno = 'ANNULLATO';

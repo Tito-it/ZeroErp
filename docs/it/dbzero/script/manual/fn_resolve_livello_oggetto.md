@@ -10,7 +10,8 @@
 **Funzioni correlate:**
 >
 [script.fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area)
-> [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+> [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin)
+> [script.fn_has_identita_attiva](/dbzero/script/funzioni/fn_has_identita_attiva)
 
 ---
 ### 🎯 Scopo Principale
