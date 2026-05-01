@@ -142,6 +142,10 @@ allineata al constraint trigger su `istanze_utilities`
 1. `chk_preventivi_validita`: intervallo validita` coerente.
 2. `chk_preventivi_competenza_mese_primo`: competenza allineata al primo giorno del mese.
 3. FK attive su stato documento, termini, utility, valuta, BA, emittente fiscale.
+4. **`istanza_utility_id` NOT NULL** (allinea preventivi al pattern di `commesse_attivita`/`attivita_fatturabili`). Il preventivo deve essere collegato a un'istanza utility, anche per business non-utility (istanza tecnica/contenitore).
+5. **Coerenza utility/istanza**: la coppia `(istanza_utility_id, utility_id)` deve essere dichiarata in almeno uno dei satelliti `billing_account` / `istanze_dati_precontrattuali` / `clienti` (post Strategia C). Trigger `trgfn_preventivi_guard_utility_istanza_coerenza` (`_a10_`) → errore `E_PREV_UTILITY_ISTANZA_INCOERENTE`.
+6. **`emittente_fiscale_id` user-derived**: valorizzato a INSERT-time dal trigger `trgfn_preventivi_default_emittente` da GUC `app.current_user_id` via `script.fn_resolve_emittente_for_user`. Per admin globale (utente senza emittente assegnato) il payload deve specificare `emittente_fiscale_id` esplicito altrimenti errore `E_PREV_EMITTENTE_NON_RISOLTO`.
+7. **`emittente_fiscale_id` immutabile post-create**: pattern `automation_lock_columns` → errore `EMITTENTE_NON_MODIFICABILE`. Per cambiare l'emittente serve creare una revisione.
 4. **Istanza obbligatoria** (NOT NULL): regola dominio.
 5. **Emittente fiscale obbligatorio** (NOT NULL): snapshot user-derived,
    sollevato `E_PREV_EMITTENTE_NON_RISOLTO` se contesto non risolvibile.
