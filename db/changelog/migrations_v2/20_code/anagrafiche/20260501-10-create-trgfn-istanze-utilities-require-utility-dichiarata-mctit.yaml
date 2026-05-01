@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Strategia C: ogni istanze_utilities deve avere almeno 1 satellite che
+# dichiari la utility (billing_account, istanze_dati_precontrattuali, clienti).
+# Implementato come CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED:
+# permette di creare istanza + satellite nella stessa transazione e verifica
+# l'invariante al COMMIT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260501-10-create-trgfn-istanze-utilities-require-utility-dichiarata-mctit.yaml
+
+  - changeSet:
+      id: 20260501-10-create-trgfn-istanze-utilities-require-utility-dichiarata
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        CONSTRAINT TRIGGER DEFERRABLE su istanze_utilities che richiede al
+        COMMIT almeno 1 riga in billing_account, istanze_dati_precontrattuali
+        o clienti che referenzia l'istanza. Allinea le 3 fonti satellite con
+        script.fn_check_utility_istanza_coerenza.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Function: anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata
+              --
+              -- Scopo: garantire che ogni istanze_utilities abbia almeno
+              --        un satellite (BA, IDP, clienti) che dichiari la
+              --        utility associata.
+              --
+              -- Modello: CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED
+              --   - permette INSERT istanza + INSERT satellite nella stessa tx
+              --   - verifica al COMMIT (per ogni riga inserita, non globale)
+              --
+              -- Allineato a script.fn_check_utility_istanza_coerenza:
+              -- le 3 fonti devono essere identiche.
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Almeno 1 satellite tra BA, IDP, clienti deve esistere
+                -- per l'istanza appena inserita (NEW.id).
+                IF NOT EXISTS (
+                  SELECT 1 FROM anagrafiche.billing_account
+                   WHERE istanza_utility_id = NEW.id
+                  UNION ALL
+                  SELECT 1 FROM anagrafiche.istanze_dati_precontrattuali
+                   WHERE istanza_utility_id = NEW.id
+                  UNION ALL
+                  SELECT 1 FROM anagrafiche.clienti
+                   WHERE istanza_utility_id = NEW.id
+                ) THEN
+                  -- Ultimo arg = valore per il %s del messaggio CSV
+                  -- (E_ISTANZA_UTILITY_SENZA_UTILITY: %s = breve contesto).
+                  PERFORM script.fn_log_and_raise_error(
+                    'anagrafiche',
+                    'trgfn_istanze_utilities_require_utility_dichiarata',
+                    'E_ISTANZA_UTILITY_SENZA_UTILITY',
+                    jsonb_build_object(
+                      'detail', 'Istanza senza satellite (BA/IDP/cliente) al COMMIT',
+                      'istanza_utility_id', NEW.id,
+                      'soggetto_id', NEW.soggetto_id
+                    ),
+                    NULL::uuid,
+                    concat('istanza_utility_id=', NEW.id::text)
+                  );
+                END IF;
+
+                RETURN NULL;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata()
+              IS 'Constraint trigger function (DEFERRABLE) che valida al COMMIT '
+                 'la presenza di almeno 1 satellite (billing_account, '
+                 'istanze_dati_precontrattuali, clienti) per la nuova istanza. '
+                 'Lista satelliti allineata a script.fn_check_utility_istanza_coerenza.';
+
+              -- Drop-and-recreate per gestire ridefinizioni (runOnChange:true).
+              DROP TRIGGER IF EXISTS trg_istanze_utilities_z90_require_utility_dichiarata_ins
+                ON anagrafiche.istanze_utilities;
+
+              CREATE CONSTRAINT TRIGGER trg_istanze_utilities_z90_require_utility_dichiarata_ins
+                AFTER INSERT ON anagrafiche.istanze_utilities
+                DEFERRABLE INITIALLY DEFERRED
+                FOR EACH ROW
+                EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata();
+
+              COMMENT ON TRIGGER trg_istanze_utilities_z90_require_utility_dichiarata_ins
+                ON anagrafiche.istanze_utilities
+              IS 'Strategia C: enforce al COMMIT che ogni nuova istanza abbia '
+                 'almeno 1 satellite che dichiari la utility (BA, IDP, cliente).';

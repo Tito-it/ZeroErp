@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge vendite.preventivi.emittente_fiscale_id (FK ad anagrafiche.emittenti_fiscali).
+# La colonna nasce nullable: il backfill in 80_data e il SET NOT NULL in 90_end
+# completano il rollout. La valorizzazione runtime e' delegata al trigger
+# trgfn_preventivi_default_emittente (modello user-derived).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260501-09-add-emittente-fiscale-id-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260501-09-add-emittente-fiscale-id-preventivi
+      author: mctit
+      comment: >
+        ADD COLUMN vendite.preventivi.emittente_fiscale_id (bigint, FK
+        anagrafiche.emittenti_fiscali). Nullable inizialmente; backfill in
+        80_data poi NOT NULL in 90_end. Indice per scope filtering.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: preventivi
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'vendite'
+                 AND table_name = 'preventivi'
+                 AND column_name = 'emittente_fiscale_id';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- ADD COLUMN vendite.preventivi.emittente_fiscale_id
+              --
+              -- Modello user-derived: il valore e' lo snapshot dell'emittente
+              -- dell'operatore loggato che ha creato la riga (via GUC
+              -- app.current_user_id + script.fn_resolve_emittente_for_user).
+              -- Vedi trigger trg_preventivi_a10_default_emittente_ins.
+              --
+              -- Persistito (non derivato dinamicamente nella view): garantisce
+              -- snapshot semantics e zero overhead a SELECT-time. La view
+              -- vw_preventivi_list legge la colonna direttamente.
+              --
+              -- FK: anagrafiche.emittenti_fiscali(id). Niente ON DELETE CASCADE
+              -- (un EF non si cancella, si disattiva).
+              -- ==========================================================
+              ALTER TABLE vendite.preventivi
+                ADD COLUMN emittente_fiscale_id bigint;
+
+              ALTER TABLE vendite.preventivi
+                ADD CONSTRAINT fk_preventivi_emittente_fiscale
+                FOREIGN KEY (emittente_fiscale_id)
+                REFERENCES anagrafiche.emittenti_fiscali(id);
+
+              COMMENT ON COLUMN vendite.preventivi.emittente_fiscale_id IS
+                'Emittente fiscale del documento (PK reale). Snapshot dell''operatore '
+                'che ha creato la riga (GUC app.current_user_id + '
+                'script.fn_resolve_emittente_for_user). Valorizzato a INSERT-time '
+                'dal trigger trgfn_preventivi_default_emittente. Immutabile post-create '
+                '(automation_lock_columns). NOT NULL post-backfill.';
+
+              -- Indice per scope filtering (operatore/admin globale vede solo
+              -- i propri preventivi via filtro emittente_fiscale_id).
+              CREATE INDEX IF NOT EXISTS ix_preventivi_emittente_fiscale_id
+                ON vendite.preventivi (emittente_fiscale_id);

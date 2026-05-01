@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Trigger BEFORE INSERT/UPDATE su vendite.preventivi che valida la coerenza
+# (istanza_utility_id, utility_id) via script.fn_check_utility_istanza_coerenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260501-13-create-trgfn-preventivi-guard-utility-istanza-coerenza-mctit.yaml
+
+  - changeSet:
+      id: 20260501-13-create-trgfn-preventivi-guard-utility-istanza-coerenza
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        BEFORE INSERT OR UPDATE OF (istanza_utility_id, utility_id) trigger
+        su preventivi che applica script.fn_check_utility_istanza_coerenza.
+        Solleva E_PREV_UTILITY_ISTANZA_INCOERENTE se la coppia non matcha
+        nessuna fonte satellite (BA, IDP, clienti).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Function: vendite.trgfn_preventivi_guard_utility_istanza_coerenza
+              --
+              -- Scopo: garantire che preventivi.utility_id sia coerente con
+              --        la utility risolvibile dall'istanza_utility_id.
+              --
+              -- Logica: delega a script.fn_check_utility_istanza_coerenza
+              --         (pure check, allineata al trigger require_utility_dichiarata).
+              --
+              -- Eventi: BEFORE INSERT OR UPDATE OF istanza_utility_id, utility_id
+              --   - INSERT: sempre validato
+              --   - UPDATE: solo se cambia istanza_utility_id o utility_id
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_utility_istanza_coerenza()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Skip se istanza non valorizzata (post NOT NULL e' impossibile,
+                -- ma safety net per il rollout iniziale e per evitare errori
+                -- fuorvianti durante il backfill).
+                IF NEW.istanza_utility_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Delega al pure check generico.
+                IF NOT script.fn_check_utility_istanza_coerenza(
+                       NEW.istanza_utility_id,
+                       NEW.utility_id
+                   ) THEN
+                  -- Ultimo arg = valore per il %s del messaggio CSV
+                  -- (E_PREV_UTILITY_ISTANZA_INCOERENTE: %s = breve contesto).
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'trgfn_preventivi_guard_utility_istanza_coerenza',
+                    'E_PREV_UTILITY_ISTANZA_INCOERENTE',
+                    jsonb_build_object(
+                      'detail', 'utility_id non coerente con istanza_utility_id (no BA/IDP/cliente matching)',
+                      'istanza_utility_id', NEW.istanza_utility_id,
+                      'utility_id', NEW.utility_id
+                    ),
+                    NULL::uuid,
+                    concat('istanza_utility_id=', NEW.istanza_utility_id::text,
+                           ', utility_id=', NEW.utility_id::text)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_utility_istanza_coerenza()
+              IS 'Guard BEFORE INSERT/UPDATE su vendite.preventivi: verifica '
+                 'coerenza (istanza_utility_id, utility_id) via '
+                 'script.fn_check_utility_istanza_coerenza. Solleva '
+                 'E_PREV_UTILITY_ISTANZA_INCOERENTE.';
+
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_guard_utility_istanza_coerenza_ins_upd
+                ON vendite.preventivi;
+
+              CREATE TRIGGER trg_preventivi_a10_guard_utility_istanza_coerenza_ins_upd
+                BEFORE INSERT OR UPDATE OF istanza_utility_id, utility_id
+                ON vendite.preventivi
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_preventivi_guard_utility_istanza_coerenza();
+
+              COMMENT ON TRIGGER trg_preventivi_a10_guard_utility_istanza_coerenza_ins_upd
+                ON vendite.preventivi
+              IS 'Guard coerenza (istanza, utility) via fn check generica. '
+                 'Fase _a10_guard_*: scatta dopo _a10_default_emittente.';

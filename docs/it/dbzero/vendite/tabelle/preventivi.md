@@ -9,7 +9,7 @@
 | rev | integer | NO | 0 |
 | is_revision_attiva | boolean | NO | false |
 | billing_account_id | bigint | YES |  |
-| istanza_utility_id | bigint | YES |  |
+| istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | validita_dal | date | YES |  |
 | validita_al | date | YES |  |
@@ -30,6 +30,7 @@
 | uid | uuid | NO | uuidv7() |
 | storicizza | boolean | YES | false |
 | tx_id | uuid | YES |  |
+| emittente_fiscale_id | bigint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -37,6 +38,7 @@
 | CHECK | chk_preventivi_competenza_mese_primo |  |
 | CHECK | chk_preventivi_validita |  |
 | FOREIGN KEY | fk_preventivi_billing_account | billing_account_id |
+| FOREIGN KEY | fk_preventivi_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_preventivi_istanza | istanza_utility_id |
 | FOREIGN KEY | fk_preventivi_termini_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_preventivi_utility | utility_id |
@@ -48,6 +50,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_preventivi_emittente_fiscale_id | `CREATE INDEX ix_preventivi_emittente_fiscale_id ON vendite.preventivi USING btree (emittente_fiscale_id)` |
 | pk_preventivi | `CREATE UNIQUE INDEX pk_preventivi ON vendite.preventivi USING btree (id)` |
 | uq_preventivi_numero_rev | `CREATE UNIQUE INDEX uq_preventivi_numero_rev ON vendite.preventivi USING btree (numero, rev)` |
 | uq_preventivi_uid | `CREATE UNIQUE INDEX uq_preventivi_uid ON vendite.preventivi USING btree (uid)` |
@@ -56,9 +59,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_preventivi_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_gen_codice()` |
+| trg_preventivi_a10_default_emittente_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_default_emittente()` |
 | trg_preventivi_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_gen_codice()` |
+| trg_preventivi_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_gen_codice()` |
 | trg_preventivi_a10_guard_transizione_approvazione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_guard_transizione_approvazione()` |
+| trg_preventivi_a10_guard_utility_istanza_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_guard_utility_istanza_coerenza()` |
+| trg_preventivi_a10_guard_utility_istanza_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_guard_utility_istanza_coerenza()` |
 | trg_preventivi_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('numero', 'CODICE_NON_MODIFICABILE')` |
 | trg_preventivi_a10_stati_doc_preventivi_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_preventivi', 'attivo', 'stato_doc_preventivo_id', 'id')` |
 | trg_preventivi_a10_stati_doc_preventivi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_preventivi', 'attivo', 'stato_doc_preventivo_id', 'id')` |
