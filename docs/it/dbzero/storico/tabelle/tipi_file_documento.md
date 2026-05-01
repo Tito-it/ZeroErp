@@ -25,5 +25,11 @@
 | ix_tipi_file_documento_tipi_file_documento_id_fk | `CREATE INDEX ix_tipi_file_documento_tipi_file_documento_id_fk ON storico.tipi_file_documento USING btree (tipi_file_documento_id)` |
 | pk_storico_tipi_file_documento | `CREATE UNIQUE INDEX pk_storico_tipi_file_documento ON storico.tipi_file_documento USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_file_documento_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_tipi_file_documento_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

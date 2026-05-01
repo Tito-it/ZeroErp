@@ -25,5 +25,11 @@
 | ix_template_documenti_template_documenti_id_fk | `CREATE INDEX ix_template_documenti_template_documenti_id_fk ON storico.template_documenti USING btree (template_documenti_id)` |
 | pk_storico_template_documenti | `CREATE UNIQUE INDEX pk_storico_template_documenti ON storico.template_documenti USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_template_documenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_template_documenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

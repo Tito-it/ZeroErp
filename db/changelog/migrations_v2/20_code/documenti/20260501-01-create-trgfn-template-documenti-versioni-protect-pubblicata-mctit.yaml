@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Guard immutabilita' versione template PUBBLICATA (A1)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260501-01-create-trgfn-template-documenti-versioni-protect-pubblicata-mctit.yaml
+
+  - changeSet:
+      id: 20260501-01-create-trgfn-template-documenti-versioni-protect-pubblicata
+      author: mctit
+      comment: >
+        Guard A1: Crea la funzione e il trigger che impediscono la modifica di una
+        versione template quando e' in stato PUBBLICATA.
+        Una versione pubblicata è immutabile: per cambiarla si crea una
+        nuova versione BOZZA. Il messaggio di errore è definito in config.messaggi_errore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              -- Scopo:
+              --   Blocca l'UPDATE su una versione template quando e' in stato PUBBLICATA.
+              --   Una versione PUBBLICATA è immutabile: HTML, CSS, render engine,
+              --   validita', template_documento_id, versione non si modificano.
+              --   Per ogni cambio si crea una nuova BOZZA.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE
+              BEGIN
+                IF OLD.stato = 'PUBBLICATA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_documenti_versioni_protect_pubblicata',
+                    'E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE',
+                    jsonb_build_object(
+                      'template_documento_id', OLD.template_documento_id,
+                      'versione', OLD.versione,
+                      'stato', OLD.stato
+                    ),
+                    NULL::uuid
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $$;
+
+              CREATE TRIGGER trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                BEFORE UPDATE OF
+                  html_template,
+                  css_template,
+                  markdown_template,
+                  render_engine_id,
+                  formato_template,
+                  page_format,
+                  page_orientation,
+                  margin_top_mm,
+                  margin_right_mm,
+                  margin_bottom_mm,
+                  margin_left_mm,
+                  valido_dal,
+                  valido_al,
+                  context_schema,
+                  template_documento_id,
+                  versione
+                ON documenti.template_documenti_versioni
+                FOR EACH ROW
+                EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata();
+
+              COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata() IS
+                'Guard A1: blocca UPDATE su versioni template PUBBLICATA. Una versione pubblicata e'' immutabile.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                ON documenti.template_documenti_versioni;
+              DROP FUNCTION IF EXISTS documenti.trgfn_template_documenti_versioni_protect_pubblicata();

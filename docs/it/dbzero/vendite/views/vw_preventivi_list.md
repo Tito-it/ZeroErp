@@ -16,7 +16,7 @@ SELECT p.id,
     ba.utility_id AS ba_utility_id,
     s.id AS soggetto_id,
     s.ragione_sociale AS cliente_denominazione,
-    anagrafiche.fn_get_emittente_fiscale_pk(p.billing_account_id) AS emittente_fiscale_id,
+    p.emittente_fiscale_id,
     p.utility_id,
     p.istanza_utility_id,
     p.totale_imponibile,
@@ -39,7 +39,7 @@ SELECT p.id,
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
      LEFT JOIN config.valute v ON ((v.id = p.valuta_id)))
      LEFT JOIN config.termini_pagamento tp ON ((tp.id = p.termine_pagamento_id)))
-  ORDER BY p.data DESC, p.numero DESC;
+  ORDER BY p.data DESC, p.numero DESC, p.id;
 ```
 
 

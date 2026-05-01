@@ -1,0 +1,289 @@
+# ---------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Guard coerenza, immutabilita' snapshot e file (A6, A7, A7-bis)
+# ---------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260501-05-create-trgfn-documenti-generati-guards-mctit.yaml
+
+  - changeSet:
+      id: 20260501-05-create-trgfn-documenti-generati-check-coerenza
+      author: mctit
+      comment: >
+        Guard A6: Valida la coerenza referenziale tra i campi di un documento generato.
+        template_versione_id, template_documento_id, tipo_documento_output_id,
+        sorgente_tipo_id, emittente_fiscale_id devono essere allineati.
+        Il messaggio di errore è definito in config.messaggi_errore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              -- Scopo:
+              --   Valida la coerenza referenziale del documento generato.
+              --
+              -- Regole:
+              --   1. template_versione_id.template_documento_id ==
+              --      template_documento_id
+              --   2. template_documento_id.tipo_documento_output_id ==
+              --      tipo_documento_output_id
+              --   3. template_documento_id.sorgente_tipo_id ==
+              --      sorgente_tipo_id
+              --   4. template_documento_id.emittente_fiscale_id ==
+              --      emittente_fiscale_id
+              --
+              -- Se una di queste fallisce il record nasce inconsistente,
+              -- rendendo inaffidabile l'audit tramite context_json snapshot.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_GENERATO_COERENZA
+              DECLARE
+                v_tv_template_id documenti.template_documenti_versioni.template_documento_id%TYPE;
+                v_tv_tipo_id documenti.template_documenti.tipo_documento_output_id%TYPE;
+                v_tv_sorgente_id documenti.template_documenti.sorgente_tipo_id%TYPE;
+                v_tv_emittente_id documenti.template_documenti.emittente_fiscale_id%TYPE;
+              BEGIN
+                SELECT
+                  template_documento_id,
+                  (SELECT tipo_documento_output_id
+                     FROM documenti.template_documenti
+                    WHERE id = template_documento_id) AS tipo_id,
+                  (SELECT sorgente_tipo_id
+                     FROM documenti.template_documenti
+                    WHERE id = template_documento_id) AS sorgente_id,
+                  (SELECT emittente_fiscale_id
+                     FROM documenti.template_documenti
+                    WHERE id = template_documento_id) AS emittente_id
+                  INTO v_tv_template_id, v_tv_tipo_id, v_tv_sorgente_id, v_tv_emittente_id
+                  FROM documenti.template_documenti_versioni
+                 WHERE id = NEW.template_versione_id;
+
+                IF v_tv_template_id != NEW.template_documento_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_versione_id', NEW.template_versione_id,
+                      'template_documento_id_atteso', v_tv_template_id,
+                      'template_documento_id_fornito', NEW.template_documento_id
+                    ),
+                    NULL::uuid
+                  );
+                END IF;
+
+                IF v_tv_tipo_id != NEW.tipo_documento_output_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_documento_id', NEW.template_documento_id,
+                      'tipo_documento_output_id_atteso', v_tv_tipo_id,
+                      'tipo_documento_output_id_fornito', NEW.tipo_documento_output_id
+                    ),
+                    NULL::uuid
+                  );
+                END IF;
+
+                IF v_tv_sorgente_id != NEW.sorgente_tipo_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_documento_id', NEW.template_documento_id,
+                      'sorgente_tipo_id_atteso', v_tv_sorgente_id,
+                      'sorgente_tipo_id_fornito', NEW.sorgente_tipo_id
+                    ),
+                    NULL::uuid
+                  );
+                END IF;
+
+                IF v_tv_emittente_id != NEW.emittente_fiscale_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_documento_id', NEW.template_documento_id,
+                      'emittente_fiscale_id_atteso', v_tv_emittente_id,
+                      'emittente_fiscale_id_fornito', NEW.emittente_fiscale_id
+                    ),
+                    NULL::uuid
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $$;
+
+              CREATE TRIGGER trg_documenti_generati_a10_check_coerenza_ins_upd
+                BEFORE INSERT OR UPDATE
+                ON documenti.documenti_generati
+                FOR EACH ROW
+                EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza();
+
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_check_coerenza() IS
+                'Guard A6: valida coerenza referenziale tra template_versione_id, template_documento_id, tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id.';
+
+  - changeSet:
+      id: 20260501-05-create-trgfn-documenti-generati-protect-snapshot
+      author: mctit
+      comment: >
+        Guard A7: Blocca la modifica dello snapshot del documento (campi di generazione e dati).
+        Solo stato e meta possono cambiar. Questa è la controparte della disabilitazione storico (sezione B):
+        senza questa guard lo storico spento lascerebbe un buco.
+        Il messaggio di errore è definito in config.messaggi_errore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_protect_snapshot()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              -- Scopo:
+              --   Blocca l'UPDATE di campi snapshot su un documento generato.
+              --
+              -- Regole:
+              --   Campi immutabili (snapshot):
+              --     - tipo_documento_output_id, template_documento_id,
+              --       template_versione_id, sorgente_tipo_id, sorgente_uid,
+              --       sorgente_riga, progressivo_sorgente, emittente_fiscale_id
+              --     - context_json, context_hash, template_hash, pdf_hash
+              --     - titolo, nome_file, uid
+              --     - generato_at, generato_da_user_id
+              --   Campi modificabili:
+              --     - stato, meta
+              --
+              --   Il documento rappresenta un'istantanea di generazione.
+              --   Se cambia il template, il tipo documento, la sorgente,
+              --   il context o i dati, quell'istantanea è corrotta.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE
+              BEGIN
+                IF  (NEW.tipo_documento_output_id      != OLD.tipo_documento_output_id      OR
+                     NEW.template_documento_id         != OLD.template_documento_id         OR
+                     NEW.template_versione_id          != OLD.template_versione_id          OR
+                     NEW.sorgente_tipo_id              != OLD.sorgente_tipo_id              OR
+                     NEW.sorgente_uid                  != OLD.sorgente_uid                  OR
+                     NEW.sorgente_riga                 IS DISTINCT FROM OLD.sorgente_riga   OR
+                     NEW.progressivo_sorgente          != OLD.progressivo_sorgente          OR
+                     NEW.emittente_fiscale_id          != OLD.emittente_fiscale_id          OR
+                     NEW.context_json                  != OLD.context_json                  OR
+                     NEW.context_hash                  != OLD.context_hash                  OR
+                     NEW.template_hash                 != OLD.template_hash                 OR
+                     NEW.pdf_hash                      != OLD.pdf_hash                      OR
+                     NEW.titolo                        != OLD.titolo                        OR
+                     NEW.nome_file                     != OLD.nome_file                     OR
+                     NEW.uid                           != OLD.uid                           OR
+                     NEW.generato_at                   != OLD.generato_at                   OR
+                     NEW.generato_da_user_id           IS DISTINCT FROM OLD.generato_da_user_id) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_protect_snapshot',
+                    'E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE',
+                    jsonb_build_object(
+                      'documento_generato_id', OLD.id,
+                      'uid', OLD.uid::text
+                    ),
+                    NULL::uuid
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $$;
+
+              CREATE TRIGGER trg_documenti_generati_a10_protect_snapshot_upd
+                BEFORE UPDATE
+                ON documenti.documenti_generati
+                FOR EACH ROW
+                EXECUTE FUNCTION documenti.trgfn_documenti_generati_protect_snapshot();
+
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_protect_snapshot() IS
+                'Guard A7: blocca UPDATE su snapshot. Documento generato = istantanea immutabile di generazione. Solo stato e meta modificabili.';
+
+  - changeSet:
+      id: 20260501-05-create-trgfn-documenti-generati-file-protect-file
+      author: mctit
+      comment: >
+        Guard A7-bis: Blocca la modifica dei campi file su documenti_generati_file.
+        Una volta salvato il file, storage_key, sha256, file_size_bytes, mime_type,
+        file_name, documento_generato_id, file_tipo_id, is_principale diventano immutabili.
+        Solo meta e ordinamento possono cambiar (in Fase B).
+        Il messaggio di errore è definito in config.messaggi_errore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_file_protect_file()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              -- Scopo:
+              --   Blocca l'UPDATE di campi file su documenti_generati_file.
+              --
+              -- Regole:
+              --   Campi immutabili:
+              --     - documento_generato_id, file_tipo_id
+              --     - storage_key, sha256, file_size_bytes, mime_type, file_name
+              --     - is_principale
+              --   Campi modificabili (per futuro Fase B):
+              --     - meta, ordinamento (condizionatamente)
+              --
+              -- Errore:
+              --   E_DOCUMENTI_GENERATO_FILE_IMMUTABILE
+              BEGIN
+                IF  (NEW.documento_generato_id != OLD.documento_generato_id OR
+                     NEW.file_tipo_id          != OLD.file_tipo_id          OR
+                     NEW.storage_key           != OLD.storage_key           OR
+                     NEW.sha256                != OLD.sha256                OR
+                     NEW.file_size_bytes       != OLD.file_size_bytes       OR
+                     NEW.mime_type             != OLD.mime_type             OR
+                     NEW.file_name             != OLD.file_name             OR
+                     NEW.is_principale         != OLD.is_principale) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_file_protect_file',
+                    'E_DOCUMENTI_GENERATO_FILE_IMMUTABILE',
+                    jsonb_build_object(
+                      'documento_generato_id', OLD.documento_generato_id,
+                      'file_tipo_id', OLD.file_tipo_id
+                    ),
+                    NULL::uuid
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $$;
+
+              CREATE TRIGGER trg_documenti_generati_file_a10_protect_file_upd
+                BEFORE UPDATE
+                ON documenti.documenti_generati_file
+                FOR EACH ROW
+                EXECUTE FUNCTION documenti.trgfn_documenti_generati_file_protect_file();
+
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_file_protect_file() IS
+                'Guard A7-bis: blocca UPDATE su file. File generato = istantanea immutabile di salvataggio. Solo meta/ordinamento modificabili.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_documenti_generati_file_a10_protect_file_upd
+                ON documenti.documenti_generati_file;
+              DROP TRIGGER IF EXISTS trg_documenti_generati_a10_protect_snapshot_upd
+                ON documenti.documenti_generati;
+              DROP TRIGGER IF EXISTS trg_documenti_generati_a10_check_coerenza_ins_upd
+                ON documenti.documenti_generati;
+              DROP FUNCTION IF EXISTS documenti.trgfn_documenti_generati_file_protect_file();
+              DROP FUNCTION IF EXISTS documenti.trgfn_documenti_generati_protect_snapshot();
+              DROP FUNCTION IF EXISTS documenti.trgfn_documenti_generati_check_coerenza();

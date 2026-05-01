@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# script.fn_check_utility_istanza_coerenza: pure check riusabile cross-tabella
+# per validare la coppia (istanza_utility_id, utility_id) come coerente.
+# Allineata a anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata
+# (stesse 3 fonti satellite: BA, IDP, clienti).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260501-11-create-fn-check-utility-istanza-coerenza-mctit.yaml
+
+  - changeSet:
+      id: 20260501-11-create-fn-check-utility-istanza-coerenza
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Crea/aggiorna script.fn_check_utility_istanza_coerenza(istanza_utility_id, utility_id)
+        come pure check (no raise). Riusabile da preventivi, attivita_fatturabili,
+        commesse_attivita, ddt, fatture, ... La lista delle 3 fonti satellite
+        (BA, IDP, clienti) deve restare allineata a
+        anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Function: script.fn_check_utility_istanza_coerenza
+              --
+              -- Scopo: pure check (boolean, no raise) per validare la coppia
+              --        (istanza_utility_id, utility_id) come coerente.
+              --
+              -- Coerenza = esiste almeno 1 riga matching la coppia in:
+              --   1) anagrafiche.billing_account
+              --   2) anagrafiche.istanze_dati_precontrattuali
+              --   3) anagrafiche.clienti
+              --
+              -- Tutte le tabelle hanno UNIQUE/INDEX su (istanza_utility_id, utility_id).
+              --
+              -- Convenzione progetto:
+              --   - fn_check_*: pure check, no raise (questa)
+              --   - fn_guard_*: fail-fast, raise (eventuale wrapper)
+              --
+              -- Riusabile cross-tabella (pattern: ogni tabella vendite con
+              -- coppia istanza/utility chiama questa fn nel proprio guard).
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION script.fn_check_utility_istanza_coerenza(
+                  p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE,
+                  p_utility_id         config.utilities.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                  -- Guard input: NULL su entrambi -> incoerente per default
+                  IF p_istanza_utility_id IS NULL OR p_utility_id IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  -- Fonte 1: billing_account
+                  -- UNIQUE (istanza_utility_id, utility_id) tramite uq_billing_instance_utility
+                  IF EXISTS (
+                      SELECT 1 FROM anagrafiche.billing_account
+                       WHERE istanza_utility_id = p_istanza_utility_id
+                         AND utility_id         = p_utility_id
+                  ) THEN
+                      RETURN true;
+                  END IF;
+
+                  -- Fonte 2: istanze_dati_precontrattuali
+                  -- UNIQUE (istanza_utility_id, utility_id)
+                  IF EXISTS (
+                      SELECT 1 FROM anagrafiche.istanze_dati_precontrattuali
+                       WHERE istanza_utility_id = p_istanza_utility_id
+                         AND utility_id         = p_utility_id
+                  ) THEN
+                      RETURN true;
+                  END IF;
+
+                  -- Fonte 3: clienti
+                  -- (istanza_utility_id, utility_id) entrambi presenti, no UNIQUE esplicito
+                  -- ma per costruzione 1:1 cliente <-> istanza
+                  IF EXISTS (
+                      SELECT 1 FROM anagrafiche.clienti
+                       WHERE istanza_utility_id = p_istanza_utility_id
+                         AND utility_id         = p_utility_id
+                  ) THEN
+                      RETURN true;
+                  END IF;
+
+                  RETURN false;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_utility_istanza_coerenza(
+                  anagrafiche.istanze_utilities.id%TYPE,
+                  config.utilities.id%TYPE
+              )
+              IS 'Pure check (no raise): true se la coppia (istanza_utility_id, utility_id) '
+                 'e'' coerente con almeno 1 fonte satellite (billing_account, '
+                 'istanze_dati_precontrattuali, clienti). Lista fonti allineata a '
+                 'anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata. '
+                 'Riusabile cross-tabella (preventivi, attivita_fatturabili, ...).';
