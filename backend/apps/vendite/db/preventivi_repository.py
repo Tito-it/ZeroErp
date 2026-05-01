@@ -9,6 +9,7 @@
 # scritture dirette su tabelle, chiamate a funzioni DB per operazioni complesse.
 # Il ricalcolo totali e' gestito da trigger AFTER su preventivi_righe.
 
+import json
 from datetime import date
 from typing import Any
 
@@ -88,10 +89,14 @@ class PreventiviRepository:
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
         count_sql = f"SELECT COUNT(*) FROM vendite.vw_preventivi_list v {where}"
+        # Tiebreaker v.id obbligatorio per paginazione deterministica
+        # (frontend-standards "REGOLA CRITICA: Paginazione deterministica").
+        # Senza id, righe con stessa data/numero (es. revisioni) possono
+        # comparire duplicate o sparire fra pagine consecutive.
         data_sql = f"""
             SELECT * FROM vendite.vw_preventivi_list v
             {where}
-            ORDER BY v.data DESC, v.numero DESC
+            ORDER BY v.data DESC, v.numero DESC, v.id
             LIMIT %s OFFSET %s
         """
 
@@ -212,12 +217,19 @@ class PreventiviRepository:
     # ══════════════════════════════════════════════════════════
 
     # Scopo: Inserisce un nuovo preventivo e restituisce id e uid.
+    #        emittente_fiscale_id e' opzionale: se None il trigger DB
+    #        (vendite.trgfn_preventivi_default_emittente, fase _a10_default)
+    #        lo valorizza da GUC app.current_user_id via
+    #        script.fn_resolve_emittente_for_user. Va passato esplicito solo
+    #        per il caso admin globale (utente senza emittente assegnato che
+    #        sceglie l'emittente del documento).
     def create_preventivo(
         self,
         *,
         billing_account_id: int | None,
         utility_id: int,
         istanza_utility_id: int | None = None,
+        emittente_fiscale_id: int | None = None,
         valuta_id: int | None = None,
         termine_pagamento_id: int | None = None,
         validita_dal: date | None = None,
@@ -230,17 +242,19 @@ class PreventiviRepository:
         sql = """
             INSERT INTO vendite.preventivi (
                 billing_account_id, utility_id, istanza_utility_id,
+                emittente_fiscale_id,
                 valuta_id, termine_pagamento_id,
                 validita_dal, validita_al, competenza_mese,
                 fatturazione_immediata, stato_doc_preventivo_id, meta
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
             )
             RETURNING id, uid::text AS uid, numero
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 billing_account_id, utility_id, istanza_utility_id,
+                emittente_fiscale_id,
                 valuta_id, termine_pagamento_id,
                 validita_dal, validita_al, competenza_mese,
                 fatturazione_immediata, stato_doc_preventivo_id,

@@ -40,8 +40,12 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   async function fetchList() {
     const f = filters.value
     const searchTerm = (f.search || '').trim()
+    // data_da conta come filtro attivo (default anno-1 garantisce l'auto-load
+    // della lista all'apertura, coerente con frontend-standards "Filtro data
+    // standard"). Senza questo l'empty-state guard sotto bloccherebbe il
+    // primo fetch e l'operatore vedrebbe la lista vuota.
     const hasFilters = f.stato != null || f.billing_account_id != null
-      || f.utility_id != null || f.data_a != null
+      || f.utility_id != null || f.data_a != null || f.data_da != null
 
     // Search con meno di 3 caratteri e nessun filtro attivo → svuota i
     // risultati precedenti (coerenza UX: niente dati obsoleti visibili).

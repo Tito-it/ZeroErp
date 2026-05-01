@@ -15,7 +15,7 @@ import { formatCurrency } from '../../../core/utils/format'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
-import { getBillingAccountLookupById } from '../../../core/apiCore'
+import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH } from '../../../core/constants'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../../core/components/DrawerFooter.vue'
@@ -31,15 +31,21 @@ import Message from 'primevue/message'
 const { t } = useI18n()
 const store = usePreventiviStore()
 const { execute, loading } = useApiHandler()
-const isReadonly = useInjectReadonly()
 const { confirmAction } = useConfirmAction()
 
 const props = defineProps({
   visible: Boolean,
   mode: { type: String, default: 'create' },
-  preventivoId: { type: [Number, null], default: null }
+  preventivoId: { type: [Number, null], default: null },
+  // Readonly cumulativo: si somma all'inject del provider area (frontend-standards
+  // §"Modalita' sola lettura", regola "drawer admin DEVE esporre prop readonly").
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
+
+// Readonly effettivo = prop esplicita OR readonly area iniettato dal parent.
+const parentReadonly = useInjectReadonly()
+const isReadonly = computed(() => props.readonly || parentReadonly.value)
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
@@ -58,6 +64,10 @@ function onAfterShow() { contentReady.value = true }
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
+// In CREATE non c'e' detail BE: il drawer e' editabile per default (gated solo
+// da isReadonly). In EDIT vale la capability BE. Pattern allineato a
+// ContrattoDrawer (`isEdit && isLocked('field')`).
+const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 const canCreateRevisione = computed(() => caps.flag('can_create_revisione'))
 const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
@@ -72,6 +82,8 @@ const nonEditableFields = computed(() => detail.value?.non_editable_fields || []
 const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefaults([
   'VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG',
   'VENDITE_PREVENTIVO_DEFAULT_FATTURAZIONE_IMMEDIATA',
+  // Default utility globale (config.parameters), stesso pattern ClienteDrawer.
+  'DEFAULT_UTILITY_ID',
 ])
 
 function defaultForm() {
@@ -80,13 +92,18 @@ function defaultForm() {
   // l'operatore non lo conferma (no presupposto di emissione immediata).
   const validitaGg = paramInt(p.VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG, 30)
   return {
-    utility_id: null,
+    utility_id: p.DEFAULT_UTILITY_ID ? Number(p.DEFAULT_UTILITY_ID) : null,
     billing_account_id: null,
     // _obj per BillingAccountLookup AutoComplete (pattern restore lookup ricco,
     // memoria feedback_autocomplete_restore). Popolato da onBaSelected (FE)
     // o da loadDetail() via getBillingAccountLookupById in edit.
     billing_account_obj: null,
     istanza_utility_id: null,
+    // _obj per IstanzaUtilityLookup AutoComplete (pattern restore lookup ricco).
+    // Popolato da onIstanzaSelected (FE) o da loadDetail() via
+    // getIstanzaUtilityLookupById in edit (solo se BA assente: con BA presente
+    // l'istanza e' derivata e il picker e' nascosto).
+    istanza_utility_obj: null,
     valuta_id: null,
     termine_pagamento_id: null,
     validita_dal: null,
@@ -111,6 +128,7 @@ async function loadDetail() {
     billing_account_id: data.billing_account_id,
     billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
     istanza_utility_id: data.istanza_utility_id,
+    istanza_utility_obj: null,  // popolato sotto via getIstanzaUtilityLookupById (no BA)
     valuta_id: data.valuta_id,
     termine_pagamento_id: data.termine_pagamento_id,
     validita_dal: data.validita_dal ? new Date(data.validita_dal + 'T00:00:00') : null,
@@ -129,6 +147,16 @@ async function loadDetail() {
     } catch {
       // Resto: form parte senza _obj, l'utente puo' rieseguire la ricerca.
     }
+  } else if (data.istanza_utility_id) {
+    // Restore IstanzaUtilityLookup _obj solo per preventivi prospect senza BA:
+    // il picker istanza e' visibile solo in quel caso. Best-effort.
+    try {
+      const res = await getIstanzaUtilityLookupById(data.istanza_utility_id)
+      const iu = res?.data?.data
+      if (iu) form.value.istanza_utility_obj = iu
+    } catch {
+      // Resto: il picker mostra solo l'id risolto al prossimo focus.
+    }
   }
 }
 
@@ -144,14 +172,30 @@ watch(() => props.visible, async (v) => {
     loadDetail()
   } else {
     resetForm()
+    // CREATE: pre-popoliamo la valuta dal BB resolve_valuta_default lato BE
+    // (catena BA -> EF-del-BA -> EF-utente). Senza BA il BE applica il
+    // livello 3 (EF dell'utente loggato, fallback gestore globale per admin
+    // globale). Best-effort: se l'API fallisce il form resta vuoto.
+    try {
+      const res = await getPreventivoFormDefaults(null)
+      const data = res?.data?.data
+      if (data && form.value.valuta_id == null && data.valuta_id != null) {
+        form.value.valuta_id = data.valuta_id
+      }
+    } catch {
+      // Non blocchiamo l'apertura del drawer se l'API e' giu'.
+    }
   }
 })
 
 // Fase 2.B4 + 2.F6: quando l'operatore valorizza/cambia il BA in create,
 // chiediamo al BE i defaults BA-derived (valuta_id, termine_pagamento_id,
-// iva_id) dal cliente associato. Sovrascriviamo i campi solo se vuoti, per
-// non distruggere scelte gia' fatte dall'utente. Skippiamo in edit (i campi
-// sono gia' persistiti dal payload preventivo).
+// iva_id) dal cliente associato. Per termine/iva sovrascriviamo solo se
+// vuoti (proteggiamo scelte utente). Per la valuta SEMPRE sovrascriviamo
+// con il valore BA-resolved: la valuta del BA (o del suo EF) prevale sulla
+// valuta dell'EF utente caricata al mount (regola di coerenza dominio:
+// "valuta del BA wins se specificata"). Skippiamo in edit (campi gia'
+// persistiti dal payload preventivo).
 let _baDefaultsToken = 0
 watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
   if (isEdit.value) return
@@ -166,7 +210,8 @@ watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
   if (tk !== _baDefaultsToken) return  // Apertura/chiusura veloce: scarta stantio.
   const data = res?.data?.data
   if (!data) return
-  if (form.value.valuta_id == null && data.valuta_id != null) {
+  // Valuta: il BA (o il suo EF) vince sempre sull'EF utente caricato al mount.
+  if (data.valuta_id != null) {
     form.value.valuta_id = data.valuta_id
   }
   if (form.value.termine_pagamento_id == null && data.termine_pagamento_id != null) {
@@ -174,7 +219,16 @@ watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
   }
 })
 
-const canSave = computed(() => form.value.utility_id != null)
+// In CREATE servono utility e istanza (regola di dominio post brief DB rev2:
+// preventivo deve essere collegato a un'istanza utility, derivabile dal BA o
+// selezionata standalone per prospect). In EDIT l'istanza e' gia' persistita
+// e il backend non richiede di rispedirla.
+const canSave = computed(() => {
+  const f = form.value
+  if (f.utility_id == null) return false
+  if (!isEdit.value && f.istanza_utility_id == null) return false
+  return true
+})
 
 async function handleSave() {
   const f = form.value
@@ -309,8 +363,9 @@ function onNuovaRevisione() {
 
       <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup -->
       <PreventiviForm v-if="contentReady"
-        :form="form" :is-modificabile="canEditTestata && !isReadonly"
-        :non-editable-fields="nonEditableFields" />
+        :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
+        :non-editable-fields="nonEditableFields"
+        :is-edit="isEdit" />
 
       <!-- Righe (solo edit) -->
       <template v-if="contentReady && isEdit && detail">
@@ -340,7 +395,7 @@ function onNuovaRevisione() {
         </Message>
       </template>
 
-      <DrawerFooter v-if="canEditTestata && !isReadonly" :loading="loading" :disabled="!canSave"
+      <DrawerFooter v-if="canEditTestataEffective && !isReadonly" :loading="loading" :disabled="!canSave"
         @save="handleSave" @cancel="close" />
     </div>
   </Drawer>

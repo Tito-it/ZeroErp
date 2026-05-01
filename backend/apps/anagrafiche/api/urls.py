@@ -37,6 +37,10 @@ from apps.anagrafiche.api.views_emittenti_fiscali import (
 from apps.anagrafiche.api.views_fornitori import FornitoriDetailView, FornitoriView
 from apps.anagrafiche.api.views_contatti_ruolo import RuoloContattiDetailView, RuoloContattiView
 from apps.anagrafiche.api.views_indirizzi_ruolo import RuoloIndirizziDetailView, RuoloIndirizziView
+from apps.anagrafiche.api.views_istanze_utility import (
+    IstanzaUtilityLookupByIdView,
+    IstanzaUtilityLookupView,
+)
 from apps.anagrafiche.api.views_codici_postali import CodiciPostaliDetailView, CodiciPostaliView
 from apps.anagrafiche.api.views_comuni import ComuniView
 from apps.anagrafiche.api.views_indirizzi import IndirizziCheckDuplicatoView, IndirizziDetailView, IndirizziView
@@ -129,6 +133,9 @@ urlpatterns = [
     path("billing-account/<int:billing_account_id>/lookup/", BillingAccountLookupByIdView.as_view(), name="anagrafiche-billing-account-lookup-by-id"),
     # Billing account — utility "guidate da emittente" (refactor operatore-emittenti)
     path("billing-account/<int:billing_account_id>/utilities/", BillingAccountUtilitiesView.as_view(), name="anagrafiche-billing-account-utilities"),
+    # Istanze utility — lookup ricco per autocomplete (preventivi prospect senza BA, ecc.)
+    path("istanze-utility/lookup/", IstanzaUtilityLookupView.as_view(), name="anagrafiche-istanze-utility-lookup"),
+    path("istanze-utility/<int:istanza_utility_id>/lookup/", IstanzaUtilityLookupByIdView.as_view(), name="anagrafiche-istanze-utility-lookup-by-id"),
     # Contatti ruolo
     path("ruoli/<int:soggetto_ruolo_id>/contatti/", RuoloContattiView.as_view(), name="anagrafiche-ruoli-contatti"),
     path("ruoli/<int:soggetto_ruolo_id>/contatti/<int:contatto_id>/", RuoloContattiDetailView.as_view(), name="anagrafiche-ruoli-contatti-detail"),

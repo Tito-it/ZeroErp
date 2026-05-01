@@ -16,6 +16,8 @@ from typing import Any
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
+from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -150,14 +152,73 @@ def upsert_indirizzo(preventivo_id: int, payload: dict[str, Any]) -> dict[str, A
 
 # Scopo: Crea un nuovo preventivo in stato BOZZA.
 # Obiettivo: validazione input, risoluzione stato BOZZA, INSERT, restituisce id+uid+numero.
+#
+# Regole di dominio post brief DB rev2 (2026-05-01):
+#  - utility_id obbligatorio
+#  - istanza_utility_id obbligatorio (allinea preventivi al pattern di
+#    commesse_attivita / attivita_fatturabili). Se il payload ha solo BA,
+#    deriva istanza dal BA (FK NOT NULL su billing_account.istanza_utility_id).
+#  - coerenza coppia (istanza_utility_id, utility_id) verificata pre-trigger
+#    via script.fn_check_utility_istanza_coerenza per UX rapida con errore
+#    parlante. Defense-in-depth: il trigger DB
+#    trgfn_preventivi_guard_utility_istanza_coerenza applica la stessa regola.
+#  - emittente_fiscale_id: opzionale nel payload. Se None il trigger DB
+#    trgfn_preventivi_default_emittente lo valorizza da GUC app.current_user_id.
+#    Specificarlo esplicito solo per admin globale (utente senza emittente
+#    assegnato che sceglie l'emittente del documento).
 def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
     repo = PreventiviRepository()
+    ba_repo = BillingAccountRepository()
+    iu_repo = IstanzeUtilityRepository()
 
     utility_id = payload.get("utility_id")
     ErrorManager.require(
         utility_id is not None,
         code="E_PREV_VALIDAZIONE",
         message="utility_id obbligatorio.",
+        function_name=f"{_FN}.crea_preventivo",
+    )
+
+    billing_account_id = payload.get("billing_account_id")
+    istanza_utility_id = payload.get("istanza_utility_id")
+
+    # Conveniencia: se BA presente ma istanza no, deriva istanza dal BA.
+    # Permette al FE di non duplicare l'informazione quando seleziona il BA.
+    if billing_account_id is not None and istanza_utility_id is None:
+        istanza_utility_id = ba_repo.get_istanza_utility_id(int(billing_account_id))
+        ErrorManager.require(
+            istanza_utility_id is not None,
+            code="E_PREV_VALIDAZIONE",
+            message="Billing account non trovato.",
+            detail=f"billing_account_id={billing_account_id}",
+            function_name=f"{_FN}.crea_preventivo",
+        )
+
+    # Istanza obbligatoria (regola dominio post landing DB rev2).
+    ErrorManager.require(
+        istanza_utility_id is not None,
+        code="E_PREV_VALIDAZIONE",
+        message="istanza_utility_id obbligatorio.",
+        detail=(
+            "Specificare l'istanza utility (direttamente o via billing account)."
+        ),
+        function_name=f"{_FN}.crea_preventivo",
+    )
+    assert istanza_utility_id is not None
+
+    # Pre-check coerenza utility/istanza: errore parlante prima del trigger DB.
+    coerente = iu_repo.check_utility_istanza_coerenza(
+        int(istanza_utility_id), int(utility_id),
+    )
+    ErrorManager.require(
+        coerente,
+        code="E_PREV_UTILITY_ISTANZA_INCOERENTE",
+        message="Utility non coerente con l'istanza selezionata.",
+        detail=(
+            f"istanza_utility_id={istanza_utility_id} non e' dichiarata "
+            f"per utility_id={utility_id} (no billing account, dati "
+            "precontrattuali o cliente matching)."
+        ),
         function_name=f"{_FN}.crea_preventivo",
     )
 
@@ -171,9 +232,10 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
     assert stato_bozza_id is not None
 
     result = repo.create_preventivo(
-        billing_account_id=payload.get("billing_account_id"),
+        billing_account_id=billing_account_id,
         utility_id=utility_id,
-        istanza_utility_id=payload.get("istanza_utility_id"),
+        istanza_utility_id=istanza_utility_id,
+        emittente_fiscale_id=payload.get("emittente_fiscale_id"),
         valuta_id=payload.get("valuta_id"),
         termine_pagamento_id=payload.get("termine_pagamento_id"),
         validita_dal=payload.get("validita_dal"),
