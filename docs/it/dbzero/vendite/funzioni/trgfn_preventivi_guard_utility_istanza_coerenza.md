@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_preventivi_guard_utility_istanza_coerenza.md" %}
 # ⚙️ Funzione `trgfn_preventivi_guard_utility_istanza_coerenza`
 
 ```sql

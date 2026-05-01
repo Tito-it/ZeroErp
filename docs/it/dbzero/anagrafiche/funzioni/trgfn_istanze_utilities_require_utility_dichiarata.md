@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_istanze_utilities_require_utility_dichiarata.md" %}
 # ⚙️ Funzione `trgfn_istanze_utilities_require_utility_dichiarata`
 
 ```sql
