@@ -229,6 +229,78 @@ Tutte le tabelle specializzate si collegano tramite `soggetto_ruolo_id → sogge
 
 ---
 
+### 5b. Identificazione canonica di un ruolo specializzato — PK reale vs `soggetto_ruolo_id`
+
+> ⚠️ **Sezione canonica — leggere prima di disegnare nuove tabelle / FK / fn che riferiscono un ruolo specializzato (cliente, fornitore, emittente_fiscale, reseller, ecc.).**
+>
+> Aggiunta 2026-05-02 a chiusura dell'analisi documentata in [refactor-emittente-id-canonico](/dev/work-in-progress/refactor-emittente-id-canonico).
+
+Le tabelle specializzate dei ruoli (`emittenti_fiscali`, `clienti`, `fornitori`, `resellers`) hanno **due identificatori validi** che convivono per design:
+
+| Identificatore | Esempio | Significato |
+| --- | --- | --- |
+| **PK reale** della tabella ruolo | `emittenti_fiscali.id`, `clienti.id`, `fornitori.id`, `resellers.id` | identita' autoritativa dell'**entita' di ruolo** con i suoi attributi business (`attivo`, `is_default`, `matricola`, ecc.) |
+| **Denorm `soggetto_ruolo_id`** | `emittenti_fiscali.soggetto_ruolo_id`, idem per le altre | riferimento al **soggetto nel ruolo** durante il periodo di validita' (`soggetti_ruoli.valido_dal/valido_al`) |
+
+Le tabelle che vogliono riferire un ruolo specializzato usano una delle due colonne **a seconda della semantica voluta**. **Entrambe sono pattern intenzionali**: non sono "dualita' da eliminare". Refactor che cercano di unificare su un solo pattern sono **sconsigliati** — vedi [analisi 2026-05-02](/dev/work-in-progress/refactor-emittente-id-canonico) per i dettagli.
+
+#### Quando usare `soggetto_ruolo_id` (SR id)
+
+Pattern colonna FK: `<ruolo>_soggetto_ruolo_id` (es. `emittente_soggetto_ruolo_id`, `reseller_soggetto_ruolo_id`) oppure semplicemente `soggetto_ruolo_id` (es. `vendite.ordini.soggetto_ruolo_id` per cliente).
+
+| Contesto | Esempio attuale | Perche' SR id |
+| --- | --- | --- |
+| **Documenti contrattuali** | `vendite.fatture.emittente_soggetto_ruolo_id`, `vendite.fatture.reseller_soggetto_ruolo_id`, `vendite.ordini.soggetto_ruolo_id` (cliente), `vendite.commesse.emittente_soggetto_ruolo_id`, `vendite.listini.emittente_soggetto_ruolo_id`, `anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id` | Il documento ricorda il **soggetto nel ruolo all'istante del contratto**. Ragione sociale, codice fiscale stampati sulla fattura sono quelli del SR vigente al momento dell'emissione. |
+| **Snapshot legali** | tutti i registri fatturazione, scope arrotondamenti, source fondi fattura | Devono essere stabili rispetto a future modifiche dell'entita' EF. |
+| **JOIN diretto a `soggetti_ruoli`** | `fn_search_soggetti_universale`, `fn_get_search_detail`, `vw_indirizzi_resolved_*` | Un solo hop a `soggetti_ruoli` invece di due (`<tabella_ruolo> → soggetti_ruoli → soggetti`). |
+| **Pattern uniforme cross-ruolo** | tutti i ruoli (cliente, fornitore, emittente, reseller) referenziati come parte contrattuale | Stesso pattern ovunque: facile riconoscere, facile generare query. |
+
+#### Quando usare PK reale (`<ruolo>_<entita>_id`)
+
+Pattern colonna FK: `<ruolo>_<entita>_id` (es. `emittente_fiscale_id`, `cliente_id` se mai dovesse servire).
+
+| Contesto | Esempio attuale | Perche' PK |
+| --- | --- | --- |
+| **Scope/permessi utente** | `config.user_emittenti_fiscali.emittente_fiscale_id` | L'utente "appartiene" all'**entita' EF**, non a un suo SR storico. Cambi di SR (rinnovo ruolo) non devono cambiare lo scope. |
+| **Override parametrici** | `config.parameter_overrides.emittente_fiscale_id` | I parametri configurano l'entita' EF in quanto tale. |
+| **Snapshot user-derived** | `vendite.preventivi.emittente_fiscale_id` (rev2 — operatore creatore) | Cattura "operatore appartiene a EF" — concetto entita'. |
+| **Filtri su attributi business dell'entita'** | view che filtrano per `attivo`, `is_default`, `matricola` | Le view finite consumano l'entita'. |
+| **Chiavi di lookup parametriche** | `vw_preventivi_list.emittente_fiscale_id` (per filtro scope con `parameter_overrides`) | Il filtro confronta entita' con entita'. |
+
+#### Tabella decisionale veloce
+
+| Domanda | Risposta SR id | Risposta PK reale |
+| --- | --- | --- |
+| Devo ricordare il soggetto stampato in calce alla fattura? | ✓ | ✗ |
+| Devo legare l'utente all'EF (scope)? | ✗ | ✓ |
+| Devo fare JOIN con ragione sociale del soggetto? | ✓ (1 hop) | (2 hop) |
+| Devo essere stabile rispetto a rinnovi/cambi del SR? | ✗ | ✓ |
+| Sto referenziando da un documento contrattuale? | ✓ | ✗ |
+| Sto referenziando da una tabella di config/scope/override? | ✗ | ✓ |
+| Devo filtrare per `attivo`, `is_default`, `matricola`? | (richiede JOIN extra) | ✓ |
+
+Se la risposta non e' chiara, **propenderlo a SR id**: e' il pattern dominante per i documenti, e quasi sempre il riferimento contrattuale e' la cosa giusta da preservare.
+
+#### Conseguenze sui filtri scope (es. permessi vendita)
+
+Per filtrare quali emittenti puo' vedere un utente, esistono **due funzioni parallele**, con la stessa semantica ma return type diverso:
+
+| Funzione | Return type | Quando usarla |
+| --- | --- | --- |
+| `script.fn_get_emittenti_scope_sr_ids(auth_user_id)` | `bigint[]` (SR id) | Filtri su colonne `<ruolo>_soggetto_ruolo_id` (fatture, ordini, commesse, listini, BA scope, search universale, ecc.) |
+| `script.fn_get_emittenti_scope_pk_ids(auth_user_id)` | `bigint[]` (PK reale) | Filtri su colonne `<ruolo>_fiscale_id` (vw_preventivi_list, parameter_overrides, user_emittenti_fiscali, preventivi rev2) |
+
+Le due fn condividono i guard (no identita' OPERATORE → `'{}'`; super admin → NULL; altrimenti whitelist). `_sr_ids` e' implementata come wrapper su `_pk_ids` (single source of truth). Vedi manual `script.fn_get_emittenti_scope_pk_ids` e `script.fn_get_emittenti_scope_sr_ids` per dettagli.
+
+#### Cosa NON fare
+
+* ❌ **Non rinominare le colonne `<ruolo>_soggetto_ruolo_id` in `<ruolo>_<entita>_id`** "per uniformita'" — il pattern SR id e' intenzionale per i documenti.
+* ❌ **Non droppare `anagrafiche.fn_get_emittente_fiscale_id`** (che ritorna SR id) — la sua logica e' corretta nei 36 caller che la usano per JOIN su SR. Il nome e' fuorviante (sembra ritornare PK ma ritorna SR), ma il refactor del nome e' una pulizia cosmetica, da fare in un brief separato e con coordinamento di tutti i caller.
+* ❌ **Non aggiungere il filtro `ef.attivo` nelle fn di scope** — gia' garantito dai trigger di constraint che bloccano disattivazione di EF con figli in `user_emittenti_fiscali`.
+* ❌ **Non refactorare** `clienti`/`fornitori`/`resellers` per simmetria con `emittenti_fiscali` — il pattern duale e' uniforme su tutti, e la sua eliminazione costerebbe di piu' di quanto risolva.
+
+---
+
 ## Vincoli e trigger
 
 La validazione del modello avviene su piu livelli tramite trigger PostgreSQL. I trigger usano la convenzione `_a10_` = guard (verifica immediata), `_z90_` = finale.

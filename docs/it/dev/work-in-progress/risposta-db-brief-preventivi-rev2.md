@@ -177,9 +177,21 @@ Stessa shape, stesso nome colonna `emittente_fiscale_id`. Il BE non deve cambiar
 
 ## 4. Punti residui aperti (NON risolti in questo deploy)
 
-### 4.1 Mismatch `fn_get_emittenti_scope_sr_ids` vs PK reale (§9 brief)
+### 4.1 Mismatch `fn_get_emittenti_scope_sr_ids` vs PK reale (§9 brief) — RISOLTO 2026-05-02
 
-L'osservazione del backend è valida e sospetta (vedi memoria `feedback_emittente_pk_vs_soggetto_ruolo`). Va aperto come **brief separato**: serve verifica se la fn ritorna `soggetto_ruolo_id` o PK reale, e allineare il filtro in `preventivi_repository.py:81-87`.
+L'osservazione del backend era valida. Aperta sessione di analisi 2026-05-02 → conclusione documentata in [refactor-emittente-id-canonico.md](refactor-emittente-id-canonico.md):
+
+* Il pattern duale (SR id vs PK reale) **non e' un bug architetturale**: e' una scelta intenzionale uniforme cross-ruolo (emittente, reseller, cliente, fornitore). Refactor "PK ovunque" sconsigliato.
+* Il bug locale (filtro PK confrontato con array SR) si risolve aggiungendo `script.fn_get_emittenti_scope_pk_ids` come fn parallela a `_sr_ids`, con `_sr_ids` refactored come wrapper thin (single source of truth dei guard).
+* Pattern duale documentato in [guida soggetti-e-ruoli §5b](../../guide/soggetti-e-ruoli-anagrafici.md) — sezione canonica per le scelte future.
+* Memoria `feedback_emittente_pk_vs_soggetto_ruolo` aggiornata con la decisione (mantenuta per evitare confusione futura).
+
+Implementazione DB (migration `20260502-01` e `-02`) + test pgTAP parity + manual doc completati nella stessa PR.
+
+Lavoro BE residuo (gestito su `dev/backend-tid`):
+
+* Aggiungere `PermissionResolver.get_emittenti_pk_ids` simmetrico a `get_emittenti_sr_ids`
+* Sostituire i filtri PK-vs-SR in [`preventivi_repository.py:81-87`](../../../backend/apps/vendite/db/preventivi_repository.py#L81-L87) e [`vendite_repository.py:39-41`](../../../backend/apps/vendite/db/vendite_repository.py#L39-L41) con `_pk_ids`
 
 ### 4.2 Coerenza post-DELETE BA (out of scope)
 
