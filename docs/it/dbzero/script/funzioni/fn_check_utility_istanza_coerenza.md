@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_check_utility_istanza_coerenza.md" %}
 # ⚙️ Funzione `fn_check_utility_istanza_coerenza`
 
 ```sql

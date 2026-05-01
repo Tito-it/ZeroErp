@@ -14,53 +14,35 @@ CREATE OR REPLACE FUNCTION script.fn_get_emittenti_scope_sr_ids(p_auth_user_id i
  STABLE
 AS $function$
 DECLARE
-    v_ids bigint[];
+    v_pk_ids bigint[];
+    v_sr_ids bigint[];
 BEGIN
-    -- =========================================================
-    -- Scopo:
-    --   Restituisce i soggetto_ruolo_id degli emittenti fiscali
-    --   autorizzati per un utente. Le tabelle vendite usano
-    --   emittente_soggetto_ruolo_id (FK a soggetti_ruoli),
-    --   non emittente_fiscale_id: serve questa mappatura.
-    --
-    -- Semantica:
-    --   NULL             = nessuna restrizione (vede tutto)
-    --   '{}'::bigint[]   = nessun accesso
-    --   array di ID      = limitato
-    --
-    -- Catena (refactor §4.6.B.6):
-    --   1. Assenza identita OPERATORE attiva -> '{}' (no access)
-    --   2. fn_is_super_admin -> NULL (nessuna restrizione)
-    --   3. OPERATIVO: whitelist (NULL se vuota = all)
-    -- =========================================================
+    -- 1. Delega tutti i guard alla fn canonica _pk_ids.
+    v_pk_ids := script.fn_get_emittenti_scope_pk_ids(p_auth_user_id);
 
-    -- 1. Identita OPERATORE attiva (helper DRY §4.6.B.0).
-    IF NOT script.fn_has_identita_attiva(
-               p_auth_user_id,
-               'OPERATORE'::config.ruolo_applicativo) THEN
-        RETURN '{}'::bigint[];
-    END IF;
-
-    -- 2. Super admin? Nessuna restrizione.
-    IF script.fn_is_super_admin(p_auth_user_id) THEN
+    -- 2. Pass-through dei sentinel.
+    IF v_pk_ids IS NULL THEN
+        -- Super admin: nessuna restrizione.
         RETURN NULL;
     END IF;
 
-    -- 3. OPERATIVO: mappa whitelist a soggetto_ruolo_id
-    SELECT array_agg(ef.soggetto_ruolo_id)
-      INTO v_ids
-      FROM config.user_emittenti_fiscali uef
-      JOIN anagrafiche.emittenti_fiscali ef
-        ON ef.id = uef.emittente_fiscale_id
-     WHERE uef.auth_user_id = p_auth_user_id;
+    IF cardinality(v_pk_ids) = 0 THEN
+        -- No identita OPERATORE attiva: nessun accesso.
+        RETURN '{}'::bigint[];
+    END IF;
 
-    -- NULL (whitelist vuota) = nessuna restrizione
-    RETURN v_ids;
+    -- 3. Mappatura PK -> SR id via JOIN su emittenti_fiscali.
+    SELECT array_agg(ef.soggetto_ruolo_id)
+      INTO v_sr_ids
+      FROM anagrafiche.emittenti_fiscali ef
+     WHERE ef.id = ANY(v_pk_ids);
+
+    RETURN v_sr_ids;
 END
 $function$
 
 COMMENT ON FUNCTION script.fn_get_emittenti_scope_sr_ids(p_auth_user_id integer)
-IS 'Mappa emittenti autorizzati a soggetto_ruolo_id per query vendite. Refactor §4.6.B.6: identita OPERATORE mancante -> [] (no access); SUPER_ADMIN -> NULL (nessuna restrizione); altrimenti whitelist (NULL se vuota).';
+IS 'Wrapper su fn_get_emittenti_scope_pk_ids (refactor 2026-05-02). Mappa PK reali -> soggetto_ruolo_id per query su colonne <ruolo>_soggetto_ruolo_id (fatture, ordini, commesse, listini, BA scope, search universale). Semantica: NULL=tutto, ''{}''=nessuno, array=whitelist. Single source of truth dei guard nella fn _pk_ids. Vedi guida soggetti-e-ruoli §5b per quando usare _sr_ids vs _pk_ids.';
 ```
 
 ---
