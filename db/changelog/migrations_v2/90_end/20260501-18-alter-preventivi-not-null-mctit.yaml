@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fase 90_end (post-backfill in 80_data):
+#   - SET NOT NULL su vendite.preventivi.istanza_utility_id (regola dominio:
+#     pattern allineato a commesse_attivita / attivita_fatturabili)
+#   - SET NOT NULL su vendite.preventivi.emittente_fiscale_id (snapshot
+#     user-derived obbligatorio post sessione 2026-05-01)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260501-18-alter-preventivi-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260501-18-alter-preventivi-not-null-istanza-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        SET NOT NULL su istanza_utility_id e emittente_fiscale_id post-backfill.
+        Pre-check: zero NULL su entrambe le colonne (altrimenti HALT).
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >
+            Backfill incompleto: residui NULL su preventivi.istanza_utility_id
+            o preventivi.emittente_fiscale_id. Verificare changeset 80_data
+            (cleanup malformati, backfill emittente) prima di rieseguire.
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*)
+                FROM vendite.preventivi
+               WHERE istanza_utility_id IS NULL
+                  OR emittente_fiscale_id IS NULL;
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- SET NOT NULL post-backfill
+              --
+              -- istanza_utility_id: regola dominio "preventivo deve avere
+              --   istanza" (vedi pattern commesse_attivita / attivita_fatturabili).
+              --   Anche per business non-utility l'istanza esiste come
+              --   "contenitore tecnico" (vedi guida gestione-istanze-utility.md).
+              --
+              -- emittente_fiscale_id: snapshot user-derived obbligatorio
+              --   (modello chiarito sessione 2026-05-01: emittente del
+              --   preventivo = quello dell'operatore creatore).
+              -- ==========================================================
+              ALTER TABLE vendite.preventivi
+                ALTER COLUMN istanza_utility_id SET NOT NULL;
+
+              ALTER TABLE vendite.preventivi
+                ALTER COLUMN emittente_fiscale_id SET NOT NULL;

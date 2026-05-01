@@ -1,0 +1,66 @@
+# -----------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Aggiunge is_principale a documenti_generati_file
+# (Step C — adattamento per Fase B con multipli file per tipo)
+# -----------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20260501-06-add-is-principale-documenti-generati-file-mctit.yaml
+
+  - changeSet:
+      id: 20260501-06-add-is-principale-documenti-generati-file
+      author: mctit
+      comment: >
+        Step C: Aggiunge la colonna is_principale e sostituisce il vincolo unique
+        attuale con uno piu' permissivo per consentire piu' file per tipo_file
+        con ordinamento distinto (requisito Fase B: PDF_ALLEGATO + PDF_FINALE + PDF_FIRMATO).
+        In Fase A il service marca a true il PDF_FINALE (unico file prodotto).
+        La unique parziale garantisce un solo principale per documento.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Aggiungere colonna is_principale
+              ALTER TABLE documenti.documenti_generati_file
+                ADD COLUMN is_principale boolean NOT NULL DEFAULT false;
+
+              -- Sostituire il vincolo unique attuale con uno piu' permissivo
+              ALTER TABLE documenti.documenti_generati_file
+                DROP CONSTRAINT uq_documenti_generati_file_doc_tipo;
+
+              ALTER TABLE documenti.documenti_generati_file
+                ADD CONSTRAINT uq_documenti_generati_file_doc_tipo_ord
+                  UNIQUE (documento_generato_id, file_tipo_id, ordinamento);
+
+              -- Indice unique parziale: un solo file principale per documento
+              CREATE UNIQUE INDEX uq_documenti_generati_file_principale
+                ON documenti.documenti_generati_file (documento_generato_id)
+                WHERE is_principale IS TRUE;
+
+              -- Aggiornare commento colonna per riflettere la nuova semantica
+              COMMENT ON COLUMN documenti.documenti_generati_file.is_principale IS
+                'Flag che indica se e'' il file principale per il documento. In Fase A: PDF_FINALE. In Fase B: distingue il file principale dai file accessori (allegati, firmati, html).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: rimuovere indice principale
+              DROP INDEX IF EXISTS documenti.uq_documenti_generati_file_principale;
+
+              -- Rimuovere colonna is_principale
+              ALTER TABLE documenti.documenti_generati_file
+                DROP COLUMN is_principale;
+
+              -- Ripristinare il vincolo originale
+              ALTER TABLE documenti.documenti_generati_file
+                DROP CONSTRAINT uq_documenti_generati_file_doc_tipo_ord;
+
+              ALTER TABLE documenti.documenti_generati_file
+                ADD CONSTRAINT uq_documenti_generati_file_doc_tipo
+                  UNIQUE (documento_generato_id, file_tipo_id);

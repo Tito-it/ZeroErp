@@ -25,5 +25,11 @@
 | ix_template_documenti_versioni_template_documenti_versioni_id_f | `CREATE INDEX ix_template_documenti_versioni_template_documenti_versioni_id_f ON storico.template_documenti_versioni USING btree (template_documenti_versioni_id)` |
 | pk_storico_template_documenti_versioni | `CREATE UNIQUE INDEX pk_storico_template_documenti_versioni ON storico.template_documenti_versioni USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_template_documenti_versioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_template_documenti_versioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

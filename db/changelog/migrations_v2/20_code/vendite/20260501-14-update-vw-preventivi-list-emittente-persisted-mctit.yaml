@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Aggiorna vendite.vw_preventivi_list per leggere la colonna persistita
+# preventivi.emittente_fiscale_id (modello user-derived) invece di chiamare
+# anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id) dinamicamente
+# (origine del bug E_PARAMETRO_INVALIDO con BA NULL).
+#
+# Aggiunto tiebreaker `, p.id` nell'ORDER BY per stabilita' deterministica
+# in caso di pari (data, numero).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260501-14-update-vw-preventivi-list-emittente-persisted-mctit.yaml
+
+  - changeSet:
+      id: 20260501-14-update-vw-preventivi-list-emittente-persisted
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Sostituisce la chiamata dinamica fn_get_emittente_fiscale_pk(billing_account_id)
+        con la lettura diretta di p.emittente_fiscale_id (colonna persistita,
+        valorizzata a INSERT-time dal trigger trgfn_preventivi_default_emittente).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'vendite'
+                 AND table_name = 'preventivi'
+                 AND column_name = 'emittente_fiscale_id';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Vista: vendite.vw_preventivi_list (rev2: emittente persistito)
+              --
+              -- Cambia rispetto al precedente:
+              --   - emittente_fiscale_id: lettura diretta da p.emittente_fiscale_id
+              --     (era: fn_get_emittente_fiscale_pk(billing_account_id) dinamica,
+              --      che esplodeva su BA NULL con E_PARAMETRO_INVALIDO)
+              --   - ORDER BY: aggiunto tiebreaker `, p.id` per stabilita' deterministica
+              --
+              -- Performance: zero call a fn per riga; lookup colonna indicizzata
+              -- (ix_preventivi_emittente_fiscale_id) per filtro scope.
+              -- ==========================================================
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_list AS
+              SELECT
+                p.id,
+                p.uid,
+                p.numero,
+                p.rev,
+                p.is_revision_attiva,
+                p.data,
+                -- Stato
+                p.stato_doc_preventivo_id,
+                sdp.codice                                AS stato_codice,
+                sdp.descrizione                           AS stato_descrizione,
+                -- Controparte (cliente via BA, opzionale per preventivi prospect)
+                p.billing_account_id,
+                ba.utility_id                             AS ba_utility_id,
+                s.id                                      AS soggetto_id,
+                s.ragione_sociale                         AS cliente_denominazione,
+                -- Emittente fiscale (PK reale, persistita - rev2)
+                p.emittente_fiscale_id,
+                -- Contesto
+                p.utility_id,
+                p.istanza_utility_id,
+                -- Importi
+                p.totale_imponibile,
+                p.totale_iva,
+                p.totale_documento,
+                -- Condizioni
+                p.valuta_id,
+                v.codice                                  AS valuta_codice,
+                p.termine_pagamento_id,
+                tp.descrizione                            AS termine_pagamento_descrizione,
+                -- Validita' e competenza
+                p.validita_dal,
+                p.validita_al,
+                p.competenza_mese,
+                -- Flag
+                p.fatturazione_immediata,
+                p.storicizza,
+                -- Audit
+                p.data_insert
+              FROM vendite.preventivi p
+              JOIN config.stati_doc_preventivi sdp
+                ON sdp.id = p.stato_doc_preventivo_id
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = p.billing_account_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr
+                ON sr.id = ba.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = sr.soggetto_id
+              LEFT JOIN config.valute v
+                ON v.id = p.valuta_id
+              LEFT JOIN config.termini_pagamento tp
+                ON tp.id = p.termine_pagamento_id
+              ORDER BY p.data DESC, p.numero DESC, p.id;
+
+              COMMENT ON VIEW vendite.vw_preventivi_list
+              IS 'Lista preventivi vendita denormalizzata. emittente_fiscale_id '
+                 'letto direttamente dalla colonna persistita (rev2: era una fn '
+                 'dinamica che esplodeva su BA NULL). Modello user-derived: '
+                 'emittente = snapshot dell''operatore creatore.';

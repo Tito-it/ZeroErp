@@ -25,5 +25,11 @@
 | ix_template_asset_template_asset_id_fk | `CREATE INDEX ix_template_asset_template_asset_id_fk ON storico.template_asset USING btree (template_asset_id)` |
 | pk_storico_template_asset | `CREATE UNIQUE INDEX pk_storico_template_asset ON storico.template_asset USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_template_asset_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_template_asset_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

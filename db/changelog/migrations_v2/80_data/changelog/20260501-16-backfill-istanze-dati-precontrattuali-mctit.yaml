@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Strategia C - backfill: per ogni billing_account che dichiara una coppia
+# (istanza, utility), assicura che esista la riga corrispondente in
+# istanze_dati_precontrattuali (IDP). Idempotente via ON CONFLICT.
+#
+# Le istanze totalmente orfane (no BA, no IDP, no clienti) NON vengono
+# toccate: sono dati anomali pre-Strategia C che vanno valutati manualmente
+# (o cancellati). Il trigger require_utility_dichiarata si applica solo
+# alle nuove istanze (AFTER INSERT), quindi le orfane storiche sopravvivono.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260501-16-backfill-istanze-dati-precontrattuali-mctit.yaml
+
+  - changeSet:
+      id: 20260501-16-backfill-istanze-dati-precontrattuali
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Backfill istanze_dati_precontrattuali da billing_account: per ogni
+        coppia (istanza_utility_id, utility_id) presente in BA crea l'IDP
+        corrispondente se manca. Idempotente.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Backfill: istanze_dati_precontrattuali da billing_account
+              --
+              -- Per ogni coppia (istanza_utility_id, utility_id) gia'
+              -- dichiarata in BA, garantiamo che esista anche in IDP.
+              --
+              -- Idempotente: ON CONFLICT su uq_istanze_dati_precontrattuali_id_utility_id
+              -- (UNIQUE su istanza_utility_id, utility_id).
+              --
+              -- NOTE:
+              --   - Non valorizzia classe_utenza_id, param_1_num, param_2_txt:
+              --     restano NULL se non dichiarati. La presenza della riga e'
+              --     sufficiente come "fonte satellite" per la coerenza.
+              --   - Le istanze con SOLO clienti (no BA, no IDP) NON vengono
+              --     toccate da questo backfill: clienti e' gia' una fonte
+              --     satellite valida (script.fn_check_utility_istanza_coerenza
+              --     e trgfn_istanze_utilities_require_utility_dichiarata).
+              --   - Le istanze totalmente orfane (zero satelliti) restano
+              --     orfane: scelta esplicita di NON inventare utility che
+              --     non sono state mai dichiarate. Il trigger
+              --     require_utility_dichiarata blocca solo le NUOVE istanze
+              --     (AFTER INSERT), quindi i dati anomali storici sopravvivono
+              --     per ispezione manuale.
+              -- ==========================================================
+              INSERT INTO anagrafiche.istanze_dati_precontrattuali (
+                  istanza_utility_id,
+                  utility_id
+              )
+              SELECT DISTINCT
+                  ba.istanza_utility_id,
+                  ba.utility_id
+                FROM anagrafiche.billing_account ba
+               WHERE ba.istanza_utility_id IS NOT NULL
+                 AND ba.utility_id IS NOT NULL
+                 AND NOT EXISTS (
+                     SELECT 1
+                       FROM anagrafiche.istanze_dati_precontrattuali idp
+                      WHERE idp.istanza_utility_id = ba.istanza_utility_id
+                        AND idp.utility_id         = ba.utility_id
+                 )
+              ON CONFLICT (istanza_utility_id, utility_id) DO NOTHING;
+
+              -- Report istanze residue orfane (no BA, no IDP, no clienti).
+              -- Solo NOTICE per ispezione manuale: non bloccante.
+              DO $$
+              DECLARE
+                v_count int;
+              BEGIN
+                SELECT COUNT(*)
+                  INTO v_count
+                  FROM anagrafiche.istanze_utilities iu
+                  LEFT JOIN anagrafiche.billing_account ba
+                    ON ba.istanza_utility_id = iu.id
+                  LEFT JOIN anagrafiche.istanze_dati_precontrattuali idp
+                    ON idp.istanza_utility_id = iu.id
+                  LEFT JOIN anagrafiche.clienti c
+                    ON c.istanza_utility_id = iu.id
+                 WHERE ba.id IS NULL
+                   AND idp.id IS NULL
+                   AND c.id IS NULL;
+
+                IF v_count > 0 THEN
+                  RAISE NOTICE 'Backfill IDP completato. ATTENZIONE: % istanze_utilities residue orfane (no BA, no IDP, no clienti) richiedono valutazione manuale (cancellazione o assegnazione utility).', v_count;
+                ELSE
+                  RAISE NOTICE 'Backfill IDP completato. Nessuna istanza orfana residua.';
+                END IF;
+              END $$;

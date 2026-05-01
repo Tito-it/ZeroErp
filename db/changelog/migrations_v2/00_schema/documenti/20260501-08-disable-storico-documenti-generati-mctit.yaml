@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Step B - Disabilita storico standard su documenti_generati e
+#          documenti_generati_file
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20260501-08-disable-storico-documenti-generati-mctit.yaml
+
+  - changeSet:
+      id: 20260501-08-disable-storico-documenti-generati
+      author: mctit
+      comment: >
+        Step B - Disabilitazione storico standard per documenti.documenti_generati e
+        documenti.documenti_generati_file (riferimento §13.3 B del documento di
+        sviluppo documenti).
+
+        Motivazione (decisione 2026-04-30):
+          - documenti_generati e' di per se' una tabella di versionamento storico
+            (ogni rigenerazione produce un nuovo record con progressivo_sorgente
+            crescente);
+          - le guard A5 (block delete) e A7/A7-bis (immutabilita' snapshot e file)
+            rendono la tabella append-only: lo storico standard registrerebbe solo
+            cambi di stato/meta, replicando context_json di decine di KB per riga
+            (costo elevato, beneficio nullo);
+          - l'audit dei cambi di stato e' coperto in Fase B da
+            documenti.documenti_generati_eventi (previsto, non in scope Fase A).
+
+        Strategia di disabilitazione (Opzione A):
+          Il framework dbops.automation_rules_tbl non supporta righe override
+          enabled='f' per tabella specifica: l'orchestratore filtra
+          WHERE r.enabled e la riga *all *all enabled='t' continua a matchare.
+          La via pulita sfrutta il check gia' presente in
+          dbops.fn_run_automations_storico_provision (line "IF NOT has_flag
+          THEN CONTINUE") e la dipendenza di dbops.fn_run_automations_storico
+          dalla presenza della tabella storico.<table>:
+
+            1) DROP del trigger storico se gia' creato in CI run precedenti
+               (nome derivato dal name_template della regola STORICO:
+                'trg_{table}_z90_storico_upd_dlt');
+            2) DROP delle tabelle storico.documenti_generati e
+               storico.documenti_generati_file se gia' provisionate;
+            3) DROP della colonna storicizza sulle due tabelle: il provisioning
+               salta perche' la colonna non esiste, e di conseguenza la
+               creazione del trigger storico non avviene (has_sto = false).
+
+        Prerequisito non negoziabile: A7 (trgfn_documenti_generati_protect_snapshot)
+        e A7-bis (trgfn_documenti_generati_file_protect_file) devono essere gia'
+        atterrati nello stesso PR (changeset 20260501-05). Senza guard di
+        immutabilita' lo spegnimento storico sarebbe un buco di audit.
+
+        Fuori scope: storico resta attivo per template_documenti,
+        template_documenti_versioni, template_asset e per le 4 lookup, dove la
+        sequenza di modifiche e' realmente significativa.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Drop trigger storico se gia' creato dall'automazione in run precedenti
+              DROP TRIGGER IF EXISTS trg_documenti_generati_z90_storico_upd_dlt
+                ON documenti.documenti_generati;
+
+              DROP TRIGGER IF EXISTS trg_documenti_generati_file_z90_storico_upd_dlt
+                ON documenti.documenti_generati_file;
+
+              -- 2) Drop tabelle storico se gia' provisionate
+              --    CASCADE per rimuovere eventuali viste/dipendenze residue
+              DROP TABLE IF EXISTS storico.documenti_generati CASCADE;
+              DROP TABLE IF EXISTS storico.documenti_generati_file CASCADE;
+
+              -- 3) Drop colonna storicizza: assenza colonna = no storico
+              --    fn_run_automations_storico_provision: has_flag=false -> CONTINUE
+              --    fn_run_automations_storico: has_sto=false -> no trigger
+              ALTER TABLE documenti.documenti_generati
+                DROP COLUMN IF EXISTS storicizza;
+
+              ALTER TABLE documenti.documenti_generati_file
+                DROP COLUMN IF EXISTS storicizza;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: ripristina colonna storicizza con default true.
+              -- Le tabelle storico e i trigger verranno rigenerati al successivo
+              -- run delle automazioni (apply_run_automation_all).
+              ALTER TABLE documenti.documenti_generati_file
+                ADD COLUMN IF NOT EXISTS storicizza boolean NOT NULL DEFAULT true;
+
+              ALTER TABLE documenti.documenti_generati
+                ADD COLUMN IF NOT EXISTS storicizza boolean NOT NULL DEFAULT true;

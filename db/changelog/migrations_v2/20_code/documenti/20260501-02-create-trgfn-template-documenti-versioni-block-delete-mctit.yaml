@@ -1,0 +1,96 @@
+# --------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Delete block versioni template protette o usate (A2)
+# --------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260501-02-create-trgfn-template-documenti-versioni-block-delete-mctit.yaml
+
+  - changeSet:
+      id: 20260501-02-create-trgfn-template-documenti-versioni-block-delete
+      author: mctit
+      comment: >
+        Guard A2: Crea la funzione e il trigger che bloccano la cancellazione fisica di
+        una versione template quando e' in stato PUBBLICATA/OBSOLETA oppure
+        quando e' gia' usata da documenti generati.
+        Il messaggio di errore è definito in config.messaggi_errore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_documenti_versioni_block_delete()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              -- Scopo:
+              --   Blocca la cancellazione fisica di versioni template
+              --   quando sono in stato protetto o gia' utilizzate.
+              --
+              -- Regole:
+              --   1. Non si cancellano versioni PUBBLICATA o OBSOLETA
+              --      (manteniamo la storia per audit dei documenti generati).
+              --   2. Non si cancellano versioni gia' usate da almeno un
+              --      documento generato (integrità referenziale storica).
+              --   3. Solo versioni BOZZA non usate possono essere cancellate.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_VERSIONE_DELETE_BLOCKED
+              DECLARE
+                v_count_documenti integer;
+              BEGIN
+                IF OLD.stato IN ('PUBBLICATA', 'OBSOLETA') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_documenti_versioni_block_delete',
+                    'E_DOCUMENTI_VERSIONE_DELETE_BLOCKED',
+                    jsonb_build_object(
+                      'template_documento_id', OLD.template_documento_id,
+                      'versione', OLD.versione,
+                      'stato', OLD.stato
+                    ),
+                    NULL::uuid
+                  );
+                END IF;
+
+                SELECT COUNT(*)
+                  INTO v_count_documenti
+                  FROM documenti.documenti_generati
+                 WHERE template_versione_id = OLD.id;
+
+                IF v_count_documenti > 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_documenti_versioni_block_delete',
+                    'E_DOCUMENTI_VERSIONE_DELETE_BLOCKED',
+                    jsonb_build_object(
+                      'template_documento_id', OLD.template_documento_id,
+                      'versione', OLD.versione,
+                      'documento_generati_count', v_count_documenti
+                    ),
+                    NULL::uuid
+                  );
+                END IF;
+
+                RETURN OLD;
+              END;
+              $$;
+
+              CREATE TRIGGER trg_template_documenti_versioni_a10_block_delete_protected_dlt
+                BEFORE DELETE
+                ON documenti.template_documenti_versioni
+                FOR EACH ROW
+                EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_block_delete();
+
+              COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_block_delete() IS
+                'Guard A2: blocca DELETE su versioni PUBBLICATA/OBSOLETA o gia'' usate da documenti generati.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_documenti_versioni_a10_block_delete_protected_dlt
+                ON documenti.template_documenti_versioni;
+              DROP FUNCTION IF EXISTS documenti.trgfn_template_documenti_versioni_block_delete();
