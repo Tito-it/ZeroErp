@@ -777,3 +777,421 @@ Questo mantiene coerenza con:
 - sviluppo concentrico;
 - standard SQL del repo;
 - pattern gia' usati per validita', stato, lookup e configurazione.
+
+---
+
+## 13. Analisi critica stato attuale (2026-04-30)
+
+> Scopo della sezione: confrontare cio' che e' gia' atterrato in
+> `db/changelog/migrations_v2/` con il piano della Fase A, e fissare un elenco
+> chiuso di cosa rimane da fare lato DB **prima** di considerare la Fase A
+> davvero conclusa.
+
+### 13.1 Cosa e' gia' atterrato
+
+| Step Fase A | File migration | Stato |
+| --- | --- | --- |
+| Step 0 schema | `00_schema/documenti/20260429-51-create-schema-documenti-mctit.yaml` | ok |
+| Step 0 scope automazioni | `80_data/sql/dbops/automation_scope.csv` riga `documenti,*all` | ok |
+| Step 1+2 lookup + seed | `00_schema/documenti/20260429-52-create-lookup-documenti-base-mctit.yaml` + `80_data/changelog/20260429-58-upsert-documenti-seed-base-mctit.yaml` + 4 CSV in `80_data/sql/documenti/` | ok |
+| Step 3 `template_documenti` | `00_schema/documenti/20260429-53-create-template-documenti-mctit.yaml` | ok |
+| Step 4 `template_documenti_versioni` | `00_schema/documenti/20260429-54-create-template-documenti-versioni-mctit.yaml` | ok |
+| Step 5 `template_asset` | `00_schema/documenti/20260429-55-create-template-asset-mctit.yaml` | ok |
+| Step 6 `documenti_generati` | `00_schema/documenti/20260429-56-create-documenti-generati-mctit.yaml` (con FK condizionale `django.auth_user`) | ok |
+| Step 7 `documenti_generati_file` | `00_schema/documenti/20260429-57-create-documenti-generati-file-mctit.yaml` | ok |
+| Step 8 parametri storage | `80_data/changelog/20260429-59-upsert-parameters-documenti-storage-mctit.yaml` + `80_data/sql/config/parameters_documenti_storage.csv` | ok |
+| Step 9 test pgTAP | `db/pgtap/documenti/` non esiste | **mancante** |
+
+Quindi struttura tabelle e seed sono completi. Le **guard funzionali**, i
+**collanti applicativi** e i **test pgTAP** restano da scrivere.
+
+### 13.2 Punti dove il DDL gia' atterrato e' coerente con il piano
+
+- `documenti.template_documenti` espone sia `codice` sia `codice_interno`,
+  entrambi unici per `(emittente_fiscale_id, sorgente_tipo_id, *)`. Coerente
+  con lo standard "codice operativo + codice tecnico stabile". Il piano §6.2 e
+  §11.5 menzionava solo `codice`: la presenza di `codice_interno` e' una
+  estensione corretta, va solo allineata la documentazione concettuale.
+- `documenti.documenti_generati.uid` usa `uuidv7()` come default, in linea con
+  PostgreSQL 18 e con lo standard `uid` pubblico stabile.
+- L'unique progressivo sorgente usa `UNIQUE NULLS NOT DISTINCT` (PG 15+), che
+  e' la soluzione robusta richiesta dal §6.5.
+- La FK `generato_da_user_id -> django.auth_user(id)` e' creata in changeSet
+  separato con `preConditions/tableExists`, secondo il pattern del repo
+  ([feedback_django_refs_in_liquibase.md](file:///home/tid/.claude/projects/-home-tid-software-ZeroErp/memory/feedback_django_refs_in_liquibase.md)).
+- `template_documenti_versioni` e `template_asset` hanno `valido_dal`,
+  `valido_al`, `validita daterange`, trigger `script.trgfn_set_validita`,
+  e — per le versioni — `EXCLUDE USING gist` solo su `(attivo, stato='PUBBLICATA')`.
+  Questo e' esattamente il pattern temporale standard previsto dal §4.2.
+- Lo scope automazioni `documenti,*all` e' gia' registrato: l'automazione
+  standard del repo (regole 1, 2, 4, 6, 7, 8 di `automation_rules_tbl.csv`)
+  applichera' in modo automatico `tx_id`, audit `data_update/user_update`,
+  `ATTIVO` parent/child, provisioning storico, trigger storico
+  UPDATE/DELETE e `LOCK_COLUMNS` su `codice_interno`. Quindi la grande
+  maggioranza dei trigger generici **non va scritta a mano**.
+
+### 13.3 Cosa manca o e' incompleto lato DB
+
+Le voci sotto sono ordinate per criticita' decrescente. Tutto il blocco va
+chiuso prima di considerare la Fase A finita.
+
+#### A. Guard funzionali specifiche (20_code/documenti/)
+
+Le automazioni `*all` non coprono regole semantiche di dominio. Servono trigger
+dedicati in `20_code/documenti/` (non in `00_schema/`):
+
+A1. **Immutabilita' versione `PUBBLICATA`** — manca trigger
+`trg_template_documenti_versioni_a10_protect_pubblicata_upd` che blocchi
+`UPDATE OF html_template, css_template, markdown_template, render_engine_id,
+formato_template, page_format, page_orientation, margin_top_mm,
+margin_right_mm, margin_bottom_mm, margin_left_mm, valido_dal, valido_al,
+context_schema, template_documento_id, versione` quando `OLD.stato = 'PUBBLICATA'`.
+Errore via `script.fn_log_and_raise_error`.
+Requisito esplicito §6.3, §11.6 e Decisione 8.
+
+A2. **Delete block versioni protette/usate** — manca trigger
+`trg_template_documenti_versioni_a10_block_delete_protected_dlt`:
+
+- bloccare DELETE quando `stato IN ('PUBBLICATA','OBSOLETA')`;
+- bloccare DELETE quando esiste almeno una riga in `documenti.documenti_generati`
+  con `template_versione_id = OLD.id`.
+
+Requisito §6.3 e §11.6.
+
+A3. **Delete block fisico `template_asset`** — manca trigger
+`trg_template_asset_a10_block_delete_dlt` che bloccia sempre il DELETE
+fisico (regola "no delete fisico asset", §5.8 e §11.7).
+
+A4. **Immutabilita' file/hash asset** — `template_asset` deve bloccare
+`UPDATE OF storage_key, sha256, file_size_bytes, mime_type, file_name`. Il
+piano in §6.4 dice "quando l'asset e' gia' usato"; la decisione 48
+estende il vincolo anche agli asset non ancora usati ("il file non si
+sostituisce: si carica un nuovo asset"). Quindi in Fase A il trigger puo'
+essere semplice e bloccare l'UPDATE su quelle colonne **sempre**, senza
+verificare riferimenti. Trigger:
+`trg_template_asset_a10_protect_file_cols_upd`.
+
+A5. **Delete block `documenti_generati`** — manca trigger
+`trg_documenti_generati_a10_block_delete_dlt`. Tabella append-only sulla
+generazione: lo stato cambia tramite `ARCHIVIATO`/`ANNULLATO`, il record non
+si cancella. Requisito §6.5, §11.9 e Decisione 13.
+
+A6. **Coerenza referenziale `documenti_generati`** — manca guard
+`trg_documenti_generati_a10_check_coerenza_ins_upd`. Senza questo guard,
+nulla impedisce di salvare un record con:
+
+- `template_versione_id` che non appartiene al `template_documento_id` indicato;
+- `template_documento_id.tipo_documento_output_id` diverso da
+  `tipo_documento_output_id`;
+- `template_documento_id.sorgente_tipo_id` diverso da `sorgente_tipo_id`;
+- `template_documento_id.emittente_fiscale_id` diverso da
+  `emittente_fiscale_id`.
+
+Il `context_json` snapshot perde valore di audit se queste coerenze non
+sono garantite a livello DB. Il service le rispetta, ma il DB e' la guard
+finale (filosofia DB-first del repo).
+
+A7. **Immutabilita' snapshot `documenti_generati`** — manca trigger
+`trg_documenti_generati_a10_protect_snapshot_upd` che blocchi
+`UPDATE OF` sui campi che rappresentano lo snapshot funzionale del
+documento prodotto:
+
+- `tipo_documento_output_id`, `template_documento_id`, `template_versione_id`;
+- `sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga`, `progressivo_sorgente`;
+- `emittente_fiscale_id`, `generato_da_user_id`, `generato_at`;
+- `context_json`, `context_hash`, `template_hash`, `pdf_hash`;
+- `titolo`, `nome_file`, `uid`.
+
+Solo `stato` e `meta` restano modificabili. Questa guard e' il
+prerequisito tecnico della scelta B (disabilitazione storico): senza A7
+non possiamo affidare l'immutabilita' al solo "patto col service".
+
+A7-bis. **Immutabilita' `documenti_generati_file`** — analogo trigger
+`trg_documenti_generati_file_a10_protect_file_upd` che blocchi
+`UPDATE OF documento_generato_id, file_tipo_id, mime_type, file_name,
+file_size_bytes, storage_key, sha256, is_principale` (per `is_principale`
+si veda C). Resta modificabile solo `meta` e, in scenari Fase B,
+`ordinamento` se necessario.
+
+#### B. Storico per `documenti_generati` / `documenti_generati_file` — DECISIONE
+
+**Decisione 2026-04-30**: disabilitare lo storico standard per
+`documenti.documenti_generati` e `documenti.documenti_generati_file`.
+
+Motivazione:
+
+- `documenti_generati` e' di per se' una **tabella di versionamento storico**:
+  ogni rigenerazione produce un nuovo record con `progressivo_sorgente` che
+  cresce monotonamente (Decisione 13 e Decisione 14). La storia delle
+  generazioni e' gia' codificata in piu' righe per la stessa sorgente.
+- La tabella e' append-only per disegno: la guard A5 blocca DELETE e la
+  guard A7 blocca UPDATE su tutti i campi snapshot. Quindi la tabella di
+  storico standard registrerebbe **solo** i cambi di `stato`
+  (`GENERATO`→`ARCHIVIATO`/`ANNULLATO`) e di `meta`. Valore informativo
+  basso, replicando pero' un `context_json` che puo' pesare decine di KB
+  per riga.
+- Lo storico standard del repo replica **l'intera riga** (con tutto il
+  `context_json`) ad ogni UPDATE. Per generazione = duplicazione
+  garantita appena lo stato cambia. Costo elevato, beneficio nullo
+  rispetto a una colonna `audit_log` minimale o a un evento applicativo.
+- L'audit dei cambi di `stato` (chi ha archiviato/annullato e quando) e'
+  meglio coperto dalla tabella `documenti.documenti_generati_eventi` di
+  Fase B, che e' progettata proprio per questo e che salva solo i campi
+  utili (`evento_tipo`, `evento_at`, `user_id`, `esito`, `messaggio`,
+  `detail`) — non un duplicato dello snapshot.
+
+Cosa serve fare:
+
+B1. Disabilitare le regole `STORICO_PROVISION` (6) e `STORICO` (7) per
+`documenti.documenti_generati` e `documenti.documenti_generati_file`.
+Verificare il pattern concreto del repo per disabilitare regole `*all *all`
+su tabelle specifiche: l'opzione piu' pulita e' aggiungere righe
+override in `automation_rules_tbl.csv` con `target_schema='documenti'`,
+`target_table='documenti_generati'` (e idem `documenti_generati_file`),
+`rule_type='STORICO_PROVISION'`/`STORICO`, `enabled='f'`. Se il pattern
+del repo non supporta override per disabilitazione, valutare seed in una
+tabella `automation_rules_overrides` o equivalente; se non esiste,
+aprire prima la convenzione DB con un changelog dedicato.
+
+B2. **Prerequisito non negoziabile**: A7 e A7-bis devono atterrare nello
+stesso commit di B1. Senza guard di immutabilita' lo "spegnimento storico"
+diventa un buco di audit, non una scelta tecnica.
+
+B3. Conferma: per `template_documenti`, `template_documenti_versioni`,
+`template_asset` e per le 4 lookup, lo **storico resta attivo**. Questo
+copre BOZZA modificate, asset disattivati, lookup riconfigurate, dove la
+sequenza di modifiche e' realmente significativa.
+
+B4. Per gli stati `documenti_generati.stato` valutare se serve un piccolo
+log applicativo gia' in Fase A (chi e quando ha archiviato/annullato).
+Opzioni:
+
+- rinviare a Fase B con `documenti_generati_eventi` (preferito, evita
+  proliferazione di soluzioni temporanee);
+- aggiungere ora due colonne minimali `archiviato_at`/`archiviato_da_user_id`
+  e analoghe per `ANNULLATO`. Sconsigliato: introduce duplicati che andranno
+  rimossi in Fase B quando arriveranno gli eventi reali.
+
+Raccomandazione: **rinviare a Fase B**. In Fase A si vive col solo `stato`
+attuale + `data_update`/`user_update` standard.
+
+#### C. Vincolo "un solo `PDF_FINALE`" — DECISIONE
+
+**Decisione 2026-04-30**: aggiungere subito `is_principale boolean` su
+`documenti.documenti_generati_file` + indice unico parziale, e rilassare
+il vincolo unique attuale.
+
+Stato attuale ([20260429-57](../../../../db/changelog/migrations_v2/00_schema/documenti/20260429-57-create-documenti-generati-file-mctit.yaml)):
+
+```sql
+CONSTRAINT uq_documenti_generati_file_doc_tipo
+  UNIQUE (documento_generato_id, file_tipo_id)
+```
+
+In Fase A esiste solo `PDF_FINALE`, quindi e' equivalente a "un solo file per
+documento". In Fase B compariranno `PDF_ALLEGATO` (multiplo per documento),
+`PDF_FIRMATO`, `HTML_RENDER`: lo unique attuale si rompera'.
+
+Modellazione scelta:
+
+C1. Aggiungere colonna `is_principale boolean NOT NULL DEFAULT false` su
+`documenti.documenti_generati_file`.
+
+C2. Sostituire il vincolo `uq_documenti_generati_file_doc_tipo` con uno
+piu' permissivo:
+
+```sql
+CONSTRAINT uq_documenti_generati_file_doc_tipo_ord
+  UNIQUE (documento_generato_id, file_tipo_id, ordinamento)
+```
+
+C3. Aggiungere indice unico parziale "un solo principale per documento":
+
+```sql
+CREATE UNIQUE INDEX uq_documenti_generati_file_principale
+  ON documenti.documenti_generati_file (documento_generato_id)
+  WHERE is_principale IS TRUE;
+```
+
+C4. In Fase A il service marca a `true` il `PDF_FINALE` (unico file
+prodotto). In Fase B la stessa colonna distinguera' il file principale dai
+file accessori. Nessuna migrazione dati dolorosa quando si aggiungera'
+`PDF_ALLEGATO`/`PDF_FIRMATO`.
+
+C5. La guard A7-bis (immutabilita' file) include `is_principale` tra le
+colonne bloccate in UPDATE: il "file principale" e' definito al momento
+della generazione e non cambia in seguito.
+
+Implementazione:
+
+- se 20260429-57 non e' ancora pushato sul remoto pubblico, modificare
+  direttamente quel file aggiungendo la colonna, sostituendo il vincolo e
+  aggiungendo l'indice;
+- se 20260429-57 e' gia' pushato, creare un changeset additivo
+  `20260430-NN-add-is-principale-documenti-generati-file-mctit.yaml` con:
+  `ADD COLUMN is_principale ... NOT NULL DEFAULT false`,
+  `DROP CONSTRAINT uq_documenti_generati_file_doc_tipo`,
+  `ADD CONSTRAINT uq_documenti_generati_file_doc_tipo_ord ...`,
+  `CREATE UNIQUE INDEX uq_documenti_generati_file_principale ...`.
+
+Verificare lo stato del remoto prima di scegliere.
+
+#### D. Whitelist lookup generica (Python)
+
+`apps/core/db/dbops_repository.py` espone `_REL_CONSENTITE` come whitelist
+delle tabelle accessibili tramite `fn_get_lookup_codici`. Le 4 lookup
+documenti **non** sono presenti.
+
+Va aggiunto:
+
+- `documenti.tipi_documento_output`
+- `documenti.tipi_asset_documento`
+- `documenti.tipi_file_documento`
+- `documenti.render_engine_documento`
+
+Tecnicamente e' lavoro backend (PR2), ma e' una dipendenza del DB perche'
+senza questa modifica le lookup atterrate non sono raggiungibili dall'API
+generica. Va segnalato esplicitamente come blocker della prima slice end-to-end.
+
+#### E. Check minori sul DDL gia' atterrato
+
+E1. `template_documenti.file_name_pattern text NULL` — manca `CHECK
+(file_name_pattern IS NULL OR btrim(file_name_pattern) <> '')`. Coerenza con
+gli altri non-vuoti.
+
+E2. `template_documenti_versioni.context_schema jsonb` — manca
+`CHECK (jsonb_typeof(context_schema) = 'object')` per evitare scalari/array.
+Stessa cosa potrebbe valere per `meta` e `detail` ovunque presenti, da
+verificare se e' applicato dall'automazione standard del repo.
+
+E3. `template_documenti_versioni.html_template text NOT NULL` — manca
+`CHECK (btrim(html_template) <> '')`. Una versione con HTML vuoto non e'
+mai una versione utile.
+
+E4. `documenti_generati.context_json` — manca
+`CHECK (jsonb_typeof(context_json) = 'object')`. Lo snapshot funzionale e'
+sempre un oggetto.
+
+E5. `documenti_generati_file.ordinamento integer NOT NULL DEFAULT 1` —
+ottimo, ma per la Fase A col solo `PDF_FINALE` il `DEFAULT 1` e' di fatto
+forzato. In Fase B con piu' file diventa significativo. Niente da
+cambiare ora, e' un "ricordare in Fase B".
+
+#### F. Test pgTAP (Step 9 della Fase A)
+
+Tutto da scrivere, in `db/pgtap/documenti/`:
+
+- creazione schema e tabelle base;
+- unique `codice` e `codice_interno` sulle 4 lookup + lock `codice_interno`
+  (verifica che l'automazione `LOCK_COLUMNS` abbia generato il trigger);
+- default unico template attivo per `(tipo_documento_output_id,
+  sorgente_tipo_id, emittente_fiscale_id)` — testare che due `is_default=true`
+  attivi sulla stessa tripla siano rifiutati;
+- anti-overlap versioni `PUBBLICATA` (EXCLUDE gist);
+- immutabilita' versione `PUBBLICATA` (richiede A1 prima);
+- delete block versione protetta (richiede A2 prima);
+- deduplica asset per `(emittente_fiscale_id, sha256)`;
+- delete block asset (richiede A3 prima);
+- lock colonne file asset (richiede A4 prima);
+- delete block documenti generati (richiede A5 prima);
+- coerenza referenziale documenti generati (richiede A6 prima);
+- immutabilita' snapshot `documenti_generati` (richiede A7 prima):
+  tentativo di UPDATE su `context_json`, `*_hash`, riferimenti template
+  o sorgente deve fallire;
+- immutabilita' file `documenti_generati_file` (richiede A7-bis prima):
+  tentativo di UPDATE su `storage_key`, `sha256`, `is_principale`,
+  `file_size_bytes`, `mime_type`, `file_name` deve fallire;
+- assenza tabella storico per `documenti_generati` e
+  `documenti_generati_file` (verifica B1: il provisioning standard non ha
+  creato `storico.documenti_generati_*`);
+- unique progressivo sorgente con `sorgente_riga NULL` (NULLS NOT DISTINCT);
+- un solo file `is_principale = true` per `documento_generato_id` (C3);
+- unique `(documento_generato_id, file_tipo_id, ordinamento)` permette
+  piu' righe stesso `file_tipo_id` con `ordinamento` distinto (C2);
+- seed lookup idempotenti (`runOnChange: true` rilanciato non duplica);
+- seed parametri `config.parameters` idempotenti.
+
+I test seguono il pattern del repo
+([feedback_pgtap_patterns.md](file:///home/tid/.claude/projects/-home-tid-software-ZeroErp/memory/feedback_pgtap_patterns.md)):
+`BEGIN; ... ROLLBACK;`, codici fiscali validi fissi per fixture soggetti, no
+collisioni UNIQUE con seed/migrazioni.
+
+#### G. Documentazione concettuale manuale
+
+In `docs/it/dbzero/documenti/manual/` esistono gia' i file md per le 9
+tabelle previste in Fase A: stato sconosciuto (probabilmente vuoti o stub).
+Vanno popolati con almeno scopo, contesto, regole DB, dipendenze. Le doc
+auto-generate `tabelle/`, `viste/`, `funzioni/` arriveranno con il
+prossimo run del generatore, non vanno toccate a mano.
+
+### 13.4 Ordine consigliato per chiudere la Fase A
+
+Ordine pensato per minimizzare i conflitti tra DDL, guard e test, e per non
+lasciare la base in stati intermedi pericolosi (es. "no storico" senza
+ancora la guard di immutabilita').
+
+1. **C — `is_principale` su `documenti_generati_file`**. Prima i dati,
+   prima del nullable e dei vincoli. Modifica in-place del 20260429-57 se
+   non pushato, altrimenti nuovo changeset additivo `20260430-NN-...`.
+   Operazioni SQL elencate in §13.3 punto C.
+
+2. **E — check minori sul DDL** in un singolo changeset
+   `20260430-NN-add-checks-documenti-mctit.yaml` in
+   `00_schema/documenti/`. Include E1..E4: non-vuoto su
+   `file_name_pattern` e `html_template`, `jsonb_typeof = 'object'` su
+   `context_schema`, `context_json`, e dove serve su `meta` (verificare se
+   il pattern del repo lo applica gia' via automazione).
+
+3. **A1..A7 + A7-bis — guard** in `20_code/documenti/`, una funzione
+   `trgfn_*` + un `CREATE TRIGGER` per ciascuna regola. Naming
+   `trg_<tabella>_a10_<descrizione>_<eventi>` per guard fail-fast (vedi
+   `linee-guida-trigger.md`). Errori via `script.fn_log_and_raise_error`
+   con codici stabili (es. `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE`,
+   `E_DOCUMENTI_ASSET_DELETE_BLOCKED`,
+   `E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE`,
+   `E_DOCUMENTI_GENERATO_COERENZA`).
+
+4. **B — disabilitazione storico** per `documenti_generati` e
+   `documenti_generati_file`. Va rilasciata **dopo** A7/A7-bis nello
+   stesso PR, mai prima: senza A7 lo "spegnimento storico" e' un buco di
+   audit. Verificare il pattern repo per override regole `*all *all` su
+   tabelle specifiche.
+
+5. **F — test pgTAP** in `db/pgtap/documenti/`, scritti nello stesso
+   commit della guard relativa
+   ([feedback_guard_breaks_existing_tests.md](file:///home/tid/.claude/projects/-home-tid-software-ZeroErp/memory/feedback_guard_breaks_existing_tests.md)).
+   Ordine pratico: prima i test che non dipendono dalle guard
+   (deduplica sha256, default unico, anti-overlap, NULLS NOT DISTINCT,
+   indice principale), poi i test delle guard man mano che atterrano.
+
+6. **D — whitelist `_REL_CONSENTITE`** in
+   `apps/core/db/dbops_repository.py` (PR2 backend). Senza questo step la
+   lookup generica non vede le 4 lookup di `documenti`. Lo segnaliamo come
+   dipendenza esplicita PR1 DB → PR2 BE.
+
+7. **G — popolare i manual md** in `docs/it/dbzero/documenti/manual/`,
+   secondo lo standard scopo/contesto/regole/dipendenze. Puo' avvenire in
+   parallelo al resto.
+
+Punto critico cross-step: ogni nuovo changelog file aggiunto **dopo** un
+push pubblico va numerato successivo all'ultimo (`20260430-NN-...`), mai
+modificare i 51-59 se gia' su remoto. Vedi
+[feedback su Liquibase phase ordering](file:///home/tid/.claude/projects/-home-tid-software-ZeroErp/memory/feedback_liquibase_phase_ordering_preconditions.md).
+
+### 13.5 Note di metodo
+
+- Le guard A1..A6 vanno in `20_code/documenti/`, **non** in `00_schema/`:
+  contengono codice (funzioni e trigger), e l'autogen del master changelog
+  separa fasi DDL e fasi codice.
+- Il `logicalFilePath` dei nuovi changeset deve combaciare col path reale
+  (vedi `liquibase-setup-workflow.md`).
+- Niente modifiche ai changeset 51-59 se sono gia' stati pushati su
+  `dev/db-tid` o oltre: aggiungere sempre un nuovo file con numerazione
+  successiva (regola
+  [feedback_pg_returns_table_drop_required.md](file:///home/tid/.claude/projects/-home-tid-software-ZeroErp/memory/feedback_pg_returns_table_drop_required.md)
+  per i drop-and-recreate vale solo per cambi di firma; qui parliamo di
+  immutabilita' del file gia' pushato).
+- Le guard dovrebbero usare `script.fn_log_and_raise_error` con codice
+  errore stabile (es. `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE`,
+  `E_DOCUMENTI_ASSET_DELETE_BLOCKED`) cosi' da poter mappare a
+  `error_policies.py` lato backend.
