@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# script.fn_get_emittenti_scope_pk_ids(auth_user_id)
+# Fn canonica per filtri scope su colonne PK (emittente_fiscale_id).
+# Simmetrica a fn_get_emittenti_scope_sr_ids (refactored as wrapper su questa).
+#
+# Origine: brief preventivi rev2 §9 (sessione 2026-05-01) +
+# analisi pattern SR vs PK 2026-05-02
+# (vedi docs/it/dev/work-in-progress/refactor-emittente-id-canonico.md).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260502-01-create-fn-get-emittenti-scope-pk-ids-mctit.yaml
+
+  - changeSet:
+      id: 20260502-01-create-fn-get-emittenti-scope-pk-ids
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        CREATE script.fn_get_emittenti_scope_pk_ids(auth_user_id) — fn canonica
+        scope: ritorna array di PK reali (emittenti_fiscali.id) autorizzati
+        per l'utente. Stessa semantica di _sr_ids: NULL=tutto, '{}'=nessuno,
+        array=whitelist. Helper guard (fn_has_identita_attiva, fn_is_super_admin)
+        identici a _sr_ids per parita'.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_is_super_admin';
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_has_identita_attiva';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- script.fn_get_emittenti_scope_pk_ids
+              --
+              -- Scopo:
+              --   Restituisce le PK reali (emittenti_fiscali.id) degli
+              --   emittenti fiscali autorizzati per un utente. Per query
+              --   che filtrano su colonne PK (parameter_overrides,
+              --   user_emittenti_fiscali, vw_preventivi_list, preventivi
+              --   rev2, ecc.).
+              --
+              -- Funzione gemella a fn_get_emittenti_scope_sr_ids (mappa
+              --   a soggetto_ruolo_id, per query su colonne SR id).
+              --   Vedi guida soggetti-e-ruoli-anagrafici §5b.
+              --
+              -- Semantica (identica a _sr_ids):
+              --   NULL             = nessuna restrizione (vede tutto)
+              --   '{}'::bigint[]   = nessun accesso
+              --   array di ID      = limitato (whitelist)
+              --
+              -- Catena (identica a _sr_ids §4.6.B.6):
+              --   1. Assenza identita OPERATORE attiva -> '{}' (no access)
+              --   2. fn_is_super_admin -> NULL (nessuna restrizione)
+              --   3. OPERATIVO: whitelist PK (NULL se vuota = all)
+              --
+              -- Parita' con _sr_ids:
+              --   Le due fn condividono i guard. _pk_ids e' la canonica
+              --   (single source of truth dei guard); _sr_ids viene
+              --   refactored come wrapper thin che mappa PK -> SR.
+              --   Vedi migration successiva.
+              --
+              -- Filtro ef.attivo:
+              --   NON applicato. Per costruzione un EF in user_emittenti_fiscali
+              --   e' sempre attivo (trigger dbops.trgfn_child_requires_active_parent
+              --   blocca INSERT/UPDATE su EF non attivo;
+              --   dbops.trgfn_prevent_deactivate_if_children blocca disattivazione
+              --   di EF con figli). Aggiungere il filtro qui sarebbe ridondante.
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION script.fn_get_emittenti_scope_pk_ids(
+                  p_auth_user_id integer
+              )
+              RETURNS bigint[]
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_ids bigint[];
+              BEGIN
+                  -- 1. Identita OPERATORE attiva (helper DRY §4.6.B.0).
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN '{}'::bigint[];
+                  END IF;
+
+                  -- 2. Super admin? Nessuna restrizione.
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- 3. OPERATIVO: whitelist PK reale.
+                  --    Lettura diretta da user_emittenti_fiscali (no JOIN
+                  --    a emittenti_fiscali necessario: la colonna e' gia' la PK).
+                  SELECT array_agg(uef.emittente_fiscale_id)
+                    INTO v_ids
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = p_auth_user_id;
+
+                  -- NULL (whitelist vuota) = nessuna restrizione (parita' con _sr_ids).
+                  RETURN v_ids;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_emittenti_scope_pk_ids(integer) IS
+                  'Scope emittenti per filtri su colonne PK (emittenti_fiscali.id). '
+                  'Semantica: NULL=tutto, ''{}''=nessuno, array=whitelist. '
+                  'Identita OPERATORE mancante -> []; SUPER_ADMIN -> NULL; '
+                  'altrimenti whitelist PK. Gemella di fn_get_emittenti_scope_sr_ids '
+                  '(che e'' un wrapper su questa). Vedi guida soggetti-e-ruoli §5b.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_get_emittenti_scope_pk_ids(integer);
