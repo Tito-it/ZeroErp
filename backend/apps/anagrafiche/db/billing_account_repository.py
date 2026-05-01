@@ -189,6 +189,20 @@ class BillingAccountRepository:
             )
             return cursor.fetchone() is not None
 
+    # Scopo: Risolve l'istanza_utility_id del BA (FK NOT NULL sulla tabella).
+    #        Usato dai service di dominio per derivare l'istanza quando il
+    #        payload specifica solo il BA (es. crea_preventivo).
+    # Risultato: int (istanza) oppure None se BA non esiste.
+    def get_istanza_utility_id(self, billing_account_id: int) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT istanza_utility_id FROM anagrafiche.billing_account "
+                "WHERE id = %s LIMIT 1",
+                [billing_account_id],
+            )
+            row = cursor.fetchone()
+        return int(row[0]) if row and row[0] is not None else None
+
     # Scopo: Restituisce il singolo billing_account arricchito per restore lato client.
     #        Usato in edit quando il form ha solo l'id e deve ricostruire il _obj
     #        dell'AutoComplete senza doppio round-trip.

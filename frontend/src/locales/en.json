@@ -1257,6 +1257,15 @@
     "utility_label": "Utility",
     "select_ba": "Select billing account..."
   },
+  "istanza_utility": {
+    "search_placeholder": "Search instance by code, business name or address...",
+    "no_results": "No utility instance found",
+    "refine_hint": "Showing {shown} of {total}. Refine your search to see more results.",
+    "ba_label": "BA",
+    "solo_istanza_badge": "Instance only",
+    "fittizia_badge": "Fictitious",
+    "indirizzo_label": "Address"
+  },
   "contratti": {
     "contratto": "Contract",
     "contratti_cliente": "Client contracts",
@@ -1590,6 +1599,9 @@
     "field_utility": "Utility",
     "field_billing_account": "Client (BA)",
     "field_billing_account_placeholder": "Search by company name, BA code, fiscal code or PDP",
+    "field_istanza_utility": "Utility instance",
+    "field_istanza_utility_placeholder": "Search instance by code, company name or address",
+    "istanza_da_billing_account": "Instance automatically derived from the billing account.",
     "field_validita_dal": "Valid from",
     "field_validita_al": "Valid to",
     "field_competenza": "Period",

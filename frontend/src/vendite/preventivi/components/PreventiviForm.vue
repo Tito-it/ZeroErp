@@ -12,6 +12,7 @@ import { DATE_FORMAT } from '../../../core/constants'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
+import IstanzaUtilityLookup from '../../../core/components/IstanzaUtilityLookup.vue'
 import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -22,6 +23,9 @@ const props = defineProps({
   form: { type: Object, required: true },
   isModificabile: { type: Boolean, default: true },
   nonEditableFields: { type: Array, default: () => [] },
+  // Discrimina create vs edit per mostrare l'asterisco sui campi obbligatori
+  // (pattern allineato a ContrattoDrawer: `<span v-if="!isEdit">*</span>`).
+  isEdit: { type: Boolean, default: false },
 })
 
 // Lookup O(1) per campo non editabile.
@@ -39,11 +43,16 @@ function onBaSelected(item) {
     props.form.billing_account_id = null
     props.form.billing_account_obj = null
     props.form.istanza_utility_id = null
+    props.form.istanza_utility_obj = null
     return
   }
   props.form.billing_account_id = item.id
   props.form.billing_account_obj = item
   props.form.istanza_utility_id = item.istanza_utility_id || null
+  // Quando il BA porta con se' un'istanza, l'_obj per il picker istanza non
+  // viene popolato qui (sapremmo solo l'id, non i campi ricchi). Il picker
+  // istanza in questo caso e' disabled e mostra "auto-derivata da BA".
+  props.form.istanza_utility_obj = null
   // Coerenza utility/BA: se l'operatore non aveva selezionato utility prima,
   // pre-compila quella del BA. Se era gia' valorizzata e diversa, lascia
   // intervenire BillingAccountLookup che gia' resetta il BA al cambio utility.
@@ -55,13 +64,35 @@ function onBaSelected(item) {
 function onBaClear() {
   onBaSelected(null)
 }
+
+// Pattern simmetrico al BA: l'istanza picker e' usato quando il prospect
+// non ha ancora un BA. La selezione popola id + obj nel form.
+function onIstanzaSelected(item) {
+  if (!item) {
+    props.form.istanza_utility_id = null
+    props.form.istanza_utility_obj = null
+    return
+  }
+  props.form.istanza_utility_id = item.id
+  props.form.istanza_utility_obj = item
+  // Coerenza utility/istanza: se utility non ancora valorizzata e l'istanza
+  // dichiara una utility (via BA campione), pre-compila. Il picker stesso
+  // gia' resetta la selezione su cambio utility incoerente.
+  if (!props.form.utility_id && item.utility_id) {
+    props.form.utility_id = item.utility_id
+  }
+}
+
+function onIstanzaClear() {
+  onIstanzaSelected(null)
+}
 </script>
 
 <template>
   <div class="form-grid">
     <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('preventivi.field_utility') }}</label>
+        <label>{{ t('preventivi.field_utility') }} <span v-if="!isEdit">*</span></label>
         <UtilityPerRuoloSelect v-model="form.utility_id"
           :placeholder="t('preventivi.field_utility')"
           :disabled="isLocked('utility_id')" />
@@ -75,6 +106,28 @@ function onBaClear() {
           :placeholder="t('preventivi.field_billing_account_placeholder')"
           @select="onBaSelected"
           @clear="onBaClear" />
+      </div>
+    </div>
+
+    <!-- Istanza utility: obbligatoria post brief DB rev2.
+         Se BA selezionato l'istanza e' auto-derivata (picker disabilitato).
+         Se BA assente (preventivo prospect) il picker e' editabile e l'istanza
+         deve essere selezionata esplicitamente prima di poter salvare. -->
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t('preventivi.field_istanza_utility') }} <span v-if="!isEdit">*</span></label>
+        <IstanzaUtilityLookup
+          v-if="!form.billing_account_id"
+          :model-value="form.istanza_utility_obj"
+          :utility-id="form.utility_id"
+          :disabled="isLocked('istanza_utility_id')"
+          :placeholder="t('preventivi.field_istanza_utility_placeholder')"
+          @select="onIstanzaSelected"
+          @clear="onIstanzaClear" />
+        <div v-else class="app-field-hint">
+          <i class="pi pi-link" style="margin-right: 0.4rem;"></i>
+          {{ t('preventivi.istanza_da_billing_account') }}
+        </div>
       </div>
     </div>
 

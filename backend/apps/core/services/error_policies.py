@@ -1339,6 +1339,54 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Stato preventivo non ammette generazione pratica.",
         ),
+        # ── Preventivi: istanza obbligatoria + emittente da operatore (rev2 brief DB) ──
+        # Codici sollevati dai trigger DB landed su `vendite.preventivi`:
+        #   _a10_default_emittente_ins: setta emittente_fiscale_id da GUC
+        #     app.current_user_id; raise se utente senza EF e payload non
+        #     specifica emittente (caso admin globale).
+        #   _a10_guard_utility_istanza_coerenza_ins_upd: verifica coerenza
+        #     coppia (istanza_utility_id, utility_id) via fn generica
+        #     script.fn_check_utility_istanza_coerenza (BA o IDP o cliente
+        #     matching post Strategia C).
+        #   istanze_utilities _a90_require_utility_dichiarata (DEFERRED):
+        #     ogni nuova istanza deve avere almeno un satellite (BA, IDP,
+        #     cliente) entro la transazione.
+        #   automation_lock_columns su preventivi.emittente_fiscale_id:
+        #     immutabile post-create. Codice senza prefisso E_ perche'
+        #     coerente con il pattern lock_columns del DB.
+        "E_PREV_EMITTENTE_NON_RISOLTO": ErrorPolicy(
+            code="E_PREV_EMITTENTE_NON_RISOLTO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Operatore senza emittente fiscale assegnato: specificare "
+                "l'emittente esplicitamente nel payload."
+            ),
+        ),
+        "E_PREV_UTILITY_ISTANZA_INCOERENTE": ErrorPolicy(
+            code="E_PREV_UTILITY_ISTANZA_INCOERENTE",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message="Utility non coerente con l'istanza selezionata.",
+        ),
+        "E_ISTANZA_UTILITY_SENZA_UTILITY": ErrorPolicy(
+            code="E_ISTANZA_UTILITY_SENZA_UTILITY",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Istanza utility senza utility dichiarata: serve almeno un "
+                "riferimento (billing account, dati precontrattuali, cliente)."
+            ),
+        ),
+        "EMITTENTE_NON_MODIFICABILE": ErrorPolicy(
+            code="EMITTENTE_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "L'emittente fiscale del preventivo non puo' essere modificato "
+                "dopo la creazione. Crea una revisione per cambiarlo."
+            ),
+        ),
         # ── Parametri di sistema ──
         "E_PARAMETER_NOT_FOUND": ErrorPolicy(
             code="E_PARAMETER_NOT_FOUND",

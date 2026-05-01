@@ -53,6 +53,25 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo = MagicMock()
         self.MockRepoClass.return_value = self.mock_repo
 
+        # Mock BB anagrafiche usati da crea_preventivo per validator dominio
+        # (post brief DB rev2: derivazione istanza dal BA + pre-check coerenza
+        # utility/istanza). Default: coerenza ok, BA → istanza id=100.
+        self.ba_repo_patcher = patch(
+            "apps.vendite.services.preventivi_service.BillingAccountRepository"
+        )
+        self.MockBaRepoClass = self.ba_repo_patcher.start()
+        self.mock_ba_repo = MagicMock()
+        self.MockBaRepoClass.return_value = self.mock_ba_repo
+        self.mock_ba_repo.get_istanza_utility_id.return_value = 100
+
+        self.iu_repo_patcher = patch(
+            "apps.vendite.services.preventivi_service.IstanzeUtilityRepository"
+        )
+        self.MockIuRepoClass = self.iu_repo_patcher.start()
+        self.mock_iu_repo = MagicMock()
+        self.MockIuRepoClass.return_value = self.mock_iu_repo
+        self.mock_iu_repo.check_utility_istanza_coerenza.return_value = True
+
         # Default: lookup config
         self.mock_repo.get_stato_bozza_id.return_value = 1
         self.mock_repo.get_sorgente_tipo_preventivo_id.return_value = 10
@@ -62,6 +81,8 @@ class TestPreventiviService(unittest.TestCase):
 
     def tearDown(self):
         self.repo_patcher.stop()
+        self.ba_repo_patcher.stop()
+        self.iu_repo_patcher.stop()
 
     # ── Creazione ──
 
@@ -72,9 +93,15 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.create_preventivo.return_value = {
             "id": 1, "uid": "abc-123", "numero": "P-0001",
         }
-        result = crea_preventivo({"utility_id": 5})
+        result = crea_preventivo({
+            "utility_id": 5, "istanza_utility_id": 100,
+        })
         self.assertEqual(result["id"], 1)
         self.mock_repo.create_preventivo.assert_called_once()
+        # Pre-check coerenza eseguito (defense-in-depth lato service).
+        self.mock_iu_repo.check_utility_istanza_coerenza.assert_called_once_with(
+            100, 5,
+        )
 
     # Scopo: Verifica errore se utility_id mancante.
     def test_crea_preventivo_utility_mancante(self):
@@ -83,6 +110,67 @@ class TestPreventiviService(unittest.TestCase):
         with self.assertRaises(ServiceError) as ctx:
             crea_preventivo({})
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+
+    # Scopo: Verifica errore se istanza_utility_id mancante e nessun BA da cui
+    # derivarla (regola di dominio post brief DB rev2: istanza obbligatoria).
+    def test_crea_preventivo_istanza_mancante(self):
+        from apps.vendite.services.preventivi_service import crea_preventivo
+
+        with self.assertRaises(ServiceError) as ctx:
+            crea_preventivo({"utility_id": 5})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.assertIn("istanza_utility_id", ctx.exception.message)
+        # Repo INSERT non viene chiamato.
+        self.mock_repo.create_preventivo.assert_not_called()
+
+    # Scopo: Quando il payload ha solo BA (no istanza), il service deriva
+    # l'istanza dal BA via BillingAccountRepository.get_istanza_utility_id.
+    def test_crea_preventivo_istanza_derivata_da_ba(self):
+        from apps.vendite.services.preventivi_service import crea_preventivo
+
+        self.mock_ba_repo.get_istanza_utility_id.return_value = 200
+        self.mock_repo.create_preventivo.return_value = {
+            "id": 1, "uid": "abc-123", "numero": "P-0001",
+        }
+        crea_preventivo({"utility_id": 5, "billing_account_id": 42})
+        self.mock_ba_repo.get_istanza_utility_id.assert_called_once_with(42)
+        # L'istanza derivata viene passata sia al check coerenza sia all'INSERT.
+        self.mock_iu_repo.check_utility_istanza_coerenza.assert_called_once_with(
+            200, 5,
+        )
+        kwargs = self.mock_repo.create_preventivo.call_args.kwargs
+        self.assertEqual(kwargs["istanza_utility_id"], 200)
+        self.assertEqual(kwargs["billing_account_id"], 42)
+
+    # Scopo: Pre-check coerenza utility/istanza (defense-in-depth lato service):
+    # se la coppia (istanza, utility) non e' dichiarata in BA / IDP / clienti
+    # → errore parlante PRIMA del trigger DB.
+    def test_crea_preventivo_utility_istanza_incoerente(self):
+        from apps.vendite.services.preventivi_service import crea_preventivo
+
+        self.mock_iu_repo.check_utility_istanza_coerenza.return_value = False
+        with self.assertRaises(ServiceError) as ctx:
+            crea_preventivo({
+                "utility_id": 5, "istanza_utility_id": 100,
+            })
+        self.assertEqual(ctx.exception.code, "E_PREV_UTILITY_ISTANZA_INCOERENTE")
+        self.mock_repo.create_preventivo.assert_not_called()
+
+    # Scopo: emittente_fiscale_id esplicito (caso admin globale) viene passato
+    # al repository senza alterazioni. Il trigger DB BEFORE INSERT lo lascia
+    # invariato (skip auto-fill quando NEW.emittente_fiscale_id IS NOT NULL).
+    def test_crea_preventivo_emittente_esplicito_admin_globale(self):
+        from apps.vendite.services.preventivi_service import crea_preventivo
+
+        self.mock_repo.create_preventivo.return_value = {
+            "id": 1, "uid": "abc-123", "numero": "P-0001",
+        }
+        crea_preventivo({
+            "utility_id": 5, "istanza_utility_id": 100,
+            "emittente_fiscale_id": 77,
+        })
+        kwargs = self.mock_repo.create_preventivo.call_args.kwargs
+        self.assertEqual(kwargs["emittente_fiscale_id"], 77)
 
     # ── Aggiornamento ──
 

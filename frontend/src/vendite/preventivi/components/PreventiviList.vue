@@ -55,9 +55,12 @@ function onRowClick(event) { emit('row-click', event.data) }
 
 useTabFreshness(store, TAB_ENTITIES.PREVENTIVO)
 
-onMounted(() => {
-  if (searchText.value) store.fetchList()
-})
+// Lista preventivi: ha filtro data_da con default anno-1 (frontend-standards
+// "Filtro data standard"), quindi auto-load al mount. Lo store guard
+// hasFilters considera data_da come filtro attivo: non rischiamo di tirar
+// giu' "tutti i preventivi senza limiti" perche' il default e' di per se'
+// un filtro temporale.
+onMounted(() => store.fetchList())
 </script>
 
 <template>

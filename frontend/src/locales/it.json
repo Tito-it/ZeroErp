@@ -1262,6 +1262,15 @@
     "utility_label": "Utility",
     "select_ba": "Seleziona billing account..."
   },
+  "istanza_utility": {
+    "search_placeholder": "Cerca istanza per codice, ragione sociale o indirizzo...",
+    "no_results": "Nessuna istanza utility trovata",
+    "refine_hint": "Mostrate {shown} di {total}. Affina la ricerca per vedere altri risultati.",
+    "ba_label": "BA",
+    "solo_istanza_badge": "Solo istanza",
+    "fittizia_badge": "Fittizia",
+    "indirizzo_label": "Indirizzo"
+  },
   "contratti": {
     "contratto": "Contratto",
     "contratti_cliente": "Contratti del cliente",
@@ -1596,6 +1605,9 @@
     "field_utility": "Utility",
     "field_billing_account": "Cliente (BA)",
     "field_billing_account_placeholder": "Cerca per ragione sociale, codice BA, codice fiscale o PDP",
+    "field_istanza_utility": "Istanza utility",
+    "field_istanza_utility_placeholder": "Cerca istanza per codice, ragione sociale o indirizzo",
+    "istanza_da_billing_account": "Istanza derivata automaticamente dal billing account.",
     "field_validita_dal": "Validita' dal",
     "field_validita_al": "Validita' al",
     "field_competenza": "Competenza",

@@ -377,6 +377,16 @@ a {
   font-size: 0.75rem;
 }
 
+/* Hint informativo al posto di un campo (es. valore derivato automaticamente).
+ * Stile coerente con .app-field-error ma colore neutro muted. */
+.app-field-hint {
+  color: var(--text-color-secondary, var(--p-content-color-muted, #6b7280));
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-100, var(--p-content-background, transparent));
+  border-radius: 4px;
+}
+
 /* Variante 3 colonne per campi corti (CIG, CUP, commessa).
  * Collassa a 1 colonna su schermi stretti (< 480px). */
 .form-grid-3col {

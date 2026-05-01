@@ -107,6 +107,7 @@
 | `BillingAccountRepository.get_lookup_by_id` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Restore singolo BA arricchito per ricostruire `_obj` dell'AutoComplete in modalita' edit senza round-trip |
 | `BillingAccountRepository.get_emittente_fiscale_id` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Wrapper su `anagrafiche.fn_get_emittente_fiscale_pk`: ritorna la **PK reale** `emittenti_fiscali.id` (catena specifico → default globale, filtro `ef.attivo`). Usato per check di scope emittente su singolo BA. **Importante**: ritorna PK, non `soggetto_ruolo_id` (vedi memoria progetto `feedback_emittente_pk_vs_soggetto_ruolo`) |
 | `BillingAccountRepository.exists` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Esistenza BA per check 404 prima di scope/lookup. Usato dal flusso `list_utilities_for_ba` per non leakare 403 su id non esistenti |
+| `BillingAccountRepository.get_istanza_utility_id` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Risolve l'`istanza_utility_id` del BA (FK NOT NULL). Usato dai service di dominio per derivare l'istanza quando il payload specifica solo il BA (es. `crea_preventivo` post brief DB rev2). |
 | `BillingAccountService.search_lookup` | [billing_account_service.py](../../../../backend/apps/anagrafiche/services/billing_account_service.py) | Facade lookup BA: valida `q >= 2 char`, cap `limit` a 50 (default 20), delega a repository. Restituisce `{results, total_count, limit}` per gestione UI "affina la ricerca" |
 | `BillingAccountService.get_lookup_by_id` | [billing_account_service.py](../../../../backend/apps/anagrafiche/services/billing_account_service.py) | Facade restore BA per edit. Solleva `E_ANAG_NOT_FOUND` se inesistente |
 | `BillingAccountService.list_utilities_for_ba` | [billing_account_service.py](../../../../backend/apps/anagrafiche/services/billing_account_service.py) | Lista utility "guidate da emittente" per un BA (refactor operatore-emittenti, sez. 3 del WIP). Whitelist `ruolo ∈ {CL, FO, GE}`. Scope check applicativo confronta `user_emittente_id` con l'emittente del BA (bypass per superuser e admin globale `user_emittente_id is None`). Solleva `E_ANAG_NOT_FOUND`/`E_PERMESSO_NEGATO`. Delega lookup riga a `LookupRepository.list_utilities_per_billing_account`. Restituisce `{results: [...]}` |
@@ -119,6 +120,36 @@
 **Scope emittente lookup**: applicato automaticamente dalla view via `PermissionResolver.get_emittenti_sr_ids` (ritorna `soggetto_ruolo_id`). Un operatore vede solo i BA mappati al suo emittente fiscale + quelli del gestore globale (`is_default=true` in `emittenti_fiscali_billing_account`).
 
 **Scope emittente per `list_utilities_for_ba`**: usa il pattern 1-a-1 del refactor operatore-emittenti (`PermissionResolver.get_emittente_for_user` → PK reale, vedi sotto). Semantica diversa da `get_emittenti_sr_ids`: il primo ritorna l'unico EF assegnato all'utente (o `None` per admin globale), il secondo ritorna la lista `soggetto_ruolo_id` filtrata per scope.
+
+---
+
+## Anagrafiche — Istanze utility (`apps/anagrafiche/`)
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `IstanzeUtilityRepository.search_lookup` | [istanze_utility_repository.py](../../../../backend/apps/anagrafiche/db/istanze_utility_repository.py) | Ricerca ricca istanze (codice istanza, ragione sociale soggetto, indirizzo normalizzato) con JOIN a `soggetti`, `vw_indirizzi_dettaglio`, BA campione (LATERAL). Filtri: `utility_id` strict (post Strategia C: EXISTS su BA / IDP / clienti), `soggetto_id`, scope emittente via BA collegato (`emittenti_fiscali_billing_account`). Ordinamento per ragione sociale + codice istanza + id. Restituisce `(rows, total_count)`. |
+| `IstanzeUtilityRepository.get_lookup_by_id` | [istanze_utility_repository.py](../../../../backend/apps/anagrafiche/db/istanze_utility_repository.py) | Restore singola istanza arricchita per ricostruire `_obj` dell'AutoComplete in edit. Niente scope check (id gia' noto). |
+| `IstanzeUtilityRepository.exists` | [istanze_utility_repository.py](../../../../backend/apps/anagrafiche/db/istanze_utility_repository.py) | Esistenza istanza per check 404 prima di scope/lookup. |
+| `IstanzeUtilityRepository.check_utility_istanza_coerenza` | [istanze_utility_repository.py](../../../../backend/apps/anagrafiche/db/istanze_utility_repository.py) | Wrapper `script.fn_check_utility_istanza_coerenza`. Pre-validazione coerenza coppia `(istanza_utility_id, utility_id)` prima dell'INSERT preventivo: errore parlante prima del trigger DB. Defense-in-depth: il trigger `trgfn_preventivi_guard_utility_istanza_coerenza` applica la stessa regola in DB. |
+| `IstanzeUtilityService.search_lookup` | [istanze_utility_service.py](../../../../backend/apps/anagrafiche/services/istanze_utility_service.py) | Facade lookup istanze: valida `q >= 2 char`, cap `limit` a 50 (default 20), delega a repository. Restituisce `{results, total_count, limit}`. |
+| `IstanzeUtilityService.get_lookup_by_id` | [istanze_utility_service.py](../../../../backend/apps/anagrafiche/services/istanze_utility_service.py) | Facade restore istanza per edit. Solleva `E_ANAG_NOT_FOUND` se inesistente. |
+
+**Endpoint**:
+
+- `GET /api/v1/anagrafiche/istanze-utility/lookup/?q=<min2>&utility_id=&soggetto_id=&limit=` — autocomplete
+- `GET /api/v1/anagrafiche/istanze-utility/<id>/lookup/` — restore per edit
+
+**Scope emittente lookup**: applicato automaticamente dalla view via `PermissionResolver.get_emittenti_sr_ids`. Un operatore vede solo le istanze con almeno un BA collegato nel suo scope EF (catena `emittenti_fiscali_billing_account`). Le istanze totalmente orfane (no BA — possibili solo in business non-utility post Strategia C, vedi brief DB rev2 §2.1) sono visibili solo ad admin globale e superuser.
+
+**Consumer**: `PreventiviForm` (drawer prospect senza BA). Riusabile in altri flow utility-aware dove l'istanza e' un identificatore di dominio centrale (future: contratti standalone, attivita_fatturabili dirette).
+
+---
+
+## Anagrafiche — Valuta resolver (`apps/anagrafiche/services/`)
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `resolve_valuta_default` | [valuta_resolver.py](../../../../backend/apps/anagrafiche/services/valuta_resolver.py) | BB stateless cross-dominio per risolvere `valuta_id` di default applicando la catena standard: **1)** `ba.valuta_id` (se BA presente) → **2)** EF del BA via `get_emittente_valuta(ba_id)` (catena `fn_get_emittente_fiscale_pk`) → **3)** EF dell'utente loggato via `ParameterService.get_emittente_fiscale_id_for_user(auth_user_id)` (con fallback gestore globale per admin globale) → **4)** `{}` se nessuna sorgente. Composizione di BB esistenti: `BillingAccountRepository.get_lookup_by_id` + `.get_emittente_valuta`, `ParameterService.get_emittente_fiscale_id_for_user`, `EmittentiFiscaliRepository.get_emittente`. Zero SQL nuovo. Param `ba_obj` opzionale per riusare BA gia' fetched dal caller (no double round-trip). Ritorna `{valuta_id, valuta_codice, valuta_descrizione}` o `{}`. Mapping `valuta_iso → valuta_codice` nel branch user-EF per coerenza shape (le valute standard hanno `iso_code == codice`). Consumer attuali: `vendite_form_defaults_service.fn_get_preventivo_form_defaults`. Da adottare ovunque serva un default coerente di valuta (contratti, ordini, fatture, ecc.). |
 
 ---
 

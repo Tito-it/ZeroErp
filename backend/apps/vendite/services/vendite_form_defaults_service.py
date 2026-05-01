@@ -22,6 +22,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+from apps.anagrafiche.services.valuta_resolver import resolve_valuta_default
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.vendite.db.listini_repository import ListiniRepository
@@ -177,12 +178,15 @@ def fn_get_contratto_form_defaults(
 
 # Scopo: Defaults per il form preventivo contestuali al BA selezionato.
 #        Risolve termine_pagamento_id/iva_id/modalita_pagamento_id dal cliente
-#        associato al BA (tripletta istanza+soggetto+utility), valuta_id dal
-#        BA stesso o, se NULL, dall'emittente fiscale collegato.
+#        associato al BA (tripletta istanza+soggetto+utility) e valuta_id
+#        tramite il BB centralizzato `resolve_valuta_default` (catena
+#        BA → EF-del-BA → EF-utente).
 #
 #        Sempre presente `param_defaults` (validita_gg) per il calcolo
-#        validita_al = oggi + N. Quando billing_account_id e' assente, i campi
-#        BA-derived restano None.
+#        validita_al = oggi + N. Quando billing_account_id e' assente, i
+#        campi BA-derived restano None ma valuta_id viene comunque
+#        risolta dall'EF dell'utente loggato (fallback gestore globale per
+#        admin globale).
 def fn_get_preventivo_form_defaults(
     *,
     billing_account_id: int | None,
@@ -215,36 +219,51 @@ def fn_get_preventivo_form_defaults(
         "utility_codice": None,
         "utility_descrizione": None,
     }
-    if billing_account_id is None:
+
+    # Pre-fetch BA (un solo round-trip riutilizzato dal resolver e dai default
+    # BA-specific sotto). Errore parlante se id non valido.
+    ba: dict[str, Any] | None = None
+    ba_id: int | None = None
+    if billing_account_id is not None:
+        ba_id = _require_positive_int(
+            billing_account_id, field="billing_account_id", function_name=function_name,
+        )
+        ba_repo = BillingAccountRepository()
+        ba = ba_repo.get_lookup_by_id(ba_id)
+        ErrorManager.require(
+            ba is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Billing account non trovato.",
+            detail=f"billing_account_id={ba_id}",
+            function_name=function_name,
+        )
+        assert ba is not None
+
+    # Risoluzione valuta con catena standard (BB cross-dominio):
+    # 1) ba.valuta_id  2) EF-del-BA  3) EF-utente (fallback gestore globale).
+    valuta = resolve_valuta_default(
+        billing_account_id=ba_id,
+        ba_obj=ba,
+        auth_user_id=auth_user_id,
+    )
+    if valuta:
+        payload.update(valuta)
+
+    if ba is None:
         return payload
 
-    ba_id = _require_positive_int(
-        billing_account_id, field="billing_account_id", function_name=function_name,
-    )
-    ba_repo = BillingAccountRepository()
-    ba = ba_repo.get_lookup_by_id(ba_id)
-    ErrorManager.require(
-        ba is not None,
-        code=E_VENDITE_NOT_FOUND,
-        message="Billing account non trovato.",
-        detail=f"billing_account_id={ba_id}",
-        function_name=function_name,
-    )
-    assert ba is not None
+    # BA-specific: utility/istanza + cliente (termini/iva/modalita).
+    assert ba_id is not None
     payload.update({
         "billing_account_id": ba_id,
         "utility_id": ba.get("utility_id"),
         "istanza_utility_id": ba.get("istanza_utility_id"),
         "utility_codice": ba.get("utility_codice"),
         "utility_descrizione": ba.get("utility_descrizione"),
-        # Valuta del BA (LOOKUP_SELECT_COLUMNS la espone direttamente);
-        # se NULL, fallback emittente sotto.
-        "valuta_id": ba.get("valuta_id"),
-        "valuta_codice": ba.get("valuta_codice"),
-        "valuta_descrizione": ba.get("valuta_descrizione"),
     })
 
     # Cliente del BA (relazione 1:1 via tripletta) -> termini/iva/modalita.
+    ba_repo = BillingAccountRepository()
     cliente = ba_repo.get_cliente_defaults(
         istanza_utility_id=int(ba["istanza_utility_id"]),
         soggetto_ruolo_id=int(ba["soggetto_ruolo_id"]),
@@ -262,17 +281,6 @@ def fn_get_preventivo_form_defaults(
             "modalita_pagamento_codice": cliente.get("modalita_pagamento_codice"),
             "modalita_pagamento_descrizione": cliente.get("modalita_pagamento_descrizione"),
         })
-
-    # Fallback valuta: emittente fiscale del BA (catena specifico -> default
-    # globale, vedi fn_get_emittente_fiscale_pk).
-    if payload["valuta_id"] is None:
-        emittente = ba_repo.get_emittente_valuta(ba_id)
-        if emittente:
-            payload.update({
-                "valuta_id": emittente.get("valuta_id"),
-                "valuta_codice": emittente.get("valuta_codice"),
-                "valuta_descrizione": emittente.get("valuta_descrizione"),
-            })
 
     return payload
 
