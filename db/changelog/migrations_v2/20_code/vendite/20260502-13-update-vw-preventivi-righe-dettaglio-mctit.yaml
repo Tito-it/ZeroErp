@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Rewrite vendite.vw_preventivi_righe_dettaglio.
+#
+# Why: tre modifiche coordinate (DROP+CREATE per pulizia; vedi
+# feedback_pg_returns_table_drop_required.md):
+#
+#   1) Aggiunta iva_descrizione (richiesta FE per coerenza con il
+#      rendering "descrizione (codice)" del componente IvaSelect).
+#      Era oggetto del file 20260502-10 separato, ora consolidato qui.
+#
+#   2) Rimossa importo_iva_riga: concettualmente errata. L'IVA non
+#      esiste sulla singola riga (DPR 633/72 art.21 + DM 24/12/93):
+#      si calcola sull'aggregato per aliquota a livello documento.
+#      Il valore corretto e' in vendite.preventivi_riepiloghi_iva,
+#      esposto da fn_ricalcola_riepilogo_iva_preventivo.
+#
+#   3) Aggiunta imponibile_riga_full: stessa formula di importo_riga
+#      ma SENZA ROUND a 2 decimali. Espone la precisione piena per
+#      consumer che fanno SUM/aggregazione. Il vecchio importo_riga
+#      resta ROUND(2) per retrocompatibilita' sul display FE
+#      (formatCurrency).
+#
+# Breaking change limitato: il BE che fa SELECT * sulla view e che
+# usava importo_iva_riga deve essere aggiornato (vedi types.py).
+# Coordinato in PR backend in handoff.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260502-13-update-vw-preventivi-righe-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260502-13-update-vw-preventivi-righe-dettaglio
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Rewrite vw_preventivi_righe_dettaglio (DROP+CREATE):
+        +iva_descrizione, +imponibile_riga_full, -importo_iva_riga.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: preventivi_righe
+            - columnExists:
+                schemaName: config
+                tableName: iva
+                columnName: descrizione
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_preventivi_righe_dettaglio;
+
+              CREATE VIEW vendite.vw_preventivi_righe_dettaglio AS
+              SELECT
+                pr.id,
+                pr.preventivo_id,
+                pr.ordine,
+                pr.attivo,
+                -- Articolo
+                pr.articolo_id,
+                a.codice                                  AS articolo_codice,
+                a.descrizione                             AS articolo_descrizione,
+                -- Descrizione riga (override articolo)
+                pr.descrizione,
+                -- Quantita'
+                pr.quantita,
+                pr.qta_operativa,
+                pr.factor_to_base,
+                -- UoM operativa
+                pr.uom_operativa_id,
+                um.codice                                 AS uom_codice,
+                -- Prezzo e sconto
+                pr.prezzo_unitario,
+                pr.sconto_percentuale,
+                -- IVA (codice + descrizione + aliquota)
+                pr.iva_id,
+                iva.codice                                AS iva_codice,
+                iva.descrizione                           AS iva_descrizione,
+                iva.aliquota_iva                          AS iva_aliquota,
+                -- Importo riga: ROUND(2) per display FE.
+                ROUND(
+                  pr.quantita * pr.prezzo_unitario
+                  * (1 - COALESCE(pr.sconto_percentuale, 0) / 100),
+                  2
+                )                                         AS importo_riga,
+                -- Imponibile riga full precision: stesso valore ma
+                -- SENZA arrotondamento. Per consumer che fanno SUM o
+                -- aggregazione (la fn fn_ricalcola_riepilogo_iva_preventivo
+                -- usa la stessa formula direttamente sulle righe).
+                pr.quantita * pr.prezzo_unitario
+                * (1 - COALESCE(pr.sconto_percentuale, 0) / 100)
+                                                          AS imponibile_riga_full,
+                -- NOTA: rimosso importo_iva_riga. L'IVA si calcola
+                -- sull'aggregato per aliquota (vendite.preventivi_riepiloghi_iva,
+                -- popolato da vendite.fn_ricalcola_riepilogo_iva_preventivo).
+                -- Meta e audit
+                pr.meta,
+                pr.data_insert,
+                pr.data_update
+              FROM vendite.preventivi_righe pr
+              -- Articolo
+              LEFT JOIN catalogo.articoli a
+                ON a.id = pr.articolo_id
+              -- UoM operativa
+              LEFT JOIN catalogo.unita_misura um
+                ON um.id = pr.uom_operativa_id
+              -- IVA
+              LEFT JOIN config.iva iva
+                ON iva.id = pr.iva_id
+              ORDER BY pr.preventivo_id, pr.ordine, pr.id;
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_dettaglio
+              IS 'Righe preventivo con dati articolo, UoM, IVA (codice + descrizione + aliquota). Espone importo_riga ROUND(2) per display e imponibile_riga_full per aggregazioni precise. NESSUN campo IVA per riga: l''IVA aggregata e'' in vendite.preventivi_riepiloghi_iva.';
+      rollback:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Rollback: ripristina la versione 20260403-07 (con
+              -- importo_iva_riga, senza iva_descrizione e
+              -- imponibile_riga_full). NOTA: importo_iva_riga e'
+              -- concettualmente errato.
+              DROP VIEW IF EXISTS vendite.vw_preventivi_righe_dettaglio;
+              CREATE VIEW vendite.vw_preventivi_righe_dettaglio AS
+              SELECT
+                pr.id, pr.preventivo_id, pr.ordine, pr.attivo,
+                pr.articolo_id, a.codice AS articolo_codice,
+                a.descrizione AS articolo_descrizione,
+                pr.descrizione, pr.quantita, pr.qta_operativa,
+                pr.factor_to_base, pr.uom_operativa_id,
+                um.codice AS uom_codice, pr.prezzo_unitario,
+                pr.sconto_percentuale, pr.iva_id,
+                iva.codice AS iva_codice, iva.aliquota_iva AS iva_aliquota,
+                ROUND(pr.quantita * pr.prezzo_unitario
+                  * (1 - COALESCE(pr.sconto_percentuale, 0) / 100), 2) AS importo_riga,
+                ROUND(pr.quantita * pr.prezzo_unitario
+                  * (1 - COALESCE(pr.sconto_percentuale, 0) / 100)
+                  * COALESCE(iva.aliquota_iva, 0) / 100, 2) AS importo_iva_riga,
+                pr.meta, pr.data_insert, pr.data_update
+              FROM vendite.preventivi_righe pr
+              LEFT JOIN catalogo.articoli a ON a.id = pr.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id = pr.uom_operativa_id
+              LEFT JOIN config.iva iva ON iva.id = pr.iva_id
+              ORDER BY pr.preventivo_id, pr.ordine, pr.id;
