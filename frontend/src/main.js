@@ -11,6 +11,7 @@ import ConfirmationService from 'primevue/confirmationservice'
 import Tooltip from 'primevue/tooltip'
 import Aura from '@primeuix/themes/aura'
 import 'primeicons/primeicons.css'
+import { localeIt } from './core/primevue-locale'
 import './assets/theme.css'
 import './assets/main.css'
 import './assets/auth-pages.css'
@@ -27,7 +28,8 @@ app.use(PrimeVue, {
     options: {
       darkModeSelector: '.p-dark'
     }
-  }
+  },
+  locale: localeIt,
 })
 app.use(i18n)
 app.use(ToastService)

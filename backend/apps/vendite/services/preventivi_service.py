@@ -248,6 +248,61 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+# Scopo: Elimina (hard-delete) preventivo BOZZA orfano.
+# Obiettivo: supporto al pattern "abbandono bozza" del drawer FE — quando
+# l'operatore apre create, si crea automaticamente la BOZZA per abilitare
+# subito l'inserimento righe (master-detail inline), ma esce senza inserire
+# righe. La BOZZA orfana viene cancellata su conferma utente.
+#
+# Guard di dominio (defense-in-depth: il caller FE filtra gia' su righe_count=0,
+# qui ricontrolliamo per sicurezza):
+#  - preventivo deve esistere
+#  - stato == BOZZA (DRAFT)
+#  - zero righe attive
+#  - zero pratiche collegate
+# Non ammessa per preventivi gia' propagati a commessa o con stato avanzato:
+# in quei casi la "cancellazione" semantica e' cambia_stato → ANNULLATO.
+def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
+    repo = PreventiviRepository()
+    testata = repo.get_preventivo(preventivo_id)
+    ErrorManager.require(
+        testata is not None,
+        code="E_PREV_NOT_FOUND",
+        message="Preventivo non trovato.",
+        detail=f"preventivo_id={preventivo_id}",
+        function_name=f"{_FN}.elimina_preventivo",
+    )
+    assert testata is not None
+    # Eliminabili solo i preventivi nello stesso stato in cui sono modificabili
+    # (BOZZA / DRAFT). Qualsiasi stato successivo (EMESSO/ACCETTATO/...) richiede
+    # cambia_stato → ANNULLATO invece dell'hard-delete.
+    ErrorManager.require(
+        testata["stato_codice_interno"] in _STATI_MODIFICABILI,
+        code="E_PREV_STATO_NON_MODIFICABILE",
+        message="Solo i preventivi in stato BOZZA possono essere eliminati.",
+        detail=f"stato={testata['stato_codice_interno']}",
+        function_name=f"{_FN}.elimina_preventivo",
+    )
+    righe_count = len(repo.list_righe(preventivo_id))
+    ErrorManager.require(
+        righe_count == 0,
+        code="E_PREV_STATO_NON_MODIFICABILE",
+        message="Impossibile eliminare un preventivo con righe. Eliminare prima le righe.",
+        detail=f"righe_count={righe_count}",
+        function_name=f"{_FN}.elimina_preventivo",
+    )
+    pratiche_count = len(repo.list_pratiche(preventivo_id))
+    ErrorManager.require(
+        pratiche_count == 0,
+        code="E_PREV_STATO_NON_MODIFICABILE",
+        message="Impossibile eliminare un preventivo con pratiche collegate.",
+        detail=f"pratiche_count={pratiche_count}",
+        function_name=f"{_FN}.elimina_preventivo",
+    )
+    deleted = repo.delete_preventivo(preventivo_id)
+    return {"status": "ok" if deleted else "noop", "preventivo_id": preventivo_id}
+
+
 # Scopo: Aggiorna testata preventivo con guard su stato modificabile.
 def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = PreventiviRepository()
@@ -289,8 +344,82 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
 
 
 # Scopo: Cambia stato preventivo delegando alla funzione DB.
-def cambia_stato(preventivo_id: int, nuovo_stato: str) -> dict[str, Any]:
+#
+# Caso speciale EMESSO → ACCETTATO (transizione "accettazione"):
+#   l'operatore deve specificare la modalita' di fatturazione del preventivo
+#   (proprieta' di processo, NON visibili in form testata BOZZA — vedi
+#   sviluppo-preventivi.md). Parametri:
+#     - fatturazione_immediata (bool obbligatorio)
+#     - competenza_mese (date YYYY-MM-01, obbligatorio se immediata=False)
+#   Regola di priorita': se immediata=True → competenza_mese forzata a oggi
+#   (primo del mese corrente), il valore eventuale passato dal caller viene
+#   ignorato. Per ora la regola e' applicata qui (BE service); future
+#   defense-in-depth via trigger DB se servira'.
+#
+# Le altre transizioni (DRAFT→EMESSO, EMESSO→RIFIUTATO, *→ANNULLATO, ...)
+# ignorano i 2 parametri.
+def cambia_stato(
+    preventivo_id: int,
+    nuovo_stato: str,
+    *,
+    fatturazione_immediata: bool | None = None,
+    competenza_mese: date | None = None,
+) -> dict[str, Any]:
     repo = PreventiviRepository()
+
+    # Gate accettazione: applichiamo la regola SOLO sulla transizione
+    # EMESSO → ACCETTATO. Su ACCETTATO → ACCETTATO (no-op stato) consentiamo
+    # update dei 2 campi finche' il preventivo e' fatturabile (vedi
+    # _STATI_FATTURABILI). Su altre transizioni i parametri sono ignorati.
+    if nuovo_stato == "ACCETTATO":
+        testata = repo.get_preventivo(preventivo_id)
+        ErrorManager.require(
+            testata is not None,
+            code="E_PREV_NOT_FOUND",
+            message="Preventivo non trovato.",
+            detail=f"preventivo_id={preventivo_id}",
+            function_name=f"{_FN}.cambia_stato",
+        )
+        assert testata is not None
+        stato_attuale = testata["stato_codice_interno"]
+        # Solo EMESSO → ACCETTATO (e ACCETTATO no-op) richiedono i parametri.
+        if stato_attuale in ("EMESSO", "ACCETTATO"):
+            ErrorManager.require(
+                fatturazione_immediata is not None,
+                code="E_PREV_VALIDAZIONE",
+                message="Modalita' di fatturazione obbligatoria per accettare il preventivo.",
+                detail="fatturazione_immediata: bool obbligatorio.",
+                function_name=f"{_FN}.cambia_stato",
+            )
+            # Regola di priorita': immediata=True ⇒ competenza = primo giorno
+            # del mese corrente (snapshot tx-time). Eventuale valore esplicito
+            # passato dal caller viene sovrascritto (immediata ha priorita').
+            if fatturazione_immediata:
+                competenza_mese = date.today().replace(day=1)
+            else:
+                ErrorManager.require(
+                    competenza_mese is not None,
+                    code="E_PREV_VALIDAZIONE",
+                    message=(
+                        "Mese di competenza obbligatorio quando fatturazione "
+                        "non e' immediata."
+                    ),
+                    function_name=f"{_FN}.cambia_stato",
+                )
+            # Update testata PRIMA del cambio stato, in transazione atomica
+            # di cambia_stato (la fn DB sotto e' atomic per natura: un solo
+            # statement INSERT/UPDATE con trigger). Per multi-statement
+            # atomic serve transaction.atomic, ma qui sono 2 UPDATE
+            # consecutivi: avvolgiamo entrambe.
+            with transaction.atomic():
+                repo.update_preventivo(
+                    preventivo_id,
+                    fatturazione_immediata=bool(fatturazione_immediata),
+                    competenza_mese=competenza_mese,
+                )
+                result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
+            return result
+
     result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
     return result
 

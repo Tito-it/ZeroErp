@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { useAuthStore } from '../../stores/auth'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -25,6 +26,10 @@ const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const auth = useAuthStore()
 
+// Default utility globale (config.parameters), stesso pattern ClienteDrawer/PreventiviDrawer.
+const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefaults([
+  'DEFAULT_UTILITY_ID',
+])
 
 const props = defineProps({
   visible: Boolean,
@@ -47,7 +52,14 @@ function onAfterShow() { contentReady.value = true }
 const isLoadingDetail = ref(false)
 
 function defaultForm() {
-  return { codice: '', descrizione: '', utility_id: null, tipologia_id: null, attivo: true }
+  const p = paramDefaults.value
+  return {
+    codice: '',
+    descrizione: '',
+    utility_id: p.DEFAULT_UTILITY_ID ? Number(p.DEFAULT_UTILITY_ID) : null,
+    tipologia_id: null,
+    attivo: true,
+  }
 }
 
 function resetForm() {
@@ -76,8 +88,11 @@ async function loadDetail() {
   }
 }
 
-watch(() => props.visible, (v) => {
+watch(() => props.visible, async (v) => {
   if (!v) { contentReady.value = false; return }
+  // Carica i parameters (cache modulo) prima di resetForm: defaultForm()
+  // li legge da paramDefaults.value per pre-popolare utility_id.
+  await loadParamDefaults()
   if (isEdit.value) {
     loadDetail()
   } else {
