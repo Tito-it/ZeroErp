@@ -1,0 +1,165 @@
+<script setup>
+// Scopo: Tabella riepilogo IVA aggregato per documento (preventivo, fattura,
+// ordine). Una riga per gruppo (iva_id, natura, esigibilita, split_payment)
+// con imponibile e imposta gia' arrotondati a 2 decimali sull'aggregato per
+// aliquota (regola fiscale DPR 633/72 art. 21 + DM 24/12/93). Non ricalcola
+// nulla lato FE: i dati arrivano gia' corretti dal BE (vista DB
+// `vw_*_riepilogo_iva_dettaglio`).
+//
+// Riusabile cross-dominio: il chiamante passa la lista `items` con la
+// shape standard delle viste riepilogo IVA. Layout compatto, footer con
+// totali aggregati. Colonna `arrotondamento` opzionale (diagnostica).
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { formatCurrency, formatNumber } from '../utils/format'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+
+const { t } = useI18n()
+
+const props = defineProps({
+  // Array di righe riepilogo IVA. Shape attesa per ogni elemento:
+  //   { id, iva_id, iva_codice, iva_descrizione, iva_aliquota,
+  //     natura_id, natura_codice, esigibilita, split_payment,
+  //     imponibile, imposta, arrotondamento, totale_riga }
+  items: { type: Array, default: () => [] },
+  // Mostra colonna arrotondamento (diagnostica). Off di default per UX pulita.
+  showArrotondamento: { type: Boolean, default: false },
+  // Mostra tooltip didascalico sotto al titolo (riferimento normativo).
+  showSubtitle: { type: Boolean, default: false },
+})
+
+// Totali aggregati: somma imponibile + imposta delle righe. Ridondante con la
+// testata documento ma utile come check di quadratura nel componente stesso.
+const totals = computed(() => {
+  let imp = 0
+  let iva = 0
+  for (const r of props.items) {
+    imp += Number(r.imponibile || 0)
+    iva += Number(r.imposta || 0)
+  }
+  return { imponibile: imp, imposta: iva, totale: imp + iva }
+})
+
+// Label aliquota: "22%" oppure "Esente" quando aliquota_iva e' 0/NULL e c'e'
+// natura (caso fatture); per preventivi natura e' sempre NULL ma mantengo
+// comportamento per riusabilita'.
+function aliquotaLabel(row) {
+  if (row.iva_aliquota != null && Number(row.iva_aliquota) > 0) {
+    return `${formatNumber(row.iva_aliquota, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`
+  }
+  return t('common.riepilogo_iva_esente')
+}
+</script>
+
+<template>
+  <div class="app-riepilogo-iva">
+    <div class="app-riepilogo-iva__header">
+      <h4 class="app-riepilogo-iva__title">{{ t('common.riepilogo_iva_titolo') }}</h4>
+      <small v-if="showSubtitle" class="app-riepilogo-iva__subtitle">
+        {{ t('common.riepilogo_iva_sottotitolo') }}
+      </small>
+    </div>
+
+    <DataTable :value="items" size="small" striped-rows show-gridlines class="app-datatable"
+      data-key="id"
+      :pt="{ table: { style: 'table-layout: fixed;' } }">
+      <template #empty>
+        <span style="color: var(--text-color-secondary);">
+          {{ t('common.riepilogo_iva_vuoto') }}
+        </span>
+      </template>
+
+      <Column field="iva_aliquota" :header="t('common.riepilogo_iva_col_aliquota')"
+        :footer="t('common.riepilogo_iva_totale')"
+        header-style="text-align: left;" body-style="text-align: left;"
+        footer-style="text-align: left; font-weight: 600;"
+        style="width: 30%;">
+        <template #body="{ data }">
+          <div style="display: flex; flex-direction: column; gap: 0.1rem;">
+            <span>{{ aliquotaLabel(data) }}</span>
+            <small v-if="data.iva_descrizione" style="color: var(--text-color-secondary);">
+              {{ data.iva_descrizione }}
+            </small>
+            <small v-if="data.natura_codice" style="color: var(--text-color-secondary);">
+              {{ t('common.riepilogo_iva_natura_label') }}: {{ data.natura_codice }}
+            </small>
+          </div>
+        </template>
+      </Column>
+
+      <Column field="imponibile" :header="t('common.riepilogo_iva_col_imponibile')"
+        header-style="text-align: right;" body-style="text-align: right;"
+        footer-style="text-align: right; font-weight: 600;"
+        style="width: 30%;">
+        <template #body="{ data }">{{ formatCurrency(data.imponibile) }}</template>
+        <template #footer>{{ formatCurrency(totals.imponibile) }}</template>
+      </Column>
+
+      <Column field="imposta" :header="t('common.riepilogo_iva_col_imposta')"
+        header-style="text-align: right;" body-style="text-align: right;"
+        footer-style="text-align: right; font-weight: 600;"
+        style="width: 30%;">
+        <template #body="{ data }">{{ formatCurrency(data.imposta) }}</template>
+        <template #footer>{{ formatCurrency(totals.imposta) }}</template>
+      </Column>
+
+      <Column v-if="showArrotondamento" field="arrotondamento"
+        :header="t('common.riepilogo_iva_col_arrotondamento')"
+        header-style="text-align: right;" body-style="text-align: right;"
+        style="width: 10%;">
+        <template #body="{ data }">
+          <span v-tooltip.top="t('common.riepilogo_iva_arrotondamento_tooltip')"
+            style="color: var(--text-color-secondary); font-size: 0.85em;">
+            {{ data.arrotondamento != null ? formatNumber(data.arrotondamento, { minimumFractionDigits: 4, maximumFractionDigits: 6 }) : '—' }}
+          </span>
+        </template>
+      </Column>
+    </DataTable>
+
+    <!-- Totale documento (imponibile + IVA): dopo il footer per-aliquota,
+         su riga propria. Singolo valore allineato a destra. -->
+    <div class="app-riepilogo-iva__totale">
+      <span class="app-riepilogo-iva__totale-label">{{ t('common.riepilogo_iva_totale') }}</span>
+      <span class="app-riepilogo-iva__totale-value">{{ formatCurrency(totals.totale) }}</span>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.app-riepilogo-iva__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.4rem;
+}
+
+.app-riepilogo-iva__title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.app-riepilogo-iva__subtitle {
+  color: var(--text-color-secondary);
+  font-size: 0.8rem;
+}
+
+.app-riepilogo-iva__totale {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem 0;
+  font-size: 1rem;
+}
+
+.app-riepilogo-iva__totale-label {
+  color: var(--text-color-secondary);
+  font-weight: 600;
+}
+
+.app-riepilogo-iva__totale-value {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+</style>

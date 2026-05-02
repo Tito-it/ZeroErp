@@ -15,6 +15,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoPratiche,
     ApiPreventivoPushCommessa,
     ApiPreventivoRevisione,
+    ApiPreventivoRiepilogoIva,
     ApiPreventivoRigaDetail,
     ApiPreventivoRigaSuggerisciPrezzo,
     ApiPreventivoRigheList,
@@ -68,6 +69,12 @@ urlpatterns = [
         "<int:preventivo_id>/righe/suggerisci-prezzo/",
         ApiPreventivoRigaSuggerisciPrezzo.as_view(),
         name="vendite-preventivi-righe-suggerisci-prezzo",
+    ),
+    # Riepilogo IVA aggregato (regola fiscale art. 21 DPR 633/72)
+    path(
+        "<int:preventivo_id>/riepilogo-iva/",
+        ApiPreventivoRiepilogoIva.as_view(),
+        name="vendite-preventivi-riepilogo-iva",
     ),
     # Indirizzi
     path(

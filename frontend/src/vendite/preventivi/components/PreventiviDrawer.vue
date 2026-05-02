@@ -25,6 +25,7 @@ import DrawerFooter from '../../../core/components/DrawerFooter.vue'
 import PreventiviForm from './PreventiviForm.vue'
 import PreventiviRigheTable from './PreventiviRigheTable.vue'
 import PreventiviIntegrazione from './PreventiviIntegrazione.vue'
+import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import Drawer from 'primevue/drawer'
 import Dialog from 'primevue/dialog'
 import DatePicker from 'primevue/datepicker'
@@ -50,13 +51,40 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
-// Readonly effettivo = prop esplicita OR readonly area iniettato dal parent.
+// Readonly effettivo = prop esplicita OR readonly area iniettato dal parent
+// OR revisione superseded: esiste un'altra revisione con rev maggiore per
+// lo stesso numero. In quel caso questo documento va trattato come storico
+// immutabile (non si possono avere due revisioni "vive" sullo stesso numero
+// che possano essere accettate o annullate in parallelo).
+//
+// NB: usiamo `detail.has_next_revision` (computed BE da subquery EXISTS) e
+// NON il flag `detail.is_revision_attiva` perche' il flag ha default DDL
+// `false`: i preventivi originali mai revisionati avrebbero il flag a false
+// e verrebbero erroneamente segnati come superseded.
 const parentReadonly = useInjectReadonly()
-const isReadonly = computed(() => props.readonly || parentReadonly.value)
+const isSuperseded = computed(
+  () => detail.value !== null && detail.value.has_next_revision === true,
+)
+const isReadonly = computed(
+  () => props.readonly || parentReadonly.value || isSuperseded.value,
+)
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
+// Riepilogo IVA aggregato per aliquota (lettura da `vw_preventivi_riepilogo_iva_dettaglio`).
+// Auto-popolato a ogni loadDetail e ogni `@changed` delle righe (regola fiscale
+// DPR 633/72 art. 21: il calcolo IVA aggregato e' la single source of truth
+// per i totali del documento).
+const riepilogoIva = ref([])
+// Pannello riepilogo IVA visibile quando il documento ha piu' di una aliquota
+// distinta (mono-aliquota = ridondante coi 3 totali compatti).
+const showRiepilogoIva = computed(() => {
+  if (!riepilogoIva.value || riepilogoIva.value.length <= 1) return false
+  const aliquote = new Set()
+  for (const r of riepilogoIva.value) aliquote.add(r.iva_aliquota ?? 'NULL')
+  return aliquote.size > 1
+})
 // Auto-save bozza: in CREATE, appena utility + istanza sono valorizzati, il
 // drawer crea il preventivo in BOZZA e si comporta da "edit-evolved" (mostra
 // righe + integrazione, salvataggi successivi diventano UPDATE). createdId
@@ -89,6 +117,10 @@ const canEditTestata = caps.canEdit
 // ContrattoDrawer (`isEdit && isLocked('field')`).
 const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
+// Nuova revisione: capability calcolata dal BE in
+// `script.fn_available_actions_preventivo`. Regola di dominio applicata lato
+// DB: solo preventivi in stato EMESSO ammettono revisione (ACCETTATO chiude
+// la negoziazione, modifiche post-accettazione passano da nuovo preventivo).
 const canCreateRevisione = computed(() => caps.flag('can_create_revisione'))
 const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
 const pushCommessaReasonKey = computed(() => detail.value?.can_push_commessa_reason_key || null)
@@ -221,6 +253,23 @@ async function loadDetail(id = null) {
       // Resto: il picker mostra solo l'id risolto al prossimo focus.
     }
   }
+  // Riepilogo IVA aggregato: il trigger DB lo mantiene in sync con le righe
+  // su ogni mutazione, qui leggiamo lo stato corrente. Best-effort: in caso
+  // di failure il pannello resta vuoto, i totali aggregati nella testata
+  // restano comunque visibili.
+  await loadRiepilogoIva(targetId)
+}
+
+// Scopo: ricarica solo il riepilogo IVA. Chiamato dopo ogni `@changed` delle
+// righe (in coppia con loadDetail per i totali aggregati di testata).
+async function loadRiepilogoIva(targetId = null) {
+  const id = targetId ?? effectivePreventivoId.value
+  if (!id) return
+  try {
+    riepilogoIva.value = await store.loadRiepilogoIva(id)
+  } catch {
+    riepilogoIva.value = []
+  }
 }
 
 watch(() => props.visible, async (v) => {
@@ -345,7 +394,12 @@ watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
 // preventivo deve essere collegato a un'istanza utility, derivabile dal BA o
 // selezionata standalone per prospect). In EDIT l'istanza e' gia' persistita
 // e il backend non richiede di rispedirla.
+// Defense-in-depth: anche se il DrawerFooter e' nascosto da
+// `v-if="canEditTestataEffective && !isReadonly"`, includiamo isReadonly qui
+// cosi' qualsiasi consumer futuro del computed (shortcut tastiera, save
+// programmato) e' coperto dalla stessa guard.
 const canSave = computed(() => {
+  if (isReadonly.value) return false
   const f = form.value
   if (f.utility_id == null) return false
   if (!isEdit.value && f.istanza_utility_id == null) return false
@@ -524,7 +578,7 @@ function onCambiaStato(action) {
   if (action.requires_confirm) {
     confirmAction({
       message: t('preventivi.conferma_cambio_stato', { stato: t(action.label_key) }),
-      accept: () => eseguiCambioStato(action.target_state),
+      onAccept: () => eseguiCambioStato(action.target_state),
     })
   } else {
     eseguiCambioStato(action.target_state)
@@ -546,7 +600,7 @@ async function eseguiCambioStato(nuovoStato, extras = {}) {
 function onNuovaRevisione() {
   confirmAction({
     message: t('preventivi.conferma_revisione'),
-    accept: async () => {
+    onAccept: async () => {
       const result = await execute(
         () => store.nuovaRevisione(effectivePreventivoId.value),
         { successMessage: t('preventivi.revisione_creata') }
@@ -572,6 +626,7 @@ function onNuovaRevisione() {
       <div v-if="hasDetail" style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.5rem;">
         <Tag :value="`${detail.numero} rev.${detail.rev}`" severity="secondary" />
         <Tag :value="detail.stato_descrizione" :severity="statoPreventiveSeverity(detail.stato_codice_interno)" />
+        <Tag v-if="isSuperseded" :value="t('preventivi.tag_superseded')" severity="warn" icon="pi pi-history" />
         <span v-if="detail.data" style="font-size: 0.85rem; color: var(--text-color-secondary);">
           {{ displayDate(detail.data) }}
         </span>
@@ -579,6 +634,14 @@ function onNuovaRevisione() {
           {{ detail.cliente_denominazione }}
         </span>
       </div>
+
+      <!-- Banner revisione superseded: visibile sopra le azioni quando il
+           preventivo aperto e' una versione storica (esiste una revisione
+           successiva). Il drawer e' interamente readonly: niente azioni stato,
+           niente nuova revisione, niente edit testata/righe. -->
+      <Message v-if="isSuperseded" severity="warn" :closable="false" class="mt-1">
+        {{ t('preventivi.banner_revisione_superseded') }}
+      </Message>
 
       <!-- Azioni stato (visibili appena c'e' detail, non readonly): bottoni dai metadata API. -->
       <div v-if="hasDetail && !isReadonly && (availableActions.length || canCreateRevisione)"
@@ -607,8 +670,21 @@ function onNuovaRevisione() {
           :is-modificabile="canEditRighe && !isReadonly"
           @changed="loadDetail()" />
 
-        <!-- Totali -->
-        <div style="display: flex; justify-content: flex-end; gap: 1.5rem; padding: 0.75rem 0; font-size: 0.9rem;">
+        <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21):
+             auto-mostrato solo per documenti multi-aliquota. Componente
+             riusabile cross-dominio (stesso pattern arrivera' su fatture).
+             Quando visibile contiene gia' i totali aggregati e il totale
+             documento: i 3 totali compatti sotto si nascondono per evitare
+             duplicazione. -->
+        <template v-if="showRiepilogoIva">
+          <Divider />
+          <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
+        </template>
+
+        <!-- Totali compatti: visibili solo per documenti mono-aliquota,
+             dove il pannello riepilogo non ha senso (sarebbe una sola riga
+             ridondante coi 3 totali). -->
+        <div v-else style="display: flex; justify-content: flex-end; gap: 1.5rem; padding: 0.75rem 0; font-size: 0.9rem;">
           <div><strong>{{ t('preventivi.totale_imponibile') }}:</strong> {{ formatCurrency(detail.totale_imponibile, { placeholder: '-' }) }}</div>
           <div><strong>{{ t('preventivi.totale_iva') }}:</strong> {{ formatCurrency(detail.totale_iva, { placeholder: '-' }) }}</div>
           <div><strong>{{ t('preventivi.totale_documento') }}:</strong> {{ formatCurrency(detail.totale_documento, { placeholder: '-' }) }}</div>

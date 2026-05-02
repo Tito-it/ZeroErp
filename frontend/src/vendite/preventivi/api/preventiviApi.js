@@ -68,6 +68,15 @@ export function suggerisciPrezzoRiga(preventivoId, payload) {
   return api.post(`${BASE}/${preventivoId}/righe/suggerisci-prezzo/`, payload)
 }
 
+// Riepilogo IVA aggregato del preventivo (una riga per aliquota IVA, regola
+// fiscale DPR 633/72 art. 21). Calcolo gia' eseguito in DB e mantenuto da
+// trigger AFTER su preventivi_righe: il FE legge solo lo stato corrente.
+// Risposta: array di { iva_id, iva_codice, iva_descrizione, iva_aliquota,
+//   imponibile, imposta, arrotondamento, totale_riga, ... }.
+export function getRiepilogoIva(preventivoId) {
+  return api.get(`${BASE}/${preventivoId}/riepilogo-iva/`)
+}
+
 // --- Indirizzi ---
 
 export function listIndirizzi(preventivoId) {

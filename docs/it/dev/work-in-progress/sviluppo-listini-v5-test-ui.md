@@ -116,11 +116,11 @@ documento il 2026-04-24 ed è archiviata in `work-done/`.
 
 ### 2.1 Preventivo + auto-fill resolver
 
-- [ ] `/vendite/preventivi/` → nuovo preventivo per BA GOLD
-- [ ] Apri righe → aggiungi riga con articolo della promo (1.5)
-- [ ] Verifica `prezzo_unitario` pre-compilato dal resolver (3 stadi)
-- [ ] Badge origine prezzo: PROMO (stadio 0 batte tutto)
-- [ ] Cambia articolo a uno senza promo → origine CONTRATTO_LISTINO o CATEGORIA
+- [X] `/vendite/preventivi/` → nuovo preventivo per BA GOLD
+- [X] Apri righe → aggiungi riga con articolo della promo (1.5)
+- [X] Verifica `prezzo_unitario` pre-compilato dal resolver (3 stadi)
+- [X] Badge origine prezzo: PROMO (stadio 0 batte tutto)
+- [X] Cambia articolo a uno senza promo → origine CONTRATTO_LISTINO o CATEGORIA
 
 ### 2.2 L1 override
 

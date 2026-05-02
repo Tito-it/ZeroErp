@@ -1,6 +1,6 @@
 <script setup>
 // Scopo: DataTable paginata preventivi vendita con search, filtri stato/data, empty state.
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePreventiviStore } from '../stores/preventivi'
 import { useSearchTable } from '../../../core/composables/useSearchTable'
@@ -14,6 +14,7 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
+import ToggleSwitch from 'primevue/toggleswitch'
 import NewButton from '../../../core/components/NewButton.vue'
 import SearchHint from '../../../core/components/SearchHint.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
@@ -35,6 +36,14 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 const statoFilter = ref(null)
 const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
 const dataAlFilter = ref(null)
+// Toggle "mostra storico revisioni": negazione del filtro store
+// (mostraStorico=ON ⇔ solo_revisione_attiva=false). computed get/set per
+// restare allineato al filtro reale anche se cambia altrove (reset, logout,
+// ripristino sessione): single source of truth = store.
+const mostraStorico = computed({
+  get: () => !store.filters.solo_revisione_attiva,
+  set: (val) => { store.filters.solo_revisione_attiva = !val },
+})
 
 function onStatoChange() {
   store.filters.stato = statoFilter.value
@@ -48,6 +57,11 @@ function onDataDaChange() {
 
 function onDataAlChange() {
   store.filters.data_a = dataAlFilter.value ? toDateString(dataAlFilter.value) : null
+  applyFilters()
+}
+
+// Il setter del computed scrive gia' lo store; qui basta triggerare la fetch.
+function onMostraStoricoChange() {
   applyFilters()
 }
 
@@ -79,6 +93,13 @@ onMounted(() => store.fetchList())
         <DatePicker v-model="dataAlFilter" :placeholder="t('common.data_a')"
           :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
           @date-select="onDataAlChange" @clear-click="onDataAlChange" />
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <ToggleSwitch v-model="mostraStorico" inputId="prev-mostra-storico"
+            @change="onMostraStoricoChange" />
+          <label for="prev-mostra-storico" style="font-size: 0.85rem; cursor: pointer;">
+            {{ t('preventivi.filtro_mostra_storico') }}
+          </label>
+        </div>
       </div>
       <div class="app-page-actions">
         <ReadonlyBadge />
@@ -104,18 +125,22 @@ onMounted(() => store.fetchList())
       <Column field="data" :header="t('preventivi.col_data')" sortable style="width: 110px;">
         <template #body="{ data }">{{ displayDate(data.data) }}</template>
       </Column>
-      <Column field="cliente_denominazione" :header="t('preventivi.col_cliente')" sortable style="min-width: 200px;" />
-      <Column field="utility_descrizione" :header="t('preventivi.col_utility')" sortable style="min-width: 140px;" />
-      <Column field="stato_descrizione" :header="t('preventivi.col_stato')" sortable style="width: 130px;">
-        <template #body="{ data }">
-          <Tag :value="data.stato_descrizione" :severity="statoPreventiveSeverity(data.stato_codice_interno)" />
-        </template>
-      </Column>
+      <Column field="cliente_denominazione" :header="t('preventivi.col_cliente')" sortable style="min-width: 180px;" />
+      <Column field="billing_account_codice" :header="t('preventivi.col_ba')" sortable style="width: 120px;" />
+      <Column field="id_fiscale" :header="t('preventivi.col_id_fiscale')" style="width: 140px;" />
+      <Column field="utility_descrizione" :header="t('preventivi.col_utility')" sortable style="width: 110px;" />
+      <Column field="istanza_utility_codice" :header="t('preventivi.col_istanza')" sortable style="width: 130px;" />
       <Column field="totale_documento" :header="t('preventivi.col_totale')" style="width: 130px;">
         <template #body="{ data }">{{ formatCurrency(data.totale_documento) }}</template>
       </Column>
       <Column field="validita_al" :header="t('preventivi.col_validita')" style="width: 110px;">
         <template #body="{ data }">{{ displayDate(data.validita_al) }}</template>
+      </Column>
+      <Column field="stato_codice_interno" :header="t('preventivi.col_stato')" sortable style="width: 120px;">
+        <template #body="{ data }">
+          <Tag :value="data.stato_descrizione"
+            :severity="statoPreventiveSeverity(data.stato_codice_interno)" />
+        </template>
       </Column>
     </DataTable>
     </template>

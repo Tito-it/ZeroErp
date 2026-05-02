@@ -1303,6 +1303,19 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Transizione di stato preventivo non ammessa.",
         ),
+        # Codice sollevato da vendite.fn_crea_revisione_preventivo quando esiste
+        # gia' una revisione in DRAFT per lo stesso numero. Conflitto di stato:
+        # l'utente deve completare/annullare la DRAFT esistente prima di crearne
+        # un'altra. Senza questa policy il codice DB era mascherato in E_DATABASE.
+        "PREV_REVISIONE_BOZZA_ESISTENTE": ErrorPolicy(
+            code="PREV_REVISIONE_BOZZA_ESISTENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Esiste gia' una revisione in BOZZA per questo preventivo. "
+                "Completa o annulla la BOZZA esistente prima di crearne una nuova."
+            ),
+        ),
         "E_PREV_STATO_NON_MODIFICABILE": ErrorPolicy(
             code="E_PREV_STATO_NON_MODIFICABILE",
             http_status=409,

@@ -16,6 +16,7 @@ from apps.core.api.payload_validators import (
     optional_bool,
     optional_int,
     optional_iso_date,
+    qp_bool,
     qp_int,
     qp_str,
 )
@@ -38,6 +39,11 @@ class ApiPreventiviList(DomainAPIView):
             OpenApiParameter(name="data_da", type=str, required=False, description="ISO date"),
             OpenApiParameter(name="data_al", type=str, required=False, description="ISO date"),
             OpenApiParameter(name="search", type=str, required=False),
+            OpenApiParameter(
+                name="solo_revisione_attiva", type=bool, required=False,
+                description="Default true: mostra solo l'ultima revisione per numero. "
+                            "Passare false per includere lo storico revisioni superseded.",
+            ),
             OpenApiParameter(name="page", type=int, required=False),
             OpenApiParameter(name="page_size", type=int, required=False),
         ],
@@ -57,6 +63,9 @@ class ApiPreventiviList(DomainAPIView):
             data_da=optional_iso_date({"v": qp.get("data_da")}, "v"),
             data_al=optional_iso_date({"v": qp.get("data_al")}, "v"),
             search=qp_str(qp.get("search")),
+            # Default true: lista pulita senza storico revisioni. Il FE
+            # passa "false" esplicito col toggle "Mostra storico".
+            solo_revisione_attiva=qp_bool(qp.get("solo_revisione_attiva"), default=True),
             auth_user_id=auth_user_id,
             page=qp_int(qp.get("page"), 1),
             page_size=qp_int(qp.get("page_size"), 50),
@@ -380,6 +389,37 @@ class ApiPreventivoRigaSuggerisciPrezzo(DomainAPIView):
                 auth_user_id=auth_user_id,
             )
         return handle_post_json(request, handler=_handler)
+
+
+# ── Riepilogo IVA aggregato (regola fiscale art. 21 DPR 633/72) ──
+
+
+class ApiPreventivoRiepilogoIva(DomainAPIView):
+    """GET /api/v1/vendite/preventivi/<id>/riepilogo-iva/
+
+    Restituisce il riepilogo IVA del preventivo: una riga per gruppo
+    (iva_id, natura, esigibilita, split_payment) con imponibile e imposta
+    aggregati e arrotondati a 2 decimali sull'aggregato per aliquota
+    (regola fiscale: DPR 633/72 art. 21 + DM 24/12/93). Lettura pura dalla
+    view denormalizzata `vendite.vw_preventivi_riepilogo_iva_dettaglio`,
+    nessun side-effect: il riepilogo e' mantenuto dal trigger AFTER su
+    preventivi_righe via fn_ricalcola_riepilogo_iva_preventivo.
+
+    Area `vendite` livello LETTURA sufficiente.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PreventivoRiepilogoIvaResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Restituisce via GET il riepilogo IVA aggregato del preventivo.
+    def get(self, request: Request, preventivo_id: int) -> JsonResponse:
+        data = preventivi_service.list_riepilogo_iva(preventivo_id)
+        return success_response(data)
 
 
 # ── Indirizzi ──
