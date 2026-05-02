@@ -24,14 +24,17 @@ BEGIN
   -- ==========================================================
   -- Scopo:
   --   Creare una nuova revisione in DRAFT a partire da un
-  --   preventivo EMESSO o ACCETTATO. Copia testata, righe
+  --   preventivo in stato EMESSO. Copia testata, righe
   --   attive e indirizzi. Disattiva la revisione corrente.
   --
-  -- Regole:
-  --   - stato corrente deve essere EMESSO o ACCETTATO
+  -- Regole (rev 03-05-2026):
+  --   - stato corrente DEVE essere EMESSO (ACCETTATO non
+  --     piu' ammesso: chiude la negoziazione e abilita
+  --     push commessa, non e' rivisitabile)
   --   - non deve esistere gia' una revisione DRAFT per lo
   --     stesso numero
-  --   - la revisione corrente viene disattivata (is_revision_attiva = false)
+  --   - la revisione corrente viene disattivata
+  --     (is_revision_attiva = false)
   --   - la nuova revisione ha rev = max(rev)+1, stato DRAFT,
   --     is_revision_attiva = true
   --   - righe copiate: solo attive con quantita > 0
@@ -70,8 +73,9 @@ BEGIN
     );
   END IF;
 
-  -- Guard: stato ammesso per revisione (EMESSO o ACCETTATO)
-  IF v_stato_corrente_cod NOT IN ('EMESSO', 'ACCETTATO') THEN
+  -- Guard: revisione ammessa SOLO da EMESSO (rev 03-05-2026:
+  -- ACCETTATO rimosso, vedi commento di scopo).
+  IF v_stato_corrente_cod NOT IN ('EMESSO') THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_crea_revisione_preventivo',
       'PREV_REVISIONE_STATO_NON_AMMESSO',
@@ -197,7 +201,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
-IS 'Crea nuova revisione preventivo vendita: copia testata + righe attive + indirizzi. Disattiva revisione corrente. Guard: stato EMESSO/ACCETTATO, no DRAFT esistente.';
+IS 'Crea nuova revisione preventivo vendita: copia testata + righe attive + indirizzi. Disattiva revisione corrente. Guard: stato EMESSO (rev 03-05-2026: ACCETTATO non piu'' ammesso, chiude la negoziazione), no DRAFT esistente. Stessa firma %TYPE.';
 ```
 
 ---

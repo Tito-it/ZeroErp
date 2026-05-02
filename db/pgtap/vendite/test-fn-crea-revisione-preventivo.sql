@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_crea_revisione_preventivo
 -- ------------------------------------------------------------
--- Indice test (1..8):
+-- Indice test (1..9):
 -- 1) Funzione presente
 -- 2) Riferimenti minimi disponibili
 -- 3) Setup preventivo EMESSO con righe e indirizzi
@@ -12,10 +12,32 @@
 -- 6) Revisione copia indirizzi
 -- 7) Revisione disattiva precedente (is_revision_attiva = false)
 -- 8) Revisione da DRAFT vietata
+-- 9) Revisione da ACCETTATO vietata (rev 03-05-2026: ACCETTATO chiude
+--    la negoziazione, non rivisitabile - regola di dominio)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(8);
+SELECT plan(9);
+
+-- ============================================================
+-- Setup GUC app.current_user_id: serve a fn_crea_revisione_preventivo
+-- per risolvere l'emittente fiscale dell'operatore corrente sulla
+-- nuova revisione (modello user-derived rev2). Senza GUC valorizzata
+-- il trigger BEFORE INSERT su preventivi solleva
+-- E_PREV_EMITTENTE_NON_RISOLTO.
+--
+-- Pesca un django_user_id che abbia un emittente fiscale assegnato
+-- in config.user_emittenti_fiscali (deterministico per il seed).
+-- Se nessun user e' configurato, il setup fallisce e il test halta
+-- a un punto chiaro (test 4 in throw_ok inatteso).
+-- ============================================================
+SELECT set_config(
+  'app.current_user_id',
+  (SELECT uef.auth_user_id::text
+     FROM config.user_emittenti_fiscali uef
+    ORDER BY uef.auth_user_id LIMIT 1),
+  true
+);
 
 -- ============================================================
 -- 1) Funzione presente
@@ -65,8 +87,17 @@ SELECT
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'EMESSO' AND s.attivo IS TRUE LIMIT 1
   ) AS stato_emesso_id,
+  (SELECT s.id FROM config.stati_doc_preventivi s
+    WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1
+  ) AS stato_accettato_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1
   ) AS valuta_id,
+  -- emittente fiscale (richiesto da trigger BEFORE INSERT preventivi
+  -- quando GUC app.current_user_id e' vuota - contesto pgTAP).
+  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
+    WHERE ef.attivo IS TRUE
+    ORDER BY ef.id LIMIT 1
+  ) AS emittente_fiscale_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE LIMIT 1
   ) AS iva_id,
   (SELECT a.tipo_indirizzo_id
@@ -80,8 +111,10 @@ SELECT ok(
       AND articolo_id IS NOT NULL
       AND stato_draft_id IS NOT NULL
       AND stato_emesso_id IS NOT NULL
+      AND stato_accettato_id IS NOT NULL
+      AND emittente_fiscale_id IS NOT NULL
    FROM tmp_rv_refs),
-  '2. Riferimenti minimi disponibili'
+  '2. Riferimenti minimi disponibili (DRAFT/EMESSO/ACCETTATO + emittente)'
 );
 
 -- ============================================================
@@ -94,6 +127,7 @@ WITH ins AS (
     billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
     stato_doc_preventivo_id, data,
+    emittente_fiscale_id,
     storicizza, meta
   )
   SELECT
@@ -102,6 +136,7 @@ WITH ins AS (
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
     r.stato_emesso_id, DATE '2026-06-01',
+    r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_revisione')
   FROM tmp_rv_refs r
   RETURNING id, uid, numero
@@ -199,6 +234,7 @@ WITH ins AS (
     billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
     stato_doc_preventivo_id, data,
+    emittente_fiscale_id,
     storicizza, meta
   )
   SELECT
@@ -207,6 +243,7 @@ WITH ins AS (
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
     r.stato_draft_id, DATE '2026-06-01',
+    r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_revisione')
   FROM tmp_rv_refs r
   RETURNING id, uid, numero
@@ -220,6 +257,43 @@ SELECT throws_ok(
   ),
   NULL, NULL,
   '8. Revisione da DRAFT vietata'
+);
+
+-- ============================================================
+-- 9) Revisione da ACCETTATO vietata (rev 03-05-2026)
+--    Setup: nuovo preventivo direttamente in stato ACCETTATO
+--    (tramite INSERT diretto, skip transizioni manuali).
+-- ============================================================
+CREATE TEMP TABLE tmp_rv_prev_accettato AS
+WITH ins AS (
+  INSERT INTO vendite.preventivi (
+    numero, rev, is_revision_attiva,
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id,
+    stato_doc_preventivo_id, data,
+    emittente_fiscale_id,
+    storicizza, meta
+  )
+  SELECT
+    'PGTAP-RVA-' || substr(md5(clock_timestamp()::text), 1, 8),
+    0, true,
+    r.billing_account_id, r.istanza_utility_id, r.utility_id,
+    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
+    r.stato_accettato_id, DATE '2026-06-01',
+    r.emittente_fiscale_id,
+    false, jsonb_build_object('test_scope', 'pgtap_revisione')
+  FROM tmp_rv_refs r
+  RETURNING id, uid, numero
+)
+SELECT * FROM ins;
+
+SELECT throws_ok(
+  format(
+    'SELECT * FROM vendite.fn_crea_revisione_preventivo(%s, ''pgtap'')',
+    (SELECT id FROM tmp_rv_prev_accettato)
+  ),
+  'P0001', NULL,
+  '9. Revisione da ACCETTATO vietata (PREV_REVISIONE_STATO_NON_AMMESSO)'
 );
 
 -- ============================================================
