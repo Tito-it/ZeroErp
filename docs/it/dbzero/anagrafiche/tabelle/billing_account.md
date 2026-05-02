@@ -62,6 +62,8 @@
 | trg_billing_account_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_gen_codice()` |
 | trg_billing_account_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_gen_codice()` |
 | trg_billing_account_a10_guard_admin_globale_ins | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()` |
+| trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza()` |
+| trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza()` |
 | trg_billing_account_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')` |
 | trg_billing_account_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
 | trg_billing_account_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |

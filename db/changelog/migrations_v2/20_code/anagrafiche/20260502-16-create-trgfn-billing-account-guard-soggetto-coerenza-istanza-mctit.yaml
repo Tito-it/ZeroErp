@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Guard coerenza soggetto BA <-> istanza_utilities.
+#
+# Why: il modello dati ZeroErp prevede che il soggetto del
+# billing_account coincida con il soggetto dell'istanza_utility a
+# cui il BA e' ancorato (manuale istanze_utilities §7.1-7.3, "1
+# cliente per istanza", "il cliente vive dentro l'istanza"). Oggi
+# pero' a livello DB stretto NON c'e' un guard esplicito: e' una
+# regola operativa che dipende dal flusso applicativo. Un INSERT
+# diretto su billing_account con soggetto_ruolo_id che punta a un
+# soggetto diverso da quello dell'istanza non viene rilevato.
+#
+# Questo guard chiude la lacuna: BEFORE INSERT OR UPDATE OF
+# (istanza_utility_id, soggetto_ruolo_id) verifica che
+# soggetti_ruoli.soggetto_id == istanze_utilities.soggetto_id e
+# raise E_BA_SOGGETTO_INCOERENTE_ISTANZA se differiscono.
+#
+# Pre-deploy: la preCondition sqlCheck del primo changeSet conta i
+# BA esistenti che violerebbero il vincolo. Se > 0 il deploy halta
+# con messaggio chiaro: vanno corretti i dati (UPDATE manuale o
+# DELETE+ricreazione). Su DB pulito atteso 0.
+#
+# Allinea il modello a §7 della doc istanze_utilities e rimuove la
+# possibilita' di drift soggetto BA<->istanza dovuto a errori di
+# inserimento manuale o batch.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260502-16-create-trgfn-billing-account-guard-soggetto-coerenza-istanza-mctit.yaml
+
+  - changeSet:
+      id: 20260502-16-01-precheck-ba-istanza-soggetto-coerenza
+      author: mctit
+      runOnChange: false
+      comment: >
+        Pre-check: nessun billing_account esistente deve avere soggetto
+        diverso da quello dell'istanza_utility a cui e' ancorato. Se >0
+        il deploy halta: prima di applicare il guard correggere i dati.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >
+            Esistono billing_account con soggetto incoerente vs
+            istanza_utility. Eseguire la query diagnostica prima di
+            applicare il guard:
+              SELECT ba.id, ba.codice, sr.soggetto_id AS ba_soggetto,
+                     iu.soggetto_id AS istanza_soggetto
+                FROM anagrafiche.billing_account ba
+                JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                JOIN anagrafiche.istanze_utilities iu ON iu.id = ba.istanza_utility_id
+               WHERE sr.soggetto_id <> iu.soggetto_id;
+            Correggere via UPDATE/DELETE e rilanciare il deploy.
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*)
+                FROM anagrafiche.billing_account ba
+                JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                JOIN anagrafiche.istanze_utilities iu ON iu.id = ba.istanza_utility_id
+               WHERE sr.soggetto_id <> iu.soggetto_id;
+      changes:
+        - sql:
+            sql: |
+              -- No-op: il pre-check e' realizzato dalla preCondition.
+              -- Questo changeSet serve come "anchor" Liquibase: se la
+              -- preCondition fallisce il deploy halta con messaggio.
+              SELECT 1;
+
+  - changeSet:
+      id: 20260502-16-02-create-trgfn-billing-account-guard-soggetto-coerenza-istanza
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Funzione anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza.
+        Verifica che soggetti_ruoli.soggetto_id == istanze_utilities.soggetto_id.
+        Raise E_BA_SOGGETTO_INCOERENTE_ISTANZA.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: billing_account
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: istanze_utilities
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_ruoli
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: garantire la coerenza modello "1 soggetto per istanza".
+              -- Verifica che il soggetto raggiunto via NEW.soggetto_ruolo_id
+              -- coincida con il soggetto dell'istanza ancorata in
+              -- NEW.istanza_utility_id. Raise se differiscono.
+              -- Allinea il vincolo DB al modello documentato in
+              -- istanze_utilities §7.3 ("il cliente vive dentro l'istanza").
+              DECLARE
+                  v_soggetto_ruolo  anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_soggetto_istanza anagrafiche.istanze_utilities.soggetto_id%TYPE;
+              BEGIN
+                  SELECT sr.soggetto_id
+                    INTO v_soggetto_ruolo
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                  SELECT iu.soggetto_id
+                    INTO v_soggetto_istanza
+                    FROM anagrafiche.istanze_utilities iu
+                   WHERE iu.id = NEW.istanza_utility_id;
+
+                  -- Difensivo: se uno dei due lookup non risolve, le FK
+                  -- esistenti gestiranno l'errore strutturale. Qui il
+                  -- guard si limita al confronto quando entrambi sono
+                  -- popolati (caso normale grazie ai NOT NULL).
+                  IF v_soggetto_ruolo IS NOT NULL
+                     AND v_soggetto_istanza IS NOT NULL
+                     AND v_soggetto_ruolo IS DISTINCT FROM v_soggetto_istanza
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_BA_SOGGETTO_INCOERENTE_ISTANZA',
+                          jsonb_build_object(
+                              'billing_account_id',  NEW.id,
+                              'codice',              NEW.codice,
+                              'istanza_utility_id',  NEW.istanza_utility_id,
+                              'soggetto_ruolo_id',   NEW.soggetto_ruolo_id,
+                              'ba_soggetto_id',      v_soggetto_ruolo,
+                              'istanza_soggetto_id', v_soggetto_istanza
+                          ),
+                          NEW.tx_id,
+                          NEW.codice,
+                          v_soggetto_ruolo::text,
+                          v_soggetto_istanza::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza() IS
+                  'Guard coerenza soggetto BA <-> istanza_utilities. Verifica '
+                  'che soggetti_ruoli.soggetto_id == istanze_utilities.soggetto_id. '
+                  'Raise E_BA_SOGGETTO_INCOERENTE_ISTANZA. Allinea il vincolo DB '
+                  'al modello documentato (1 cliente per istanza).';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza();
+
+  - changeSet:
+      id: 20260502-16-03-create-trg-billing-account-a10-guard-soggetto-coerenza-istanza
+      author: mctit
+      comment: >
+        Trigger BEFORE INSERT OR UPDATE OF (istanza_utility_id,
+        soggetto_ruolo_id) su anagrafiche.billing_account, fase _a10_
+        (guard fail-fast).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'trgfn_billing_account_guard_soggetto_coerenza_istanza';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd
+                  ON anagrafiche.billing_account;
+
+              CREATE TRIGGER trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd
+                  BEFORE INSERT OR UPDATE OF istanza_utility_id, soggetto_ruolo_id
+                  ON anagrafiche.billing_account
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza();
+
+              COMMENT ON TRIGGER trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd
+                  ON anagrafiche.billing_account
+                  IS 'Guard coerenza BA<->istanza: soggetti_ruoli.soggetto_id = istanze_utilities.soggetto_id.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd
+                  ON anagrafiche.billing_account;

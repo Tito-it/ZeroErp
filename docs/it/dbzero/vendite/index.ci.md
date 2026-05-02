@@ -78,7 +78,7 @@
 - [fn_cleanup_fatture_by_ids](manual/fn_cleanup_fatture_by_ids.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_cleanup_fatture_by_ids()`** centralizza il cleanup di fatture e righe correlate, ripristinando le righe di `attivita_fatturabili`.
 - [fn_close_giornaliero_lotto](manual/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
 - [fn_complete_lotto_task_run](manual/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
-- [fn_crea_revisione_preventivo](manual/fn_crea_revisione_preventivo.md) — (latest review 03-04-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive e indirizzi, disattivando la revisione corrente.
+- [fn_crea_revisione_preventivo](manual/fn_crea_revisione_preventivo.md) — (latest review 03-05-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive e indirizzi, disattivando la revisione corrente.
 - [fn_create_fatturazione_lotto](manual/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
 - [fn_emit_attivita_fatturabili_da_commessa](manual/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 24-02-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 - [fn_fail_lotto_task_run](manual/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
@@ -188,7 +188,7 @@
 - [trgfn_promo_articoli_guard_data_driven](manual/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
 
 ## 🔍 Views (manuale)
-- [vw_preventivi_list](manual/vw_preventivi_list.md) — (latest review 07-04-2026)
+- [vw_preventivi_list](manual/vw_preventivi_list.md) — (latest review 02-05-2026 — rev3)
 - [vw_preventivi_pratiche](manual/vw_preventivi_pratiche.md) — (latest review 03-04-2026) `vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita** tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
 - [vw_preventivi_righe_dettaglio](manual/vw_preventivi_righe_dettaglio.md) — (latest review 03-04-2026) `vendite.vw_preventivi_righe_dettaglio` arricchisce le righe preventivo con i dati denormalizzati di articolo, unita' di misura operativa e aliquota IVA. Include **importi calcolati** per evitare duplicazione della logica di calcolo nel backend/frontend.
 - [vw_preventivi_stato_fatturazione](manual/vw_preventivi_stato_fatturazione.md) — (latest review 03-04-2026) Due viste complementari per il **monitoraggio della pipeline fatturazione** dei preventivi:

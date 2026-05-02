@@ -6,74 +6,125 @@ Approfondimento tabelle:
 >
 [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)
 > [config.stati_doc_preventivi](/dbzero/config/tabelle/stati_doc_preventivi)
+> [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 > [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [config.utilities](/dbzero/config/tabelle/utilities)
 > [config.valute](/dbzero/config/tabelle/valute)
 > [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)
+>
+Approfondimento funzioni:
+> [anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_soggetto_coerenza_istanza)
 
 ---
+
 ### 🎯 Scopo Principale
 
-(latest review 07-04-2026)
+(latest review 02-05-2026 — rev3)
 
-`vendite.vw_preventivi_list` e' la vista denormalizzata principale per la **lista preventivi
-vendita**. Espone tutti i dati necessari al frontend (tabella lista) e al backend (filtro
-permessi per scope emittente).
+`vendite.vw_preventivi_list` e' la vista denormalizzata principale per la **lista
+preventivi vendita**. Espone tutti i dati necessari al frontend (tabella lista) e
+al backend (filtro permessi per scope emittente).
 
 ---
 
-> ### Nota sulla colonna `emittente_fiscale_id`
->
-> Dalla revisione del **07-04-2026** la colonna espone la **PK numerica reale** di
-> `anagrafiche.emittenti_fiscali.id`, derivata via [`fn_get_emittente_fiscale_pk`](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk).
->
-> **In precedenza** la vista usava `fn_get_emittente_fiscale_id` che, nonostante il nome,
-> restituisce un `soggetto_ruolo_id`: il valore esposto era quindi semanticamente
-> incompatibile con `config.parameter_overrides.emittente_fiscale_id` (FK reale a
-> `emittenti_fiscali.id`) usata dal filtro permessi backend.
->
-> Il fix allinea i due valori e rende il filtro permessi corretto.
+### 🆕 Cambi rev3 (02-05-2026)
+
+| Campo | Cambio |
+| --- | --- |
+| `cliente_denominazione`, `id_fiscale`, `soggetto_id` | Lookup spostato da BA → istanza_utilities (1 join, sempre valorizzato) |
+| `id_fiscale` | **Nuovo**: `s.id_fiscale_univoco_cf_piva` esposto |
+| `billing_account_codice` | **Nuovo**: `ba.codice` esposto, NULL ammesso per prospect |
+| `istanza_utility_codice` | **Nuovo**: `iu.codice` esposto |
+| `utility_codice`, `utility_descrizione` | **Nuovi**: LEFT JOIN `config.utilities` |
+| `stato_codice_interno` | **Nuovo**: `sdp.codice_interno` esposto (oggi codice == codice_interno, esposto per pulizia future-proof) |
+
+**Motivazione del cambio root del lookup soggetto** (da BA a istanza):
+
+* `preventivi.istanza_utility_id` e' **NOT NULL** (post brief preventivi rev2)
+* `istanze_utilities.soggetto_id` e' **NOT NULL** + FK diretta a `soggetti`
+* Modello dati ZeroErp: 1 cliente per istanza (manuale `istanze_utilities` §7.3 "il cliente vive dentro l'istanza")
+* Conseguenza: il soggetto via istanza coincide sempre con quello via BA → uso istanza, 1 join vs 3 join, e copre anche i preventivi prospect (BA NULL)
+
+**Coerenza BA ↔ istanza**: garantita dal nuovo guard
+[`trgfn_billing_account_guard_soggetto_coerenza_istanza`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_soggetto_coerenza_istanza)
+che impone `soggetti_ruoli.soggetto_id == istanze_utilities.soggetto_id` su
+INSERT/UPDATE di `billing_account`.
+
+---
+
+### Nota sulla colonna `emittente_fiscale_id`
+
+Dalla revisione del **01-05-2026** (rev2) la vista legge direttamente
+`p.emittente_fiscale_id` (colonna persistita, popolata dal trigger
+`trgfn_preventivi_default_emittente` a INSERT-time). In precedenza la
+chiamata dinamica a `fn_get_emittente_fiscale_pk(billing_account_id)`
+esplodeva su `BA NULL` con `E_PARAMETRO_INVALIDO`.
 
 ---
 
 ### JOIN principali
 
-| Tabella                                                       | Dati esposti                                         |
-|---------------------------------------------------------------|------------------------------------------------------|
-| `config.stati_doc_preventivi`                                 | Codice e descrizione stato                           |
-| `anagrafiche.billing_account` → `soggetti_ruoli` → `soggetti` | Denominazione cliente                                |
-| `config.valute`                                               | Codice valuta                                        |
-| `config.termini_pagamento`                                    | Descrizione termini                                  |
-| `anagrafiche.fn_get_emittente_fiscale_pk()`                   | `emittente_fiscale_id` per scope permessi (PK reale) |
+| Tabella | Dati esposti | Note |
+| --- | --- | --- |
+| `config.stati_doc_preventivi` | `stato_codice`, `stato_codice_interno`, `stato_descrizione` | INNER JOIN |
+| `anagrafiche.istanze_utilities` → `anagrafiche.soggetti` | `soggetto_id`, `cliente_denominazione`, `id_fiscale` | LEFT (defensive: in pratica sempre match grazie a NOT NULL) |
+| `anagrafiche.billing_account` | `billing_account_codice`, `ba_utility_id` | LEFT JOIN: `billing_account_id` opzionale per prospect |
+| `config.utilities` | `utility_codice`, `utility_descrizione` | LEFT (defensive: in pratica sempre match) |
+| `config.valute` | `valuta_codice` | LEFT |
+| `config.termini_pagamento` | `termine_pagamento_descrizione` | LEFT |
 
 ---
 
 ### 📑 Campi chiave esposti
 
 * **Identificatori**: id, uid, numero, rev, is_revision_attiva, data
-* **Stato**: stato_doc_preventivo_id, stato_codice, stato_descrizione
-* **Controparte**: billing_account_id, ba_utility_id, soggetto_id, cliente_denominazione
-* **Permessi**: emittente_fiscale_id (derivato da BA)
-* **Contesto**: utility_id, istanza_utility_id
+* **Stato**: stato_doc_preventivo_id, stato_codice, **stato_codice_interno**, stato_descrizione
+* **Billing account**: billing_account_id, **billing_account_codice**, ba_utility_id
+* **Soggetto (via istanza)**: soggetto_id, cliente_denominazione, **id_fiscale**
+* **Permessi**: emittente_fiscale_id (colonna persistita)
+* **Utility e istanza**: utility_id, **utility_codice**, **utility_descrizione**, istanza_utility_id, **istanza_utility_codice**
 * **Importi**: totale_imponibile, totale_iva, totale_documento
 * **Condizioni**: valuta_id, valuta_codice, termine_pagamento_id, termine_pagamento_descrizione
 * **Validita'**: validita_dal, validita_al, competenza_mese
 * **Flag**: fatturazione_immediata, storicizza
 
-**Ordinamento default**: data DESC, numero DESC.
+**Ordinamento default**: `data DESC, numero DESC, id` (tiebreaker per stabilita').
 
 ---
 
 ### Esempio d'uso
 
 ```sql
--- Lista preventivi per un emittente, filtro stato
-SELECT id, numero, rev, data, stato_codice, cliente_denominazione,
+-- Lista preventivi per un emittente, filtro stato, con dati cliente
+SELECT id, numero, rev, data,
+       stato_codice_interno, cliente_denominazione, id_fiscale,
+       billing_account_codice,
+       utility_codice, istanza_utility_codice,
        totale_documento, validita_al
-FROM vendite.vw_preventivi_list
-WHERE emittente_fiscale_id = 1
-  AND stato_codice = 'EMESSO'
-ORDER BY data DESC;
+  FROM vendite.vw_preventivi_list
+ WHERE emittente_fiscale_id = 1
+   AND stato_codice_interno = 'EMESSO'
+ ORDER BY data DESC;
 ```
+
+```sql
+-- Preventivi prospect (senza BA): la denominazione e' comunque popolata
+SELECT id, numero, cliente_denominazione, id_fiscale,
+       billing_account_codice IS NULL AS is_prospect
+  FROM vendite.vw_preventivi_list
+ WHERE billing_account_id IS NULL
+ ORDER BY data DESC
+ LIMIT 20;
+```
+
+---
+
+### Note operative
+
+* **Nessuna LEFT JOIN ridondante**: anche per i preventivi prospect (`billing_account_id IS NULL`) la riga `vw_preventivi_list` ha `cliente_denominazione` e `id_fiscale` valorizzati grazie al join via istanza.
+* **Coerenza dei valori**: per preventivi con BA valorizzato, il soggetto via istanza coincide con quello via BA (garantito dal guard `trgfn_billing_account_guard_soggetto_coerenza_istanza`). Se un giorno servisse il caso "chi paga ≠ chi intesta", il modello attuale **non lo supporta** (vedi tech debt nel manuale del guard).
+* **Performance**: tutti i lookup sono su PK indicizzata (`pk_istanze_utilities`, `pk_soggetti`, `pk_billing_account`, `pk_utilities`, ecc.), zero scansioni full.
 
 ---
 

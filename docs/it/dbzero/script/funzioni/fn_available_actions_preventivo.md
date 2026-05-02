@@ -87,10 +87,12 @@ BEGIN
     -- Capability derivate dallo stato corrente.
     -- can_edit: solo DRAFT (allineato a _STATI_MODIFICABILI Python).
     -- can_push_commessa: solo ACCETTATO (check cross-dominio in Fase 3).
-    -- can_create_revisione: EMESSO o ACCETTATO (spec FE transizioni()).
+    -- can_create_revisione: SOLO EMESSO (rev 03-05-2026: ACCETTATO
+    --   chiude la negoziazione, non rivisitabile - allineato a
+    --   vendite.fn_crea_revisione_preventivo).
     v_can_edit := (v_stato_cod = 'DRAFT');
     v_can_push := (v_stato_cod = 'ACCETTATO');
-    v_can_rev  := (v_stato_cod IN ('EMESSO', 'ACCETTATO'));
+    v_can_rev  := (v_stato_cod = 'EMESSO');
 
     -- Reason code (machine-readable) + chiave i18n associata.
     -- Coppia stabile reason/reason_key: il FE traduce via key,
@@ -121,7 +123,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
-IS 'Capability preventivo per detail API: available_actions (da matrice transizioni), can_edit_*, can_push_commessa, can_create_revisione, non_editable_fields. Fase 1 refactor frontend vendite.';
+IS 'Capability preventivo per detail API: available_actions (da matrice transizioni), can_edit_*, can_push_commessa, can_create_revisione, non_editable_fields. rev 03-05-2026: can_create_revisione solo da EMESSO (allineato a vendite.fn_crea_revisione_preventivo).';
 ```
 
 ---

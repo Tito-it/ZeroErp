@@ -56,6 +56,7 @@
 - [trgfn_bank_guard_ruolo_bank_branches](manual/trgfn_bank_guard_ruolo_bank_branches.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “bank_branches”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_billing_account_guard_admin_globale](manual/trgfn_billing_account_guard_admin_globale.md)
 - [trgfn_billing_account_guard_normalize](manual/trgfn_billing_account_guard_normalize.md) — (latest review 28-12-25) Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **validazioni di business** e normalizza i campi, mentre la generazione del `codice` e' demandata al sistema automatico basato su `config.sistema_codici`.
+- [trgfn_billing_account_guard_soggetto_coerenza_istanza](manual/trgfn_billing_account_guard_soggetto_coerenza_istanza.md) — (latest review 02-05-2026)
 - [trgfn_billing_account_link_ef](manual/trgfn_billing_account_link_ef.md)
 - [trgfn_clienti_guard_ruolo_cliente](manual/trgfn_clienti_guard_ruolo_cliente.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “cliente”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_clienti_normalize_giorni_scadenza](manual/trgfn_clienti_normalize_giorni_scadenza.md) — (latest review 27-04-2026)

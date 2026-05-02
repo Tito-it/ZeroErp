@@ -1,0 +1,174 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Update script.fn_available_actions_preventivo: can_create_revisione
+# solo da EMESSO.
+#
+# Why: coordinato con 20260503-01 (fn_crea_revisione_preventivo). Il
+# FE legge can_create_revisione da questa fn per abilitare/disabilitare
+# il bottone "Crea revisione" nel detail preventivo. Restringere a solo
+# EMESSO mantiene allineamento DB <-> capability esposta al FE.
+#
+# Modifica chirurgica:
+#   - v_can_rev := (v_stato_cod IN ('EMESSO', 'ACCETTATO'))
+#       ->  v_can_rev := (v_stato_cod = 'EMESSO')
+#   - commento aggiornato
+#
+# Stessa firma e ritorno jsonb: CREATE OR REPLACE senza DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260503-02-update-fn-available-actions-preventivo-only-emesso-mctit.yaml
+
+  - changeSet:
+      id: 20260503-02-update-fn-available-actions-preventivo-only-emesso
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      author: mctit
+      comment: >
+        Restringe can_create_revisione a stato EMESSO. Allineato a
+        fn_crea_revisione_preventivo (20260503-01).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: preventivi
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_preventivi
+            - tableExists:
+                schemaName: config
+                tableName: transizioni_stati_preventivi
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_preventivo(
+                  p_preventivo_id vendite.preventivi.id%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo:
+              --   Capability del preventivo per il detail API (Fase 1 refactor
+              --   frontend vendite). Calcola le transizioni manuali disponibili
+              --   leggendo la matrice config.transizioni_stati_preventivi (campo
+              --   meta per i metadati UI). Restituisce anche i flag can_* usati
+              --   dai drawer Vue per abilitare/disabilitare azioni e campi senza
+              --   ricalcolare logica in Python o nel frontend.
+              --
+              --   Struttura meta attesa su ogni transizione (80_data seed):
+              --     action_key:       chiave azione (es. 'emetti', 'annulla')
+              --     label_key:        chiave i18n per il label del bottone
+              --     severity:         severity PrimeVue (info/success/danger)
+              --     icon:             classe PrimeIcons (es. 'pi pi-send')
+              --     requires_confirm: boolean — richiede dialog di conferma
+              --     manuale:          boolean — false esclude dalla lista UI
+              --                       (transizione automatica da job/trigger)
+              --
+              --   Fallback sicuro: NULL se il preventivo non esiste.
+              DECLARE
+                  v_stato_id        vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                  v_stato_cod       config.stati_doc_preventivi.codice_interno%TYPE;
+                  v_actions         jsonb;
+                  v_can_edit        boolean;
+                  v_can_push        boolean;
+                  v_can_rev         boolean;
+                  v_push_reason     text;
+                  v_push_reason_key text;
+                  -- Due famiglie di immutabilita':
+                  -- (a) c_sempre_non_edit: campi immutabili dal create
+                  --     indipendentemente dallo stato (regola di dominio).
+                  --     utility_id identifica il preventivo, non si cambia mai.
+                  -- (b) c_non_edit_extra: campi bloccati solo fuori DRAFT
+                  --     (whitelist aggiorna_preventivo in preventivi_service.py).
+                  c_sempre_non_edit CONSTANT jsonb := '["utility_id"]'::jsonb;
+                  c_non_edit_extra  CONSTANT jsonb := '["billing_account_id","istanza_utility_id","valuta_id","termine_pagamento_id","validita_dal","validita_al","competenza_mese","fatturazione_immediata","meta"]'::jsonb;
+              BEGIN
+                  -- Recupera stato corrente del preventivo
+                  SELECT p.stato_doc_preventivo_id, sdp.codice_interno
+                    INTO v_stato_id, v_stato_cod
+                    FROM vendite.preventivi p
+                    JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   WHERE p.id = p_preventivo_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Transizioni manuali disponibili per lo stato corrente.
+                  -- COALESCE su meta.manuale: se assente si assume manuale = true.
+                  -- COALESCE su meta.requires_confirm: se assente si assume false.
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              'label_key',        t.meta->>'label_key',
+                              'severity',         t.meta->>'severity',
+                              'icon',             t.meta->>'icon',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false)
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_preventivi t
+                  JOIN config.stati_doc_preventivi sa ON sa.id = t.stato_a_id
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE;
+
+                  -- Capability derivate dallo stato corrente.
+                  -- can_edit: solo DRAFT (allineato a _STATI_MODIFICABILI Python).
+                  -- can_push_commessa: solo ACCETTATO (check cross-dominio in Fase 3).
+                  -- can_create_revisione: SOLO EMESSO (rev 03-05-2026: ACCETTATO
+                  --   chiude la negoziazione, non rivisitabile - allineato a
+                  --   vendite.fn_crea_revisione_preventivo).
+                  v_can_edit := (v_stato_cod = 'DRAFT');
+                  v_can_push := (v_stato_cod = 'ACCETTATO');
+                  v_can_rev  := (v_stato_cod = 'EMESSO');
+
+                  -- Reason code (machine-readable) + chiave i18n associata.
+                  -- Coppia stabile reason/reason_key: il FE traduce via key,
+                  -- il BE/log usa il reason. In Fase 3 si estendera' il CASE
+                  -- per nuovi motivi (commesse pushate, approvazioni pendenti).
+                  IF v_can_push THEN
+                      v_push_reason     := NULL;
+                      v_push_reason_key := NULL;
+                  ELSE
+                      v_push_reason     := 'PREVENTIVO_NON_ACCETTATO';
+                      v_push_reason_key := 'preventivi.push_commessa_reason.non_accettato';
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'available_actions',            v_actions,
+                      'can_edit_testata',             v_can_edit,
+                      'can_edit_righe',               v_can_edit,
+                      'can_push_commessa',            v_can_push,
+                      'can_push_commessa_reason',     v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'can_create_revisione',         v_can_rev,
+                      'non_editable_fields',          CASE WHEN v_can_edit
+                                                          THEN c_sempre_non_edit
+                                                          ELSE c_sempre_non_edit || c_non_edit_extra END,
+                      'stato_codice',                 v_stato_cod
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_preventivo(bigint) IS
+                  'Capability preventivo per detail API: available_actions (da matrice '
+                  'transizioni), can_edit_*, can_push_commessa, can_create_revisione, '
+                  'non_editable_fields. rev 03-05-2026: can_create_revisione solo da '
+                  'EMESSO (allineato a vendite.fn_crea_revisione_preventivo).';
