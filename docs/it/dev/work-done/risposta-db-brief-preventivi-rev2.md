@@ -1,6 +1,11 @@
 # Risposta DB al brief preventivi rev2 — implementazione completata
 
-> **Status**: ✅ DB-side completo, in attesa apply su `dev/db-tid`
+> **Status**: ✅ **COMPLETATO + LANDED** — merge su `dev/backend-tid` 2026-05-02.
+> Lavoro BE/FE consumer completato nella stessa data (vedi commit `1f7daf69` + refactor §9 PK vs SR successivo).
+>
+> ---
+>
+> **Status originale**: ✅ DB-side completo, in attesa apply su `dev/db-tid`
 >
 > **Origine**: brief backend rev2 (sessione 2026-05-01)
 > **Esecutore**: DB agent su `dev/db-tid`

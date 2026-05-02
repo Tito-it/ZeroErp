@@ -205,10 +205,14 @@ class PermissionResolver:
         """Scopo: Restituisce i soggetto_ruolo_id degli emittenti fiscali
         autorizzati per l'utente. Wrapper su fn_get_emittenti_scope_sr_ids.
 
-        Le tabelle anagrafiche e vendite usano emittente_soggetto_ruolo_id
-        (FK a soggetti_ruoli), non emittenti_fiscali.id, quindi serve
-        questa mappatura. Usare questo metodo (NON get_emittenti_ids) per
-        filtrare su emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id.
+        **Quando usare**: query che filtrano su colonne <ruolo>_soggetto_ruolo_id
+        (BA scope via emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id,
+        search universale, lista clienti, fatture/ordini/lotti/listini con
+        emittente_soggetto_ruolo_id). Per filtri su PK reale (emittenti_fiscali.id,
+        vw_preventivi_list.emittente_fiscale_id, ecc.) usare `get_emittenti_pk_ids`.
+
+        Vedi guida `soggetti-e-ruoli-anagrafici §5b` per il pattern duale SR vs PK
+        e memoria `feedback_emittente_pk_vs_soggetto_ruolo`.
 
         Semantica: None = nessuna restrizione, [] = nessun accesso."""
         def _query() -> list[int] | None:
@@ -224,6 +228,41 @@ class PermissionResolver:
             return None
 
         return _cached(cache, "emittenti_sr_ids", _query)
+
+    @classmethod
+    def get_emittenti_pk_ids(
+        cls, user: Any, *, cache: dict[str, Any] | None = None
+    ) -> list[int] | None:
+        """Scopo: Restituisce le PK reali (emittenti_fiscali.id) autorizzate
+        per l'utente. Wrapper su fn_get_emittenti_scope_pk_ids (canonica nuova,
+        2026-05-02).
+
+        **Quando usare**: query che filtrano su colonne PK
+        (vw_preventivi_list.emittente_fiscale_id, vendite.preventivi.emittente_fiscale_id
+        post brief rev2, parameter_overrides.emittente_fiscale_id,
+        user_emittenti_fiscali.emittente_fiscale_id, ecc.). Per filtri su SR id
+        (<ruolo>_soggetto_ruolo_id) usare `get_emittenti_sr_ids`.
+
+        Differenze con `get_emittenti_ids` (legacy): la fn nuova ha i guard
+        completi (no identita OPERATORE attiva → '{}'; super admin → NULL)
+        come `_sr_ids`. La legacy `fn_get_emittenti_scope` non li ha.
+
+        Vedi guida `soggetti-e-ruoli-anagrafici §5b` per il pattern duale SR vs PK
+        e memoria `feedback_emittente_pk_vs_soggetto_ruolo`.
+
+        Semantica: None = nessuna restrizione, [] = nessun accesso."""
+        def _query() -> list[int] | None:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT script.fn_get_emittenti_scope_pk_ids(%s)",
+                    [user.id],
+                )
+                row = cursor.fetchone()
+            if row and row[0] is not None:
+                return list(row[0])
+            return None
+
+        return _cached(cache, "emittenti_pk_ids", _query)
 
     @classmethod
     def get_emittente_for_user(

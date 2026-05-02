@@ -77,12 +77,16 @@ class PreventiviRepository:
             like = f"%{search}%"
             params.extend([like, like])
 
-        # Scope emittente: la vista espone emittente_fiscale_id
+        # Scope emittente: la vista espone emittente_fiscale_id (PK reale di
+        # anagrafiche.emittenti_fiscali.id, post brief preventivi rev2). Usa
+        # quindi fn_get_emittenti_scope_pk_ids (NON _sr_ids che mappa a
+        # soggetto_ruolo_id). Vedi guida soggetti-e-ruoli §5b + memoria
+        # feedback_emittente_pk_vs_soggetto_ruolo per il pattern duale SR vs PK.
         if auth_user_id is not None:
             conditions.append(
-                "(script.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
+                "(script.fn_get_emittenti_scope_pk_ids(%s) IS NULL "
                 "OR v.emittente_fiscale_id = ANY("
-                "script.fn_get_emittenti_scope_sr_ids(%s)))"
+                "script.fn_get_emittenti_scope_pk_ids(%s)))"
             )
             params.extend([auth_user_id, auth_user_id])
 
