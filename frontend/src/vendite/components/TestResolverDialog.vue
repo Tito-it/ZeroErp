@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { extractApiError } from '../../core/utils/apiError'
 import { resolvePrezzoV5 } from '../api/listini'
+import { pricingOrigineSeverity } from '../../core/utils/severity'
 import { listArticoloUom } from '../../catalogo/api/catalogo'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
@@ -108,13 +109,6 @@ const canTest = computed(() => (
   && !!form.value.data_riferimento
 ))
 
-// Mappa origine del match a severity per visualizzazione Tag.
-const origineSeverity = {
-  PROMO: 'warn',
-  CONTRATTO: 'info',
-  CATEGORIA: 'success',
-}
-
 async function doTest() {
   result.value = null
   errorMsg.value = null
@@ -208,7 +202,7 @@ function close() {
         </div>
         <div class="form-field">
           <label>{{ t('listini.resolver_origine') }}</label>
-          <Tag :value="result.origine" :severity="origineSeverity[result.origine] || 'secondary'" />
+          <Tag :value="result.origine" :severity="pricingOrigineSeverity(result.origine)" />
         </div>
         <div class="form-field" v-if="result.prezzo_base_snapshot != null">
           <label>{{ t('listini.resolver_prezzo_base') }}</label>

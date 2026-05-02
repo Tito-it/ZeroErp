@@ -94,7 +94,7 @@ async function onRigaSaved() {
 function onDeleteRiga(riga) {
   confirmAction({
     message: t('preventivi.conferma_elimina_riga'),
-    accept: async () => {
+    onAccept: async () => {
       const result = await execute(
         () => store.eliminaRiga(props.preventivoId, riga.id),
         { successMessage: t('preventivi.riga_eliminata') }
@@ -198,8 +198,8 @@ defineExpose({ loadRighe })
       <Column field="importo_riga" :header="t('preventivi.riga_importo')" sortable style="width: 120px;">
         <template #body="{ data }">{{ formatCurrency(data.importo_riga) }}</template>
       </Column>
-      <Column field="iva_aliquota" :header="t('preventivi.riga_iva')" sortable style="width: 80px;">
-        <template #body="{ data }">{{ data.iva_aliquota != null ? `${data.iva_aliquota}%` : (data.iva_codice || '') }}</template>
+      <Column field="iva_descrizione" :header="t('preventivi.riga_iva')" sortable style="width: 80px;">
+        <template #body="{ data }">{{ data.iva_descrizione || data.iva_codice || '' }}</template>
       </Column>
       <Column v-if="isModificabile" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">

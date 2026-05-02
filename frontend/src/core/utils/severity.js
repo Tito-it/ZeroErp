@@ -189,6 +189,22 @@ export function dominioListinoSeverity(codice) {
   return resolveSeverity(DOMINIO_LISTINO_MAP, codice)
 }
 
+// --- Mappa origine match resolver pricing v5 ---
+// PROMO=arancio (offerta speciale, stadio 0 batte tutto), CONTRATTO/CONTRATTO_LISTINO=
+// azzurro (condizioni cliente specifiche), CATEGORIA=verde (listino di default
+// per categoria cliente). Default 'secondary' per origini sconosciute o future.
+// Usato cross-dominio: PreventiviRigaForm (badge sotto prezzo riga),
+// TestResolverDialog (badge esito test), futuri prospect/ordini/fatture.
+export const PRICING_ORIGINE_MAP = {
+  PROMO: 'warn',
+  CONTRATTO: 'info',
+  CONTRATTO_LISTINO: 'info',
+  CATEGORIA: 'success',
+}
+export function pricingOrigineSeverity(codice) {
+  return resolveSeverity(PRICING_ORIGINE_MAP, codice)
+}
+
 // --- Mappa stati contratto (v5) ---
 // DRAFT=grigio, ATTIVO=verde, SOSPESO=arancio, CESSATO=rosso
 export const STATO_CONTRATTO_MAP = {
