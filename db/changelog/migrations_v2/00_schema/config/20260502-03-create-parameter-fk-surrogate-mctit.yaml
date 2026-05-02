@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Tabella registry config.parameter_fk_surrogate.
+#
+# Why: framework parametrico per i guard "FK-surrogata" sui
+# parametri di config.parameters (e relativi config.parameter_overrides).
+# Sostituisce/generalizza il guard ad-hoc DEFAULT_TIPO_SOGGETTO_DETTAGLIO_*
+# (creato in 20260427-05) con un dispatcher unico che legge le regole da
+# questa tabella. Una riga = un pattern di code -> tabella/colonna
+# target sul cui valore il default_value (o overridden_value) deve
+# esistere.
+#
+# Pattern referenziato dalle linee-guida-sql.md (sezione "Riferimenti
+# esterni a tabelle di catalogo"): qualunque parametro che punti a una
+# tabella di catalogo dotata di una chiave naturale stabile DEVE
+# referenziarla per chiave naturale, non per id. Il framework valida il
+# vincolo via dispatcher centralizzato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260502-03-create-parameter-fk-surrogate-mctit.yaml
+
+  - changeSet:
+      id: 20260502-03-01-create-parameter-fk-surrogate
+      author: mctit
+      comment: >
+        Registry config.parameter_fk_surrogate per il framework FK-surrogata
+        sui parametri. Una riga per pattern di code -> tabella/colonna
+        target. Il dispatcher 20260502-05/06 legge questa tabella per
+        validare default_value (parameters) e overridden_value
+        (parameter_overrides).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM information_schema.schemata
+                   WHERE schema_name = 'config';
+            - not:
+                - tableExists:
+                    schemaName: config
+                    tableName: parameter_fk_surrogate
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: parameter_fk_surrogate
+            remarks: >-
+              Registry pattern -> target per il framework FK-surrogata
+              sui parametri. Una riga = un code (esatto o LIKE) il cui
+              default_value/overridden_value deve esistere in
+              <target_schema>.<target_table>.<target_column>.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_parameter_fk_surrogate
+                    nullable: false
+              - column:
+                  name: code_pattern
+                  type: varchar(200)
+                  remarks: >-
+                    Pattern del code di config.parameters da intercettare.
+                    Combinato con match_mode (EXACT = uguaglianza, LIKE =
+                    pattern SQL standard con %).
+                  constraints:
+                    nullable: false
+              - column:
+                  name: match_mode
+                  type: varchar(10)
+                  defaultValue: "EXACT"
+                  remarks: "EXACT (uguaglianza esatta) | LIKE (pattern SQL standard)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_schema
+                  type: varchar(63)
+                  remarks: "Schema della tabella di lookup (es. config)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_table
+                  type: varchar(63)
+                  remarks: "Tabella di lookup (es. utilities, tipi_soggetto_dettaglio)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_column
+                  type: varchar(63)
+                  defaultValue: "codice_interno"
+                  remarks: >-
+                    Colonna chiave naturale stabile della tabella di lookup.
+                    Default codice_interno (immutabile via lock_columns).
+                  constraints:
+                    nullable: false
+              - column:
+                  name: enabled
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: note
+                  type: text
+              - column:
+                  name: data_insert
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: parameter_fk_surrogate
+            columnNames: code_pattern
+            constraintName: uq_parameter_fk_surrogate_code_pattern
+
+        - sql:
+            sql: |
+              ALTER TABLE config.parameter_fk_surrogate
+                ADD CONSTRAINT chk_parameter_fk_surrogate_match_mode
+                CHECK (match_mode IN ('EXACT','LIKE'));
+
+              COMMENT ON TABLE config.parameter_fk_surrogate IS
+                  'Registry pattern -> tabella/colonna target per il framework '
+                  'FK-surrogata sui parametri. Letta dai dispatcher '
+                  'config.trgfn_parameters_fk_surrogate_dispatch e '
+                  'config.trgfn_parameter_overrides_fk_surrogate_dispatch.';
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: parameter_fk_surrogate

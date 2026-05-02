@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Vista diagnostica dbops.vw_parameter_fk_surrogate_dangling.
+#
+# Why: il dispatcher framework FK-surrogata blocca INSERT/UPDATE su
+# config.parameters e config.parameter_overrides quando il valore non
+# esiste nel target. Pero' non scatta su DELETE delle tabelle target:
+# se un'utility o un tipo_soggetto_dettaglio viene cancellato, le
+# righe parameters/parameter_overrides che lo referenziano restano
+# "appese" finche' non vengono aggiornate.
+#
+# Questa vista enumera tutte le righe in stato "dangling": parametri
+# (default + override) il cui valore corrente non esiste piu' nella
+# tabella di catalogo target. Utile per:
+#   - report DBA periodico
+#   - alert su Grafana / oncall
+#   - check post-deploy / pre-rilascio
+#
+# Output non vuoto = situazione da risolvere manualmente (UPDATE del
+# parametro/override verso un valore valido o ricreazione della riga
+# di catalogo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260502-09-create-vw-parameter-fk-surrogate-dangling-mctit.yaml
+
+  - changeSet:
+      id: 20260502-09-create-vw-parameter-fk-surrogate-dangling
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Vista dbops.vw_parameter_fk_surrogate_dangling. Enumera
+        parametri (default + override) il cui valore corrente non
+        esiste piu' nel target del registry. Diagnostico, non blocca.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameter_fk_surrogate
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+            - tableExists:
+                schemaName: config
+                tableName: parameter_overrides
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_parameter_fk_surrogate';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_parameter_fk_surrogate_dangling;
+
+              CREATE VIEW dbops.vw_parameter_fk_surrogate_dangling AS
+              -- Default su config.parameters
+              SELECT
+                  'parameter'::text                 AS source,
+                  p.id                              AS source_id,
+                  p.code                            AS code,
+                  p.default_value                   AS value,
+                  pfs.target_schema || '.' ||
+                  pfs.target_table  || '.' ||
+                  pfs.target_column                 AS target,
+                  pfs.code_pattern                  AS matched_pattern,
+                  pfs.match_mode                    AS matched_mode
+                FROM config.parameters p
+                JOIN config.parameter_fk_surrogate pfs
+                  ON pfs.enabled
+                 AND (
+                       (pfs.match_mode = 'EXACT' AND pfs.code_pattern = p.code)
+                    OR (pfs.match_mode = 'LIKE'  AND p.code LIKE pfs.code_pattern)
+                 )
+               WHERE p.default_value IS NOT NULL
+                 AND NOT script.fn_check_parameter_fk_surrogate(p.code, p.default_value)
+
+              UNION ALL
+
+              -- Override su config.parameter_overrides
+              SELECT
+                  'parameter_override'::text        AS source,
+                  po.id                             AS source_id,
+                  p.code                            AS code,
+                  po.overridden_value               AS value,
+                  pfs.target_schema || '.' ||
+                  pfs.target_table  || '.' ||
+                  pfs.target_column                 AS target,
+                  pfs.code_pattern                  AS matched_pattern,
+                  pfs.match_mode                    AS matched_mode
+                FROM config.parameter_overrides po
+                JOIN config.parameters p
+                  ON p.id = po.parameter_id
+                JOIN config.parameter_fk_surrogate pfs
+                  ON pfs.enabled
+                 AND (
+                       (pfs.match_mode = 'EXACT' AND pfs.code_pattern = p.code)
+                    OR (pfs.match_mode = 'LIKE'  AND p.code LIKE pfs.code_pattern)
+                 )
+               WHERE po.overridden_value IS NOT NULL
+                 AND NOT script.fn_check_parameter_fk_surrogate(p.code, po.overridden_value);
+
+              COMMENT ON VIEW dbops.vw_parameter_fk_surrogate_dangling IS
+                  'Diagnostica: parametri (default + override) il cui '
+                  'valore non esiste nel target del registry FK-surrogata. '
+                  'Output non vuoto = righe da risolvere manualmente. '
+                  'Sorgente: config.parameters + config.parameter_overrides.';
+      rollback:
+        - sql:
+            sql: DROP VIEW IF EXISTS dbops.vw_parameter_fk_surrogate_dangling;

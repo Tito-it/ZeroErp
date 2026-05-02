@@ -1,0 +1,170 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Dispatcher generico FK-surrogata su config.parameters.
+#
+# Why: sostituisce il guard ad-hoc trgfn_parameters_guard_default_tipo_soggetto_dettaglio
+# (creato in 20260427-05, droppato in 20260502-07) con un dispatcher
+# unico che legge le regole dal registry config.parameter_fk_surrogate.
+# Aggiungere un nuovo pattern non richiede nuovo codice DB: basta una
+# riga seed in 80_data.
+#
+# Niente clausola WHEN: il filtro dei code interessati e' fatto
+# dinamicamente dal registry. Il check su default_value NULL e' uno
+# short-circuit nella fn riusabile (script.fn_check_parameter_fk_surrogate).
+# Per code non in registry, fn_check ritorna true (passa).
+#
+# Codice errore E_PARAMETER_DEFAULT_VALUE_INVALID (template 3 %s).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260502-05-create-trgfn-parameters-fk-surrogate-dispatch-mctit.yaml
+
+  - changeSet:
+      id: 20260502-05-01-create-trgfn-parameters-fk-surrogate-dispatch
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Funzione config.trgfn_parameters_fk_surrogate_dispatch. Dispatcher
+        che usa script.fn_check_parameter_fk_surrogate per validare
+        NEW.default_value contro il target del registry. Raise
+        E_PARAMETER_DEFAULT_VALUE_INVALID con context JSONB completo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+            - tableExists:
+                schemaName: config
+                tableName: parameter_fk_surrogate
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_parameter_fk_surrogate';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_parameters_fk_surrogate_dispatch()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dispatcher generico per il framework FK-surrogata su
+              -- config.parameters. Per ogni INSERT/UPDATE OF code, default_value
+              -- delega a script.fn_check_parameter_fk_surrogate (lookup
+              -- registry config.parameter_fk_surrogate). Se il check fallisce,
+              -- raise E_PARAMETER_DEFAULT_VALUE_INVALID.
+              -- Per code non presenti nel registry, il check ritorna true e
+              -- il trigger e' di fatto no-op.
+              DECLARE
+                  v_target_schema text;
+                  v_target_table  text;
+                  v_target_column text;
+                  v_target_label  text;
+              BEGIN
+                  IF NEW.default_value IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF script.fn_check_parameter_fk_surrogate(NEW.code, NEW.default_value) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Lookup target per messaggio errore (info diagnostica).
+                  SELECT pfs.target_schema, pfs.target_table, pfs.target_column
+                    INTO v_target_schema, v_target_table, v_target_column
+                    FROM config.parameter_fk_surrogate pfs
+                   WHERE pfs.enabled
+                     AND (
+                            (pfs.match_mode = 'EXACT' AND pfs.code_pattern = NEW.code)
+                         OR (pfs.match_mode = 'LIKE'  AND NEW.code LIKE pfs.code_pattern)
+                     )
+                   ORDER BY (pfs.match_mode = 'EXACT') DESC, length(pfs.code_pattern) DESC
+                   LIMIT 1;
+
+                  v_target_label := format('%I.%I.%I',
+                      v_target_schema, v_target_table, v_target_column);
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME::text,
+                      'E_PARAMETER_DEFAULT_VALUE_INVALID',
+                      jsonb_build_object(
+                          'parameter_id',  NEW.id,
+                          'code',          NEW.code,
+                          'default_value', NEW.default_value,
+                          'target',        v_target_label
+                      ),
+                      NEW.tx_id,
+                      NEW.code,
+                      NEW.default_value,
+                      v_target_label
+                  );
+                  -- Unreachable: fn_log_and_raise_error solleva.
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_parameters_fk_surrogate_dispatch() IS
+                  'Dispatcher framework FK-surrogata su config.parameters. '
+                  'Legge regole da config.parameter_fk_surrogate via '
+                  'script.fn_check_parameter_fk_surrogate. Raise '
+                  'E_PARAMETER_DEFAULT_VALUE_INVALID. Sostituisce trgfn_parameters_'
+                  'guard_default_tipo_soggetto_dettaglio (droppato 20260502-07).';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS config.trgfn_parameters_fk_surrogate_dispatch();
+
+  - changeSet:
+      id: 20260502-05-02-create-trg-parameters-a10-fk-surrogate-dispatch
+      author: mctit
+      comment: >
+        Trigger BEFORE INSERT OR UPDATE OF code, default_value su
+        config.parameters, fase _a10_ (guard). Niente clausola WHEN:
+        il filtro e' dinamico via registry.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config'
+                 AND p.proname = 'trgfn_parameters_fk_surrogate_dispatch';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameters_a10_fk_surrogate_dispatch_ins_upd
+                  ON config.parameters;
+
+              CREATE TRIGGER trg_parameters_a10_fk_surrogate_dispatch_ins_upd
+                  BEFORE INSERT OR UPDATE OF code, default_value
+                  ON config.parameters
+                  FOR EACH ROW
+                  EXECUTE FUNCTION config.trgfn_parameters_fk_surrogate_dispatch();
+
+              COMMENT ON TRIGGER trg_parameters_a10_fk_surrogate_dispatch_ins_upd
+                  ON config.parameters
+                  IS 'Dispatcher framework FK-surrogata. Filtro dinamico via '
+                     'config.parameter_fk_surrogate (no clausola WHEN).';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameters_a10_fk_surrogate_dispatch_ins_upd
+                  ON config.parameters;

@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Dispatcher generico FK-surrogata su config.parameter_overrides.
+#
+# Why: chiude la lacuna nota del guard ad-hoc su tipo_soggetto_dettaglio
+# che non scattava sugli override (vedi manuale precedente §"Override per
+# emittente / user / group"). I valori override DEVONO rispettare lo stesso
+# vincolo dei default. Il dispatcher fa lookup del code via parameter_id
+# -> parameters.code, poi delega a script.fn_check_parameter_fk_surrogate.
+#
+# Codice errore E_PARAMETER_OVERRIDE_VALUE_INVALID (template 3 %s).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260502-06-create-trgfn-parameter-overrides-fk-surrogate-dispatch-mctit.yaml
+
+  - changeSet:
+      id: 20260502-06-01-create-trgfn-parameter-overrides-fk-surrogate-dispatch
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Funzione config.trgfn_parameter_overrides_fk_surrogate_dispatch.
+        Lookup code via parameter_id, delega a
+        script.fn_check_parameter_fk_surrogate. Raise
+        E_PARAMETER_OVERRIDE_VALUE_INVALID.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameter_overrides
+            - tableExists:
+                schemaName: config
+                tableName: parameter_fk_surrogate
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_parameter_fk_surrogate';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_parameter_overrides_fk_surrogate_dispatch()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dispatcher framework FK-surrogata su
+              -- config.parameter_overrides. Per ogni INSERT/UPDATE OF
+              -- parameter_id, overridden_value, lookup il code padre dal
+              -- parametro e delega a script.fn_check_parameter_fk_surrogate.
+              -- Stessa logica del dispatcher su parameters: code non in
+              -- registry passa, valore NULL passa. Raise solo se pattern
+              -- matcha E valore non esiste in target.
+              DECLARE
+                  v_code           text;
+                  v_target_schema  text;
+                  v_target_table   text;
+                  v_target_column  text;
+                  v_target_label   text;
+              BEGIN
+                  IF NEW.overridden_value IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Lookup code dal parametro padre. La FK
+                  -- fk_overrides_parameter garantisce parameter_id
+                  -- esistente; in transazione il SELECT vede gia' il
+                  -- record padre.
+                  SELECT p.code INTO v_code
+                    FROM config.parameters p
+                   WHERE p.id = NEW.parameter_id;
+
+                  IF v_code IS NULL THEN
+                      -- Caso difensivo: parameter_id non risolve. La FK
+                      -- gestira' l'errore strutturale; qui passiamo.
+                      RETURN NEW;
+                  END IF;
+
+                  IF script.fn_check_parameter_fk_surrogate(v_code, NEW.overridden_value) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT pfs.target_schema, pfs.target_table, pfs.target_column
+                    INTO v_target_schema, v_target_table, v_target_column
+                    FROM config.parameter_fk_surrogate pfs
+                   WHERE pfs.enabled
+                     AND (
+                            (pfs.match_mode = 'EXACT' AND pfs.code_pattern = v_code)
+                         OR (pfs.match_mode = 'LIKE'  AND v_code LIKE pfs.code_pattern)
+                     )
+                   ORDER BY (pfs.match_mode = 'EXACT') DESC, length(pfs.code_pattern) DESC
+                   LIMIT 1;
+
+                  v_target_label := format('%I.%I.%I',
+                      v_target_schema, v_target_table, v_target_column);
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME::text,
+                      'E_PARAMETER_OVERRIDE_VALUE_INVALID',
+                      jsonb_build_object(
+                          'override_id',      NEW.id,
+                          'parameter_id',     NEW.parameter_id,
+                          'code',             v_code,
+                          'overridden_value', NEW.overridden_value,
+                          'target',           v_target_label
+                      ),
+                      NEW.tx_id,
+                      v_code,
+                      NEW.overridden_value,
+                      v_target_label
+                  );
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_parameter_overrides_fk_surrogate_dispatch() IS
+                  'Dispatcher framework FK-surrogata su config.parameter_overrides. '
+                  'Lookup code via parameter_id e delega a '
+                  'script.fn_check_parameter_fk_surrogate. Raise '
+                  'E_PARAMETER_OVERRIDE_VALUE_INVALID. Chiude la lacuna del '
+                  'guard ad-hoc precedente che non scattava sugli override.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS config.trgfn_parameter_overrides_fk_surrogate_dispatch();
+
+  - changeSet:
+      id: 20260502-06-02-create-trg-parameter-overrides-a10-fk-surrogate-dispatch
+      author: mctit
+      comment: >
+        Trigger BEFORE INSERT OR UPDATE OF parameter_id, overridden_value
+        su config.parameter_overrides, fase _a10_ (guard).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config'
+                 AND p.proname = 'trgfn_parameter_overrides_fk_surrogate_dispatch';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameter_overrides_a10_fk_surrogate_dispatch_ins_upd
+                  ON config.parameter_overrides;
+
+              CREATE TRIGGER trg_parameter_overrides_a10_fk_surrogate_dispatch_ins_upd
+                  BEFORE INSERT OR UPDATE OF parameter_id, overridden_value
+                  ON config.parameter_overrides
+                  FOR EACH ROW
+                  EXECUTE FUNCTION config.trgfn_parameter_overrides_fk_surrogate_dispatch();
+
+              COMMENT ON TRIGGER trg_parameter_overrides_a10_fk_surrogate_dispatch_ins_upd
+                  ON config.parameter_overrides
+                  IS 'Dispatcher framework FK-surrogata sugli override. Filtro '
+                     'dinamico via config.parameter_fk_surrogate.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameter_overrides_a10_fk_surrogate_dispatch_ins_upd
+                  ON config.parameter_overrides;
