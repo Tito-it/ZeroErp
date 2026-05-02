@@ -343,6 +343,26 @@ class PreventiviRepository:
     #  trg_preventivi_righe_z90_ricalcola_totali_ins_upd_dlt
     # ══════════════════════════════════════════════════════════
 
+    # Scopo: Restituisce il factor_to_base della UoM operativa di un articolo.
+    #        Usato dal service per derivare qta_operativa = quantita * factor
+    #        quando il payload FE non passa esplicitamente i due campi
+    #        (UX riga preventivo: l'operatore inserisce solo `quantita`).
+    #        None se l'accoppiata articolo+UoM non e' presente o non attiva.
+    def get_articolo_uom_factor(self, articolo_id: str, uom_id: int) -> Any:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT auo.factor_to_base
+                  FROM catalogo.articoli_uom_operativa auo
+                 WHERE auo.articolo_id = %s
+                   AND auo.uom_id = %s
+                   AND auo.attivo IS TRUE
+                """,
+                [articolo_id, uom_id],
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
     # Scopo: Inserisce una nuova riga preventivo. I campi
     #        `stato_approvazione_prezzo` + `pratica_approvazione_prezzo_id`
     #        servono al workflow L3 (Sprint E listini v5 §14.6): default NULL

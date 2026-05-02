@@ -253,8 +253,11 @@ class LookupRepository:
         # Base: utility ammessa per EF. LEFT JOIN su emittenti_fiscali_utilities
         # perche' le utility senza override usano i default di sistema e devono
         # comunque apparire nella combo (pattern slot/override).
+        # codice_interno e' la chiave naturale stabile (UNIQUE, immutabile via
+        # script.trgfn_lock_columns): esposta per consentire al FE di risolvere
+        # il default DEFAULT_UTILITY (che stocca codice_interno) all'id locale.
         sql = """
-            SELECT u.id, u.codice, u.descrizione
+            SELECT u.id, u.codice, u.codice_interno, u.descrizione
               FROM config.utilities u
               -- ammessa per il ruolo EF (emittente fiscale)
               JOIN config.utilities_tipi_ruolo utr_ef

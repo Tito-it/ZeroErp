@@ -13,6 +13,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
+import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { listUtilitiesPerBillingAccount, listSoggettoIndirizzi } from '../api/anagrafiche'
 import { lookupUtilitiesPerEmittente } from '../../core/apiCore'
 import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
@@ -48,7 +49,14 @@ const indirizzo = useIndirizzoSoggettoForm()
 // Defer: il load parte quando il drawer si apre (in watch(visible)), non
 // al mount del parent. Evita fetch premature che causano flash di UI
 // quando il drawer viene renderizzato ma non ancora aperto.
-const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults(['DEFAULT_IVA_ID', 'DEFAULT_UTILITY_ID'])
+const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults(['DEFAULT_IVA_ID'])
+
+// Default utility globale: il parametro DEFAULT_UTILITY stocca un codice_interno
+// (framework FK-surrogata, DB 2026-05-02). Composable risolve a id locale,
+// filtrato per ruolo CL (intersezione ruolo + emittente).
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId({
+  ruolo: TIPO_RUOLO.CLIENTE,
+})
 
 // Lookup utility per creazione: filtrate per emittente dell'operatore + ruolo CL.
 // In modalita' edit usiamo il nuovo endpoint BA-driven (vedi sotto).
@@ -225,6 +233,8 @@ watch(() => props.visible, async (val) => {
 
   // Lazy load dei lookup: partono solo all'apertura effettiva del drawer,
   // non al mount del parent. Cache interna (loaded flag) evita rifetch.
+  // loadDefaults() fire-and-forget; loadUtilityDefault e' awaitato sotto
+  // (branch CREATE) per garantire utility_id risolto al primo render.
   loadDefaults()
   if (!isEdit.value) {
     utilities.load()
@@ -260,15 +270,16 @@ watch(() => props.visible, async (val) => {
     populateFormFromDetail(d)
   } else {
     resetForm()
-    // Attendiamo i paramDefaults cosi' IVA/Utility default sono gia'
-    // presenti al primo render → niente flash da null a valore.
-    await loadDefaults()
+    // Attendiamo paramDefaults + utilityDefault cosi' IVA/Utility default sono
+    // gia' presenti al primo render → niente flash da null a valore.
+    // utilityDefault risolve codice_interno -> id via lookup utilities-per-emittente.
+    await Promise.all([loadDefaults(), loadUtilityDefault()])
     if (v !== fgVersion) return
     if (paramDefaults.value.DEFAULT_IVA_ID) {
       form.value.iva_id = Number(paramDefaults.value.DEFAULT_IVA_ID)
     }
-    if (paramDefaults.value.DEFAULT_UTILITY_ID) {
-      form.value.utility_id = Number(paramDefaults.value.DEFAULT_UTILITY_ID)
+    if (utilityDefaultId.value) {
+      form.value.utility_id = utilityDefaultId.value
     }
     indirizzo.loadMatriceRuolo(TIPO_RUOLO.CLIENTE)
   }

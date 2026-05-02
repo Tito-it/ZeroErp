@@ -7,7 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
+import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useAuthStore } from '../../stores/auth'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -26,10 +26,10 @@ const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const auth = useAuthStore()
 
-// Default utility globale (config.parameters), stesso pattern ClienteDrawer/PreventiviDrawer.
-const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefaults([
-  'DEFAULT_UTILITY_ID',
-])
+// Default utility globale: il parametro DEFAULT_UTILITY stocca un codice_interno
+// (framework FK-surrogata, DB 2026-05-02). Il composable risolve a id locale
+// via lookup utilities-per-emittente.
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 
 const props = defineProps({
   visible: Boolean,
@@ -52,11 +52,10 @@ function onAfterShow() { contentReady.value = true }
 const isLoadingDetail = ref(false)
 
 function defaultForm() {
-  const p = paramDefaults.value
   return {
     codice: '',
     descrizione: '',
-    utility_id: p.DEFAULT_UTILITY_ID ? Number(p.DEFAULT_UTILITY_ID) : null,
+    utility_id: utilityDefaultId.value,
     tipologia_id: null,
     attivo: true,
   }
@@ -90,9 +89,9 @@ async function loadDetail() {
 
 watch(() => props.visible, async (v) => {
   if (!v) { contentReady.value = false; return }
-  // Carica i parameters (cache modulo) prima di resetForm: defaultForm()
-  // li legge da paramDefaults.value per pre-popolare utility_id.
-  await loadParamDefaults()
+  // Carica il default utility (parameter + lookup) prima di resetForm:
+  // defaultForm() legge utilityDefaultId.value gia' risolto a id locale.
+  await loadUtilityDefault()
   if (isEdit.value) {
     loadDetail()
   } else {

@@ -23,12 +23,23 @@ export function formatSize(bytes) {
  * @param {string} [opts.currency='EUR']
  * @param {string} [opts.locale='it-IT']
  * @param {string} [opts.placeholder=''] - cosa restituire per null/undefined
+ * @param {number} [opts.minimumFractionDigits] - override decimali min (default locale: 2 per EUR)
+ * @param {number} [opts.maximumFractionDigits] - override decimali max (default locale: 2 per EUR)
  * @returns {string}
  */
 export function formatCurrency(value, opts = {}) {
-  const { currency = 'EUR', locale = 'it-IT', placeholder = '' } = opts
+  const {
+    currency = 'EUR',
+    locale = 'it-IT',
+    placeholder = '',
+    minimumFractionDigits,
+    maximumFractionDigits,
+  } = opts
   if (value == null) return placeholder
-  return Number(value).toLocaleString(locale, { style: 'currency', currency })
+  const formatOpts = { style: 'currency', currency }
+  if (minimumFractionDigits != null) formatOpts.minimumFractionDigits = minimumFractionDigits
+  if (maximumFractionDigits != null) formatOpts.maximumFractionDigits = maximumFractionDigits
+  return Number(value).toLocaleString(locale, formatOpts)
 }
 
 /**

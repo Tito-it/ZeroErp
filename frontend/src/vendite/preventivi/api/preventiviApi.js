@@ -59,6 +59,15 @@ export function deleteRiga(preventivoId, rigaId) {
   return api.delete(`${BASE}/${preventivoId}/righe/${rigaId}/`)
 }
 
+// Suggerisce il prezzo riga via pricing resolver v5. Il BE deriva BA, utility
+// e data riferimento dal preventivo; al FE basta passare articolo_id + uom_id.
+// Risposta: { prezzo_finale, prezzo_base_snapshot, origine, listino_id,
+//   contratto_id, promo_id, tipo_variazione_applicata, valore_variazione_applicata }.
+// Lettura pura, senza side-effect.
+export function suggerisciPrezzoRiga(preventivoId, payload) {
+  return api.post(`${BASE}/${preventivoId}/righe/suggerisci-prezzo/`, payload)
+}
+
 // --- Indirizzi ---
 
 export function listIndirizzi(preventivoId) {

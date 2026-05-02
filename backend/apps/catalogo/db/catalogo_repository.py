@@ -345,7 +345,11 @@ class CatalogoRepository:
                     a.uom_codice,
                     a.uom_descrizione,
                     a.is_composito,
-                    a.attivo
+                    a.attivo,
+                    a.iva_id,
+                    a.iva_codice,
+                    a.iva_descrizione,
+                    a.iva_aliquota_iva
                 FROM catalogo.vw_articoli_dettaglio a
                 {where_clause}
                 ORDER BY a.codice ASC

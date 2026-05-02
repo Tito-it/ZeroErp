@@ -16,6 +16,7 @@ import { formatCurrency, formatNumber } from '../../../core/utils/format'
 import PreventiviRigaForm from './PreventiviRigaForm.vue'
 import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
 import NewButton from '../../../core/components/NewButton.vue'
+import ReloadButton from '../../../core/components/ReloadButton.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
@@ -30,7 +31,13 @@ const props = defineProps({
   isModificabile: { type: Boolean, default: true }
 })
 
+// Emette `changed` dopo ogni create/update/delete riga: il drawer parent
+// usa l'evento per ricaricare il detail (totale_imponibile/iva/documento
+// sono aggregati DB e cambiano a ogni mutazione delle righe).
+const emit = defineEmits(['changed'])
+
 const righe = ref([])
+const loadingRighe = ref(false)
 // formMode: null (nessun form attivo), 'create', 'edit'. Pattern master-detail
 // inline (frontend-standards): governa visibilita' e comportamento del form
 // sottostante senza apertura di Dialog annidato.
@@ -43,7 +50,12 @@ const selezione = ref(null)
 // Scopo: Carica righe dal backend (endpoint /righe/ autonomo, Fase 3.F6).
 async function loadRighe() {
   if (!props.preventivoId) return
-  righe.value = await store.loadRighe(props.preventivoId)
+  loadingRighe.value = true
+  try {
+    righe.value = await store.loadRighe(props.preventivoId)
+  } finally {
+    loadingRighe.value = false
+  }
 }
 
 watch(() => props.preventivoId, loadRighe, { immediate: true })
@@ -69,23 +81,27 @@ function chiudiForm() {
   selezione.value = null
 }
 
-// Scopo: Salva riga (crea o aggiorna): chiude form + ricarica lista.
+// Scopo: Salva riga (crea o aggiorna): chiude form + ricarica lista +
+//        notifica il parent (totale_* aggregato lato DB ricalcolato).
 async function onRigaSaved() {
   chiudiForm()
   await loadRighe()
+  emit('changed')
 }
 
-// Scopo: Elimina riga con conferma. Se sto editando proprio questa riga, chiude il form.
+// Scopo: Elimina riga con conferma. Se sto editando proprio questa riga,
+//        chiude il form. Notifica il parent post-reload riga.
 function onDeleteRiga(riga) {
   confirmAction({
     message: t('preventivi.conferma_elimina_riga'),
     accept: async () => {
-      await execute(
+      const result = await execute(
         () => store.eliminaRiga(props.preventivoId, riga.id),
         { successMessage: t('preventivi.riga_eliminata') }
       )
       if (rigaSelezionata.value?.id === riga.id) chiudiForm()
       await loadRighe()
+      if (result !== null) emit('changed')
     }
   })
 }
@@ -133,27 +149,38 @@ defineExpose({ loadRighe })
 
 <template>
   <div>
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-      <h4 style="margin: 0;">{{ t('preventivi.section_righe') }}</h4>
-      <NewButton v-if="isModificabile" :tooltip="t('preventivi.aggiungi_riga')" @click="onNuovaRiga" />
+    <div class="app-page-toolbar">
+      <div class="app-page-filters">
+        <h4 style="margin: 0;">{{ t('preventivi.section_righe') }}</h4>
+      </div>
+      <div class="app-page-actions">
+        <ReloadButton @click="loadRighe" />
+        <NewButton v-if="isModificabile" :tooltip="t('preventivi.aggiungi_riga')" @click="onNuovaRiga" />
+      </div>
     </div>
 
     <DataTable :value="righe" striped-rows size="small" class="app-datatable"
       data-key="id"
+      :loading="loadingRighe"
       :row-hover="isModificabile"
       :selection-mode="isModificabile ? 'single' : null"
       v-model:selection="selezione"
+      paginator
+      :rows="10"
+      :rows-per-page-options="[10, 25, 50]"
+      paginator-position="top"
+      removable-sort
       @row-click="onRowClick">
-      <Column field="articolo_codice" :header="t('preventivi.riga_articolo')" style="min-width: 140px;" />
-      <Column field="descrizione" :header="t('preventivi.riga_descrizione')" style="min-width: 180px;" />
-      <Column field="quantita" :header="t('preventivi.riga_quantita')" style="width: 90px;">
+      <Column field="articolo_codice" :header="t('preventivi.riga_articolo')" sortable style="min-width: 140px;" />
+      <Column field="descrizione" :header="t('preventivi.riga_descrizione')" sortable style="min-width: 180px;" />
+      <Column field="quantita" :header="t('preventivi.riga_quantita')" sortable style="width: 90px;">
         <template #body="{ data }">{{ formatNumber(data.quantita) }}</template>
       </Column>
       <Column field="uom_codice" :header="t('preventivi.riga_uom')" style="width: 70px;" />
-      <Column field="prezzo_unitario" :header="t('preventivi.riga_prezzo')" style="width: 130px;">
+      <Column field="prezzo_unitario" :header="t('preventivi.riga_prezzo')" sortable style="width: 130px;">
         <template #body="{ data }">
           <div style="display: flex; flex-direction: column; gap: 0.15rem; align-items: flex-start;">
-            <span>{{ formatCurrency(data.prezzo_unitario) }}</span>
+            <span>{{ formatCurrency(data.prezzo_unitario, { minimumFractionDigits: 6, maximumFractionDigits: 6 }) }}</span>
             <Tag
               v-if="data.stato_approvazione_prezzo"
               :severity="approvazioneSeverity(data.stato_approvazione_prezzo)"
@@ -165,13 +192,15 @@ defineExpose({ loadRighe })
           </div>
         </template>
       </Column>
-      <Column field="sconto_percentuale" :header="t('preventivi.riga_sconto')" style="width: 80px;">
+      <Column field="sconto_percentuale" :header="t('preventivi.riga_sconto')" sortable style="width: 80px;">
         <template #body="{ data }">{{ data.sconto_percentuale ? `${data.sconto_percentuale}%` : '' }}</template>
       </Column>
-      <Column field="importo_riga" :header="t('preventivi.riga_importo')" style="width: 120px;">
+      <Column field="importo_riga" :header="t('preventivi.riga_importo')" sortable style="width: 120px;">
         <template #body="{ data }">{{ formatCurrency(data.importo_riga) }}</template>
       </Column>
-      <Column field="iva_descrizione" :header="t('preventivi.riga_iva')" style="width: 80px;" />
+      <Column field="iva_aliquota" :header="t('preventivi.riga_iva')" sortable style="width: 80px;">
+        <template #body="{ data }">{{ data.iva_aliquota != null ? `${data.iva_aliquota}%` : (data.iva_codice || '') }}</template>
+      </Column>
       <Column v-if="isModificabile" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
           <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
