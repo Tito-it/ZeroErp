@@ -10,7 +10,7 @@
 # con commesse e pratiche.
 
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
@@ -480,6 +480,10 @@ def gestisci_riga(
         function_name=f"{_FN}.gestisci_riga",
     )
 
+    # Validazione vincoli economici (prezzo >= 0, quantita > 0) prima del
+    # resolver: anticipa i CHECK DB con messaggio parlante.
+    _validate_riga_economic(payload, function_name=f"{_FN}.gestisci_riga")
+
     uom_id = payload.get("uom_operativa_id")
     payload_prezzo = payload.get("prezzo_unitario")
     richiesta_approvazione = bool(payload.get("richiesta_approvazione", False))
@@ -515,14 +519,29 @@ def gestisci_riga(
         )
         stato_approvazione = "PENDING"
 
+    # Derivazione qta_operativa + factor_to_base: il FE invia solo `quantita`
+    # (UX semplice: una sola quantita' per riga). Il DB richiede pero'
+    # qta_operativa NOT NULL (guard E_QTA_MISSING) come quantita' nell'UoM
+    # base, derivata dalla UoM operativa scelta. Lookup factor_to_base su
+    # catalogo.articoli_uom_operativa; default 1 se la UoM non e' mappata
+    # (caso edge: articolo con sola UoM base).
+    qta_operativa, factor_to_base = _derive_qta_operativa(
+        repo=repo,
+        articolo_id=articolo_id,
+        uom_id=uom_id,
+        quantita=payload.get("quantita"),
+        qta_operativa_payload=payload.get("qta_operativa"),
+        factor_to_base_payload=payload.get("factor_to_base"),
+    )
+
     result = repo.create_riga(
         preventivo_id=preventivo_id,
         articolo_id=articolo_id,
         descrizione=payload.get("descrizione"),
         quantita=payload.get("quantita"),
-        qta_operativa=payload.get("qta_operativa"),
+        qta_operativa=qta_operativa,
         uom_operativa_id=uom_id,
-        factor_to_base=payload.get("factor_to_base"),
+        factor_to_base=factor_to_base,
         prezzo_unitario=prezzo_finale,
         sconto_percentuale=payload.get("sconto_percentuale"),
         iva_id=payload.get("iva_id"),
@@ -587,6 +606,11 @@ def aggiorna_riga(
         function_name=f"{_FN}.aggiorna_riga",
     )
 
+    # Validazione vincoli economici: anticipa i CHECK DB con messaggio
+    # parlante. In update i campi possono essere assenti: il helper li
+    # ignora se non presenti nel payload.
+    _validate_riga_economic(payload, function_name=f"{_FN}.aggiorna_riga")
+
     richiesta_approvazione = bool(payload.get("richiesta_approvazione", False))
     update_fields: dict[str, Any] = {}
     for key in (
@@ -643,6 +667,40 @@ def aggiorna_riga(
             )
             update_fields["stato_approvazione_prezzo"] = "PENDING"
             update_fields["pratica_approvazione_prezzo_id"] = pratica_id_l3
+
+    # Coerenza qta_operativa quando l'utente cambia `quantita` in edit
+    # senza mandare qta_operativa: ricalcolo dalla UoM operativa della
+    # riga esistente (o nuova, se l'edit la sta cambiando insieme).
+    # Stesso pattern di gestisci_riga (helper _derive_qta_operativa).
+    if (
+        "quantita" in update_fields
+        and "qta_operativa" not in update_fields
+    ):
+        # Riga esistente serve come fallback per articolo + UoM se il payload
+        # non li espone (caso normale: edit modifica solo prezzo/quantita').
+        if "articolo_id" not in update_fields or "uom_operativa_id" not in update_fields:
+            righe = repo.list_righe(preventivo_id)
+            riga_esistente = next((r for r in righe if r.get("id") == riga_id), None)
+        else:
+            riga_esistente = None
+        articolo_id_eff = update_fields.get("articolo_id") or (
+            riga_esistente.get("articolo_id") if riga_esistente else None
+        )
+        uom_id_eff = update_fields.get("uom_operativa_id") or (
+            riga_esistente.get("uom_operativa_id") if riga_esistente else None
+        )
+        qta_op, factor_eff = _derive_qta_operativa(
+            repo=repo,
+            articolo_id=articolo_id_eff,
+            uom_id=uom_id_eff,
+            quantita=update_fields["quantita"],
+            qta_operativa_payload=None,
+            factor_to_base_payload=update_fields.get("factor_to_base"),
+        )
+        if qta_op is not None:
+            update_fields["qta_operativa"] = qta_op
+        if "factor_to_base" not in update_fields and factor_eff is not None:
+            update_fields["factor_to_base"] = factor_eff
 
     if update_fields:
         updated = repo.update_riga(riga_id, **update_fields)
@@ -712,6 +770,92 @@ def _orchestrate_l3_request(
     return pratica_id
 
 
+# Scopo: Deriva qta_operativa + factor_to_base dalla UoM operativa selezionata
+#        quando il payload FE non li espone. Pattern: il FE invia solo `quantita`
+#        nell'UoM scelta dall'operatore; il BE consulta il fattore di conversione
+#        UoM-operativa -> UoM-base e calcola la quantita' nell'UoM base.
+#        Output: tupla (qta_operativa, factor_to_base) come stringhe Decimal-safe.
+#        Pass-through dei valori payload se gia' valorizzati (rispetto override).
+def _derive_qta_operativa(
+    *,
+    repo: "PreventiviRepository",
+    articolo_id: Any,
+    uom_id: Any,
+    quantita: Any,
+    qta_operativa_payload: Any,
+    factor_to_base_payload: Any,
+) -> tuple[Any, Any]:
+    from decimal import Decimal
+
+    # Pass-through: se il payload li espone, niente lookup.
+    if qta_operativa_payload is not None and factor_to_base_payload is not None:
+        return qta_operativa_payload, factor_to_base_payload
+
+    # Senza articolo+uom o senza quantita non possiamo derivare nulla:
+    # ritorna i valori payload (None) e lascia che la guard DB sollevi
+    # un errore parlante (E_QTA_MISSING / E_UOM_MISSING).
+    if not articolo_id or not uom_id or quantita is None:
+        return qta_operativa_payload, factor_to_base_payload
+
+    factor_db = repo.get_articolo_uom_factor(str(articolo_id), int(uom_id))
+    # Articolo senza UoM operativa mappata (edge case): assumiamo factor=1
+    # cosi' qta_operativa = quantita. La guard DB sull'esistenza UoM e' altrove.
+    factor = Decimal(str(factor_db)) if factor_db is not None else Decimal("1")
+    factor_str = factor_to_base_payload if factor_to_base_payload is not None else str(factor)
+    if qta_operativa_payload is not None:
+        return qta_operativa_payload, factor_str
+    qta_op = Decimal(str(quantita)) * factor
+    return str(qta_op), factor_str
+
+
+# Scopo: Validazione lato BE dei vincoli economici di una riga preventivo
+#        prima del resolver/INSERT/UPDATE. Anticipa i CHECK constraint DB
+#        (`chk_prevrighe_quantita_prezzo`: prezzo >= 0 AND quantita > 0)
+#        per restituire un errore parlante invece dell'E_DATABASE generico
+#        che il middleware mostrerebbe sul violation Postgres.
+#        Chiamata sia da gestisci_riga (create) sia da aggiorna_riga (update).
+#        Salta i campi assenti dal payload: in update non tutti i campi
+#        passano sempre.
+def _validate_riga_economic(payload: dict[str, Any], *, function_name: str) -> None:
+    if "prezzo_unitario" in payload and payload["prezzo_unitario"] is not None:
+        try:
+            prezzo = Decimal(str(payload["prezzo_unitario"]))
+        except Exception:
+            ErrorManager.raise_error(
+                code="E_PREV_VALIDAZIONE",
+                message="Prezzo unitario non numerico.",
+                detail=f"prezzo_unitario={payload['prezzo_unitario']!r}",
+                function_name=function_name,
+            )
+            raise AssertionError("unreachable")  # pragma: no cover
+        ErrorManager.require(
+            prezzo >= 0,
+            code="E_PREV_VALIDAZIONE",
+            message="Il prezzo unitario non puo' essere negativo.",
+            detail=f"prezzo_unitario={payload['prezzo_unitario']!r}",
+            function_name=function_name,
+        )
+
+    if "quantita" in payload and payload["quantita"] is not None:
+        try:
+            quantita = Decimal(str(payload["quantita"]))
+        except Exception:
+            ErrorManager.raise_error(
+                code="E_PREV_VALIDAZIONE",
+                message="Quantita' non numerica.",
+                detail=f"quantita={payload['quantita']!r}",
+                function_name=function_name,
+            )
+            raise AssertionError("unreachable")  # pragma: no cover
+        ErrorManager.require(
+            quantita > 0,
+            code="E_PREV_VALIDAZIONE",
+            message="La quantita' deve essere maggiore di zero.",
+            detail=f"quantita={payload['quantita']!r}",
+            function_name=function_name,
+        )
+
+
 def _resolve_or_check_override_prezzo(
     *,
     testata: dict[str, Any],
@@ -740,25 +884,32 @@ def _resolve_or_check_override_prezzo(
     # Resolver best-effort: se qualunque errore applicativo (es.
     # E_CATEGORIA_LISTINO_NON_MAPPATA) accettiamo il prezzo manuale.
     # L'override non e' controllato perche' non c'e' nulla da confrontare.
+    #
+    # Savepoint annidato (transaction.atomic interno): le `RAISE EXCEPTION`
+    # dentro fn_resolve_prezzo_listino_v2 marcano la tx PostgreSQL come
+    # aborted; senza savepoint l'INSERT di create_riga fallirebbe con
+    # InFailedSqlTransaction → mascherato in E_DATABASE generico. Il
+    # savepoint isola l'errore e mantiene integra la tx esterna.
     prezzo_resolver: Decimal | None = None
     resolver_context: dict[str, Any] | None = None
     try:
-        resolver_result = suggerisci_prezzo_riga(
-            int(testata["id"]),
-            articolo_id=str(articolo_id),
-            uom_id=int(uom_id),
-            auth_user_id=auth_user_id,
-        )
-        if resolver_result.get("prezzo_finale") is not None:
-            prezzo_resolver = Decimal(str(resolver_result["prezzo_finale"]))
-            resolver_context = {
-                "origine": resolver_result.get("origine"),
-                "listino_id": resolver_result.get("listino_id"),
-                "contratto_id": resolver_result.get("contratto_id"),
-                "promo_id": resolver_result.get("promo_id"),
-                "tipo_variazione": resolver_result.get("tipo_variazione_applicata"),
-                "valore_variazione": resolver_result.get("valore_variazione_applicata"),
-            }
+        with transaction.atomic():
+            resolver_result = suggerisci_prezzo_riga(
+                int(testata["id"]),
+                articolo_id=str(articolo_id),
+                uom_id=int(uom_id),
+                auth_user_id=auth_user_id,
+            )
+            if resolver_result.get("prezzo_finale") is not None:
+                prezzo_resolver = Decimal(str(resolver_result["prezzo_finale"]))
+                resolver_context = {
+                    "origine": resolver_result.get("origine"),
+                    "listino_id": resolver_result.get("listino_id"),
+                    "contratto_id": resolver_result.get("contratto_id"),
+                    "promo_id": resolver_result.get("promo_id"),
+                    "tipo_variazione": resolver_result.get("tipo_variazione_applicata"),
+                    "valore_variazione": resolver_result.get("valore_variazione_applicata"),
+                }
     except Exception:
         # Best-effort: se il resolver non trova prezzo, accettiamo il
         # payload manuale (se presente). Se payload_prezzo e' None in
@@ -785,11 +936,27 @@ def _resolve_or_check_override_prezzo(
         )
         raise AssertionError("unreachable")  # pragma: no cover
 
-    if prezzo_resolver is not None and payload_decimal == prezzo_resolver:
-        return payload_decimal, {
-            "origine_prezzo": resolver_context.get("origine") if resolver_context else None,
-            "prezzo_resolver_context": resolver_context,
-        }
+    # Confronto con tolleranza: il resolver ritorna prezzo a 10 decimali
+    # (max_digits=22, decimal_places=10), ma il round-trip BE -> JSON ->
+    # JS Number (53-bit float, ~15-17 cifre significative) -> InputNumber
+    # mode="currency" -> JSON -> BE perde precisione sull'ultima cifra.
+    # Quantizziamo entrambi a 4 decimali (precisione abbondante per prezzi
+    # commerciali EUR) per il confronto: se uguali, salviamo il prezzo
+    # resolver originale (full precision) — il valore "che l'utente vede"
+    # era gia' un'approssimazione del valore canonico DB.
+    _PRICE_COMPARE_QUANTIZE = Decimal("0.0001")
+    if prezzo_resolver is not None:
+        payload_q = payload_decimal.quantize(
+            _PRICE_COMPARE_QUANTIZE, rounding=ROUND_HALF_UP,
+        )
+        resolver_q = prezzo_resolver.quantize(
+            _PRICE_COMPARE_QUANTIZE, rounding=ROUND_HALF_UP,
+        )
+        if payload_q == resolver_q:
+            return prezzo_resolver, {
+                "origine_prezzo": resolver_context.get("origine") if resolver_context else None,
+                "prezzo_resolver_context": resolver_context,
+            }
 
     # Override: L1 richiesta azione processo prezzo_override_manuale.
     _check_permesso_override_prezzo(auth_user_id, function_name=function_name)

@@ -8,7 +8,7 @@
 //   secondary: codice istanza
 //   meta: indirizzo + (se BA) codice BA
 // Usato da: PreventiviForm (prospect senza BA), future utility-aware flows.
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'
 import { lookupIstanzeUtility } from '../apiCore'
@@ -18,8 +18,9 @@ const { t } = useI18n()
 
 const props = defineProps({
   // Oggetto istanza completo {id, codice, fittizia, soggetto_id,
-  //   ragione_sociale_completa, indirizzo_display, billing_account_id,
-  //   billing_account_codice, utility_id, utility_codice, utility_descrizione, ...}
+  //   ragione_sociale_completa, indirizzo_display, pdp_id, pdp_codice,
+  //   billing_account_id, billing_account_codice, utility_id, utility_codice,
+  //   utility_descrizione, ...}
   modelValue: { type: Object, default: null },
   // Filtro utility strict (post Strategia C ogni istanza dichiara utility via
   // BA, dati_precontrattuali o clienti). Opzionale.
@@ -69,8 +70,20 @@ function buildDisplay(r) {
   if (r.ragione_sociale_completa) parts.push(r.ragione_sociale_completa)
   if (r.codice) parts.push(r.codice)
   if (r.indirizzo_display) parts.push(r.indirizzo_display)
+  if (r.pdp_codice) parts.push(`PDP ${r.pdp_codice}`)
   return parts.join(' · ') || `#${r.id}`
 }
+
+// Normalizza il modelValue garantendo `_display` letto da AutoComplete
+// (optionLabel="_display"). Stesso pattern di BillingAccountLookup: i restore
+// via getIstanzaUtilityLookupById ritornano l'oggetto ricco senza `_display`,
+// senza questa normalizzazione AutoComplete cade sul toString → "[object Object]".
+const displayedModel = computed(() => {
+  const v = props.modelValue
+  if (!v) return null
+  if (v._display) return v
+  return { ...v, _display: buildDisplay(v) }
+})
 
 function onSelect(event) {
   emit('update:modelValue', event.value)
@@ -98,7 +111,7 @@ watch(() => props.utilityId, (newUtility, oldUtility) => {
 
 <template>
   <AutoComplete
-    :modelValue="modelValue"
+    :modelValue="displayedModel"
     :suggestions="ac.suggestions.value"
     @complete="ac.onSearch"
     @item-select="onSelect"
@@ -130,6 +143,10 @@ watch(() => props.utilityId, (newUtility, oldUtility) => {
           <span v-if="option.indirizzo_display">
             <i class="pi pi-map-marker"></i>
             {{ option.indirizzo_display }}
+          </span>
+          <span v-if="option.pdp_codice">
+            <i class="pi pi-bolt"></i>
+            {{ t('istanza_utility.pdp_label') }}: {{ option.pdp_codice }}
           </span>
           <span v-if="option.billing_account_codice">
             {{ t('istanza_utility.ba_label') }}: {{ option.billing_account_codice }}

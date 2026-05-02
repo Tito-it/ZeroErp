@@ -63,6 +63,7 @@ _LOOKUP_WHERE = """
 # Scopo: JOIN comuni a count e data del lookup istanze.
 # - soggetti: ragione sociale per display + ricerca
 # - vw_indirizzi_dettaglio: indirizzo_normalizzato per ricerca + display
+# - pdp: codice punto di prelievo (se istanza ne ha uno); nullable
 # - ba_first (LATERAL): codice BA campione per badge UI; istanze totalmente
 #   orfane (no BA) hanno tutti i campi ba_first.* a NULL → il FE le mostra
 #   col badge "Solo istanza".
@@ -72,6 +73,8 @@ _LOOKUP_FROM = """
         ON s.id = iu.soggetto_id
       LEFT JOIN anagrafiche.vw_indirizzi_dettaglio vid
         ON vid.indirizzo_dettaglio_id = iu.indirizzo_dettaglio_id
+      LEFT JOIN anagrafiche.pdp p
+        ON p.id = iu.pdp_id
       LEFT JOIN LATERAL (
             SELECT ba.id AS ba_id, ba.codice AS ba_codice, ba.utility_id AS ba_utility_id
               FROM anagrafiche.billing_account ba
@@ -95,6 +98,8 @@ _LOOKUP_SELECT_COLUMNS = """
     s.id_fiscale_univoco_cf_piva AS id_fiscale,
     iu.indirizzo_dettaglio_id,
     vid.indirizzo_normalizzato AS indirizzo_display,
+    iu.pdp_id,
+    p.pdp                   AS pdp_codice,
     ba_first.ba_id          AS billing_account_id,
     ba_first.ba_codice      AS billing_account_codice,
     ba_first.ba_utility_id  AS utility_id,

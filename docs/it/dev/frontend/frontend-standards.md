@@ -1641,6 +1641,117 @@ Una stessa parola può comparire in entrambi (es. `PROMO_ARTICOLO` singolare in 
 
 ---
 
+## Store Pinia — user-scoped + reset al logout
+
+### Principio
+
+Qualsiasi store Pinia che contenga **dati specifici dell'utente loggato** (filtri lista, cache di lookup user-aware, override personali, contesto selezionato, ecc.) DEVE dichiararsi `userScoped: true` come terzo parametro di `defineStore`. Il plugin `autoResetPlugin` (`src/core/pinia-plugins/auto-reset.js`) lo intercetta e:
+
+1. al login successivo / al logout chiama `resetAllUserScopedStores()` da `auth.js`
+2. per ogni store user-scoped invoca `clearUserState()` se esposto come action, altrimenti fa fallback su `$resetToInitial()` (snapshot dello state al primo init)
+
+Razionale: senza questo flag uno stesso browser usato in sequenza da utenti diversi (caso "computer in ufficio condiviso") rischia che l'utente B veda i filtri / la cache / gli override dell'utente A. Bug di sicurezza silenzioso.
+
+### Pattern store user-scoped
+
+```js
+export const useMyStore = defineStore('my-store', () => {
+  const items = ref([])
+  const filters = ref({ ... })
+
+  function clearUserState() {
+    // Solo se serve logica custom oltre al snapshot:
+    // es. clear di Map/Set/cache module-level interna,
+    // disconnect di BroadcastChannel, ecc.
+    items.value = []
+    filters.value = { ... }
+  }
+
+  return { items, filters, clearUserState }
+}, {
+  // Reset automatico al logout via autoResetPlugin.
+  userScoped: true,
+})
+```
+
+| Quando serve `clearUserState()` esplicito | Quando basta lo snapshot |
+| --- | --- |
+| Lo state contiene Map / Set / Date / function (non JSON-serializable) | State con primitives, oggetti/array piani |
+| Lo store legge da localStorage all'init (snapshot fotografa già i dati utente) | State puro in-memory |
+| Servono side-effect aggiuntivi (chiudere BroadcastChannel, abortire fetch in volo) | Nessun side-effect |
+
+### Pattern composable user-scoped (cache module-level)
+
+I composable possono mantenere cache module-scope (es. `useGlobalLookup._cache`). Anche queste vanno azzerate al logout. Pattern:
+
+```js
+import { registerUserScopedResetter } from '@/core/pinia-plugins/auto-reset'
+
+const _cache = new Map()
+registerUserScopedResetter(() => _cache.clear())
+
+export function useMioCompose() { ... }
+```
+
+`registerUserScopedResetter` accetta una function di reset ed è idempotente. Va chiamata al top-level del modulo (non dentro la setup function).
+
+### Store globale `parameters` — cache condivisa per `config.parameters`
+
+Single source of truth per i valori risolti (con override) dei parametri di sistema. Sostituisce la cache per-istanza che `useParameterDefaults` aveva pre-2026-05-02:
+
+```js
+import { useParametersStore } from '@/stores/parameters'
+
+const params = useParametersStore()
+await params.ensure(['DEFAULT_IVA_ID', 'DEFAULT_UTILITY'])  // single-flight per code
+const iva = params.get('DEFAULT_IVA_ID')                     // sync getter, null se mancante
+```
+
+#### API
+
+| Metodo | Scopo |
+| --- | --- |
+| `ensure(codes)` | Garantisce che i `codes` siano in cache. Single-flight per code: chiamate concorrenti convergono su una sola fetch. Idempotente. |
+| `get(code)` | Sync getter del valore risolto. Ritorna `null` sia se non in cache sia se BE non ha valore. Per distinguere usare `has(code)`. |
+| `has(code)` | True se il code è già stato fetchato (anche con valore `null`). |
+| `invalidate(codes)` | Rimuove i `codes` dalla cache + broadcast cross-tab. La prossima `ensure` ri-fetcha. |
+| `setOverride(code, value, scope)` | Upsert override personale o emittente + invalidate automatico del code. |
+| `removeOverride(overrideId, code, scope)` | Delete override + invalidate. Il `code` serve per identificare cosa invalidare (l'API delete usa solo l'id). |
+
+#### Cosa risolve rispetto al composable per-istanza
+
+| Problema pre-2026-05-02 | Soluzione store |
+| --- | --- |
+| 4 drawer aperti = 4 fetch identiche per `DEFAULT_UTILITY` | Single-flight per code: 1 sola fetch |
+| Admin cambia override → drawer mostrano valore vecchio finché non F5 | `setOverride` invalida la cache → tutti i computed reattivi si aggiornano |
+| Cambio override in tab A non visibile in tab B | `BroadcastChannel('zeroerp-parameters')` propaga gli invalidate cross-tab |
+| Cache parametri persiste tra utenti diversi sullo stesso browser | `userScoped: true` + `clearUserState()` azzera la cache al logout |
+
+#### `useParameterDefaults` come thin wrapper
+
+Il composable `useParameterDefaults` esiste ancora come API ergonomica per i drawer:
+
+```js
+const { defaults, load } = useParameterDefaults(['DEFAULT_IVA_ID', 'CATALOGO_BOM_DEFAULT_OBBLIGATORIO'])
+await load()
+form.iva_id = defaults.value.DEFAULT_IVA_ID   // string — convertire se serve
+```
+
+Internamente delega a `useParametersStore`: cache, single-flight, invalidation, cross-tab sync, reset al logout sono tutti gestiti dallo store. Il composable espone un computed `defaults` reattivo allo store.
+
+#### Quando usare lo store direttamente vs il composable
+
+- **Composable `useParameterDefaults`**: drawer/form che leggono N parametri all'apertura e li usano in `defaultForm()`. È la scelta di default.
+- **Store `useParametersStore` direttamente**: pagine che fanno mutation di override (admin / impostazioni utente), o che devono reagire a invalidate cross-tab. Es. `useParameterSettings.saveOverride` delega a `store.setOverride` per ottenere invalidate gratis.
+
+#### Convenzione codice_interno per parametri FK-surrogata
+
+I parametri che referenziano tabelle di catalogo dotate di `codice_interno` (UNIQUE + immutabile via `script.trgfn_lock_columns`) stoccano il `codice_interno`, non l'id. La risoluzione codice→id è applicativa e va fatta lato FE incrociando il valore con la lookup della tabella target. Esempio: `DEFAULT_UTILITY` (codice_interno di `config.utilities`) risolto da [`useUtilityDefaultId`](../../../frontend/src/core/composables/useUtilityDefaultId.js).
+
+Vedi anche `linee-guida-sql §6b` per il principio generale e il framework DB `config.parameter_fk_surrogate`.
+
+---
+
 ## Azioni processo — Livello 2 (pattern "action gate")
 
 ### Principio

@@ -2,7 +2,7 @@
 // Scopo: Drawer crea/modifica preventivo vendita.
 // CREATE: form testata semplice per creazione rapida.
 // EDIT: testata + righe + totali + integrazione (con azioni stato).
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePreventiviStore } from '../stores/preventivi'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
@@ -14,6 +14,7 @@ import { addDaysToToday, displayDate, toDateString } from '../../../core/utils/d
 import { formatCurrency } from '../../../core/utils/format'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
+import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
 import { createPreventivo } from '../api/preventiviApi'
@@ -92,7 +93,16 @@ const canCreateRevisione = computed(() => caps.flag('can_create_revisione'))
 const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
 const pushCommessaReasonKey = computed(() => detail.value?.can_push_commessa_reason_key || null)
 // Per PreventiviForm passiamo l'array originale (no Set): il prop e' typed Array.
-const nonEditableFields = computed(() => detail.value?.non_editable_fields || [])
+// Quando il drawer ha gia' un detail (CREATE post auto-save bozza o EDIT classico)
+// blocchiamo lato UX il cambio di billing_account_id e istanza_utility_id: il
+// preventivo a quel punto e' agganciato al BA/istanza scelti e si sta gestendo
+// il dettaglio righe; un cambio sarebbe un nuovo preventivo, non una modifica
+// della testata. utility_id era gia' immutabile via metadata BE.
+const nonEditableFields = computed(() => {
+  const base = detail.value?.non_editable_fields || []
+  if (!hasDetail.value) return base
+  return [...base, 'billing_account_id', 'istanza_utility_id']
+})
 
 // Defaults non-BA da config.parameters (Fase 2 refactor frontend vendite).
 // Caricati on-open drawer prima di resetForm; cache modulo `useParameterDefaults`.
@@ -101,17 +111,20 @@ const nonEditableFields = computed(() => detail.value?.non_editable_fields || []
 const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefaults([
   'VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG',
   'VENDITE_PREVENTIVO_DEFAULT_FATTURAZIONE_IMMEDIATA',
-  // Default utility globale (config.parameters), stesso pattern ClienteDrawer.
-  'DEFAULT_UTILITY_ID',
 ])
+
+// Default utility globale: il parametro DEFAULT_UTILITY stocca un codice_interno
+// (framework FK-surrogata, DB 2026-05-02). Composable risolve a id locale.
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 
 function defaultForm() {
   const p = paramDefaults.value
-  // validita_al = oggi + N gg dal parameter; validita_dal resta null finche'
-  // l'operatore non lo conferma (no presupposto di emissione immediata).
+  // validita_dal default = oggi (data emissione presunta del preventivo).
+  // validita_al = validita_dal + N gg dal parameter; il watch su validita_dal
+  // mantiene l'invariante anche quando l'operatore sposta la data di partenza.
   const validitaGg = paramInt(p.VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG, 30)
   return {
-    utility_id: p.DEFAULT_UTILITY_ID ? Number(p.DEFAULT_UTILITY_ID) : null,
+    utility_id: utilityDefaultId.value,
     billing_account_id: null,
     // _obj per BillingAccountLookup AutoComplete (pattern restore lookup ricco,
     // memoria feedback_autocomplete_restore). Popolato da onBaSelected (FE)
@@ -125,12 +138,35 @@ function defaultForm() {
     istanza_utility_obj: null,
     valuta_id: null,
     termine_pagamento_id: null,
-    validita_dal: null,
+    validita_dal: addDaysToToday(0),
     validita_al: addDaysToToday(validitaGg),
     competenza_mese: null,
     fatturazione_immediata: paramBool(p.VENDITE_PREVENTIVO_DEFAULT_FATTURAZIONE_IMMEDIATA, false),
   }
 }
+
+// Sospende il ricalcolo automatico di validita_al durante l'inizializzazione
+// del form (loadDetail in EDIT): senza questa guard il watch sotto sovrascrive
+// validita_al persistita col valore = validita_dal + N gg.
+const _suspendDateRecalc = ref(false)
+
+// Auto-ricalcolo validita_al = validita_dal + VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG
+// quando l'operatore modifica validita_dal. Vale sia in CREATE sia in EDIT
+// (chi sposta la data di partenza si aspetta che la finestra di validita'
+// scorra di conseguenza). validita_al resta comunque editabile manualmente:
+// il watch non ha contropartita su validita_al, quindi l'override utente
+// dura finche' non viene ritoccato validita_dal.
+watch(() => form.value.validita_dal, (nuovaDal) => {
+  if (_suspendDateRecalc.value) return
+  if (!nuovaDal) return
+  const validitaGg = paramInt(paramDefaults.value.VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG, 30)
+  const dal = nuovaDal instanceof Date ? nuovaDal : new Date(nuovaDal)
+  if (isNaN(dal.getTime())) return
+  const al = new Date(dal)
+  al.setHours(0, 0, 0, 0)
+  al.setDate(al.getDate() + validitaGg)
+  form.value.validita_al = al
+})
 
 function resetForm() {
   form.value = defaultForm()
@@ -144,6 +180,10 @@ async function loadDetail(id = null) {
   const data = await store.fetchDetail(targetId)
   if (!data) return
   detail.value = data
+  // Sospende il watch di ricalcolo finche' non scarica entrambi i campi data:
+  // assegnando form.value il watch fires su validita_dal e sovrascriverebbe
+  // validita_al persistita.
+  _suspendDateRecalc.value = true
   form.value = {
     utility_id: data.utility_id,
     billing_account_id: data.billing_account_id,
@@ -157,6 +197,8 @@ async function loadDetail(id = null) {
     competenza_mese: data.competenza_mese ? new Date(data.competenza_mese + 'T00:00:00') : null,
     fatturazione_immediata: data.fatturazione_immediata || false,
   }
+  await nextTick()
+  _suspendDateRecalc.value = false
   // Restore BillingAccountLookup _obj per visualizzazione ricca (codice, ragione
   // sociale, id fiscale, PDP). Best-effort: in caso di failure il drawer mostra
   // l'autocomplete vuoto e l'operatore puo' ri-selezionare. Skip se BA assente.
@@ -186,12 +228,14 @@ watch(() => props.visible, async (v) => {
     contentReady.value = false
     return
   }
-  // Carica i parameters una sola volta (cache nel composable). Sequenza:
-  // load defaults -> reset/loadDetail, cosi' il form parte gia' valorizzato.
-  await loadParamDefaults()
+  // loadParamDefaults serve in entrambi i mode (paramBool/paramInt usati anche
+  // in defaultForm). loadUtilityDefault serve solo in CREATE (in EDIT utility_id
+  // arriva dal detail BE).
   if (isEdit.value) {
+    await loadParamDefaults()
     loadDetail()
   } else {
+    await Promise.all([loadParamDefaults(), loadUtilityDefault()])
     resetForm()
     // CREATE: pre-popoliamo la valuta dal BB resolve_valuta_default lato BE
     // (catena BA -> EF-del-BA -> EF-utente). Senza BA il BE applica il
@@ -560,7 +604,8 @@ function onNuovaRevisione() {
         <Divider />
         <PreventiviRigheTable
           :preventivo-id="effectivePreventivoId"
-          :is-modificabile="canEditRighe && !isReadonly" />
+          :is-modificabile="canEditRighe && !isReadonly"
+          @changed="loadDetail()" />
 
         <!-- Totali -->
         <div style="display: flex; justify-content: flex-end; gap: 1.5rem; padding: 0.75rem 0; font-size: 0.9rem;">

@@ -391,6 +391,33 @@ class TestPreventiviService(unittest.TestCase):
             gestisci_riga(1, {"quantita": "10"})
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
+    # Scopo: Verifica che prezzo negativo venga bloccato lato BE con messaggio
+    #        parlante (E_PREV_VALIDAZIONE) invece di lasciare il CHECK DB
+    #        (chk_prevrighe_quantita_prezzo) sollevare un errore generico.
+    def test_gestisci_riga_prezzo_negativo_ko(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(1, {"articolo_id": "uuid-art-1", "prezzo_unitario": "-5.00"})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        # Repo non deve essere chiamato: validazione blocca PRIMA dell'INSERT.
+        self.mock_repo.create_riga.assert_not_called()
+
+    # Scopo: Verifica che quantita zero/negativa venga bloccata lato BE.
+    def test_gestisci_riga_quantita_non_positiva_ko(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(1, {"articolo_id": "uuid-art-1", "quantita": "0"})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.create_riga.assert_not_called()
+
     # Scopo: Verifica soft delete riga.
     def test_elimina_riga_ok(self):
         from apps.vendite.services.preventivi_service import elimina_riga

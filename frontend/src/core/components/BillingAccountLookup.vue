@@ -5,7 +5,7 @@
 // id fiscale + PDP (meta). Utility (se presente) come tag nella riga primary.
 // Scope emittente fiscale applicato automaticamente lato backend.
 // Usato da: righe listini, righe preventivi, ordini, fatture, pratiche.
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'
 import { lookupBillingAccount } from '../apiCore'
@@ -68,6 +68,18 @@ const ac = useServerAutocomplete(async (query) => {
   }
 })
 
+// Normalizza il modelValue garantendo la chiave `_display` letta da AutoComplete
+// (optionLabel="_display"). Quando il BA arriva da getBillingAccountLookupById
+// per il restore in EDIT (o post auto-save bozza), l'oggetto e' ricco ma manca
+// `_display` (calcolato solo lato `transform` delle suggestions): senza questa
+// normalizzazione AutoComplete cade sul toString → "[object Object]".
+const displayedModel = computed(() => {
+  const v = props.modelValue
+  if (!v) return null
+  if (v._display) return v
+  return { ...v, _display: buildDisplay(v) }
+})
+
 function buildDisplay(r) {
   const parts = []
   if (r.ragione_sociale_completa) parts.push(r.ragione_sociale_completa)
@@ -105,7 +117,7 @@ watch(() => props.utilityId, (newUtility, oldUtility) => {
 
 <template>
   <AutoComplete
-    :modelValue="modelValue"
+    :modelValue="displayedModel"
     :suggestions="ac.suggestions.value"
     @complete="ac.onSearch"
     @item-select="onSelect"

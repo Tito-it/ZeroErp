@@ -8,6 +8,7 @@ import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiErr
 import { usePreventiviStore } from '../stores/preventivi'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
+import { suggerisciPrezzoRiga } from '../api/preventiviApi'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import InputNumber from 'primevue/inputnumber'
@@ -15,6 +16,7 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
+import Tag from 'primevue/tag'
 
 const { t } = useI18n()
 const store = usePreventiviStore()
@@ -58,12 +60,24 @@ const limitiPricingText = computed(() => {
   return t('preventivi.limiti_prezzo_hint', { sconto: s, maggiorazione: m })
 })
 
-// Reset banner L2 se l'utente modifica prezzo o articolo: segnale di retry
-// con contesto potenzialmente diverso (articolo -> resolver diverso).
-// Guard sul valore corrente per evitare set inutili.
+// Ultimo prezzo scritto dal resolver: serve al watch sotto per distinguere
+// "prezzo proposto dal resolver" (badge origine valido) da "override manuale
+// dell'operatore" (badge da nascondere). null = nessun resolver attivo.
+let _lastResolverPrice = null
+
+// Reset banner L2 + badge origine se l'utente modifica prezzo o articolo:
+// segnale di retry con contesto potenzialmente diverso (articolo -> resolver
+// diverso) oppure di override manuale (prezzo cambiato).
+// Confronto sul prezzo: se coincide con l'ultimo valore del resolver, e' la
+// scrittura del resolver stesso (badge resta); altrimenti e' override manuale.
 watch(
   [() => form.value.prezzo_unitario, () => form.value.articolo_id],
-  () => { if (l2Error.value) l2Error.value = null },
+  ([newPrezzo]) => {
+    if (l2Error.value) l2Error.value = null
+    if (!prezzoOrigine.value) return
+    if (_lastResolverPrice != null && Number(newPrezzo) === Number(_lastResolverPrice)) return
+    prezzoOrigine.value = null
+  },
 )
 
 // Articolo selezionato (per restore autocomplete)
@@ -113,12 +127,90 @@ watch(() => props.riga, (riga) => {
 function onArticoloSelect(item) {
   form.value.articolo_id = item.id
   form.value.descrizione = item.descrizione || ''
+  // Auto-fill IVA dall'articolo (catalogo.vw_articoli_dettaglio.iva_id, esposto
+  // dal lookup). L'operatore puo' comunque sovrascriverla manualmente prima di
+  // salvare. Nessun reset se il lookup non la espone (vecchi BE / articoli senza
+  // iva configurata): mantiene il valore precedente.
+  if (item.iva_id != null) {
+    form.value.iva_id = item.iva_id
+  }
   // Reset UoM: cambio articolo invalida l'eventuale UoM precedente.
+  // Reset prezzo: il resolver verra' richiamato dopo il pickBaseUomId via watch.
   form.value.uom_operativa_id = null
+  form.value.prezzo_unitario = null
   articoloObj.value = item
   // Create: autopick base; in edit articolo e' disabled e questo handler non scatta.
   caricaUomConPickBase(item.id)
 }
+
+// Origine del prezzo proposto dal resolver v5 (PROMO/CONTRATTO/CATEGORIA).
+// Mostrato come badge accanto al campo prezzo. null = nessun resolver attivo
+// (es. preventivo senza BA, articolo non a listino, oppure prezzo manuale).
+const prezzoOrigine = ref(null)
+
+// Mappa codice origine BE -> {label_key, severity Tag PrimeVue}.
+// Allineata a TestResolverDialog.origineSeverity per UX coerente.
+const ORIGINE_BADGE_MAP = {
+  PROMO: { key: 'preventivi.badge_origine_promo', severity: 'warn' },
+  CONTRATTO: { key: 'preventivi.badge_origine_contratto', severity: 'info' },
+  CONTRATTO_LISTINO: { key: 'preventivi.badge_origine_contratto', severity: 'info' },
+  CATEGORIA: { key: 'preventivi.badge_origine_categoria', severity: 'success' },
+}
+const prezzoOrigineBadge = computed(() => {
+  if (!prezzoOrigine.value) return null
+  return ORIGINE_BADGE_MAP[prezzoOrigine.value] || null
+})
+
+// Suggerimento prezzo via pricing resolver v5. Trigger: articolo + uom presenti
+// e prezzo non gia' valorizzato (rispetta override manuale dell'operatore).
+// Token pattern interno per scartare risposte stantie su selezioni veloci.
+let _resolverToken = 0
+async function suggerisciPrezzo() {
+  if (!props.preventivoId) return
+  if (!form.value.articolo_id || !form.value.uom_operativa_id) return
+  // Skip in edit: la riga ha gia' un prezzo persistito (override o resolver
+  // applicato al momento dell'inserimento). Non vogliamo "sorprendere"
+  // l'operatore con un nuovo valore se il listino e' cambiato.
+  if (isEdit.value) return
+  // Skip se l'operatore ha gia' inserito un prezzo manuale.
+  if (form.value.prezzo_unitario != null) return
+  const tk = ++_resolverToken
+  try {
+    const res = await suggerisciPrezzoRiga(props.preventivoId, {
+      articolo_id: form.value.articolo_id,
+      uom_id: form.value.uom_operativa_id,
+    })
+    if (tk !== _resolverToken) return
+    const data = res?.data?.data
+    if (data && data.prezzo_finale != null) {
+      const proposto = Number(data.prezzo_finale)
+      _lastResolverPrice = proposto
+      form.value.prezzo_unitario = proposto
+      prezzoOrigine.value = data.origine || null
+    }
+  } catch {
+    // Best-effort: fallisce silenzioso se non c'e' contesto pricing valido
+    // (preventivo senza BA/utility, articolo non a listino, ecc.). L'operatore
+    // puo' inserire manualmente. Niente toast: non e' un errore di salvataggio.
+    prezzoOrigine.value = null
+  }
+}
+
+// Quando l'utente seleziona la UoM (dopo articolo) il resolver puo' partire.
+// Usiamo un watch dedicato perche' la UoM viene impostata sia da onArticoloSelect
+// (autopick base via caricaUomConPickBase) sia dalla Select manuale.
+// In edit non ricalcoliamo: rispettiamo i valori persistiti.
+// Al cambio UoM esplicito (oldUom != null) resettiamo il prezzo affinche' il
+// resolver lo ricalcoli col nuovo contesto; in autopick iniziale (oldUom=null)
+// non c'e' nulla da resettare.
+watch(() => form.value.uom_operativa_id, (newUom, oldUom) => {
+  if (isEdit.value) return
+  if (!newUom) return
+  if (oldUom && oldUom !== newUom) {
+    form.value.prezzo_unitario = null
+  }
+  suggerisciPrezzo()
+})
 
 const canSave = computed(() => form.value.articolo_id && form.value.quantita > 0)
 
@@ -227,8 +319,15 @@ async function handleRichiediApprovazione() {
         <InputNumber v-model="form.quantita" :min-fraction-digits="2" :max-fraction-digits="6" />
       </div>
       <div class="form-field">
-        <label>{{ t('preventivi.riga_prezzo') }}</label>
-        <InputNumber v-model="form.prezzo_unitario" mode="currency" currency="EUR" locale="it-IT" />
+        <label style="display: flex; align-items: center; gap: 0.5rem;">
+          {{ t('preventivi.riga_prezzo') }}
+          <Tag v-if="prezzoOrigineBadge"
+            :severity="prezzoOrigineBadge.severity"
+            :value="t(prezzoOrigineBadge.key)"
+            v-tooltip.top="t('preventivi.badge_origine_tooltip', { origine: prezzoOrigine })" />
+        </label>
+        <InputNumber v-model="form.prezzo_unitario" mode="currency" currency="EUR" locale="it-IT"
+          :min-fraction-digits="6" :max-fraction-digits="6" />
         <small class="text-color-secondary">{{ limitiPricingText }}</small>
       </div>
     </div>

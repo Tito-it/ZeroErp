@@ -16,6 +16,7 @@ import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import EmittenteRoundingModeSelect from './EmittenteRoundingModeSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -74,7 +75,12 @@ function defaultForm() {
     regime_fiscale_rf: '',
     bollo_auto: false,
     bollo_soglia: null,
-    rounding_policy: null
+    rounding_policy: null,
+    // valuta_id: livello 3 della catena resolve_valuta_default (vedi
+    // backend/apps/anagrafiche/services/valuta_resolver.py). Se non
+    // valorizzata, i form-defaults preventivi/contratti senza BA partono
+    // con valuta vuota.
+    valuta_id: null
   }
 }
 
@@ -123,7 +129,8 @@ function populateFormFromDetail(d) {
     regime_fiscale_rf: d.regime_fiscale_rf || '',
     bollo_auto: !!d.bollo_auto,
     bollo_soglia: d.bollo_soglia,
-    rounding_policy: d.rounding_policy || null
+    rounding_policy: d.rounding_policy || null,
+    valuta_id: d.valuta_id ?? null
   }
 }
 
@@ -187,7 +194,8 @@ async function save() {
     regime_fiscale_rf: form.value.regime_fiscale_rf || null,
     bollo_auto: form.value.bollo_auto,
     bollo_soglia: form.value.bollo_soglia,
-    rounding_policy: form.value.rounding_policy || null
+    rounding_policy: form.value.rounding_policy || null,
+    valuta_id: form.value.valuta_id || null
   }
   let result
   if (isEdit.value) {
@@ -316,6 +324,23 @@ function close() {
                 show-clear
                 class="w-full"
               />
+            </div>
+
+            <!-- Valuta di default: livello 3 della catena resolve_valuta_default
+                 usata da preventivi/contratti senza BA. Senza questo valore i
+                 form-defaults restituiscono valuta vuota. -->
+            <div class="form-field">
+              <label>{{ t('amm_emittenti_fiscali.field_valuta') }}</label>
+              <LookupSelect
+                v-model="form.valuta_id"
+                rel="config.valute"
+                :placeholder="t('amm_emittenti_fiscali.field_valuta')"
+                show-clear
+                class="w-full"
+              />
+              <small class="block mt-1 text-color-secondary">
+                {{ t('amm_emittenti_fiscali.field_valuta_hint') }}
+              </small>
             </div>
 
             <!-- Attivo: ultimo elemento del form (richiesta UX) -->

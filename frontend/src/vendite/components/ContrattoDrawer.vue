@@ -27,6 +27,7 @@ import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
+import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { lookupModalitaPricingContratto } from '../api/lookup'
 import Drawer from 'primevue/drawer'
 import Dialog from 'primevue/dialog'
@@ -121,9 +122,11 @@ const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefault
   'VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE',
   'VENDITE_CONTRATTO_DEFAULT_DATA_LEAD_GG',
   'VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG',
-  // Default utility globale (config.parameters), stesso pattern ClienteDrawer/PreventiviDrawer.
-  'DEFAULT_UTILITY_ID',
 ])
+
+// Default utility globale: il parametro DEFAULT_UTILITY stocca un codice_interno
+// (framework FK-surrogata, DB 2026-05-02). Composable risolve a id locale.
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 
 function defaultForm() {
   const p = paramDefaults.value
@@ -133,7 +136,7 @@ function defaultForm() {
     billing_account_id: null,
     billing_account_obj: null,
     istanza_utility_id: null,
-    utility_id: p.DEFAULT_UTILITY_ID ? Number(p.DEFAULT_UTILITY_ID) : null,
+    utility_id: utilityDefaultId.value,
     ambito: paramString(p.VENDITE_CONTRATTO_DEFAULT_AMBITO, 'COMMODITY'),
     valido_dal: toDateString(addDaysToToday(validoDalLeadGg)),
     valido_al: null,
@@ -226,17 +229,20 @@ watch(() => props.visible, async (val) => {
   if (!val) { fgVersion++; contentReady.value = false; return }
   const v = ++fgVersion
 
-  // Carica parameters (cache modulo) prima di resetForm: il defaultForm
-  // li legge da paramDefaults.value.
-  await loadParamDefaults()
-  if (v !== fgVersion) return
-
+  // loadParamDefaults serve sia in EDIT (onModalitaChange usa
+  // VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE) sia in CREATE.
+  // loadUtilityDefault serve solo in CREATE (in EDIT utility_id arriva
+  // dal detail BE). In CREATE le carichiamo in parallelo.
   if (isEdit.value && props.contrattoId) {
+    await loadParamDefaults()
+    if (v !== fgVersion) return
     const d = await store.fetchDetail(props.contrattoId)
     if (v !== fgVersion) return
     detail.value = d
     populateFromDetail(d)
   } else {
+    await Promise.all([loadParamDefaults(), loadUtilityDefault()])
+    if (v !== fgVersion) return
     resetForm()
     // Prefill BA se aperto da contesto cliente.
     if (props.initialBillingAccount?.id) {

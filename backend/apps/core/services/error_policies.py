@@ -1400,6 +1400,25 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Valore parametro non valido.",
         ),
+        # Framework FK-surrogata config.parameter_fk_surrogate (DB 2026-05-02):
+        # dispatcher su parameters/parameter_overrides che valida default_value
+        # contro la chiave naturale stabile (di norma codice_interno) della
+        # tabella di catalogo target. Sostituisce il guard ad-hoc deprecato
+        # E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID (mantenuto a livello DB
+        # per retro-compat ma non mappato qui: i nuovi inserimenti finiscono
+        # sempre sui codici 422/423 del framework).
+        "E_PARAMETER_DEFAULT_VALUE_INVALID": ErrorPolicy(
+            code="E_PARAMETER_DEFAULT_VALUE_INVALID",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Valore di default parametro non valido: deve esistere nella tabella di catalogo associata.",
+        ),
+        "E_PARAMETER_OVERRIDE_VALUE_INVALID": ErrorPolicy(
+            code="E_PARAMETER_OVERRIDE_VALUE_INVALID",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Override parametro non valido: il valore deve esistere nella tabella di catalogo associata.",
+        ),
         # ── Conversioni UoM ──
         "E_CATALOGO_CONV_NOT_FOUND": ErrorPolicy(
             code="E_CATALOGO_CONV_NOT_FOUND",
