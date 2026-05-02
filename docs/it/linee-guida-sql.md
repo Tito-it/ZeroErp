@@ -162,6 +162,38 @@ Mescolare i nomi a caso:
 
 ---
 
+### 6b. Riferimenti esterni a tabelle di catalogo (chiave naturale stabile)
+
+**Principio**. Qualunque parametro, seed, configurazione esterna o riferimento applicativo che punti a una tabella di catalogo DEVE referenziarla per **chiave naturale stabile**, non per id numerico. L'id e' dettaglio implementativo soggetto a reseed/cancellazione e ricreazione; la chiave naturale stabile e' il contratto cross-ambiente.
+
+**Cos'e' una chiave naturale stabile** (ordine di preferenza):
+
+1. **`codice_interno`** se la tabella la espone — e' la convenzione standard del progetto, immutabile via `script.trgfn_lock_columns` provisionato automaticamente da `dbops.fn_run_automations_lock_columns` (la sola presenza della colonna `codice_interno` provisiona il lock; nessuna riga in `dbops.automation_lock_columns` necessaria).
+2. **Codici ISO** dove pertinente: `code_iso2`, `code_iso3` (stati), `currency_code` (valute), ecc. — chiavi naturali esterne all'ERP, definite da standard pubblici e quindi gia' stabili per costruzione.
+3. **Altra colonna di catalogo immutabile per design** (es. `codice` quando documentato non riassegnabile e protetto da lock). Caso da motivare nella PR.
+
+**Vietato** referenziare via id integer/bigint quando la tabella espone una di queste chiavi.
+
+**Implementazione**.
+
+* **Per parametri in `config.parameters` e `config.parameter_overrides`**: la regola si applica via il framework FK-surrogata (registry `config.parameter_fk_surrogate` + dispatcher `config.trgfn_parameters_fk_surrogate_dispatch` su `parameters` + dispatcher speculare su `parameter_overrides`). Aggiungere un nuovo pattern non richiede nuovo codice DB: una riga seed nel registry collega `code_pattern` (EXACT o LIKE) a `target_schema.target_table.target_column`. Il dispatcher esegue il check su `default_value` (parameters) e su `overridden_value` (overrides) tramite `script.fn_check_parameter_fk_surrogate`. Errori sollevati: `E_PARAMETER_DEFAULT_VALUE_INVALID` (id 422) sul default, `E_PARAMETER_OVERRIDE_VALUE_INVALID` (id 423) sull'override.
+* **Per altri riferimenti esterni** (es. file di configurazione, payload API, JSONB): stesso principio applicato via guard ad-hoc o validazione in service-layer; documentare nel manuale del consumer.
+
+**Esempi consolidati**:
+
+| Referenza | Pattern code | Target |
+| --- | --- | --- |
+| `DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO>` (es. `_CL`, `_FO`) | LIKE `DEFAULT_TIPO_SOGGETTO_DETTAGLIO_%` | `config.tipi_soggetto_dettaglio.codice_interno` |
+| `DEFAULT_UTILITY` | EXACT | `config.utilities.codice_interno` |
+| `state_code_iso3` (default ISO3 stati) | — (parametro single-shot, no pattern) | `config.stati.code_iso3` (chiave naturale ISO) |
+| `soggetto_default_stato_iso2` | — | `config.stati.code_iso2` |
+
+**Tech debt riconosciuto**: parametri legacy che oggi stoccano id numerici a tabelle di catalogo che **non espongono ancora** una chiave naturale stabile (es. `DEFAULT_IVA_ID` -> `config.iva.id`). Restano fuori scope del framework finche' la tabella target non viene dotata della chiave (aggiungere `codice_interno` -> il lock automatico viene provisionato dal runner -> rinominare il parametro -> aggiungere riga al registry). Migrazione tracciata caso per caso, non bulk.
+
+**Override del principio**: ammessi solo in casi documentati (es. join interni cross-schema con vincoli di performance, FK fisica reale dove il reseed non e' possibile). Va motivato nella migration o nel manuale.
+
+---
+
 ### 7. Colonne di Audit e Log
 
 Standardizzare i campi di auditing:

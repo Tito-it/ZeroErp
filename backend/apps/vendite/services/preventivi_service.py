@@ -10,12 +10,14 @@
 # con commesse e pratiche.
 
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
+from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -150,14 +152,73 @@ def upsert_indirizzo(preventivo_id: int, payload: dict[str, Any]) -> dict[str, A
 
 # Scopo: Crea un nuovo preventivo in stato BOZZA.
 # Obiettivo: validazione input, risoluzione stato BOZZA, INSERT, restituisce id+uid+numero.
+#
+# Regole di dominio post brief DB rev2 (2026-05-01):
+#  - utility_id obbligatorio
+#  - istanza_utility_id obbligatorio (allinea preventivi al pattern di
+#    commesse_attivita / attivita_fatturabili). Se il payload ha solo BA,
+#    deriva istanza dal BA (FK NOT NULL su billing_account.istanza_utility_id).
+#  - coerenza coppia (istanza_utility_id, utility_id) verificata pre-trigger
+#    via script.fn_check_utility_istanza_coerenza per UX rapida con errore
+#    parlante. Defense-in-depth: il trigger DB
+#    trgfn_preventivi_guard_utility_istanza_coerenza applica la stessa regola.
+#  - emittente_fiscale_id: opzionale nel payload. Se None il trigger DB
+#    trgfn_preventivi_default_emittente lo valorizza da GUC app.current_user_id.
+#    Specificarlo esplicito solo per admin globale (utente senza emittente
+#    assegnato che sceglie l'emittente del documento).
 def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
     repo = PreventiviRepository()
+    ba_repo = BillingAccountRepository()
+    iu_repo = IstanzeUtilityRepository()
 
     utility_id = payload.get("utility_id")
     ErrorManager.require(
         utility_id is not None,
         code="E_PREV_VALIDAZIONE",
         message="utility_id obbligatorio.",
+        function_name=f"{_FN}.crea_preventivo",
+    )
+
+    billing_account_id = payload.get("billing_account_id")
+    istanza_utility_id = payload.get("istanza_utility_id")
+
+    # Conveniencia: se BA presente ma istanza no, deriva istanza dal BA.
+    # Permette al FE di non duplicare l'informazione quando seleziona il BA.
+    if billing_account_id is not None and istanza_utility_id is None:
+        istanza_utility_id = ba_repo.get_istanza_utility_id(int(billing_account_id))
+        ErrorManager.require(
+            istanza_utility_id is not None,
+            code="E_PREV_VALIDAZIONE",
+            message="Billing account non trovato.",
+            detail=f"billing_account_id={billing_account_id}",
+            function_name=f"{_FN}.crea_preventivo",
+        )
+
+    # Istanza obbligatoria (regola dominio post landing DB rev2).
+    ErrorManager.require(
+        istanza_utility_id is not None,
+        code="E_PREV_VALIDAZIONE",
+        message="istanza_utility_id obbligatorio.",
+        detail=(
+            "Specificare l'istanza utility (direttamente o via billing account)."
+        ),
+        function_name=f"{_FN}.crea_preventivo",
+    )
+    assert istanza_utility_id is not None
+
+    # Pre-check coerenza utility/istanza: errore parlante prima del trigger DB.
+    coerente = iu_repo.check_utility_istanza_coerenza(
+        int(istanza_utility_id), int(utility_id),
+    )
+    ErrorManager.require(
+        coerente,
+        code="E_PREV_UTILITY_ISTANZA_INCOERENTE",
+        message="Utility non coerente con l'istanza selezionata.",
+        detail=(
+            f"istanza_utility_id={istanza_utility_id} non e' dichiarata "
+            f"per utility_id={utility_id} (no billing account, dati "
+            "precontrattuali o cliente matching)."
+        ),
         function_name=f"{_FN}.crea_preventivo",
     )
 
@@ -171,9 +232,10 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
     assert stato_bozza_id is not None
 
     result = repo.create_preventivo(
-        billing_account_id=payload.get("billing_account_id"),
+        billing_account_id=billing_account_id,
         utility_id=utility_id,
-        istanza_utility_id=payload.get("istanza_utility_id"),
+        istanza_utility_id=istanza_utility_id,
+        emittente_fiscale_id=payload.get("emittente_fiscale_id"),
         valuta_id=payload.get("valuta_id"),
         termine_pagamento_id=payload.get("termine_pagamento_id"),
         validita_dal=payload.get("validita_dal"),
@@ -184,6 +246,61 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
         meta=payload.get("meta"),
     )
     return result
+
+
+# Scopo: Elimina (hard-delete) preventivo BOZZA orfano.
+# Obiettivo: supporto al pattern "abbandono bozza" del drawer FE — quando
+# l'operatore apre create, si crea automaticamente la BOZZA per abilitare
+# subito l'inserimento righe (master-detail inline), ma esce senza inserire
+# righe. La BOZZA orfana viene cancellata su conferma utente.
+#
+# Guard di dominio (defense-in-depth: il caller FE filtra gia' su righe_count=0,
+# qui ricontrolliamo per sicurezza):
+#  - preventivo deve esistere
+#  - stato == BOZZA (DRAFT)
+#  - zero righe attive
+#  - zero pratiche collegate
+# Non ammessa per preventivi gia' propagati a commessa o con stato avanzato:
+# in quei casi la "cancellazione" semantica e' cambia_stato → ANNULLATO.
+def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
+    repo = PreventiviRepository()
+    testata = repo.get_preventivo(preventivo_id)
+    ErrorManager.require(
+        testata is not None,
+        code="E_PREV_NOT_FOUND",
+        message="Preventivo non trovato.",
+        detail=f"preventivo_id={preventivo_id}",
+        function_name=f"{_FN}.elimina_preventivo",
+    )
+    assert testata is not None
+    # Eliminabili solo i preventivi nello stesso stato in cui sono modificabili
+    # (BOZZA / DRAFT). Qualsiasi stato successivo (EMESSO/ACCETTATO/...) richiede
+    # cambia_stato → ANNULLATO invece dell'hard-delete.
+    ErrorManager.require(
+        testata["stato_codice_interno"] in _STATI_MODIFICABILI,
+        code="E_PREV_STATO_NON_MODIFICABILE",
+        message="Solo i preventivi in stato BOZZA possono essere eliminati.",
+        detail=f"stato={testata['stato_codice_interno']}",
+        function_name=f"{_FN}.elimina_preventivo",
+    )
+    righe_count = len(repo.list_righe(preventivo_id))
+    ErrorManager.require(
+        righe_count == 0,
+        code="E_PREV_STATO_NON_MODIFICABILE",
+        message="Impossibile eliminare un preventivo con righe. Eliminare prima le righe.",
+        detail=f"righe_count={righe_count}",
+        function_name=f"{_FN}.elimina_preventivo",
+    )
+    pratiche_count = len(repo.list_pratiche(preventivo_id))
+    ErrorManager.require(
+        pratiche_count == 0,
+        code="E_PREV_STATO_NON_MODIFICABILE",
+        message="Impossibile eliminare un preventivo con pratiche collegate.",
+        detail=f"pratiche_count={pratiche_count}",
+        function_name=f"{_FN}.elimina_preventivo",
+    )
+    deleted = repo.delete_preventivo(preventivo_id)
+    return {"status": "ok" if deleted else "noop", "preventivo_id": preventivo_id}
 
 
 # Scopo: Aggiorna testata preventivo con guard su stato modificabile.
@@ -227,8 +344,82 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
 
 
 # Scopo: Cambia stato preventivo delegando alla funzione DB.
-def cambia_stato(preventivo_id: int, nuovo_stato: str) -> dict[str, Any]:
+#
+# Caso speciale EMESSO → ACCETTATO (transizione "accettazione"):
+#   l'operatore deve specificare la modalita' di fatturazione del preventivo
+#   (proprieta' di processo, NON visibili in form testata BOZZA — vedi
+#   sviluppo-preventivi.md). Parametri:
+#     - fatturazione_immediata (bool obbligatorio)
+#     - competenza_mese (date YYYY-MM-01, obbligatorio se immediata=False)
+#   Regola di priorita': se immediata=True → competenza_mese forzata a oggi
+#   (primo del mese corrente), il valore eventuale passato dal caller viene
+#   ignorato. Per ora la regola e' applicata qui (BE service); future
+#   defense-in-depth via trigger DB se servira'.
+#
+# Le altre transizioni (DRAFT→EMESSO, EMESSO→RIFIUTATO, *→ANNULLATO, ...)
+# ignorano i 2 parametri.
+def cambia_stato(
+    preventivo_id: int,
+    nuovo_stato: str,
+    *,
+    fatturazione_immediata: bool | None = None,
+    competenza_mese: date | None = None,
+) -> dict[str, Any]:
     repo = PreventiviRepository()
+
+    # Gate accettazione: applichiamo la regola SOLO sulla transizione
+    # EMESSO → ACCETTATO. Su ACCETTATO → ACCETTATO (no-op stato) consentiamo
+    # update dei 2 campi finche' il preventivo e' fatturabile (vedi
+    # _STATI_FATTURABILI). Su altre transizioni i parametri sono ignorati.
+    if nuovo_stato == "ACCETTATO":
+        testata = repo.get_preventivo(preventivo_id)
+        ErrorManager.require(
+            testata is not None,
+            code="E_PREV_NOT_FOUND",
+            message="Preventivo non trovato.",
+            detail=f"preventivo_id={preventivo_id}",
+            function_name=f"{_FN}.cambia_stato",
+        )
+        assert testata is not None
+        stato_attuale = testata["stato_codice_interno"]
+        # Solo EMESSO → ACCETTATO (e ACCETTATO no-op) richiedono i parametri.
+        if stato_attuale in ("EMESSO", "ACCETTATO"):
+            ErrorManager.require(
+                fatturazione_immediata is not None,
+                code="E_PREV_VALIDAZIONE",
+                message="Modalita' di fatturazione obbligatoria per accettare il preventivo.",
+                detail="fatturazione_immediata: bool obbligatorio.",
+                function_name=f"{_FN}.cambia_stato",
+            )
+            # Regola di priorita': immediata=True ⇒ competenza = primo giorno
+            # del mese corrente (snapshot tx-time). Eventuale valore esplicito
+            # passato dal caller viene sovrascritto (immediata ha priorita').
+            if fatturazione_immediata:
+                competenza_mese = date.today().replace(day=1)
+            else:
+                ErrorManager.require(
+                    competenza_mese is not None,
+                    code="E_PREV_VALIDAZIONE",
+                    message=(
+                        "Mese di competenza obbligatorio quando fatturazione "
+                        "non e' immediata."
+                    ),
+                    function_name=f"{_FN}.cambia_stato",
+                )
+            # Update testata PRIMA del cambio stato, in transazione atomica
+            # di cambia_stato (la fn DB sotto e' atomic per natura: un solo
+            # statement INSERT/UPDATE con trigger). Per multi-statement
+            # atomic serve transaction.atomic, ma qui sono 2 UPDATE
+            # consecutivi: avvolgiamo entrambe.
+            with transaction.atomic():
+                repo.update_preventivo(
+                    preventivo_id,
+                    fatturazione_immediata=bool(fatturazione_immediata),
+                    competenza_mese=competenza_mese,
+                )
+                result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
+            return result
+
     result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
     return result
 
@@ -289,6 +480,10 @@ def gestisci_riga(
         function_name=f"{_FN}.gestisci_riga",
     )
 
+    # Validazione vincoli economici (prezzo >= 0, quantita > 0) prima del
+    # resolver: anticipa i CHECK DB con messaggio parlante.
+    _validate_riga_economic(payload, function_name=f"{_FN}.gestisci_riga")
+
     uom_id = payload.get("uom_operativa_id")
     payload_prezzo = payload.get("prezzo_unitario")
     richiesta_approvazione = bool(payload.get("richiesta_approvazione", False))
@@ -324,14 +519,29 @@ def gestisci_riga(
         )
         stato_approvazione = "PENDING"
 
+    # Derivazione qta_operativa + factor_to_base: il FE invia solo `quantita`
+    # (UX semplice: una sola quantita' per riga). Il DB richiede pero'
+    # qta_operativa NOT NULL (guard E_QTA_MISSING) come quantita' nell'UoM
+    # base, derivata dalla UoM operativa scelta. Lookup factor_to_base su
+    # catalogo.articoli_uom_operativa; default 1 se la UoM non e' mappata
+    # (caso edge: articolo con sola UoM base).
+    qta_operativa, factor_to_base = _derive_qta_operativa(
+        repo=repo,
+        articolo_id=articolo_id,
+        uom_id=uom_id,
+        quantita=payload.get("quantita"),
+        qta_operativa_payload=payload.get("qta_operativa"),
+        factor_to_base_payload=payload.get("factor_to_base"),
+    )
+
     result = repo.create_riga(
         preventivo_id=preventivo_id,
         articolo_id=articolo_id,
         descrizione=payload.get("descrizione"),
         quantita=payload.get("quantita"),
-        qta_operativa=payload.get("qta_operativa"),
+        qta_operativa=qta_operativa,
         uom_operativa_id=uom_id,
-        factor_to_base=payload.get("factor_to_base"),
+        factor_to_base=factor_to_base,
         prezzo_unitario=prezzo_finale,
         sconto_percentuale=payload.get("sconto_percentuale"),
         iva_id=payload.get("iva_id"),
@@ -396,6 +606,11 @@ def aggiorna_riga(
         function_name=f"{_FN}.aggiorna_riga",
     )
 
+    # Validazione vincoli economici: anticipa i CHECK DB con messaggio
+    # parlante. In update i campi possono essere assenti: il helper li
+    # ignora se non presenti nel payload.
+    _validate_riga_economic(payload, function_name=f"{_FN}.aggiorna_riga")
+
     richiesta_approvazione = bool(payload.get("richiesta_approvazione", False))
     update_fields: dict[str, Any] = {}
     for key in (
@@ -452,6 +667,40 @@ def aggiorna_riga(
             )
             update_fields["stato_approvazione_prezzo"] = "PENDING"
             update_fields["pratica_approvazione_prezzo_id"] = pratica_id_l3
+
+    # Coerenza qta_operativa quando l'utente cambia `quantita` in edit
+    # senza mandare qta_operativa: ricalcolo dalla UoM operativa della
+    # riga esistente (o nuova, se l'edit la sta cambiando insieme).
+    # Stesso pattern di gestisci_riga (helper _derive_qta_operativa).
+    if (
+        "quantita" in update_fields
+        and "qta_operativa" not in update_fields
+    ):
+        # Riga esistente serve come fallback per articolo + UoM se il payload
+        # non li espone (caso normale: edit modifica solo prezzo/quantita').
+        if "articolo_id" not in update_fields or "uom_operativa_id" not in update_fields:
+            righe = repo.list_righe(preventivo_id)
+            riga_esistente = next((r for r in righe if r.get("id") == riga_id), None)
+        else:
+            riga_esistente = None
+        articolo_id_eff = update_fields.get("articolo_id") or (
+            riga_esistente.get("articolo_id") if riga_esistente else None
+        )
+        uom_id_eff = update_fields.get("uom_operativa_id") or (
+            riga_esistente.get("uom_operativa_id") if riga_esistente else None
+        )
+        qta_op, factor_eff = _derive_qta_operativa(
+            repo=repo,
+            articolo_id=articolo_id_eff,
+            uom_id=uom_id_eff,
+            quantita=update_fields["quantita"],
+            qta_operativa_payload=None,
+            factor_to_base_payload=update_fields.get("factor_to_base"),
+        )
+        if qta_op is not None:
+            update_fields["qta_operativa"] = qta_op
+        if "factor_to_base" not in update_fields and factor_eff is not None:
+            update_fields["factor_to_base"] = factor_eff
 
     if update_fields:
         updated = repo.update_riga(riga_id, **update_fields)
@@ -521,6 +770,92 @@ def _orchestrate_l3_request(
     return pratica_id
 
 
+# Scopo: Deriva qta_operativa + factor_to_base dalla UoM operativa selezionata
+#        quando il payload FE non li espone. Pattern: il FE invia solo `quantita`
+#        nell'UoM scelta dall'operatore; il BE consulta il fattore di conversione
+#        UoM-operativa -> UoM-base e calcola la quantita' nell'UoM base.
+#        Output: tupla (qta_operativa, factor_to_base) come stringhe Decimal-safe.
+#        Pass-through dei valori payload se gia' valorizzati (rispetto override).
+def _derive_qta_operativa(
+    *,
+    repo: "PreventiviRepository",
+    articolo_id: Any,
+    uom_id: Any,
+    quantita: Any,
+    qta_operativa_payload: Any,
+    factor_to_base_payload: Any,
+) -> tuple[Any, Any]:
+    from decimal import Decimal
+
+    # Pass-through: se il payload li espone, niente lookup.
+    if qta_operativa_payload is not None and factor_to_base_payload is not None:
+        return qta_operativa_payload, factor_to_base_payload
+
+    # Senza articolo+uom o senza quantita non possiamo derivare nulla:
+    # ritorna i valori payload (None) e lascia che la guard DB sollevi
+    # un errore parlante (E_QTA_MISSING / E_UOM_MISSING).
+    if not articolo_id or not uom_id or quantita is None:
+        return qta_operativa_payload, factor_to_base_payload
+
+    factor_db = repo.get_articolo_uom_factor(str(articolo_id), int(uom_id))
+    # Articolo senza UoM operativa mappata (edge case): assumiamo factor=1
+    # cosi' qta_operativa = quantita. La guard DB sull'esistenza UoM e' altrove.
+    factor = Decimal(str(factor_db)) if factor_db is not None else Decimal("1")
+    factor_str = factor_to_base_payload if factor_to_base_payload is not None else str(factor)
+    if qta_operativa_payload is not None:
+        return qta_operativa_payload, factor_str
+    qta_op = Decimal(str(quantita)) * factor
+    return str(qta_op), factor_str
+
+
+# Scopo: Validazione lato BE dei vincoli economici di una riga preventivo
+#        prima del resolver/INSERT/UPDATE. Anticipa i CHECK constraint DB
+#        (`chk_prevrighe_quantita_prezzo`: prezzo >= 0 AND quantita > 0)
+#        per restituire un errore parlante invece dell'E_DATABASE generico
+#        che il middleware mostrerebbe sul violation Postgres.
+#        Chiamata sia da gestisci_riga (create) sia da aggiorna_riga (update).
+#        Salta i campi assenti dal payload: in update non tutti i campi
+#        passano sempre.
+def _validate_riga_economic(payload: dict[str, Any], *, function_name: str) -> None:
+    if "prezzo_unitario" in payload and payload["prezzo_unitario"] is not None:
+        try:
+            prezzo = Decimal(str(payload["prezzo_unitario"]))
+        except Exception:
+            ErrorManager.raise_error(
+                code="E_PREV_VALIDAZIONE",
+                message="Prezzo unitario non numerico.",
+                detail=f"prezzo_unitario={payload['prezzo_unitario']!r}",
+                function_name=function_name,
+            )
+            raise AssertionError("unreachable")  # pragma: no cover
+        ErrorManager.require(
+            prezzo >= 0,
+            code="E_PREV_VALIDAZIONE",
+            message="Il prezzo unitario non puo' essere negativo.",
+            detail=f"prezzo_unitario={payload['prezzo_unitario']!r}",
+            function_name=function_name,
+        )
+
+    if "quantita" in payload and payload["quantita"] is not None:
+        try:
+            quantita = Decimal(str(payload["quantita"]))
+        except Exception:
+            ErrorManager.raise_error(
+                code="E_PREV_VALIDAZIONE",
+                message="Quantita' non numerica.",
+                detail=f"quantita={payload['quantita']!r}",
+                function_name=function_name,
+            )
+            raise AssertionError("unreachable")  # pragma: no cover
+        ErrorManager.require(
+            quantita > 0,
+            code="E_PREV_VALIDAZIONE",
+            message="La quantita' deve essere maggiore di zero.",
+            detail=f"quantita={payload['quantita']!r}",
+            function_name=function_name,
+        )
+
+
 def _resolve_or_check_override_prezzo(
     *,
     testata: dict[str, Any],
@@ -549,25 +884,32 @@ def _resolve_or_check_override_prezzo(
     # Resolver best-effort: se qualunque errore applicativo (es.
     # E_CATEGORIA_LISTINO_NON_MAPPATA) accettiamo il prezzo manuale.
     # L'override non e' controllato perche' non c'e' nulla da confrontare.
+    #
+    # Savepoint annidato (transaction.atomic interno): le `RAISE EXCEPTION`
+    # dentro fn_resolve_prezzo_listino_v2 marcano la tx PostgreSQL come
+    # aborted; senza savepoint l'INSERT di create_riga fallirebbe con
+    # InFailedSqlTransaction → mascherato in E_DATABASE generico. Il
+    # savepoint isola l'errore e mantiene integra la tx esterna.
     prezzo_resolver: Decimal | None = None
     resolver_context: dict[str, Any] | None = None
     try:
-        resolver_result = suggerisci_prezzo_riga(
-            int(testata["id"]),
-            articolo_id=str(articolo_id),
-            uom_id=int(uom_id),
-            auth_user_id=auth_user_id,
-        )
-        if resolver_result.get("prezzo_finale") is not None:
-            prezzo_resolver = Decimal(str(resolver_result["prezzo_finale"]))
-            resolver_context = {
-                "origine": resolver_result.get("origine"),
-                "listino_id": resolver_result.get("listino_id"),
-                "contratto_id": resolver_result.get("contratto_id"),
-                "promo_id": resolver_result.get("promo_id"),
-                "tipo_variazione": resolver_result.get("tipo_variazione_applicata"),
-                "valore_variazione": resolver_result.get("valore_variazione_applicata"),
-            }
+        with transaction.atomic():
+            resolver_result = suggerisci_prezzo_riga(
+                int(testata["id"]),
+                articolo_id=str(articolo_id),
+                uom_id=int(uom_id),
+                auth_user_id=auth_user_id,
+            )
+            if resolver_result.get("prezzo_finale") is not None:
+                prezzo_resolver = Decimal(str(resolver_result["prezzo_finale"]))
+                resolver_context = {
+                    "origine": resolver_result.get("origine"),
+                    "listino_id": resolver_result.get("listino_id"),
+                    "contratto_id": resolver_result.get("contratto_id"),
+                    "promo_id": resolver_result.get("promo_id"),
+                    "tipo_variazione": resolver_result.get("tipo_variazione_applicata"),
+                    "valore_variazione": resolver_result.get("valore_variazione_applicata"),
+                }
     except Exception:
         # Best-effort: se il resolver non trova prezzo, accettiamo il
         # payload manuale (se presente). Se payload_prezzo e' None in
@@ -594,11 +936,27 @@ def _resolve_or_check_override_prezzo(
         )
         raise AssertionError("unreachable")  # pragma: no cover
 
-    if prezzo_resolver is not None and payload_decimal == prezzo_resolver:
-        return payload_decimal, {
-            "origine_prezzo": resolver_context.get("origine") if resolver_context else None,
-            "prezzo_resolver_context": resolver_context,
-        }
+    # Confronto con tolleranza: il resolver ritorna prezzo a 10 decimali
+    # (max_digits=22, decimal_places=10), ma il round-trip BE -> JSON ->
+    # JS Number (53-bit float, ~15-17 cifre significative) -> InputNumber
+    # mode="currency" -> JSON -> BE perde precisione sull'ultima cifra.
+    # Quantizziamo entrambi a 4 decimali (precisione abbondante per prezzi
+    # commerciali EUR) per il confronto: se uguali, salviamo il prezzo
+    # resolver originale (full precision) — il valore "che l'utente vede"
+    # era gia' un'approssimazione del valore canonico DB.
+    _PRICE_COMPARE_QUANTIZE = Decimal("0.0001")
+    if prezzo_resolver is not None:
+        payload_q = payload_decimal.quantize(
+            _PRICE_COMPARE_QUANTIZE, rounding=ROUND_HALF_UP,
+        )
+        resolver_q = prezzo_resolver.quantize(
+            _PRICE_COMPARE_QUANTIZE, rounding=ROUND_HALF_UP,
+        )
+        if payload_q == resolver_q:
+            return prezzo_resolver, {
+                "origine_prezzo": resolver_context.get("origine") if resolver_context else None,
+                "prezzo_resolver_context": resolver_context,
+            }
 
     # Override: L1 richiesta azione processo prezzo_override_manuale.
     _check_permesso_override_prezzo(auth_user_id, function_name=function_name)

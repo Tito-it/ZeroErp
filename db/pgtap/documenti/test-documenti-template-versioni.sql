@@ -1,0 +1,196 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: documenti.template_documenti_versioni
+--   - anti-overlap PUBBLICATA (EXCLUDE gist)
+--   - guard A1 (immutabilita' PUBBLICATA)
+--   - guard A2 (delete block PUBBLICATA/OBSOLETA/usata)
+--   - daterange validita auto-calcolata da trigger
+-- ------------------------------------------------------------
+-- Indice test (1..9):
+--  1) Setup: emittente fiscale disponibile, template di base creato
+--  2) Validita' calcolata automaticamente da script.trgfn_set_validita
+--  3) Anti-overlap: due PUBBLICATA attive con range sovrapposti bloccate
+--  4) Anti-overlap: range disgiunto ammesso
+--  5) Guard A1: UPDATE html_template su PUBBLICATA bloccato
+--  6) Guard A1: UPDATE valido_dal su PUBBLICATA bloccato
+--  7) Guard A1: UPDATE meta (campo non protetto) ammesso anche su PUBBLICATA
+--  8) Guard A2: DELETE su PUBBLICATA bloccato
+--  9) Guard A2: DELETE su BOZZA non usata ammesso
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(9);
+
+-- ============================================================
+-- Setup contesto + template di base
+-- ============================================================
+CREATE TEMP TABLE tmp_tdv_ctx AS
+SELECT
+  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
+    WHERE ef.attivo = true ORDER BY ef.id LIMIT 1)                      AS emittente_id,
+  (SELECT s.id FROM config.sorgenti s
+    WHERE s.codice_interno = 'PREVENTIVO')                              AS sorgente_id,
+  (SELECT t.id FROM documenti.tipi_documento_output t
+    WHERE t.codice_interno = 'PREVENTIVO')                              AS tipo_output_id,
+  (SELECT r.id FROM documenti.render_engine_documento r
+    WHERE r.codice_interno = 'WEASYPRINT')                              AS render_id;
+
+WITH ins AS (
+  INSERT INTO documenti.template_documenti (
+    tipo_documento_output_id, codice, codice_interno, descrizione,
+    sorgente_tipo_id, context_builder_code, emittente_fiscale_id,
+    is_default, attivo
+  )
+  SELECT tipo_output_id, 'PGTAP-TDV', 'PGTAP_TDV', 'Template per test versioni',
+         sorgente_id, 'pgtap.builder', emittente_id, false, true
+    FROM tmp_tdv_ctx
+   WHERE emittente_id IS NOT NULL
+  RETURNING id
+)
+SELECT id INTO TEMP TABLE tmp_tdv_template FROM ins;
+
+-- 1) Pre-condizione: template creato (e quindi emittente disponibile)
+SELECT ok(
+  (SELECT COUNT(*) > 0 FROM tmp_tdv_template),
+  'Setup: emittente fiscale disponibile, template di base creato'
+);
+
+-- ============================================================
+-- 2) validita' auto-calcolata
+-- ============================================================
+INSERT INTO documenti.template_documenti_versioni (
+  template_documento_id, versione, stato, titolo, html_template,
+  render_engine_id, valido_dal, valido_al
+)
+SELECT (SELECT id FROM tmp_tdv_template),
+       1, 'BOZZA', 'v1', '<html>v1</html>',
+       (SELECT render_id FROM tmp_tdv_ctx),
+       DATE '2026-01-01', DATE '2026-06-30';
+
+SELECT is(
+  (SELECT validita FROM documenti.template_documenti_versioni
+    WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+      AND versione = 1),
+  daterange(DATE '2026-01-01', DATE '2026-06-30', '[]'),
+  'Validita auto-calcolata correttamente da script.trgfn_set_validita'
+);
+
+-- ============================================================
+-- Pubblico la v1 e verifico anti-overlap
+-- ============================================================
+UPDATE documenti.template_documenti_versioni
+   SET stato = 'PUBBLICATA'
+ WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+   AND versione = 1;
+
+-- 3) Anti-overlap: una seconda v2 PUBBLICATA con range sovrapposto deve fallire
+INSERT INTO documenti.template_documenti_versioni (
+  template_documento_id, versione, stato, titolo, html_template,
+  render_engine_id, valido_dal, valido_al
+)
+SELECT (SELECT id FROM tmp_tdv_template),
+       2, 'BOZZA', 'v2', '<html>v2</html>',
+       (SELECT render_id FROM tmp_tdv_ctx),
+       DATE '2026-04-01', DATE '2026-09-30';
+
+SELECT throws_ok(
+  $$UPDATE documenti.template_documenti_versioni
+       SET stato = 'PUBBLICATA'
+     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+       AND versione = 2$$,
+  '23P01',
+  NULL,
+  'Anti-overlap: PUBBLICATA con range sovrapposto bloccata'
+);
+
+-- 4) Anti-overlap: range disgiunto ammesso
+INSERT INTO documenti.template_documenti_versioni (
+  template_documento_id, versione, stato, titolo, html_template,
+  render_engine_id, valido_dal, valido_al
+)
+SELECT (SELECT id FROM tmp_tdv_template),
+       3, 'BOZZA', 'v3', '<html>v3</html>',
+       (SELECT render_id FROM tmp_tdv_ctx),
+       DATE '2026-07-01', DATE '2026-12-31';
+
+UPDATE documenti.template_documenti_versioni
+   SET stato = 'PUBBLICATA'
+ WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+   AND versione = 3;
+
+SELECT is(
+  (SELECT stato FROM documenti.template_documenti_versioni
+    WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+      AND versione = 3),
+  'PUBBLICATA',
+  'Anti-overlap: PUBBLICATA con range disgiunto ammessa'
+);
+
+-- ============================================================
+-- 5) Guard A1: immutabilita' PUBBLICATA su html_template
+-- ============================================================
+SELECT throws_ok(
+  $$UPDATE documenti.template_documenti_versioni
+       SET html_template = '<html>HACK</html>'
+     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+       AND versione = 1$$,
+  NULL,
+  NULL,
+  'A1: UPDATE html_template su PUBBLICATA bloccato'
+);
+
+-- 6) Guard A1: UPDATE valido_dal su PUBBLICATA bloccato
+SELECT throws_ok(
+  $$UPDATE documenti.template_documenti_versioni
+       SET valido_dal = DATE '2025-01-01'
+     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+       AND versione = 1$$,
+  NULL,
+  NULL,
+  'A1: UPDATE valido_dal su PUBBLICATA bloccato'
+);
+
+-- 7) UPDATE meta (campo non in elenco protetto) ammesso anche su PUBBLICATA
+UPDATE documenti.template_documenti_versioni
+   SET meta = '{"updated_by_test": true}'::jsonb
+ WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+   AND versione = 1;
+
+SELECT is(
+  (SELECT meta->>'updated_by_test'
+     FROM documenti.template_documenti_versioni
+    WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+      AND versione = 1),
+  'true',
+  'A1: UPDATE meta (non protetto) ammesso anche su PUBBLICATA'
+);
+
+-- ============================================================
+-- 8) Guard A2: DELETE su PUBBLICATA bloccato
+-- ============================================================
+SELECT throws_ok(
+  $$DELETE FROM documenti.template_documenti_versioni
+     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+       AND versione = 1$$,
+  NULL,
+  NULL,
+  'A2: DELETE su versione PUBBLICATA bloccato'
+);
+
+-- 9) Guard A2: DELETE su BOZZA non usata ammesso
+DELETE FROM documenti.template_documenti_versioni
+ WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+   AND versione = 2;
+
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM documenti.template_documenti_versioni
+     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+       AND versione = 2
+  ),
+  'A2: DELETE su BOZZA non usata ammesso'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

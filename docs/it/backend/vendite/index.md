@@ -19,6 +19,8 @@
 - [api_reset_lotto_fattura_draft](manual/api_reset_lotto_fattura_draft.md) — Esporre via HTTP il reset tecnico di una singola fattura in un lotto MASSIVO in DRAFT.
 - [api_run_commesse_push](manual/api_run_commesse_push.md) — Esporre via HTTP l'avvio dell'orchestratore push commesse, che sincronizza documenti sorgente (preventivi, ordini, contratti, DDT, consumi) verso commesse e commesse_attivita.
 - [api_run_lotto_pipeline](manual/api_run_lotto_pipeline.md) — Esporre via HTTP l'avvio della pipeline lotto vendite.
+- [api_vendite_form_defaults](manual/api_vendite_form_defaults.md) — Endpoint **form-defaults** read-only consumati dai drawer FE all'apertura o al cambio di un campo chiave (BA per contratti/preventivi, sorgente per clone versione). Centralizzano lato BE la risoluzione di valori di defa…
+- [api_vendite_lookups](manual/api_vendite_lookups.md) — Endpoint **lookup statici** per gli enum di dominio vendite (Fase 2 refactor frontend vendite): tipi variazione (contratto/promo), ambiti contratto, modalità pricing contratto. Eliminano i magic string cablati nei drawe…
 
 ## Funzioni
 - [fn_execute_pipeline_step](funzioni/fn_execute_pipeline_step.md) — Eseguire un singolo step di pipeline, applicando i task definiti nello step corrente.

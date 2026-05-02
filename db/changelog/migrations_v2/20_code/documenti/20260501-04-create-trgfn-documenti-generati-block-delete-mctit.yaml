@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Delete block documenti_generati (A5)
+# ---------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260501-04-create-trgfn-documenti-generati-block-delete-mctit.yaml
+
+  - changeSet:
+      id: 20260501-04-create-trgfn-documenti-generati-block-delete
+      author: mctit
+      comment: >
+        Guard A5: Crea il trigger che blocca la cancellazione fisica di documenti generati.
+        La tabella documenti_generati è append-only: il ciclo vita si gestisce tramite stato
+        (GENERATO → ARCHIVIATO / ANNULLATO), mai con DELETE fisico.
+        Il messaggio di errore è definito in config.messaggi_errore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_block_delete()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              -- Scopo:
+              --   Blocca la cancellazione fisica di documenti generati.
+              --
+              -- Regola:
+              --   La tabella è append-only sulla generazione storica.
+              --   Il ciclo vita si gestisce tramite stato (GENERATO → ARCHIVIATO/ANNULLATO).
+              --   Non si cancella mai fisicamente: la cancellazione invaliderebbe
+              --   il tracciamento della generazione e l'audit tramite context_json.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_GENERATO_DELETE_BLOCKED
+              BEGIN
+                PERFORM script.fn_log_and_raise_error(
+                  'documenti', 'trgfn_documenti_generati_block_delete',
+                  'E_DOCUMENTI_GENERATO_DELETE_BLOCKED',
+                  jsonb_build_object(
+                    'documento_generato_id', OLD.id,
+                    'uid', OLD.uid::text,
+                    'stato', OLD.stato
+                  ),
+                  NULL::uuid
+                );
+                RETURN OLD;
+              END;
+              $$;
+
+              CREATE TRIGGER trg_documenti_generati_a10_block_delete_dlt
+                BEFORE DELETE
+                ON documenti.documenti_generati
+                FOR EACH ROW
+                EXECUTE FUNCTION documenti.trgfn_documenti_generati_block_delete();
+
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_block_delete() IS
+                'Guard A5: blocca DELETE fisico su documenti_generati. Tabella append-only: usa stato per ciclo vita, mai DELETE.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_documenti_generati_a10_block_delete_dlt
+                ON documenti.documenti_generati;
+              DROP FUNCTION IF EXISTS documenti.trgfn_documenti_generati_block_delete();

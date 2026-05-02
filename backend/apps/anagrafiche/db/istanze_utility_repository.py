@@ -1,0 +1,221 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Repository SQL per istanze_utilities — lookup ricco riusabile
+#        cross-dominio (preventivi prospect senza BA, future utility-aware
+#        flows). Pattern simmetrico a BillingAccountRepository: ricerca
+#        multi-campo (codice istanza, ragione sociale soggetto, indirizzo
+#        normalizzato), filtro utility coerente (BA / IDP / clienti), filtro
+#        soggetto, scope emittente fiscale via BA collegato.
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from typing import Any
+
+from django.db import connection
+
+from apps.core.db._helpers import row_to_dict, rows_to_list
+
+# Scopo: Clausole WHERE condivise tra query count e query data del lookup
+# istanze. Mantenere allineate le due query: qualsiasi nuovo filtro va aggiunto qui.
+#
+# Regole:
+# - ricerca testuale ILIKE su codice istanza, ragione_sociale soggetto e
+#   indirizzo_normalizzato (display friendly)
+# - utility_id: strict (post Strategia C ogni istanza dichiara utility via
+#   billing_account / istanze_dati_precontrattuali / clienti). Delega a
+#   script.fn_check_utility_istanza_coerenza per single source of truth: se
+#   la regola DB cambia (es. nuovi satelliti), il filtro lookup la segue
+#   automaticamente. Stessa fn usata dal trigger DB
+#   trgfn_preventivi_guard_utility_istanza_coerenza.
+# - soggetto_id: filtro diretto su iu.soggetto_id
+# - scope emittente: catena via BA della stessa istanza. Le istanze totalmente
+#   orfane (no BA) sono visibili solo ad admin globale / superuser.
+_LOOKUP_WHERE = """
+    WHERE (
+            iu.codice ILIKE %s
+         OR s.ragione_sociale_completa ILIKE %s
+         OR vid.indirizzo_normalizzato ILIKE %s
+          )
+      AND (
+            %s::integer IS NULL
+         OR script.fn_check_utility_istanza_coerenza(iu.id, %s)
+          )
+      AND (%s::uuid IS NULL OR iu.soggetto_id = %s)
+      AND (
+            %s::bigint[] IS NULL
+         OR EXISTS (
+              SELECT 1
+                FROM anagrafiche.billing_account ba_s
+                JOIN anagrafiche.emittenti_fiscali_billing_account efba
+                  ON (
+                       efba.billing_account_id = ba_s.id
+                    OR efba.is_default = true
+                     )
+               WHERE ba_s.istanza_utility_id = iu.id
+                 AND efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
+            )
+          )
+"""
+
+# Scopo: JOIN comuni a count e data del lookup istanze.
+# - soggetti: ragione sociale per display + ricerca
+# - vw_indirizzi_dettaglio: indirizzo_normalizzato per ricerca + display
+# - pdp: codice punto di prelievo (se istanza ne ha uno); nullable
+# - ba_first (LATERAL): codice BA campione per badge UI; istanze totalmente
+#   orfane (no BA) hanno tutti i campi ba_first.* a NULL → il FE le mostra
+#   col badge "Solo istanza".
+_LOOKUP_FROM = """
+      FROM anagrafiche.istanze_utilities iu
+      LEFT JOIN anagrafiche.soggetti s
+        ON s.id = iu.soggetto_id
+      LEFT JOIN anagrafiche.vw_indirizzi_dettaglio vid
+        ON vid.indirizzo_dettaglio_id = iu.indirizzo_dettaglio_id
+      LEFT JOIN anagrafiche.pdp p
+        ON p.id = iu.pdp_id
+      LEFT JOIN LATERAL (
+            SELECT ba.id AS ba_id, ba.codice AS ba_codice, ba.utility_id AS ba_utility_id
+              FROM anagrafiche.billing_account ba
+             WHERE ba.istanza_utility_id = iu.id
+             ORDER BY ba.id
+             LIMIT 1
+           ) ba_first ON true
+      LEFT JOIN config.utilities u_first
+        ON u_first.id = ba_first.ba_utility_id
+"""
+
+# Scopo: Proiezione SELECT condivisa tra search_lookup (lista) e
+# get_lookup_by_id (restore). Mantenere allineati i campi esposti al
+# frontend (componente IstanzaUtilityLookup).
+_LOOKUP_SELECT_COLUMNS = """
+    iu.id,
+    iu.codice,
+    iu.fittizia,
+    iu.soggetto_id,
+    s.ragione_sociale_completa,
+    s.id_fiscale_univoco_cf_piva AS id_fiscale,
+    iu.indirizzo_dettaglio_id,
+    vid.indirizzo_normalizzato AS indirizzo_display,
+    iu.pdp_id,
+    p.pdp                   AS pdp_codice,
+    ba_first.ba_id          AS billing_account_id,
+    ba_first.ba_codice      AS billing_account_codice,
+    ba_first.ba_utility_id  AS utility_id,
+    u_first.codice          AS utility_codice,
+    u_first.descrizione     AS utility_descrizione
+"""
+
+
+# Scopo: Effettua l'escape dei caratteri wildcard ILIKE (\, %, _) per evitare
+# match indesiderati quando l'utente cerca stringhe contenenti tali caratteri.
+def _escape_ilike(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+class IstanzeUtilityRepository:
+    """Repository istanze_utilities: lookup autocomplete e restore per edit."""
+
+    # Scopo: Cerca istanze_utilities per autocomplete con JOIN ricchi
+    #        (soggetto, indirizzo, BA campione). Applica filtri: ricerca testuale,
+    #        utility (coerente con BA/IDP/clienti), soggetto, scope emittente
+    #        fiscale via BA collegato. Ordinamento alfabetico ragione sociale.
+    # Perimetro: sola lettura. Cap risultati gestito dal chiamante.
+    # Risultato: tuple (list[dict], total_count) per gestione UI "affina ricerca".
+    def search_lookup(
+        self,
+        *,
+        q: str,
+        utility_id: int | None,
+        soggetto_id: str | None,
+        emittente_ids: list[int] | None,
+        limit: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        # Pattern ILIKE su 3 colonne (codice, ragione sociale, indirizzo).
+        search_pattern = f"%{_escape_ilike(q)}%"
+
+        # Scope emittente: lista sr_ids autorizzati, None = bypass (superuser/admin globale).
+        scope_array = emittente_ids if emittente_ids is not None else None
+
+        # Parametri condivisi tra count e data query (stessa clausola WHERE).
+        # Layout (post refactor con fn_check_utility_istanza_coerenza):
+        #   3 ILIKE + 2 utility_id (cast IS NULL + fn arg) + 2 soggetto + 2 scope
+        where_params = [
+            search_pattern, search_pattern, search_pattern,
+            utility_id, utility_id,
+            soggetto_id, soggetto_id,
+            scope_array, scope_array,
+        ]
+
+        count_sql = f"""
+            SELECT COUNT(*)
+            {_LOOKUP_FROM}
+            {_LOOKUP_WHERE}
+        """  # noqa: S608
+
+        data_sql = f"""
+            SELECT
+            {_LOOKUP_SELECT_COLUMNS}
+            {_LOOKUP_FROM}
+            {_LOOKUP_WHERE}
+             ORDER BY s.ragione_sociale_completa ASC NULLS LAST,
+                      iu.codice ASC,
+                      iu.id ASC
+             LIMIT %s
+        """  # noqa: S608
+
+        with connection.cursor() as cursor:
+            cursor.execute(count_sql, where_params)
+            row = cursor.fetchone()
+            assert row is not None
+            total_count = int(row[0])
+
+            cursor.execute(data_sql, where_params + [limit])
+            rows = rows_to_list(cursor)
+
+        return rows, total_count
+
+    # Scopo: Esistenza istanza per check 404 prima di scope/lookup.
+    def exists(self, istanza_utility_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM anagrafiche.istanze_utilities WHERE id = %s LIMIT 1",
+                [istanza_utility_id],
+            )
+            return cursor.fetchone() is not None
+
+    # Scopo: Restituisce la singola istanza arricchita per restore lato client.
+    #        Usato in edit quando il form ha solo l'id e deve ricostruire il _obj
+    #        dell'AutoComplete senza doppio round-trip.
+    # Perimetro: sola lettura. Non applica scope emittente: l'id e' gia' noto
+    #        e l'autorizzazione va gestita dall'endpoint chiamante.
+    # Risultato: dict con gli stessi campi di search_lookup, o None se non trovato.
+    def get_lookup_by_id(self, istanza_utility_id: int) -> dict[str, Any] | None:
+        sql = f"""
+            SELECT
+            {_LOOKUP_SELECT_COLUMNS}
+            {_LOOKUP_FROM}
+             WHERE iu.id = %s
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [istanza_utility_id])
+            row = row_to_dict(cursor)
+        return row or None
+
+    # Scopo: Wrapper su script.fn_check_utility_istanza_coerenza per pre-validazione
+    #        coerenza coppia (istanza, utility) prima dell'INSERT preventivo.
+    #        Migliore UX: errore parlante prima del trigger DB. Defense-in-depth:
+    #        il trigger _a10_guard_utility_istanza_coerenza_ins_upd applica la
+    #        stessa regola in DB.
+    # Risultato: True se coerente, False altrimenti.
+    def check_utility_istanza_coerenza(
+        self, istanza_utility_id: int, utility_id: int,
+    ) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT script.fn_check_utility_istanza_coerenza(%s, %s)",
+                [istanza_utility_id, utility_id],
+            )
+            row = cursor.fetchone()
+        return bool(row and row[0])

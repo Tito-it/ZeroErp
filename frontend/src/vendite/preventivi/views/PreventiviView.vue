@@ -11,14 +11,15 @@ const drawer = useDrawerState()
 const store = usePreventiviStore()
 useReadonlyMode(READONLY_DOMAINS.VENDITE)
 
-async function onDrawerSaved(result) {
+// Su 'saved': aggiorna lista + chiude drawer.
+// La transizione CREATE → "edit-evolved" (auto-save bozza con righe inline) e'
+// gestita internamente dal drawer via createdId/hasDetail e NON emette 'saved'.
+// Quindi qui arriva solo il save manuale dell'utente (UPDATE testata o create
+// fallback): refresh + close lineare.
+async function onDrawerSaved() {
   store.filters.offset = 0
   if (store.hasSearched) await store.fetchList()
-  if (result && result.id && drawer.state.mode === 'create') {
-    drawer.editRow({ id: result.id }, 'id')
-  } else {
-    drawer.close()
-  }
+  drawer.close()
 }
 </script>
 

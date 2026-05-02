@@ -53,6 +53,25 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo = MagicMock()
         self.MockRepoClass.return_value = self.mock_repo
 
+        # Mock BB anagrafiche usati da crea_preventivo per validator dominio
+        # (post brief DB rev2: derivazione istanza dal BA + pre-check coerenza
+        # utility/istanza). Default: coerenza ok, BA → istanza id=100.
+        self.ba_repo_patcher = patch(
+            "apps.vendite.services.preventivi_service.BillingAccountRepository"
+        )
+        self.MockBaRepoClass = self.ba_repo_patcher.start()
+        self.mock_ba_repo = MagicMock()
+        self.MockBaRepoClass.return_value = self.mock_ba_repo
+        self.mock_ba_repo.get_istanza_utility_id.return_value = 100
+
+        self.iu_repo_patcher = patch(
+            "apps.vendite.services.preventivi_service.IstanzeUtilityRepository"
+        )
+        self.MockIuRepoClass = self.iu_repo_patcher.start()
+        self.mock_iu_repo = MagicMock()
+        self.MockIuRepoClass.return_value = self.mock_iu_repo
+        self.mock_iu_repo.check_utility_istanza_coerenza.return_value = True
+
         # Default: lookup config
         self.mock_repo.get_stato_bozza_id.return_value = 1
         self.mock_repo.get_sorgente_tipo_preventivo_id.return_value = 10
@@ -60,8 +79,21 @@ class TestPreventiviService(unittest.TestCase):
         # (Fase 1 refactor frontend vendite: get_preventivo invoca la fn DB).
         self.mock_repo.get_capabilities.return_value = {}
 
+        # Mock transaction.atomic → no-op context manager (test mock-only,
+        # no DB connection). Necessario per cambia_stato accettazione che
+        # avvolge update_preventivo + cambia_stato in transaction.atomic.
+        self.atomic_patcher = patch(
+            "apps.vendite.services.preventivi_service.transaction.atomic"
+        )
+        mock_atomic = self.atomic_patcher.start()
+        mock_atomic.return_value.__enter__ = MagicMock(return_value=None)
+        mock_atomic.return_value.__exit__ = MagicMock(return_value=False)
+
     def tearDown(self):
         self.repo_patcher.stop()
+        self.ba_repo_patcher.stop()
+        self.iu_repo_patcher.stop()
+        self.atomic_patcher.stop()
 
     # ── Creazione ──
 
@@ -72,9 +104,15 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.create_preventivo.return_value = {
             "id": 1, "uid": "abc-123", "numero": "P-0001",
         }
-        result = crea_preventivo({"utility_id": 5})
+        result = crea_preventivo({
+            "utility_id": 5, "istanza_utility_id": 100,
+        })
         self.assertEqual(result["id"], 1)
         self.mock_repo.create_preventivo.assert_called_once()
+        # Pre-check coerenza eseguito (defense-in-depth lato service).
+        self.mock_iu_repo.check_utility_istanza_coerenza.assert_called_once_with(
+            100, 5,
+        )
 
     # Scopo: Verifica errore se utility_id mancante.
     def test_crea_preventivo_utility_mancante(self):
@@ -83,6 +121,215 @@ class TestPreventiviService(unittest.TestCase):
         with self.assertRaises(ServiceError) as ctx:
             crea_preventivo({})
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+
+    # Scopo: Verifica errore se istanza_utility_id mancante e nessun BA da cui
+    # derivarla (regola di dominio post brief DB rev2: istanza obbligatoria).
+    def test_crea_preventivo_istanza_mancante(self):
+        from apps.vendite.services.preventivi_service import crea_preventivo
+
+        with self.assertRaises(ServiceError) as ctx:
+            crea_preventivo({"utility_id": 5})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.assertIn("istanza_utility_id", ctx.exception.message)
+        # Repo INSERT non viene chiamato.
+        self.mock_repo.create_preventivo.assert_not_called()
+
+    # Scopo: Quando il payload ha solo BA (no istanza), il service deriva
+    # l'istanza dal BA via BillingAccountRepository.get_istanza_utility_id.
+    def test_crea_preventivo_istanza_derivata_da_ba(self):
+        from apps.vendite.services.preventivi_service import crea_preventivo
+
+        self.mock_ba_repo.get_istanza_utility_id.return_value = 200
+        self.mock_repo.create_preventivo.return_value = {
+            "id": 1, "uid": "abc-123", "numero": "P-0001",
+        }
+        crea_preventivo({"utility_id": 5, "billing_account_id": 42})
+        self.mock_ba_repo.get_istanza_utility_id.assert_called_once_with(42)
+        # L'istanza derivata viene passata sia al check coerenza sia all'INSERT.
+        self.mock_iu_repo.check_utility_istanza_coerenza.assert_called_once_with(
+            200, 5,
+        )
+        kwargs = self.mock_repo.create_preventivo.call_args.kwargs
+        self.assertEqual(kwargs["istanza_utility_id"], 200)
+        self.assertEqual(kwargs["billing_account_id"], 42)
+
+    # Scopo: Pre-check coerenza utility/istanza (defense-in-depth lato service):
+    # se la coppia (istanza, utility) non e' dichiarata in BA / IDP / clienti
+    # → errore parlante PRIMA del trigger DB.
+    def test_crea_preventivo_utility_istanza_incoerente(self):
+        from apps.vendite.services.preventivi_service import crea_preventivo
+
+        self.mock_iu_repo.check_utility_istanza_coerenza.return_value = False
+        with self.assertRaises(ServiceError) as ctx:
+            crea_preventivo({
+                "utility_id": 5, "istanza_utility_id": 100,
+            })
+        self.assertEqual(ctx.exception.code, "E_PREV_UTILITY_ISTANZA_INCOERENTE")
+        self.mock_repo.create_preventivo.assert_not_called()
+
+    # Scopo: emittente_fiscale_id esplicito (caso admin globale) viene passato
+    # al repository senza alterazioni. Il trigger DB BEFORE INSERT lo lascia
+    # invariato (skip auto-fill quando NEW.emittente_fiscale_id IS NOT NULL).
+    def test_crea_preventivo_emittente_esplicito_admin_globale(self):
+        from apps.vendite.services.preventivi_service import crea_preventivo
+
+        self.mock_repo.create_preventivo.return_value = {
+            "id": 1, "uid": "abc-123", "numero": "P-0001",
+        }
+        crea_preventivo({
+            "utility_id": 5, "istanza_utility_id": 100,
+            "emittente_fiscale_id": 77,
+        })
+        kwargs = self.mock_repo.create_preventivo.call_args.kwargs
+        self.assertEqual(kwargs["emittente_fiscale_id"], 77)
+
+    # ── Eliminazione bozza (abbandono drawer) ──
+
+    # Scopo: hard-delete preventivo BOZZA senza righe ne' pratiche.
+    def test_elimina_preventivo_bozza_orfana_ok(self):
+        from apps.vendite.services.preventivi_service import elimina_preventivo
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT",
+        }
+        self.mock_repo.list_righe.return_value = []
+        self.mock_repo.list_pratiche.return_value = []
+        self.mock_repo.delete_preventivo.return_value = True
+
+        result = elimina_preventivo(1)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["preventivo_id"], 1)
+        self.mock_repo.delete_preventivo.assert_called_once_with(1)
+
+    # Scopo: preventivo inesistente → E_PREV_NOT_FOUND, no DELETE.
+    def test_elimina_preventivo_not_found(self):
+        from apps.vendite.services.preventivi_service import elimina_preventivo
+
+        self.mock_repo.get_preventivo.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            elimina_preventivo(999)
+        self.assertEqual(ctx.exception.code, "E_PREV_NOT_FOUND")
+        self.mock_repo.delete_preventivo.assert_not_called()
+
+    # Scopo: stato non DRAFT → E_PREV_STATO_NON_MODIFICABILE.
+    def test_elimina_preventivo_stato_non_bozza_bloccato(self):
+        from apps.vendite.services.preventivi_service import elimina_preventivo
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "ACCETTATO",
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            elimina_preventivo(1)
+        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
+        self.mock_repo.delete_preventivo.assert_not_called()
+
+    # Scopo: BOZZA con almeno una riga → E_PREV_STATO_NON_MODIFICABILE.
+    def test_elimina_preventivo_con_righe_bloccato(self):
+        from apps.vendite.services.preventivi_service import elimina_preventivo
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT",
+        }
+        self.mock_repo.list_righe.return_value = [{"id": 10}]
+        with self.assertRaises(ServiceError) as ctx:
+            elimina_preventivo(1)
+        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
+        self.mock_repo.delete_preventivo.assert_not_called()
+
+    # ── Cambio stato → ACCETTATO (modalita' fatturazione) ──
+
+    # Scopo: ACCETTATO con immediata=True forza competenza al primo del mese.
+    def test_cambia_stato_accettato_immediata_force_competenza(self):
+        from datetime import date
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "EMESSO",
+        }
+        self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        cambia_stato(1, "ACCETTATO", fatturazione_immediata=True,
+                     competenza_mese=date(2026, 7, 15))  # ignorata
+        # update_preventivo deve essere chiamato con immediata=True e
+        # competenza=primo del mese corrente (oggi.replace(day=1)).
+        kwargs = self.mock_repo.update_preventivo.call_args.kwargs
+        self.assertTrue(kwargs["fatturazione_immediata"])
+        expected = date.today().replace(day=1)
+        self.assertEqual(kwargs["competenza_mese"], expected)
+        self.mock_repo.cambia_stato.assert_called_once_with(
+            1, "ACCETTATO", "django_api",
+        )
+
+    # Scopo: ACCETTATO con immediata=False richiede competenza esplicita.
+    def test_cambia_stato_accettato_non_immediata_con_competenza_ok(self):
+        from datetime import date
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "EMESSO",
+        }
+        self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        cambia_stato(1, "ACCETTATO", fatturazione_immediata=False,
+                     competenza_mese=date(2026, 8, 1))
+        kwargs = self.mock_repo.update_preventivo.call_args.kwargs
+        self.assertFalse(kwargs["fatturazione_immediata"])
+        self.assertEqual(kwargs["competenza_mese"], date(2026, 8, 1))
+
+    # Scopo: ACCETTATO senza fatturazione_immediata → E_PREV_VALIDAZIONE.
+    def test_cambia_stato_accettato_senza_immediata_bloccato(self):
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "EMESSO",
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            cambia_stato(1, "ACCETTATO")
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.update_preventivo.assert_not_called()
+        self.mock_repo.cambia_stato.assert_not_called()
+
+    # Scopo: ACCETTATO con immediata=False senza competenza → E_PREV_VALIDAZIONE.
+    def test_cambia_stato_accettato_non_immediata_senza_competenza_bloccato(self):
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "EMESSO",
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            cambia_stato(1, "ACCETTATO", fatturazione_immediata=False,
+                         competenza_mese=None)
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.update_preventivo.assert_not_called()
+
+    # Scopo: transizioni diverse da ACCETTATO ignorano i 2 parametri (no
+    # update testata, solo cambio stato).
+    def test_cambia_stato_emesso_ignora_immediata_e_competenza(self):
+        from datetime import date
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        cambia_stato(1, "EMESSO", fatturazione_immediata=True,
+                     competenza_mese=date(2026, 9, 1))
+        # No get_preventivo (non serve sul gate accettazione), no update_preventivo.
+        self.mock_repo.update_preventivo.assert_not_called()
+        self.mock_repo.cambia_stato.assert_called_once_with(
+            1, "EMESSO", "django_api",
+        )
+
+    # ── Eliminazione bozza (abbandono drawer) ──
+
+    # Scopo: BOZZA senza righe ma con pratica collegata → bloccato.
+    def test_elimina_preventivo_con_pratiche_bloccato(self):
+        from apps.vendite.services.preventivi_service import elimina_preventivo
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT",
+        }
+        self.mock_repo.list_righe.return_value = []
+        self.mock_repo.list_pratiche.return_value = [{"id": 50}]
+        with self.assertRaises(ServiceError) as ctx:
+            elimina_preventivo(1)
+        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
+        self.mock_repo.delete_preventivo.assert_not_called()
 
     # ── Aggiornamento ──
 
@@ -143,6 +390,33 @@ class TestPreventiviService(unittest.TestCase):
         with self.assertRaises(ServiceError) as ctx:
             gestisci_riga(1, {"quantita": "10"})
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+
+    # Scopo: Verifica che prezzo negativo venga bloccato lato BE con messaggio
+    #        parlante (E_PREV_VALIDAZIONE) invece di lasciare il CHECK DB
+    #        (chk_prevrighe_quantita_prezzo) sollevare un errore generico.
+    def test_gestisci_riga_prezzo_negativo_ko(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(1, {"articolo_id": "uuid-art-1", "prezzo_unitario": "-5.00"})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        # Repo non deve essere chiamato: validazione blocca PRIMA dell'INSERT.
+        self.mock_repo.create_riga.assert_not_called()
+
+    # Scopo: Verifica che quantita zero/negativa venga bloccata lato BE.
+    def test_gestisci_riga_quantita_non_positiva_ko(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(1, {"articolo_id": "uuid-art-1", "quantita": "0"})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: Verifica soft delete riga.
     def test_elimina_riga_ok(self):

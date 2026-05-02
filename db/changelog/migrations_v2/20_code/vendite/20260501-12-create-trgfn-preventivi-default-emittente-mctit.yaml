@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Trigger BEFORE INSERT su vendite.preventivi che valorizza emittente_fiscale_id
+# da GUC app.current_user_id via script.fn_resolve_emittente_for_user
+# (modello user-derived). Skip se gia' valorizzato esplicitamente nel payload.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260501-12-create-trgfn-preventivi-default-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260501-12-create-trgfn-preventivi-default-emittente
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        BEFORE INSERT trigger su vendite.preventivi che setta
+        emittente_fiscale_id da operatore loggato. Naming
+        trg_preventivi_a10_default_emittente_ins (ordina alfabeticamente
+        prima del _a10_guard_*). Skip se NEW.emittente_fiscale_id non NULL.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Function: vendite.trgfn_preventivi_default_emittente
+              --
+              -- Scopo: valorizzare automaticamente preventivi.emittente_fiscale_id
+              --        a INSERT-time, leggendo l'operatore loggato dalla GUC
+              --        app.current_user_id (popolata dal middleware
+              --        JwtAuditAuthentication su tutte le richieste API).
+              --
+              -- Modello user-derived (sessione 2026-05-01):
+              -- l'emittente di un preventivo e' lo snapshot dell'emittente
+              -- dell'OPERATORE che ha creato la riga, NON del BA del documento.
+              --
+              -- Skip se NEW.emittente_fiscale_id e' gia' valorizzato:
+              -- caso ammesso per admin globale che specifica esplicitamente
+              -- l'emittente nel payload (operatore senza EF assegnato 1:1).
+              --
+              -- Contract GUC (per chiamanti diversi dall'API):
+              --   - Contesto API (JwtAuditAuthentication): GUC sempre popolata
+              --   - pgAgent jobs / Liquibase data / DBA: se la GUC e' vuota,
+              --     il chiamante DEVE valorizzare NEW.emittente_fiscale_id
+              --     esplicitamente, altrimenti si solleva
+              --     E_PREV_EMITTENTE_NON_RISOLTO.
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_default_emittente()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_user_id_text text;
+                v_user_id      integer;
+              BEGIN
+                -- 1) Skip se gia' valorizzato esplicitamente nel payload
+                --    (admin globale, batch job, migration data).
+                IF NEW.emittente_fiscale_id IS NOT NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 2) Lettura GUC app.current_user_id (missing_ok=true).
+                --    JwtAuditAuthentication la setta SEMPRE su request auth ok.
+                v_user_id_text := current_setting('app.current_user_id', true);
+
+                IF v_user_id_text IS NULL OR btrim(v_user_id_text) = '' THEN
+                  -- Ultimo arg = valore per il %s del messaggio CSV
+                  -- (E_PREV_EMITTENTE_NON_RISOLTO: messaggio gia' completo,
+                  --  %s = breve contesto diagnostico).
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'trgfn_preventivi_default_emittente',
+                    'E_PREV_EMITTENTE_NON_RISOLTO',
+                    jsonb_build_object(
+                      'detail', 'GUC app.current_user_id vuota e payload senza emittente_fiscale_id',
+                      'numero_preventivo', NEW.numero
+                    ),
+                    NULL::uuid,
+                    concat('GUC vuota, numero=', NEW.numero)
+                  );
+                END IF;
+
+                -- Cast safe: la GUC e' sempre numerica se valorizzata.
+                v_user_id := v_user_id_text::integer;
+
+                -- 3) Resolver operatore -> emittente (modello 1-a-1).
+                --    Ritorna NULL per admin globale (no riga in user_emittenti_fiscali).
+                NEW.emittente_fiscale_id := script.fn_resolve_emittente_for_user(v_user_id);
+
+                IF NEW.emittente_fiscale_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'trgfn_preventivi_default_emittente',
+                    'E_PREV_EMITTENTE_NON_RISOLTO',
+                    jsonb_build_object(
+                      'detail', 'Operatore senza EF assegnato (admin globale): payload deve specificare emittente_fiscale_id',
+                      'auth_user_id', v_user_id,
+                      'numero_preventivo', NEW.numero
+                    ),
+                    NULL::uuid,
+                    concat('auth_user_id=', v_user_id::text, ', numero=', NEW.numero)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_default_emittente()
+              IS 'BEFORE INSERT trigger fn: setta preventivi.emittente_fiscale_id '
+                 'da GUC app.current_user_id via script.fn_resolve_emittente_for_user. '
+                 'Skip se valorizzato esplicitamente. Solleva E_PREV_EMITTENTE_NON_RISOLTO '
+                 'se GUC vuota o operatore admin globale senza payload esplicito.';
+
+              -- Drop-and-recreate per ridefinizioni (runOnChange:true).
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_default_emittente_ins
+                ON vendite.preventivi;
+
+              -- Naming: _a10_default_* ordina prima di _a10_guard_* per firing order.
+              CREATE TRIGGER trg_preventivi_a10_default_emittente_ins
+                BEFORE INSERT ON vendite.preventivi
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_preventivi_default_emittente();
+
+              COMMENT ON TRIGGER trg_preventivi_a10_default_emittente_ins
+                ON vendite.preventivi
+              IS 'Default emittente_fiscale_id da operatore loggato (GUC app.current_user_id). '
+                 'Fase _a10_default_*: ordina alfabeticamente prima di _a10_guard_*.';

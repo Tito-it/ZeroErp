@@ -1,0 +1,136 @@
+# ---------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Guard delete block e immutabilita' file asset (A3, A4)
+# ---------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260501-03-create-trgfn-template-asset-guards-mctit.yaml
+
+  - changeSet:
+      id: 20260501-03-create-trgfn-template-asset-block-delete
+      author: mctit
+      comment: >
+        Guard A3: Crea il trigger che blocca sempre la cancellazione fisica di asset.
+        Gli asset sono versioni immutabili di file binari (loghi, immagini, PDF).
+        Il messaggio di errore è definito in config.messaggi_errore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_asset_block_delete()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              -- Scopo:
+              --   Blocca la cancellazione fisica di asset.
+              --
+              -- Regola:
+              --   Non si cancellano mai asset fisicamente. Se un asset non
+              --   serve piu', si chiude impostando valido_al. Questo preserva
+              --   l'integrità storica dei documenti generati (che referenziano
+              --   via template_asset_id).
+              --
+              -- Errore:
+              --   E_DOCUMENTI_ASSET_DELETE_BLOCKED
+              BEGIN
+                PERFORM script.fn_log_and_raise_error(
+                  'documenti', 'trgfn_template_asset_block_delete',
+                  'E_DOCUMENTI_ASSET_DELETE_BLOCKED',
+                  jsonb_build_object(
+                    'template_asset_id', OLD.id,
+                    'emittente_fiscale_id', OLD.emittente_fiscale_id,
+                    'codice_interno', OLD.codice_interno
+                  ),
+                  NULL::uuid
+                );
+                RETURN OLD;
+              END;
+              $$;
+
+              CREATE TRIGGER trg_template_asset_a10_block_delete_dlt
+                BEFORE DELETE
+                ON documenti.template_asset
+                FOR EACH ROW
+                EXECUTE FUNCTION documenti.trgfn_template_asset_block_delete();
+
+              COMMENT ON FUNCTION documenti.trgfn_template_asset_block_delete() IS
+                'Guard A3: blocca DELETE fisico su asset. Asset sono immutabili; disattivarli via valido_al invece di cancellarli.';
+
+  - changeSet:
+      id: 20260501-03-create-trgfn-template-asset-protect-file
+      author: mctit
+      comment: >
+        Guard A4: Crea il trigger che blocca la modifica di colonne file su asset.
+        Una volta salvato un file asset (storage_key, sha256, file_size_bytes, mime_type, file_name),
+        l'asset diventa immutabile per garantire che documenti generati referenziano
+        sempre il file originale non alterato.
+        Il messaggio di errore è definito in config.messaggi_errore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_asset_protect_file()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              -- Scopo:
+              --   Blocca la modifica di colonne file su asset.
+              --
+              -- Regole:
+              --   Campi immutabili (file specifics):
+              --     - storage_key, sha256, file_size_bytes, mime_type, file_name
+              --   Campi modificabili:
+              --     - meta, validita (via valido_al)
+              --
+              --   Il file (e il suo hash) non si modificano mai.
+              --   Se serve un file diverso si crea un nuovo asset.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_ASSET_FILE_IMMUTABILE
+              BEGIN
+                IF  (NEW.storage_key    != OLD.storage_key    OR
+                     NEW.sha256         != OLD.sha256         OR
+                     NEW.file_size_bytes != OLD.file_size_bytes OR
+                     NEW.mime_type      != OLD.mime_type      OR
+                     NEW.file_name      != OLD.file_name) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_asset_protect_file',
+                    'E_DOCUMENTI_ASSET_FILE_IMMUTABILE',
+                    jsonb_build_object(
+                      'template_asset_id', OLD.id,
+                      'emittente_fiscale_id', OLD.emittente_fiscale_id,
+                      'codice_interno', OLD.codice_interno
+                    ),
+                    NULL::uuid
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $$;
+
+              CREATE TRIGGER trg_template_asset_a10_protect_file_upd
+                BEFORE UPDATE
+                ON documenti.template_asset
+                FOR EACH ROW
+                EXECUTE FUNCTION documenti.trgfn_template_asset_protect_file();
+
+              COMMENT ON FUNCTION documenti.trgfn_template_asset_protect_file() IS
+                'Guard A4: blocca UPDATE su file asset. Una volta salvato il file, storage_key/hash/nome diventano immutabili.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_asset_a10_protect_file_upd
+                ON documenti.template_asset;
+              DROP TRIGGER IF EXISTS trg_template_asset_a10_block_delete_dlt
+                ON documenti.template_asset;
+              DROP FUNCTION IF EXISTS documenti.trgfn_template_asset_protect_file();
+              DROP FUNCTION IF EXISTS documenti.trgfn_template_asset_block_delete();

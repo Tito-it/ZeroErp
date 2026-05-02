@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Backfill vendite.preventivi.emittente_fiscale_id su righe storiche.
+#
+# Catena di risoluzione (in ordine di preferenza, per coerenza con il
+# modello user-derived):
+#   1) Da user_insert (operatore creatore della riga) via JOIN auth_user
+#      e script.fn_resolve_emittente_for_user
+#   2) Fallback BA-derived (per righe il cui operatore non e' piu' risolvibile
+#      ma che hanno BA con mapping EF specifico/default)
+#   3) Fallback gestore globale (BA NULL + is_default=true)
+#
+# NB: lock_columns su emittente_fiscale_id e' attivato successivamente
+# (CSV automation_lock_columns + maintenance job): qui possiamo ancora
+# scrivere liberamente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260501-17-backfill-preventivi-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260501-17-backfill-preventivi-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Backfill emittente_fiscale_id su preventivi storici. Catena
+        user_insert -> BA-derived -> gestore globale. Idempotente
+        (UPDATE solo righe con emittente_fiscale_id IS NULL).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'vendite'
+                 AND table_name = 'preventivi'
+                 AND column_name = 'emittente_fiscale_id';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Backfill catena emittente_fiscale_id su preventivi
+              --
+              -- Step 1: user_insert -> django.auth_user.id -> resolve_emittente_for_user
+              --   Coerente col modello user-derived dei nuovi preventivi.
+              --   Riferimento django.auth_user fully qualified (no %TYPE su
+              --   tabelle django, vedi linee guida progetto).
+              -- ==========================================================
+              UPDATE vendite.preventivi p
+                 SET emittente_fiscale_id = script.fn_resolve_emittente_for_user(au.id::integer)
+                FROM django.auth_user au
+               WHERE au.username = p.user_insert
+                 AND au.is_active = true
+                 AND p.emittente_fiscale_id IS NULL
+                 AND script.fn_resolve_emittente_for_user(au.id::integer) IS NOT NULL;
+
+              -- ==========================================================
+              -- Step 2: BA-derived per i residui (operatore non piu' risolvibile
+              -- o admin globale al momento dell'INSERT storico).
+              -- ==========================================================
+              UPDATE vendite.preventivi p
+                 SET emittente_fiscale_id = anagrafiche.fn_get_emittente_fiscale_pk(p.billing_account_id)
+               WHERE p.emittente_fiscale_id IS NULL
+                 AND p.billing_account_id IS NOT NULL;
+
+              -- ==========================================================
+              -- Step 3: gestore globale (BA NULL + is_default=true) per i
+              -- residui senza BA ne' operatore risolvibile (caso edge).
+              -- ==========================================================
+              UPDATE vendite.preventivi p
+                 SET emittente_fiscale_id = (
+                     SELECT ef.id
+                       FROM anagrafiche.emittenti_fiscali_billing_account efba
+                       JOIN anagrafiche.emittenti_fiscali ef
+                         ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
+                      WHERE efba.billing_account_id IS NULL
+                        AND efba.is_default = true
+                        AND ef.attivo = true
+                      LIMIT 1
+                 )
+               WHERE p.emittente_fiscale_id IS NULL;
+
+              -- ==========================================================
+              -- Report finale: deve essere 0 NULL prima del SET NOT NULL.
+              -- ==========================================================
+              DO $$
+              DECLARE
+                v_null_count int;
+              BEGIN
+                SELECT COUNT(*) INTO v_null_count
+                  FROM vendite.preventivi
+                 WHERE emittente_fiscale_id IS NULL;
+
+                IF v_null_count > 0 THEN
+                  RAISE WARNING 'Backfill emittente: % preventivi residui con emittente_fiscale_id NULL. Il successivo SET NOT NULL (90_end) fallira''.', v_null_count;
+                ELSE
+                  RAISE NOTICE 'Backfill emittente completato: 0 NULL residui.';
+                END IF;
+              END $$;

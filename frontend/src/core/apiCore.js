@@ -130,3 +130,20 @@ export function lookupBillingAccount(params = {}) {
 export function getBillingAccountLookupById(id) {
   return api.get(`/anagrafiche/billing-account/${id}/lookup/`)
 }
+
+// --- Istanze utility lookup (preventivi prospect senza BA, future utility-aware flows) ---
+
+// Scopo: Cerca istanze_utilities per autocomplete.
+//        Backend: GET /api/v1/anagrafiche/istanze-utility/lookup/
+//        Ricerca multi-campo (codice istanza, ragione sociale, indirizzo).
+//        Filtri utility (strict post Strategia C) e soggetto opzionali.
+//        Scope emittente automatico lato backend (via BA collegato all'istanza).
+export function lookupIstanzeUtility(params = {}) {
+  return api.get('/anagrafiche/istanze-utility/lookup/', { params })
+}
+
+// Scopo: Restituisce una singola istanza arricchita per restore AutoComplete in edit.
+//        Backend: GET /api/v1/anagrafiche/istanze-utility/{id}/lookup/
+export function getIstanzaUtilityLookupById(id) {
+  return api.get(`/anagrafiche/istanze-utility/${id}/lookup/`)
+}

@@ -9,6 +9,7 @@
 # scritture dirette su tabelle, chiamate a funzioni DB per operazioni complesse.
 # Il ricalcolo totali e' gestito da trigger AFTER su preventivi_righe.
 
+import json
 from datetime import date
 from typing import Any
 
@@ -76,22 +77,30 @@ class PreventiviRepository:
             like = f"%{search}%"
             params.extend([like, like])
 
-        # Scope emittente: la vista espone emittente_fiscale_id
+        # Scope emittente: la vista espone emittente_fiscale_id (PK reale di
+        # anagrafiche.emittenti_fiscali.id, post brief preventivi rev2). Usa
+        # quindi fn_get_emittenti_scope_pk_ids (NON _sr_ids che mappa a
+        # soggetto_ruolo_id). Vedi guida soggetti-e-ruoli §5b + memoria
+        # feedback_emittente_pk_vs_soggetto_ruolo per il pattern duale SR vs PK.
         if auth_user_id is not None:
             conditions.append(
-                "(script.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
+                "(script.fn_get_emittenti_scope_pk_ids(%s) IS NULL "
                 "OR v.emittente_fiscale_id = ANY("
-                "script.fn_get_emittenti_scope_sr_ids(%s)))"
+                "script.fn_get_emittenti_scope_pk_ids(%s)))"
             )
             params.extend([auth_user_id, auth_user_id])
 
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
         count_sql = f"SELECT COUNT(*) FROM vendite.vw_preventivi_list v {where}"
+        # Tiebreaker v.id obbligatorio per paginazione deterministica
+        # (frontend-standards "REGOLA CRITICA: Paginazione deterministica").
+        # Senza id, righe con stessa data/numero (es. revisioni) possono
+        # comparire duplicate o sparire fra pagine consecutive.
         data_sql = f"""
             SELECT * FROM vendite.vw_preventivi_list v
             {where}
-            ORDER BY v.data DESC, v.numero DESC
+            ORDER BY v.data DESC, v.numero DESC, v.id
             LIMIT %s OFFSET %s
         """
 
@@ -212,12 +221,19 @@ class PreventiviRepository:
     # ══════════════════════════════════════════════════════════
 
     # Scopo: Inserisce un nuovo preventivo e restituisce id e uid.
+    #        emittente_fiscale_id e' opzionale: se None il trigger DB
+    #        (vendite.trgfn_preventivi_default_emittente, fase _a10_default)
+    #        lo valorizza da GUC app.current_user_id via
+    #        script.fn_resolve_emittente_for_user. Va passato esplicito solo
+    #        per il caso admin globale (utente senza emittente assegnato che
+    #        sceglie l'emittente del documento).
     def create_preventivo(
         self,
         *,
         billing_account_id: int | None,
         utility_id: int,
         istanza_utility_id: int | None = None,
+        emittente_fiscale_id: int | None = None,
         valuta_id: int | None = None,
         termine_pagamento_id: int | None = None,
         validita_dal: date | None = None,
@@ -230,17 +246,19 @@ class PreventiviRepository:
         sql = """
             INSERT INTO vendite.preventivi (
                 billing_account_id, utility_id, istanza_utility_id,
+                emittente_fiscale_id,
                 valuta_id, termine_pagamento_id,
                 validita_dal, validita_al, competenza_mese,
                 fatturazione_immediata, stato_doc_preventivo_id, meta
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
             )
             RETURNING id, uid::text AS uid, numero
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 billing_account_id, utility_id, istanza_utility_id,
+                emittente_fiscale_id,
                 valuta_id, termine_pagamento_id,
                 validita_dal, validita_al, competenza_mese,
                 fatturazione_immediata, stato_doc_preventivo_id,
@@ -277,6 +295,21 @@ class PreventiviRepository:
             cursor.execute(sql, params)
             return cursor.rowcount > 0
 
+    # Scopo: Hard-delete preventivo. Usato dal flusso "abbandono bozza"
+    #        (preventivi BOZZA orfani senza righe). I guard di dominio
+    #        (stato BOZZA, zero righe, no pratiche/commesse collegate) sono
+    #        applicati lato service prima di chiamare questo metodo. Cascade
+    #        FK gestita a livello DB (preventivi_righe e preventivi_indirizzi
+    #        hanno ON DELETE CASCADE su preventivo_id).
+    # Risultato: rowcount > 0 se preventivo eliminato, False se id inesistente.
+    def delete_preventivo(self, preventivo_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM vendite.preventivi WHERE id = %s",
+                [preventivo_id],
+            )
+            return cursor.rowcount > 0
+
     # Scopo: Cambia stato preventivo invocando la funzione DB.
     # La funzione valida transizione via config.transizioni_stati_preventivi,
     # guard su righe/totale per EMESSO, blocco annullamento con commessa attiva.
@@ -309,6 +342,26 @@ class PreventiviRepository:
     #  Nota: il ricalcolo totali e' automatico via trigger AFTER
     #  trg_preventivi_righe_z90_ricalcola_totali_ins_upd_dlt
     # ══════════════════════════════════════════════════════════
+
+    # Scopo: Restituisce il factor_to_base della UoM operativa di un articolo.
+    #        Usato dal service per derivare qta_operativa = quantita * factor
+    #        quando il payload FE non passa esplicitamente i due campi
+    #        (UX riga preventivo: l'operatore inserisce solo `quantita`).
+    #        None se l'accoppiata articolo+UoM non e' presente o non attiva.
+    def get_articolo_uom_factor(self, articolo_id: str, uom_id: int) -> Any:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT auo.factor_to_base
+                  FROM catalogo.articoli_uom_operativa auo
+                 WHERE auo.articolo_id = %s
+                   AND auo.uom_id = %s
+                   AND auo.attivo IS TRUE
+                """,
+                [articolo_id, uom_id],
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
 
     # Scopo: Inserisce una nuova riga preventivo. I campi
     #        `stato_approvazione_prezzo` + `pratica_approvazione_prezzo_id`

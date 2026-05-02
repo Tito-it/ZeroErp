@@ -309,4 +309,48 @@ Per i dettagli completi e i vincoli formali: [anagrafiche.istanze_utilities](/db
 
 ---
 
+## Strategia C — Ogni istanza dichiara la utility tramite un satellite (2026-05-01)
+
+Dalla sessione di refactor preventivi del 2026-05-01 (brief preventivi rev2),
+ogni nuova `istanze_utilities` deve avere **almeno una riga satellite** che
+dichiari la utility associata, entro la transazione di creazione.
+
+### Le 3 fonti satellite ammesse
+
+1. `anagrafiche.billing_account` (UNIQUE su `istanza_utility_id, utility_id`)
+2. `anagrafiche.istanze_dati_precontrattuali` (UNIQUE su stessa coppia)
+3. `anagrafiche.clienti` (1:1 cliente–istanza con colonna `utility_id`)
+
+### Implementazione
+
+Constraint trigger `DEFERRABLE INITIALLY DEFERRED`:
+[trg_istanze_utilities_z90_require_utility_dichiarata_ins](/dbzero/anagrafiche/tabelle/istanze_utilities).
+La validazione avviene al `COMMIT`, quindi e' lecito creare l'istanza prima
+del satellite all'interno della stessa transazione.
+
+In caso di violazione, viene sollevato `E_ISTANZA_UTILITY_SENZA_UTILITY`.
+
+### Funzione di check riusabile
+
+`script.fn_check_utility_istanza_coerenza(istanza_utility_id, utility_id)`
+e' un pure check (boolean) che verifica la coerenza della coppia rispetto
+alle stesse 3 fonti satellite. La lista delle fonti e' allineata al constraint
+trigger e va mantenuta in sync se cambia una delle due.
+
+Riusato da:
+
+* `vendite.preventivi` (trigger guard `_a10_guard_utility_istanza_coerenza`)
+* candidati futuri: `vendite.attivita_fatturabili`, `commesse_attivita`,
+  `ddt`, `fatture` (qualsiasi tabella con coppia istanza/utility)
+
+### Nota sul retroattivo
+
+Il trigger e' `AFTER INSERT`: si applica solo alle nuove istanze. Le istanze
+storiche orfane (zero satelliti) non vengono toccate. Il backfill in
+`migrations_v2/80_data/changelog/20260501-16-backfill-istanze-dati-precontrattuali`
+crea la riga `istanze_dati_precontrattuali` per le istanze che hanno gia'
+un BA ma nessuna IDP. Le istanze totalmente orfane vanno valutate manualmente.
+
+---
+
 {% include-markdown "signature-core.md" %}

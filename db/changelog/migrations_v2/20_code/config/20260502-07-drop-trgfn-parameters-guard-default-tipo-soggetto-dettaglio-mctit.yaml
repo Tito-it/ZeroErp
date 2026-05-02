@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DROP del guard ad-hoc DEFAULT_TIPO_SOGGETTO_DETTAGLIO_*.
+#
+# Why: superato dal dispatcher generico
+# config.trgfn_parameters_fk_surrogate_dispatch (creato in 20260502-05) +
+# riga seed in config.parameter_fk_surrogate per il pattern
+# 'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_%' (caricata in 80_data 20260502-08).
+#
+# Equivalenza: il dispatcher applica la stessa logica (lookup
+# tipi_soggetto_dettaglio.codice_interno) per le righe matchanti il
+# pattern. La differenza e' che ora una sola funzione+trigger gestisce
+# tutti i pattern attuali e futuri (utility, ecc.) e copre anche il path
+# parameter_overrides via dispatcher speculare 20260502-06.
+#
+# DROP idempotente (IF EXISTS) per agevolare rollback parziali.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260502-07-drop-trgfn-parameters-guard-default-tipo-soggetto-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260502-07-01-drop-trg-parameters-a10-guard-default-tipo-soggetto-dettaglio
+      author: mctit
+      comment: >
+        DROP trigger trg_parameters_a10_guard_default_tipo_soggetto_dettaglio_ins_upd.
+        Sostituito dal dispatcher 20260502-05.
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_trigger
+               WHERE tgname = 'trg_parameters_a10_guard_default_tipo_soggetto_dettaglio_ins_upd'
+                 AND NOT tgisinternal;
+      changes:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameters_a10_guard_default_tipo_soggetto_dettaglio_ins_upd
+                  ON config.parameters;
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: ricreazione trigger legacy. La function deve
+              -- esistere (separata in 20260502-07-02). Se non esiste,
+              -- e' sufficiente ripristinare via 20260427-05.
+              CREATE TRIGGER trg_parameters_a10_guard_default_tipo_soggetto_dettaglio_ins_upd
+                  BEFORE INSERT OR UPDATE OF code, default_value
+                  ON config.parameters
+                  FOR EACH ROW
+                  WHEN (NEW.code LIKE 'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_%')
+                  EXECUTE FUNCTION config.trgfn_parameters_guard_default_tipo_soggetto_dettaglio();
+
+  - changeSet:
+      id: 20260502-07-02-drop-fn-trgfn-parameters-guard-default-tipo-soggetto-dettaglio
+      author: mctit
+      comment: >
+        DROP function config.trgfn_parameters_guard_default_tipo_soggetto_dettaglio.
+        Funzione legacy non piu' referenziata (trigger droppato in 07-01).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config'
+                 AND p.proname = 'trgfn_parameters_guard_default_tipo_soggetto_dettaglio';
+      changes:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS
+                  config.trgfn_parameters_guard_default_tipo_soggetto_dettaglio();
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: per ripristinare la function legacy applicare
+              -- il rollback di 20260427-05 (ricrea CREATE OR REPLACE).
+              SELECT 1;

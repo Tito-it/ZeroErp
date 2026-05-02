@@ -1,0 +1,193 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Rewrite vendite.fn_ricalcola_totali_preventivo.
+#
+# Why: la versione precedente (creata in 20260403-10) calcolava
+# imponibile e IVA per riga, arrotondava per riga a 2 decimali, poi
+# sommava i valori arrotondati. Regola fiscale italiana (DPR 633/72
+# art.21 + DM 24/12/93) richiede ROUND aggregato per aliquota, mai
+# per riga.
+#
+# Nuova logica: la fn diventa un wrapper. Invoca
+# fn_ricalcola_riepilogo_iva_preventivo (single source of truth) e
+# poi calcola i totali sommando le righe del riepilogo (gia'
+# fiscalmente corrette).
+#
+# Conseguenza: i totali del preventivo coincidono - centesimo per
+# centesimo - con quelli della fattura emessa dallo stesso preventivo
+# (a parita' di righe e stato emittente).
+#
+# Stessa firma, stesso ritorno: zero impatto sui caller (trigger
+# AFTER su preventivi_righe e service Python).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260502-12-update-fn-ricalcola-totali-preventivo-mctit.yaml
+
+  - changeSet:
+      id: 20260502-12-update-fn-ricalcola-totali-preventivo
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Rewrite fn_ricalcola_totali_preventivo come wrapper sopra
+        fn_ricalcola_riepilogo_iva_preventivo. Stessa firma, regola
+        fiscalmente corretta (ROUND aggregato per aliquota, non per
+        riga). Allineamento al pattern fatture.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: preventivi
+            - tableExists:
+                schemaName: vendite
+                tableName: preventivi_riepiloghi_iva
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_ricalcola_riepilogo_iva_preventivo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- DROP esplicito: cambia firma da (bigint) a
+              -- (vendite.preventivi.id%TYPE) e RETURNS TABLE con %TYPE
+              -- sulle colonne. PostgreSQL non permette di alterare il
+              -- tipo di RETURN via CREATE OR REPLACE. Vedi memoria
+              -- feedback_pg_returns_table_drop_required.
+              -- splitStatements: false perche' il body della fn contiene ';'
+              -- interni (IF/PERFORM/UPDATE) che Liquibase spezzerebbe se
+              -- splitStatements=true rompendo il dollar-quote.
+              DROP FUNCTION IF EXISTS vendite.fn_ricalcola_totali_preventivo(bigint);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_totali_preventivo(
+                  p_preventivo_id vendite.preventivi.id%TYPE
+              )
+              RETURNS TABLE(
+                  preventivo_id     vendite.preventivi.id%TYPE,
+                  totale_imponibile vendite.preventivi.totale_imponibile%TYPE,
+                  totale_iva        vendite.preventivi.totale_iva%TYPE,
+                  totale_documento  vendite.preventivi.totale_documento%TYPE
+              )
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: ricalcolare i totali della testata preventivo a
+              -- partire dal riepilogo IVA aggregato (fiscalmente corretto).
+              -- La fn invoca prima fn_ricalcola_riepilogo_iva_preventivo
+              -- (single source of truth) e poi somma le righe del
+              -- riepilogo per ottenere totale_imponibile, totale_iva,
+              -- totale_documento.
+              --
+              -- Equivalenza con fatture: i totali coincidono con quelli
+              -- della fattura emessa dallo stesso preventivo (a parita'
+              -- di righe e stato emittente). Il bug "differenza centesimi
+              -- preventivo vs fattura" e' risolto strutturalmente.
+              DECLARE
+                  v_imponibile vendite.preventivi.totale_imponibile%TYPE;
+                  v_iva        vendite.preventivi.totale_iva%TYPE;
+                  v_totale     vendite.preventivi.totale_documento%TYPE;
+              BEGIN
+                  IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'fn_ricalcola_totali_preventivo',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                          NULL::uuid,
+                          'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL')
+                      );
+                  END IF;
+
+                  -- Step 1: ricalcola riepilogo IVA aggregato.
+                  PERFORM vendite.fn_ricalcola_riepilogo_iva_preventivo(p_preventivo_id);
+
+                  -- Step 2: totali derivati da SUM riepiloghi.
+                  SELECT
+                      COALESCE(SUM(ri.imponibile), 0),
+                      COALESCE(SUM(ri.imposta),    0)
+                    INTO v_imponibile, v_iva
+                    FROM vendite.preventivi_riepiloghi_iva ri
+                   WHERE ri.preventivo_id = p_preventivo_id;
+
+                  v_totale := v_imponibile + v_iva;
+
+                  -- Step 3: aggiorna testata.
+                  UPDATE vendite.preventivi p
+                     SET totale_imponibile = v_imponibile,
+                         totale_iva        = v_iva,
+                         totale_documento  = v_totale
+                   WHERE p.id = p_preventivo_id;
+
+                  RETURN QUERY
+                  SELECT p_preventivo_id, v_imponibile, v_iva, v_totale;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ricalcola_totali_preventivo(bigint) IS
+                  'Wrapper sopra fn_ricalcola_riepilogo_iva_preventivo. '
+                  'Ricalcola riepilogo IVA aggregato (fiscalmente corretto), '
+                  'poi somma le righe del riepilogo per i totali testata. '
+                  'Pattern allineato a fatture, garantisce coerenza '
+                  'preventivo <-> fattura emessa. '
+                  'Firma e RETURNS TABLE usano %TYPE su vendite.preventivi.* '
+                  '(tipi concreti risolti a bigint/numeric).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: ripristina la versione precedente (ROUND per riga).
+              -- NOTA: e' la logica fiscalmente errata. Usare solo per emergenza.
+              -- splitStatements: false per non rompere dollar-quote.
+              DROP FUNCTION IF EXISTS vendite.fn_ricalcola_totali_preventivo(bigint);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_totali_preventivo(p_preventivo_id bigint)
+              RETURNS TABLE(preventivo_id bigint, totale_imponibile numeric, totale_iva numeric, totale_documento numeric)
+              LANGUAGE plpgsql
+              AS $f$
+              DECLARE
+                v_imponibile vendite.preventivi.totale_imponibile%TYPE;
+                v_iva        vendite.preventivi.totale_iva%TYPE;
+                v_totale     vendite.preventivi.totale_documento%TYPE;
+              BEGIN
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_ricalcola_totali_preventivo', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                    NULL::uuid, 'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL'));
+                END IF;
+                WITH righe_calc AS (
+                  SELECT
+                    ROUND(pr.quantita * pr.prezzo_unitario
+                      * (1 - COALESCE(pr.sconto_percentuale, 0) / 100), 2) AS importo_riga,
+                    ROUND(pr.quantita * pr.prezzo_unitario
+                      * (1 - COALESCE(pr.sconto_percentuale, 0) / 100)
+                      * COALESCE(iva.aliquota_iva, 0) / 100, 2) AS iva_riga
+                  FROM vendite.preventivi_righe pr
+                  LEFT JOIN config.iva iva ON iva.id = pr.iva_id
+                  WHERE pr.preventivo_id = p_preventivo_id
+                    AND pr.attivo IS TRUE AND pr.quantita > 0
+                )
+                SELECT COALESCE(SUM(rc.importo_riga), 0), COALESCE(SUM(rc.iva_riga), 0)
+                INTO v_imponibile, v_iva FROM righe_calc rc;
+                v_totale := v_imponibile + v_iva;
+                UPDATE vendite.preventivi p
+                  SET totale_imponibile = v_imponibile, totale_iva = v_iva, totale_documento = v_totale
+                  WHERE p.id = p_preventivo_id;
+                RETURN QUERY SELECT p_preventivo_id, v_imponibile, v_iva, v_totale;
+              END
+              $f$;

@@ -14,8 +14,9 @@ Indice test eseguiti:
  4) test_contratto_param_int_fallback        — parameter mancante -> fallback (0)
  5) test_preventivo_no_ba_solo_parameters    — default_validita_al = oggi + N
  6) test_preventivo_con_ba_termini_da_cliente — termine_pagamento_id da clienti
- 7) test_preventivo_valuta_da_emittente_se_ba_null — fallback emittente
- 8) test_versione_new_defaults                — payload + existing_drafts
+ 7) test_preventivo_valuta_da_emittente_se_ba_null — fallback emittente del BA
+ 8) test_preventivo_no_ba_valuta_da_user_ef        — fallback EF utente loggato
+ 9) test_versione_new_defaults                — payload + existing_drafts
  9) test_versione_clone_codice_con_suffisso   — suffisso da parameter
 10) test_versione_close_default_oggi_se_no_chiusura — default oggi+lead_gg
 11) test_versione_close_usa_existing_se_presente    — modifica chiusura
@@ -174,25 +175,54 @@ class TestPreventivoFormDefaults(TestCase):
         self.assertEqual(result["valuta_codice"], "EUR")
         ba_repo.get_emittente_valuta.assert_not_called()
 
+    @patch(f"{_MOD}.resolve_valuta_default")
     @patch(_BA_REPO)
     @patch(_PARAM)
     def test_preventivo_valuta_da_emittente_se_ba_null(
-        self, mock_param_cls, mock_ba_repo_cls,
+        self, mock_param_cls, mock_ba_repo_cls, mock_resolve,
     ):
-        # Scopo: BA senza valuta -> fallback emittente fiscale.
+        # Scopo: BA senza valuta -> il service delega al BB
+        #        resolve_valuta_default che applica il fallback EF-del-BA.
+        #        La logica di fallback e' verificata in test_valuta_resolver
+        #        (single source of truth): qui ci basta che il service la
+        #        invochi con BA pre-fetched + auth_user_id.
         mock_param_cls.return_value.get_defaults.return_value = {}
         ba_repo = mock_ba_repo_cls.return_value
         ba_repo.get_lookup_by_id.return_value = _ba_lookup_row(valuta_id=None)
         ba_repo.get_cliente_defaults.return_value = {}
-        ba_repo.get_emittente_valuta.return_value = {
-            "valuta_id": 1,
-            "valuta_codice": "EUR",
-            "valuta_descrizione": "Euro",
+        mock_resolve.return_value = {
+            "valuta_id": 1, "valuta_codice": "EUR", "valuta_descrizione": "Euro",
         }
         result = fn_get_preventivo_form_defaults(billing_account_id=10)
         self.assertEqual(result["valuta_id"], 1)
         self.assertEqual(result["valuta_codice"], "EUR")
-        ba_repo.get_emittente_valuta.assert_called_once_with(10)
+        # Resolver invocato con BA pre-fetched (ottimizzazione: niente
+        # seconda query in get_lookup_by_id).
+        _, kwargs = mock_resolve.call_args
+        self.assertEqual(kwargs["billing_account_id"], 10)
+        self.assertIsNotNone(kwargs["ba_obj"])
+
+    @patch(f"{_MOD}.resolve_valuta_default")
+    @patch(_PARAM)
+    def test_preventivo_no_ba_valuta_da_user_ef(
+        self, mock_param_cls, mock_resolve,
+    ):
+        # Scopo: senza BA il service delega comunque al BB resolve_valuta_default
+        #        passando auth_user_id; il resolver applica il fallback user EF
+        #        (gestore globale per admin globale).
+        mock_param_cls.return_value.get_defaults.return_value = {}
+        mock_resolve.return_value = {
+            "valuta_id": 1, "valuta_codice": "EUR", "valuta_descrizione": "Euro",
+        }
+        result = fn_get_preventivo_form_defaults(
+            billing_account_id=None, auth_user_id=99,
+        )
+        self.assertEqual(result["valuta_id"], 1)
+        self.assertEqual(result["valuta_codice"], "EUR")
+        # Resolver chiamato con BA None e ba_obj None (no pre-fetch).
+        mock_resolve.assert_called_once_with(
+            billing_account_id=None, ba_obj=None, auth_user_id=99,
+        )
 
 
 # ──────────────────────────────────────────────────────────

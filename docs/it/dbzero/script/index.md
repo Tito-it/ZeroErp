@@ -17,6 +17,7 @@
 - [fn_check_ultimo_super_admin_attivo](funzioni/fn_check_ultimo_super_admin_attivo.md)
 - [fn_check_user_can_create_ba](funzioni/fn_check_user_can_create_ba.md)
 - [fn_check_user_emittente_scope](funzioni/fn_check_user_emittente_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth su tabelle operative (fatture, pagamenti).
+- [fn_check_utility_istanza_coerenza](funzioni/fn_check_utility_istanza_coerenza.md)
 - [fn_clone_catasto_from_parent_by_istanza](funzioni/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_current_identita_context](funzioni/fn_current_identita_context.md) — (latest review 19-04-2026)
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md)
@@ -28,7 +29,8 @@
 - [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md) — (latest review 25-03-26)
 - [fn_get_default_by_param](funzioni/fn_get_default_by_param.md) — (latest update 21-12-25) Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
 - [fn_get_emittenti_scope](funzioni/fn_get_emittenti_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_get_emittenti_scope`** restituisce l'array di ID emittenti fiscali autorizzati per un utente, letti dalla whitelist `config.user_emittenti_fiscali`.
-- [fn_get_emittenti_scope_sr_ids](funzioni/fn_get_emittenti_scope_sr_ids.md) — (latest review 08-03-2026) La funzione **`script.fn_get_emittenti_scope_sr_ids`** restituisce i `soggetto_ruolo_id` degli emittenti fiscali autorizzati per un utente.
+- [fn_get_emittenti_scope_pk_ids](funzioni/fn_get_emittenti_scope_pk_ids.md)
+- [fn_get_emittenti_scope_sr_ids](funzioni/fn_get_emittenti_scope_sr_ids.md) — (latest review 02-05-2026 — wrapper su `_pk_ids`)
 - [fn_get_entita_ruolo_detail](funzioni/fn_get_entita_ruolo_detail.md) — * **Dati entita' per ruolo**: dato un `soggetto_ruolo_id`, recupera automaticamente il tipo ruolo e interroga la tabella/vista configurata in `tipi_ruoli.entita_tabella`.
 - [fn_get_indirizzi_by_ruolo](funzioni/fn_get_indirizzi_by_ruolo.md) — (latest review 25-03-26) Restituisce gli **indirizzi** associati a uno specifico `soggetto_ruolo`, con filtro opzionale per **istanza utility**, producendo per ciascuno:
 - [fn_get_indirizzi_by_soggetto](funzioni/fn_get_indirizzi_by_soggetto.md) — (latest review 15-02-26) Restituisce tutti gli **indirizzi** associati direttamente a un **soggetto** (`anagrafiche.indirizzi_soggetti`), utilizzando come sorgente la vista `anagrafiche.vw_indirizzi_resolved_soggetto` per ottenere un output **uniforme e human-readable**.

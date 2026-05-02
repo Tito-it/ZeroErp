@@ -176,8 +176,10 @@
 - [trgfn_ordini_ful_guard_consistenza](manual/trgfn_ordini_ful_guard_consistenza.md) — La trigger function `vendite.trgfn_ordini_ful_guard_consistenza()` protegge la coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.
 - [trgfn_ordini_gen_codice](manual/trgfn_ordini_gen_codice.md) — La trigger function `vendite.trgfn_ordini_gen_codice()` genera automaticamente `numero` ordine quando il campo non viene fornito.
 - [trgfn_ordini_normalize](manual/trgfn_ordini_normalize.md) — La trigger function `vendite.trgfn_ordini_normalize()` completa i campi temporali minimi dell’ordine quando il `numero` e` presente in insert.
+- [trgfn_preventivi_default_emittente](manual/trgfn_preventivi_default_emittente.md)
 - [trgfn_preventivi_gen_codice](manual/trgfn_preventivi_gen_codice.md) — La trigger function `vendite.trgfn_preventivi_gen_codice()` genera automaticamente `numero` preventivo quando il campo non viene valorizzato.
 - [trgfn_preventivi_guard_transizione_approvazione](manual/trgfn_preventivi_guard_transizione_approvazione.md) — (latest revision 22-04-2026, Sprint E listini v5 §14.6)
+- [trgfn_preventivi_guard_utility_istanza_coerenza](manual/trgfn_preventivi_guard_utility_istanza_coerenza.md)
 - [trgfn_preventivi_normalize](manual/trgfn_preventivi_normalize.md) — La trigger function `vendite.trgfn_preventivi_normalize()` completa i dati minimi di data documento in insert quando il numero preventivo e` gia` presente.
 - [trgfn_preventivi_righe_guard_pending](manual/trgfn_preventivi_righe_guard_pending.md) — (latest revision 22-04-2026, Sprint E listini v5 §14.6)
 - [trgfn_preventivi_righe_ricalcola_totali](manual/trgfn_preventivi_righe_ricalcola_totali.md) — (latest review 03-04-2026) `vendite.trgfn_preventivi_righe_ricalcola_totali()` e' la trigger function **STATEMENT-level** che mantiene i totali testata preventivo sempre coerenti con le righe. Invoca `vendite.fn_ricalcola_totali_preventivo()` **una sola volta per ogni preventivo_id coinvolto**, anche in caso di operazioni bulk (es. copia righe in revisione).

@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useAuthStore } from '../../stores/auth'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -25,6 +26,10 @@ const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const auth = useAuthStore()
 
+// Default utility globale: il parametro DEFAULT_UTILITY stocca un codice_interno
+// (framework FK-surrogata, DB 2026-05-02). Il composable risolve a id locale
+// via lookup utilities-per-emittente.
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 
 const props = defineProps({
   visible: Boolean,
@@ -47,7 +52,13 @@ function onAfterShow() { contentReady.value = true }
 const isLoadingDetail = ref(false)
 
 function defaultForm() {
-  return { codice: '', descrizione: '', utility_id: null, tipologia_id: null, attivo: true }
+  return {
+    codice: '',
+    descrizione: '',
+    utility_id: utilityDefaultId.value,
+    tipologia_id: null,
+    attivo: true,
+  }
 }
 
 function resetForm() {
@@ -76,8 +87,11 @@ async function loadDetail() {
   }
 }
 
-watch(() => props.visible, (v) => {
+watch(() => props.visible, async (v) => {
   if (!v) { contentReady.value = false; return }
+  // Carica il default utility (parameter + lookup) prima di resetForm:
+  // defaultForm() legge utilityDefaultId.value gia' risolto a id locale.
+  await loadUtilityDefault()
   if (isEdit.value) {
     loadDetail()
   } else {

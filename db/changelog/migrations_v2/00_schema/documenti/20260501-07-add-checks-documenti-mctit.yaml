@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Step E - Check minori sul DDL documenti (E1..E4)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20260501-07-add-checks-documenti-mctit.yaml
+
+  - changeSet:
+      id: 20260501-07-add-checks-documenti
+      author: mctit
+      comment: >
+        Step E - Check minori sul DDL gia' atterrato (riferimento §13.3 E del
+        documento di sviluppo documenti):
+          E1) template_documenti.file_name_pattern non vuoto se valorizzato
+              (coerenza con gli altri campi non-vuoti del modulo);
+          E2) template_documenti_versioni.context_schema deve essere un oggetto
+              JSON (no scalari, no array);
+          E3) template_documenti_versioni.html_template non puo' essere vuoto
+              (una versione con HTML vuoto non e' mai utile);
+          E4) documenti_generati.context_json deve essere un oggetto JSON
+              (lo snapshot funzionale e' sempre un oggetto strutturato).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- E1) template_documenti.file_name_pattern: non-vuoto se valorizzato
+              ALTER TABLE documenti.template_documenti
+                ADD CONSTRAINT chk_template_documenti_file_name_pattern_non_vuoto
+                  CHECK (file_name_pattern IS NULL OR btrim(file_name_pattern) <> '');
+
+              -- E2) template_documenti_versioni.context_schema: oggetto JSON
+              ALTER TABLE documenti.template_documenti_versioni
+                ADD CONSTRAINT chk_template_documenti_versioni_context_schema_obj
+                  CHECK (jsonb_typeof(context_schema) = 'object');
+
+              -- E3) template_documenti_versioni.html_template: non vuoto
+              ALTER TABLE documenti.template_documenti_versioni
+                ADD CONSTRAINT chk_template_documenti_versioni_html_template_non_vuoto
+                  CHECK (btrim(html_template) <> '');
+
+              -- E4) documenti_generati.context_json: oggetto JSON
+              ALTER TABLE documenti.documenti_generati
+                ADD CONSTRAINT chk_documenti_generati_context_json_obj
+                  CHECK (jsonb_typeof(context_json) = 'object');
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.documenti_generati
+                DROP CONSTRAINT IF EXISTS chk_documenti_generati_context_json_obj;
+
+              ALTER TABLE documenti.template_documenti_versioni
+                DROP CONSTRAINT IF EXISTS chk_template_documenti_versioni_html_template_non_vuoto;
+
+              ALTER TABLE documenti.template_documenti_versioni
+                DROP CONSTRAINT IF EXISTS chk_template_documenti_versioni_context_schema_obj;
+
+              ALTER TABLE documenti.template_documenti
+                DROP CONSTRAINT IF EXISTS chk_template_documenti_file_name_pattern_non_vuoto;

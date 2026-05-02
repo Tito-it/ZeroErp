@@ -3,7 +3,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
-  listPreventivi, getPreventivo, createPreventivo, updatePreventivo,
+  listPreventivi, getPreventivo, createPreventivo, updatePreventivo, deletePreventivo,
   cambiaStatoPreventivo, creaRevisione,
   listRighe, createRiga, updateRiga, deleteRiga,
   listIndirizzi, upsertIndirizzo,
@@ -40,8 +40,12 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   async function fetchList() {
     const f = filters.value
     const searchTerm = (f.search || '').trim()
+    // data_da conta come filtro attivo (default anno-1 garantisce l'auto-load
+    // della lista all'apertura, coerente con frontend-standards "Filtro data
+    // standard"). Senza questo l'empty-state guard sotto bloccherebbe il
+    // primo fetch e l'operatore vedrebbe la lista vuota.
     const hasFilters = f.stato != null || f.billing_account_id != null
-      || f.utility_id != null || f.data_a != null
+      || f.utility_id != null || f.data_a != null || f.data_da != null
 
     // Search con meno di 3 caratteri e nessun filtro attivo → svuota i
     // risultati precedenti (coerenza UX: niente dati obsoleti visibili).
@@ -109,9 +113,20 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     return res.data.data
   }
 
+  // Scopo: Hard-delete preventivo BOZZA orfano (flusso abbandono bozza drawer).
+  async function elimina(id) {
+    const res = await deletePreventivo(id)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, id)
+    return res.data.data
+  }
+
   // Scopo: Cambia stato preventivo (BOZZA→EMESSO, EMESSO→ACCETTATO, ecc.).
-  async function cambiaStato(id, nuovoStato) {
-    const res = await cambiaStatoPreventivo(id, { nuovo_stato: nuovoStato })
+  // extras: payload aggiuntivo per transizioni che richiedono dati di processo.
+  // Caso noto: EMESSO → ACCETTATO richiede fatturazione_immediata + competenza_mese
+  // (vedi backend preventivi_service.cambia_stato gate accettazione).
+  async function cambiaStato(id, nuovoStato, extras = {}) {
+    const payload = { nuovo_stato: nuovoStato, ...extras }
+    const res = await cambiaStatoPreventivo(id, payload)
     emitDataChanged(TAB_ENTITIES.PREVENTIVO, id)
     return res.data.data
   }
@@ -197,7 +212,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
 
   return {
     items, totalRecords, loading, hasSearched, filters,
-    fetchList, fetchDetail, create, update,
+    fetchList, fetchDetail, create, update, elimina,
     cambiaStato, nuovaRevisione,
     loadRighe, addRiga, aggiornaRiga, eliminaRiga,
     loadIndirizzi, salvaIndirizzo,

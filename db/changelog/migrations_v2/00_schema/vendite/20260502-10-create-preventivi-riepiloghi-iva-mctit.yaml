@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Tabella vendite.preventivi_riepiloghi_iva.
+#
+# Why: pattern coerente con vendite.fatture_riepiloghi_iva. Il calcolo
+# IVA fiscalmente corretto (DPR 633/72 art.21 + DM 24/12/93) richiede
+# group by aliquota a livello documento, ROUND a 2 decimali su
+# SUM(imponibile_riga) per aliquota, NON ROUND per riga.
+#
+# Oggi i preventivi calcolano l'IVA per riga e poi sommano i valori
+# arrotondati: divergenza di centesimi rispetto alle fatture emesse
+# dallo stesso preventivo. Il refactor centralizza i riepiloghi su
+# questa tabella, esposta poi in totali e in eventuale UI.
+#
+# Shape uguale a fatture_riepiloghi_iva (FK + iva_id + natura_id +
+# esigibilita + split_payment + imponibile + imposta + arrotondamento)
+# anche se preventivi_righe non popola natura/esigibilita/split per
+# ora. Coerenza per future estensioni e per builder "fattura da
+# preventivo" (copia diretta riepiloghi).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260502-10-create-preventivi-riepiloghi-iva-mctit.yaml
+
+  - changeSet:
+      id: 20260502-10-01-create-preventivi-riepiloghi-iva
+      author: mctit
+      comment: >
+        Tabella vendite.preventivi_riepiloghi_iva, shape uguale a
+        fatture_riepiloghi_iva (FK su preventivi). natura/esigibilita/
+        split rimangono NULL nei preventivi ma colonne presenti per
+        coerenza pattern.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: preventivi
+            - tableExists:
+                schemaName: config
+                tableName: iva
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: preventivi_riepiloghi_iva
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: preventivi_riepiloghi_iva
+            remarks: >-
+              Riepilogo IVA aggregato per preventivo, group by (iva_id,
+              natura_id, esigibilita, split_payment). Una riga per
+              chiave. Calcolo fiscalmente corretto: ROUND a 2 sulla
+              SUM imponibili per aliquota, non per riga. Mantiene
+              colonna 'arrotondamento' per quadratura.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_preventivi_r_iva
+                    nullable: false
+              - column:
+                  name: preventivo_id
+                  type: bigint
+                  remarks: "FK al preventivo (vendite.preventivi.id)."
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_preventivi_r_iva_preventivo
+                    referencedTableSchemaName: vendite
+                    referencedTableName: preventivi
+                    referencedColumnNames: id
+                    deleteCascade: true
+              - column:
+                  name: iva_id
+                  type: integer
+                  remarks: "FK aliquota IVA (config.iva.id). NULL per righe esenti senza iva_id."
+                  constraints:
+                    nullable: true
+                    foreignKeyName: fk_preventivi_r_iva_iva
+                    referencedTableSchemaName: config
+                    referencedTableName: iva
+                    referencedColumnNames: id
+              - column:
+                  name: natura_id
+                  type: integer
+                  remarks: "FK natura IVA (config.iva_natura.id). NULL nei preventivi attuali (preventivi_righe non espone natura)."
+                  constraints:
+                    nullable: true
+                    foreignKeyName: fk_preventivi_r_iva_natura
+                    referencedTableSchemaName: config
+                    referencedTableName: iva_natura
+                    referencedColumnNames: id
+              - column:
+                  name: esigibilita
+                  type: char(1)
+                  remarks: "Esigibilita IVA (I=immediata, D=differita, S=split). NULL nei preventivi attuali."
+              - column:
+                  name: split_payment
+                  type: boolean
+                  remarks: "Flag split payment. NULL nei preventivi attuali."
+              - column:
+                  name: imponibile
+                  type: numeric
+                  defaultValueNumeric: 0
+                  remarks: "Imponibile aggregato per aliquota, ROUND(SUM, 2)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: imposta
+                  type: numeric
+                  defaultValueNumeric: 0
+                  remarks: "Imposta = ROUND(imponibile * aliquota_iva/100, 2)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: arrotondamento
+                  type: numeric
+                  defaultValueNumeric: 0
+                  remarks: "Differenza tra SUM full-precision e SUM arrotondato (info diagnostica)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+
+        - sql:
+            sql: |
+              -- UNIQUE composite con COALESCE su nullable per evitare
+              -- duplicati indistinguibili (stesso pattern di
+              -- fatture_riepiloghi_iva). Valori NULL sostituiti da
+              -- valori sentinel coerenti col semantic neutro.
+              CREATE UNIQUE INDEX uq_preventivi_r_iva_key
+                ON vendite.preventivi_riepiloghi_iva (
+                    preventivo_id,
+                    COALESCE(natura_id, 0),
+                    COALESCE(esigibilita, 'I'::bpchar),
+                    COALESCE(split_payment, false),
+                    COALESCE(iva_id, 0)
+                );
+
+              CREATE INDEX ix_vendite_preventivi_r_iva_preventivo_id
+                ON vendite.preventivi_riepiloghi_iva (preventivo_id);
+
+              COMMENT ON TABLE vendite.preventivi_riepiloghi_iva IS
+                  'Riepilogo IVA aggregato per preventivo, pattern coerente con '
+                  'fatture_riepiloghi_iva. Popolato da '
+                  'vendite.fn_ricalcola_riepilogo_iva_preventivo. '
+                  'Group by (iva_id, natura_id, esigibilita, split_payment), '
+                  'calcolo fiscalmente corretto (ROUND aggregato, non per riga).';
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: preventivi_riepiloghi_iva
