@@ -13,6 +13,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    optional_bool,
     optional_int,
     optional_iso_date,
     qp_int,
@@ -136,6 +137,24 @@ class ApiPreventivoDetail(DomainAPIView):
         result = preventivi_service.aggiorna_preventivo(preventivo_id, request.data)
         return success_response(result)
 
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PreventivoDeleteResponse",
+            fields={"data": inline_serializer(name="PreventivoDeleteData", fields={
+                "status": serializers.CharField(),
+                "preventivo_id": serializers.IntegerField(),
+            })},
+        )},
+    )
+    # Scopo: Hard-delete preventivo BOZZA orfano (zero righe, zero pratiche).
+    #        Supporto al pattern "abbandono bozza" del drawer FE.
+    #        Per preventivi gia' propagati o con stato avanzato, usare invece
+    #        POST /preventivi/<id>/stato/ con nuovo_stato=ANNULLATO.
+    def delete(self, request: Request, preventivo_id: int) -> JsonResponse:
+        del request
+        result = preventivi_service.elimina_preventivo(preventivo_id)
+        return success_response(result)
+
 
 # ── Cambio stato ──
 
@@ -147,7 +166,18 @@ class ApiPreventivoStato(DomainAPIView):
     @extend_schema(
         request=inline_serializer(
             name="PreventivoStatoRequest",
-            fields={"nuovo_stato": serializers.CharField()},
+            fields={
+                "nuovo_stato": serializers.CharField(),
+                # Obbligatori solo su transizione EMESSO/ACCETTATO → ACCETTATO
+                # (modalita' fatturazione del preventivo accettato). Ignorati
+                # sulle altre transizioni.
+                "fatturazione_immediata": serializers.BooleanField(
+                    required=False, allow_null=True,
+                ),
+                "competenza_mese": serializers.DateField(
+                    required=False, allow_null=True,
+                ),
+            },
         ),
         responses={200: inline_serializer(
             name="PreventivoStatoResponse",
@@ -158,7 +188,22 @@ class ApiPreventivoStato(DomainAPIView):
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             nuovo_stato = str(payload.get("nuovo_stato", ""))
-            return preventivi_service.cambia_stato(preventivo_id, nuovo_stato)
+            # fatturazione_immediata: distinguere "non passato" (None → ignora
+            # gate accettazione) da "False esplicito" (richiede competenza).
+            # optional_bool(default=False) non distingue: usiamo lookup raw.
+            raw_fi = payload.get("fatturazione_immediata")
+            if raw_fi is None:
+                fatturazione_immediata = None
+            else:
+                fatturazione_immediata = optional_bool(
+                    payload, "fatturazione_immediata",
+                )
+            competenza_mese = optional_iso_date(payload, "competenza_mese")
+            return preventivi_service.cambia_stato(
+                preventivo_id, nuovo_stato,
+                fatturazione_immediata=fatturazione_immediata,
+                competenza_mese=competenza_mese,
+            )
         return handle_post_json(request, handler=_handler)
 
 

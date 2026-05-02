@@ -1,6 +1,14 @@
 # Identificazione `emittenti_fiscali`: PK vs `soggetto_ruolo_id` — analisi e decisione
 
-> **Status**: 📋 ANALISI CONCLUSA — refactor big-bang **NON da fare**.
+> **Status**: ✅ **COMPLETATO** — landed 2026-05-02 (DB + BE).
+>
+> **DB**: migration `20260502-01-create-fn-get-emittenti-scope-pk-ids` + `20260502-02-update-fn-get-emittenti-scope-sr-ids-as-wrapper` — fn canonica `_pk_ids` + `_sr_ids` refactored come wrapper thin. Doc guida `soggetti-e-ruoli-anagrafici §5b` aggiornata.
+>
+> **BE**: `PermissionResolver.get_emittenti_pk_ids` aggiunto + filtro scope in `preventivi_repository.py:81-87` migrato a `_pk_ids`. `vendite_repository.py:39-41` verificato: usa `_sr_ids` correttamente (caller passa colonne SR). Memoria `feedback_emittente_pk_vs_soggetto_ruolo` rimane attiva come riferimento.
+>
+> ---
+>
+> **Status originale**: 📋 ANALISI CONCLUSA — refactor big-bang **NON da fare**.
 > **Decisione**: pattern duale e' una scelta architetturale corretta, va documentata e supportata. Risolvere a livello tattico solo l'incoerenza dei filtri scope (preventivi rev2 §9).
 > **Origine**: brief preventivi rev2 (sessione 2026-05-01) §4.1 + sessione di approfondimento 2026-05-02.
 > **Owner**: DB

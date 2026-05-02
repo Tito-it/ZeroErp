@@ -24,6 +24,13 @@ export function updatePreventivo(id, payload) {
   return api.patch(`${BASE}/${id}/`, payload)
 }
 
+// Hard-delete preventivo BOZZA orfano (zero righe, zero pratiche).
+// Usato dal flusso "abbandono bozza" del drawer create. Per stati avanzati
+// usare invece cambiaStatoPreventivo(id, {nuovo_stato: 'ANNULLATO'}).
+export function deletePreventivo(id) {
+  return api.delete(`${BASE}/${id}/`)
+}
+
 // --- Azioni testata ---
 
 export function cambiaStatoPreventivo(id, payload) {

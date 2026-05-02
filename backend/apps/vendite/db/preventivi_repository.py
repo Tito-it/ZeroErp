@@ -77,12 +77,16 @@ class PreventiviRepository:
             like = f"%{search}%"
             params.extend([like, like])
 
-        # Scope emittente: la vista espone emittente_fiscale_id
+        # Scope emittente: la vista espone emittente_fiscale_id (PK reale di
+        # anagrafiche.emittenti_fiscali.id, post brief preventivi rev2). Usa
+        # quindi fn_get_emittenti_scope_pk_ids (NON _sr_ids che mappa a
+        # soggetto_ruolo_id). Vedi guida soggetti-e-ruoli §5b + memoria
+        # feedback_emittente_pk_vs_soggetto_ruolo per il pattern duale SR vs PK.
         if auth_user_id is not None:
             conditions.append(
-                "(script.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
+                "(script.fn_get_emittenti_scope_pk_ids(%s) IS NULL "
                 "OR v.emittente_fiscale_id = ANY("
-                "script.fn_get_emittenti_scope_sr_ids(%s)))"
+                "script.fn_get_emittenti_scope_pk_ids(%s)))"
             )
             params.extend([auth_user_id, auth_user_id])
 
@@ -289,6 +293,21 @@ class PreventiviRepository:
         sql = f"UPDATE vendite.preventivi SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
+            return cursor.rowcount > 0
+
+    # Scopo: Hard-delete preventivo. Usato dal flusso "abbandono bozza"
+    #        (preventivi BOZZA orfani senza righe). I guard di dominio
+    #        (stato BOZZA, zero righe, no pratiche/commesse collegate) sono
+    #        applicati lato service prima di chiamare questo metodo. Cascade
+    #        FK gestita a livello DB (preventivi_righe e preventivi_indirizzi
+    #        hanno ON DELETE CASCADE su preventivo_id).
+    # Risultato: rowcount > 0 se preventivo eliminato, False se id inesistente.
+    def delete_preventivo(self, preventivo_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM vendite.preventivi WHERE id = %s",
+                [preventivo_id],
+            )
             return cursor.rowcount > 0
 
     # Scopo: Cambia stato preventivo invocando la funzione DB.

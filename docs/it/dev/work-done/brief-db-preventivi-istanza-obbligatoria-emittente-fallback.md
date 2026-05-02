@@ -1,6 +1,16 @@
 # Brief DB — Preventivi: istanza_utility obbligatoria + emittente da operatore + coerenza utility/istanza
 
-> **Status**: 🆕 **WIP** — rev2 (2026-05-01) — da applicare su `dev/db-tid`.
+> **Status**: ✅ **COMPLETATO** — landed 2026-05-02 su `dev/db-tid` + `dev/backend-tid`.
+>
+> **Implementazione DB**: vedi [risposta-db-brief-preventivi-rev2.md](risposta-db-brief-preventivi-rev2.md) (12 changeset A→L applicati, 5 deviazioni motivate, 3 file pgTAP, doc manual aggiornata).
+>
+> **Implementazione BE/FE**: completata sessione 2026-05-02 — commit `1f7daf69` (validator dominio + BB IstanzeUtility + 4 codici errore + componente FE IstanzaUtilityLookup) + commit successivo (refactor §9 PK vs SR scope, vedi `refactor-emittente-id-canonico.md`).
+>
+> **Osservazione §9 (PK vs SR scope)**: risolta con migration `20260502-01/-02` + nuovo `PermissionResolver.get_emittenti_pk_ids` + sostituzione filtro in `preventivi_repository.py:81-87` da `_sr_ids` a `_pk_ids`.
+>
+> ---
+>
+> **Status originale (per cronologia)**: 🆕 **WIP** — rev2 (2026-05-01) — da applicare su `dev/db-tid`.
 >
 > **Target team**: DB (`dev/db-tid`)
 > **Origine**: backend agent (`dev/backend-tid`), sessione 2026-05-01 (validazione UI v5 §2.1 preventivi)

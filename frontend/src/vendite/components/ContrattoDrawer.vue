@@ -121,6 +121,8 @@ const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefault
   'VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE',
   'VENDITE_CONTRATTO_DEFAULT_DATA_LEAD_GG',
   'VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG',
+  // Default utility globale (config.parameters), stesso pattern ClienteDrawer/PreventiviDrawer.
+  'DEFAULT_UTILITY_ID',
 ])
 
 function defaultForm() {
@@ -131,7 +133,7 @@ function defaultForm() {
     billing_account_id: null,
     billing_account_obj: null,
     istanza_utility_id: null,
-    utility_id: null,
+    utility_id: p.DEFAULT_UTILITY_ID ? Number(p.DEFAULT_UTILITY_ID) : null,
     ambito: paramString(p.VENDITE_CONTRATTO_DEFAULT_AMBITO, 'COMMODITY'),
     valido_dal: toDateString(addDaysToToday(validoDalLeadGg)),
     valido_al: null,

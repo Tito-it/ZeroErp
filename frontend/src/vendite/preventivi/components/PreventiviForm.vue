@@ -15,7 +15,6 @@ import BillingAccountLookup from '../../../core/components/BillingAccountLookup.
 import IstanzaUtilityLookup from '../../../core/components/IstanzaUtilityLookup.vue'
 import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
-import ToggleSwitch from 'primevue/toggleswitch'
 
 const { t } = useI18n()
 
@@ -144,31 +143,23 @@ function onIstanzaClear() {
       </div>
     </div>
 
+    <!-- Valuta + termine pagamento sulla stessa riga.
+         fatturazione_immediata e competenza_mese NON sono in form testata:
+         sono proprieta' di processo settate alla transizione EMESSO →
+         ACCETTATO via dialog dedicato (regola "immediata ⇒ competenza=oggi"
+         applicata BE). Vedi PreventiviDrawer dialog accettazione. -->
     <div class="form-grid-2col">
-      <div class="form-field">
-        <label>{{ t('preventivi.field_competenza') }}</label>
-        <DatePicker v-model="form.competenza_mese" :date-format="DATE_FORMAT"
-          show-icon show-button-bar view="month" :disabled="isLocked('competenza_mese')" />
-      </div>
       <div class="form-field">
         <label>{{ t('preventivi.field_valuta') }}</label>
         <LookupSelect v-model="form.valuta_id" rel="config.valute"
           :placeholder="t('preventivi.field_valuta')" :disabled="isLocked('valuta_id')"
           show-clear />
       </div>
-    </div>
-
-    <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('preventivi.field_termini_pagamento') }}</label>
         <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento"
           :placeholder="t('preventivi.field_termini_pagamento')"
           :disabled="isLocked('termine_pagamento_id')" show-clear />
-      </div>
-      <div class="form-field" style="display: flex; align-items: center; gap: 0.5rem; padding-top: 1.5rem;">
-        <ToggleSwitch v-model="form.fatturazione_immediata"
-          :disabled="isLocked('fatturazione_immediata')" />
-        <label>{{ t('preventivi.field_fatturazione_immediata') }}</label>
       </div>
     </div>
   </div>
