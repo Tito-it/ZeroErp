@@ -84,6 +84,11 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         # --- catalogo ---
         "catalogo.uom_tipi",
         "catalogo.unita_misura",
+        # --- documenti ---
+        "documenti.render_engine_documento",
+        "documenti.tipi_asset_documento",
+        "documenti.tipi_documento_output",
+        "documenti.tipi_file_documento",
         # --- magazzino ---
         "magazzino.ambito_causale",
         "magazzino.causali",

@@ -1311,24 +1311,73 @@ test render e un editor piu' ricco senza riscrivere il flusso.
     base URL/DNS, bucket/container, prefix, limiti dimensionali). Le credenziali
     non stanno in chiaro in DB: si salva al massimo un secret ref e il backend
     risolve da env/secret manager. Confermato come scelta definitiva.
+72. ~~Storage v1: posizione interfaccia, mapping parametri, cleanup.~~
+    **Decisione 2026-05-03**: interfaccia `DocumentStorage` astratta in
+    `apps/documenti/services/storage/base.py`, prima implementazione
+    `filesystem.py`. Selettore `get_storage()` legge
+    `documenti_storage_provider` da `config.parameters` (override possibile via
+    settings Django). I 6 parametri seed (`provider`, `endpoint`, `base_url`,
+    `bucket`, `prefix`, `secret_ref`) coprono il futuro adapter S3/MinIO senza
+    modifiche alla firma. Cleanup post-fail commit: `try/finally` con
+    `storage.delete()` best-effort + log warning + evento `STORAGE_ORPHAN` su
+    `documenti_generati_eventi` (vedi Decisione 76).
+73. ~~Dipendenza WeasyPrint.~~
+    **Decisione 2026-05-03**: aggiungere `weasyprint` (ultima stabile
+    compatibile Python 3.14, vincolo da fissare al pip-compile) a
+    `backend/requirements.in`. Aggiornare `Dockerfile` con dipendenze native
+    (`libpango-1.0-0`, `libpangoft2-1.0-0`, `libharfbuzz0b`, `libfontconfig1`,
+    `libcairo2`, `libgdk-pixbuf-2.0-0`, `shared-mime-info`). Aggiungere nota in
+    `docs/it/` sui prerequisiti dev (Linux/macOS). Rigenerare
+    `backend/requirements.txt` con pip-compile.
+74. ~~Posizione registry context_builder.~~
+    **Decisione 2026-05-03**: registry **centrale** in
+    `apps/documenti/services/context_builders/registry.py` (dict
+    `CODE -> Builder`). Le implementazioni concrete vivono nei domini sorgente
+    (es. `apps/vendite/services/preventivo_document_context_builder.py`) e si
+    registrano via import esplicito dal modulo registry. Niente auto-discovery
+    via signal Django: stesso pattern di `pipeline_task_registry_impl` (vendite),
+    coerente con la regola "nessuna esecuzione dinamica libera dal DB"
+    (Decisione 18). `template_documenti.context_builder_code` viene validato
+    contro le chiavi del registry all'esecuzione: `ServiceError(E_DOCUMENTI_VALIDATION)`
+    se non whitelisted.
+75. ~~Permessi gestione vs generazione.~~
+    **Decisione 2026-05-03**: introdurre **2 nuove azioni processo dedicate**
+    `DOCUMENTI_TEMPLATE_MANAGE` + `DOCUMENTI_ASSET_MANAGE`, seedate insieme alla
+    nuova area funzionale `documenti` (per i livelli area TUTTO/LETTURA/BLOCCATO
+    della UI di configurazione). Le azioni di generazione/lista/download
+    riusano i permessi del dominio sorgente (es. `vendite` per preventivi),
+    senza nuovi permessi. Brief al team DB per la migration seed.
+76. ~~Log evento download v1: opzione A vs B.~~
+    **Decisione 2026-05-03**: opzione **A** — anticipare
+    `documenti.documenti_generati_eventi` da Fase B a v1. DDL append-only
+    (trigger guard delete + update) + pgTAP. Eventi v1: `GENERATO`,
+    `SCARICATO`, `STORAGE_ORPHAN`, opzionale `ANTEPRIMA`. Allinea v1 alle
+    Decisioni 30/31 e copre il pattern di cleanup storage (Decisione 72).
+    Brief al team DB per la migration anticipata.
 
 ---
 
-## 10-bis. Decisioni operative aperte (da chiudere lato backend)
+## 10-bis. Decisioni operative (chiuse 2026-05-03)
 
 > Stato DB Fase A: chiuso (DDL + guards A1..A7-bis + check + storico off + 9
-> pgTAP + doc manuale). Manca solo Step D (whitelist Python `_REL_CONSENTITE`
-> in `apps/core/db/dbops_repository.py`). Prima di partire la PR backend
-> vanno chiuse le seguenti decisioni operative.
+> pgTAP + doc manuale). Step D whitelist Python `_REL_CONSENTITE`
+> applicato a `apps/core/db/dbops_repository.py` il 2026-05-03 (4 lookup
+> `documenti.*`: `tipi_documento_output`, `tipi_asset_documento`,
+> `tipi_file_documento`, `render_engine_documento`).
+>
+> Le 5 decisioni operative riassunte qui sotto sono state chiuse dal team
+> backend il 2026-05-03 e formalizzate nelle Decisioni 72-76 della §10
+> sopra. I dettagli operativi e il razionale rimangono in queste
+> sotto-sezioni come reference implementativo.
 
-### 10-bis.1 Storage v1 concreto
+### 10-bis.1 Storage v1 concreto — CHIUSA
 
-**Indirizzo (2026-05-03)**: filesystem locale dietro interfaccia
+**Esito 2026-05-03 (Decisione 72)**: filesystem locale dietro interfaccia
 `DocumentStorage` (`write/read/delete/exists`). MinIO/S3 entrera' come
 seconda implementazione della stessa interfaccia, senza riscrivere il
 render service.
 
-Da chiudere lato backend:
+Implementazione concordata:
 
 - nome modulo e posizione interfaccia (es.
   `apps/documenti/services/storage/base.py` + `filesystem.py`);
@@ -1337,80 +1386,60 @@ Da chiudere lato backend:
 - gestione cleanup best-effort se commit DB fallisce dopo upload riuscito
   (vedi §6.1 nota consistenza DB/storage).
 
-### 10-bis.2 Dipendenza WeasyPrint
+### 10-bis.2 Dipendenza WeasyPrint — CHIUSA
 
-**Indirizzo (2026-05-03)**: ok ad aggiungere `weasyprint` a
-`backend/requirements.in`. Comporta dipendenze di sistema (Pango, Cairo,
-GDK-PixBuf): da verificare/aggiornare anche `Dockerfile` e documentazione
-ambiente di sviluppo.
+**Esito 2026-05-03 (Decisione 73)**: ok ad aggiungere `weasyprint` a
+`backend/requirements.in`. Versione minima da fissare al momento del
+pip-compile (vincolo: ultima stabile compatibile Python 3.14). Aggiornare
+`Dockerfile` con le dipendenze native (`libpango-1.0-0`,
+`libpangoft2-1.0-0`, `libharfbuzz0b`, `libfontconfig1`, `libcairo2`,
+`libgdk-pixbuf-2.0-0`, `shared-mime-info`). Aggiungere nota in `docs/it/`
+sui prerequisiti dev (Linux/macOS). Rigenerare `backend/requirements.txt`
+con `pip-compile`.
 
-Da chiudere lato backend:
+### 10-bis.3 Posizione registry `context_builder` — CHIUSA
 
-- versione minima `weasyprint`;
-- aggiornamento `Dockerfile` con `apt-get install` delle librerie native;
-- nota in `docs/it/` su prerequisiti dev (Mac/Linux);
-- rigenerazione `backend/requirements.txt` con `pip-compile`.
+**Esito 2026-05-03 (Decisione 74)**: registry **centrale** in
+`apps/documenti/services/context_builders/registry.py` con dizionario
+`CODE -> Builder`. Implementazioni concrete nei domini sorgente (es.
+`apps/vendite/services/preventivo_document_context_builder.py`); la
+registrazione avviene via import esplicito dal modulo registry. Nessun
+auto-discovery via signal Django: stesso pattern di
+`pipeline_task_registry_impl` in `apps/vendite/db/vendite_pipeline_repository.py`,
+con vantaggio di IDE-grep e zero magia.
 
-### 10-bis.3 Posizione registry `context_builder`
+Vincolo invariato: **nessuna esecuzione dinamica libera dal DB**
+(coerente con Decisione 18). `template_documenti.context_builder_code`
+resta binding logico; il backend solleva
+`ServiceError(E_DOCUMENTI_VALIDATION)` se la chiave non e' nel registry.
 
-**Indirizzo (2026-05-03)**: scelta delegata al backend in fase di
-implementazione, scegliera' la posizione coerente con i pattern esistenti
-del repo (riferimento: registry pipeline task in
-`apps/vendite/db/vendite_pipeline_repository.py` e
-`pipeline_task_registry_impl`).
+### 10-bis.4 Permessi gestione vs generazione — CHIUSA
 
-Opzioni in valutazione:
+**Esito 2026-05-03 (Decisione 75)**: introdurre **2 nuove azioni
+processo dedicate** `DOCUMENTI_TEMPLATE_MANAGE` + `DOCUMENTI_ASSET_MANAGE`,
+seedate insieme alla nuova **area funzionale** `documenti` (per livelli
+TUTTO/LETTURA/BLOCCATO della UI di configurazione documentale,
+assegnabile a responsabili non admin per Decisione 25).
 
-- registry centrale in `apps/documenti/services/context_builders/registry.py`
-  con dizionario `CODE -> Builder`, e implementazioni concrete nei domini
-  sorgente (es. `apps/vendite/services/preventivo_document_context_builder.py`);
-- registry locale al dominio sorgente con auto-discovery via signal Django.
+- generazione/lista/download: riusano permessi del dominio sorgente
+  (`vendite` per preventivi, ecc.), nessun nuovo permesso;
+- 2 azioni processo + 1 area funzionale: 1 migration seed unica.
 
-Vincolo non negoziabile: **nessuna esecuzione dinamica libera dal DB**
-(coerente con Decisione 18). `template_documenti.context_builder_code` resta
-solo un binding logico, il backend esegue solo quanto registrato in
-whitelist applicativa.
+Brief al team DB: vedi
+[brief-db-documenti-permessi-seed.md](./brief-db-documenti-permessi-seed.md).
 
-### 10-bis.4 Permessi gestione vs generazione
+### 10-bis.5 Log evento download in v1 — CHIUSA
 
-**Aperta**. Decisione 25 separa "gestione template/asset" (configurazione
-documentale) da "generazione/lista/download" (permessi del dominio
-sorgente). Manca la scelta concreta:
+**Esito 2026-05-03 (Decisione 76)**: **opzione A** — anticipare
+`documenti.documenti_generati_eventi` da Fase B a v1. DDL append-only,
+trigger guard delete, trigger guard update, check
+`evento IN ('GENERATO','SCARICATO','STORAGE_ORPHAN','ANTEPRIMA')` (set
+estendibile in Fase B), pgTAP. Il costo e' una sola tabella
+append-only e copre Decisioni 30/31 da subito oltre al pattern di
+cleanup storage (Decisione 72, evento `STORAGE_ORPHAN`).
 
-- introdurre nuovi permessi dedicati (es.
-  `DOCUMENTI_TEMPLATE_MANAGE`, `DOCUMENTI_ASSET_MANAGE`) — piu' chiaro,
-  costa una migration di seed permessi;
-- riusare un permesso "configurazione" gia' esistente di area
-  amministrazione — zero nuove migration ma binding meno parlante.
-
-Da decidere lato backend in coordinamento con l'attuale sistema permessi
-multi-face (PR1 DB gia' pushata su `dev/db-tid`).
-
-### 10-bis.5 Log evento download in v1
-
-**Aperta**. Conflitto interno tra:
-
-- Decisione 31: "registrare evento `SCARICATO` a ogni download del PDF
-  persistente";
-- piano DB §5: `documenti.documenti_generati_eventi` rinviato a Fase B.
-
-Senza tabella eventi, in v1 il download non viene loggato. Opzioni:
-
-A. anticipare la sola tabella `documenti_generati_eventi` da Fase B
-   (DDL + guard append-only + delete block) per coprire `GENERATO` e
-   `SCARICATO` da subito. Costo basso (una tabella append-only), allinea
-   v1 alle Decisione 30/31;
-
-B. accettare che v1 non logga `SCARICATO` e rimandare a Fase B,
-   contraddicendo Decisione 31 fino a Fase B.
-
-Raccomandazione: opzione A. Il costo della singola tabella eventi e'
-minimo rispetto al valore di avere una timeline documentale fin dal
-primo rilascio.
-
-Da formalizzare lato backend insieme alla decisione su `documenti_generati`
-stato workflow (`GENERATO`/`ARCHIVIATO`/`ANNULLATO`) e su quali eventi
-applicativi popolare.
+Brief al team DB: vedi
+[brief-db-documenti-eventi-anticipo-fase-b.md](./brief-db-documenti-eventi-anticipo-fase-b.md).
 
 ---
 
