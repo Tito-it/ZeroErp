@@ -7,6 +7,7 @@
 • [documenti.template_documenti](/dbzero/documenti/tabelle/template_documenti)  
 > • [documenti.template_documenti_versioni](/dbzero/documenti/tabelle/template_documenti_versioni)  
 > • [documenti.documenti_generati_file](/dbzero/documenti/tabelle/documenti_generati_file)  
+> • [documenti.documenti_generati_eventi](documenti_generati_eventi.md) — timeline append-only del ciclo vita documento (anticipata da Fase B a v1)
 > • [config.sorgenti](/dbzero/config/manual/sorgenti)  
 >
 ### 🎯 Scopo Principale
@@ -61,6 +62,11 @@ versione template usata.
 
 Nella Fase A lo stato ha semantica leggera; il cuore del valore tabellare è la
 tracciabilità del render eseguito.
+
+I cambi di stato (`GENERATO → ARCHIVIATO`/`ANNULLATO`) e gli eventi
+applicativi (download, cleanup file orfani) sono tracciati nella timeline
+append-only [`documenti_generati_eventi`](documenti_generati_eventi.md),
+anticipata da Fase B a v1.
 
 ---
 

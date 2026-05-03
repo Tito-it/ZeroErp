@@ -2,6 +2,7 @@
 
 ## 📚 Tabelle
 - [documenti_generati](tabelle/documenti_generati.md) — (latest review 29-04-2026) `documenti.documenti_generati` è il **registro storico delle generazioni persistite** del motore documentale. Ogni riga rappresenta un documento prodotto, con snapshot del contesto, hash di audit e collegamento alla versione template usata.
+- [documenti_generati_eventi](tabelle/documenti_generati_eventi.md) — (introdotta 03-05-2026, anticipo Fase B → v1)
 - [documenti_generati_file](tabelle/documenti_generati_file.md) — (latest review 29-04-2026) `documenti.documenti_generati_file` conserva i **file persistiti** collegati a un documento già generato, separando il record storico logico dalla memorizzazione fisica del file.
 - [render_engine_documento](tabelle/render_engine_documento.md) — (latest review 29-04-2026) `documenti.render_engine_documento` definisce il catalogo dei motori di rendering ammessi per la trasformazione del template in documento finale.
 - [template_asset](tabelle/template_asset.md) — (latest review 29-04-2026) `documenti.template_asset` è il catalogo degli **asset documentali riusabili** associati a un emittente fiscale: logo, firme, immagini, CSS o altri file di supporto usati nella resa dei template.
@@ -14,6 +15,8 @@
 ## ⚙️ Funzioni
 - [trgfn_documenti_generati_block_delete](funzioni/trgfn_documenti_generati_block_delete.md)
 - [trgfn_documenti_generati_check_coerenza](funzioni/trgfn_documenti_generati_check_coerenza.md)
+- [trgfn_documenti_generati_eventi_block_delete](funzioni/trgfn_documenti_generati_eventi_block_delete.md)
+- [trgfn_documenti_generati_eventi_block_update](funzioni/trgfn_documenti_generati_eventi_block_update.md)
 - [trgfn_documenti_generati_file_protect_file](funzioni/trgfn_documenti_generati_file_protect_file.md)
 - [trgfn_documenti_generati_protect_snapshot](funzioni/trgfn_documenti_generati_protect_snapshot.md)
 - [trgfn_template_asset_block_delete](funzioni/trgfn_template_asset_block_delete.md)

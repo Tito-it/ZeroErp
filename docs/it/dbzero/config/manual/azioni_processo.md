@@ -58,6 +58,10 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 | approva_fattura | Approva fattura | NO | vendite |
 | emetti_fattura | Emetti fattura | NO | vendite |
 | approva_rimessa | Approva rimessa di pagamento | NO | pagamenti |
+| documenti_template_manage | Gestione template e versioni documenti | NO | documenti |
+| documenti_asset_manage | Gestione asset documentali (logo, firma, CSS, allegati) | NO | documenti |
+
+> Nota: il seed reale ([azioni_processo.csv](../../../../db/changelog/migrations_v2/80_data/sql/config/azioni_processo.csv)) contiene anche altre azioni del dominio `vendite` (reset lotti, push commesse, override prezzo, comandi stato preventivi) introdotte tra marzo e maggio 2026. Questa tabella elenca le azioni stabili del nucleo permessi; per l'elenco completo aggiornato consultare il CSV.
 
 ---
 
