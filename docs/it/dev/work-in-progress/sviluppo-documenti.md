@@ -1314,6 +1314,106 @@ test render e un editor piu' ricco senza riscrivere il flusso.
 
 ---
 
+## 10-bis. Decisioni operative aperte (da chiudere lato backend)
+
+> Stato DB Fase A: chiuso (DDL + guards A1..A7-bis + check + storico off + 9
+> pgTAP + doc manuale). Manca solo Step D (whitelist Python `_REL_CONSENTITE`
+> in `apps/core/db/dbops_repository.py`). Prima di partire la PR backend
+> vanno chiuse le seguenti decisioni operative.
+
+### 10-bis.1 Storage v1 concreto
+
+**Indirizzo (2026-05-03)**: filesystem locale dietro interfaccia
+`DocumentStorage` (`write/read/delete/exists`). MinIO/S3 entrera' come
+seconda implementazione della stessa interfaccia, senza riscrivere il
+render service.
+
+Da chiudere lato backend:
+
+- nome modulo e posizione interfaccia (es.
+  `apps/documenti/services/storage/base.py` + `filesystem.py`);
+- mapping parametri `config.parameters.documenti_storage_*` →
+  configurazione runtime;
+- gestione cleanup best-effort se commit DB fallisce dopo upload riuscito
+  (vedi §6.1 nota consistenza DB/storage).
+
+### 10-bis.2 Dipendenza WeasyPrint
+
+**Indirizzo (2026-05-03)**: ok ad aggiungere `weasyprint` a
+`backend/requirements.in`. Comporta dipendenze di sistema (Pango, Cairo,
+GDK-PixBuf): da verificare/aggiornare anche `Dockerfile` e documentazione
+ambiente di sviluppo.
+
+Da chiudere lato backend:
+
+- versione minima `weasyprint`;
+- aggiornamento `Dockerfile` con `apt-get install` delle librerie native;
+- nota in `docs/it/` su prerequisiti dev (Mac/Linux);
+- rigenerazione `backend/requirements.txt` con `pip-compile`.
+
+### 10-bis.3 Posizione registry `context_builder`
+
+**Indirizzo (2026-05-03)**: scelta delegata al backend in fase di
+implementazione, scegliera' la posizione coerente con i pattern esistenti
+del repo (riferimento: registry pipeline task in
+`apps/vendite/db/vendite_pipeline_repository.py` e
+`pipeline_task_registry_impl`).
+
+Opzioni in valutazione:
+
+- registry centrale in `apps/documenti/services/context_builders/registry.py`
+  con dizionario `CODE -> Builder`, e implementazioni concrete nei domini
+  sorgente (es. `apps/vendite/services/preventivo_document_context_builder.py`);
+- registry locale al dominio sorgente con auto-discovery via signal Django.
+
+Vincolo non negoziabile: **nessuna esecuzione dinamica libera dal DB**
+(coerente con Decisione 18). `template_documenti.context_builder_code` resta
+solo un binding logico, il backend esegue solo quanto registrato in
+whitelist applicativa.
+
+### 10-bis.4 Permessi gestione vs generazione
+
+**Aperta**. Decisione 25 separa "gestione template/asset" (configurazione
+documentale) da "generazione/lista/download" (permessi del dominio
+sorgente). Manca la scelta concreta:
+
+- introdurre nuovi permessi dedicati (es.
+  `DOCUMENTI_TEMPLATE_MANAGE`, `DOCUMENTI_ASSET_MANAGE`) — piu' chiaro,
+  costa una migration di seed permessi;
+- riusare un permesso "configurazione" gia' esistente di area
+  amministrazione — zero nuove migration ma binding meno parlante.
+
+Da decidere lato backend in coordinamento con l'attuale sistema permessi
+multi-face (PR1 DB gia' pushata su `dev/db-tid`).
+
+### 10-bis.5 Log evento download in v1
+
+**Aperta**. Conflitto interno tra:
+
+- Decisione 31: "registrare evento `SCARICATO` a ogni download del PDF
+  persistente";
+- piano DB §5: `documenti.documenti_generati_eventi` rinviato a Fase B.
+
+Senza tabella eventi, in v1 il download non viene loggato. Opzioni:
+
+A. anticipare la sola tabella `documenti_generati_eventi` da Fase B
+   (DDL + guard append-only + delete block) per coprire `GENERATO` e
+   `SCARICATO` da subito. Costo basso (una tabella append-only), allinea
+   v1 alle Decisione 30/31;
+
+B. accettare che v1 non logga `SCARICATO` e rimandare a Fase B,
+   contraddicendo Decisione 31 fino a Fase B.
+
+Raccomandazione: opzione A. Il costo della singola tabella eventi e'
+minimo rispetto al valore di avere una timeline documentale fin dal
+primo rilascio.
+
+Da formalizzare lato backend insieme alla decisione su `documenti_generati`
+stato workflow (`GENERATO`/`ARCHIVIATO`/`ANNULLATO`) e su quali eventi
+applicativi popolare.
+
+---
+
 ## 11. Piano Sviluppo DB
 
 Questa sezione resta come traccia sintetica e storico decisionale.

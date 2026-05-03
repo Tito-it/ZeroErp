@@ -202,6 +202,6 @@
 - [vw_preventivi_list](views/vw_preventivi_list.md) — (latest review 02-05-2026 — rev3)
 - [vw_preventivi_pratiche](views/vw_preventivi_pratiche.md) — (latest review 03-04-2026) `vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita** tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
 - [vw_preventivi_riepilogo_iva_dettaglio](views/vw_preventivi_riepilogo_iva_dettaglio.md)
-- [vw_preventivi_righe_dettaglio](views/vw_preventivi_righe_dettaglio.md) — (latest review 03-04-2026) `vendite.vw_preventivi_righe_dettaglio` arricchisce le righe preventivo con i dati denormalizzati di articolo, unita' di misura operativa e aliquota IVA. Include **importi calcolati** per evitare duplicazione della logica di calcolo nel backend/frontend.
+- [vw_preventivi_righe_dettaglio](views/vw_preventivi_righe_dettaglio.md) — (latest review 02-05-2026)
 - [vw_preventivi_stato_fatturazione](views/vw_preventivi_stato_fatturazione.md) — (latest review 03-04-2026) Due viste complementari per il **monitoraggio della pipeline fatturazione** dei preventivi:
 - [vw_preventivi_stato_fatturazione_righe](views/vw_preventivi_stato_fatturazione_righe.md)
