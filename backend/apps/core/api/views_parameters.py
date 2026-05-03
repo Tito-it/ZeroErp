@@ -72,17 +72,18 @@ def _parse_scope(raw: str | None) -> str:
     return scope
 
 
-# Scopo: Helper per estrarre contesto utente per risoluzione parametri.
-#        Superuser: nessun filtro (vede default globali).
-#        Operatore: user_id, group_ids, emittente_fiscale_id.
+# Scopo: Helper per estrarre contesto utente per la risoluzione parametri.
+#        Ritorna sempre i valori reali (anche per superuser): la cascade
+#        override (user → group → emittente → default) e' identity-based,
+#        non un filtro di scope. Un superuser che setta un override
+#        personale via UI deve vederlo applicato come qualsiasi altro
+#        utente — il bypass precedente forzava il fallback al solo default
+#        globale e mascherava gli override gia' persistiti.
+#        Per filtri di scope dati (es. emittenti_scope) usare invece
+#        `get_scope_user_id` (apps/core/api/endpoint_helpers.py) che
+#        applica il bypass superuser.
 def get_user_context(request: Request, svc: ParameterService) -> dict:
     user = request.user
-    if user.is_superuser:
-        return {
-            "django_user_id": None,
-            "group_ids": None,
-            "emittente_fiscale_id": None,
-        }
     return {
         "django_user_id": user.id,
         "group_ids": list(user.groups.values_list("id", flat=True)),
