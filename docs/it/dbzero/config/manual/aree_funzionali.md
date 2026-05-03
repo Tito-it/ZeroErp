@@ -53,20 +53,22 @@ Ogni area corrisponde a uno **schema PostgreSQL** (es. `vendite`, `anagrafiche`,
 
 ---
 
-### Seed iniziale (10 aree)
+### Seed iniziale
 
-| codice | schema_db | ordinamento |
-|--------|-----------|-------------|
-| anagrafiche | anagrafiche | 10 |
-| vendite | vendite | 20 |
-| acquisti | acquisti | 30 |
-| catalogo | catalogo | 40 |
-| contabilita | contabilita | 50 |
-| magazzino | magazzino | 60 |
-| pagamenti | pagamenti | 70 |
-| storico | storico | 80 |
-| config | config | 90 |
-| core | core | 100 |
+| codice | schema_db | ordinamento | introdotta |
+|--------|-----------|-------------|------------|
+| anagrafiche | anagrafiche | 10 | seed iniziale |
+| vendite | vendite | 20 | seed iniziale |
+| acquisti | acquisti | 30 | seed iniziale |
+| catalogo | catalogo | 40 | seed iniziale |
+| contabilita | contabilita | 50 | seed iniziale |
+| magazzino | magazzino | 60 | seed iniziale |
+| pagamenti | pagamenti | 70 | seed iniziale |
+| storico | storico | 80 | seed iniziale |
+| config | config | 90 | seed iniziale |
+| core | core | 100 | seed iniziale |
+| pratiche | pratiche | 110 | 2026-04-10 |
+| documenti | documenti | 120 | 2026-05-03 (modelli documenti — gestione template/asset) |
 
 ---
 

@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Block UPDATE su documenti.documenti_generati_eventi (append-only)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260503-08-create-trgfn-documenti-generati-eventi-block-update-mctit.yaml
+
+  - changeSet:
+      id: 20260503-08-create-trgfn-documenti-generati-eventi-block-update
+      author: mctit
+      comment: >
+        Guard append-only: blocca UPDATE su documenti_generati_eventi. Una volta
+        registrato, l'evento e' definitivo. I campi audit
+        data_update/user_update restano valorizzati al momento dell'INSERT ma
+        non si modificano mai (la tabella e' essa stessa il log). Eventuali
+        correzioni vanno registrate come nuovo evento. Messaggio definito in
+        config.messaggi_errore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_eventi_block_update()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              -- Scopo:
+              --   Blocca qualsiasi UPDATE sulla timeline degli eventi documento.
+              --
+              -- Regola:
+              --   La tabella documenti_generati_eventi e' append-only.
+              --   Nessun campo (incluso messaggio, detail, esito, meta) puo'
+              --   essere modificato dopo l'INSERT. Per registrare correzioni
+              --   o eventi successivi inserire una nuova riga.
+              --
+              -- Errore:
+              --   E_EVENTO_DOCUMENTO_UPDATE_VIETATA
+              BEGIN
+                PERFORM script.fn_log_and_raise_error(
+                  'documenti', 'trgfn_documenti_generati_eventi_block_update',
+                  'E_EVENTO_DOCUMENTO_UPDATE_VIETATA',
+                  jsonb_build_object(
+                    'evento_id', OLD.id,
+                    'documento_generato_id', OLD.documento_generato_id,
+                    'evento_tipo', OLD.evento_tipo,
+                    'evento_at', OLD.evento_at::text
+                  ),
+                  NULL::uuid
+                );
+                RETURN OLD;
+              END;
+              $$;
+
+              CREATE TRIGGER trg_documenti_generati_eventi_a10_block_update_upd
+                BEFORE UPDATE
+                ON documenti.documenti_generati_eventi
+                FOR EACH ROW
+                EXECUTE FUNCTION documenti.trgfn_documenti_generati_eventi_block_update();
+
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_eventi_block_update() IS
+                'Guard append-only: blocca UPDATE su documenti_generati_eventi. Nessun campo modificabile post INSERT, correzioni come nuovo evento.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_documenti_generati_eventi_a10_block_update_upd
+                ON documenti.documenti_generati_eventi;
+              DROP FUNCTION IF EXISTS documenti.trgfn_documenti_generati_eventi_block_update();
