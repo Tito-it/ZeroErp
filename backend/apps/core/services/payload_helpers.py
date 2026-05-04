@@ -200,6 +200,28 @@ class PayloadValidator:
             **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
         )
 
+    # Scopo: Guard scalare su stringa non vuota (post-strip). Speculare a
+    #        `guard_positive_int`: opera su valori scalari (kwarg, parametro
+    #        di firma) anziche' estrarre da payload come `require_string`.
+    #        Usato da service che ricevono identificatori testuali (es. UID
+    #        sorgente di documenti generati).
+    def guard_non_empty_string(
+        self,
+        value: Any,
+        *,
+        field: str,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> None:
+        ErrorManager.require(
+            isinstance(value, str) and value.strip() != "",
+            code=self._code,
+            message=f"Valore '{field}' non valido.",
+            detail=f"atteso stringa non vuota, ricevuto {value!r}",
+            context={field: value},
+            **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
+        )
+
     # =================================================================
     # Estrazione stringhe
     # =================================================================

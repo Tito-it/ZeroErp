@@ -75,7 +75,9 @@ export const DOMAIN_MENUS = {
   ],
   'config': [
     { key: 'tabelle', icon: 'pi pi-table', to: '/config/tabelle' },
-    { key: 'impostazioni', icon: 'pi pi-sliders-h', to: '/config/impostazioni' }
+    { key: 'impostazioni', icon: 'pi pi-sliders-h', to: '/config/impostazioni' },
+    { key: 'modelli-documenti', icon: 'pi pi-file-pdf', to: '/config/modelli-documenti' },
+    { key: 'asset-documenti', icon: 'pi pi-paperclip', to: '/config/asset-documenti' }
   ]
 }
 

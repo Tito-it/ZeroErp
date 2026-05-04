@@ -172,6 +172,7 @@ class PreventiviRepository:
                 p.totale_imponibile::text AS totale_imponibile,
                 p.totale_iva::text AS totale_iva,
                 p.totale_documento::text AS totale_documento,
+                p.emittente_fiscale_id,
                 p.storicizza,
                 p.meta,
                 p.data_insert::text AS data_insert,
@@ -560,6 +561,28 @@ class PreventiviRepository:
     # ══════════════════════════════════════════════════════════
     #  INTEGRAZIONE — Pratiche
     # ══════════════════════════════════════════════════════════
+
+    # Scopo: Restituisce il contesto minimo richiesto dal motore documentale
+    #        (Tranche K) per generare un documento da preventivo: `id`,
+    #        `uid` (UUID stringa che finisce su `documenti_generati.sorgente_uid`),
+    #        `emittente_fiscale_id` (colonna nativa NOT NULL del DDL preventivi).
+    #        Niente JOIN su anagrafiche/billing_account: l'emittente_fiscale_id
+    #        e' gia' su `vendite.preventivi.emittente_fiscale_id` (multi-face
+    #        auth, Tranche A). Ritorna None se id inesistente.
+    def get_for_documento_generation(
+        self, preventivo_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                id,
+                uid::text AS uid,
+                emittente_fiscale_id
+              FROM vendite.preventivi
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(preventivo_id)])
+            return row_to_dict(cursor)
 
     # Scopo: Risolve contesto anagrafico dal preventivo per creazione pratica.
     # Restituisce emittente_fiscale_id (PK numerica anagrafiche.emittenti_fiscali.id),

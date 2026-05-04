@@ -1,0 +1,419 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unit `DocumentGenerationService` per i comandi Tranche K
+#        (anteprima, list_documenti_per_sorgente, download). Mock-only.
+#        Il file e' separato da `test_document_generation_service.py` per
+#        contenere la lunghezza per Tranche.
+#
+#        Indice test (0..N):
+#         0. anteprima_happy_path_no_persist
+#         1. anteprima_anon_user_raises_validation
+#         2. anteprima_render_solleva_propaga_no_persist
+#         3. anteprima_input_guard_su_id
+#         4. list_per_sorgente_happy_path_paginato
+#         5. list_per_sorgente_input_guard_su_uid_vuoto
+#         6. list_per_sorgente_anon_user_raises_validation
+#         7. download_happy_path_legge_storage_emit_scaricato
+#         8. download_documento_inesistente_raises_not_found
+#         9. download_file_principale_assente_raises_not_found
+#        10. download_storage_read_fail_raises_storage_failed
+#        11. download_emit_evento_fallisce_ritorna_comunque_bytes
+#        12. download_input_guard_id_non_positivo
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+from django.test import SimpleTestCase
+
+from apps.core.services.service_errors import ServiceError
+from apps.documenti.services.document_generation_service import (
+    DocumentGenerationService,
+)
+
+
+def _make_user(*, is_authenticated: bool = True, user_id: int = 5) -> Any:
+    user = MagicMock()
+    user.is_authenticated = is_authenticated
+    user.id = user_id
+    return user
+
+
+def _template_row() -> dict[str, Any]:
+    return {
+        "id": 7,
+        "codice": "TPL-PREV",
+        "descrizione": "Preventivo standard",
+        "emittente_fiscale_id": 11,
+        "sorgente_tipo_id": 10,
+        "tipo_documento_output_id": 1,
+        "context_builder_code": "PREVENTIVO",
+        "file_name_pattern": "preventivo-{numero}.pdf",
+        "is_default": True,
+        "attivo": True,
+    }
+
+
+def _versione_row() -> dict[str, Any]:
+    return {
+        "id": 12,
+        "versione": 1,
+        "stato": "PUBBLICATA",
+        "html_template": "<p>{{ numero }}</p>",
+        "css_template": None,
+        "markdown_template": None,
+        "render_engine_codice": "WEASYPRINT",
+    }
+
+
+def _service_with_mocks(
+    *,
+    repo_methods: dict[str, Any] | None = None,
+    reader_methods: dict[str, Any] | None = None,
+    storage_methods: dict[str, Any] | None = None,
+) -> tuple[DocumentGenerationService, MagicMock, MagicMock, MagicMock]:
+    repo = MagicMock()
+    if repo_methods:
+        for name, value in repo_methods.items():
+            getattr(repo, name).return_value = value
+    reader = MagicMock()
+    if reader_methods:
+        for name, value in reader_methods.items():
+            getattr(reader, name).return_value = value
+    storage = MagicMock()
+    if storage_methods:
+        for name, value in storage_methods.items():
+            getattr(storage, name).return_value = value
+    svc = DocumentGenerationService(
+        repo=repo, reader=reader, storage=storage,
+    )
+    return svc, repo, reader, storage
+
+
+def _patch_render(return_value: bytes = b"%PDF-1.4 fake"):
+    return patch(
+        "apps.documenti.services.document_generation_service.render_pdf",
+        return_value=return_value,
+    )
+
+
+def _patch_get_builder(context: dict[str, Any] | None = None):
+    builder = MagicMock()
+    builder.build_context.return_value = context if context is not None else {"numero": 1}
+    return patch(
+        "apps.documenti.services.document_generation_service.get_builder",
+        return_value=builder,
+    )
+
+
+def _patch_scope(value: list[int] | None):
+    return patch(
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_ids",
+        return_value=value,
+    )
+
+
+# =====================================================================
+# Anteprima
+# =====================================================================
+
+
+class AnteprimaDocumentoTests(SimpleTestCase):
+    """anteprima_documento: render senza persist (Decisione 30)."""
+
+    # 0. happy path: ritorna pdf_bytes + nome_file, NESSUNA chiamata
+    #    create_documento_generato/storage.write/emit_evento_documento.
+    def test_anteprima_happy_path_no_persist(self) -> None:
+        template = _template_row()
+        versione = _versione_row()
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={
+                "find_template_applicabile": template,
+                "get_versione_pubblicata_attiva": versione,
+            },
+        )
+        with _patch_scope(None), _patch_get_builder({"numero": 42}), _patch_render(b"PDF"):
+            result = svc.anteprima_documento(
+                _make_user(),
+                emittente_fiscale_id=11,
+                sorgente_tipo_id=10,
+                sorgente_id=100,
+            )
+        self.assertEqual(result["pdf_bytes"], b"PDF")
+        self.assertEqual(result["nome_file"], "preventivo-42.pdf")
+        self.assertEqual(result["mime_type"], "application/pdf")
+        # Nessuna persistenza.
+        repo.create_documento_generato.assert_not_called()
+        repo.create_documento_generato_file.assert_not_called()
+        repo.emit_evento_documento.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 1. user anon -> rifiutato pre-DB.
+    def test_anteprima_anon_user_raises_validation(self) -> None:
+        svc, repo, _, _ = _service_with_mocks()
+        with self.assertRaises(ServiceError) as ctx:
+            svc.anteprima_documento(
+                _make_user(is_authenticated=False),
+                emittente_fiscale_id=11,
+                sorgente_tipo_id=10,
+                sorgente_id=100,
+            )
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.find_template_applicabile.assert_not_called()
+
+    # 2. render_pdf solleva -> propaga senza persist.
+    def test_anteprima_render_solleva_propaga_no_persist(self) -> None:
+        template = _template_row()
+        versione = _versione_row()
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={
+                "find_template_applicabile": template,
+                "get_versione_pubblicata_attiva": versione,
+            },
+        )
+        with _patch_scope(None), _patch_get_builder({"numero": 1}):
+            with patch(
+                "apps.documenti.services.document_generation_service.render_pdf",
+                side_effect=ServiceError(
+                    code="E_DOCUMENTI_RENDER_FAILED",
+                    message="font missing",
+                ),
+            ):
+                with self.assertRaises(ServiceError) as ctx:
+                    svc.anteprima_documento(
+                        _make_user(),
+                        emittente_fiscale_id=11,
+                        sorgente_tipo_id=10,
+                        sorgente_id=100,
+                    )
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_RENDER_FAILED")
+        repo.create_documento_generato.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 3. id non positivi -> rifiutati pre-DB.
+    def test_anteprima_input_guard_su_id(self) -> None:
+        svc, repo, _, _ = _service_with_mocks()
+        for override in [
+            {"emittente_fiscale_id": 0},
+            {"sorgente_tipo_id": -1},
+            {"sorgente_id": 0},
+        ]:
+            with self.subTest(override=override):
+                kwargs = {
+                    "emittente_fiscale_id": 11,
+                    "sorgente_tipo_id": 10,
+                    "sorgente_id": 100,
+                    **override,
+                }
+                with _patch_scope(None):
+                    with self.assertRaises(ServiceError) as ctx:
+                        svc.anteprima_documento(_make_user(), **kwargs)
+                self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.find_template_applicabile.assert_not_called()
+
+
+# =====================================================================
+# List per sorgente
+# =====================================================================
+
+
+class ListPerSorgenteTests(SimpleTestCase):
+    """list_documenti_per_sorgente: paginato + scope + guards."""
+
+    # 4. happy path: ritorna {results, total_count}.
+    def test_list_per_sorgente_happy_path_paginato(self) -> None:
+        svc, repo, _, _ = _service_with_mocks(
+            repo_methods={
+                "list_documenti_per_sorgente": (
+                    [{"id": 99, "uid": "uid-x"}],
+                    1,
+                ),
+            },
+        )
+        with _patch_scope([11, 22]):
+            result = svc.list_documenti_per_sorgente(
+                _make_user(),
+                sorgente_tipo_id=10,
+                sorgente_uid="uid-100",
+                limit=20,
+                offset=0,
+            )
+        self.assertEqual(result["total_count"], 1)
+        self.assertEqual(len(result["results"]), 1)
+        repo.list_documenti_per_sorgente.assert_called_once()
+        kwargs = repo.list_documenti_per_sorgente.call_args.kwargs
+        self.assertEqual(kwargs["emittente_ids_scope"], [11, 22])
+        self.assertEqual(kwargs["sorgente_uid"], "uid-100")
+        self.assertEqual(kwargs["limit"], 20)
+        self.assertEqual(kwargs["offset"], 0)
+
+    # 5. sorgente_uid vuoto -> VALIDATION pre-DB.
+    def test_list_per_sorgente_input_guard_su_uid_vuoto(self) -> None:
+        svc, repo, _, _ = _service_with_mocks()
+        for bad in ("", "   "):
+            with self.subTest(uid=bad):
+                with _patch_scope(None):
+                    with self.assertRaises(ServiceError) as ctx:
+                        svc.list_documenti_per_sorgente(
+                            _make_user(),
+                            sorgente_tipo_id=10,
+                            sorgente_uid=bad,
+                        )
+                self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.list_documenti_per_sorgente.assert_not_called()
+
+    # 6. user anon -> VALIDATION pre-DB.
+    def test_list_per_sorgente_anon_user_raises_validation(self) -> None:
+        svc, repo, _, _ = _service_with_mocks()
+        with self.assertRaises(ServiceError) as ctx:
+            svc.list_documenti_per_sorgente(
+                _make_user(is_authenticated=False),
+                sorgente_tipo_id=10,
+                sorgente_uid="uid-100",
+            )
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.list_documenti_per_sorgente.assert_not_called()
+
+
+# =====================================================================
+# Download
+# =====================================================================
+
+
+class DownloadDocumentoTests(SimpleTestCase):
+    """download_documento: storage.read + emit `SCARICATO` (Decisione 31)."""
+
+    # 7. happy path: legge storage + emit evento + ritorna bytes/metadati.
+    def test_download_happy_path_legge_storage_emit_scaricato(self) -> None:
+        documento = {
+            "id": 99,
+            "uid": "uid-x",
+            "nome_file": "preventivo-1.pdf",
+            "pdf_hash": "c" * 64,
+        }
+        file_row = {
+            "storage_key": "documenti/11/abc.pdf",
+            "mime_type": "application/pdf",
+            "file_name": "preventivo-1.pdf",
+            "file_size_bytes": 4096,
+        }
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={
+                "get_documento_generato": documento,
+                "get_documento_generato_file_principale": file_row,
+                "emit_evento_documento": 1,
+            },
+            storage_methods={
+                "build_storage_uri": "filesystem:documenti/11/abc.pdf",
+                "read": b"PDF-bytes",
+            },
+        )
+        with _patch_scope(None):
+            with patch(
+                "apps.documenti.services.document_generation_service.transaction.atomic",
+            ):
+                result = svc.download_documento(_make_user(), 99)
+
+        self.assertEqual(result["pdf_bytes"], b"PDF-bytes")
+        self.assertEqual(result["nome_file"], "preventivo-1.pdf")
+        self.assertEqual(result["mime_type"], "application/pdf")
+        self.assertEqual(result["size_bytes"], 4096)
+        # storage.read invocato con l'uri ricostruito da build_storage_uri.
+        storage.build_storage_uri.assert_called_once_with("documenti/11/abc.pdf")
+        storage.read.assert_called_once_with("filesystem:documenti/11/abc.pdf")
+        # Evento SCARICATO emesso.
+        repo.emit_evento_documento.assert_called_once()
+        evento_data = repo.emit_evento_documento.call_args.args[0]
+        self.assertEqual(evento_data["evento_tipo"], "SCARICATO")
+        self.assertEqual(evento_data["esito"], "OK")
+        self.assertEqual(evento_data["documento_generato_id"], 99)
+        # Niente tx_id esplicito (Decisione 76).
+        self.assertNotIn("tx_id", evento_data)
+
+    # 8. documento inesistente -> NOT_FOUND, no read storage.
+    def test_download_documento_inesistente_raises_not_found(self) -> None:
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={"get_documento_generato": None},
+        )
+        with _patch_scope(None):
+            with self.assertRaises(ServiceError) as ctx:
+                svc.download_documento(_make_user(), 999)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
+        storage.read.assert_not_called()
+        repo.emit_evento_documento.assert_not_called()
+
+    # 9. file principale assente -> NOT_FOUND (record DB orfano post-cleanup
+    #    STORAGE_ORPHAN o documento creato senza file principale).
+    def test_download_file_principale_assente_raises_not_found(self) -> None:
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={
+                "get_documento_generato": {"id": 99, "nome_file": "x.pdf", "pdf_hash": "h"},
+                "get_documento_generato_file_principale": None,
+            },
+        )
+        with _patch_scope(None):
+            with self.assertRaises(ServiceError) as ctx:
+                svc.download_documento(_make_user(), 99)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
+        storage.read.assert_not_called()
+        repo.emit_evento_documento.assert_not_called()
+
+    # 10. storage.read solleva -> E_DOCUMENTI_STORAGE_FAILED (mappato).
+    def test_download_storage_read_fail_raises_storage_failed(self) -> None:
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={
+                "get_documento_generato": {"id": 99, "nome_file": "x.pdf", "pdf_hash": "h"},
+                "get_documento_generato_file_principale": {
+                    "storage_key": "documenti/11/abc.pdf",
+                    "mime_type": "application/pdf",
+                    "file_name": "x.pdf",
+                    "file_size_bytes": 100,
+                },
+            },
+            storage_methods={"build_storage_uri": "fs:abc"},
+        )
+        storage.read.side_effect = OSError("storage offline")
+        with _patch_scope(None):
+            with self.assertRaises(ServiceError) as ctx:
+                svc.download_documento(_make_user(), 99)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_STORAGE_FAILED")
+        # Niente evento se storage fail.
+        repo.emit_evento_documento.assert_not_called()
+
+    # 11. emit evento solleva -> log warning ma il download riesce comunque
+    #     (audit best-effort, file e' la priorita').
+    def test_download_emit_evento_fallisce_ritorna_comunque_bytes(self) -> None:
+        svc, repo, _, _ = _service_with_mocks(
+            repo_methods={
+                "get_documento_generato": {"id": 99, "nome_file": "x.pdf", "pdf_hash": "h"},
+                "get_documento_generato_file_principale": {
+                    "storage_key": "documenti/11/abc.pdf",
+                    "mime_type": "application/pdf",
+                    "file_name": "x.pdf",
+                    "file_size_bytes": 100,
+                },
+            },
+            storage_methods={"build_storage_uri": "fs:abc", "read": b"BYTES"},
+        )
+        repo.emit_evento_documento.side_effect = RuntimeError("DB issue")
+        with _patch_scope(None):
+            with patch(
+                "apps.documenti.services.document_generation_service.transaction.atomic",
+            ):
+                result = svc.download_documento(_make_user(), 99)
+        self.assertEqual(result["pdf_bytes"], b"BYTES")
+
+    # 12. id non positivo -> VALIDATION pre-DB.
+    def test_download_input_guard_id_non_positivo(self) -> None:
+        svc, repo, _, _ = _service_with_mocks()
+        for bad in (0, -1):
+            with self.subTest(id=bad):
+                with _patch_scope(None):
+                    with self.assertRaises(ServiceError) as ctx:
+                        svc.download_documento(_make_user(), bad)
+                self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.get_documento_generato.assert_not_called()
