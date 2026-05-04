@@ -15,8 +15,9 @@ Indice test eseguiti:
  1) ParameterDefaultsViewTests.test_get_defaults_success
  2) ParameterDefaultsViewTests.test_get_defaults_empty_codes
  3) ParameterDefaultsViewTests.test_get_defaults_passes_emittente_context
+ 3b) ParameterDefaultsViewTests.test_get_defaults_superuser_resolves_identita
  4) ParameterSettingsViewTests.test_list_settings_success
- 5) ParameterSettingsViewTests.test_list_settings_superuser_resolves_emittente
+ 5) ParameterSettingsViewTests.test_list_settings_superuser_resolves_identita
  6) ParameterOverrideViewTests.test_upsert_override_success
  7) ParameterOverrideDeleteViewTests.test_delete_override_success
  8) ParameterOverrideDeleteViewTests.test_delete_override_not_found
@@ -102,6 +103,32 @@ class ParameterDefaultsViewTests(TestCase):
             emittente_fiscale_id=5,
         )
 
+    # Scopo: Verifica che anche il superuser riceva l'identita' reale per la
+    #        risoluzione delle cascade override (regressione bug 2026-05-03:
+    #        gli override personali del superuser non venivano applicati).
+    @patch(SVC_PATH)
+    def test_get_defaults_superuser_resolves_identita(self, mock_svc_cls):
+        from apps.core.api.views_parameters import ParameterDefaultsView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.get_defaults.return_value = {"DEFAULT_UTILITY": "BASE"}
+        mock_svc.get_emittente_fiscale_id_for_user.return_value = 9
+
+        view = ParameterDefaultsView()
+        request = _make_request(
+            user_id=1, is_superuser=True, query_params={"codes": "DEFAULT_UTILITY"},
+        )
+        response = view.get(request)
+
+        self.assertEqual(response.status_code, 200)
+        mock_svc.get_defaults.assert_called_once_with(
+            ["DEFAULT_UTILITY"],
+            django_user_id=1,
+            group_ids=[10, 20],
+            emittente_fiscale_id=9,
+        )
+
 
 class ParameterSettingsViewTests(TestCase):
 
@@ -143,12 +170,14 @@ class ParameterSettingsViewTests(TestCase):
             emittente_fiscale_id=3,
         )
 
-    # Scopo: Verifica che un superuser riceva comunque l'emittente_fiscale_id
-    #        reale nella lista settings (fallback da get_emittente_fiscale_id_for_user),
-    #        altrimenti il LEFT JOIN su emittente_fiscale_id = NULL non matcha
-    #        mai e gli override emittente non vengono mostrati.
+    # Scopo: Verifica che un superuser riceva l'identita' reale (user_id,
+    #        groups, emittente) nella lista settings. Post-fix 2026-05-03:
+    #        get_user_context non bypassa piu' il superuser — la cascade
+    #        override (user → group → emittente → default) e' identity-based,
+    #        non un filtro di scope. Anche il superuser deve poter avere
+    #        override personali risolti correttamente.
     @patch(SVC_PATH)
-    def test_list_settings_superuser_resolves_emittente(self, mock_svc_cls):
+    def test_list_settings_superuser_resolves_identita(self, mock_svc_cls):
         from apps.core.api.views_parameters import ParameterSettingsView
 
         mock_svc = MagicMock()
@@ -161,11 +190,9 @@ class ParameterSettingsViewTests(TestCase):
         response = view.get(request)
 
         self.assertEqual(response.status_code, 200)
-        # Superuser: _get_user_context restituisce emittente_fiscale_id=None,
-        # ma il fallback in ParameterSettingsView deve risolvere il valore reale.
         mock_svc.list_parameters_for_user.assert_called_once_with(
             django_user_id=1,
-            group_ids=None,
+            group_ids=[10, 20],
             emittente_fiscale_id=7,
         )
 

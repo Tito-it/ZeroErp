@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Update vendite.vw_preventivi_list — soggetto via istanza_utilities.
+#
+# Why: il modello dati ZeroErp prevede 1:1 tra istanza e cliente
+# (manuale istanze_utilities §7.3) e il soggetto del BA appartiene
+# alla stessa istanza per costruzione del flusso. Dato che
+# preventivi.istanza_utility_id e' NOT NULL (post brief preventivi
+# rev2), conviene radicare il lookup soggetto su istanza, non su BA:
+#
+#   - 1 join (istanza -> soggetti) vs 3 join (BA -> soggetti_ruoli -> soggetti)
+#   - cliente_denominazione e id_fiscale sempre valorizzati anche per
+#     preventivi prospect (BA NULL)
+#   - billing_account_codice resta NULL per prospect (informazione
+#     corretta: il BA non c'e')
+#
+# Modifiche puntuali rispetto a 20260501-14:
+#
+#   1) JOIN istanze_utilities (sempre match: istanza_utility_id NOT NULL)
+#      sostituisce la catena BA -> soggetti_ruoli -> soggetti come
+#      sorgente del soggetto.
+#   2) Aggiunti campi:
+#        ba.codice            AS billing_account_codice
+#        s.id_fiscale_univoco_cf_piva AS id_fiscale
+#        iu.codice            AS istanza_utility_codice    (NEW richiesta utente)
+#        u.codice             AS utility_codice            (LEFT JOIN config.utilities)
+#        u.descrizione        AS utility_descrizione
+#        sdp.codice_interno   AS stato_codice_interno      (oggi codice==codice_interno, pulizia)
+#   3) BA tenuto come LEFT JOIN per esporre billing_account_codice
+#      (NULL ammesso per prospect).
+#
+# La coerenza "BA.soggetto = istanza.soggetto" e' garantita a livello
+# DB dal nuovo guard config.trgfn_billing_account_guard_soggetto_coerenza_istanza
+# (file 20260502-16 — chiude la lacuna che permetteva di inserire BA con
+# soggetto diverso da quello dell'istanza).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260502-15-update-vw-preventivi-list-soggetto-via-istanza-mctit.yaml
+
+  - changeSet:
+      id: 20260502-15-update-vw-preventivi-list-soggetto-via-istanza
+      author: mctit
+
+      runOnChange: true
+
+      validCheckSums:
+        - ANY
+      comment: >
+        Riscrive vw_preventivi_list radicando il soggetto su istanze_utilities
+        (1 join, sempre valorizzato). Aggiunge billing_account_codice,
+        id_fiscale, istanza_utility_codice, utility_codice/descrizione,
+        stato_codice_interno.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: preventivi
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: istanze_utilities
+            - columnExists:
+                schemaName: vendite
+                tableName: preventivi
+                columnName: istanza_utility_id
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: istanze_utilities
+                columnName: soggetto_id
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: soggetti
+                columnName: id_fiscale_univoco_cf_piva
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              
+              DROP VIEW vendite.vw_preventivi_list;
+
+              -- ==========================================================
+              -- Vista: vendite.vw_preventivi_list (rev3: soggetto via istanza)
+              --
+              -- Cambia rispetto a 20260501-14:
+              --   - soggetto/ragione_sociale via istanza_utilities (1 join)
+              --     anziche' via billing_account.soggetto_ruolo (3 join)
+              --   - id_fiscale esposto (s.id_fiscale_univoco_cf_piva)
+              --   - billing_account_codice esposto (NULL ammesso per prospect)
+              --   - istanza_utility_codice, utility_codice/descrizione,
+              --     stato_codice_interno aggiunti
+              --
+              -- Performance: ix_anagrafiche_istanze_utilities_soggetto_id
+              -- + pk_istanze_utilities + pk_soggetti -> lookup O(1) per riga.
+              --
+              -- Coerenza BA<->istanza: garantita dal guard
+              -- trgfn_billing_account_guard_soggetto_coerenza_istanza
+              -- (chiude la lacuna che permetteva BA con soggetto
+              -- diverso da quello dell'istanza).
+              -- ==========================================================
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_list AS
+              SELECT
+                p.id,
+                p.uid,
+                p.numero,
+                p.rev,
+                p.is_revision_attiva,
+                p.data,
+                -- Stato
+                p.stato_doc_preventivo_id,
+                sdp.codice                                AS stato_codice,
+                sdp.codice_interno                        AS stato_codice_interno,
+                sdp.descrizione                           AS stato_descrizione,
+                -- Billing account (opzionale per prospect)
+                p.billing_account_id,
+                ba.codice                                 AS billing_account_codice,
+                ba.utility_id                             AS ba_utility_id,
+                -- Soggetto via istanza (sempre valorizzato: istanza_utility_id NOT NULL)
+                s.id                                      AS soggetto_id,
+                s.ragione_sociale_completa                AS cliente_denominazione,
+                s.id_fiscale_univoco_cf_piva              AS id_fiscale,
+                -- Emittente fiscale (PK reale, persistita - rev2)
+                p.emittente_fiscale_id,
+                -- Contesto utility + istanza
+                p.utility_id,
+                u.codice                                  AS utility_codice,
+                u.descrizione                             AS utility_descrizione,
+                p.istanza_utility_id,
+                iu.codice                                 AS istanza_utility_codice,
+                -- Importi
+                p.totale_imponibile,
+                p.totale_iva,
+                p.totale_documento,
+                -- Condizioni
+                p.valuta_id,
+                v.codice                                  AS valuta_codice,
+                p.termine_pagamento_id,
+                tp.descrizione                            AS termine_pagamento_descrizione,
+                -- Validita' e competenza
+                p.validita_dal,
+                p.validita_al,
+                p.competenza_mese,
+                -- Flag
+                p.fatturazione_immediata,
+                p.storicizza,
+                -- Audit
+                p.data_insert
+              FROM vendite.preventivi p
+              JOIN config.stati_doc_preventivi sdp
+                ON sdp.id = p.stato_doc_preventivo_id
+              -- Istanza (NOT NULL): radice del lookup soggetto
+              LEFT JOIN anagrafiche.istanze_utilities iu
+                ON iu.id = p.istanza_utility_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = iu.soggetto_id
+              -- BA opzionale per prospect: solo per ba.codice e ba_utility_id
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = p.billing_account_id
+              -- Utility (NOT NULL): codice/descrizione per UI
+              LEFT JOIN config.utilities u
+                ON u.id = p.utility_id
+              -- Lookup ancillari
+              LEFT JOIN config.valute v
+                ON v.id = p.valuta_id
+              LEFT JOIN config.termini_pagamento tp
+                ON tp.id = p.termine_pagamento_id
+              ORDER BY p.data DESC, p.numero DESC, p.id;
+
+              COMMENT ON VIEW vendite.vw_preventivi_list IS
+                  'Lista preventivi vendita denormalizzata. rev3 (2026-05-02): '
+                  'soggetto/ragione_sociale/id_fiscale via istanze_utilities '
+                  '(1 join, sempre valorizzato), billing_account_codice opzionale '
+                  '(NULL per prospect), istanza_utility_codice e utility '
+                  'codice/descrizione esposti per UI, stato_codice_interno '
+                  'esposto per coerenza future-proof. Coerenza BA<->istanza '
+                  'garantita dal guard trgfn_billing_account_guard_soggetto_coerenza_istanza.';

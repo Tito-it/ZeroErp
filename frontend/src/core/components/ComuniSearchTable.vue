@@ -11,7 +11,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import NewButton from './NewButton.vue'
-import Button from 'primevue/button'
+import ReloadButton from './ReloadButton.vue'
 
 const emit = defineEmits(['new'])
 const { t } = useI18n()
@@ -32,7 +32,7 @@ onMounted(() => { store.fetchList() })
         />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('indirizzi.nuovo_comune')" @click="emit('new')" />
       </div>
     </div>

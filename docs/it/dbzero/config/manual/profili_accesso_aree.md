@@ -11,20 +11,19 @@ Tabelle correlate:
 >
 [config.profili_accesso](/dbzero/config/tabelle/profili_accesso)
 > [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
-> [config.profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree) (tabella legacy)
 > [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
 
 ---
 ### 🎯 Scopo Principale
-(latest revision 18-04-2026)
+(latest revision 04-05-2026 — modello legacy `profili_reparto_aree` dismesso)
 
 La tabella **`config.profili_accesso_aree`** contiene il dettaglio delle
 aree funzionali coperte da un profilo di accesso, con il **livello** consentito
 su ciascuna area.
 
-È il rimpiazzo concettuale di `config.profili_reparto_aree`: generalizza il
-padre da "reparto" a "profilo" (che a sua volta può essere legato a un reparto,
-a un ruolo applicativo di portale o a una singola identità).
+Il padre e' `profili_accesso`, generalizzato a tre tipi di profilo
+(REPARTO / PORTALE / AD_HOC), legato all'utente tramite
+`profili_accesso_bindings`.
 
 ---
 
@@ -53,8 +52,7 @@ incomplete.
 ### Catena di risoluzione (livello area)
 
 Questa tabella interviene al **punto 3** della catena di risoluzione del
-livello di accesso per area (la stessa di [`profili_reparto_aree`](/dbzero/config/tabelle/profili_reparto_aree)
-nella versione legacy):
+livello di accesso per area:
 
 ```
 1. Override utente su SINGOLO OGGETTO? → SI: applica → NO: continua ↓
@@ -64,8 +62,9 @@ nella versione legacy):
 4. Default                              → BLOCCATO
 ```
 
-Al cutover (§4.8 WIP multi-face-auth) la funzione `script.fn_resolve_livello_area`
-sarà aggiornata per leggere da questa tabella anziché da `profili_reparto_aree`.
+`script.fn_resolve_livello_area` legge questa tabella tramite
+`script.fn_get_profili_accesso_applicabili` (cutover completato 2026-04-19,
+modello legacy droppato 2026-05-04).
 
 ---
 

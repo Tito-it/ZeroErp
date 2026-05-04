@@ -61,9 +61,10 @@ _MODEL_OVERRIDE_RISERVATI: frozenset[tuple[str, str]] = frozenset({
     ("config", "user_override_oggetti"),
     # Scope emittenti utente: cambiarlo cambia i dati visibili.
     ("config", "user_emittenti_fiscali"),
-    # Profili reparto: livello sopra ai singoli operatori.
-    ("config", "profili_reparto_aree"),
-    ("config", "profili_reparto_azioni"),
+    # Profili accesso: livello sopra ai singoli operatori (modello generalizzato
+    # post-cutover PR-B; le legacy profili_reparto_* sono state rimosse).
+    ("config", "profili_accesso_aree"),
+    ("config", "profili_accesso_azioni"),
 })
 
 
@@ -780,13 +781,22 @@ class AmmSoftwareRepository:
     # ================================================================== #
 
     # Scopo: Lista reparti con flag profilo configurato e conteggio operatori.
+    #        Conteggi su modello generalizzato profili_accesso_* via binding
+    #        REPARTO (post-cutover PR-B): JOIN profili_accesso_bindings ->
+    #        profili_accesso_aree/_azioni filtrato per unita_organizzativa_id.
     def list_reparti(self) -> list[dict[str, Any]]:
         sql = """
             SELECT uo.id, uo.codice, uo.descrizione, uo.attivo,
-                   (SELECT COUNT(*) FROM config.profili_reparto_aree pra
-                     WHERE pra.unita_organizzativa_id = uo.id) AS profilo_aree_count,
-                   (SELECT COUNT(*) FROM config.profili_reparto_azioni prz
-                     WHERE prz.unita_organizzativa_id = uo.id) AS profilo_azioni_count,
+                   (SELECT COUNT(*)
+                      FROM config.profili_accesso_bindings pab
+                      JOIN config.profili_accesso_aree paa
+                        ON paa.profilo_accesso_id = pab.profilo_accesso_id
+                     WHERE pab.unita_organizzativa_id = uo.id) AS profilo_aree_count,
+                   (SELECT COUNT(*)
+                      FROM config.profili_accesso_bindings pab
+                      JOIN config.profili_accesso_azioni paz
+                        ON paz.profilo_accesso_id = pab.profilo_accesso_id
+                     WHERE pab.unita_organizzativa_id = uo.id) AS profilo_azioni_count,
                    (SELECT COUNT(*) FROM anagrafiche.risorse_umane ru
                      WHERE ru.unita_organizzativa_id = uo.id
                        AND ru.attivo = true) AS operatori_count
@@ -799,16 +809,20 @@ class AmmSoftwareRepository:
             return rows_to_list(cursor)
 
     # Scopo: Restituisce il profilo completo di un reparto (aree + azioni).
+    #        Legge dal modello generalizzato profili_accesso_* via binding
+    #        REPARTO. Contratto API invariato: {"aree": [...], "azioni": [...]}
     def get_profilo_reparto(self, uo_id: int) -> dict[str, Any]:
         # Aree
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT pra.id, pra.area_id, af.codice AS area_codice,
+                """SELECT paa.id, paa.area_id, af.codice AS area_codice,
                           af.descrizione AS area_descrizione,
-                          pra.livello::text
-                     FROM config.profili_reparto_aree pra
-                     JOIN config.aree_funzionali af ON af.id = pra.area_id
-                    WHERE pra.unita_organizzativa_id = %s
+                          paa.livello::text
+                     FROM config.profili_accesso_bindings pab
+                     JOIN config.profili_accesso_aree paa
+                       ON paa.profilo_accesso_id = pab.profilo_accesso_id
+                     JOIN config.aree_funzionali af ON af.id = paa.area_id
+                    WHERE pab.unita_organizzativa_id = %s
                     ORDER BY af.ordinamento, af.codice""",
                 [uo_id],
             )
@@ -818,14 +832,16 @@ class AmmSoftwareRepository:
         # Azioni
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT prz.id, prz.azione_id, ap.permission_codename,
+                """SELECT paz.id, paz.azione_id, ap.permission_codename,
                           ap.descrizione AS azione_descrizione,
                           af.codice AS area_codice,
-                          prz.abilitata
-                     FROM config.profili_reparto_azioni prz
-                     JOIN config.azioni_processo ap ON ap.id = prz.azione_id
+                          paz.abilitata
+                     FROM config.profili_accesso_bindings pab
+                     JOIN config.profili_accesso_azioni paz
+                       ON paz.profilo_accesso_id = pab.profilo_accesso_id
+                     JOIN config.azioni_processo ap ON ap.id = paz.azione_id
                      JOIN config.aree_funzionali af ON af.id = ap.area_id
-                    WHERE prz.unita_organizzativa_id = %s
+                    WHERE pab.unita_organizzativa_id = %s
                     ORDER BY af.ordinamento, ap.permission_codename""",
                 [uo_id],
             )
@@ -834,35 +850,93 @@ class AmmSoftwareRepository:
 
         return {"aree": aree, "azioni": azioni}
 
-    # Scopo: Sostituisce il profilo completo di un reparto (aree + azioni).
-    # Impatto: tutti gli operatori del reparto ereditano le modifiche.
+    # Scopo: Sostituisce il profilo completo di un reparto (aree + azioni)
+    #        scrivendo direttamente sul modello generalizzato profili_accesso_*
+    #        (post-cutover PR-B). Operazione atomica:
+    #          1. UPSERT profilo REPARTO (codice = 'REPARTO_' || codice_interno).
+    #          2. UPSERT binding REPARTO -> profilo per uo_id (1:1, partial UQ).
+    #          3. DELETE + INSERT su profili_accesso_aree per profilo_accesso_id.
+    #          4. DELETE + INSERT su profili_accesso_azioni per profilo_accesso_id.
+    #        Il fail-fast su uo_id inesistente solleva E_AMM_VALIDAZIONE prima
+    #        di toccare qualunque tabella. Tutti gli operatori bindati al
+    #        reparto ereditano le modifiche; la cache permessi e' invalidata
+    #        dal service caller (`invalidate_department`).
     def put_profilo_reparto(
         self, uo_id: int, aree: list[dict[str, Any]], azioni: list[dict[str, Any]]
     ) -> None:
         with transaction.atomic(), connection.cursor() as cursor:
-            # Aree: replace
+            # 1. Recupera codice/descrizione UO per derivare codice profilo.
             cursor.execute(
-                "DELETE FROM config.profili_reparto_aree WHERE unita_organizzativa_id = %s",
+                "SELECT codice_interno, descrizione, attivo "
+                "FROM config.unita_organizzative WHERE id = %s",
                 [uo_id],
+            )
+            row = cursor.fetchone()
+            if not row:
+                ErrorManager.raise_error(
+                    code="E_AMM_VALIDAZIONE",
+                    message="Reparto inesistente.",
+                    detail=f"unita_organizzativa_id={uo_id}",
+                )
+                raise  # unreachable, per type checker
+            codice_interno, descrizione_uo, attivo_uo = row
+            codice_profilo = f"REPARTO_{codice_interno}"
+
+            # 2. UPSERT profilo accesso (tipo REPARTO). Idempotente sul codice.
+            cursor.execute(
+                """INSERT INTO config.profili_accesso (
+                       tipo, codice, descrizione, attivo
+                   )
+                   VALUES ('REPARTO', %s, %s, %s)
+                   ON CONFLICT ON CONSTRAINT uq_profili_accesso_codice
+                   DO UPDATE SET descrizione = EXCLUDED.descrizione,
+                                 attivo      = EXCLUDED.attivo
+                   RETURNING id""",
+                [codice_profilo, f"Profilo reparto {descrizione_uo}", attivo_uo],
+            )
+            profilo_id = cursor.fetchone()[0]
+
+            # 3. UPSERT binding REPARTO -> profilo. UNIQUE parziale su
+            #    unita_organizzativa_id IS NOT NULL: ON CONFLICT esplicita
+            #    indice + predicato per consentire l'inferenza Postgres.
+            cursor.execute(
+                """INSERT INTO config.profili_accesso_bindings (
+                       profilo_accesso_id, unita_organizzativa_id,
+                       identita_digitale_id, ruolo_applicativo
+                   )
+                   VALUES (%s, %s, NULL, NULL)
+                   ON CONFLICT (unita_organizzativa_id)
+                       WHERE unita_organizzativa_id IS NOT NULL
+                       DO UPDATE SET profilo_accesso_id = EXCLUDED.profilo_accesso_id""",
+                [profilo_id, uo_id],
+            )
+
+            # 4. Aree: replace (filtrato per profilo_accesso_id).
+            cursor.execute(
+                "DELETE FROM config.profili_accesso_aree "
+                "WHERE profilo_accesso_id = %s",
+                [profilo_id],
             )
             for item in aree:
                 cursor.execute(
-                    """INSERT INTO config.profili_reparto_aree
-                       (unita_organizzativa_id, area_id, livello)
+                    """INSERT INTO config.profili_accesso_aree
+                       (profilo_accesso_id, area_id, livello)
                        VALUES (%s, %s, %s::config.livello_accesso)""",
-                    [uo_id, item["area_id"], item["livello"]],
+                    [profilo_id, item["area_id"], item["livello"]],
                 )
-            # Azioni: replace
+
+            # 5. Azioni: replace.
             cursor.execute(
-                "DELETE FROM config.profili_reparto_azioni WHERE unita_organizzativa_id = %s",
-                [uo_id],
+                "DELETE FROM config.profili_accesso_azioni "
+                "WHERE profilo_accesso_id = %s",
+                [profilo_id],
             )
             for item in azioni:
                 cursor.execute(
-                    """INSERT INTO config.profili_reparto_azioni
-                       (unita_organizzativa_id, azione_id, abilitata)
+                    """INSERT INTO config.profili_accesso_azioni
+                       (profilo_accesso_id, azione_id, abilitata)
                        VALUES (%s, %s, %s)""",
-                    [uo_id, item["azione_id"], item["abilitata"]],
+                    [profilo_id, item["azione_id"], item["abilitata"]],
                 )
 
     # ================================================================== #

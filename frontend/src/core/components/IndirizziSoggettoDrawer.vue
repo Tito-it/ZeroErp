@@ -14,7 +14,7 @@ import {
   listRuoloIndirizzi, createRuoloIndirizzo, deleteRuoloIndirizzo
 } from '../../anagrafiche/api/anagrafiche'
 import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo, lookupCodici } from '../apiCore'
-import { DRAWER_WIDTH } from '../constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { sortByFonte } from '../utils/string'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
@@ -348,11 +348,11 @@ async function onDeleteRuolo(ind) {
             />
             <!-- Azioni ruolo: cambia + delete (solo se editabile e non readonly) -->
             <div v-if="!formMode && !isReadonly && isRuolo && ind.fonte !== 'soggetto'" class="indirizzo-card-actions">
-              <Button icon="pi pi-pencil" text rounded size="small"
+              <Button :icon="MANAGE_ICONS.EDIT" text rounded size="small"
                 :title="t('indirizzo_soggetto.cambia_indirizzo')"
                 @click="onStartReplace(ind)" />
-              <Button icon="pi pi-trash" severity="danger" text rounded size="small"
-                :title="t('common.delete')" @click="onDeleteRuolo(ind)" />
+              <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small"
+                class="app-delete-btn" :title="t('common.delete')" @click="onDeleteRuolo(ind)" />
             </div>
           </div>
         </div>
@@ -367,7 +367,7 @@ async function onDeleteRuolo(ind) {
         <div v-if="!formMode && !isReadonly && (isRuolo || matriceDisponibile.length > 0)" class="mt-05">
           <Button
             :label="t('indirizzo_soggetto.aggiungi_indirizzo')"
-            icon="pi pi-plus"
+            :icon="MANAGE_ICONS.ADD"
             text
             size="small"
             class="app-action-btn"

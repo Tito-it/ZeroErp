@@ -1,0 +1,625 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Service admin per ciclo vita versione template documentale
+#        (Tranche F). 5 metodi pubblici:
+#        - create_versione (sempre BOZZA)
+#        - update_versione (consentito solo su BOZZA — defense lato BE
+#          + trigger DB A1 protect_pubblicata)
+#        - delete_versione (hard DELETE — trigger DB A2 block_delete
+#          rifiuta non-BOZZA o gia' usate da documenti generati)
+#        - clone_versione (SELECT source + INSERT nuova BOZZA con override)
+#        - pubblica_versione (transizione atomica BOZZA -> PUBBLICATA con
+#          valido_dal NOT NULL guard; EXCLUDE GiST DB blocca overlap con
+#          altre PUBBLICATE attive — errore parlante via mapper)
+#
+#        Scope emittente derivato dal template (404 unificato no leak).
+#        Validazione payload via PayloadValidator + map_integrity_error
+#        per guardrail DB.
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Any
+
+from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
+from django.db import IntegrityError, transaction
+
+from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import (
+    PayloadValidator,
+    map_integrity_error,
+)
+from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.services.template_service import TemplateService
+
+# Codici errore registrati in apps.core.services.error_policies.
+E_VALIDATION = "E_DOCUMENTI_VALIDATION"
+E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
+E_VERSIONE_PUBBLICATA_IMMUTABILE = "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE"
+E_VERSIONE_DELETE_BLOCKED = "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED"
+
+# Whitelist set CHECK DDL.
+_FORMATI_VALIDI: frozenset[str] = frozenset({"HTML", "HTML_MARKDOWN_BLOCKS"})
+_PAGE_FORMATS_VALIDI: frozenset[str] = frozenset({"A4", "A3", "LETTER"})
+_PAGE_ORIENTATIONS_VALIDI: frozenset[str] = frozenset({"PORTRAIT", "LANDSCAPE"})
+
+# Chiavi ammesse in payload create versione (no `versione`/`stato` —
+# calcolati dal service; no `template_documento_id` — dal path).
+_CREATE_KEYS: frozenset[str] = frozenset({
+    "titolo",
+    "formato_template",
+    "html_template",
+    "css_template",
+    "markdown_template",
+    "render_engine_id",
+    "page_format",
+    "page_orientation",
+    "margin_top_mm",
+    "margin_right_mm",
+    "margin_bottom_mm",
+    "margin_left_mm",
+    "valido_dal",
+    "valido_al",
+    "context_schema",
+    "meta",
+    "attivo",
+})
+
+# Chiavi ammesse in payload update versione.
+_UPDATE_KEYS: frozenset[str] = _CREATE_KEYS
+
+# Chiavi ammesse in payload clone (override sui campi del source).
+# Il rest viene copiato; questi sono i pochi che ha senso cambiare.
+_CLONE_KEYS: frozenset[str] = frozenset({
+    "titolo",
+    "valido_dal",
+    "valido_al",
+    "attivo",
+    "meta",
+})
+
+# Chiavi ammesse in payload pubblica.
+_PUBBLICA_KEYS: frozenset[str] = frozenset({
+    "valido_dal",
+    "valido_al",
+})
+
+
+# Mapping vincoli DB -> codici applicativi parlanti.
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    "uq_template_documenti_versioni_template_versione": (
+        E_VALIDATION,
+        "Numero versione gia' presente per il template (race condition: riprovare).",
+    ),
+    "ex_template_documenti_versioni_no_overlap_pubblicata": (
+        E_VALIDATION,
+        "Le date di validita' si sovrappongono con un'altra versione PUBBLICATA attiva.",
+    ),
+}
+
+
+# Mapping CHECK constraint del DDL -> codici applicativi (frammento case-insensitive).
+_CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    "chk_template_documenti_versioni_versione_pos": (
+        E_VALIDATION,
+        "Il numero versione deve essere positivo.",
+    ),
+    "chk_template_documenti_versioni_stato": (
+        E_VALIDATION,
+        "Stato versione non valido.",
+    ),
+    "chk_template_documenti_versioni_formato": (
+        E_VALIDATION,
+        "Formato template non valido.",
+    ),
+    "chk_template_documenti_versioni_orientation": (
+        E_VALIDATION,
+        "Orientamento pagina non valido.",
+    ),
+    "chk_template_documenti_versioni_page_format": (
+        E_VALIDATION,
+        "Formato pagina non valido.",
+    ),
+    "chk_template_documenti_versioni_margini_non_neg": (
+        E_VALIDATION,
+        "I margini di pagina non possono essere negativi.",
+    ),
+    "chk_template_documenti_versioni_titolo_non_vuoto": (
+        E_VALIDATION,
+        "Il titolo della versione non puo' essere vuoto.",
+    ),
+    "chk_template_documenti_versioni_valido_dal_pubblicata": (
+        E_VALIDATION,
+        "Una versione PUBBLICATA deve avere valido_dal valorizzato.",
+    ),
+}
+
+
+# Mapping codici sollevati da fn_log_and_raise_error nei trigger A1/A2.
+# `map_integrity_error` non lo intercetta direttamente (sono RAISE di P0001,
+# non IntegrityError), ma una guard service-side tradurra' in errori puliti.
+# Qui mantengo solo la mappa applicativa per documentazione.
+
+
+class TemplateVersioniAdminService:
+    """Service admin write per versioni template documentale."""
+
+    def __init__(
+        self,
+        repo: DocumentiRepository | None = None,
+        reader: TemplateService | None = None,
+    ) -> None:
+        self._repo = repo or DocumentiRepository()
+        self._reader = reader or TemplateService(repo=self._repo)
+        self._v = PayloadValidator(validation_code=E_VALIDATION)
+
+    # =================================================================
+    # Create versione (sempre BOZZA)
+    # =================================================================
+
+    # Scopo: Crea una nuova versione BOZZA per un template. Il numero
+    #        versione e' calcolato come MAX(versione)+1 nello stesso
+    #        template; lo stato e' fissato a 'BOZZA' (transizione a
+    #        PUBBLICATA passa solo da pubblica_versione).
+    def create_versione(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        template_id: int,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        # 404 unificato se template assente o fuori scope.
+        self._reader.get_template(user, template_id)
+
+        self._v.validate_allowed_keys(
+            payload,
+            allowed=_CREATE_KEYS,
+            message="Payload versione template non valido.",
+        )
+        data = self._build_create_data(payload)
+        data["template_documento_id"] = int(template_id)
+        data["stato"] = "BOZZA"
+        data["versione"] = self._repo.next_versione_num(template_id)
+
+        try:
+            new_id = self._repo.create_versione(data)
+        except IntegrityError as exc:
+            map_integrity_error(
+                exc,
+                unique_constraints=_UNIQUE_CONSTRAINTS,
+                check_constraints=_CHECK_CONSTRAINTS,
+                fallback_code=E_VALIDATION,
+                fallback_message="Violazione vincolo DB su versione template.",
+                context={
+                    "template_documento_id": template_id,
+                    "versione": data["versione"],
+                },
+            )
+
+        return self._reader.get_versione(user, template_id, new_id)
+
+    # =================================================================
+    # Update versione (solo BOZZA)
+    # =================================================================
+
+    # Scopo: Aggiorna una versione esistente. Pre-check stato BOZZA lato
+    #        service (errore parlante prima del trigger DB). Il trigger
+    #        A1 (protect_pubblicata) e' la difesa finale per una race
+    #        improbabile: pubblica_versione concorrente che cambia stato
+    #        BOZZA -> PUBBLICATA tra il check service e l'UPDATE.
+    def update_versione(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        template_id: int,
+        versione_id: int,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(versione_id, field="versione_id")
+        # get_versione ritorna 404 unificato se template fuori scope o
+        # versione orfana di altro template (binding template_id).
+        existing = self._reader.get_versione(user, template_id, versione_id)
+        self._guard_stato_modificabile(existing)
+
+        self._v.validate_allowed_keys(
+            payload,
+            allowed=_UPDATE_KEYS,
+            message="Payload versione template non valido.",
+        )
+        data = self._build_update_data(payload)
+        ErrorManager.require(
+            bool(data),
+            code=E_VALIDATION,
+            message="Nessun campo aggiornabile presente nel payload.",
+            detail=f"allowed_keys={sorted(_UPDATE_KEYS)!r}",
+        )
+
+        try:
+            updated = self._repo.update_versione(versione_id, data)
+        except IntegrityError as exc:
+            map_integrity_error(
+                exc,
+                unique_constraints=_UNIQUE_CONSTRAINTS,
+                check_constraints=_CHECK_CONSTRAINTS,
+                fallback_code=E_VALIDATION,
+                fallback_message="Violazione vincolo DB su versione template.",
+                context={"template_id": template_id, "versione_id": versione_id},
+            )
+        ErrorManager.require(
+            updated,
+            code=E_NOT_FOUND,
+            message="Versione template non trovata.",
+            detail=f"versione_id={versione_id}",
+        )
+        return self._reader.get_versione(user, template_id, versione_id)
+
+    # =================================================================
+    # Delete versione (solo BOZZA non usata)
+    # =================================================================
+
+    # Scopo: Elimina fisicamente una versione BOZZA. Il trigger DB A2
+    #        e' la difesa finale: se OLD.stato in ('PUBBLICATA','OBSOLETA')
+    #        o se ci sono documenti_generati collegati, IntegrityError
+    #        -> E_DOCUMENTI_VERSIONE_DELETE_BLOCKED. Pre-check stato lato
+    #        service per messaggio piu' parlante prima del DB.
+    def delete_versione(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        template_id: int,
+        versione_id: int,
+    ) -> None:
+        self._v.guard_positive_int(versione_id, field="versione_id")
+        existing = self._reader.get_versione(user, template_id, versione_id)
+        if existing["stato"] != "BOZZA":
+            ErrorManager.raise_error(
+                code=E_VERSIONE_DELETE_BLOCKED,
+                message="Solo versioni in stato BOZZA possono essere eliminate.",
+                detail=f"stato_corrente={existing['stato']!r}",
+            )
+            raise  # unreachable
+
+        try:
+            deleted = self._repo.delete_versione(versione_id)
+        except IntegrityError as exc:
+            # Caso documenti_generati collegati: il trigger DB A2 solleva
+            # P0001 con codice nostro; map_integrity_error per il fallback.
+            map_integrity_error(
+                exc,
+                fallback_code=E_VERSIONE_DELETE_BLOCKED,
+                fallback_message=(
+                    "Eliminazione versione bloccata: gia' usata da documenti generati."
+                ),
+                context={"versione_id": versione_id},
+            )
+        ErrorManager.require(
+            deleted,
+            code=E_NOT_FOUND,
+            message="Versione template non trovata.",
+            detail=f"versione_id={versione_id}",
+        )
+
+    # =================================================================
+    # Clone versione (SELECT source + INSERT BOZZA con override)
+    # =================================================================
+
+    # Scopo: Clona una versione esistente (qualunque stato) in una nuova
+    #        versione BOZZA. Utile per editare partendo da una PUBBLICATA
+    #        senza modificarla (immutabile). Il payload puo' overridare
+    #        titolo, valido_dal/al, attivo, meta.
+    def clone_versione(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        template_id: int,
+        source_versione_id: int,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(source_versione_id, field="versione_id")
+        # 404 se source assente o template fuori scope.
+        source = self._reader.get_versione(user, template_id, source_versione_id)
+
+        self._v.validate_allowed_keys(
+            payload,
+            allowed=_CLONE_KEYS,
+            message="Payload clone versione non valido.",
+        )
+
+        # Compone il nuovo dict copiando il source e applicando override.
+        new_data: dict[str, Any] = {
+            "template_documento_id": int(template_id),
+            "stato": "BOZZA",
+            "titolo": source["titolo"],
+            "formato_template": source["formato_template"],
+            "html_template": source["html_template"],
+            "css_template": source.get("css_template"),
+            "markdown_template": source.get("markdown_template"),
+            "render_engine_id": source["render_engine_id"],
+            "page_format": source["page_format"],
+            "page_orientation": source["page_orientation"],
+            "margin_top_mm": source["margin_top_mm"],
+            "margin_right_mm": source["margin_right_mm"],
+            "margin_bottom_mm": source["margin_bottom_mm"],
+            "margin_left_mm": source["margin_left_mm"],
+            "valido_dal": None,  # default: clone parte senza date,
+            "valido_al": None,   # le date nuove si fissano alla pubblicazione
+            "context_schema": source.get("context_schema") or {},
+            "meta": source.get("meta") or {},
+            "attivo": True,
+        }
+        # Override da payload (titolo, valido_*, attivo, meta).
+        if "titolo" in payload:
+            new_data["titolo"] = self._v.require_string(
+                payload, "titolo", max_len=500
+            )
+        if "valido_dal" in payload:
+            new_data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
+        if "valido_al" in payload:
+            new_data["valido_al"] = self._v.optional_date(payload, "valido_al")
+        # Cross-field guard sulle date override.
+        if new_data.get("valido_dal") and new_data.get("valido_al"):
+            if new_data["valido_al"] < new_data["valido_dal"]:
+                ErrorManager.raise_error(
+                    code=E_VALIDATION,
+                    message="valido_al non puo' essere antecedente a valido_dal.",
+                    detail=(
+                        f"valido_dal={new_data['valido_dal']} "
+                        f"valido_al={new_data['valido_al']}"
+                    ),
+                )
+                raise  # unreachable
+        if "attivo" in payload:
+            v = self._v.optional_bool(payload, "attivo")
+            ErrorManager.require(
+                v is not None,
+                code=E_VALIDATION,
+                message="Il campo 'attivo' non puo' essere NULL.",
+                detail="field=attivo",
+            )
+            new_data["attivo"] = bool(v)
+        if "meta" in payload:
+            m = self._v.optional_meta(payload)
+            if m is not None:
+                new_data["meta"] = m
+
+        # Numero versione e' MAX+1 sul template.
+        new_data["versione"] = self._repo.next_versione_num(template_id)
+
+        try:
+            new_id = self._repo.create_versione(new_data)
+        except IntegrityError as exc:
+            map_integrity_error(
+                exc,
+                unique_constraints=_UNIQUE_CONSTRAINTS,
+                check_constraints=_CHECK_CONSTRAINTS,
+                fallback_code=E_VALIDATION,
+                fallback_message="Violazione vincolo DB nel clone versione.",
+                context={
+                    "template_documento_id": template_id,
+                    "source_versione_id": source_versione_id,
+                },
+            )
+
+        return self._reader.get_versione(user, template_id, new_id)
+
+    # =================================================================
+    # Pubblica versione (BOZZA -> PUBBLICATA atomic)
+    # =================================================================
+
+    # Scopo: Transizione atomica BOZZA -> PUBBLICATA. Richiede valido_dal
+    #        non NULL. Il DB rifiuta overlap di range con altre PUBBLICATE
+    #        attive (EXCLUDE GiST). Il service esegue UPDATE ATOMIC con
+    #        WHERE stato='BOZZA' (idempotente per design: una seconda
+    #        chiamata su versione gia' pubblicata torna 404 per "non in
+    #        BOZZA" piuttosto che modificare lo stato).
+    def pubblica_versione(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        template_id: int,
+        versione_id: int,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(versione_id, field="versione_id")
+        existing = self._reader.get_versione(user, template_id, versione_id)
+        if existing["stato"] != "BOZZA":
+            ErrorManager.raise_error(
+                code=E_VALIDATION,
+                message="Solo versioni in stato BOZZA possono essere pubblicate.",
+                detail=f"stato_corrente={existing['stato']!r}",
+            )
+            raise  # unreachable
+
+        self._v.validate_allowed_keys(
+            payload,
+            allowed=_PUBBLICA_KEYS,
+            message="Payload pubblicazione non valido.",
+        )
+        valido_dal = self._v.require_date(payload, "valido_dal")
+        valido_al: date | None = None
+        if "valido_al" in payload:
+            valido_al = self._v.optional_date(payload, "valido_al")
+
+        if valido_al is not None and valido_al < valido_dal:
+            ErrorManager.raise_error(
+                code=E_VALIDATION,
+                message="valido_al non puo' essere antecedente a valido_dal.",
+                detail=f"valido_dal={valido_dal} valido_al={valido_al}",
+            )
+            raise  # unreachable
+
+        with transaction.atomic():
+            try:
+                published = self._repo.pubblica_versione(
+                    versione_id, valido_dal=valido_dal, valido_al=valido_al,
+                )
+            except IntegrityError as exc:
+                map_integrity_error(
+                    exc,
+                    unique_constraints=_UNIQUE_CONSTRAINTS,
+                    check_constraints=_CHECK_CONSTRAINTS,
+                    fallback_code=E_VALIDATION,
+                    fallback_message="Violazione vincolo DB in pubblicazione versione.",
+                    context={"template_id": template_id, "versione_id": versione_id},
+                )
+            ErrorManager.require(
+                published,
+                code=E_VALIDATION,
+                message="Pubblicazione fallita: la versione potrebbe essere stata gia' pubblicata.",
+                detail=f"versione_id={versione_id}",
+            )
+        return self._reader.get_versione(user, template_id, versione_id)
+
+    # =================================================================
+    # Helpers privati
+    # =================================================================
+
+    # Scopo: Defense lato service: una versione modificabile e' BOZZA.
+    #        Il trigger DB A1 e' il guardrail finale (race condition fra
+    #        check service e UPDATE).
+    def _guard_stato_modificabile(self, versione: dict[str, Any]) -> None:
+        if versione["stato"] != "BOZZA":
+            ErrorManager.raise_error(
+                code=E_VERSIONE_PUBBLICATA_IMMUTABILE,
+                message="Versione non modificabile: stato non BOZZA.",
+                detail=f"stato_corrente={versione['stato']!r}",
+            )
+            raise  # unreachable
+
+    # Scopo: Compone il dict da passare al repository per create.
+    #        Campi obbligatori: titolo, html_template, render_engine_id.
+    #        Tutti gli altri seguono i default DDL/DB.
+    def _build_create_data(self, payload: dict[str, Any]) -> dict[str, Any]:
+        data: dict[str, Any] = {}
+        # Campi obbligatori (require_required=True).
+        data["titolo"] = self._v.require_string(payload, "titolo", max_len=500)
+        data["html_template"] = self._v.require_string(
+            payload, "html_template", max_len=10_000_000
+        )
+        data["render_engine_id"] = self._v.require_positive_int(
+            payload, "render_engine_id"
+        )
+        self._fill_optional_versione_fields(data, payload)
+        # In create `attivo` ha default applicativo True (no ErrorManager guard).
+        if "attivo" in payload:
+            v = self._v.optional_bool(payload, "attivo")
+            data["attivo"] = bool(v) if v is not None else True
+        return data
+
+    # Scopo: Compone il dict per update ignorando chiavi assenti. Stessa
+    #        validazione del create per i campi presenti, ma `titolo`,
+    #        `html_template`, `render_engine_id` opzionali. `attivo` non
+    #        ammette `null` esplicito (NOT NULL DDL).
+    def _build_update_data(self, payload: dict[str, Any]) -> dict[str, Any]:
+        data: dict[str, Any] = {}
+        # Campi "obbligatori in create" qui opzionali.
+        if "titolo" in payload:
+            data["titolo"] = self._v.require_string(payload, "titolo", max_len=500)
+        if "html_template" in payload:
+            data["html_template"] = self._v.require_string(
+                payload, "html_template", max_len=10_000_000
+            )
+        if "render_engine_id" in payload:
+            data["render_engine_id"] = self._v.require_positive_int(
+                payload, "render_engine_id"
+            )
+        self._fill_optional_versione_fields(data, payload)
+        if "attivo" in payload:
+            v = self._v.optional_bool(payload, "attivo")
+            ErrorManager.require(
+                v is not None,
+                code=E_VALIDATION,
+                message="Il campo 'attivo' non puo' essere NULL.",
+                detail="field=attivo",
+            )
+            data["attivo"] = bool(v)
+        return data
+
+    # Scopo: Helper condiviso fra create e update — valida e mappa i campi
+    #        opzionali strutturalmente identici (formato/payload aux/page
+    #        layout/validita/context_schema/meta). NON include i 3 campi
+    #        "obbligatori in create" (gestiti dal chiamante) ne' `attivo`
+    #        (logica diversa fra create e update).
+    def _fill_optional_versione_fields(
+        self, data: dict[str, Any], payload: dict[str, Any]
+    ) -> None:
+        if "formato_template" in payload:
+            value = self._v.require_string(payload, "formato_template", max_len=30)
+            self._validate_in_set(value, _FORMATI_VALIDI, "formato_template")
+            data["formato_template"] = value
+        if "css_template" in payload:
+            v = payload["css_template"]
+            data["css_template"] = (
+                None if v is None else self._v.require_string(
+                    payload, "css_template", max_len=10_000_000
+                )
+            )
+        if "markdown_template" in payload:
+            v = payload["markdown_template"]
+            data["markdown_template"] = (
+                None if v is None else self._v.require_string(
+                    payload, "markdown_template", max_len=10_000_000
+                )
+            )
+        if "page_format" in payload:
+            value = self._v.require_string(payload, "page_format", max_len=30)
+            self._validate_in_set(value, _PAGE_FORMATS_VALIDI, "page_format")
+            data["page_format"] = value
+        if "page_orientation" in payload:
+            value = self._v.require_string(payload, "page_orientation", max_len=20)
+            self._validate_in_set(
+                value, _PAGE_ORIENTATIONS_VALIDI, "page_orientation"
+            )
+            data["page_orientation"] = value
+        for key in (
+            "margin_top_mm", "margin_right_mm", "margin_bottom_mm", "margin_left_mm",
+        ):
+            if key in payload:
+                v = payload[key]
+                if not isinstance(v, (int, float)) or isinstance(v, bool) or v < 0:
+                    ErrorManager.raise_error(
+                        code=E_VALIDATION,
+                        message=f"Margine '{key}' non valido.",
+                        detail=f"atteso numero non negativo, ricevuto {v!r}",
+                    )
+                    raise  # unreachable
+                data[key] = v
+        if "valido_dal" in payload:
+            data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
+        if "valido_al" in payload:
+            data["valido_al"] = self._v.optional_date(payload, "valido_al")
+        # Difesa cross-field: se entrambe presenti e valido_al < valido_dal,
+        # errore parlante (DDL non ha CHECK su questa relazione).
+        if data.get("valido_dal") and data.get("valido_al"):
+            if data["valido_al"] < data["valido_dal"]:
+                ErrorManager.raise_error(
+                    code=E_VALIDATION,
+                    message="valido_al non puo' essere antecedente a valido_dal.",
+                    detail=f"valido_dal={data['valido_dal']} valido_al={data['valido_al']}",
+                )
+                raise  # unreachable
+        if "context_schema" in payload:
+            cs = payload["context_schema"]
+            if cs is not None and not isinstance(cs, dict):
+                ErrorManager.raise_error(
+                    code=E_VALIDATION,
+                    message="context_schema deve essere un oggetto JSON.",
+                )
+                raise  # unreachable
+            if cs is not None:
+                data["context_schema"] = cs
+        if "meta" in payload:
+            m = self._v.optional_meta(payload)
+            if m is not None:
+                data["meta"] = m
+
+    # Scopo: Verifica che `value` sia in `whitelist`, altrimenti solleva
+    #        E_DOCUMENTI_VALIDATION con elenco ammessi.
+    def _validate_in_set(
+        self, value: str, whitelist: frozenset[str], field: str
+    ) -> None:
+        if value not in whitelist:
+            ErrorManager.raise_error(
+                code=E_VALIDATION,
+                message=f"Valore '{field}' non valido.",
+                detail=f"ammessi={sorted(whitelist)!r} ricevuto={value!r}",
+            )
+            raise  # unreachable

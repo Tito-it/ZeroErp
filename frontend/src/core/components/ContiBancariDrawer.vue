@@ -16,7 +16,7 @@ import {
   listRuoloContiBancari, createRuoloContoBancario,
   updateRuoloContoBancario, deleteRuoloContoBancario
 } from '../../anagrafiche/api/anagrafiche'
-import { DRAWER_WIDTH, READONLY_DOMAINS, READONLY_MODELS } from '../constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, READONLY_DOMAINS, READONLY_MODELS } from '../constants'
 import { sortByFonte } from '../utils/string'
 import ContoBancarioForm from './ContoBancarioForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
@@ -256,10 +256,10 @@ function usoSeverity(uso) {
               </div>
             </div>
             <div v-if="!formMode && !isReadonly && c.fonte !== 'soggetto'" class="conto-card-actions">
-              <Button icon="pi pi-pencil" text rounded size="small"
+              <Button :icon="MANAGE_ICONS.EDIT" text rounded size="small"
                 class="app-action-btn" :title="t('common.edit')" @click="onStartEdit(c)" />
-              <Button icon="pi pi-trash" severity="danger" text rounded size="small"
-                :title="t('common.delete')" @click="onDelete(c)" />
+              <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small"
+                class="app-delete-btn" :title="t('common.delete')" @click="onDelete(c)" />
             </div>
           </div>
         </div>

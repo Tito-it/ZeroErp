@@ -9,6 +9,7 @@ import { usePreventiviStore } from '../stores/preventivi'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
 import { suggerisciPrezzoRiga } from '../api/preventiviApi'
+import { pricingOrigineSeverity } from '../../../core/utils/severity'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import InputNumber from 'primevue/inputnumber'
@@ -138,6 +139,12 @@ function onArticoloSelect(item) {
   // Reset prezzo: il resolver verra' richiamato dopo il pickBaseUomId via watch.
   form.value.uom_operativa_id = null
   form.value.prezzo_unitario = null
+  // Reset stato resolver: con un nuovo articolo qualsiasi prezzo precedente
+  // dal vecchio resolver e' irrilevante. Senza questo reset, se il nuovo
+  // prezzo manuale coincidesse casualmente col vecchio prezzo del resolver
+  // (numerica), il watch del banner mostrerebbe l'origine sbagliata.
+  _lastResolverPrice = null
+  prezzoOrigine.value = null
   articoloObj.value = item
   // Create: autopick base; in edit articolo e' disabled e questo handler non scatta.
   caricaUomConPickBase(item.id)
@@ -148,17 +155,22 @@ function onArticoloSelect(item) {
 // (es. preventivo senza BA, articolo non a listino, oppure prezzo manuale).
 const prezzoOrigine = ref(null)
 
-// Mappa codice origine BE -> {label_key, severity Tag PrimeVue}.
-// Allineata a TestResolverDialog.origineSeverity per UX coerente.
-const ORIGINE_BADGE_MAP = {
-  PROMO: { key: 'preventivi.badge_origine_promo', severity: 'warn' },
-  CONTRATTO: { key: 'preventivi.badge_origine_contratto', severity: 'info' },
-  CONTRATTO_LISTINO: { key: 'preventivi.badge_origine_contratto', severity: 'info' },
-  CATEGORIA: { key: 'preventivi.badge_origine_categoria', severity: 'success' },
+// Mappa locale origine -> i18n key del badge. Le label sono dominio-specifiche
+// (preventivi.*), quindi restano qui. La severity (codice colore) e' invece
+// centralizzata in core/utils/severity.js (`pricingOrigineSeverity`) e
+// condivisa con TestResolverDialog + futuri consumer (ordini, fatture).
+const ORIGINE_LABEL_KEY = {
+  PROMO: 'preventivi.badge_origine_promo',
+  CONTRATTO: 'preventivi.badge_origine_contratto',
+  CONTRATTO_LISTINO: 'preventivi.badge_origine_contratto',
+  CATEGORIA: 'preventivi.badge_origine_categoria',
 }
 const prezzoOrigineBadge = computed(() => {
-  if (!prezzoOrigine.value) return null
-  return ORIGINE_BADGE_MAP[prezzoOrigine.value] || null
+  const code = prezzoOrigine.value
+  if (!code) return null
+  const key = ORIGINE_LABEL_KEY[code]
+  if (!key) return null
+  return { key, severity: pricingOrigineSeverity(code) }
 })
 
 // Suggerimento prezzo via pricing resolver v5. Trigger: articolo + uom presenti

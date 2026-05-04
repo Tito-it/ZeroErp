@@ -59,17 +59,18 @@ Valori possibili (enum `config.livello_accesso`):
    `is_super_admin` + `has_identita_attiva` + `unita_organizzativa_id`
 3. Esegue una query set-based su `config.aree_funzionali`
 4. Applica la catena di risoluzione con `LEFT JOIN` su:
-   `config.user_override_aree` e `config.profili_reparto_aree`
+   `config.user_override_aree` e `config.profili_accesso_aree`
+   (via `fn_get_profili_accesso_applicabili`)
 5. Compone il risultato con `jsonb_object_agg`
 
-## Catena di risoluzione (post Fase 7 cleanup)
+## Catena di risoluzione (post 04-05-2026 — modello legacy dismesso)
 
 ```text
 1. Stato identita (multi-face native, post Fase 7 2026-04-29):
    - NOT fn_has_identita_attiva(au, 'OPERATORE') -> BLOCCATO
    - fn_is_super_admin(au) -> TUTTO
 2. Override utente area (se presente e valido temporalmente)
-3. Profilo reparto area (ereditato dalla UO)
+3. Profili accesso area (AD_HOC priorita 1, REPARTO/PORTALE priorita 2)
 4. Default -> BLOCCATO
 ```
 
@@ -92,7 +93,8 @@ indirettamente da `fn_get_user_profile`.
 
 - `config.aree_funzionali`
 - `config.user_override_aree`
-- `config.profili_reparto_aree`
+- `config.profili_accesso`, `config.profili_accesso_aree`, `config.profili_accesso_bindings`
+- `script.fn_get_profili_accesso_applicabili`
 - `anagrafiche.risorse_umane_auth_user`
 - `anagrafiche.risorse_umane`
 

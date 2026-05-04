@@ -11,19 +11,18 @@ Tabelle correlate:
 >
 [config.profili_accesso](/dbzero/config/tabelle/profili_accesso)
 > [config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
-> [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni) (tabella legacy)
 > [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
 
 ---
 ### 🎯 Scopo Principale
-(latest revision 18-04-2026)
+(latest revision 04-05-2026 — modello legacy `profili_reparto_azioni` dismesso)
 
 La tabella **`config.profili_accesso_azioni`** contiene il dettaglio delle
 **azioni di processo** abilitate (o disabilitate) da un profilo di accesso.
 
-È il rimpiazzo concettuale di `config.profili_reparto_azioni`, che oggi è
-ancorata al singolo reparto. Qui il padre è un **profilo** generico, a sua
-volta associato a un reparto, a un ruolo applicativo o a una singola identità.
+Il padre e' `profili_accesso`, generalizzato a tre tipi di profilo
+(REPARTO / PORTALE / AD_HOC), legato all'utente tramite
+`profili_accesso_bindings`.
 
 ---
 
@@ -60,8 +59,9 @@ Interviene al **punto 3** della catena di risoluzione di
 4. Default                            → false (negata)
 ```
 
-Al cutover (§4.8 WIP multi-face-auth) `fn_check_azione_processo` leggerà
-da questa tabella anziché da `profili_reparto_azioni`.
+`fn_check_azione_processo` legge questa tabella tramite
+`script.fn_get_profili_accesso_applicabili` (cutover completato 2026-04-19,
+modello legacy droppato 2026-05-04).
 
 ---
 

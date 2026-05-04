@@ -11,7 +11,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
 import { useCodiceField } from '../../core/composables/useCodiceField'
-import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
+import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
 import { statoFornitoreSeverity } from '../../core/utils/severity'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
@@ -231,7 +231,7 @@ function onClose() {
               :ragione-sociale="soggettoSelezionato.ragione_sociale"
               :codice-fiscale="soggettoSelezionato.cf"
             />
-            <Button :label="t('resolver.change')" icon="pi pi-pencil"
+            <Button :label="t('resolver.change')" :icon="MANAGE_ICONS.EDIT"
               text size="small" class="mt-1" @click="clearSoggetto" />
           </div>
           <div v-else>

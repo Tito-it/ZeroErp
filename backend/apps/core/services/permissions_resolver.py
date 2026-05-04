@@ -384,9 +384,7 @@ class PermissionResolver:
         incapsula la catena multi-face (AD_HOC prio 1, PORTALE /
         REPARTO prio 2). La join con `profili_accesso_aree` verifica
         che almeno uno dei profili applicabili copra l'area
-        richiesta. Sostituisce la vecchia
-        `has_profilo_reparto_area` (SQL su `profili_reparto_aree` +
-        `risorse_umane_auth_user`).
+        richiesta.
         """
         def _query() -> bool:
             with connection.cursor() as cursor:

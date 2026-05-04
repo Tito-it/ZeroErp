@@ -1,5 +1,7 @@
 // Configurazione centralizzata della navigazione per dominio.
 // Sidebar, HomeView e store navigation leggono da qui — un'unica fonte di verita'.
+
+import { READONLY_DOMAINS } from './constants'
 //
 // --- Convenzioni route meta ---
 // Ogni route autenticata DEVE avere meta.domain (stringa, es. 'vendite').
@@ -34,6 +36,19 @@ export const DOMAINS = [
 
 // Voci menu L2 per ogni dominio (sidebar stato DOMINIO).
 // La label viene da i18n `nav_menu.<domainKey>.<itemKey>`
+//
+// Campi voce:
+//   key, icon, to, children   — vedi commenti sopra
+//   requireArea (opzionale)   — schema_db dell'area BE che deve NON essere
+//                               BLOCCATA per rendere visibile la voce. Serve
+//                               quando una voce di menu sotto un dominio
+//                               punta a entita' di un altro schema/area
+//                               (es. "Configurazione documenti" sotto
+//                               dominio config ma area BE `documenti`).
+//                               Senza questo, la voce resta visibile a chi
+//                               accede al dominio padre ma non ha l'area
+//                               della voce, generando 403 al click.
+//                               Filter applicato lato sidebar.
 export const DOMAIN_MENUS = {
   'amm-software': [
     { key: 'operatori', icon: 'pi pi-key', to: '/amm-software/operatori' },
@@ -75,7 +90,15 @@ export const DOMAIN_MENUS = {
   ],
   'config': [
     { key: 'tabelle', icon: 'pi pi-table', to: '/config/tabelle' },
-    { key: 'impostazioni', icon: 'pi pi-sliders-h', to: '/config/impostazioni' }
+    { key: 'impostazioni', icon: 'pi pi-sliders-h', to: '/config/impostazioni' },
+    {
+      key: 'config-documenti',
+      icon: 'pi pi-folder-open',
+      to: '/config/documenti',
+      // Le entita' gestite (template_documenti, template_asset) sono in
+      // schema/area `documenti`; la voce sta sotto config solo per UX.
+      requireArea: READONLY_DOMAINS.DOCUMENTI,
+    }
   ]
 }
 

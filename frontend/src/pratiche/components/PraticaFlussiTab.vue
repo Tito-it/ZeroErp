@@ -9,7 +9,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { displayDate } from '../../core/utils/date'
 import { statoFlussoSeverity } from '../../core/utils/severity'
-import { STATO_PRATICA, STATO_FLUSSO } from '../../core/constants'
+import { STATO_PRATICA, STATO_FLUSSO, MANAGE_ICONS } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
@@ -119,7 +119,7 @@ watch(() => props.praticaId, (id) => {
     <div v-if="!isReadonly && canCreateFlusso()" class="pratica-flussi-toolbar">
       <Button
         :label="t('pratiche.nuovo_flusso')"
-        icon="pi pi-plus"
+        :icon="MANAGE_ICONS.ADD"
         size="small"
         class="app-action-btn"
         @click="onNuovoFlusso"
@@ -158,7 +158,7 @@ watch(() => props.praticaId, (id) => {
           <div v-if="!isReadonly" style="display: flex; gap: 0.25rem; align-items: center;">
             <Button
               v-if="(data.stato_codice_interno || '') === STATO_FLUSSO.DA_ESEGUIRE"
-              icon="pi pi-play"
+              :icon="MANAGE_ICONS.PLAY"
               text rounded size="small"
               class="app-action-btn"
               v-tooltip.top="t('pratiche.flusso_avvia')"
@@ -167,7 +167,7 @@ watch(() => props.praticaId, (id) => {
             <!-- IN_CORSO: se non sto completando questo flusso, mostro il bottone -->
             <Button
               v-if="(data.stato_codice_interno || '') === STATO_FLUSSO.IN_CORSO && completandoFlussoId !== data.id"
-              icon="pi pi-check"
+              :icon="MANAGE_ICONS.CONFIRM"
               text rounded size="small"
               class="app-action-btn"
               v-tooltip.top="t('pratiche.flusso_completa')"
@@ -182,10 +182,10 @@ watch(() => props.praticaId, (id) => {
                 :placeholder="t('pratiche.flusso_esito')"
                 style="width: 150px;"
               />
-              <Button icon="pi pi-check" text rounded size="small" severity="success"
+              <Button :icon="MANAGE_ICONS.CONFIRM" text rounded size="small" severity="success"
                 :disabled="!esitoSelezionato"
                 @click.stop="onConfermaCompletamento" />
-              <Button icon="pi pi-times" text rounded size="small" severity="secondary"
+              <Button :icon="MANAGE_ICONS.CANCEL" text rounded size="small" severity="secondary"
                 @click.stop="onAnnullaEsito" />
             </div>
           </div>

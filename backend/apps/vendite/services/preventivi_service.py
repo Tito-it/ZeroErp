@@ -14,6 +14,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import transaction
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
@@ -22,6 +23,10 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.value_normalizer import empty_to_none
+from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.services.document_generation_service import (
+    DocumentGenerationService,
+)
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.vendite.services.pricing_service import (
     PARAM_MAX_MAGGIORAZIONE_PCT,
@@ -38,6 +43,11 @@ _STATI_FATTURABILI: frozenset[str] = frozenset({"ACCETTATO"})
 _STATI_GENERA_PRATICA: frozenset[str] = frozenset({"ACCETTATO"})
 _FN = "vendite.preventivi_service"
 
+# Codice sorgente PREVENTIVO in `config.sorgenti` — usato dal motore
+# documentale per scegliere il template e tracciare l'origine del PDF.
+# Coerente con la stessa costante in `preventivi_documenti_views`.
+_CODICE_SORGENTE_PREVENTIVO = "PREVENTIVO"
+
 
 # ══════════════════════════════════════════════════════════
 #  LETTURE
@@ -53,6 +63,7 @@ def list_preventivi(
     data_da: date | None = None,
     data_al: date | None = None,
     search: str | None = None,
+    solo_revisione_attiva: bool = True,
     auth_user_id: int | None = None,
     page: int = 1,
     page_size: int = 50,
@@ -72,6 +83,7 @@ def list_preventivi(
         data_da=data_da,
         data_al=data_al,
         search=search,
+        solo_revisione_attiva=solo_revisione_attiva,
         auth_user_id=auth_user_id,
         limit=page_size,
         offset=offset,
@@ -116,6 +128,17 @@ def get_preventivo(preventivo_id: int) -> dict[str, object]:
 def list_righe(preventivo_id: int) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
     return repo.list_righe(preventivo_id)
+
+
+# Scopo: Riepilogo IVA aggregato del preventivo (una riga per aliquota +
+#        eventuali natura/esigibilita/split). Calcolo fiscalmente corretto
+#        gia' applicato in DB via fn_ricalcola_riepilogo_iva_preventivo:
+#        il service legge la vista denormalizzata, nessun ricalcolo Python.
+#        Usato dal FE per il pannello "Riepilogo IVA" del drawer preventivo
+#        e (futuro) come builder per fatture emesse dal preventivo.
+def list_riepilogo_iva(preventivo_id: int) -> list[dict[str, Any]]:
+    repo = PreventiviRepository()
+    return repo.list_riepilogo_iva(preventivo_id)
 
 
 # Scopo: Lista indirizzi di un preventivo.
@@ -364,6 +387,7 @@ def cambia_stato(
     *,
     fatturazione_immediata: bool | None = None,
     competenza_mese: date | None = None,
+    user: AbstractBaseUser | AnonymousUser | None = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
 
@@ -420,8 +444,64 @@ def cambia_stato(
                 result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
             return result
 
+    # Hook atomico emissione: la transizione *->EMESSO genera il PDF
+    # canonico v1 nella stessa transazione del cambio stato. Se il
+    # rendering fallisce (template/versione invalida, builder fail, ...)
+    # l'eccezione propaga -> rollback totale -> il preventivo resta nello
+    # stato precedente. Invariante: EMESSO => almeno una versione PDF
+    # esiste in documenti.documenti_generati.
+    if nuovo_stato == "EMESSO":
+        with transaction.atomic():
+            result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
+            _genera_pdf_emissione(preventivo_id, user=user)
+        return result
+
     result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
     return result
+
+
+# Scopo: Genera e persiste il PDF canonico del preventivo emesso (v1
+#        della numerazione `progressivo_sorgente`). Chiamato dentro la
+#        transazione di `cambia_stato` quando lo stato passa a EMESSO:
+#        un fallimento solleva ServiceError che rollbacka l'intera
+#        transizione di stato. Su rigenerazioni successive (in stato
+#        EMESSO, click utente sul pulsante PDF) il caller chiama
+#        direttamente `DocumentGenerationService.genera_documento` via
+#        l'endpoint dedicato `ApiPreventivoDocumentoGenera`: questa
+#        funzione e' specifica per il bootstrap one-shot all'emissione.
+def _genera_pdf_emissione(
+    preventivo_id: int,
+    *,
+    user: AbstractBaseUser | AnonymousUser | None,
+) -> None:
+    repo = PreventiviRepository()
+    preventivo = repo.get_preventivo(preventivo_id)
+    ErrorManager.require(
+        preventivo is not None,
+        code="E_PREV_NOT_FOUND",
+        message="Preventivo non trovato per emissione PDF.",
+        detail=f"preventivo_id={preventivo_id}",
+        function_name=f"{_FN}._genera_pdf_emissione",
+    )
+    assert preventivo is not None
+
+    doc_repo = DocumentiRepository()
+    sorgente = doc_repo.get_sorgente_tipo_id_by_codice(_CODICE_SORGENTE_PREVENTIVO)
+    ErrorManager.require(
+        sorgente is not None and sorgente.get("attivo"),
+        code="E_DOCUMENTI_VALIDATION",
+        message="Sorgente 'PREVENTIVO' non configurata o non attiva.",
+        function_name=f"{_FN}._genera_pdf_emissione",
+    )
+    assert sorgente is not None
+
+    DocumentGenerationService().genera_documento(
+        user,
+        emittente_fiscale_id=int(preventivo["emittente_fiscale_id"]),
+        sorgente_tipo_id=int(sorgente["id"]),
+        sorgente_id=int(preventivo["id"]),
+        sorgente_uid=str(preventivo["uid"]),
+    )
 
 
 # Scopo: Crea nuova revisione del preventivo delegando alla funzione DB.
@@ -623,19 +703,29 @@ def aggiorna_riga(
 
     pratica_id_l3: int | None = None
 
-    # L1 check + audit meta se prezzo toccato esplicitamente. Serve contesto
-    # riga esistente per articolo_id/uom_id non sempre presenti nel payload.
-    if "prezzo_unitario" in update_fields:
-        righe = repo.list_righe(preventivo_id)
-        riga_esistente = next((r for r in righe if r.get("id") == riga_id), None)
+    # Riga esistente — fetch lazy condiviso tra blocco prezzo e blocco quantita
+    # per evitare 2 round-trip DB quando entrambi i campi sono nel payload.
+    # None = non ancora fetchata, False = fetchata e non trovata.
+    riga_esistente: dict[str, Any] | None | bool = None
+
+    def _get_riga_esistente() -> dict[str, Any]:
+        nonlocal riga_esistente
+        if riga_esistente is None:
+            righe = repo.list_righe(preventivo_id)
+            riga_esistente = next((r for r in righe if r.get("id") == riga_id), False)
         ErrorManager.require(
-            riga_esistente is not None,
+            riga_esistente is not False,
             code="E_PREV_RIGA_NOT_FOUND",
             message="Riga preventivo non trovata.",
             detail=f"riga_id={riga_id}",
             function_name=f"{_FN}.aggiorna_riga",
         )
-        assert riga_esistente is not None
+        return riga_esistente  # type: ignore[return-value]
+
+    # L1 check + audit meta se prezzo toccato esplicitamente. Serve contesto
+    # riga esistente per articolo_id/uom_id non sempre presenti nel payload.
+    if "prezzo_unitario" in update_fields:
+        riga_esistente = _get_riga_esistente()
         articolo_id = riga_esistente["articolo_id"]
         uom_id = update_fields.get("uom_operativa_id") or riga_esistente.get("uom_operativa_id")
         prezzo_finale, prezzo_meta = _resolve_or_check_override_prezzo(
@@ -672,23 +762,20 @@ def aggiorna_riga(
     # senza mandare qta_operativa: ricalcolo dalla UoM operativa della
     # riga esistente (o nuova, se l'edit la sta cambiando insieme).
     # Stesso pattern di gestisci_riga (helper _derive_qta_operativa).
+    # Riusa `_get_riga_esistente()`: lazy + cache nella stessa transazione.
     if (
         "quantita" in update_fields
         and "qta_operativa" not in update_fields
     ):
-        # Riga esistente serve come fallback per articolo + UoM se il payload
-        # non li espone (caso normale: edit modifica solo prezzo/quantita').
+        # Fallback per articolo + UoM solo se NON nel payload (caso normale:
+        # edit modifica solo prezzo/quantita'). Evita fetch inutile quando
+        # il payload li esplicita gia'.
         if "articolo_id" not in update_fields or "uom_operativa_id" not in update_fields:
-            righe = repo.list_righe(preventivo_id)
-            riga_esistente = next((r for r in righe if r.get("id") == riga_id), None)
+            ref_riga = _get_riga_esistente()
         else:
-            riga_esistente = None
-        articolo_id_eff = update_fields.get("articolo_id") or (
-            riga_esistente.get("articolo_id") if riga_esistente else None
-        )
-        uom_id_eff = update_fields.get("uom_operativa_id") or (
-            riga_esistente.get("uom_operativa_id") if riga_esistente else None
-        )
+            ref_riga = {}
+        articolo_id_eff = update_fields.get("articolo_id") or ref_riga.get("articolo_id")
+        uom_id_eff = update_fields.get("uom_operativa_id") or ref_riga.get("uom_operativa_id")
         qta_op, factor_eff = _derive_qta_operativa(
             repo=repo,
             articolo_id=articolo_id_eff,

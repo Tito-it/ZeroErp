@@ -1303,6 +1303,19 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Transizione di stato preventivo non ammessa.",
         ),
+        # Codice sollevato da vendite.fn_crea_revisione_preventivo quando esiste
+        # gia' una revisione in DRAFT per lo stesso numero. Conflitto di stato:
+        # l'utente deve completare/annullare la DRAFT esistente prima di crearne
+        # un'altra. Senza questa policy il codice DB era mascherato in E_DATABASE.
+        "PREV_REVISIONE_BOZZA_ESISTENTE": ErrorPolicy(
+            code="PREV_REVISIONE_BOZZA_ESISTENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Esiste gia' una revisione in BOZZA per questo preventivo. "
+                "Completa o annulla la BOZZA esistente prima di crearne una nuova."
+            ),
+        ),
         "E_PREV_STATO_NON_MODIFICABILE": ErrorPolicy(
             code="E_PREV_STATO_NON_MODIFICABILE",
             http_status=409,
@@ -1425,6 +1438,85 @@ class ErrorPolicyRegistry:
             http_status=404,
             ui_action="show_error_banner",
             user_message="Conversione unita' di misura non trovata.",
+        ),
+        # ── Documenti — motore documentale parametrico ──
+        # Decisioni 30/31/72/76. I codici 410-417 sono riservati agli errori
+        # applicativi Fase A (template/asset/versioni); i codici 425-426
+        # sono i guard append-only del trigger DB su documenti_generati_eventi.
+        "E_DOCUMENTI_VALIDATION": ErrorPolicy(
+            code="E_DOCUMENTI_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri documento non validi.",
+        ),
+        "E_DOCUMENTI_NOT_FOUND": ErrorPolicy(
+            code="E_DOCUMENTI_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Documento o template non trovato.",
+        ),
+        "E_DOCUMENTI_DENIED": ErrorPolicy(
+            code="E_DOCUMENTI_DENIED",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Operazione documentale non consentita.",
+        ),
+        "E_DOCUMENTI_RENDER_FAILED": ErrorPolicy(
+            code="E_DOCUMENTI_RENDER_FAILED",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Generazione PDF documento fallita.",
+        ),
+        "E_DOCUMENTI_STORAGE_FAILED": ErrorPolicy(
+            code="E_DOCUMENTI_STORAGE_FAILED",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Errore lettura/scrittura file documento.",
+        ),
+        # ── Documenti — guard timeline append-only (Decisione 76) ──
+        # Sollevati dai trigger DB trgfn_documenti_generati_eventi_a10_*.
+        "E_EVENTO_DOCUMENTO_DELETE_VIETATA": ErrorPolicy(
+            code="E_EVENTO_DOCUMENTO_DELETE_VIETATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Eliminazione eventi documento non consentita: timeline append-only.",
+        ),
+        "E_EVENTO_DOCUMENTO_UPDATE_VIETATA": ErrorPolicy(
+            code="E_EVENTO_DOCUMENTO_UPDATE_VIETATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Modifica eventi documento non consentita: timeline append-only.",
+        ),
+        # ── Documenti — guard ciclo vita versioni (Tranche F) ──
+        # Sollevati dai trigger DB Fase A
+        # (trgfn_template_documenti_versioni_protect_pubblicata,
+        # trgfn_template_documenti_versioni_block_delete).
+        "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE": ErrorPolicy(
+            code="E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Versione PUBBLICATA non modificabile. Crea o clona una nuova versione BOZZA.",
+        ),
+        "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED": ErrorPolicy(
+            code="E_DOCUMENTI_VERSIONE_DELETE_BLOCKED",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Eliminazione versione non consentita: stato non BOZZA o gia' usata da documenti generati.",
+        ),
+        # ── Documenti — guard asset (Tranche G) ──
+        # Sollevati dai trigger DB Fase A
+        # (trgfn_template_asset_block_delete, trgfn_template_asset_protect_file).
+        "E_DOCUMENTI_ASSET_DELETE_BLOCKED": ErrorPolicy(
+            code="E_DOCUMENTI_ASSET_DELETE_BLOCKED",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Eliminazione asset non consentita. Disattivare l'asset impostando valido_al.",
+        ),
+        "E_DOCUMENTI_ASSET_FILE_IMMUTABILE": ErrorPolicy(
+            code="E_DOCUMENTI_ASSET_FILE_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="File asset immutabile: storage_key/sha256/file_size/mime/file_name non modificabili. Crea un nuovo asset.",
         ),
     }
 

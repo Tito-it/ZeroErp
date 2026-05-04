@@ -9,7 +9,7 @@ Architettura di riferimento:
 Tabelle correlate:
 >
 [config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
-> [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
+> [config.profili_accesso_azioni](/dbzero/config/tabelle/profili_accesso_azioni)
 
 ---
 

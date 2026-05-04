@@ -5,7 +5,7 @@ import { ref } from 'vue'
 import {
   listPreventivi, getPreventivo, createPreventivo, updatePreventivo, deletePreventivo,
   cambiaStatoPreventivo, creaRevisione,
-  listRighe, createRiga, updateRiga, deleteRiga,
+  listRighe, createRiga, updateRiga, deleteRiga, getRiepilogoIva,
   listIndirizzi, upsertIndirizzo,
   pushCommessa, statoFatturazione, generaPratica, listPratiche,
 } from '../api/preventiviApi'
@@ -29,6 +29,10 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     utility_id: null,
     data_da: defaultDataDa,
     data_a: null,
+    // Default true: la lista mostra solo l'ultima revisione per numero
+    // (le revisioni superseded restano nello storico DB ma non in UI).
+    // Toggle "Mostra storico revisioni" lo flippa.
+    solo_revisione_attiva: true,
     limit: 25,
     offset: 0,
     order_by: 'data',
@@ -75,6 +79,9 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
       if (f.utility_id != null) params.utility_id = f.utility_id
       if (f.data_da) params.data_da = f.data_da
       if (f.data_a) params.data_al = f.data_a
+      // Passa solo_revisione_attiva sempre esplicito: se l'operatore vuole
+      // lo storico (toggle ON => filtro OFF) il BE deve riceverlo come 'false'.
+      params.solo_revisione_attiva = f.solo_revisione_attiva ? 'true' : 'false'
       // Conversione offset/limit → page/page_size per il backend
       const pageSize = f.limit || 25
       const page = Math.floor((f.offset || 0) / pageSize) + 1
@@ -167,6 +174,14 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     return res.data.data
   }
 
+  // Scopo: Carica riepilogo IVA aggregato del preventivo (regola fiscale
+  //        DPR 633/72 art. 21). Una entry per aliquota IVA distinta. Il
+  //        ricalcolo e' atomico lato DB su ogni mutazione delle righe.
+  async function loadRiepilogoIva(preventivoId) {
+    const res = await getRiepilogoIva(preventivoId)
+    return res.data.data
+  }
+
   // --- Indirizzi ---
 
   // Scopo: Carica indirizzi del preventivo.
@@ -214,7 +229,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     items, totalRecords, loading, hasSearched, filters,
     fetchList, fetchDetail, create, update, elimina,
     cambiaStato, nuovaRevisione,
-    loadRighe, addRiga, aggiornaRiga, eliminaRiga,
+    loadRighe, addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
     loadIndirizzi, salvaIndirizzo,
     inviaACommessa, loadStatoFatturazione,
     creaPratica, loadPratiche,

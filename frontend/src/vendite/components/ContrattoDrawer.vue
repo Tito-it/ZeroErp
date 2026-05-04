@@ -14,7 +14,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { addDaysToToday, toDateString, parseIsoDate } from '../../core/utils/date'
 import { paramInt, paramString } from '../../core/utils/parameterCast'
 import { statoContrattoSeverity } from '../../core/utils/severity'
@@ -685,7 +685,7 @@ function onClose() {
       <template v-if="isEdit && detail">
         <h4 class="mt-3">{{ t('contratti.section_gestione') }}</h4>
         <div class="form-row-inline">
-          <Button icon="pi pi-list" :label="t('contratti.gestisci_righe')"
+          <Button :icon="MANAGE_ICONS.LIST" :label="t('contratti.gestisci_righe')"
             outlined class="app-manage-btn"
             @click="righeVisible = true" />
           <span class="text-color-secondary">{{ detail.righe?.length || 0 }} {{ t('contratti.righe_count_label') }}</span>

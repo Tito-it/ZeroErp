@@ -5,7 +5,7 @@
 // Riusabile per operatori, clienti, fornitori, qualsiasi ruolo.
 import { ref, watch, computed, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { DRAWER_WIDTH } from '../constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { listSoggetti, getConfigResolver, listSoggettoContatti } from '../../anagrafiche/api/anagrafiche'
 import SoggettoDrawer from '../../anagrafiche/components/SoggettoDrawer.vue'
 import DrawerTitle from './DrawerTitle.vue'
@@ -220,14 +220,14 @@ function onClose() {
           :codice-fiscale="selectedSoggetto.codice_fiscale"
         />
         <div class="flex justify-end gap-2 mt-2">
-          <Button :label="t('resolver.confirm_selection')" icon="pi pi-check"
+          <Button :label="t('resolver.confirm_selection')" :icon="MANAGE_ICONS.CONFIRM"
             @click="confermaSelezionato" />
         </div>
       </div>
 
       <!-- Link per creazione nuovo -->
       <div class="resolver-create-link mt-4">
-        <Button :label="t('resolver.create_new')" icon="pi pi-plus"
+        <Button :label="t('resolver.create_new')" :icon="MANAGE_ICONS.ADD"
           text severity="primary" @click="passaACreazione" />
       </div>
     </div>

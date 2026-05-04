@@ -75,3 +75,7 @@ site/
 # ignora cartella tools (solo root backend, non sotto apps/)
 /tools/
 
+# Storage documenti filesystem (FilesystemDocumentStorage v1)
+# Default DOCUMENTI_STORAGE_ROOT=<BASE_DIR>/var/documenti
+var/
+

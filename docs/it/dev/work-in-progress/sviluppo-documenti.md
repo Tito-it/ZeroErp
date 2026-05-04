@@ -201,7 +201,6 @@ Colonne previste:
 | `codice`             | varchar(80)                                | Codice tecnico breve, unico               |
 | `codice_interno`     | varchar(80)                                | Codice stabile interno, opzionale o unico |
 | `descrizione`        | text                                       | Descrizione leggibile                     |
-| `area_funzionale_id` | bigint FK `config.aree_funzionali.id` NULL | Area prevalente, es. vendite/acquisti     |
 | `attivo`             | boolean                                    | Soft enable                               |
 | `meta`               | jsonb                                      | Estensioni future                         |
 | `storicizza`         | boolean                                    | Standard audit/storico                    |
@@ -882,27 +881,32 @@ registra l'errore tecnico.
 
 ## 7. Backend previsto
 
-Componenti applicativi futuri:
+> Nota stato (2026-05-03): la traccia funzionale qui sotto resta valida,
+> ma per lo stato implementativo aggiornato consultare §12. I marcatori
+> `[DONE]`/`[TODO]`/`[WIP]` riflettono la situazione al 2026-05-03.
 
-- `apps/documenti/db/documenti_repository.py`
-- `apps/documenti/services/template_service.py`
-- `apps/documenti/services/context_builders/`
-- `apps/documenti/services/render_service.py`
-- `apps/documenti/services/document_generation_service.py`
+Componenti applicativi:
+
+- [DONE] `apps/documenti/db/documenti_repository.py` (read-only template + versioni)
+- [DONE] `apps/documenti/services/template_service.py` (read-only)
+- [DONE] `apps/documenti/services/context_builders/` (registry + interface base)
+- [DONE] `apps/documenti/services/storage/` (DocumentStorage + Filesystem v1)
+- [DONE] `apps/documenti/services/render_service.py` (Tranche I: WeasyPrint + Jinja2)
+- [DONE] `apps/documenti/services/document_generation_service.py` (Tranche I: orchestratore)
 - API:
-  - lista template;
-  - dettaglio template/versione;
-  - upload asset;
-  - aggiorna metadati asset;
-  - crea/aggiorna testata template;
-  - crea/aggiorna versione `BOZZA`;
-  - clona versione in nuova `BOZZA`;
-  - pubblica versione;
-  - cancella versione `BOZZA`;
-  - genera documento da sorgente;
-  - anteprima PDF temporanea;
-  - scarica PDF generato;
-  - lista documenti generati per sorgente.
+  - [DONE] lista template
+  - [DONE] dettaglio template/versione
+  - [DONE] upload asset (multipart)
+  - [DONE] aggiorna metadati asset
+  - [DONE] crea/aggiorna testata template
+  - [DONE] crea/aggiorna versione `BOZZA`
+  - [DONE] clona versione in nuova `BOZZA`
+  - [DONE] pubblica versione
+  - [DONE] cancella versione `BOZZA`
+  - [TODO] genera documento da sorgente
+  - [TODO] anteprima PDF temporanea
+  - [TODO] scarica PDF generato
+  - [TODO] lista documenti generati per sorgente
 
 Le API seguono gli standard di `docs/it/dev/api.md` e dei building block
 backend: APIView esplicite, service layer per orchestrazione, repository per
@@ -926,9 +930,9 @@ Permessi:
 
 Context builder iniziali:
 
-- `PreventivoDocumentContextBuilder`
-- `ContrattoDocumentContextBuilder`
-- `OrdineDocumentContextBuilder`
+- [DONE] `PreventivoDocumentContextBuilder` (Tranche J, sblocca render PREVENTIVO)
+- [TODO] `ContrattoDocumentContextBuilder`
+- [TODO] `OrdineDocumentContextBuilder`
 
 ---
 
@@ -1311,6 +1315,143 @@ test render e un editor piu' ricco senza riscrivere il flusso.
     base URL/DNS, bucket/container, prefix, limiti dimensionali). Le credenziali
     non stanno in chiaro in DB: si salva al massimo un secret ref e il backend
     risolve da env/secret manager. Confermato come scelta definitiva.
+72. ~~Storage v1: posizione interfaccia, mapping parametri, cleanup.~~
+    **Decisione 2026-05-03**: interfaccia `DocumentStorage` astratta in
+    `apps/documenti/services/storage/base.py`, prima implementazione
+    `filesystem.py`. Selettore `get_storage()` legge
+    `documenti_storage_provider` da `config.parameters` (override possibile via
+    settings Django). I 6 parametri seed (`provider`, `endpoint`, `base_url`,
+    `bucket`, `prefix`, `secret_ref`) coprono il futuro adapter S3/MinIO senza
+    modifiche alla firma. Cleanup post-fail commit: `try/finally` con
+    `storage.delete()` best-effort + log warning + evento `STORAGE_ORPHAN` su
+    `documenti_generati_eventi` (vedi Decisione 76).
+73. ~~Dipendenza WeasyPrint.~~
+    **Decisione 2026-05-03**: aggiungere `weasyprint` (ultima stabile
+    compatibile Python 3.14, vincolo da fissare al pip-compile) a
+    `backend/requirements.in`. Aggiornare `Dockerfile` con dipendenze native
+    (`libpango-1.0-0`, `libpangoft2-1.0-0`, `libharfbuzz0b`, `libfontconfig1`,
+    `libcairo2`, `libgdk-pixbuf-2.0-0`, `shared-mime-info`). Aggiungere nota in
+    `docs/it/` sui prerequisiti dev (Linux/macOS). Rigenerare
+    `backend/requirements.txt` con pip-compile.
+74. ~~Posizione registry context_builder.~~
+    **Decisione 2026-05-03**: registry **centrale** in
+    `apps/documenti/services/context_builders/registry.py` (dict
+    `CODE -> Builder`). Le implementazioni concrete vivono nei domini sorgente
+    (es. `apps/vendite/services/preventivo_document_context_builder.py`) e si
+    registrano via import esplicito dal modulo registry. Niente auto-discovery
+    via signal Django: stesso pattern di `pipeline_task_registry_impl` (vendite),
+    coerente con la regola "nessuna esecuzione dinamica libera dal DB"
+    (Decisione 18). `template_documenti.context_builder_code` viene validato
+    contro le chiavi del registry all'esecuzione: `ServiceError(E_DOCUMENTI_VALIDATION)`
+    se non whitelisted.
+75. ~~Permessi gestione vs generazione.~~
+    **Decisione 2026-05-03**: introdurre **2 nuove azioni processo dedicate**
+    `DOCUMENTI_TEMPLATE_MANAGE` + `DOCUMENTI_ASSET_MANAGE`, seedate insieme alla
+    nuova area funzionale `documenti` (per i livelli area TUTTO/LETTURA/BLOCCATO
+    della UI di configurazione). Le azioni di generazione/lista/download
+    riusano i permessi del dominio sorgente (es. `vendite` per preventivi),
+    senza nuovi permessi. Brief al team DB per la migration seed.
+76. ~~Log evento download v1: opzione A vs B.~~
+    **Decisione 2026-05-03**: opzione **A** — anticipare
+    `documenti.documenti_generati_eventi` da Fase B a v1. DDL append-only
+    (trigger guard delete + update) + pgTAP. Set CHECK chiuso v1: `GENERATO`,
+    `SCARICATO`, `STORAGE_ORPHAN` (no `ANTEPRIMA` per Decisione 30: anteprime
+    non persistenti escluse dalla timeline; no `RENDER_KO` per Decisione 32:
+    errori render gestiti via log applicativo, non timeline funzionale).
+    Estensioni Fase B (es. `INVIATO`, `ARCHIVIATO`, `ANNULLATO`) tramite
+    migration successiva. Allinea v1 alle Decisioni 30/31 e copre il pattern
+    di cleanup storage (Decisione 72). Tranche DB atterrata (changeset
+    `20260503-06` + `20260503-07/08`).
+
+---
+
+## 10-bis. Decisioni operative (chiuse 2026-05-03)
+
+> Stato DB Fase A: chiuso (DDL + guards A1..A7-bis + check + storico off + 9
+> pgTAP + doc manuale). Step D whitelist Python `_REL_CONSENTITE`
+> applicato a `apps/core/db/dbops_repository.py` il 2026-05-03 (4 lookup
+> `documenti.*`: `tipi_documento_output`, `tipi_asset_documento`,
+> `tipi_file_documento`, `render_engine_documento`).
+>
+> Le 5 decisioni operative riassunte qui sotto sono state chiuse dal team
+> backend il 2026-05-03 e formalizzate nelle Decisioni 72-76 della §10
+> sopra. I dettagli operativi e il razionale rimangono in queste
+> sotto-sezioni come reference implementativo.
+
+### 10-bis.1 Storage v1 concreto — CHIUSA
+
+**Esito 2026-05-03 (Decisione 72)**: filesystem locale dietro interfaccia
+`DocumentStorage` (`write/read/delete/exists`). MinIO/S3 entrera' come
+seconda implementazione della stessa interfaccia, senza riscrivere il
+render service.
+
+Implementazione concordata:
+
+- nome modulo e posizione interfaccia (es.
+  `apps/documenti/services/storage/base.py` + `filesystem.py`);
+- mapping parametri `config.parameters.documenti_storage_*` →
+  configurazione runtime;
+- gestione cleanup best-effort se commit DB fallisce dopo upload riuscito
+  (vedi §6.1 nota consistenza DB/storage).
+
+### 10-bis.2 Dipendenza WeasyPrint — CHIUSA
+
+**Esito 2026-05-03 (Decisione 73)**: ok ad aggiungere `weasyprint` a
+`backend/requirements.in`. Versione minima da fissare al momento del
+pip-compile (vincolo: ultima stabile compatibile Python 3.14). Aggiornare
+`Dockerfile` con le dipendenze native (`libpango-1.0-0`,
+`libpangoft2-1.0-0`, `libharfbuzz0b`, `libfontconfig1`, `libcairo2`,
+`libgdk-pixbuf-2.0-0`, `shared-mime-info`). Aggiungere nota in `docs/it/`
+sui prerequisiti dev (Linux/macOS). Rigenerare `backend/requirements.txt`
+con `pip-compile`.
+
+### 10-bis.3 Posizione registry `context_builder` — CHIUSA
+
+**Esito 2026-05-03 (Decisione 74)**: registry **centrale** in
+`apps/documenti/services/context_builders/registry.py` con dizionario
+`CODE -> Builder`. Implementazioni concrete nei domini sorgente (es.
+`apps/vendite/services/preventivo_document_context_builder.py`); la
+registrazione avviene via import esplicito dal modulo registry. Nessun
+auto-discovery via signal Django: stesso pattern di
+`pipeline_task_registry_impl` in `apps/vendite/db/vendite_pipeline_repository.py`,
+con vantaggio di IDE-grep e zero magia.
+
+Vincolo invariato: **nessuna esecuzione dinamica libera dal DB**
+(coerente con Decisione 18). `template_documenti.context_builder_code`
+resta binding logico; il backend solleva
+`ServiceError(E_DOCUMENTI_VALIDATION)` se la chiave non e' nel registry.
+
+### 10-bis.4 Permessi gestione vs generazione — CHIUSA
+
+**Esito 2026-05-03 (Decisione 75)**: introdurre **2 nuove azioni
+processo dedicate** `DOCUMENTI_TEMPLATE_MANAGE` + `DOCUMENTI_ASSET_MANAGE`,
+seedate insieme alla nuova **area funzionale** `documenti` (per livelli
+TUTTO/LETTURA/BLOCCATO della UI di configurazione documentale,
+assegnabile a responsabili non admin per Decisione 25).
+
+- generazione/lista/download: riusano permessi del dominio sorgente
+  (`vendite` per preventivi, ecc.), nessun nuovo permesso;
+- 2 azioni processo + 1 area funzionale: 1 migration seed unica.
+
+Brief al team DB: vedi
+[brief-db-documenti-permessi-seed.md](./brief-db-documenti-permessi-seed.md).
+
+### 10-bis.5 Log evento download in v1 — CHIUSA
+
+**Esito 2026-05-03 (Decisione 76)**: **opzione A** — anticipare
+`documenti.documenti_generati_eventi` da Fase B a v1. Tranche atterrata
+(changeset `20260503-06` DDL + `20260503-07/08` trigger guard delete/update).
+Set CHECK chiuso v1: `GENERATO`, `SCARICATO`, `STORAGE_ORPHAN` (no
+`ANTEPRIMA` per Decisione 30; no `RENDER_KO` per Decisione 32; estensioni
+Fase B con migration successiva). Copre Decisioni 30/31 e il pattern di
+cleanup storage (Decisione 72, evento `STORAGE_ORPHAN`).
+
+**Nota implementativa BE**: su INSERT in `documenti_generati_eventi` non
+passare `tx_id` esplicito; lo popola la regola 4 dell'automation. Lasciare
+NULL e fidarsi del default DB.
+
+Brief al team DB: vedi
+[brief-db-documenti-eventi-anticipo-fase-b.md](./brief-db-documenti-eventi-anticipo-fase-b.md).
 
 ---
 
@@ -1878,4 +2019,661 @@ Preparare test DB/pgtap o equivalenti per:
 
 ---
 
-*Sviluppo Documenti Parametrici — ZeroERP (WIP iniziale, aprile 2026)*
+## 12. Stato implementazione backend
+
+> Snapshot progressivo dello sviluppo backend `apps/documenti/`. Aggiornare
+> al chiudersi di ogni tranche concentrica per mantenere visibile il
+> confine tra cio' che e' atterrato e cio' che e' ancora previsto.
+
+### 12.1 Tranche atterrate
+
+#### Tranche A — Allineamento doc + whitelist (2026-05-03, PR #636)
+
+- [DONE] Decisioni 72-76 chiuse in §10 (storage v1, WeasyPrint, registry
+  context_builder, permessi area+azioni, eventi anticipati).
+- [DONE] Step D whitelist Python `_REL_CONSENTITE`: aggiunte 4 lookup
+  `documenti.*` (`tipi_documento_output`, `tipi_asset_documento`,
+  `tipi_file_documento`, `render_engine_documento`) in
+  [apps/core/db/dbops_repository.py](../../../../backend/apps/core/db/dbops_repository.py).
+- [DONE] Brief al team DB per anticipo
+  `documenti_generati_eventi` (Decisione 76) e seed permessi
+  area+azioni (Decisione 75) — atterrati lato DB sullo stesso PR.
+
+#### Tranche B — Foundation app + storage + registry (2026-05-03, PR #636)
+
+- [DONE] Skeleton `apps/documenti/` (api, services, db, tests). Wiring in
+  `INSTALLED_APPS` e `urls.py` (`/api/v1/documenti/`).
+- [DONE] Storage layer: interfaccia astratta `DocumentStorage`
+  (`write/read/delete/exists`) + impl `FilesystemDocumentStorage`
+  (atomic write via tempfile+`os.replace`, guard path traversal,
+  cleanup tempfile orfani su crash) + selector `get_storage()` da
+  `config.parameters` (`documenti_storage_provider`,
+  `documenti_storage_prefix`).
+- [DONE] Registry centrale `context_builders` (`register_builder` /
+  `get_builder` / `registered_codes`). Whitelist applicativa: chiave
+  `template_documenti.context_builder_code` non registrata ->
+  `E_DOCUMENTI_VALIDATION` (Decisione 18+74).
+- [DONE] Settings `DOCUMENTI_STORAGE_ROOT` (default
+  `<BASE_DIR>/var/documenti`, override env). `.gitignore` esclude
+  `var/`. WeasyPrint `>=63,<64` aggiunto a `requirements.in`,
+  Dockerfile aggiornato con dipendenze native Pango/Cairo/HarfBuzz/PixBuf.
+- [DONE] 7 codici errore registrati in
+  [error_policies.py](../../../../backend/apps/core/services/error_policies.py):
+  5 dominio (`E_DOCUMENTI_VALIDATION/NOT_FOUND/DENIED/RENDER_FAILED/STORAGE_FAILED`),
+  piu' 2 guard timeline (`E_EVENTO_DOCUMENTO_DELETE/UPDATE_VIETATA`, HTTP 409
+  mappati ai trigger DB Fase A).
+
+#### Tranche C — API read-only template + versioni (2026-05-03)
+
+- [DONE] [types.py](../../../../backend/apps/documenti/types.py): TypedDict
+  `TemplateDocumentoListRow/DetailRow`, `TemplateVersioneListRow/DetailRow`
+  (proiezione leggera vs payload pesante con html/css/markdown).
+- [DONE] [documenti_repository.py](../../../../backend/apps/documenti/db/documenti_repository.py):
+  `list_templates` (paginato + scope EF via `bigint[]`/`ANY(%s)` + search
+  ILIKE 3 colonne + ORDER BY whitelisted con `t.id` tiebreaker), `get_template`
+  (404 unificato no leak), `list_versioni`, `get_versione` (defense-in-depth
+  bind `template_documento_id`).
+- [DONE] [template_service.py](../../../../backend/apps/documenti/services/template_service.py):
+  facade lettura con scope EF automatico (`PermissionResolver.get_emittenti_ids`),
+  validazione `stato` versione contro `{BOZZA,PUBBLICATA,OBSOLETA}`, guard
+  id positivo prima del DB.
+- [DONE] [api/views.py](../../../../backend/apps/documenti/api/views.py)
+  e [urls.py](../../../../backend/apps/documenti/api/urls.py): 4 endpoint
+  `DomainAPIView` con `area_funzionale="documenti"`, `is_search_endpoint=True`
+  sulla list, `@extend_schema` con `inline_serializer`:
+  - `GET /api/v1/documenti/templates/`
+  - `GET /api/v1/documenti/templates/<id>/`
+  - `GET /api/v1/documenti/templates/<id>/versioni/`
+  - `GET /api/v1/documenti/templates/<id>/versioni/<vid>/`
+- [DONE] Doc API manuale
+  [api_documenti_templates.md](../../backend/documenti/manual/api_documenti_templates.md),
+  voce in `dev/api.md` "Endpoint attivi" e sezione dedicata in
+  `catalogo-building-block-backend.md`.
+- [DONE] **44 unit/smoke test verdi** (12 storage, 5 registry, 9 repository,
+  8 service, 7 API smoke, 3 atomic write/order_by validation).
+
+#### Tranche D — Review critica + fix (2026-05-03)
+
+- [DONE] **Atomic write** `FilesystemDocumentStorage.write`: tempfile
+  nello stesso filesystem + `os.replace` (atomic POSIX) + cleanup
+  tempfile orfani in `except`. Invariante: `documenti_generati_file.storage_uri`
+  punta a file completo o assente, mai parziale.
+- [DONE] **Default storage root** allineato: `settings.py` default =
+  `<BASE_DIR>/var/documenti` (coerente con `.gitignore`); `selector.py`
+  rimuove fallback dead-code, settings mancante = errore esplicito
+  `E_DOCUMENTI_STORAGE_FAILED`.
+- [DONE] **`order_by` validation** in repository: `KeyError` -> 500
+  sostituito con `ServiceError(E_DOCUMENTI_VALIDATION)` -> 400. Defense-in-depth:
+  fail-fast prima del round-trip DB.
+
+#### Tranche E — CRUD admin testata template (2026-05-03)
+
+- [DONE] [TemplateAdminService](../../../../backend/apps/documenti/services/template_admin_service.py)
+  con `PayloadValidator` + `map_integrity_error`. POST `templates/` +
+  PATCH `templates/<id>/` con `post_permission` /
+  `patch_permission = "documenti_template_manage"`.
+- [DONE] Mapping vincoli DB (3 unique + 3 FK del DDL Fase A) -> messaggi
+  applicativi parlanti. Defense-in-depth: scope EF in create, immutabili
+  in update rifiutati prima di altre validazioni, `is_default`
+  partial-unique senza demote automatico (FE orchestra).
+- [DONE] **22 nuovi test** (66 totali): 13 admin service, 4 repository,
+  5 smoke API write.
+
+#### Tranche F — Ciclo vita versione template (2026-05-03)
+
+- [DONE] [TemplateVersioniAdminService](../../../../backend/apps/documenti/services/template_versioni_admin_service.py)
+  con 5 metodi (`create_versione`, `update_versione`, `delete_versione`,
+  `clone_versione`, `pubblica_versione`). Numero versione calcolato
+  `MAX+1` per template (race protetta da unique DB).
+- [DONE] 5 nuovi endpoint write con `post_permission`/`patch_permission`/
+  `delete_permission = "documenti_template_manage"`:
+  - `POST /api/v1/documenti/templates/<id>/versioni/`
+  - `PATCH /api/v1/documenti/templates/<id>/versioni/<vid>/`
+  - `DELETE /api/v1/documenti/templates/<id>/versioni/<vid>/`
+  - `POST /api/v1/documenti/templates/<id>/versioni/<vid>/clona/`
+  - `POST /api/v1/documenti/templates/<id>/versioni/<vid>/pubblica/`
+- [DONE] 2 codici errore registrati in `error_policies.py`:
+  `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` (HTTP 409, mappato a
+  trigger DB A1) + `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` (HTTP 409,
+  trigger DB A2).
+- [DONE] Pubblicazione atomic con `valido_dal NOT NULL` guard +
+  `transaction.atomic()`. Niente demote automatico del precedente
+  (decisione concentrica v1: FE orchestra).
+- [DONE] **24 nuovi test** (90 totali): 14 admin service versioni,
+  5 repository versioni, 5 smoke API.
+
+#### Tranche G — CRUD admin asset (2026-05-04)
+
+- [DONE] [TemplateAssetAdminService](../../../../backend/apps/documenti/services/template_asset_admin_service.py)
+  con 2 metodi: `upload_asset` (multipart binario + metadati anagrafici)
+  e `update_asset_metadati` (no sostituzione file). `DocumentiRepository`
+  esteso con `list_asset`, `get_asset`, `create_asset`,
+  `update_asset_metadati`, `get_tipo_asset`. Type `TemplateAssetListRow`/
+  `DetailRow`.
+- [DONE] 4 endpoint asset:
+  - `GET /api/v1/documenti/asset/` (lista paginata + search + scope EF)
+  - `POST /api/v1/documenti/asset/` (multipart upload, parser_classes
+    `MultiPartParser`+`FormParser`)
+  - `GET /api/v1/documenti/asset/<id>/`
+  - `PATCH /api/v1/documenti/asset/<id>/` (metadati: descrizione,
+    valido_dal/al, attivo, meta — i 5 campi file rifiutati a monte +
+    trigger A4 come guardrail finale)
+- [DONE] **No DELETE** esposta: trigger DB A3 blocca cancellazione
+  fisica. Soft-disable via PATCH `attivo=false` o `valido_al`.
+- [DONE] 2 codici errore registrati: `E_DOCUMENTI_ASSET_DELETE_BLOCKED`
+  (HTTP 409, trigger A3) + `E_DOCUMENTI_ASSET_FILE_IMMUTABILE`
+  (HTTP 409, trigger A4).
+- [DONE] **MIME whitelist per `tipi_asset_documento.codice_interno`**
+  (`_MIME_WHITELIST_PER_TIPO` hardcoded service-side, Decisione 67):
+  - `LOGO`/`IMMAGINE` → image/png, image/jpeg, image/svg+xml, image/webp, image/gif
+  - `FIRMA` → image/png, image/jpeg, image/svg+xml, image/webp
+  - `PDF` → application/pdf
+  - `CSS` → text/css
+  - `ALTRO` non ammesso in v1 (no upload generico).
+- [DONE] **Pattern transazionale upload**: INSERT row dentro
+  `transaction.atomic()` (dedup naturale via unique
+  `(emittente, sha256)`), poi `storage.write` (atomic via tempfile +
+  `os.replace`). Cleanup STORAGE_ORPHAN su fail commit post-write
+  (best-effort + log warning, no raise per non mascherare l'eccezione
+  originale del commit). Limite size da parameter
+  `documenti_asset_upload_max_mb` (default 25).
+- [DONE] `storage_key` stabile derivata: `assets/<emittente_id>/<sha256>.<ext>`.
+- [DONE] **5 smoke test API** (95 totali): list requires JWT, list ok,
+  upload requires file field, upload happy multipart, PATCH metadati.
+  Test repo + service unit asset chiusi in Tranche H1 (vedi sotto).
+
+#### Tranche H (review critica E + F + G post-coding, 2026-05-04)
+
+- [DONE] **Refactor duplicazione** `_build_create_data` /
+  `_build_update_data` in `template_versioni_admin_service.py`:
+  estratto helper `_fill_optional_versione_fields` riusato da entrambi
+  (~80 righe risparmiate), aggiunto cross-field guard
+  `valido_al >= valido_dal` (DDL non ha CHECK su asset/versioni).
+- [DONE] **Layer violation fix**: `_resolve_codice_tipo_asset` non usa
+  piu' `from django.db import connection` inline. Aggiunto
+  `DocumentiRepository.get_tipo_asset()` con dict ritornato; service
+  consuma via repo.
+- [DONE] **Helper `_guard_date_range`** centralizzato in
+  `template_asset_admin_service.py` (chiamato in
+  `_build_upload_metadati` + `_build_update_data`) e analoga difesa
+  cross-field in `template_versioni_admin_service` (helper opzionali +
+  clone). Daterange empty silenzioso (workaround DDL) bloccato a monte.
+- [DONE] Suite **95/95 verde** post-fix.
+
+#### Tranche H1 — Test repo + service unit asset (2026-05-04)
+
+- [DONE] **Repository asset** — 13 test in
+  [test_documenti_repository_asset.py](../../../../backend/apps/documenti/tests/services/test_documenti_repository_asset.py):
+  `list_asset` (filtri completi + search ILIKE su 4 colonne incluso
+  `file_name`, scope `ANY(%s)`, paginazione cap 200 + tiebreaker `a.id ASC`,
+  `order_by` fuori whitelist → `E_DOCUMENTI_VALIDATION` senza toccare il DB),
+  `get_asset` (row → dict, missing → None, scope), `create_asset`
+  (INSERT solo colonne whitelisted in `ASSET_CREATE_COLUMNS` +
+  `RETURNING id`), `update_asset_metadati` (UPDATE solo colonne in
+  `ASSET_UPDATE_COLUMNS`, immutabili file/anag silenziosamente filtrate
+  come guardrail in profondita'; data vuoto → False senza SQL),
+  `get_tipo_asset` (dict normalizzato, None se inesistente).
+- [DONE] **Service admin asset** — 28 test in
+  [test_template_asset_admin_service.py](../../../../backend/apps/documenti/tests/services/test_template_asset_admin_service.py).
+  Mock-only (regola CI), niente DB ne' filesystem. Coperti:
+  - upload happy path admin globale: sequenza INSERT → `storage.write`
+    (dopo l'INSERT, dentro `transaction.atomic`) → commit → ritorno via
+    `reader.get_asset` fresh; verifica derivazione `storage_key`
+    `assets/<emittente>/<sha>.<ext>` e sha256 64 hex;
+  - scope emittente: admin globale (`PermissionResolver` → None),
+    operatore in scope, operatore fuori scope, anon → tutti gli ultimi
+    rifiutati con `E_DOCUMENTI_VALIDATION` senza DB ne' write;
+  - validazione payload: chiave extra, campo obbligatorio mancante,
+    `file_bytes` vuoto, `file_name` vuoto, oversize con limite parametrico
+    (`documenti_asset_upload_max_mb`), `_guard_date_range`
+    `valido_al < valido_dal`;
+  - risoluzione tipo asset: inesistente, non attivo, `ALTRO` non ammesso
+    in v1 (no upload generico);
+  - MIME whitelist per tipo: copertura ammesso/rifiutato per ciascun
+    `codice_interno` whitelisted (LOGO/IMMAGINE/FIRMA/PDF/CSS) +
+    rifiuto MIME fuori whitelist (es. `application/pdf` su LOGO);
+  - dedup naturale: `IntegrityError` su `uq_template_asset_emittente_sha256`
+    mappata a messaggio applicativo parlante; `storage.write` non chiamato
+    perche' INSERT precede write nel try interno;
+  - cleanup STORAGE_ORPHAN: simulato commit fail al `__exit__` di
+    `transaction.atomic` con context manager custom → `storage.delete`
+    chiamato sull'uri restituito da `write` (best-effort, senza
+    mascherare l'eccezione del commit);
+  - storage.write fail: `transaction.atomic` rollback, niente cleanup
+    (file mai esistito, `need_cleanup=False`);
+  - update: happy path con `reader.get_asset` chiamato 2 volte (pre-check
+    visibilita' + ritorno fresh), `asset_id` non positivo rifiutato senza
+    DB, propagazione 404 dal reader, immutabili file
+    (`storage_key`/`sha256`/`file_size_bytes`/`mime_type`/`file_name`)
+    e anag (`codice`/`codice_interno`/`asset_tipo_id`/`emittente_fiscale_id`)
+    rifiutati PRIMA di altre validazioni con messaggio parlante,
+    `validate_allowed_keys`, payload vuoto post-validate,
+    `_guard_date_range`, `attivo=None` rifiutato (NULL non ammesso),
+    `IntegrityError` mappata, repo False → `E_DOCUMENTI_NOT_FOUND`.
+- [DONE] Suite **136/136 verde** (95 + 41 nuovi: 13 repo + 28 service).
+- Note: nessun cambio al codice `template_asset_admin_service.py` ne' al
+  `documenti_repository.py`: il debito era solo di copertura test. La
+  Tranche H1 chiude il compromesso preso in Tranche G ("priorita' review
+  critica").
+
+#### Tranche I — Render service WeasyPrint + orchestratore (2026-05-04)
+
+- [DONE] **`render_service.render_pdf`**
+  ([render_service.py](../../../../backend/apps/documenti/services/render_service.py)).
+  Funzione pura `render_pdf(template_versione, context) -> bytes`:
+  whitelist applicativa engine (v1: solo `WEASYPRINT`, case-insensitive
+  con normalize uppercase, Decisione 3) -> Jinja2 con `StrictUndefined`
+  (fail-fast su variabile mancante, Decisione 4) -> WeasyPrint
+  (`HTML(string=...)`+`CSS(string=...)`, lazy import per non risolvere
+  Pango/Cairo a meno che il render non sia effettivamente invocato).
+  Errori interni di Jinja (variabile mancante, sintassi malformata) e
+  WeasyPrint (parse/font/IO) mappati a `E_DOCUMENTI_RENDER_FAILED` con
+  `detail` diagnostico. Guard versione minima: `html_template` o
+  `render_engine_codice` mancanti -> errore parlante.
+- [DONE] **`DocumentGenerationService.genera_documento`**
+  ([document_generation_service.py](../../../../backend/apps/documenti/services/document_generation_service.py)).
+  Orchestratore della generazione persistita:
+  - auth/scope check (PermissionResolver)
+  - resolve template: override esplicito `template_documento_id` ->
+    `TemplateService.get_template` (404 + scope unificato); altrimenti
+    `repo.find_template_applicabile` su `(sorgente_tipo, emittente,
+    is_default=true)` con scope, `tipo_documento_output_id` opzionale
+  - coerenza template-input: emittente o sorgente_tipo del template
+    diversi dai parametri richiesti -> `E_DOCUMENTI_VALIDATION` parlante
+  - resolve versione PUBBLICATA attiva: `repo.get_versione_pubblicata_attiva`
+    su `validita @> CURRENT_DATE` (data passata via hook `_today()` per
+    testabilita'), versione DESC, LIMIT 1
+  - context builder: `registry.get_builder(template.context_builder_code)`
+    (whitelist applicativa Decisione 18+74) -> `builder.build_context()`
+  - render PDF: `render_pdf(...)` FUORI dalla transazione (Decisione 32:
+    render fail = niente record DB)
+  - hashes: `context_hash` (sha256 JSON canonical sort_keys),
+    `template_hash` (sha256 html|css|markdown), `pdf_hash` (sha256 bytes)
+  - `nome_file` via `str.format(template.file_name_pattern, **context)`,
+    `KeyError`/`IndexError` -> `E_DOCUMENTI_RENDER_FAILED` parlante;
+    fallback `<codice>.pdf` se pattern assente
+  - lookup tipo_file `PDF_FINALE` via codice (memoria
+    feedback_no_hardcoded_ids), assente o non attivo -> VALIDATION
+  - `next_progressivo_sorgente` con branching IS NULL vs `=` su
+    `sorgente_riga`; race protetta da unique
+    `uq_documenti_generati_sorgente_progressivo` -> mappato a errore
+    parlante
+  - sequenza atomica `transaction.atomic()`:
+    INSERT `documenti_generati` (id, uid RETURNING) ->
+    INSERT `documenti_generati_file` (`is_principale=true`,
+    `ordinamento=1`, file_tipo PDF_FINALE) ->
+    INSERT evento `GENERATO/OK` SENZA `tx_id` esplicito (Decisione 76 -
+    automation regola 4) -> `storage.write` (atomic write filesystem) ->
+    commit
+  - cleanup STORAGE_ORPHAN best-effort se commit fallisce post-write:
+    `storage.delete` + `logger.warning` (no raise per non mascherare
+    l'eccezione del commit). Nota: `documenti_generati_eventi.documento_generato_id`
+    NOT NULL impedisce di registrare evento `STORAGE_ORPHAN` linkato a
+    un doc fantasma -> log applicativo per intervento manuale.
+- [DONE] **Repository extended** con 7 nuovi metodi
+  ([documenti_repository.py](../../../../backend/apps/documenti/db/documenti_repository.py)):
+  `find_template_applicabile`, `get_versione_pubblicata_attiva`,
+  `next_progressivo_sorgente`, `create_documento_generato` (RETURNING
+  id+uid), `create_documento_generato_file`, `emit_evento_documento`
+  (NIENTE `tx_id` in whitelist colonne), `get_tipo_file_documento_by_codice`.
+  Whitelist colonne `DOCUMENTO_GENERATO_CREATE_COLUMNS` /
+  `DOCUMENTO_GENERATO_FILE_CREATE_COLUMNS` /
+  `EVENTO_DOCUMENTO_CREATE_COLUMNS` per defense-in-depth contro chiavi
+  extra in input.
+- [DONE] **Dipendenza** Jinja2 aggiunta a `backend/requirements.in`
+  (`jinja2>=3.1,<4`) e `requirements.txt` rigenerato via `pip-compile`.
+  Scelta motivata: `StrictUndefined` di Jinja fail-fast su variabili
+  mancanti (allinea con feedback_bug_logici_modello — preferiamo
+  errore esplicito al silenzioso campo vuoto di DTL).
+- [DONE] **41 nuovi test** mock-only (177/177 totali = 136 + 12 repo
+  Tranche I + 11 render_service + 18 document_generation_service):
+  - repo: `find_template_applicabile` con/senza tipo_output, scope,
+    nessun match; `get_versione_pubblicata_attiva` filtri stato/attivo/
+    validita; `next_progressivo_sorgente` branching IS NULL vs `=`;
+    INSERT 3 tabelle con whitelist (incluso check `tx_id` non in SQL
+    eventi); lookup tipo_file
+  - render: happy path Jinja+Weasy; engine whitelist e normalizzazione
+    case; html vuoto / engine vuoto rifiutati; StrictUndefined
+    variabile mancante; TemplateSyntaxError mappato; ciclo
+    `{% for %}`; WeasyPrint exception/empty mappati; CSS opzionale
+  - generation: pipeline completa (chiamate + payload), auth/scope,
+    template via id vs find applicabile, no match -> NOT_FOUND,
+    coerenza emittente+sorgente_tipo, no versione PUBBLICATA,
+    context_builder_code vuoto, render solleva (no DB), render empty,
+    file_name_pattern var mancante, tipo_file mancante/non-attivo,
+    IntegrityError progressivo mappato, storage.write fail (no
+    cleanup), commit fail (cleanup STORAGE_ORPHAN best-effort)
+- Note implementative:
+  - storage_key formato `documenti/<emittente>/<pdf_sha256>.<ext>`:
+    dedup naturale per parita' di contenuto (re-render dello stesso
+    input scrive sopra; record DB diversi puntano alla stessa key
+    quando il content e' identico — comportamento accettabile v1)
+  - render avviene PRIMA del DB: render fail non lascia record orfani
+    (Decisione 32) — niente evento `RENDER_KO` da loggare in v1
+  - hash `context_json` calcolato con `json.dumps(sort_keys=True,
+    default=str)` -> deterministico anche per Decimal/date
+
+#### Tranche I+J — Review critica + refactor (2026-05-04)
+
+Review post-coding di I+J prima del commit, con fix mirati su bug reali e
+duplicazioni. **Nessun cambio API**, solo robustezza.
+
+- 🔴 **Bug fix — context_json non JSON-safe**: il context restituito dai
+  builder (`Decimal` da totali, `date` da scadenze) sarebbe stato passato
+  raw a psycopg per il jsonb -> `TypeError` al primo INSERT in DB reale.
+  L'orchestrator ora normalizza il context una sola volta via
+  `json.loads(json.dumps(context, sort_keys=True, default=str))` e usa la
+  versione JSON-safe sia per `context_json` (DB) sia per `context_hash`.
+- 🔴 **Bug fix — `context_hash` non deterministico**: il builder
+  `PreventivoDocumentContextBuilder` metteva `built_at = now()` in
+  `_meta`, rompendo la promessa "stesso context -> stesso hash" della
+  doc Tranche I (annullava il dedup logico). Rimosso `built_at`
+  (`generato_at` lato DB e' la fonte autoritativa). Test aggiunto:
+  due build con stesso input -> stesso `context_hash`.
+- 🟡 **Hardening — `template_hash` separator**: `\n--CSS--\n` /
+  `\n--MARKDOWN--\n` collision-prone se l'html template li contiene
+  letteralmente. Sostituito con NULL byte `\x00` (non valido in HTML/CSS/
+  markdown) -> collision-proof.
+- 🟡 **Optimization — scope cached**: `PermissionResolver.get_emittenti_ids`
+  era chiamato 2 volte (`_guard_emittente_in_scope` + `_resolve_template`)
+  per ogni invocazione. Ora calcolato una sola volta in
+  `genera_documento` e propagato a `_resolve_template`.
+- 🟡 **Cleanup — `generato_at` rimosso dal return**: il valore lato
+  Python (timezone.now post-commit) divergeva dal valore DB (default
+  `now()` al momento INSERT). Il caller fa lookup se serve.
+- 🟡 **Hardening — input guard espliciti**: `genera_documento` ora
+  rifiuta pre-DB `emittente_fiscale_id`/`sorgente_tipo_id`/`sorgente_id`
+  non positivi e `sorgente_uid` vuoto/whitespace -> errore parlante
+  invece di IntegrityError generico DB.
+- 🟢 **Refactor — duplicazioni eliminate** (memoria
+  feedback_concentrico_no_yagni / Tid review):
+  - `_guard_id` di `TemplateService` (Tranche C) + `_guard_positive_int`
+    di `DocumentGenerationService` (introdotto qui) + guard inline di
+    `PreventivoDocumentContextBuilder` (Tranche J): tutti consolidati su
+    `PayloadValidator.guard_positive_int` (gia' usato dai service admin
+    Tranche E/F/G). Aggiunto `PayloadValidator.guard_non_empty_string`
+    per il caso scalare (es. `sorgente_uid`).
+  - `_guard_emittente_in_scope` duplicato in 3 service del dominio
+    documenti (Tranche E, G, I): estratto in nuovo modulo
+    [apps/documenti/services/_scope.py](../../../../backend/apps/documenti/services/_scope.py)
+    con 4 funzioni standalone: `guard_user_authenticated`,
+    `resolve_emittente_scope`, `guard_emittente_in_scope`,
+    `guard_emittente_in_scope_for_user` (composizione end-to-end).
+    `template_admin_service` e `template_asset_admin_service` delegano
+    a `guard_emittente_in_scope_for_user`; l'orchestrator usa le 3
+    utility separate per cachare lo scope.
+- **Test aggiunti** (10 nuovi su `_scope.py` + 3 sull'orchestrator =
+  196/196 totali = 183 + 13):
+  - `_scope`: auth/None/anon, scope=None vs lista, id in/out scope,
+    `guard_emittente_in_scope_for_user` happy + anon + fuori scope;
+  - orchestrator: context con `Decimal`/`date` JSON-safe; due build con
+    stesso input -> stesso `context_hash`; input guard scalari
+    (`emittente`/`sorgente_tipo`/`sorgente_id`/`sorgente_riga` non
+    positivi + `sorgente_uid` vuoto/whitespace).
+
+#### Tranche J — Context builder PREVENTIVO (2026-05-04)
+
+- [DONE] **`PreventivoDocumentContextBuilder`**
+  ([apps/vendite/services/preventivo_document_context_builder.py](../../../../backend/apps/vendite/services/preventivo_document_context_builder.py))
+  con `CODE = "PREVENTIVO"`. `build_context(sorgente_id, *, auth_user_id,
+  locale)` legge dalla `PreventiviRepository` (esistente Fase 3.F6
+  refactor vendite) testata + righe + riepilogo IVA + indirizzi e ritorna
+  un dict stabile a 6 sezioni: `preventivo`, `cliente`, `indirizzi`,
+  `righe`, `riepilogo_iva`, `_meta` (locale + auth_user_id + built_at +
+  context_version).
+- [DONE] **Auto-register al boot Django**
+  ([apps/vendite/apps.py](../../../../backend/apps/vendite/apps.py)):
+  `VenditeConfig.ready()` importa il modulo per side-effect; la
+  `register_builder(...)` finale del modulo popola il registry centrale
+  Tranche B. Niente auto-discovery via signal Django (coerente con
+  pattern `pipeline_task_registry_impl`).
+- [DONE] Confine v1 chiarito:
+  - il builder NON applica scope/permessi: la sicurezza e' del caller
+    (orchestrator + view dominio Tranche K con permessi `vendite_*`);
+  - guard `sorgente_id` positivo intero (no bool, no string);
+  - `cliente` shape minima (billing_account + denominazione) — nessuna
+    espansione P.IVA/CF/sede in v1; estensione Fase B se serve;
+  - `righe` e `riepilogo_iva` pass-through dalle viste denormalizzate
+    di vendite (nessun ricalcolo Python lato builder).
+- [DONE] **6 nuovi test** mock-only (183/183 totali = 177 + 6):
+  - happy path con shape completa + chiavi attese a tutti i livelli;
+  - id non valido (0/-1/bool/string) -> `E_DOCUMENTI_VALIDATION` no DB;
+  - preventivo inesistente -> `E_DOCUMENTI_NOT_FOUND` con cleanup
+    early (no chiamate ai metodi list_*);
+  - delega 1:1 ai metodi repo;
+  - `CODE = 'PREVENTIVO'`;
+  - registrazione registry: dopo import esplicito del modulo,
+    `registered_codes()` contiene 'PREVENTIVO' e `get_builder("PREVENTIVO")`
+    ritorna istanza di `PreventivoDocumentContextBuilder`.
+
+#### Tranche K — Endpoint generazione/anteprima/lista/download (2026-05-04)
+
+- [DONE] **4 endpoint** sotto `/api/v1/vendite/preventivi/<id>/documenti/`
+  ([apps/vendite/api/preventivi_documenti_views.py](../../../../backend/apps/vendite/api/preventivi_documenti_views.py)
+  con route in
+  [preventivi_urls.py](../../../../backend/apps/vendite/api/preventivi_urls.py)):
+  - `POST genera/` -> `DocumentGenerationService.genera_documento`,
+    body opzionale `template_documento_id`/`tipo_documento_output_id`
+    per override del default `is_default=true`;
+  - `POST anteprima/` -> `anteprima_documento`, risposta binaria
+    `application/pdf` con `Content-Disposition: inline` (Decisione 30:
+    no persist, no evento timeline);
+  - `GET` lista -> `list_documenti_per_sorgente`, paginato + scope EF;
+  - `GET <documento_id>/file/` -> `download_documento`, risposta binaria
+    `attachment` + emit evento `SCARICATO` (Decisione 31).
+  Le view sono in `apps/vendite/api/` perche' i permessi sono del
+  dominio sorgente (Decisione 75): `area_funzionale="vendite"` con
+  permission default lettura preventivi. Il path nidificato
+  `preventivi/<id>/documenti/<doc_id>/` consente difesa-in-profondita'
+  contro tampering URL (la `_resolve_contesto_preventivo` nella view
+  download verifica visibilita' del preventivo prima di leggere il file).
+- [DONE] **3 nuovi metodi** in `DocumentGenerationService`:
+  `anteprima_documento` (pipeline render senza persist),
+  `list_documenti_per_sorgente` (wrapping repo + scope),
+  `download_documento` (lookup + storage.read + emit `SCARICATO` in
+  tx separata best-effort: se il log fallisce il file e' gia' tornato
+  al client, l'audit non blocca il download).
+- [DONE] **4 nuovi metodi** in `DocumentiRepository`:
+  `get_sorgente_tipo_id_by_codice` (lookup `config.sorgenti` per codice,
+  no ID hardcoded), `list_documenti_per_sorgente` (filtri sorgente +
+  scope `ANY(%s)` + paginazione cap 200 + ORDER BY `generato_at DESC`),
+  `get_documento_generato` (404 unificato no leak via scope opzionale),
+  `get_documento_generato_file_principale` (filtro `is_principale=true`
+  con `LIMIT 1`).
+- [DONE] **1 nuovo metodo** in `PreventiviRepository`:
+  `get_for_documento_generation` -> `{id, uid, emittente_fiscale_id}`,
+  proiezione minima senza JOIN su anagrafiche/billing_account
+  (`emittente_fiscale_id` e' colonna nativa NOT NULL del DDL preventivi).
+- [DONE] **`DocumentStorage.build_storage_uri(key)`** aggiunto
+  all'interfaccia astratta + impl filesystem: il caller post-fact ha solo
+  la `storage_key` letta dal DB e ricostruisce lo storage_uri prima di
+  passare a `read/delete/exists`. Risolve la disconnessione fra
+  `storage_uri` ritornato da `write` (memoria runtime) e `storage_key`
+  salvato su DB.
+- [DONE] **22 nuovi test** mock-only (218/218 totali = 196 + 22 K):
+  - repo: `get_sorgente_tipo_id_by_codice`, `list_documenti_per_sorgente`
+    branching `IS NULL` vs `=`, scope `ANY(%s)`, paginazione cap 200 +
+    ORDER, `get_documento_generato` row/None/scope,
+    `get_documento_generato_file_principale` `is_principale=true` +
+    LIMIT 1;
+  - service: `anteprima` happy + anon + render fail + input guard;
+    `list_per_sorgente` happy + anon + uid vuoto;
+    `download` happy (storage.read + emit SCARICATO) + 404 documento +
+    404 file principale + storage read fail mappato + emit fail
+    best-effort + input guard.
+
+#### Tranche L — Frontend Configurazione "Modelli documenti" (2026-05-04)
+
+- [DONE] **2 voci sidebar Configurazione**
+  ([core/navigation.js](../../../../frontend/src/core/navigation.js)):
+  `modelli-documenti` (icona `pi pi-file-pdf`) e `asset-documenti`
+  (icona `pi pi-paperclip`). Route in
+  [router/index.js](../../../../frontend/src/router/index.js):
+  `/config/modelli-documenti` e `/config/asset-documenti`.
+- [DONE] **API client** (`config/api/`):
+  `templateDocumenti.js` (10 endpoint Tranche C/E/F: list/get/create/update
+  template + list/get/create/update/delete/clona/pubblica versioni),
+  `templateAssetDocumenti.js` (4 endpoint Tranche G: list/get/upload
+  multipart/update metadati).
+- [DONE] **Store Pinia** (`config/stores/`):
+  `templateDocumenti.js` (factory `createCrudAdminStore` con
+  `userScoped: true`, filtri tipo_output/sorgente/emittente),
+  `templateAssetDocumenti.js` (defineStore custom con `userScoped: true`
+  e azione `upload(formData)` multipart),
+  `templateVersioni.js` (defineStore custom con `userScoped: true` per
+  ciclo vita versioni di un template).
+- [DONE] **Componenti** (`config/components/`):
+  - `TemplateDocumentiSearchTable.vue`: lista paginata con
+    `useSearchTable`, filtri tipo_output / sorgente / attivo via
+    `LookupSelect`, `NewButton` + `RowActionsMenu`;
+  - `TemplateDocumentoDrawer.vue`: drawer testata con campi codice/
+    codice_interno/descrizione, dropdown tipo_output/sorgente
+    (LookupSelect immutabili dopo create), context_builder hardcoded
+    whitelist (PREVENTIVO/CONTRATTO/ORDINE) con warning quando il
+    builder selezionato non e' registrato lato BE, file_name_pattern,
+    is_default, attivo. Dopo create il drawer evolve a edit per
+    consentire la gestione versioni;
+  - `TemplateVersioniSection.vue`: master-detail inline delle
+    versioni dentro il drawer template. DataTable + form inline con
+    textarea html/css/markdown (Decisione 9: editor visuale fuori
+    scope v1) e `RowActionsMenu` (Pubblica BOZZA, Clona, Elimina BOZZA)
+    e Dialog dedicato pubblicazione con `DatePicker` valido_dal/al;
+  - `TemplateAssetSearchTable.vue`: lista asset con filtri
+    asset_tipo / attivo, formattazione size human-readable;
+  - `TemplateAssetDrawer.vue`: drawer create con `FileUpload` multipart
+    (cap 25MB) + metadati; in edit solo metadati editabili (file
+    immutabile, Decisione 66; DELETE bloccata da trigger DB A3:
+    soft-disable via `attivo=false`).
+- [DONE] **View** (`config/views/`):
+  `ModelliDocumentiTemplatesView.vue` + `ModelliDocumentiAssetView.vue`,
+  pattern coerente con `CategorieClientiListView`.
+- [DONE] **i18n** ([locales/it.json](../../../../frontend/src/locales/it.json)
+  e [en.json](../../../../frontend/src/locales/en.json)): sezione
+  `documenti.context_builders` + `config.modelli_documenti` con ~80
+  chiavi (toolbar, drawer testata, sezione versioni, asset).
+- [DONE] **Costanti FE riusabili**
+  ([config/constants/](../../../../frontend/src/config/constants/)):
+  `documentiContextBuilders.js` (whitelist hardcoded codici allineata
+  al registry BE: PREVENTIVO=registered, CONTRATTO/ORDINE=placeholder),
+  `documentiVersioniWhitelists.js` (PAGE_FORMATS/PAGE_ORIENTATIONS/
+  FORMATI_TEMPLATE allineate a CHECK DDL Tranche F + ASSET_UPLOAD_MAX_*
+  costanti).
+- [DONE] **Bug fix architetturale** in
+  [createCrudAdminStore](../../../../frontend/src/core/composables/createCrudAdminStore.js):
+  il factory NON applicava `userScoped: true` di default. Tutti gli
+  store CRUD admin esistenti basati sul factory leakavano dati
+  cross-user al logout (memoria feedback_pinia_userscoped). Default
+  cambiato a `userScoped: true`; override esplicito a `false` per dati
+  globali. Fix di sicurezza diffuso.
+- [DONE] **Refactor duplicazioni** durante review FE:
+  - `formatSize` da component-locale a `core/utils/format.js` (esistente);
+  - `toIsoDate` / `new Date(iso)` da component-locale a
+    `localDateToIso` / `isoToLocalDate` di `core/utils/dateHelpers.js`
+    (anche fix timezone shift su DatePicker);
+  - costanti DDL whitelist (PAGE_FORMATS, PAGE_ORIENTATIONS,
+    FORMATI_TEMPLATE) da inline a `documentiVersioniWhitelists.js`;
+  - max upload bytes hardcoded `26214400` -> `ASSET_UPLOAD_MAX_BYTES`
+    costante.
+- Build `vite build` verde dopo refactor.
+
+#### Tranche M — Frontend genera documento da sorgente (2026-05-04)
+
+- [DONE] **Pulsante "Genera PDF" generico riusabile**
+  ([documenti/components/GeneraPdfButton.vue](../../../../frontend/src/documenti/components/GeneraPdfButton.vue)).
+  Icona `pi pi-file-pdf` + classe centralizzata `app-pdf-btn`
+  (pattern building block `app-*-btn`, vedi
+  [main.css](../../../../frontend/src/assets/main.css)) con variabili
+  CSS dedicate `--app-btn-pdf-*` in
+  [theme.css](../../../../frontend/src/assets/theme.css). Risolve
+  internamente `sorgente_tipo_id` da `sorgenteCode` via
+  `useGlobalLookup('config.sorgenti')` (cache modulo-level, 1 fetch
+  per app session). Comportamento branched in base al numero di
+  template applicabili: 0 -> toast warn, 1 -> POST genera diretto, >1
+  -> apre dialog scelta. Prop `auto-download` per scaricare
+  automaticamente il PDF dopo la generazione.
+- [DONE] **Dialog scelta template**
+  ([SceltaTemplateDocumentoDialog.vue](../../../../frontend/src/documenti/components/SceltaTemplateDocumentoDialog.vue)).
+  `Listbox` PrimeVue con preselezione automatica del template
+  `is_default=true` (riduce un click sull'happy path).
+- [DONE] **Lista documenti generati per sorgente** building block
+  riusabile
+  ([DocumentiGeneratiSorgenteList.vue](../../../../frontend/src/documenti/components/DocumentiGeneratiSorgenteList.vue)).
+  DataTable timeline `generato_at DESC` con `RowActionsMenu` per
+  download. Riusabile da qualsiasi sorgente (PREVENTIVO, futuro
+  CONTRATTO/ORDINE) tramite mappa `SORGENTE_CLIENT_MAP` nello store.
+- [DONE] **API client riusabile**
+  ([documenti/api/documentiPerSorgente.js](../../../../frontend/src/documenti/api/documentiPerSorgente.js))
+  con factory `buildSorgenteClient(basePathFn)` per consentire ad
+  altri domini sorgente di riutilizzare la stessa interfaccia senza
+  duplicazione. v1 esporta `preventivoDocumenti`. Lookup template
+  applicabili in
+  [templateDocumentiLookup.js](../../../../frontend/src/documenti/api/templateDocumentiLookup.js).
+- [DONE] **Store Pinia**
+  ([documenti/stores/documentiPerSorgente.js](../../../../frontend/src/documenti/stores/documentiPerSorgente.js))
+  scoped per coppia (sorgenteCode, sorgenteId), `userScoped: true`.
+  Mappa `SORGENTE_CLIENT_MAP` per dispatch dinamico verso il client
+  API del sorgente corrente. Helper `extractFileName` per RFC 5987
+  Content-Disposition (axios espone `headers` come plain object).
+- [DONE] **Helper download blob centralizzato**
+  ([core/utils/download.js](../../../../frontend/src/core/utils/download.js)).
+  `downloadBlob(blob, fileName)` standalone con revoke ritardato 1s
+  (alcuni browser leggono il blob URL dopo `link.click()`). Riusato
+  sia da `GeneraPdfButton.downloadDocumento` sia da
+  `DocumentiGeneratiSorgenteList.onDownload` (no duplicazione).
+- [DONE] **Integrazione** in
+  [PreventiviDrawer.vue](../../../../frontend/src/vendite/preventivi/components/PreventiviDrawer.vue):
+  pulsante visibile appena `hasDetail && detail.emittente_fiscale_id`
+  (anche su readonly: il PDF e' una snapshot, non modifica il
+  preventivo). Lista documenti sotto la sezione Integrazione, visibile
+  in EDIT.
+- [DONE] **BE: aggiunto `emittente_fiscale_id` alla proiezione
+  `PreventiviRepository.get_preventivo`** per consentire al FE di
+  costruire il pulsante senza un round-trip aggiuntivo. Suite BE
+  invariata (578/578 vendite + documenti verde).
+- [DONE] **i18n** `documenti.genera_pdf.*`, `documenti.scelta_template.*`,
+  `documenti.lista.*` in `it.json` + `en.json`.
+- [DONE] **Review critica fix applicati**:
+  - 🔴 `URL.revokeObjectURL` immediato dopo click -> race con
+    download stream su alcuni browser. Spostato in `setTimeout(...,
+    1000)` (helper `downloadBlob`).
+  - 🟡 `headers?.get?.()` dead code in `extractFileName`: axios
+    espone `headers` come plain object, niente Headers API.
+  - 🟡 `onMounted(() => {})` no-op rimosso da
+    `DocumentiGeneratiSorgenteList`.
+  - 🟡 Logica blob -> `<a>` -> click duplicata in 2 component:
+    estratta in `core/utils/download.js`.
+  - 🟢 Hardcoded `'application/pdf'` MIME e `'documento-${id}.pdf'`
+    fallback filename: corretti per v1 (PDF e' l'unico tipo file
+    seedato in `tipi_file_documento`).
+- [DONE] Build `vite build` verde dopo refactor.
+
+### 12.2 Tranche aperte (in attesa di partire)
+
+Nessuna tranche aperta. Il motore documentale parametrico v1 e'
+funzionalmente completo end-to-end (DB Fase A + BE Tranche A-K + FE
+Tranche L-M).
+
+### 12.3 Note per le prossime tranche
+
+- L'invariante "INSERT eventi senza `tx_id` esplicito" si applica a
+  qualsiasi codice BE che scrivera' su `documenti_generati_eventi` (vedi
+  Decisione 76 — automation regola 4 popola la colonna). Atterrato in
+  Tranche I via whitelist `EVENTO_DOCUMENTO_CREATE_COLUMNS` del repository.
+- Il pattern transazionale di Tranche I (INSERT 3 record + `storage.write`
+  dentro `transaction.atomic()` + cleanup post-fail commit) e' il modello
+  di riferimento per qualsiasi nuova generazione persistita.
+- Builder concreti (Tranche J) si registrano via import esplicito da
+  `services/context_builders/registry.py` — niente auto-discovery via
+  signal Django. La firma `build_context(sorgente_id: int, *,
+  auth_user_id, locale)` resta come da `base.py`: l'orchestratore
+  gestisce in input sia `sorgente_id: int` (passato al builder) sia
+  `sorgente_uid: str` (scritto su `documenti_generati.sorgente_uid`).
+- Tranche K (endpoint `genera`/`anteprima`/`download`) puo' invocare
+  `DocumentGenerationService.genera_documento(...)` direttamente: la
+  decodifica permessi del dominio sorgente va aggiunta a livello view,
+  non duplicata in service (l'orchestratore applica gia' lo scope
+  emittente generico).
+
+---
+
+*Sviluppo Documenti Parametrici — ZeroERP (WIP, aggiornato 2026-05-04)*

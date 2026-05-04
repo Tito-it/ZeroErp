@@ -9,16 +9,26 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 03-04-2026)
+(latest review 03-05-2026)
 `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione**
 di un preventivo vendita: copia testata, righe attive e indirizzi, disattivando la
 revisione corrente.
+
+> ⚠️ **Cambio di regola 03-05-2026**: la revisione e' ora ammessa **solo** da preventivi
+> in stato `EMESSO`. Lo stato `ACCETTATO` chiude la negoziazione (preventivo confermato
+> dal cliente, push commessa abilitata): per modifiche post-accettazione si crea un
+> **nuovo preventivo**, non si revisiona quello esistente.
+> Permettere la revisione da `ACCETTATO` creava ambiguita' col flusso "ACCETTATO -> push
+> commessa": una commessa poteva essere gia' pushata e poi il preventivo rivisitato.
+> Allineato anche `script.fn_available_actions_preventivo` (`can_create_revisione`
+> = true solo per `EMESSO`).
 
 ---
 
 ### Regole principali
 
-* **Stato ammesso**: solo preventivi in stato EMESSO o ACCETTATO.
+* **Stato ammesso**: solo preventivi in stato `EMESSO` (era `EMESSO` o `ACCETTATO`
+  prima del 03-05-2026).
 * **No DRAFT esistente**: non deve esistere gia' una revisione in DRAFT per lo stesso numero.
 * **Guard stato DRAFT**: se lo stato DRAFT non e' configurato/attivo in `config.stati_doc_preventivi`,
   errore esplicito `E_CONFIG_MANCANTE` (non fallisce con FK generico).
@@ -60,8 +70,8 @@ revisione corrente.
 ### Codici errore
 
 | Codice | Quando |
-|--------|--------|
-| `PREV_REVISIONE_STATO_NON_AMMESSO` | Stato corrente non e' EMESSO ne' ACCETTATO |
+| --- | --- |
+| `PREV_REVISIONE_STATO_NON_AMMESSO` | Stato corrente diverso da `EMESSO` (rev 03-05-2026: `ACCETTATO` non piu' ammesso) |
 | `PREV_REVISIONE_BOZZA_ESISTENTE` | Esiste gia' una revisione DRAFT per lo stesso numero |
 | `PREV_STATO_CORRENTE_NON_TROVATO` | Preventivo non trovato |
 | `E_CONFIG_MANCANTE` | Stato DRAFT non configurato/attivo in config.stati_doc_preventivi |

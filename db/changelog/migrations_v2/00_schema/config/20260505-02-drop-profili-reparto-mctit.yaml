@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# ------------------------------------------------------------
+# Drop modello legacy profili_reparto_* (sostituito da
+# profili_accesso_* via PR1 multi-face-auth).
+#
+# Stato pre-drop:
+# - Resolver permessi (script.fn_resolve_livello_area,
+#   fn_check_azione_processo, fn_get_user_permissions_map,
+#   fn_get_user_actions_map) gia' migrati a profili_accesso_*
+#   (changeset 20260419-51..54 + 20260421-04).
+# - Backend Python (apps.amm_software, apps.core) cutover su
+#   profili_accesso_* (cfr. PR backend "Dismissione modello
+#   legacy profili_reparto_*"): UI scrive direttamente sul
+#   modello nuovo.
+# - Backfill 20260418-42 ha gia' popolato profili_accesso_*
+#   con i dati legacy.
+# - dbops.audit_sources pulita dalle righe legacy in
+#   20260505-01.
+#
+# Cleanup eseguito qui:
+# - Drop trigger storico generic (CASCADE sulla source).
+# - Drop tabelle source config.profili_reparto_*.
+# - Drop tabelle storico orfane storico.profili_reparto_*.
+#
+# Rollback: vuoto. Progetto in fase pre-produzione, niente
+# compat shim. Il backfill non distruttivo verso profili_accesso_*
+# garantisce che i dati siano gia' nel modello nuovo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260505-02-drop-profili-reparto-mctit.yaml
+
+  - changeSet:
+      id: 20260505-02-drop-profili-reparto
+      author: mctit
+      comment: >
+        Dismissione modello legacy profili_reparto_*. Le tabelle
+        config.profili_reparto_aree/_azioni e le storico orfane
+        vengono rimosse. Il modello sostitutivo (profili_accesso_*)
+        e' gia' attivo e popolato.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso_bindings
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              DROP TABLE IF EXISTS storico.profili_reparto_aree CASCADE;
+              DROP TABLE IF EXISTS storico.profili_reparto_azioni CASCADE;
+              DROP TABLE IF EXISTS config.profili_reparto_aree CASCADE;
+              DROP TABLE IF EXISTS config.profili_reparto_azioni CASCADE;

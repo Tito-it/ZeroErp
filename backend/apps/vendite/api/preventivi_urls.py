@@ -7,6 +7,12 @@
 
 from django.urls import path
 
+from apps.vendite.api.preventivi_documenti_views import (
+    ApiPreventivoDocumentiList,
+    ApiPreventivoDocumentoAnteprima,
+    ApiPreventivoDocumentoFile,
+    ApiPreventivoDocumentoGenera,
+)
 from apps.vendite.api.preventivi_views import (
     ApiPreventiviList,
     ApiPreventivoDetail,
@@ -15,6 +21,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoPratiche,
     ApiPreventivoPushCommessa,
     ApiPreventivoRevisione,
+    ApiPreventivoRiepilogoIva,
     ApiPreventivoRigaDetail,
     ApiPreventivoRigaSuggerisciPrezzo,
     ApiPreventivoRigheList,
@@ -69,6 +76,12 @@ urlpatterns = [
         ApiPreventivoRigaSuggerisciPrezzo.as_view(),
         name="vendite-preventivi-righe-suggerisci-prezzo",
     ),
+    # Riepilogo IVA aggregato (regola fiscale art. 21 DPR 633/72)
+    path(
+        "<int:preventivo_id>/riepilogo-iva/",
+        ApiPreventivoRiepilogoIva.as_view(),
+        name="vendite-preventivi-riepilogo-iva",
+    ),
     # Indirizzi
     path(
         "<int:preventivo_id>/indirizzi/",
@@ -98,5 +111,26 @@ urlpatterns = [
         "<int:preventivo_id>/pratiche/",
         ApiPreventivoPratiche.as_view(),
         name="vendite-preventivi-pratiche",
+    ),
+    # Documenti generati (Tranche K motore documentale parametrico)
+    path(
+        "<int:preventivo_id>/documenti/",
+        ApiPreventivoDocumentiList.as_view(),
+        name="vendite-preventivi-documenti-list",
+    ),
+    path(
+        "<int:preventivo_id>/documenti/genera/",
+        ApiPreventivoDocumentoGenera.as_view(),
+        name="vendite-preventivi-documenti-genera",
+    ),
+    path(
+        "<int:preventivo_id>/documenti/anteprima/",
+        ApiPreventivoDocumentoAnteprima.as_view(),
+        name="vendite-preventivi-documenti-anteprima",
+    ),
+    path(
+        "<int:preventivo_id>/documenti/<int:documento_id>/file/",
+        ApiPreventivoDocumentoFile.as_view(),
+        name="vendite-preventivi-documenti-file",
     ),
 ]

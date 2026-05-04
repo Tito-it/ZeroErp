@@ -91,6 +91,7 @@ INSTALLED_APPS = [
     'apps.vendite',
     'apps.pratiche',
     'apps.amm_software',
+    'apps.documenti',
     'apps.portale',
     'apps.shop',
     'rest_framework_simplejwt.token_blacklist',
@@ -287,6 +288,18 @@ else:
         }
     }
 PERMISSIONS_CACHE_TTL = int(env("PERMISSIONS_CACHE_TTL", "300"))
+
+# --- Storage documenti (filesystem provider v1) ---
+# Root locale dove FilesystemDocumentStorage persiste asset/PDF generati.
+# Default dev: <BASE_DIR>/var/documenti (coerente con backend/.gitignore
+# che esclude /var/). In production override via env DOCUMENTI_STORAGE_ROOT
+# (es. /var/www/ZeroErp/documenti). Il provider effettivo e il prefisso
+# vivono in config.parameters (`documenti_storage_provider`,
+# `documenti_storage_prefix`); il root Django e' un'impostazione di
+# deployment, non un parametro funzionale.
+DOCUMENTI_STORAGE_ROOT = env(
+    "DOCUMENTI_STORAGE_ROOT", str(BASE_DIR / "var" / "documenti")
+)
 
 # --- Frontend URL (per link in email: reset password, invito, ecc.) ---
 FRONTEND_URL = env("FRONTEND_URL", "http://localhost:5173")

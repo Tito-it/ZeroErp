@@ -9,7 +9,7 @@ Architettura di riferimento:
 Tabelle correlate:
 >
 [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
-> [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
+> [config.profili_accesso_azioni](/dbzero/config/tabelle/profili_accesso_azioni)
 > [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
 
 ---
@@ -44,20 +44,30 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 
 | Tabella | Campo | Scopo |
 |---------|-------|-------|
-| `config.profili_reparto_azioni` | `azione_id` | Abilitazione azione per reparto |
+| `config.profili_accesso_azioni` | `azione_id` | Abilitazione azione per profilo |
 | `config.user_override_azioni` | `azione_id` | Override individuale per azione |
 
 ---
 
-### Seed iniziale
+### Seed
 
-| permission_codename | descrizione | pericolosa | area |
-|---------------------|-------------|------------|------|
-| genera_fatture_lotti | Genera fatture da lotti | SI | vendite |
-| genera_fattura | Genera singola fattura | NO | vendite |
-| approva_fattura | Approva fattura | NO | vendite |
-| emetti_fattura | Emetti fattura | NO | vendite |
-| approva_rimessa | Approva rimessa di pagamento | NO | pagamenti |
+| permission_codename | descrizione | pericolosa | area | introdotta |
+|---------------------|-------------|------------|------|------------|
+| genera_fatture_lotti | Genera fatture da lotti | SI | vendite | seed iniziale |
+| genera_fattura | Genera singola fattura | NO | vendite | seed iniziale |
+| approva_fattura | Approva fattura | NO | vendite | seed iniziale |
+| emetti_fattura | Emetti fattura | NO | vendite | seed iniziale |
+| approva_rimessa | Approva rimessa di pagamento | NO | pagamenti | seed iniziale |
+| reset_lotto_draft | Reset lotto a stato DRAFT | SI | vendite | 2026-03-01 |
+| reset_lotto_fattura_draft | Reset singola fattura lotto a DRAFT | SI | vendite | 2026-03-01 |
+| run_commesse_push | Invio commesse a sistema esterno | NO | vendite | 2026-03-01 |
+| prezzo_override_manuale | Modifica manuale prezzo | NO | vendite | 2026-04-17 |
+| approva_prezzo_override | Approva modifica prezzo | NO | vendite | 2026-04-23 |
+| cambia_stato_preventivi | Cambia stato preventivo (emetti/accetta/rifiuta/annulla) | NO | vendite | 2026-05-02 |
+| push_commessa_preventivi | Push preventivo a commessa per fatturazione | SI | vendite | 2026-05-02 |
+| genera_pratica_preventivi | Genera pratica esecutiva da preventivo | NO | vendite | 2026-05-02 |
+| documenti_template_manage | Gestione template e versioni documenti | NO | documenti | 2026-05-03 |
+| documenti_asset_manage | Gestione asset documentali (logo, firma, CSS, allegati) | NO | documenti | 2026-05-03 |
 
 ---
 

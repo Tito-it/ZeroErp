@@ -13,6 +13,7 @@ import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { MANAGE_ICONS } from '../../core/constants'
 import { ROUNDING_DECIMALI_RANGE } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -162,7 +163,7 @@ function buildRowActions(row) {
     {
       key: 'modifica',
       label: t('amm_emittenti_fiscali.ut_action_modifica'),
-      icon: 'pi pi-pencil',
+      icon: MANAGE_ICONS.EDIT,
       visible: canUpdate,
       allowWhenInactive: true,
       command: () => startEdit(row),
@@ -170,7 +171,7 @@ function buildRowActions(row) {
     {
       key: 'rimuovi',
       label: t('amm_emittenti_fiscali.ut_action_rimuovi_config'),
-      icon: 'pi pi-trash',
+      icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: canRemove,
       command: () => removeConfig(row),
@@ -178,7 +179,7 @@ function buildRowActions(row) {
     {
       key: 'configura',
       label: t('amm_emittenti_fiscali.ut_action_configura'),
-      icon: 'pi pi-plus',
+      icon: MANAGE_ICONS.ADD,
       severity: 'primary',
       visible: canConfigure,
       command: () => startEdit(row),

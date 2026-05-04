@@ -40,6 +40,12 @@ export function createCrudAdminStore({
   emitKey,
   extraFilters = {},
   extraFilterDefaults = {},
+  // Default true: gli store CRUD admin contengono dati specifici dell'utente
+  // (scope emittente, filtri attivi, lista corrente). Senza userScoped i dati
+  // residui di un utente verrebbero mostrati al successivo login (regola
+  // memoria feedback_pinia_userscoped.md). Override esplicito a `false` solo
+  // per dati globali condivisi (es. lookup pubblici).
+  userScoped = true,
 }) {
   return defineStore(storeName, () => {
     const { emitDataChanged } = useTabEvents()
@@ -124,5 +130,5 @@ export function createCrudAdminStore({
       items, totalRecords, loading, hasSearched, filters,
       fetchList, fetchDetail, create, update
     }
-  })
+  }, { userScoped })
 }

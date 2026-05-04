@@ -12,19 +12,19 @@ Tabelle correlate:
 [config.profili_accesso_aree](/dbzero/config/tabelle/profili_accesso_aree)
 > [config.profili_accesso_azioni](/dbzero/config/tabelle/profili_accesso_azioni)
 > [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings)
-> [config.profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree) (tabella legacy, in coesistenza)
 
 ---
 ### 🎯 Scopo Principale
-(latest revision 18-04-2026)
+(latest revision 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 
 La tabella **`config.profili_accesso`** è l'**header di un profilo di accesso**:
 raggruppa un set coerente di capability (livelli per area funzionale e flag
 per azione di processo) che può essere assegnato a una o più entità di dominio.
 
-È il **rimpiazzo generalizzato** di `config.profili_reparto_aree`, che oggi
-mescola header + dettagli + binding legato esclusivamente a un reparto.
-Il nuovo modello separa i tre concetti:
+E' la sorgente unica di verita' per le capability. Il modello separa
+chiaramente i tre concetti (rispetto al precedente legacy
+`profili_reparto_aree`, che mescolava header + dettagli + binding legato
+solo a un reparto):
 
 * **Header** (questa tabella) → classifica e definisce il profilo
 * **Dettagli** ([`profili_accesso_aree`](/dbzero/config/tabelle/profili_accesso_aree), [`profili_accesso_azioni`](/dbzero/config/tabelle/profili_accesso_azioni)) → capability
@@ -72,15 +72,16 @@ generati dalla migrazione dati.
 
 ---
 
-### Relazione con il modello legacy
+### Storia del cutover
 
-Fino al cutover di `script.fn_resolve_livello_area` e compagnia (§4.8 del
-WIP multi-face-auth), le tabelle legacy `profili_reparto_aree/azioni` **restano
-in uso** come sorgente primaria per gli operatori. La migrazione dati
-(`80_data/changelog/20260418-42-migrate-profili-reparto-to-profili-accesso`)
-replica il contenuto legacy nel nuovo modello in modalità non distruttiva,
-permettendo di sviluppare la nuova catena di risoluzione in parallelo e
-di fare il cutover con feature flag.
+Il modello legacy `config.profili_reparto_aree/_azioni` e' stato dismesso
+il 2026-05-04 (changeSet `20260505-02-drop-profili-reparto`). I dati pre-cutover
+sono stati migrati nel modello nuovo dal backfill non distruttivo
+`20260418-42-migrate-profili-reparto-to-profili-accesso` (con codice
+profilo `REPARTO_<codice_interno>` per ogni unita organizzativa). Dal
+04-05-2026 i 4 resolver (`fn_resolve_livello_area`,
+`fn_check_azione_processo`, `fn_get_user_permissions_map`,
+`fn_get_user_actions_map`) leggono solo dal modello generalizzato.
 
 ---
 

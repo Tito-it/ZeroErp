@@ -288,7 +288,7 @@ a {
 
 /* Pulsante elimina riga — icona cestino.
  * Colori via --app-btn-delete-* in theme.css.
- * Uso: <Button icon="pi pi-trash" text rounded size="small" class="app-delete-btn" /> */
+ * Uso: <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small" class="app-delete-btn" /> */
 .app-delete-btn.p-button {
   color: var(--app-btn-delete-color);
 }
@@ -297,6 +297,22 @@ a {
   background: var(--app-btn-delete-hover-bg);
 }
 .app-delete-btn.p-button:disabled {
+  color: var(--app-btn-disabled-color);
+}
+
+/* Pulsante "Genera PDF" / azione PDF (motore documentale).
+ * Colori via --app-btn-pdf-* in theme.css. Stesso aspetto del cestino
+ * (rosso PDF) ma classe semantica distinta: usata da `GeneraPdfButton`
+ * e da pulsanti download PDF nelle toolbar/lista documenti generati.
+ * Uso: <Button icon="pi pi-file-pdf" text rounded size="small" class="app-pdf-btn" /> */
+.app-pdf-btn.p-button {
+  color: var(--app-btn-pdf-color);
+}
+.app-pdf-btn.p-button:hover:not(:disabled) {
+  color: var(--app-btn-pdf-hover-color);
+  background: var(--app-btn-pdf-hover-bg);
+}
+.app-pdf-btn.p-button:disabled {
   color: var(--app-btn-disabled-color);
 }
 

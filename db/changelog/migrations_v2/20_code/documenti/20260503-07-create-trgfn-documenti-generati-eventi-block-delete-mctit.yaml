@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Block DELETE su documenti.documenti_generati_eventi (append-only)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20260503-07-create-trgfn-documenti-generati-eventi-block-delete-mctit.yaml
+
+  - changeSet:
+      id: 20260503-07-create-trgfn-documenti-generati-eventi-block-delete
+      author: mctit
+      comment: >
+        Guard append-only: blocca DELETE fisico su documenti_generati_eventi. La
+        timeline degli eventi e' immutabile per audit del ciclo vita documento.
+        Correzioni/segnalazioni vanno registrate come evento ulteriore (esito
+        KO/WARN), mai cancellando lo storico. Messaggio definito in
+        config.messaggi_errore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_eventi_block_delete()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $$
+              -- Scopo:
+              --   Blocca la cancellazione fisica di eventi della timeline documento.
+              --
+              -- Regola:
+              --   La tabella documenti_generati_eventi e' append-only per audit.
+              --   Una correzione/segnalazione si registra come nuovo evento
+              --   (esito KO/WARN), non cancellando lo storico.
+              --
+              -- Errore:
+              --   E_EVENTO_DOCUMENTO_DELETE_VIETATA
+              BEGIN
+                PERFORM script.fn_log_and_raise_error(
+                  'documenti', 'trgfn_documenti_generati_eventi_block_delete',
+                  'E_EVENTO_DOCUMENTO_DELETE_VIETATA',
+                  jsonb_build_object(
+                    'evento_id', OLD.id,
+                    'documento_generato_id', OLD.documento_generato_id,
+                    'evento_tipo', OLD.evento_tipo,
+                    'evento_at', OLD.evento_at::text
+                  ),
+                  NULL::uuid
+                );
+                RETURN OLD;
+              END;
+              $$;
+
+              CREATE TRIGGER trg_documenti_generati_eventi_a10_block_delete_dlt
+                BEFORE DELETE
+                ON documenti.documenti_generati_eventi
+                FOR EACH ROW
+                EXECUTE FUNCTION documenti.trgfn_documenti_generati_eventi_block_delete();
+
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_eventi_block_delete() IS
+                'Guard append-only: blocca DELETE su documenti_generati_eventi. La timeline e'' immutabile, correzioni vanno registrate come nuovo evento.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_documenti_generati_eventi_a10_block_delete_dlt
+                ON documenti.documenti_generati_eventi;
+              DROP FUNCTION IF EXISTS documenti.trgfn_documenti_generati_eventi_block_delete();

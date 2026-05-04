@@ -51,7 +51,7 @@ watch(() => props.preventivoId, loadIntegrazione, { immediate: true })
 function onPushCommessa() {
   confirmAction({
     message: t('preventivi.conferma_push_commessa'),
-    accept: async () => {
+    onAccept: async () => {
       const result = await execute(
         () => store.inviaACommessa(props.preventivoId),
         { successMessage: t('preventivi.push_commessa_ok') }

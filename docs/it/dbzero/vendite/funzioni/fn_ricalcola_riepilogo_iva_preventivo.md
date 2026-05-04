@@ -1,0 +1,105 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_ricalcola_riepilogo_iva_preventivo.md" %}
+# ⚙️ Funzione `fn_ricalcola_riepilogo_iva_preventivo`
+
+```sql
+CREATE FUNCTION fn_ricalcola_riepilogo_iva_preventivo(p_preventivo_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepilogo_iva_preventivo(p_preventivo_id bigint)
+ RETURNS TABLE(deleted_rows integer, inserted_rows integer)
+ LANGUAGE plpgsql
+AS $function$
+-- Scopo: ricalcola il riepilogo IVA per preventivo,
+-- pattern speculare a fn_ricalcola_riepilogo_iva_fattura.
+-- Aggrega per (iva_id, natura_id, esigibilita, split_payment)
+-- - per preventivi gli ultimi 3 sono sempre NULL oggi -
+-- e applica ROUND a 2 decimali sulla SUM imponibili,
+-- mai per riga. Override aliquota da stato emittente via
+-- config.fn_get_aliquota_iva (allineamento fatture).
+DECLARE
+    v_deleted_rows       integer := 0;
+    v_inserted_rows      integer := 0;
+    v_stato_emittente_id anagrafiche.soggetti.stato_id%TYPE;
+BEGIN
+    IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite',
+            'fn_ricalcola_riepilogo_iva_preventivo',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_preventivo_id', 'valore', p_preventivo_id),
+            NULL::uuid,
+            'p_preventivo_id obbligatorio e > 0'
+        );
+    END IF;
+
+    -- Recupera stato emittente per override aliquota IVA.
+    -- Chain: preventivi -> emittenti_fiscali -> soggetti_ruoli -> soggetti.
+    -- Se preventivo non ha emittente o catena non risolve,
+    -- v_stato_emittente_id resta NULL e fn_get_aliquota_iva
+    -- ritorna l'aliquota base.
+    SELECT s.stato_id
+      INTO v_stato_emittente_id
+      FROM vendite.preventivi p
+      JOIN anagrafiche.emittenti_fiscali ef
+        ON ef.id = p.emittente_fiscale_id
+      JOIN anagrafiche.soggetti_ruoli sr
+        ON sr.id = ef.soggetto_ruolo_id
+      JOIN anagrafiche.soggetti s
+        ON s.id = sr.soggetto_id
+     WHERE p.id = p_preventivo_id;
+
+    -- Pulisci riepiloghi precedenti.
+    DELETE FROM vendite.preventivi_riepiloghi_iva
+     WHERE preventivo_id = p_preventivo_id;
+    GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
+
+    -- Aggregazione fiscalmente corretta:
+    --   1) imponibile_riga = qta * prezzo * (1 - sconto/100) full precision
+    --   2) group by iva_id (natura/esigibilita/split sempre NULL nei preventivi)
+    --   3) imponibile riepilogo = ROUND(SUM, 2)
+    --   4) imposta = ROUND(imponibile_aliquota * aliquota_override/100, 2)
+    --   5) arrotondamento = SUM full - SUM rounded
+    WITH righe AS (
+        SELECT
+            pr.preventivo_id,
+            pr.iva_id,
+            pr.quantita * pr.prezzo_unitario
+              * (1 - COALESCE(pr.sconto_percentuale, 0) / 100) AS imponibile_riga
+          FROM vendite.preventivi_righe pr
+         WHERE pr.preventivo_id = p_preventivo_id
+           AND pr.attivo IS TRUE
+           AND pr.quantita > 0
+    )
+    INSERT INTO vendite.preventivi_riepiloghi_iva
+        (preventivo_id, iva_id, natura_id, esigibilita, split_payment,
+         imponibile, imposta, arrotondamento)
+    SELECT
+        r.preventivo_id,
+        r.iva_id,
+        NULL::integer  AS natura_id,
+        NULL::char(1)  AS esigibilita,
+        NULL::boolean  AS split_payment,
+        ROUND(SUM(r.imponibile_riga), 2)                                       AS imponibile,
+        ROUND(
+            ROUND(SUM(r.imponibile_riga), 2)
+            * (COALESCE(config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id), 0)::numeric / 100::numeric),
+            2
+        )                                                                      AS imposta,
+        SUM(r.imponibile_riga) - ROUND(SUM(r.imponibile_riga), 2)               AS arrotondamento
+      FROM righe r
+     GROUP BY r.preventivo_id, r.iva_id;
+    GET DIAGNOSTICS v_inserted_rows = ROW_COUNT;
+
+    RETURN QUERY SELECT v_deleted_rows, v_inserted_rows;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_preventivo(p_preventivo_id bigint)
+IS 'Ricalcola riepilogo IVA preventivo (pattern fiscalmente corretto, speculare a fn_ricalcola_riepilogo_iva_fattura). Override aliquota da stato emittente via config.fn_get_aliquota_iva. Firma usa %TYPE su vendite.preventivi.id (tipo concreto risolto: bigint).';
+```
+
+---
+{% include-markdown "signature-core.md" %}

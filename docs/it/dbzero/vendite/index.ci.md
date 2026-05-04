@@ -59,6 +59,7 @@
 - [ordini_righe_fulfillment](manual/ordini_righe_fulfillment.md) — Rappresenta l’**evasione (parziale o totale)** delle **righe d’ordine** verso le **righe di DDT**. Ogni record è una **mappatura puntuale riga↔riga** con la **quantità evasa** in **UoM base** (`qta_evasa`).
 - [preventivi](manual/preventivi.md) — La tabella **`vendite.preventivi`** rappresenta la **testata del preventivo commerciale**: raccoglie cliente/BA/utility, condizioni economiche, validita` e stato documento.
 - [preventivi_indirizzi](manual/preventivi_indirizzi.md) — `vendite.preventivi_indirizzi` memorizza lo **snapshot indirizzi** associato al preventivo (fatturazione/spedizione/altri tipi ammessi), mantenendo storico coerente anche se l’anagrafica origine cambia nel tempo.
+- [preventivi_riepiloghi_iva](manual/preventivi_riepiloghi_iva.md) — (latest review 02-05-2026)
 - [preventivi_righe](manual/preventivi_righe.md) — `vendite.preventivi_righe` contiene il dettaglio economico-tecnico del preventivo: articolo, quantita`, prezzo, sconto, IVA e snapshot UoM operativa.
 - [promo_articoli](manual/promo_articoli.md) — (latest review 14-04-26)
 - [registri_fatturazione](manual/registri_fatturazione.md) — (latest review 26-01-2026) `vendite.registri_fatturazione` definisce i **registri fiscali di emissione**: serie, regole di reset e collegamento all’emittente fiscale. Ogni fattura si aggancia a un registro, che governa numerazione e perimetro fiscale.
@@ -77,7 +78,7 @@
 - [fn_cleanup_fatture_by_ids](manual/fn_cleanup_fatture_by_ids.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_cleanup_fatture_by_ids()`** centralizza il cleanup di fatture e righe correlate, ripristinando le righe di `attivita_fatturabili`.
 - [fn_close_giornaliero_lotto](manual/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
 - [fn_complete_lotto_task_run](manual/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
-- [fn_crea_revisione_preventivo](manual/fn_crea_revisione_preventivo.md) — (latest review 03-04-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive e indirizzi, disattivando la revisione corrente.
+- [fn_crea_revisione_preventivo](manual/fn_crea_revisione_preventivo.md) — (latest review 03-05-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive e indirizzi, disattivando la revisione corrente.
 - [fn_create_fatturazione_lotto](manual/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
 - [fn_emit_attivita_fatturabili_da_commessa](manual/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 24-02-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 - [fn_fail_lotto_task_run](manual/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
@@ -129,8 +130,9 @@
 - [fn_ricalcola_fattura](manual/fn_ricalcola_fattura.md) — La funzione **`vendite.fn_ricalcola_fattura()`** e` un wrapper che esegue, **in sequenza**:
 - [fn_ricalcola_riepiloghi_iva_lotto](manual/fn_ricalcola_riepiloghi_iva_lotto.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_ricalcola_riepiloghi_iva_lotto()`** ricalcola i riepiloghi IVA per tutte le fatture collegate a un lotto, usando un’elaborazione a batch e delegando il ricalcolo alla funzione per singola fattura.   Al termine di ciascun ricalcolo aggiorna anche i **totali testata**.
 - [fn_ricalcola_riepilogo_iva_fattura](manual/fn_ricalcola_riepilogo_iva_fattura.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_ricalcola_riepilogo_iva_fattura()`** ricalcola i riepiloghi IVA per una singola fattura, eliminando i valori esistenti e rigenerandoli dalle righe (`fatture_righe`).
+- [fn_ricalcola_riepilogo_iva_preventivo](manual/fn_ricalcola_riepilogo_iva_preventivo.md) — (latest review 02-05-2026)
 - [fn_ricalcola_totali_fattura](manual/fn_ricalcola_totali_fattura.md) — La funzione **`vendite.fn_ricalcola_totali_fattura()`** ricalcola i totali sulla testata fattura a partire dai **riepiloghi IVA** e dai **fondi fattura**, applicando le regole di arrotondamento definite per **emittente/utility**.
-- [fn_ricalcola_totali_preventivo](manual/fn_ricalcola_totali_preventivo.md) — (latest review 03-04-2026) `vendite.fn_ricalcola_totali_preventivo(p_preventivo_id)` ricalcola i **totali della testata** (imponibile, IVA, totale documento) a partire dalle righe attive. Invocata sia direttamente dal backend sia automaticamente dal trigger AFTER STATEMENT su `preventivi_righe`.
+- [fn_ricalcola_totali_preventivo](manual/fn_ricalcola_totali_preventivo.md) — (latest review 02-05-2026)
 - [fn_select_attivita_fatturabili](manual/fn_select_attivita_fatturabili.md) — (latest review 27-01-2026) La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe **eleggibili** per la fatturazione e, se richiesto, le **locka** in modo atomico.
 - [fn_set_arrotondamento_scope](manual/fn_set_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_set_arrotondamento_scope()`** imposta (upsert) il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione.
 - [fn_set_documento_canale_stato](manual/fn_set_documento_canale_stato.md) — (latest review 24-02-2026) Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.
@@ -186,7 +188,7 @@
 - [trgfn_promo_articoli_guard_data_driven](manual/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
 
 ## 🔍 Views (manuale)
-- [vw_preventivi_list](manual/vw_preventivi_list.md) — (latest review 07-04-2026)
+- [vw_preventivi_list](manual/vw_preventivi_list.md) — (latest review 02-05-2026 — rev3)
 - [vw_preventivi_pratiche](manual/vw_preventivi_pratiche.md) — (latest review 03-04-2026) `vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita** tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
-- [vw_preventivi_righe_dettaglio](manual/vw_preventivi_righe_dettaglio.md) — (latest review 03-04-2026) `vendite.vw_preventivi_righe_dettaglio` arricchisce le righe preventivo con i dati denormalizzati di articolo, unita' di misura operativa e aliquota IVA. Include **importi calcolati** per evitare duplicazione della logica di calcolo nel backend/frontend.
+- [vw_preventivi_righe_dettaglio](manual/vw_preventivi_righe_dettaglio.md) — (latest review 02-05-2026)
 - [vw_preventivi_stato_fatturazione](manual/vw_preventivi_stato_fatturazione.md) — (latest review 03-04-2026) Due viste complementari per il **monitoraggio della pipeline fatturazione** dei preventivi:

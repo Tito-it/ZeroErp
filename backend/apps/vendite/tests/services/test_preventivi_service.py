@@ -33,6 +33,11 @@ Indice test eseguiti:
 23) test_gestisci_riga_L2_sconto_oltre_limite_bloccato — sconto 20% > limite 15% -> E_PREV_SCONTO_ECCESSIVO
 24) test_gestisci_riga_L2_maggiorazione_oltre_limite_bloccato — +10% > limite 5% -> E_PREV_MAGGIORAZIONE_ECCESSIVA
 25) test_gestisci_riga_L2_superuser_bypass — superuser salta anche L2
+26) test_list_riepilogo_iva_delega_a_repo — facade lettura riepilogo IVA aggregato
+27) test_list_preventivi_default_solo_revisione_attiva_true — filtro lista default
+28) test_list_preventivi_solo_revisione_attiva_false — toggle "Mostra storico"
+29) test_gestisci_riga_deriva_qta_operativa_da_factor — qta_op = quantita*factor
+30) test_gestisci_riga_deriva_qta_operativa_factor_default_1 — fallback factor=1
 """
 
 import unittest
@@ -301,19 +306,103 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.update_preventivo.assert_not_called()
 
     # Scopo: transizioni diverse da ACCETTATO ignorano i 2 parametri (no
-    # update testata, solo cambio stato).
+    # update testata, solo cambio stato). EMESSO triggera il hook PDF
+    # atomico: lo isoliamo qui patchando _genera_pdf_emissione (i test
+    # dedicati al hook stanno piu' sotto).
     def test_cambia_stato_emesso_ignora_immediata_e_competenza(self):
         from datetime import date
         from apps.vendite.services.preventivi_service import cambia_stato
 
         self.mock_repo.cambia_stato.return_value = {"status": "ok"}
-        cambia_stato(1, "EMESSO", fatturazione_immediata=True,
-                     competenza_mese=date(2026, 9, 1))
-        # No get_preventivo (non serve sul gate accettazione), no update_preventivo.
+        with patch(
+            "apps.vendite.services.preventivi_service._genera_pdf_emissione"
+        ) as mock_pdf:
+            cambia_stato(1, "EMESSO", fatturazione_immediata=True,
+                         competenza_mese=date(2026, 9, 1))
+        # No get_preventivo sul gate, no update_preventivo.
         self.mock_repo.update_preventivo.assert_not_called()
         self.mock_repo.cambia_stato.assert_called_once_with(
             1, "EMESSO", "django_api",
         )
+        # Hook PDF atomico chiamato post-cambio-stato.
+        mock_pdf.assert_called_once()
+
+    # Scopo: La transizione *->EMESSO genera atomicamente il PDF v1 dentro
+    # la stessa transazione del cambio stato. Verifichiamo che il service
+    # invochi DocumentGenerationService.genera_documento con i parametri
+    # ricavati dal preventivo (emittente, sorgente PREVENTIVO, id, uid).
+    def test_cambia_stato_emesso_genera_pdf_atomico(self):
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 42, "uid": "uid-42",
+            "emittente_fiscale_id": 7,
+        }
+
+        with patch(
+            "apps.vendite.services.preventivi_service.DocumentiRepository"
+        ) as MockDocRepo, patch(
+            "apps.vendite.services.preventivi_service.DocumentGenerationService"
+        ) as MockGen:
+            mock_doc_repo = MagicMock()
+            MockDocRepo.return_value = mock_doc_repo
+            mock_doc_repo.get_sorgente_tipo_id_by_codice.return_value = {
+                "id": 99, "attivo": True,
+            }
+            mock_gen = MagicMock()
+            MockGen.return_value = mock_gen
+
+            user = MagicMock()
+            cambia_stato(42, "EMESSO", user=user)
+
+            # Cambio stato eseguito.
+            self.mock_repo.cambia_stato.assert_called_once_with(
+                42, "EMESSO", "django_api",
+            )
+            # genera_documento chiamato con i parametri attesi.
+            mock_gen.genera_documento.assert_called_once_with(
+                user,
+                emittente_fiscale_id=7,
+                sorgente_tipo_id=99,
+                sorgente_id=42,
+                sorgente_uid="uid-42",
+            )
+
+    # Scopo: Render fail durante l'emissione propaga l'eccezione del
+    # DocumentGenerationService al chiamante. La transaction.atomic
+    # esterna garantisce rollback atomico (testato a livello unit
+    # solo per il fatto che l'eccezione passi: l'effetto rollback e'
+    # garantito dal contract di transaction.atomic).
+    def test_cambia_stato_emesso_render_fail_propaga(self):
+        from apps.core.services.error_manager import ServiceError
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "uid": "uid-1", "emittente_fiscale_id": 7,
+        }
+
+        with patch(
+            "apps.vendite.services.preventivi_service.DocumentiRepository"
+        ) as MockDocRepo, patch(
+            "apps.vendite.services.preventivi_service.DocumentGenerationService"
+        ) as MockGen:
+            mock_doc_repo = MagicMock()
+            MockDocRepo.return_value = mock_doc_repo
+            mock_doc_repo.get_sorgente_tipo_id_by_codice.return_value = {
+                "id": 99, "attivo": True,
+            }
+            mock_gen = MagicMock()
+            MockGen.return_value = mock_gen
+            mock_gen.genera_documento.side_effect = ServiceError(
+                code="E_DOCUMENTI_RENDER_FAILED",
+                message="boom",
+            )
+
+            with self.assertRaises(ServiceError) as ctx:
+                cambia_stato(1, "EMESSO", user=MagicMock())
+            self.assertEqual(ctx.exception.code, "E_DOCUMENTI_RENDER_FAILED")
 
     # ── Eliminazione bozza (abbandono drawer) ──
 
@@ -1061,3 +1150,103 @@ class TestPreventiviService(unittest.TestCase):
         # update_riga(riga_id, **kwargs) — verifica kwargs.
         self.assertEqual(call.kwargs["stato_approvazione_prezzo"], "PENDING")
         self.assertEqual(call.kwargs["pratica_approvazione_prezzo_id"], 8888)
+
+    # ── Sprint riepilogo IVA + filtri lista (sessione 03-05-2026) ──
+
+    # Scopo: list_riepilogo_iva e' un thin facade su repo: verifica solo
+    #        delegation + pass-through del payload.
+    def test_list_riepilogo_iva_delega_a_repo(self):
+        from apps.vendite.services.preventivi_service import list_riepilogo_iva
+
+        self.mock_repo.list_riepilogo_iva.return_value = [
+            {"iva_id": 1, "iva_aliquota": 22, "imponibile": "100.00", "imposta": "22.00",
+             "arrotondamento": "0.0001"},
+            {"iva_id": 2, "iva_aliquota": 10, "imponibile": "50.00", "imposta": "5.00",
+             "arrotondamento": "-0.0002"},
+        ]
+
+        result = list_riepilogo_iva(42)
+
+        self.mock_repo.list_riepilogo_iva.assert_called_once_with(42)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["iva_aliquota"], 22)
+
+    # Scopo: filtro solo_revisione_attiva default True. Verifica che il
+    #        service propaghi True al repo quando il parametro non e' passato.
+    def test_list_preventivi_default_solo_revisione_attiva_true(self):
+        from apps.vendite.services.preventivi_service import list_preventivi
+
+        self.mock_repo.list_preventivi.return_value = ([], 0)
+
+        list_preventivi(page=1, page_size=10)
+
+        kwargs = self.mock_repo.list_preventivi.call_args.kwargs
+        self.assertTrue(kwargs["solo_revisione_attiva"])
+
+    # Scopo: filtro solo_revisione_attiva pass-through esplicito False
+    #        (il FE col toggle "Mostra storico" passa false).
+    def test_list_preventivi_solo_revisione_attiva_false(self):
+        from apps.vendite.services.preventivi_service import list_preventivi
+
+        self.mock_repo.list_preventivi.return_value = ([], 0)
+
+        list_preventivi(page=1, page_size=10, solo_revisione_attiva=False)
+
+        kwargs = self.mock_repo.list_preventivi.call_args.kwargs
+        self.assertFalse(kwargs["solo_revisione_attiva"])
+
+    # Scopo: derivazione qta_operativa quando il payload manda solo `quantita`
+    #        (UX standard riga preventivo). Il service consulta factor_to_base
+    #        della UoM operativa e calcola qta_operativa = quantita * factor.
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    def test_gestisci_riga_deriva_qta_operativa_da_factor(self, mock_suggerisci):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        self.mock_repo.create_riga.return_value = {"id": 99}
+        # factor_to_base = 12 (es. 1 confezione = 12 pezzi)
+        self.mock_repo.get_articolo_uom_factor.return_value = Decimal("12")
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "5.00", "origine": "CATEGORIA",
+            "listino_id": 100, "contratto_id": None, "promo_id": None,
+            "tipo_variazione_applicata": None, "valore_variazione_applicata": None,
+        }
+
+        gestisci_riga(
+            1, {"articolo_id": "art-uuid", "uom_operativa_id": 8, "quantita": "3"},
+            auth_user_id=42,
+        )
+
+        call = self.mock_repo.create_riga.call_args.kwargs
+        # quantita 3 (UoM operativa) * factor 12 = 36 in UoM base
+        self.assertEqual(Decimal(call["qta_operativa"]), Decimal("36"))
+        self.assertEqual(Decimal(call["factor_to_base"]), Decimal("12"))
+
+    # Scopo: derivazione qta_operativa fallback factor=1 quando l'articolo
+    #        non ha mappa UoM operativa (caso edge: solo UoM base).
+    #        Resolver ritorna stesso prezzo del payload per evitare check L1
+    #        (focus del test e' la derivazione qta_operativa, non l'override).
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    def test_gestisci_riga_deriva_qta_operativa_factor_default_1(self, mock_suggerisci):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        self.mock_repo.create_riga.return_value = {"id": 99}
+        # Lookup factor_to_base ritorna None: UoM operativa non mappata
+        self.mock_repo.get_articolo_uom_factor.return_value = None
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "10.00", "origine": "CATEGORIA",
+            "listino_id": 100, "contratto_id": None, "promo_id": None,
+            "tipo_variazione_applicata": None, "valore_variazione_applicata": None,
+        }
+
+        gestisci_riga(
+            1, {"articolo_id": "art-uuid", "uom_operativa_id": 8, "quantita": "5",
+                "prezzo_unitario": "10.00"},
+            auth_user_id=42,
+        )
+
+        call = self.mock_repo.create_riga.call_args.kwargs
+        # Fallback factor=1: qta_operativa = quantita
+        self.assertEqual(Decimal(call["qta_operativa"]), Decimal("5"))
+        self.assertEqual(Decimal(call["factor_to_base"]), Decimal("1"))

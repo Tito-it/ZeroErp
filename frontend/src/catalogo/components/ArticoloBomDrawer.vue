@@ -375,7 +375,7 @@ function buildRigaActions(row) {
     {
       key: 'duplica-versione',
       label: t('catalogo.duplica_come_nuova_versione'),
-      icon: 'pi pi-clone',
+      icon: MANAGE_ICONS.CLONE,
       // Solo righe aperte si possono duplicare (BE solleva
       // E_BOM_SORGENTE_GIA_CHIUSA su righe chiuse). Stesso check truthy
       // di chiudi-riga e dell'inline edit valido_al.
@@ -385,7 +385,7 @@ function buildRigaActions(row) {
     {
       key: 'chiudi-riga',
       label: t('catalogo.chiudi_riga'),
-      icon: 'pi pi-calendar-times',
+      icon: MANAGE_ICONS.CLOSE_DATE,
       severity: 'danger',
       // Truthy check: coerente con il template inline edit `data.puo_chiudersi`
       // e col pattern progetto (es. `is_base`, `attivo`). Se la migration BE
@@ -478,9 +478,9 @@ function buildRigaActions(row) {
                 <div class="flex gap-1 align-items-center">
                   <DatePicker v-model="editingValidoAlValue" :date-format="DATE_FORMAT"
                     show-icon show-button-bar style="width: 110px;" />
-                  <Button icon="pi pi-check" text rounded size="small" class="app-action-btn"
+                  <Button :icon="MANAGE_ICONS.CONFIRM" text rounded size="small" class="app-action-btn"
                     @click="confirmEditValidoAl(data)" />
-                  <Button icon="pi pi-times" text rounded size="small"
+                  <Button :icon="MANAGE_ICONS.CANCEL" text rounded size="small"
                     @click="cancelEditValidoAl" />
                 </div>
               </template>
@@ -612,7 +612,7 @@ function buildRigaActions(row) {
     <div class="flex justify-end gap-2 mt-1">
       <Button :label="t('common.cancel')" text @click="annullaChiusura" />
       <Button :label="t('catalogo.chiudi_riga_conferma')"
-        icon="pi pi-calendar-times" severity="warn"
+        :icon="MANAGE_ICONS.CLOSE_DATE" severity="warn"
         :disabled="!chiudiDialogData || loading" :loading="loading"
         @click="confermaChiusura" />
     </div>
@@ -663,7 +663,7 @@ function buildRigaActions(row) {
     <div class="flex justify-end gap-2 mt-1">
       <Button :label="t('common.cancel')" text @click="annullaDuplicaVersione" />
       <Button :label="t('catalogo.duplica_versione_conferma')"
-        icon="pi pi-clone"
+        :icon="MANAGE_ICONS.CLONE"
         :disabled="!duplicaDialogChiudiAl || loading" :loading="loading"
         @click="confermaDuplicaVersione" />
     </div>

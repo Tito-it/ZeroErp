@@ -13,7 +13,7 @@ import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative } from '../api/amministrazione'
 import { useSetupStatus } from '../composables/useSetupStatus'
 import { buildFilterSuperAdminOptions, buildFilterStatoOptions } from '../constants'
-import { RUOLO_APPLICATIVO, READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
+import { RUOLO_APPLICATIVO, READONLY_DOMAINS, TAB_ENTITIES, MANAGE_ICONS } from '../../core/constants'
 import OperatoreDrawer from '../components/OperatoreDrawer.vue'
 import OperatorePermessiDrawer from '../components/OperatorePermessiDrawer.vue'
 import OperatoriNonAssegnatiBanner from '../components/OperatoriNonAssegnatiBanner.vue'
@@ -101,7 +101,7 @@ function buildRowActions(data) {
     {
       key: 'gestisci-permessi',
       label: t('amm.gestisci_permessi'),
-      icon: 'pi pi-shield',
+      icon: MANAGE_ICONS.PERMISSIONS,
       command: () => permessiDrawer.editRow(data, 'auth_user_id'),
     },
   ]

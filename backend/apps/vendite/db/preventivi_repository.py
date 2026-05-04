@@ -45,6 +45,7 @@ class PreventiviRepository:
         data_da: date | None = None,
         data_al: date | None = None,
         search: str | None = None,
+        solo_revisione_attiva: bool = True,
         auth_user_id: int | None = None,
         limit: int,
         offset: int,
@@ -76,6 +77,23 @@ class PreventiviRepository:
             # cliente_denominazione nella vista e' ragione_sociale_completa
             like = f"%{search}%"
             params.extend([like, like])
+        # Filtro revisione attiva: di default mostra solo l'ultima revisione
+        # per numero. La condizione corretta e' "non esiste una revisione
+        # successiva per lo stesso numero": copre sia i preventivi mai
+        # revisionati (single-rev, is_revision_attiva=false di default DDL)
+        # sia le revisioni effettive (rev N+1 dopo fn_crea_revisione_preventivo).
+        # NB: NON usiamo `is_revision_attiva IS TRUE` perche' il flag e' false
+        # di default su crea_preventivo: filtrarlo escluderebbe quasi tutti i
+        # preventivi single-revision. Subquery NOT EXISTS supportata da indice
+        # implicito su (numero, rev). Quando l'operatore vuole vedere lo
+        # storico, il FE passa solo_revisione_attiva=false.
+        if solo_revisione_attiva:
+            conditions.append(
+                "NOT EXISTS ("
+                " SELECT 1 FROM vendite.preventivi p2"
+                "  WHERE p2.numero = v.numero AND p2.rev > v.rev"
+                ")"
+            )
 
         # Scope emittente: la vista espone emittente_fiscale_id (PK reale di
         # anagrafiche.emittenti_fiscali.id, post brief preventivi rev2). Usa
@@ -124,6 +142,15 @@ class PreventiviRepository:
                 p.numero,
                 p.rev,
                 p.is_revision_attiva,
+                -- has_next_revision: true se esiste un'altra riga con stesso
+                -- numero e rev maggiore (= questo preventivo e' superseded).
+                -- Affidabile indipendentemente dal flag is_revision_attiva
+                -- (default DDL false: non e' single source of truth — vedi
+                -- nota in repo.list_preventivi).
+                EXISTS (
+                  SELECT 1 FROM vendite.preventivi p2
+                   WHERE p2.numero = p.numero AND p2.rev > p.rev
+                ) AS has_next_revision,
                 p.data::text AS data,
                 p.stato_doc_preventivo_id,
                 sdp.codice_interno AS stato_codice_interno,
@@ -145,6 +172,7 @@ class PreventiviRepository:
                 p.totale_imponibile::text AS totale_imponibile,
                 p.totale_iva::text AS totale_iva,
                 p.totale_documento::text AS totale_documento,
+                p.emittente_fiscale_id,
                 p.storicizza,
                 p.meta,
                 p.data_insert::text AS data_insert,
@@ -170,12 +198,38 @@ class PreventiviRepository:
     # ══════════════════════════════════════════════════════════
 
     # Scopo: Restituisce righe preventivo dalla vista denormalizzata.
-    # La vista include importo_riga e importo_iva_riga calcolati.
+    # La vista include importo_riga (ROUND 2), imponibile_riga_full (full
+    # precision) e iva_descrizione. NB: importo_iva_riga e' stato rimosso
+    # dalla view (l'IVA per riga e' concettualmente errata, art. 21 DPR 633/72:
+    # IVA si calcola sull'aggregato per aliquota, vedi vendite.preventivi_riepiloghi_iva).
     def list_righe(self, preventivo_id: int) -> list[PreventivoRigaRow]:
         sql = """
             SELECT * FROM vendite.vw_preventivi_righe_dettaglio
             WHERE preventivo_id = %s
             ORDER BY ordine, id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [preventivo_id])
+            return rows_to_list(cursor)
+
+    # Scopo: Restituisce il riepilogo IVA aggregato del preventivo dalla view
+    #        denormalizzata. Una riga per gruppo (iva_id, natura, esigibilita,
+    #        split_payment) — sui preventivi natura/esigibilita/split sono
+    #        sempre NULL (struttura allineata a fatture_riepiloghi_iva per
+    #        coerenza). Imponibile e imposta sono ROUND 2 sull'aggregato per
+    #        aliquota (regola fiscale: DPR 633/72 art. 21 + DM 24/12/93).
+    #        Popolata dal trigger AFTER su preventivi_righe via
+    #        fn_ricalcola_riepilogo_iva_preventivo: il chiamante non orchestra
+    #        il ricalcolo, legge solo lo stato corrente.
+    def list_riepilogo_iva(self, preventivo_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT id, preventivo_id, iva_id, iva_codice, iva_descrizione,
+                   iva_aliquota, natura_id, natura_codice,
+                   esigibilita, split_payment,
+                   imponibile, imposta, arrotondamento, totale_riga
+              FROM vendite.vw_preventivi_riepilogo_iva_dettaglio
+             WHERE preventivo_id = %s
+             ORDER BY iva_aliquota NULLS LAST, iva_id NULLS LAST
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
@@ -507,6 +561,28 @@ class PreventiviRepository:
     # ══════════════════════════════════════════════════════════
     #  INTEGRAZIONE — Pratiche
     # ══════════════════════════════════════════════════════════
+
+    # Scopo: Restituisce il contesto minimo richiesto dal motore documentale
+    #        (Tranche K) per generare un documento da preventivo: `id`,
+    #        `uid` (UUID stringa che finisce su `documenti_generati.sorgente_uid`),
+    #        `emittente_fiscale_id` (colonna nativa NOT NULL del DDL preventivi).
+    #        Niente JOIN su anagrafiche/billing_account: l'emittente_fiscale_id
+    #        e' gia' su `vendite.preventivi.emittente_fiscale_id` (multi-face
+    #        auth, Tranche A). Ritorna None se id inesistente.
+    def get_for_documento_generation(
+        self, preventivo_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                id,
+                uid::text AS uid,
+                emittente_fiscale_id
+              FROM vendite.preventivi
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(preventivo_id)])
+            return row_to_dict(cursor)
 
     # Scopo: Risolve contesto anagrafico dal preventivo per creazione pratica.
     # Restituisce emittente_fiscale_id (PK numerica anagrafiche.emittenti_fiscali.id),

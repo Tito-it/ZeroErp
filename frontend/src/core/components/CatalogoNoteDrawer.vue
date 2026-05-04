@@ -10,7 +10,7 @@ import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { updateNota, deleteNota } from '../../catalogo/api/catalogo'
-import { DRAWER_WIDTH } from '../constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import LookupSelect from './LookupSelect.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import DrawerFooter from './DrawerFooter.vue'
@@ -160,9 +160,9 @@ async function onDelete(n) {
               <span class="nota-card-testo">{{ n.nota_testo }}</span>
             </div>
             <div v-if="!formMode && !isReadonly" class="nota-card-actions">
-              <Button icon="pi pi-pencil" text rounded size="small"
+              <Button :icon="MANAGE_ICONS.EDIT" text rounded size="small"
                 class="app-edit-btn" :title="t('common.edit')" @click="onStartEdit(n)" />
-              <Button icon="pi pi-trash" text rounded size="small"
+              <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small"
                 class="app-delete-btn" :title="t('common.delete')" @click="onDelete(n)" />
             </div>
           </div>
@@ -171,7 +171,7 @@ async function onDelete(n) {
         <div v-if="!formMode && !isReadonly" class="mt-05">
           <Button
             :label="t('catalogo.aggiungi_nota')"
-            icon="pi pi-plus"
+            :icon="MANAGE_ICONS.ADD"
             text size="small"
             class="app-action-btn"
             @click="onStartNew"

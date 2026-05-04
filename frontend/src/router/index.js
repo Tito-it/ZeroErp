@@ -237,6 +237,12 @@ const router = createRouter({
           component: () => import('../config/views/ImpostazioniView.vue'),
           meta: { domain: 'config', menuKey: 'impostazioni' }
         },
+        {
+          path: 'config/documenti',
+          name: 'config-documenti',
+          component: () => import('../config/views/ConfigurazioneDocumentiView.vue'),
+          meta: { domain: 'config', menuKey: 'config-documenti' }
+        },
 
         // --- Catalogo ---
         {

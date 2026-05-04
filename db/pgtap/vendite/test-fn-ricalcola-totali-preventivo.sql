@@ -84,6 +84,12 @@ SELECT
   ) AS stato_draft_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1
   ) AS valuta_id,
+  -- emittente fiscale (richiesto da trigger BEFORE INSERT preventivi
+  -- quando GUC app.current_user_id e' vuota - contesto pgTAP).
+  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
+    WHERE ef.attivo IS TRUE
+    ORDER BY ef.id LIMIT 1
+  ) AS emittente_fiscale_id,
   (SELECT i.id FROM config.iva i
     WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
     LIMIT 1
@@ -97,10 +103,11 @@ SELECT ok(
   (SELECT billing_account_id IS NOT NULL
       AND articolo_id IS NOT NULL
       AND stato_draft_id IS NOT NULL
+      AND emittente_fiscale_id IS NOT NULL
       AND iva_id IS NOT NULL
       AND iva_aliquota > 0
    FROM tmp_rc_refs),
-  '3. Riferimenti minimi disponibili (con IVA > 0)'
+  '3. Riferimenti minimi disponibili (con IVA > 0 + emittente fiscale)'
 );
 
 -- ============================================================
@@ -113,6 +120,7 @@ WITH ins AS (
     billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
     stato_doc_preventivo_id, data,
+    emittente_fiscale_id,
     storicizza, meta
   )
   SELECT
@@ -121,6 +129,7 @@ WITH ins AS (
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
     r.stato_draft_id, DATE '2026-06-01',
+    r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_ricalcola')
   FROM tmp_rc_refs r
   RETURNING id, uid, numero

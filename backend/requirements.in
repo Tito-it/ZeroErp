@@ -30,6 +30,14 @@ cryptography>=44.0
 # Sanitizzazione HTML (preview template email — Fase 6 amm-software)
 bleach>=6.2
 
+# Generazione PDF documenti (motore documentale, Decisione 73)
+# Richiede librerie native Pango/Cairo/HarfBuzz/PixBuf — vedi Dockerfile.
+weasyprint>=68,<69
+
+# Template engine documenti (Jinja2 stile, Decisione 4 sviluppo-documenti).
+# StrictUndefined per fail-fast su variabili context mancanti nel render.
+jinja2>=3.1,<4
+
 # AI Assistant
 anthropic>=0.52
 
