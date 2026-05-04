@@ -26,6 +26,8 @@ import PreventiviForm from './PreventiviForm.vue'
 import PreventiviRigheTable from './PreventiviRigheTable.vue'
 import PreventiviIntegrazione from './PreventiviIntegrazione.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
+import GeneraPdfButton from '../../../documenti/components/GeneraPdfButton.vue'
+import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import Drawer from 'primevue/drawer'
 import Dialog from 'primevue/dialog'
 import DatePicker from 'primevue/datepicker'
@@ -654,6 +656,21 @@ function onNuovaRevisione() {
           size="small" @click="onNuovaRevisione" />
       </div>
 
+      <!-- Genera PDF (Tranche M motore documentale): visibile appena c'e'
+           detail. Disponibile anche su readonly: il PDF e' una snapshot,
+           non modifica il preventivo. `auto-download` scarica subito il
+           file dopo la generazione. -->
+      <div v-if="hasDetail && detail.emittente_fiscale_id" class="mt-025"
+        style="display: flex; justify-content: flex-end; margin-bottom: 0.5rem;">
+        <GeneraPdfButton
+          sorgente-code="PREVENTIVO"
+          :sorgente-id="effectivePreventivoId"
+          :emittente-fiscale-id="detail.emittente_fiscale_id"
+          auto-download
+          size="small"
+        />
+      </div>
+
       <Divider v-if="hasDetail" />
 
       <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup -->
@@ -702,6 +719,16 @@ function onNuovaRevisione() {
           class="mt-1">
           {{ t(pushCommessaReasonKey) }}
         </Message>
+      </template>
+
+      <!-- Documenti generati per il preventivo (Tranche M motore documentale).
+           Building block riusabile da qualsiasi sorgente. -->
+      <template v-if="contentReady && hasDetail && detail.uid">
+        <Divider />
+        <DocumentiGeneratiSorgenteList
+          sorgente-code="PREVENTIVO"
+          :sorgente-id="effectivePreventivoId"
+        />
       </template>
 
       <DrawerFooter v-if="canEditTestataEffective && !isReadonly" :loading="loading" :disabled="!canSave"

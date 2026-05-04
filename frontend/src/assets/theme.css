@@ -137,6 +137,14 @@
   --app-btn-delete-color: var(--p-red-500);
   --app-btn-delete-hover-color: var(--p-red-700);
   --app-btn-delete-hover-bg: var(--p-red-50);
+  /* Pulsante "Genera PDF" / scarica PDF (motore documentale).
+   * Stesso colore di delete (rosso PDF naturale) ma semantica diversa:
+   * usato nelle toolbar drawer/sezioni dove un'azione produce/scarica
+   * un PDF. Le 2 classi (delete/pdf) restano distinte cosi' un eventuale
+   * cambio colore d'azione futuro non impatta il pulsante "Genera PDF". */
+  --app-btn-pdf-color: var(--p-red-500);
+  --app-btn-pdf-hover-color: var(--p-red-700);
+  --app-btn-pdf-hover-bg: var(--p-red-50);
   --app-btn-disabled-color: var(--p-text-muted-color);
 
   /* ===== Aree di contenuto/preview (editor, anteprima, code block) ===== */
