@@ -74,7 +74,7 @@ Convenzione documentata, validata in
 
 | Valore | Tabelle attese |
 |---|---|
-| `PERMESSI` | `user_override_*`, `profili_reparto_*`, `profili_accesso*` |
+| `PERMESSI` | `user_override_*`, `profili_accesso_aree/_azioni/_bindings` |
 | `AUTH` | `risorse_umane_auth_user` (legacy), `identita_digitali` |
 | `ANAGRAFICHE` | (futuro) `soggetti`, `clienti`, `fornitori` |
 | `EMITTENTI` | `user_emittenti_fiscali`, `emittenti_fiscali` |
@@ -86,7 +86,8 @@ documentato + il test fa fallire il pgTAP — by design.
 ## Riferimenti
 
 - DDL: `db/changelog/migrations_v2/00_schema/dbops/20260429-05-create-audit-sources-mctit.yaml`
-- Seed: `db/changelog/migrations_v2/80_data/sql/dbops/audit_sources.csv` (8 righe iniziali)
+- Seed: `db/changelog/migrations_v2/80_data/sql/dbops/audit_sources.csv` (9 righe attive: 5 user_override/emittenti/RUA + identita + 3 profili_accesso_*)
+- Cleanup legacy: `db/changelog/migrations_v2/80_data/changelog/20260505-01-delete-audit-sources-profili-reparto-mctit.yaml`
 - Loader: `db/changelog/migrations_v2/80_data/changelog/20260429-08-upsert-audit-sources-mctit.yaml`
 - Test pgTAP: `db/pgtap/dbops/test-audit-sources-seed.sql`
 - Brief Fase 5: `docs/it/dev/work-in-progress/analisi-refactor.frontend-amm-software.md`

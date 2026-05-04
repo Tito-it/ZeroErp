@@ -228,41 +228,53 @@ indicando app label, nome del model e area di destinazione scelta dal
 catalogo delle aree funzionali. Da quel momento la risoluzione permessi
 per quel model usera' la nuova area.
 
-### 4.4 Tabella `config.profili_reparto_aree`
+### 4.4 Tabella `config.profili_accesso_aree`
 
-> Struttura completa: [profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree)
+> Struttura completa: [profili_accesso_aree](/dbzero/config/tabelle/profili_accesso_aree)
+>
+> *(Storico: ha rimpiazzato `config.profili_reparto_aree`, dismessa il
+> 2026-05-04 con il changeSet `20260505-02-drop-profili-reparto`. Il
+> backfill `20260418-42` ha migrato i dati nel modello generalizzato
+> `profili_accesso` + `profili_accesso_bindings`.)*
 
 Cuore dell'ereditarieta': definisce il livello di accesso (`TUTTO`, `LETTURA`,
-`BLOCCATO`) che ogni reparto ha su ciascuna area funzionale.
-Tutti gli operatori del reparto ereditano questo profilo automaticamente.
+`BLOCCATO`) che ogni profilo (REPARTO, PORTALE, AD_HOC) ha su ciascuna
+area funzionale. Per i profili di tipo REPARTO, tutti gli operatori del
+reparto bound al profilo via `profili_accesso_bindings` ereditano
+questi livelli automaticamente.
 
 **Esempio di uso:** per il reparto Amministrazione, la configurazione
 tipica prevede livello `TUTTO` sull'area Vendite (gli amministrativi
 emettono fatture) e livello `LETTURA` sull'area Acquisti (possono
-consultare ordini e DDT di ingresso ma non modificarli). La riga per
-ciascuna coppia reparto/area viene registrata come profilo, e tutti gli
+consultare ordini e DDT di ingresso ma non modificarli). Il profilo
+REPARTO `REPARTO_AMM` (collegato all'unita organizzativa via
+`profili_accesso_bindings.unita_organizzativa_id`) registra una riga
+in `profili_accesso_aree` per ciascuna coppia profilo/area, e tutti gli
 operatori del reparto ereditano automaticamente questi livelli senza
 ulteriori configurazioni.
 
 Quando serve rivedere il profilo completo di un reparto, si consulta
-questa tabella filtrata per reparto e ordinata per area: il risultato
-e' la "scheda permessi" del reparto, pronta per essere mostrata in
-interfaccia o esportata in audit.
+questa tabella filtrata per `profilo_accesso_id` e ordinata per area:
+il risultato e' la "scheda permessi" del profilo, pronta per essere
+mostrata in interfaccia o esportata in audit.
 
-### 4.5 Tabella `config.profili_reparto_azioni`
+### 4.5 Tabella `config.profili_accesso_azioni`
 
-> Struttura completa: [profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
+> Struttura completa: [profili_accesso_azioni](/dbzero/config/tabelle/profili_accesso_azioni)
+>
+> *(Storico: ha rimpiazzato `config.profili_reparto_azioni`, dismessa
+> il 2026-05-04.)*
 
-Azioni di processo abilitate a livello di reparto. Funziona in coppia con
-`profili_reparto_aree`: il livello area controlla il CRUD, questa tabella
+Azioni di processo abilitate a livello di profilo. Funziona in coppia con
+`profili_accesso_aree`: il livello area controlla il CRUD, questa tabella
 controlla le azioni puntuali.
 
 **Esempio di uso:** per abilitare la generazione fatture al reparto
-Amministrazione, si registra il profilo con riferimento al reparto,
-all'azione identificata dal suo codename Django (es. `genera_fattura`)
-e al flag di abilitazione. Da quel momento tutti gli operatori del
-reparto vedranno il pulsante di generazione attivo senza ulteriori
-override individuali.
+Amministrazione, si registra il profilo con riferimento al
+`profilo_accesso_id` (REPARTO_AMM), all'azione identificata dal suo
+codename Django (es. `genera_fattura`) e al flag di abilitazione. Da
+quel momento tutti gli operatori del reparto vedranno il pulsante di
+generazione attivo senza ulteriori override individuali.
 
 ### 4.6 Tabella `config.user_override_aree`
 
@@ -727,24 +739,43 @@ erDiagram
         boolean pericolosa
     }
 
-    profili_reparto_aree {
+    profili_accesso {
         int id PK
-        int unita_organizzativa_id FK
+        enum tipo "REPARTO|PORTALE|AD_HOC|SUPER_ADMIN"
+        varchar codice UK
+        varchar descrizione
+        boolean attivo
+    }
+
+    profili_accesso_bindings {
+        int id PK
+        int profilo_accesso_id FK
+        int unita_organizzativa_id FK "se tipo=REPARTO"
+        enum ruolo_applicativo "se tipo=PORTALE"
+        bigint identita_digitale_id FK "se tipo=AD_HOC"
+        boolean attivo
+    }
+
+    profili_accesso_aree {
+        int id PK
+        int profilo_accesso_id FK
         int area_id FK
         enum livello
     }
 
-    profili_reparto_azioni {
+    profili_accesso_azioni {
         int id PK
-        int unita_organizzativa_id FK
+        int profilo_accesso_id FK
         int azione_id FK
         boolean abilitata
     }
 
-    unita_organizzative ||--o{ profili_reparto_aree : "profilo accesso"
-    aree_funzionali ||--o{ profili_reparto_aree : "livello per area"
-    unita_organizzative ||--o{ profili_reparto_azioni : "azioni abilitate"
-    azioni_processo ||--o{ profili_reparto_azioni : "abilitazione"
+    profili_accesso ||--o{ profili_accesso_bindings : "bind a UO/ruolo/identita"
+    profili_accesso ||--o{ profili_accesso_aree : "livello per area"
+    profili_accesso ||--o{ profili_accesso_azioni : "azioni abilitate"
+    unita_organizzative ||--o{ profili_accesso_bindings : "profilo REPARTO"
+    aree_funzionali ||--o{ profili_accesso_aree : "livello per area"
+    azioni_processo ||--o{ profili_accesso_azioni : "abilitazione"
     aree_funzionali ||--o{ azioni_processo : "contiene"
 ```
 

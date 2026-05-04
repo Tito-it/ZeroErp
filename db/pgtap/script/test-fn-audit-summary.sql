@@ -78,29 +78,35 @@ SELECT throws_like(
 
 -- =========================================================
 -- 7) Smoke test happy path: cerco UNA storico row esistente fra
---    le audit_sources note (3 candidati con copertura tipica:
---    identita_digitali via backfill multi-face, profili_reparto_*
---    via seed permessi). Verifico che il ritorno sia jsonb con
+--    le audit_sources note (4 candidati con copertura tipica:
+--    identita_digitali via backfill multi-face, profili_accesso_*
+--    via cutover permessi). Verifico che il ritorno sia jsonb con
 --    chiavi 'summary' e 'diff' (contratto pubblico).
 --
---    Skip soft se nessuna delle 3 storico ha dati (CI vergine).
+--    Skip soft se nessuna delle 4 storico ha dati (CI vergine).
 --    Pattern §4.ter: SELECT CASE ... THEN ok ELSE skip END (no
 --    PERFORM ok dentro DO: pgTAP traccia il counter dei test
 --    solo via SELECT top-level).
 -- =========================================================
 
 -- Pre-calcolo: prima coppia (code, storico_id) trovata con dati.
+-- Modello legacy profili_reparto_* dismesso il 2026-05-04: i candidati
+-- sono ora identita_digitali e le 3 storico del nuovo modello
+-- profili_accesso_aree/_azioni/_bindings.
 CREATE TEMP TABLE _t_smoke AS
 SELECT *
   FROM (
       SELECT 'identita_digitali'::text AS code,
              (SELECT min(id) FROM storico.identita_digitali) AS storico_id
        UNION ALL
-      SELECT 'profili_reparto_aree',
-             (SELECT min(id) FROM storico.profili_reparto_aree)
+      SELECT 'profili_accesso_aree',
+             (SELECT min(id) FROM storico.profili_accesso_aree)
        UNION ALL
-      SELECT 'profili_reparto_azioni',
-             (SELECT min(id) FROM storico.profili_reparto_azioni)
+      SELECT 'profili_accesso_azioni',
+             (SELECT min(id) FROM storico.profili_accesso_azioni)
+       UNION ALL
+      SELECT 'profili_accesso_bindings',
+             (SELECT min(id) FROM storico.profili_accesso_bindings)
   ) c
  WHERE storico_id IS NOT NULL
  ORDER BY storico_id

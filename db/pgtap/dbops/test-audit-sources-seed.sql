@@ -2,40 +2,44 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: seed dbops.audit_sources (Fase 5 P1 2026-04-29).
+-- Test: seed dbops.audit_sources (Fase 5 P1 2026-04-29 +
+-- aggiornato 2026-05-04 dismissione modello profili_reparto_*).
 --
 -- Verifica:
---   - 8 righe seedate (6 esistenti + user_override_oggetti +
---     identita_digitali nuovi).
+--   - 9 righe seedate (5 user_override/emittenti/RUA + identita +
+--     3 profili_accesso_*).
 --   - Coerenza area_funzionale con il vocabolario controllato:
 --     PERMESSI | AUTH | ANAGRAFICHE | EMITTENTI | FATTURAZIONE.
 --   - Le storico_table / storico_pk_col puntano a oggetti esistenti
 --     (catch tipo nel CSV).
+--   - Nessun residuo del modello legacy profili_reparto_*.
 --   - La vista pubblica vw_audit_sources espone solo 3 colonne.
 --
--- Indice test (1..6):
---    1. dbops.audit_sources contiene almeno 8 righe attive
---    2. Codici attesi presenti (set match)
+-- Indice test (1..7):
+--    1. dbops.audit_sources contiene almeno 9 righe attive
+--    2. Codici attesi presenti (set match) — incluso il nuovo
+--       modello profili_accesso_aree/_azioni/_bindings
 --    3. Tutte le righe attive usano un valore di area_funzionale
 --       del vocabolario controllato
 --    4. Tutte le storico_table referenziate esistono (regclass cast)
 --    5. Tutte le storico_pk_col referenziate esistono come colonne
 --       della rispettiva storico
---    6. Vista vw_audit_sources espone esattamente 3 colonne
+--    6. Nessun codice legacy profili_reparto_* presente
+--    7. Vista vw_audit_sources espone esattamente 3 colonne
 --       (code, label_key, area_funzionale)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(6);
+SELECT plan(7);
 
 -- =========================================================
--- 1) Almeno 8 righe attive
+-- 1) Almeno 9 righe attive
 -- =========================================================
 SELECT cmp_ok(
     (SELECT count(*)::int FROM dbops.audit_sources WHERE attivo = true),
     '>=',
-    8,
-    '1) dbops.audit_sources ha almeno 8 righe attive (seed Fase 5)'
+    9,
+    '1) dbops.audit_sources ha almeno 9 righe attive (post dismissione profili_reparto_*)'
 );
 
 -- =========================================================
@@ -45,13 +49,13 @@ SELECT bag_eq(
     $$
     SELECT code FROM dbops.audit_sources WHERE attivo = true
      AND code IN ('user_override_aree','user_override_azioni','user_override_oggetti',
-                  'user_emittenti_fiscali','risorse_umane_auth_user',
-                  'profili_reparto_aree','profili_reparto_azioni','identita_digitali')
+                  'user_emittenti_fiscali','risorse_umane_auth_user','identita_digitali',
+                  'profili_accesso_aree','profili_accesso_azioni','profili_accesso_bindings')
     $$,
     $$ VALUES ('user_override_aree'),('user_override_azioni'),('user_override_oggetti'),
-              ('user_emittenti_fiscali'),('risorse_umane_auth_user'),
-              ('profili_reparto_aree'),('profili_reparto_azioni'),('identita_digitali') $$,
-    '2) Tutti i 8 codici target presenti e attivi'
+              ('user_emittenti_fiscali'),('risorse_umane_auth_user'),('identita_digitali'),
+              ('profili_accesso_aree'),('profili_accesso_azioni'),('profili_accesso_bindings') $$,
+    '2) Tutti i 9 codici target presenti e attivi (modello profili_accesso_*)'
 );
 
 -- =========================================================
@@ -103,7 +107,18 @@ SELECT is(
 );
 
 -- =========================================================
--- 6) Vista pubblica espone solo 3 colonne
+-- 6) Nessun residuo del modello legacy profili_reparto_*
+-- =========================================================
+SELECT is(
+    (SELECT count(*)::int
+       FROM dbops.audit_sources
+      WHERE code IN ('profili_reparto_aree','profili_reparto_azioni')),
+    0,
+    '6) Nessun codice legacy profili_reparto_* in dbops.audit_sources'
+);
+
+-- =========================================================
+-- 7) Vista pubblica espone solo 3 colonne
 -- =========================================================
 SELECT bag_eq(
     $$
@@ -113,7 +128,7 @@ SELECT bag_eq(
        AND table_name   = 'vw_audit_sources'
     $$,
     $$ VALUES ('code'), ('label_key'), ('area_funzionale') $$,
-    '6) script.vw_audit_sources espone esattamente (code, label_key, area_funzionale)'
+    '7) script.vw_audit_sources espone esattamente (code, label_key, area_funzionale)'
 );
 
 SELECT * FROM finish();

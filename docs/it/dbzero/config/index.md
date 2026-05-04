@@ -38,12 +38,12 @@
 - [parameter_overrides](tabelle/parameter_overrides.md) — La tabella **`config.parameter_overrides`** permette di creare **override dinamici** dei parametri definiti in `config.parameters` su diversi livelli di contesto (tenant, user, session, function), garantendo che ogni combinazione `(parameter_id, scope_type, scope_id)` sia unica e tracciata per audit.
 - [parameters](tabelle/parameters.md) — La tabella **`config.parameters`** implementa un’**architettura a due livelli** per la configurazione dinamica dell’applicazione:
 - [priorita_pratiche](tabelle/priorita_pratiche.md) — La tabella `config.priorita_pratiche` definisce i **livelli di priorita'** assegnabili alle pratiche. Ogni pratica ha una priorita' obbligatoria che ne influenza l'ordine di lavorazione.
-- [profili_accesso](tabelle/profili_accesso.md) — (latest revision 18-04-2026)
-- [profili_accesso_aree](tabelle/profili_accesso_aree.md) — (latest revision 18-04-2026)
-- [profili_accesso_azioni](tabelle/profili_accesso_azioni.md) — (latest revision 18-04-2026)
+- [profili_accesso](tabelle/profili_accesso.md) — (latest revision 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
+- [profili_accesso_aree](tabelle/profili_accesso_aree.md) — (latest revision 04-05-2026 — modello legacy `profili_reparto_aree` dismesso)
+- [profili_accesso_azioni](tabelle/profili_accesso_azioni.md) — (latest revision 04-05-2026 — modello legacy `profili_reparto_azioni` dismesso)
 - [profili_accesso_bindings](tabelle/profili_accesso_bindings.md) — (latest revision 18-04-2026)
-- [profili_reparto_aree](tabelle/profili_reparto_aree.md) — * Definire il **profilo di accesso ereditato**: una matrice (reparto × area) → livello. * Consentire la configurazione centralizzata: un cambio di policy si applica a tutti gli operatori del reparto. * Garantire il **default sicuro**: se un reparto non ha profilo per un'area, l'accesso è BLOCCATO.
-- [profili_reparto_azioni](tabelle/profili_reparto_azioni.md) — * Definire quali **azioni di processo** sono abilitate per ogni reparto. * Consentire la gestione centralizzata delle abilitazioni critiche. * Le eccezioni individuali sono gestite in `config.user_override_azioni`.
+- [profili_reparto_aree](tabelle/profili_reparto_aree.md)
+- [profili_reparto_azioni](tabelle/profili_reparto_azioni.md)
 - [province](tabelle/province.md) — * **Elenco delle province**   Contiene tutte le province di uno stato (es. in Italia: RM, MI, FI), con sigla e nome descrittivo.
 - [qualifiche](tabelle/qualifiche.md) — La tabella **`config.qualifiche`** definisce il catalogo delle mansioni/posizioni assegnabili alle risorse (es. Amministratore, Dipendente, Consulente). Serve per distinguere la funzione operativa della persona all'interno dell'organizzazione.
 - [regioni](tabelle/regioni.md) — * **Elenco delle regioni**   Comprende tutte le regioni appartenenti a uno stato (es. in Italia: `Lazio`, `Campania`, `Sicilia`), con collegamento al rispettivo `stato_id` in **`config.stati`**.

@@ -39,4 +39,4 @@ typing_extensions==4.15.0
 urllib3==2.6.3
 virtualenv==21.3.0
 wcmatch==10.1
-zensical==0.0.37
+zensical==0.0.39
