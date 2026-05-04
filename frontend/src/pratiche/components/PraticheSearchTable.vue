@@ -2,7 +2,7 @@
 // Scopo: DataTable paginata pratiche con search, filtro stato, priorita' e data.
 // I campi display (stato_descrizione, soggetto_display, ecc.) arrivano dal backend via JOIN.
 // I lookup servono solo per popolare i filtri Select.
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -15,13 +15,12 @@ import InputText from 'primevue/inputtext'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
-import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { TAB_ENTITIES } from '../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -38,6 +37,24 @@ const prioritaFilter = ref(null)
 // Filtro data: default anno corrente - 1 (dal store)
 const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
 const dataAFilter = ref(null)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('pratiche.nuova_pratica'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 
 function onStatoChange() {
   store.filters.stato_id = statoFilter.value
@@ -139,11 +156,11 @@ onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
           @clear-click="onDataAChange"
         />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('pratiche.nuova_pratica')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <!-- Placeholder: nessuna ricerca effettuata -->
@@ -190,4 +207,3 @@ onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
     </template>
   </div>
 </template>
-

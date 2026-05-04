@@ -2,7 +2,7 @@
 // Scopo: pagina lista operatori con DataTable lazy, filtri e paginazione.
 // Click riga -> apre OperatoreDrawer in modalita' modifica.
 // Button Nuovo -> apre OperatoreDrawer in modalita' crea.
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -21,9 +21,8 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import Badge from 'primevue/badge'
@@ -50,6 +49,24 @@ useTabFreshness(store, TAB_ENTITIES.OPERATORE)
 const superAdminFilter = ref(null)
 const uoFilter = ref(null)
 const activeFilter = ref(null)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('amm.nuovo_operatore'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: drawer.openCreate,
+  },
+])
 
 const superAdminOptions = buildFilterSuperAdminOptions(t)
 const activeOptions = buildFilterStatoOptions(t)
@@ -149,11 +166,11 @@ function buildRowActions(data) {
           @change="applyExtraFilters"
         />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('amm.nuovo_operatore')" @click="drawer.openCreate" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <DataTable

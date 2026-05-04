@@ -9,21 +9,24 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 ## Stato progetto
 
-> **Sviluppo attivo — backend e frontend operativi su domini core, catalogo, vendite, anagrafiche, pratiche.**
+> **Sviluppo attivo — backend e frontend operativi su domini core, catalogo, vendite, anagrafiche, pratiche e documenti.**
 >
-> DB e API backend operativi su 13 schemi. Frontend Vue operativo su: layout applicativo,
+> DB e API backend operativi su 14 schemi. Frontend Vue operativo su: layout applicativo,
 > gestione soggetti (PF/PG/ENTE), gestione geografica (7 tab CRUD), pannello configurazione (67 tabelle),
 > amministrazione software (operatori, profili reparto, permessi, audit log),
 > gestione clienti/fornitori (drawer end-to-end con sotto-drawer),
 > gestione pratiche v2 (dashboard, flussi, note, allegati, giornale),
-> catalogo articoli (CRUD, UoM, BoM, note) **completato**,
+> catalogo articoli (CRUD, UoM, BoM, note) **completato e riallineato ai contratti API**,
 > listini vendita v3 **completato** (pricing completo, rettifica controllata, alert scadenze,
 > variazione % massa, riallineamento/variazione prezzo commessa),
+> preventivi rev2 **completati** (emittente fiscale persistito, istanza obbligatoria, revisioni, riepilogo IVA),
+> motore documentale parametrico **completato tecnicamente e in test UI** (modelli, asset, render PDF WeasyPrint,
+> generazione/lista/download da preventivo),
 > migrazione `daterange` nativo PostgreSQL **completata** (18 tabelle, trigger generico, ottimizzazione backend),
 > impostazioni parametri di sistema con override personali ed emittente,
 > integrazione AI (11 tool: pratiche, soggetti, clienti, articoli, operatori),
 > autenticazione completa (email, token, reset pw, invito operatore).
-> 1231 test backend. Non ancora rilasciato per produzione.
+> Conteggio test da rigenerare dopo chiusura test UI documenti. Non ancora rilasciato per produzione.
 
 ---
 
@@ -109,7 +112,7 @@ Scelte architetturali:
 | Backend            | Django 6.01 + DRF               |
 | Linguaggio backend | Python 3.14                     |
 | Frontend           | Vue 3.5, Vite 7, PrimeVue 4.5, Pinia 3 |
-| Tooling docs/dev   | MkDocs, pre-commit, Docker      |
+| Tooling docs/dev   | Zensical + preprocess docs, pre-commit, Docker |
 
 ---
 
@@ -126,6 +129,7 @@ Il database e` organizzato per schemi funzionali principali:
 - `contabilita`
 - `config`
 - `storico`
+- `documenti`
 - `script`, `dbops`, `maintenance`, `internal`
 
 Le migrazioni correnti sono mantenute in `db/changelog/migrations_v2/`.
@@ -146,10 +150,10 @@ Il modello e` pensato per supportare processi non lineari e gestione multi-repar
 
 ## Stato dello Sviluppo
 
-Fotografia sintetica (12 aprile 2026):
+Fotografia sintetica (4 maggio 2026):
 
-- Database core: operativo (13 schemi, 200+ tabelle, trigger, funzioni, viste, **daterange nativo**)
-- API backend: operativo (1231 test, 90+ endpoint)
+- Database core: operativo (14 schemi, 200+ tabelle, trigger, funzioni, viste, **daterange nativo**)
+- API backend: operativo; conteggio test complessivo da rigenerare dopo la chiusura della suite UI documenti
 - Motore pratiche: operativo (workflow, giornale, sospensioni, macchina a stati, note, allegati)
 - Sistema permessi: operativo a 2 livelli
   - Livello 1: area funzionale (TUTTO/LETTURA/BLOCCATO) — sidebar, route guard, CSS protect
@@ -163,12 +167,30 @@ Fotografia sintetica (12 aprile 2026):
   - Articoli CRUD con UoM operative, distinta base, note (19 endpoint, 49 test)
   - Unita' di misura CRUD (backend + frontend)
   - Documentazione consolidata in [work-done/gestione-articoli.md](./dev/work-done/gestione-articoli.md)
+- Refactor catalogo: **completato** (28 aprile 2026)
+  - Fasi 1-8 DB+BE+FE chiuse; lookup/defaults/capability spostati su contratti API/backend quando necessario
+  - Riferimento: [analisi-refactor.frontend-catalogo.md](./dev/work-done/analisi-refactor.frontend-catalogo.md)
+- Refactor amm-software: **completato** (29-30 aprile 2026)
+  - Operatori, permessi, emittenti fiscali, matrici e policy admin riallineati agli standard frontend/backend
+  - Riferimento: [analisi-refactor.frontend-amm-software.md](./dev/work-done/analisi-refactor.frontend-amm-software.md)
 - Listini vendita v3: **completato** (Sprint B-v3 chiuso)
   - Versioni, righe prezzo, associazioni, test resolver, clone, auto-close (25 endpoint, 42 test listini)
   - Variazione % massa su BOZZA con dry_run, alert scadenze con widget, rettifica controllata con lock FOR UPDATE
   - Pricing commesse: riallineamento prezzo, variazione eccezionale, sblocco (3 endpoint, 9 test commesse)
   - Trigger DB defense-in-depth `trgfn_listini_righe_guard_stato`
   - Documentazione: [sviluppo-listini-v3.md](./dev/work-in-progress/sviluppo-listini-v3.md), API: [api_listini.md](./backend/vendite/manual/api_listini.md), [api_commesse_pricing.md](./backend/vendite/manual/api_commesse_pricing.md)
+- Refactor vendite: **completato** (1 maggio 2026)
+  - DB+BE+FE chiusi; lookup, form-defaults, capability e azioni data-driven documentati
+  - Riferimento: [analisi-refactor.frontend-vendite.md](./dev/work-done/analisi-refactor.frontend-vendite.md)
+- Preventivi rev2: **completato** (2-3 maggio 2026)
+  - `emittente_fiscale_id` persistito e immutabile, `istanza_utility_id` obbligatoria, guard coerenza utility/istanza
+  - Revisioni preventivo e riepilogo IVA chiusi end-to-end; generazione PDF agganciata al motore documentale in test UI
+  - Riferimento: [risposta-db-brief-preventivi-rev2.md](./dev/work-done/risposta-db-brief-preventivi-rev2.md)
+- Motore documentale parametrico: **completato tecnicamente, test UI in corso** (4 maggio 2026)
+  - Schema `documenti`, modelli documenti, versioni, asset documentali, documenti generati e file persistenti
+  - Backend: render Jinja2 + WeasyPrint, storage parametrico, endpoint template/asset e endpoint preventivo `genera`/`anteprima`/`lista`/`download`
+  - Frontend: Configurazione documenti, modelli, asset, pulsante "Genera PDF" nel drawer preventivo e lista documenti generati
+  - Riferimenti: [sviluppo-documenti.md](./dev/work-in-progress/sviluppo-documenti.md), [sviluppo-documenti-test-ui.md](./dev/work-in-progress/sviluppo-documenti-test-ui.md)
 - Migrazione `daterange` nativo PostgreSQL: **completata**
   - 18 tabelle migrate (Fase 0-3), infrastruttura `script.trgfn_set_validita()`, linee guida SQL §7b
   - Backend ottimizzato: `validita @>` al posto dei doppi confronti `valido_dal`/`valido_al`
@@ -182,7 +204,7 @@ Fotografia sintetica (12 aprile 2026):
   - Operatori (cerca\_operatori)
   - System prompt con glossario di dominio italiano (cliente=BA, articolo=catalogo)
   - Widget flottante, contesto documentale statico, multi-tool chaining, 61 test
-- Frontend Vue: operativo su domini core, anagrafiche, catalogo, vendite, pratiche
+- Frontend Vue: operativo su domini core, anagrafiche, catalogo, vendite, pratiche, documenti
   - Layout applicativo (sidebar morfica, content tabs, split view, breadcrumb, ricerca universale)
   - Amm. Software completa: operatori, profili reparto, permessi riepilogo, audit log, email
     - Drawer dedicato gestione permessi richiamabile dalla riga lista (`OperatorePermessiTab` riusabile)
@@ -192,6 +214,8 @@ Fotografia sintetica (12 aprile 2026):
   - Gestione pratiche v2: dashboard, flussi, note, allegati, giornale
   - Catalogo articoli: lista, drawer con 3 tab (UoM, BoM, note), `ArticoloLookup` BB cross-dominio
   - Listini v3: lista, drawer con versioni/associazioni, sub-drawer righe, test resolver, dialog variazione %, widget alert scadenze, dialog programma chiusura
+  - Vendite preventivi: refactor data-driven, revisioni, riepilogo IVA e generazione PDF preventivo in test UI
+  - Configurazione documenti: modelli documenti e asset documentali con drawer/lista standard
   - Impostazioni parametri: lista multi-scope con drawer override (`PARAMETER_SCOPE` come unica fonte di verita')
   - Pannello configurazione: 67 tabelle CRUD generiche
   - Logo brand: nuovo PNG ottimizzato 256x256 (frontend) + favicon PNG/ICO + master 512x512 in `docs/assets/images/`
@@ -243,10 +267,13 @@ Struttura essenziale:
 13. ~~Listini vendita v3 (pricing completo, rettifica, alert, variazione massa)~~ — **completato**
 14. ~~Migrazione `daterange` nativo PostgreSQL (18 tabelle, backend ottimizzato)~~ — **completato**
 15. ~~Parametri di sistema multi-scope (drawer admin con scope user/emittente)~~ — fatto
-16. Test UI reali su pratiche, clienti, fornitori, parametri — in corso
-17. **Rettifiche prezzi DB-L4** (motore delta, canali manuale/automatico, audit) — pianificato in WIP dedicato
-18. Permessi v2 (livello oggetto) — pianificato
-19. Integrazione vendite/pratiche e moduli verticali
+16. ~~Refactor catalogo / amm-software / vendite verso API metadata-driven~~ — fatto
+17. ~~Preventivi rev2 (emittente persistito, istanza obbligatoria, revisioni, riepilogo IVA)~~ — fatto
+18. Motore documentale parametrico (modelli, asset, generazione PDF preventivo) — completato tecnicamente, test UI in corso
+19. Test UI reali su pratiche, clienti, fornitori, parametri e documenti — in corso
+20. **Rettifiche prezzi DB-L4** (motore delta, canali manuale/automatico, audit) — pianificato in WIP dedicato
+21. Permessi v2 (livello oggetto) — pianificato
+22. Integrazione vendite/pratiche e moduli verticali
 
 ---
 

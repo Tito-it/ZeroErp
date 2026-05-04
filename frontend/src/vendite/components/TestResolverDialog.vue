@@ -6,6 +6,7 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { extractApiError } from '../../core/utils/apiError'
 import { resolvePrezzoV5 } from '../api/listini'
 import { pricingOrigineSeverity } from '../../core/utils/severity'
@@ -19,11 +20,15 @@ import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
-import { DATE_FORMAT, DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
+import { DATE_FORMAT, DRAWER_WIDTH } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 
 const { t } = useI18n()
 const { loading } = useApiHandler()
+
+// Stesso default usato dal drawer nuovo listino: il parametro DEFAULT_UTILITY
+// salva codice_interno e viene risolto a id tramite lookup utilities-per-emittente.
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 
 const props = defineProps({ visible: Boolean })
 const emit = defineEmits(['update:visible'])
@@ -38,6 +43,8 @@ const form = ref({
 })
 const result = ref(null)
 const errorMsg = ref(null)
+
+const utilityLockedByBa = computed(() => !!form.value.ba_obj?.utility_id)
 
 // UoM operative dell'articolo selezionato (pattern VersioneDrawer).
 const uomOptions = ref([])
@@ -67,6 +74,14 @@ async function loadUomPerArticolo(articoloId) {
   }
 }
 
+async function applyDefaultUtility({ force = false } = {}) {
+  await loadUtilityDefault()
+  if (utilityLockedByBa.value) return
+  if (force || !form.value.utility_id) {
+    form.value.utility_id = utilityDefaultId.value
+  }
+}
+
 watch(
   () => form.value.articolo_obj?.id,
   (newId, oldId) => {
@@ -83,9 +98,11 @@ watch(
 // (eventualmente selezionabile a mano).
 watch(
   () => form.value.ba_obj,
-  (newBa) => {
+  async (newBa, oldBa) => {
     if (newBa?.utility_id) {
       form.value.utility_id = newBa.utility_id
+    } else if (newBa?.id || oldBa?.id) {
+      await applyDefaultUtility({ force: true })
     }
   },
 )
@@ -93,11 +110,13 @@ watch(
 // Pulizia stato al close del dialog.
 watch(
   () => props.visible,
-  (v) => {
+  async (v) => {
     if (!v) {
       result.value = null
       errorMsg.value = null
+      return
     }
+    await applyDefaultUtility()
   },
 )
 
@@ -166,11 +185,10 @@ function close() {
         <label>{{ t('listini.field_utility') }} *</label>
         <UtilityPerRuoloSelect
           v-model="form.utility_id"
-          :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
           :placeholder="t('listini.filtro_utility')"
-          :disabled="!!form.ba_obj?.id"
+          :disabled="utilityLockedByBa"
         />
-        <small v-if="form.ba_obj?.id" class="text-color-secondary">
+        <small v-if="utilityLockedByBa" class="text-color-secondary">
           {{ t('listini.field_utility_derived_from_ba') }}
         </small>
       </div>

@@ -206,6 +206,11 @@ Le risposte includono **azioni di navigazione** cliccabili che portano l'operato
 | `cerca_articoli` | catalogo | Ricerca articoli del catalogo per codice o descrizione |
 | `cerca_contratti` | vendite | Ricerca contratti commerciali per stato, utility, ambito, cliente, scadenza |
 | `dettaglio_contratto` | vendite | Dati completi di un contratto: testata, utility 1:1, righe con prezzi |
+| `cerca_preventivi` | vendite | Ricerca preventivi per stato (DRAFT/EMESSO/ACCETTATO/...), cliente, utility, periodo |
+| `dettaglio_preventivo` | vendite | Dati completi di un preventivo: testata, totali, validita', capabilities, count righe |
+| `cerca_promo_articoli` | vendite | Ricerca promo articolo per articolo, tipo variazione (PERCENTUALE/VALORE_FISSO/PREZZO_FISSO), validita' |
+| `cerca_listini` | vendite | Ricerca listini di pricing per utility, tipologia, attivo |
+| `cerca_documenti_generati` | documenti | Lista versioni PDF archiviate per un record sorgente (oggi: PREVENTIVO; estendibile a CONTRATTO/ORDINE) |
 
 ### 6.2 Scrittura (con conferma)
 

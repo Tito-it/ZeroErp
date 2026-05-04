@@ -7,7 +7,7 @@
 //        il detail preventivo non le embedda piu', solo righe_count).
 //        Modifica = click riga; azioni secondarie (elimina) in RowActionsMenu
 //        kebab.
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
@@ -16,8 +16,7 @@ import { MANAGE_ICONS } from '../../../core/constants'
 import { formatCurrency, formatNumber } from '../../../core/utils/format'
 import PreventiviRigaForm from './PreventiviRigaForm.vue'
 import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
-import NewButton from '../../../core/components/NewButton.vue'
-import ReloadButton from '../../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../../core/components/PageActionsBar.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
@@ -47,6 +46,24 @@ const rigaSelezionata = ref(null)
 // Selezione riga DataTable: evidenzia visivamente la riga in edit (pattern
 // ContrattoRigheDrawer). Sincronizzata con rigaSelezionata.
 const selezione = ref(null)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: loadRighe,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('preventivi.aggiungi_riga'),
+    icon: MANAGE_ICONS.ADD,
+    visible: props.isModificabile,
+    command: onNuovaRiga,
+  },
+])
 
 // Scopo: Carica righe dal backend (endpoint /righe/ autonomo, Fase 3.F6).
 async function loadRighe() {
@@ -154,10 +171,7 @@ defineExpose({ loadRighe })
       <div class="app-page-filters">
         <h4 style="margin: 0;">{{ t('preventivi.section_righe') }}</h4>
       </div>
-      <div class="app-page-actions">
-        <ReloadButton @click="loadRighe" />
-        <NewButton v-if="isModificabile" :tooltip="t('preventivi.aggiungi_riga')" @click="onNuovaRiga" />
-      </div>
+      <PageActionsBar :actions="pageActions" />
     </div>
 
     <DataTable :value="righe" striped-rows size="small" class="app-datatable"

@@ -27,8 +27,7 @@ import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
-import NewButton from '../../core/components/NewButton.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const { t } = useI18n()
@@ -99,6 +98,24 @@ const righeView = computed(() => {
       _row_key: `${r.articolo_id}__${r.uom_id ?? 'null'}`,
     }))
 })
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reloadList,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('contratti.aggiungi_riga'),
+    icon: MANAGE_ICONS.ADD,
+    disabled: formMode.value === 'create' || isReadonly.value,
+    command: onNew,
+  },
+])
 
 // Scopo: classe CSS sulla riga DataTable. In readonly (permessi LETTURA o
 // contratto post-DRAFT) tutte le righe sono visualmente readonly. In edit
@@ -453,11 +470,7 @@ function origineSeverity(origine) {
             :placeholder="t('contratti.filtro_articolo_placeholder')"
             style="min-width: 240px;" />
         </div>
-        <div class="app-page-actions">
-          <ReloadButton @click="reloadList" />
-          <NewButton :tooltip="t('contratti.aggiungi_riga')"
-            @click="onNew" :disabled="formMode === 'create' || isReadonly" />
-        </div>
+        <PageActionsBar :actions="pageActions" />
       </div>
 
       <DataTable

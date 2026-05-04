@@ -4,7 +4,7 @@
 // Pulsanti riga listino: toggle versioni (chiude/apre expansion), test resolver.
 // Mini-tabella versioni nell'expansion: + nuova versione, transizioni stato,
 // gestione righe prezzo (apre VersioneDrawer dal parent).
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -23,11 +23,10 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
-import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
@@ -81,6 +80,9 @@ const attivoOptions = [
 // Ogni volta che la lista listini viene ricaricata, espandiamo tutte le righe
 // e pre-carichiamo le versioni in parallelo.
 const expandedRows = ref({})
+const allRowsExpanded = computed(() =>
+  store.items.length > 0 && store.items.every(it => expandedRows.value[it.id])
+)
 
 function onUtilityChange() {
   store.filters.utility_id = utilityFilter.value
@@ -106,6 +108,23 @@ function expandAllRows() {
   const map = {}
   store.items.forEach(it => { map[it.id] = true })
   expandedRows.value = map
+}
+
+function collapseAllRows() {
+  expandedRows.value = {}
+}
+
+async function toggleAllRows() {
+  if (allRowsExpanded.value) {
+    collapseAllRows()
+    return
+  }
+  expandAllRows()
+  await Promise.all(
+    store.items
+      .filter(it => !store.versioniByListino[it.id])
+      .map(it => store.fetchVersioniListino(it.id))
+  )
 }
 
 // Toggle expansion di una singola riga (usato dal pulsante "versioni" della riga).
@@ -186,6 +205,48 @@ function onEliminaListino(listino) {
     }
   })
 }
+
+// Scopo: azioni standard della toolbar lista. Il componente PageActionsBar
+// decide la resa responsive: primaria visibile, utility inline desktop,
+// menu compatto su schermi piccoli.
+const pageActions = computed(() => [
+  {
+    key: 'toggle-all-versioni',
+    kind: 'utility',
+    label: allRowsExpanded.value
+      ? t('listini.comprimi_tutte_versioni')
+      : t('listini.espandi_tutte_versioni'),
+    icon: MANAGE_ICONS.VERSIONI,
+    severity: 'info',
+    disabled: store.items.length === 0,
+    command: toggleAllRows,
+  },
+  {
+    key: 'test-prezzo',
+    kind: 'utility',
+    label: t('listini.test_prezzo'),
+    icon: 'pi pi-calculator',
+    severity: 'info',
+    visible: auth.isSuperAdmin,
+    command: () => emit('test-resolver'),
+  },
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('listini.nuovo_listino'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 
 // Scopo: azioni di riga del listino (toggle expansion + elimina conditional).
 function buildListinoActions(data) {
@@ -283,17 +344,14 @@ onMounted(() => store.fetchList())
         <Select v-model="attivoFilter" :options="attivoOptions" option-label="label" option-value="value"
           :placeholder="t('listini.col_attivo')" @change="onAttivoChange" style="width: 120px;" />
       </div>
-      <div class="app-page-actions">
-        <AlertScadenzeWidget />
-        <!-- Test resolver pricing: strumento diagnostico (Fase 5.F2),
-             visibile solo a SUPER_ADMIN per non confondere gli operatori. -->
-        <Button v-if="auth.isSuperAdmin"
-          icon="pi pi-calculator" text severity="info"
-          v-tooltip.bottom="t('listini.test_prezzo')" @click="emit('test-resolver')" />
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('listini.nuovo_listino')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #prefix>
+          <AlertScadenzeWidget />
+        </template>
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <DataTable

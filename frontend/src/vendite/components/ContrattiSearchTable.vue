@@ -15,9 +15,8 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
-import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
@@ -42,6 +41,24 @@ const ambitoOptions = computed(() => [
   { value: null, label: t('common.all') },
   { value: 'COMMODITY', label: t('contratti.ambito_commodity') },
   { value: 'COMMERCIO', label: t('contratti.ambito_commercio') },
+])
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('contratti.nuovo_contratto'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
 ])
 
 function onStatoChange() { store.filters.stato_doc_contratto_id = statoFilter.value; applyFilters() }
@@ -139,11 +156,11 @@ onMounted(() => {
           :min-date="new Date()"
           @update:modelValue="onScadenzaMeseChange" />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('contratti.nuovo_contratto')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <DataTable

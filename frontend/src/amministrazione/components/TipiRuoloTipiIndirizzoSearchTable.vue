@@ -1,22 +1,21 @@
 <script setup>
 // Scopo: DataTable paginata matrice tipi_ruolo x tipi_indirizzo con search e filtri.
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTipiRuoloTipiIndirizzoStore } from '../stores/tipiRuoloTipiIndirizzo'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { TAB_ENTITIES } from '../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { buildBoolOptions } from '../../core/utils/options'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
-import NewButton from '../../core/components/NewButton.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { displayDate } from '../../core/utils/date'
@@ -38,6 +37,24 @@ const tipoIndirizzoFilter = ref(store.filters.tipo_indirizzo_id)
 const attivoFilter = ref(true)
 
 const boolOptions = buildBoolOptions(t)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('amministrazione.matrice_indirizzi_ruoli.new_row'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 
 const fallbackOptionsByRow = ref({})
 const fallbackOptionsLoadingByRow = ref({})
@@ -138,11 +155,11 @@ onMounted(() => { if (!store.hasSearched) store.fetchList() })
         <Select v-model="attivoFilter" :options="boolOptions" option-label="label" option-value="value"
           :placeholder="t('common.attivo')" @change="onAttivoChange" style="width: 120px;" />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton v-if="!isReadonly" :tooltip="t('amministrazione.matrice_indirizzi_ruoli.new_row')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <DataTable :value="store.items" :loading="store.loading" lazy :totalRecords="store.totalRecords"

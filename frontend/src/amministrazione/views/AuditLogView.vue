@@ -9,13 +9,13 @@ import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { getAuditLog, lookupAuditSources } from '../api/amministrazione'
 import { displayTimestamp, toDateString } from '../../core/utils/date'
 import { getAuditOpSeverity } from '../constants'
-import { PAGINATION, DATE_FORMAT, READONLY_DOMAINS } from '../../core/constants'
+import { PAGINATION, DATE_FORMAT, MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
@@ -59,6 +59,15 @@ const defaultDa = new Date()
 defaultDa.setMonth(defaultDa.getMonth() - 1)
 const dataDaFilter = ref(defaultDa)
 const dataAFilter = ref(null)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: fetchData,
+  },
+])
 
 function onDataDaChange() {
   first.value = 0
@@ -151,9 +160,7 @@ function rowSummary(data) {
           @clear-click="onDataAChange"
         />
       </div>
-      <div class="app-page-actions">
-        <ReloadButton @click="fetchData" />
-      </div>
+      <PageActionsBar :actions="pageActions" />
     </div>
 
     <DataTable

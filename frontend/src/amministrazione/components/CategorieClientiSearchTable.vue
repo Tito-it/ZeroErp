@@ -2,28 +2,26 @@
 // Scopo: DataTable admin categorie cliente (anagrafiche.categorie_clienti).
 //        Pattern UtilitiesTipiRuoloSearchTable. Tabella codice/descrizione
 //        classica + flag partecipa_promo + ordinamento + attivo.
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCategorieClientiStore } from '../stores/categorieClienti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { TAB_ENTITIES } from '../../core/constants'
+import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { buildBoolOptions } from '../../core/utils/options'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import NewButton from '../../core/components/NewButton.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useCategorieClientiStore()
-const isReadonly = useInjectReadonly()
 const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'ordinamento'
@@ -33,6 +31,24 @@ const attivoFilter = ref(true)
 const partecipaPromoFilter = ref(null)
 
 const boolOptions = buildBoolOptions(t)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('amministrazione.categorie_clienti.new'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 
 function onAttivoChange() {
   store.filters.attivo = attivoFilter.value
@@ -80,15 +96,11 @@ onMounted(() => store.fetchList())
           style="width: 120px;"
         />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton
-          v-if="!isReadonly"
-          :tooltip="t('amministrazione.categorie_clienti.new')"
-          @click="emit('new')"
-        />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <DataTable

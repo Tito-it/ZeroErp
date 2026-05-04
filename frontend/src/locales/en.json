@@ -1562,6 +1562,8 @@
     "nuova_versione": "New version",
     "mostra_versioni": "Show versions",
     "nascondi_versioni": "Hide versions",
+    "espandi_tutte_versioni": "Expand all versions",
+    "comprimi_tutte_versioni": "Collapse all versions",
     "gestisci_righe": "Manage price rows",
     "clona": "Clone",
     "clona_versione": "Clone version",

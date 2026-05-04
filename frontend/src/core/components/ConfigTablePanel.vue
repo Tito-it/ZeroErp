@@ -6,11 +6,11 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useReadonlyMode } from '../composables/useReadonlyMode'
-import { PAGINATION, READONLY_DOMAINS } from '../constants'
+import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../constants'
 import { getTablesBySchema, getTableConfig } from '../config-tables'
 import { useDrawerState } from '../composables/useDrawerState'
 import GenericConfigDrawer from './GenericConfigDrawer.vue'
-import NewButton from './NewButton.vue'
+import PageActionsBar from './PageActionsBar.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -59,6 +59,17 @@ const selectedLabel = computed(() => {
   const cfg = getTableConfig(selectedRel.value)
   return cfg ? cfg.label : selectedRel.value
 })
+const pageActions = computed(() => [
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: `${t('common.new')} ${selectedLabel.value}`,
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: onNew,
+  },
+])
 
 // Carica metadata + records quando cambia la tabella selezionata
 watch(selectedRel, async (rel) => {
@@ -176,7 +187,7 @@ function selectTable(rel) {
               :placeholder="t('config_panel.search_record')"
             />
           </div>
-          <NewButton :tooltip="`${t('common.new')} ${selectedLabel}`" @click="onNew" />
+          <PageActionsBar :actions="pageActions" />
         </div>
 
         <DataTable
