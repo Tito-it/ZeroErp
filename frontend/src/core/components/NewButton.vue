@@ -7,6 +7,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
+import { MANAGE_ICONS } from '../constants'
 import Button from 'primevue/button'
 
 const props = defineProps({
@@ -30,7 +31,7 @@ const isVisible = computed(() => {
   <Button
     v-if="isVisible"
     :label="t('common.new')"
-    icon="pi pi-plus"
+    :icon="MANAGE_ICONS.ADD"
     v-tooltip.bottom="tooltip"
     class="app-page-action"
     @click="emit('click')"

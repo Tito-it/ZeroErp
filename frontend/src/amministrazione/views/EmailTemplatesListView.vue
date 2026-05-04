@@ -3,7 +3,6 @@ import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
@@ -12,6 +11,7 @@ import { useEmailTemplatesStore } from '../stores/emailTemplates'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
+import ReloadButton from '../../core/components/ReloadButton.vue'
 import EmailTemplateDrawer from '../components/EmailTemplateDrawer.vue'
 
 const { t } = useI18n()
@@ -40,7 +40,7 @@ function onRowClick({ data }) {
         <InputText v-model="searchText" :placeholder="t('common.search')" style="width: 250px;" />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReloadButton @click="reload" />
       </div>
     </div>
 

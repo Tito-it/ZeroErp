@@ -19,6 +19,21 @@
     "modalita_consultazione": "Read only",
     "altre_azioni": "More actions",
     "azione_non_disponibile_record_inattivo": "Action unavailable on inactive record",
+    "action_hint_add": "Add",
+    "action_hint_billing_account": "Manage billing accounts",
+    "action_hint_cancel": "Cancel",
+    "action_hint_clone": "Clone",
+    "action_hint_close": "Close",
+    "action_hint_confirm": "Confirm",
+    "action_hint_delete": "Delete",
+    "action_hint_download": "Download",
+    "action_hint_edit": "Edit",
+    "action_hint_list": "Manage rows",
+    "action_hint_permissions": "Manage permissions",
+    "action_hint_play": "Start",
+    "action_hint_publish": "Publish",
+    "action_hint_reload": "Reload",
+    "action_hint_utility": "Manage utilities",
     "col_azioni": "Actions",
     "riepilogo_iva_titolo": "VAT summary",
     "riepilogo_iva_sottotitolo": "Per-rate calculation (Italian VAT law DPR 633/72 art. 21)",
@@ -126,8 +141,7 @@
     "config": {
       "tabelle": "Tables",
       "impostazioni": "Settings",
-      "modelli-documenti": "Document templates",
-      "asset-documenti": "Document assets"
+      "config-documenti": "Document configuration"
     },
     "catalogo": {
       "articoli": "Articles",
@@ -145,6 +159,10 @@
     "pratiche": {
       "gestione": "Case Management"
     }
+  },
+  "config_documenti": {
+    "tab_modelli": "Document templates",
+    "tab_asset": "Document assets"
   },
   "impostazioni": {
     "search_placeholder": "Search parameter...",
@@ -206,7 +224,8 @@
     "not_found_message": "The requested page does not exist.",
     "forbidden_title": "Access denied",
     "forbidden_message": "You do not have permission to access this area.",
-    "back_home": "Back to Home"
+    "back_home": "Back to Home",
+    "lookup_load_failed": "Could not load the list. Retry or contact the administrator."
   },
   "placeholder": {
     "wip_title": "Under construction",
@@ -1599,6 +1618,20 @@
     "aggiungi_prezzo_hint": "Add price"
   },
   "preventivi": {
+    "pdf": {
+      "label_anteprima": "Preview",
+      "tooltip_anteprima": "Preview PDF (not saved)",
+      "label_genera": "Generate PDF",
+      "tooltip_genera": "Generate new PDF version",
+      "label_scarica": "Download PDF",
+      "tooltip_scarica": "Download a generated PDF",
+      "tooltip_lista": "PDF documents",
+      "tooltip_lista_disabilitato": "Available after the quote is issued",
+      "dialog_title": "PDF documents — Quote {numero}",
+      "confirm_genera_header": "Generate new PDF version",
+      "confirm_genera_first_message": "The first PDF version for this quote will be created. Confirm?",
+      "confirm_rigenera_message": "Version {versione} exists since {data}. Generate version {prossima}? Previous versions remain archived."
+    },
     "search_placeholder": "Search by number, client, utility...",
     "filtro_stato": "Status",
     "nuovo_preventivo": "New Quote",
@@ -2010,8 +2043,10 @@
       "field_descrizione": "Description",
       "field_tipo_output": "Output type",
       "field_sorgente": "Source",
-      "field_emittente": "Issuer fiscale ID",
-      "field_emittente_hint": "Numeric issuer fiscale ID (ask the administrator if unsure).",
+      "field_emittente": "Fiscal issuer",
+      "field_emittente_hint": "Determined by the operator profile. Selectable only for global administrators.",
+      "field_emittente_placeholder": "Select fiscal issuer...",
+      "field_emittente_none": "No fiscal issuer linked to the profile.",
       "field_immutable_after_create": "Not editable after creation.",
       "field_context_builder": "Context builder",
       "field_context_builder_placeholder": "Select a builder",
@@ -2067,6 +2102,9 @@
         "saved": "Asset updated",
         "edit_metadati_only_hint": "Only metadata can be updated. To change the file, upload a new asset.",
         "choose_file": "Choose file",
+        "download_file": "Download",
+        "download_error": "Unable to download the asset file.",
+        "file_count": "Attached files: {count}",
         "field_file": "File",
         "field_file_hint": "Max 25 MB. MIME type must match the selected asset type.",
         "field_codice": "Code",

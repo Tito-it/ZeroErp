@@ -11,7 +11,7 @@ import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
@@ -359,7 +359,7 @@ function buildRigaActions(data) {
     {
       key: 'elimina-riga',
       label: t('common.delete'),
-      icon: 'pi pi-trash',
+      icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: !isReadonly.value,
       command: () => onDelete(data),

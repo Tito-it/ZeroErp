@@ -44,6 +44,12 @@ const props = defineProps({
   tooltip: { type: String, default: '' },
   label: { type: String, default: '' },
   size: { type: String, default: 'small' },
+  // Callback async opzionale invocato PRIMA della pipeline lookup +
+  // genera. Deve ritornare (Promise<bool>): se false (o promise rejected)
+  // l'azione viene abortita silenziosamente. Tipico uso: dialog di
+  // conferma rigenerazione su preventivi gia' emessi (vedi
+  // PreventivoPdfButton). Default: null = comportamento attuale.
+  beforeGenerate: { type: Function, default: null },
 })
 const emit = defineEmits(['generated'])
 
@@ -90,31 +96,46 @@ const canClick = () =>
 //        in base al numero (0/1/>1).
 async function onClick() {
   if (!canClick()) return
+  // Hook conferma esterna (es. dialog "esiste gia' versione N"). Se la
+  // callback ritorna false o rigetta, abortiamo silenziosamente — il
+  // caller mostra il proprio feedback se necessario.
+  if (typeof props.beforeGenerate === 'function') {
+    let proceed
+    try {
+      proceed = await props.beforeGenerate()
+    } catch {
+      return
+    }
+    if (proceed === false) return
+  }
   lookupLoading.value = true
+  let templates
   try {
     const res = await listTemplateApplicabili({
       sorgenteTipoId: sorgenteTipoId.value,
       emittenteFiscaleId: props.emittenteFiscaleId,
       tipoDocumentoOutputId: props.tipoDocumentoOutputId,
     })
-    const templates = res.data?.data?.results || []
-    if (templates.length === 0) {
-      notify.warn(t('documenti.genera_pdf.no_template'))
-      return
-    }
-    if (templates.length === 1) {
-      await runGenerazione(templates[0].id)
-      return
-    }
-    // >1: dialog scelta.
-    dialogTemplates.value = templates
-    dialogVisible.value = true
+    templates = res.data?.data?.results || []
   } catch (err) {
     notify.error(t('documenti.genera_pdf.lookup_error'))
     console.error('listTemplateApplicabili', err)
+    return
   } finally {
     lookupLoading.value = false
   }
+
+  if (templates.length === 0) {
+    notify.warn(t('documenti.genera_pdf.no_template'))
+    return
+  }
+  if (templates.length === 1) {
+    await runGenerazione(templates[0].id)
+    return
+  }
+  // >1: dialog scelta.
+  dialogTemplates.value = templates
+  dialogVisible.value = true
 }
 
 // Scopo: Esegue la POST /genera con il template scelto. Il store
@@ -128,9 +149,9 @@ async function runGenerazione(templateDocumentoId) {
     }),
     { successMessage: t('documenti.genera_pdf.success') },
   )
-  if (result === null) return
+  if (!result) return
   emit('generated', result)
-  if (props.autoDownload) {
+  if (props.autoDownload && result.id != null) {
     await downloadDocumento(result.id)
   }
 }

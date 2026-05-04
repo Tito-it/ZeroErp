@@ -306,19 +306,103 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.update_preventivo.assert_not_called()
 
     # Scopo: transizioni diverse da ACCETTATO ignorano i 2 parametri (no
-    # update testata, solo cambio stato).
+    # update testata, solo cambio stato). EMESSO triggera il hook PDF
+    # atomico: lo isoliamo qui patchando _genera_pdf_emissione (i test
+    # dedicati al hook stanno piu' sotto).
     def test_cambia_stato_emesso_ignora_immediata_e_competenza(self):
         from datetime import date
         from apps.vendite.services.preventivi_service import cambia_stato
 
         self.mock_repo.cambia_stato.return_value = {"status": "ok"}
-        cambia_stato(1, "EMESSO", fatturazione_immediata=True,
-                     competenza_mese=date(2026, 9, 1))
-        # No get_preventivo (non serve sul gate accettazione), no update_preventivo.
+        with patch(
+            "apps.vendite.services.preventivi_service._genera_pdf_emissione"
+        ) as mock_pdf:
+            cambia_stato(1, "EMESSO", fatturazione_immediata=True,
+                         competenza_mese=date(2026, 9, 1))
+        # No get_preventivo sul gate, no update_preventivo.
         self.mock_repo.update_preventivo.assert_not_called()
         self.mock_repo.cambia_stato.assert_called_once_with(
             1, "EMESSO", "django_api",
         )
+        # Hook PDF atomico chiamato post-cambio-stato.
+        mock_pdf.assert_called_once()
+
+    # Scopo: La transizione *->EMESSO genera atomicamente il PDF v1 dentro
+    # la stessa transazione del cambio stato. Verifichiamo che il service
+    # invochi DocumentGenerationService.genera_documento con i parametri
+    # ricavati dal preventivo (emittente, sorgente PREVENTIVO, id, uid).
+    def test_cambia_stato_emesso_genera_pdf_atomico(self):
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 42, "uid": "uid-42",
+            "emittente_fiscale_id": 7,
+        }
+
+        with patch(
+            "apps.vendite.services.preventivi_service.DocumentiRepository"
+        ) as MockDocRepo, patch(
+            "apps.vendite.services.preventivi_service.DocumentGenerationService"
+        ) as MockGen:
+            mock_doc_repo = MagicMock()
+            MockDocRepo.return_value = mock_doc_repo
+            mock_doc_repo.get_sorgente_tipo_id_by_codice.return_value = {
+                "id": 99, "attivo": True,
+            }
+            mock_gen = MagicMock()
+            MockGen.return_value = mock_gen
+
+            user = MagicMock()
+            cambia_stato(42, "EMESSO", user=user)
+
+            # Cambio stato eseguito.
+            self.mock_repo.cambia_stato.assert_called_once_with(
+                42, "EMESSO", "django_api",
+            )
+            # genera_documento chiamato con i parametri attesi.
+            mock_gen.genera_documento.assert_called_once_with(
+                user,
+                emittente_fiscale_id=7,
+                sorgente_tipo_id=99,
+                sorgente_id=42,
+                sorgente_uid="uid-42",
+            )
+
+    # Scopo: Render fail durante l'emissione propaga l'eccezione del
+    # DocumentGenerationService al chiamante. La transaction.atomic
+    # esterna garantisce rollback atomico (testato a livello unit
+    # solo per il fatto che l'eccezione passi: l'effetto rollback e'
+    # garantito dal contract di transaction.atomic).
+    def test_cambia_stato_emesso_render_fail_propaga(self):
+        from apps.core.services.error_manager import ServiceError
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "uid": "uid-1", "emittente_fiscale_id": 7,
+        }
+
+        with patch(
+            "apps.vendite.services.preventivi_service.DocumentiRepository"
+        ) as MockDocRepo, patch(
+            "apps.vendite.services.preventivi_service.DocumentGenerationService"
+        ) as MockGen:
+            mock_doc_repo = MagicMock()
+            MockDocRepo.return_value = mock_doc_repo
+            mock_doc_repo.get_sorgente_tipo_id_by_codice.return_value = {
+                "id": 99, "attivo": True,
+            }
+            mock_gen = MagicMock()
+            MockGen.return_value = mock_gen
+            mock_gen.genera_documento.side_effect = ServiceError(
+                code="E_DOCUMENTI_RENDER_FAILED",
+                message="boom",
+            )
+
+            with self.assertRaises(ServiceError) as ctx:
+                cambia_stato(1, "EMESSO", user=MagicMock())
+            self.assertEqual(ctx.exception.code, "E_DOCUMENTI_RENDER_FAILED")
 
     # ── Eliminazione bozza (abbandono drawer) ──
 

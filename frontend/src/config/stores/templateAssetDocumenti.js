@@ -17,6 +17,7 @@
 
 import { defineStore } from 'pinia'
 import {
+  downloadTemplateAssetDocumento,
   getTemplateAssetDocumento,
   listTemplateAssetDocumenti,
   updateTemplateAssetDocumento,
@@ -87,6 +88,14 @@ export const useTemplateAssetDocumentiStore = defineStore(STORE_NAME, () => {
     return res.data.data
   }
 
+  async function download(id) {
+    const res = await downloadTemplateAssetDocumento(id)
+    return {
+      blob: res.data,
+      fileName: extractFileName(res) || `asset-${id}`,
+    }
+  }
+
   // Scopo: Upload asset (multipart). Il caller costruisce il FormData
   //        con `file` + i metadati. Lo store inoltra al BE e notifica
   //        i tab in ascolto via `emitDataChanged`.
@@ -106,6 +115,15 @@ export const useTemplateAssetDocumentiStore = defineStore(STORE_NAME, () => {
 
   return {
     items, totalRecords, loading, hasSearched, filters,
-    fetchList, fetchDetail, upload, update,
+    fetchList, fetchDetail, download, upload, update,
   }
 }, { userScoped: true })
+
+function extractFileName(response) {
+  const disposition = response?.headers?.['content-disposition']
+  if (!disposition) return null
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1])
+  const plainMatch = disposition.match(/filename="?([^";]+)"?/i)
+  return plainMatch?.[1] || null
+}

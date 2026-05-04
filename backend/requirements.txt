@@ -146,7 +146,7 @@ typing-inspection==0.4.2
     # via pydantic
 uritemplate==4.2.0
     # via drf-spectacular
-weasyprint==63.1
+weasyprint==68.1
     # via -r ../requirements.in
 webencodings==0.5.1
     # via

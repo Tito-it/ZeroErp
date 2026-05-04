@@ -9,6 +9,7 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { MANAGE_ICONS } from '../../core/constants'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import DataTable from 'primevue/datatable'
@@ -119,7 +120,7 @@ function buildRowActions(data) {
     {
       key: 'rimuovi-mapping',
       label: t('common.delete'),
-      icon: 'pi pi-trash',
+      icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       command: () => removeMapping(data),
     },

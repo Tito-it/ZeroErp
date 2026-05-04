@@ -20,6 +20,7 @@ import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { downloadBlob } from '../../core/utils/download'
+import { MANAGE_ICONS } from '../../core/constants'
 
 const props = defineProps({
   sorgenteCode: { type: String, required: true },
@@ -59,9 +60,9 @@ function buildRowActions(row) {
     {
       key: 'download',
       label: t('documenti.lista.action_download'),
-      icon: 'pi pi-download',
+      icon: MANAGE_ICONS.DOWNLOAD,
       severity: 'primary',
-      onClick: () => onDownload(row.id),
+      command: () => onDownload(row.id),
     },
   ]
 }
@@ -86,7 +87,7 @@ async function reload() {
     <div class="section-header">
       <h4>{{ t('documenti.lista.title') }}</h4>
       <Button
-        icon="pi pi-refresh"
+        :icon="MANAGE_ICONS.RELOAD"
         text
         size="small"
         :loading="store.loading"

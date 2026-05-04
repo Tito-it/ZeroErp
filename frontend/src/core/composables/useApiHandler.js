@@ -32,8 +32,12 @@ export function useApiHandler() {
       if (options.successMessage) {
         notify.success(options.successMessage)
       }
-      // Unwrap dell'envelope standard backend { data: {...}, meta: {...} }
-      const body = response.data
+      // Unwrap dell'envelope standard backend { data: {...}, meta: {...} }.
+      // Se apiFn ritorna gia' un payload unwrapped (es. action store),
+      // preservalo invece di trattarlo come response Axios.
+      const body = response && typeof response === 'object' && 'data' in response
+        ? response.data
+        : response
       return (body && typeof body === 'object' && 'data' in body) ? body.data : body
     } catch (err) {
       if (!options.silent) {

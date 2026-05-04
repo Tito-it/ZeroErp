@@ -14,7 +14,7 @@ import {
   listRuoloContatti, createRuoloContatto,
   updateRuoloContatto, deleteRuoloContatto
 } from '../../anagrafiche/api/anagrafiche'
-import { DRAWER_WIDTH } from '../constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { sortByFonte } from '../utils/string'
 import ContattoForm from './ContattoForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
@@ -209,10 +209,10 @@ async function onDelete(c) {
               </div>
             </div>
             <div v-if="!formMode && !isReadonly && c.fonte !== 'soggetto'" class="contatto-card-actions">
-              <Button icon="pi pi-pencil" text rounded size="small"
+              <Button :icon="MANAGE_ICONS.EDIT" text rounded size="small"
                 class="app-action-btn" :title="t('common.edit')" @click="onStartEdit(c)" />
-              <Button icon="pi pi-trash" severity="danger" text rounded size="small"
-                :title="t('common.delete')" @click="onDelete(c)" />
+              <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small"
+                class="app-delete-btn" :title="t('common.delete')" @click="onDelete(c)" />
             </div>
           </div>
         </div>
@@ -221,7 +221,7 @@ async function onDelete(c) {
         <div v-if="!formMode && !isReadonly" class="mt-05">
           <Button
             :label="t('contatto.aggiungi_contatto')"
-            icon="pi pi-plus"
+            :icon="MANAGE_ICONS.ADD"
             text
             size="small"
             class="app-action-btn"

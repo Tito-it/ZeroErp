@@ -11,8 +11,8 @@ import { useEmailAccountsStore } from '../stores/emailAccounts'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import EmailAccountDrawer from '../components/EmailAccountDrawer.vue'
 
@@ -42,7 +42,7 @@ function onRowClick({ data }) {
         <InputText v-model="searchText" :placeholder="t('common.search')" style="width: 250px;" />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('amm.email_new_account')" @click="drawer.openCreate()" />
       </div>
     </div>

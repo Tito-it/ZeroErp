@@ -116,17 +116,17 @@ function buildRowActions(row) {
     actions.push({
       key: 'pubblica',
       label: t('config.modelli_documenti.versioni.action_pubblica'),
-      icon: 'pi pi-check-circle',
+      icon: MANAGE_ICONS.PUBLISH,
       severity: 'primary',
-      onClick: () => openPubblicaDialog(row),
+      command: () => openPubblicaDialog(row),
     })
   }
   actions.push({
     key: 'clona',
     label: t('config.modelli_documenti.versioni.action_clona'),
-    icon: 'pi pi-copy',
+    icon: MANAGE_ICONS.CLONE,
     severity: 'info',
-    onClick: () => clonaVersione(row),
+    command: () => clonaVersione(row),
   })
   if (row.stato === 'BOZZA') {
     actions.push({
@@ -134,7 +134,7 @@ function buildRowActions(row) {
       label: t('common.delete'),
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
-      onClick: () => confirmDeleteVersione(row),
+      command: () => confirmDeleteVersione(row),
     })
   }
   return actions
@@ -277,7 +277,7 @@ async function confirmPubblica() {
       <Button
         v-if="!props.readonly && !editing"
         :label="t('config.modelli_documenti.versioni.new')"
-        icon="pi pi-plus"
+        :icon="MANAGE_ICONS.ADD"
         size="small"
         @click="openCreate"
       />
@@ -310,7 +310,7 @@ async function confirmPubblica() {
           />
         </template>
       </Column>
-      <Column :header="''" style="width: 60px;">
+      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
           <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
@@ -409,7 +409,7 @@ async function confirmPubblica() {
         />
         <Button
           :label="t('common.save')"
-          icon="pi pi-check"
+          :icon="MANAGE_ICONS.CONFIRM"
           :disabled="!canSaveForm"
           :loading="loading"
           @click="saveForm"
@@ -446,7 +446,7 @@ async function confirmPubblica() {
         />
         <Button
           :label="t('config.modelli_documenti.versioni.action_pubblica')"
-          icon="pi pi-check-circle"
+          :icon="MANAGE_ICONS.PUBLISH"
           :disabled="!pubblicaForm.valido_dal"
           :loading="loading"
           @click="confirmPubblica"

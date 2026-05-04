@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Repository per audit trail permessi — query UNION ALL
-#        sulle 7 tabelle storico del sistema permessi.
+#        sulle tabelle storico del sistema permessi.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -12,6 +12,22 @@ import math
 from typing import Any
 
 from django.db import connection
+
+
+# Sub-query "indiretta" per filtrare profili_accesso_aree/_azioni storici per
+# unita_organizzativa_id. Il snapshot di queste tabelle indicizza per
+# `profilo_accesso_id`; risaliamo all'unita_organizzativa via il binding
+# REPARTO corrente. Limite noto: profili dis-bindati non compaiono.
+# Per un audit completo del binding stesso si usa la tabella
+# `storico.profili_accesso_bindings` (filtro 'direct').
+_PROFILO_VIA_BINDING_SUBQUERY = (
+    "(s.snapshot->>'profilo_accesso_id')::int IN ("
+    "SELECT pa.id "
+    "FROM config.profili_accesso pa "
+    "JOIN config.profili_accesso_bindings pab "
+    "  ON pab.profilo_accesso_id = pa.id "
+    "WHERE pab.unita_organizzativa_id = %s)"
+)
 
 
 class PermissionsAuditRepository:
@@ -32,20 +48,28 @@ class PermissionsAuditRepository:
         ("storico.risorse_umane_auth_user", "risorse_umane_auth_user"),
     ]
 
-    # Tabelle storico filtrate per unita_organizzativa_id nello snapshot
-    _DEPT_TABLES: list[tuple[str, str]] = [
-        ("storico.profili_reparto_aree", "profili_reparto_aree"),
-        ("storico.profili_reparto_azioni", "profili_reparto_azioni"),
+    # Tabelle storico filtrate per unita_organizzativa_id (REPARTO).
+    # Tupla: (schema_table, label, snapshot_filter_kind).
+    #   - 'direct'  -> snapshot.unita_organizzativa_id (binding storico)
+    #   - 'profilo' -> snapshot.profilo_accesso_id risolto via binding corrente
+    _DEPT_TABLES: list[tuple[str, str, str]] = [
+        ("storico.profili_accesso_aree", "profili_accesso_aree", "profilo"),
+        ("storico.profili_accesso_azioni", "profili_accesso_azioni", "profilo"),
+        ("storico.profili_accesso_bindings", "profili_accesso_bindings", "direct"),
     ]
 
     # Whitelist dei nomi tabella accettati dal filtro `tabella`
     _VALID_TABLE_NAMES: frozenset[str] = frozenset(
-        label for _, label in _USER_TABLES + _DEPT_TABLES
+        [label for _, label in _USER_TABLES]
+        + [label for _, label, _kind in _DEPT_TABLES]
     )
 
-    # Scopo: Restituisce la timeline paginata degli eventi audit permessi per un utente.
-    # Interroga le 7 tabelle storico via UNION ALL: 5 filtrate per auth_user_id,
-    # 2 filtrate per unita_organizzativa_id (escluse se uo_id e' None).
+    # Scopo: Restituisce la timeline paginata degli eventi audit permessi per
+    # un utente. Interroga le tabelle storico via UNION ALL:
+    #  - tabelle utente filtrate per auth_user_id;
+    #  - tabelle reparto filtrate per unita_organizzativa_id (escluse se
+    #    uo_id e' None). Per i profili_accesso_aree/_azioni il filtro e'
+    #    indiretto: si risolve il profilo_accesso_id corrente del reparto.
     # Risultato: dict con count, page, page_size, total_pages, events.
     def list_audit_events(
         self,
@@ -74,17 +98,22 @@ class PermissionsAuditRepository:
             )
             params.append(auth_user_id)
 
-        # Costruisce sub-query per tabelle reparto (filtro uo_id)
+        # Costruisce sub-query per tabelle reparto (filtro uo_id, kind diverso
+        # per direct vs profilo). Saltato se uo_id non passato.
         if uo_id is not None:
-            for schema_table, label in self._DEPT_TABLES:
+            for schema_table, label, kind in self._DEPT_TABLES:
                 if tabella and tabella != label:
                     continue
+                if kind == "direct":
+                    where = "WHERE (s.snapshot->>'unita_organizzativa_id')::int = %s"
+                else:
+                    where = f"WHERE {_PROFILO_VIA_BINDING_SUBQUERY}"
                 unions.append(
                     f"SELECT '{label}' AS tabella, "
                     f"s.valid_from, s.tipo_operazione, s.user_insert, "
                     f"s.snapshot, s.tx_id::text "
                     f"FROM {schema_table} s "
-                    f"WHERE (s.snapshot->>'unita_organizzativa_id')::int = %s"
+                    f"{where}"
                 )
                 params.append(uo_id)
 

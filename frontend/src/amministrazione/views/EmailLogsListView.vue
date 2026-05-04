@@ -5,8 +5,8 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import DatePicker from 'primevue/datepicker'
-import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
+import ReloadButton from '../../core/components/ReloadButton.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { READONLY_DOMAINS } from '../../core/constants'
 import { useEmailLogsStore } from '../stores/emailLogs'
@@ -88,7 +88,7 @@ onMounted(() => {
         />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReloadButton @click="reload" />
       </div>
     </div>
 

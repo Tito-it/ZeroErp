@@ -15,12 +15,14 @@ import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
+import Button from 'primevue/button'
 import NewButton from '../../../core/components/NewButton.vue'
 import SearchHint from '../../../core/components/SearchHint.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import ReloadButton from '../../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.vue'
+import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 
 const emit = defineEmits(['new', 'row-click'])
@@ -66,6 +68,19 @@ function onMostraStoricoChange() {
 }
 
 function onRowClick(event) { emit('row-click', event.data) }
+
+// ── PDF dialog (azione di riga) ──
+// Apertura di un dialog popup con la lista PDF generati per il preventivo.
+// Il pulsante e' disabilitato in stato DRAFT (nessun PDF persistito).
+// Click `@click.stop` per non triggerare il row-click che apre il drawer.
+const pdfDialogVisible = ref(false)
+const pdfDialogPreventivo = ref(null)
+
+function onPdfClick(row) {
+  if (!row || row.stato_codice_interno === 'DRAFT') return
+  pdfDialogPreventivo.value = row
+  pdfDialogVisible.value = true
+}
 
 useTabFreshness(store, TAB_ENTITIES.PREVENTIVO)
 
@@ -142,7 +157,39 @@ onMounted(() => store.fetchList())
             :severity="statoPreventiveSeverity(data.stato_codice_interno)" />
         </template>
       </Column>
+      <Column :header="''" class="app-col-actions" style="width: 60px;">
+        <template #body="{ data }">
+          <!-- Azione PDF: disabilitata in DRAFT (nessun PDF persistito).
+               click.stop per non innescare il row-click che apre il drawer. -->
+          <Button
+            icon="pi pi-file-pdf"
+            text
+            rounded
+            size="small"
+            class="app-pdf-btn"
+            :disabled="data.stato_codice_interno === 'DRAFT'"
+            v-tooltip.top="data.stato_codice_interno === 'DRAFT'
+              ? t('preventivi.pdf.tooltip_lista_disabilitato')
+              : t('preventivi.pdf.tooltip_lista')"
+            @click.stop="onPdfClick(data)"
+          />
+        </template>
+      </Column>
     </DataTable>
+
+    <!-- Dialog lista PDF per il preventivo selezionato. Riusa il
+         building block `PdfDocumentiSorgenteDialog` che incapsula
+         `DocumentiGeneratiSorgenteList` (stesso usato dal drawer). -->
+    <PdfDocumentiSorgenteDialog
+      v-model:visible="pdfDialogVisible"
+      sorgente-code="PREVENTIVO"
+      :sorgente-id="pdfDialogPreventivo?.id ?? null"
+      :title="pdfDialogPreventivo
+        ? t('preventivi.pdf.dialog_title', {
+            numero: pdfDialogPreventivo.numero,
+          })
+        : ''"
+    />
     </template>
   </div>
 </template>

@@ -72,6 +72,11 @@ class PermissionsAuditRepositoryTests(TestCase):
         )
 
         sql = mock_cursor.execute.call_args[0][0]
+        # Senza uo_id le 3 tabelle dept (profili_accesso_*) NON compaiono.
+        self.assertNotIn("profili_accesso_aree", sql)
+        self.assertNotIn("profili_accesso_azioni", sql)
+        self.assertNotIn("profili_accesso_bindings", sql)
+        # Modello legacy droppato: nessun riferimento residuo.
         self.assertNotIn("profili_reparto", sql)
         self.assertEqual(len(result["events"]), 1)
 
@@ -157,6 +162,10 @@ class PermissionsAuditRepositoryTests(TestCase):
         sql = mock_cursor.execute.call_args[0][0]
         self.assertIn("user_override_aree", sql)
         self.assertNotIn("user_override_oggetti", sql)
+        # Filtro tabella esclude le altre dept (profili_accesso_*).
+        self.assertNotIn("profili_accesso_aree", sql)
+        self.assertNotIn("profili_accesso_azioni", sql)
+        self.assertNotIn("profili_accesso_bindings", sql)
         self.assertNotIn("profili_reparto", sql)
 
     # Scopo: Paginazione page/page_size applicata correttamente.

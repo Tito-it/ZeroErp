@@ -10,7 +10,7 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
+import { READONLY_DOMAINS, TAB_ENTITIES, MANAGE_ICONS } from '../../core/constants'
 import EmittenteFiscaleDrawer from '../components/EmittenteFiscaleDrawer.vue'
 import EmittenteFiscaleBillingAccountDrawer from '../components/EmittenteFiscaleBillingAccountDrawer.vue'
 import EmittenteFiscaleUtilitiesDrawer from '../components/EmittenteFiscaleUtilitiesDrawer.vue'
@@ -82,13 +82,13 @@ function buildRowActions(data) {
     {
       key: 'ba',
       label: t('amm_emittenti_fiscali.action_ba'),
-      icon: 'pi pi-credit-card',
+      icon: MANAGE_ICONS.BILLING_ACCOUNT,
       command: () => baDrawer.editRow(data, 'id'),
     },
     {
       key: 'utilities',
       label: t('amm_emittenti_fiscali.action_utilities'),
-      icon: 'pi pi-bolt',
+      icon: MANAGE_ICONS.UTILITY,
       command: () => utDrawer.editRow(data, 'id'),
     },
   ]

@@ -39,6 +39,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any
 from unittest import TestCase
@@ -324,6 +325,9 @@ class CreateDocumentoGeneratoTests(TestCase):
         self.assertNotIn("chiave_extra", sql)
         # 17 chiavi whitelisted nel data, tutte presenti.
         self.assertEqual(len(params), len(DOCUMENTO_GENERATO_CREATE_COLUMNS))
+        self.assertIn("%s::jsonb", sql)
+        self.assertIn(json.dumps({"k": "v"}), params)
+        self.assertIn(json.dumps({}), params)
         # tx_id NON deve essere in INSERT (Decisione 76).
         self.assertNotIn("tx_id", sql)
 
@@ -362,6 +366,8 @@ class CreateDocumentoGeneratoFileTests(TestCase):
         self.assertEqual(
             len(params), len(DOCUMENTO_GENERATO_FILE_CREATE_COLUMNS),
         )
+        self.assertIn("%s::jsonb", sql)
+        self.assertIn(json.dumps({}), params)
 
 
 class EmitEventoDocumentoTests(TestCase):
@@ -393,6 +399,9 @@ class EmitEventoDocumentoTests(TestCase):
         self.assertIn("RETURNING id", sql)
         self.assertNotIn("tx_id", sql)
         self.assertEqual(len(params), len(EVENTO_DOCUMENTO_CREATE_COLUMNS))
+        self.assertIn("%s::jsonb", sql)
+        self.assertIn(json.dumps({"size_bytes": 4096}), params)
+        self.assertIn(json.dumps({}), params)
         # `tx_id="would-be-bug"` non deve risultare nei params: la
         # whitelist EVENTO_DOCUMENTO_CREATE_COLUMNS lo esclude per design.
         self.assertNotIn("would-be-bug", params)

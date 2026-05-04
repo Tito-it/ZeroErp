@@ -8,10 +8,10 @@ import { useTabFreshness } from '../composables/useTabFreshness'
 import { TAB_ENTITIES } from '../constants'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
 import NewButton from './NewButton.vue'
+import ReloadButton from './ReloadButton.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
-import Button from 'primevue/button'
 
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
@@ -40,7 +40,7 @@ function onRowClick(event) { emit('row-click', event.data) }
         <ComuneAutocomplete :model-value="comuneFilter" @update:model-value="onComuneChange" />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('indirizzi.nuovo_cap')" @click="emit('new')" />
       </div>
     </div>

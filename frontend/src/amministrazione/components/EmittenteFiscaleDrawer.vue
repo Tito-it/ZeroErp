@@ -9,7 +9,7 @@ import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
+import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
 import { getEmittenteFormDefaults } from '../api/amministrazione'
 import { paramBool, paramNumber, paramString } from '../../core/utils/parameterCast'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
@@ -253,7 +253,7 @@ function close() {
               >
                 {{ t('amm_emittenti_fiscali.soggetto_no_piva') }}
               </Message>
-              <Button :label="t('resolver.change')" icon="pi pi-pencil"
+              <Button :label="t('resolver.change')" :icon="MANAGE_ICONS.EDIT"
                 text size="small" class="mt-1" @click="clearSoggetto" />
             </div>
             <div v-else>

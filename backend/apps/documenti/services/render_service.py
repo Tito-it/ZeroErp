@@ -132,10 +132,14 @@ def _render_with_weasyprint(html_source: str, css_source: str) -> bytes:
     # i test che non esercitano davvero WeasyPrint mockano questa funzione.
     try:
         from weasyprint import CSS, HTML
-    except ImportError as exc:
+    except (ImportError, OSError) as exc:
+        logger.warning(
+            "documenti.render.weasyprint_unavailable type=%s err=%s",
+            type(exc).__name__, exc,
+        )
         ErrorManager.raise_error(
             code=E_RENDER_FAILED,
-            message="WeasyPrint non installato.",
+            message="WeasyPrint non disponibile o dipendenze native mancanti.",
             detail=str(exc),
         )
         raise  # unreachable

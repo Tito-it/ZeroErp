@@ -19,6 +19,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import rows_to_list
+from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 from apps.core.services.error_manager import ErrorManager
 
 
@@ -190,6 +191,20 @@ EVENTO_DOCUMENTO_CREATE_COLUMNS: tuple[str, ...] = (
     "meta",
 )
 
+_DOCUMENTO_GENERATO_COLUMN_TYPES: dict[str, str] = {
+    "context_json": "jsonb",
+    "meta": "jsonb",
+}
+
+_DOCUMENTO_GENERATO_FILE_COLUMN_TYPES: dict[str, str] = {
+    "meta": "jsonb",
+}
+
+_EVENTO_DOCUMENTO_COLUMN_TYPES: dict[str, str] = {
+    "detail": "jsonb",
+    "meta": "jsonb",
+}
+
 
 # Whitelist colonne ammesse in INSERT su template_asset.
 # Audit (`data_*`/`user_*`) e `validita` (calcolata dal trigger
@@ -244,7 +259,8 @@ _ASSET_PROJECTION = """
     a.sha256,
     a.emittente_fiscale_id,
     ef.codice             AS emittente_fiscale_codice,
-    ef.descrizione        AS emittente_fiscale_descrizione,
+    COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+                          AS emittente_fiscale_descrizione,
     a.valido_dal,
     a.valido_al,
     a.attivo,
@@ -260,6 +276,8 @@ _ASSET_FROM = """
     FROM documenti.template_asset a
     JOIN documenti.tipi_asset_documento tad ON tad.id = a.asset_tipo_id
     JOIN anagrafiche.emittenti_fiscali ef ON ef.id = a.emittente_fiscale_id
+    LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+    LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
 """
 
 
@@ -282,7 +300,8 @@ _TEMPLATES_PROJECTION = """
     t.file_name_pattern,
     t.emittente_fiscale_id,
     ef.codice            AS emittente_fiscale_codice,
-    ef.descrizione       AS emittente_fiscale_descrizione,
+    COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+                         AS emittente_fiscale_descrizione,
     t.data_insert,
     t.data_update
 """
@@ -297,6 +316,8 @@ _TEMPLATES_FROM = """
     JOIN documenti.tipi_documento_output tdo ON tdo.id = t.tipo_documento_output_id
     JOIN config.sorgenti s ON s.id = t.sorgente_tipo_id
     JOIN anagrafiche.emittenti_fiscali ef ON ef.id = t.emittente_fiscale_id
+    LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+    LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
 """
 
 
@@ -944,11 +965,13 @@ class DocumentiRepository:
     ) -> tuple[int, str]:
         cols: list[str] = []
         vals: list[Any] = []
+        placeholders: list[str] = []
         for col in DOCUMENTO_GENERATO_CREATE_COLUMNS:
             if col in data:
+                column_type = _DOCUMENTO_GENERATO_COLUMN_TYPES.get(col, "text")
                 cols.append(col)
-                vals.append(data[col])
-        placeholders = ["%s"] * len(cols)
+                vals.append(to_write_param(data[col], column_type))
+                placeholders.append(sql_placeholder(column_type))
         sql = f"""
             INSERT INTO documenti.documenti_generati ({", ".join(cols)})
             VALUES ({", ".join(placeholders)})
@@ -967,11 +990,13 @@ class DocumentiRepository:
     def create_documento_generato_file(self, data: dict[str, Any]) -> int:
         cols: list[str] = []
         vals: list[Any] = []
+        placeholders: list[str] = []
         for col in DOCUMENTO_GENERATO_FILE_CREATE_COLUMNS:
             if col in data:
+                column_type = _DOCUMENTO_GENERATO_FILE_COLUMN_TYPES.get(col, "text")
                 cols.append(col)
-                vals.append(data[col])
-        placeholders = ["%s"] * len(cols)
+                vals.append(to_write_param(data[col], column_type))
+                placeholders.append(sql_placeholder(column_type))
         sql = f"""
             INSERT INTO documenti.documenti_generati_file ({", ".join(cols)})
             VALUES ({", ".join(placeholders)})
@@ -990,11 +1015,13 @@ class DocumentiRepository:
     def emit_evento_documento(self, data: dict[str, Any]) -> int:
         cols: list[str] = []
         vals: list[Any] = []
+        placeholders: list[str] = []
         for col in EVENTO_DOCUMENTO_CREATE_COLUMNS:
             if col in data:
+                column_type = _EVENTO_DOCUMENTO_COLUMN_TYPES.get(col, "text")
                 cols.append(col)
-                vals.append(data[col])
-        placeholders = ["%s"] * len(cols)
+                vals.append(to_write_param(data[col], column_type))
+                placeholders.append(sql_placeholder(column_type))
         sql = f"""
             INSERT INTO documenti.documenti_generati_eventi ({", ".join(cols)})
             VALUES ({", ".join(placeholders)})

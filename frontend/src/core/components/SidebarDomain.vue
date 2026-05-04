@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { computed, inject, ref } from 'vue'
 import { useNavigationStore } from '../../stores/navigation'
 import { useTabsStore } from '../../stores/tabs'
+import { useAuthStore } from '../../stores/auth'
 import { resolveNavigationLabel } from '../navigation'
 import SidebarItem from './SidebarItem.vue'
 
@@ -14,7 +15,23 @@ const route = useRoute()
 const router = useRouter()
 const nav = useNavigationStore()
 const tabs = useTabsStore()
+const auth = useAuthStore()
 const isCollapsed = inject('sidebarCollapsed', ref(false))
+
+// Scopo: filtra le voci di menu L2 nascondendo quelle che dichiarano
+// `requireArea: 'X'` quando l'utente ha l'area X BLOCCATA. Coerente con
+// la regola di doc "BLOCCATO = nessun accesso, l'area non e' nemmeno
+// visibile" e con il route guard che valuta il livello area su
+// `meta.domain`.
+//
+// NOTA: oggi nessuna voce in DOMAIN_MENUS ha `children`. Quando saranno
+// introdotti gruppi annidati, estendere il filter qui (ricorsione su
+// children + nascondi gruppo se vuoto).
+const visibleMenu = computed(() =>
+  nav.currentMenu.filter(item =>
+    !item.requireArea || !auth.isAreaBlocked(item.requireArea),
+  ),
+)
 
 const emit = defineEmits(['navigate'])
 const openGroups = ref({})
@@ -107,8 +124,9 @@ function handleToggleFavorite(item) {
       {{ domainLabel }}
     </div>
 
-    <!-- Voci menu L2 -->
-    <template v-for="item in nav.currentMenu" :key="item.key">
+    <!-- Voci menu L2 (filtrate su requireArea: una voce puntata su area
+         BLOCCATA non viene mostrata) -->
+    <template v-for="item in visibleMenu" :key="item.key">
       <SidebarItem
         :icon="item.icon"
         :label="itemLabel(item)"

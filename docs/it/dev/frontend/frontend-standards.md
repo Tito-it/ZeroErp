@@ -266,6 +266,7 @@ Solo `danger` differenzia anche nel popup: per le altre severity la label + icon
 | Cosa | Dove |
 | --- | --- |
 | Icona kebab | `MANAGE_ICONS.KEBAB` in `src/core/constants.js` |
+| Icona elimina | `MANAGE_ICONS.DELETE` in `src/core/constants.js` |
 | Stile bottone standard | `.app-manage-btn` in `main.css` |
 | Stile bottone distruttivo | `.app-delete-btn` in `main.css` |
 | Larghezza colonna (auto / 60px) | `.app-col-actions` in `main.css` (media query) |
@@ -1165,13 +1166,14 @@ I pulsanti strutturali (Nuovo, Salva, Annulla) sono centralizzati tramite **comp
 | `NewButton` | Pulsante "Nuovo" nelle toolbar lista — responsive, controllo permessi |
 | `DrawerFooter` | Footer Salva/Annulla nei drawer — Ctrl+S, readonly-aware |
 
-### Centralizzazione icone gestione riga (`constants.js`)
+### Centralizzazione icone azioni riga (`constants.js`)
 
-Le icone dei pulsanti gestione nelle colonne DataTable sono centralizzate nella costante `MANAGE_ICONS`
+Le icone dei pulsanti nelle colonne DataTable sono centralizzate nella costante `MANAGE_ICONS`
 in `src/core/constants.js`. Ogni lista che ha pulsanti per aprire sub-drawer (contatti, indirizzi,
-conti bancari, UoM, BoM, note, conversioni) deve usare `:icon="MANAGE_ICONS.XXX"`, mai stringhe
-hardcoded. Tutte le icone gestione riga usano la classe `app-manage-btn` (blu) — il colore
-e' definito in un unico punto in `main.css`.
+conti bancari, UoM, BoM, note, conversioni) o azioni trasversali standard (es. elimina) deve usare
+`:icon="MANAGE_ICONS.XXX"`, mai stringhe hardcoded. Il colore resta responsabilita' della classe
+CSS standard (`app-manage-btn`, `app-delete-btn`, ecc.) applicata dal pulsante o da `RowActionsMenu`
+in base alla `severity`.
 
 ```html
 <!-- Pattern standard -->

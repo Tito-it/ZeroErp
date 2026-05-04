@@ -26,7 +26,7 @@ import PreventiviForm from './PreventiviForm.vue'
 import PreventiviRigheTable from './PreventiviRigheTable.vue'
 import PreventiviIntegrazione from './PreventiviIntegrazione.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
-import GeneraPdfButton from '../../../documenti/components/GeneraPdfButton.vue'
+import PreventivoPdfButton from './PreventivoPdfButton.vue'
 import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import Drawer from 'primevue/drawer'
 import Dialog from 'primevue/dialog'
@@ -656,18 +656,18 @@ function onNuovaRevisione() {
           size="small" @click="onNuovaRevisione" />
       </div>
 
-      <!-- Genera PDF (Tranche M motore documentale): visibile appena c'e'
-           detail. Disponibile anche su readonly: il PDF e' una snapshot,
-           non modifica il preventivo. `auto-download` scarica subito il
-           file dopo la generazione. -->
+      <!-- PDF stato-aware (Tranche M+):
+             - DRAFT     -> Anteprima inline (no save)
+             - EMESSO    -> Genera PDF (con dialog conferma rigenerazione)
+             - ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
+           Visibile appena c'e' detail. Coerente con la regola di dominio
+           "EMESSO == almeno una versione PDF" (atomica BE). -->
       <div v-if="hasDetail && detail.emittente_fiscale_id" class="mt-025"
         style="display: flex; justify-content: flex-end; margin-bottom: 0.5rem;">
-        <GeneraPdfButton
-          sorgente-code="PREVENTIVO"
-          :sorgente-id="effectivePreventivoId"
+        <PreventivoPdfButton
+          :preventivo-id="effectivePreventivoId"
           :emittente-fiscale-id="detail.emittente_fiscale_id"
-          auto-download
-          size="small"
+          :stato-codice="detail.stato_codice_interno"
         />
       </div>
 

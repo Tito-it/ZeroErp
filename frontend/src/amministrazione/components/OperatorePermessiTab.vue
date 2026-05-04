@@ -10,6 +10,7 @@ import { useOperatoriStore } from '../stores/operatori'
 import { useNotify } from '../../core/composables/useNotify'
 import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { MANAGE_ICONS } from '../../core/constants'
 import { listAreeFunzionali, listAzioniProcesso, listEmittentiFiscali, getModelOverridesLookup } from '../api/amministrazione'
 import { LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
 import DataTable from 'primevue/datatable'
@@ -279,13 +280,13 @@ function onModelSelect(item, row) {
       </Column>
       <Column v-if="!isReadonly" style="width: 3rem">
         <template #body="{ index }">
-          <Button icon="pi pi-trash" severity="danger" text @click="removeAreaOverride(index)" />
+          <Button :icon="MANAGE_ICONS.DELETE" text class="app-delete-btn" @click="removeAreaOverride(index)" />
         </template>
       </Column>
     </DataTable>
     <div v-if="!isReadonly" class="flex justify-between mb-4">
-      <Button :label="t('amm.add_override')" icon="pi pi-plus" text @click="addAreaOverride" />
-      <Button :label="t('common.save')" icon="pi pi-check" size="small" @click="saveAree" />
+      <Button :label="t('amm.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addAreaOverride" />
+      <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveAree" />
     </div>
 
     <!-- Override Azioni -->
@@ -305,13 +306,13 @@ function onModelSelect(item, row) {
       </Column>
       <Column v-if="!isReadonly" style="width: 3rem">
         <template #body="{ index }">
-          <Button icon="pi pi-trash" severity="danger" text @click="removeAzioneOverride(index)" />
+          <Button :icon="MANAGE_ICONS.DELETE" text class="app-delete-btn" @click="removeAzioneOverride(index)" />
         </template>
       </Column>
     </DataTable>
     <div v-if="!isReadonly" class="flex justify-between mb-4">
-      <Button :label="t('amm.add_override')" icon="pi pi-plus" text @click="addAzioneOverride" />
-      <Button :label="t('common.save')" icon="pi pi-check" size="small" @click="saveAzioni" />
+      <Button :label="t('amm.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addAzioneOverride" />
+      <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveAzioni" />
     </div>
 
     <!-- Override Oggetti (v2 permessi — livello model) -->
@@ -341,13 +342,13 @@ function onModelSelect(item, row) {
       </Column>
       <Column v-if="!isReadonly" style="width: 3rem">
         <template #body="{ index }">
-          <Button icon="pi pi-trash" severity="danger" text @click="removeOggettoOverride(index)" />
+          <Button :icon="MANAGE_ICONS.DELETE" text class="app-delete-btn" @click="removeOggettoOverride(index)" />
         </template>
       </Column>
     </DataTable>
     <div v-if="!isReadonly" class="flex justify-between mb-4">
-      <Button :label="t('amm.add_override')" icon="pi pi-plus" text @click="addOggettoOverride" />
-      <Button :label="t('common.save')" icon="pi pi-check" size="small" @click="saveOggetti" />
+      <Button :label="t('amm.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addOggettoOverride" />
+      <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveOggetti" />
     </div>
 
     <!-- Emittenti Scope (Fase 2 multi-face) -->

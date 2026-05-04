@@ -45,6 +45,7 @@
 | `useParameterDefaults` | [useParameterDefaults.js](../../../../frontend/src/core/composables/useParameterDefaults.js) | Carica default da `config.parameters` con override utente. Props: `codes[]`. Metodi: `load()` (con cache, error-safe). Restituisce `defaults` (mappa `{code: valore}`). |
 | `useArticoloUomOptions` | [useArticoloUomOptions.js](../../../../frontend/src/core/composables/useArticoloUomOptions.js) | **Fase 4.F1 refactor frontend vendite.** Centralizza il pattern UoM operative articolo (4 consumer: `PromoArticoloDrawer`, `ContrattoRigheDrawer`, `VersioneDrawer`, `PreventiviRigaForm`). Espone `uomOptions` (ref array), `uomLoading` (ref bool), `loadUomPerArticolo(articoloId)` (fetch puro, ritorna lista), `pickBaseUomId(list)` (helper: UoM base, o l'unica disponibile, o null), `resetUomOptions()`. Token pattern interno scarta risposte stantie su cambi articolo veloci. Il caller decide quando applicare l'autopick base via wrapper thin (criterio diverso per consumer: `!isEdit`, `formMode === 'create'`, ecc.). |
 | `useEntityCapabilities` | [useEntityCapabilities.js](../../../../frontend/src/core/composables/useEntityCapabilities.js) | **Fase 4.F2 refactor frontend vendite.** Adapter sottile per consumare il blob capabilities BE (Fase 1: `script.fn_available_actions_*`/`fn_capability_promo_articolo`). Consumer: `PreventiviDrawer` + `ContrattoDrawer` (`editFlag='can_edit_testata'` default), `PromoArticoloDrawer` (`editFlag='can_update'`). Ritorna `availableActions` (computed array), `nonEditableFields` (computed Set lookup O(1)), `canEdit` (computed bool sul flag `editFlag`), `isLocked(field)` (check `!canEdit OR Set.has`), `flag(key)` (getter generico per altri `can_*`). Mai logica derivata: lookup puro. |
+| `useEmittenteFiscaleField` | [useEmittenteFiscaleField.js](../../../../frontend/src/core/composables/useEmittenteFiscaleField.js) | Composable di supporto a `EmittenteFiscaleField` (componente sotto). Espone profilo + lookup admin + helper di formatting. Modello 1-a-1 operatore→emittente: il valore e' derivato dal profilo, non scelto, salvo per admin globali. Espone `isAdminMode`, `currentEmittente`, `currentEmittenteDisplay`, **`defaultEmittenteId`** (computed: id profilo per operatore, null per admin — usato dai drawer per autopopulate one-liner), `emittentiOptions`/`emittentiLoading`/`emittentiError`/`loadOptions()` (cache modulo-level via `useGlobalLookup`, chiave `amm.emittenti_fiscali`, fetcher `listEmittentiFiscali` admin-only), helper puri `formatEmittenteOptionLabel` e `formatEmittenteFromRecord`. |
 
 ---
 
@@ -126,7 +127,7 @@
 | `LIVELLO_ACCESSO` | Enum livelli accesso (TUTTO, LETTURA, BLOCCATO) |
 | `STATO_PRATICA` | Enum stati pratica (BOZZA, APERTA, SOSPESA, CHIUSA, ANNULLATA) |
 | `STATO_FLUSSO` | Enum stati flusso (DA_ESEGUIRE, IN_CORSO, COMPLETATO, ecc.) |
-| `MANAGE_ICONS` | Icone gestione riga centralizzate per dominio (CONTATTI, INDIRIZZI, CONTI_BANCARI, UOM, BOM, NOTE, CONVERSIONI) |
+| `MANAGE_ICONS` | Icone gestione riga centralizzate per dominio e azioni trasversali (CONTATTI, INDIRIZZI, CONTI_BANCARI, UOM, BOM, NOTE, CONVERSIONI, DELETE, KEBAB) |
 | `SHORTCUTS` | Scorciatoie tastiera (Ctrl+K ricerca, Ctrl+Tab prossima tab, ecc.) |
 
 ---
@@ -226,7 +227,7 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 <!-- Modifica -->
 <Button icon="pi pi-pencil" text rounded size="small" class="app-edit-btn" @click="onEdit(data)" />
 <!-- Elimina -->
-<Button icon="pi pi-trash" text rounded size="small" class="app-delete-btn" @click="onDelete(data)" />
+<Button :icon="MANAGE_ICONS.DELETE" text rounded size="small" class="app-delete-btn" @click="onDelete(data)" />
 ```
 
 ### Classi stato (`main.css`)
@@ -340,6 +341,7 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | `ArticoloLookup` | [ArticoloLookup.vue](../../../../frontend/src/core/components/ArticoloLookup.vue) | Autocomplete articolo server-side cross-dominio. Props: `voce-utility`, `solo-componenti`, `solo-attivi`, `placeholder`, `disabled`. Emette `@select`. Usa `optionLabel` PrimeVue 4, `minLength: 3`. Usato da: righe listino, distinta base, test resolver. |
 | `BillingAccountLookup` | [BillingAccountLookup.vue](../../../../frontend/src/core/components/BillingAccountLookup.vue) | Autocomplete BA server-side cross-dominio con ricerca ricca (codice, ragione sociale, id fiscale, PDP). Dropdown a 3 righe via classe `app-lookup-option`. Props: `utilityId`, `soloValidi` (default `true`), `validAt`, `placeholder`, `disabled`. Emette `@select`, `@clear`. Footer "affina la ricerca" quando `total > limit`. `minLength: 2`. Scope emittente automatico lato backend. Usato da: righe listino associazioni; esteso a preventivi/ordini/fatture/pratiche. |
 | `IstanzaUtilityLookup` | [IstanzaUtilityLookup.vue](../../../../frontend/src/core/components/IstanzaUtilityLookup.vue) | Autocomplete istanze_utilities server-side cross-dominio. Ricerca multi-campo (codice istanza, ragione sociale soggetto, indirizzo normalizzato). Dropdown a 3 righe (primary: ragione sociale + tag utility + badge "Solo istanza"/"Fittizia"; secondary: codice istanza; meta: indirizzo + codice BA campione). Props: `utilityId` (strict, post Strategia C), `soggettoId` (UUID), `placeholder`, `disabled`. Emette `@select`, `@clear`. Auto-reset selezione al cambio di `utilityId` se l'istanza dichiara utility incoerente. `minLength: 2`. Scope emittente automatico lato backend (via BA collegato). Usato da: `PreventiviForm` (drawer prospect senza BA); riusabile in future utility-aware flows. |
+| `EmittenteFiscaleField` | [EmittenteFiscaleField.vue](../../../../frontend/src/core/components/EmittenteFiscaleField.vue) | **Campo emittente fiscale auto-adattivo** (3 rami: edit→testo read-only dal record; create+admin globale→Select dal lookup admin; create+operatore→testo read-only dal profilo). Lazy load del lookup gestito internamente (parte solo nel ramo Select). Espone errore di fetch via Message inline. Props: `modelValue` (id), `record` (per leggere `emittente_fiscale_codice`/`descrizione` denormalizzati in edit), `isEdit`, `disabled`, `noneI18nKey`/`placeholderI18nKey`/`errorI18nKey` (overridable). Il consumer non gestisce direttamente l'autopopulate: usa `useEmittenteFiscaleField().defaultEmittenteId` come default form. Adottato da: `TemplateDocumentoDrawer`, `TemplateAssetDrawer`. |
 
 ### Ricerca
 

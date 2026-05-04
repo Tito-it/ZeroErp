@@ -30,6 +30,7 @@
 #  19. asset_upload_requires_file_field
 #  20. asset_upload_happy_path_multipart
 #  21. asset_patch_metadati_happy_path
+#  22. asset_download_file_binary_happy_path
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -579,3 +580,29 @@ class DocumentiAssetApiTests(JwtMockedApiTest):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["descrizione"], "Aggiornato")
+
+    # 22. Download binario asset: niente envelope JSON, header attachment.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(is_superuser=True), None),
+    )
+    @patch("apps.documenti.api.views.TemplateService")
+    def test_asset_download_file_binary_happy_path(
+        self, mocked_reader_cls, _mock_auth
+    ) -> None:
+        mocked_reader_cls.return_value.download_asset.return_value = {
+            "asset_id": 50,
+            "file_bytes": b"FAKEBYTES",
+            "file_name": "logo.png",
+            "mime_type": "image/png",
+            "size_bytes": 9,
+        }
+
+        resp = self.client.get("/api/v1/documenti/asset/50/file/")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, b"FAKEBYTES")
+        self.assertEqual(resp["Content-Type"], "image/png")
+        self.assertIn('attachment; filename="logo.png"', resp["Content-Disposition"])
+        self.assertEqual(resp["Content-Length"], "9")
+        mocked_reader_cls.return_value.download_asset.assert_called_once()

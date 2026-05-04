@@ -288,7 +288,7 @@ a {
 
 /* Pulsante elimina riga — icona cestino.
  * Colori via --app-btn-delete-* in theme.css.
- * Uso: <Button icon="pi pi-trash" text rounded size="small" class="app-delete-btn" /> */
+ * Uso: <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small" class="app-delete-btn" /> */
 .app-delete-btn.p-button {
   color: var(--app-btn-delete-color);
 }
