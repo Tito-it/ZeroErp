@@ -5,6 +5,7 @@
 // resta visibile in LETTURA (serve per consultare dati aggiornati).
 import { useInjectBlocked } from '../composables/useReadonlyMode'
 import { useI18n } from 'vue-i18n'
+import { MANAGE_ICONS } from '../constants'
 import Button from 'primevue/button'
 
 defineEmits(['click'])
@@ -15,7 +16,7 @@ const isBlocked = useInjectBlocked()
 <template>
   <Button
     v-if="!isBlocked"
-    icon="pi pi-refresh"
+    :icon="MANAGE_ICONS.RELOAD"
     text
     class="app-reload-btn"
     v-tooltip.bottom="t('common.reload_list')"

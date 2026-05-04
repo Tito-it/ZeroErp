@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useImpostazioniStore } from '../stores/impostazioni'
 import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
+import { MANAGE_ICONS } from '../../core/constants'
 import ReloadButton from '../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -41,7 +42,7 @@ function buildRowActions(data) {
     {
       key: 'remove-emittente-override',
       label: t('impostazioni.remove_emittente_override'),
-      icon: 'pi pi-building',
+      icon: MANAGE_ICONS.BUILDING,
       severity: 'danger',
       visible: auth.isAdmin && !!data.emittente_override_id,
       command: () => emit('remove-emittente-override', data),
@@ -49,7 +50,7 @@ function buildRowActions(data) {
     {
       key: 'remove-override',
       label: t('impostazioni.remove_override'),
-      icon: 'pi pi-trash',
+      icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: !!data.user_override_id,
       command: () => emit('remove-override', data),

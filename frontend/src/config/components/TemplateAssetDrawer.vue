@@ -13,15 +13,18 @@ import { useI18n } from 'vue-i18n'
 import { useTemplateAssetDocumentiStore } from '../stores/templateAssetDocumenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { isoToLocalDate, localDateToIso } from '../../core/utils/dateHelpers'
+import { downloadBlob } from '../../core/utils/download'
 import { ASSET_UPLOAD_MAX_BYTES } from '../constants/documentiVersioniWhitelists'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import Drawer from 'primevue/drawer'
+import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
-import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
 import FileUpload from 'primevue/fileupload'
@@ -31,6 +34,7 @@ const { t } = useI18n()
 const store = useTemplateAssetDocumentiStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
+const { defaultEmittenteId } = useEmittenteFiscaleField()
 
 const props = defineProps({
   visible: Boolean,
@@ -45,6 +49,7 @@ const isReadOnlyEffective = computed(() => props.readonly || isReadonly.value)
 
 const form = ref(emptyForm())
 const selectedFile = ref(null)
+const downloadLoading = ref(false)
 
 function emptyForm() {
   return {
@@ -53,6 +58,14 @@ function emptyForm() {
     descrizione: '',
     asset_tipo_id: null,
     emittente_fiscale_id: null,
+    // Denormalizzati dal payload BE per display read-only in edit.
+    emittente_fiscale_codice: null,
+    emittente_fiscale_descrizione: null,
+    mime_type: null,
+    file_name: null,
+    file_size_bytes: null,
+    sha256: null,
+    storage_key: null,
     valido_dal: null,
     valido_al: null,
     attivo: true,
@@ -69,6 +82,13 @@ async function loadDetail() {
     descrizione: data.descrizione ?? '',
     asset_tipo_id: data.asset_tipo_id ?? null,
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
+    emittente_fiscale_codice: data.emittente_fiscale_codice ?? null,
+    emittente_fiscale_descrizione: data.emittente_fiscale_descrizione ?? null,
+    mime_type: data.mime_type ?? null,
+    file_name: data.file_name ?? null,
+    file_size_bytes: data.file_size_bytes ?? null,
+    sha256: data.sha256 ?? null,
+    storage_key: data.storage_key ?? null,
     valido_dal: isoToLocalDate(data.valido_dal),
     valido_al: isoToLocalDate(data.valido_al),
     attivo: data.attivo ?? true,
@@ -84,6 +104,9 @@ watch(
       loadDetail()
     } else {
       form.value = emptyForm()
+      // Autopopulate centralizzato: null se admin globale (sceglie via
+      // Select), id dell'emittente del profilo per operatore standard.
+      form.value.emittente_fiscale_id = defaultEmittenteId.value
     }
   },
 )
@@ -102,6 +125,8 @@ const canSave = computed(() => {
   return true
 })
 
+const currentFileCount = computed(() => (form.value.file_name ? 1 : 0))
+
 function onFileSelect(event) {
   // PrimeVue FileUpload event.files contiene l'elenco aggiunto.
   const files = event.files || []
@@ -110,6 +135,29 @@ function onFileSelect(event) {
 
 function onFileClear() {
   selectedFile.value = null
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes)
+  if (!Number.isFinite(value) || value <= 0) return '-'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+async function handleDownloadAsset() {
+  if (!props.recordId || !form.value.file_name) return
+  downloadLoading.value = true
+  try {
+    const result = await execute(
+      () => store.download(props.recordId),
+      { errorMessage: t('config.modelli_documenti.asset.download_error') },
+    )
+    if (!result) return
+    downloadBlob(result.blob, result.fileName || form.value.file_name)
+  } finally {
+    downloadLoading.value = false
+  }
 }
 
 async function handleSave() {
@@ -171,21 +219,25 @@ function close() {
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
       <div class="form-grid">
-        <div class="form-field">
-          <label>{{ t('config.modelli_documenti.asset.field_codice') }} *</label>
-          <InputText
-            v-model="form.codice"
-            :disabled="isEdit || isReadOnlyEffective"
-            maxlength="120"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('config.modelli_documenti.asset.field_codice_interno') }} *</label>
-          <InputText
-            v-model="form.codice_interno"
-            :disabled="isEdit || isReadOnlyEffective"
-            maxlength="120"
-          />
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('config.modelli_documenti.asset.field_codice') }} *</label>
+            <InputText
+              v-model="form.codice"
+              :disabled="isEdit || isReadOnlyEffective"
+              maxlength="120"
+              fluid
+            />
+          </div>
+          <div class="form-field">
+            <label>{{ t('config.modelli_documenti.asset.field_codice_interno') }} *</label>
+            <InputText
+              v-model="form.codice_interno"
+              :disabled="isEdit || isReadOnlyEffective"
+              maxlength="120"
+              fluid
+            />
+          </div>
         </div>
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.asset.field_descrizione') }} *</label>
@@ -209,23 +261,25 @@ function close() {
         </div>
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.field_emittente') }} *</label>
-          <InputNumber
+          <EmittenteFiscaleField
             v-model="form.emittente_fiscale_id"
-            :disabled="isEdit || isReadOnlyEffective"
-            :min="1"
-            :useGrouping="false"
+            :record="form"
+            :is-edit="isEdit"
+            :disabled="isReadOnlyEffective"
           />
           <small class="text-color-secondary">
             {{ t('config.modelli_documenti.field_emittente_hint') }}
           </small>
         </div>
-        <div class="form-field">
-          <label>{{ t('config.modelli_documenti.asset.field_valido_dal') }}</label>
-          <DatePicker v-model="form.valido_dal" :disabled="isReadOnlyEffective" date-format="dd/mm/yy" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('config.modelli_documenti.asset.field_valido_al') }}</label>
-          <DatePicker v-model="form.valido_al" :disabled="isReadOnlyEffective" date-format="dd/mm/yy" />
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('config.modelli_documenti.asset.field_valido_dal') }}</label>
+            <DatePicker v-model="form.valido_dal" :disabled="isReadOnlyEffective" date-format="dd/mm/yy" fluid />
+          </div>
+          <div class="form-field">
+            <label>{{ t('config.modelli_documenti.asset.field_valido_al') }}</label>
+            <DatePicker v-model="form.valido_al" :disabled="isReadOnlyEffective" date-format="dd/mm/yy" fluid />
+          </div>
         </div>
         <div class="form-field">
           <label>{{ t('common.attivo') }}</label>
@@ -254,18 +308,83 @@ function close() {
             </small>
           </div>
         </template>
+        <template v-else>
+          <div class="form-field form-field-wide">
+            <label>{{ t('config.modelli_documenti.asset.field_file') }}</label>
+            <div class="asset-file-panel">
+              <div class="asset-file-main">
+                <span class="asset-file-count">
+                  {{ t('config.modelli_documenti.asset.file_count', { count: currentFileCount }) }}
+                </span>
+                <strong>{{ form.file_name || '-' }}</strong>
+                <small class="text-color-secondary">
+                  {{ form.mime_type || '-' }} · {{ formatFileSize(form.file_size_bytes) }}
+                </small>
+              </div>
+              <Button
+                :icon="MANAGE_ICONS.DOWNLOAD"
+                :label="t('config.modelli_documenti.asset.download_file')"
+                size="small"
+                severity="secondary"
+                outlined
+                :loading="downloadLoading"
+                :disabled="!form.file_name"
+                @click="handleDownloadAsset"
+              />
+            </div>
+            <small v-if="form.sha256" class="text-color-secondary asset-file-hash">
+              SHA256 {{ form.sha256 }}
+            </small>
+          </div>
+        </template>
 
         <Message v-if="isEdit" severity="info" :closable="false">
           {{ t('config.modelli_documenti.asset.edit_metadati_only_hint') }}
         </Message>
       </div>
 
+    </div>
+
+    <template #footer>
       <DrawerFooter
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"
         @cancel="close"
       />
-    </div>
+    </template>
   </Drawer>
 </template>
+
+<style scoped>
+.asset-file-panel {
+  align-items: center;
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.65rem 0.75rem;
+}
+
+.asset-file-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.asset-file-main strong,
+.asset-file-main small,
+.asset-file-hash {
+  overflow-wrap: anywhere;
+}
+
+.asset-file-count {
+  color: var(--text-color-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+</style>

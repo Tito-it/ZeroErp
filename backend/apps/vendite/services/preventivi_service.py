@@ -14,6 +14,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import transaction
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
@@ -22,6 +23,10 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.value_normalizer import empty_to_none
+from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.services.document_generation_service import (
+    DocumentGenerationService,
+)
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.vendite.services.pricing_service import (
     PARAM_MAX_MAGGIORAZIONE_PCT,
@@ -37,6 +42,11 @@ _STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 _STATI_FATTURABILI: frozenset[str] = frozenset({"ACCETTATO"})
 _STATI_GENERA_PRATICA: frozenset[str] = frozenset({"ACCETTATO"})
 _FN = "vendite.preventivi_service"
+
+# Codice sorgente PREVENTIVO in `config.sorgenti` — usato dal motore
+# documentale per scegliere il template e tracciare l'origine del PDF.
+# Coerente con la stessa costante in `preventivi_documenti_views`.
+_CODICE_SORGENTE_PREVENTIVO = "PREVENTIVO"
 
 
 # ══════════════════════════════════════════════════════════
@@ -377,6 +387,7 @@ def cambia_stato(
     *,
     fatturazione_immediata: bool | None = None,
     competenza_mese: date | None = None,
+    user: AbstractBaseUser | AnonymousUser | None = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
 
@@ -433,8 +444,64 @@ def cambia_stato(
                 result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
             return result
 
+    # Hook atomico emissione: la transizione *->EMESSO genera il PDF
+    # canonico v1 nella stessa transazione del cambio stato. Se il
+    # rendering fallisce (template/versione invalida, builder fail, ...)
+    # l'eccezione propaga -> rollback totale -> il preventivo resta nello
+    # stato precedente. Invariante: EMESSO => almeno una versione PDF
+    # esiste in documenti.documenti_generati.
+    if nuovo_stato == "EMESSO":
+        with transaction.atomic():
+            result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
+            _genera_pdf_emissione(preventivo_id, user=user)
+        return result
+
     result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
     return result
+
+
+# Scopo: Genera e persiste il PDF canonico del preventivo emesso (v1
+#        della numerazione `progressivo_sorgente`). Chiamato dentro la
+#        transazione di `cambia_stato` quando lo stato passa a EMESSO:
+#        un fallimento solleva ServiceError che rollbacka l'intera
+#        transizione di stato. Su rigenerazioni successive (in stato
+#        EMESSO, click utente sul pulsante PDF) il caller chiama
+#        direttamente `DocumentGenerationService.genera_documento` via
+#        l'endpoint dedicato `ApiPreventivoDocumentoGenera`: questa
+#        funzione e' specifica per il bootstrap one-shot all'emissione.
+def _genera_pdf_emissione(
+    preventivo_id: int,
+    *,
+    user: AbstractBaseUser | AnonymousUser | None,
+) -> None:
+    repo = PreventiviRepository()
+    preventivo = repo.get_preventivo(preventivo_id)
+    ErrorManager.require(
+        preventivo is not None,
+        code="E_PREV_NOT_FOUND",
+        message="Preventivo non trovato per emissione PDF.",
+        detail=f"preventivo_id={preventivo_id}",
+        function_name=f"{_FN}._genera_pdf_emissione",
+    )
+    assert preventivo is not None
+
+    doc_repo = DocumentiRepository()
+    sorgente = doc_repo.get_sorgente_tipo_id_by_codice(_CODICE_SORGENTE_PREVENTIVO)
+    ErrorManager.require(
+        sorgente is not None and sorgente.get("attivo"),
+        code="E_DOCUMENTI_VALIDATION",
+        message="Sorgente 'PREVENTIVO' non configurata o non attiva.",
+        function_name=f"{_FN}._genera_pdf_emissione",
+    )
+    assert sorgente is not None
+
+    DocumentGenerationService().genera_documento(
+        user,
+        emittente_fiscale_id=int(preventivo["emittente_fiscale_id"]),
+        sorgente_tipo_id=int(sorgente["id"]),
+        sorgente_id=int(preventivo["id"]),
+        sorgente_uid=str(preventivo["uid"]),
+    )
 
 
 # Scopo: Crea nuova revisione del preventivo delegando alla funzione DB.

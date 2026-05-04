@@ -7,6 +7,7 @@
 //        Endpoint backend Tranche G:
 //         /api/v1/documenti/asset/        GET (list) | POST (multipart upload)
 //         /api/v1/documenti/asset/<id>/   GET (detail) | PATCH (metadati)
+//         /api/v1/documenti/asset/<id>/file/ GET download binario
 //
 //        DELETE NON esposta (trigger DB A3 block_delete: soft-disable
 //        via PATCH `attivo=false` o `valido_al`).
@@ -24,6 +25,11 @@ export function listTemplateAssetDocumenti(params = {}) {
 // Scopo: Dettaglio asset per id.
 export function getTemplateAssetDocumento(id) {
   return api.get(`${BASE}/${id}/`)
+}
+
+// Scopo: Download binario del file asset originale.
+export function downloadTemplateAssetDocumento(id) {
+  return api.get(`${BASE}/${id}/file/`, { responseType: 'blob' })
 }
 
 // Scopo: Upload asset (multipart). `file` -> binario; gli altri campi

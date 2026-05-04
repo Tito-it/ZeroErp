@@ -27,10 +27,12 @@
 #   8. render_pdf_weasyprint_empty_output_raises
 #   9. render_pdf_jinja_supporta_for_loop
 #  10. render_pdf_css_opzionale_none_quando_assente
+#  11. render_pdf_weasyprint_native_dep_mancante_mapped
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
+import builtins
 from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -179,6 +181,25 @@ class RenderPdfJinjaTests(TestCase):
 
 class RenderPdfWeasyPrintTests(TestCase):
     """Render WeasyPrint: eccezione interna + output vuoto."""
+
+    # 11. Import WeasyPrint fallisce per dipendenza nativa mancante
+    #     (es. libpango) -> non deve diventare E_GENERICO.
+    def test_render_pdf_weasyprint_native_dep_mancante_mapped(self) -> None:
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "weasyprint":
+                raise OSError("cannot load library 'libpango-1.0-0'")
+            return real_import(name, globals, locals, fromlist, level)
+
+        with patch("builtins.__import__", side_effect=fake_import):
+            with self.assertRaises(ServiceError) as ctx:
+                render_service.render_pdf(
+                    template_versione=_versione(),
+                    context={"nome": "x"},
+                )
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_RENDER_FAILED")
+        self.assertIn("WeasyPrint", ctx.exception.message)
 
     # 7. WeasyPrint solleva -> mappato a E_DOCUMENTI_RENDER_FAILED.
     def test_render_pdf_weasyprint_exception_mapped(self) -> None:

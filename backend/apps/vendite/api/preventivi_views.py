@@ -212,6 +212,9 @@ class ApiPreventivoStato(DomainAPIView):
                 preventivo_id, nuovo_stato,
                 fatturazione_immediata=fatturazione_immediata,
                 competenza_mese=competenza_mese,
+                # user serve al hook atomico EMESSO per scope emittente +
+                # audit `generato_da_user_id` su documenti_generati.
+                user=request.user,
             )
         return handle_post_json(request, handler=_handler)
 

@@ -8,6 +8,7 @@ import { fetchAllegati, deleteAllegato } from '../api/pratiche-api'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { MANAGE_ICONS } from '../../core/constants'
 import { displayTimestamp } from '../../core/utils/date'
 import { formatSize } from '../../core/utils/format'
 import Tag from 'primevue/tag'
@@ -77,8 +78,8 @@ watch(() => props.praticaId, (id) => {
           <span v-if="a.dimensione" class="allegato-size">{{ formatSize(a.dimensione) }}</span>
           <span class="allegato-date">{{ displayTimestamp(a.data_insert) }}</span>
           <span class="allegato-user">{{ a.user_insert }}</span>
-          <Button v-if="!isReadonly" icon="pi pi-trash" text rounded size="small"
-            class="app-action-btn" severity="danger"
+          <Button v-if="!isReadonly" :icon="MANAGE_ICONS.DELETE" text rounded size="small"
+            class="app-delete-btn"
             @click="onElimina(a)" />
         </div>
       </div>

@@ -15,7 +15,7 @@ import Column from 'primevue/column'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
+import ReloadButton from '../../core/components/ReloadButton.vue'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
@@ -152,7 +152,7 @@ function rowSummary(data) {
         />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="fetchData" />
+        <ReloadButton @click="fetchData" />
       </div>
     </div>
 

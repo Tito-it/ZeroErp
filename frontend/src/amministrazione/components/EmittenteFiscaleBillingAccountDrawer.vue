@@ -5,7 +5,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import EmittenteFiscaleBillingAccountTab from './EmittenteFiscaleBillingAccountTab.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
@@ -53,7 +53,7 @@ function close() {
       />
 
       <div class="flex justify-end mt-4">
-        <Button :label="t('common.close')" icon="pi pi-times" text @click="close" />
+        <Button :label="t('common.close')" :icon="MANAGE_ICONS.CANCEL" text @click="close" />
       </div>
     </div>
   </Drawer>

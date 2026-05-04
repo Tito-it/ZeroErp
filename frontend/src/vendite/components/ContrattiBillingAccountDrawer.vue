@@ -186,7 +186,7 @@ function onClose() {
           />
         </div>
         <div class="app-page-actions">
-          <Button icon="pi pi-refresh" text class="app-reload-btn"
+          <Button :icon="MANAGE_ICONS.RELOAD" text class="app-reload-btn"
             v-tooltip.bottom="t('common.reload_list')" @click="fetchList" />
           <NewButton
             :tooltip="canCreate ? t('contratti.nuovo_contratto') : disabledCreateReason"

@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { usePreventiviStore } from '../stores/preventivi'
+import { MANAGE_ICONS } from '../../../core/constants'
 import { formatCurrency, formatNumber } from '../../../core/utils/format'
 import PreventiviRigaForm from './PreventiviRigaForm.vue'
 import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
@@ -129,7 +130,7 @@ function buildRowActions(riga) {
     {
       key: 'elimina',
       label: t('common.delete'),
-      icon: 'pi pi-trash',
+      icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: props.isModificabile,
       disabled: riga?.stato_approvazione_prezzo === 'PENDING',

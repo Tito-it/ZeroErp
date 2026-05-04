@@ -19,6 +19,21 @@
     "modalita_consultazione": "Sola lettura",
     "altre_azioni": "Altre azioni",
     "azione_non_disponibile_record_inattivo": "Azione non disponibile su record inattivo",
+    "action_hint_add": "Aggiungi",
+    "action_hint_billing_account": "Gestisci billing account",
+    "action_hint_cancel": "Annulla",
+    "action_hint_clone": "Clona",
+    "action_hint_close": "Chiudi",
+    "action_hint_confirm": "Conferma",
+    "action_hint_delete": "Elimina",
+    "action_hint_download": "Scarica",
+    "action_hint_edit": "Modifica",
+    "action_hint_list": "Gestisci righe",
+    "action_hint_permissions": "Gestisci permessi",
+    "action_hint_play": "Avvia",
+    "action_hint_publish": "Pubblica",
+    "action_hint_reload": "Ricarica",
+    "action_hint_utility": "Gestisci utility",
     "col_azioni": "Azioni",
     "riepilogo_iva_titolo": "Riepilogo IVA",
     "riepilogo_iva_sottotitolo": "Calcolo per aliquota (DPR 633/72 art. 21)",
@@ -126,8 +141,7 @@
     "config": {
       "tabelle": "Tabelle",
       "impostazioni": "Impostazioni",
-      "modelli-documenti": "Modelli documenti",
-      "asset-documenti": "Asset documentali"
+      "config-documenti": "Configurazione documenti"
     },
     "catalogo": {
       "articoli": "Articoli",
@@ -145,6 +159,10 @@
     "pratiche": {
       "gestione": "Gestione Pratiche"
     }
+  },
+  "config_documenti": {
+    "tab_modelli": "Modelli documenti",
+    "tab_asset": "Asset documentali"
   },
   "impostazioni": {
     "search_placeholder": "Cerca parametro...",
@@ -206,7 +224,8 @@
     "not_found_message": "La pagina richiesta non esiste.",
     "forbidden_title": "Accesso negato",
     "forbidden_message": "Non hai i permessi per accedere a questa area.",
-    "back_home": "Torna alla Home"
+    "back_home": "Torna alla Home",
+    "lookup_load_failed": "Caricamento elenco non riuscito. Riprova oppure contatta l'amministratore."
   },
   "placeholder": {
     "wip_title": "Area in costruzione",
@@ -1605,6 +1624,20 @@
     "aggiungi_prezzo_hint": "Aggiungi prezzo"
   },
   "preventivi": {
+    "pdf": {
+      "label_anteprima": "Anteprima",
+      "tooltip_anteprima": "Anteprima PDF (non viene salvata)",
+      "label_genera": "Genera PDF",
+      "tooltip_genera": "Genera nuova versione PDF",
+      "label_scarica": "Scarica PDF",
+      "tooltip_scarica": "Scarica un PDF generato",
+      "tooltip_lista": "Documenti PDF",
+      "tooltip_lista_disabilitato": "Disponibile dopo l'emissione del preventivo",
+      "dialog_title": "Documenti PDF — Preventivo {numero}",
+      "confirm_genera_header": "Generare nuova versione PDF",
+      "confirm_genera_first_message": "Verra' creata la prima versione del PDF per questo preventivo. Confermi?",
+      "confirm_rigenera_message": "Esiste gia' la versione {versione} del {data}. Generare la versione {prossima}? Le versioni precedenti restano archiviate."
+    },
     "search_placeholder": "Cerca per numero, cliente, utility...",
     "filtro_stato": "Stato",
     "nuovo_preventivo": "Nuovo Preventivo",
@@ -2016,8 +2049,10 @@
       "field_descrizione": "Descrizione",
       "field_tipo_output": "Tipo output",
       "field_sorgente": "Sorgente",
-      "field_emittente": "ID emittente fiscale",
-      "field_emittente_hint": "ID numerico dell'emittente fiscale (chiedere all'amministratore in caso di dubbio).",
+      "field_emittente": "Emittente fiscale",
+      "field_emittente_hint": "Determinato dal profilo operatore. Per gli amministratori globali e' selezionabile.",
+      "field_emittente_placeholder": "Seleziona emittente fiscale...",
+      "field_emittente_none": "Nessun emittente associato al profilo.",
       "field_immutable_after_create": "Non modificabile dopo la creazione.",
       "field_context_builder": "Builder contesto",
       "field_context_builder_placeholder": "Seleziona un builder",
@@ -2073,6 +2108,9 @@
         "saved": "Asset aggiornato",
         "edit_metadati_only_hint": "In modifica si possono aggiornare solo i metadati. Per cambiare il file caricare un nuovo asset.",
         "choose_file": "Scegli file",
+        "download_file": "Scarica",
+        "download_error": "Impossibile scaricare il file asset.",
+        "file_count": "File allegati: {count}",
         "field_file": "File",
         "field_file_hint": "Max 25 MB. Tipo MIME deve corrispondere al tipo asset selezionato.",
         "field_codice": "Codice",

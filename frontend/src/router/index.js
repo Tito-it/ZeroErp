@@ -238,16 +238,10 @@ const router = createRouter({
           meta: { domain: 'config', menuKey: 'impostazioni' }
         },
         {
-          path: 'config/modelli-documenti',
-          name: 'config-modelli-documenti',
-          component: () => import('../config/views/ModelliDocumentiTemplatesView.vue'),
-          meta: { domain: 'config', menuKey: 'modelli-documenti' }
-        },
-        {
-          path: 'config/asset-documenti',
-          name: 'config-asset-documenti',
-          component: () => import('../config/views/ModelliDocumentiAssetView.vue'),
-          meta: { domain: 'config', menuKey: 'asset-documenti' }
+          path: 'config/documenti',
+          name: 'config-documenti',
+          component: () => import('../config/views/ConfigurazioneDocumentiView.vue'),
+          meta: { domain: 'config', menuKey: 'config-documenti' }
         },
 
         // --- Catalogo ---

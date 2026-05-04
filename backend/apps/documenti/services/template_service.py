@@ -20,6 +20,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.services.storage import DocumentStorage, get_storage
 
 E_VALIDATION = "E_DOCUMENTI_VALIDATION"
 
@@ -30,9 +31,14 @@ _STATI_VERSIONE_VALIDI: frozenset[str] = frozenset({"BOZZA", "PUBBLICATA", "OBSO
 class TemplateService:
     """Facade lettura template + versioni. Risolve scope emittente operatore."""
 
-    def __init__(self, repo: DocumentiRepository | None = None) -> None:
+    def __init__(
+        self,
+        repo: DocumentiRepository | None = None,
+        storage: DocumentStorage | None = None,
+    ) -> None:
         self._repo = repo or DocumentiRepository()
         self._v = PayloadValidator(validation_code=E_VALIDATION)
+        self._storage_factory = (lambda: storage) if storage is not None else get_storage
 
     # Scopo: Lista template paginata con scope emittente automatico per
     #        l'utente loggato. Admin globale (None) vede tutto; operatore
@@ -181,6 +187,35 @@ class TemplateService:
         )
         assert row is not None
         return row
+
+    # Scopo: Scarica il binario di un asset documentale rispettando lo
+    #        stesso scope emittente del dettaglio. GET puro: nessun evento
+    #        o mutazione, solo lettura da storage applicativo.
+    def download_asset(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        asset_id: int,
+    ) -> dict[str, Any]:
+        asset = self.get_asset(user, asset_id)
+        storage = self._storage_factory()
+        storage_uri = storage.build_storage_uri(asset["storage_key"])
+        try:
+            file_bytes = storage.read(storage_uri)
+        except Exception:
+            ErrorManager.raise_error(
+                code="E_DOCUMENTI_STORAGE_FAILED",
+                message="Errore lettura asset documentale dallo storage.",
+                detail=f"asset_id={asset_id}",
+            )
+            raise  # unreachable, per type checker
+
+        return {
+            "asset_id": asset_id,
+            "file_bytes": file_bytes,
+            "file_name": asset["file_name"],
+            "mime_type": asset["mime_type"],
+            "size_bytes": int(asset["file_size_bytes"]),
+        }
 
     # ---- helper interni ------------------------------------------------------
 

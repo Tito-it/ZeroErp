@@ -11,7 +11,7 @@ import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { listConversioniUom, createConversioneUom, updateConversioneUom } from '../api/catalogo'
 import { lookupCodici } from '../../core/apiCore'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
-import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -204,9 +204,9 @@ function cancelEditFattore() {
                 <div class="flex gap-1 align-items-center">
                   <InputNumber v-model="editingFattoreValue" :min="0" :min-fraction-digits="2"
                     :max-fraction-digits="10" style="width: 100px;" />
-                  <Button icon="pi pi-check" text rounded size="small" class="app-action-btn"
+                  <Button :icon="MANAGE_ICONS.CONFIRM" text rounded size="small" class="app-action-btn"
                     @click="confirmEditFattore(data)" />
-                  <Button icon="pi pi-times" text rounded size="small"
+                  <Button :icon="MANAGE_ICONS.CANCEL" text rounded size="small"
                     @click="cancelEditFattore" />
                 </div>
               </template>
@@ -229,7 +229,7 @@ function cancelEditFattore() {
           <div v-if="!adding" class="mt-05">
             <Button
               :label="t('catalogo.nuova_conversione_uom')"
-              icon="pi pi-plus"
+              :icon="MANAGE_ICONS.ADD"
               text size="small"
               class="app-action-btn"
               @click="startAdd"

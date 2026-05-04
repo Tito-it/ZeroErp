@@ -11,7 +11,7 @@ import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative, invitaOperatore, reinviaInvito } from '../api/amministrazione'
 import { TIPO_RUOLO_CODICE } from '../constants'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
@@ -308,7 +308,7 @@ function onClose() {
               :ragione-sociale="soggettoSelezionato.ragione_sociale"
               :codice-fiscale="soggettoSelezionato.cf"
             />
-            <Button :label="t('resolver.change')" icon="pi pi-pencil"
+            <Button :label="t('resolver.change')" :icon="MANAGE_ICONS.EDIT"
               text size="small" class="mt-1" @click="clearSoggetto" />
           </div>
           <div v-else>

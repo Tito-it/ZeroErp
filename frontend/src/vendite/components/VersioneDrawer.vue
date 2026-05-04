@@ -16,7 +16,7 @@ import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/
 import { createRiga, updateRiga, deleteRiga } from '../api/listini'
 import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
 import { useListiniRigheStore } from '../stores/listiniRighe'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
@@ -220,7 +220,7 @@ function buildRigaActions(row) {
     {
       key: 'modifica-riga',
       label: t('common.edit'),
-      icon: 'pi pi-pencil',
+      icon: MANAGE_ICONS.EDIT,
       visible: isBozza.value && !isReadonly.value,
       allowWhenInactive: true,
       command: () => onRowSelect({ data: row }),
@@ -228,7 +228,7 @@ function buildRigaActions(row) {
     {
       key: 'elimina-riga',
       label: t('common.delete'),
-      icon: 'pi pi-trash',
+      icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: isBozza.value && !isReadonly.value,
       command: () => onDelete(row),

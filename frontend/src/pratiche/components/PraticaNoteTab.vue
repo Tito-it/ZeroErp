@@ -10,6 +10,7 @@ import { fetchNote, createNota, updateNota, deleteNota } from '../api/pratiche-a
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { MANAGE_ICONS } from '../../core/constants'
 import { displayTimestamp } from '../../core/utils/date'
 import Textarea from 'primevue/textarea'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -110,7 +111,7 @@ watch(() => props.praticaId, (id) => {
           style="width: 160px;"
         />
         <Button
-          icon="pi pi-plus"
+          :icon="MANAGE_ICONS.ADD"
           :label="t('pratiche.nota_aggiungi')"
           size="small"
           :disabled="!nuovaNota.contenuto.trim() || !nuovaNota.tipo_nota_codice"
@@ -142,18 +143,18 @@ watch(() => props.praticaId, (id) => {
           <span class="nota-date">{{ displayTimestamp(n.data_insert) }}</span>
           <span class="nota-user">{{ n.user_insert }}</span>
           <div v-if="!isReadonly" class="nota-actions">
-            <Button v-if="editingId !== n.id" icon="pi pi-pencil" text rounded size="small"
+            <Button v-if="editingId !== n.id" :icon="MANAGE_ICONS.EDIT" text rounded size="small"
               class="app-action-btn" @click="startEdit(n)" />
-            <Button icon="pi pi-trash" text rounded size="small"
-              class="app-action-btn" severity="danger" @click="onElimina(n)" />
+            <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small"
+              class="app-delete-btn" @click="onElimina(n)" />
           </div>
         </div>
         <!-- Contenuto: editing inline o testo -->
         <div v-if="editingId === n.id" class="nota-edit">
           <Textarea v-model="editingContenuto" class="w-full" rows="2" auto-resize />
           <div class="nota-edit-actions">
-            <Button icon="pi pi-check" size="small" @click="onSalvaEdit(n)" />
-            <Button icon="pi pi-times" size="small" severity="secondary" @click="cancelEdit" />
+            <Button :icon="MANAGE_ICONS.CONFIRM" size="small" @click="onSalvaEdit(n)" />
+            <Button :icon="MANAGE_ICONS.CANCEL" size="small" severity="secondary" @click="cancelEdit" />
           </div>
         </div>
         <div v-else class="nota-contenuto">{{ n.contenuto }}</div>

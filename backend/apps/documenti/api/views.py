@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -659,3 +659,27 @@ class ApiAssetDetail(DomainAPIView):
             request.user, int(asset_id), dict(request.data)
         )
         return success_response(result)
+
+
+class ApiAssetFileDownload(DomainAPIView):
+    """
+    GET /api/v1/documenti/asset/<id>/file/ — download binario asset.
+    """
+
+    area_funzionale = "documenti"
+
+    @extend_schema(
+        responses={200: bytes},
+    )
+    # Scopo: Restituisce il file originale dell'asset come attachment.
+    def get(self, request: Request, asset_id: int) -> HttpResponse:
+        result = TemplateService().download_asset(request.user, int(asset_id))
+        response = HttpResponse(
+            result["file_bytes"],
+            content_type=result["mime_type"],
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="{result["file_name"]}"'
+        )
+        response["Content-Length"] = str(result["size_bytes"])
+        return response

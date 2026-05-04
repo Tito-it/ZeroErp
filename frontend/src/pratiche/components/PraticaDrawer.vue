@@ -11,7 +11,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
-import { DRAWER_WIDTH, STATO_PRATICA } from '../../core/constants'
+import { DRAWER_WIDTH, STATO_PRATICA, MANAGE_ICONS } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
@@ -223,7 +223,7 @@ function onClose() {
               :ragione-sociale="soggettoSelezionato.ragione_sociale"
               :codice-fiscale="soggettoSelezionato.cf"
             />
-            <Button :label="t('resolver.change')" icon="pi pi-pencil"
+            <Button :label="t('resolver.change')" :icon="MANAGE_ICONS.EDIT"
               text size="small" class="mt-1" @click="clearSoggetto" />
           </div>
           <div v-else class="mb-3">

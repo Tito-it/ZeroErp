@@ -32,7 +32,7 @@ bleach>=6.2
 
 # Generazione PDF documenti (motore documentale, Decisione 73)
 # Richiede librerie native Pango/Cairo/HarfBuzz/PixBuf — vedi Dockerfile.
-weasyprint>=63,<64
+weasyprint>=68,<69
 
 # Template engine documenti (Jinja2 stile, Decisione 4 sviluppo-documenti).
 # StrictUndefined per fail-fast su variabili context mancanti nel render.

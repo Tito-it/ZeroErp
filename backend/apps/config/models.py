@@ -95,75 +95,6 @@ class AreaModelOverride(models.Model):
         return f"{self.app_label}.{self.model_name} -> {self.area_id}"
 
 
-# ── Profili reparto (ereditarieta') ────────────────────────
-
-
-class ProfiloRepartoArea(models.Model):
-    """Profilo accesso ereditato: livello per area per ogni reparto."""
-
-    LIVELLO_CHOICES = [
-        ("TUTTO", "Tutto"),
-        ("LETTURA", "Lettura"),
-        ("BLOCCATO", "Bloccato"),
-    ]
-
-    id = models.IntegerField(primary_key=True)
-    unita_organizzativa_id = models.IntegerField()
-    area = models.ForeignKey(
-        AreaFunzionale,
-        on_delete=models.DO_NOTHING,
-        db_column="area_id",
-        related_name="profili_reparto",
-    )
-    livello = models.CharField(
-        max_length=10, choices=LIVELLO_CHOICES, default="BLOCCATO"
-    )
-    meta = models.JSONField(default=dict)
-    data_insert = models.DateTimeField(auto_now_add=True)
-    user_insert = models.TextField(default="")
-    data_update = models.DateTimeField(auto_now=True)
-    user_update = models.TextField(default="")
-
-    class Meta:
-        managed = False
-        db_table = 'config"."profili_reparto_aree'
-        constraints = [
-            models.UniqueConstraint(
-                fields=["unita_organizzativa_id", "area"],
-                name="uq_profili_reparto_aree_uo_area",
-            )
-        ]
-
-
-class ProfiloRepartoAzione(models.Model):
-    """Azioni di processo abilitate per reparto."""
-
-    id = models.IntegerField(primary_key=True)
-    unita_organizzativa_id = models.IntegerField()
-    azione = models.ForeignKey(
-        AzioneProcesso,
-        on_delete=models.DO_NOTHING,
-        db_column="azione_id",
-        related_name="profili_reparto",
-    )
-    abilitata = models.BooleanField(default=False)
-    meta = models.JSONField(default=dict)
-    data_insert = models.DateTimeField(auto_now_add=True)
-    user_insert = models.TextField(default="")
-    data_update = models.DateTimeField(auto_now=True)
-    user_update = models.TextField(default="")
-
-    class Meta:
-        managed = False
-        db_table = 'config"."profili_reparto_azioni'
-        constraints = [
-            models.UniqueConstraint(
-                fields=["unita_organizzativa_id", "azione"],
-                name="uq_profili_reparto_azioni_uo_azione",
-            )
-        ]
-
-
 # ── Override utente ────────────────────────────────────────
 
 
@@ -291,9 +222,10 @@ class UserEmittenteFiscale(models.Model):
 class ProfiloAccesso(models.Model):
     """Profilo accesso generalizzato (REPARTO | PORTALE | AD_HOC | SUPER_ADMIN).
 
-    Rimpiazza concettualmente `ProfiloRepartoArea` (che resta solo per
-    reader legacy). Nuovo backend scrive su `ProfiloAccessoArea` /
-    `ProfiloAccessoAzione` / `ProfiloAccessoBinding`.
+    Sorgente unica del modello permessi post-cutover PR-B. I tre tipi di
+    binding (REPARTO via unita_organizzativa, PORTALE via ruolo_applicativo,
+    AD_HOC via identita_digitale) confluiscono qui via `ProfiloAccessoBinding`.
+    Le tabelle legacy `profili_reparto_*` sono state dismesse.
     """
 
     TIPO_CHOICES = [

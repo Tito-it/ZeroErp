@@ -16,7 +16,7 @@ import { useParameterDefaults } from '../../core/composables/useParameterDefault
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { listUtilitiesPerBillingAccount, listSoggettoIndirizzi } from '../api/anagrafiche'
 import { lookupUtilitiesPerEmittente } from '../../core/apiCore'
-import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
+import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
@@ -418,7 +418,7 @@ function onClose() {
               :ragione-sociale="soggettoSelezionato.ragione_sociale"
               :codice-fiscale="soggettoSelezionato.cf"
             />
-            <Button :label="t('resolver.change')" icon="pi pi-pencil"
+            <Button :label="t('resolver.change')" :icon="MANAGE_ICONS.EDIT"
               text size="small" class="mt-1" @click="clearSoggetto" />
           </div>
           <div v-else>

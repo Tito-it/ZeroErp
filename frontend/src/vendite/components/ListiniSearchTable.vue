@@ -199,7 +199,7 @@ function buildListinoActions(data) {
     {
       key: 'elimina-listino',
       label: t('listini.elimina_listino'),
-      icon: 'pi pi-trash',
+      icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: !data.versioni_count,
       command: () => onEliminaListino(data),
@@ -218,7 +218,7 @@ function buildVersioneActions(ver, listino) {
     {
       key: 'attiva',
       label: ver.righe_count ? t('listini.attiva') : t('listini.attiva_no_righe'),
-      icon: 'pi pi-check-circle',
+      icon: MANAGE_ICONS.PUBLISH,
       severity: 'primary',
       visible: isBozza,
       disabled: !ver.righe_count,
@@ -227,7 +227,7 @@ function buildVersioneActions(ver, listino) {
     {
       key: 'chiudi',
       label: t('listini.chiudi'),
-      icon: 'pi pi-lock',
+      icon: MANAGE_ICONS.CLOSE,
       severity: 'warn',
       visible: isAttiva,
       command: () => onChiudiVersione(ver, listino.id),
@@ -235,19 +235,19 @@ function buildVersioneActions(ver, listino) {
     {
       key: 'clona',
       label: t('listini.clona_versione'),
-      icon: 'pi pi-copy',
+      icon: MANAGE_ICONS.CLONE,
       command: () => emit('open-clona-versione', ver, listino),
     },
     {
       key: 'gestisci-righe',
       label: t('listini.gestisci_righe'),
-      icon: 'pi pi-list',
+      icon: MANAGE_ICONS.LIST,
       command: () => emit('open-righe', ver, listino),
     },
     {
       key: 'elimina-versione',
       label: t('listini.elimina_versione'),
-      icon: 'pi pi-trash',
+      icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: isBozza,
       command: () => onEliminaVersione(ver, listino),
@@ -338,7 +338,7 @@ onMounted(() => store.fetchList())
               <i :class="MANAGE_ICONS.VERSIONI"></i>
               {{ t('listini.tab_versioni') }} ({{ store.versioniByListino[listino.id]?.length ?? 0 }})
             </span>
-            <Button icon="pi pi-plus" :label="t('listini.nuova_versione')"
+            <Button :icon="MANAGE_ICONS.ADD" :label="t('listini.nuova_versione')"
               text size="small" class="app-action-btn"
               @click.stop="emit('open-nuova-versione', listino)" />
           </div>

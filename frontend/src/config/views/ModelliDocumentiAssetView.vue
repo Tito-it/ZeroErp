@@ -12,7 +12,9 @@ import TemplateAssetDrawer from '../components/TemplateAssetDrawer.vue'
 const drawer = useDrawerState()
 const store = useTemplateAssetDocumentiStore()
 
-useReadonlyMode(READONLY_DOMAINS.CONFIG)
+// Permessi sull'area BE `documenti` (schema dei template asset), non
+// sull'area `config` da cui parte la navigazione.
+useReadonlyMode(READONLY_DOMAINS.DOCUMENTI)
 
 async function onDrawerSaved() {
   store.filters.offset = 0

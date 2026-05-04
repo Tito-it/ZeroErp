@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { applicaVariazionePercentuale } from '../api/listini'
+import { MANAGE_ICONS } from '../../core/constants'
 import Dialog from 'primevue/dialog'
 import InputNumber from 'primevue/inputnumber'
 import DataTable from 'primevue/datatable'
@@ -130,7 +131,7 @@ function backToInput() {
 
       <div class="flex justify-end gap-2 mt-1">
         <Button :label="t('common.back')" text icon="pi pi-arrow-left" @click="backToInput" />
-        <Button :label="t('listini.variazione_pct_conferma')" icon="pi pi-check"
+        <Button :label="t('listini.variazione_pct_conferma')" :icon="MANAGE_ICONS.CONFIRM"
           severity="warn" :loading="loading" @click="applyVariazione" />
       </div>
     </template>

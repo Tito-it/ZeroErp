@@ -13,7 +13,7 @@ import { useParameterDefaults } from '../../core/composables/useParameterDefault
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import { listArticoloUom, createArticoloUom, updateArticoloUom, deleteArticoloUom } from '../api/catalogo'
 import { toDateString } from '../../core/utils/date'
-import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -241,14 +241,14 @@ function buildRigaActions(row) {
     {
       key: 'modifica-uom',
       label: t('common.edit'),
-      icon: 'pi pi-pencil',
+      icon: MANAGE_ICONS.EDIT,
       allowWhenInactive: true,
       command: () => onStartEdit(row),
     },
     {
       key: 'elimina-uom',
       label: t('common.delete'),
-      icon: 'pi pi-trash',
+      icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       disabled: !row.puo_eliminarsi,
       tooltip: deleteUomTooltip(row),
@@ -323,7 +323,7 @@ function buildRigaActions(row) {
         <div v-if="!isReadonly" class="mt-05">
           <Button
             :label="t('catalogo.aggiungi_uom')"
-            icon="pi pi-plus"
+            :icon="MANAGE_ICONS.ADD"
             text size="small"
             class="app-action-btn"
             @click="onStartNew"
