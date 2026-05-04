@@ -6,16 +6,20 @@
 >
 [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
 > [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
-> [config.profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree)
+> [config.profili_accesso](/dbzero/config/tabelle/profili_accesso)
+> [config.profili_accesso_aree](/dbzero/config/tabelle/profili_accesso_aree)
+> [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings)
 >
 **Funzioni correlate:**
 >
 [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin),
-[script.fn_has_identita_attiva](/dbzero/script/funzioni/fn_has_identita_attiva)
+[script.fn_has_identita_attiva](/dbzero/script/funzioni/fn_has_identita_attiva),
+[script.fn_get_profili_accesso_applicabili](/dbzero/script/funzioni/fn_get_profili_accesso_applicabili)
 
 ---
 ### 🎯 Scopo Principale
-(latest review 08-03-2026)
+(latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
+
 La funzione **`script.fn_resolve_livello_area`** risolve il livello di accesso
 effettivo di un utente per un'area funzionale, identificata tramite `schema_db`.
 
@@ -38,10 +42,11 @@ Ritorna `config.livello_accesso` (ENUM): `TUTTO`, `LETTURA` o `BLOCCATO`.
 
 ### Catena di risoluzione
 
-1. **Ruolo sistema** — `NULL` o `DISABILITATO` → `BLOCCATO`; `ADMIN` → `TUTTO`
-2. **Override utente area** — se presente e temporalmente valido (`valido_dal` / `valido_al`)
-3. **Profilo reparto** — ereditato dall'unita organizzativa della risorsa umana
-4. **Default** → `BLOCCATO`
+1. **SUPER_ADMIN** — binding attivo a profilo SUPER_ADMIN → `TUTTO`
+2. **Identita attiva** — nessuna identita attiva nella finestra → `BLOCCATO`
+3. **Override utente area** — se presente e temporalmente valido (`valido_dal` / `valido_al`)
+4. **Profili accesso** — risolti via [`fn_get_profili_accesso_applicabili`](/dbzero/script/funzioni/fn_get_profili_accesso_applicabili) (AD_HOC vince su REPARTO/PORTALE)
+5. **Default** → `BLOCCATO`
 
 ---
 
@@ -49,7 +54,7 @@ Ritorna `config.livello_accesso` (ENUM): `TUTTO`, `LETTURA` o `BLOCCATO`.
 
 * Funzione **STABLE**.
 * La validita temporale degli override e controllata con `CURRENT_DATE`.
-* Il profilo reparto e legato all'unita organizzativa via `risorse_umane.unita_organizzativa_id`.
+* I profili applicabili (REPARTO via `risorse_umane.unita_organizzativa_id`, PORTALE per ruolo applicativo, AD_HOC per identita) sono calcolati centralmente da `fn_get_profili_accesso_applicabili`.
 
 ---
 

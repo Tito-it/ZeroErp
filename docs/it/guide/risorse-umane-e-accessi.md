@@ -245,14 +245,14 @@ In sintesi, i permessi di un utente dipendono da tre fattori:
 La catena di risoluzione:
 
 ```text
-ruolo_sistema DISABILITATO? -> accesso negato
-ruolo_sistema ADMIN?        -> accesso completo
-ruolo_sistema OPERATIVO?    -> override utente -> profilo reparto -> BLOCCATO (default)
+identita_digitali assente/non attiva? -> accesso negato
+binding SUPER_ADMIN attivo?           -> accesso completo
+altrimenti                            -> override utente -> profili_accesso (AD_HOC > REPARTO/PORTALE) -> BLOCCATO (default)
 ```
 
 Le tabelle coinvolte:
 
-* `config.profili_reparto_aree`, `config.profili_reparto_azioni` — permessi ereditati dal reparto
+* `config.profili_accesso`, `config.profili_accesso_aree`, `config.profili_accesso_azioni`, `config.profili_accesso_bindings` — capability generalizzate (REPARTO, PORTALE, AD_HOC, SUPER_ADMIN)
 * `config.user_override_aree`, `config.user_override_oggetti`, `config.user_override_azioni` — eccezioni individuali
 * `config.user_emittenti_fiscali` — whitelist opzionale per limitare l'operativita per emittente fiscale
 

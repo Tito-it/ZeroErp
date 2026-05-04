@@ -50,17 +50,18 @@ JSONB nel formato:
    `is_super_admin` + `has_identita_attiva` + `unita_organizzativa_id`
 3. Esegue una query set-based su `config.azioni_processo`
 4. Applica la catena di risoluzione con `LEFT JOIN` su:
-   `config.user_override_azioni` e `config.profili_reparto_azioni`
+   `config.user_override_azioni` e `config.profili_accesso_azioni`
+   (via `fn_get_profili_accesso_applicabili`)
 5. Compone il risultato con `jsonb_object_agg`
 
-## Catena di risoluzione (post Fase 7 cleanup)
+## Catena di risoluzione (post 04-05-2026 — modello legacy dismesso)
 
 ```text
 1. Stato identita (multi-face native, post Fase 7 2026-04-29):
    - NOT fn_has_identita_attiva(au, 'OPERATORE') -> false
    - fn_is_super_admin(au) -> true
 2. Override utente azione (se presente e valido)
-3. Profilo reparto azione (ereditato dalla UO)
+3. Profili accesso azione (AD_HOC priorita 1, REPARTO/PORTALE priorita 2)
 4. Default -> false
 ```
 
@@ -83,7 +84,8 @@ nel payload di `fn_get_user_profile`.
 
 - `config.azioni_processo`
 - `config.user_override_azioni`
-- `config.profili_reparto_azioni`
+- `config.profili_accesso`, `config.profili_accesso_azioni`, `config.profili_accesso_bindings`
+- `script.fn_get_profili_accesso_applicabili`
 - `anagrafiche.risorse_umane_auth_user`
 - `anagrafiche.risorse_umane`
 

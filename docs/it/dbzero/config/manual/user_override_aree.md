@@ -9,7 +9,7 @@ Architettura di riferimento:
 Tabelle correlate:
 >
 [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
-> [config.profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree)
+> [config.profili_accesso_aree](/dbzero/config/tabelle/profili_accesso_aree)
 > [config.user_override_oggetti](/dbzero/config/tabelle/user_override_oggetti)
 
 ---

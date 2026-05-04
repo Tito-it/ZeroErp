@@ -25,18 +25,19 @@ Architettura di riferimento:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 20-04-2026 — parametro opzionale `p_ruolo_applicativo`)
+(latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 
 La funzione **`script.fn_get_profili_accesso_applicabili`** risolve la lista
-di **profili di accesso applicabili** a un utente, basandosi sul nuovo modello
+di **profili di accesso applicabili** a un utente, basandosi sul modello
 generalizzato `profili_accesso` + `profili_accesso_bindings` (§4.3 WIP
-multi-face-auth).
+multi-face-auth). E' l'unica fonte di verita' per il calcolo dei profili
+applicabili — non esistono piu' altri lookup paralleli.
 
-Rimpiazza il vecchio lookup ad-hoc su `profili_reparto_aree`/
-`profili_reparto_azioni` tramite JOIN a `risorse_umane_auth_user` +
-`risorse_umane.unita_organizzativa_id`, che funzionava solo per operatori
-interni. La nuova logica copre **tutti** i ruoli applicativi (operatore,
-cliente portale, fornitore portale, shop customer) con un modello uniforme.
+Copre **tutti** i ruoli applicativi (operatore, cliente portale, fornitore
+portale, shop customer) con un modello uniforme. La logica precedente,
+ad-hoc su `profili_reparto_aree/_azioni` tramite JOIN a
+`risorse_umane_auth_user` + `risorse_umane.unita_organizzativa_id`, e'
+stata rimossa il 2026-05-04 (changeSet `20260505-02-drop-profili-reparto`).
 
 Usata da (§4.8):
 
@@ -130,14 +131,15 @@ SELECT script.fn_get_profili_accesso_applicabili(
 );
 ```
 
-**Stato corrente (20-04-2026):** i 4 resolver chiamanti
+**Stato corrente (04-05-2026):** i 4 resolver chiamanti
 (`fn_resolve_livello_area`, `fn_check_azione_processo`,
 `fn_get_user_permissions_map`, `fn_get_user_actions_map`) **NON** passano
-ancora il parametro — continuano a funzionare in modalita' legacy. Migration
-dedicata rinviata al momento in cui il BE PR-B tocca i chiamanti, per
-evitare cambio comportamento globale senza coordinamento. Fino a quel
-momento l'isolamento veste e' garantito da (a) permission class per
-namespace, (b) `fn_is_super_admin` filtrato OPERATORE.
+ancora il parametro — continuano a funzionare in modalita' default
+(tutte le vesti). Il pass-through del GUC `app.ruolo_applicativo` e'
+rinviato al primo momento in cui il BE tocca i chiamanti, per evitare
+cambio comportamento globale senza coordinamento. Fino a quel momento
+l'isolamento veste e' garantito da (a) permission class per namespace,
+(b) `fn_is_super_admin` filtrato OPERATORE.
 
 ---
 
@@ -176,19 +178,6 @@ Se non esiste neppure quello, il resolver ritorna `BLOCCATO` / `false`.
   AD_HOC e PORTALE; implicito in REPARTO tramite `= 'OPERATORE'`.
 
 ---
-
-### Coerenza con il modello legacy
-
-Il backfill §4.3.5 (`runOnChange: true`) popola automaticamente i profili
-REPARTO a partire dai dati esistenti in `profili_reparto_aree` /
-`profili_reparto_azioni`. Quindi per operatori esistenti il nuovo resolver
-restituisce lo **stesso risultato** del legacy (regression-safe).
-
-Durante la transizione (prima del merge di PR2 backend) il backend
-amministrativo continua a scrivere su `profili_reparto_*`: il backfill
-runOnChange ri-sincronizza al deploy successivo. Non è real-time ma è
-accettabile in ambiente di sviluppo (l'utente ha confermato che non c'è
-produzione attiva).
 
 ---
 
@@ -246,14 +235,14 @@ SELECT af.schema_db, COALESCE(b.livello, 'BLOCCATO') AS livello
 
 ### Evoluzione attesa
 
-* **§4.8.4** — test pgTAP regression che confrontano il risultato di
-  `fn_resolve_livello_area` pre/post refactor per operatori noti.
+* **§4.8.4** — test pgTAP regression che verificano `fn_resolve_livello_area`
+  per operatori noti (`db/pgtap/script/test-fn-resolve-regression-operatore.sql`).
 * **§4.9** — le prime policy RLS useranno `fn_get_profili_accesso_applicabili`
   (indirettamente, tramite `fn_resolve_livello_*`) per filtrare le righe
   in base al livello di accesso.
-* **Fase 2** — quando il backend cesserà di scrivere su
-  `profili_reparto_*`, la dipendenza runtime dal backfill runOnChange
-  sparirà; il modello legacy potrà essere deprecato.
+* **Pass-through veste** — i resolver dovranno propagare il GUC
+  `app.ruolo_applicativo` come secondo argomento, per isolare le capability
+  per veste nel modello SSO multi-veste.
 
 ---
 

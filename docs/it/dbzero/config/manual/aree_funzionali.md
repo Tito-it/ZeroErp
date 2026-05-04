@@ -9,7 +9,7 @@ Architettura di riferimento:
 Tabelle correlate:
 >
 [config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
-> [config.profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree)
+> [config.profili_accesso_aree](/dbzero/config/tabelle/profili_accesso_aree)
 > [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
 > [config.area_model_overrides](/dbzero/config/tabelle/area_model_overrides)
 
@@ -47,7 +47,7 @@ Ogni area corrisponde a uno **schema PostgreSQL** (es. `vendite`, `anagrafiche`,
 | Tabella | Campo | Scopo |
 |---------|-------|-------|
 | `config.azioni_processo` | `area_id` | Raggruppa le azioni per area |
-| `config.profili_reparto_aree` | `area_id` | Livello accesso del reparto per area |
+| `config.profili_accesso_aree` | `area_id` | Livello accesso del profilo per area |
 | `config.user_override_aree` | `area_id` | Override individuale per area |
 | `config.area_model_overrides` | `area_id` | Riassegnazione model a area diversa |
 

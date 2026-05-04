@@ -9,7 +9,7 @@ Architettura di riferimento:
 Tabelle correlate:
 >
 [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
-> [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
+> [config.profili_accesso_azioni](/dbzero/config/tabelle/profili_accesso_azioni)
 > [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
 
 ---
@@ -44,7 +44,7 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 
 | Tabella | Campo | Scopo |
 |---------|-------|-------|
-| `config.profili_reparto_azioni` | `azione_id` | Abilitazione azione per reparto |
+| `config.profili_accesso_azioni` | `azione_id` | Abilitazione azione per profilo |
 | `config.user_override_azioni` | `azione_id` | Override individuale per azione |
 
 ---

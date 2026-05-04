@@ -7,7 +7,7 @@
 - [fn_capability_promo_articolo](manual/fn_capability_promo_articolo.md)
 - [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
-- [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (latest review 08-03-2026) La funzione **`script.fn_check_azione_processo`** verifica se un'azione di processo (identificata da `permission_codename`) e abilitata per un utente.
+- [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_check_blocco_login](manual/fn_check_blocco_login.md)
 - [fn_check_indirizzo_duplicato](manual/fn_check_indirizzo_duplicato.md)
 - [fn_check_operatore_invitabile](manual/fn_check_operatore_invitabile.md)
@@ -40,7 +40,7 @@
 - [fn_get_or_create_soggetto_ruolo](manual/fn_get_or_create_soggetto_ruolo.md) — (latest review 09-12-25) La funzione **`script.fn_get_or_create_soggetto_ruolo`** è una **factory di dominio** per garantire l’esistenza di un legame tra:
 - [fn_get_override_scaduti](manual/fn_get_override_scaduti.md) — (latest review 08-03-2026) La funzione **`script.fn_get_override_scaduti`** restituisce tutti gli override utente la cui data `valido_al` e scaduta. Unisce le 3 tabelle override (aree, oggetti, azioni) in un unico risultato.
 - [fn_get_parameter_full](manual/fn_get_parameter_full.md) — (latest update 03-04-26)
-- [fn_get_profili_accesso_applicabili](manual/fn_get_profili_accesso_applicabili.md) — (latest review 20-04-2026 — parametro opzionale `p_ruolo_applicativo`)
+- [fn_get_profili_accesso_applicabili](manual/fn_get_profili_accesso_applicabili.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_get_record_id_as_of](manual/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
 - [fn_get_search_detail](manual/fn_get_search_detail.md) — * **Dettaglio per tipo ruolo**: la funzione usa un `CASE` sul `codice_interno` del tipo ruolo (immutabile, protetto da `trgfn_lock_columns`) per costruire sezioni specifiche. Gestisce CL (cliente), FO (fornitore) con logica diretta, e delega tutti gli altri ruoli a `fn_get_entita_ruolo_detail`.
 - [fn_get_setup_status](manual/fn_get_setup_status.md)
@@ -66,7 +66,7 @@
 - [fn_registra_tentativo_login](manual/fn_registra_tentativo_login.md)
 - [fn_resolve_codice_postale](manual/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_emittente_for_user](manual/fn_resolve_emittente_for_user.md)
-- [fn_resolve_livello_area](manual/fn_resolve_livello_area.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_area`** risolve il livello di accesso effettivo di un utente per un'area funzionale, identificata tramite `schema_db`.
+- [fn_resolve_livello_area](manual/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_resolve_livello_oggetto](manual/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
 - [fn_scope_ba_ownership](manual/fn_scope_ba_ownership.md) — (latest review 20-04-2026 — ruolo-aware)
 - [fn_scope_ba_ownership_via_fattura](manual/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)

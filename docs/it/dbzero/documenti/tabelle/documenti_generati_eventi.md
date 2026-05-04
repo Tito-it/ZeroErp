@@ -43,6 +43,10 @@
 |------|--------|--------|--------|
 | trg_documenti_generati_eventi_a10_block_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_eventi_block_delete()` |
 | trg_documenti_generati_eventi_a10_block_update_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_eventi_block_update()` |
+| trg_documenti_generati_eventi_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_documenti_generati_eventi_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_documenti_generati_eventi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_documenti_generati_eventi_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -24,6 +24,10 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-08-upsert-audit-sources
       author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+
       failOnError: true
       preConditions:
         - onFail: HALT

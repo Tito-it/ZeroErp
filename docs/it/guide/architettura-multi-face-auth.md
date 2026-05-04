@@ -35,10 +35,10 @@ audit JWT, sync login, token monouso) e generalizza solo cio' che oggi e' troppo
 
 Il cuore del modello e' **separare tre concetti** che oggi sono fusi insieme:
 
-| Dimensione | Domanda a cui risponde | Dove sta oggi | Dove dovrebbe stare |
+| Dimensione | Domanda a cui risponde | Modello pre-refactor | Modello attuale |
 | --- | --- | --- | --- |
 | **Identita'** | Chi e' questa persona nel sistema? | `risorse_umane_auth_user` (solo dipendenti) | `identita_digitali` (bridge generico) |
-| **Capability** | Cosa puo' fare? | `profili_reparto_aree` (solo reparti) | `profili_accesso` (reparti o portali) |
+| **Capability** | Cosa puo' fare? | `profili_reparto_aree` (solo reparti, dismessa 2026-05-04) | `profili_accesso` (reparti, portali, ad-hoc) |
 | **Scope** | Su quali dati opera? | `user_emittenti_fiscali` (solo EF) | `identita_scope_bindings` (policy generiche) |
 
 Tenerle separate permette di combinarle liberamente. Un cliente portale ha
@@ -166,26 +166,28 @@ della differenza, ma la vera sorgente dati e' una sola.
 
 ## 4. Il livello capability: `profili_accesso`
 
-Oggi i permessi sono **per reparto** ([profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree)).
-Un cliente portale non ha un reparto: ha un **ruolo nel mondo** (cliente),
-a cui corrisponde un set standard di permessi.
+Prima del refactor i permessi erano **per reparto** (tabelle legacy
+`profili_reparto_aree/_azioni`, dismesse il 2026-05-04 con il changeSet
+`20260505-02-drop-profili-reparto`). Un cliente portale non ha un
+reparto: ha un **ruolo nel mondo** (cliente), a cui corrisponde un set
+standard di permessi.
 
 ### 4.1 Generalizzazione
 
-Nasce `config.profili_accesso`, che contiene **tutti** i profili di permesso:
+`config.profili_accesso` contiene **tutti** i profili di permesso:
 
 ```text
 config.profili_accesso
     id              INT PK
-    tipo            ENUM (REPARTO | PORTALE | AD_HOC)
+    tipo            ENUM (REPARTO | PORTALE | AD_HOC | SUPER_ADMIN)
     codice          VARCHAR UNIQUE    (AMMINISTRAZIONE, VENDITE, CLIENTE_PORTALE, ...)
     descrizione     TEXT
     attivo          BOOLEAN
 ```
 
-Le tabelle esistenti di dettaglio (`profili_reparto_aree`, `profili_reparto_azioni`)
-diventano `profili_accesso_aree` e `profili_accesso_azioni`, legate a `profili_accesso`
-invece che direttamente a `unita_organizzative`.
+Le tabelle di dettaglio sono `profili_accesso_aree` e `profili_accesso_azioni`,
+legate a `profili_accesso` invece che direttamente a `unita_organizzative`
+(il legame UO/profilo passa attraverso `profili_accesso_bindings`).
 
 ### 4.2 Come viene assegnato un profilo a un utente
 
@@ -734,7 +736,7 @@ erDiagram
 | `risorse_umane_auth_user` | Vista compat su `identita_digitali` | — |
 | Token monouso, sync is_active, middleware JWT | Sync is_active diventa OR su identita | 3 nuovi GUC (`current_identita_id`, `ruolo_applicativo`, `soggetto_ruolo_id`); JWT claim `identita_id` |
 | `user_emittenti_fiscali` | Caso particolare di `scope_policy` (EF_WHITELIST) | `scope_policy` + `identita_scope_bindings` |
-| `profili_reparto_aree` | Diventa `profili_accesso_aree` | `profili_accesso_bindings` (tri-way: reparto / ruolo_applicativo / identita) |
+| `profili_reparto_aree/_azioni` | Sostituite da `profili_accesso_aree/_azioni` (cutover completato 2026-05-04, tabelle legacy droppate) | `profili_accesso_bindings` (tri-way: reparto / ruolo_applicativo / identita) |
 | `user_override_*` | Invariati | — |
 | Audit trigger | Invariati | RLS policy sulle tabelle dati, colonna `canale_origine` su ordini/fatture/BA |
 | Permission class Django | Generalizzate, discriminate per namespace | `PortaleAPIView`, `ShopAPIView`, token endpoint split admin/portale/shop |

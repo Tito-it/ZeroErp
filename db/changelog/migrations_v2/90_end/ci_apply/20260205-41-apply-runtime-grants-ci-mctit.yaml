@@ -35,6 +35,7 @@ databaseChangeLog:
                   'catalogo',
                   'config',
                   'contabilita',
+                  'documenti',
                   'magazzino',
                   'pagamenti',
                   'storico',
