@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 4 maggio 2026 (ricostruzione da `git log` e documentazione locale generata dal 26 aprile al 4 maggio: refactor catalogo/amm-software/vendite, preventivi rev2, motore documentale parametrico in test UI).*
+*Ultimo aggiornamento: 6 maggio 2026 — aggiunto componente `ui` in Anello 1 (metadato di presentazione: liste configurabili, personalizzazione colonne, preset per profilo/emittente). Stato: Da fare. Architettura completa in [sviluppo-personalizzazioni-liste.md](dev/work-in-progress/sviluppo-personalizzazioni-liste.md).*
 
 ---
 
@@ -30,7 +30,7 @@
                     │  │  │  ANELLO 1 — DATI BASE           │  │  │
                     │  │  │                                 │  │  │
                     │  │  │  config  anagrafiche  catalogo  │  │  │
-                    │  │  │                                 │  │  │
+                    │  │  │                 ui              │  │  │
                     │  │  │  ┌───────────────────────────┐  │  │  │
                     │  │  │  │  ANELLO 0 — NUCLEO        │  │  │  │
                     │  │  │  │                           │  │  │  │
@@ -49,32 +49,32 @@
 
 Questa sezione registra solo evidenze presenti nel repository locale: commit e documentazione `docs/it/dev/work-done/` o `docs/it/dev/work-in-progress/`. Dove la documentazione indica test UI o working tree non ancora consolidato, lo stato resta esplicitamente marcato come tale.
 
-| Data | Evidenza | Impatto sulla mappa |
-| ---- | -------- | ------------------- |
-| 26 aprile | `dbops.automazione_chiusura_scadenze` chiuso come framework parametrico dopo due consumatori reali (`vendite.listini_versioni`, `vendite.contratti`) | Anello 0 cresce per uso osservato, non per astrazione preventiva. |
-| 27 aprile | Contratti: Profilo A, immutabilita' post-DRAFT, cessazione data-driven, righe-preview | Vendite rafforza il sottodominio contratti e consuma il framework di chiusura a scadenza. |
-| 28 aprile | Refactor frontend/backend catalogo completato Fasi 1-8, test BE 83/83 e build Vite verdi | Catalogo resta operativo ma con contratti API/metadata piu' maturi. |
-| 29-30 aprile | Refactor amm-software completato per matrici, operatori, permessi, emittenti e policy admin | Anello 1 amministrativo consolidato; le matrici diventano riferimento UI per configurazioni complesse. |
-| 1 maggio | Refactor vendite chiuso DB+BE+FE, modello documentato con 1406 test BE e build Vite verde | Vendite aggiornata a pattern data-driven per lookup, defaults, capability e azioni. |
-| 2 maggio | Preventivi rev2 landed: `emittente_fiscale_id` persistito, `istanza_utility_id` obbligatoria, guard coerenza utility/istanza, 4 codici errore | Preventivi diventano piu' rigorosi sul contesto emittente/utility. |
-| 3 maggio | Scenario preventivi 2.1 chiuso end-to-end, UI revisioni e riepilogo IVA | Vendite avanzata su flusso preventivo operativo. |
-| 3-4 maggio | Motore documentale parametrico: DB Fase A, backend Tranche A-K, frontend Tranche L-M; test UI dedicato avviato | Nuovo componente `documenti` in Anello 2, operativo tecnicamente ma ancora in test UI. |
+| Data         | Evidenza                                                                                                                                             | Impatto sulla mappa                                                                                    |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 26 aprile    | `dbops.automazione_chiusura_scadenze` chiuso come framework parametrico dopo due consumatori reali (`vendite.listini_versioni`, `vendite.contratti`) | Anello 0 cresce per uso osservato, non per astrazione preventiva.                                      |
+| 27 aprile    | Contratti: Profilo A, immutabilita' post-DRAFT, cessazione data-driven, righe-preview                                                                | Vendite rafforza il sottodominio contratti e consuma il framework di chiusura a scadenza.              |
+| 28 aprile    | Refactor frontend/backend catalogo completato Fasi 1-8, test BE 83/83 e build Vite verdi                                                             | Catalogo resta operativo ma con contratti API/metadata piu' maturi.                                    |
+| 29-30 aprile | Refactor amm-software completato per matrici, operatori, permessi, emittenti e policy admin                                                          | Anello 1 amministrativo consolidato; le matrici diventano riferimento UI per configurazioni complesse. |
+| 1 maggio     | Refactor vendite chiuso DB+BE+FE, modello documentato con 1406 test BE e build Vite verde                                                            | Vendite aggiornata a pattern data-driven per lookup, defaults, capability e azioni.                    |
+| 2 maggio     | Preventivi rev2 landed: `emittente_fiscale_id` persistito, `istanza_utility_id` obbligatoria, guard coerenza utility/istanza, 4 codici errore        | Preventivi diventano piu' rigorosi sul contesto emittente/utility.                                     |
+| 3 maggio     | Scenario preventivi 2.1 chiuso end-to-end, UI revisioni e riepilogo IVA                                                                              | Vendite avanzata su flusso preventivo operativo.                                                       |
+| 3-4 maggio   | Motore documentale parametrico: DB Fase A, backend Tranche A-K, frontend Tranche L-M; test UI dedicato avviato                                       | Nuovo componente `documenti` in Anello 2, operativo tecnicamente ma ancora in test UI.                 |
 
 ### Natura degli anelli (post-aggiornamento manifesto §III bis)
 
 Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinzione non riguarda la direzione delle dipendenze (sempre verso l'interno), ma l'**ordine di costruzione** raccomandato.
 
-| Tipo               | Significato                                                                                  | Costruzione                                                                |
-| ------------------ | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| **Autocontenuto** | Ha un end-to-end di valore proprio (es. "gestisco anagrafica clienti"). Validabile in isolamento. | Si puo' costruire e dichiarare operativo da solo.                          |
+| Tipo              | Significato                                                                                       | Costruzione                                                                                                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Autocontenuto** | Ha un end-to-end di valore proprio (es. "gestisco anagrafica clienti"). Validabile in isolamento. | Si puo' costruire e dichiarare operativo da solo.                                                                                                                                                  |
 | **Di servizio**   | Motore/infrastruttura per altri anelli. Senza consumatori esterni reali e' un'astrazione teorica. | Va costruito **dopo o in parallelo** ai consumatori, mai prima. Resta "predisposto, in attesa di validazione" finche' almeno due consumatori reali non l'hanno esercitato (manifesto principio 7). |
 
-| Anello                       | Natura            |
-| ---------------------------- | ----------------- |
-| 0 — Nucleo Infrastrutturale  | **Di servizio**   |
-| 1 — Dati Base                | **Autocontenuto** |
-| 2 — Orchestrazione (`pratiche`, `documenti`) | **Di servizio**   |
-| 3 — Processi Operativi       | **Autocontenuti** (ciascuno) |
+| Anello                                       | Natura                       |
+| -------------------------------------------- | ---------------------------- |
+| 0 — Nucleo Infrastrutturale                  | **Di servizio**              |
+| 1 — Dati Base                                | **Autocontenuto**            |
+| 2 — Orchestrazione (`pratiche`, `documenti`) | **Di servizio**              |
+| 3 — Processi Operativi                       | **Autocontenuti** (ciascuno) |
 
 ---
 
@@ -82,13 +82,13 @@ Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinz
 
 > **Natura: di servizio.** Il protocollo operativo del sistema. Si tocca solo per correggere limiti reali.
 
-| Componente    | Tipo       | Stato     | Descrizione                                                                                                                              |
-| ------------- | ---------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `core`        | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job, audit sessioni, request log |
+| Componente    | Tipo       | Stato     | Descrizione                                                                                                                                                                               |
+| ------------- | ---------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`        | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job, audit sessioni, request log                                                  |
 | `dbops`       | Schema DB  | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log, sessioni_utente, request_log, **automazione daterange**, **chiusura parametrica per scadenza** |
-| `script`      | Schema DB  | Operativo | fn_log_and_raise_error, viste e funzioni riusabili, **trgfn_set_validita** (trigger generico daterange)                                   |
-| `public`      | Schema DB  | Operativo | version_info                                                                                                                             |
-| `maintenance` | Schema DB  | Operativo | Job schedulati pgAgent, job_run_log                                                                                                      |
+| `script`      | Schema DB  | Operativo | fn_log_and_raise_error, viste e funzioni riusabili, **trgfn_set_validita** (trigger generico daterange)                                                                                   |
+| `public`      | Schema DB  | Operativo | version_info                                                                                                                                                                              |
+| `maintenance` | Schema DB  | Operativo | Job schedulati pgAgent, job_run_log                                                                                                                                                       |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -131,6 +131,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | `anagrafiche`  | App Django | Operativo | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali, billing account                                           |
 | `catalogo`     | App Django | Operativo | Operativo | Operativo | Articoli (CRUD, UoM, BoM, note) — **completato e testato** (work-done/gestione-articoli.md)                                |
 | `amm-software` | App Django | Operativo | Operativo | Operativo | Gestione operatori, permessi riepilogo, profili reparto, audit log (solo ADMIN), drawer dedicato gestione permessi         |
+| `ui`           | App Django | Da fare   | Da fare   | Da fare   | Metadato di presentazione: liste configurabili, preset per profilo/emittente/sistema, preferenze utente. Di servizio.      |
 
 > **Multi-Face Auth — COMPLETATO (22-04-2026):** `anagrafiche` usa il bridge generalizzato `identita_digitali` (SSO multi-veste, cutover 19-04-2026). `amm-software` supporta operatori, portale clienti/fornitori e shop B2C. **Infrastruttura auth predisposta per tutte le vesti; le API di dominio portale/shop (fatture, ordini, catalogo B2C) non sono ancora sviluppate e saranno affrontate quando il business lo richiedera'.** Dettaglio: [pr-b-shop-b2c-cambio-modello.md](dev/work-done/pr-b-shop-b2c-cambio-modello.md). Guida: [architettura-multi-face-auth v2.0](guide/architettura-multi-face-auth.md).
 
@@ -152,6 +153,8 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | Catalogo — Articoli             | Operativo  | Lista con 7 filtri, drawer 3 tab (UoM, BoM, note), `ArticoloLookup` BB cross-dominio. **Completato e testato**                                                          |
 | Catalogo — Unita' di Misura     | Operativo  | Lista, drawer CRUD, conversioni UoM, lookup generico whitelist                                                                                                          |
 | Impostazioni Parametri          | Operativo  | Lista multi-scope (default/emittente/gruppo/utente), drawer override con selettore scope (Personale/Emittente) per admin, `PARAMETER_SCOPE` come unica fonte di verita' |
+| UI — Liste (DB/BE)              | Da fare    | Schema ui: catalogo colonne, preset sistema/profilo/EF, preferenze utente. fn_resolve_lista_config. App Django ui + repository + 4 endpoint REST.                       |
+| UI — Liste (Frontend)           | Da fare    | ListaConfigurabile.vue, ListaColonneModal.vue, useListaConfig. Indicatore stato salvato/temporaneo. Badge nuove colonne. Dipende da Blocco C.                           |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -162,6 +165,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 - **Gestione geografica completa**: indirizzi, toponomastica, comuni, province, regioni, stati — API + UI con autorizzazione per area `anagrafiche`
 - **Building block frontend riutilizzabili**: composable centralizzati (useSearchTable, useDrawerState, useTabFreshness, useReadonlyMode, useActionPermission), componenti atomici (SoggettoForm, AuthUserForm, autocomplete, NewButton, DrawerFooter con prop `action`), CSS utility classes
 - **Sistema permessi a 3 livelli**: Livello 1 area (TUTTO/LETTURA/BLOCCATO) + Livello 2 model/oggetto (override granulare per singola entita') + Livello 3 azioni processo (abilitata/negata), con enforcement backend (ZeroERPPermission) e auto-hide frontend (prop `action`, `useReadonlyMode`)
+- **Metadato di presentazione** (quando `ui` sara' operativo): configurazione colonne per ogni lista, cascata preset sistema/profilo/emittente, preferenze personali utente — leggibile da qualsiasi lista di qualsiasi anello esterno tramite `GET /api/v1/ui/liste/{codice}/config`
 
 ### Regola di posizionamento in `config`
 
@@ -171,6 +175,14 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 2. **Policy operative trasversali**: configurazioni che descrivono regole di governo applicabili a piu' processi, quando non esiste uno schema di dominio piu' appropriato
 
 Una tabella appartiene alla seconda categoria se: (a) non descrive un'entita' di business ma una regola di visibilita' o operativita', e (b) la regola vale trasversalmente su piu' schemi di Anello 3. In assenza di uno schema dedicato, `config` e' la collocazione meno artificiale — non `dbops` (infrastruttura tecnica) ne' `anagrafiche` (entita' anagrafiche).
+
+### Posizionamento schema `ui`
+
+`ui` e' il terzo schema di Anello 1 con natura cross-dominio, accanto a `config` e `amm-software`. Ospita esclusivamente **metadato di presentazione**: non contiene logica di business, non ha dipendenze da Anello 2 o 3, dipende solo da `config.profili_accesso` e `anagrafiche.emittenti_fiscali` (Anello 1) e `django.auth_user` (Anello 0).
+
+E' classificato **di servizio** all'interno di Anello 1: il suo end-to-end richiede almeno un consumatore reale (prima lista migrata a `<ListaConfigurabile>`). Fino a quel momento resta "predisposto, validazione in corso". Si applica la stessa lezione metodologica del caso pratiche: non va portato a completezza prima che il Blocco E del piano di sviluppo abbia validato il nucleo su un caso reale.
+
+Riferimento architetturale: [sviluppo-personalizzazioni-liste.md](dev/work-in-progress/sviluppo-personalizzazioni-liste.md). Sviluppi differiti: [sviluppo-personalizzazioni-liste_def.md](dev/work-in-progress/sviluppo-personalizzazioni-liste_def.md).
 
 ### Stabilita'
 
@@ -184,9 +196,9 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 >
 > ⚠️ **Validazione esterna: in corso.** Per `pratiche`, il motore e' stato dichiarato Operativo su DB+BE+FE prima che un processo di Anello 3 lo consumasse realmente. Stato attuale: **predisposto, in attesa di validazione** dal primo consumatore reale (vendite). Vedi [Caso di studio: pratiche prima di vendite](#caso-di-studio-pratiche-prima-di-vendite). Per `documenti`, il primo consumatore reale e' `vendite.preventivi`, ma la validazione resta in test UI. Solo dopo che almeno due processi di Anello 3 avranno usato questi motori end-to-end le loro astrazioni si potranno considerare *contratti* nel senso del manifesto principio 1; fino a quel momento sono *proposte* (manifesto principio 7) e modificabili senza il rigore di un nucleo stabile.
 
-| Componente  | Tipo       | DB        | Backend   | Frontend  | Descrizione                                                                                                                                                         |
-| ----------- | ---------- | --------- | --------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pratiche`  | App Django | Operativo | Operativo | Operativo | Workflow engine, giornale, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati, note, allegati                                |
+| Componente  | Tipo       | DB        | Backend   | Frontend   | Descrizione                                                                                                                                                          |
+| ----------- | ---------- | --------- | --------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pratiche`  | App Django | Operativo | Operativo | Operativo  | Workflow engine, giornale, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati, note, allegati                                 |
 | `documenti` | App Django | Operativo | Operativo | In test UI | Motore documentale parametrico: template versionati, asset documentali, render PDF WeasyPrint, archivio documenti generati, lista/download da preventivo come pilota |
 
 ### Cosa fornisce agli anelli esterni
@@ -216,33 +228,33 @@ Non e' un processo di business specifico (come vendite o acquisti). E' l'**infra
 
 **v1 (4-6 marzo 2026):**
 
-| Fase                       | Stato | Riferimento                                                      |
-| -------------------------- | ----- | ---------------------------------------------------------------- |
-| DB-1..DB-7                 | FATTO | Tabelle, funzioni, trigger, seed, test pgTAP                     |
-| BE-1..BE-5                 | FATTO | App setup, repository, service, API (19 endpoint), 90 test       |
-| BE-6 Sospensioni + Calcoli | FATTO | Service, repository, API, 26 test unitari, 18 smoke test curl    |
-| BE-7 Macchina a stati      | FATTO | Transizioni validate da trigger DB (config-driven)               |
+| Fase                       | Stato | Riferimento                                                   |
+| -------------------------- | ----- | ------------------------------------------------------------- |
+| DB-1..DB-7                 | FATTO | Tabelle, funzioni, trigger, seed, test pgTAP                  |
+| BE-1..BE-5                 | FATTO | App setup, repository, service, API (19 endpoint), 90 test    |
+| BE-6 Sospensioni + Calcoli | FATTO | Service, repository, API, 26 test unitari, 18 smoke test curl |
+| BE-7 Macchina a stati      | FATTO | Transizioni validate da trigger DB (config-driven)            |
 
 **v2 (28-29 marzo 2026):**
 
-| Fase | Stato | Riferimento |
-| ---- | ----- | ----------- |
-| DB: collegamento ruolo/istanza | FATTO | ALTER + trigger guard contesto + codice PRA via sistema_codici |
-| BE: JOIN display fields | FATTO | list/get pratiche e flussi con 7 JOIN, named columns (no indici posizionali) |
-| BE: contesto anagrafico | FATTO | soggetto_id + soggetto_ruolo_id + istanza_utility_id, validazione coerenza |
-| BE: guard pre/post-attivazione | FATTO | Verifica stato BA del soggetto per tipo prestazione |
-| BE: order_by + search | FATTO | Ordinamento dinamico con whitelist, ricerca ILIKE su codice/descrizione/soggetto |
-| BE: filtro data | FATTO | data_da/data_a con default anno-1 |
-| BE: note CRUD | FATTO | 4 endpoint (GET/POST/PATCH/DELETE), 6 test, giornale trigger |
-| BE: allegati CRUD | FATTO | 3 endpoint (GET/POST/DELETE, immutabili), 4 test, giornale trigger |
-| FE: lista pratiche | FATTO | SearchTable con filtri (stato, priorita', data_da/data_a, search), display fields |
-| FE: drawer dettaglio | FATTO | 5 tab (Dati, Flussi, Note, Allegati, Giornale), azioni stato, severity |
-| FE: drawer creazione | FATTO | Soggetto opzionale (SoggettoResolver), ruolo, tipo prestazione, priorita' |
-| FE: tab flussi | FATTO | Lista compatta, crea/avvia/completa flusso inline |
-| FE: tab note | FATTO | Form inline crea + lista con edit/delete |
-| FE: tab allegati | FATTO | Lista metadati con delete (upload posticipato) |
-| FE: tab giornale | FATTO | Timeline audit con icone/severity per tipo azione |
-| Test totali | 115 | 105 Django (mock CI) + 25 smoke test bash |
+| Fase                           | Stato | Riferimento                                                                       |
+| ------------------------------ | ----- | --------------------------------------------------------------------------------- |
+| DB: collegamento ruolo/istanza | FATTO | ALTER + trigger guard contesto + codice PRA via sistema_codici                    |
+| BE: JOIN display fields        | FATTO | list/get pratiche e flussi con 7 JOIN, named columns (no indici posizionali)      |
+| BE: contesto anagrafico        | FATTO | soggetto_id + soggetto_ruolo_id + istanza_utility_id, validazione coerenza        |
+| BE: guard pre/post-attivazione | FATTO | Verifica stato BA del soggetto per tipo prestazione                               |
+| BE: order_by + search          | FATTO | Ordinamento dinamico con whitelist, ricerca ILIKE su codice/descrizione/soggetto  |
+| BE: filtro data                | FATTO | data_da/data_a con default anno-1                                                 |
+| BE: note CRUD                  | FATTO | 4 endpoint (GET/POST/PATCH/DELETE), 6 test, giornale trigger                      |
+| BE: allegati CRUD              | FATTO | 3 endpoint (GET/POST/DELETE, immutabili), 4 test, giornale trigger                |
+| FE: lista pratiche             | FATTO | SearchTable con filtri (stato, priorita', data_da/data_a, search), display fields |
+| FE: drawer dettaglio           | FATTO | 5 tab (Dati, Flussi, Note, Allegati, Giornale), azioni stato, severity            |
+| FE: drawer creazione           | FATTO | Soggetto opzionale (SoggettoResolver), ruolo, tipo prestazione, priorita'         |
+| FE: tab flussi                 | FATTO | Lista compatta, crea/avvia/completa flusso inline                                 |
+| FE: tab note                   | FATTO | Form inline crea + lista con edit/delete                                          |
+| FE: tab allegati               | FATTO | Lista metadati con delete (upload posticipato)                                    |
+| FE: tab giornale               | FATTO | Timeline audit con icone/severity per tipo azione                                 |
+| Test totali                    | 115   | 105 Django (mock CI) + 25 smoke test bash                                         |
 
 Documentazione: [gestione-pratiche-v2.md](dev/work-in-progress/gestione-pratiche-v2.md) | API: [api_pratiche_list](backend/pratiche/manual/api_pratiche_list) | [api_pratiche_note](backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati](backend/pratiche/manual/api_pratiche_allegati)
 
@@ -254,14 +266,14 @@ Piano v1 (storico): [work-done/piano-gestione-pratiche.md](dev/work-done/piano-g
 
 > **Natura: autocontenuti (ciascuno).** Cicli di business che usano anelli interni. Ogni processo e' autonomo ma condivide vocabolario e infrastruttura.
 
-| Componente    | Tipo       | DB        | Backend   | Descrizione                                                                            |
-| ------------- | ---------- | --------- | --------- | -------------------------------------------------------------------------------------- |
+| Componente    | Tipo       | DB        | Backend   | Descrizione                                                                                                                                                                   |
+| ------------- | ---------- | --------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi rev2, contratti, ordini, DDT, fatture, pipeline fatturazione, lotti, commesse, **listini v3**, generazione PDF preventivo via `documenti` in test UI |
-| `acquisti`    | App Django | Operativo | Stub      | Ciclo passivo: richieste offerta, ordini, DDT, fatture                                 |
-| `magazzino`   | App Django | Operativo | Stub      | Movimenti, giacenze, lotti, seriali                                                    |
-| `pagamenti`   | App Django | Operativo | Stub      | Scadenze, riconciliazioni                                                              |
-| `contabilita` | App Django | Operativo | Stub      | Piano conti, registrazioni, partite                                                    |
-| `storico`     | App Django | Operativo | Stub      | Audit temporale, storicizzazione                                                       |
+| `acquisti`    | App Django | Operativo | Stub      | Ciclo passivo: richieste offerta, ordini, DDT, fatture                                                                                                                        |
+| `magazzino`   | App Django | Operativo | Stub      | Movimenti, giacenze, lotti, seriali                                                                                                                                           |
+| `pagamenti`   | App Django | Operativo | Stub      | Scadenze, riconciliazioni                                                                                                                                                     |
+| `contabilita` | App Django | Operativo | Stub      | Piano conti, registrazioni, partite                                                                                                                                           |
+| `storico`     | App Django | Operativo | Stub      | Audit temporale, storicizzazione                                                                                                                                              |
 
 ### Dipendenze verso anelli interni
 
@@ -290,22 +302,22 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 
 ### Stato sviluppo vendite (app leader)
 
-| Area                                    | Stato                                              |
-| --------------------------------------- | -------------------------------------------------- |
-| Pipeline fatturazione                   | Operativo                                          |
-| Lotti massivi/giornalieri               | Operativo                                          |
-| Registry task DB multi-dominio          | Operativo                                          |
-| Dispatch task con implementation_key    | Operativo                                          |
-| Runtime task tracing                    | Operativo                                          |
-| Builder XML SDI                         | In corso (payload pronto, generazione XML da fare) |
-| Persistenza esito SDI                   | Da fare                                            |
-| Commesse (push, orchestrator, handlers) | Operativo                                          |
-| Listini v3 (N2/N5/N6/N7/N8a)           | Operativo — Sprint B-v3 completato (aprile 2026)   |
-| Pricing commesse (N5/N7/N7-sblocco)    | Operativo — riallineamento, variazione, sblocco    |
-| Contratti Profilo A                    | Operativo — immutabilita' post-DRAFT, cessazione data-driven, righe-preview |
-| Preventivi rev2                        | Operativo — emittente persistito, istanza obbligatoria, guard utility/istanza |
-| Revisioni preventivo + riepilogo IVA   | Operativo — scenario 2.1 chiuso end-to-end          |
-| Generazione PDF preventivo             | In test UI — primo consumatore del motore `documenti` |
+| Area                                    | Stato                                                                         |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| Pipeline fatturazione                   | Operativo                                                                     |
+| Lotti massivi/giornalieri               | Operativo                                                                     |
+| Registry task DB multi-dominio          | Operativo                                                                     |
+| Dispatch task con implementation_key    | Operativo                                                                     |
+| Runtime task tracing                    | Operativo                                                                     |
+| Builder XML SDI                         | In corso (payload pronto, generazione XML da fare)                            |
+| Persistenza esito SDI                   | Da fare                                                                       |
+| Commesse (push, orchestrator, handlers) | Operativo                                                                     |
+| Listini v3 (N2/N5/N6/N7/N8a)            | Operativo — Sprint B-v3 completato (aprile 2026)                              |
+| Pricing commesse (N5/N7/N7-sblocco)     | Operativo — riallineamento, variazione, sblocco                               |
+| Contratti Profilo A                     | Operativo — immutabilita' post-DRAFT, cessazione data-driven, righe-preview   |
+| Preventivi rev2                         | Operativo — emittente persistito, istanza obbligatoria, guard utility/istanza |
+| Revisioni preventivo + riepilogo IVA    | Operativo — scenario 2.1 chiuso end-to-end                                    |
+| Generazione PDF preventivo              | In test UI — primo consumatore del motore `documenti`                         |
 
 ---
 
@@ -399,12 +411,12 @@ Il caso pratiche e' istruttivo perche' mostra cosa succede applicando il manifes
 
 **Differenza con il caso pratiche**:
 
-| Aspetto                       | Pratiche (errore v1)                              | Framework chiusura (corretto v2)                                  |
-| ----------------------------- | ------------------------------------------------- | ----------------------------------------------------------------- |
-| Quando e' stato astratto      | Prima di qualunque consumatore reale              | Dopo due consumatori reali con requisiti identici                 |
-| Generalita' delle astrazioni  | Decise dal progettista a priori                   | Decantate dal pattern emerso dai due casi                         |
-| Validazione                   | Test contro un'idea progettuale                   | Test contro casi d'uso reali (listini + contratti)                |
-| Costo se non si usa           | Spreco di lavoro, doppia infrastruttura parallela | Nullo (stub minimale solo se serve, oppure non si fa fino a 2°)   |
+| Aspetto                      | Pratiche (errore v1)                              | Framework chiusura (corretto v2)                                |
+| ---------------------------- | ------------------------------------------------- | --------------------------------------------------------------- |
+| Quando e' stato astratto     | Prima di qualunque consumatore reale              | Dopo due consumatori reali con requisiti identici               |
+| Generalita' delle astrazioni | Decise dal progettista a priori                   | Decantate dal pattern emerso dai due casi                       |
+| Validazione                  | Test contro un'idea progettuale                   | Test contro casi d'uso reali (listini + contratti)              |
+| Costo se non si usa          | Spreco di lavoro, doppia infrastruttura parallela | Nullo (stub minimale solo se serve, oppure non si fa fino a 2°) |
 
 **Cosa cambia nei tre piani della mappa**:
 
@@ -622,6 +634,9 @@ Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-in-
 - Test UI reali su Articoli, UoM, Pratiche, Soggetti, Clienti, Fornitori e motore documentale preventivo
 - Seed azioni processo per nuovi domini (catalogo, vendite) + prop `action` sui componenti
 - Upload file allegati pratiche (storage filesystem/object storage)
+- **Schema `ui` — Blocchi A+B**: DDL tabelle + trigger validazione + `fn_resolve_lista_config` (DB)
+- **Schema `ui` — Blocchi C+D**: app Django `ui`, 4 endpoint REST, `<ListaConfigurabile>` + modale personalizzazione (BE+FE)
+- **Schema `ui` — Blocco E**: seed catalogo `anagrafiche.clienti` + migrazione primo componente lista — validazione del nucleo su caso reale
 
 ### Medio termine
 

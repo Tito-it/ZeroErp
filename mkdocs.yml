@@ -99,6 +99,7 @@ nav:
                             - Public: it/dbzero/public/index.md
                             - Storico: it/dbzero/storico/index.md
                             - Script: it/dbzero/script/index.md
+                            - Ui: it/dbzero/ui/index.md
                             - Vendite: it/dbzero/vendite/index.md
         - Backend (Django):
                   - it/backend/index.md

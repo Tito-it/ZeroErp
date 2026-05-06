@@ -1,0 +1,54 @@
+## 📘 Documentazione Concettuale – Tabella `ui.lista_definizione`
+
+> 👀 **Vedi anche**
+>
+> Tabelle correlate:
+>
+> [ui.lista_colonna](/dbzero/ui/tabelle/lista_colonna)
+> [ui.lista_preset](/dbzero/ui/tabelle/lista_preset)
+> [ui.lista_preferenza_utente](/dbzero/ui/tabelle/lista_preferenza_utente)
+>
+> Funzione:
+>
+> [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config)
+> [ui.trgfn_ui_lista_definizione_a10_valida_vista_sql](/dbzero/ui/funzioni/trgfn_ui_lista_definizione_a10_valida_vista_sql)
+
+La tabella **`ui.lista_definizione`** è il **catalogo delle liste configurabili** del sistema. Una riga per ogni lista che si vuole rendere personalizzabile dall'operatore (es. `anagrafiche.clienti`, `vendite.fatture`, `catalogo.articoli:picker`).
+
+---
+
+### 🎯 Scopo Principale
+
+* **Registro centralizzato** delle liste che il sistema espone come personalizzabili. Il frontend interroga questa tabella per sapere quali liste supportano la personalizzazione di colonne, filtri e ordinamento.
+* **Identificatore stabile** tramite `codice`: stringa nel formato `<schema>.<entità>` (lista principale) o `<schema>.<entità>:<contesto>` per varianti (es. `:picker`, `:dashboard`). Usato da API e frontend senza dipendere dall'`id` numerico.
+* **Collegamento alla view sorgente** tramite `vista_sql`: nome della view PostgreSQL da cui la lista legge i dati. Validato a INSERT/UPDATE dal trigger guard `trgfn_ui_lista_definizione_a10_valida_vista_sql`, che impedisce di registrare una lista con una view inesistente.
+
+---
+
+### Colonne chiave
+
+| Colonna | Scopo |
+|---------|-------|
+| `codice` | Identificatore stabile cross-environment (es. `anagrafiche.clienti`) |
+| `schema_dati` | Schema PostgreSQL cui appartiene la lista (es. `anagrafiche`) |
+| `vista_sql` | Nome della view sorgente dati; validato da trigger contro `pg_catalog.pg_class` |
+| `attivo` | Disattivazione logica senza cancellazione; il trigger di validazione salta se `FALSE` |
+
+---
+
+### Relazioni
+
+`ui.lista_definizione` è referenziata da:
+
+| Tabella | Campo | Scopo |
+|---------|-------|-------|
+| `ui.lista_colonna` | `lista_id` | Colonne disponibili per la lista |
+| `ui.lista_preset` | `lista_id` | Preset di configurazione per la lista |
+| `ui.lista_preferenza_utente` | `lista_id` | Preferenza personale utente per la lista |
+
+---
+
+### Note operative
+
+* Ogni ambiente (dev, staging, prod) deve avere gli stessi `codice` per garantire che i preset seedati siano applicabili ovunque. L'`id` numerico non è stabile tra ambienti — usare sempre `codice` come riferimento nei seed.
+* La colonna `vista_sql` accetta solo view, materialized view o tabelle (`relkind IN ('v','m','r')`). Non è necessario includere lo schema nel nome: il trigger usa il nome grezzo come `pg_catalog.pg_class.relname`.

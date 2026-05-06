@@ -1,7 +1,7 @@
 # Colonne visualizzate in liste — architettura
 
 **Modulo:** UI / Presentazione
-**Stato:** bozza architetturale — pre-implementazione
+**Stato:** Blocchi A (DDL) e B (codice DB) completati — 2026-05-06. Prossimo: commit `dev/db-tid` → PR → Blocco C (backend Django).
 **Coerenza:** Sviluppo Concentrico — strato di presentazione che si appoggia ai domini funzionali senza modificarli
 
 ---
@@ -524,13 +524,157 @@ Apertura della lista da parte dell'utente:
 
 ---
 
-## 10. Prossimi passi suggeriti
+## 10. Note architetturali aperte
 
-1. **Validare lo schema** con i casi reali più complessi (anagrafiche clienti, articoli, commesse) per verificare che il modello catalogo regga.
-2. **FK `emittente_fiscale_id` confermata** — referenzia `anagrafiche.emittenti_fiscali(id)`. L'associazione operatore↔emittente è in `config.user_emittenti_fiscali` (whitelist opzionale); se vuota, l'operatore opera su tutti gli emittenti.
-3. **Firma di `fn_resolve_lista_config` allineata** — risolve i profili applicabili tramite `fn_get_profili_accesso_applicabili(auth_user_id)`, stessa chain del PermissionResolver. Il `profilo_accesso_id` non va passato come parametro.
-4. **Scrivere `fn_resolve_lista_config`** con tutti i casi di fallback, il merge automatico e i test pgTAP relativi.
-5. **Scrivere il trigger di validazione** su `lista_definizione.vista_sql` e `lista_colonna.campo_sorgente` contro `pg_catalog`.
-6. **Disegnare il componente Vue** `<ListaConfigurabile>` come wrapper di PrimeVue DataTable, con la modale di personalizzazione organizzata per gruppi e l'indicatore di stato salvato/non salvato.
-7. **Definire il formato `filtri_default` JSONB** — il formato deve essere condiviso tra il preset DB e il componente Vue filtri, altrimenti le serializzazioni divergono.
-8. **Definire l'endpoint export** comune a tutte le liste, con generazione dei metadati filtri.
+1. **Validare il catalogo** su un caso reale complesso (anagrafiche clienti, articoli, commesse) prima di generalizzare.
+2. **Formato `filtri_default` JSONB** — il formato dei filtri nel preset DB deve essere concordato con il componente Vue filtri prima di seedare i preset. Definirlo nel Blocco C/D del piano di sviluppo (§11).
+3. **Sviluppi rinviati** — export, viste nominate, admin UI, mobile: vedi [sviluppo-personalizzazioni-liste_def.md](sviluppo-personalizzazioni-liste_def.md).
+
+---
+
+## 11. Piano di sviluppo
+
+> **Convenzioni**: Liquibase → `docs/it/liquibase-setup-workflow.md`. SQL/trigger → `docs/it/linee-guida-sql.md`, `docs/it/linee-guida-trigger.md`. Backend → `docs/it/dev/api.md`.
+>
+> **Entità già presenti, non da creare**: `django.auth_user`, `config.profili_accesso`, `config.profili_accesso_bindings`, `anagrafiche.emittenti_fiscali`, `config.user_emittenti_fiscali`, `script.fn_get_profili_accesso_applicabili`.
+
+### Dipendenze tra blocchi
+
+```text
+Blocco A — DDL schema ui
+│
+├──► Blocco B — Codice DB  ──────────────────────────────────────────► Blocco E
+│                                                                       Prima lista reale
+└──► Blocco C — Backend base ──► Blocco D — Frontend base ─────────►┘
+```
+
+Blocchi B e C sono **indipendenti** tra loro: possono procedere in parallelo dopo A.
+Blocco D può iniziare non appena il contratto degli endpoint C è definito (§ C1–C4), anche prima che siano testabili end-to-end.
+
+---
+
+### Blocco A — DDL schema `ui` ✅ COMPLETATO (2026-05-06)
+
+Percorso: `db/changelog/migrations_v2/00_schema/ui/`.
+`changelog-autogen.yaml` già aggiornato. Liquibase applicato.
+
+| Step | File | Oggetto | Stato |
+| ---- | ---- | ------- | ----- |
+| A1 | `20260506-01-ddl-schema-ui-mctit.yaml` | `CREATE SCHEMA ui` + 4 ENUM: `ambito_preset`, `tipo_colonna`, `tipo_dato`, `allineamento_colonna` | ✅ |
+| A2 | `20260506-02-ddl-ui-lista-definizione-mctit.yaml` | `CREATE TABLE ui.lista_definizione` | ✅ |
+| A3 | `20260506-03-ddl-ui-lista-colonna-mctit.yaml` | `CREATE TABLE ui.lista_colonna` | ✅ |
+| A4 | `20260506-04-ddl-ui-lista-preset-mctit.yaml` | `CREATE TABLE ui.lista_preset` + CHECK ambito + UNIQUE INDEX default | ✅ |
+| A5 | `20260506-05-ddl-ui-lista-preset-colonna-mctit.yaml` | `CREATE TABLE ui.lista_preset_colonna` | ✅ |
+| A6 | `20260506-06-ddl-ui-lista-preferenza-utente-mctit.yaml` | `CREATE TABLE ui.lista_preferenza_utente` | ✅ |
+| A7 | `20260506-07-ddl-ui-lista-colonna-permesso-mctit.yaml` | `CREATE TABLE ui.lista_colonna_permesso` | ✅ |
+| A8 | `90_end/20260506-08-fk-ui-preferenza-auth-user-mctit.yaml` | FK `auth_user_id → django.auth_user` ON DELETE CASCADE | ✅ |
+| A9 | `80_data/changelog/20260506-09-upsert-dbops-fk-index-policy-ui-mctit.yaml` | Seed `dbops.fk_index_policy` per schema `ui` (8 FK) | ✅ |
+| — | `80_data/sql/config/messaggi_errore.csv` | Messaggi errore ID 427–429 (`E_UI_LISTA_NON_TROVATA`, `E_UI_VISTA_SQL_NON_TROVATA`, `E_UI_CAMPO_SORGENTE_NON_TROVATO`) | ✅ |
+
+---
+
+### Blocco B — Codice DB ✅ COMPLETATO (2026-05-06)
+
+Percorso: `db/changelog/migrations_v2/20_code/ui/`.
+
+| Step | File | Oggetto | Stato |
+| ---- | ---- | ------- | ----- |
+| B1 | `20260506-10-code-trgfn-ui-lista-def-valida-vista-mctit.yaml` | `trgfn_ui_lista_definizione_a10_valida_vista_sql()` — guard `vista_sql` su `pg_catalog.pg_class` | ✅ |
+| B2 | `20260506-11-code-trgfn-ui-lista-col-valida-campo-mctit.yaml` | `trgfn_ui_lista_colonna_a10_valida_campo_sorgente()` — guard `campo_sorgente` su `pg_catalog.pg_attribute`; skip se `tipo_colonna='azione'` | ✅ |
+| B3 | `20260506-12-code-fn-ui-resolve-lista-config-mctit.yaml` | `ui.fn_resolve_lista_config(VARCHAR, INTEGER, INTEGER) RETURNS JSONB` — cascata preset + permessi + merge | ✅ |
+
+**Test pgTAP** — `db/pgtap/ui/test-fn-resolve-lista-config.sql`:
+
+| Scenario | Stato |
+| -------- | ----- |
+| Nessuna preferenza, nessun preset → catalogo grezzo ordinato per `ordine_default` | ✅ |
+| Preset di sistema applicato | ✅ |
+| Preset di profilo prevale su preset di sistema | ✅ |
+| Preferenza utente prevale su tutto | ✅ |
+| Colonna sensibile senza grant → assente dalla risposta | ✅ |
+| Colonna sensibile con grant → presente con livello corretto | ✅ |
+| Colonna `identificatore` con `visibile:false` → normalizzata a `true` | ✅ |
+| Nuova colonna non in preferenza → aggiunta con `visibile:false`, `colonne_nuove++` | ✅ |
+| Lista inesistente → errore `E_UI_LISTA_NON_TROVATA` | ✅ |
+
+---
+
+### Blocco C — Backend (dipende da A; parallelo con B)
+
+Struttura da creare in `backend/apps/ui/`:
+
+```text
+apps/ui/
+├── __init__.py
+├── apps.py                        # AppConfig, name = 'apps.ui'
+├── urls.py                        # router locale
+├── db/
+│   └── ui_repository.py           # query dirette verso schema ui
+├── services/
+│   └── ui_service.py              # orchestrazione; chiama fn_resolve_lista_config
+└── api/
+    └── lista_config_api.py        # views DRF + @extend_schema
+```
+
+Aggiungere `'apps.ui'` in `INSTALLED_APPS` (`settings.py`) e includere `apps/ui/urls.py` nel router principale.
+Seguire i pattern di `docs/it/dev/api.md`: `handle_post_json`, `ErrorManager`, `@extend_schema` su ogni metodo pubblico.
+
+| Step | Endpoint | Note |
+|------|----------|------|
+| C1 | `GET /api/v1/ui/liste/{codice}/config` | Legge `emittente_fiscale_id` dal JWT/sessione; invoca `fn_resolve_lista_config`; ritorna JSONB |
+| C2 | `GET /api/v1/ui/liste/{codice}/catalogo` | Elenco completo `lista_colonna` per la modale (con `gruppo`, `gruppo_ordine`, `tipo_colonna`); non applica permessi — è il catalogo grezzo per uso UI interno |
+| C3 | `PUT /api/v1/ui/liste/{codice}/preferenza` | Valida struttura JSONB in ingresso; upsert `lista_preferenza_utente`; registra `preset_base_data_update` |
+| C4 | `DELETE /api/v1/ui/liste/{codice}/preferenza` | Elimina preferenza utente → al prossimo `GET config` parte dal preset |
+
+Test in `apps/ui/tests/api/` e `apps/ui/tests/services/`. Mockare il cursore DB (test CI senza DB — pattern `docs/it/dev/api.md`).
+
+---
+
+### Blocco D — Frontend (dipende da C)
+
+Componenti trasversali in `frontend/src/core/`.
+
+| Step | File | Descrizione |
+|------|------|-------------|
+| D1 | `src/core/composables/useListaConfig.js` | Fetch `GET .../config`; gestione stato locale (config da server vs config corrente); fetch `GET .../catalogo` per modale; `save()` → `PUT .../preferenza`; `reset()` → `DELETE .../preferenza` |
+| D2 | `src/core/components/ListaConfigurabile.vue` | Wrapper PrimeVue DataTable: riceve `codice` + `emittenteFiscaleId` come prop; usa `useListaConfig`; costruisce colonne dinamicamente; gestisce ordinamento e filtri locali |
+| D3 | `src/core/components/ListaColonneModal.vue` | Modale personalizzazione: toggle visibilità, drag&drop ordine, colonne raggruppate per `gruppo`, colonne `identificatore`/`azione` non togglabili (disabled con tooltip), badge "N nuove colonne" |
+| D4 | (incluso in D2) | Indicatore stato nella toolbar: testo `Configurazione salvata` / `Temporanea — non salvata`; confronto config locale vs config da server al mount |
+
+Costanti UI (durata toast, larghezze default colonne) in `src/core/constants.js`.
+Tutti i testi visibili via `$t()` (vue-i18n) — nessuna stringa hardcoded nei template.
+
+---
+
+### Blocco E — Prima lista reale (dipende da A+B+C+D)
+
+Scopo: validare l'intera catena su un caso reale prima di replicare. Lista candidata: **anagrafiche clienti** (`codice = 'anagrafiche.clienti'`).
+
+**Seed dati** — file CSV + YAML in `80_data/`:
+
+| Step | File | Contenuto |
+|------|------|-----------|
+| E1 | `80_data/sql/ui/lista_definizione.csv` + YAML changelog | Una riga: `codice='anagrafiche.clienti'`, `vista_sql='<nome view clienti>'` |
+| E2 | `80_data/sql/ui/lista_colonna.csv` + YAML changelog | Colonne del catalogo clienti: `ragione_sociale` (identificatore), poi colonne informazione con gruppo, ordine, tipo_dato, formato |
+| E3 | `80_data/sql/ui/lista_preset.csv` + YAML changelog | Un preset di sistema (`is_default=TRUE, ambito='sistema'`) con le colonne più rilevanti |
+| E4 | `80_data/sql/ui/lista_preset_colonna.csv` + YAML changelog | Colonne del preset di sistema: quali visibili di default, quali nel pool ma non visibili |
+
+Verificare che ogni `campo_sorgente` in E2 esista nella view SQL prima del deploy — il trigger B2 lo valida automaticamente all'INSERT.
+
+**Migrazione componente**:
+
+| Step | File frontend | Descrizione |
+|------|---------------|-------------|
+| E5 | `src/anagrafiche/views/ClientiListView.vue` | Sostituire il DataTable statico con `<ListaConfigurabile codice="anagrafiche.clienti" />` |
+
+Dopo E5, testare manualmente:
+- Apertura senza preferenza → catalogo grezzo
+- Personalizzazione colonne → salvataggio → ricarica → preferenza persistita
+- Reset → torna al preset di sistema
+- Badge "N nuove colonne" su aggiornamento catalogo
+
+---
+
+### Sviluppi rinviati
+
+Vedi documento separato: [sviluppo-personalizzazioni-liste_def.md](sviluppo-personalizzazioni-liste_def.md)

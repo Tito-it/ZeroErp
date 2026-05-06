@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger di validazione su ui.lista_colonna.campo_sorgente.
+#
+# Why: campo_sorgente e' un VARCHAR che deve corrispondere a una
+# colonna reale nella view indicata da lista_definizione.vista_sql.
+# Un typo qui causerebbe errori runtime alla prima apertura della lista.
+#
+# Il trigger:
+#   - Skip se tipo_colonna='azione' (campo_sorgente=NULL per disegno)
+#   - Skip se campo_sorgente IS NULL
+#   - Skip se la lista padre non ha vista_sql valorizzata
+#   - Verifica esistenza della colonna in pg_catalog.pg_attribute
+#     nella relazione indicata da vista_sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260506-11-code-trgfn-ui-lista-col-valida-campo-mctit.yaml
+
+  - changeSet:
+      id: 20260506-11-01-trgfn-ui-lista-col-valida-campo
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: "Trigger BEFORE INSERT/UPDATE: valida che campo_sorgente esista in pg_catalog.pg_attribute"
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: lista_colonna
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo: verifica che campo_sorgente esista come attributo della view
+              -- referenziata da lista_definizione.vista_sql, prima di permettere
+              -- INSERT/UPDATE su lista_colonna.
+              -- Skip per tipo_colonna='azione', campo_sorgente NULL, o lista senza view.
+              DECLARE
+                v_vista_sql        VARCHAR(120);
+                v_colonna_esiste   BOOLEAN;
+              BEGIN
+                -- Le colonne di tipo 'azione' non hanno campo_sorgente
+                IF NEW.tipo_colonna = 'azione' THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Nessuna validazione se campo_sorgente non valorizzato
+                IF NEW.campo_sorgente IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Recupera vista_sql dalla lista padre
+                SELECT ld.vista_sql
+                  INTO v_vista_sql
+                  FROM ui.lista_definizione ld
+                 WHERE ld.id = NEW.lista_id;
+
+                -- Se la lista non ha una view definita, skip
+                IF v_vista_sql IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Verifica esistenza della colonna nella relazione
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+                   WHERE c.relname = v_vista_sql
+                     AND c.relkind IN ('v', 'm', 'r')
+                     AND a.attname = NEW.campo_sorgente
+                     AND a.attnum > 0
+                     AND NOT a.attisdropped
+                ) INTO v_colonna_esiste;
+
+                IF NOT v_colonna_esiste THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente',
+                    'E_UI_CAMPO_SORGENTE_NON_TROVATO',
+                    jsonb_build_object(
+                      'detail', format('campo_sorgente = ''%s'' non trovato nella view ''%s''', NEW.campo_sorgente, v_vista_sql),
+                      'lista_id', NEW.lista_id,
+                      'codice', NEW.codice
+                    ),
+                    NULL,
+                    NEW.campo_sorgente,
+                    v_vista_sql
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
+              IS 'Guard INSERT/UPDATE: verifica esistenza di campo_sorgente in pg_catalog.pg_attribute sulla view della lista. Skip per tipo_colonna=azione.';
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd
+                ON ui.lista_colonna;
+
+              CREATE TRIGGER trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd
+                BEFORE INSERT OR UPDATE OF campo_sorgente, tipo_colonna, lista_id
+                ON ui.lista_colonna
+                FOR EACH ROW
+                EXECUTE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd
+                ON ui.lista_colonna;
+              DROP FUNCTION IF EXISTS ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente();

@@ -1,0 +1,201 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Schema ui e ENUM di dominio.
+#
+# Why: schema dedicato ai metadati di presentazione delle liste.
+# Gli ENUM sono definiti nello stesso file, prima delle tabelle
+# che li referenziano, per garantire il corretto ordine di apply.
+#
+# ENUM definiti:
+#   ui.ambito_preset       - livello di applicazione di un preset
+#   ui.tipo_colonna        - comportamento strutturale colonna catalogo
+#   ui.tipo_dato           - tipo di dato esposto dalla colonna
+#   ui.allineamento_colonna - allineamento orizzontale colonna
+#
+# Ref: docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260506-01-ddl-schema-ui-mctit.yaml
+
+  # ------------------------------------------------------------------
+  # -01-01: schema ui
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: 20260506-01-01-create-schema-ui
+      author: mctit
+      comment: "Schema ui per metadati di presentazione liste configurabili"
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT COUNT(*) FROM information_schema.schemata
+              WHERE schema_name = 'ui'
+      changes:
+        - sql:
+            sql: |
+              CREATE SCHEMA ui;
+              COMMENT ON SCHEMA ui IS
+              'Metadati di presentazione: liste configurabili, preset colonne, '
+              'preferenze utente. Zero logica di business.';
+      rollback:
+        - sql:
+            sql: DROP SCHEMA IF EXISTS ui CASCADE;
+
+  # ------------------------------------------------------------------
+  # -01-02: ENUM ui.ambito_preset
+  # Livello di applicazione di un preset lista.
+  # Usato da: ui.lista_preset.ambito
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: 20260506-01-02-create-enum-ui-ambito-preset
+      author: mctit
+      comment: "ENUM ui.ambito_preset: livello applicativo preset (sistema / emittente_fiscale / ruolo)"
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT COUNT(*) FROM pg_type t
+              JOIN pg_namespace n ON n.oid = t.typnamespace
+              WHERE n.nspname = 'ui'
+                AND t.typname = 'ambito_preset'
+      changes:
+        - sql:
+            sql: |
+              CREATE TYPE ui.ambito_preset AS ENUM (
+                  'sistema',            -- default globale per tutti
+                  'emittente_fiscale',  -- default per una specifica societa'/emittente
+                  'ruolo'               -- default per un profilo di accesso (config.profili_accesso)
+              );
+        - sql:
+            sql: |
+              COMMENT ON TYPE ui.ambito_preset IS
+              'Livello di applicazione di un preset lista: '
+              'sistema (default globale), emittente_fiscale (per societa specifica), '
+              'ruolo (per profilo di accesso). Usato da ui.lista_preset.ambito.';
+      rollback:
+        - sql:
+            sql: DROP TYPE IF EXISTS ui.ambito_preset;
+
+  # ------------------------------------------------------------------
+  # -01-03: ENUM ui.tipo_colonna
+  # Comportamento strutturale di una colonna nel catalogo liste.
+  # Usato da: ui.lista_colonna.tipo_colonna
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: 20260506-01-03-create-enum-ui-tipo-colonna
+      author: mctit
+      comment: "ENUM ui.tipo_colonna: comportamento strutturale colonna (identificatore / informazione / azione)"
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT COUNT(*) FROM pg_type t
+              JOIN pg_namespace n ON n.oid = t.typnamespace
+              WHERE n.nspname = 'ui'
+                AND t.typname = 'tipo_colonna'
+      changes:
+        - sql:
+            sql: |
+              CREATE TYPE ui.tipo_colonna AS ENUM (
+                  'identificatore',  -- sempre visibile, non nascondibile, fissata di default
+                  'informazione',    -- personalizzabile liberamente dall'utente
+                  'azione'           -- pulsanti/icone UI: non esportabile, non nascondibile
+              );
+        - sql:
+            sql: |
+              COMMENT ON TYPE ui.tipo_colonna IS
+              'Comportamento strutturale di una colonna nel catalogo liste: '
+              'identificatore (sempre visibile), informazione (personalizzabile), '
+              'azione (pulsanti UI non esportabili). Usato da ui.lista_colonna.tipo_colonna.';
+      rollback:
+        - sql:
+            sql: DROP TYPE IF EXISTS ui.tipo_colonna;
+
+  # ------------------------------------------------------------------
+  # -01-04: ENUM ui.tipo_dato
+  # Tipo di dato esposto dalla colonna, usato dal frontend per formattazione.
+  # Usato da: ui.lista_colonna.tipo_dato
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: 20260506-01-04-create-enum-ui-tipo-dato
+      author: mctit
+      comment: "ENUM ui.tipo_dato: tipo dato colonna catalogo (string/numeric/date/datetime/boolean/enum)"
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT COUNT(*) FROM pg_type t
+              JOIN pg_namespace n ON n.oid = t.typnamespace
+              WHERE n.nspname = 'ui'
+                AND t.typname = 'tipo_dato'
+      changes:
+        - sql:
+            sql: |
+              CREATE TYPE ui.tipo_dato AS ENUM (
+                  'string',    -- testo libero
+                  'numeric',   -- numero (intero o decimale)
+                  'date',      -- data senza ora
+                  'datetime',  -- data con ora
+                  'boolean',   -- vero/falso
+                  'enum'       -- valore da insieme finito (gestito via colonna formato)
+              );
+        - sql:
+            sql: |
+              COMMENT ON TYPE ui.tipo_dato IS
+              'Tipo di dato esposto da una colonna del catalogo liste. '
+              'Usato dal frontend per applicare la formattazione corretta (date, valute, ecc.). '
+              'Usato da ui.lista_colonna.tipo_dato.';
+      rollback:
+        - sql:
+            sql: DROP TYPE IF EXISTS ui.tipo_dato;
+
+  # ------------------------------------------------------------------
+  # -01-05: ENUM ui.allineamento_colonna
+  # Allineamento orizzontale del testo nella colonna lista.
+  # Usato da: ui.lista_colonna.allineamento
+  # ------------------------------------------------------------------
+  - changeSet:
+      id: 20260506-01-05-create-enum-ui-allineamento-colonna
+      author: mctit
+      comment: "ENUM ui.allineamento_colonna: allineamento orizzontale colonna (left/right/center)"
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT COUNT(*) FROM pg_type t
+              JOIN pg_namespace n ON n.oid = t.typnamespace
+              WHERE n.nspname = 'ui'
+                AND t.typname = 'allineamento_colonna'
+      changes:
+        - sql:
+            sql: |
+              CREATE TYPE ui.allineamento_colonna AS ENUM (
+                  'left',    -- sinistra (default per testo)
+                  'right',   -- destra (default per numeri e valute)
+                  'center'   -- centrato
+              );
+        - sql:
+            sql: |
+              COMMENT ON TYPE ui.allineamento_colonna IS
+              'Allineamento orizzontale del contenuto nella colonna lista. '
+              'Usato da ui.lista_colonna.allineamento.';
+      rollback:
+        - sql:
+            sql: DROP TYPE IF EXISTS ui.allineamento_colonna;

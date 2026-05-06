@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Tabella ui.lista_preset_colonna.
+#
+# Why: composizione di un preset — quali colonne, in che ordine,
+# con che larghezza. La colonna visibile=FALSE indica che la colonna
+# e' nel pool disponibile (appare nella modale di personalizzazione)
+# ma non e' mostrata di default. Permette preset con 30 colonne
+# disponibili ma solo 8 visibili di default.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260506-05-ddl-ui-lista-preset-colonna-mctit.yaml
+
+  - changeSet:
+      id: 20260506-05-01-create-ui-lista-preset-colonna
+      author: mctit
+      comment: "Composizione preset: quali colonne, ordine, larghezza, visibilita di default"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                schemaName: ui
+                tableName: lista_preset_colonna
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE ui.lista_preset_colonna (
+                preset_id   INTEGER NOT NULL,
+                colonna_id  INTEGER NOT NULL,
+                ordine      INTEGER NOT NULL,
+                larghezza   INTEGER,
+                  -- in pixel; NULL = usa larghezza_default dalla lista_colonna
+                visibile    BOOLEAN NOT NULL DEFAULT TRUE,
+                  -- FALSE: colonna disponibile nel pool ma non mostrata di default
+                fissata     BOOLEAN NOT NULL DEFAULT FALSE,
+                  -- TRUE: colonna frozen (non scrolla orizzontalmente)
+
+                CONSTRAINT pk_ui_lista_preset_colonna PRIMARY KEY (preset_id, colonna_id),
+
+                CONSTRAINT fk_lista_preset_colonna_lista_preset
+                    FOREIGN KEY (preset_id) REFERENCES ui.lista_preset(id) ON DELETE CASCADE,
+
+                CONSTRAINT fk_lista_preset_colonna_lista_colonna
+                    FOREIGN KEY (colonna_id) REFERENCES ui.lista_colonna(id)
+              );
+
+              COMMENT ON TABLE  ui.lista_preset_colonna IS 'Colonne di un preset: ordine, larghezza, visibilita di default e freeze.';
+              COMMENT ON COLUMN ui.lista_preset_colonna.visibile IS 'FALSE=colonna nel pool (attivabile dalla modale) ma non mostrata di default.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: DROP TABLE IF EXISTS ui.lista_preset_colonna CASCADE;
