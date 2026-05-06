@@ -561,6 +561,42 @@ a {
   color: var(--app-icon-color);
 }
 
+/* Icone custom centralizzate per la navigazione.
+ * Mantengono la stessa API delle PrimeIcons: una stringa class sull'elemento <i>. */
+.app-nav-icon {
+  position: relative;
+  display: inline-block;
+  width: 1.25rem;
+  height: 1rem;
+  min-width: 1.25rem;
+  line-height: 1;
+  vertical-align: -0.125em;
+  overflow: visible;
+}
+
+.app-nav-icon::before,
+.app-nav-icon::after {
+  position: absolute;
+  font-family: 'primeicons';
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+}
+
+.app-nav-icon-documenti::before {
+  content: "\e958";
+  top: 0.03rem;
+  left: 0.18rem;
+  font-size: 0.88rem;
+}
+
+.app-nav-icon-documenti::after {
+  content: "\e94a";
+  left: 0.76rem;
+  top: 0.52rem;
+  font-size: 0.46rem;
+}
+
 /* DatePicker: icona calendario colore primario standard.
  * PrimeVue 4 usa SVG inline nel tema — override con !important per vincere la specificita'. */
 .p-datepicker-input-icon-container,

@@ -376,6 +376,47 @@ Tutti su `DomainAPIView` con `area_funzionale = "documenti"`. CRUD admin (PR suc
 
 ---
 
+## UI — Personalizzazioni liste (`apps/ui/`)
+
+Strato di presentazione (schema DB `ui`) per il componente Vue
+`<ListaConfigurabile>`. Meta-API trasversale: tutte le view usano
+`DomainAPIView` con `skip_area_check=True` (lo schema `ui` non e' in
+`config.aree_funzionali` per design — la presentazione e' ortogonale
+ai domini funzionali).
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `UiRepository.resolve_lista_config` | [ui_repository.py](../../../../backend/apps/ui/db/ui_repository.py) | Wrapper 1:1 di `ui.fn_resolve_lista_config(VARCHAR, INTEGER, BIGINT)`. Cascata preferenza/preset di ruolo (priorita ASC) /preset emittente/preset sistema/catalogo grezzo + merge nuove colonne + filtro autorizzativo. Restituisce JSONB `{colonne[], ordinamento, filtri, pagina_dimensione, colonne_nuove}`. Veste corrente letta dalla GUC `app.ruolo_applicativo` (post DB-4 landed 2026-05-07). |
+| `UiRepository.list_colonne_by_codice` | [ui_repository.py](../../../../backend/apps/ui/db/ui_repository.py) | Catalogo colonne arricchito (etichetta, gruppo, tipo_dato, formato, ecc.) con JOIN `lista_definizione` -> `lista_colonna`. Single round-trip per la modale di personalizzazione. Filtra `attivo=TRUE`; il filtro permessi e' applicato a layer service riusando la fn DB. |
+| `UiRepository.get_preferenza` | [ui_repository.py](../../../../backend/apps/ui/db/ui_repository.py) | Lettura preferenza utente per (auth_user, lista_id) con metadati (`preset_base_id`, `preset_base_data_update`) per badge DEF-2. |
+| `UiRepository.upsert_preferenza` | [ui_repository.py](../../../../backend/apps/ui/db/ui_repository.py) | UPSERT preferenza utente (`ON CONFLICT (auth_user_id, lista_id) DO UPDATE`). Snapshot `preset_base_data_update` calcolato dal service via `get_preset_base_snapshot`. |
+| `UiRepository.delete_preferenza` | [ui_repository.py](../../../../backend/apps/ui/db/ui_repository.py) | Elimina preferenza utente. Ritorna `bool` (idempotente: `False` se non esisteva). |
+| `UiRepository.get_preset_base_snapshot` | [ui_repository.py](../../../../backend/apps/ui/db/ui_repository.py) | Snapshot `(preset_id, data_update)` del preset di base risolto per l'utente. Replica la cascata Step 2b/c/d della fn DB con espressione `_GUC_VESTE_EXPR` GUC-aware. **Drift risk documentato**: se `fn_resolve_lista_config` cambia, va aggiornata anche questa fn. Soluzione futura: brief team DB per esporre `preset_base` nel JSONB della fn. |
+| `UiService.get_lista_config` | [ui_service.py](../../../../backend/apps/ui/services/ui_service.py) | Facade `resolve_lista_config`: deriva `emittente_fiscale_id` 1:1 via `PermissionResolver.get_emittente_for_user` (admin globale -> `None`), traduce `DatabaseError` P0001 in `ServiceError` con marker `E_UI_LISTA_NON_TROVATA`, fallback `E_UI_GENERIC_FAILED`. |
+| `UiService.get_catalogo` | [ui_service.py](../../../../backend/apps/ui/services/ui_service.py) | Catalogo per la modale: riusa `get_lista_config()` per filtrare BLOCCATE (single source of truth permessi), arricchisce con metadati ricchi via `list_colonne_by_codice`. 2 round-trip totali, error handling centralizzato. |
+| `ListaPreferenzaService.upsert` | [lista_preferenza_service.py](../../../../backend/apps/ui/services/lista_preferenza_service.py) | UPSERT preferenza con `PayloadValidator` (whitelist anti-injection: `{colonne, ordinamento, filtri, pagina_dimensione}`; per colonna: `{codice, ordine, larghezza, visibile, fissata}`). `pagina_dimensione` cap a `MAX_LIMIT=200`. Snapshot `preset_base_id` + `preset_base_data_update` ritornati al chiamante per UX badge. |
+| `ListaPreferenzaService.delete` | [lista_preferenza_service.py](../../../../backend/apps/ui/services/lista_preferenza_service.py) | DELETE idempotente. Solleva `E_UI_LISTA_NON_TROVATA` se la lista stessa non esiste (protezione anti-tampering URL). |
+| `ApiListaConfigView` / `ApiListaCatalogoView` / `ApiListaPreferenzaView` | [views.py](../../../../backend/apps/ui/api/views.py) | Le 3 view DRF per i 4 endpoint. Tutte `skip_area_check=True`. PUT preferenza usa `handle_post_json` con `require_idempotency_key=True`. |
+
+**Endpoint** (vedi [api_ui_liste.md](../../backend/ui/manual/api_ui_liste.md) per il contratto completo):
+
+- `GET    /api/v1/ui/liste/<codice>/config/` — risolve configurazione effettiva
+- `GET    /api/v1/ui/liste/<codice>/catalogo/` — catalogo per modale (filtrato per permessi)
+- `PUT    /api/v1/ui/liste/<codice>/preferenza/` — UPSERT preferenza (Idempotency-Key obbligatoria)
+- `DELETE /api/v1/ui/liste/<codice>/preferenza/` — DELETE idempotente
+
+**Codici errore** registrati in `apps/core/services/error_policies.py`:
+
+| Codice | HTTP | Sorgente |
+|---|---|---|
+| `E_UI_LISTA_NON_TROVATA` | 404 | service + fn DB (`fn_log_and_raise_error`) |
+| `E_UI_VISTA_SQL_NON_TROVATA` | 400 | trigger DB B1 (admin only) |
+| `E_UI_CAMPO_SORGENTE_NON_TROVATO` | 400 | trigger DB B2 (admin only) |
+| `E_UI_PREFERENZA_VALIDAZIONE` | 400 | service (whitelist payload) |
+| `E_UI_GENERIC_FAILED` | 400 | service (fallback DatabaseError ignote) |
+
+---
+
 ## Mixin e Tipi (`apps/core/`)
 
 | Building Block | File | Descrizione |

@@ -2166,5 +2166,22 @@
         "col_size": "Dimensione"
       }
     }
+  },
+  "lista_config": {
+    "modal_title": "Personalizza colonne",
+    "personalizza_colonne": "Personalizza colonne",
+    "stato_salvata": "Configurazione salvata",
+    "stato_temporanea": "Temporanea — non salvata",
+    "stato_temporanea_tooltip": "La configurazione corrente non è stata salvata. Andrà persa al prossimo accesso se non clicchi 'Salva' nella modale di personalizzazione.",
+    "colonne_nuove_tooltip": "{count} nuove colonne disponibili dopo l'ultimo salvataggio.",
+    "colonna_obbligatoria": "Colonna obbligatoria, sempre visibile.",
+    "larghezza_tooltip": "Larghezza colonna in pixel. Vuoto = usa il default.",
+    "sposta_su": "Sposta in alto",
+    "sposta_giu": "Sposta in basso",
+    "tag_sensibile": "Sensibile",
+    "gruppo_altro": "Altro",
+    "reset_preferenza": "Ripristina default",
+    "reset_confirm_header": "Ripristina configurazione",
+    "reset_confirm_message": "La tua personalizzazione verrà eliminata e la lista tornerà al preset standard. Procedere?"
   }
 }

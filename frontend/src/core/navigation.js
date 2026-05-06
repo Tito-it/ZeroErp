@@ -2,6 +2,45 @@
 // Sidebar, HomeView e store navigation leggono da qui — un'unica fonte di verita'.
 
 import { READONLY_DOMAINS } from './constants'
+
+export const NAV_ICONS = Object.freeze({
+  ANAGRAFICHE: 'pi pi-users',
+  CATALOGO: 'pi pi-box',
+  VENDITE: 'pi pi-shopping-cart',
+  ACQUISTI: 'pi pi-shopping-bag',
+  MAGAZZINO: 'pi pi-warehouse',
+  PAGAMENTI: 'pi pi-credit-card',
+  CONTABILITA: 'pi pi-calculator',
+  PRATICHE: 'pi pi-folder',
+  CONFIG: 'pi pi-cog',
+  AMM_SOFTWARE: 'pi pi-lock',
+
+  TABELLE: 'pi pi-table',
+  IMPOSTAZIONI: 'pi pi-sliders-h',
+  CONFIG_DOCUMENTI: 'app-nav-icon app-nav-icon-documenti',
+  HOME: 'pi pi-home',
+  BACK: 'pi pi-arrow-left',
+
+  KEY: 'pi pi-key',
+  SITEMAP: 'pi pi-sitemap',
+  SHIELD: 'pi pi-shield',
+  ID_CARD: 'pi pi-id-card',
+  TAGS: 'pi pi-tags',
+  HISTORY: 'pi pi-history',
+  AT: 'pi pi-at',
+  FILE_EDIT: 'pi pi-file-edit',
+  ENVELOPE: 'pi pi-envelope',
+  BRIEFCASE: 'pi pi-briefcase',
+  CLIPBOARD: 'pi pi-clipboard',
+  MAP_MARKER: 'pi pi-map-marker',
+  ARROWS_H: 'pi pi-arrows-h',
+  SYNC: 'pi pi-sync',
+  FILE: 'pi pi-file',
+  TAG: 'pi pi-tag',
+  PERCENTAGE: 'pi pi-percentage',
+  CHECK_CIRCLE: 'pi pi-check-circle',
+  FOLDER_OPEN: 'pi pi-folder-open',
+})
 //
 // --- Convenzioni route meta ---
 // Ogni route autenticata DEVE avere meta.domain (stringa, es. 'vendite').
@@ -22,16 +61,16 @@ import { READONLY_DOMAINS } from './constants'
 // 5. Se il dominio ha voci L2, aggiungerlo a domainsWithRoutes nel router
 
 export const DOMAINS = [
-  { key: 'anagrafiche', icon: 'pi pi-users', to: '/anagrafiche', schemaDb: 'anagrafiche' },
-  { key: 'catalogo', icon: 'pi pi-box', to: '/catalogo', schemaDb: 'catalogo' },
-  { key: 'vendite', icon: 'pi pi-shopping-cart', to: '/vendite', schemaDb: 'vendite' },
-  { key: 'acquisti', icon: 'pi pi-shopping-bag', to: '/acquisti', schemaDb: 'acquisti' },
-  { key: 'magazzino', icon: 'pi pi-warehouse', to: '/magazzino', schemaDb: 'magazzino' },
-  { key: 'pagamenti', icon: 'pi pi-credit-card', to: '/pagamenti', schemaDb: 'pagamenti' },
-  { key: 'contabilita', icon: 'pi pi-calculator', to: '/contabilita', schemaDb: 'contabilita' },
-  { key: 'pratiche', icon: 'pi pi-folder', to: '/pratiche', schemaDb: 'pratiche' },
-  { key: 'config', icon: 'pi pi-cog', to: '/config', schemaDb: 'config' },
-  { key: 'amm-software', icon: 'pi pi-lock', to: '/amm-software', adminOnly: true, schemaDb: 'amm_software' }
+  { key: 'anagrafiche', icon: NAV_ICONS.ANAGRAFICHE, to: '/anagrafiche', schemaDb: 'anagrafiche' },
+  { key: 'catalogo', icon: NAV_ICONS.CATALOGO, to: '/catalogo', schemaDb: 'catalogo' },
+  { key: 'vendite', icon: NAV_ICONS.VENDITE, to: '/vendite', schemaDb: 'vendite' },
+  { key: 'acquisti', icon: NAV_ICONS.ACQUISTI, to: '/acquisti', schemaDb: 'acquisti' },
+  { key: 'magazzino', icon: NAV_ICONS.MAGAZZINO, to: '/magazzino', schemaDb: 'magazzino' },
+  { key: 'pagamenti', icon: NAV_ICONS.PAGAMENTI, to: '/pagamenti', schemaDb: 'pagamenti' },
+  { key: 'contabilita', icon: NAV_ICONS.CONTABILITA, to: '/contabilita', schemaDb: 'contabilita' },
+  { key: 'pratiche', icon: NAV_ICONS.PRATICHE, to: '/pratiche', schemaDb: 'pratiche' },
+  { key: 'config', icon: NAV_ICONS.CONFIG, to: '/config', schemaDb: 'config' },
+  { key: 'amm-software', icon: NAV_ICONS.AMM_SOFTWARE, to: '/amm-software', adminOnly: true, schemaDb: 'amm_software' }
 ]
 
 // Voci menu L2 per ogni dominio (sidebar stato DOMINIO).
@@ -51,49 +90,49 @@ export const DOMAINS = [
 //                               Filter applicato lato sidebar.
 export const DOMAIN_MENUS = {
   'amm-software': [
-    { key: 'operatori', icon: 'pi pi-key', to: '/amm-software/operatori' },
-    { key: 'profili-reparto', icon: 'pi pi-sitemap', to: '/amm-software/profili-reparto' },
-    { key: 'permessi', icon: 'pi pi-shield', to: '/amm-software/permessi' },
-    { key: 'emittenti-fiscali', icon: 'pi pi-id-card', to: '/amm-software/emittenti-fiscali' },
-    { key: 'categorie-clienti', icon: 'pi pi-tags', to: '/amm-software/categorie-clienti' },
-    { key: 'matrici', icon: 'pi pi-table', to: '/amm-software/matrici' },
-    { key: 'audit-log', icon: 'pi pi-history', to: '/amm-software/audit-log' },
-    { key: 'email-accounts', icon: 'pi pi-at', to: '/amm-software/email-accounts' },
-    { key: 'email-templates', icon: 'pi pi-file-edit', to: '/amm-software/email-templates' },
-    { key: 'email-log', icon: 'pi pi-envelope', to: '/amm-software/email-log' }
+    { key: 'operatori', icon: NAV_ICONS.KEY, to: '/amm-software/operatori' },
+    { key: 'profili-reparto', icon: NAV_ICONS.SITEMAP, to: '/amm-software/profili-reparto' },
+    { key: 'permessi', icon: NAV_ICONS.SHIELD, to: '/amm-software/permessi' },
+    { key: 'emittenti-fiscali', icon: NAV_ICONS.ID_CARD, to: '/amm-software/emittenti-fiscali' },
+    { key: 'categorie-clienti', icon: NAV_ICONS.TAGS, to: '/amm-software/categorie-clienti' },
+    { key: 'matrici', icon: NAV_ICONS.TABELLE, to: '/amm-software/matrici' },
+    { key: 'audit-log', icon: NAV_ICONS.HISTORY, to: '/amm-software/audit-log' },
+    { key: 'email-accounts', icon: NAV_ICONS.AT, to: '/amm-software/email-accounts' },
+    { key: 'email-templates', icon: NAV_ICONS.FILE_EDIT, to: '/amm-software/email-templates' },
+    { key: 'email-log', icon: NAV_ICONS.ENVELOPE, to: '/amm-software/email-log' }
   ],
   'anagrafiche': [
-    { key: 'soggetti', icon: 'pi pi-users', to: '/anagrafiche/soggetti' },
-    { key: 'clienti', icon: 'pi pi-briefcase', to: '/anagrafiche/clienti' },
-    { key: 'fornitori', icon: 'pi pi-clipboard', to: '/anagrafiche/fornitori' },
-    { key: 'indirizzi', icon: 'pi pi-map-marker', to: '/anagrafiche/indirizzi' }
+    { key: 'soggetti', icon: NAV_ICONS.ANAGRAFICHE, to: '/anagrafiche/soggetti' },
+    { key: 'clienti', icon: NAV_ICONS.BRIEFCASE, to: '/anagrafiche/clienti' },
+    { key: 'fornitori', icon: NAV_ICONS.CLIPBOARD, to: '/anagrafiche/fornitori' },
+    { key: 'indirizzi', icon: NAV_ICONS.MAP_MARKER, to: '/anagrafiche/indirizzi' }
   ],
   'catalogo': [
-    { key: 'articoli', icon: 'pi pi-box', to: '/catalogo/articoli' },
-    { key: 'unita-misura', icon: 'pi pi-arrows-h', to: '/catalogo/unita-misura' },
-    { key: 'conversioni-uom', icon: 'pi pi-sync', to: '/catalogo/conversioni-uom' },
-    { key: 'uom-tipi', icon: 'pi pi-tags', to: '/catalogo/uom-tipi' }
+    { key: 'articoli', icon: NAV_ICONS.CATALOGO, to: '/catalogo/articoli' },
+    { key: 'unita-misura', icon: NAV_ICONS.ARROWS_H, to: '/catalogo/unita-misura' },
+    { key: 'conversioni-uom', icon: NAV_ICONS.SYNC, to: '/catalogo/conversioni-uom' },
+    { key: 'uom-tipi', icon: NAV_ICONS.TAGS, to: '/catalogo/uom-tipi' }
   ],
   'vendite': [
-    { key: 'preventivi', icon: 'pi pi-file', to: '/vendite/preventivi' },
-    { key: 'listini', icon: 'pi pi-tag', to: '/vendite/listini' },
-    { key: 'contratti', icon: 'pi pi-file-edit', to: '/vendite/contratti' },
-    { key: 'promo-articoli', icon: 'pi pi-percentage', to: '/vendite/promo-articoli' },
-    { key: 'approvazioni-prezzo', icon: 'pi pi-check-circle', to: '/vendite/approvazioni-prezzo' }
+    { key: 'preventivi', icon: NAV_ICONS.FILE, to: '/vendite/preventivi' },
+    { key: 'listini', icon: NAV_ICONS.TAG, to: '/vendite/listini' },
+    { key: 'contratti', icon: NAV_ICONS.FILE_EDIT, to: '/vendite/contratti' },
+    { key: 'promo-articoli', icon: NAV_ICONS.PERCENTAGE, to: '/vendite/promo-articoli' },
+    { key: 'approvazioni-prezzo', icon: NAV_ICONS.CHECK_CIRCLE, to: '/vendite/approvazioni-prezzo' }
   ],
   'acquisti': [],
   'magazzino': [],
   'pagamenti': [],
   'contabilita': [],
   'pratiche': [
-    { key: 'gestione', icon: 'pi pi-folder-open', to: '/pratiche' }
+    { key: 'gestione', icon: NAV_ICONS.FOLDER_OPEN, to: '/pratiche' }
   ],
   'config': [
-    { key: 'tabelle', icon: 'pi pi-table', to: '/config/tabelle' },
-    { key: 'impostazioni', icon: 'pi pi-sliders-h', to: '/config/impostazioni' },
+    { key: 'tabelle', icon: NAV_ICONS.TABELLE, to: '/config/tabelle' },
+    { key: 'impostazioni', icon: NAV_ICONS.IMPOSTAZIONI, to: '/config/impostazioni' },
     {
       key: 'config-documenti',
-      icon: 'pi pi-folder-open',
+      icon: NAV_ICONS.CONFIG_DOCUMENTI,
       to: '/config/documenti',
       // Le entita' gestite (template_documenti, template_asset) sono in
       // schema/area `documenti`; la voce sta sotto config solo per UX.
@@ -103,7 +142,7 @@ export const DOMAIN_MENUS = {
 }
 
 // Voce sidebar home (usata dal SidebarDomain per il pulsante indietro)
-export const HOME_ITEM = { key: 'home', icon: 'pi pi-home', to: '/' }
+export const HOME_ITEM = { key: 'home', icon: NAV_ICONS.HOME, to: '/' }
 
 // Risolve la label tab/breadcrumb dalla route meta usando i18n.
 // Usato da router guard e AppBreadcrumb per evitare duplicazione.
