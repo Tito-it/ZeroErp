@@ -3,7 +3,7 @@
 // Click riga -> apre EmittenteFiscaleDrawer (anagrafica) in modifica.
 // Pulsanti riga BA / Utilities -> aprono i drawer DEDICATI per la sotto-entita',
 // senza passare dal drawer dati.
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -19,9 +19,8 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Badge from 'primevue/badge'
-import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 
@@ -45,6 +44,24 @@ const attivoOptions = [
   { label: t('amm.stato_attivo'), value: true },
   { label: t('amm.stato_inattivo'), value: false }
 ]
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('amm_emittenti_fiscali.new'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: openCreate,
+  },
+])
 
 onMounted(() => { store.fetchList() })
 
@@ -115,11 +132,11 @@ function buildRowActions(data) {
           @change="applyExtraFilters"
         />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('amm_emittenti_fiscali.new')" @click="openCreate" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <DataTable

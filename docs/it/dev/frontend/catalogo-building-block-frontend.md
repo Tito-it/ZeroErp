@@ -179,7 +179,9 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | `app-page` | Wrapper root di ogni view con DataTable — flex column full-height |
 | `app-page-toolbar` | Barra filtri + azioni sopra la DataTable |
 | `app-page-filters` | Gruppo filtri con flex-wrap |
-| `app-page-actions` | Gruppo pulsanti azione toolbar (refresh + new) |
+| `app-page-actions` | Wrapper `PageActionsBar` per azioni pagina/lista |
+| `app-page-actions-desktop` | Variante desktop di `PageActionsBar`: utility inline + menu secondarie |
+| `app-page-actions-compact` | Variante touch/tablet/mobile di `PageActionsBar`: kebab popup |
 | `app-tab-content` | Wrapper contenuto tab per DataTable flex (dentro TabPanel o diretto) |
 
 ### Classi form (`main.css`)
@@ -358,7 +360,8 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 
 | Componente | File | Descrizione |
 |---|---|---|
-| `NewButton` | [NewButton.vue](../../../../frontend/src/core/components/NewButton.vue) | Pulsante "Nuovo" con controllo permessi |
+| `PageActionsBar` | [PageActionsBar.vue](../../../../frontend/src/core/components/PageActionsBar.vue) | Barra azioni pagina/lista responsive. Props: `actions`, `disabled`, `menuTooltip`. Ogni azione espone `key`, `kind`, `label`, `icon`, `tooltip`, `visible`, `disabled`, `hideWhenReadonly`, `action`, `command`. Standard per `refresh + nuovo` e toolbar con utility extra. |
+| `NewButton` | [NewButton.vue](../../../../frontend/src/core/components/NewButton.vue) | Pulsante "Nuovo" specializzato legacy/non-toolbar; nelle liste usare `PageActionsBar` |
 | `RowActionsMenu` | [RowActionsMenu.vue](../../../../frontend/src/core/components/RowActionsMenu.vue) | Azioni di riga responsive. Props: `actions`, `row`, `tooltip`, `disabled`, `disableWhenInactive`. Se `row.attivo === false` o `row.is_active === false`, disabilita automaticamente le azioni operative salvo `allowWhenInactive: true` sulla singola azione (es. riattiva/storico/modifica quando la matita e' l'entrypoint del form). |
 | `StatusPage` | [StatusPage.vue](../../../../frontend/src/core/components/StatusPage.vue) | Pagine errore/forbidden/not-found |
 | `TagList` | [TagList.vue](../../../../frontend/src/core/components/TagList.vue) | Lista tag/label riutilizzabile |

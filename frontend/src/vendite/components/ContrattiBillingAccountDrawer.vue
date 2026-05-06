@@ -14,7 +14,7 @@ import { displayDate } from '../../core/utils/date'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
-import NewButton from '../../core/components/NewButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import ContrattoDrawer from './ContrattoDrawer.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
@@ -22,7 +22,6 @@ import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import Message from 'primevue/message'
 
 const { t } = useI18n()
@@ -47,6 +46,25 @@ const filteredItems = computed(() => {
   if (!statoFilter.value) return items.value
   return items.value.filter(i => i.stato_doc_contratto_id === statoFilter.value)
 })
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: fetchList,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: props.canCreate ? t('contratti.nuovo_contratto') : props.disabledCreateReason,
+    icon: MANAGE_ICONS.ADD,
+    disabled: !props.canCreate,
+    hideWhenReadonly: true,
+    command: onNew,
+  },
+])
 
 const nestedDrawer = useDrawerState()
 
@@ -185,14 +203,7 @@ function onClose() {
             show-clear
           />
         </div>
-        <div class="app-page-actions">
-          <Button :icon="MANAGE_ICONS.RELOAD" text class="app-reload-btn"
-            v-tooltip.bottom="t('common.reload_list')" @click="fetchList" />
-          <NewButton
-            :tooltip="canCreate ? t('contratti.nuovo_contratto') : disabledCreateReason"
-            :disabled="!canCreate"
-            @click="onNew" />
-        </div>
+        <PageActionsBar :actions="pageActions" />
       </div>
 
       <Message v-if="!canCreate && disabledCreateReason" severity="warn" :closable="false" size="small">

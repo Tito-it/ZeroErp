@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 26 aprile 2026 (aggiunto esempio virtuoso §7 attivato: framework `dbops.automazione_chiusura_scadenze` come promozione corretta al nucleo dopo 2 consumatori reali — vendite.listini_versioni + vendite.contratti)*
+*Ultimo aggiornamento: 4 maggio 2026 (ricostruzione da `git log` e documentazione locale generata dal 26 aprile al 4 maggio: refactor catalogo/amm-software/vendite, preventivi rev2, motore documentale parametrico in test UI).*
 
 ---
 
@@ -20,10 +20,11 @@
                     │  ┌───────────────────────────────────────┐  │
                     │  │    ANELLO 2 — ORCHESTRAZIONE          │  │
                     │  │                                       │  │
-                    │  │          pratiche                     │  │
+                    │  │      pratiche      documenti          │  │
                     │  │    (workflow, giornale,               │  │
                     │  │     generazione, handler,             │  │
-                    │  │     sospensioni, calcoli tempo)       │  │
+                    │  │     sospensioni, calcoli tempo;       │  │
+                    │  │     template, asset, PDF generati)    │  │
                     │  │                                       │  │
                     │  │  ┌─────────────────────────────────┐  │  │
                     │  │  │  ANELLO 1 — DATI BASE           │  │  │
@@ -44,6 +45,21 @@
 
 **Regola fondamentale**: ogni anello dipende solo dagli anelli interni. Mai dipendenze inverse o laterali.
 
+## Aggiornamenti ricostruiti dal 26 aprile al 4 maggio 2026
+
+Questa sezione registra solo evidenze presenti nel repository locale: commit e documentazione `docs/it/dev/work-done/` o `docs/it/dev/work-in-progress/`. Dove la documentazione indica test UI o working tree non ancora consolidato, lo stato resta esplicitamente marcato come tale.
+
+| Data | Evidenza | Impatto sulla mappa |
+| ---- | -------- | ------------------- |
+| 26 aprile | `dbops.automazione_chiusura_scadenze` chiuso come framework parametrico dopo due consumatori reali (`vendite.listini_versioni`, `vendite.contratti`) | Anello 0 cresce per uso osservato, non per astrazione preventiva. |
+| 27 aprile | Contratti: Profilo A, immutabilita' post-DRAFT, cessazione data-driven, righe-preview | Vendite rafforza il sottodominio contratti e consuma il framework di chiusura a scadenza. |
+| 28 aprile | Refactor frontend/backend catalogo completato Fasi 1-8, test BE 83/83 e build Vite verdi | Catalogo resta operativo ma con contratti API/metadata piu' maturi. |
+| 29-30 aprile | Refactor amm-software completato per matrici, operatori, permessi, emittenti e policy admin | Anello 1 amministrativo consolidato; le matrici diventano riferimento UI per configurazioni complesse. |
+| 1 maggio | Refactor vendite chiuso DB+BE+FE, modello documentato con 1406 test BE e build Vite verde | Vendite aggiornata a pattern data-driven per lookup, defaults, capability e azioni. |
+| 2 maggio | Preventivi rev2 landed: `emittente_fiscale_id` persistito, `istanza_utility_id` obbligatoria, guard coerenza utility/istanza, 4 codici errore | Preventivi diventano piu' rigorosi sul contesto emittente/utility. |
+| 3 maggio | Scenario preventivi 2.1 chiuso end-to-end, UI revisioni e riepilogo IVA | Vendite avanzata su flusso preventivo operativo. |
+| 3-4 maggio | Motore documentale parametrico: DB Fase A, backend Tranche A-K, frontend Tranche L-M; test UI dedicato avviato | Nuovo componente `documenti` in Anello 2, operativo tecnicamente ma ancora in test UI. |
+
 ### Natura degli anelli (post-aggiornamento manifesto §III bis)
 
 Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinzione non riguarda la direzione delle dipendenze (sempre verso l'interno), ma l'**ordine di costruzione** raccomandato.
@@ -57,7 +73,7 @@ Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinz
 | ---------------------------- | ----------------- |
 | 0 — Nucleo Infrastrutturale  | **Di servizio**   |
 | 1 — Dati Base                | **Autocontenuto** |
-| 2 — Orchestrazione (pratiche)| **Di servizio**   |
+| 2 — Orchestrazione (`pratiche`, `documenti`) | **Di servizio**   |
 | 3 — Processi Operativi       | **Autocontenuti** (ciascuno) |
 
 ---
@@ -69,7 +85,7 @@ Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinz
 | Componente    | Tipo       | Stato     | Descrizione                                                                                                                              |
 | ------------- | ---------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `core`        | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job, audit sessioni, request log |
-| `dbops`       | Schema DB  | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log, sessioni_utente, request_log, **automazione daterange** |
+| `dbops`       | Schema DB  | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log, sessioni_utente, request_log, **automazione daterange**, **chiusura parametrica per scadenza** |
 | `script`      | Schema DB  | Operativo | fn_log_and_raise_error, viste e funzioni riusabili, **trgfn_set_validita** (trigger generico daterange)                                   |
 | `public`      | Schema DB  | Operativo | version_info                                                                                                                             |
 | `maintenance` | Schema DB  | Operativo | Job schedulati pgAgent, job_run_log                                                                                                      |
@@ -79,7 +95,7 @@ Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinz
 - Error handling centralizzato (`ServiceError`, `ErrorManager.require`)
 - Middleware API (exception handling, JWT audit, request context, request log)
 - Pattern uniformi: `handle_post_json`, paginazione, throttling, search validators
-- Automazioni DB: audit fields, tx_id, storicizzazione, lock colonne, protezione attivo, **daterange nativo** (`script.trgfn_set_validita`)
+- Automazioni DB: audit fields, tx_id, storicizzazione, lock colonne, protezione attivo, **daterange nativo** (`script.trgfn_set_validita`), chiusura parametrica per scadenza (`dbops.fn_apply_chiusura_scadenze`)
 - **Tracciamento processi e job**: API per audit log, task registry multi-dominio, job run log (6 endpoint REST, 27 test)
 - **Audit sessioni**: login/refresh JWT tracciati in `dbops.sessioni_utente` con IP, user_agent, request_id (19 test)
 - **Request logging**: ogni request `/api/*` registrata in `dbops.request_log` con metodo, path, status, durata
@@ -166,11 +182,12 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 
 > **Natura: di servizio.** Motore trasversale che gli anelli esterni usano per tracciare, orchestrare e automatizzare.
 >
-> ⚠️ **Validazione esterna: in corso.** L'anello e' stato dichiarato Operativo su DB+BE+FE prima che un processo di Anello 3 lo consumasse realmente. Stato attuale: **predisposto, in attesa di validazione** dal primo consumatore reale (vendite). Vedi [Caso di studio: pratiche prima di vendite](#caso-di-studio-pratiche-prima-di-vendite). Solo dopo che almeno due processi di Anello 3 avranno usato pratiche end-to-end le sue astrazioni si potranno considerare *contratti* nel senso del manifesto principio 1; fino a quel momento sono *proposte* (manifesto principio 7) e modificabili senza il rigore di un nucleo stabile.
+> ⚠️ **Validazione esterna: in corso.** Per `pratiche`, il motore e' stato dichiarato Operativo su DB+BE+FE prima che un processo di Anello 3 lo consumasse realmente. Stato attuale: **predisposto, in attesa di validazione** dal primo consumatore reale (vendite). Vedi [Caso di studio: pratiche prima di vendite](#caso-di-studio-pratiche-prima-di-vendite). Per `documenti`, il primo consumatore reale e' `vendite.preventivi`, ma la validazione resta in test UI. Solo dopo che almeno due processi di Anello 3 avranno usato questi motori end-to-end le loro astrazioni si potranno considerare *contratti* nel senso del manifesto principio 1; fino a quel momento sono *proposte* (manifesto principio 7) e modificabili senza il rigore di un nucleo stabile.
 
-| Componente | Tipo       | DB        | Backend   | Frontend  | Descrizione                                                                                                                          |
-| ---------- | ---------- | --------- | --------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `pratiche` | App Django | Operativo | Operativo | Operativo | Workflow engine, giornale, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati, note, allegati |
+| Componente  | Tipo       | DB        | Backend   | Frontend  | Descrizione                                                                                                                                                         |
+| ----------- | ---------- | --------- | --------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pratiche`  | App Django | Operativo | Operativo | Operativo | Workflow engine, giornale, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati, note, allegati                                |
+| `documenti` | App Django | Operativo | Operativo | In test UI | Motore documentale parametrico: template versionati, asset documentali, render PDF WeasyPrint, archivio documenti generati, lista/download da preventivo come pilota |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -184,6 +201,8 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 - **Calcoli tempo**: tracking tempi netti tra coppie di flussi (formula da/a), con esclusione giorni sospensione
 - **Macchina a stati rigida**: transizioni ammesse validate da trigger DB (config-driven)
 - **API interna**: `pratiche_service` come facade per gli anelli esterni
+- **Documenti parametrici**: template e versioni separati dai dati, asset per emittente fiscale, PDF finale archiviato con hash, utente e data generazione
+- **Render PDF**: backend con Jinja2 + WeasyPrint, storage configurato via parametri, generazione/lista/download esercitati dal preventivo come primo consumatore
 
 ### Perche' e' un anello separato (non anello 1)
 
@@ -237,7 +256,7 @@ Piano v1 (storico): [work-done/piano-gestione-pratiche.md](dev/work-done/piano-g
 
 | Componente    | Tipo       | DB        | Backend   | Descrizione                                                                            |
 | ------------- | ---------- | --------- | --------- | -------------------------------------------------------------------------------------- |
-| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi, ordini, DDT, fatture, pipeline fatturazione, lotti, commesse, **listini v3** (pricing completo + rettifiche + alert) |
+| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi rev2, contratti, ordini, DDT, fatture, pipeline fatturazione, lotti, commesse, **listini v3**, generazione PDF preventivo via `documenti` in test UI |
 | `acquisti`    | App Django | Operativo | Stub      | Ciclo passivo: richieste offerta, ordini, DDT, fatture                                 |
 | `magazzino`   | App Django | Operativo | Stub      | Movimenti, giacenze, lotti, seriali                                                    |
 | `pagamenti`   | App Django | Operativo | Stub      | Scadenze, riconciliazioni                                                              |
@@ -251,6 +270,7 @@ vendite ──────► config (stati_doc_fiscale, termini_pagamento)
               ► anagrafiche (soggetti, emittenti_fiscali)
               ► catalogo (articoli, UoM, listini)
               ► core (error_manager, endpoint_helpers)
+              ► documenti (generazione/lista/download PDF preventivo)
               ► pratiche (FUTURO — giornale, workflow)
 
 acquisti ─────► stesse dipendenze di vendite
@@ -259,7 +279,7 @@ acquisti ─────► stesse dipendenze di vendite
 
 ### Integrazione futura con pratiche
 
-Quando l'anello 2 sara' operativo a livello backend, i processi di anello 3 potranno:
+`pratiche` e' operativo a livello DB+BE+FE, ma resta da validare come servizio consumato da processi di Anello 3. I processi di anello 3 potranno:
 
 1. **Creare pratiche** per i propri eventi (`pratiche_service.crea_pratica`)
 2. **Alimentare il giornale** con eventi di dominio (nuovo cliente → PRATICA_CREATA)
@@ -282,23 +302,28 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 | Commesse (push, orchestrator, handlers) | Operativo                                          |
 | Listini v3 (N2/N5/N6/N7/N8a)           | Operativo — Sprint B-v3 completato (aprile 2026)   |
 | Pricing commesse (N5/N7/N7-sblocco)    | Operativo — riallineamento, variazione, sblocco    |
+| Contratti Profilo A                    | Operativo — immutabilita' post-DRAFT, cessazione data-driven, righe-preview |
+| Preventivi rev2                        | Operativo — emittente persistito, istanza obbligatoria, guard utility/istanza |
+| Revisioni preventivo + riepilogo IVA   | Operativo — scenario 2.1 chiuso end-to-end          |
+| Generazione PDF preventivo             | In test UI — primo consumatore del motore `documenti` |
 
 ---
 
 ## Matrice delle dipendenze
 
 ```
-                 core   config   anagr.   catal.   pratiche   vendite
-core              -       -        -        -        -          -
-config           usa      -        -        -        -          -
-anagrafiche      usa      -        -        -        -          -
-catalogo         usa      -        -        -        -          -
-pratiche         usa     usa      usa       -        -          -
-vendite          usa     usa      usa      usa    (futuro)      -
-acquisti         usa     usa      usa      usa    (futuro)      -
-magazzino        usa     usa      usa       -     (futuro)      -
-pagamenti        usa     usa       -        -     (futuro)      -
-contabilita      usa     usa       -        -     (futuro)      -
+                 core   config   anagr.   catal.   pratiche   documenti   vendite
+core              -       -        -        -        -          -           -
+config           usa      -        -        -        -          -           -
+anagrafiche      usa      -        -        -        -          -           -
+catalogo         usa      -        -        -        -          -           -
+pratiche         usa     usa      usa       -        -          -           -
+documenti        usa     usa      usa       -        -          -           -
+vendite          usa     usa      usa      usa    (futuro)     usa          -
+acquisti         usa     usa      usa      usa    (futuro)   (futuro)      -
+magazzino        usa     usa      usa       -     (futuro)      -           -
+pagamenti        usa     usa       -        -     (futuro)      -           -
+contabilita      usa     usa       -        -     (futuro)      -           -
 ```
 
 Nessuna dipendenza inversa. Nessuna dipendenza laterale tra processi di anello 3.
@@ -561,12 +586,32 @@ Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-in-
   - Drop `priorita` da versioni e associazioni, constraint GIST cross-listino
   - Permessi v2: 6 fasi, `model_permission` su 33 view, `IvaSelect`/`ContoContabileSelect`
 
+### Completato (26 aprile - 4 maggio 2026)
+
+- ~~Framework chiusura per scadenza~~ — **FATTO** (26 aprile 2026)
+  - `dbops.automazione_chiusura_scadenze`, `dbops.fn_apply_chiusura_scadenze()`, job pgAgent unico
+  - Promozione al nucleo dopo due consumatori reali: versioni listino e contratti
+- ~~Refactor catalogo~~ — **FATTO** (28 aprile 2026)
+  - Fasi 1-8 DB+BE+FE chiuse, lookup/defaults/capability spostati su contratti API/backend, 83/83 test BE e build Vite verdi
+- ~~Refactor amm-software~~ — **FATTO** (29-30 aprile 2026)
+  - Operatori/admin, permessi, emittenti fiscali e matrici riallineati ai building block e agli standard frontend
+- ~~Refactor vendite~~ — **FATTO** (1 maggio 2026)
+  - DB+BE+FE chiusi, lookup/form-defaults/capability/azioni data-driven; documentazione API aggiornata
+- ~~Preventivi rev2~~ — **FATTO** (2 maggio 2026)
+  - `emittente_fiscale_id` persistito e immutabile, `istanza_utility_id` obbligatoria, guard coerenza utility/istanza, errori strutturati
+- ~~Preventivi scenario 2.1~~ — **FATTO** (3 maggio 2026)
+  - Revisione preventivo, riepilogo IVA e test end-to-end documentati dai commit locali
+- ~~Motore documentale parametrico — DB/BE/FE~~ — **FATTO tecnico, test UI in corso** (4 maggio 2026)
+  - DB Fase A, backend Tranche A-K, frontend Tranche L-M
+  - Configurazione modelli documenti e asset documentali, render PDF WeasyPrint, generazione/lista/download PDF da preventivo
+
 ### In corso
 
 - **Gestione Soggetti**: backend + frontend completati — in fase di test UI
 - **Gestione Geografica**: operativo — UI da migliorare
 - **Gestione Clienti/Fornitori**: drawer end-to-end operativo, v2 (subentro/disdetta) pianificata
 - **Gestione Pratiche v2**: frontend operativo — in fase di test UI
+- **Motore documentale parametrico**: end-to-end tecnico completato, suite manuale `sviluppo-documenti-test-ui.md` da eseguire/chiudere
 - **Integrazione AI v2**: evoluzione con contesto dinamico e nuovi tool — WIP
 - **Autenticazione 2FA**: fase 4 TOTP — WIP
 - **Permessi v2**: livello oggetto e granularita' fine — in corso (33 view gia' configurate)
@@ -574,7 +619,7 @@ Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-in-
 
 ### Breve termine
 
-- Test UI reali su Articoli, UoM, Pratiche, Soggetti, Clienti, Fornitori
+- Test UI reali su Articoli, UoM, Pratiche, Soggetti, Clienti, Fornitori e motore documentale preventivo
 - Seed azioni processo per nuovi domini (catalogo, vendite) + prop `action` sui componenti
 - Upload file allegati pratiche (storage filesystem/object storage)
 
@@ -604,4 +649,4 @@ Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-in-
 
 ---
 
-*Mappa Concentrica — ZeroERP (12 aprile 2026)*
+*Mappa Concentrica — ZeroERP (4 maggio 2026)*

@@ -8,7 +8,7 @@ import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
 import { displayDate, toDateString } from '../../../core/utils/date'
 import { formatCurrency } from '../../../core/utils/format'
-import { DATE_FORMAT, TAB_ENTITIES } from '../../../core/constants'
+import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -16,10 +16,9 @@ import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
-import NewButton from '../../../core/components/NewButton.vue'
 import SearchHint from '../../../core/components/SearchHint.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
-import ReloadButton from '../../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.vue'
 import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
@@ -46,6 +45,24 @@ const mostraStorico = computed({
   get: () => !store.filters.solo_revisione_attiva,
   set: (val) => { store.filters.solo_revisione_attiva = !val },
 })
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('preventivi.nuovo_preventivo'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 
 function onStatoChange() {
   store.filters.stato = statoFilter.value
@@ -116,11 +133,11 @@ onMounted(() => store.fetchList())
           </label>
         </div>
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('preventivi.nuovo_preventivo')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <SearchHint v-if="!store.hasSearched && !store.loading" />

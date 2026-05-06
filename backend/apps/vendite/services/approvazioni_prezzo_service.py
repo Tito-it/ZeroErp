@@ -21,10 +21,14 @@
 
 """ApprovazioniPrezzoService — workflow L3 listini v5 §14.6."""
 
+import logging
 from decimal import Decimal
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 from django.db import connection, transaction
+from django.utils.timezone import now
 
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
@@ -38,6 +42,13 @@ from apps.pratiche.services.pratiche_service import (
     crea_pratica,
 )
 from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.vendite.services._approvazioni_prezzo_constants import (
+    AZIONE_APPROVA_PREZZO,
+    META_KEY_RIGA_PREVENTIVO_ID,
+    STATO_APPROVAZIONE_APPROVED,
+    STATO_APPROVAZIONE_PENDING,
+    STATO_APPROVAZIONE_REJECTED,
+)
 
 _FN = "vendite.approvazioni_prezzo_service"
 
@@ -45,8 +56,9 @@ _FN = "vendite.approvazioni_prezzo_service"
 TIPO_PRESTAZIONE_CODICE = "APPROVAZIONE_PREZZO"
 PRIORITA_DEFAULT_CODICE_INTERNO = "NORMALE"
 # Permission codename allineato al seed config.azioni_processo id 10
-# (changeSet 80_data 20260423-* / sprint E DB-E-1).
-AZIONE_PROCESSO = "approva_prezzo_override"
+# (changeSet 80_data 20260423-* / sprint E DB-E-1). Riesportato dalla
+# costante centralizzata per non rompere consumer esterni eventuali.
+AZIONE_PROCESSO = AZIONE_APPROVA_PREZZO
 EMAIL_TEMPLATE_CODICE = "APPROVAZIONE_PREZZO_RICHIESTA"
 PARAM_EMAIL_RECIPIENT = "VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL"
 
@@ -54,18 +66,16 @@ PARAM_EMAIL_RECIPIENT = "VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL"
 _STATO_PRATICA_INIZIALE = "APERTA"  # crea_pratica parte da BOZZA, transito immediato
 _STATO_PRATICA_CHIUSURA = "CHIUSA"
 
-# Stati workflow riga preventivo (DB-E-3 colonna stato_approvazione_prezzo).
-_STATO_RIGA_PENDING = "PENDING"
-_STATO_RIGA_APPROVED = "APPROVED"
-_STATO_RIGA_REJECTED = "REJECTED"
+# Alias locali per leggibilita' nel modulo (i nomi STATO_APPROVAZIONE_* sono
+# espliciti e gia' sufficienti, ma il prefisso _STATO_RIGA_* era piu' breve
+# nel codice esistente; manteniamo i 2 nomi come alias per minimizzare il
+# diff senza re-introdurre le stringhe magic).
+_STATO_RIGA_PENDING = STATO_APPROVAZIONE_PENDING
+_STATO_RIGA_APPROVED = STATO_APPROVAZIONE_APPROVED
+_STATO_RIGA_REJECTED = STATO_APPROVAZIONE_REJECTED
 
 # Note esito (tipi_nota seed: INTERNA visibile solo agli operatori).
 _NOTA_TIPO_INTERNA = "INTERNA"
-
-# Chiave del meta pratica che linka la riga preventivo da approvare. Usata
-# in 3 posti (link_riga_a_pratica writer + lista_coda lookup + FE rigaIdFromPratica
-# come contratto stabile). Single source of truth qui per evitare typo silenziosi.
-META_KEY_RIGA_PREVENTIVO_ID = "riga_preventivo_id"
 
 # Codici stabili `action_reason` esposti dalla coda approvazioni (Fase 5.B1).
 # Contratto FE: ApprovazioniPrezzoListView.ACTION_REASON_KEYS mappa questi
@@ -275,8 +285,25 @@ def rifiuta(
     riga = _get_riga_pending(riga_id, function_name=f"{_FN}.rifiuta")
     pratica_id = int(riga["pratica_approvazione_prezzo_id"])
 
+    # Denormalizzo motivazione + autore + data nel meta della riga (caso d'uso
+    # UX: il drawer riga preventivo mostra il motivo del rifiuto come tooltip
+    # all'operatore senza dover navigare alla pratica). La nota interna della
+    # pratica resta source-of-truth audit; questa e' una proiezione operativa.
+    from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+    meta_riga = _coerce_meta_to_dict(riga.get("meta"))
+    meta_riga["approvazione_rifiuto"] = {
+        "motivazione": (motivazione.strip() if motivazione and motivazione.strip() else None),
+        "approver_user_id": auth_user_id,
+        "rifiutato_il": now().isoformat(),
+        "pratica_id": pratica_id,
+    }
+
     repo = PreventiviRepository()
-    repo.update_riga(riga_id, stato_approvazione_prezzo=_STATO_RIGA_REJECTED)
+    repo.update_riga(
+        riga_id,
+        stato_approvazione_prezzo=_STATO_RIGA_REJECTED,
+        meta=meta_riga,
+    )
 
     cambia_stato_pratica(pratica_id, _STATO_PRATICA_CHIUSURA)
     contenuto_nota = (
@@ -361,15 +388,30 @@ def _capabilities_per_pratica(pratica: dict[str, Any], *, user_can_act: bool) ->
             "can_reject": False,
             "action_reason": ACTION_REASON_PERMESSO_MANCANTE,
         }
-    # `meta` puo' essere None (pratica creata fuori dal flow normale): or-{}
-    # protegge. dict.get + fallback legacy `riga_id` con check is not None
-    # esplicito: 0 e' un id invalido in PG (sequence parte da 1), ma volere
-    # "any not None" e' piu' corretto del falsy `or` (B3).
-    meta = pratica.get("meta") or {}
+    # `meta` puo' essere None (pratica creata fuori dal flow normale),
+    # dict (caso normale), o stringa JSON (regressione adapter psycopg).
+    # _coerce_meta_to_dict normalizza tutti e 3 — senza, `meta.get()`
+    # esplode con AttributeError 'str object has no attribute get'.
+    # Import lazy per evitare dipendenza circolare al boot.
+    from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+    meta = _coerce_meta_to_dict(pratica.get("meta"))
+    # dict.get + fallback legacy `riga_id` con check is not None esplicito:
+    # 0 e' un id invalido in PG (sequence parte da 1), ma volere "any not None"
+    # e' piu' corretto del falsy `or` (B3).
     riga_id = meta.get(META_KEY_RIGA_PREVENTIVO_ID)
     if riga_id is None:
         riga_id = meta.get("riga_id")  # legacy compat
     if riga_id is None:
+        # Pratica APPROVAZIONE_PREZZO senza riga linkata: e' una pratica
+        # creata male (bug applicativo o crash post-create_riga prima del
+        # link_riga_a_pratica). Loggo warning per visibilita' BE-side: lato
+        # UI il bottone resta disabilitato col tooltip i18n, ma senza log
+        # l'admin non saprebbe che esiste un dato corrotto da pulire.
+        logger.warning(
+            "approvazioni_prezzo.riga_non_linkata pratica_id=%s — "
+            "meta privo di '%s' e fallback 'riga_id'. UI bottoni disabilitati.",
+            pratica.get("id"), META_KEY_RIGA_PREVENTIVO_ID,
+        )
         return {
             "can_approve": False,
             "can_reject": False,
@@ -502,17 +544,29 @@ def _invia_email_richiesta_approvazione(
 
 # Scopo: risolve l'email del ruolo approver via parameter dedicato.
 #        Restituisce stringa (anche vuota = nessun recipient configurato)
-#        o None se ParameterService non e' disponibile / parameter assente.
+#        o None se parameter assente.
+#
+#        IMPORTANTE: la fn DB `fn_get_parameter_full` solleva sempre
+#        `RAISE EXCEPTION ERRORE_PARAMETRI_TABELLA` quando il code non
+#        esiste in `config.parameters` (anche `get_defaults` lo fa, nonostante
+#        il commento del repository — verificato: il loop Python non
+#        intercetta perche' psycopg invalida la transazione al primo RAISE).
+#        Per non rompere la transazione esterna del workflow L3 (la pratica
+#        e' gia' stata creata e va committata anche se la mail non parte)
+#        isoliamo la chiamata in un savepoint nested via
+#        `transaction.atomic`: se RAISE → rollback solo del savepoint, la
+#        transazione esterna sopravvive intatta.
 def _risolvi_email_approver(emittente_fiscale_id: int) -> str | None:
     from apps.core.services.parameter_service import ParameterService
     try:
-        valore = ParameterService().get_parameter(
-            PARAM_EMAIL_RECIPIENT,
-            emittente_fiscale_id=emittente_fiscale_id,
-        )
-        if valore and str(valore).strip():
-            return str(valore).strip()
-    except Exception:  # noqa: BLE001 - parameter non configurato = skip
+        with transaction.atomic():
+            valore = ParameterService().get_parameter(
+                PARAM_EMAIL_RECIPIENT,
+                emittente_fiscale_id=emittente_fiscale_id,
+            )
+            if valore and str(valore).strip():
+                return str(valore).strip()
+    except Exception:  # noqa: BLE001 - parameter non configurato = skip email
         return None
     return None
 
@@ -523,11 +577,18 @@ def _risolvi_email_approver(emittente_fiscale_id: int) -> str | None:
 #        non e' noto. Questo update permette all'approver di risalire alla
 #        riga dalla coda (UI ApprovazioniPrezzoListView).
 def link_riga_a_pratica(*, pratica_id: int, riga_id: int) -> None:
+    # Import lazy per evitare dipendenza circolare al boot del modulo
+    # (preventivi_service importa approvazioni_prezzo_service).
+    from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+
     repo = PraticheRepository()
     pratica = repo.get_pratica(pratica_id)
     if pratica is None:
         return  # pratica scomparsa: defensive, no raise
-    meta = dict(pratica.get("meta") or {})
+    # `meta` puo' arrivare come dict o stringa JSON (psycopg/repo dependent).
+    # Senza normalize, `dict(<stringa>)` solleva ValueError generico che il
+    # middleware traduce in E_VALIDATION_INPUT mascherando il vero contesto.
+    meta = _coerce_meta_to_dict(pratica.get("meta"))
     meta[META_KEY_RIGA_PREVENTIVO_ID] = riga_id
     aggiorna_pratica(pratica_id, {"meta": meta})
 

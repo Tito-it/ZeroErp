@@ -125,11 +125,13 @@ class ApprovazioniPrezzoCodaView(DomainAPIView):
 
     Lista paginata della coda approver: pratiche tipo APPROVAZIONE_PREZZO
     in stato APERTA filtrate per scope emittente dell'utente.
-    Area funzionale `vendite` LETTURA. La visibilita' richiede comunque
-    `approva_prezzo_override` per agire (i POST individuali la verificano).
+    Area funzionale `vendite` LETTURA + azione processo
+    `approva_prezzo_override`: la coda e' una pagina operativa per approver,
+    non una lista consultiva generale.
     """
 
     area_funzionale = "vendite"
+    get_permission = "approva_prezzo_override"
     is_search_endpoint = True
 
     @extend_schema(

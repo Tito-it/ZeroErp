@@ -27,7 +27,11 @@ from apps.vendite.api.views_lookups import (
     ApiTipiVariazioneContrattoLookup,
     ApiTipiVariazionePromoLookup,
 )
-from apps.vendite.api.views_pricing import PricingLimitiUtenteView, PricingResolveView
+from apps.vendite.api.views_pricing import (
+    PricingDiagnoseView,
+    PricingLimitiUtenteView,
+    PricingResolveView,
+)
 from apps.vendite.api.views_promo_articoli import (
     PromoArticoliDetailView,
     PromoArticoliView,
@@ -39,6 +43,9 @@ urlpatterns = [
     path("contratti/", include("apps.vendite.api.urls_contratti")),
     # Pricing v5 diagnostico: resolver 3 stadi (PROMO/CONTRATTO/CATEGORIA).
     path("pricing/resolve/", PricingResolveView.as_view(), name="vendite-pricing-resolve"),
+    # Diagnostica configurazione asset pricing (BA, contratto, matrice, promo)
+    # — checklist a stadi + azioni suggerite per UX e supporto.
+    path("pricing/diagnose/", PricingDiagnoseView.as_view(), name="vendite-pricing-diagnose"),
     # L2 autorizzazioni prezzi: limiti sconto/maggiorazione per utente corrente.
     path("pricing/limiti-utente/", PricingLimitiUtenteView.as_view(), name="vendite-pricing-limiti-utente"),
     # L3 workflow approvazione prezzo out-of-policy (Sprint E).

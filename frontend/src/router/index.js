@@ -387,11 +387,27 @@ router.beforeEach(async (to) => {
     return
   }
 
-  // Utente non autenticato -> login (vale per requiresAuth e rotte layout)
+  // Utente non autenticato -> login (vale per requiresAuth e rotte layout).
+  // `isAuthenticated` ora considera scaduto sia access che refresh: se entrambi
+  // morti, l'utente NON puo' navigare (prima poteva, perche' il check era solo
+  // sulla presenza dell'access token in localStorage, anche scaduto).
   if (!auth.isAuthenticated) {
-    return {
-      name: 'login',
-      query: to.fullPath !== '/' ? { redirect: to.fullPath } : {}
+    const query = { reason: 'session_expired' }
+    if (to.fullPath !== '/') query.redirect = to.fullPath
+    return { name: 'login', query }
+  }
+
+  // Refresh proattivo: access scaduto ma refresh ancora valido. Evitiamo la
+  // chiamata 401 di troppo che farebbe poi scattare l'interceptor — qui
+  // preveniamo il problema prima che la pagina monti i suoi store. Se il
+  // refresh fallisce (es. refresh revocato server-side) il guard rimanda al
+  // login con reason=session_expired.
+  if (!auth.accessTokenValid && auth.refreshTokenValid) {
+    const ok = await auth.tryRefreshToken()
+    if (!ok) {
+      const query = { reason: 'session_expired' }
+      if (to.fullPath !== '/') query.redirect = to.fullPath
+      return { name: 'login', query }
     }
   }
 

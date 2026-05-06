@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable paginata clienti con search, filtro utility e stato.
 // Riusabile da: ClientiView, futuro ricerca clienti in altri domini.
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useClientiStore } from '../stores/clienti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -14,8 +14,7 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import NewButton from '../../core/components/NewButton.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
@@ -37,6 +36,24 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 // Filtri
 const utilityFilter = ref(null)
 const statoFilter = ref(null)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('clienti.nuovo_cliente'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 
 function onUtilityChange() {
   store.filters.utility_id = utilityFilter.value
@@ -124,6 +141,7 @@ onMounted(() => {
           :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
           :placeholder="t('clienti.filtro_utility')"
           show-clear
+          apply-default
           @change="onUtilityChange"
         />
         <LookupSelect
@@ -134,11 +152,11 @@ onMounted(() => {
           @change="onStatoChange"
         />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('clienti.nuovo_cliente')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <!-- Placeholder: nessuna ricerca effettuata -->

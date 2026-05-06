@@ -14,6 +14,7 @@
 
 import { ref } from 'vue'
 import { getLimitiPricingUtente } from '../api/listini'
+import { registerUserScopedResetter } from '../../core/pinia-plugins/auto-reset'
 
 // Codici errore L2 emessi dal BE preventivi_service quando l'override
 // prezzo supera il limite. Il FE li intercetta per banner inline (vs toast
@@ -56,8 +57,16 @@ async function load() {
 function invalidate(reload = false) {
   _loaded.value = false
   _limiti.value = { max_sconto_pct: '0', max_maggiorazione_pct: '0' }
+  _inflight = null
   if (reload) return load()
 }
+
+// Cache module-level NON user-scoped per default: registriamo l'invalidate
+// nel resetter centrale Pinia cosi' al logout (resetAllUserScopedStores)
+// la cache viene azzerata. Senza questo, login successivo come altro
+// utente vedeva i limiti del precedente (es. admin → fara giada con
+// override EF: la fetch non riparte e mostra 0/0 stantio).
+registerUserScopedResetter(() => invalidate(false))
 
 export function useLimitiPricing() {
   return {

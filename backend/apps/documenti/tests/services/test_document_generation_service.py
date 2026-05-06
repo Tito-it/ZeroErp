@@ -369,15 +369,38 @@ class GeneraDocumentoResolveTemplateTests(SimpleTestCase):
         repo.find_template_applicabile.assert_called_once()
         reader.get_template.assert_not_called()
 
-    # 5. nessun template applicabile -> E_DOCUMENTI_NOT_FOUND.
+    # 5. nessun template applicabile -> E_DOCUMENTI_NOT_FOUND. count_*_no_default
+    #    a 0 = caso "nessun template per la coppia", messaggio generico.
     def test_genera_documento_no_template_match_raises_not_found(self) -> None:
         svc, repo, _, storage = _service_with_mocks(
-            repo_methods={"find_template_applicabile": None},
+            repo_methods={
+                "find_template_applicabile": None,
+                "count_templates_attivi_no_default": 0,
+            },
         )
         with _patch_scope(None):
             with self.assertRaises(ServiceError) as ctx:
                 svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
+        # Caso "nessun template": messaggio generico, non quello "manca default".
+        self.assertIn("Nessun template applicabile", ctx.exception.message)
+        repo.create_documento_generato.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 5b. template attivi presenti per la coppia ma nessuno con is_default=true:
+    #     l'errore deve essere parlante per l'admin (UX: fix con un click).
+    def test_genera_documento_no_default_among_existing_raises_helpful(self) -> None:
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={
+                "find_template_applicabile": None,
+                "count_templates_attivi_no_default": 3,
+            },
+        )
+        with _patch_scope(None):
+            with self.assertRaises(ServiceError) as ctx:
+                svc.genera_documento(_make_user(), **_GENERA_DEFAULT)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
+        self.assertIn("predefinito", ctx.exception.message)
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
 

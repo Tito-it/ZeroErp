@@ -1,23 +1,40 @@
 <script setup>
 // Scopo: componente riutilizzabile — DataTable toponomastica con ricerca e CRUD.
 // Riusabile da: tab Toponomastica in IndirizziView, futuro gestione stradario.
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToponomasticaStore } from '../../anagrafiche/stores/toponomastica'
 import { useSearchTable } from '../composables/useSearchTable'
 import { useTabFreshness } from '../composables/useTabFreshness'
-import { TAB_ENTITIES } from '../constants'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
-import NewButton from './NewButton.vue'
-import ReloadButton from './ReloadButton.vue'
+import PageActionsBar from './PageActionsBar.vue'
 import Tag from 'primevue/tag'
 
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
 const store = useToponomasticaStore()
 const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('indirizzi.nuova_toponomastica'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 
 useTabFreshness(store, TAB_ENTITIES.TOPONOMASTICA)
 onMounted(() => { store.fetchList() })
@@ -36,10 +53,7 @@ function onRowClick(event) {
           :placeholder="t('indirizzi.search_toponomastica')"
         />
       </div>
-      <div class="app-page-actions">
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('indirizzi.nuova_toponomastica')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions" />
     </div>
 
     <DataTable

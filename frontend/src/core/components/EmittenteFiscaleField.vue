@@ -1,25 +1,31 @@
 <script setup>
-// Scopo: Campo emittente fiscale auto-adattivo. Tre rami di rendering
-//        scelti automaticamente:
-//         - edit:               testo read-only (codice + descrizione
-//                               dal record denormalizzato);
-//         - create + admin globale: Select dal lookup admin (lazy load
-//                                   modulo-level, dedotto da useGlobalLookup);
-//         - create + operatore: testo read-only con emittente del profilo.
+// Scopo: Campo emittente fiscale auto-adattivo. Sempre rendering `<Select>`,
+//        con opzioni e abilitazione contestuali al modo:
+//
+//         - edit:                     opzione singola sintetizzata dal record
+//                                     (`emittente_fiscale_id/codice/descrizione`
+//                                     denormalizzati dal BE detail). Disabled.
+//         - create + admin globale:   opzioni dal lookup admin (cache modulo
+//                                     via useGlobalLookup). Editabile.
+//         - create + operatore:       opzione singola sintetizzata da
+//                                     `auth.emittenteCorrente` (modello 1-a-1).
+//                                     Disabled.
+//
+//        Beneficio rispetto al doppio rendering (InputText vs Select) usato
+//        in passato: il display passa sempre da `formatEmittenteOptionLabel`,
+//        single source di formattazione (`<ragione_sociale> (<codice>)`),
+//        senza dipendere dal solo blob `auth.user.emittente.ragione_sociale_completa`
+//        e senza branch di template duplicato.
 //
 //        Il componente NON applica autopopulate del modelValue: spetta
 //        al consumer leggere `useEmittenteFiscaleField().defaultEmittenteId`
-//        e impostarlo nel form prima del POST. Questa separazione tiene
-//        il componente "stupido" (presentazione) e lascia al drawer il
-//        controllo di quando/come popolare il form (es. emptyForm in
-//        watch su props.visible).
+//        e impostarlo nel form prima del POST.
 //
 //        Modello permessi 1-a-1 documentato in stores/auth.js.
 
 import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEmittenteFiscaleField } from '../composables/useEmittenteFiscaleField'
-import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Message from 'primevue/message'
 
@@ -47,38 +53,70 @@ const emit = defineEmits(['update:modelValue'])
 
 const {
   isAdminMode,
-  currentEmittenteDisplay,
+  currentEmittente,
   emittentiOptions,
   emittentiLoading,
   emittentiError,
   loadOptions,
   formatEmittenteOptionLabel,
-  formatEmittenteFromRecord,
 } = useEmittenteFiscaleField()
 
-// Mostra Select solo nel ramo create + admin globale.
-const showSelect = computed(() => !props.isEdit && isAdminMode.value)
+// L'admin globale puo' davvero scegliere: solo qui usiamo il lookup completo
+// e abilitiamo la combo. Negli altri rami la combo resta disabled (display-only).
+const useAdminLookup = computed(() => isAdminMode.value && !props.isEdit)
 
-// Display read-only: in edit usa il record denormalizzato; altrimenti
-// l'emittente del profilo. Em-dash come ultimo fallback se entrambi
-// mancano (caso difensivo: non dovrebbe accadere col BE attuale).
-const displayValue = computed(() => {
-  if (props.isEdit) {
-    return formatEmittenteFromRecord(props.record) || '—'
+// Sintesi della singola option per i casi disabled (edit o operatore-mode).
+// Riusa lo stesso shape del lookup admin (campi `id, codice, ragione_sociale,
+// descrizione`) cosi' il `formatEmittenteOptionLabel` produce display uniforme.
+const recordAsOption = computed(() => {
+  const r = props.record
+  if (!r || r.emittente_fiscale_id == null) return null
+  return {
+    id: r.emittente_fiscale_id,
+    codice: r.emittente_fiscale_codice ?? null,
+    ragione_sociale: r.emittente_fiscale_descrizione ?? null,
+    descrizione: r.emittente_fiscale_descrizione ?? null,
   }
-  return currentEmittenteDisplay.value || t(props.noneI18nKey)
 })
+
+const operatoreAsOption = computed(() => {
+  const ef = currentEmittente.value
+  if (!ef || ef.id == null) return null
+  return {
+    id: ef.id,
+    codice: ef.codice,
+    ragione_sociale: ef.ragioneSociale,
+    descrizione: ef.ragioneSociale,
+  }
+})
+
+// Opzioni effettive renderizzate dal Select. In edit e operatore-mode e' un
+// array di un solo elemento (sintetizzato sopra) che fa match col modelValue
+// per visualizzare correttamente il label. In admin+create e' la lookup completa.
+const finalOptions = computed(() => {
+  if (props.isEdit) {
+    return recordAsOption.value ? [recordAsOption.value] : []
+  }
+  if (useAdminLookup.value) {
+    return emittentiOptions.value
+  }
+  return operatoreAsOption.value ? [operatoreAsOption.value] : []
+})
+
+// Combo modificabile solo per admin globale in CREATE. Operatore (1 solo EF) e
+// qualsiasi EDIT (EF immutabile post-create) restano disabled.
+const isFieldDisabled = computed(
+  () => props.disabled || props.isEdit || !isAdminMode.value
+)
 
 const selectModel = computed({
   get: () => props.modelValue,
   set: v => emit('update:modelValue', v),
 })
 
-// Lazy load: parte solo quando il Select e' davvero da renderizzare.
-// useGlobalLookup e' idempotente (cache modulo-level), quindi e' sicuro
-// chiamare ad ogni transizione false->true.
+// Lazy load del lookup admin: parte solo nel ramo create+admin.
 watch(
-  showSelect,
+  useAdminLookup,
   value => {
     if (value) {
       loadOptions().catch(() => { /* errore visibile via emittentiError */ })
@@ -90,25 +128,20 @@ watch(
 
 <template>
   <div class="emittente-fiscale-field">
-    <InputText
-      v-if="!showSelect"
-      :model-value="displayValue"
-      disabled
-    />
     <Select
-      v-else
       v-model="selectModel"
-      :options="emittentiOptions"
+      :options="finalOptions"
       option-value="id"
       :option-label="formatEmittenteOptionLabel"
       :placeholder="t(placeholderI18nKey)"
-      :loading="emittentiLoading"
-      :disabled="disabled"
-      filter
-      show-clear
+      :loading="useAdminLookup && emittentiLoading"
+      :disabled="isFieldDisabled"
+      :filter="useAdminLookup"
+      :show-clear="useAdminLookup"
+      style="width: 100%; min-width: 0;"
     />
     <Message
-      v-if="showSelect && emittentiError"
+      v-if="useAdminLookup && emittentiError"
       severity="error"
       :closable="false"
       class="mt-025"

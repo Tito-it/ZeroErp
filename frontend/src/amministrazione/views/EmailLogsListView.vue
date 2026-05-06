@@ -1,14 +1,14 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
 import { useEmailLogsStore } from '../stores/emailLogs'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { getEmailLogStatoSeverity } from '../constants'
@@ -33,6 +33,15 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 // Filtro data: default ultimi 30 giorni
 const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
 const dataAFilter = ref(null)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+])
 
 function onStatoChange(val) {
   store.filters.stato = val
@@ -87,9 +96,7 @@ onMounted(() => {
           @clear-click="onDataAChange"
         />
       </div>
-      <div class="app-page-actions">
-        <ReloadButton @click="reload" />
-      </div>
+      <PageActionsBar :actions="pageActions" />
     </div>
 
     <DataTable

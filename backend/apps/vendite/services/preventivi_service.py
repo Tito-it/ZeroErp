@@ -9,6 +9,7 @@
 # delega a repository per accesso DB, gestione transizioni e integrazione
 # con commesse e pratiche.
 
+import json
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -28,6 +29,12 @@ from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
 from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.vendite.services._approvazioni_prezzo_constants import (
+    AZIONE_OVERRIDE_PREZZO,
+    STATO_APPROVAZIONE_APPROVED,
+    STATO_APPROVAZIONE_PENDING,
+    STATO_APPROVAZIONE_REJECTED,
+)
 from apps.vendite.services.pricing_service import (
     PARAM_MAX_MAGGIORAZIONE_PCT,
     PARAM_MAX_SCONTO_PCT,
@@ -112,10 +119,51 @@ def get_preventivo(preventivo_id: int) -> dict[str, object]:
     assert testata is not None
     indirizzi = repo.list_indirizzi(preventivo_id)
     capabilities = repo.get_capabilities(preventivo_id)
-    # Summary leggero: numero righe totali (badge UX). Le righe vere passano
-    # dall'endpoint /righe/ autonomo, evitando payload pesanti su lista detail
-    # e mismatch coi totali ricalcolati dai trigger DB.
-    righe_count = len(repo.list_righe(preventivo_id))
+    # Summary leggero: count per stato_approvazione_prezzo + totale, single
+    # SELECT GROUP BY (no scan dell'elenco righe completo). Le righe vere
+    # passano dall'endpoint /righe/ autonomo, evitando payload pesanti su
+    # lista detail e mismatch coi totali ricalcolati dai trigger DB.
+    counts = repo.count_righe_per_stato_approvazione(preventivo_id)
+    righe_count = counts["TOTAL"]
+    # Sprint E (autorizzazioni prezzi L3): se almeno una riga e' in stato
+    # PENDING o REJECTED, il preventivo e' "congelato" — niente transizioni
+    # di avanzamento (Emetti/Accetta) e niente edit testata. Razionale:
+    #  - PENDING → richiesta in attesa di esito, non si puo' avanzare
+    #  - REJECTED → il responsabile ha rifiutato il prezzo: il prezzo
+    #    proposto e' invalidato, l'operatore deve correggere la riga
+    #    (modificarne il prezzo o eliminarla) prima di poter procedere.
+    #    L'edit della singola riga resta abilitato (can_edit_righe=true)
+    #    proprio per permettere la correzione: l'aggiorna_riga al nuovo
+    #    prezzo accettabile resetta automaticamente il flag REJECTED → null
+    #    e il preventivo torna lavorabile.
+    # Defense-in-depth: cambia_stato_preventivo solleva
+    # E_PREVENTIVO_RIGHE_PRICING_PENDENTI; qui filtriamo le capability
+    # spedite al FE per disabilitare i pulsanti a monte (UX).
+    pending_count = counts[STATO_APPROVAZIONE_PENDING]
+    rejected_count = counts[STATO_APPROVAZIONE_REJECTED]
+    if pending_count > 0 or rejected_count > 0:
+        capabilities = {
+            **capabilities,
+            "available_actions": [],
+            "can_edit_testata": False,
+            # can_edit_righe RESTA TRUE quando ci sono solo REJECTED:
+            # l'operatore deve poter correggere il prezzo o eliminare la
+            # riga rifiutata. Lo blocchiamo solo per PENDING (in attesa
+            # esito: defense-in-depth replica trgfn DB lato preventivi_righe).
+            "can_edit_righe": rejected_count > 0 and pending_count == 0,
+            "frozen_for_pending_pricing": pending_count > 0,
+            "frozen_for_rejected_pricing": rejected_count > 0,
+            "pending_pricing_count": pending_count,
+            "rejected_pricing_count": rejected_count,
+        }
+    else:
+        capabilities = {
+            **capabilities,
+            "frozen_for_pending_pricing": False,
+            "frozen_for_rejected_pricing": False,
+            "pending_pricing_count": 0,
+            "rejected_pricing_count": 0,
+        }
     return {
         **testata,
         **capabilities,
@@ -578,7 +626,7 @@ def gestisci_riga(
     )
 
     # Merge meta esistente del payload con audit prezzo.
-    merged_meta = dict(payload.get("meta") or {})
+    merged_meta = _coerce_meta_to_dict(payload.get("meta"))
     if prezzo_meta is not None:
         merged_meta.update(prezzo_meta)
 
@@ -597,7 +645,7 @@ def gestisci_riga(
             auth_user_id=auth_user_id,
             # riga_id non noto: link post-create_riga.
         )
-        stato_approvazione = "PENDING"
+        stato_approvazione = STATO_APPROVAZIONE_PENDING
 
     # Derivazione qta_operativa + factor_to_base: il FE invia solo `quantita`
     # (UX semplice: una sola quantita' per riga). Il DB richiede pero'
@@ -711,8 +759,9 @@ def aggiorna_riga(
     def _get_riga_esistente() -> dict[str, Any]:
         nonlocal riga_esistente
         if riga_esistente is None:
-            righe = repo.list_righe(preventivo_id)
-            riga_esistente = next((r for r in righe if r.get("id") == riga_id), False)
+            # Lookup mirato per id: evita di caricare l'intero elenco
+            # righe del preventivo (vecchio pattern list_righe + filter).
+            riga_esistente = repo.get_riga(riga_id) or False
         ErrorManager.require(
             riga_esistente is not False,
             code="E_PREV_RIGA_NOT_FOUND",
@@ -739,7 +788,15 @@ def aggiorna_riga(
         )
         update_fields["prezzo_unitario"] = prezzo_finale
         if prezzo_meta is not None:
-            merged_meta = dict(update_fields.get("meta") or riga_esistente.get("meta") or {})
+            # `meta` puo' arrivare come dict (caso normale: psycopg deserializza
+            # jsonb) o come stringa JSON (regressione di adapter / payload FE
+            # serializzato). _coerce_meta_to_dict normalizza entrambi i casi
+            # ed evita il classico ValueError "dictionary update sequence
+            # element #0 has length 1; 2 is required".
+            base = update_fields.get("meta")
+            if not base:
+                base = riga_esistente.get("meta")
+            merged_meta = _coerce_meta_to_dict(base)
             merged_meta.update(prezzo_meta)
             update_fields["meta"] = merged_meta
 
@@ -755,8 +812,27 @@ def aggiorna_riga(
                 auth_user_id=auth_user_id,
                 riga_id_for_link=riga_id,
             )
-            update_fields["stato_approvazione_prezzo"] = "PENDING"
+            update_fields["stato_approvazione_prezzo"] = STATO_APPROVAZIONE_PENDING
             update_fields["pratica_approvazione_prezzo_id"] = pratica_id_l3
+        else:
+            # Auto-reset stato approvazione: l'operatore ha modificato il prezzo
+            # e il nuovo valore non richiede approvazione (resolver applicabile
+            # o override entro L2). Se la riga era REJECTED/APPROVED il flag
+            # era riferito al prezzo precedente — non e' piu' valido. Il reset
+            # sblocca il preventivo (vedi get_preventivo `frozen_for_pending_pricing`,
+            # esteso al match REJECTED) e permette di emettere senza che il
+            # vecchio rifiuto resti come blocco fantasma.
+            #
+            # Cleanup denormalizzato meta: rimuoviamo `approvazione_rifiuto`
+            # (motivazione precedente irrilevante post-correzione).
+            stato_attuale = riga_esistente.get("stato_approvazione_prezzo") if riga_esistente else None
+            if stato_attuale in {STATO_APPROVAZIONE_REJECTED, STATO_APPROVAZIONE_APPROVED}:
+                update_fields["stato_approvazione_prezzo"] = None
+                update_fields["pratica_approvazione_prezzo_id"] = None
+                cleanup_meta = update_fields.get("meta")
+                if isinstance(cleanup_meta, dict) and "approvazione_rifiuto" in cleanup_meta:
+                    cleanup_meta.pop("approvazione_rifiuto", None)
+                    update_fields["meta"] = cleanup_meta
 
     # Coerenza qta_operativa quando l'utente cambia `quantita` in edit
     # senza mandare qta_operativa: ricalcolo dalla UoM operativa della
@@ -855,6 +931,30 @@ def _orchestrate_l3_request(
     if riga_id_for_link is not None:
         link_riga_a_pratica(pratica_id=pratica_id, riga_id=riga_id_for_link)
     return pratica_id
+
+
+# Scopo: Normalizza `meta` a dict, accettando dict (caso normale: psycopg
+#        deserializza jsonb), stringa JSON (caso regressione adapter o
+#        payload FE serializzato in stringa) o None/falsy (→ dict vuoto).
+#        Senza questa normalizzazione, `dict("...")` su una stringa solleva
+#        ValueError "dictionary update sequence element #0 has length 1;
+#        2 is required" che il middleware traduce in E_VALIDATION_INPUT,
+#        mascherando il vero problema (un meta serializzato non riconosciuto).
+def _coerce_meta_to_dict(value: Any) -> dict[str, Any]:
+    if value is None or value == "" or value == {}:
+        return {}
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, str):
+        # Tentativo di parsing JSON. Stringa malformata → dict vuoto:
+        # non bloccante, il merge col prezzo_meta avviene comunque.
+        try:
+            parsed = json.loads(value)
+        except (ValueError, TypeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    # Tipo inatteso (lista, numero, bool): fallback dict vuoto.
+    return {}
 
 
 # Scopo: Deriva qta_operativa + factor_to_base dalla UoM operativa selezionata
@@ -1111,7 +1211,7 @@ def _check_permesso_override_prezzo(
         )
     if getattr(user, "is_superuser", False):
         return
-    abilitato = PermissionResolver.check_azione(user, "prezzo_override_manuale")
+    abilitato = PermissionResolver.check_azione(user, AZIONE_OVERRIDE_PREZZO)
     ErrorManager.require(
         abilitato,
         code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
@@ -1178,8 +1278,16 @@ def _check_limite_variazione_prezzo(
     is_sconto = delta_pct < 0
     param_code = PARAM_MAX_SCONTO_PCT if is_sconto else PARAM_MAX_MAGGIORAZIONE_PCT
     variazione_abs = -delta_pct if is_sconto else delta_pct
+    # Cascata user → group → emittente → default: senza derivazione EF
+    # gli override impostati per emittente non sarebbero mai applicati.
+    # Coerente con `PricingLimitiUtenteView` che alimenta l'hint FE.
+    emittente_fiscale_id = param_service.get_emittente_fiscale_id_for_user(
+        auth_user_id,
+    )
     limite = param_service.get_parameter_decimal(
-        param_code, django_user_id=auth_user_id,
+        param_code,
+        django_user_id=auth_user_id,
+        emittente_fiscale_id=emittente_fiscale_id,
     )
 
     if variazione_abs <= limite:

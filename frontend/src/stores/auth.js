@@ -12,6 +12,7 @@ import {
 import { resetAllUserScopedStores } from '../core/pinia-plugins/auto-reset'
 import { syncUserLanguage } from '../core/i18n'
 import { useUiStore } from './ui'
+import { isJwtExpired } from '../core/jwt'
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(local.get(STORAGE_KEYS.ACCESS_TOKEN))
@@ -34,7 +35,22 @@ export const useAuthStore = defineStore('auth', () => {
   // Flag cambio password obbligatorio (impostato al login se deve_cambiare_password = true)
   const passwordChangeRequired = ref(false)
 
-  const isAuthenticated = computed(() => !!accessToken.value)
+  // Validita' temporale dei token (firma non verificata client-side).
+  // Il leeway 5s evita race su clock skew browser/server al limite della
+  // scadenza. Reattivi: cambiano automaticamente quando setTokens/clearTokens
+  // aggiornano gli ref. Il computed `isAuthenticated` considera l'utente
+  // operativo se almeno il refreshToken e' ancora valido (l'access scaduto
+  // sara' rigenerato dal refresh proattivo nel router guard o dall'interceptor
+  // 401 in api.js).
+  const accessTokenValid = computed(() =>
+    !!accessToken.value && !isJwtExpired(accessToken.value, 5_000)
+  )
+  const refreshTokenValid = computed(() =>
+    !!refreshToken.value && !isJwtExpired(refreshToken.value, 5_000)
+  )
+  const isAuthenticated = computed(
+    () => accessTokenValid.value || refreshTokenValid.value
+  )
 
   // Nome visualizzato: priorità soggetto.nome > utente.first_name > username
   const displayName = computed(() => {
@@ -310,6 +326,8 @@ export const useAuthStore = defineStore('auth', () => {
     refreshToken,
     user,
     isAuthenticated,
+    accessTokenValid,
+    refreshTokenValid,
     isSuperAdmin,
     isAdmin,  // alias legacy di isSuperAdmin
     ruoloApplicativo,

@@ -11,6 +11,7 @@ from apps.catalogo.api.views import (
     ApiArticoloNoteList,
     ApiArticoloUomDetail,
     ApiArticoloUomList,
+    ApiArticoloUomLookup,
     ApiArticoliList,
     ApiArticoliLookup,
     ApiComponenteNoteList,
@@ -29,6 +30,7 @@ urlpatterns = [
     # Articoli
     path("articoli/lookup/", ApiArticoliLookup.as_view(), name="catalogo-articoli-lookup"),
     path("articoli/form-defaults/", ApiArticoliFormDefaults.as_view(), name="catalogo-articoli-form-defaults"),
+    path("articoli/<uuid:articolo_id>/uom/lookup/", ApiArticoloUomLookup.as_view(), name="catalogo-articolo-uom-lookup"),
     path("articoli/<uuid:articolo_id>/uom/<int:uom_op_id>/", ApiArticoloUomDetail.as_view(), name="catalogo-articolo-uom-detail"),
     path("articoli/<uuid:articolo_id>/uom/", ApiArticoloUomList.as_view(), name="catalogo-articolo-uom-list"),
     path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/note/", ApiComponenteNoteList.as_view(), name="catalogo-componente-note-list"),

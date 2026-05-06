@@ -7,7 +7,7 @@
 
 """
 Indice test eseguiti:
-1) list_contratti_applies_default_data_da
+1) list_contratti_does_not_apply_default_data_da
 2) list_contratti_invalid_order
 3) list_contratti_invalid_ambito
 4) get_contratto_not_found
@@ -74,9 +74,9 @@ def _testata_default() -> dict[str, object]:
 class ContrattiServiceTests(TestCase):
     # --- lista ---------------------------------------------------------
 
-    # Scopo: senza data_da il service applica 1 gennaio (anno-1).
+    # Scopo: senza data_da il service non applica default temporali impliciti.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_list_contratti_applies_default_data_da(self, repo_cls):
+    def test_list_contratti_does_not_apply_default_data_da(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -85,7 +85,7 @@ class ContrattiServiceTests(TestCase):
         ContrattiService().list_contratti()
 
         call = repo.list_contratti.call_args.kwargs
-        self.assertEqual(call["data_da"], date(date.today().year - 1, 1, 1))
+        self.assertIsNone(call["data_da"])
 
     # Scopo: order_by non whitelisted -> ServiceError.
     def test_list_contratti_invalid_order(self):

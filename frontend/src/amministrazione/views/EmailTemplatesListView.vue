@@ -1,17 +1,17 @@
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
 import { useEmailTemplatesStore } from '../stores/emailTemplates'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import EmailTemplateDrawer from '../components/EmailTemplateDrawer.vue'
 
 const { t } = useI18n()
@@ -21,6 +21,15 @@ const drawer = useDrawerState()
 const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'codice'
 })
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+])
 
 useTabFreshness(store, TAB_ENTITIES.EMAIL_TEMPLATES)
 
@@ -39,9 +48,7 @@ function onRowClick({ data }) {
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('common.search')" style="width: 250px;" />
       </div>
-      <div class="app-page-actions">
-        <ReloadButton @click="reload" />
-      </div>
+      <PageActionsBar :actions="pageActions" />
     </div>
 
     <DataTable

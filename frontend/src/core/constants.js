@@ -243,6 +243,9 @@ export const MANAGE_ICONS = {
   DOWNLOAD: 'pi pi-download',
   DELETE: 'pi pi-trash',
   KEBAB: 'pi pi-ellipsis-v',
+  // Workflow approvazione prezzi (Sprint E listini v5).
+  APPROVE: 'pi pi-check',
+  REJECT: 'pi pi-times',
 }
 
 // Scope readonly — area (schema DB) passata come primo arg a useReadonlyMode.

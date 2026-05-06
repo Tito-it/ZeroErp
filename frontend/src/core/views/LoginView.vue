@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
@@ -55,6 +55,17 @@ function resolveLoginError(err) {
   if (!status || status === 401) return t('auth.login_error')
   return t('auth.access_denied')
 }
+
+// Pre-popolazione errorMessage in base a `reason` query (es. session_expired
+// passato da api.js → redirectToLogin quando il refresh fallisce o da router
+// guard quando i token sono scaduti). Mantiene UX coerente: l'utente vede
+// subito perche' e' tornato sul login.
+onMounted(() => {
+  const reason = route.query.reason
+  if (reason === 'session_expired') {
+    errorMessage.value = t('auth.session_expired')
+  }
+})
 
 async function handleLogin() {
   errorMessage.value = ''

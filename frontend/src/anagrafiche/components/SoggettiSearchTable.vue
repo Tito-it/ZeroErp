@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable paginata soggetti con search e filtro tipo.
 // Riusabile da: SoggettiView, futuro ricerca soggetti in altri domini.
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -14,10 +14,9 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import TagList from '../../core/components/TagList.vue'
-import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
@@ -34,6 +33,24 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 
 const tipiSoggetto = useLookup(lookupTipiSoggettoDettaglio, { immediate: true })
 const tipoFilter = ref(null)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('soggetti.nuovo_soggetto'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 
 function onTipoChange() {
   store.filters.tipo_soggetto_dettaglio_id = tipoFilter.value
@@ -99,11 +116,11 @@ onMounted(() => {
           @change="onTipoChange"
         />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('soggetti.nuovo_soggetto')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <!-- Placeholder: nessuna ricerca effettuata -->
