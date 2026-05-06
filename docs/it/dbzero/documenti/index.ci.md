@@ -13,6 +13,7 @@
 - [tipi_file_documento](manual/tipi_file_documento.md) — (latest review 29-04-2026) `documenti.tipi_file_documento` definisce il catalogo dei **tipi di file persistiti** a valle della generazione di un documento.
 
 ## ⚙️ Funzioni (manuale)
+- [fn_pubblica_template_documento_versione](manual/fn_pubblica_template_documento_versione.md) — (latest review 06-05-2026)
 - [trgfn_documenti_generati_block_delete](manual/trgfn_documenti_generati_block_delete.md)
 - [trgfn_documenti_generati_check_coerenza](manual/trgfn_documenti_generati_check_coerenza.md)
 - [trgfn_documenti_generati_eventi_block_delete](manual/trgfn_documenti_generati_eventi_block_delete.md)
