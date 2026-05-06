@@ -640,7 +640,7 @@ class PayloadValidator:
 
 # Scopo: Traduce IntegrityError DB in ServiceError con codice parlante
 #        del dominio. Le mappe associano frammento di vincolo DB (UNIQUE
-#        o FK) a una coppia (error_code, message). Il match e' case-insensitive
+#        UNIQUE, FK o CHECK) a una coppia (error_code, message). Il match e' case-insensitive
 #        sullo `str(exc)` ed e' lineare — la chiave piu' specifica va prima.
 #
 #        Esempio d'uso:
@@ -657,6 +657,7 @@ class PayloadValidator:
 #                        ),
 #                    },
 #                    fk_constraints={},
+#                    check_constraints={},
 #                    fallback_code=E_ANAG_VALIDAZIONE,
 #                    fallback_message="Violazione vincolo DB su categoria cliente.",
 #                    context={"codice": data.get("codice")},
@@ -667,6 +668,7 @@ def map_integrity_error(
     *,
     unique_constraints: dict[str, tuple[str, str]] | None = None,
     fk_constraints: dict[str, tuple[str, str]] | None = None,
+    check_constraints: dict[str, tuple[str, str]] | None = None,
     fallback_code: str,
     fallback_message: str = "Violazione vincolo DB.",
     context: dict[str, Any] | None = None,
@@ -694,6 +696,16 @@ def map_integrity_error(
             )
 
     for constraint_name, (error_code, message) in (fk_constraints or {}).items():
+        if _match_exact(constraint_name):
+            ErrorManager.raise_error(
+                code=error_code,
+                message=message,
+                detail=str(exc),
+                context=ctx,
+                cause=exc,
+            )
+
+    for constraint_name, (error_code, message) in (check_constraints or {}).items():
         if _match_exact(constraint_name):
             ErrorManager.raise_error(
                 code=error_code,

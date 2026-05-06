@@ -222,7 +222,10 @@ class ApiContrattoCambiaStato(DomainAPIView):
         valido_al = parse_iso_date(valido_al_raw) if valido_al_raw else None
         return success_response(
             ContrattiService().cambia_stato(
-                contratto_id, codice_interno=codice, valido_al=valido_al,
+                contratto_id,
+                codice_interno=codice,
+                valido_al=valido_al,
+                user=request.user,
             )
         )
 

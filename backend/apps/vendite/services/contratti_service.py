@@ -32,12 +32,17 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
+)
+from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.services.document_generation_service import (
+    DocumentGenerationService,
 )
 from apps.vendite.db.contratti_repository import ContrattiRepository
 
@@ -48,6 +53,8 @@ E_VENDITE_NOT_FOUND = "E_VENDITE_NOT_FOUND"
 E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_FK = "E_VENDITE_FK"
 E_VENDITE_CONTRATTO_OVERLAP = "E_VENDITE_CONTRATTO_OVERLAP"
+
+_CODICE_SORGENTE_CONTRATTO = "CONTRATTO"
 
 
 _ORDER_BY_CONTRATTI: frozenset[str] = frozenset({
@@ -576,6 +583,7 @@ class ContrattiService:
         *,
         codice_interno: str,
         valido_al: date | None = None,
+        user: AbstractBaseUser | AnonymousUser | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         ErrorManager.require(
@@ -593,6 +601,13 @@ class ContrattiService:
             context={"codice_interno": codice_interno},
         )
         assert target_stato_id is not None
+        stato_corrente = self._repo.get_stato_codice(contratto_id)
+        ErrorManager.require(
+            stato_corrente is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Contratto non trovato.",
+            context={"contratto_id": contratto_id},
+        )
 
         # Pre-validazione data-driven per CESSATO (regola fail-safe):
         # - valido_al obbligatorio
@@ -662,7 +677,52 @@ class ContrattiService:
                         message="Contratto non trovato.",
                         context={"contratto_id": contratto_id},
                     )
+                    if codice_norm == "ATTIVO" and stato_corrente == "DRAFT":
+                        self._genera_pdf_attivazione(contratto_id, user=user)
         return self.get_contratto(contratto_id)
+
+    # Scopo: genera e persiste il PDF canonico del contratto al momento
+    #        dell'attivazione. Chiamato dentro la stessa transaction.atomic
+    #        del cambio stato DRAFT->ATTIVO: un errore render/storage fa
+    #        propagare l'eccezione e rollbacka anche il cambio stato.
+    def _genera_pdf_attivazione(
+        self,
+        contratto_id: int,
+        *,
+        user: AbstractBaseUser | AnonymousUser | None,
+    ) -> None:
+        contratto = self._repo.get_for_documento_generation(contratto_id)
+        ErrorManager.require(
+            contratto is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Contratto non trovato per generazione PDF.",
+            context={"contratto_id": contratto_id},
+        )
+        assert contratto is not None
+        ErrorManager.require(
+            contratto.get("emittente_fiscale_id") is not None,
+            code="E_DOCUMENTI_VALIDATION",
+            message="Emittente fiscale non risolto per il contratto.",
+            context={"contratto_id": contratto_id},
+        )
+
+        doc_repo = DocumentiRepository()
+        sorgente = doc_repo.get_sorgente_tipo_id_by_codice(_CODICE_SORGENTE_CONTRATTO)
+        ErrorManager.require(
+            sorgente is not None and sorgente.get("attivo"),
+            code="E_DOCUMENTI_VALIDATION",
+            message="Sorgente 'CONTRATTO' non configurata o non attiva.",
+            context={"contratto_id": contratto_id},
+        )
+        assert sorgente is not None
+
+        DocumentGenerationService().genera_documento(
+            user,
+            emittente_fiscale_id=int(contratto["emittente_fiscale_id"]),
+            sorgente_tipo_id=int(sorgente["id"]),
+            sorgente_id=int(contratto["id"]),
+            sorgente_uid=str(contratto["uid"]),
+        )
 
     # =================================================================
     # Righe contratto - preview pricing applicato

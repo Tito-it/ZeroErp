@@ -104,8 +104,10 @@ class BuildContextHappyPathTests(SimpleTestCase):
         prev = ctx["preventivo"]
         self.assertEqual(prev["id"], 1)
         self.assertEqual(prev["numero"], "P-2026-0001")
-        self.assertEqual(prev["data"], "2026-05-04")
-        self.assertEqual(prev["validita_dal"], "2026-05-04")
+        self.assertEqual(prev["data"], "04-05-2026")
+        self.assertEqual(prev["data_iso"], "2026-05-04")
+        self.assertEqual(prev["validita_dal"], "04-05-2026")
+        self.assertEqual(prev["validita_dal_iso"], "2026-05-04")
         self.assertEqual(prev["fatturazione_immediata"], False)
         self.assertEqual(prev["stato"]["codice"], "BOZZA")
         self.assertEqual(prev["totali"]["imponibile"], "100.00")

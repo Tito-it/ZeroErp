@@ -203,6 +203,30 @@ class TemplateVersioniAdminServiceUpdateTests(SimpleTestCase):
         # 2 chiamate get_versione: pre-check + ritorno fresh.
         self.assertEqual(reader.get_versione.call_count, 2)
 
+    def test_update_bozza_accetta_margini_decimali_stringa(self) -> None:
+        svc, repo, _ = _service_with_mocks(
+            repo_methods={"update_versione": True},
+            reader_methods={"get_versione": dict(_BOZZA_VERSIONE)},
+        )
+
+        svc.update_versione(
+            _make_user(),
+            1,
+            11,
+            {
+                "margin_top_mm": "15.00",
+                "margin_right_mm": "16.50",
+                "margin_bottom_mm": 17,
+                "margin_left_mm": "0",
+            },
+        )
+
+        data = repo.update_versione.call_args.args[1]
+        self.assertEqual(data["margin_top_mm"], 15.0)
+        self.assertEqual(data["margin_right_mm"], 16.5)
+        self.assertEqual(data["margin_bottom_mm"], 17)
+        self.assertEqual(data["margin_left_mm"], 0.0)
+
     # 6. payload {} rifiutato.
     def test_update_empty_payload_rejected(self) -> None:
         svc, repo, _ = _service_with_mocks(

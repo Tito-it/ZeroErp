@@ -17,5 +17,6 @@ class VenditeConfig(AppConfig):
         # `noqa: F401` — l'import e' richiesto per i side-effects di
         # registrazione, non per l'uso del simbolo.
         from apps.vendite.services import (  # noqa: F401
+            contratto_document_context_builder,
             preventivo_document_context_builder,
         )

@@ -644,14 +644,10 @@ class DocumentiRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Transizione atomica BOZZA -> PUBBLICATA. Il filtro WHERE su
-    #        stato='BOZZA' rende l'operazione idempotente: una seconda
-    #        chiamata su versione gia' pubblicata ritorna False (rowcount=0)
-    #        senza errore DB. Il check `valido_dal NOT NULL` e' a carico
-    #        del DB (chk_template_documenti_versioni_valido_dal_pubblicata).
-    #        L'EXCLUDE GiST su (template_documento_id WITH =, validita WITH &&)
-    #        WHERE attivo+stato=PUBBLICATA blocca eventuali overlap con altre
-    #        versioni pubblicate attive — il service mappa l'errore.
+    # Scopo: Delega alla funzione DB atomica la transizione BOZZA -> PUBBLICATA.
+    #        La funzione blocca le versioni dello stesso template, auto-chiude
+    #        eventuali PUBBLICATE precedenti sovrapposte e poi pubblica la BOZZA.
+    #        Il vincolo EXCLUDE resta guardrail finale contro overlap residui.
     def pubblica_versione(
         self,
         versione_id: int,
@@ -662,16 +658,16 @@ class DocumentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                UPDATE documenti.template_documenti_versioni
-                   SET stato       = 'PUBBLICATA',
-                       valido_dal  = %s,
-                       valido_al   = %s
-                 WHERE id = %s
-                   AND stato = 'BOZZA'
+                SELECT versione_id
+                  FROM documenti.fn_pubblica_template_documento_versione(
+                    p_versione_id => %s,
+                    p_valido_dal  => %s,
+                    p_valido_al   => %s
+                  )
                 """,
-                [valido_dal, valido_al, int(versione_id)],
+                [int(versione_id), valido_dal, valido_al],
             )
-            return cursor.rowcount > 0
+            return cursor.fetchone() is not None
 
     # =================================================================
     # Asset documentali (Tranche G)

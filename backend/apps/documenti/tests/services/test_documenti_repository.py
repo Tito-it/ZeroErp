@@ -30,7 +30,7 @@
 #  14. create_versione_inserts_only_whitelisted_columns
 #  15. update_versione_returns_true_on_success
 #  16. delete_versione_returns_true_on_success
-#  17. pubblica_versione_filters_by_stato_bozza
+#  17. pubblica_versione_chiama_funzione_db_atomica
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -448,13 +448,12 @@ class DocumentiRepositoryVersioneMutationsTests(TestCase):
         self.assertIn("WHERE id = %s", sql)
         self.assertEqual(params, [11])
 
-    # 17. pubblica_versione: WHERE stato='BOZZA' (idempotenza per design).
+    # 17. pubblica_versione: delega alla funzione DB atomica di pubblicazione.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
-    def test_pubblica_versione_filters_by_stato_bozza(self, mocked_factory) -> None:
+    def test_pubblica_versione_chiama_funzione_db_atomica(self, mocked_factory) -> None:
         from datetime import date as _date
 
-        cursor = _mk_cursor()
-        cursor.rowcount = 1
+        cursor = _mk_cursor(fetchone_results=[{"versione_id": 11}])
         mocked_factory.return_value = cursor
 
         result = DocumentiRepository().pubblica_versione(
@@ -462,7 +461,5 @@ class DocumentiRepositoryVersioneMutationsTests(TestCase):
         )
         self.assertTrue(result)
         sql, params = cursor.execute.call_args_list[0].args
-        self.assertIn("UPDATE documenti.template_documenti_versioni", sql)
-        self.assertIn("stato       = 'PUBBLICATA'", sql)
-        self.assertIn("AND stato = 'BOZZA'", sql)
-        self.assertEqual(params, [_date(2026, 6, 1), None, 11])
+        self.assertIn("documenti.fn_pubblica_template_documento_versione", sql)
+        self.assertEqual(params, [11, _date(2026, 6, 1), None])

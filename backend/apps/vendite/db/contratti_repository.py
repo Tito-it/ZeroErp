@@ -287,6 +287,27 @@ class ContrattiRepository:
             )
             return row_to_dict(cursor)
 
+    # Scopo: Restituisce il contesto minimo richiesto dal motore documentale
+    #        per generare un documento da contratto: `id`, `uid` e
+    #        `emittente_fiscale_id`. I contratti non hanno la colonna
+    #        emittente diretta: si risolve la PK reale dell'emittente dalla
+    #        catena del billing account tramite funzione anagrafiche.
+    def get_for_documento_generation(
+        self, contratto_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                c.id,
+                c.uid::text AS uid,
+                anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id)
+                    AS emittente_fiscale_id
+              FROM vendite.contratti c
+             WHERE c.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(contratto_id)])
+            return row_to_dict(cursor)
+
     # Scopo: Capability del contratto per il detail API (Fase 1.B2 refactor
     #        frontend vendite). Wrapper su `script.fn_available_actions_contratto`
     #        che ritorna jsonb con available_actions (azione "cessa" arricchita

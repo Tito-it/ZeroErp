@@ -55,9 +55,8 @@ export const preventivoDocumenti = buildSorgenteClient(
   (preventivoId) => `/vendite/preventivi/${preventivoId}/documenti`,
 )
 
-// Quando un nuovo dominio sorgente (es. CONTRATTO) registrera' il
-// proprio context_builder lato BE e gli endpoint nidificati, basta:
-//   export const contrattoDocumenti = buildSorgenteClient(
-//     (contrattoId) => `/vendite/contratti/${contrattoId}/documenti`,
-//   )
-// e il riuso e' immediato anche dal componente FE building block.
+// Client per documenti di un CONTRATTO. Path coerente con
+// `apps/vendite/api/urls_contratti.py`.
+export const contrattoDocumenti = buildSorgenteClient(
+  (contrattoId) => `/vendite/contratti/${contrattoId}/documenti`,
+)

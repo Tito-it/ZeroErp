@@ -9,23 +9,26 @@ mutazioni sulla testata template (create + update).
 ## Contesto
 
 Endpoint v1 del refactor `sviluppo-documenti.md` (Decisioni 25/30/72-76).
-Nessuna esecuzione lato DB-functions: i 4 endpoint interrogano
-direttamente le tabelle `documenti.template_documenti` e
-`documenti.template_documenti_versioni` con LEFT/INNER JOIN sui lookup
-(`documenti.tipi_documento_output`, `config.sorgenti`,
-`anagrafiche.emittenti_fiscali`, `documenti.render_engine_documento`).
+Gli endpoint di lettura interrogano direttamente le tabelle
+`documenti.template_documenti` e `documenti.template_documenti_versioni`
+con LEFT/INNER JOIN sui lookup (`documenti.tipi_documento_output`,
+`config.sorgenti`, `anagrafiche.emittenti_fiscali`,
+`documenti.render_engine_documento`). I comandi admin di scrittura passano
+dal service applicativo; la pubblicazione di una versione delega al DB la
+chiusura atomica della versione pubblicata precedente tramite
+`documenti.fn_pubblica_template_documento_versione(...)`.
 
-CRUD admin (POST/PATCH + comandi versione `clona`/`pubblica`/`cancella-bozza`)
-e generazione/anteprima/download atterrano in PR successive sullo stesso
-namespace `/api/v1/documenti/`. Quegli endpoint useranno
-`post_permission = "documenti_template_manage"` (Decisione 75).
+Gli endpoint template/versioni hanno `area_funzionale = "documenti"`
+(id area=11, schema_db=`documenti`). Il livello area si applica con la
+catena standard TUTTO/LETTURA/BLOCCATO; lo scope dati e' applicato in
+repository tramite `PermissionResolver.get_emittenti_ids` (whitelist
+`emittenti_fiscali.id`): admin globale e superuser vedono tutto,
+operatori vedono solo i template dei propri emittenti. Le mutazioni admin
+usano `post_permission = "documenti_template_manage"` (Decisione 75).
 
-I 4 endpoint hanno tutti `area_funzionale = "documenti"` (id area=11,
-schema_db=`documenti`). Il livello area si applica con la catena standard
-TUTTO/LETTURA/BLOCCATO; lo scope dati e' applicato in repository tramite
-`PermissionResolver.get_emittenti_ids` (whitelist `emittenti_fiscali.id`):
-admin globale e superuser vedono tutto, operatori vedono solo i template
-dei propri emittenti.
+Gli endpoint di generazione/anteprima/download dei documenti generati sono
+documentati nelle API delle sorgenti funzionali che li espongono
+(es. contratti e preventivi).
 
 ---
 
@@ -271,7 +274,7 @@ nuovo template e disabilitare il precedente.
   - `markdown_template` (string nullable)
   - `page_format` (string in `{A4, A3, LETTER}`, default `A4`)
   - `page_orientation` (string in `{PORTRAIT, LANDSCAPE}`, default `PORTRAIT`)
-  - `margin_top_mm` / `margin_right_mm` / `margin_bottom_mm` / `margin_left_mm` (number >= 0, default 10)
+  - `margin_top_mm` / `margin_right_mm` / `margin_bottom_mm` / `margin_left_mm` (number >= 0, default 10; sono accettate anche stringhe numeriche come `"15.00"`, normalizzate dal service)
   - `valido_dal` (date ISO, nullable in BOZZA — diventa obbligatorio in pubblicazione)
   - `valido_al` (date ISO, nullable)
   - `context_schema` (jsonb object, default `{}`)
@@ -305,8 +308,9 @@ nuovo template e disabilitare il precedente.
 
 - `200`: dettaglio della versione aggiornata.
 - `400` `E_DOCUMENTI_VALIDATION`: chiave extra, payload vuoto post-validation,
-  formato/orientation fuori whitelist, margine negativo, `attivo`/`is_default`
-  esplicito a `null`.
+  formato/orientation fuori whitelist, margine negativo o non numerico,
+  `attivo`/`is_default` esplicito a `null`. I margini provenienti dal DB come
+  stringhe decimali (`"15.00"`) sono validi e vengono convertiti prima del write.
 - `404` `E_DOCUMENTI_NOT_FOUND`: template/versione inesistente o fuori scope.
 - `409` `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE`: la versione e' in
   stato `PUBBLICATA` (o `OBSOLETA`). Per modificare crea o clona una nuova
@@ -383,13 +387,26 @@ nuovo template e disabilitare il precedente.
   - versione gia' in `PUBBLICATA` o `OBSOLETA` (idempotenza per design:
     una seconda chiamata dopo la pubblicazione iniziale ritorna 400 con
     "stato_corrente=PUBBLICATA");
-  - violazione GiST EXCLUDE `ex_template_documenti_versioni_no_overlap_pubblicata`:
-    le date scelte si sovrappongono con un'altra versione PUBBLICATA
-    attiva sullo stesso template -> "Le date di validita' si sovrappongono
-    con un'altra versione PUBBLICATA attiva." (decisione di design v1: il
-    BE non chiude automaticamente il `valido_al` della precedente; il FE
-    deve orchestrare).
+  - violazione GiST EXCLUDE residua
+    `ex_template_documenti_versioni_no_overlap_pubblicata`: caso anomalo,
+    per esempio nuova decorrenza uguale a una versione gia' PUBBLICATA.
 - `404` `E_DOCUMENTI_NOT_FOUND`: template/versione inesistente o fuori scope.
+
+#### Auto-close versione precedente
+
+La pubblicazione passa dalla funzione DB
+`documenti.fn_pubblica_template_documento_versione(...)`. Nella stessa
+transazione la funzione:
+
+1. blocca le versioni dello stesso template;
+2. individua le versioni `PUBBLICATA + attivo` con `valido_dal < nuovo.valido_dal`
+   e intervallo sovrapposto;
+3. le porta a `OBSOLETA`;
+4. imposta `valido_al = nuovo.valido_dal - 1`;
+5. pubblica la nuova `BOZZA`.
+
+Il vincolo EXCLUDE resta il guardrail finale contro sovrapposizioni non
+gestibili automaticamente.
 
 ---
 
@@ -433,20 +450,20 @@ nuovo template e disabilitare il precedente.
     diretto. Richiede `valido_dal NOT NULL`.
   - `PUBBLICATA` -> immutabile (trigger DB A1 + service guard). Per
     modificare, `clona` la versione in nuova BOZZA.
-  - `OBSOLETA` -> stato terminale, riservato a uso futuro (es. ciclo
-    di rotazione versioni). In v1 non c'e' transizione automatica
-    `PUBBLICATA -> OBSOLETA`.
+  - `OBSOLETA` -> stato terminale. La transizione `PUBBLICATA -> OBSOLETA`
+    e' eseguita dalla funzione DB di pubblicazione quando una nuova versione
+    successiva sostituisce la precedente.
 - **Numero versione calcolato**: `MAX(versione)+1` su `template_documento_id`.
   Race condition rara: due chiamate concorrenti calcolano lo stesso numero
   -> il vincolo unique `uq_template_documenti_versioni_template_versione`
   blocca il secondo INSERT, errore parlante invita al retry.
-- **Pubblicazione e overlap**: il vincolo GiST EXCLUDE
-  `ex_template_documenti_versioni_no_overlap_pubblicata` blocca date di
-  validita' sovrapposte tra versioni `PUBBLICATA` attive sullo stesso
-  template. **Decisione di design v1**: il BE non chiude automaticamente il
-  `valido_al` della versione precedente — sarebbe un side-effect non
-  visibile al caller. Il FE orchestra: prima `PATCH` sulla precedente
-  per impostare `valido_al`, poi `pubblica` la nuova.
+- **Pubblicazione e overlap**: il comando `pubblica/` delega alla funzione DB
+  `documenti.fn_pubblica_template_documento_versione(...)`. La funzione blocca
+  le versioni dello stesso template, chiude a `nuovo.valido_dal - 1` le
+  `PUBBLICATA` precedenti sovrapposte con decorrenza strettamente precedente,
+  le porta a `OBSOLETA` e pubblica la nuova `BOZZA`. Il vincolo GiST EXCLUDE
+  `ex_template_documenti_versioni_no_overlap_pubblicata` resta guardrail finale
+  contro sovrapposizioni residue o race concorrenti.
 - **`is_default` partial-unique senza demote automatico**: setting
   `is_default=true` su create/update mentre esiste gia' un altro template
   default attivo per `(tipo_documento_output_id, sorgente_tipo_id,
@@ -514,7 +531,7 @@ Vedi Decisione 75 in `sviluppo-documenti.md` §10.
 
 | Codice | HTTP | Quando |
 |---|---|---|
-| `E_DOCUMENTI_VALIDATION` | 400 | `stato` versione fuori whitelist; `template_id`/`versione_id` non interi positivi; in write: chiave non whitelisted, campo richiesto mancante, campo immutabile, `emittente_fiscale_id` fuori scope, violazioni unique/partial-unique/FK del DDL; pubblicazione: `valido_dal` mancante o `valido_al < valido_dal`, overlap con altra PUBBLICATA |
+| `E_DOCUMENTI_VALIDATION` | 400 | `stato` versione fuori whitelist; `template_id`/`versione_id` non interi positivi; in write: chiave non whitelisted, campo richiesto mancante, campo immutabile, `emittente_fiscale_id` fuori scope, margini non numerici/negativi, violazioni unique/partial-unique/FK del DDL; pubblicazione: `valido_dal` mancante, `valido_al < valido_dal`, stato non BOZZA, overlap residuo con altra PUBBLICATA |
 | `E_DOCUMENTI_NOT_FOUND` | 404 | template/versione inesistente o fuori scope emittente (no leak) |
 | `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` | 409 | tentativo di modificare versione `PUBBLICATA` (Tranche F). Trigger DB A1 + service guard |
 | `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` | 409 | tentativo di eliminare versione non-BOZZA o gia' usata da documenti generati (Tranche F). Trigger DB A2 + service guard |
@@ -567,9 +584,8 @@ nome vincolo, case-insensitive):
   versioni `BOZZA` non ancora referenziate da `documenti.documenti_generati`.
   Le versioni `PUBBLICATA`/`OBSOLETA` restano nel DB per audit dei
   documenti generati che le usano (integrita' referenziale storica).
-- Pubblicazione senza chiusura automatica del precedente `valido_al`:
-  scelta concentrica per la v1. Pattern simile alle "listini-versioni"
-  v5 (vedi `feedback_stato_terminale_con_data` in memoria di progetto)
-  prevedeva chiusura automatica via dialog dedicato; per documenti la
-  v1 lascia la responsabilita' al FE. Da rivalutare in Tranche K
-  (frontend) se l'UX chiede l'orchestrazione.
+- Pubblicazione con auto-close DB (2026-05-06): il precedente comportamento
+  "no auto-close" e' stato sostituito da una funzione DB atomica dedicata,
+  per allineare il ciclo versioni template al pattern di sostituzione delle
+  versioni listino. Il FE non orchestra piu' la chiusura della versione
+  precedente.

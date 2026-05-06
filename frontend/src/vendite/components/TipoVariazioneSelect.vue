@@ -72,6 +72,7 @@ function onChange(event) {
 
 <template>
   <Select
+    class="app-form-select"
     :modelValue="modelValue"
     @update:modelValue="(v) => emit('update:modelValue', v)"
     :options="lookup.items.value"

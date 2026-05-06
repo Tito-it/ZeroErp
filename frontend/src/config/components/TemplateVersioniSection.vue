@@ -178,6 +178,12 @@ function closeForm() {
   form.value = emptyForm()
 }
 
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : value
+}
+
 const canSaveForm = computed(() => {
   if (props.readonly) return false
   const f = form.value
@@ -197,10 +203,10 @@ async function saveForm() {
     render_engine_id: f.render_engine_id,
     page_format: f.page_format,
     page_orientation: f.page_orientation,
-    margin_top_mm: f.margin_top_mm,
-    margin_right_mm: f.margin_right_mm,
-    margin_bottom_mm: f.margin_bottom_mm,
-    margin_left_mm: f.margin_left_mm,
+    margin_top_mm: toNumberOrNull(f.margin_top_mm),
+    margin_right_mm: toNumberOrNull(f.margin_right_mm),
+    margin_bottom_mm: toNumberOrNull(f.margin_bottom_mm),
+    margin_left_mm: toNumberOrNull(f.margin_left_mm),
     valido_dal: localDateToIso(f.valido_dal),
     valido_al: localDateToIso(f.valido_al),
     attivo: f.attivo,
