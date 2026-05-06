@@ -18,8 +18,8 @@
 
 Riferimenti:
 
-* [sviluppo-listini-v5.md](sviluppo-listini-v5.md) — modello pricing + resolver
-* [sviluppo-listini-v6.md](sviluppo-listini-v6.md) — debiti tecnici v5 (se presente)
+* [sviluppo-listini-v5.md](../work-done/sviluppo-listini-v5.md) — modello pricing + resolver
+* [sviluppo-listini-v6.md](../work-done/sviluppo-listini-v6.md) — debiti tecnici v5 (se presente)
 * [dbzero/vendite/tabelle/promo_articoli.md](../../dbzero/vendite/tabelle/promo_articoli.md)
 * [dbzero/vendite/tabelle/listini_righe.md](../../dbzero/vendite/tabelle/listini_righe.md)
 * [dbzero/catalogo/tabelle/articoli.md](../../dbzero/catalogo/tabelle/articoli.md)

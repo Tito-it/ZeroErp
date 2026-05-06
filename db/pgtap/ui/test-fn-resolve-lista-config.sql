@@ -20,7 +20,7 @@
 -- di test-fn-get-profili-accesso-applicabili.sql).
 -- BEGIN; + ROLLBACK implicito a fine file.
 --
--- Indice test (1..10):
+-- Indice test (1..12):
 --   1.  Setup dati di test (lista + colonne + utente + identita)
 --   2.  Lista inesistente -> eccezione P0001
 --   3.  Catalogo grezzo: 2 colonne (sensibile BLOCCATA senza grant)
@@ -31,9 +31,11 @@
 --   8.  Colonna sensibile con grant LETTURA -> esportabile=false
 --   9.  Colonna identificatore con visibile:false -> normalizzata a true
 --   10. Nuova colonna nel catalogo non in preferenza -> colonne_nuove=1
+--   11. DB-3: cascata preset deterministica (AD_HOC prio=1 vs profilo prio>1 da DB reale)
+--   12. DB-4: GUC-aware (veste OPERATORE -> nessun profilo -> fallback sistema)
 -- ------------------------------------------------------------
 BEGIN;
-SELECT plan(10);
+SELECT plan(12);
 -- =========================================================
 -- 1. Setup: lista + colonne + auth_user + identita
 -- =========================================================
@@ -662,6 +664,122 @@ SELECT is(
         1,
         '9. Nuova colonna nel catalogo non in preferenza -> colonne_nuove = 1'
     );
+-- =========================================================
+-- 11. DB-3: cascata preset di ruolo deterministica
+--     Usa il profilo prio>1 GIA' applicabile all'utente di test
+--     (via binding globale esistente nel DB, es. PORTALE CLIENTE_PORTALE).
+--     Non creiamo un nuovo binding: uq_profili_accesso_bindings_ruolo
+--     ammette UN SOLO profilo per ruolo_applicativo.
+-- =========================================================
+-- Cancella preferenza utente per tornare alla cascata preset
+DELETE FROM ui.lista_preferenza_utente
+WHERE auth_user_id = (
+        SELECT auth_user_id
+        FROM _t_au
+    );
+
+-- Recupera il primo profilo prio>1 gia' applicabile all'utente
+-- (es. PORTALE bound a CLIENTE_PORTALE nei dati reali del DB)
+CREATE TEMP TABLE _t_profilo_prio2 AS
+SELECT profilo_accesso_id
+FROM script.fn_get_profili_accesso_applicabili(
+    (
+        SELECT auth_user_id
+        FROM _t_au
+    )
+)
+WHERE priorita > 1
+LIMIT 1;
+
+-- Crea preset per il profilo prio>1 con pagina=77 sulla lista di test.
+-- Se non esiste nessun profilo prio>1, il INSERT produce 0 righe
+-- e il test verifica comunque che AD_HOC (prio=1) dia pagina=50.
+INSERT INTO ui.lista_preset (
+        lista_id,
+        codice,
+        descrizione,
+        ambito,
+        profilo_accesso_id,
+        is_default,
+        pagina_dimensione,
+        attivo,
+        user_insert
+    )
+SELECT l.lista_id,
+    'preset_prio2_pgtap',
+    'Preset prio>1 test priorita DB-3',
+    'ruolo',
+    p.profilo_accesso_id,
+    TRUE,
+    77,
+    TRUE,
+    '_pgtap'
+FROM _t_lista l
+JOIN _t_profilo_prio2 p ON TRUE;
+
+INSERT INTO ui.lista_preset_colonna (preset_id, colonna_id, ordine, visibile)
+SELECT lp.id,
+    c.col_id,
+    1,
+    TRUE
+FROM ui.lista_preset lp,
+    _t_col1 c
+WHERE lp.codice   = 'preset_prio2_pgtap'
+    AND lp.lista_id = (
+        SELECT lista_id
+        FROM _t_lista
+    );
+
+SELECT is(
+        (
+            SELECT (
+                    ui.fn_resolve_lista_config(
+                        (
+                            SELECT lista_codice
+                            FROM _t_lista
+                        ),
+                        (
+                            SELECT auth_user_id
+                            FROM _t_au
+                        ),
+                        NULL
+                    )->>'pagina_dimensione'
+                )::INTEGER
+        ),
+        50,
+        '11. DB-3: AD_HOC (prio=1, pagina=50) prevale su profilo prio>1 (pagina=77)'
+    );
+-- =========================================================
+-- 12. DB-4: GUC app.ruolo_applicativo filtra la veste corrente
+--     Con GUC='OPERATORE' l'utente non ha identita OPERATORE
+--     -> nessun profilo per questa veste -> fallback preset sistema (pagina=10)
+-- =========================================================
+-- set_config con is_local=true e' equivalente a SET LOCAL (scope transazione)
+SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true);
+
+SELECT is(
+        (
+            SELECT (
+                    ui.fn_resolve_lista_config(
+                        (
+                            SELECT lista_codice
+                            FROM _t_lista
+                        ),
+                        (
+                            SELECT auth_user_id
+                            FROM _t_au
+                        ),
+                        NULL
+                    )->>'pagina_dimensione'
+                )::INTEGER
+        ),
+        10,
+        '12. DB-4: GUC=OPERATORE (nessuna identita per questa veste) -> fallback preset sistema (pagina=10)'
+    );
+
+-- Reset GUC: stringa vuota = NULLIF -> NULL = comportamento legacy
+SELECT set_config('app.ruolo_applicativo', '', true);
+
 SELECT *
 FROM finish();
 ROLLBACK;

@@ -13,7 +13,7 @@
 >   con il tag `[NUOVO v3]` in tutto il documento
 >
 > **Fuori scope di questo documento:**
-> * Rettifiche prezzi (DB-L4) → [sviluppo-rettifiche.md](sviluppo-rettifiche.md)
+> * Rettifiche prezzi (DB-L4) → [sviluppo-rettifiche.md](../work-in-progress/sviluppo-rettifiche.md)
 > * Listini fornitori e derivazione → documento separato `sviluppo-listini-fornitori.md`
 >
 > Prerequisiti già disponibili:
@@ -1037,7 +1037,7 @@ frontend/src/vendite/
 
 ## 14) Rettifiche prezzi — RIMANDO a DB-L4
 
-Il motore rettifiche è trattato nel documento dedicato [sviluppo-rettifiche.md](sviluppo-rettifiche.md).
+Il motore rettifiche è trattato nel documento dedicato [sviluppo-rettifiche.md](../work-in-progress/sviluppo-rettifiche.md).
 
 Contratto con il dominio listini:
 1. Nessuna riscrittura distruttiva di fatture emesse
@@ -1146,7 +1146,7 @@ Vedi dettaglio checklist in documento v2 §13.1-13.3.
 
 ### DB-L4 Rettifiche — DA SCHEDULARE
 
-Vedi [sviluppo-rettifiche.md](sviluppo-rettifiche.md). Prerequisito: chiusura bloccanti §8.5 di quel documento.
+Vedi [sviluppo-rettifiche.md](../work-in-progress/sviluppo-rettifiche.md). Prerequisito: chiusura bloccanti §8.5 di quel documento.
 
 ### Roadmap v2 — APERTA
 

@@ -111,7 +111,7 @@ L'API repository accetta `emittente_fiscale_id: int | None = None` ma la view og
 
 ## 7. Riferimenti
 
-- [analisi-refactor.frontend-anagrafiche.md](../work-in-progress/analisi-refactor.frontend-anagrafiche.md) — Fase 3 sezione del piano (LANDED 27-04)
+- [analisi-refactor.frontend-anagrafiche.md](analisi-refactor.frontend-anagrafiche.md) — Fase 3 sezione del piano (LANDED 27-04)
 - Pattern simmetrico: `DEFAULT_IVA_ID` ([clienti_repository.py:34](../../../backend/apps/anagrafiche/db/clienti_repository.py#L34))
 - DB doc concettuale: `docs/it/dbzero/config/manual/trgfn_parameters_guard_default_tipo_soggetto_dettaglio.md` (creata dal team DB)
 - Tabella: [`config.parameters`](../../dbzero/config/tabelle/parameters.md)

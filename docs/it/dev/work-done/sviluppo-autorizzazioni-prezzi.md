@@ -7,7 +7,7 @@
 >
 > L2 (limite sconto `VENDITE_MAX_SCONTO_PCT`) e L3 (workflow approvazione
 > out-of-policy via pratiche) non erano stati avviati. Lo scope L2+L3 è stato
-> **spostato** nel piano unificato in [sviluppo-listini-v5.md](../work-in-progress/sviluppo-listini-v5) §14 "Sprint 22-04-2026 — Completamento v5".
+> **spostato** nel piano unificato in [sviluppo-listini-v5.md](sviluppo-listini-v5) §14 "Sprint 22-04-2026 — Completamento v5".
 >
 > Questo documento resta come specifica tecnica di riferimento per il modello
 > a 3 livelli (architettura, flussi, infrastruttura permessi/parametri/pratiche,
@@ -21,7 +21,7 @@
 >
 > **Riferimenti**
 >
-> * [sviluppo-listini-v5.md](/dev/work-in-progress/sviluppo-listini-v5) — resolver a 3 stadi (promo/contratto/categoria)
+> * [sviluppo-listini-v5.md](/dev/work-done/sviluppo-listini-v5) — resolver a 3 stadi (promo/contratto/categoria)
 > * [pricing_service.md](/backend/vendite/manual/pricing_service) — building block PricingService.resolve_prezzo
 > * [catalogo-building-block-backend.md](/dev/backend/catalogo-building-block-backend) §"Vendite — Pricing v5"
 
