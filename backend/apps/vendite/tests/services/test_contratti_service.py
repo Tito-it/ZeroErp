@@ -784,6 +784,7 @@ class ContrattiServiceTests(TestCase):
 
         repo = repo_cls.return_value
         repo.get_stato_id_by_codice.return_value = 2
+        repo.get_stato_codice.return_value = "ATTIVO"
         repo.update_stato.return_value = True
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
@@ -792,6 +793,46 @@ class ContrattiServiceTests(TestCase):
         ContrattiService().cambia_stato(1, codice_interno="ATTIVO")
 
         repo.update_stato.assert_called_once_with(1, 2)
+
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch("apps.vendite.services.contratti_service.DocumentGenerationService")
+    @patch("apps.vendite.services.contratti_service.DocumentiRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_cambia_stato_attivo_da_draft_genera_pdf_atomico(
+        self, repo_cls, doc_repo_cls, gen_cls, _atomic,
+    ):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_stato_id_by_codice.return_value = 2
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.update_stato.return_value = True
+        repo.get_for_documento_generation.return_value = {
+            "id": 1,
+            "uid": "uid-contratto-1",
+            "emittente_fiscale_id": 7,
+        }
+        repo.get_contratto.return_value = {
+            **_testata_default(),
+            "stato_codice": "ATTIVO",
+        }
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+            "id": 99,
+            "attivo": True,
+        }
+
+        user = MagicMock()
+        ContrattiService().cambia_stato(1, codice_interno="ATTIVO", user=user)
+
+        gen_cls.return_value.genera_documento.assert_called_once_with(
+            user,
+            emittente_fiscale_id=7,
+            sorgente_tipo_id=99,
+            sorgente_id=1,
+            sorgente_uid="uid-contratto-1",
+        )
 
     # --- righe ---------------------------------------------------------
 

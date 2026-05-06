@@ -19,6 +19,7 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { TIPO_RUOLO, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 
@@ -93,10 +94,30 @@ function onScadenzaMeseChange(val) {
 
 function onRowClick(event) { emit('row-click', event.data) }
 
+const pdfDialogVisible = ref(false)
+const pdfDialogContratto = ref(null)
+
+function onPdfClick(row) {
+  if (!row || row.stato_codice === 'DRAFT') return
+  pdfDialogContratto.value = row
+  pdfDialogVisible.value = true
+}
+
 // Scopo: costruisce le azioni contestuali di riga per il menu kebab.
 // La modifica del contratto e' gia' disponibile cliccando la riga.
 function buildRowActions(data) {
   return [
+    {
+      key: 'documenti-pdf',
+      label: t('contratti.pdf.label_scarica'),
+      icon: 'pi pi-file-pdf',
+      severity: 'primary',
+      disabled: data.stato_codice === 'DRAFT',
+      tooltip: data.stato_codice === 'DRAFT'
+        ? t('contratti.pdf.tooltip_lista_disabilitato')
+        : t('contratti.pdf.tooltip_lista'),
+      command: () => onPdfClick(data),
+    },
     {
       key: 'gestisci-righe',
       label: t('contratti.gestisci_righe'),
@@ -211,6 +232,17 @@ onMounted(() => {
         </template>
       </Column>
     </DataTable>
+
+    <PdfDocumentiSorgenteDialog
+      v-model:visible="pdfDialogVisible"
+      sorgente-code="CONTRATTO"
+      :sorgente-id="pdfDialogContratto?.id ?? null"
+      :title="pdfDialogContratto
+        ? t('contratti.pdf.dialog_title', {
+            numero: pdfDialogContratto.numero,
+          })
+        : ''"
+    />
     </template>
   </div>
 </template>

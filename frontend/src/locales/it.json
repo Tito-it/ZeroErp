@@ -1446,7 +1446,17 @@
     "tipo_variazione_valore_fisso": "Valore fisso",
     "tipo_erogazione_canone": "Canone",
     "tipo_erogazione_consumo": "Consumo",
-    "tipo_erogazione_una_tantum": "Una tantum"
+    "tipo_erogazione_una_tantum": "Una tantum",
+    "pdf": {
+      "section_documenti": "Documenti contratto",
+      "label_anteprima": "Anteprima",
+      "tooltip_anteprima": "Anteprima PDF (non viene salvata)",
+      "label_scarica": "Scarica PDF",
+      "tooltip_scarica": "Scarica un PDF generato",
+      "tooltip_lista": "Documenti PDF",
+      "tooltip_lista_disabilitato": "Disponibile dopo l'attivazione del contratto",
+      "dialog_title": "Documenti PDF — Contratto {numero}"
+    }
   },
   "vendite": {
     "promo_articoli": {
@@ -2028,7 +2038,7 @@
   "documenti": {
     "context_builders": {
       "PREVENTIVO": "Preventivo",
-      "CONTRATTO": "Contratto (non disponibile)",
+      "CONTRATTO": "Contratto",
       "ORDINE": "Ordine (non disponibile)"
     },
     "genera_pdf": {

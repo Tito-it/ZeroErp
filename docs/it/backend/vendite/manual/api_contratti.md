@@ -159,6 +159,47 @@ mutabili; `articolo_id` immutabile.
 `istanza_utility_id` e `utility_id` sono derivati dalla testata; non si
 passano nel payload (rifiutati). `PATCH` aggiorna solo i campi mutabili.
 
+### Documenti contratto
+
+Endpoint dedicati alla generazione PDF tramite motore documentale
+parametrico:
+
+| Metodo | Path | Effetto |
+| --- | --- | --- |
+| `GET` | `/api/v1/vendite/contratti/<id>/documenti/` | Lista documenti generati dal contratto |
+| `POST` | `/api/v1/vendite/contratti/<id>/documenti/anteprima/` | Render PDF temporaneo, non persistito |
+| `POST` | `/api/v1/vendite/contratti/<id>/documenti/genera/` | Genera PDF, salva record e file |
+| `GET` | `/api/v1/vendite/contratti/<id>/documenti/<documento_id>/file/` | Download PDF principale |
+
+Payload opzionale per `anteprima/` e `genera/`:
+
+```json
+{
+  "template_documento_id": 123,
+  "tipo_documento_output_id": 2
+}
+```
+
+Se `template_documento_id` non e' indicato, il service usa il template
+`is_default=true` per `(sorgente=CONTRATTO, emittente_fiscale_id,
+tipo_documento_output_id)`. Il context builder backend e'
+`CONTRATTO`; il template iniziale e' documentato in
+[template_contratto_iniziale](template_contratto_iniziale.md).
+
+### Regole stampa contratto
+
+- In stato `DRAFT`, il frontend usa `anteprima/`: il PDF viene renderizzato ma
+  non viene persistito in `documenti.documenti_generati`.
+- Nel passaggio `DRAFT -> ATTIVO`, il service genera il PDF contrattuale nella
+  stessa transazione applicativa e lo salva come documento generato collegato a
+  `sorgente=CONTRATTO`.
+- Dopo l'attivazione, ristampe/download usano il documento salvato; non viene
+  rigenerato il layout storico.
+- La lista `GET /documenti/` espone i documenti gia' generati per il contratto,
+  ed e' la fonte usata dal drawer e dalla tabella ricerca per le ristampe.
+- La generazione richiede un `emittente_fiscale_id` sul contratto e almeno una
+  versione `PUBBLICATA` attiva del template applicabile alla data corrente.
+
 ## Output
 
 Tutte le risposte usano l'envelope `success_response`:
@@ -191,6 +232,7 @@ Il dettaglio (`GET /<id>/`) include:
 
 1. Numero contratto generato dal service (mai in payload).
 2. Stato iniziale DRAFT; transizioni via endpoint dedicato.
+   La transizione `DRAFT -> ATTIVO` genera e salva il documento contratto.
 3. Identificativi (BA, istanza, utility) immutabili in update — per
    cambiarli si crea un nuovo contratto.
 4. Modalita' C valida a livello DB solo se tutte le righe attive hanno

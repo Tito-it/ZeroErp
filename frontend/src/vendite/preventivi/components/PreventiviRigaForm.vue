@@ -162,6 +162,15 @@ async function caricaUomConPickBase(articoloId) {
   }
 }
 
+// State usato da suggerisciPrezzo(): DEVE stare prima del watch `immediate`
+// qui sotto, altrimenti il primo fire (sincrono in setup) entra in TDZ su
+// `_resolverToken` / `prezzoOrigine` e la POST iniziale del bootstrap viene
+// silenziosamente abortita (regressione gia' osservata: il prezzo listino
+// non si popolava al primo click su una riga in edit, partiva solo dal
+// secondo cambio di selezione quando il watch fa fire fuori da setup).
+const prezzoOrigine = ref(null)
+let _resolverToken = 0
+
 watch(() => props.riga, (riga) => {
   if (riga) {
     form.value = {
@@ -221,11 +230,6 @@ function onArticoloSelect(item) {
   caricaUomConPickBase(item.id)
 }
 
-// Origine del prezzo proposto dal resolver v5 (PROMO/CONTRATTO/CATEGORIA).
-// Mostrato come badge accanto al campo prezzo. null = nessun resolver attivo
-// (es. preventivo senza BA, articolo non a listino, oppure prezzo manuale).
-const prezzoOrigine = ref(null)
-
 // Mappa locale origine -> i18n key del badge. Le label sono dominio-specifiche
 // (preventivi.*), quindi restano qui. La severity (codice colore) e' invece
 // centralizzata in core/utils/severity.js (`pricingOrigineSeverity`) e
@@ -246,8 +250,9 @@ const prezzoOrigineBadge = computed(() => {
 
 // Suggerimento prezzo via pricing resolver v5. Trigger: articolo + uom presenti
 // e prezzo non gia' valorizzato (rispetta override manuale dell'operatore).
-// Token pattern interno per scartare risposte stantie su selezioni veloci.
-let _resolverToken = 0
+// Token pattern interno (`_resolverToken`, dichiarato prima del watch sopra
+// per evitare TDZ sull'immediate fire) per scartare risposte stantie su
+// selezioni veloci.
 async function suggerisciPrezzo() {
   if (!props.preventivoId) return
   if (!form.value.articolo_id || !form.value.uom_operativa_id) return

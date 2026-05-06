@@ -38,6 +38,11 @@ finestra temporale di validità.
   `script.trgfn_set_validita()`;
 * non possono esistere due versioni `attivo = true` e `stato = 'PUBBLICATA'`
   con intervalli temporali sovrapposti per lo stesso template.
+* la pubblicazione operativa usa
+  `documenti.fn_pubblica_template_documento_versione(...)`: la funzione chiude
+  a `nuovo.valido_dal - 1` le versioni `PUBBLICATA` precedenti sovrapposte,
+  le porta a `OBSOLETA` e poi pubblica la nuova `BOZZA` nella stessa
+  transazione DB.
 
 ---
 

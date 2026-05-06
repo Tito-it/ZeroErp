@@ -12,15 +12,15 @@
 //         2) entry qui;
 //         3) chiave i18n `documenti.context_builders.<CODE>`.
 //
-//        v1: solo PREVENTIVO e' registrato lato BE (Tranche J).
-//        CONTRATTO/ORDINE sono placeholder per coerenza UX (la
+//        v1: PREVENTIVO e CONTRATTO sono registrati lato BE.
+//        ORDINE resta placeholder per coerenza UX (la
 //        creazione template con builder non registrato sara' rifiutata
 //        dal BE alla generazione documento, Decisione 18+74).
 // ------------------------------------------------------------
 
 export const CONTEXT_BUILDER_CODES = [
   { code: 'PREVENTIVO', i18nKey: 'documenti.context_builders.PREVENTIVO', registered: true },
-  { code: 'CONTRATTO',  i18nKey: 'documenti.context_builders.CONTRATTO',  registered: false },
+  { code: 'CONTRATTO',  i18nKey: 'documenti.context_builders.CONTRATTO',  registered: true },
   { code: 'ORDINE',     i18nKey: 'documenti.context_builders.ORDINE',     registered: false },
 ]
 
