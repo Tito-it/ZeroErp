@@ -22,7 +22,9 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
+import DocumentiGeneratiSorgenteList from '../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
+import ContrattoPdfButton from './ContrattoPdfButton.vue'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
@@ -498,6 +500,11 @@ function onClose() {
                 size="small" outlined
                 class="app-escape"
                 @click="onCambiaStato(action)" />
+              <ContrattoPdfButton
+                :contratto-id="props.contrattoId"
+                :stato-codice="detail.stato_codice"
+                :numero="detail.numero"
+              />
             </div>
           </div>
         </div>
@@ -689,6 +696,16 @@ function onClose() {
             outlined class="app-manage-btn"
             @click="righeVisible = true" />
           <span class="text-color-secondary">{{ detail.righe?.length || 0 }} {{ t('contratti.righe_count_label') }}</span>
+        </div>
+      </template>
+
+      <template v-if="isEdit && detail && detail.stato_codice !== 'DRAFT'">
+        <h4 class="mt-3">{{ t('contratti.pdf.section_documenti') }}</h4>
+        <div class="app-escape">
+          <DocumentiGeneratiSorgenteList
+            sorgente-code="CONTRATTO"
+            :sorgente-id="props.contrattoId"
+          />
         </div>
       </template>
 

@@ -17,7 +17,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useTabEvents } from '../../core/composables/useTabEvents'
-import { preventivoDocumenti } from '../api/documentiPerSorgente'
+import { contrattoDocumenti, preventivoDocumenti } from '../api/documentiPerSorgente'
 
 const STORE_NAME = 'documenti-per-sorgente'
 const EMIT_KEY = 'documenti_per_sorgente'
@@ -28,6 +28,7 @@ const EMIT_KEY = 'documenti_per_sorgente'
 //        riutilizzare lo store senza modifiche al componente FE.
 const SORGENTE_CLIENT_MAP = {
   PREVENTIVO: preventivoDocumenti,
+  CONTRATTO: contrattoDocumenti,
 }
 
 export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {

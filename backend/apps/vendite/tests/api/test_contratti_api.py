@@ -24,6 +24,8 @@ Indice test eseguiti:
 14) test_delete_riga_ok
 15) test_post_utility_ok
 16) test_patch_utility_ok
+17) test_post_documento_anteprima_ok
+18) test_get_documenti_list_ok
 """
 
 import json
@@ -38,6 +40,9 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _SVC = "apps.vendite.api.views_contratti.ContrattiService"
+_DOC_SVC = "apps.vendite.api.contratti_documenti_views.DocumentGenerationService"
+_DOC_REPO = "apps.vendite.api.contratti_documenti_views.DocumentiRepository"
+_CONTRATTI_REPO = "apps.vendite.api.contratti_documenti_views.ContrattiRepository"
 _BASE = "/api/v1/vendite/contratti/"
 
 
@@ -130,6 +135,74 @@ class TestRighePreview(_BaseApiTest):
         self.assertEqual(body["modalita"], "A")
         self.assertEqual(len(body["righe"]), 1)
         self.assertEqual(body["righe"][0]["origine"], "DA_LISTINO")
+
+
+class TestDocumentiContratto(_BaseApiTest):
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_DOC_SVC)
+    @patch(_DOC_REPO)
+    @patch(_CONTRATTI_REPO)
+    def test_post_documento_anteprima_ok(self, repo_cls, doc_repo_cls, svc_cls, _auth):
+        repo_cls.return_value.get_for_documento_generation.return_value = {
+            "id": 7,
+            "uid": "0190b000-0000-0000-0000-000000000007",
+            "emittente_fiscale_id": 11,
+        }
+        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+            "id": 4,
+            "codice": "CONTRATTO",
+            "attivo": True,
+        }
+        svc_cls.return_value.anteprima_documento.return_value = {
+            "pdf_bytes": b"%PDF",
+            "nome_file": "contratto-CNT0000007.pdf",
+            "size_bytes": 4,
+            "mime_type": "application/pdf",
+        }
+
+        resp = self.client.post(
+            _BASE + "7/documenti/anteprima/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "application/pdf")
+        kwargs = svc_cls.return_value.anteprima_documento.call_args.kwargs
+        self.assertEqual(kwargs["emittente_fiscale_id"], 11)
+        self.assertEqual(kwargs["sorgente_tipo_id"], 4)
+        self.assertEqual(kwargs["sorgente_id"], 7)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_DOC_SVC)
+    @patch(_DOC_REPO)
+    @patch(_CONTRATTI_REPO)
+    def test_get_documenti_list_ok(self, repo_cls, doc_repo_cls, svc_cls, _auth):
+        repo_cls.return_value.get_for_documento_generation.return_value = {
+            "id": 7,
+            "uid": "0190b000-0000-0000-0000-000000000007",
+            "emittente_fiscale_id": 11,
+        }
+        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+            "id": 4,
+            "codice": "CONTRATTO",
+            "attivo": True,
+        }
+        svc_cls.return_value.list_documenti_per_sorgente.return_value = {
+            "results": [{"id": 1, "nome_file": "contratto.pdf"}],
+            "total_count": 1,
+        }
+
+        resp = self.client.get(_BASE + "7/documenti/?page=2&page_size=10")
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()["data"]
+        self.assertEqual(body["page"], 2)
+        self.assertEqual(body["page_size"], 10)
+        self.assertEqual(body["total_count"], 1)
+        kwargs = svc_cls.return_value.list_documenti_per_sorgente.call_args.kwargs
+        self.assertEqual(kwargs["sorgente_tipo_id"], 4)
+        self.assertEqual(kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000007")
 
 
 class TestPost(_BaseApiTest):

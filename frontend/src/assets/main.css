@@ -237,6 +237,16 @@ a {
   font-size: var(--app-font-size-base);
 }
 
+.app-form-select.p-select {
+  min-height: 2.5rem;
+  align-items: center;
+}
+
+.app-form-select.p-select .p-select-label {
+  display: flex;
+  align-items: center;
+}
+
 .form-grid {
   display: flex;
   flex-direction: column;

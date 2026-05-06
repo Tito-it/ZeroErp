@@ -7,6 +7,12 @@
 
 from django.urls import path
 
+from apps.vendite.api.contratti_documenti_views import (
+    ApiContrattoDocumentiList,
+    ApiContrattoDocumentoAnteprima,
+    ApiContrattoDocumentoFile,
+    ApiContrattoDocumentoGenera,
+)
 from apps.vendite.api.views_contratti import (
     ApiContrattiList,
     ApiContrattoCambiaStato,
@@ -53,5 +59,26 @@ urlpatterns = [
         "<int:contratto_id>/utility/",
         ApiContrattoUtility.as_view(),
         name="vendite-contratto-utility",
+    ),
+    # Documenti generati dal contratto.
+    path(
+        "<int:contratto_id>/documenti/",
+        ApiContrattoDocumentiList.as_view(),
+        name="vendite-contratti-documenti-list",
+    ),
+    path(
+        "<int:contratto_id>/documenti/genera/",
+        ApiContrattoDocumentoGenera.as_view(),
+        name="vendite-contratti-documenti-genera",
+    ),
+    path(
+        "<int:contratto_id>/documenti/anteprima/",
+        ApiContrattoDocumentoAnteprima.as_view(),
+        name="vendite-contratti-documenti-anteprima",
+    ),
+    path(
+        "<int:contratto_id>/documenti/<int:documento_id>/file/",
+        ApiContrattoDocumentoFile.as_view(),
+        name="vendite-contratti-documenti-file",
     ),
 ]

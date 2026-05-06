@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
@@ -573,15 +574,7 @@ class TemplateVersioniAdminService:
             "margin_top_mm", "margin_right_mm", "margin_bottom_mm", "margin_left_mm",
         ):
             if key in payload:
-                v = payload[key]
-                if not isinstance(v, (int, float)) or isinstance(v, bool) or v < 0:
-                    ErrorManager.raise_error(
-                        code=E_VALIDATION,
-                        message=f"Margine '{key}' non valido.",
-                        detail=f"atteso numero non negativo, ricevuto {v!r}",
-                    )
-                    raise  # unreachable
-                data[key] = v
+                data[key] = _coerce_non_negative_number(payload[key], field=key)
         if "valido_dal" in payload:
             data["valido_dal"] = self._v.optional_date(payload, "valido_dal")
         if "valido_al" in payload:
@@ -623,3 +616,37 @@ class TemplateVersioniAdminService:
                 detail=f"ammessi={sorted(whitelist)!r} ricevuto={value!r}",
             )
             raise  # unreachable
+
+
+def _coerce_non_negative_number(value: Any, *, field: str) -> int | float:
+    if isinstance(value, bool):
+        _raise_invalid_margin(field, value)
+    if isinstance(value, int):
+        if value < 0:
+            _raise_invalid_margin(field, value)
+        return value
+    if isinstance(value, float):
+        if value < 0:
+            _raise_invalid_margin(field, value)
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            _raise_invalid_margin(field, value)
+        try:
+            parsed = Decimal(raw)
+        except (InvalidOperation, ValueError):
+            _raise_invalid_margin(field, value)
+        if parsed < 0:
+            _raise_invalid_margin(field, value)
+        return float(parsed)
+    _raise_invalid_margin(field, value)
+
+
+def _raise_invalid_margin(field: str, value: Any) -> None:
+    ErrorManager.raise_error(
+        code=E_VALIDATION,
+        message=f"Margine '{field}' non valido.",
+        detail=f"atteso numero non negativo, ricevuto {value!r}",
+    )
+    raise  # unreachable

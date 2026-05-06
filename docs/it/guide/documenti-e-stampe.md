@@ -125,7 +125,7 @@ Una versione può trovarsi in uno di tre stati:
 
 Regola chiave: **una versione pubblicata è immutabile**. Non si modifica un template già in produzione — si crea una nuova versione. Questo garantisce che i PDF generati in passato siano sempre ricostruibili a partire dalla stessa definizione di layout.
 
-Per lo stesso template, una sola versione può essere pubblicata nel medesimo periodo di validità.
+Per lo stesso template, una sola versione può essere pubblicata nel medesimo periodo di validità. Quando si pubblica una nuova versione con decorrenza successiva, il comando DB di pubblicazione chiude automaticamente la versione pubblicata precedente al giorno prima della nuova decorrenza e la porta a `OBSOLETA`.
 
 ### 2.4 Asset aziendali
 

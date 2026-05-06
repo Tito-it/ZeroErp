@@ -16,3 +16,4 @@
 - [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — Reset tecnico lotto DRAFT tramite wrapper Django.
 - [fn_reset_lotto_fattura_draft](manual/fn_reset_lotto_fattura_draft.md) — Reset tecnico singola fattura in lotto DRAFT tramite wrapper Django.
 - [api_reset_lotto_fattura_draft](manual/api_reset_lotto_fattura_draft.md) — Endpoint reset singola fattura in lotto DRAFT.
+- [template_contratto_iniziale](manual/template_contratto_iniziale.md) — Template HTML iniziale per la generazione PDF di un contratto commerciale tramite context builder CONTRATTO.

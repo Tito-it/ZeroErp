@@ -1441,7 +1441,17 @@
     "tipo_variazione_valore_fisso": "Fixed value",
     "tipo_erogazione_canone": "Subscription",
     "tipo_erogazione_consumo": "Consumption",
-    "tipo_erogazione_una_tantum": "One-off"
+    "tipo_erogazione_una_tantum": "One-off",
+    "pdf": {
+      "section_documenti": "Contract documents",
+      "label_anteprima": "Preview",
+      "tooltip_anteprima": "Preview PDF (not saved)",
+      "label_scarica": "Download PDF",
+      "tooltip_scarica": "Download a generated PDF",
+      "tooltip_lista": "PDF documents",
+      "tooltip_lista_disabilitato": "Available after contract activation",
+      "dialog_title": "PDF documents — Contract {numero}"
+    }
   },
   "vendite": {
     "promo_articoli": {
@@ -2022,7 +2032,7 @@
   "documenti": {
     "context_builders": {
       "PREVENTIVO": "Quote",
-      "CONTRATTO": "Contract (not available)",
+      "CONTRATTO": "Contract",
       "ORDINE": "Order (not available)"
     },
     "genera_pdf": {
