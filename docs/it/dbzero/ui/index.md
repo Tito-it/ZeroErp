@@ -1,40 +1,17 @@
 # Schema `ui`
 
-Schema dedicato ai **metadati di presentazione** delle liste configurabili. Contiene esclusivamente strutture dati di UI (catalogo colonne, preset, preferenze utente, permessi a colonna) — zero logica di business.
-
-> Posizionamento: **Anello 1** dello sviluppo concentrico (infrastruttura condivisa trasversale).  
-> Dipende da: `config.profili_accesso`, `config.livello_accesso`, `anagrafiche.emittenti_fiscali`, `django.auth_user`.
-
----
-
 ## 📚 Tabelle
-
-- [lista_definizione](tabelle/lista_definizione.md) — Catalogo delle liste configurabili del sistema. Una riga per lista personalizzabile (es. `anagrafiche.clienti`, `vendite.fatture`).
-- [lista_colonna](tabelle/lista_colonna.md) — Catalogo delle colonne disponibili per ciascuna lista. Definisce tipo dato, comportamento (filtrabile, ordinabile, esportabile), sensibilità e raggruppamento.
-- [lista_preset](tabelle/lista_preset.md) — Configurazioni predefinite per le liste a tre livelli: sistema (globale), emittente_fiscale (per società), ruolo (per profilo di accesso).
-- [lista_preset_colonna](tabelle/lista_preset_colonna.md) — Composizione di un preset: quali colonne, in che ordine, con che larghezza e visibilità di default.
-- [lista_preferenza_utente](tabelle/lista_preferenza_utente.md) — Preferenza personale dell'utente per una lista. Un record per coppia (utente, lista); sovrascrive la cascata dei preset.
-- [lista_colonna_permesso](tabelle/lista_colonna_permesso.md) — Controllo accesso a livello di singola colonna per profilo di accesso. Supporta modello deny-list (non sensibili) e allow-list (sensibili).
-
----
+- [lista_colonna](tabelle/lista_colonna.md) — * **Catalogo completo** delle colonne disponibili per ogni lista. Il frontend usa questa tabella per popolare la modale di personalizzazione e per applicare la formattazione corretta (`tipo_dato`, `formato`). * **Controllo comportamento**: i flag `filtrabile`, `ordinabile`, `esportabile`, `ricercabile_full` determinano quali operazioni sono ammesse su ciascuna colonna, indipendentemente dalla preferenza utente. * **Modello di accesso a colonna**: il flag `sensibile` inverte il modello permessi per quella colonna. Quando `FALSE` (default) si usa un modello deny-list (accesso totale salvo restrizioni esplicite); quando `TRUE` si usa allow-list (bloccata di default salvo grant esplicito in `lista_colonna_permesso`). * **Validazione sorgente**: `campo_sorgente` è validato dal trigger guard `trgfn_ui_lista_colonna_a10_valida_campo_sorgente` contro `pg_catalog.pg_attribute`, prevenendo errori runtime alla prima apertura della lista.
+- [lista_colonna_permesso](tabelle/lista_colonna_permesso.md) — * **Permessi granulari per colonna**: permettere che determinate colonne (es. dati personali, margini, condizioni commerciali) siano invisibili o non esportabili per specifici profili di accesso. * **Integrazione con il sistema permessi**: riusa `config.profili_accesso` e la risoluzione tramite `fn_get_profili_accesso_applicabili`, evitando logiche duplicate. I profili hanno priorità (AD_HOC=1 prevale su REPARTO=2). * **Due modelli distinti per colonna**: il comportamento dipende dal flag `lista_colonna.sensibile`:   * `sensibile=FALSE` → **deny-list**: assenza di riga = accesso pieno. Si scrivono solo le restrizioni.   * `sensibile=TRUE` → **allow-list**: assenza di riga = bloccata di default. Si scrivono i grant espliciti.
+- [lista_definizione](tabelle/lista_definizione.md) — * **Registro centralizzato** delle liste che il sistema espone come personalizzabili. Il frontend interroga questa tabella per sapere quali liste supportano la personalizzazione di colonne, filtri e ordinamento. * **Identificatore stabile** tramite `codice`: stringa nel formato `<schema>.<entità>` (lista principale) o `<schema>.<entità>:<contesto>` per varianti (es. `:picker`, `:dashboard`). Usato da API e frontend senza dipendere dall'`id` numerico. * **Collegamento alla view sorgente** tramite `vista_sql`: nome della view PostgreSQL da cui la lista legge i dati. Validato a INSERT/UPDATE dal trigger guard `trgfn_ui_lista_definizione_a10_valida_vista_sql`, che impedisce di registrare una lista con una view inesistente.
+- [lista_preferenza_utente](tabelle/lista_preferenza_utente.md) — * **Personalizzazione individuale**: l'operatore può scegliere quali colonne vedere, in che ordine, con quale larghezza, ordinamento e filtri preimpostati. Questa preferenza è il livello massimo della cascata e sovrascrive qualsiasi preset. * **JSONB per resilienza**: la configurazione è in un unico campo JSONB invece di righe separate per colonna. Questo permette di leggere la preferenza sempre completa in una sola query e di aggiungere futuri attributi (es. vista compatta, raggruppamenti) senza alterare lo schema. * **Rilevamento preset obsoleto**: `preset_base_data_update` è uno snapshot di `lista_preset.data_update` al momento del salvataggio. Se `lista_preset.data_update > preset_base_data_update`, il preset su cui si basava la preferenza è stato aggiornato — il frontend può avvisare l'utente con un banner "Configurazione aggiornata disponibile".
+- [lista_preset](tabelle/lista_preset.md) — * **Configurazione multi-livello**: un preset può essere di sistema (default globale), di emittente fiscale (override per società) o di ruolo (override per profilo di accesso). La cascata di risoluzione è gestita da `fn_resolve_lista_config`. * **Preset di default**: il flag `is_default = TRUE` indica quale preset applicare automaticamente per un dato livello. Il UNIQUE INDEX parziale su `is_default = TRUE` garantisce un unico preset di default per combinazione `(lista, ambito, profilo, emittente)`. * **Configurazione completa**: il preset non definisce solo le colonne (in `lista_preset_colonna`) ma anche ordinamento di default (`ordinamento_default` JSONB), filtri preimpostati (`filtri_default` JSONB) e dimensione pagina (`pagina_dimensione`).
+- [lista_preset_colonna](tabelle/lista_preset_colonna.md) — * **Composizione del preset**: ogni riga indica che la colonna `colonna_id` fa parte del preset `preset_id`, con il proprio ordinamento e larghezza personalizzata. * **Pool disponibile vs visibile di default**: `visibile = FALSE` significa che la colonna è nel pool (appare nella modale di personalizzazione come selezionabile) ma non è mostrata nella lista di default. Permette preset con 30 colonne nel pool ma solo 8 visibili. * **Colonne fissate**: `fissata = TRUE` indica colonne frozen (non scorrono orizzontalmente). Tipico per la colonna identificatore o nome.
 
 ## ⚙️ Funzioni
+- [fn_resolve_lista_config](funzioni/fn_resolve_lista_config.md) — Punto centrale di risoluzione della configurazione di una lista per un utente. Applica la cascata di preset, il merge automatico delle colonne nuove, la normalizzazione delle colonne obbligatorie e il filtro autorizzativo a livello colonna. Restituisce un JSONB pronto per il frontend, senza logica di business lato applicazione.
+- [trgfn_ui_lista_colonna_a10_valida_campo_sorgente](funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente.md) — Guard BEFORE INSERT/UPDATE su `ui.lista_colonna`: verifica che `campo_sorgente` esista come attributo della view indicata da `lista_definizione.vista_sql` in `pg_catalog.pg_attribute`. Previene typo nel nome della colonna che causerebbero errori runtime alla prima apertura della lista.
+- [trgfn_ui_lista_definizione_a10_valida_vista_sql](funzioni/trgfn_ui_lista_definizione_a10_valida_vista_sql.md) — Guard BEFORE INSERT/UPDATE su `ui.lista_definizione`: verifica che `vista_sql` esista come relazione (view, materialized view o tabella) in `pg_catalog.pg_class` prima di permettere il salvataggio. Previene typo nel nome della view che causerebbero errori runtime alla prima apertura della lista.
+- [trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts](funzioni/trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts.md) — Mantiene la coerenza tra `preset_base_id` e `preset_base_data_update` nella tabella `ui.lista_preferenza_utente`. Quando `preset_base_id` diventa NULL (per `ON DELETE SET NULL` dalla FK o per UPDATE diretto), azzera automaticamente anche `preset_base_data_update`.
 
-- [fn_resolve_lista_config](funzioni/fn_resolve_lista_config.md) — Punto centrale di risoluzione della configurazione lista per un utente: applica cascata preset, merge nuove colonne, normalizzazione obbligatorie e filtro autorizzativo. Ritorna JSONB pronto per il frontend.
-- [trgfn_ui_lista_definizione_a10_valida_vista_sql](funzioni/trgfn_ui_lista_definizione_a10_valida_vista_sql.md) — Guard BEFORE INSERT/UPDATE: verifica che `vista_sql` esista come relazione in `pg_catalog.pg_class`.
-- [trgfn_ui_lista_colonna_a10_valida_campo_sorgente](funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente.md) — Guard BEFORE INSERT/UPDATE: verifica che `campo_sorgente` esista come attributo della view nella `pg_catalog.pg_attribute`.
-
----
-
-## 🔡 ENUM di dominio
-
-| ENUM | Valori | Usato in |
-|------|--------|----------|
-| `ui.ambito_preset` | `sistema`, `emittente_fiscale`, `ruolo` | `lista_preset.ambito` |
-| `ui.tipo_colonna` | `identificatore`, `informazione`, `azione` | `lista_colonna.tipo_colonna` |
-| `ui.tipo_dato` | `string`, `numeric`, `date`, `datetime`, `boolean`, `enum` | `lista_colonna.tipo_dato` |
-| `ui.allineamento_colonna` | `left`, `right`, `center` | `lista_colonna.allineamento` |
-
----
-
-{% include-markdown "signature-core.md" %}
+## 🔍 Views

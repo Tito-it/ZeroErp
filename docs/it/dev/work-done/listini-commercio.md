@@ -12,7 +12,7 @@
 > - le promo sono dominio dedicato (`promo_articoli`, STADIO 0 resolver)
 > - scaglioni/formula e valuta multipla restano backlog v6+ (vedi `sviluppo-listini-v6.md`)
 >
-> **Nuovi sviluppi listini vanno tracciati in** [sviluppo-listini-v5.md](../work-in-progress/sviluppo-listini-v5) — vedi §14 "Sprint 22-04-2026 — Completamento v5".
+> **Nuovi sviluppi listini vanno tracciati in** [sviluppo-listini-v5.md](sviluppo-listini-v5) — vedi §14 "Sprint 22-04-2026 — Completamento v5".
 >
 > Questo documento resta come storico della decisione architetturale "invariante B"
 > (univocità per scope con autoclose) che ha preceduto e ispirato v5.

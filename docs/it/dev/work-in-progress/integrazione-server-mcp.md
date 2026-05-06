@@ -2,7 +2,7 @@
 
 > **Destinatari:** sviluppatori backend, architetti, analisti funzionali
 >
-> **Prerequisiti:** [Guida Integrazione AI](/dev/integrazione-ai), [Guida Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni), [API](/dev/api)
+> **Prerequisiti:** [Guida Integrazione AI](/dev/work-done/integrazione-ai), [Guida Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni), [API](/dev/api)
 >
 > **Stato:** Work in Progress — valutazione architetturale, non ancora pianificato in roadmap
 >
@@ -11,7 +11,7 @@
 > `backend/apps/ai_assistant/` (riuso logica tool esistente)
 >
 > **Documenti correlati:**
-> [integrazione-ai.md](/dev/integrazione-ai) — architettura AI Assistant interno (implementato, Anello 4)
+> [integrazione-ai.md](/dev/work-done/integrazione-ai) — architettura AI Assistant interno (implementato, Anello 4)
 
 ---
 

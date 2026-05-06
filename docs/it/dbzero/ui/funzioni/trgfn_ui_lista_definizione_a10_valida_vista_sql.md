@@ -1,19 +1,20 @@
 {% include-markdown "it/dbzero/ui/manual/trgfn_ui_lista_definizione_a10_valida_vista_sql.md" %}
-
 # ⚙️ Funzione `trgfn_ui_lista_definizione_a10_valida_vista_sql`
 
 ```sql
-CREATE FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()
-RETURNS trigger
+CREATE FUNCTION trgfn_ui_lista_definizione_a10_valida_vista_sql()
 ```
 
 **Definizione completa:**
 
 ```sql
 CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $fn$
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+-- Scopo: verifica che NEW.vista_sql esista come relazione (view o table)
+-- in pg_catalog prima di permettere INSERT/UPDATE su lista_definizione.
+-- Skip se vista_sql e' NULL o se attivo=FALSE (lista disattivata).
 DECLARE
   v_relazione_esiste BOOLEAN;
 BEGIN
@@ -29,6 +30,7 @@ BEGIN
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
      WHERE c.relname = NEW.vista_sql
        AND c.relkind IN ('v', 'm', 'r')
+       -- v=view, m=materialized view, r=table (raro ma ammesso)
   ) INTO v_relazione_esiste;
 
   IF NOT v_relazione_esiste THEN
@@ -47,20 +49,10 @@ BEGIN
 
   RETURN NEW;
 END;
-$fn$;
+$function$
 
 COMMENT ON FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()
 IS 'Guard INSERT/UPDATE: verifica esistenza di vista_sql in pg_catalog. Skip se NULL o attivo=FALSE.';
-```
-
-**Trigger associato:**
-
-```sql
-CREATE TRIGGER trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd
-  BEFORE INSERT OR UPDATE OF vista_sql, attivo
-  ON ui.lista_definizione
-  FOR EACH ROW
-  EXECUTE FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql();
 ```
 
 ---

@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-2: FK ui.lista_preferenza_utente.preset_base_id -> ON DELETE SET NULL.
+#
+# Why: preset_base_id e' un riferimento storico ("da dove sono partito").
+# L'attuale FK NO ACTION blocca la cancellazione di un preset se esiste
+# anche una sola preferenza utente che lo referenzia. Con ON DELETE SET NULL
+# la preferenza JSONB (configurazione) rimane intatta; solo il puntatore
+# storico viene azzerato. E' il contratto corretto.
+# In 00_schema non si puo' usare ON DELETE SET NULL perche' ui.lista_preset
+# non esiste ancora a quel punto dell'apply (la FK e' gia' in 00_schema ma
+# senza l'opzione). Questo changeset e' in 90_end per coerenza con il pattern
+# FK tardive (stesso motivo del 20260506-08).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260507-02-alter-fk-ui-preferenza-preset-on-delete-set-null-mctit.yaml
+
+  - changeSet:
+      id: 20260507-02-01-alter-fk-ui-preferenza-preset-on-delete-set-null
+      author: mctit
+      comment: "DB-2: FK preset_base_id -> ON DELETE SET NULL (riferimento storico, non distruttivo)"
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: lista_preferenza_utente
+        - foreignKeyConstraintExists:
+            schemaName: ui
+            foreignKeyName: fk_lista_preferenza_utente_lista_preset
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.lista_preferenza_utente
+                DROP CONSTRAINT fk_lista_preferenza_utente_lista_preset;
+
+              ALTER TABLE ui.lista_preferenza_utente
+                ADD CONSTRAINT fk_lista_preferenza_utente_lista_preset
+                FOREIGN KEY (preset_base_id)
+                REFERENCES ui.lista_preset(id)
+                ON DELETE SET NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE ui.lista_preferenza_utente
+                DROP CONSTRAINT IF EXISTS fk_lista_preferenza_utente_lista_preset;
+
+              ALTER TABLE ui.lista_preferenza_utente
+                ADD CONSTRAINT fk_lista_preferenza_utente_lista_preset
+                FOREIGN KEY (preset_base_id)
+                REFERENCES ui.lista_preset(id);

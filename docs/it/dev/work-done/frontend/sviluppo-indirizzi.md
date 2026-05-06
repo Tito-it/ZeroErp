@@ -9,7 +9,7 @@
 > * [Architettura Building Block](componenti-riutilizzabili.md) — building block riutilizzabili (Sprint 3)
 > * [Guida Gestione degli Indirizzi](/guide/gestione-degli-indirizzi) — regole e modello dati
 > * [Guida Soggetti e Ruoli Anagrafici](/guide/soggetti-e-ruoli-anagrafici)
-> * [Guida Sviluppo Frontend](guida-sviluppo-frontend.md) — convenzioni componenti e CSS
+> * [Guida Sviluppo Frontend](../../work-in-progress/frontend/guida-sviluppo-frontend.md) — convenzioni componenti e CSS
 > * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — sistema permessi
 >
 > Riferimenti DB:

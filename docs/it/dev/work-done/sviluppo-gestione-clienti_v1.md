@@ -3,7 +3,7 @@
 > **SUPERATO** — Questo documento e' stato spostato e riorganizzato:
 >
 > * Parte completata: [sviluppo-gestione-clienti.md (work-done)](../work-done/sviluppo-gestione-clienti.md)
-> * Parte da fare: [sviluppo-gestione-clienti-v2.md](sviluppo-gestione-clienti-v2.md) — subentro, disdetta, billing account parent/child
+> * Parte da fare: [sviluppo-gestione-clienti-v2.md](../work-in-progress/sviluppo-gestione-clienti-v2.md) — subentro, disdetta, billing account parent/child
 >
 > Il contenuto sottostante e' conservato come riferimento storico.
 
