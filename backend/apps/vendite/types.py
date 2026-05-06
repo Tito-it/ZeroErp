@@ -189,6 +189,10 @@ class PreventivoDetailRow(TypedDict):
     totale_imponibile: str | None
     totale_iva: str | None
     totale_documento: str | None
+    emittente_fiscale_id: int | None
+    emittente_fiscale_codice: str | None
+    emittente_fiscale_descrizione: str | None
+    ba_ha_contratto_attivo: bool
     storicizza: bool
     meta: dict[str, Any]
     data_insert: str | None

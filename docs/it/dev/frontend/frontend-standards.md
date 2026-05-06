@@ -3,7 +3,7 @@
 > Questo documento definisce le regole di progettazione e sviluppo dell'interfaccia utente di ZeroERP.
 > È vincolante per qualsiasi contributo al frontend. Le deroghe devono essere documentate e motivate.
 >
-> Aggiornato: 15 marzo 2026
+> Aggiornato: 4 maggio 2026
 >
 > Vedi anche:
 >
@@ -74,7 +74,7 @@ Le regole di consistenza sono:
 
 1. **Un solo modo di fare ogni cosa** — lista, form, filtri, paginazione, notifiche
 2. **Stesso layout ovunque** — toolbar + tabella + drawer, senza varianti
-3. **Stessi componenti ovunque** — `NewButton`, `DrawerFooter`, `useSearchTable`, Tag per stati
+3. **Stessi componenti ovunque** — `PageActionsBar`, `RowActionsMenu`, `DrawerFooter`, `useSearchTable`, Tag per stati
 4. **Stesse classi CSS ovunque** — `app-page`, `app-datatable`, `form-grid`, mai CSS scoped per layout
 5. **Nessun testo hardcoded** — tutto via `$t()`, sempre
 6. **Modifiche al pattern devono essere globali** — se cambi il paginator, cambi `useSearchTable` una volta e tutte le liste si aggiornano
@@ -154,7 +154,7 @@ Ogni schermata di elenco segue questo schema fisso:
 - **Paginazione SOPRA** la tabella (`paginatorPosition: 'top'`)
 - **Indicatore pagina**: `1/5` con JumpToPageDropdown per salto diretto
 - **Font compatto** sul paginator (`0.8rem`)
-- **Pulsante Nuovo**: componente `NewButton` — label fisso `$t('common.new')`, tooltip contestuale
+- **Azioni pagina/lista**: building block `PageActionsBar` — refresh, nuovo e azioni utility/secondarie con comportamento responsive unico
 - **Click riga** → apre drawer in edit (modifica = interazione principale)
 - **Colonna azioni** riservata alle **azioni secondarie** (apri sub-drawer, disattiva, ecc.) — mai mettere la modifica tra le azioni: e' il click riga. Vedi sotto "Colonna azioni di riga".
 - **Filtri** sopra la tabella nella toolbar, flex-wrap per responsive
@@ -382,11 +382,18 @@ onMounted(() => {
 Ogni SearchTable che mostra dati con data di apertura/creazione deve avere il filtro data:
 
 - **Due DatePicker**: "Dal" (`data_da`) e "Al" (`data_a`) nella toolbar filtri
-- **Default `data_da`**: 1 gennaio dell'anno corrente - 1 (es. `2025-01-01` se oggi e' `2026-03-29`)
+- **Default `data_da` solo frontend**: 1 gennaio dell'anno corrente - 1 (es. `2025-01-01` se oggi e' `2026-03-29`)
 - **`data_a`**: null (nessun limite superiore di default)
 - Il filtro si applica su `data_insert` (o colonna data apertura dedicata se esiste)
-- Backend: `WHERE data_insert >= data_da::date AND data_insert < (data_a::date + INTERVAL '1 day')`
+- Backend: applica `WHERE data_insert >= data_da::date AND data_insert < (data_a::date + INTERVAL '1 day')`
+  **solo se i parametri arrivano dalla request**; non deve applicare default temporali impliciti
 - Il tiebreaker `id` nell'ORDER BY garantisce paginazione deterministica
+
+Il default temporale e' una scelta UX, non una regola backend. Va impostato nello
+store/componente solo quando il filtro e' visibile nella toolbar tramite DatePicker:
+l'operatore deve poter vedere, modificare o cancellare il valore che limita la lista.
+Se una lista non espone i DatePicker `data_da`/`data_a`, non deve inviare `data_da`
+di default e il backend non deve inventarlo.
 
 **Implementazione nello store:**
 
@@ -469,7 +476,9 @@ Usato da: `DrawerFooter` (Ctrl+S salva).
 | `app-page-toolbar`         | Contenitore filtri + azione       | Flex row, space-between                                                    |
 | `app-page-filters`         | Gruppo filtri                     | Flex wrap                                                                  |
 | `app-datatable`            | DataTable                         | Font compatto, padding ridotto, stripe, hover                              |
-| `app-page-action`          | Pulsanti azione (via `NewButton`) | Responsive: solo icona su mobile                                           |
+| `app-page-action`          | Pulsanti azione primaria/utility generati da `PageActionsBar` | Responsive gestito dal building block |
+| `app-page-actions-desktop` | Interno `PageActionsBar`          | Wrapper azioni utility inline desktop                                      |
+| `app-page-actions-compact` | Interno `PageActionsBar`          | Wrapper kebab popup su touch/tablet/mobile                                 |
 | `app-col-actions`          | `<Column>` azioni di riga         | Larghezza auto su desktop, 60px su tablet/touch (media query `<=1024px`)   |
 | `app-row-actions-inline`   | Interno `RowActionsMenu`          | Wrapper pulsanti inline — visibile solo con hover + viewport `>=1024px`    |
 | `app-row-actions-compact`  | Interno `RowActionsMenu`          | Wrapper kebab + menu popup — visibile su touch o viewport `<1024px`        |
@@ -593,7 +602,7 @@ form dettaglio sotto — tutto nello stesso drawer, zero drawer annidati.
 1. **Drawer largo**: usare `DRAWER_WIDTH.WIDE` (960px) per dare spazio alla lista + form
 2. **Intestazione contesto**: in alto mostrare sempre i dati del parent (numero, cliente, stato, date). L'operatore deve sapere dove si trova senza tornare indietro. Tag stato allineato a destra
 3. **Paginazione**: `paginator` con `rows="10"` e `rows-per-page-options="[10, 25]"`, `paginator-position="top"`, `data-key="id"`
-4. **Pulsante Nuovo**: usare `NewButton` (componente standard), posizionato in alto a destra sopra la tabella come nelle liste principali
+4. **Azioni toolbar**: usare `PageActionsBar`; l'azione "Nuovo/Aggiungi" e' `kind: 'primary'`
 5. **Selezione riga**: `selection-mode="single"` + `v-model:selection`. Click riga popola il form in edit mode con `@row-select`
 6. **Form dettaglio**: visibile SOLO quando attivo (Nuovo o click riga). Nascosto di default. Titolo "Nuova riga" o "Modifica riga"
 7. **Articolo**: in create editabile (autocomplete), in edit disabled (immutabile)
@@ -612,7 +621,7 @@ Primo caso: `ContrattoRigheDrawer.vue` (righe contratto pricing v5).
 2. Adattare le colonne DataTable e i campi del form
 3. Passare le props contesto dal parent (numero/codice, cliente, stato, date)
 4. Collegare le API CRUD (add/update/delete) allo store o direttamente
-5. Mantenere `data-key="id"` + paginazione a 10 + `NewButton` + `@click.stop` sul cestino
+5. Mantenere `data-key="id"` + paginazione a 10 + `PageActionsBar` + `@click.stop` sul cestino
 
 ---
 
@@ -726,7 +735,7 @@ Ogni sotto-area che potrebbe essere usata in piu' di un contesto deve essere un 
 | Criterio | Collocazione | Esempio |
 | --- | --- | --- |
 | Entita' config condivisa (tabelle `config.*`) usata o potenzialmente usabile da 2+ domini | `core/components/` | ToponomasticaSearchTable, ComuniSearchTable, ProvinceDrawer |
-| Componente di layout, form o UI generico | `core/components/` | NewButton, DrawerFooter, SoggettoForm |
+| Componente di layout, form o UI generico | `core/components/` | PageActionsBar, DrawerFooter, SoggettoForm |
 | Logica specifica di un solo dominio | `<dominio>/components/` | IndirizzoDrawer (via nuova + stradario), UtentePermessiTab |
 
 **Eccezione documentata**: i componenti geografici (toponomastica, comuni, province, regioni, stati)
@@ -753,18 +762,52 @@ La checklist sopra resta il riferimento per decidere **dove** collocare un nuovo
 
 ---
 
-## Pulsante Nuovo — `NewButton`
+## Azioni Pagina — `PageActionsBar`
 
-Il pulsante di creazione ha un comportamento standard su tutte le schermate:
+Le azioni in alto a destra di liste, SearchTable e sub-liste devono passare da
+`PageActionsBar` (`src/core/components/PageActionsBar.vue`). Anche il caso
+semplice `refresh + nuovo` usa questo building block: evita varianti locali e
+mantiene gia' pronto il menu compatto quando si aggiunge una terza azione.
 
-```html
-<NewButton :tooltip="t('indirizzi.nuovo_indirizzo')" @click="drawer.openCreate" />
+```vue
+<script setup>
+import { computed } from 'vue'
+import PageActionsBar from '@/core/components/PageActionsBar.vue'
+import ReadonlyBadge from '@/core/components/ReadonlyBadge.vue'
+import { MANAGE_ICONS } from '@/core/constants'
+
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('dominio.nuovo_record'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
+</script>
+
+<PageActionsBar :actions="pageActions">
+  <template #suffix>
+    <ReadonlyBadge />
+  </template>
+</PageActionsBar>
 ```
 
-- **Label fisso**: `$t('common.new')` → "Nuovo" (mai personalizzare il label)
-- **Tooltip contestuale**: descrive l'azione specifica (es. "Nuovo Indirizzo", "Nuova Toponomastica")
-- **Icona**: `pi pi-plus`
-- **Responsive**: su tablet (< 1024px) mostra solo l'icona, il testo e' nel tooltip
+- Desktop: azione primaria visibile, utility inline, secondarie nel kebab.
+- Touch/tablet/mobile: azione primaria visibile, tutte le altre nel kebab.
+- `hideWhenReadonly: true` nasconde automaticamente l'azione in LETTURA.
+- `action` aggancia i permessi di processo tramite `auth.isActionAllowed`.
+- `label`, `tooltip` e menu popup devono essere multilingua (`it/en`).
 
 ---
 
@@ -1163,7 +1206,8 @@ I pulsanti strutturali (Nuovo, Salva, Annulla) sono centralizzati tramite **comp
 
 | Componente | Scopo |
 | --- | --- |
-| `NewButton` | Pulsante "Nuovo" nelle toolbar lista — responsive, controllo permessi |
+| `PageActionsBar` | Barra azioni pagina/lista — responsive, controllo permessi su action e menu compatto |
+| `NewButton` | Pulsante "Nuovo" specializzato legacy/non-toolbar |
 | `DrawerFooter` | Footer Salva/Annulla nei drawer — Ctrl+S, readonly-aware |
 
 ### Centralizzazione icone azioni riga (`constants.js`)
@@ -1257,7 +1301,7 @@ Le autorizzazioni utente prevedono tre livelli di accesso (`TUTTO`, `LETTURA`, `
 | Livello | Cosa controlla | Trigger FE | Enforcement BE |
 | --- | --- | --- | --- |
 | **Area** (schema DB) | Accesso all'intero dominio | `useReadonlyMode(schemaDb)` + route guard su `BLOCCATO` | `ZeroERPPermission` via `area_funzionale` |
-| **Azione processo** | Singola operazione (es. "genera fatture") | prop `action` su `NewButton` / `DrawerFooter` | `permission_codename` sulla view |
+| **Azione processo** | Singola operazione (es. "genera fatture") | `action` su `PageActionsBar` / `DrawerFooter` | `permission_codename` sulla view |
 | **Oggetto / model** (v2) | Singola entita' dentro un'area | `useReadonlyMode(schemaDb, modelName)` | `model_permission = (app_label, model_name)` sulla view |
 
 ### Composable `useReadonlyMode(schemaDb, modelName?)`
@@ -1311,13 +1355,18 @@ Ogni SearchTable con permessi livello oggetto segue questo schema:
 
 ```vue
 <script setup>
+import PageActionsBar from '@/core/components/PageActionsBar.vue'
 import ReadonlyBadge from '@/core/components/ReadonlyBadge.vue'
-import ReloadButton from '@/core/components/ReloadButton.vue'
-import NewButton from '@/core/components/NewButton.vue'
 import AccessoBloccatoPanel from '@/core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '@/core/composables/useReadonlyMode'
+import { MANAGE_ICONS } from '@/core/constants'
+import { computed } from 'vue'
 
 const isBlocked = useInjectBlocked()
+const pageActions = computed(() => [
+  { key: 'reload', kind: 'utility', label: t('common.reload_list'), icon: MANAGE_ICONS.RELOAD, command: reload },
+  { key: 'new', kind: 'primary', label: t('common.new'), tooltip: t('...'), icon: MANAGE_ICONS.ADD, hideWhenReadonly: true, command: () => emit('new') },
+])
 </script>
 
 <template>
@@ -1330,11 +1379,11 @@ const isBlocked = useInjectBlocked()
         <div class="app-page-filters">
           <!-- input search, filtri -->
         </div>
-        <div class="app-page-actions">
-          <ReadonlyBadge />
-          <ReloadButton @click="reload" />
-          <NewButton :tooltip="..." @click="emit('new')" />
-        </div>
+        <PageActionsBar :actions="pageActions">
+          <template #suffix>
+            <ReadonlyBadge />
+          </template>
+        </PageActionsBar>
       </div>
       <DataTable ... />
     </template>
@@ -1344,17 +1393,17 @@ const isBlocked = useInjectBlocked()
 
 **Regole operative liste**:
 
-- ❌ **mai** `<Button icon="pi pi-refresh" ...>` inline — sempre `<ReloadButton @click="reload" />`
+- ❌ **mai** `<Button icon="pi pi-refresh" ...>` inline — sempre `PageActionsBar`
 - ❌ **mai** badge testuale "Sola lettura" custom — sempre `<ReadonlyBadge />`
-- ✅ Ordine fisso in `app-page-actions`: `ReadonlyBadge → ReloadButton → NewButton`
+- ✅ Ordine standard: `PageActionsBar` con `ReadonlyBadge` nello slot `suffix`
 - ✅ `AccessoBloccatoPanel` sostituisce toolbar + DataTable (variante A, schermata protect). **Non** tenere toolbar visibile disabilitata.
-- ✅ `ReloadButton` si nasconde solo su `isBlocked` (serve anche in LETTURA); `NewButton` si nasconde su `isReadonly`; `ReadonlyBadge` si mostra solo su `isReadonly && !isBlocked`
+- ✅ Refresh resta visibile in LETTURA; le azioni con `hideWhenReadonly` si nascondono; `ReadonlyBadge` si mostra solo su `isReadonly && !isBlocked`
 
 ### Stato permessi → UI della lista
 
 Tabella riassuntiva di cosa vede l'operatore in base al livello risolto:
 
-| Livello | Toolbar | Filtri | ReloadButton | NewButton | ReadonlyBadge | Corpo lista |
+| Livello | Toolbar | Filtri | Refresh | Nuovo | ReadonlyBadge | Corpo lista |
 | --- | --- | --- | --- | --- | --- | --- |
 | TUTTO | visibile | attivi | visibile | visibile | nascosto | DataTable normale, Nuovo + modifica OK |
 | LETTURA | visibile | attivi | visibile | nascosto | visibile | DataTable, riga apre drawer in consultazione |
@@ -1503,8 +1552,7 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 - **Non creare varianti read-only** di componenti esistenti — usare la classe `.app-readonly` sul container
 - `DrawerTitle`: auto-include `ReadonlyBadge` a destra del titolo
 - `DrawerFooter`: Salva nascosto se readonly (`v-if="!isReadonly"`)
-- `NewButton`: si nasconde se readonly
-- `ReloadButton`: si nasconde solo se bloccato (livello oggetto)
+- `PageActionsBar`: nasconde le azioni con `hideWhenReadonly`, mantiene il refresh in LETTURA e usa il kebab su touch/tablet/mobile
 - `ReadonlyBadge`: visibile solo se readonly e non bloccato
 - `AccessoBloccatoPanel`: sostituisce il contenuto lista se bloccato (livello oggetto)
 - `DataTable` row-click: in sola lettura apre il drawer in modalita' consultazione (protect attivo)
@@ -1764,20 +1812,20 @@ Le azioni di processo controllano **singole operazioni** (es. "crea soggetto", "
 
 ```
 Livello 1: Area (TUTTO / LETTURA / BLOCCATO)  → sidebar + route guard + .app-readonly
-Livello 2: Azione processo (abilitata / negata) → prop action su NewButton / DrawerFooter
+Livello 2: Azione processo (abilitata / negata) → `action` su `PageActionsBar` / `DrawerFooter`
 ```
 
 ### Come funziona
 
 L'endpoint `/me/` ritorna `azioni_abilitate: { codename: boolean }` per tutte le azioni attive. Lo store `auth.js` espone `isActionAllowed(codename)`.
 
-I componenti `NewButton` e `DrawerFooter` accettano una prop opzionale `action`:
+I componenti `PageActionsBar` e `DrawerFooter` accettano una prop opzionale `action`:
 - Se **assente** (default): il componente funziona come prima (solo check readonly)
 - Se **presente**: il componente si nasconde se l'azione non e' abilitata
 
 ```vue
-<!-- Pulsante "Nuovo" visibile solo se l'azione e' abilitata -->
-<NewButton action="crea_soggetto" :tooltip="t('...')" @click="..." />
+// Azione "Nuovo" visibile solo se l'azione e' abilitata
+{ key: 'new', kind: 'primary', action: 'crea_soggetto', label: t('common.new'), command: onNew }
 
 <!-- Footer Salva visibile solo se l'azione e' abilitata -->
 <DrawerFooter action="modifica_soggetto" @save="..." @cancel="..." />
@@ -1787,7 +1835,7 @@ I componenti `NewButton` e `DrawerFooter` accettano una prop opzionale `action`:
 
 1. **DB**: inserire riga in `config.azioni_processo` (seed CSV)
 2. **Backend**: aggiungere `post_permission = "codename"` sulla view API
-3. **Frontend**: aggiungere prop `action="codename"` su `NewButton` o `DrawerFooter`
+3. **Frontend**: aggiungere `action: 'codename'` sull'azione `PageActionsBar` o prop `action` su `DrawerFooter`
 4. **Configurazione**: da Amm. Software → Profili reparto, abilitare per reparto
 
 ### Composable per casi avanzati
@@ -1827,7 +1875,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 13. Stato drawer da `useDrawerState` — mai `ref(false)` + `ref('create')` separati
 14. CSS layout da `main.css` — mai `<style scoped>` per layout form/pagina
 15. Sola lettura da classe `.app-readonly` sul container — mai componenti duplicati
-16. Azioni processo via prop `action` su `NewButton`/`DrawerFooter` — mai `v-if` manuali per permessi
+16. Azioni processo via `action` su `PageActionsBar`/`DrawerFooter` — mai `v-if` manuali per permessi
 17. `ConfirmDialog` solo globale in `App.vue` — mai dentro Drawer (interferenza overlay)
 
 ---
@@ -1863,8 +1911,9 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | --- | --- | --- | --- |
 | `DrawerTitle` | Titolo standard drawer: azione sx + entita' centrata + badge readonly auto | `action`, `title`, `icon` | Tutti i drawer |
 | `DrawerFooter` | Footer drawer con Annulla/Salva, auto-hide Salva in readonly | `loading`, `disabled`, `action`, `closeOnly` | Tutti i drawer |
-| `NewButton` | Pulsante "Nuovo" toolbar, auto-hide in readonly | `tooltip`, `action` | Tutte le SearchTable |
-| `ReloadButton` | Pulsante refresh toolbar, auto-hide solo se `isBlocked` (livello oggetto) | — | Tutte le SearchTable |
+| `PageActionsBar` | Barra azioni pagina/lista responsive. Gestisce azione primaria, utility inline desktop e kebab su touch/tablet/mobile | `actions`, `disabled`, `menuTooltip` | Tutte le SearchTable, liste config e sub-liste |
+| `NewButton` | Pulsante specializzato legacy/non-toolbar. Nelle liste usare `PageActionsBar` | `tooltip`, `action` | Casi puntuali fuori toolbar lista |
+| `ReloadButton` | Pulsante specializzato legacy/non-toolbar. Nelle liste usare `PageActionsBar` | — | Casi puntuali fuori toolbar lista |
 | `ReadonlyBadge` | Badge grigio "Sola lettura", auto-visibile se `isReadonly && !isBlocked`, responsive (icona-only su mobile) | — | Toolbar liste + `DrawerTitle` |
 | `AccessoBloccatoPanel` | Pannello sostitutivo "Accesso negato a questo elenco" per BLOCCATO oggetto | — | SearchTable con `v-if="isBlocked"` |
 | `RowActionsMenu` | Azioni di riga responsive: pulsanti inline su desktop, kebab `⋮` su tablet/touch. Se riceve `row` disabilita le azioni operative su record inattivi (`attivo=false` / `is_active=false`) salvo `allowWhenInactive` | `actions`, `row`, `tooltip`, `disabled`, `disableWhenInactive` | Tutte le SearchTable con azioni secondarie |
@@ -1962,10 +2011,10 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | Composable | Scopo | Usato da |
 | --- | --- | --- |
 | `useReadonlyMode` | Provider: derive isReadonly da permessi area + provide | View (SoggettiView, IndirizziView, ConfigTablePanel) |
-| `useInjectReadonly` | Consumer: inject isReadonly dal provider padre | NewButton, DrawerFooter, tutti i Drawer |
+| `useInjectReadonly` | Consumer: inject isReadonly dal provider padre | PageActionsBar, DrawerFooter, tutti i Drawer |
 | `useActionPermission` | Verifica se un'azione processo e' abilitata (computed reattivo) | Componenti dominio con logica condizionale avanzata |
 
-**Nota**: per i casi standard, usare la prop `action` su `NewButton`/`DrawerFooter` invece del composable diretto.
+**Nota**: per i casi standard, usare `action` su `PageActionsBar`/`DrawerFooter` invece del composable diretto.
 
 #### Ricerca universale
 

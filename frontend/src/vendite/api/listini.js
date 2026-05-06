@@ -107,6 +107,16 @@ export function resolvePrezzoV5(payload) {
   return api.post('/vendite/pricing/resolve/', payload)
 }
 
+// --- Diagnostica configurazione asset pricing v5 ---
+// Endpoint complementare al resolver: ispeziona la configurazione (BA,
+// contratto, matrice categoria→listino, promo) e ritorna una checklist
+// a stadi + azioni suggerite. Read-only, nessun side-effect. Stesso shape
+// payload del resolver (articolo, uom, ba, utility, data, classe_utenza,
+// emittente derivato dal JWT).
+export function diagnoseConfigurazionePricing(payload) {
+  return api.post('/vendite/pricing/diagnose/', payload)
+}
+
 // --- L2 limiti variazione prezzo per utente corrente ---
 // Ritorna { max_sconto_pct, max_maggiorazione_pct } risolti con cascata
 // user -> group -> emittente -> default. Usato dal FE per mostrare hint

@@ -1,18 +1,17 @@
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
 import { useEmailAccountsStore } from '../stores/emailAccounts'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import NewButton from '../../core/components/NewButton.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import EmailAccountDrawer from '../components/EmailAccountDrawer.vue'
 
@@ -23,6 +22,24 @@ const drawer = useDrawerState()
 const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'codice'
 })
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('amm.email_new_account'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => drawer.openCreate(),
+  },
+])
 
 useTabFreshness(store, TAB_ENTITIES.EMAIL_ACCOUNTS)
 
@@ -41,10 +58,7 @@ function onRowClick({ data }) {
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('common.search')" style="width: 250px;" />
       </div>
-      <div class="app-page-actions">
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('amm.email_new_account')" @click="drawer.openCreate()" />
-      </div>
+      <PageActionsBar :actions="pageActions" />
     </div>
 
     <DataTable

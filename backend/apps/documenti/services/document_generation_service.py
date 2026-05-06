@@ -569,16 +569,37 @@ class DocumentGenerationService:
             tipo_documento_output_id=tipo_documento_output_id,
             emittente_ids_scope=scope,
         )
-        ErrorManager.require(
-            row is not None,
-            code=E_NOT_FOUND,
-            message="Nessun template applicabile per la sorgente.",
-            detail=(
-                f"sorgente_tipo_id={sorgente_tipo_id} "
-                f"emittente_fiscale_id={emittente_fiscale_id} "
-                f"tipo_documento_output_id={tipo_documento_output_id!r}"
-            ),
-        )
+        if row is None:
+            # Discrimina due casi diversi (UX: il fix richiesto e' diverso).
+            # 1) esistono template per la coppia ma nessuno e' marcato default
+            #    -> messaggio "manca predefinito", admin attiva il flag
+            # 2) non esiste alcun template -> messaggio "carica template",
+            #    admin deve creare il record da capo
+            templates_no_default = self._repo.count_templates_attivi_no_default(
+                sorgente_tipo_id=sorgente_tipo_id,
+                emittente_fiscale_id=emittente_fiscale_id,
+                tipo_documento_output_id=tipo_documento_output_id,
+                emittente_ids_scope=scope,
+            )
+            if templates_no_default > 0:
+                message = (
+                    "Esistono template per questa sorgente/emittente, "
+                    "ma nessuno e' impostato come predefinito. "
+                    "Marcare un template come 'predefinito' per renderlo applicabile."
+                )
+            else:
+                message = "Nessun template applicabile per la sorgente."
+            ErrorManager.require(
+                False,
+                code=E_NOT_FOUND,
+                message=message,
+                detail=(
+                    f"sorgente_tipo_id={sorgente_tipo_id} "
+                    f"emittente_fiscale_id={emittente_fiscale_id} "
+                    f"tipo_documento_output_id={tipo_documento_output_id!r} "
+                    f"templates_attivi_senza_default={templates_no_default}"
+                ),
+            )
         assert row is not None
         return row
 

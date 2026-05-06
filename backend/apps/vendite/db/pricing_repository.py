@@ -39,26 +39,52 @@ class PricingRepository:
         emittente_soggetto_ruolo_id: int,
         classe_utenza_id: int | None = None,
     ) -> dict[str, Any]:
+        # Wrapper LEFT JOIN sulle 4 entita' referenziate dal return della
+        # funzione (listino, listino_versione, contratto, promo, categoria
+        # cliente) per esporre codice/descrizione denormalizzati. Single
+        # round-trip: la funzione DB resta unica source-of-truth, il JOIN
+        # decora le colonne id senza alterare la semantica.
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT
-                    prezzo_finale,
-                    prezzo_base_snapshot,
-                    tipo_variazione_applicata,
-                    valore_variazione_applicata,
-                    origine,
-                    listino_id,
-                    listino_versione_id,
-                    listino_riga_id,
-                    contratto_id,
-                    promo_id,
-                    categoria_cliente_listino_id,
-                    categoria_cliente_id_snapshot,
-                    classe_utenza_id_snapshot
+                    r.prezzo_finale,
+                    r.prezzo_base_snapshot,
+                    r.tipo_variazione_applicata,
+                    r.valore_variazione_applicata,
+                    r.origine,
+                    r.listino_id,
+                    l.codice                AS listino_codice,
+                    l.descrizione           AS listino_descrizione,
+                    r.listino_versione_id,
+                    lv.codice_versione      AS listino_versione_codice,
+                    r.listino_riga_id,
+                    r.contratto_id,
+                    c.numero                AS contratto_numero,
+                    r.promo_id,
+                    pa.codice               AS promo_codice,
+                    pa.descrizione          AS promo_descrizione,
+                    r.categoria_cliente_listino_id,
+                    r.categoria_cliente_id_snapshot,
+                    cc.codice               AS categoria_cliente_codice,
+                    cc.descrizione          AS categoria_cliente_descrizione,
+                    r.classe_utenza_id_snapshot,
+                    clu.descrizione         AS classe_utenza_descrizione
                   FROM vendite.fn_resolve_prezzo_listino_v2(
                            %s::uuid, %s, %s, %s, %s, %s, %s
-                       )
+                       ) r
+                  LEFT JOIN vendite.listini l
+                    ON l.id = r.listino_id
+                  LEFT JOIN vendite.listini_versioni lv
+                    ON lv.id = r.listino_versione_id
+                  LEFT JOIN vendite.contratti c
+                    ON c.id = r.contratto_id
+                  LEFT JOIN vendite.promo_articoli pa
+                    ON pa.id = r.promo_id
+                  LEFT JOIN anagrafiche.categorie_clienti cc
+                    ON cc.id = r.categoria_cliente_id_snapshot
+                  LEFT JOIN config.classi_utenze clu
+                    ON clu.id = r.classe_utenza_id_snapshot
                 """,
                 [
                     str(articolo_id),

@@ -173,6 +173,26 @@ class PreventiviRepository:
                 p.totale_iva::text AS totale_iva,
                 p.totale_documento::text AS totale_documento,
                 p.emittente_fiscale_id,
+                ef.codice AS emittente_fiscale_codice,
+                COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+                    AS emittente_fiscale_descrizione,
+                -- Flag informativo (UX): il BA ha un contratto ATTIVO per
+                -- la coppia (utility, data preventivo)? Se false il pricing
+                -- delle righe passera' dallo STADIO 2 (matrice categoria→
+                -- listino) e l'operatore puo' anticipare l'eventuale errore
+                -- E_CATEGORIA_LISTINO_NON_MAPPATA. Non bloccante.
+                EXISTS (
+                    SELECT 1
+                      FROM vendite.contratti c
+                      JOIN config.stati_doc_contratti sdc
+                        ON sdc.id = c.stato_doc_contratto_id
+                      JOIN vendite.contratti_utilities cu
+                        ON cu.contratto_id = c.id
+                     WHERE c.billing_account_id = p.billing_account_id
+                       AND cu.utility_id = p.utility_id
+                       AND sdc.codice_interno = 'ATTIVO'
+                       AND c.validita @> p.data
+                ) AS ba_ha_contratto_attivo,
                 p.storicizza,
                 p.meta,
                 p.data_insert::text AS data_insert,
@@ -187,6 +207,13 @@ class PreventiviRepository:
             LEFT JOIN config.utilities u ON u.id = p.utility_id
             LEFT JOIN config.valute v ON v.id = p.valuta_id
             LEFT JOIN config.termini_pagamento tp ON tp.id = p.termine_pagamento_id
+            -- Decode emittente fiscale: codice + ragione sociale (con fallback
+            -- a descrizione plain dell'EF). Pattern allineato a documenti repo
+            -- per UX uniforme nei drawer (EmittenteFiscaleField in modalita' edit
+            -- legge questi campi denormalizzati senza round-trip aggiuntivo).
+            LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = p.emittente_fiscale_id
+            LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+            LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
             WHERE p.id = %s
         """
         with connection.cursor() as cursor:
@@ -197,20 +224,128 @@ class PreventiviRepository:
     #  LETTURE — Righe (via vista vw_preventivi_righe_dettaglio)
     # ══════════════════════════════════════════════════════════
 
-    # Scopo: Restituisce righe preventivo dalla vista denormalizzata.
-    # La vista include importo_riga (ROUND 2), imponibile_riga_full (full
-    # precision) e iva_descrizione. NB: importo_iva_riga e' stato rimosso
-    # dalla view (l'IVA per riga e' concettualmente errata, art. 21 DPR 633/72:
-    # IVA si calcola sull'aggregato per aliquota, vedi vendite.preventivi_riepiloghi_iva).
+    # Scopo: Restituisce righe preventivo. Replica la proiezione di
+    # `vw_preventivi_righe_dettaglio` aggiungendo `stato_approvazione_prezzo`
+    # e `pratica_approvazione_prezzo_id` (Sprint E L3) che la vista NON
+    # espone — la vista DB e' di Sprint <E e va estesa col team DB. Finche'
+    # la patch DB non landa, leggiamo dalla tabella nativa con i medesimi
+    # LEFT JOIN per non perdere il tag UI "In approvazione" sulle righe PENDING.
+    # NB: importo_iva_riga e' rimosso (l'IVA per riga e' concettualmente
+    # errata, art. 21 DPR 633/72: IVA si calcola sull'aggregato per aliquota,
+    # vedi vendite.preventivi_riepiloghi_iva).
     def list_righe(self, preventivo_id: int) -> list[PreventivoRigaRow]:
         sql = """
-            SELECT * FROM vendite.vw_preventivi_righe_dettaglio
-            WHERE preventivo_id = %s
-            ORDER BY ordine, id
+            SELECT
+                pr.id,
+                pr.preventivo_id,
+                pr.ordine,
+                pr.attivo,
+                pr.articolo_id,
+                a.codice                AS articolo_codice,
+                a.descrizione           AS articolo_descrizione,
+                pr.descrizione,
+                pr.quantita,
+                pr.qta_operativa,
+                pr.factor_to_base,
+                pr.uom_operativa_id,
+                um.codice               AS uom_codice,
+                pr.prezzo_unitario,
+                pr.sconto_percentuale,
+                pr.iva_id,
+                iva.codice              AS iva_codice,
+                iva.descrizione         AS iva_descrizione,
+                iva.aliquota_iva        AS iva_aliquota,
+                ROUND(
+                    (pr.quantita * pr.prezzo_unitario) *
+                    (1::numeric - COALESCE(pr.sconto_percentuale, 0::numeric) / 100::numeric),
+                    2
+                ) AS importo_riga,
+                (pr.quantita * pr.prezzo_unitario) *
+                    (1::numeric - COALESCE(pr.sconto_percentuale, 0::numeric) / 100::numeric)
+                    AS imponibile_riga_full,
+                pr.meta,
+                pr.data_insert,
+                pr.data_update,
+                -- Sprint E (autorizzazioni prezzi L3): flag + FK pratica
+                -- per il tag UI "In approvazione" su righe PENDING.
+                pr.stato_approvazione_prezzo,
+                pr.pratica_approvazione_prezzo_id
+              FROM vendite.preventivi_righe pr
+              LEFT JOIN catalogo.articoli a   ON a.id   = pr.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id = pr.uom_operativa_id
+              LEFT JOIN config.iva iva        ON iva.id = pr.iva_id
+             WHERE pr.preventivo_id = %s
+               AND pr.attivo IS TRUE
+             ORDER BY pr.ordine, pr.id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
             return rows_to_list(cursor)
+
+    # Scopo: Conta righe attive per stato_approvazione_prezzo. Single SELECT
+    #        ottimizzata: serve a `get_preventivo` per derivare il flag
+    #        "frozen_for_pending/rejected_pricing" senza caricare l'intero
+    #        elenco righe (ognuna con N JOIN). Ritorna sempre tutte le chiavi
+    #        rilevanti — chiavi mancanti = 0.
+    def count_righe_per_stato_approvazione(
+        self, preventivo_id: int,
+    ) -> dict[str, int]:
+        sql = """
+            SELECT stato_approvazione_prezzo, COUNT(*) AS n
+              FROM vendite.preventivi_righe
+             WHERE preventivo_id = %s
+               AND attivo IS TRUE
+             GROUP BY stato_approvazione_prezzo
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [preventivo_id])
+            rows = cursor.fetchall()
+        out = {"PENDING": 0, "APPROVED": 0, "REJECTED": 0, "TOTAL": 0}
+        for stato, n in rows:
+            n = int(n)
+            out["TOTAL"] += n
+            if stato in out:
+                out[stato] = n
+        return out
+
+    # Scopo: Carica una singola riga preventivo via lookup mirato per id.
+    #        Replica la stessa proiezione di list_righe (denormalizzazioni
+    #        articolo/uom/iva + flag approvazione_prezzo) ma senza caricare
+    #        tutto l'elenco quando serve solo una riga (es. aggiorna_riga).
+    def get_riga(self, riga_id: int) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                pr.id,
+                pr.preventivo_id,
+                pr.ordine,
+                pr.attivo,
+                pr.articolo_id,
+                a.codice                AS articolo_codice,
+                a.descrizione           AS articolo_descrizione,
+                pr.descrizione,
+                pr.quantita,
+                pr.qta_operativa,
+                pr.factor_to_base,
+                pr.uom_operativa_id,
+                um.codice               AS uom_codice,
+                pr.prezzo_unitario,
+                pr.sconto_percentuale,
+                pr.iva_id,
+                iva.codice              AS iva_codice,
+                iva.descrizione         AS iva_descrizione,
+                iva.aliquota_iva        AS iva_aliquota,
+                pr.meta,
+                pr.stato_approvazione_prezzo,
+                pr.pratica_approvazione_prezzo_id
+              FROM vendite.preventivi_righe pr
+              LEFT JOIN catalogo.articoli a   ON a.id   = pr.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id = pr.uom_operativa_id
+              LEFT JOIN config.iva iva        ON iva.id = pr.iva_id
+             WHERE pr.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [riga_id])
+            return row_to_dict(cursor)
 
     # Scopo: Restituisce il riepilogo IVA aggregato del preventivo dalla view
     #        denormalizzata. Una riga per gruppo (iva_id, natura, esigibilita,

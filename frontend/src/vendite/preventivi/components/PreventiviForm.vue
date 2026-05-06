@@ -13,6 +13,7 @@ import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelec
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
 import IstanzaUtilityLookup from '../../../core/components/IstanzaUtilityLookup.vue'
+import EmittenteFiscaleField from '../../../core/components/EmittenteFiscaleField.vue'
 import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
 
@@ -25,6 +26,11 @@ const props = defineProps({
   // Discrimina create vs edit per mostrare l'asterisco sui campi obbligatori
   // (pattern allineato a ContrattoDrawer: `<span v-if="!isEdit">*</span>`).
   isEdit: { type: Boolean, default: false },
+  // Detail record dal backend (in EDIT). Necessario a `EmittenteFiscaleField`
+  // per leggere `emittente_fiscale_codice`/`descrizione` denormalizzati senza
+  // round-trip aggiuntivo. In CREATE il record e' null e il campo si comporta
+  // in base al profilo (operatore→read-only auto, admin globale→Select).
+  record: { type: Object, default: null },
 })
 
 // Lookup O(1) per campo non editabile.
@@ -90,12 +96,31 @@ function onIstanzaClear() {
 <template>
   <div class="form-grid">
     <div class="form-grid-2col">
+      <!-- Emittente fiscale: sempre visibile. Operatore con EF assegnato →
+           read-only auto-popolato dal profilo; admin globale (multi-EF) →
+           Select sugli EF disponibili (necessario per consentire la scelta:
+           senza UI il backend non puo' derivarlo da GUC e l'INSERT fallisce).
+           In edit mostra codice + ragione sociale denormalizzati dal record. -->
+      <div class="form-field">
+        <label>{{ t('preventivi.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
+        <EmittenteFiscaleField
+          v-model="form.emittente_fiscale_id"
+          :record="record"
+          :is-edit="isEdit"
+          :disabled="isLocked('emittente_fiscale_id')" />
+      </div>
       <div class="form-field">
         <label>{{ t('preventivi.field_utility') }} <span v-if="!isEdit">*</span></label>
         <UtilityPerRuoloSelect v-model="form.utility_id"
           :placeholder="t('preventivi.field_utility')"
           :disabled="isLocked('utility_id')" />
       </div>
+    </div>
+
+    <!-- Cliente/BA e istanza stanno sulla stessa riga: quando il BA deriva
+         l'istanza, il messaggio resta affiancato al campo BA invece di scendere
+         su una riga separata. -->
+    <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('preventivi.field_billing_account') }}</label>
         <BillingAccountLookup
@@ -106,13 +131,11 @@ function onIstanzaClear() {
           @select="onBaSelected"
           @clear="onBaClear" />
       </div>
-    </div>
 
-    <!-- Istanza utility: obbligatoria post brief DB rev2.
-         Se BA selezionato l'istanza e' auto-derivata (picker disabilitato).
-         Se BA assente (preventivo prospect) il picker e' editabile e l'istanza
-         deve essere selezionata esplicitamente prima di poter salvare. -->
-    <div class="form-grid">
+      <!-- Istanza utility: obbligatoria post brief DB rev2.
+           Se BA selezionato l'istanza e' auto-derivata (picker disabilitato).
+           Se BA assente (preventivo prospect) il picker e' editabile e l'istanza
+           deve essere selezionata esplicitamente prima di poter salvare. -->
       <div class="form-field">
         <label>{{ t('preventivi.field_istanza_utility') }} <span v-if="!isEdit">*</span></label>
         <IstanzaUtilityLookup

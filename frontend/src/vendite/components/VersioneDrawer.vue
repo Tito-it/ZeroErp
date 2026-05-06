@@ -18,7 +18,7 @@ import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOpti
 import { useListiniRigheStore } from '../stores/listiniRighe'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
-import NewButton from '../../core/components/NewButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -105,6 +105,29 @@ watch(
 )
 
 const isBozza = computed(() => props.versione?.stato === 'BOZZA')
+const pageActions = computed(() => [
+  {
+    key: 'variazione',
+    kind: 'utility',
+    label: t('listini.variazione_short'),
+    tooltip: t('listini.variazione_pct_titolo'),
+    icon: 'pi pi-percentage',
+    showLabel: true,
+    class: 'app-page-action',
+    visible: isBozza.value,
+    command: () => { showVariazioneDialog.value = true },
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('listini.aggiungi_prezzo_hint'),
+    icon: MANAGE_ICONS.ADD,
+    visible: isBozza.value,
+    disabled: formMode.value === 'create' || isReadonly.value,
+    command: onNew,
+  },
+])
 
 // === Azioni master ===
 function onNew() {
@@ -174,11 +197,11 @@ const formTitle = computed(() => {
 async function onSave() {
   const f = form.value
   const payload = {
-    uom_id: f.uom_id,
     prezzo: f.prezzo,
   }
   if (formMode.value === 'create') {
     payload.articolo_id = f.articolo_id
+    payload.uom_id = f.uom_id
     const result = await execute(
       () => createRiga(props.listinoId, props.versione.id, payload),
       { successMessage: t('listini.riga_creata') }
@@ -297,13 +320,7 @@ function onClose() {
           <InputText v-model="searchText" :placeholder="t('listini.righe_cerca_articolo')"
             style="width: 240px;" />
         </div>
-        <div v-if="isBozza" class="app-page-actions">
-          <Button icon="pi pi-percentage" :label="t('listini.variazione_short')"
-            v-tooltip.bottom="t('listini.variazione_pct_titolo')"
-            class="app-page-action" @click="showVariazioneDialog = true" />
-          <NewButton :tooltip="t('listini.aggiungi_prezzo_hint')"
-            @click="onNew" :disabled="formMode === 'create' || isReadonly" />
-        </div>
+        <PageActionsBar :actions="pageActions" />
       </div>
 
       <DataTable :value="store.items" :loading="store.loading" striped-rows

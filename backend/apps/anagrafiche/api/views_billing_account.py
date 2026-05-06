@@ -36,7 +36,10 @@ _LOOKUP_RESPONSE = inline_serializer(
 class BillingAccountLookupView(DomainAPIView):
     """GET lookup ricco billing_account per autocomplete UI."""
 
-    area_funzionale = "anagrafiche"
+    # Lookup cross-dominio: preventivi/contratti/ordini/fatture lo usano da
+    # aree diverse. Allineato al pattern dei lookup core (skip_area_check).
+    # JWT + throttling search + scope emittente lato repository bastano.
+    skip_area_check = True
     is_search_endpoint = True
 
     @extend_schema(
@@ -123,7 +126,9 @@ class BillingAccountLookupView(DomainAPIView):
 class BillingAccountLookupByIdView(DomainAPIView):
     """GET singolo billing_account arricchito per restore AutoComplete in edit."""
 
-    area_funzionale = "anagrafiche"
+    # Lookup cross-dominio (restore): stesso ragionamento di
+    # BillingAccountLookupView. Solo lettura singolo record gia' selezionato.
+    skip_area_check = True
 
     @extend_schema(
         responses={200: _LOOKUP_RESPONSE},

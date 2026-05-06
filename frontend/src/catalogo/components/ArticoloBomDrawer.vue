@@ -14,7 +14,7 @@
 //   - valido_al è l'unico campo struttura editabile inline (chiusura riga)
 //     o via dialog dedicato (pattern simmetrico a ChiudiVersioneDialog dei
 //     listini, vedi feedback_stato_terminale_con_data).
-// Standard sub-drawer: paginazione 10 righe, ReloadButton + F5, filtro
+// Standard sub-drawer: paginazione 10 righe, PageActionsBar + F5, filtro
 // client-side articolo, sort default articolo_descrizione.
 
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
@@ -34,8 +34,7 @@ import { displayDate, toDateString } from '../../core/utils/date'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import CatalogoNoteDrawer from '../../core/components/CatalogoNoteDrawer.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import NewButton from '../../core/components/NewButton.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import Drawer from 'primevue/drawer'
 import Dialog from 'primevue/dialog'
@@ -94,6 +93,24 @@ const componentiView = computed(() => {
 const form = ref({})
 const componenteObj = ref(null)
 const adding = ref(false)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: loadComponenti,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('catalogo.aggiungi_componente'),
+    icon: MANAGE_ICONS.ADD,
+    disabled: adding.value,
+    command: startAdd,
+  },
+])
 
 // Edit inline: traccia quale riga ha il DatePicker valido_al aperto.
 // valido_al è l'unico campo modificabile in place (DEC-4): permette
@@ -437,11 +454,7 @@ function buildRigaActions(row) {
               :placeholder="t('catalogo.filtro_componente_placeholder')"
               style="min-width: 240px;" />
           </div>
-          <div class="app-page-actions">
-            <ReloadButton @click="loadComponenti" />
-            <NewButton :tooltip="t('catalogo.aggiungi_componente')"
-              :disabled="adding" @click="startAdd" />
-          </div>
+          <PageActionsBar :actions="pageActions" />
         </div>
 
         <!-- Lista componenti (sempre visibile) -->
@@ -503,7 +516,7 @@ function buildRigaActions(row) {
         </DataTable>
 
         <!-- Form inserimento nuovo componente. Pulsante di apertura ora
-             nella toolbar in alto (NewButton); qui solo il form quando
+             nella toolbar in alto (PageActionsBar); qui solo il form quando
              adding=true. -->
         <template v-if="!isReadonly">
           <template v-if="adding">

@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger di validazione su ui.lista_definizione.vista_sql.
+#
+# Why: campo vista_sql e' un VARCHAR libero senza FK su pg_catalog.
+# Senza questa guardia, un typo nel nome della view passerebbe
+# silenziosamente fino al primo accesso utente alla lista.
+# Il trigger verifica l'esistenza della view in pg_catalog.pg_class
+# solo quando vista_sql e' valorizzato e attivo=TRUE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260506-10-code-trgfn-ui-lista-def-valida-vista-mctit.yaml
+
+  - changeSet:
+      id: 20260506-10-01-trgfn-ui-lista-def-valida-vista
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: "Trigger BEFORE INSERT/UPDATE: valida che vista_sql esista in pg_catalog"
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: lista_definizione
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo: verifica che NEW.vista_sql esista come relazione (view o table)
+              -- in pg_catalog prima di permettere INSERT/UPDATE su lista_definizione.
+              -- Skip se vista_sql e' NULL o se attivo=FALSE (lista disattivata).
+              DECLARE
+                v_relazione_esiste BOOLEAN;
+              BEGIN
+                -- Nessuna validazione se vista_sql non e' valorizzata o lista non attiva
+                IF NEW.vista_sql IS NULL OR NEW.attivo = FALSE THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Controlla esistenza della relazione in pg_catalog
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE c.relname = NEW.vista_sql
+                     AND c.relkind IN ('v', 'm', 'r')
+                     -- v=view, m=materialized view, r=table (raro ma ammesso)
+                ) INTO v_relazione_esiste;
+
+                IF NOT v_relazione_esiste THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'ui.trgfn_ui_lista_definizione_a10_valida_vista_sql',
+                    'E_UI_VISTA_SQL_NON_TROVATA',
+                    jsonb_build_object(
+                      'detail', format('vista_sql = ''%s'' non trovata in pg_catalog', NEW.vista_sql),
+                      'codice', NEW.codice
+                    ),
+                    NULL,
+                    NEW.vista_sql
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()
+              IS 'Guard INSERT/UPDATE: verifica esistenza di vista_sql in pg_catalog. Skip se NULL o attivo=FALSE.';
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd
+                ON ui.lista_definizione;
+
+              CREATE TRIGGER trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd
+                BEFORE INSERT OR UPDATE OF vista_sql, attivo
+                ON ui.lista_definizione
+                FOR EACH ROW
+                EXECUTE FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd
+                ON ui.lista_definizione;
+              DROP FUNCTION IF EXISTS ui.trgfn_ui_lista_definizione_a10_valida_vista_sql();

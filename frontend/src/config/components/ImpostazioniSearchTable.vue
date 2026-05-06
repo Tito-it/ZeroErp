@@ -1,13 +1,13 @@
 <script setup>
 // Scopo: DataTable parametri di sistema con ricerca e colonne multi-livello.
 // Mostra: codice, descrizione, default, emittente, gruppo, mio override, valore attivo.
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useImpostazioniStore } from '../stores/impostazioni'
 import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 import { MANAGE_ICONS } from '../../core/constants'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { resolveParameterLevel, parameterLevelSeverity } from '../../core/utils/parameterLevel'
@@ -23,6 +23,15 @@ const store = useImpostazioniStore()
 const auth = useAuthStore()
 const isReadonly = useInjectReadonly()
 const isBlocked = useInjectBlocked()
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: store.fetchList,
+  },
+])
 
 function levelLabel(level) {
   return t(`impostazioni.level_${level}`)
@@ -70,10 +79,11 @@ onMounted(() => store.fetchList())
       <div class="app-page-filters">
         <InputText v-model="store.searchText" :placeholder="t('impostazioni.search_placeholder')" />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="store.fetchList" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <DataTable

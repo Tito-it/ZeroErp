@@ -12,6 +12,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS } from '../../core/constants'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -44,6 +45,15 @@ function reload() {
   reloadList()
   store.fetchSummary()
 }
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+])
 
 // Quando l'emittenteId cambia, aggiorna lo store e ricarica lista + summary.
 // Il summary e' indipendente dalla pagina corrente (vedi A8/C3 del WIP):
@@ -165,15 +175,7 @@ function buildRowActions(data) {
           style="width: 300px;"
         />
       </div>
-      <div class="app-page-actions">
-        <Button
-          icon="pi pi-refresh"
-          text
-          class="app-reload-btn"
-          v-tooltip.bottom="t('common.reload_list')"
-          @click="reload"
-        />
-      </div>
+      <PageActionsBar :actions="pageActions" />
     </div>
 
     <DataTable

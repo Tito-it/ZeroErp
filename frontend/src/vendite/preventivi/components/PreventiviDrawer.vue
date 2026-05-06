@@ -10,11 +10,13 @@ import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
+import { STATO_PREVENTIVO } from '../../constants'
 import { addDaysToToday, displayDate, toDateString } from '../../../core/utils/date'
 import { formatCurrency } from '../../../core/utils/format'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
+import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
 import { createPreventivo } from '../api/preventiviApi'
@@ -151,6 +153,13 @@ const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefault
 // (framework FK-surrogata, DB 2026-05-02). Composable risolve a id locale.
 const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 
+// Default emittente fiscale: per operatore con EF assegnato ritorna l'id;
+// per admin globale (multi-EF) ritorna null e l'utente sceglie via
+// EmittenteFiscaleField in modalita' Select. Necessario in CREATE per
+// permettere all'admin globale di valorizzare il campo (BE crea_preventivo
+// si aspetta emittente_fiscale_id se la GUC non lo deriva).
+const { defaultEmittenteId } = useEmittenteFiscaleField()
+
 function defaultForm() {
   const p = paramDefaults.value
   // validita_dal default = oggi (data emissione presunta del preventivo).
@@ -159,6 +168,9 @@ function defaultForm() {
   const validitaGg = paramInt(p.VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG, 30)
   return {
     utility_id: utilityDefaultId.value,
+    // Operatore: pre-popolato dal profilo (read-only nel field).
+    // Admin globale: null → il field rendera' una Select per scegliere.
+    emittente_fiscale_id: defaultEmittenteId.value ?? null,
     billing_account_id: null,
     // _obj per BillingAccountLookup AutoComplete (pattern restore lookup ricco,
     // memoria feedback_autocomplete_restore). Popolato da onBaSelected (FE)
@@ -220,6 +232,7 @@ async function loadDetail(id = null) {
   _suspendDateRecalc.value = true
   form.value = {
     utility_id: data.utility_id,
+    emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     billing_account_id: data.billing_account_id,
     billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
     istanza_utility_id: data.istanza_utility_id,
@@ -318,6 +331,9 @@ async function autoSaveBozza() {
   const f = form.value
   const payload = {
     utility_id: f.utility_id,
+    // Opzionale per BE: se omesso (operatore) il trigger DB lo deriva da
+    // app.current_user_id. Per admin globale serve esplicito (no GUC EF).
+    emittente_fiscale_id: f.emittente_fiscale_id || null,
     billing_account_id: f.billing_account_id || null,
     istanza_utility_id: f.istanza_utility_id || null,
     valuta_id: f.valuta_id || null,
@@ -442,6 +458,9 @@ async function handleSave() {
     // dopo create.
     const payload = {
       utility_id: f.utility_id,
+      // Stessa regola di autoSaveBozza: opzionale per operatore (trigger DB),
+      // necessario per admin globale che sceglie l'EF dal field.
+      emittente_fiscale_id: f.emittente_fiscale_id || null,
       billing_account_id: f.billing_account_id || null,
       istanza_utility_id: f.istanza_utility_id || null,
       valuta_id: f.valuta_id || null,
@@ -625,16 +644,22 @@ function onNuovaRevisione() {
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
       <!-- Header info: visibile in EDIT classico e in CREATE post auto-save (hasDetail). -->
-      <div v-if="hasDetail" style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.5rem;">
-        <Tag :value="`${detail.numero} rev.${detail.rev}`" severity="secondary" />
-        <Tag :value="detail.stato_descrizione" :severity="statoPreventiveSeverity(detail.stato_codice_interno)" />
-        <Tag v-if="isSuperseded" :value="t('preventivi.tag_superseded')" severity="warn" icon="pi pi-history" />
-        <span v-if="detail.data" style="font-size: 0.85rem; color: var(--text-color-secondary);">
-          {{ displayDate(detail.data) }}
-        </span>
-        <span v-if="detail.cliente_denominazione" style="font-size: 0.85rem;">
-          {{ detail.cliente_denominazione }}
-        </span>
+      <div v-if="hasDetail" class="preventivo-drawer-header-row">
+        <div class="preventivo-drawer-header-info">
+          <Tag :value="`${detail.numero} rev.${detail.rev}`" severity="secondary" />
+          <Tag v-if="isSuperseded" :value="t('preventivi.tag_superseded')" severity="warn" icon="pi pi-history" />
+          <span v-if="detail.data" class="preventivo-drawer-header-muted">
+            {{ displayDate(detail.data) }}
+          </span>
+          <span v-if="detail.cliente_denominazione" class="preventivo-drawer-header-client">
+            {{ detail.cliente_denominazione }}
+          </span>
+        </div>
+        <Tag
+          :value="detail.stato_descrizione"
+          :severity="statoPreventiveSeverity(detail.stato_codice_interno)"
+          class="preventivo-drawer-status"
+        />
       </div>
 
       <!-- Banner revisione superseded: visibile sopra le azioni quando il
@@ -645,26 +670,42 @@ function onNuovaRevisione() {
         {{ t('preventivi.banner_revisione_superseded') }}
       </Message>
 
-      <!-- Azioni stato (visibili appena c'e' detail, non readonly): bottoni dai metadata API. -->
-      <div v-if="hasDetail && !isReadonly && (availableActions.length || canCreateRevisione)"
-        style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
-        <Button v-for="action in availableActions" :key="action.key"
-          :icon="action.icon" :label="t(action.label_key)" :severity="action.severity"
-          size="small" @click="onCambiaStato(action)" />
-        <Button v-if="canCreateRevisione"
-          icon="pi pi-copy" :label="t('preventivi.azione_revisione')" severity="secondary"
-          size="small" @click="onNuovaRevisione" />
-      </div>
+      <!-- Sprint E (autorizzazioni prezzi L3): preventivo "congelato" se ha
+           righe PENDING (in attesa esito) o REJECTED (da correggere). I 2
+           messaggi sono distinti per dare azioni diverse all'operatore:
+           - PENDING → "attendi esito"
+           - REJECTED → "correggi la riga o eliminala". -->
+      <Message v-if="hasDetail && detail.frozen_for_pending_pricing"
+        severity="warn" :closable="false" class="mt-1">
+        {{ t('preventivi.banner_frozen_pending_pricing', { count: detail.pending_pricing_count }) }}
+      </Message>
+      <Message v-if="hasDetail && detail.frozen_for_rejected_pricing"
+        severity="error" :closable="false" class="mt-1">
+        {{ t('preventivi.banner_frozen_rejected_pricing', { count: detail.rejected_pricing_count }) }}
+      </Message>
 
-      <!-- PDF stato-aware (Tranche M+):
-             - DRAFT     -> Anteprima inline (no save)
-             - EMESSO    -> Genera PDF (con dialog conferma rigenerazione)
-             - ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
-           Visibile appena c'e' detail. Coerente con la regola di dominio
-           "EMESSO == almeno una versione PDF" (atomica BE). -->
-      <div v-if="hasDetail && detail.emittente_fiscale_id" class="mt-025"
-        style="display: flex; justify-content: flex-end; margin-bottom: 0.5rem;">
+      <!-- Azioni stato (visibili appena c'e' detail, non readonly): bottoni dai metadata API. -->
+      <div
+        v-if="hasDetail && ((!isReadonly && (availableActions.length || canCreateRevisione)) || detail.emittente_fiscale_id)"
+        class="preventivo-drawer-actions"
+      >
+        <template v-if="!isReadonly">
+          <Button v-for="action in availableActions" :key="action.key"
+            :icon="action.icon" :label="t(action.label_key)" :severity="action.severity"
+            size="small" @click="onCambiaStato(action)" />
+          <Button v-if="canCreateRevisione"
+            icon="pi pi-copy" :label="t('preventivi.azione_revisione')" severity="secondary"
+            size="small" @click="onNuovaRevisione" />
+        </template>
+
+        <!-- PDF stato-aware (Tranche M+):
+               - DRAFT     -> Anteprima inline (no save)
+               - EMESSO    -> Genera PDF (con dialog conferma rigenerazione)
+               - ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
+             Visibile appena c'e' detail. Coerente con la regola di dominio
+             "EMESSO == almeno una versione PDF" (atomica BE). -->
         <PreventivoPdfButton
+          v-if="detail.emittente_fiscale_id"
           :preventivo-id="effectivePreventivoId"
           :emittente-fiscale-id="detail.emittente_fiscale_id"
           :stato-codice="detail.stato_codice_interno"
@@ -677,7 +718,19 @@ function onNuovaRevisione() {
       <PreventiviForm v-if="contentReady"
         :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
         :non-editable-fields="nonEditableFields"
-        :is-edit="isEdit || createdId !== null" />
+        :is-edit="isEdit || createdId !== null"
+        :record="detail" />
+
+      <!-- Banner informativo (non bloccante): il BA non ha contratto attivo
+           per (utility, data) del preventivo. Il pricing delle righe passera'
+           dallo STADIO 2 (matrice categoria→listino), che richiede una mappa
+           popolata in /amm-software/matrice-categorie-listini. Senza mappa
+           il resolver fallisce con E_CATEGORIA_LISTINO_NON_MAPPATA e il
+           prezzo va inserito manualmente. -->
+      <Message v-if="contentReady && hasDetail && detail.ba_ha_contratto_attivo === false"
+        severity="info" :closable="false" class="mt-1">
+        {{ t('preventivi.banner_no_contratto_attivo') }}
+      </Message>
 
       <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
       <template v-if="contentReady && hasDetail">
@@ -722,8 +775,17 @@ function onNuovaRevisione() {
       </template>
 
       <!-- Documenti generati per il preventivo (Tranche M motore documentale).
-           Building block riusabile da qualsiasi sorgente. -->
-      <template v-if="contentReady && hasDetail && detail.uid">
+           Building block riusabile da qualsiasi sorgente.
+           Visibilita': nascosta in DRAFT (= bozza) — l'anteprima PDF e'
+           inline e non persistita, quindi la lista sarebbe sempre vuota e
+           il messaggio "lista vuota" e' rumore visivo. Mostrata da EMESSO
+           in poi (stato in cui esiste almeno una versione PDF persistita,
+           regola di dominio "EMESSO == almeno una versione PDF" gia'
+           applicata atomica BE).
+           NB: il codice_interno e' `DRAFT` (vedi seed
+           config/stati_doc_preventivi.csv); 'Bozza' e' solo la descrizione
+           localizzata. -->
+      <template v-if="contentReady && hasDetail && detail.uid && detail.stato_codice_interno !== STATO_PREVENTIVO.DRAFT">
         <Divider />
         <DocumentiGeneratiSorgenteList
           sorgente-code="PREVENTIVO"
@@ -771,3 +833,44 @@ function onNuovaRevisione() {
     </template>
   </Dialog>
 </template>
+
+<style scoped>
+.preventivo-drawer-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.preventivo-drawer-header-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.preventivo-drawer-header-muted {
+  font-size: 0.85rem;
+  color: var(--text-color-secondary);
+}
+
+.preventivo-drawer-header-client {
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.preventivo-drawer-status {
+  margin-left: auto;
+}
+
+.preventivo-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+</style>

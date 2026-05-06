@@ -38,10 +38,12 @@ Indice test eseguiti:
 28) test_list_preventivi_solo_revisione_attiva_false — toggle "Mostra storico"
 29) test_gestisci_riga_deriva_qta_operativa_da_factor — qta_op = quantita*factor
 30) test_gestisci_riga_deriva_qta_operativa_factor_default_1 — fallback factor=1
+31) test_repository_list_righe_filtra_solo_attive — righe soft-delete escluse
 """
 
 import unittest
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
@@ -650,7 +652,11 @@ class TestPreventiviService(unittest.TestCase):
             "stato_codice": "ACCETTATO", "stato_codice_interno": "ACCETTATO",
             "billing_account_id": 10, "utility_id": 3,
         }
-        self.mock_repo.list_righe.return_value = [{"id": 1, "ordine": 1}, {"id": 2, "ordine": 2}]
+        # get_preventivo ora usa count_righe_per_stato_approvazione per
+        # derivare righe_count + freeze pricing senza caricare l'elenco.
+        self.mock_repo.count_righe_per_stato_approvazione.return_value = {
+            "PENDING": 0, "APPROVED": 0, "REJECTED": 0, "TOTAL": 2,
+        }
         self.mock_repo.list_indirizzi.return_value = []
         self.mock_repo.get_capabilities.return_value = {
             "stato_codice": "ACCETTATO",
@@ -1250,3 +1256,212 @@ class TestPreventiviService(unittest.TestCase):
         # Fallback factor=1: qta_operativa = quantita
         self.assertEqual(Decimal(call["qta_operativa"]), Decimal("5"))
         self.assertEqual(Decimal(call["factor_to_base"]), Decimal("1"))
+
+    # ===========================================================
+    # Sprint E (autorizzazioni prezzi L3): freeze preventivo
+    # quando ci sono righe PENDING o REJECTED.
+    # ===========================================================
+
+    def _setup_get_preventivo_mocks(self, counts):
+        """Helper per i 4 test sotto: mock minimi per get_preventivo() che
+        prende testata + indirizzi + capabilities + count righe per stato."""
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 42, "uid": "abc", "numero": "P-0042",
+            "stato_codice": "DRAFT", "stato_codice_interno": "DRAFT",
+            "billing_account_id": 10, "utility_id": 3,
+        }
+        self.mock_repo.list_indirizzi.return_value = []
+        self.mock_repo.get_capabilities.return_value = {
+            "stato_codice": "DRAFT",
+            "available_actions": [{"key": "emetti", "target_state": "EMESSO"}],
+            "can_edit_testata": True,
+            "can_edit_righe": True,
+            "non_editable_fields": [],
+        }
+        self.mock_repo.count_righe_per_stato_approvazione.return_value = counts
+
+    def test_get_preventivo_frozen_pending_blocca_tutto(self):
+        """Riga PENDING → can_edit_testata + can_edit_righe = false, no actions."""
+        from apps.vendite.services.preventivi_service import get_preventivo
+        self._setup_get_preventivo_mocks(
+            {"PENDING": 1, "APPROVED": 0, "REJECTED": 0, "TOTAL": 5},
+        )
+        out = get_preventivo(42)
+        self.assertEqual(out["available_actions"], [])
+        self.assertFalse(out["can_edit_testata"])
+        self.assertFalse(out["can_edit_righe"])
+        self.assertTrue(out["frozen_for_pending_pricing"])
+        self.assertFalse(out["frozen_for_rejected_pricing"])
+        self.assertEqual(out["pending_pricing_count"], 1)
+        self.assertEqual(out["rejected_pricing_count"], 0)
+
+    def test_get_preventivo_frozen_rejected_only_lascia_edit_righe(self):
+        """Solo REJECTED → operatore deve poter correggere la riga,
+        quindi can_edit_righe=true (testata bloccata, no transitions)."""
+        from apps.vendite.services.preventivi_service import get_preventivo
+        self._setup_get_preventivo_mocks(
+            {"PENDING": 0, "APPROVED": 0, "REJECTED": 2, "TOTAL": 4},
+        )
+        out = get_preventivo(42)
+        self.assertEqual(out["available_actions"], [])
+        self.assertFalse(out["can_edit_testata"])
+        self.assertTrue(out["can_edit_righe"])  # ← chiave del fix
+        self.assertFalse(out["frozen_for_pending_pricing"])
+        self.assertTrue(out["frozen_for_rejected_pricing"])
+
+    def test_get_preventivo_frozen_mixed_pending_vince(self):
+        """PENDING + REJECTED → can_edit_righe=false (PENDING ha priorita')."""
+        from apps.vendite.services.preventivi_service import get_preventivo
+        self._setup_get_preventivo_mocks(
+            {"PENDING": 1, "APPROVED": 0, "REJECTED": 1, "TOTAL": 6},
+        )
+        out = get_preventivo(42)
+        self.assertFalse(out["can_edit_righe"])
+
+    def test_get_preventivo_no_freeze_quando_solo_approved(self):
+        """APPROVED non congela: il prezzo override e' stato approvato."""
+        from apps.vendite.services.preventivi_service import get_preventivo
+        self._setup_get_preventivo_mocks(
+            {"PENDING": 0, "APPROVED": 3, "REJECTED": 0, "TOTAL": 3},
+        )
+        out = get_preventivo(42)
+        # Capabilities originali preservate (no override BE).
+        self.assertTrue(out["can_edit_testata"])
+        self.assertEqual(len(out["available_actions"]), 1)
+        self.assertFalse(out["frozen_for_pending_pricing"])
+        self.assertFalse(out["frozen_for_rejected_pricing"])
+
+    # ===========================================================
+    # aggiorna_riga: auto-reset stato approvazione su correzione
+    # prezzo (REJECTED/APPROVED → null se nuovo prezzo non viola L2).
+    # ===========================================================
+
+    def test_aggiorna_riga_rejected_reset_su_prezzo_corretto(self):
+        """Riga REJECTED + nuovo prezzo entro L2 → reset stato + cleanup meta."""
+        from apps.vendite.services.preventivi_service import aggiorna_riga
+        # Setup: testata BOZZA, riga esistente REJECTED, nuovo prezzo = resolver.
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT",
+            "billing_account_id": 10, "utility_id": 3,
+        }
+        riga_esistente = {
+            "id": 50, "articolo_id": "art-uuid", "uom_operativa_id": 7,
+            "stato_approvazione_prezzo": "REJECTED",
+            "pratica_approvazione_prezzo_id": 99,
+            "meta": {
+                "approvazione_rifiuto": {"motivazione": "test"},
+                "altro_campo": "preserve",
+            },
+        }
+        self.mock_repo.get_riga.return_value = riga_esistente
+
+        # Mock _resolve_or_check_override_prezzo: ritorna prezzo allineato al
+        # resolver (nessun override → no richiesta_approvazione_pending).
+        with patch(
+            "apps.vendite.services.preventivi_service._resolve_or_check_override_prezzo",
+            return_value=(Decimal("10"), {"origine_prezzo": "CATEGORIA"}),
+        ):
+            aggiorna_riga(1, 50, {"prezzo_unitario": "10"}, auth_user_id=42)
+
+        kwargs = self.mock_repo.update_riga.call_args.kwargs
+        # Stato resettato a None.
+        self.assertIsNone(kwargs["stato_approvazione_prezzo"])
+        self.assertIsNone(kwargs["pratica_approvazione_prezzo_id"])
+        # Meta cleanup: approvazione_rifiuto rimossa, altri campi preservati.
+        self.assertNotIn("approvazione_rifiuto", kwargs["meta"])
+        self.assertEqual(kwargs["meta"].get("altro_campo"), "preserve")
+
+    def test_aggiorna_riga_no_reset_se_richiede_nuova_approvazione(self):
+        """REJECTED + nuovo prezzo che richiede L3 → stato torna a PENDING,
+        non viene resettato a None."""
+        from apps.vendite.services.preventivi_service import aggiorna_riga
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT",
+            "billing_account_id": 10, "utility_id": 3,
+        }
+        self.mock_repo.get_riga.return_value = {
+            "id": 50, "articolo_id": "art-uuid", "uom_operativa_id": 7,
+            "stato_approvazione_prezzo": "REJECTED",
+            "pratica_approvazione_prezzo_id": 99,
+            "meta": {},
+        }
+        with patch(
+            "apps.vendite.services.preventivi_service._resolve_or_check_override_prezzo",
+            return_value=(Decimal("13"), {
+                "origine_prezzo": "MANUALE",
+                "richiesta_approvazione_pending": True,
+                "violazione_l2": {"tipo_violazione": "MAGGIORAZIONE",
+                                   "variazione_abs_pct": "30", "limite_pct": "5"},
+            }),
+        ), patch(
+            "apps.vendite.services.preventivi_service._orchestrate_l3_request",
+            return_value=200,
+        ):
+            aggiorna_riga(
+                1, 50,
+                {"prezzo_unitario": "13", "richiesta_approvazione": True},
+                auth_user_id=42,
+            )
+        kwargs = self.mock_repo.update_riga.call_args.kwargs
+        self.assertEqual(kwargs["stato_approvazione_prezzo"], "PENDING")
+        self.assertEqual(kwargs["pratica_approvazione_prezzo_id"], 200)
+
+
+class TestCoerceMetaToDict(unittest.TestCase):
+    """Test edge case `_coerce_meta_to_dict`: helper difensivo contro
+    psycopg jsonb deserializzato come stringa."""
+
+    def test_dict_passthrough(self):
+        from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+        out = _coerce_meta_to_dict({"a": 1})
+        self.assertEqual(out, {"a": 1})
+
+    def test_none_to_empty(self):
+        from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+        self.assertEqual(_coerce_meta_to_dict(None), {})
+
+    def test_empty_string_to_empty(self):
+        from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+        self.assertEqual(_coerce_meta_to_dict(""), {})
+
+    def test_empty_dict_passthrough(self):
+        from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+        self.assertEqual(_coerce_meta_to_dict({}), {})
+
+    def test_json_string_dict(self):
+        from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+        out = _coerce_meta_to_dict('{"foo": "bar"}')
+        self.assertEqual(out, {"foo": "bar"})
+
+    def test_json_string_malformed(self):
+        from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+        self.assertEqual(_coerce_meta_to_dict("{not json"), {})
+
+    def test_json_string_list_to_empty(self):
+        # Una lista JSON deserializzata non e' un dict — ritorna {}.
+        from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+        self.assertEqual(_coerce_meta_to_dict('[1,2,3]'), {})
+
+    def test_unexpected_type_to_empty(self):
+        from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+        self.assertEqual(_coerce_meta_to_dict(123), {})
+        self.assertEqual(_coerce_meta_to_dict(True), {})
+
+
+class TestPreventiviRepository(unittest.TestCase):
+    # Scopo: Verifica che la lettura righe escluda le righe soft-delete
+    #        (`attivo=false`), evitando che la UI mostri righe gia' eliminate.
+    @patch("apps.vendite.db.preventivi_repository.connection")
+    def test_repository_list_righe_filtra_solo_attive(self, mock_connection):
+        from apps.vendite.db.preventivi_repository import PreventiviRepository
+
+        cursor = MagicMock()
+        cursor.description = [SimpleNamespace(name="id")]
+        cursor.fetchall.return_value = []
+        mock_connection.cursor.return_value.__enter__.return_value = cursor
+
+        PreventiviRepository().list_righe(40)
+
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("attivo IS TRUE", sql)
+        self.assertEqual(params, [40])

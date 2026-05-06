@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable conversioni UoM. Dataset piccolo caricato tutto,
 // paginazione/sort client-side, layout standard via useSearchTable.
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConversioniUomStore } from '../stores/conversioniUom'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -10,12 +10,11 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
-import NewButton from '../../core/components/NewButton.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { TAB_ENTITIES } from '../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -24,6 +23,24 @@ const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'uom_from_descrizione'
 })
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('catalogo.nuova_conversione'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 
 function onRowClick(event) { emit('row-click', event.data) }
 
@@ -40,11 +57,11 @@ onMounted(() => store.fetchList())
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('catalogo.conv_search_placeholder')" />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('catalogo.nuova_conversione')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <DataTable

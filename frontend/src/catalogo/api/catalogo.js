@@ -46,6 +46,15 @@ export function listArticoloUom(articoloId) {
   return api.get(`${BASE}/articoli/${articoloId}/uom/`)
 }
 
+// Lookup cross-dominio (skip_area_check lato BE): per autocomplete UoM nei
+// drawer di vendite (preventivi, contratti, listini, promo articoli) che non
+// possono richiedere LETTURA su catalogo solo per popolare un combo.
+// Usato da `useArticoloUomOptions`. La response shape e' identica a
+// `listArticoloUom`: il composable e' agnostico rispetto all'endpoint.
+export function lookupArticoloUom(articoloId) {
+  return api.get(`${BASE}/articoli/${articoloId}/uom/lookup/`)
+}
+
 export function createArticoloUom(articoloId, payload) {
   return api.post(`${BASE}/articoli/${articoloId}/uom/`, payload)
 }

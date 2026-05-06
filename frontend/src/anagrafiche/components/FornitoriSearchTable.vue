@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable paginata fornitori con search, filtro stato e attivo.
 // Riusabile da: FornitoriView, futuro ricerca fornitori in altri domini.
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFornitoriStore } from '../stores/fornitori'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -13,11 +13,10 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
-import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
@@ -33,6 +32,24 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 })
 
 const statoFilter = ref(null)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('fornitori.nuovo_fornitore'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 function onStatoChange() {
   store.filters.stato_fornitore_id = statoFilter.value
   applyFilters()
@@ -94,11 +111,11 @@ onMounted(() => {
           @change="onStatoChange"
         />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('fornitori.nuovo_fornitore')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <!-- Placeholder: nessuna ricerca effettuata -->

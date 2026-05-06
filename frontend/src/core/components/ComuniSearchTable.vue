@@ -1,22 +1,39 @@
 <script setup>
 // Scopo: componente riutilizzabile — DataTable comuni con ricerca e creazione.
 // Riusabile da: tab Comuni in IndirizziView, futuro filtri clienti/fornitori.
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useComuniStore } from '../../anagrafiche/stores/comuni'
 import { useSearchTable } from '../composables/useSearchTable'
 import { useTabFreshness } from '../composables/useTabFreshness'
-import { TAB_ENTITIES } from '../constants'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
-import NewButton from './NewButton.vue'
-import ReloadButton from './ReloadButton.vue'
+import PageActionsBar from './PageActionsBar.vue'
 
 const emit = defineEmits(['new'])
 const { t } = useI18n()
 const store = useComuniStore()
 const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('indirizzi.nuovo_comune'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 
 useTabFreshness(store, TAB_ENTITIES.COMUNE)
 onMounted(() => { store.fetchList() })
@@ -31,10 +48,7 @@ onMounted(() => { store.fetchList() })
           :placeholder="t('indirizzi.search_comune')"
         />
       </div>
-      <div class="app-page-actions">
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('indirizzi.nuovo_comune')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions" />
     </div>
 
     <DataTable

@@ -2,7 +2,7 @@
 
 > **Destinatari:** sviluppatori database, backend, analisti funzionali
 >
-> **Prerequisiti:** [Guida Permessi e Autorizzazioni](/guide/permessi-autorizzazioni)
+> **Prerequisiti:** [Guida Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 >
 > **Stato:** Implementato — Anello 0 (nucleo infrastrutturale)
 >
@@ -159,17 +159,17 @@ endpoint, quando, con quale esito e in quanto tempo**.
 
 La tabella [`dbops.request_log`](/dbzero/dbops/tabelle/request_log) registra per ogni request API:
 
-| Dato            | Descrizione                                                       |
-| --------------- | ----------------------------------------------------------------- |
-| Utente          | `auth_user_id` e `username` dal token JWT                         |
-| Endpoint        | `method` + `path`                                                 |
-| Parametri       | `query_string` (solo parametri URL, mai body)                     |
-| Esito           | `status_code` HTTP                                                |
-| Performance     | `duration_ms` — tempo di risposta in millisecondi                 |
-| Contesto rete   | `ip_address`, `user_agent`                                        |
-| Correlazione    | `request_id` UUID — condiviso con sessioni_utente                 |
-| Errore          | `error_code` — codice errore applicativo se presente              |
-| Idempotenza     | `idempotency_key` — chiave idempotenza dalla request, se presente |
+| Dato          | Descrizione                                                       |
+| ------------- | ----------------------------------------------------------------- |
+| Utente        | `auth_user_id` e `username` dal token JWT                         |
+| Endpoint      | `method` + `path`                                                 |
+| Parametri     | `query_string` (solo parametri URL, mai body)                     |
+| Esito         | `status_code` HTTP                                                |
+| Performance   | `duration_ms` — tempo di risposta in millisecondi                 |
+| Contesto rete | `ip_address`, `user_agent`                                        |
+| Correlazione  | `request_id` UUID — condiviso con sessioni_utente                 |
+| Errore        | `error_code` — codice errore applicativo se presente              |
+| Idempotenza   | `idempotency_key` — chiave idempotenza dalla request, se presente |
 
 Il body della request e della response non viene mai loggato: riduce
 il volume e previene la registrazione accidentale di dati sensibili.
@@ -291,13 +291,13 @@ LIMIT 1;
 Un modulo che si appoggia sull'Anello 0 ottiene la tracciabilità completa
 senza scrivere codice di logging:
 
-| Capacità                                    | Chi la fornisce                                                                                                | Configurazione richiesta          |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Capacità                                    | Chi la fornisce                                                                                                 | Configurazione richiesta          |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------- |
 | Campi `user_insert/update` con utente reale | [`trgfn_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_audit_data_user_generic) + `JwtAuditMiddleware` | Nessuna                           |
-| `tx_id` su ogni scrittura                   | [`trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)                                            | Nessuna                           |
-| Snapshot storico ad ogni modifica           | [`trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic) + `storicizza=true`                   | `storicizza = true` sulla tabella |
-| Log di ogni request API                     | `RequestLogMiddleware`                                                                                         | Nessuna (middleware globale)      |
-| Log login/refresh JWT                       | `AuditTokenObtainPairView/RefreshView`                                                                         | Nessuna (view globale)            |
+| `tx_id` su ogni scrittura                   | [`trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)                                             | Nessuna                           |
+| Snapshot storico ad ogni modifica           | [`trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic) + `storicizza=true`                    | `storicizza = true` sulla tabella |
+| Log di ogni request API                     | `RequestLogMiddleware`                                                                                          | Nessuna (middleware globale)      |
+| Log login/refresh JWT                       | `AuditTokenObtainPairView/RefreshView`                                                                          | Nessuna (view globale)            |
 
 L'unica cosa che un modulo deve fornire autonomamente è il **giornale di dominio**
 (come [`pratiche.giornale`](/dbzero/pratiche/tabelle/giornale)) quando vuole tracciare eventi semantici specifici
@@ -327,10 +327,10 @@ impostato all'inserimento ma calcolato in batch dal framework di
 automazione [`fn_apply_cleanup_at()`](/dbzero/dbops/funzioni/fn_apply_cleanup_at), che applica un TTL configurato
 in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl) a partire dalla colonna `data_insert`.
 
-| Tabella                 | Retention  | Regola override      | Note             |
-| ----------------------- | ---------- | -------------------- | ---------------- |
-| `dbops.sessioni_utente` | 180 giorni | id=13, priorità 190  | Audit compliance |
-| `dbops.request_log`     | 90 giorni  | id=14, priorità 190  | Volume elevato   |
+| Tabella                 | Retention  | Regola override     | Note             |
+| ----------------------- | ---------- | ------------------- | ---------------- |
+| `dbops.sessioni_utente` | 180 giorni | id=13, priorità 190 | Audit compliance |
+| `dbops.request_log`     | 90 giorni  | id=14, priorità 190 | Volume elevato   |
 
 Le altre tabelle con `cleanup_at` (es. `error_log`, `audit_log`,
 `idempotency_keys`) usano il TTL default di 30 giorni (regola id=11).

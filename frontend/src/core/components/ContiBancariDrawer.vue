@@ -4,7 +4,7 @@
 // Lista conti esistenti (click per modifica) + aggiungi nuovo.
 // Context 'soggetto' o 'ruolo' determina API chiamate.
 
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode, useInjectBlocked } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
@@ -22,8 +22,7 @@ import ContoBancarioForm from './ContoBancarioForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import DrawerFooter from './DrawerFooter.vue'
 import AccessoBloccatoPanel from './AccessoBloccatoPanel.vue'
-import NewButton from './NewButton.vue'
-import ReloadButton from './ReloadButton.vue'
+import PageActionsBar from './PageActionsBar.vue'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -69,6 +68,23 @@ const listLoading = ref(false)
 const formMode = ref(null)
 const editId = ref(null)
 const formErrors = ref([])
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: loadConti,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('conti_bancari.aggiungi_conto'),
+    icon: MANAGE_ICONS.ADD,
+    command: onStartNew,
+  },
+])
 
 // Scopo: Carica lista conti bancari dal backend.
 //        In context 'ruolo' l'API ritorna conti_ruolo + conti_ereditati.
@@ -221,11 +237,7 @@ function usoSeverity(uso) {
            "Nuovo" deve essere immediatamente raggiungibile. -->
       <div v-if="!listLoading && !formMode && !isReadonly" class="app-page-toolbar">
         <div class="app-page-filters" />
-        <div class="app-page-actions">
-          <ReloadButton @click="loadConti" />
-          <NewButton :tooltip="t('conti_bancari.aggiungi_conto')"
-            @click="onStartNew" />
-        </div>
+        <PageActionsBar :actions="pageActions" />
       </div>
 
       <!-- Lista conti esistenti -->

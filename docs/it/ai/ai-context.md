@@ -113,6 +113,43 @@ La categoria cliente snapshot e' modificabile **solo in DRAFT**. Una volta attiv
 
 Un contratto di ambito `COMMODITY` ha utility tecnica (gas/energia/idrico) con tipo e classe utenza dimensionali. Un contratto di ambito `COMMERCIO` usa l'utility virtuale Base e non ha dimensioni utenza.
 
+## Stati preventivo e ciclo di vita
+
+| Stato (codice_interno) | Significato |
+|---|---|
+| DRAFT (BOZZA) | Proposta in compilazione, modificabile, nessun valore civilistico |
+| EMESSO | Documento congelato e inviato al cliente; almeno 1 PDF archiviato (atomica BE) |
+| ACCETTATO | Approvato dal cliente, fatturabile (richiede `fatturazione_immediata` + `competenza_mese`) |
+| RIFIUTATO | Rifiutato dal cliente, terminale |
+| SCADUTO | Validita' scaduta senza accettazione/rifiuto, terminale |
+| ANNULLATO | Annullato dall'operatore, terminale |
+
+Transizioni principali: DRAFT → EMESSO; EMESSO → ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO. Lo stato `DRAFT` e' l'unico modificabile sulle righe; tutti gli altri sono read-only sulle quantita'/prezzi (gli unici cambi ammessi sono di stato).
+
+## Promo articolo
+
+Una promo applica una variazione di prezzo a un articolo in una finestra temporale. Tre tipi:
+
+| tipo_variazione | Significato |
+|---|---|
+| PERCENTUALE | Variazione % sul prezzo base (positiva = sconto, negativa = maggiorazione) |
+| VALORE_FISSO | Variazione assoluta in valuta sul prezzo base |
+| PREZZO_FISSO | Sostituisce il prezzo base con un prezzo fisso assoluto |
+
+Il resolver di pricing applica la promo prima del listino (STADIO 0). Una promo con `valido_dal/valido_al` aperta in entrambi gli estremi e' permanente.
+
+## Documenti generati (motore documentale)
+
+I documenti PDF persistiti sono gli "snapshot canonici" delle entita' di dominio (oggi: preventivi). Stati:
+
+| Stato | Significato |
+|---|---|
+| GENERATO | Documento appena creato, valido per uso operativo |
+| ARCHIVIATO | Consolidato nel ciclo di vita applicativo |
+| ANNULLATO | Storico mantenuto, non piu' valido per uso operativo |
+
+Le versioni si accumulano (mai sostituzione): ogni rigenerazione crea una nuova riga con `progressivo_sorgente` incrementale. Le versioni precedenti restano sempre disponibili per audit/storico.
+
 ## Regole operative fondamentali
 
 - **Transizioni a macchina di stati rigida**: ogni cambio stato e' validato da trigger DB. Solo le transizioni esplicitamente configurate sono ammesse.

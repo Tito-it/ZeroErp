@@ -1,6 +1,6 @@
 <script setup>
 // Scopo: DataTable paginata articoli con search, filtri e ordinamento.
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useArticoliStore } from '../stores/articoli'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -10,11 +10,10 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import ReloadButton from '../../core/components/ReloadButton.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
@@ -33,6 +32,24 @@ const attivoFilter = ref(true)
 const compositoFilter = ref(null)
 const tipologiaFilter = ref(null)
 const gruppoFilter = ref(null)
+const pageActions = computed(() => [
+  {
+    key: 'reload',
+    kind: 'utility',
+    label: t('common.reload_list'),
+    icon: MANAGE_ICONS.RELOAD,
+    command: reload,
+  },
+  {
+    key: 'new',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('catalogo.nuovo_articolo'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    command: () => emit('new'),
+  },
+])
 
 const boolOptions = buildBoolOptions(t)
 const attivoOptions = [
@@ -122,11 +139,11 @@ onMounted(() => {
         <LookupSelect v-model="gruppoFilter" rel="vendite.articoli_gruppi"
           :placeholder="t('catalogo.filtro_gruppo')" show-clear @change="onGruppoChange" style="width: 150px;" />
       </div>
-      <div class="app-page-actions">
-        <ReadonlyBadge />
-        <ReloadButton @click="reload" />
-        <NewButton :tooltip="t('catalogo.nuovo_articolo')" @click="emit('new')" />
-      </div>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ReadonlyBadge />
+        </template>
+      </PageActionsBar>
     </div>
 
     <SearchHint v-if="!store.hasSearched && !store.loading" />
