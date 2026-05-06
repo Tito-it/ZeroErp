@@ -7,7 +7,7 @@ import { computed, inject, ref } from 'vue'
 import { useNavigationStore } from '../../stores/navigation'
 import { useTabsStore } from '../../stores/tabs'
 import { useAuthStore } from '../../stores/auth'
-import { resolveNavigationLabel } from '../navigation'
+import { NAV_ICONS, resolveNavigationLabel } from '../navigation'
 import SidebarItem from './SidebarItem.vue'
 
 const { t } = useI18n()
@@ -111,7 +111,7 @@ function handleToggleFavorite(item) {
   <div class="sidebar-domain">
     <!-- Pulsante ← Home -->
     <SidebarItem
-      icon="pi pi-arrow-left"
+      :icon="NAV_ICONS.BACK"
       :label="t('nav.back_home')"
       class="back-home"
       @click="handleBackHome"

@@ -1,8 +1,20 @@
 # Colonne visualizzate in liste — architettura
 
 **Modulo:** UI / Presentazione
-**Stato:** Blocchi A (DDL) e B (codice DB) completati — 2026-05-06. Prossimo: commit `dev/db-tid` → PR → Blocco C (backend Django).
+**Stato:** Blocchi **A+B+C+D** completati. DB-1..DB-4 atterrati. Prossimo: **Blocco E** (prima lista reale `anagrafiche.clienti`).
 **Coerenza:** Sviluppo Concentrico — strato di presentazione che si appoggia ai domini funzionali senza modificarli
+**Revisione 2026-05-06 (post-A/B)**: allineato a DB landed (tipi BIGINT, output JSONB completo), recepiti i pattern di [api.md](../api.md) (skip_area_check, Idempotency-Key, base view) e dei due cataloghi building block. Variazioni in §4.3, §4.5, §5, §10, §11. Brief al team DB raccolti in §10.
+
+Stato cronologico:
+
+| Data | Evento |
+| ---- | ------ |
+| 2026-05-06 | Blocco A (DDL schema `ui` — 6 tabelle + 4 ENUM + FK auth_user + seed fk_index_policy) atterrato su `dev/db-tid` |
+| 2026-05-06 | Blocco B (2 trigger guard + `fn_resolve_lista_config` + 9 test pgTAP) atterrato su `dev/db-tid` |
+| 2026-05-06 | Analisi critica post-A/B: brief DB-1..DB-4 raccolti (§10.2) |
+| 2026-05-07 | Brief DB-1..DB-4 atterrati su `dev/db-tid` (changeset `20260507-01..04`, pgTAP 12/12). Deviazioni: cast GUC blindato + trigger `clear_preset_base_ts` |
+| 2026-05-07 | **Blocco C** (backend `apps/ui/`) completato: 4 endpoint, 5 codici errore, 26 test verdi, doc API, refactor critico applicato |
+| 2026-05-07 | **Blocco D** (frontend `core/components/` + `core/composables/` + `core/api/`) completato: 4 building block FE, 15 chiavi i18n IT/EN, vite build verde, refactor critico applicato |
 
 ---
 
@@ -244,9 +256,11 @@ CREATE TABLE ui.lista_preset (
     -- di cui l'utente deve essere titolare perché questo preset sia applicabile.
     -- La risoluzione usa fn_get_profili_accesso_applicabili(auth_user_id),
     -- la stessa chain usata dal PermissionResolver Django — nessuna logica duplicata.
-  emittente_fiscale_id     INTEGER REFERENCES anagrafiche.emittenti_fiscali(id),
+  emittente_fiscale_id     BIGINT REFERENCES anagrafiche.emittenti_fiscali(id),
     -- usato quando ambito = 'emittente_fiscale'; l'associazione operatore↔EF
-    -- è in config.user_emittenti_fiscali (whitelist opzionale).
+    -- è 1:1 (refactor operatore-emittenti, vedi config.user_emittenti_fiscali).
+    -- ATTENZIONE: il DDL atterrato in A4 usa INTEGER mentre emittenti_fiscali.id
+    -- è BIGINT — Postgres coerce ma è inconsistenza. Brief DB pendente in §10.
 
   is_default               BOOLEAN NOT NULL DEFAULT FALSE,
 
@@ -339,7 +353,13 @@ CREATE TABLE ui.lista_preferenza_utente (
   data_insert               TIMESTAMP NOT NULL DEFAULT now(),
   data_update               TIMESTAMP,
 
-  UNIQUE (auth_user_id, lista_id)
+  UNIQUE (auth_user_id, lista_id),
+
+  -- ON DELETE SET NULL: se l'admin elimina il preset di base la preferenza
+  -- utente non si rompe — il riferimento storico diventa NULL.
+  -- (Da consolidare in 90_end nel brief DB §10 — il DDL A6 non lo prevede.)
+  CONSTRAINT fk_preferenza_preset_base
+    FOREIGN KEY (preset_base_id) REFERENCES ui.lista_preset(id) ON DELETE SET NULL
 );
 ```
 
@@ -395,67 +415,64 @@ Il livello `LETTURA` è utile per dati che si vogliono mostrare a video ma non c
 Il punto in cui i quattro livelli si fondono è una funzione PostgreSQL che restituisce la configurazione effettiva.
 
 ```sql
+-- Firma effettiva landed (vedi docs/it/dbzero/ui/funzioni/fn_resolve_lista_config.md):
 CREATE OR REPLACE FUNCTION ui.fn_resolve_lista_config(
-  p_lista_codice           VARCHAR,
-  p_auth_user_id           INTEGER,
-  p_emittente_fiscale_id   INTEGER    -- emittente fiscale corrente della sessione
+  p_lista_codice         VARCHAR,
+  p_auth_user_id         INTEGER,
+  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE   -- BIGINT
 ) RETURNS JSONB
 LANGUAGE plpgsql STABLE
-AS $$
-DECLARE
-  v_config       JSONB;
-  v_profili_ids  INTEGER[];  -- profili_accesso applicabili all'utente
-BEGIN
-  -- risoluzione profili applicabili: stessa chain del PermissionResolver Django
-  SELECT ARRAY(
-    SELECT id FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id)
-  ) INTO v_profili_ids;
-
-  -- cascata configurazione:
-  -- 1. cerca preferenza personale utente (lista_preferenza_utente)
-  -- 2. se non c'è, cerca preset di ruolo con is_default=TRUE
-  --    dove profilo_accesso_id = ANY(v_profili_ids)
-  -- 3. se non c'è, cerca preset di emittente fiscale con is_default=TRUE
-  --    dove emittente_fiscale_id = p_emittente_fiscale_id
-  -- 4. se non c'è, cerca preset di sistema (is_default=TRUE, ambito='sistema')
-  -- 5. se non c'è, costruisce configurazione dal catalogo grezzo
-  --    (tutte le colonne attive ordinate per ordine_default con larghezze_default)
-
-  -- merge automatico: aggiunge al JSONB le colonne del catalogo non presenti
-  -- nella preferenza salvata, con visibile=false (nuove colonne post-salvataggio)
-
-  -- normalizzazione colonne obbligatorie: imposta visibile=true per
-  -- tipo_colonna IN ('identificatore', 'azione') anche se salvate a false
-
-  -- filtro autorizzativo colonne non sensibili (deny-list):
-  --   rimuove colonne con livello BLOCCATO in lista_colonna_permesso
-  --   per ANY(v_profili_ids)
-  -- filtro autorizzativo colonne sensibili (allow-list):
-  --   rimuove colonne sensibili senza riga TUTTO/LETTURA in lista_colonna_permesso
-  --   per ANY(v_profili_ids)
-
-  -- marca colonne LETTURA come non esportabili nel JSONB risultante
-
-  -- ritorna JSONB con struttura finale pronta per il frontend:
-  -- {
-  --   "colonne": [...],
-  --   "ordinamento": [...],
-  --   "filtri": {...},
-  --   "pagina_dimensione": N,
-  --   "colonne_nuove": N    -- quante colonne del catalogo non erano nella preferenza salvata
-  -- }
-  ...
-END;
-$$;
 ```
 
-Il campo `colonne_nuove` nel risultato permette al frontend di mostrare il badge "N nuove colonne disponibili" senza fare chiamate aggiuntive.
+Logica (sintesi — sorgente completo nei changelog Liquibase `20_code/ui/`):
 
-Il contratto è chiaro: input = chi sei + quale emittente fiscale; output = configurazione completa già filtrata per i permessi, già normalizzata per le colonne obbligatorie, già arricchita delle colonne nuove.
+1. **Risoluzione profili applicabili** via `script.fn_get_profili_accesso_applicabili(p_auth_user_id)` — la stessa chain del `PermissionResolver` Django.
+2. **Cascata** preferenza utente → preset ruolo → preset emittente → preset sistema → catalogo grezzo (vedi §3).
+3. **Merge nuove colonne**: le colonne del catalogo non presenti nella configurazione candidata vengono aggiunte con `visibile=false`; il contatore `colonne_nuove` è ritornato per il badge UX.
+4. **Permessi effettivi per colonna** via `DISTINCT ON (colonna_codice)` ordinato per `(priorita ASC, restrittivita ASC)` con `BLOCCATO=1 > LETTURA=2 > TUTTO=3`. Significa: AD_HOC (prio 1) prevale su REPARTO (prio 2); a parità, vince il livello più restrittivo.
+5. **Normalizzazione**: `tipo_colonna IN ('identificatore','azione')` forza `visibile=true` anche se la preferenza salvata dice il contrario; `identificatore` forza `fissata=true`. Colonne `sensibile=TRUE` senza grant esplicito → escluse (BLOCCATO implicito allow-list); colonne BLOCCATE → rimosse; colonne LETTURA → marcate `esportabile=false`.
 
-La firma non riceve il `ruolo_applicativo_id` come parametro esplicito: la funzione lo risolve internamente tramite `fn_get_profili_accesso_applicabili(p_auth_user_id)`, esattamente come fa il `PermissionResolver` Django. Un unico meccanismo di risoluzione, nessuna duplicazione.
+**Output JSONB effettivo** (allineato al sorgente Liquibase, output completo per ogni colonna):
 
-L'`emittente_fiscale_id` viene passato esplicitamente perché è una scelta di sessione dell'operatore (quale emittente sta lavorando in questo momento), non derivabile dai GUC in modo univoco quando l'operatore ha whitelist con più emittenti.
+```jsonc
+{
+  "colonne": [
+    {
+      "codice": "ragione_sociale",
+      "ordine": 1,
+      "larghezza": 240,
+      "visibile": true,
+      "fissata": true,
+      "esportabile": true,        // false se livello LETTURA
+      "tipo_colonna": "identificatore"  // utile al FE per disabilitare toggle
+    },
+    ...
+  ],
+  "ordinamento":      [{"col": "ragione_sociale", "dir": "asc"}],
+  "filtri":           {"attivo": true},
+  "pagina_dimensione": 25,
+  "colonne_nuove":     0
+}
+```
+
+I campi `esportabile` e `tipo_colonna` per ogni colonna **fanno parte del contratto API** — il FE li usa per disabilitare il toggle nella modale (identificatore/azione) e per pilotare l'export.
+
+Il campo `colonne_nuove` permette al frontend di mostrare il badge "N nuove colonne disponibili" senza fare chiamate aggiuntive.
+
+**Risoluzione di `emittente_fiscale_id` lato backend.** Post refactor operatore-emittenti l'associazione operatore↔EF è **1:1** (vedi `script.fn_resolve_emittente_for_user` e `PermissionResolver.get_emittente_for_user`): non c'è più ambiguità di whitelist multi-EF. Il **frontend non invia** mai questo parametro — il backend lo deriva con:
+
+```python
+emittente_id = PermissionResolver.get_emittente_for_user(request.user)
+# None per admin globale o istanza "0 emittenti": passa NULL alla fn
+config = ui_repository.resolve_lista_config(codice, request.user.id, emittente_id)
+```
+
+Il parametro resta nella signature SQL per casi diagnostici/admin (super-admin che vuole previsualizzare il preset di un EF specifico), ma non è esposto in `GET /config`.
+
+> **Brief DB pendenti** (vedi §10). Sulla cascata e sul filtro veste il resolver landed presenta due punti aperti:
+>
+> - **Preset di ruolo non ordinato per `priorita`** (Step 2b): se l'utente ha più profili applicabili con preset `is_default=TRUE` per la stessa lista, il preset scelto non è deterministico.
+> - **Veste corrente non filtrata**: `fn_get_profili_accesso_applicabili(auth_user_id)` (1-arg) ritorna profili di tutte le vesti dell'utente (OPERATORE + CLIENTE_PORTALE su stessa email vengono mescolati).
 
 ---
 
@@ -526,9 +543,49 @@ Apertura della lista da parte dell'utente:
 
 ## 10. Note architetturali aperte
 
+### 10.1 Aperti generali
+
 1. **Validare il catalogo** su un caso reale complesso (anagrafiche clienti, articoli, commesse) prima di generalizzare.
 2. **Formato `filtri_default` JSONB** — il formato dei filtri nel preset DB deve essere concordato con il componente Vue filtri prima di seedare i preset. Definirlo nel Blocco C/D del piano di sviluppo (§11).
 3. **Sviluppi rinviati** — export, viste nominate, admin UI, mobile: vedi [sviluppo-personalizzazioni-liste_def.md](sviluppo-personalizzazioni-liste_def.md).
+
+### 10.2 Brief al team DB (post-A/B, dev/db-tid) — ✅ LANDED 2026-05-07
+
+Quattro interventi raccolti dall'analisi critica post-A/B. **Tutti applicati** dal team DB su `dev/db-tid` (changeset `20260507-01..04`); pgTAP 12/12 verdi (uno in più del previsto: test 3b separato sulla colonna sensibile).
+
+| # | Intervento | Stato |
+| - | ---------- | ----- |
+| DB-1 | `ALTER TABLE ui.lista_preset ALTER COLUMN emittente_fiscale_id TYPE BIGINT` | ✅ |
+| DB-2 | `fk_lista_preferenza_utente_lista_preset` → `ON DELETE SET NULL` | ✅ |
+| DB-3 | `fn_resolve_lista_config` — Step 2b: cascata preset di ruolo ordinata per `pa.priorita ASC` | ✅ |
+| DB-4 | `fn_resolve_lista_config` — Step 1: filtro veste corrente via GUC `app.ruolo_applicativo` | ✅ (con cast blindato, vedi sotto) |
+
+**Deviazione #1 — DB-4 cast GUC blindato.** Invece del cast diretto `NULLIF(...)::config.ruolo_applicativo`, il team DB ha avvolto il cast in un blocco `EXCEPTION WHEN invalid_text_representation THEN NULL`. Se la GUC contiene un valore non-ENUM (corruzione, downgrade, test che setta valore arbitrario), fallback silenzioso a NULL = legacy "tutte le vesti", invece di propagare un'eccezione all'utente. Backend non vede differenza: `JwtAuditAuthentication` scrive sempre valori corretti dell'enum.
+
+**Deviazione #2 — Trigger aggiuntivo `trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd`.** Non richiesto dal brief ma sensato: quando un preset viene eliminato, l'`ON DELETE SET NULL` di DB-2 azzera `preset_base_id`; il trigger azzera *anche* `preset_base_data_update` per coerenza (un timestamp di confronto senza preset di riferimento sarebbe dato fantasma).
+
+**Impatto FE — regola obbligatoria sul badge "preset aggiornato"** (DEF-2): il confronto `preset_base_data_update < lista_preset.data_update` ha senso solo se il preset di base esiste ancora. La condizione completa:
+
+```js
+const showPresetUpdatedBadge =
+  preferenza.preset_base_id !== null &&
+  preferenza.preset_base_data_update !== null &&
+  presetCorrente.data_update > preferenza.preset_base_data_update;
+```
+
+Se `preset_base_id === null` il preset di riferimento non esiste più (è stato eliminato): il badge **non va mostrato**, l'utente sta di fatto vivendo su una preferenza orfana che ha senso lasciare invariata finché l'utente non decide di resettare. La regola va recepita nel Blocco D (D2/D3) e nel doc differito [DEF-2](sviluppo-personalizzazioni-liste_def.md).
+
+**Brief originale**: [brief-db-ui-personalizzazioni-liste.md](brief-db-ui-personalizzazioni-liste.md) (con stato LANDED in cima).
+
+### 10.3 Caching della config (proposta da valutare in Blocco C)
+
+`fn_resolve_lista_config` viene invocata ad ogni open della lista e fa fino a 5–6 round-trip. Per liste con molte colonne+permessi conviene un ETag basato su:
+
+```text
+hash(user_id, lista_codice, max(data_update di ui.lista_definizione + lista_colonna + lista_preset + lista_preset_colonna + lista_preferenza_utente + lista_colonna_permesso filtrate per la lista))
+```
+
+Il backend ritorna `ETag` su `GET /config` e accetta `If-None-Match` → 304 se nulla è cambiato. Niente cache lato Redis: la sorgente di verità sta nel DB e il calcolo è leggero quando i tag matchano.
 
 ---
 
@@ -541,15 +598,12 @@ Apertura della lista da parte dell'utente:
 ### Dipendenze tra blocchi
 
 ```text
-Blocco A — DDL schema ui
-│
-├──► Blocco B — Codice DB  ──────────────────────────────────────────► Blocco E
-│                                                                       Prima lista reale
-└──► Blocco C — Backend base ──► Blocco D — Frontend base ─────────►┘
+Blocco A ✅  ─►  Blocco B ✅  ─────────────────────────────────────────►  Blocco E (TODO)
+                                                                          Prima lista reale
+                 Blocco C ✅  ─►  Blocco D ✅  ─────────────────────────►
 ```
 
-Blocchi B e C sono **indipendenti** tra loro: possono procedere in parallelo dopo A.
-Blocco D può iniziare non appena il contratto degli endpoint C è definito (§ C1–C4), anche prima che siano testabili end-to-end.
+A+B+C+D atterrati al 2026-05-07. Blocco E (seed `anagrafiche.clienti` + migrazione `ClientiView`) e' il prossimo step.
 
 ---
 
@@ -599,50 +653,159 @@ Percorso: `db/changelog/migrations_v2/20_code/ui/`.
 
 ---
 
-### Blocco C — Backend (dipende da A; parallelo con B)
+### Blocco C — Backend ✅ COMPLETATO (2026-05-07)
 
-Struttura da creare in `backend/apps/ui/`:
+Struttura atterrata in `backend/apps/ui/` (allineata a `apps/documenti/`):
 
 ```text
 apps/ui/
 ├── __init__.py
 ├── apps.py                        # AppConfig, name = 'apps.ui'
-├── urls.py                        # router locale
+├── urls.py                        # urlpatterns per /api/v1/ui/
 ├── db/
-│   └── ui_repository.py           # query dirette verso schema ui
+│   └── ui_repository.py           # query dirette verso schema ui (cursor)
 ├── services/
-│   └── ui_service.py              # orchestrazione; chiama fn_resolve_lista_config
-└── api/
-    └── lista_config_api.py        # views DRF + @extend_schema
+│   ├── ui_service.py              # facade lettura: get_lista_config, get_catalogo
+│   └── lista_preferenza_service.py # write: save/delete preferenza utente, valida JSONB
+├── api/
+│   ├── views.py                   # 4 view DRF + @extend_schema inline
+│   └── urls.py                    # route locali
+└── tests/
+    ├── api/
+    └── services/
 ```
 
-Aggiungere `'apps.ui'` in `INSTALLED_APPS` (`settings.py`) e includere `apps/ui/urls.py` nel router principale.
-Seguire i pattern di `docs/it/dev/api.md`: `handle_post_json`, `ErrorManager`, `@extend_schema` su ogni metodo pubblico.
+Aggiungere `'apps.ui'` in `INSTALLED_APPS` ([backend/zeroerp_backend/settings.py:73-98](../../../../backend/zeroerp_backend/settings.py)) e includere il router locale.
 
-| Step | Endpoint | Note |
-|------|----------|------|
-| C1 | `GET /api/v1/ui/liste/{codice}/config` | Legge `emittente_fiscale_id` dal JWT/sessione; invoca `fn_resolve_lista_config`; ritorna JSONB |
-| C2 | `GET /api/v1/ui/liste/{codice}/catalogo` | Elenco completo `lista_colonna` per la modale (con `gruppo`, `gruppo_ordine`, `tipo_colonna`); non applica permessi — è il catalogo grezzo per uso UI interno |
-| C3 | `PUT /api/v1/ui/liste/{codice}/preferenza` | Valida struttura JSONB in ingresso; upsert `lista_preferenza_utente`; registra `preset_base_data_update` |
-| C4 | `DELETE /api/v1/ui/liste/{codice}/preferenza` | Elimina preferenza utente → al prossimo `GET config` parte dal preset |
+#### C0 — Codici errore in `apps/core/services/error_policies.py` (PRIMA di scrivere le view)
 
-Test in `apps/ui/tests/api/` e `apps/ui/tests/services/`. Mockare il cursore DB (test CI senza DB — pattern `docs/it/dev/api.md`).
+Cfr. [api.md §Tassonomia errori](../api.md) e [Checklist nuovo endpoint](../api.md#checklist-nuovo-endpoint). Da registrare:
+
+| Codice | HTTP | UI action | Quando |
+| ------ | ---- | --------- | ------ |
+| `E_UI_LISTA_NON_TROVATA` | 404 | show_error_banner | `fn_resolve_lista_config` con `codice` inesistente o `attivo=FALSE` |
+| `E_UI_VISTA_SQL_NON_TROVATA` | 400 | show_error_banner | Trigger B1 — solo errori admin (seed/import); l'utente finale non li vede |
+| `E_UI_CAMPO_SORGENTE_NON_TROVATO` | 400 | show_error_banner | Trigger B2 — idem |
+| `E_UI_PREFERENZA_VALIDAZIONE` | 400 | show_error_banner | Service C3 — payload preferenza con campi non whitelistati o tipi sbagliati |
+
+I tre `E_UI_*_NON_TROVATA/_NON_TROVATO` sono già seedati in [messaggi_errore.csv](../../../../db/changelog/migrations_v2/80_data/sql/config/messaggi_errore.csv) (ID 427–429). `E_UI_PREFERENZA_VALIDAZIONE` è solo Python.
+
+#### Base view e permessi
+
+`/api/v1/ui/*` è **meta-API trasversale** (consumata da tutti i domini): non è un'area funzionale di business e lo schema `ui` **non è registrato** in `config.aree_funzionali`. La via corretta è `DomainAPIView` con `skip_area_check = True`, coerente con il pattern dei lookup cross-dominio (cfr. `BillingAccountLookupView`, `IstanzaUtilityLookupView` in [catalogo-building-block-backend.md §Anagrafiche — Billing Account](../backend/catalogo-building-block-backend.md#anagrafiche--billing-account-appsanagrafiche)).
+
+I dati comunque restano per-utente: il `GET /config` proietta solo le colonne ammesse all'utente; il `GET /catalogo` ritorna metadati di struttura non sensibili; le preferenze sono sempre filtrate per `request.user.id`.
+
+```python
+# apps/ui/api/views.py — pattern
+class ApiListaConfigView(DomainAPIView):
+    skip_area_check = True
+    is_search_endpoint = False  # config non è search
+
+    @extend_schema(...)
+    def get(self, request, codice):
+        emittente_id = PermissionResolver.get_emittente_for_user(request.user)
+        config = ui_service.get_lista_config(codice, request.user.id, emittente_id)
+        return success_response(config)
+```
+
+#### Endpoint atterrati
+
+| Step | Endpoint | Stato | Note |
+| ---- | -------- | ----- | ---- |
+| C1 | `GET /api/v1/ui/liste/{codice}/config/` | ✅ | Deriva `emittente_fiscale_id` via `PermissionResolver.get_emittente_for_user`; invoca `ui.fn_resolve_lista_config`; ritorna JSONB completo (incluso `esportabile` + `tipo_colonna` per ogni colonna). ETag rinviato a evoluzione (§10.3). |
+| C2 | `GET /api/v1/ui/liste/{codice}/catalogo/` | ✅ | Catalogo arricchito (etichetta, gruppo, formato, ecc.) via `JOIN lista_definizione` in `list_colonne_by_codice`. Filtra colonne BLOCCATE riusando `get_lista_config()` come single source of truth permessi (no duplicazione logica). |
+| C3 | `PUT /api/v1/ui/liste/{codice}/preferenza/` | ✅ | `handle_post_json` con `require_idempotency_key=True`. `PayloadValidator` whitelist `{colonne[], ordinamento[], filtri{}, pagina_dimensione}`; per ogni colonna `{codice, ordine, larghezza, visibile, fissata}`. UPSERT con snapshot preset di base (cascata simmetrica a fn DB Step 2b/c/d). `pagina_dimensione` cap a `MAX_LIMIT=200` da `apps/core/api/constants.py`. |
+| C4 | `DELETE /api/v1/ui/liste/{codice}/preferenza/` | ✅ | Idempotente: ritorna `{deleted: bool}` (200 anche se non esisteva). |
+
+**Test 26/26 verdi**:
+
+- 17 service test (`UiService` 7 + `ListaPreferenzaService` 10) — repository mockato (`SimpleTestCase`)
+- 6 API test (`JwtMockedApiTest` con `PermissionResolver` mockato + service mockati)
+- Suite globale invariata: 2199/2199 verdi.
+
+**Codici errore** registrati in [`apps/core/services/error_policies.py`](../../../../backend/apps/core/services/error_policies.py):
+
+| Codice | HTTP | UI action |
+| ------ | ---- | --------- |
+| `E_UI_LISTA_NON_TROVATA` | 404 | `show_empty_state` |
+| `E_UI_VISTA_SQL_NON_TROVATA` | 400 | `show_error_banner` |
+| `E_UI_CAMPO_SORGENTE_NON_TROVATO` | 400 | `show_error_banner` |
+| `E_UI_PREFERENZA_VALIDAZIONE` | 400 | `highlight_form_fields` |
+| `E_UI_GENERIC_FAILED` | 400 | `show_error_banner` (fallback DatabaseError ignote, allineato al pattern `E_VENDITE_PRICING_FAILED`) |
+
+**Doc API**: [`docs/it/backend/ui/manual/api_ui_liste.md`](../../backend/ui/manual/api_ui_liste.md) — contratto completo dei 4 endpoint, building block usati, regole multi-veste, dipendenze DB.
+
+**Refactor critico applicato** (review post-implementazione):
+
+- P1 — `get_catalogo` ridotto da 3 → 2 round-trip riusando `get_lista_config()` come single source of truth permessi
+- P2 — `_raise_db_error` parametrizzato con `function_name` per logging DB corretto
+- P3 — `pagina_dimensione` cap a `MAX_LIMIT` invece di `200` hardcoded
+- P4 — `_raise_db_error` annotato `-> NoReturn`
+- P5 — drift risk in `get_preset_base_snapshot` documentato (cascata duplicata della fn DB)
+- P6 — `list_colonne_by_codice` con JOIN unificato (rimosso `list_colonne_catalogo` + `get_lista_id` separati)
+
+#### Building block backend riusabili
+
+Da [catalogo-building-block-backend.md](../backend/catalogo-building-block-backend.md):
+
+- `handle_post_json` + `success_response` + `exception_to_error_response` (envelope uniforme)
+- `PayloadValidator` per la whitelist JSONB del PUT
+- `PermissionResolver.get_emittente_for_user` (1:1 user→EF)
+- `script.fn_log_and_raise_error` lato DB per gli errori della fn
+- `EmittenteFiscaleScopeMixin` non serve qui (la fn applica già lo scope)
+
+Test in `apps/ui/tests/api/` e `apps/ui/tests/services/` con `unittest.TestCase` + cursor DB mockato (vincoli CI senza DB — vedi [AGENTS.md §Test](../../../.codex/AGENTS.md)).
 
 ---
 
-### Blocco D — Frontend (dipende da C)
+### Blocco D — Frontend ✅ COMPLETATO (2026-05-07)
 
 Componenti trasversali in `frontend/src/core/`.
 
-| Step | File | Descrizione |
-|------|------|-------------|
-| D1 | `src/core/composables/useListaConfig.js` | Fetch `GET .../config`; gestione stato locale (config da server vs config corrente); fetch `GET .../catalogo` per modale; `save()` → `PUT .../preferenza`; `reset()` → `DELETE .../preferenza` |
-| D2 | `src/core/components/ListaConfigurabile.vue` | Wrapper PrimeVue DataTable: riceve `codice` + `emittenteFiscaleId` come prop; usa `useListaConfig`; costruisce colonne dinamicamente; gestisce ordinamento e filtri locali |
-| D3 | `src/core/components/ListaColonneModal.vue` | Modale personalizzazione: toggle visibilità, drag&drop ordine, colonne raggruppate per `gruppo`, colonne `identificatore`/`azione` non togglabili (disabled con tooltip), badge "N nuove colonne" |
-| D4 | (incluso in D2) | Indicatore stato nella toolbar: testo `Configurazione salvata` / `Temporanea — non salvata`; confronto config locale vs config da server al mount |
+#### Pattern: estendere i building block esistenti, non duplicarli
 
-Costanti UI (durata toast, larghezze default colonne) in `src/core/constants.js`.
-Tutti i testi visibili via `$t()` (vue-i18n) — nessuna stringa hardcoded nei template.
+Prima di scrivere composable nuovi, vedi [catalogo-building-block-frontend.md](../frontend/catalogo-building-block-frontend.md). I tre building block che `<ListaConfigurabile>` deve **comporre**, non sostituire:
+
+- **`useSearchTable`** — già gestisce ricerca + paginazione + ordinamento server-side con debounce. Lo `<ListaConfigurabile>` lo invoca passando `pagina_dimensione`, `ordinamento` e `filtri` derivati dalla config risolta.
+- **`useGlobalLookup`** — cache modulo-level per il `GET /catalogo` (chiave = `ui.lista.<codice>`): la modale di personalizzazione si apre senza round-trip se il catalogo è già stato fetched in sessione.
+- **`useDirtyState`** — la toolbar `[Configurazione salvata]` vs `[Temporanea — non salvata]` (§7) si appoggia su `useDirtyState` invece di costruire un confronto custom.
+
+Niente prop `emittenteFiscaleId` sul componente: il backend lo deriva (vedi §5).
+
+#### Steps atterrati
+
+| Step | File | Stato | Note implementazione |
+| ---- | ---- | ----- | -------------------- |
+| D1 | [`src/core/api/ui-api.js`](../../../../frontend/src/core/api/ui-api.js) | ✅ | 4 endpoint client axios (`getListaConfig`, `getListaCatalogo`, `putListaPreferenza`, `deleteListaPreferenza`). `Idempotency-Key` passata dal caller, generata via `crypto.randomUUID()` in `useListaConfig.save()`. |
+| D1 | [`src/core/composables/useListaConfig.js`](../../../../frontend/src/core/composables/useListaConfig.js) | ✅ | Stato per-istanza (no cache modulo-level): `config`, `catalogo` (lazy), `dirty`, `colonneNuove`, `loading`. Metodi `load`, `ensureCatalogo`, `applyChange`, `save`, `reset`. Whitelist payload `_PAYLOAD_ROOT_KEYS`/`_COLONNA_KEYS` allineata a `ListaPreferenzaService` BE (drift risk documentato in commento). ETag rinviato a evoluzione (§10.3). |
+| D2 | [`src/core/components/ListaConfigurabile.vue`](../../../../frontend/src/core/components/ListaConfigurabile.vue) | ✅ | Wrapper PrimeVue DataTable. Prop `codice` + `rows`/`total`/`loading`/`page`/`sortField`/`sortOrder` controllati dal caller (no fetch dati interno: il caller mantiene il proprio store + `useSearchTable`). Toolbar con `Tag` stato salvata/temporanea + `Button` personalizza con `Badge` `colonne_nuove`. Slot dinamico `cell-{codice}` per body custom + slot `actions`/`filters`/`actions-extra`. Fallback formatter built-in da `formato` (`date_short`, `currency_eur`, `percent_2`, `yesno`). Colonna "Azioni" renderizzata solo se `slots.actions` e' fornito (no celle vuote silenti). `pageSize`/`firstOffset` computed con fallback a `PAGINATION.DEFAULT_ROWS`; `firstOffset=0` finche' config null per evitare salti visivi. |
+| D3 | [`src/core/components/ListaColonneModal.vue`](../../../../frontend/src/core/components/ListaColonneModal.vue) | ✅ | PrimeVue Drawer right `DRAWER_WIDTH.SIMPLE` (480px). Lavora su copia locale `localColonne` — propaga al genitore solo a "Salva" (emit `apply` con `{colonne}`). Toggle disabilitato per `tipo_colonna IN ('identificatore','azione')` con tooltip esplicativo. Riordino tramite ▲/▼ (zero dipendenze drag&drop esterne); ▲ disabled sulla prima colonna globale, ▼ disabled sull'ultima (simmetria UX). Edit larghezza inline via `InputNumber` con limiti `_LARGHEZZA_LIMITS` (40-800 px, step 20). Reset preferenza tramite `useConfirmAction.confirmAction({danger: true, onAccept})`. Colonne raggruppate per `gruppo`/`gruppo_ordine` del catalogo. |
+| D4 | (incluso in D2) | ✅ | Indicatore stato nella toolbar: `Tag warning` "Temporanea — non salvata" se `dirty`, `Tag success` "Configurazione salvata" altrimenti. |
+
+**i18n**: 15 chiavi nuove sotto `lista_config.*` in [`it.json`](../../../../frontend/src/locales/it.json) e [`en.json`](../../../../frontend/src/locales/en.json) (`modal_title`, `stato_salvata`, `stato_temporanea`, `colonne_nuove_tooltip`, `colonna_obbligatoria`, `larghezza_tooltip`, `sposta_su`/`sposta_giu`, `tag_sensibile`, `gruppo_altro`, `reset_preferenza`, `reset_confirm_header`/`reset_confirm_message`, ecc.).
+
+**Build verde**: `vite build` 1.05s, niente regressioni nei chunk.
+
+**Refactor critico applicato** (review post-implementazione):
+
+- FP1 — `:rows` paginator usa `pageSize` computed con `PAGINATION.DEFAULT_ROWS` (no `?? 25` magic duplicato)
+- FP2 — `:first` 0 finche' config null per evitare salto visivo paginator al caricamento
+- FP3 — Colonna "Azioni" renderizzata solo se `slots.actions` esiste (no celle vuote)
+- FP4 — Width Drawer da `520px` hardcoded a `DRAWER_WIDTH.SIMPLE`
+- FP5 — Limiti larghezza in costante locale `_LARGHEZZA_LIMITS`
+- FP6 — Pulsante ▼ disabled simmetrico (ultima colonna globale)
+- FP7 — Drift risk whitelist FE/BE documentato in `useListaConfig.save()`
+- FP8 — Comportamento errore di rete su reload post-save documentato
+
+**Cose riusate da building block esistenti** (no duplicazione):
+
+- `useApiHandler` per error handling automatico + toast
+- `useConfirmAction` per la conferma reset
+- `app-datatable` CSS class globale per il DataTable compatto
+- `PAGINATION.DEFAULT_ROWS` / `DRAWER_WIDTH.SIMPLE` da `core/constants.js`
+
+**Limitazione MVP nota**: il BE espone solo il conteggio aggregato `colonne_nuove`, non un flag `is_new` per-colonna. La modale mostra il badge globale ma non evidenzia singolarmente le nuove colonne. Evoluzione futura: brief team DB per arricchire lo Step 3 di `fn_resolve_lista_config` con `is_new: true` per colonna.
 
 ---
 
@@ -650,28 +813,33 @@ Tutti i testi visibili via `$t()` (vue-i18n) — nessuna stringa hardcoded nei t
 
 Scopo: validare l'intera catena su un caso reale prima di replicare. Lista candidata: **anagrafiche clienti** (`codice = 'anagrafiche.clienti'`).
 
+> **Vincolo**: eseguire i brief DB-1..DB-4 (§10.2) **prima** del seed E1, altrimenti il preset di emittente fiscale rischia di basarsi su tipi/comportamenti scorretti che andranno re-seedati.
+
 **Seed dati** — file CSV + YAML in `80_data/`:
 
 | Step | File | Contenuto |
-|------|------|-----------|
-| E1 | `80_data/sql/ui/lista_definizione.csv` + YAML changelog | Una riga: `codice='anagrafiche.clienti'`, `vista_sql='<nome view clienti>'` |
-| E2 | `80_data/sql/ui/lista_colonna.csv` + YAML changelog | Colonne del catalogo clienti: `ragione_sociale` (identificatore), poi colonne informazione con gruppo, ordine, tipo_dato, formato |
-| E3 | `80_data/sql/ui/lista_preset.csv` + YAML changelog | Un preset di sistema (`is_default=TRUE, ambito='sistema'`) con le colonne più rilevanti |
-| E4 | `80_data/sql/ui/lista_preset_colonna.csv` + YAML changelog | Colonne del preset di sistema: quali visibili di default, quali nel pool ma non visibili |
+| ---- | ---- | -------- |
+| E1 | `80_data/sql/ui/lista_definizione.csv` + YAML changelog | Una riga: `codice='anagrafiche.clienti'`, `schema_dati='anagrafiche'`, `vista_sql='<nome view clienti>'`. La view candidata è già in repo: cfr. [vw_clienti_codice_ba](../../../../db/changelog/migrations_v2/20_code/anagrafiche/20260401-22-recreate-vw-clienti-codice-ba-mctit.yaml). |
+| E2 | `80_data/sql/ui/lista_colonna.csv` + YAML changelog | Colonne del catalogo clienti: `ragione_sociale` (identificatore), poi colonne informazione con gruppo, ordine, tipo_dato, formato. Il trigger B2 valida `campo_sorgente` contro `pg_catalog.pg_attribute`. |
+| E3 | `80_data/sql/ui/lista_preset.csv` + YAML changelog | Un preset di sistema (`is_default=TRUE, ambito='sistema'`) con le colonne più rilevanti. |
+| E4 | `80_data/sql/ui/lista_preset_colonna.csv` + YAML changelog | Colonne del preset di sistema: quali visibili di default, quali nel pool ma non visibili. |
 
-Verificare che ogni `campo_sorgente` in E2 esista nella view SQL prima del deploy — il trigger B2 lo valida automaticamente all'INSERT.
+Convenzione naming dei file YAML (cfr. [AGENTS.md §Liquibase v2 Workflow](../../../.codex/AGENTS.md)): `YYYYMMDD-NN-seed-ui-<descrizione>-mctit.yaml`. Tutti in `80_data/changelog/` con `includeAll` già configurato dal master.
 
 **Migrazione componente**:
 
 | Step | File frontend | Descrizione |
-|------|---------------|-------------|
-| E5 | `src/anagrafiche/views/ClientiListView.vue` | Sostituire il DataTable statico con `<ListaConfigurabile codice="anagrafiche.clienti" />` |
+| ---- | ------------- | ----------- |
+| E5 | [src/anagrafiche/views/ClientiView.vue](../../../../frontend/src/anagrafiche/views/ClientiView.vue) | Sostituire il DataTable statico con `<ListaConfigurabile codice="anagrafiche.clienti" />`. Il file della view esiste già — il refactor sostituisce solo il body. |
 
-Dopo E5, testare manualmente:
+Dopo E5, testare manualmente (smoke checklist da inserire in `backend/scripts/tests/`):
+
 - Apertura senza preferenza → catalogo grezzo
 - Personalizzazione colonne → salvataggio → ricarica → preferenza persistita
 - Reset → torna al preset di sistema
 - Badge "N nuove colonne" su aggiornamento catalogo
+- Operatore con scope EF specifico vede solo i clienti del suo emittente (lo scope è applicato dalla `vista_sql`, non da `fn_resolve_lista_config` — la fn governa solo presentazione)
+- Header `If-None-Match` su seconda apertura → 304 se nulla cambiato (validazione ETag §10.3)
 
 ---
 

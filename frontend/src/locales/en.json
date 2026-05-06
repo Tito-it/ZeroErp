@@ -2160,5 +2160,22 @@
         "col_size": "Size"
       }
     }
+  },
+  "lista_config": {
+    "modal_title": "Customize columns",
+    "personalizza_colonne": "Customize columns",
+    "stato_salvata": "Saved configuration",
+    "stato_temporanea": "Temporary — not saved",
+    "stato_temporanea_tooltip": "The current configuration has not been saved. It will be lost on next login unless you click 'Save' in the customization modal.",
+    "colonne_nuove_tooltip": "{count} new columns available since last save.",
+    "colonna_obbligatoria": "Mandatory column, always visible.",
+    "larghezza_tooltip": "Column width in pixels. Empty = use default.",
+    "sposta_su": "Move up",
+    "sposta_giu": "Move down",
+    "tag_sensibile": "Sensitive",
+    "gruppo_altro": "Other",
+    "reset_preferenza": "Restore defaults",
+    "reset_confirm_header": "Restore configuration",
+    "reset_confirm_message": "Your customization will be deleted and the list will return to the standard preset. Continue?"
   }
 }
