@@ -175,8 +175,7 @@ class ContrattiRepository:
     # =================================================================
 
     # Scopo: Lista paginata contratti filtrabile per cliente/stato/utility/
-    #        ambito + search su numero + intervallo validita' (default
-    #        anno-1 gestito dal service).
+    #        ambito + search su numero + intervallo validita' esplicito.
     def list_contratti(
         self,
         *,

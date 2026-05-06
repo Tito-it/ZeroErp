@@ -34,7 +34,9 @@ _LOOKUP_RESPONSE = inline_serializer(
 class IstanzaUtilityLookupView(DomainAPIView):
     """GET lookup ricco istanze_utilities per autocomplete UI."""
 
-    area_funzionale = "anagrafiche"
+    # Lookup cross-dominio: preventivi prospect (senza BA) lo usano dal
+    # dominio vendite. Stesso pattern di BillingAccountLookupView.
+    skip_area_check = True
     is_search_endpoint = True
 
     @extend_schema(
@@ -113,7 +115,8 @@ class IstanzaUtilityLookupView(DomainAPIView):
 class IstanzaUtilityLookupByIdView(DomainAPIView):
     """GET singola istanza_utility arricchita per restore AutoComplete in edit."""
 
-    area_funzionale = "anagrafiche"
+    # Lookup cross-dominio (restore): stesso pattern del list lookup.
+    skip_area_check = True
 
     @extend_schema(
         responses={200: _LOOKUP_RESPONSE},

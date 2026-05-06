@@ -197,11 +197,11 @@ const formTitle = computed(() => {
 async function onSave() {
   const f = form.value
   const payload = {
-    uom_id: f.uom_id,
     prezzo: f.prezzo,
   }
   if (formMode.value === 'create') {
     payload.articolo_id = f.articolo_id
+    payload.uom_id = f.uom_id
     const result = await execute(
       () => createRiga(props.listinoId, props.versione.id, payload),
       { successMessage: t('listini.riga_creata') }

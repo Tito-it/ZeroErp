@@ -8,7 +8,7 @@
 //        sul criterio di pre-seleziona base (formMode vs isEdit vs flag custom):
 //        qui la fetch e' pura, il caller decide quando applicare il base id.
 import { ref } from 'vue'
-import { listArticoloUom } from '../../catalogo/api/catalogo'
+import { lookupArticoloUom } from '../../catalogo/api/catalogo'
 
 /**
  * Pattern caricamento UoM operative dell'articolo selezionato.
@@ -48,7 +48,7 @@ export function useArticoloUomOptions() {
     if (!articoloId) return []
     uomLoading.value = true
     try {
-      const res = await listArticoloUom(articoloId)
+      const res = await lookupArticoloUom(articoloId)
       // Endpoint puo' rispondere paginated `{results: [...]}` o lista diretta.
       const list = res.data.data?.results || res.data.data || []
       // Risposta stantia (un'altra fetch e' partita nel frattempo): scarta.

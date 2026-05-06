@@ -128,7 +128,7 @@ function onScaricaClick() {
     <!-- DRAFT: Anteprima inline -->
     <Button
       v-if="mode === 'preview'"
-      icon="pi pi-eye"
+      icon="pi pi-file-pdf"
       :label="t('preventivi.pdf.label_anteprima')"
       v-tooltip.top="t('preventivi.pdf.tooltip_anteprima')"
       size="small"
@@ -157,7 +157,7 @@ function onScaricaClick() {
     <!-- Stato terminale: solo Scarica via dialog lista. -->
     <Button
       v-else-if="mode === 'scarica'"
-      icon="pi pi-download"
+      icon="pi pi-file-pdf"
       :label="t('preventivi.pdf.label_scarica')"
       v-tooltip.top="t('preventivi.pdf.tooltip_scarica')"
       size="small"

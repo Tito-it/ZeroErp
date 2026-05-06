@@ -400,6 +400,29 @@ class ApiArticoloUomList(DomainAPIView):
         return handle_post_json(request, handler=lambda payload: fn_create_uom_operativa(articolo_id, payload))
 
 
+class ApiArticoloUomLookup(DomainAPIView):
+    # Lookup cross-dominio sulle UoM operative di un articolo: usato come
+    # autocomplete dai drawer riga di vendite (preventivi, contratti, listini,
+    # promo articoli) che non possono richiedere LETTURA su catalogo solo per
+    # popolare un combo. Stesso pattern di ApiArticoliLookup: JWT + scope dati
+    # gia' implicito (le UoM operative sono fisse per articolo, niente filtro
+    # per utente). I CRUD admin catalogo restano su ApiArticoloUomList.
+    skip_area_check = True
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="CatalogoArticoloUomLookupResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Restituisce le UoM operative di un articolo (lookup cross-dominio).
+    def get(self, request: Request, articolo_id: UUID) -> JsonResponse:
+        del request
+        return success_response(fn_list_uom_operative(articolo_id))
+
+
 class ApiArticoloUomDetail(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")
@@ -621,8 +644,12 @@ class ApiComponenteNoteList(DomainAPIView):
 
 
 class ApiArticoliLookup(DomainAPIView):
-    area_funzionale = "catalogo"
-    model_permission = ("catalogo", "articolo")
+    # Lookup cross-dominio per autocomplete: preventivi/contratti/listini lo
+    # usano dall'area vendite, righe ordine/fattura dall'area acquisti, ecc.
+    # Coerente col pattern degli altri lookup di selezione (vedi core/api/
+    # views_lookup.py): JWT obbligatorio + throttling search bastano. L'area
+    # `catalogo` resta protetta sui CRUD veri (list dettagliata, create/update).
+    skip_area_check = True
     is_search_endpoint = True
 
     @extend_schema(

@@ -45,6 +45,29 @@
 | `DEFAULT_LIMIT` / `MAX_LIMIT` | [constants.py](../../../../backend/apps/core/api/constants.py) | Costanti paginazione (50 / 200) |
 | `JwtAuditAuthentication` | [jwt_audit_authentication.py](../../../../backend/apps/core/api/jwt_audit_authentication.py) | **Subclass `JWTAuthentication`** che propaga **5 GUC** di sessione PG subito dopo `authenticate()` di successo: `app.jwt_user`, `app.current_user_id` (sempre), `app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id` (solo se identita attiva, altrimenti stringa vuota — fail-open documentato). Single round-trip via CTE che risolve `identita_digitali` attiva. Registrata in `REST_FRAMEWORK.DEFAULT_AUTHENTICATION_CLASSES` + tutte le base view (`DomainAPIView`, `AdminAPIView`, `PortaleAPIView`, `ShopAPIView`). Setta marker `request._zeroerp_jwt_guc_set` letto da `JwtAuditMiddleware.process_response` per il reset simmetrico dei 5 GUC. Vedi guida `risorse-umane-e-accessi.md` sezione "Propagazione identita utente al database (GUC)" e `architettura-multi-face-auth.md`. |
 
+### Pattern: lookup cross-dominio su sub-resource
+
+Quando un sub-resource di area X (es. `/X/<id>/Y/`) deve essere usato come **lookup di selezione cross-dominio** (autocomplete da drawer di altre aree), splittare in due endpoint:
+
+| Endpoint | Permission | Caso d'uso |
+| --- | --- | --- |
+| `GET /<area_X>/<id>/Y/` | `area_funzionale=X` + `model_permission` | Admin di X che gestisce il sub-resource (CRUD context) |
+| `GET /<area_X>/<id>/Y/lookup/` | `skip_area_check=True` | Lookup di selezione per drawer di altre aree |
+
+Le operazioni di scrittura (`POST`, `PATCH`, `DELETE` sul path classico) restano protette dall'area: solo la lettura "lookup" e' libera. Difese che restano: JWT obbligatorio, `is_search_endpoint=True` (throttling), eventuale scope dati lato repository.
+
+**Esempio applicato — `catalogo.articoli.uom`:**
+
+| Endpoint | Permission | Consumer |
+| --- | --- | --- |
+| `GET /catalogo/articoli/<id>/uom/` (`ApiArticoloUomList`) | `area=catalogo` + `model_permission=articolo` | `ArticoloDrawer`, `ArticoloUomDrawer` (admin catalogo) |
+| `GET /catalogo/articoli/<id>/uom/lookup/` (`ApiArticoloUomLookup`) | `skip_area_check=True` | 5 consumer cross-dominio via `useArticoloUomOptions`: `PreventiviRigaForm`, `PromoArticoloDrawer`, `ContrattoRigheDrawer`, `VersioneDrawer`, `TestResolverDialog` |
+| `POST /catalogo/articoli/<id>/uom/` | `area=catalogo` (METHOD_REQUIRES POST → add) | `ArticoloUomDrawer` |
+| `PATCH /catalogo/articoli/<id>/uom/<uom_id>/` | `area=catalogo` | `ArticoloUomDrawer` |
+| `DELETE /catalogo/articoli/<id>/uom/<uom_id>/` | `area=catalogo` | `ArticoloUomDrawer` |
+
+**Razionale.** Forzare `area_funzionale` sul GET costringe l'operatore di un altro dominio (es. vendite) ad avere LETTURA su catalogo solo per popolare un combo: gonfia il profilo permessi e produce 403 silenti che svuotano gli autocomplete senza UX di errore (sintomo classico: "scelgo articolo, combo UoM vuota, save fallisce con E_QTA_MISSING"). Splittare e' lineare e non ha controindicazioni di sicurezza per dati non sensibili (UoM, lookup di selezione). Per casi che necessitano ulteriori restrizioni granulari, vedi `feedback_lookup_skip_area_check.md` (leve disponibili: scope dati, azione di processo dedicata, ScopePolicy). Per il pattern dei lookup top-level (non sub-resource) liberati: `ApiArticoliLookup`, `BillingAccountLookupView`, `IstanzaUtilityLookupView`, `BillingAccountLookupByIdView`, `IstanzaUtilityLookupByIdView`.
+
 ---
 
 ## Services (`apps/core/services/`)

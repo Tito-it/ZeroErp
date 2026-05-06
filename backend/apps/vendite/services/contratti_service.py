@@ -296,13 +296,6 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
-# Scopo: Calcola data_da di default per la lista contratti (1 gennaio
-#        anno precedente). Regola feedback_filtro_data_liste.md.
-def _default_data_da() -> date:
-    today = date.today()
-    return date(today.year - 1, 1, 1)
-
-
 class ContrattiService:
     """Service CRUD contratti v5 (F2-BE-05)."""
 
@@ -346,8 +339,9 @@ class ContrattiService:
     # Lista e dettaglio
     # =================================================================
 
-    # Scopo: Lista paginata contratti con filtri standard + default
-    #        data_da=(anno-1, 01-01) se non specificato dal caller.
+    # Scopo: Lista paginata contratti con filtri standard espliciti.
+    #        Il backend non applica default temporali impliciti: eventuali
+    #        default visibili all'operatore sono responsabilita' della UI.
     def list_contratti(
         self,
         *,
@@ -384,11 +378,6 @@ class ContrattiService:
                 detail="Atteso YYYY-MM (es. 2026-07).",
                 context={"scadenza_mese": scadenza_mese},
             )
-        # Default data_da: 1 gennaio anno-1 (regola condivisa per liste
-        # con filtro validita'). Il caller puo' passare None esplicito
-        # per disabilitare il filtro (tramite "no_default" futuro).
-        if data_da is None:
-            data_da = _default_data_da()
         return self._repo.list_contratti(
             search=search,
             billing_account_id=billing_account_id,

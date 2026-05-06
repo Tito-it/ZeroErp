@@ -25,6 +25,9 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.vendite.services.pricing_diagnose_service import (
+    PricingDiagnoseService,
+)
 from apps.vendite.services.pricing_service import (
     PARAM_MAX_MAGGIORAZIONE_PCT,
     PARAM_MAX_SCONTO_PCT,
@@ -59,14 +62,26 @@ _RESOLVE_RESPONSE = inline_serializer(
             max_digits=10, decimal_places=4, allow_null=True,
         ),
         "origine": serializers.CharField(),
+        # Id + denormalizzati (codice/descrizione) via LEFT JOIN nel repository,
+        # esposti per UI diagnostica leggibile (TestResolverDialog) senza
+        # round-trip aggiuntivi.
         "listino_id": serializers.IntegerField(allow_null=True),
+        "listino_codice": serializers.CharField(allow_null=True),
+        "listino_descrizione": serializers.CharField(allow_null=True),
         "listino_versione_id": serializers.IntegerField(allow_null=True),
+        "listino_versione_codice": serializers.CharField(allow_null=True),
         "listino_riga_id": serializers.IntegerField(allow_null=True),
         "contratto_id": serializers.IntegerField(allow_null=True),
+        "contratto_numero": serializers.CharField(allow_null=True),
         "promo_id": serializers.IntegerField(allow_null=True),
+        "promo_codice": serializers.CharField(allow_null=True),
+        "promo_descrizione": serializers.CharField(allow_null=True),
         "categoria_cliente_listino_id": serializers.IntegerField(allow_null=True),
         "categoria_cliente_id_snapshot": serializers.IntegerField(allow_null=True),
+        "categoria_cliente_codice": serializers.CharField(allow_null=True),
+        "categoria_cliente_descrizione": serializers.CharField(allow_null=True),
         "classe_utenza_id_snapshot": serializers.IntegerField(allow_null=True),
+        "classe_utenza_descrizione": serializers.CharField(allow_null=True),
     },
 )
 
@@ -161,6 +176,114 @@ class PricingResolveView(DomainAPIView):
         return handle_post_json(request, handler=_handler)
 
 
+# ====================================================================
+# Endpoint diagnostico pricing (POST /vendite/pricing/diagnose/)
+# ====================================================================
+#
+# Scopo: diagnosticare la configurazione asset (BA, contratto, matrice
+#        categoria→listino, promo) per la combinazione di parametri data,
+#        spiegando perche' il resolver fallisce e cosa l'admin deve
+#        configurare. Read-only, nessun side-effect, leggero (4 query
+#        mirate, no chiamata al resolver vero).
+#
+# Pattern UX: il TestResolverDialog chiama questo endpoint dopo che il
+#        resolver ha sollevato errore e mostra una checklist a stadi
+#        con le azioni suggerite.
+
+_DIAGNOSE_REQUEST = _RESOLVE_REQUEST  # stessi parametri del resolver
+
+_DIAGNOSE_BA = inline_serializer(
+    name="VenditePricingDiagnoseBA",
+    fields={
+        "trovato": serializers.BooleanField(),
+        "categoria_id": serializers.IntegerField(allow_null=True),
+        "categoria_codice": serializers.CharField(allow_null=True),
+        "categoria_descrizione": serializers.CharField(allow_null=True),
+        "categoria_partecipa_promo": serializers.BooleanField(),
+    },
+)
+
+_DIAGNOSE_STADIO = inline_serializer(
+    name="VenditePricingDiagnoseStadio",
+    fields={
+        "applicabile": serializers.BooleanField(),
+        "motivo": serializers.CharField(allow_null=True),
+    },
+)
+
+_DIAGNOSE_RESPONSE = inline_serializer(
+    name="VenditePricingDiagnoseResp",
+    fields={
+        "ba": _DIAGNOSE_BA,
+        "stadio_0_promo": serializers.DictField(),
+        "stadio_1_contratto": serializers.DictField(),
+        "stadio_2_categoria": serializers.DictField(),
+        "esito_atteso": serializers.DictField(),
+        "azioni_suggerite": serializers.ListField(child=serializers.CharField()),
+    },
+)
+
+
+class PricingDiagnoseView(DomainAPIView):
+    """POST /api/v1/vendite/pricing/diagnose/ — diagnostica asset pricing.
+
+    Per la stessa combinazione di parametri del resolver, ritorna lo
+    stato di configurazione dei 3 stadi (PROMO/CONTRATTO/CATEGORIA) +
+    azioni operative suggerite per sbloccare l'eventuale errore.
+    Non chiama il resolver vero: ispeziona la configurazione.
+
+    Area funzionale: `vendite` (livello LETTURA sufficiente).
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_DIAGNOSE_REQUEST,
+        responses={200: _DIAGNOSE_RESPONSE},
+        tags=["vendite"],
+        summary="Diagnostica configurazione asset pricing",
+    )
+    def post(self, request: Request):
+        # Scopo: handler simmetrico a PricingResolveView. Riusa
+        #        `_resolve_emittente_sr` per la derivazione dal JWT (fallback
+        #        a override esplicito) e `parse_iso_date` per la data.
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            articolo_id = payload.get("articolo_id")
+            ErrorManager.require(
+                articolo_id is not None,
+                code="E_VENDITE_VALIDATION",
+                message="articolo_id obbligatorio.",
+            )
+            data_riferimento_raw = payload.get("data_riferimento")
+            ErrorManager.require(
+                data_riferimento_raw is not None,
+                code="E_VENDITE_VALIDATION",
+                message="data_riferimento obbligatoria.",
+            )
+            data_riferimento = parse_iso_date(str(data_riferimento_raw))
+
+            emittente_sr = _resolve_emittente_sr(
+                request, payload.get("emittente_soggetto_ruolo_id"),
+            )
+
+            result = PricingDiagnoseService().diagnose(
+                articolo_id=str(articolo_id),
+                uom_id=int(payload.get("uom_id") or 0),
+                data_riferimento=data_riferimento,
+                ba_id=int(payload.get("ba_id") or 0),
+                utility_id=int(payload.get("utility_id") or 0),
+                emittente_soggetto_ruolo_id=emittente_sr,
+                classe_utenza_id=(
+                    int(payload["classe_utenza_id"])
+                    if payload.get("classe_utenza_id")
+                    else None
+                ),
+            )
+            return result
+
+        return handle_post_json(request, handler=_handler)
+
+
 _LIMITI_UTENTE_RESPONSE = inline_serializer(
     name="VenditePricingLimitiUtenteResp",
     fields={
@@ -197,9 +320,20 @@ class PricingLimitiUtenteView(DomainAPIView):
         # Single round-trip: risolve entrambe le chiavi in una query DB.
         # Valori ritornati come stringa (envelope stabile); il FE le converte
         # in Number (zero-safe) per l'interpolazione dell'hint.
-        values = ParameterService().get_defaults(
+        # Derivazione emittente dell'operatore: senza questo passaggio la
+        # cascata user → group → emittente → default salterebbe lo step
+        # "emittente" e gli override impostati per EF non sarebbero mai
+        # applicati (sintomo: admin imposta MAX_SCONTO_PCT=10 per emittente
+        # X, l'operatore vede sempre 0 nel drawer).
+        param_service = ParameterService()
+        emittente_fiscale_id = (
+            param_service.get_emittente_fiscale_id_for_user(auth_user_id)
+            if auth_user_id is not None else None
+        )
+        values = param_service.get_defaults(
             [PARAM_MAX_SCONTO_PCT, PARAM_MAX_MAGGIORAZIONE_PCT],
             django_user_id=auth_user_id,
+            emittente_fiscale_id=emittente_fiscale_id,
         )
 
         def _to_decimal_str(raw):

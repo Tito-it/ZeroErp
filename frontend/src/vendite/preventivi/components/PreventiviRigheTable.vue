@@ -14,6 +14,8 @@ import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { usePreventiviStore } from '../stores/preventivi'
 import { MANAGE_ICONS } from '../../../core/constants'
 import { formatCurrency, formatNumber } from '../../../core/utils/format'
+import { coerceJsonbToObject } from '../../../core/utils/meta'
+import { STATO_APPROVAZIONE } from '../../constants'
 import PreventiviRigaForm from './PreventiviRigaForm.vue'
 import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
@@ -127,15 +129,42 @@ function onDeleteRiga(riga) {
 // Scopo: severity Tag per stato approvazione prezzo (workflow L3 Sprint E).
 // Mappa coerente: PENDING=warn (in corso), APPROVED=success, REJECTED=danger.
 function approvazioneSeverity(stato) {
-  if (stato === 'APPROVED') return 'success'
-  if (stato === 'REJECTED') return 'danger'
+  if (stato === STATO_APPROVAZIONE.APPROVED) return 'success'
+  if (stato === STATO_APPROVAZIONE.REJECTED) return 'danger'
   return 'warn'  // PENDING
 }
 
 function approvazioneLabel(stato) {
-  if (stato === 'APPROVED') return t('preventivi.badge_approvazione_approved')
-  if (stato === 'REJECTED') return t('preventivi.badge_approvazione_rejected')
+  if (stato === STATO_APPROVAZIONE.APPROVED) return t('preventivi.badge_approvazione_approved')
+  if (stato === STATO_APPROVAZIONE.REJECTED) return t('preventivi.badge_approvazione_rejected')
   return t('preventivi.badge_approvazione_pending')
+}
+
+// Tooltip contestuale al tag di stato approvazione. Per REJECTED leggiamo la
+// motivazione denormalizzata in `meta.approvazione_rifiuto.motivazione`
+// (popolata da approvazioni_prezzo_service.rifiuta()): cosi' l'operatore
+// vede subito *perche'* il responsabile ha rifiutato senza navigare alla
+// pratica. Per PENDING torna il riferimento alla pratica come prima.
+function approvazioneTooltip(data) {
+  if (data.stato_approvazione_prezzo === STATO_APPROVAZIONE.REJECTED) {
+    // Coerce difensivo: meta puo' arrivare come stringa JSON (regressione
+    // adapter psycopg) → senza, il tooltip resta vuoto e l'operatore vede
+    // "Rifiutato" senza motivo.
+    const meta = coerceJsonbToObject(data.meta)
+    const rif = meta.approvazione_rifiuto || {}
+    if (rif.motivazione) {
+      return t('preventivi.badge_approvazione_rejected_tooltip', {
+        motivazione: rif.motivazione,
+      })
+    }
+    return t('preventivi.badge_approvazione_rejected_no_motivo')
+  }
+  if (data.stato_approvazione_prezzo === STATO_APPROVAZIONE.PENDING && data.pratica_approvazione_prezzo_id) {
+    return t('preventivi.badge_approvazione_pending_tooltip', {
+      pratica_id: data.pratica_approvazione_prezzo_id,
+    })
+  }
+  return ''
 }
 
 // Scopo: costruisce le azioni di riga (kebab) per RowActionsMenu. La modifica
@@ -150,7 +179,7 @@ function buildRowActions(riga) {
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: props.isModificabile,
-      disabled: riga?.stato_approvazione_prezzo === 'PENDING',
+      disabled: riga?.stato_approvazione_prezzo === STATO_APPROVAZIONE.PENDING,
       command: () => onDeleteRiga(riga),
     },
   ]
@@ -200,9 +229,7 @@ defineExpose({ loadRighe })
               v-if="data.stato_approvazione_prezzo"
               :severity="approvazioneSeverity(data.stato_approvazione_prezzo)"
               :value="approvazioneLabel(data.stato_approvazione_prezzo)"
-              v-tooltip.top="data.pratica_approvazione_prezzo_id
-                ? t('preventivi.badge_approvazione_pending_tooltip', { pratica_id: data.pratica_approvazione_prezzo_id })
-                : ''"
+              v-tooltip.top="approvazioneTooltip(data)"
             />
           </div>
         </template>

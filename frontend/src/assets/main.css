@@ -619,6 +619,15 @@ a {
   color: var(--p-text-muted-color);
 }
 
+.app-empty-state-error {
+  color: var(--p-red-400);
+}
+
+.app-empty-state-error > i.pi {
+  color: var(--p-red-400);
+  opacity: 0.65;
+}
+
 /* ===== Spacing utility =====
  * Classi margin-top per evitare stili inline. */
 .mt-025 { margin-top: 0.25rem; }

@@ -141,6 +141,7 @@ onMounted(() => {
           :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
           :placeholder="t('clienti.filtro_utility')"
           show-clear
+          apply-default
           @change="onUtilityChange"
         />
         <LookupSelect

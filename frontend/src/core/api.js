@@ -111,12 +111,16 @@ function redirectToLogin() {
   local.remove(STORAGE_KEYS.REFRESH_TOKEN)
   // NB: LOGIN_CHANNEL non viene rimosso — conserva la preferenza utente
   // per il prossimo login manuale (stesso pattern di `clearTokens`).
-  // Usa il router per evitare page reload; preserva la rotta per redirect post-login
+  // Usa il router per evitare page reload; preserva la rotta per redirect post-login.
+  // `reason=session_expired` viene letto da LoginView per mostrare un messaggio
+  // esplicito invece di una pagina muta (UX: l'utente capisce che e' caduta
+  // la sessione e non sta avendo un bug).
   const currentPath = router.currentRoute?.value?.fullPath
-  router.push({
-    name: 'login',
-    query: currentPath && currentPath !== '/login' ? { redirect: currentPath } : {}
-  })
+  const query = { reason: 'session_expired' }
+  if (currentPath && currentPath !== '/login') {
+    query.redirect = currentPath
+  }
+  router.push({ name: 'login', query })
 }
 
 export default api

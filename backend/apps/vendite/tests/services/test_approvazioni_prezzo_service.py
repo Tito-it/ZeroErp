@@ -230,7 +230,18 @@ class ApprovaRifiutaTests(TestCase):
         )
 
         self.assertEqual(result["stato"], "REJECTED")
-        repo.update_riga.assert_called_once_with(50, stato_approvazione_prezzo="REJECTED")
+        # Check chiamata update_riga: stato + meta denormalizzato motivazione.
+        # Verifichiamo solo la presenza della motivazione e degli ancoraggi
+        # del meta (timestamp e user_id sono dinamici).
+        self.assertEqual(repo.update_riga.call_count, 1)
+        kwargs = repo.update_riga.call_args.kwargs
+        self.assertEqual(kwargs["stato_approvazione_prezzo"], "REJECTED")
+        self.assertIn("approvazione_rifiuto", kwargs["meta"])
+        rif = kwargs["meta"]["approvazione_rifiuto"]
+        self.assertEqual(rif["motivazione"], "Sconto eccessivo per categoria.")
+        self.assertEqual(rif["approver_user_id"], 42)
+        self.assertEqual(rif["pratica_id"], 12345)
+        self.assertIn("rifiutato_il", rif)
         mock_cambia.assert_called_once_with(12345, "CHIUSA")
         nota_args = mock_nota.call_args[0]
         self.assertIn("Sconto eccessivo", nota_args[2])

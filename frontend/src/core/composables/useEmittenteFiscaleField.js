@@ -41,17 +41,6 @@ export function formatEmittenteOptionLabel(opt) {
   return main || codice || ''
 }
 
-// Scopo: Compone la stringa display read-only partendo dal record di
-//        dettaglio (list/detail BE denormalizzano emittente_fiscale_codice
-//        e emittente_fiscale_descrizione).
-export function formatEmittenteFromRecord(record) {
-  if (!record) return ''
-  const codice = record.emittente_fiscale_codice || ''
-  const descr = record.emittente_fiscale_descrizione || ''
-  if (codice && descr) return `${codice} - ${descr}`
-  return codice || descr || ''
-}
-
 export function useEmittenteFiscaleField() {
   const auth = useAuthStore()
 
@@ -60,17 +49,6 @@ export function useEmittenteFiscaleField() {
 
   // Emittente dell'operatore corrente (null per admin globale).
   const currentEmittente = computed(() => auth.emittenteCorrente)
-
-  // Display read-only in create operatore-mode: usa lo store auth
-  // (codice + ragione sociale o descrizione).
-  const currentEmittenteDisplay = computed(() => {
-    const ef = currentEmittente.value
-    if (!ef) return ''
-    const codice = ef.codice || ''
-    const ragione = ef.ragioneSociale || ''
-    if (codice && ragione) return `${codice} - ${ragione}`
-    return codice || ragione || ''
-  })
 
   // Lookup admin (lazy: load() chiamato solo dove isAdminMode = true).
   // Cache modulo-level: invalidata al logout dal resetter centralizzato.
@@ -96,13 +74,11 @@ export function useEmittenteFiscaleField() {
   return {
     isAdminMode,
     currentEmittente,
-    currentEmittenteDisplay,
     defaultEmittenteId,
     emittentiOptions,
     emittentiLoading,
     emittentiError,
     loadOptions,
     formatEmittenteOptionLabel,
-    formatEmittenteFromRecord,
   }
 }

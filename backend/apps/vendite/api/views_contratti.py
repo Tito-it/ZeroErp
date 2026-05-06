@@ -106,7 +106,7 @@ class ApiContrattiList(DomainAPIView):
                              description="COMMODITY | COMMERCIO"),
             OpenApiParameter(name="listino_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False,
-                             description="Data ISO YYYY-MM-DD. Default: 1 gennaio anno-1."),
+                             description="Data ISO YYYY-MM-DD. Nessun default backend."),
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),

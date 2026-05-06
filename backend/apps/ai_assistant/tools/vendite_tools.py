@@ -67,7 +67,7 @@ class CercaContrattiTool(AITool):
                     },
                     "data_da": {
                         "type": "string",
-                        "description": "Filtro validita' - data inizio (YYYY-MM-DD). Default backend: 1 gennaio anno-1.",
+                        "description": "Filtro validita' - data inizio (YYYY-MM-DD). Nessun default backend.",
                     },
                     "data_a": {
                         "type": "string",

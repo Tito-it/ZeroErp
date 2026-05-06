@@ -13,16 +13,12 @@ export const useArticoliStore = defineStore('catalogo-articoli', () => {
   const loading = ref(false)
   const hasSearched = ref(false)
 
-  const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
-
   const filters = ref({
     search: '',
     attivo: true,
     is_composito: null,
     tipo_voce_id: null,
     gruppo_voce_id: null,
-    data_da: defaultDataDa,
-    data_a: null,
     limit: 25,
     offset: 0,
     order_by: 'descrizione',
@@ -33,8 +29,7 @@ export const useArticoliStore = defineStore('catalogo-articoli', () => {
     const f = filters.value
     const searchTerm = (f.search || '').trim()
     const hasFilters = f.is_composito != null ||
-      f.tipo_voce_id != null || f.gruppo_voce_id != null ||
-      f.data_da != null || f.data_a != null
+      f.tipo_voce_id != null || f.gruppo_voce_id != null
 
     if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
       if (hasSearched.value) {
@@ -66,8 +61,6 @@ export const useArticoliStore = defineStore('catalogo-articoli', () => {
       if (f.is_composito != null) params.is_composito = f.is_composito
       if (f.tipo_voce_id != null) params.tipo_voce_id = f.tipo_voce_id
       if (f.gruppo_voce_id != null) params.gruppo_voce_id = f.gruppo_voce_id
-      if (f.data_da) params.data_da = f.data_da
-      if (f.data_a) params.data_a = f.data_a
 
       const res = await listArticoli(params)
       items.value = res.data.data.results

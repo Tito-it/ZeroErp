@@ -382,11 +382,18 @@ onMounted(() => {
 Ogni SearchTable che mostra dati con data di apertura/creazione deve avere il filtro data:
 
 - **Due DatePicker**: "Dal" (`data_da`) e "Al" (`data_a`) nella toolbar filtri
-- **Default `data_da`**: 1 gennaio dell'anno corrente - 1 (es. `2025-01-01` se oggi e' `2026-03-29`)
+- **Default `data_da` solo frontend**: 1 gennaio dell'anno corrente - 1 (es. `2025-01-01` se oggi e' `2026-03-29`)
 - **`data_a`**: null (nessun limite superiore di default)
 - Il filtro si applica su `data_insert` (o colonna data apertura dedicata se esiste)
-- Backend: `WHERE data_insert >= data_da::date AND data_insert < (data_a::date + INTERVAL '1 day')`
+- Backend: applica `WHERE data_insert >= data_da::date AND data_insert < (data_a::date + INTERVAL '1 day')`
+  **solo se i parametri arrivano dalla request**; non deve applicare default temporali impliciti
 - Il tiebreaker `id` nell'ORDER BY garantisce paginazione deterministica
+
+Il default temporale e' una scelta UX, non una regola backend. Va impostato nello
+store/componente solo quando il filtro e' visibile nella toolbar tramite DatePicker:
+l'operatore deve poter vedere, modificare o cancellare il valore che limita la lista.
+Se una lista non espone i DatePicker `data_da`/`data_a`, non deve inviare `data_da`
+di default e il backend non deve inventarlo.
 
 **Implementazione nello store:**
 

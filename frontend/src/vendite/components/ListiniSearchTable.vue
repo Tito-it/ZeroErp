@@ -13,6 +13,7 @@ import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
 import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { PRICING_ACTIONS } from '../constants'
 import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
 import { deleteVersione, deleteListino } from '../api/listini'
@@ -227,7 +228,12 @@ const pageActions = computed(() => [
     label: t('listini.test_prezzo'),
     icon: 'pi pi-calculator',
     severity: 'info',
-    visible: auth.isSuperAdmin,
+    // Strumento diagnostico: oltre al SUPER_ADMIN (bypass) lo apriamo a chi
+    // puo' fare override manuale del prezzo (azione `prezzo_override_manuale`).
+    // Razionale: chi puo' overridere il prezzo deve poter testare cosa propone
+    // il listino prima di decidere — gli operatori "puri" senza override non
+    // ne hanno bisogno e il pulsante resta nascosto.
+    visible: auth.isSuperAdmin || auth.isActionAllowed(PRICING_ACTIONS.OVERRIDE),
     command: () => emit('test-resolver'),
   },
   {
@@ -335,6 +341,7 @@ onMounted(() => store.fetchList())
         <InputText v-model="searchText" :placeholder="t('listini.search_placeholder')" style="width: 320px;" />
         <UtilityPerRuoloSelect v-model="utilityFilter"
           :placeholder="t('listini.filtro_utility')" :show-clear="true"
+          apply-default
           @change="onUtilityChange" style="width: 200px;" />
         <Select v-model="tipologiaFilter" :options="tipologiaLookup.items.value"
           option-label="descrizione" option-value="id"

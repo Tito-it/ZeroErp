@@ -51,8 +51,10 @@
   --app-login-card-bg: var(--p-surface-900);
   --app-login-card-border: var(--p-surface-700);
   --app-login-card-radius: 12px;
-  --app-login-error-bg: color-mix(in srgb, var(--p-red-500) 15%, transparent);
-  --app-login-error-color: var(--p-red-400);
+  --app-login-error-bg: color-mix(in srgb, var(--p-red-700) 54%, transparent);
+  --app-login-error-color: var(--p-red-50);
+  --app-login-error-border: color-mix(in srgb, var(--p-red-300) 45%, transparent);
+  --app-login-error-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
 
   /* ===== Toolbar (barra secondaria sotto topbar) ===== */
   --app-toolbar-height: 40px;
@@ -216,6 +218,10 @@
   /* Login */
   --app-login-card-bg: var(--p-surface-0);
   --app-login-card-border: var(--p-surface-200);
+  --app-login-error-bg: color-mix(in srgb, var(--p-red-600) 72%, transparent);
+  --app-login-error-color: #fff;
+  --app-login-error-border: color-mix(in srgb, var(--p-red-500) 55%, transparent);
+  --app-login-error-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
 
   /* AI Assistant Widget */
   --app-ai-bg: var(--p-surface-0);

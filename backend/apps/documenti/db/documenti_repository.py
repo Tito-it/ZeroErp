@@ -893,6 +893,46 @@ class DocumentiRepository:
             results = rows_to_list(cursor)
         return results[0] if results else None
 
+    # Scopo: Conta i template attivi che matchano (sorgente_tipo, emittente)
+    #        ignorando il flag `is_default`. Serve al service per discriminare
+    #        l'errore E_DOCUMENTI_NOT_FOUND: "non c'e' nessun template" vs
+    #        "ci sono template ma nessuno e' marcato predefinito" — il secondo
+    #        caso e' fix istantaneo lato admin (flag default), il primo richiede
+    #        di caricare un template ex novo. Filtri identici a
+    #        find_template_applicabile (output id opzionale, scope emittente
+    #        opzionale) tranne il vincolo is_default.
+    def count_templates_attivi_no_default(
+        self,
+        *,
+        sorgente_tipo_id: int,
+        emittente_fiscale_id: int,
+        tipo_documento_output_id: int | None,
+        emittente_ids_scope: list[int] | None,
+    ) -> int:
+        conditions = [
+            "t.sorgente_tipo_id = %s",
+            "t.emittente_fiscale_id = %s",
+            "t.attivo = true",
+        ]
+        params: list[Any] = [int(sorgente_tipo_id), int(emittente_fiscale_id)]
+        if tipo_documento_output_id is not None:
+            conditions.append("t.tipo_documento_output_id = %s")
+            params.append(int(tipo_documento_output_id))
+        if emittente_ids_scope is not None:
+            conditions.append("t.emittente_fiscale_id = ANY(%s)")
+            params.append(list(emittente_ids_scope))
+        where_clause = " AND ".join(conditions)
+
+        sql = f"""
+            SELECT COUNT(*)
+            FROM documenti.template_documenti t
+            WHERE {where_clause}
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+        return int(row[0]) if row else 0
+
     # Scopo: Carica la versione PUBBLICATA attiva con `validita @> %s`
     #        (CURRENT_DATE passata dal service per testabilita'). Ritorna
     #        la versione piu' recente (`versione DESC LIMIT 1`); se nessuna

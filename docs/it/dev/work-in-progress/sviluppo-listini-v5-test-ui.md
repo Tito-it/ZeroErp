@@ -31,7 +31,8 @@ documento il 2026-04-24 ed è archiviata in `work-done/`.
 
 - DB landato fino a `20260422-07` incluso (Sprint E DB completo)
 - Backend `dev/backend-tid` HEAD `e1408643` o successivi (Sprint E BE+FE allineato)
-- Almeno 3 utenti di test:
+- Almeno 3 utenti di test (vedi sezione "Setup utenti di test" sotto per la procedura
+  operativa di creazione):
   - **Admin**: SUPER_ADMIN o area `amministrazione = MODIFICA` (serve per tutto Scenario 1 Setup admin pricing)
   - **Operatore Junior**: area `vendite = MODIFICA`, `prezzo_override_manuale` ON, **NO** `approva_prezzo_override` (usato in §2.2 errore 403, §4.1/§4.3 richiesta approvazione)
   - **Operatore Senior / Approver**: area `vendite = MODIFICA`, `prezzo_override_manuale` ON, `approva_prezzo_override` ON (usato in §2.1/§2.2 L1 autorizzato, §4.4/§4.5/§4.6 coda approvazioni)
@@ -44,6 +45,74 @@ documento il 2026-04-24 ed è archiviata in `work-done/`.
   - Almeno 1 articolo composito con BoM (1 componente esposto + 1 non esposto)
   - Parametri L2: `VENDITE_MAX_SCONTO_PCT=10`, `VENDITE_MAX_MAGGIORAZIONE_PCT=5`
   - Parametro L3 email opzionale: `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL`
+
+## Setup utenti di test (Junior/Senior)
+
+"Junior" e "Senior" non sono ruoli nativi del modello permessi: sono **operatori
+standard** distinti dall'attivazione/disattivazione di **due azioni di processo**
+sull'area `vendite`. La definizione e la procedura sotto chiariscono come
+istanziarli per i test, evitando ambiguita' su come assegnare i permessi.
+
+### Azioni di processo coinvolte
+
+Gia' presenti nel seed [azioni_processo.csv](../../../../db/changelog/migrations_v2/80_data/sql/config/azioni_processo.csv):
+
+| id  | codename                  | area    | Concede di…                                                                                       |
+| --- | ------------------------- | ------- | ------------------------------------------------------------------------------------------------- |
+| 9   | `prezzo_override_manuale` | vendite | Modificare manualmente il `prezzo_unitario` di una riga preventivo (override su pricing risolto)  |
+| 10  | `approva_prezzo_override` | vendite | Approvare/rifiutare le pratiche `APPROVAZIONE_PREZZO` create da operatori senza override autonomo |
+
+### Profilo dei 3 ruoli
+
+| Aspetto                              | Admin (Tid)                 | Junior                                                    | Senior / Approver          |
+| ------------------------------------ | --------------------------- | --------------------------------------------------------- | -------------------------- |
+| `ruolo_applicativo`                  | `OPERATORE`                 | `OPERATORE`                                               | `OPERATORE`                |
+| Binding `SUPER_ADMIN` (profilo 9100) | SI (bypass totale)          | NO                                                        | NO                         |
+| Area `vendite`                       | bypass                      | `MODIFICA` (TUTTO)                                        | `MODIFICA` (TUTTO)         |
+| Area `amministrazione`               | `MODIFICA` (per Scenario 1) | `BLOCCATO` o non assegnata                                | `BLOCCATO` o non assegnata |
+| Azione `prezzo_override_manuale`     | bypass                      | **OFF**                                                   | **ON**                     |
+| Azione `approva_prezzo_override`     | bypass                      | **OFF**                                                   | **ON**                     |
+| Emittente fiscale assegnato          | nessuno (multi-EF)          | uno specifico (lo stesso del Senior per coerenza scenari) | uno specifico (idem)       |
+
+> **Nota su lookup cross-dominio.** Gli autocomplete usati nel drawer preventivo
+> (articoli, billing account, istanze utility) sono stati allineati al pattern
+> dei lookup core (`skip_area_check = True`): non richiedono LETTURA sulle aree
+> `catalogo`/`anagrafiche`. Resta protezione JWT + throttling search + scope
+> emittente lato repository (un operatore vede solo BA/istanze del suo EF).
+> L'operatore Senior/Junior puo' quindi avere solo `vendite = MODIFICA` senza
+> aggiungere LETTURA su altre aree, e il drawer preventivo continua a funzionare.
+
+### Procedura operativa di creazione
+
+Eseguire come Admin (Scenario 1 prerequisito).
+
+1. **Crea profilo "OPERATORE_PRICING_JUNIOR"** (`tipo = AD_HOC`):
+   - Permessi area: `vendite = TUTTO`, tutte le altre aree = `BLOCCATO`
+   - Azioni: nessuna
+2. **Crea profilo "OPERATORE_PRICING_SENIOR"** (`tipo = AD_HOC`):
+   - Permessi area: `vendite = TUTTO`, tutte le altre aree = `BLOCCATO`
+   - Azioni: `prezzo_override_manuale` + `approva_prezzo_override` (entrambe ON)
+3. **Crea i due utenti operatore** (es. `pricing.junior@test.it` e
+   `pricing.senior@test.it`). Per ognuno: associa la risorsa umana, l'EF
+   "test" (lo stesso per entrambi), invia invito attivazione.
+4. **Bind del profilo all'identita'**:
+   - Junior → bind a `OPERATORE_PRICING_JUNIOR`
+   - Senior → bind a `OPERATORE_PRICING_SENIOR`
+5. **Verifica**: login come Junior → la sidebar non mostra "Approvazioni prezzo"
+   (azione 10 OFF); modifica prezzo riga preventivo → 403 `E_PREV_OVERRIDE_NON_AUTORIZZATO`.
+   Login come Senior → "Approvazioni prezzo" visibile e modifica prezzo riga OK.
+
+### Scorciatoie ammesse
+
+- Per i test di sola "approvazione" (§4.4-§4.6) si puo' anche usare l'Admin
+  come Approver (bypass SUPER_ADMIN), saltando il Senior. La coda
+  `approvazioni-prezzo` sara' visibile, ma il match emittente del filtro coda
+  va valutato: l'Admin globale (no EF assegnato) solleva
+  `E_APPROVAZIONE_PREZZO_NON_AMMESSA` (vedi §4.7). Per testare la coda
+  filtrata serve un utente con EF (= Senior).
+- L'azione `prezzo_override_manuale` di Senior puo' essere disattivata al
+  volo per riprodurre il caso Junior senza creare un secondo utente, ma
+  perdi il test simultaneo di "Junior crea richiesta + Senior approva".
 
 ## Indice scenari
 
@@ -124,23 +193,23 @@ documento il 2026-04-24 ed è archiviata in `work-done/`.
 
 ### 2.2 L1 override
 
-- [ ] Login Senior (ha `prezzo_override_manuale`) → modifica prezzo riga
-- [ ] Verifica `meta.origine_prezzo='MANUALE'` + audit completo (FE non visibile, da DB)
-- [ ] Login operatore SENZA `prezzo_override_manuale` → tentativo override → errore 403 `E_PREV_OVERRIDE_NON_AUTORIZZATO`
+- [X] Login Senior (ha `prezzo_override_manuale`) → modifica prezzo riga
+- [X] Verifica `meta.origine_prezzo='MANUALE'` + audit completo (FE non visibile, da DB)
+- [X] Login operatore SENZA `prezzo_override_manuale` → tentativo override → errore 403 `E_PREV_OVERRIDE_NON_AUTORIZZATO`
 
 ### 2.3 L2 limiti hint
 
-- [ ] Riapri drawer riga: hint "Variazione prezzo ammessa: sconto fino al 10%, maggiorazione fino al 5%" sotto il campo prezzo
-- [ ] Hint visibile in IT e in EN (switch lingua)
-- [ ] Imposta sconto 8% (entro limite) → save OK
-- [ ] Imposta sconto 25% (oltre limite) → banner inline `E_PREV_SCONTO_ECCESSIVO`
-  - [ ] Detail mostra "Sconto richiesto: 25.00% — massimo ammesso: 10%."
-  - [ ] Pulsante "Richiedi approvazione" attivo
+- [X] Riapri drawer riga: hint "Variazione prezzo ammessa: sconto fino al 10%, maggiorazione fino al 5%" sotto il campo prezzo
+- [X] Hint visibile in IT e in EN (switch lingua)
+- [X] Imposta sconto 8% (entro limite) → save OK
+- [X] Imposta sconto 25% (oltre limite) → banner inline `E_PREV_SCONTO_ECCESSIVO`
+  - [X] Detail mostra "Sconto richiesto: 25.00% — massimo ammesso: 10%."
+  - [X] Pulsante "Richiedi approvazione" attivo
 
 ### 2.4 Suggerisci prezzo da diagnostico
 
-- [ ] Apri Dialog test resolver da `/vendite/listini/` → compila contesto
-- [ ] Esegui → output con `prezzo_finale`, `origine`, `listino_id`/`contratto_id`/`promo_id`
+- [X] Apri Dialog test resolver da `/vendite/listini/` → compila contesto
+- [X] Esegui → output con `prezzo_finale`, `origine`, `listino_id`/`contratto_id`/`promo_id`
 
 ---
 
