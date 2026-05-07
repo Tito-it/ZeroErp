@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed ui.lista_preset — preset di configurazione per le liste.
+# Attuale contenuto: preset di sistema 'clienti_default' (lista_id=1).
+#   ambito=sistema, is_default=TRUE, ordinamento per ragione_sociale ASC.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260507-08-seed-ui-lista-preset-clienti-mctit.yaml
+
+  - changeSet:
+      id: 20260507-08-seed-ui-lista-preset-clienti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: lista_preset
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/ui/lista_preset.csv
+            tableName: lista_preset
+            schemaName: ui
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,                    type: NUMERIC }
+              - column: { name: lista_id,              type: NUMERIC }
+              - column: { name: codice,                type: STRING }
+              - column: { name: descrizione,           type: STRING }
+              - column: { name: ambito,                type: STRING }
+              - column: { name: profilo_accesso_id,    type: NUMERIC }
+              - column: { name: emittente_fiscale_id,  type: NUMERIC }
+              - column: { name: is_default,            type: BOOLEAN }
+              - column: { name: pagina_dimensione,     type: NUMERIC }
+              - column: { name: ordinamento_default,   type: CLOB }
+              - column: { name: attivo,                type: BOOLEAN }
+              - column: { name: data_insert,           type: STRING }
+              - column: { name: user_insert,           type: STRING }

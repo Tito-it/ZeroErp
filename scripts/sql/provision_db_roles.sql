@@ -43,140 +43,72 @@ SELECT format(
 )
 \gexec
 
-SELECT format('GRANT USAGE ON SCHEMA %I TO %I', n.nspname, :'app_role')
-FROM pg_namespace n
-WHERE n.nspname IN (
-    'public',
-    'script',
-    'dbops',
-    'config',
-    'anagrafiche',
-    'catalogo',
-    'vendite',
-    'acquisti',
-    'magazzino',
-    'pagamenti',
-    'contabilita',
-    'storico'
-)
+-- ------------------------------------------------------------------
+-- Sorgente unica della whitelist schemi applicativi.
+-- Aggiungere qui i nuovi schemi: tutti i blocchi sottostanti la
+-- leggono automaticamente. Solo schemi che zeroerp_app deve usare
+-- a runtime. Esclusi intenzionalmente: django (gestito da Django),
+-- maintenance (pgAgent, non accessibile dall'app).
+-- ------------------------------------------------------------------
+CREATE TEMP TABLE _app_schemas (nspname TEXT);
+INSERT INTO _app_schemas (nspname) VALUES
+    ('acquisti'),
+    ('anagrafiche'),
+    ('catalogo'),
+    ('config'),
+    ('contabilita'),
+    ('dbops'),
+    ('documenti'),
+    ('magazzino'),
+    ('pagamenti'),
+    ('pratiche'),
+    ('public'),
+    ('script'),
+    ('storico'),
+    ('ui'),
+    ('vendite');
+
+-- Filtra solo gli schemi che esistono nel DB corrente
+-- (rende lo script applicabile a DB parziali / ambienti test)
+DELETE FROM _app_schemas s
+WHERE NOT EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname = s.nspname);
+
+SELECT format('GRANT USAGE ON SCHEMA %I TO %I', s.nspname, :'app_role')
+FROM _app_schemas s
 \gexec
 
-SELECT format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %I TO %I', n.nspname, :'app_role')
-FROM pg_namespace n
-WHERE n.nspname IN (
-    'public',
-    'script',
-    'dbops',
-    'config',
-    'anagrafiche',
-    'catalogo',
-    'vendite',
-    'acquisti',
-    'magazzino',
-    'pagamenti',
-    'contabilita',
-    'storico'
-)
+SELECT format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %I TO %I', s.nspname, :'app_role')
+FROM _app_schemas s
 \gexec
 
-SELECT format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I', n.nspname, :'app_role')
-FROM pg_namespace n
-WHERE n.nspname IN (
-    'public',
-    'script',
-    'dbops',
-    'config',
-    'anagrafiche',
-    'catalogo',
-    'vendite',
-    'acquisti',
-    'magazzino',
-    'pagamenti',
-    'contabilita',
-    'storico'
-)
+SELECT format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I', s.nspname, :'app_role')
+FROM _app_schemas s
 \gexec
 
-SELECT format('GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA %I TO %I', n.nspname, :'app_role')
-FROM pg_namespace n
-WHERE n.nspname IN (
-    'public',
-    'script',
-    'dbops',
-    'config',
-    'anagrafiche',
-    'catalogo',
-    'vendite',
-    'acquisti',
-    'magazzino',
-    'pagamenti',
-    'contabilita',
-    'storico'
-)
+SELECT format('GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA %I TO %I', s.nspname, :'app_role')
+FROM _app_schemas s
 \gexec
 
 -- Oggetti futuri creati dal ruolo migrator (CI/deploy).
 SELECT format(
     'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
-    :'migrator_role', n.nspname, :'app_role'
+    :'migrator_role', s.nspname, :'app_role'
 )
-FROM pg_namespace n
-WHERE n.nspname IN (
-    'public',
-    'script',
-    'dbops',
-    'config',
-    'anagrafiche',
-    'catalogo',
-    'vendite',
-    'acquisti',
-    'magazzino',
-    'pagamenti',
-    'contabilita',
-    'storico'
-)
+FROM _app_schemas s
 \gexec
 
 SELECT format(
     'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT USAGE, SELECT ON SEQUENCES TO %I',
-    :'migrator_role', n.nspname, :'app_role'
+    :'migrator_role', s.nspname, :'app_role'
 )
-FROM pg_namespace n
-WHERE n.nspname IN (
-    'public',
-    'script',
-    'dbops',
-    'config',
-    'anagrafiche',
-    'catalogo',
-    'vendite',
-    'acquisti',
-    'magazzino',
-    'pagamenti',
-    'contabilita',
-    'storico'
-)
+FROM _app_schemas s
 \gexec
 
 SELECT format(
     'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT EXECUTE ON FUNCTIONS TO %I',
-    :'migrator_role', n.nspname, :'app_role'
+    :'migrator_role', s.nspname, :'app_role'
 )
-FROM pg_namespace n
-WHERE n.nspname IN (
-    'public',
-    'script',
-    'dbops',
-    'config',
-    'anagrafiche',
-    'catalogo',
-    'vendite',
-    'acquisti',
-    'magazzino',
-    'pagamenti',
-    'contabilita',
-    'storico'
-)
+FROM _app_schemas s
 \gexec
 
 \echo [ZeroErp] OK: role provisioning completed

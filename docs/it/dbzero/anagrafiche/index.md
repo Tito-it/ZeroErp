@@ -131,6 +131,7 @@
 ## 🔍 Views
 - [risorse_umane_auth_user](views/risorse_umane_auth_user.md) — (latest review 29-04-2026, post-Fase 7 cleanup)
 - [vw_clienti_codice_ba](views/vw_clienti_codice_ba.md)
+- [vw_clienti_lista](views/vw_clienti_lista.md)
 - [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md) — (latest review 25-03-26)
 - [vw_dati_societari](views/vw_dati_societari.md) — (latest review 23-12-25) La vista **`anagrafiche.vw_dati_societari`** offre una lettura unificata dei dati societari con:
 - [vw_fornitori_dettaglio](views/vw_fornitori_dettaglio.md)

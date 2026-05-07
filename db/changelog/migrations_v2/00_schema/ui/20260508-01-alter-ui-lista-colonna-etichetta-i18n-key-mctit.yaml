@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Aggiunge etichetta_i18n_key a ui.lista_colonna.
+#
+# Scopo: permette al frontend di risolvere l'intestazione della colonna
+# via vue-i18n t(etichetta_i18n_key) invece di usare l'etichetta letterale
+# in italiano. Fallback: se NULL o chiave assente nei locale, il FE usa
+# etichetta letterale.
+#
+# Nullable: la chiave puo' essere riusata fra liste diverse e il fallback
+# all'etichetta letterale e' sempre valido.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260508-01-alter-ui-lista-colonna-etichetta-i18n-key-mctit.yaml
+
+  - changeSet:
+      id: 20260508-01-alter-ui-lista-colonna-etichetta-i18n-key
+      author: mctit
+      comment: "Aggiunge colonna nullable etichetta_i18n_key VARCHAR(120) a ui.lista_colonna per supporto i18n FE"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ui
+                tableName: lista_colonna
+                columnName: etichetta_i18n_key
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE ui.lista_colonna
+                ADD COLUMN etichetta_i18n_key VARCHAR(120);
+
+              COMMENT ON COLUMN ui.lista_colonna.etichetta_i18n_key IS
+                'Chiave vue-i18n per etichetta colonna (es. ''clienti.col_ragione_sociale''). '
+                'NULL = usa etichetta letterale. Il FE risolve con t(key) con fallback a etichetta.';
