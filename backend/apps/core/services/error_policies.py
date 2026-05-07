@@ -1547,6 +1547,33 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Preferenza lista non valida.",
         ),
+        # Blocco F (admin CRUD ui.*): codici dedicati per preset e permessi colonna.
+        # Le validazioni di scoperto/duplicato vengono mappate via map_integrity_error
+        # da nomi vincolo DB (uq_ui_lista_preset_lista_codice, chk_ui_lista_preset_ambito_refs).
+        "E_UI_PRESET_VALIDAZIONE": ErrorPolicy(
+            code="E_UI_PRESET_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Preset lista non valido.",
+        ),
+        "E_UI_PRESET_NON_TROVATO": ErrorPolicy(
+            code="E_UI_PRESET_NON_TROVATO",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Preset lista non trovato.",
+        ),
+        "E_UI_PERMESSO_VALIDAZIONE": ErrorPolicy(
+            code="E_UI_PERMESSO_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Permesso colonna non valido.",
+        ),
+        "E_UI_PERMESSO_NON_TROVATO": ErrorPolicy(
+            code="E_UI_PERMESSO_NON_TROVATO",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Permesso colonna non trovato.",
+        ),
         # Fallback per DatabaseError non riconosciute dai marker noti
         # nello schema `ui` (allineato a E_VENDITE_PRICING_FAILED).
         "E_UI_GENERIC_FAILED": ErrorPolicy(

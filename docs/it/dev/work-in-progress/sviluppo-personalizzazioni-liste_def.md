@@ -104,7 +104,15 @@ Un utente (es. un team lead) crea una vista personalizzata per la sua lista e vu
 
 ## DEF-5 — Admin UI per gestione preset e catalogo
 
-**Descrizione**
+> **Status 2026-05-07**: assorbito dal **Blocco F** del piano principale (§11.F del [WIP](sviluppo-personalizzazioni-liste.md)). Decisioni prese:
+>
+> - Split visibilita': tabelle tecniche (`lista_definizione`, `lista_colonna`) → `amm-software` SUPER_ADMIN; tabelle operative (`lista_preset`, `lista_preset_colonna`, `lista_colonna_permesso`) → `config` con azioni di processo `ui_preset_manage` / `ui_permesso_manage` (assegnabili a tenant admin).
+> - Pattern UI: pagina condivisa con TabView lazy + tab condizionali ai permessi, master-detail su "Lista corrente" come header.
+> - Fase 1 minimal: solo i 2 CRUD operativi. Le 2 tabelle tecniche restano gestite via seed CSV finche' non emerge esigenza concreta.
+>
+> Il piano dettagliato vive nel WIP principale. Questo paragrafo resta come storico — sara' rimosso quando il Blocco F atterra.
+
+**Descrizione (storico)**
 Oggi il catalogo (`lista_colonna`) e i preset (`lista_preset`, `lista_preset_colonna`) si gestiscono solo tramite seed CSV/Liquibase. In produzione, un amministratore di sistema deve poter creare nuovi preset di ruolo, modificare l'ordine e la visibilità di default delle colonne, senza richiedere un deploy.
 
 **Comportamento atteso**

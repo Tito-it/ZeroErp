@@ -243,6 +243,12 @@ const router = createRouter({
           component: () => import('../config/views/ConfigurazioneDocumentiView.vue'),
           meta: { domain: 'config', menuKey: 'config-documenti' }
         },
+        {
+          path: 'config/personalizzazioni-liste',
+          name: 'config-personalizzazioni-liste',
+          component: () => import('../ui/views/GestionePersonalizzazioniListeView.vue'),
+          meta: { domain: 'config', menuKey: 'personalizzazioni-liste' }
+        },
 
         // --- Catalogo ---
         {

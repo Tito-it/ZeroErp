@@ -15,6 +15,16 @@ from apps.ui.api.views import (
     ApiListaConfigView,
     ApiListaPreferenzaView,
 )
+from apps.ui.api.views_admin import (
+    ApiAdminListaColonneView,
+    ApiAdminListaDefinizioneListView,
+    ApiAdminPermessoCreateView,
+    ApiAdminPermessoDetailView,
+    ApiAdminPermessoListView,
+    ApiAdminPresetColonneView,
+    ApiAdminPresetDetailView,
+    ApiAdminPresetListView,
+)
 
 
 # `codice` ammette punto e due punti (convenzione `<schema>.<entita>`
@@ -22,6 +32,7 @@ from apps.ui.api.views import (
 # rifiuta lo slash, gli altri caratteri passano: nessun rischio di
 # collisioni con sotto-risorse.
 urlpatterns = [
+    # ── Runtime FE (Blocco C) ───────────────────────────────────────────
     path(
         "liste/<str:codice>/config/",
         ApiListaConfigView.as_view(),
@@ -36,5 +47,49 @@ urlpatterns = [
         "liste/<str:codice>/preferenza/",
         ApiListaPreferenzaView.as_view(),
         name="ui-liste-preferenza",
+    ),
+    # ── Admin CRUD (Blocco F Fase 1) ────────────────────────────────────
+    # Selectore "Lista corrente" + catalogo colonne grezzo
+    path(
+        "admin/liste/",
+        ApiAdminListaDefinizioneListView.as_view(),
+        name="ui-admin-liste-list",
+    ),
+    path(
+        "admin/liste/<int:lista_id>/colonne/",
+        ApiAdminListaColonneView.as_view(),
+        name="ui-admin-liste-colonne",
+    ),
+    # Preset
+    path(
+        "admin/liste/<int:lista_id>/preset/",
+        ApiAdminPresetListView.as_view(),
+        name="ui-admin-preset-list",
+    ),
+    path(
+        "admin/preset/<int:preset_id>/",
+        ApiAdminPresetDetailView.as_view(),
+        name="ui-admin-preset-detail",
+    ),
+    path(
+        "admin/preset/<int:preset_id>/colonne/",
+        ApiAdminPresetColonneView.as_view(),
+        name="ui-admin-preset-colonne",
+    ),
+    # Permessi colonna
+    path(
+        "admin/liste/<int:lista_id>/permessi/",
+        ApiAdminPermessoListView.as_view(),
+        name="ui-admin-permessi-list",
+    ),
+    path(
+        "admin/permessi/",
+        ApiAdminPermessoCreateView.as_view(),
+        name="ui-admin-permessi-create",
+    ),
+    path(
+        "admin/permessi/<int:permesso_id>/",
+        ApiAdminPermessoDetailView.as_view(),
+        name="ui-admin-permessi-detail",
     ),
 ]

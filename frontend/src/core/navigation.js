@@ -18,6 +18,7 @@ export const NAV_ICONS = Object.freeze({
   TABELLE: 'pi pi-table',
   IMPOSTAZIONI: 'pi pi-sliders-h',
   CONFIG_DOCUMENTI: 'app-nav-icon app-nav-icon-documenti',
+  PERSONALIZZAZIONI_LISTE: 'pi pi-th-large',
   HOME: 'pi pi-home',
   BACK: 'pi pi-arrow-left',
 
@@ -88,6 +89,10 @@ export const DOMAINS = [
 //                               accede al dominio padre ma non ha l'area
 //                               della voce, generando 403 al click.
 //                               Filter applicato lato sidebar.
+//   requireAnyAction (opzionale, array stringhe) — codename azioni di
+//                               processo. La voce e' visibile se utente
+//                               admin o se almeno una delle azioni e'
+//                               abilitata. Filter applicato lato sidebar.
 export const DOMAIN_MENUS = {
   'amm-software': [
     { key: 'operatori', icon: NAV_ICONS.KEY, to: '/amm-software/operatori' },
@@ -137,6 +142,15 @@ export const DOMAIN_MENUS = {
       // Le entita' gestite (template_documenti, template_asset) sono in
       // schema/area `documenti`; la voce sta sotto config solo per UX.
       requireArea: READONLY_DOMAINS.DOCUMENTI,
+    },
+    {
+      key: 'personalizzazioni-liste',
+      icon: NAV_ICONS.PERSONALIZZAZIONI_LISTE,
+      to: '/config/personalizzazioni-liste',
+      // La voce e' visibile solo a chi ha almeno una delle 2 azioni di
+      // processo Blocco F (oppure all'admin che bypassa). Tenant admin
+      // non autorizzati non la vedono nemmeno (defense-in-depth UI).
+      requireAnyAction: ['ui_preset_manage', 'ui_permesso_manage'],
     }
   ]
 }

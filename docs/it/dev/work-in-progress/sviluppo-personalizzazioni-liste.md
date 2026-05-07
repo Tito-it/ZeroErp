@@ -1,7 +1,7 @@
 # Colonne visualizzate in liste — architettura
 
 **Modulo:** UI / Presentazione
-**Stato:** Blocchi **A+B+C+D** completati. DB-1..DB-4 atterrati. Prossimo: **Blocco E** (prima lista reale `anagrafiche.clienti`).
+**Stato:** Blocchi **A+B+C+D+E** completati. DB-1..DB-4 atterrati. Prossimo: smoke test E end-to-end (operatore reale apre `/anagrafiche/clienti`), poi **Blocco F** (gestione amministrazione `ui.*`).
 **Coerenza:** Sviluppo Concentrico — strato di presentazione che si appoggia ai domini funzionali senza modificarli
 **Revisione 2026-05-06 (post-A/B)**: allineato a DB landed (tipi BIGINT, output JSONB completo), recepiti i pattern di [api.md](../api.md) (skip_area_check, Idempotency-Key, base view) e dei due cataloghi building block. Variazioni in §4.3, §4.5, §5, §10, §11. Brief al team DB raccolti in §10.
 
@@ -15,6 +15,10 @@ Stato cronologico:
 | 2026-05-07 | Brief DB-1..DB-4 atterrati su `dev/db-tid` (changeset `20260507-01..04`, pgTAP 12/12). Deviazioni: cast GUC blindato + trigger `clear_preset_base_ts` |
 | 2026-05-07 | **Blocco C** (backend `apps/ui/`) completato: 4 endpoint, 5 codici errore, 26 test verdi, doc API, refactor critico applicato |
 | 2026-05-07 | **Blocco D** (frontend `core/components/` + `core/composables/` + `core/api/`) completato: 4 building block FE, 15 chiavi i18n IT/EN, vite build verde, refactor critico applicato |
+| 2026-05-07 | **Blocco E — seed DB** atterrato su `dev/db-tid` (lista_definizione + lista_colonna + lista_preset + lista_preset_colonna per `anagrafiche.clienti`) |
+| 2026-05-07 | **Blocco E5 — migrazione FE** atterrata: `ClientiSearchTable.vue` ora usa `<ListaConfigurabile codice="anagrafiche.clienti">`. Build vite verde, `ClientiView` invariato |
+| 2026-05-07 | **Smoke test E** preparato in `backend/scripts/tests/smoke-test-ui-personalizzazioni-liste.sh` (10 scenari). **Esecuzione bloccata** dal mancato GRANT su schema `ui` per `zeroerp_app` — brief DB-5 in §10.2-bis |
+| 2026-05-07 | Decisioni prese su **Blocco F** (gestione amministrazione `ui.*`): split visibilità config/amm-software, Fase 1 minimal (preset + permessi colonne). Implementazione dopo smoke test E. Promemoria 2 decisioni aperte (area azioni di processo + profilo seed) in §11/Blocco F |
 
 ---
 
@@ -577,6 +581,38 @@ Se `preset_base_id === null` il preset di riferimento non esiste più (è stato 
 
 **Brief originale**: [brief-db-ui-personalizzazioni-liste.md](brief-db-ui-personalizzazioni-liste.md) (con stato LANDED in cima).
 
+### 10.2-bis Brief DB-5 (rilevato post-E5, smoke test) — TODO
+
+> ⚠️ **Bloccante** per smoke test E end-to-end e per Blocco F.
+
+**Sintomo**: il backend Django solleva `ProgrammingError: permesso negato per lo schema ui` quando tenta di leggere `ui.lista_definizione`. Il ruolo runtime `zeroerp_app` non ha `USAGE` sullo schema `ui` né privilegi sulle tabelle. Verificato 2026-05-07 lanciando una query test via Django ORM.
+
+**Causa**: la whitelist hardcoded in [`scripts/sql/provision_db_roles.sql`](../../../../scripts/sql/provision_db_roles.sql) elenca solo `public, script, dbops, config, anagrafiche, catalogo, vendite, acquisti, magazzino, pagamenti, contabilita, storico`. Mancano `ui`, `documenti`, `pratiche` (questi ultimi due forse compensati in altro modo).
+
+**Brief DB-5**:
+
+1. Aggiornare `provision_db_roles.sql` aggiungendo `'ui'` (e per coerenza `'documenti'`, `'pratiche'`) alle 5 whitelist `IN (...)` del file:
+   - GRANT USAGE ON SCHEMA
+   - GRANT SELECT/INSERT/UPDATE/DELETE ON ALL TABLES IN SCHEMA
+   - GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA
+   - GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA
+   - ALTER DEFAULT PRIVILEGES per il migrator (3 statement)
+2. Ri-eseguire lo script (idempotente) sul DB dev con utente admin DB:
+
+   ```bash
+   psql "host=$DB_HOST port=5432 dbname=zeroerp user=$ADMIN_DB_USER" \
+     -v app_role=zeroerp_app \
+     -v app_password='<password>' \
+     -v migrator_role=titodb \
+     -f scripts/sql/provision_db_roles.sql
+   ```
+
+3. Verificare con `scripts/sql/check_db_role_access.sql` che `zeroerp_app` legge `ui.lista_definizione`.
+
+**Impatto**: solo provisioning, nessun cambiamento allo schema/dati. Sblocca smoke test E.
+
+**Brief separato**: [brief-db-grants-schemi-applicativi.md](brief-db-grants-schemi-applicativi.md) (pronto da passare a `dev/db-tid`).
+
 ### 10.3 Caching della config (proposta da valutare in Blocco C)
 
 `fn_resolve_lista_config` viene invocata ad ogni open della lista e fa fino a 5–6 round-trip. Per liste con molte colonne+permessi conviene un ETag basato su:
@@ -598,12 +634,14 @@ Il backend ritorna `ETag` su `GET /config` e accetta `If-None-Match` → 304 se 
 ### Dipendenze tra blocchi
 
 ```text
-Blocco A ✅  ─►  Blocco B ✅  ─────────────────────────────────────────►  Blocco E (TODO)
-                                                                          Prima lista reale
-                 Blocco C ✅  ─►  Blocco D ✅  ─────────────────────────►
+Blocco A ✅  ─►  Blocco B ✅  ──────────────────────────────►  Blocco E ✅  ─►  Blocco F (post smoke E)
+                                                                Prima lista reale  Gestione admin
+                 Blocco C ✅  ─►  Blocco D ✅  ──────────────►                     (config + amm-software)
 ```
 
-A+B+C+D atterrati al 2026-05-07. Blocco E (seed `anagrafiche.clienti` + migrazione `ClientiView`) e' il prossimo step.
+A+B+C+D+E atterrati 2026-05-07. F (gestione admin tabelle `ui.*`) pianificato dopo lo smoke test E
+end-to-end con operatore reale; decisioni architetturali in §11.F.0, 2 decisioni operative aperte
+nel callout dedicato di §11/Blocco F.
 
 ---
 
@@ -815,34 +853,140 @@ Scopo: validare l'intera catena su un caso reale prima di replicare. Lista candi
 
 > **Vincolo**: eseguire i brief DB-1..DB-4 (§10.2) **prima** del seed E1, altrimenti il preset di emittente fiscale rischia di basarsi su tipi/comportamenti scorretti che andranno re-seedati.
 
-**Seed dati** — file CSV + YAML in `80_data/`:
+**Seed dati** ✅ atterrati su `dev/db-tid` 2026-05-07:
 
-| Step | File | Contenuto |
-| ---- | ---- | -------- |
-| E1 | `80_data/sql/ui/lista_definizione.csv` + YAML changelog | Una riga: `codice='anagrafiche.clienti'`, `schema_dati='anagrafiche'`, `vista_sql='<nome view clienti>'`. La view candidata è già in repo: cfr. [vw_clienti_codice_ba](../../../../db/changelog/migrations_v2/20_code/anagrafiche/20260401-22-recreate-vw-clienti-codice-ba-mctit.yaml). |
-| E2 | `80_data/sql/ui/lista_colonna.csv` + YAML changelog | Colonne del catalogo clienti: `ragione_sociale` (identificatore), poi colonne informazione con gruppo, ordine, tipo_dato, formato. Il trigger B2 valida `campo_sorgente` contro `pg_catalog.pg_attribute`. |
-| E3 | `80_data/sql/ui/lista_preset.csv` + YAML changelog | Un preset di sistema (`is_default=TRUE, ambito='sistema'`) con le colonne più rilevanti. |
-| E4 | `80_data/sql/ui/lista_preset_colonna.csv` + YAML changelog | Colonne del preset di sistema: quali visibili di default, quali nel pool ma non visibili. |
+| Step | File | Stato |
+| ---- | ---- | ----- |
+| E1 | `80_data/sql/ui/lista_definizione.csv` + YAML changelog | ✅ |
+| E2 | `80_data/sql/ui/lista_colonna.csv` + YAML changelog | ✅ |
+| E3 | `80_data/sql/ui/lista_preset.csv` + YAML changelog | ✅ |
+| E4 | `80_data/sql/ui/lista_preset_colonna.csv` + YAML changelog | ✅ |
 
-Convenzione naming dei file YAML (cfr. [AGENTS.md §Liquibase v2 Workflow](../../../.codex/AGENTS.md)): `YYYYMMDD-NN-seed-ui-<descrizione>-mctit.yaml`. Tutti in `80_data/changelog/` con `includeAll` già configurato dal master.
+Convenzione naming YAML (cfr. [AGENTS.md §Liquibase v2 Workflow](../../../.codex/AGENTS.md)): `YYYYMMDD-NN-seed-ui-<descrizione>-mctit.yaml` in `80_data/changelog/`.
 
-**Migrazione componente**:
+**Migrazione componente** ✅ atterrato 2026-05-07:
 
-| Step | File frontend | Descrizione |
-| ---- | ------------- | ----------- |
-| E5 | [src/anagrafiche/views/ClientiView.vue](../../../../frontend/src/anagrafiche/views/ClientiView.vue) | Sostituire il DataTable statico con `<ListaConfigurabile codice="anagrafiche.clienti" />`. Il file della view esiste già — il refactor sostituisce solo il body. |
+| Step | File frontend | Stato |
+| ---- | ------------- | ----- |
+| E5 | [src/anagrafiche/components/ClientiSearchTable.vue](../../../../frontend/src/anagrafiche/components/ClientiSearchTable.vue) | ✅ DataTable statico sostituito da `<ListaConfigurabile codice="anagrafiche.clienti">`. Toolbar filtri + `PageActionsBar` esposti via slot `filters` / `actions-extra`. Slot `cell-{codice}` per le 6 colonne con render custom (codice_fiscale fallback partita_iva, date, sosp/riatt composta, stato_descrizione tag). Allineamento `store.filters.limit` con `pagina_dimensione` BE via handler `@config-loaded`. `ClientiView.vue` invariato (emit-contract identico). Build vite verde. |
 
-Dopo E5, testare manualmente (smoke checklist da inserire in `backend/scripts/tests/`):
+Dopo E5, smoke test manuale:
 
-- Apertura senza preferenza → catalogo grezzo
+- Apertura senza preferenza → catalogo grezzo del preset di sistema atterrato in E3
 - Personalizzazione colonne → salvataggio → ricarica → preferenza persistita
 - Reset → torna al preset di sistema
 - Badge "N nuove colonne" su aggiornamento catalogo
 - Operatore con scope EF specifico vede solo i clienti del suo emittente (lo scope è applicato dalla `vista_sql`, non da `fn_resolve_lista_config` — la fn governa solo presentazione)
-- Header `If-None-Match` su seconda apertura → 304 se nulla cambiato (validazione ETag §10.3)
+
+---
+
+### Blocco F — Gestione amministrazione personalizzazioni (post-E)
+
+Scopo: esporre via UI il CRUD delle 6 tabelle `ui.*` per consentire ai tenant admin di creare preset e permessi colonna senza richiedere un seed CSV/deploy. Decisioni prese 2026-05-07 (vedi §11.F.0 sintesi):
+
+> ⚠️ **Promemoria — decisioni aperte da chiudere PRIMA di iniziare F**
+>
+> Bloccanti per il brief team DB e per il seed iniziale, non bloccanti per il design generale:
+>
+> 1. **Area associata alle nuove azioni di processo** `ui_preset_manage` / `ui_permesso_manage`:
+>    - opzione A: `area = config` (la pagina vive in config, riusa l'area esistente)
+>    - opzione B: nuova area `ui_admin` in `config.aree_funzionali` (separazione semantica, livelli area dedicati)
+>    - opzione C: `area = amm_software` (azioni gestite solo da super-admin, ma allora la pagina non puo' essere accessibile a tenant admin via config)
+> 2. **Profilo che riceve di default le 2 nuove azioni**:
+>    - opzione A: profilo gia' seedato di "Tenant admin" (verificare se esiste in `config.profili_accesso`)
+>    - opzione B: nessun seed di default, assegnazione manuale caso per caso da SUPER_ADMIN
+>
+> Influenzano solo il seed CSV iniziale di `config.azioni_processo` + eventuale `profili_accesso_azioni`. Modello DB invariato.
+
+#### F.0 — Decisioni architetturali
+
+| Tema | Decisione |
+| ---- | --------- |
+| **Split per natura** | Tabelle tecniche (`lista_definizione`, `lista_colonna`) → `amm-software` (SUPER_ADMIN). Tabelle operative (`lista_preset`, `lista_preset_colonna`, `lista_colonna_permesso`) → `config` (azione di processo dedicata, accessibile a tenant admin) |
+| **App Django** | Estendere `apps.ui` con sotto-namespace admin (no nuova app — coerente con `apps.documenti.template_admin_service.py`). Endpoint sotto `/api/v1/ui/admin/...` |
+| **Permessi** | Niente registrazione `ui` in `aree_funzionali` (decisione del Blocco C confermata). Per le 2 tabelle tecniche: `IsAdminZeroERP` (SUPER_ADMIN binding). Per le 3 operative: nuove azioni di processo `ui_preset_manage` + `ui_permesso_manage` in `config.azioni_processo` |
+| **UI** | Pagina `gestione-personalizzazioni-liste` accessibile da entrambe le sidebar (config + amm-software). Render condizionale dei tab in base ai permessi: amm-software vede tutti e 4 i tab, config vede solo "Preset" + "Permessi colonne" |
+| **Pattern** | Master-detail a la `ConfigurazioneDocumentiView`: header con `<Select>` "Lista corrente" (lookup `ui.lista_definizione`); i tab successivi sono filtrati su quella lista. TabView lazy PrimeVue |
+| **Fase 1 minimal** | Implementare solo i 2 CRUD operativi (`lista_preset` + `lista_colonna_permesso`). Le 2 tabelle tecniche restano gestite via seed CSV in Fase 1 — passano a CRUD UI in Fase 2 quando emergerà l'esigenza concreta |
+| **Lookup generico** | Aggiungere `ui.lista_definizione` a `_REL_CONSENTITE` in `apps/core/db/dbops_repository.py`. La fn `dbops.fn_get_lookup_codici` ammette tabelle senza `codice_interno` (fallback automatico — verificato in [docs/it/dbzero/dbops/funzioni/fn_get_lookup_codici.md](../../dbzero/dbops/funzioni/fn_get_lookup_codici.md)). `ui.lista_preset` no: serve filtro `lista_id` non supportato dal lookup generico → endpoint dedicato |
+
+#### F.1 — Brief team DB (`dev/db-tid`)
+
+Una micro-tranche seed:
+
+1. **Azioni di processo** in `config.azioni_processo`:
+    - `ui_preset_manage` (codice_interno) — area associata: `config` (perché la pagina vive in config; alternativa: una nuova area `ui_admin`, ma seguiamo il pattern delle azioni esistenti che si appoggiano ad aree esistenti)
+    - `ui_permesso_manage` — idem
+2. **Whitelist lookup**: aggiunta `ui.lista_definizione` in `_REL_CONSENTITE` lato Python (no SQL change — `fn_get_lookup_codici` già ammette il pattern).
+
+Brief separato sarà scritto al momento dell'implementazione di F.
+
+#### F.2 — Backend (`apps.ui` esteso)
+
+Struttura attesa post-F1:
+
+```text
+apps/ui/
+├── services/
+│   ├── ui_service.py                        ✅ (Blocco C, runtime FE)
+│   ├── lista_preferenza_service.py          ✅ (Blocco C, runtime FE)
+│   ├── lista_preset_admin_service.py        🆕 F1 (CRUD preset + composizione)
+│   └── lista_colonna_permesso_admin_service.py 🆕 F1 (CRUD permessi colonna)
+└── api/
+    ├── views.py                             ✅ (Blocco C, 4 endpoint runtime)
+    └── views_admin.py                       🆕 F1 (CRUD admin endpoint)
+```
+
+Endpoint Fase 1:
+
+| Endpoint | Permission | Scopo |
+| -------- | ---------- | ----- |
+| `GET /api/v1/ui/admin/liste/` | qualsiasi tenant admin con azione `ui_preset_manage` o `ui_permesso_manage` (pre-popola il Select header) | Lista delle `lista_definizione` attive (read-only, non protette: solo metadata) |
+| `GET /api/v1/ui/admin/liste/<id>/preset/` | `ui_preset_manage` | Lista preset di una lista |
+| `POST /api/v1/ui/admin/liste/<id>/preset/` | `ui_preset_manage` | Crea preset (ambito sistema/emittente/ruolo, FK condizionali validate dal CHECK DB) |
+| `PATCH /api/v1/ui/admin/preset/<id>/` | `ui_preset_manage` | Modifica testata preset |
+| `DELETE /api/v1/ui/admin/preset/<id>/` | `ui_preset_manage` | Elimina preset (ON DELETE SET NULL su `lista_preferenza_utente.preset_base_id` — DB-2 landed) |
+| `PUT /api/v1/ui/admin/preset/<id>/colonne/` | `ui_preset_manage` | Sostituisce composizione `lista_preset_colonna` per il preset (atomico) |
+| `GET /api/v1/ui/admin/liste/<id>/permessi/` | `ui_permesso_manage` | Lista permessi colonna per la lista |
+| `POST /api/v1/ui/admin/permessi/` | `ui_permesso_manage` | Crea/aggiorna permesso (UPSERT su UNIQUE(colonna_id, profilo_accesso_id)) |
+| `DELETE /api/v1/ui/admin/permessi/<id>/` | `ui_permesso_manage` | Elimina permesso (torna al default deny-list/allow-list) |
+
+Tutti su `DomainAPIView` con `skip_area_check = True` + `post_permission` o `IsAdminZeroERP` secondo il caso.
+
+#### F.3 — Frontend (`config` + `amm-software`)
+
+Pagina condivisa `gestione-personalizzazioni-liste` (file: `src/config/views/GestionePersonalizzazioniListeView.vue`), inclusa nel router due volte:
+
+- `/config/personalizzazioni-liste` (sidebar config, visibile con azione `ui_preset_manage` o `ui_permesso_manage`)
+- `/amm-software/personalizzazioni-liste` (sidebar amm-software, visibile con SUPER_ADMIN)
+
+La view legge `auth.isActionAllowed('ui_preset_manage')`, `auth.isActionAllowed('ui_permesso_manage')`, `auth.isAdmin` e renderizza i tab condizionalmente:
+
+```text
+TabView lazy
+├── [SUPER_ADMIN]            "Definizione"      (Fase 2)
+├── [SUPER_ADMIN]            "Catalogo colonne" (Fase 2)
+├── [ui_preset_manage]       "Preset"           ← Fase 1
+└── [ui_permesso_manage]     "Permessi colonne" ← Fase 1
+```
+
+Componenti previsti:
+
+- `ListaCorrenteSelect.vue` — wrapper `LookupSelect rel="ui.lista_definizione"` con label "Lista corrente"
+- `ListaPresetPanel.vue` — DataTable preset filtrata per lista_id + drawer create/edit + sub-drawer composizione colonne
+- `ListaPresetDrawer.vue` — drawer testata preset (codice, descrizione, ambito + FK condizionali, pagina_dimensione, ordinamento_default, filtri_default)
+- `ListaPresetColonneDrawer.vue` — sub-drawer per `lista_preset_colonna` (riordino, visibile, fissata, larghezza)
+- `ListaColonnaPermessoPanel.vue` — DataTable permessi filtrata + drawer create/edit
+- `ListaColonnaPermessoDrawer.vue` — drawer testata (colonna_id, profilo_accesso_id, livello_accesso enum)
+
+#### F.4 — Out of scope per Fase 1
+
+- CRUD `lista_definizione` e `lista_colonna` via UI: rinviato a Fase 2. In Fase 1 questi restano gestiti da seed CSV (pattern atterrato per `anagrafiche.clienti` in E1+E2).
+- Validazione runtime di `vista_sql` / `campo_sorgente` lato BE Python: i trigger DB B1/B2 sono già la guardia finale; non servono validazioni Python aggiuntive.
+- Versionamento dei preset: rinviato (ogni modifica sovrascrive; lo snapshot `preset_base_data_update` lato preferenza utente è già sufficiente per il badge "preset aggiornato" DEF-2).
 
 ---
 
 ### Sviluppi rinviati
 
-Vedi documento separato: [sviluppo-personalizzazioni-liste_def.md](sviluppo-personalizzazioni-liste_def.md)
+Vedi documento separato: [sviluppo-personalizzazioni-liste_def.md](sviluppo-personalizzazioni-liste_def.md). DEF-5 ("Admin UI per gestione preset e catalogo") **viene assorbito dal Blocco F**: aggiornare DEF-5 quando F atterra.
