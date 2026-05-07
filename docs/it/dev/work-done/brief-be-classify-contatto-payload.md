@@ -115,6 +115,6 @@ Pattern **A2 defense-in-depth** (regola unica scritta backend, mirror frontend) 
 
 ## 7. Riferimenti
 
-- [analisi-refactor.frontend-anagrafiche.md](../work-in-progress/analisi-refactor.frontend-anagrafiche.md) — sezione C1 (LANDED 28-04)
+- [analisi-refactor.frontend-anagrafiche.md](analisi-refactor.frontend-anagrafiche.md) — sezione C1 (LANDED 28-04)
 - Pattern simmetrici: [brief-be-clienti-fornitori-normalize-payload.md](brief-be-clienti-fornitori-normalize-payload.md) (Fase 2)
 - Modulo: [`contatti_service.py`](../../../backend/apps/anagrafiche/services/contatti_service.py)

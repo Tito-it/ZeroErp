@@ -23,7 +23,7 @@
 > * [Guida Soggetti e Ruoli Anagrafici](/guide/soggetti-e-ruoli-anagrafici)
 > * [Guida Gestione dei Contatti](/guide/gestione-dei-contatti)
 > * [Guida Generazione di un Cliente](/guide/generazione-cliente)
-> * [Guida Sviluppo Frontend](guida-sviluppo-frontend.md)
+> * [Guida Sviluppo Frontend](../../work-in-progress/frontend/guida-sviluppo-frontend.md)
 
 ---
 

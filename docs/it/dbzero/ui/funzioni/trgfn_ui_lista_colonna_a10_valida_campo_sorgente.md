@@ -1,22 +1,24 @@
 {% include-markdown "it/dbzero/ui/manual/trgfn_ui_lista_colonna_a10_valida_campo_sorgente.md" %}
-
 # ⚙️ Funzione `trgfn_ui_lista_colonna_a10_valida_campo_sorgente`
 
 ```sql
-CREATE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
-RETURNS trigger
+CREATE FUNCTION trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
 ```
 
 **Definizione completa:**
 
 ```sql
 CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $fn$
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+-- Scopo: verifica che campo_sorgente esista come attributo della view
+-- referenziata da lista_definizione.vista_sql, prima di permettere
+-- INSERT/UPDATE su lista_colonna.
+-- Skip per tipo_colonna='azione', campo_sorgente NULL, o lista senza view.
 DECLARE
-  v_vista_sql      VARCHAR(120);
-  v_colonna_esiste BOOLEAN;
+  v_vista_sql        VARCHAR(120);
+  v_colonna_esiste   BOOLEAN;
 BEGIN
   -- Le colonne di tipo 'azione' non hanno campo_sorgente
   IF NEW.tipo_colonna = 'azione' THEN
@@ -58,10 +60,9 @@ BEGIN
       'ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente',
       'E_UI_CAMPO_SORGENTE_NON_TROVATO',
       jsonb_build_object(
-        'detail', format('campo_sorgente = ''%s'' non trovato nella view ''%s''',
-                         NEW.campo_sorgente, v_vista_sql),
+        'detail', format('campo_sorgente = ''%s'' non trovato nella view ''%s''', NEW.campo_sorgente, v_vista_sql),
         'lista_id', NEW.lista_id,
-        'codice',   NEW.codice
+        'codice', NEW.codice
       ),
       NULL,
       NEW.campo_sorgente,
@@ -71,20 +72,10 @@ BEGIN
 
   RETURN NEW;
 END;
-$fn$;
+$function$
 
 COMMENT ON FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
 IS 'Guard INSERT/UPDATE: verifica esistenza di campo_sorgente in pg_catalog.pg_attribute sulla view della lista. Skip per tipo_colonna=azione.';
-```
-
-**Trigger associato:**
-
-```sql
-CREATE TRIGGER trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd
-  BEFORE INSERT OR UPDATE OF campo_sorgente, tipo_colonna, lista_id
-  ON ui.lista_colonna
-  FOR EACH ROW
-  EXECUTE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente();
 ```
 
 ---

@@ -21,3 +21,4 @@ La struttura replica quella del DB: per ogni area applicativa ci sono due cartel
 - [Pagamenti](pagamenti/index.md)
 - [Storico](storico/index.md)
 - [Vendite](vendite/index.md)
+- [UI — Personalizzazioni liste](ui/manual/api_ui_liste.md)

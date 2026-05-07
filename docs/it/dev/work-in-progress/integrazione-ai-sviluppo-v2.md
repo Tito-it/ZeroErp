@@ -3,7 +3,7 @@
 **Stato:** WIP
 **Data:** 2026-03-31
 **Autore:** Michele Carlo / Claude Code
-**Prerequisito:** [integrazione-ai-sviluppo.md](integrazione-ai-sviluppo.md) (v1 completato)
+**Prerequisito:** [integrazione-ai-sviluppo.md](../work-done/integrazione-ai-sviluppo.md) (v1 completato)
 
 ---
 

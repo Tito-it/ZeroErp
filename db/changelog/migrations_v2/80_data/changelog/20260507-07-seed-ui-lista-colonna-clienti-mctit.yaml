@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed ui.lista_colonna — colonne del catalogo per tutte le liste.
+# Attuale contenuto: 14 colonne per 'anagrafiche.clienti' (lista_id=1).
+#
+# Il trigger B2 (trgfn_ui_lista_colonna_a10_valida_campo_sorgente)
+# valida campo_sorgente contro pg_catalog.pg_attribute: la view
+# anagrafiche.vw_clienti_lista deve esistere prima di questo seed
+# (migration 20260507-05 + 20260508-02 in 20_code/anagrafiche).
+#
+# Blocco F.2 (2026-05-08): aggiunta etichetta_i18n_key, fix campo_sorgente
+# codice_fiscale -> id_fiscale_univoco_cf_piva, nuova riga sosp_riatt.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260507-07-seed-ui-lista-colonna-clienti-mctit.yaml
+
+  - changeSet:
+      id: 20260507-07-seed-ui-lista-colonna-clienti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: lista_colonna
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/ui/lista_colonna.csv
+            tableName: lista_colonna
+            schemaName: ui
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,               type: NUMERIC }
+              - column: { name: lista_id,          type: NUMERIC }
+              - column: { name: codice,            type: STRING }
+              - column: { name: etichetta,         type: STRING }
+              - column: { name: etichetta_estesa,  type: STRING }
+              - column: { name: campo_sorgente,    type: STRING }
+              - column: { name: tipo_colonna,      type: STRING }
+              - column: { name: tipo_dato,         type: STRING }
+              - column: { name: formato,           type: STRING }
+              - column: { name: larghezza_default, type: NUMERIC }
+              - column: { name: ordine_default,    type: NUMERIC }
+              - column: { name: allineamento,      type: STRING }
+              - column: { name: gruppo,            type: STRING }
+              - column: { name: gruppo_ordine,     type: NUMERIC }
+              - column: { name: filtrabile,        type: BOOLEAN }
+              - column: { name: ordinabile,        type: BOOLEAN }
+              - column: { name: esportabile,       type: BOOLEAN }
+              - column: { name: ricercabile_full,  type: BOOLEAN }
+              - column: { name: sensibile,         type: BOOLEAN }
+              - column: { name: attivo,            type: BOOLEAN }
+              - column: { name: data_insert,          type: STRING }
+              - column: { name: user_insert,          type: STRING }
+              - column: { name: etichetta_i18n_key,   type: STRING }

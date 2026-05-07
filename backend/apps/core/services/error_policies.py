@@ -1518,6 +1518,70 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="File asset immutabile: storage_key/sha256/file_size/mime/file_name non modificabili. Crea un nuovo asset.",
         ),
+        # ── UI — personalizzazioni liste (schema ui, sviluppo-personalizzazioni-liste.md) ──
+        # E_UI_LISTA_NON_TROVATA: sollevato da fn_resolve_lista_config quando il codice
+        # lista non esiste o e' attivo=false (seedato in messaggi_errore.csv id 427).
+        # Gli E_UI_VISTA_SQL_NON_TROVATA / E_UI_CAMPO_SORGENTE_NON_TROVATO sono guard
+        # admin-only dei trigger B1/B2: l'utente finale non li vede in flussi normali.
+        "E_UI_LISTA_NON_TROVATA": ErrorPolicy(
+            code="E_UI_LISTA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Lista non trovata.",
+        ),
+        "E_UI_VISTA_SQL_NON_TROVATA": ErrorPolicy(
+            code="E_UI_VISTA_SQL_NON_TROVATA",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Vista SQL della lista non trovata nel database.",
+        ),
+        "E_UI_CAMPO_SORGENTE_NON_TROVATO": ErrorPolicy(
+            code="E_UI_CAMPO_SORGENTE_NON_TROVATO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Campo sorgente colonna non trovato nella vista SQL.",
+        ),
+        "E_UI_PREFERENZA_VALIDAZIONE": ErrorPolicy(
+            code="E_UI_PREFERENZA_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Preferenza lista non valida.",
+        ),
+        # Blocco F (admin CRUD ui.*): codici dedicati per preset e permessi colonna.
+        # Le validazioni di scoperto/duplicato vengono mappate via map_integrity_error
+        # da nomi vincolo DB (uq_ui_lista_preset_lista_codice, chk_ui_lista_preset_ambito_refs).
+        "E_UI_PRESET_VALIDAZIONE": ErrorPolicy(
+            code="E_UI_PRESET_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Preset lista non valido.",
+        ),
+        "E_UI_PRESET_NON_TROVATO": ErrorPolicy(
+            code="E_UI_PRESET_NON_TROVATO",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Preset lista non trovato.",
+        ),
+        "E_UI_PERMESSO_VALIDAZIONE": ErrorPolicy(
+            code="E_UI_PERMESSO_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Permesso colonna non valido.",
+        ),
+        "E_UI_PERMESSO_NON_TROVATO": ErrorPolicy(
+            code="E_UI_PERMESSO_NON_TROVATO",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Permesso colonna non trovato.",
+        ),
+        # Fallback per DatabaseError non riconosciute dai marker noti
+        # nello schema `ui` (allineato a E_VENDITE_PRICING_FAILED).
+        "E_UI_GENERIC_FAILED": ErrorPolicy(
+            code="E_UI_GENERIC_FAILED",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore configurazione lista.",
+        ),
     }
 
     # Scopo: Risolve la policy per un codice errore. Per codici applicativi

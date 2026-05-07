@@ -1,121 +1,341 @@
 {% include-markdown "it/dbzero/ui/manual/fn_resolve_lista_config.md" %}
-
 # ⚙️ Funzione `fn_resolve_lista_config`
 
 ```sql
-CREATE FUNCTION ui.fn_resolve_lista_config(
-  p_lista_codice         VARCHAR,
-  p_auth_user_id         INTEGER,
-  p_emittente_fiscale_id INTEGER
-) RETURNS JSONB
+CREATE FUNCTION fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION ui.fn_resolve_lista_config(
-  p_lista_codice         VARCHAR,
-  p_auth_user_id         INTEGER,
-  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-STABLE
-AS $fn$
+CREATE OR REPLACE FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+-- Risolve la configurazione effettiva di una lista per un utente.
+-- Applica cascata preset, merge nuove colonne, normalizzazione obbligatorie
+-- e filtro autorizzativo colonna. Ritorna JSONB pronto per il frontend.
+--
+-- DB-3: step 2b usa JOIN + ORDER BY pa.priorita per cascata deterministica.
+-- DB-4: legge app.ruolo_applicativo dalla GUC per filtrare la veste corrente.
+--       Fallback sicuro: GUC assente/vuota/non-ENUM -> NULL -> tutte le vesti.
 DECLARE
-  v_lista_id       INTEGER;
-  v_config_colonne JSONB;
-  v_ordinamento    JSONB;
-  v_filtri         JSONB;
-  v_pagina_dim     INTEGER := 25;
-  v_profili_ids    INTEGER[];
-  v_colonne_nuove  INTEGER := 0;
-  v_permessi       JSONB   := '{}'::JSONB;
+  v_lista_id         INTEGER;
+  v_config_colonne   JSONB;
+  v_ordinamento      JSONB;
+  v_filtri           JSONB;
+  v_pagina_dim       INTEGER := 25;
+  v_profili_ids      INTEGER[];
+  v_colonne_nuove    INTEGER := 0;
+  v_permessi         JSONB   := '{}'::JSONB;
+
+  -- DB-4: veste corrente dalla GUC (raw TEXT per cast sicuro sotto)
+  v_ruolo_guc_raw    TEXT    := NULLIF(current_setting('app.ruolo_applicativo', true), '');
+  v_ruolo_guc        config.ruolo_applicativo;
 BEGIN
+  -- Cast GUC -> ENUM blindato: valore non nel ENUM (bug middleware,
+  -- variabile env errata) -> fallback NULL = tutte le vesti, mai eccezione.
+  IF v_ruolo_guc_raw IS NOT NULL THEN
+    BEGIN
+      v_ruolo_guc := v_ruolo_guc_raw::config.ruolo_applicativo;
+    EXCEPTION WHEN invalid_text_representation THEN
+      v_ruolo_guc := NULL;
+    END;
+  END IF;
+  -- -------------------------------------------------------
   -- 0. Recupera lista_id dal codice
+  -- -------------------------------------------------------
   SELECT id INTO v_lista_id
     FROM ui.lista_definizione
-   WHERE codice = p_lista_codice AND attivo = TRUE;
+   WHERE codice = p_lista_codice
+     AND attivo = TRUE;
 
   IF v_lista_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'ui.fn_resolve_lista_config', 'E_UI_LISTA_NON_TROVATA',
+      'database',
+      'ui.fn_resolve_lista_config',
+      'E_UI_LISTA_NON_TROVATA',
       jsonb_build_object('detail', format('codice lista: ''%s''', p_lista_codice)),
-      NULL, p_lista_codice);
+      NULL,
+      p_lista_codice
+    );
   END IF;
 
-  -- 1. Risolvi profili applicabili
-  SELECT ARRAY_AGG(profilo_accesso_id) INTO v_profili_ids
-    FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id);
-  IF v_profili_ids IS NULL THEN v_profili_ids := ARRAY[]::INTEGER[]; END IF;
+  -- -------------------------------------------------------
+  -- 1. Risolvi profili applicabili (DB-4: GUC-aware)
+  --    v_ruolo_guc NULL = tutte le vesti (fallback legacy sicuro)
+  -- -------------------------------------------------------
+  SELECT ARRAY_AGG(profilo_accesso_id)
+    INTO v_profili_ids
+    FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc);
 
-  -- 2. Cascata: preferenza utente > preset ruolo > preset emittente > preset sistema > catalogo
-  -- 2a. Preferenza personale
-  SELECT (pu.configurazione -> 'colonne'), (pu.configurazione -> 'ordinamento'),
-         (pu.configurazione -> 'filtri'), COALESCE((pu.configurazione ->> 'pagina_dimensione')::INTEGER, 25)
+  IF v_profili_ids IS NULL THEN
+    v_profili_ids := ARRAY[]::INTEGER[];
+  END IF;
+
+  -- -------------------------------------------------------
+  -- 2. Cascata: trova la configurazione candidata
+  -- -------------------------------------------------------
+
+  -- 2a. Preferenza personale utente
+  SELECT
+      (pu.configurazione -> 'colonne'),
+      (pu.configurazione -> 'ordinamento'),
+      (pu.configurazione -> 'filtri'),
+      COALESCE((pu.configurazione ->> 'pagina_dimensione')::INTEGER, 25)
     INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim
     FROM ui.lista_preferenza_utente pu
-   WHERE pu.auth_user_id = p_auth_user_id AND pu.lista_id = v_lista_id;
+   WHERE pu.auth_user_id = p_auth_user_id
+     AND pu.lista_id    = v_lista_id;
 
-  -- 2b-2d. Preset profilo / emittente / sistema (omesso per brevità — logica identica)
-  -- ... (vedi sorgente Liquibase per il codice completo)
-
-  -- 3. Merge colonne nuove dal catalogo (visibile=false)
-  SELECT v_config_colonne || COALESCE(jsonb_agg(...), '[]'::JSONB), COUNT(*)::INTEGER
-    INTO v_config_colonne, v_colonne_nuove
-    FROM ui.lista_colonna lc
-   WHERE lc.lista_id = v_lista_id AND lc.attivo = TRUE
-     AND lc.codice NOT IN (SELECT elem ->> 'codice' FROM jsonb_array_elements(v_config_colonne));
-
-  -- 4. Permessi effettivi per colonna (DISTINCT ON priorita + restrittivita)
-  IF array_length(v_profili_ids, 1) > 0 THEN
-    SELECT jsonb_object_agg(colonna_codice, livello) INTO v_permessi
-      FROM (SELECT DISTINCT ON (lc.codice) lc.codice, lcp.livello_accesso
-              FROM ui.lista_colonna lc
-              JOIN ui.lista_colonna_permesso lcp ON lcp.colonna_id = lc.id
-              JOIN script.fn_get_profili_accesso_applicabili(p_auth_user_id) pa
-                ON pa.profilo_accesso_id = lcp.profilo_accesso_id
-             WHERE lc.lista_id = v_lista_id
-             ORDER BY lc.codice, pa.priorita ASC,
-                      CASE lcp.livello_accesso WHEN 'BLOCCATO' THEN 1
-                                               WHEN 'LETTURA'  THEN 2 ELSE 3 END ASC) sub;
+  -- 2b. Preset di profilo (DB-3: JOIN + ORDER BY pa.priorita ASC)
+  --     AD_HOC (prio=1) prevale su REPARTO/PORTALE (prio=2)
+  IF v_config_colonne IS NULL AND array_length(v_profili_ids, 1) > 0 THEN
+    SELECT
+        (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'codice',    lc.codice,
+              'ordine',    pc.ordine,
+              'larghezza', COALESCE(pc.larghezza, lc.larghezza_default),
+              'visibile',  pc.visibile,
+              'fissata',   pc.fissata
+            )
+            ORDER BY pc.ordine
+          )
+          FROM ui.lista_preset_colonna pc
+          JOIN ui.lista_colonna lc ON lc.id = pc.colonna_id
+         WHERE pc.preset_id = lp.id
+           AND lc.attivo = TRUE
+        ),
+        lp.ordinamento_default,
+        lp.filtri_default,
+        COALESCE(lp.pagina_dimensione, 25)
+      INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim
+      FROM ui.lista_preset lp
+      JOIN script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc) pa
+        ON pa.profilo_accesso_id = lp.profilo_accesso_id
+     WHERE lp.lista_id   = v_lista_id
+       AND lp.ambito     = 'ruolo'
+       AND lp.is_default = TRUE
+       AND lp.attivo     = TRUE
+     ORDER BY pa.priorita ASC
+     LIMIT 1;
   END IF;
 
-  -- 5. Applica permessi + normalizzazione obbligatorie + rimuove BLOCCATE
-  SELECT jsonb_agg(jsonb_build_object(
-      'codice', elem->>'codice', 'ordine', (elem->>'ordine')::INTEGER,
-      'larghezza', (elem->>'larghezza')::INTEGER, 'visibile', visibile_norm,
-      'fissata', fissata_norm,
-      'esportabile', CASE WHEN livello_eff = 'LETTURA' THEN FALSE ELSE esportabile END,
-      'tipo_colonna', tipo_colonna::text)
-    ORDER BY (elem->>'ordine')::INTEGER)
+  -- 2c. Preset di emittente fiscale
+  IF v_config_colonne IS NULL AND p_emittente_fiscale_id IS NOT NULL THEN
+    SELECT
+        (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'codice',    lc.codice,
+              'ordine',    pc.ordine,
+              'larghezza', COALESCE(pc.larghezza, lc.larghezza_default),
+              'visibile',  pc.visibile,
+              'fissata',   pc.fissata
+            )
+            ORDER BY pc.ordine
+          )
+          FROM ui.lista_preset_colonna pc
+          JOIN ui.lista_colonna lc ON lc.id = pc.colonna_id
+         WHERE pc.preset_id = lp.id
+           AND lc.attivo = TRUE
+        ),
+        lp.ordinamento_default,
+        lp.filtri_default,
+        COALESCE(lp.pagina_dimensione, 25)
+      INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim
+      FROM ui.lista_preset lp
+     WHERE lp.lista_id             = v_lista_id
+       AND lp.ambito               = 'emittente_fiscale'
+       AND lp.emittente_fiscale_id = p_emittente_fiscale_id
+       AND lp.is_default           = TRUE
+       AND lp.attivo               = TRUE
+     LIMIT 1;
+  END IF;
+
+  -- 2d. Preset di sistema
+  IF v_config_colonne IS NULL THEN
+    SELECT
+        (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'codice',    lc.codice,
+              'ordine',    pc.ordine,
+              'larghezza', COALESCE(pc.larghezza, lc.larghezza_default),
+              'visibile',  pc.visibile,
+              'fissata',   pc.fissata
+            )
+            ORDER BY pc.ordine
+          )
+          FROM ui.lista_preset_colonna pc
+          JOIN ui.lista_colonna lc ON lc.id = pc.colonna_id
+         WHERE pc.preset_id = lp.id
+           AND lc.attivo = TRUE
+        ),
+        lp.ordinamento_default,
+        lp.filtri_default,
+        COALESCE(lp.pagina_dimensione, 25)
+      INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim
+      FROM ui.lista_preset lp
+     WHERE lp.lista_id   = v_lista_id
+       AND lp.ambito     = 'sistema'
+       AND lp.is_default = TRUE
+       AND lp.attivo     = TRUE
+     LIMIT 1;
+  END IF;
+
+  -- 2e. Catalogo grezzo (fallback finale)
+  IF v_config_colonne IS NULL THEN
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'codice',    lc.codice,
+        'ordine',    lc.ordine_default,
+        'larghezza', lc.larghezza_default,
+        'visibile',  TRUE,
+        'fissata',   (lc.tipo_colonna = 'identificatore')
+      )
+      ORDER BY lc.ordine_default
+    )
     INTO v_config_colonne
-    FROM (SELECT elem, lc.tipo_colonna, lc.esportabile,
-                 COALESCE(v_permessi->>(elem->>'codice'),
-                          CASE WHEN lc.sensibile THEN 'BLOCCATO' ELSE 'TUTTO' END) AS livello_eff,
-                 CASE WHEN lc.tipo_colonna IN ('identificatore','azione') THEN TRUE
-                      ELSE (elem->>'visibile')::BOOLEAN END AS visibile_norm,
-                 CASE WHEN lc.tipo_colonna = 'identificatore' THEN TRUE
-                      ELSE (elem->>'fissata')::BOOLEAN END AS fissata_norm
-            FROM jsonb_array_elements(v_config_colonne) AS elem
-            LEFT JOIN ui.lista_colonna lc ON lc.lista_id = v_lista_id
-               AND lc.codice = elem->>'codice' AND lc.attivo = TRUE
-           WHERE lc.id IS NOT NULL) sub
-   WHERE livello_eff <> 'BLOCCATO';
+    FROM ui.lista_colonna lc
+   WHERE lc.lista_id = v_lista_id
+     AND lc.attivo   = TRUE;
+  END IF;
 
-  -- 6. Ritorna JSONB finale
+  IF v_config_colonne IS NULL THEN
+    v_config_colonne := '[]'::JSONB;
+  END IF;
+
+  -- -------------------------------------------------------
+  -- 3. Merge automatico colonne nuove dal catalogo
+  --    (presenti in catalogo ma assenti dalla configurazione)
+  -- -------------------------------------------------------
+  SELECT
+    v_config_colonne || COALESCE(
+      jsonb_agg(
+        jsonb_build_object(
+          'codice',    lc.codice,
+          'ordine',    lc.ordine_default + 10000,
+          'larghezza', lc.larghezza_default,
+          'visibile',  FALSE,
+          'fissata',   (lc.tipo_colonna = 'identificatore')
+        )
+      ),
+      '[]'::JSONB
+    ),
+    COUNT(*)::INTEGER
+  INTO v_config_colonne, v_colonne_nuove
+  FROM ui.lista_colonna lc
+ WHERE lc.lista_id = v_lista_id
+   AND lc.attivo   = TRUE
+   AND lc.codice NOT IN (
+     SELECT elem ->> 'codice'
+       FROM jsonb_array_elements(v_config_colonne) AS elem
+   );
+
+  -- -------------------------------------------------------
+  -- 4. Risolvi permessi effettivi per colonna (DB-4: GUC-aware)
+  --    DISTINCT ON: profilo piu' specifico (priorita asc),
+  --    a parita' di priorita' il piu' restrittivo (BLOCCATO>LETTURA>TUTTO)
+  -- -------------------------------------------------------
+  IF array_length(v_profili_ids, 1) > 0 THEN
+    SELECT jsonb_object_agg(colonna_codice, livello)
+      INTO v_permessi
+      FROM (
+        SELECT DISTINCT ON (lc.codice)
+               lc.codice                AS colonna_codice,
+               lcp.livello_accesso      AS livello
+          FROM ui.lista_colonna lc
+          JOIN ui.lista_colonna_permesso lcp
+            ON lcp.colonna_id = lc.id
+          JOIN script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc) pa
+            ON pa.profilo_accesso_id = lcp.profilo_accesso_id
+         WHERE lc.lista_id = v_lista_id
+         ORDER BY lc.codice,
+                  pa.priorita ASC,
+                  CASE lcp.livello_accesso
+                    WHEN 'BLOCCATO' THEN 1
+                    WHEN 'LETTURA'  THEN 2
+                    WHEN 'TUTTO'    THEN 3
+                  END ASC
+      ) sub;
+  END IF;
+
+  IF v_permessi IS NULL THEN
+    v_permessi := '{}'::JSONB;
+  END IF;
+
+  -- -------------------------------------------------------
+  -- 5. Applica permessi + normalizzazione colonne obbligatorie
+  --    - tipo 'identificatore' e 'azione': forzate visibile=true
+  --    - sensibile=TRUE senza grant esplicito: BLOCCATO
+  --    - colonne BLOCCATE: rimosse
+  --    - colonne LETTURA: esportabile=false
+  -- -------------------------------------------------------
+  SELECT jsonb_agg(
+      jsonb_build_object(
+        'codice',       elem ->> 'codice',
+        'ordine',       (elem ->> 'ordine')::INTEGER,
+        'larghezza',    (elem ->> 'larghezza')::INTEGER,
+        'visibile',     visibile_norm,
+        'fissata',      fissata_norm,
+        'esportabile',  CASE WHEN livello_eff = 'LETTURA' THEN FALSE ELSE esportabile END,
+        'tipo_colonna', tipo_colonna::text
+      )
+      ORDER BY (elem ->> 'ordine')::INTEGER
+    )
+    INTO v_config_colonne
+    FROM (
+      SELECT
+        elem,
+        lc.tipo_colonna,
+        lc.esportabile,
+        COALESCE(
+          v_permessi ->> (elem ->> 'codice'),
+          CASE WHEN lc.sensibile THEN 'BLOCCATO' ELSE 'TUTTO' END
+        )                               AS livello_eff,
+        CASE
+          WHEN lc.tipo_colonna IN ('identificatore', 'azione')
+            THEN TRUE
+          ELSE (elem ->> 'visibile')::BOOLEAN
+        END                             AS visibile_norm,
+        CASE
+          WHEN lc.tipo_colonna = 'identificatore'
+            THEN TRUE
+          ELSE (elem ->> 'fissata')::BOOLEAN
+        END                             AS fissata_norm
+      FROM jsonb_array_elements(v_config_colonne) AS elem
+      LEFT JOIN ui.lista_colonna lc
+        ON lc.lista_id = v_lista_id
+       AND lc.codice   = elem ->> 'codice'
+       AND lc.attivo   = TRUE
+      WHERE lc.id IS NOT NULL
+    ) sub
+    WHERE livello_eff <> 'BLOCCATO';
+
+  IF v_config_colonne IS NULL THEN
+    v_config_colonne := '[]'::JSONB;
+  END IF;
+
+  -- -------------------------------------------------------
+  -- 6. Ritorna il JSONB finale
+  -- -------------------------------------------------------
   RETURN jsonb_build_object(
-    'colonne',          COALESCE(v_config_colonne, '[]'::JSONB),
-    'ordinamento',      COALESCE(v_ordinamento,    '[]'::JSONB),
-    'filtri',           COALESCE(v_filtri,          '{}'::JSONB),
+    'colonne',           v_config_colonne,
+    'ordinamento',       COALESCE(v_ordinamento, '[]'::JSONB),
+    'filtri',            COALESCE(v_filtri, '{}'::JSONB),
     'pagina_dimensione', v_pagina_dim,
-    'colonne_nuove',    v_colonne_nuove
+    'colonne_nuove',     v_colonne_nuove
   );
-END;
-$fn$;
 
-COMMENT ON FUNCTION ui.fn_resolve_lista_config(VARCHAR, INTEGER, INTEGER)
-IS 'Risolve la configurazione effettiva di una lista per un utente: cascata preset, merge nuove colonne, normalizzazione obbligatorie, filtro autorizzativo. Ritorna JSONB per il frontend.';
+END;
+$function$
+
+COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
+IS 'Risolve la configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione obbligatorie, filtro autorizzativo. Ritorna JSONB per il frontend. DB-3+DB-4 (2026-05-07).';
 ```
 
 ---

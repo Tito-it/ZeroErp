@@ -110,7 +110,7 @@ Pattern riusabile per qualunque coppia `(flag/tipo, value)` dove il `value` e' s
 
 ## 7. Riferimenti
 
-- [analisi-refactor.frontend-anagrafiche.md](../work-in-progress/analisi-refactor.frontend-anagrafiche.md) — Fase 2 sezione del piano refactor (ora marcata LANDED)
+- [analisi-refactor.frontend-anagrafiche.md](analisi-refactor.frontend-anagrafiche.md) — Fase 2 sezione del piano refactor (ora marcata LANDED)
 - DB doc concettuale: `docs/it/dbzero/anagrafiche/manual/trgfn_clienti_normalize_giorni_scadenza.md`
 - Pattern gemello fornitori: `docs/it/dbzero/anagrafiche/funzioni/trgfn_fornitori_guard_normalize.md`
 - Tabella: [`anagrafiche.clienti`](../../dbzero/anagrafiche/tabelle/clienti.md)

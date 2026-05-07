@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { TABS } from '../core/constants'
 import { session, STORAGE_KEYS } from '../core/storage'
-import { DOMAIN_MENUS } from '../core/navigation'
+import { DOMAIN_MENUS, resolveTabIcon } from '../core/navigation'
 
 let idCounter = 0
 
@@ -46,18 +46,30 @@ export const useTabsStore = defineStore('tabs', () => {
       .find(item => item.to === path)?.key || null
   }
 
+  function resolveCurrentIcon(domain, menuKey, path, fallback = null) {
+    const resolvedMenuKey = menuKey || inferMenuKey(domain, path)
+    return resolveTabIcon({ domain, menuKey: resolvedMenuKey }) || fallback || null
+  }
+
   // Apre una tab (o attiva quella esistente per la stessa route)
   function openTab({ path, label, domain, menuKey, icon }) {
     const existing = tabs.value.find(t => t.path === path)
     if (existing) {
+      let changed = false
       existing.domain = existing.domain || domain || null
       existing.menuKey = existing.menuKey || menuKey || inferMenuKey(existing.domain, path)
-      existing.icon = existing.icon || icon || null
+      const currentIcon = icon || resolveCurrentIcon(existing.domain, existing.menuKey, path, existing.icon)
+      if (currentIcon && existing.icon !== currentIcon) {
+        existing.icon = currentIcon
+        changed = true
+      }
       // Se la tab esistente e' quella pinnata nello split, chiudi lo split prima di attivarla
       if (isSplit.value && existing.id === pinnedTabId.value) {
         pinnedTabId.value = null
+        changed = true
       }
       activeTabId.value = existing.id
+      if (changed) persistTabs()
       return existing
     }
     // Limite massimo tab — blocca apertura e segnala al componente
@@ -71,7 +83,7 @@ export const useTabsStore = defineStore('tabs', () => {
       label: label || path.split('/').pop() || 'Pagina',
       domain: domain || null,
       menuKey: menuKey || inferMenuKey(domain, path),
-      icon: icon || null,
+      icon: icon || resolveCurrentIcon(domain, menuKey, path),
       dirty: false,
       contextAware: false,
       customLabel: false
@@ -220,13 +232,15 @@ export const useTabsStore = defineStore('tabs', () => {
       for (const t of data.tabs) {
         const existing = tabs.value.find(x => x.path === t.path)
         if (existing) continue
+        const domain = t.domain || null
+        const menuKey = t.menuKey || inferMenuKey(domain, t.path)
         tabs.value.push({
           id: generateId(),
           path: t.path,
           label: t.label || t.path.split('/').pop() || 'Pagina',
-          domain: t.domain || null,
-          menuKey: t.menuKey || inferMenuKey(t.domain, t.path),
-          icon: t.icon || null,
+          domain,
+          menuKey,
+          icon: resolveCurrentIcon(domain, menuKey, t.path, t.icon),
           dirty: false,
           contextAware: false,
           customLabel: t.customLabel === true

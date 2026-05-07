@@ -7,7 +7,7 @@ import { computed, inject, ref } from 'vue'
 import { useNavigationStore } from '../../stores/navigation'
 import { useTabsStore } from '../../stores/tabs'
 import { useAuthStore } from '../../stores/auth'
-import { resolveNavigationLabel } from '../navigation'
+import { NAV_ICONS, resolveNavigationLabel } from '../navigation'
 import SidebarItem from './SidebarItem.vue'
 
 const { t } = useI18n()
@@ -18,19 +18,30 @@ const tabs = useTabsStore()
 const auth = useAuthStore()
 const isCollapsed = inject('sidebarCollapsed', ref(false))
 
-// Scopo: filtra le voci di menu L2 nascondendo quelle che dichiarano
-// `requireArea: 'X'` quando l'utente ha l'area X BLOCCATA. Coerente con
-// la regola di doc "BLOCCATO = nessun accesso, l'area non e' nemmeno
-// visibile" e con il route guard che valuta il livello area su
-// `meta.domain`.
+// Scopo: filtra le voci di menu L2 nascondendo quelle che dichiarano:
+//   - `requireArea: 'X'`        -> nascosta se area X BLOCCATA
+//   - `requireAnyAction: ['a','b']` -> nascosta se utente non admin e
+//                                  nessuna delle azioni e' abilitata
+//
+// Coerente con la regola di doc "BLOCCATO = nessun accesso, l'area non
+// e' nemmeno visibile" e con il route guard che valuta il livello area
+// su `meta.domain`. La OR-azione e' usata per voci protette da azioni
+// di processo (es. personalizzazioni-liste sotto config: `ui_preset_manage`
+// OR `ui_permesso_manage`).
 //
 // NOTA: oggi nessuna voce in DOMAIN_MENUS ha `children`. Quando saranno
 // introdotti gruppi annidati, estendere il filter qui (ricorsione su
 // children + nascondi gruppo se vuoto).
 const visibleMenu = computed(() =>
-  nav.currentMenu.filter(item =>
-    !item.requireArea || !auth.isAreaBlocked(item.requireArea),
-  ),
+  nav.currentMenu.filter(item => {
+    if (item.requireArea && auth.isAreaBlocked(item.requireArea)) return false
+    if (Array.isArray(item.requireAnyAction) && item.requireAnyAction.length > 0) {
+      if (!auth.isAdmin && !item.requireAnyAction.some(a => auth.isActionAllowed(a))) {
+        return false
+      }
+    }
+    return true
+  }),
 )
 
 const emit = defineEmits(['navigate'])
@@ -111,7 +122,7 @@ function handleToggleFavorite(item) {
   <div class="sidebar-domain">
     <!-- Pulsante ← Home -->
     <SidebarItem
-      icon="pi pi-arrow-left"
+      :icon="NAV_ICONS.BACK"
       :label="t('nav.back_home')"
       class="back-home"
       @click="handleBackHome"

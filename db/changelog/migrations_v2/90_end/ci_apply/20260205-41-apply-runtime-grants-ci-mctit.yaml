@@ -10,7 +10,8 @@ databaseChangeLog:
       id: 20260205-41-apply-runtime-grants-ci
       author: mctit
       context: ci_apply
-      runAlways: false
+      runOnChange: true
+      # runAlways: true
       validCheckSums:
         - ANY
       comment: "Applica grant runtime in CI senza gestione password ruoli"
@@ -28,20 +29,20 @@ databaseChangeLog:
                 v_fn record;
                 v_rel record;
                 v_schemas text[] := ARRAY[
-                 
-                  'dbops',
                   'acquisti',
                   'anagrafiche',
                   'catalogo',
                   'config',
                   'contabilita',
+                  'dbops',
                   'documenti',
                   'magazzino',
                   'pagamenti',
-                  'storico',
-                  'vendite',
+                  'pratiche',
                   'script',
-                  'pratiche'
+                  'storico',
+                  'ui',
+                  'vendite'
                 ];
               BEGIN
                 -- In CI il ruolo dovrebbe esistere dal bootstrap; se manca non blocchiamo la pipeline.

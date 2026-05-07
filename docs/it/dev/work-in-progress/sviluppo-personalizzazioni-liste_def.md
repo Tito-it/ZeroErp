@@ -36,17 +36,27 @@ L'export di una lista deve generare un file (CSV o Excel) che includa non solo i
 Quando un admin modifica un preset di ruolo o di sistema, gli utenti che avevano salvato una preferenza basata su quel preset non vengono avvisati. Il campo `lista_preferenza_utente.preset_base_data_update` è già nel modello per supportare questo scenario.
 
 **Comportamento atteso**
-- Al `GET .../config`, se `lista_preset.data_update > lista_preferenza_utente.preset_base_data_update`, il JSONB di risposta include un flag aggiuntivo: `"preset_aggiornato": true`
+- Al `GET .../config`, **se** `preferenza.preset_base_id IS NOT NULL` **e** `lista_preset.data_update > lista_preferenza_utente.preset_base_data_update`, il JSONB di risposta include un flag aggiuntivo: `"preset_aggiornato": true`
 - Il frontend mostra un banner non intrusivo: *"La configurazione di base del tuo ruolo è stata aggiornata. Vuoi vedere le novità?"* con due azioni: "Vedi novità" (apre la modale con le colonne nuove evidenziate) e "Ignora"
 - Se l'utente preme "Vedi novità" e salva, `preset_base_data_update` viene aggiornato al valore corrente del preset
+
+**Regola obbligatoria — `preset_base_id` può essere NULL**
+Post landing DB-2 (FK `ON DELETE SET NULL`) + trigger `trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd` (atterrato 2026-05-07), se l'admin elimina il preset di base la preferenza utente sopravvive con `preset_base_id = NULL` e `preset_base_data_update = NULL`. In questo caso **il badge non va mostrato** — il preset di riferimento non esiste più, non c'è nulla con cui confrontare. Condizione completa BE/FE:
+
+```js
+const showPresetUpdatedBadge =
+  preferenza.preset_base_id !== null &&
+  preferenza.preset_base_data_update !== null &&
+  presetCorrente.data_update > preferenza.preset_base_data_update;
+```
 
 **Dipendenze**
 - Blocco D completato (componente Vue con modale personalizzazione)
 - Accordo su UX della notifica (banner, toast, badge?)
 
 **Impatto**
-- DB: nessuno (campo già presente)
-- Backend: logica aggiuntiva in `ui_service.py` nel metodo che invoca `fn_resolve_lista_config`
+- DB: nessuno (campo già presente, trigger già landed)
+- Backend: logica aggiuntiva in `ui_service.py` nel metodo che invoca `fn_resolve_lista_config` — guard `preset_base_id IS NOT NULL` prima del confronto timestamp
 - Frontend: banner condizionale + stato "colonne nuove del preset" nella modale
 
 ---
@@ -94,7 +104,15 @@ Un utente (es. un team lead) crea una vista personalizzata per la sua lista e vu
 
 ## DEF-5 — Admin UI per gestione preset e catalogo
 
-**Descrizione**
+> **Status 2026-05-07**: assorbito dal **Blocco F** del piano principale (§11.F del [WIP](sviluppo-personalizzazioni-liste.md)). Decisioni prese:
+>
+> - Split visibilita': tabelle tecniche (`lista_definizione`, `lista_colonna`) → `amm-software` SUPER_ADMIN; tabelle operative (`lista_preset`, `lista_preset_colonna`, `lista_colonna_permesso`) → `config` con azioni di processo `ui_preset_manage` / `ui_permesso_manage` (assegnabili a tenant admin).
+> - Pattern UI: pagina condivisa con TabView lazy + tab condizionali ai permessi, master-detail su "Lista corrente" come header.
+> - Fase 1 minimal: solo i 2 CRUD operativi. Le 2 tabelle tecniche restano gestite via seed CSV finche' non emerge esigenza concreta.
+>
+> Il piano dettagliato vive nel WIP principale. Questo paragrafo resta come storico — sara' rimosso quando il Blocco F atterra.
+
+**Descrizione (storico)**
 Oggi il catalogo (`lista_colonna`) e i preset (`lista_preset`, `lista_preset_colonna`) si gestiscono solo tramite seed CSV/Liquibase. In produzione, un amministratore di sistema deve poter creare nuovi preset di ruolo, modificare l'ordine e la visibilità di default delle colonne, senza richiedere un deploy.
 
 **Comportamento atteso**

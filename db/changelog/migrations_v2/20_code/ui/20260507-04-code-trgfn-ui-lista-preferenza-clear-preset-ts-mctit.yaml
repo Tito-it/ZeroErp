@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger z90 su ui.lista_preferenza_utente:
+# azzerare preset_base_data_update quando preset_base_id diventa NULL.
+#
+# Why: preset_base_data_update e' uno snapshot di lista_preset.data_update
+# al momento del salvataggio della preferenza utente. Serve al frontend per
+# rilevare se il preset base e' stato aggiornato ("preset aggiornato,
+# vuoi vedere le novita'?"). Se il preset viene eliminato, la FK
+# fk_lista_preferenza_utente_lista_preset -> ON DELETE SET NULL azzera
+# preset_base_id ma lascia preset_base_data_update con il vecchio timestamp.
+# In quel caso il confronto FE (lista_preset.data_update > preset_base_data_update)
+# diventerebbe privo di senso: il preset non esiste piu'.
+# Azzerare preset_base_data_update insieme a preset_base_id chiude il contratto:
+# FE con preset_base_id IS NULL non mostra il badge "preset aggiornato".
+#
+# Il trigger si attiva su UPDATE OF preset_base_id, copre sia l'ON DELETE
+# SET NULL (che genera un UPDATE interno di PostgreSQL) sia gli UPDATE diretti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260507-04-code-trgfn-ui-lista-preferenza-clear-preset-ts-mctit.yaml
+
+  - changeSet:
+      id: 20260507-04-01-trgfn-ui-lista-preferenza-clear-preset-base-ts
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: "Trigger z90: azzera preset_base_data_update quando preset_base_id -> NULL"
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: lista_preferenza_utente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo: mantiene la coerenza tra preset_base_id e preset_base_data_update.
+              -- Quando preset_base_id diventa NULL (ON DELETE SET NULL o UPDATE diretto),
+              -- azzera anche preset_base_data_update: il timestamp e' relativo al preset
+              -- referenziato, senza preset non ha senso conservarlo.
+              BEGIN
+                IF NEW.preset_base_id IS NULL AND OLD.preset_base_id IS NOT NULL THEN
+                  NEW.preset_base_data_update := NULL;
+                END IF;
+                RETURN NEW;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts()
+              IS 'Azzera preset_base_data_update quando preset_base_id -> NULL (ON DELETE SET NULL o UPDATE). Impedisce badge FE "preset aggiornato" su preset eliminato.';
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd
+                ON ui.lista_preferenza_utente;
+
+              CREATE TRIGGER trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd
+                BEFORE UPDATE OF preset_base_id
+                ON ui.lista_preferenza_utente
+                FOR EACH ROW
+                EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd
+                ON ui.lista_preferenza_utente;
+              DROP FUNCTION IF EXISTS ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts();

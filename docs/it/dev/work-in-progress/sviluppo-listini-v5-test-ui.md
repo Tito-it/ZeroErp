@@ -8,7 +8,7 @@
 ## Stato del modello
 
 Tutti gli sprint v5 sono **chiusi end-to-end** (DB+BE+FE+DOC). Vedi
-[sviluppo-listini-v5.md §14.9](sviluppo-listini-v5) per il tracking
+[sviluppo-listini-v5.md §14.9](../work-done/sviluppo-listini-v5) per il tracking
 completo. La presente checklist è il complemento operativo che esercita
 le funzionalità in UI.
 

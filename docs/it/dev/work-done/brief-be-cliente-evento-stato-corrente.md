@@ -118,7 +118,7 @@ Variante interessante del pattern: qui non c'e' un periodo di validita' (range `
 
 ## 6. Riferimenti
 
-- [analisi-refactor.frontend-anagrafiche.md](../work-in-progress/analisi-refactor.frontend-anagrafiche.md) — Fase 4 (LANDED 28-04)
+- [analisi-refactor.frontend-anagrafiche.md](analisi-refactor.frontend-anagrafiche.md) — Fase 4 (LANDED 28-04)
 - DB doc concettuale: `docs/it/dbzero/anagrafiche/funzioni/fn_get_evento_stato_corrente_cliente.md`
 - Pattern memoria: [feedback_stato_terminale_con_data.md](../../../.claude/projects/-home-tid-apps-ZeroErp/memory/feedback_stato_terminale_con_data.md)
 - Tabella: [`anagrafiche.clienti`](../../dbzero/anagrafiche/tabelle/clienti.md)

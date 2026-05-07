@@ -11,7 +11,7 @@
 >
 > Documento sorgente canonico per lo sviluppo listini. I due WIP precedenti sono stati consolidati qui.
 >
-> **Rettifiche prezzi** (DB-L4) sono trattate nel documento dedicato [sviluppo-rettifiche.md](sviluppo-rettifiche.md).
+> **Rettifiche prezzi** (DB-L4) sono trattate nel documento dedicato [sviluppo-rettifiche.md](../work-in-progress/sviluppo-rettifiche.md).
 >
 > Prerequisiti gia' disponibili:
 >
@@ -24,7 +24,7 @@
 >
 > * [docs/it/dbzero/vendite/tabelle/listini.md](../../dbzero/vendite/tabelle/listini.md) — schema listini
 > * [docs/it/dev/work-done/gestione-articoli.md](../work-done/gestione-articoli.md) — dominio catalogo (completato)
-> * [docs/it/dev/work-in-progress/gestione-commesse-v2.md](gestione-commesse-v2.md) — integrazione commessa
+> * [docs/it/dev/work-in-progress/gestione-commesse-v2.md](../work-in-progress/gestione-commesse-v2.md) — integrazione commessa
 > * [docs/it/dev/api.md](../api.md) — linee guida API
 
 ---
@@ -109,7 +109,7 @@ Documento di riferimento per decisioni DB, backend e frontend listini. La logica
 2. un solo motore evita divergenze di risultato tra processi umani e batch,
 3. audit unico semplifica compliance e troubleshooting.
 
-> Sviluppo e roadmap dettagliata del motore rettifiche in documento dedicato: [sviluppo-rettifiche.md](sviluppo-rettifiche.md).
+> Sviluppo e roadmap dettagliata del motore rettifiche in documento dedicato: [sviluppo-rettifiche.md](../work-in-progress/sviluppo-rettifiche.md).
 
 ### 4.4 Formule utilities in fase successiva
 
@@ -312,7 +312,7 @@ Salvare:
 
 Il motore rettifiche (canali manuale + automatico, ricerca impatti retroattivi, delta tracciato) e' trattato nel documento dedicato:
 
-**[sviluppo-rettifiche.md](sviluppo-rettifiche.md)** — DB-L4 della roadmap pricing, stato: **DA IMPLEMENTARE**.
+**[sviluppo-rettifiche.md](../work-in-progress/sviluppo-rettifiche.md)** — DB-L4 della roadmap pricing, stato: **DA IMPLEMENTARE**.
 
 Sintesi del contratto con il dominio listini:
 
@@ -678,7 +678,7 @@ Totale backend: **29 test verdi** (listini) + 49 (catalogo) = **78 test verdi co
 
 ### 13.6 DB-L4 Rettifiche — DA IMPLEMENTARE
 
-Trasferito in documento dedicato: vedi **[sviluppo-rettifiche.md](sviluppo-rettifiche.md)** §7 per la checklist completa (motore delta, canali, audit, pgtap).
+Trasferito in documento dedicato: vedi **[sviluppo-rettifiche.md](../work-in-progress/sviluppo-rettifiche.md)** §7 per la checklist completa (motore delta, canali, audit, pgtap).
 
 ### 13.7 Consolidamento e test di flusso — APERTO
 
@@ -710,7 +710,7 @@ Aggiornati al aprile 2026. I punti 1-6 erano bloccanti prima dello sviluppo DB e
 5. ~~conferma domini enum `pricing_mode` e canale rettifica~~ **chiuso** (FIXED in v1)
 6. ~~conferma strategia multi-listino: specificita riga cross-listino + tie-break priorita associazione~~ **chiuso**
 
-I bloccanti residui riguardano il dominio **rettifiche** (perimetro retroattivo, formato audit, perimetro v1 `FIXED`, segmentazione listini) e sono stati trasferiti in **[sviluppo-rettifiche.md](sviluppo-rettifiche.md)** §6 come gate di avvio DB-L4.
+I bloccanti residui riguardano il dominio **rettifiche** (perimetro retroattivo, formato audit, perimetro v1 `FIXED`, segmentazione listini) e sono stati trasferiti in **[sviluppo-rettifiche.md](../work-in-progress/sviluppo-rettifiche.md)** §6 come gate di avvio DB-L4.
 
 **Nota**: il tema "da riallineare" si considera chiuso (flag tecnico `prezzo_da_riallineare` presente nello schema).
 
@@ -752,7 +752,7 @@ In ordine di priorita' per chiudere il dominio listini v1:
 
 1. **Test UI reale** sul drawer listino, versioni, righe, test resolver (verifica permessi, readonly mode, flussi completi)
 2. **Documentazione API** in `docs/it/backend/vendite/manual/` a partire dallo schema OpenAPI
-3. **Rettifiche (DB-L4)** — perimetro trasferito in [sviluppo-rettifiche.md](sviluppo-rettifiche.md), lo sviluppo parte dopo la chiusura dei bloccanti in quel documento
+3. **Rettifiche (DB-L4)** — perimetro trasferito in [sviluppo-rettifiche.md](../work-in-progress/sviluppo-rettifiche.md), lo sviluppo parte dopo la chiusura dei bloccanti in quel documento
 4. **Importazione guida utente** in `docs/it/guide/gestione-listini.md` (gia' scritta, da allineare con nomenclatura `bigint` al posto di `UUID` nei PK)
 
 ---
