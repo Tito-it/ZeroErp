@@ -242,6 +242,7 @@ class ClientiRepository:
                    s.ragione_sociale_completa,
                    s.codice_fiscale,
                    s.partita_iva,
+                   s.id_fiscale_univoco_cf_piva,
                    u.descrizione AS utility_descrizione,
                    u.id AS utility_id,
                    sc.descrizione_breve AS stato_descrizione,

@@ -39,13 +39,27 @@ import { computed, ref, onMounted, watch, useSlots } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Button from 'primevue/button'
-import Tag from 'primevue/tag'
 import { PAGINATION } from '../constants'
 import { useListaConfig } from '../composables/useListaConfig'
 import { displayDate, displayTimestamp } from '../utils/date'
 import { formatCurrency, formatNumber } from '../utils/format'
 import ListaColonneModal from './ListaColonneModal.vue'
+
+// Default paginator allineato al pattern lista standard
+// (paginatorPosition=top, JumpToPageDropdown 1/N, font compatto).
+// Il caller puo' override passando paginatorProps di useSearchTable o
+// un oggetto custom via la prop `paginator-options`. La modalita' lazy +
+// removable-sort + striped + scrollable rimane fissata: sono regole del
+// pattern, non parametriche (vedi frontend-standards.md).
+const _DEFAULT_PAGINATOR_OPTIONS = Object.freeze({
+  paginator: true,
+  paginatorPosition: 'top',
+  paginatorTemplate:
+    'FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink ' +
+    'RowsPerPageDropdown JumpToPageDropdown CurrentPageReport',
+  currentPageReportTemplate: '{currentPage}/{totalPages}',
+  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+})
 
 const props = defineProps({
   // Codice stabile della lista (es. 'anagrafiche.clienti').
@@ -65,6 +79,10 @@ const props = defineProps({
   selectionMode: { type: String, default: 'single' },
   // Data key per riga.
   dataKey: { type: String, default: 'id' },
+  // Override prop paginator: tipicamente `paginatorProps` di useSearchTable.
+  // Mergiato con i default del pattern (top + jump + 1/N + rowsOptions).
+  // Le prop esplicite del caller hanno precedenza sui default.
+  paginatorOptions: { type: Object, default: null },
 })
 
 const emit = defineEmits([
@@ -74,7 +92,7 @@ const emit = defineEmits([
   'config-loaded',
 ])
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const slots = useSlots()
 
 // Stato config (cascata BE) tramite composable per-codice.
@@ -123,6 +141,17 @@ const colonneRender = computed(() => {
     .filter((c) => c.visibile !== false)
     .map((c) => {
       const m = meta.get(c.codice) || {}
+      // Risoluzione header multilingua: se il catalogo dichiara una
+      // chiave i18n esistente (`etichetta_i18n_key`), risolviamo via
+      // vue-i18n; altrimenti fallback all'`etichetta` letterale del
+      // catalogo; ultimo fallback al `codice` (catalogo non ancora
+      // caricato — caso teorico oggi che il catalogo e' eager).
+      // `te` (translation-exists) evita di mostrare la chiave grezza
+      // quando il seed dichiara una key non ancora aggiunta ai locale.
+      let header = m.etichetta || c.codice
+      if (m.etichetta_i18n_key && te(m.etichetta_i18n_key)) {
+        header = t(m.etichetta_i18n_key)
+      }
       return {
         codice: c.codice,
         ordine: c.ordine,
@@ -130,8 +159,9 @@ const colonneRender = computed(() => {
         fissata: c.fissata === true,
         esportabile: c.esportabile !== false,
         tipo_colonna: c.tipo_colonna || m.tipo_colonna || 'informazione',
-        // Dal catalogo (potrebbe non essere caricato al primo render).
-        etichetta: m.etichetta || c.codice,
+        // Dal catalogo. Se non ancora caricato il fallback al `codice`
+        // protegge il primo render; con load-eager non e' piu' raggiungibile.
+        etichetta: header,
         campo_sorgente: m.campo_sorgente || c.codice,
         formato: m.formato || null,
         allineamento: m.allineamento || 'left',
@@ -223,48 +253,45 @@ async function onReset() {
   await reset()
 }
 
-// Esposto al caller per eventuale bottone export custom.
-defineExpose({ config, dirty, save, reset, applyChange })
+// Merge default-pattern + override caller. Lazy/removable-sort/striped/
+// scrollable restano fissati in template (non parametrizzabili: regole
+// del pattern lista, frontend-standards.md §"Pattern lista").
+const effectivePaginatorOptions = computed(() => ({
+  ..._DEFAULT_PAGINATOR_OPTIONS,
+  ...(props.paginatorOptions || {}),
+}))
+
+// API esposta al caller. `openModal` permette di trasformare il bottone
+// "Personalizza colonne" in un'azione utility del PageActionsBar
+// esterno (kebab-compact su touch). `dirty` / `colonneNuove` / `config`
+// per eventuali Tag / Badge che il caller mostra nella sua toolbar.
+defineExpose({
+  config,
+  dirty,
+  colonneNuove,
+  save,
+  reset,
+  applyChange,
+  openModal,
+})
 </script>
 
 <template>
   <div class="lista-configurabile">
-    <div class="lista-toolbar">
-      <div class="lista-toolbar-left">
-        <slot name="filters" />
-      </div>
-      <div class="lista-toolbar-right">
-        <Tag
-          v-if="dirty"
-          :value="t('lista_config.stato_temporanea')"
-          severity="warning"
-          v-tooltip.bottom="t('lista_config.stato_temporanea_tooltip')"
-        />
-        <Tag
-          v-else-if="config"
-          :value="t('lista_config.stato_salvata')"
-          severity="success"
-        />
-        <Button
-          icon="pi pi-cog"
-          text
-          rounded
-          :badge="colonneNuove > 0 ? String(colonneNuove) : null"
-          badge-severity="info"
-          v-tooltip.bottom="t('lista_config.personalizza_colonne')"
-          @click="openModal"
-        />
-        <slot name="actions-extra" />
-      </div>
-    </div>
-
+    <!-- Niente toolbar interna: il caller compone la sua usando
+         PageActionsBar standard e integra il bottone "Personalizza" via
+         action utility che chiama il metodo `openModal()` esposto da
+         questo componente (defineExpose). Tag stato (`dirty`/`config`)
+         e badge colonne nuove (`colonneNuove`) sono anch'essi esposti e
+         renderizzabili nel suffix della PageActionsBar del caller — su
+         touch finiscono nel kebab insieme alle altre azioni. -->
     <DataTable
+      v-bind="effectivePaginatorOptions"
       :value="rows"
       :loading="loading || configLoading"
       :total-records="total"
       :rows="pageSize"
       :first="firstOffset"
-      paginator
       lazy
       removable-sort
       striped-rows
@@ -333,20 +360,6 @@ defineExpose({ config, dirty, save, reset, applyChange })
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 0.5rem;
-}
-.lista-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.25rem 0;
-}
-.lista-toolbar-left,
-.lista-toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  min-height: 0;
 }
 </style>

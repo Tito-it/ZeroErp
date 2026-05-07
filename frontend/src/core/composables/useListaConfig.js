@@ -56,19 +56,40 @@ export function useListaConfig(codice) {
   // Loading wrapper centralizzato (notify + extract error).
   const { execute, loading } = useApiHandler()
 
-  // Scopo: Fetch della configurazione corrente. Reset di dirty + snapshot.
-  //        Ritorna la config se ok, null se fallito (errore gia' notificato).
+  // Scopo: Fetch della configurazione corrente + catalogo colonne in
+  //        parallelo. Il catalogo era originariamente lazy (caricato solo
+  //        all'apertura della modale di personalizzazione), ma e' tornato
+  //        load-eager perche' l'header colonna (etichetta + i18n key) e
+  //        il `campo_sorgente` da cui estrarre i dati di riga vivono nel
+  //        catalogo. Senza catalogo le colonne renderizzano `codice` come
+  //        header e cercano `data[codice]` invece di `data[campo_sorgente]`,
+  //        risultando in label/dati sbagliati al primo render
+  //        (sintomo: lista clienti che mostra "ragione_sociale" come
+  //        header e usa il campo errato per estrarre la ragione sociale).
+  //        Reset di dirty + snapshot. Ritorna la config se ok, null se
+  //        fallita (errore gia' notificato; il catalogo e' best-effort:
+  //        un suo fallimento isolato non azzera la config).
   async function load() {
-    const data = await execute(() => getListaConfig(codice))
-    if (data) {
-      config.value = _deepClone(data)
-      savedSnapshot.value = _deepClone(data)
+    const [configData, catalogoData] = await Promise.all([
+      execute(() => getListaConfig(codice)),
+      execute(() => getListaCatalogo(codice)),
+    ])
+    if (configData) {
+      config.value = _deepClone(configData)
+      savedSnapshot.value = _deepClone(configData)
       dirty.value = false
     }
-    return data
+    if (catalogoData) {
+      catalogo.value = catalogoData
+    }
+    return configData
   }
 
-  // Scopo: Fetch del catalogo (lazy). No-op se gia' caricato.
+  // Scopo: Garantisce che il catalogo sia disponibile (compat per chi
+  //        chiamava ensureCatalogo prima del refactor eager-load). Oggi
+  //        no-op se `load()` e' gia' stata invocata. Caso d'uso residuo:
+  //        chiamanti che invocano openModal senza load preventivo (es.
+  //        viste future con config pre-caricata da contesto).
   async function ensureCatalogo() {
     if (catalogo.value) return catalogo.value
     const data = await execute(() => getListaCatalogo(codice))

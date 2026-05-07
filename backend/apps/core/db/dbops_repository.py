@@ -46,6 +46,7 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.modalita_pagamento",
         "config.note_stili",
         "config.priorita_pratiche",
+        "config.profili_accesso",
         "config.qualifiche",
         "config.sistema_codici",
         "config.sorgenti",
@@ -103,6 +104,8 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "pratiche.handler_flussi",
         "pratiche.template_flussi",
         "pratiche.tipi_prestazione",
+        # --- ui (personalizzazioni liste) ---
+        "ui.lista_definizione",
         # --- vendite ---
         "vendite.area_geografica_fatturazione",
         "vendite.articoli_gruppi",
