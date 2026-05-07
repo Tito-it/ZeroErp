@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed ui.lista_preset_colonna — composizione colonne del preset.
+# Attuale contenuto: 14 colonne del preset 'clienti_default' (preset_id=1).
+#
+# Blocco F.2 (2026-05-08): ordini aggiornati, aggiunta sosp_riatt,
+# data_chiusura ora visibile, reorder per allineare a ClientiSearchTable.
+#
+# Visibili di default (visibile=t):
+#   soggetto_codice, ba_codice, ragione_sociale (fissata), codice_fiscale,
+#   utility, data_attivazione, data_chiusura, sosp_riatt, stato, azioni.
+# Nel pool ma non visibili (visibile=f):
+#   partita_iva, data_sospensione, data_riattivazione, stato_codice (FE severity).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260507-09-seed-ui-lista-preset-colonna-clienti-mctit.yaml
+
+  - changeSet:
+      id: 20260507-09-seed-ui-lista-preset-colonna-clienti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: lista_preset_colonna
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/ui/lista_preset_colonna.csv
+            tableName: lista_preset_colonna
+            schemaName: ui
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "preset_id,colonna_id"
+            columns:
+              - column: { name: preset_id,  type: NUMERIC }
+              - column: { name: colonna_id, type: NUMERIC }
+              - column: { name: ordine,     type: NUMERIC }
+              - column: { name: visibile,   type: BOOLEAN }
+              - column: { name: fissata,    type: BOOLEAN }

@@ -1,0 +1,15 @@
+id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_dato,formato,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,filtrabile,ordinabile,esportabile,ricercabile_full,sensibile,attivo,data_insert,user_insert,etichetta_i18n_key
+1,1,ragione_sociale,Ragione Sociale,Ragione sociale completa del soggetto,ragione_sociale_completa,identificatore,string,,220,10,left,Anagrafica,1,t,t,t,t,f,t,2026-05-07 00:00:00,mctit,clienti.col_ragione_sociale
+2,1,ba_codice,Cd. Account,Codice del billing account,ba_codice,informazione,string,,130,20,left,Anagrafica,1,t,t,t,t,f,t,2026-05-07 00:00:00,mctit,clienti.col_ba_codice
+3,1,soggetto_codice,Cd. Soggetto,Codice anagrafico del soggetto,soggetto_codice,informazione,string,,120,30,left,Anagrafica,1,t,t,t,f,f,t,2026-05-07 00:00:00,mctit,clienti.col_cd_soggetto
+4,1,codice_fiscale,Id. Fiscale,Identificativo fiscale univoco (CF o P.IVA),id_fiscale_univoco_cf_piva,informazione,string,,150,40,left,Anagrafica,1,t,t,t,f,f,t,2026-05-07 00:00:00,mctit,clienti.col_id_fiscale
+5,1,partita_iva,Partita IVA,Partita IVA del soggetto,partita_iva,informazione,string,,130,50,left,Anagrafica,1,t,t,t,f,f,f,2026-05-07 00:00:00,mctit,
+6,1,utility,Utility,Tipo di servizio/commodity,utility_descrizione,informazione,string,,130,60,left,Contratto,2,t,t,t,f,f,t,2026-05-07 00:00:00,mctit,clienti.col_utility
+7,1,stato,Stato,Stato corrente del cliente,stato_descrizione,informazione,string,,110,70,center,Contratto,2,t,t,t,f,f,t,2026-05-07 00:00:00,mctit,clienti.col_stato
+8,1,stato_codice,Cod. Stato,Codice interno dello stato — usato dal FE per la severita del Tag,stato_codice,informazione,string,,80,80,left,Contratto,2,f,f,f,f,f,t,2026-05-07 00:00:00,mctit,
+9,1,data_attivazione,Attivazione,Data di attivazione del contratto cliente,data_attivazione,informazione,date,date_short,110,90,center,Date ciclo vita,3,t,t,t,f,f,t,2026-05-07 00:00:00,mctit,clienti.col_data_attivazione
+10,1,data_sospensione,Sospeso il,Data di sospensione del contratto,data_sospensione,informazione,date,date_short,110,100,center,Date ciclo vita,3,f,t,t,f,f,t,2026-05-07 00:00:00,mctit,clienti.col_sospeso_il
+11,1,data_riattivazione,Riattivato il,Data di riattivazione dopo sospensione,data_riattivazione,informazione,date,date_short,110,110,center,Date ciclo vita,3,f,t,t,f,f,t,2026-05-07 00:00:00,mctit,clienti.col_riattivato_il
+12,1,data_chiusura,Chiusura,Data di chiusura definitiva del contratto,data_chiusura,informazione,date,date_short,110,120,center,Date ciclo vita,3,f,t,t,f,f,t,2026-05-07 00:00:00,mctit,clienti.col_data_chiusura
+13,1,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-05-07 00:00:00,mctit,common.col_azioni
+14,1,sosp_riatt,Sosp./Riatt.,Data sospensione o riattivazione (colonna calcolata FE),,informazione,string,,130,105,center,Date ciclo vita,3,f,f,f,f,f,t,2026-05-08 00:00:00,mctit,clienti.col_sosp_riatt

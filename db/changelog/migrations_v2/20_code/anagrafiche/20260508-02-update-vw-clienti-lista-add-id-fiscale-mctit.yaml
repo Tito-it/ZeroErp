@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Aggiorna anagrafiche.vw_clienti_lista: aggiunge id_fiscale_univoco_cf_piva.
+#
+# Motivo: il seed ui.lista_colonna (Blocco F.2) cambia il campo_sorgente
+# della colonna 'codice_fiscale' da 'codice_fiscale' a 'id_fiscale_univoco_cf_piva',
+# che contiene il CF per persone fisiche e la PIVA per persone giuridiche.
+# Il trigger B2 (trgfn_ui_lista_colonna_a10_valida_campo_sorgente) valida ogni
+# campo_sorgente contro pg_catalog.pg_attribute della view: senza questa colonna
+# il seed fallirebbe con E_UI_CAMPO_SORGENTE_NON_TROVATO.
+#
+# CREATE OR REPLACE VIEW: aggiunta in coda, nessun DROP richiesto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260508-02-update-vw-clienti-lista-add-id-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260508-02-update-vw-clienti-lista-add-id-fiscale
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: "Aggiunge id_fiscale_univoco_cf_piva a vw_clienti_lista per supportare
+        campo_sorgente Blocco F.2"
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: clienti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW anagrafiche.vw_clienti_lista;
+              CREATE OR REPLACE VIEW anagrafiche.vw_clienti_lista AS
+              SELECT
+                cl.id,
+                cl.soggetto_ruolo_id,
+                cl.istanza_utility_id,
+                cl.billing_account_id,
+                s.id                        AS soggetto_id,
+                s.codice                    AS soggetto_codice,
+                ba.codice                   AS ba_codice,
+                s.ragione_sociale_completa,
+                s.codice_fiscale,
+                s.partita_iva,
+                s.id_fiscale_univoco_cf_piva,
+                u.id                        AS utility_id,
+                u.descrizione               AS utility_descrizione,
+                sc.id                       AS stato_cliente_id,
+                sc.codice_interno           AS stato_codice,
+                sc.descrizione_breve        AS stato_descrizione,
+                cl.data_attivazione,
+                cl.data_sospensione,
+                cl.data_riattivazione,
+                cl.data_chiusura
+              FROM anagrafiche.clienti cl
+              JOIN anagrafiche.istanze_utilities iu ON iu.id = cl.istanza_utility_id
+              JOIN anagrafiche.soggetti s             ON s.id  = iu.soggetto_id
+              JOIN anagrafiche.billing_account ba     ON ba.id = cl.billing_account_id
+              JOIN config.utilities u                 ON u.id  = cl.utility_id
+              JOIN config.stati_cliente sc            ON sc.id = cl.stato_cliente_id;
+
+              COMMENT ON VIEW anagrafiche.vw_clienti_lista IS
+                'Vista flat clienti per la lista UI (anagrafiche.clienti). '
+                'Espone anagrafica soggetto (incl. id_fiscale_univoco_cf_piva), codice BA, '
+                'servizio, stato e date del ciclo di vita. '
+                'Sorgente dati per ui.lista_definizione codice=''anagrafiche.clienti''. '
+                'Aggiornata 2026-05-08: aggiunta id_fiscale_univoco_cf_piva (Blocco F.2).';

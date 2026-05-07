@@ -14,3 +14,5 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 13,2,genera_pratica_preventivi,Genera pratica esecutiva da preventivo,f,t,{},2026-05-02 00:00:00+02,postgres,2026-05-02 00:00:00+02,postgres
 14,11,documenti_template_manage,Gestione template e versioni documenti,f,t,{},2026-05-03 00:00:00+02,postgres,2026-05-03 00:00:00+02,postgres
 15,11,documenti_asset_manage,"Gestione asset documentali (logo, firma, CSS, allegati)",f,t,{},2026-05-03 00:00:00+02,postgres,2026-05-03 00:00:00+02,postgres
+16,9,ui_preset_manage,Gestione preset personalizzazioni liste,f,t,{},2026-05-08 00:00:00+02,postgres,2026-05-08 00:00:00+02,postgres
+17,9,ui_permesso_manage,Gestione permessi colonne personalizzazioni liste,f,t,{},2026-05-08 00:00:00+02,postgres,2026-05-08 00:00:00+02,postgres

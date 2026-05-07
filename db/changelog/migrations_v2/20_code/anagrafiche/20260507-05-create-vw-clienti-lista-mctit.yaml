@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Vista sorgente dati per la lista UI anagrafiche.clienti.
+# Espone i campi necessari al catalogo lista (ui.lista_colonna):
+#   identificativo soggetto, codice BA, dati anagrafici, servizio,
+#   stato e date del ciclo di vita.
+# Usata dal trigger B2 (trgfn_ui_lista_colonna_a10_valida_campo_sorgente)
+# per la validazione di campo_sorgente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260507-05-create-vw-clienti-lista-mctit.yaml
+
+  - changeSet:
+      id: 20260507-05-create-vw-clienti-lista
+      author: mctit
+      runOnChange: true
+      comment: >
+        Vista anagrafiche.vw_clienti_lista: join flat di clienti con
+        soggetti (via istanze_utilities), billing_account, utilities
+        e stati_cliente. Sorgente dati per la lista UI anagrafiche.clienti.
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Vista: anagrafiche.vw_clienti_lista
+              --
+              -- Scopo: sorgente dati piatta per la lista UI clienti.
+              --   Espone tutti i campi del catalogo lista (ui.lista_colonna
+              --   con lista.codice = 'anagrafiche.clienti').
+              --
+              -- Join:
+              --   clienti -> istanze_utilities -> soggetti  (ragione sociale, CF, PIVA)
+              --   clienti -> billing_account               (codice BA)
+              --   clienti -> config.utilities              (servizio/utility)
+              --   clienti -> config.stati_cliente          (stato e codice interno)
+              --
+              -- Colonne esposte (campo_sorgente in lista_colonna):
+              --   id, soggetto_ruolo_id, istanza_utility_id, billing_account_id
+              --   soggetto_id, soggetto_codice, ba_codice
+              --   ragione_sociale_completa, codice_fiscale, partita_iva
+              --   utility_id, utility_descrizione
+              --   stato_cliente_id, stato_codice, stato_descrizione
+              --   data_attivazione, data_sospensione, data_riattivazione, data_chiusura
+              -- ==========================================================
+              CREATE OR REPLACE VIEW anagrafiche.vw_clienti_lista AS
+              SELECT
+                cl.id,
+                cl.soggetto_ruolo_id,
+                cl.istanza_utility_id,
+                cl.billing_account_id,
+                s.id                        AS soggetto_id,
+                s.codice                    AS soggetto_codice,
+                ba.codice                   AS ba_codice,
+                s.ragione_sociale_completa,
+                s.codice_fiscale,
+                s.partita_iva,
+                u.id                        AS utility_id,
+                u.descrizione               AS utility_descrizione,
+                sc.id                       AS stato_cliente_id,
+                sc.codice_interno           AS stato_codice,
+                sc.descrizione_breve        AS stato_descrizione,
+                cl.data_attivazione,
+                cl.data_sospensione,
+                cl.data_riattivazione,
+                cl.data_chiusura
+              FROM anagrafiche.clienti cl
+              JOIN anagrafiche.istanze_utilities iu ON iu.id = cl.istanza_utility_id
+              JOIN anagrafiche.soggetti s             ON s.id  = iu.soggetto_id
+              JOIN anagrafiche.billing_account ba     ON ba.id = cl.billing_account_id
+              JOIN config.utilities u                 ON u.id  = cl.utility_id
+              JOIN config.stati_cliente sc            ON sc.id = cl.stato_cliente_id;
+
+              COMMENT ON VIEW anagrafiche.vw_clienti_lista IS
+                'Vista flat clienti per la lista UI (anagrafiche.clienti). '
+                'Espone anagrafica soggetto, codice BA, servizio, stato e '
+                'date del ciclo di vita. Sorgente dati per ui.lista_definizione '
+                'con codice = ''anagrafiche.clienti''.';
