@@ -26,6 +26,30 @@ per l’handler di acquisizione.
   * `p_competenza_mese`
   * `p_billing_account_id`
   * `p_limit`
+  * `p_preventivo_id` *(2026-05)* — vedi sezione dedicata
+
+---
+
+### Push singolo preventivo (UI-driven)
+
+> **Aggiunto:** 2026-05 — migration `20260510-01/06`
+
+Il parametro `p_preventivo_id` (tipo `vendite.preventivi.id%TYPE`, default `NULL`) consente
+di restringere il risultato al singolo preventivo selezionato dall'utente nel drawer preventivo
+(pulsante "Push commessa" di `PreventiviIntegrazione.vue`).
+
+| Valore  | Comportamento                                                          |
+|---------|------------------------------------------------------------------------|
+| `NULL`  | Lista globale — comportamento batch invariato                          |
+| `> 0`   | Filtra al preventivo specificato; tutti gli altri filtri in AND        |
+| `<= 0`  | Guard: solleva `E_PUSH_SORGENTE_ID_INVALIDO` (id 433)                  |
+
+**Semantica AND dei filtri:** `p_preventivo_id` si aggiunge in AND agli altri filtri. Se si
+passa anche `p_billing_account_id` di un BA diverso da quello del preventivo, si ottengono
+0 righe (comportamento atteso: i filtri sono tutti coerenti o il push non avviene).
+
+**Idempotenza:** se il preventivo ha righe già in `commesse_attivita` con `stato_emissione = 'EMESSA'`,
+la funzione restituisce 0 righe — coerente con il NOT EXISTS del batch.
 
 ---
 
@@ -40,14 +64,25 @@ Restituisce per ogni riga candidata:
 
 ---
 
-### Esempio d’uso
+### Esempi d’uso
+
+**Batch globale (orchestrator):**
 
 ```sql
 SELECT *
 FROM vendite.fn_list_preventivi_da_pushare(
-  p_competenza_mese => DATE '2026-02-01',
+  p_competenza_mese => DATE ‘2026-02-01’,
   p_billing_account_id => NULL,
   p_limit => 500
+);
+```
+
+**Push singolo preventivo (UI):**
+
+```sql
+SELECT *
+FROM vendite.fn_list_preventivi_da_pushare(
+  p_preventivo_id => 12345
 );
 ```
 

@@ -5,3 +5,4 @@ id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,
 5,RIFIUTATO,RIFIUTATO,Rifiutato,t,50,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb
 7,SCADUTO,SCADUTO,Scaduto,t,60,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb
 9,ANNULLATO,ANNULLATO,Annullato,t,70,{},2026-04-03 00:00:00+02,SEED,2026-04-03 00:00:00+02,SEED
+10,EVASO,EVASO,Evaso,t,45,{},2026-05-10 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
