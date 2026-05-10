@@ -7,6 +7,7 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
+import { useDrawerClose } from '../composables/useDrawerClose'
 import { useContattoForm } from '../composables/useContattoForm'
 import {
   listSoggettoContatti, createSoggettoContatto,
@@ -163,6 +164,9 @@ async function onDelete(c) {
     emit('saved')
   }
 }
+
+// Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
+const onClose = useDrawerClose(emit)
 </script>
 
 <template>
@@ -229,6 +233,8 @@ async function onDelete(c) {
           />
         </div>
       </template>
+
+      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
 
       <!-- Form (aggiungi o modifica) -->
       <template v-if="formMode">

@@ -62,6 +62,36 @@ class ClientiService:
     def list_clienti(self, **params: Any) -> tuple[list, int]:
         return self._repo.list_clienti(**params)
 
+    # Scopo: Risolve i filtri attivi della lista in dict
+    #        {label_italiano: descrizione_leggibile} per l'header
+    #        dell'export DEF-1. Sostituisce il dump JSON opaco
+    #        ("utility_id: 5") con etichette comprensibili
+    #        ("Utility: Servizio Base").
+    #
+    #        Pattern: il dominio sa quali filtri ha e quale lookup
+    #        risolve la descrizione (qui utility/stato). In DEF-8 ogni
+    #        lista replica lo stesso pattern domain-specific.
+    #
+    #        Fallback: se il lookup non trova match (id obsoleto), usa
+    #        "id=N" per non perdere informazione.
+    def resolve_filtri_export_label(
+        self,
+        *,
+        search: str | None = None,
+        utility_id: int | None = None,
+        stato_cliente_id: int | None = None,
+    ) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        if search:
+            out["Ricerca"] = search
+        if utility_id is not None:
+            desc = self._repo.get_utility_descrizione(utility_id)
+            out["Utility"] = desc or f"id={utility_id}"
+        if stato_cliente_id is not None:
+            desc = self._repo.get_stato_cliente_descrizione(stato_cliente_id)
+            out["Stato"] = desc or f"id={stato_cliente_id}"
+        return out
+
     # Scopo: Lista utility ammesse per creazione manuale.
     def list_utilities_manuali(self) -> list[dict[str, Any]]:
         return self._repo.list_utilities_manuali()

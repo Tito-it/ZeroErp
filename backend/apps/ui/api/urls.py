@@ -16,7 +16,11 @@ from apps.ui.api.views import (
     ApiListaPreferenzaView,
 )
 from apps.ui.api.views_admin import (
+    ApiAdminListaColonnaDetailView,
+    ApiAdminListaColonnaListView,
     ApiAdminListaColonneView,
+    ApiAdminListaDefinizioneAdminDetailView,
+    ApiAdminListaDefinizioneAdminView,
     ApiAdminListaDefinizioneListView,
     ApiAdminPermessoCreateView,
     ApiAdminPermessoDetailView,
@@ -91,5 +95,26 @@ urlpatterns = [
         "admin/permessi/<int:permesso_id>/",
         ApiAdminPermessoDetailView.as_view(),
         name="ui-admin-permessi-detail",
+    ),
+    # ── Admin CRUD definizioni (Blocco F Fase 2 — DEF-5b, SUPER_ADMIN) ──
+    path(
+        "admin/definizioni/",
+        ApiAdminListaDefinizioneAdminView.as_view(),
+        name="ui-admin-definizioni-list",
+    ),
+    path(
+        "admin/definizioni/<int:lista_id>/",
+        ApiAdminListaDefinizioneAdminDetailView.as_view(),
+        name="ui-admin-definizioni-detail",
+    ),
+    path(
+        "admin/definizioni/<int:lista_id>/colonne/",
+        ApiAdminListaColonnaListView.as_view(),
+        name="ui-admin-colonne-list",
+    ),
+    path(
+        "admin/colonne/<int:colonna_id>/",
+        ApiAdminListaColonnaDetailView.as_view(),
+        name="ui-admin-colonne-detail",
     ),
 ]

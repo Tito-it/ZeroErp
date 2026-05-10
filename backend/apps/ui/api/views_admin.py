@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: API admin per personalizzazioni liste (`/api/v1/ui/admin/*`)
-#        — Blocco F Fase 1.
+# Scopo: API admin per personalizzazioni liste (`/api/v1/ui/admin/*`).
 #
-#        Endpoint:
+#        Blocco F Fase 1 (azioni di processo `ui_preset_manage` /
+#        `ui_permesso_manage` o SUPER_ADMIN):
 #          - GET    /admin/liste/                     (Select header)
 #          - GET    /admin/liste/<id>/colonne/        (catalogo per composizione)
 #          - GET    /admin/liste/<id>/preset/         (preset di una lista)
@@ -18,17 +18,27 @@
 #          - POST   /admin/permessi/                  (UPSERT permesso)
 #          - DELETE /admin/permessi/<id>/             (elimina permesso)
 #
+#        Blocco F Fase 2 — DEF-5b (SUPER_ADMIN-only via
+#        `IsAdminZeroERP`, `AdminAPIView`):
+#          - GET    /admin/definizioni/               (lista completa)
+#          - POST   /admin/definizioni/               (crea definizione)
+#          - GET    /admin/definizioni/<id>/          (dettaglio)
+#          - PATCH  /admin/definizioni/<id>/          (aggiorna)
+#          - DELETE /admin/definizioni/<id>/          (elimina, RESTRICT)
+#          (CRUD lista_colonna in T2)
+#
 #        Permessi (defense-in-depth):
-#          - Lista definizioni e catalogo colonne: SUPER_ADMIN OR
-#            azione `ui_preset_manage` OR azione `ui_permesso_manage`
-#            (il Select header serve a entrambi i tab).
+#          - Lista definizioni e catalogo colonne (Fase 1): SUPER_ADMIN
+#            OR azione `ui_preset_manage` OR `ui_permesso_manage`.
 #          - CRUD preset: azione `ui_preset_manage`.
 #          - CRUD permessi: azione `ui_permesso_manage`.
+#          - CRUD definizioni (Fase 2): SUPER_ADMIN-only via
+#            `IsAdminZeroERP` (`AdminAPIView`).
 #          - SUPER_ADMIN bypass via PermissionResolver.is_super_admin
 #            (ZeroERPPermission catena standard).
 #
 #        Schema `ui` non e' un'area funzionale -> tutte le view
-#        dichiarano `skip_area_check = True`.
+#        dichiarano `skip_area_check = True` (incluso da `AdminAPIView`).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -39,11 +49,14 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 
-from apps.core.api.base_views import DomainAPIView
+from apps.core.api.base_views import AdminAPIView, DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.permissions import ZeroERPPermission
 from apps.core.api.success_responses import success_response
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.ui.services.lista_colonna_admin_service import (
+    ListaColonnaAdminService,
+)
 from apps.ui.services.lista_colonna_permesso_admin_service import (
     ListaColonnaPermessoAdminService,
 )
@@ -327,4 +340,184 @@ class ApiAdminPermessoDetailView(DomainAPIView):
     # Scopo: Cancella permesso colonna per id.
     def delete(self, request: Request, permesso_id: int) -> JsonResponse:
         result = ListaColonnaPermessoAdminService().delete_permesso(permesso_id)
+        return success_response(result)
+
+
+# =================================================================
+# Fase 2 - DEF-5b - CRUD ui.lista_definizione (SUPER_ADMIN only)
+# =================================================================
+# AdminAPIView gia' integra IsAdminZeroERP + skip_area_check.
+# Endpoint dedicati per la pagina tecnica
+# `/amm-software/personalizzazioni-liste-tecniche`. Niente azioni di
+# processo: l'amministrazione delle definizioni richiede SUPER_ADMIN
+# perche' la `vista_sql` riferita e' DDL e va in changeset Liquibase.
+
+class ApiAdminListaDefinizioneAdminView(AdminAPIView):
+    """
+    GET  /api/v1/ui/admin/definizioni/   -> lista completa (incluse disattive)
+    POST /api/v1/ui/admin/definizioni/   -> crea definizione
+    """
+
+    @extend_schema(responses={200: _DATA_RESPONSE})
+    # Scopo: Restituisce la lista completa delle definizioni (anche
+    #        disattivate) per la pagina tecnica.
+    def get(self, request: Request) -> JsonResponse:
+        return success_response(
+            ListaDefinizioneAdminService().list_definizioni_admin()
+        )
+
+    @extend_schema(
+        request=inline_serializer(
+            name="UiAdminDefinizioneCreateRequest",
+            fields={
+                "codice": serializers.CharField(),
+                "descrizione": serializers.CharField(),
+                "schema_dati": serializers.CharField(),
+                "vista_sql": serializers.CharField(required=False, allow_null=True, allow_blank=True),
+                "note": serializers.CharField(required=False, allow_null=True, allow_blank=True),
+                "attivo": serializers.BooleanField(required=False),
+            },
+        ),
+        responses={200: _DATA_RESPONSE},
+    )
+    # Scopo: Crea una nuova definizione lista. Idempotency-Key
+    #        obbligatoria (UNIQUE codice mappato lato service).
+    def post(self, request: Request) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return ListaDefinizioneAdminService().create_definizione(
+                request.user, dict(payload),
+            )
+
+        return handle_post_json(
+            request,
+            handler=_handler,
+            require_idempotency_key=True,
+        )
+
+
+class ApiAdminListaDefinizioneAdminDetailView(AdminAPIView):
+    """
+    GET    /api/v1/ui/admin/definizioni/<id>/  -> dettaglio singolo
+    PATCH  /api/v1/ui/admin/definizioni/<id>/  -> aggiorna campi mutabili
+    DELETE /api/v1/ui/admin/definizioni/<id>/  -> elimina (RESTRICT FK)
+    """
+
+    @extend_schema(responses={200: _DATA_RESPONSE})
+    # Scopo: Restituisce il dettaglio della definizione (campi completi).
+    def get(self, request: Request, lista_id: int) -> JsonResponse:
+        return success_response(
+            ListaDefinizioneAdminService().get_definizione(lista_id)
+        )
+
+    @extend_schema(responses={200: _DATA_RESPONSE})
+    # Scopo: Aggiorna campi mutabili della definizione. Tutti i campi
+    #        sono mutabili: codice cambia con UNIQUE check DB.
+    def patch(self, request: Request, lista_id: int) -> JsonResponse:
+        result = ListaDefinizioneAdminService().update_definizione(
+            request.user, lista_id, dict(request.data),
+        )
+        return success_response(result)
+
+    @extend_schema(responses={200: _DATA_RESPONSE})
+    # Scopo: Cancella definizione. FK RESTRICT su lista_colonna,
+    #        lista_preset e lista_preferenza_utente: se in uso il DB
+    #        solleva IntegrityError mappato a E_UI_DEFINIZIONE_IN_USO.
+    def delete(self, request: Request, lista_id: int) -> JsonResponse:
+        result = ListaDefinizioneAdminService().delete_definizione(lista_id)
+        return success_response(result)
+
+
+# =================================================================
+# Fase 2 - DEF-5b - CRUD ui.lista_colonna (SUPER_ADMIN only)
+# =================================================================
+# Path semantico: il catalogo colonne sta sotto la definizione di
+# riferimento. POST/list usano `/admin/definizioni/<lista_id>/colonne/`,
+# detail/PATCH/DELETE usano `/admin/colonne/<id>/` (id stabile, non
+# serve lista_id ridondante).
+
+class ApiAdminListaColonnaListView(AdminAPIView):
+    """
+    GET  /api/v1/ui/admin/definizioni/<lista_id>/colonne/  -> lista admin
+    POST /api/v1/ui/admin/definizioni/<lista_id>/colonne/  -> crea colonna
+    """
+
+    @extend_schema(responses={200: _DATA_RESPONSE})
+    # Scopo: Restituisce il catalogo completo (incluse disattivate)
+    #        delle colonne registrate per la lista.
+    def get(self, request: Request, lista_id: int) -> JsonResponse:
+        return success_response(
+            ListaColonnaAdminService().list_colonne_admin(lista_id)
+        )
+
+    @extend_schema(
+        request=inline_serializer(
+            name="UiAdminColonnaCreateRequest",
+            fields={
+                "codice": serializers.CharField(),
+                "etichetta": serializers.CharField(),
+                "etichetta_estesa": serializers.CharField(required=False, allow_null=True, allow_blank=True),
+                "etichetta_i18n_key": serializers.CharField(required=False, allow_null=True, allow_blank=True),
+                "campo_sorgente": serializers.CharField(required=False, allow_null=True, allow_blank=True),
+                "tipo_colonna": serializers.CharField(),
+                "tipo_dato": serializers.CharField(),
+                "formato": serializers.CharField(required=False, allow_null=True, allow_blank=True),
+                "larghezza_default": serializers.IntegerField(required=False, allow_null=True),
+                "ordine_default": serializers.IntegerField(),
+                "allineamento": serializers.CharField(required=False),
+                "gruppo": serializers.CharField(required=False, allow_null=True, allow_blank=True),
+                "gruppo_ordine": serializers.IntegerField(required=False, allow_null=True),
+                "filtrabile": serializers.BooleanField(required=False),
+                "ordinabile": serializers.BooleanField(required=False),
+                "esportabile": serializers.BooleanField(required=False),
+                "ricercabile_full": serializers.BooleanField(required=False),
+                "sensibile": serializers.BooleanField(required=False),
+                "attivo": serializers.BooleanField(required=False),
+            },
+        ),
+        responses={200: _DATA_RESPONSE},
+    )
+    # Scopo: Crea una nuova colonna nella lista indicata. Idempotency-Key
+    #        obbligatoria (UNIQUE lista_id+codice mappato lato service).
+    def post(self, request: Request, lista_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return ListaColonnaAdminService().create_colonna(
+                request.user, lista_id, dict(payload),
+            )
+
+        return handle_post_json(
+            request,
+            handler=_handler,
+            require_idempotency_key=True,
+        )
+
+
+class ApiAdminListaColonnaDetailView(AdminAPIView):
+    """
+    GET    /api/v1/ui/admin/colonne/<id>/  -> dettaglio singolo
+    PATCH  /api/v1/ui/admin/colonne/<id>/  -> aggiorna campi mutabili
+    DELETE /api/v1/ui/admin/colonne/<id>/  -> elimina (soft-block preferenze)
+    """
+
+    @extend_schema(responses={200: _DATA_RESPONSE})
+    # Scopo: Restituisce il dettaglio della colonna (campi completi).
+    def get(self, request: Request, colonna_id: int) -> JsonResponse:
+        return success_response(
+            ListaColonnaAdminService().get_colonna(colonna_id)
+        )
+
+    @extend_schema(responses={200: _DATA_RESPONSE})
+    # Scopo: Aggiorna campi mutabili della colonna. lista_id e' immutabile
+    #        (per spostare una colonna fra liste, cancellarla e ricrearla).
+    def patch(self, request: Request, colonna_id: int) -> JsonResponse:
+        result = ListaColonnaAdminService().update_colonna(
+            request.user, colonna_id, dict(request.data),
+        )
+        return success_response(result)
+
+    @extend_schema(responses={200: _DATA_RESPONSE})
+    # Scopo: Cancella colonna. Soft-block applicativo se referenziata da
+    #        preferenze utente; FK CASCADE pulisce preset_colonna e
+    #        permessi colonna.
+    def delete(self, request: Request, colonna_id: int) -> JsonResponse:
+        result = ListaColonnaAdminService().delete_colonna(colonna_id)
         return success_response(result)

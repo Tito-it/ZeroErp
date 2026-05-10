@@ -319,6 +319,8 @@ export const TAB_ENTITIES = {
   TEMPLATE_VERSIONI: 'template_versioni',
   TIPI_RUOLO_TIPI_INDIRIZZO: 'tipi_ruolo_tipi_indirizzo',
   TOPONOMASTICA: 'toponomastica',
+  UI_COLONNA: 'ui_colonna',
+  UI_DEFINIZIONE: 'ui_definizione',
   UI_PERMESSO: 'ui_permesso',
   UI_PRESET: 'ui_preset',
   UOM_TIPI: 'uom_tipi',

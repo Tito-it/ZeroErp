@@ -8,6 +8,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -268,9 +269,7 @@ function onVariazioneApplied() {
   store.fetchList()
 }
 
-function onClose() {
-  emit('update:visible', false)
-}
+const onClose = useDrawerClose(emit)
 </script>
 
 <template>
@@ -381,7 +380,7 @@ function onClose() {
         </div>
       </template>
 
-      <DrawerFooter close-only @cancel="onClose" />
+      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
     </div>
 
     <ApplicaVariazioneDialog

@@ -139,12 +139,32 @@ class LookupUtilitiesPerRuoloView(DomainAPIView):
 
 
 class LookupUtilitiesPerEmittenteView(DomainAPIView):
-    """Utility configurate per l'emittente dell'utente corrente.
+    """Utility per popolare la combo "Utility" del FE.
 
-    Se ?ruolo=CL (o FO, ecc.), applica doppia intersezione:
-    ammessa per ruolo soggetto AND per ruolo EF, configurata per emittente.
-    Se ruolo omesso, ritorna tutte le utility EF configurate per l'emittente
-    (usato da preventivi, listini, ecc. dove non c'e' ruolo soggetto).
+    Regola di business:
+
+    - **Operatore con emittente fiscale**: vede SOLO le utility configurate
+      nella matrice `anagrafiche.emittenti_fiscali_utilities` per il proprio
+      emittente. Le utility globali non attivate sul suo EF non sono
+      visibili. Il pattern impedisce all'operatore di selezionare utility
+      che il proprio emittente non gestisce.
+    - **Super-admin senza emittente** (cross-emittente, configurazioni di
+      sistema, audit): vede TUTTE le utility con ruolo EF — niente filtro
+      matrice perche' non e' associato a uno specifico emittente.
+
+    Filtro orthogonale `?ruolo=CL|FO|...`:
+
+    - se fornito, applica intersezione con `config.utilities_tipi_ruolo`
+      per il ruolo del soggetto target (utile sul drawer cliente per
+      mostrare solo utility ammesse per i CLIENTI).
+    - se omesso, nessuna intersezione (preventivi, listini, ecc. dove
+      non c'e' un ruolo soggetto specifico).
+
+    Default lato FE: `useUtilityDefaultId` legge il parametro
+    `DEFAULT_UTILITY` (catena user/group/emittente/sistema) e fa match
+    `codice_interno -> id` sul set ritornato qui. Il default e' quindi
+    automaticamente coerente con il filtro applicato (l'operatore non
+    riceve come default un'utility che non avrebbe potuto vedere).
     """
     skip_area_check = True
 
@@ -165,16 +185,17 @@ class LookupUtilitiesPerEmittenteView(DomainAPIView):
     )
     # Scopo: Restituisce utility configurate per l'emittente dell'utente.
     #        Se ruolo fornito, applica intersezione con ruolo soggetto.
+    #        Super-admin senza emittente -> tutte le utility EF (fallback).
     def get(self, request: Request) -> JsonResponse:
         from apps.core.services.parameter_service import ParameterService
 
         ruolo = (request.query_params.get("ruolo") or "").strip().upper() or None
 
         # Risolve emittente dell'utente corrente (stessa catena di parameter settings).
+        # Se None (es. super-admin cross-emittente), si delega alla repo che
+        # ritorna tutte le utility EF (eventualmente filtrate per ruolo).
         svc = ParameterService()
         emittente_fiscale_id = svc.get_emittente_fiscale_id_for_user(request.user.id)
-        if not emittente_fiscale_id:
-            return success_response({"results": []})
 
         repo = LookupRepository()
         results = repo.list_utilities_per_emittente(emittente_fiscale_id, ruolo)

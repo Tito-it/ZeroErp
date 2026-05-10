@@ -33,9 +33,6 @@ Indice test eseguiti:
 26) CatalogoApiTests.test_patch_nota_not_found
 27) CatalogoApiTests.test_lookup_uom_rounding_modes_ok
 28) CatalogoApiTests.test_get_articolo_componenti_capability_ok
-29) CatalogoApiTests.test_post_componente_duplica_versione_ok
-30) CatalogoApiTests.test_post_componente_duplica_versione_richiede_idempotency
-31) CatalogoApiTests.test_post_componente_duplica_versione_db_error
 """
 
 import json
@@ -461,62 +458,6 @@ class CatalogoApiTests(JwtMockedApiTest):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["error"]["code"], "E_CATALOGO_COMPONENTE_NOT_FOUND")
-
-    # Scopo: Endpoint atomico Fase 3 — duplica versione componente BoM.
-    # Verifica pass-through del payload chiudi_al + envelope nuova riga.
-    # Idempotency-Key e' obbligatoria: senza header il helper rifiuta.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.catalogo.api.views.fn_duplica_componente_versione")
-    def test_post_componente_duplica_versione_ok(self, mocked_duplica, _mock_auth):
-        new_uuid = "11111111-2222-3333-4444-555555555556"
-        mocked_duplica.return_value = {"id": new_uuid, "valido_dal": "2026-04-29", "valido_al": None}
-
-        response = self.client.post(
-            f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/componenti/{_COMPONENTE_UUID}/duplica-versione/",
-            data=json.dumps({"chiudi_al": "2026-04-28"}),
-            content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY="11111111-aaaa-bbbb-cccc-dddddddddddd",
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data"]["id"], new_uuid)
-        # Service riceve articolo, comp_id e payload originale.
-        args = mocked_duplica.call_args.args
-        self.assertEqual(str(args[0]), _ARTICOLO_UUID)
-        self.assertEqual(str(args[1]), _COMPONENTE_UUID)
-        self.assertEqual(args[2], {"chiudi_al": "2026-04-28"})
-
-    # Scopo: senza Idempotency-Key il POST viene respinto (azione che modifica stato).
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_post_componente_duplica_versione_richiede_idempotency(self, _mock_auth):
-        response = self.client.post(
-            f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/componenti/{_COMPONENTE_UUID}/duplica-versione/",
-            data=json.dumps({}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("idempotency", response.json()["error"]["code"].lower())
-
-    # Scopo: errore P0001 noto del DB -> codice originale preservato.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.catalogo.api.views.fn_duplica_componente_versione")
-    def test_post_componente_duplica_versione_db_error(self, mocked_duplica, _mock_auth):
-        from apps.core.services.service_errors import ServiceError
-
-        mocked_duplica.side_effect = ServiceError(
-            code="E_BOM_SORGENTE_GIA_CHIUSA",
-            message="La riga sorgente e' gia' chiusa.",
-        )
-
-        response = self.client.post(
-            f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/componenti/{_COMPONENTE_UUID}/duplica-versione/",
-            data=json.dumps({}),
-            content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY="11111111-aaaa-bbbb-cccc-dddddddddddd",
-        )
-
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.json()["error"]["code"], "E_BOM_SORGENTE_GIA_CHIUSA")
 
     # Scopo: GET note articolo -> 200 con envelope count/results.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

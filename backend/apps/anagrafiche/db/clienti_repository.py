@@ -319,6 +319,29 @@ class ClientiRepository:
             cursor.execute(sql)
             return rows_to_list(cursor)
 
+    # Scopo: Risolve la descrizione di un'utility per id (DEF-1, header
+    #        filtri leggibili nell'export). Niente cache: lookup
+    #        opportunistico (1-2 chiamate per richiesta export).
+    def get_utility_descrizione(self, utility_id: int) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT descrizione FROM config.utilities WHERE id = %s",
+                [utility_id],
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    # Scopo: Risolve la descrizione di uno stato cliente per id (DEF-1).
+    def get_stato_cliente_descrizione(self, stato_id: int) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT descrizione_breve "
+                "  FROM config.stati_cliente WHERE id = %s",
+                [stato_id],
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
     # Scopo: Dettaglio completo di un cliente con dati istanza, BA, soggetto e FK descrizioni.
     def get_cliente(self, cliente_id: int) -> dict[str, Any] | None:
         sql = """

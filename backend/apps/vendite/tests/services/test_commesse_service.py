@@ -17,7 +17,10 @@ Indice test eseguiti:
 8) CommesseServiceTests.test_fn_list_commessa_attivita_invalid_limit
 9) CommesseServiceTests.test_pr_run_commesse_push_invalid_source_types
 10) CommesseServiceTests.test_build_handlers_only_active_sources
-11) CommesseServiceTests.test_variazione_eccezionale_ok
+11) CommesseServiceTests.test_pr_run_commesse_push_one_ok_passa_sorgente_uid
+12) CommesseServiceTests.test_pr_run_commesse_push_one_codice_sorgente_invalido
+13) CommesseServiceTests.test_pr_run_commesse_push_one_sorgente_uid_invalido
+14) CommesseServiceTests.test_variazione_eccezionale_ok
 12) CommesseServiceTests.test_variazione_eccezionale_commessa_stato_bloccato
 13) CommesseServiceTests.test_variazione_eccezionale_riga_fatturata_bloccata
 14) CommesseServiceTests.test_variazione_eccezionale_senza_motivo
@@ -112,6 +115,77 @@ class CommesseServiceTests(TestCase):
         self.assertEqual(len(handlers), 2)
         codici = [h.sorgente_codice for h in handlers]
         self.assertEqual(codici, ["PREVENTIVO", "CONTRATTO"])
+
+    # --- pr_run_commesse_push_one ---
+
+    # Scopo: push singolo ok → orchestrator chiamato con source_types=[codice]
+    # e sorgente_uid valorizzato. Payload ritorno equivalente al batch.
+    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_one_ok_passa_sorgente_uid(self, mock_build, mock_repo_cls, mock_orch_cls):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+        mock_repo_cls.return_value = MagicMock()
+        # Handler "PREVENTIVO" attivo nel registry simulato.
+        handler_mock = MagicMock()
+        handler_mock.sorgente_codice = "PREVENTIVO"
+        mock_build.return_value = [handler_mock]
+
+        report = PushReport(
+            dry_run=False,
+            stato="COMPLETATO",
+            handlers=[HandlerResult(handler_name="HandlerPreventivi", created=2)],
+            push_log_id=11,
+            durata_ms=80,
+        )
+        mock_orch_cls.return_value.run.return_value = report
+
+        result = pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=42)
+
+        # Orchestrator chiamato con i parametri attesi.
+        mock_orch_cls.return_value.run.assert_called_once_with(
+            source_types=["PREVENTIVO"],
+            dry_run=False,
+            sorgente_uid=42,
+        )
+        # Payload coerente con pr_run_commesse_push (forma identica).
+        self.assertEqual(result["stato"], "COMPLETATO")
+        self.assertEqual(result["push_log_id"], 11)
+        self.assertEqual(result["durata_ms"], 80)
+        self.assertEqual(result["handlers"][0]["handler_name"], "HandlerPreventivi")
+
+    # Scopo: codice sorgente non riconosciuto → ServiceError validazione.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_one_codice_sorgente_invalido(self, mock_build, mock_repo_cls):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+        mock_repo_cls.return_value = MagicMock()
+        handler_mock = MagicMock()
+        handler_mock.sorgente_codice = "PREVENTIVO"
+        mock_build.return_value = [handler_mock]
+
+        with self.assertRaises(ServiceError) as ctx:
+            pr_run_commesse_push_one(sorgente_codice="SORGENTE_INESISTENTE", sorgente_uid=1)
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail)
+
+    # Scopo: sorgente_uid non valido (None/0/negativo) → ServiceError validazione.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_one_sorgente_uid_invalido(self, mock_build, mock_repo_cls):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+        mock_repo_cls.return_value = MagicMock()
+        handler_mock = MagicMock()
+        handler_mock.sorgente_codice = "PREVENTIVO"
+        mock_build.return_value = [handler_mock]
+
+        for invalid_uid in (0, -1):
+            with self.assertRaises(ServiceError) as ctx:
+                pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=invalid_uid)
+            self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
 
     # --- fn_get_commesse_push_log ---
 

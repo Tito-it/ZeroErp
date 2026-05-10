@@ -20,6 +20,8 @@ Indice test eseguiti:
 10) CommessePushOrchestratorTests.test_run_skipped_quando_lock_non_acquisito
 11) CommessePushOrchestratorTests.test_run_rilascia_lock_dopo_esecuzione
 12) CommessePushOrchestratorTests.test_run_emits_push_started_and_completed_events
+13) CommessePushOrchestratorTests.test_run_with_sorgente_uid_propagated_to_handlers_and_events
+14) CommessePushOrchestratorTests.test_run_without_sorgente_uid_passes_none_to_handlers
 """
 
 from unittest import TestCase
@@ -151,7 +153,9 @@ class CommessePushOrchestratorTests(TestCase):
         repo.log_push_run.assert_called_once()
         call_kwargs = repo.log_push_run.call_args.kwargs
         self.assertTrue(call_kwargs["dry_run"])
-        h.run.assert_called_once_with(dry_run=True)
+        # `sorgente_uid=None` aggiunto alla signature handler.run dopo
+        # introduzione del push singolo (PR1 sviluppo-push-singolo-preventivo).
+        h.run.assert_called_once_with(dry_run=True, sorgente_uid=None)
 
     # Scopo: push_log_id nel report corrisponde al valore restituito da log_push_run.
     def test_run_push_log_id_valorizzato(self):
@@ -247,3 +251,33 @@ class CommessePushOrchestratorTests(TestCase):
         self.assertEqual(completed["entity_id"], 42)
         self.assertEqual(completed["severity"], "INFO")
         self.assertEqual(completed["payload"]["stato"], "COMPLETATO")
+
+    # Scopo: sorgente_uid valorizzato → propagato agli handler.run e nel payload
+    # event_log (PUSH_STARTED + PUSH_COMPLETED) per tracciabilita' del push singolo.
+    def test_run_with_sorgente_uid_propagated_to_handlers_and_events(self):
+        repo = _mock_repo(push_log_id=99)
+        h = _mock_handler("HandlerPreventivi", _ok_result("HandlerPreventivi", sorgente_codice="PREVENTIVO"), sorgente_codice="PREVENTIVO")
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        orch.run(source_types=["PREVENTIVO"], sorgente_uid=42)
+
+        # Handler.run riceve dry_run=False + sorgente_uid=42.
+        h.run.assert_called_once_with(dry_run=False, sorgente_uid=42)
+
+        # Payload event_log contiene sorgente_uid in entrambi gli eventi.
+        event_calls = repo.log_event.call_args_list
+        started_payload = event_calls[0].kwargs["payload"]
+        completed_payload = event_calls[1].kwargs["payload"]
+        self.assertEqual(started_payload["sorgente_uid"], 42)
+        self.assertEqual(completed_payload["sorgente_uid"], 42)
+
+    # Scopo: sorgente_uid omesso → handler.run riceve sorgente_uid=None
+    # (regressione: comportamento batch invariato).
+    def test_run_without_sorgente_uid_passes_none_to_handlers(self):
+        repo = _mock_repo()
+        h = _mock_handler("HandlerA", _ok_result("HandlerA"))
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        orch.run()
+
+        h.run.assert_called_once_with(dry_run=False, sorgente_uid=None)

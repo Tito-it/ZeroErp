@@ -30,6 +30,11 @@ cryptography>=44.0
 # Sanitizzazione HTML (preview template email — Fase 6 amm-software)
 bleach>=6.2
 
+# Export Excel (DEF-1 personalizzazioni liste, decisione 1 — autorizzata 2026-05-10).
+# Usato da apps.ui.services.lista_export_service per generare .xlsx con foglio
+# "Filtri applicati" oltre alle righe dati. CSV native (no dep extra).
+openpyxl>=3.1
+
 # Generazione PDF documenti (motore documentale, Decisione 73)
 # Richiede librerie native Pango/Cairo/HarfBuzz/PixBuf — vedi Dockerfile.
 weasyprint>=68,<69

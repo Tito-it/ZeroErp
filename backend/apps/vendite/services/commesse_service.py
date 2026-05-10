@@ -7,9 +7,10 @@
 
 """
 Funzioni esposte:
-- pr_run_commesse_push   — lancia l'orchestratore push commesse (write)
-- fn_get_commesse_push_log — dettaglio di un push log (read)
-- fn_get_commessa_stato  — stato e contatori di una commessa (read)
+- pr_run_commesse_push      — lancia l'orchestratore push commesse batch (write)
+- pr_run_commesse_push_one  — push singolo documento sorgente filtrato (write)
+- fn_get_commesse_push_log  — dettaglio di un push log (read)
+- fn_get_commessa_stato     — stato e contatori di una commessa (read)
 - fn_list_commessa_attivita — lista paginata attività di una commessa (read)
 """
 
@@ -83,6 +84,56 @@ def pr_run_commesse_push(
 
     orch = CommessaPushOrchestrator(repo, handlers)
     report = orch.run(source_types=source_types, dry_run=dry_run)
+    return {
+        "stato": report.stato,
+        "dry_run": report.dry_run,
+        "push_log_id": report.push_log_id,
+        "durata_ms": report.durata_ms,
+        "handlers": [r.as_dict() | {"handler_name": r.handler_name} for r in report.handlers],
+    }
+
+
+# Scopo: Variante puntuale del push commesse — esegue UN solo handler con
+# filtro sulla riga sorgente identificata da `sorgente_uid`. Riusa
+# orchestrator (lock + log su commesse_push_log + event_log): differisce
+# dal batch solo per perimetro di processing (1 documento invece di N).
+# Usato dal pulsante UI "Push commessa" del drawer preventivo (e in futuro
+# dai pulsanti analoghi su ordini/DDT). Validazione stretta sul codice
+# sorgente per evitare run vuoti silenziosi su typo durante refactor.
+def pr_run_commesse_push_one(
+    *,
+    sorgente_codice: str,
+    sorgente_uid: int,
+    dry_run: bool = False,
+) -> dict:
+    """Entrypoint servizio Python: push commesse di un singolo documento sorgente."""
+    repo = CommesseRepository()
+    handlers = _build_handlers(repo)
+
+    valid_codes = {h.sorgente_codice for h in handlers}
+    ErrorManager.require(
+        sorgente_codice in valid_codes,
+        code="E_COMMESSA_VALIDATION",
+        message="Codice sorgente non valido per push singolo.",
+        detail=f"sorgente_codice={sorgente_codice} non in {sorted(valid_codes)}",
+        context={"sorgente_codice": sorgente_codice, "valid_codes": sorted(valid_codes)},
+        function_name="vendite.commesse_service.pr_run_commesse_push_one",
+    )
+    ErrorManager.require(
+        bool(sorgente_uid and sorgente_uid > 0),
+        code="E_COMMESSA_VALIDATION",
+        message="Identificativo sorgente non valido.",
+        detail=f"sorgente_uid={sorgente_uid} deve essere intero positivo",
+        context={"sorgente_uid": sorgente_uid},
+        function_name="vendite.commesse_service.pr_run_commesse_push_one",
+    )
+
+    orch = CommessaPushOrchestrator(repo, handlers)
+    report = orch.run(
+        source_types=[sorgente_codice],
+        dry_run=dry_run,
+        sorgente_uid=sorgente_uid,
+    )
     return {
         "stato": report.stato,
         "dry_run": report.dry_run,

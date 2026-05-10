@@ -17,7 +17,9 @@
 | `usePagination` | [usePagination.js](../../../../frontend/src/core/composables/usePagination.js) | Paginazione server-side con integrazione PrimeVue DataTable |
 | `useSearchTable` | [useSearchTable.js](../../../../frontend/src/core/composables/useSearchTable.js) | Ricerca/paginazione/ordinamento unificato per DataTable con debounce |
 | `useDrawerState` | [useDrawerState.js](../../../../frontend/src/core/composables/useDrawerState.js) | Stato drawer centralizzato (create/edit mode) |
+| `useDrawerClose` | [useDrawerClose.js](../../../../frontend/src/core/composables/useDrawerClose.js) | Handler standard chiusura drawer: `const onClose = useDrawerClose(emit)` (emette `update:visible=false`). Secondo argomento opzionale per evento secondario di notifica al parent: `useDrawerClose(emit, 'cancelled')` (pratiche, anagrafiche, contratti) o `useDrawerClose(emit, 'annullato')` (SoggettoResolver). Centralizza il pattern (20 drawer adottanti). |
 | `useDirtyState` | [useDirtyState.js](../../../../frontend/src/core/composables/useDirtyState.js) | Tracciamento modifiche non salvate con beforeunload e tab dirty |
+| `useFileDownload` / `isFileSystemAccessSupported` | [useFileDownload.js](../../../../frontend/src/core/composables/useFileDownload.js) | **DEF-1 export liste.** Scarica un Blob (axios `responseType: 'blob'`) e triggera download nel browser con strategia a 2 path: (1) **File System Access API** quando `window.showSaveFilePicker` e' supportato (Chrome/Edge moderni HTTPS) -> dialog NATIVO "Salva con nome" del sistema operativo, l'utente sceglie cartella e nome; AbortError (cancel utente) trattato come "completato" senza errore; (2) **fallback `<a download>`** classico altrove (Firefox/Safari/HTTP), file in cartella download default. `extractFileName` parsa Content-Disposition (RFC 5987 `filename*=UTF-8''...` + fallback `filename="..."`). `buildPickerAccept` deduce MIME ed estensione dal Content-Type. Esporta anche `isFileSystemAccessSupported()` per UX hint dei chiamanti. Building block riusabile per export CSV/XLSX, PDF, log. Adottato da: `ClientiSearchTable` (DEF-1) tramite `ExportDialog`; estensione attesa in DEF-8. |
 | `useConfirmAction` | [useConfirmAction.js](../../../../frontend/src/core/composables/useConfirmAction.js) | Dialog conferma standard (delete, save, azione generica) |
 | `useConfirmCloseTab` | [useConfirmCloseTab.js](../../../../frontend/src/core/composables/useConfirmCloseTab.js) | Conferma chiusura tab con stato dirty |
 | `useLookup` | [useLookup.js](../../../../frontend/src/core/composables/useLookup.js) | Cache dati lookup **per-istanza** (caricamento immediato o lazy). Usare solo per lookup che devono ricaricarsi a ogni mount o con fetchFn non-idempotenti. Per lookup condivisi cross-componente preferire `useGlobalLookup` |
@@ -81,6 +83,7 @@
 | `azioneGiornaleStyle` | [severity.js](../../../../frontend/src/core/utils/severity.js) | Stile azione giornale (severity + icona) |
 | `extractApiError` / `extractApiErrorCode` | [apiError.js](../../../../frontend/src/core/utils/apiError.js) | Estrae messaggio/codice errore da risposta API |
 | `paramBool` / `paramNumber` / `paramInt` / `paramString` | [parameterCast.js](../../../../frontend/src/core/utils/parameterCast.js) | Cast con fallback dei valori `config.parameters` (BE ritorna `dict[str, str]`). Riusabili da qualsiasi `defaultForm()` parametrizzato. Adottato da: ArticoloUomDrawer (Fase 1 refactor catalogo). |
+| `generateIdempotencyKey` | [idempotency.js](../../../../frontend/src/core/utils/idempotency.js) | Genera UUID v4 da usare come header `Idempotency-Key`. Wrapper su `crypto.randomUUID()` con **fallback** `Date.now()-Math.random().toString(36)` per non-secure context (HTTP su IP LAN / hostname custom, tipico setup VSCode SSH + port forward, dove `crypto.randomUUID` e' `undefined` e tira `TypeError`). Adottato da: `catalogo.js`, stores `uiPreset/Permesso/Definizione/ColonnaAdmin`, `useListaConfig`. |
 
 ---
 
@@ -325,6 +328,7 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | `ContattiSoggettoDrawer` | [ContattiSoggettoDrawer.vue](../../../../frontend/src/core/components/ContattiSoggettoDrawer.vue) | Drawer contatto per soggetto |
 | `IndirizziSoggettoDrawer` | [IndirizziSoggettoDrawer.vue](../../../../frontend/src/core/components/IndirizziSoggettoDrawer.vue) | Drawer indirizzo per soggetto |
 | `ContiBancariDrawer` | [ContiBancariDrawer.vue](../../../../frontend/src/core/components/ContiBancariDrawer.vue) | Drawer conto bancario per soggetto |
+| `ExportDialog` | [ExportDialog.vue](../../../../frontend/src/core/components/ExportDialog.vue) | **DEF-1 export liste — dialog modale generico**. Chiede all'utente il formato file (default CSV/Excel via `SelectButton` con icone) ed emette `@export(format)` al parent, che resta responsabile della chiamata API + download. Il dialog NON chiama il backend e NON gestisce il blob — separazione di responsabilita': il parent costruisce la query string con i filtri attivi, il dialog e' solo "form di scelta formato". Mostra hint UX coerente sul comportamento di salvataggio (dialog nativo OS via FS Access API su Chrome/Edge HTTPS, o cartella download default su Firefox/Safari) tramite `isFileSystemAccessSupported()`. Props: `visible` (v-model), `formati` (default `[csv, xlsx]`), `loading`. Dialog resta aperto su errore (es. 422 cap superato) per consentire all'utente di raffinare i filtri e riprovare. Pattern adottato da: `ClientiSearchTable` (DEF-1); riusabile in DEF-8. |
 
 ### Autocomplete
 
@@ -411,3 +415,42 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | --- | --- | --- |
 | `TipoVariazioneSelect` | [TipoVariazioneSelect.vue](../../../../frontend/src/vendite/components/TipoVariazioneSelect.vue) | **Wrapper standard tipo_variazione.** Prop `scope` discrimina `'contratto'` (PERCENTUALE/VALORE_FISSO) vs `'promo'` (+ PREZZO_FISSO). Cache modulo-level via `useGlobalLookup` con chiavi `vendite.tipi_variazione.<scope>`. Display `"descrizione (codice)"`. Sostituisce `tipoVariazioneOptions` cablato in `ContrattoDrawer` e `PromoArticoloDrawer`. |
 | `AmbitoContrattoSelect` | [AmbitoContrattoSelect.vue](../../../../frontend/src/vendite/components/AmbitoContrattoSelect.vue) | **Wrapper standard ambito contratto** (COMMODITY/COMMERCIO). Cache `vendite.ambiti_contratto`. Sostituisce `ambitoOptions` cablato. |
+
+---
+
+## Componenti Dominio UI (`src/ui/components/`)
+
+Personalizzazioni liste — admin (Blocco F). I componenti runtime FE
+(`ListaConfigurabile`, `ListaColonneModal`) e il composable `useListaConfig`
+sono nei "Componenti Condivisi → Lookup e Select" e nei "Composables".
+Qui sono catalogati i pannelli e drawer della pagina admin.
+
+### Fase 1 — Preset + permessi colonne (`/config/personalizzazioni-liste`)
+
+| Componente | File | Descrizione |
+| --- | --- | --- |
+| `ListaCorrenteSelect` | [ListaCorrenteSelect.vue](../../../../frontend/src/ui/components/ListaCorrenteSelect.vue) | Select header "Lista corrente" condiviso da tutti i tab admin (Fase 1 + Fase 2). Lookup via `useUiAdminStore.loadListe()` (idempotente, single-flight). Visibile a SUPER_ADMIN o utenti con almeno una delle 2 azioni `ui_preset_manage`/`ui_permesso_manage`. |
+| `ListaPresetPanel` | [ListaPresetPanel.vue](../../../../frontend/src/ui/components/ListaPresetPanel.vue) | Tab "Preset" — DataTable preset filtrata per `listaCorrenteId`, kebab actions (gestisci composizione + elimina), drawer testata. |
+| `ListaPresetDrawer` | [ListaPresetDrawer.vue](../../../../frontend/src/ui/components/ListaPresetDrawer.vue) | Drawer crea/modifica preset (testata). Refs profilo/emittente condizionali ad ambito (`sistema`/`ruolo`/`emittente_fiscale`), CHECK ambito_refs DB rispettato lato form. |
+| `ListaPresetColonneDrawer` | [ListaPresetColonneDrawer.vue](../../../../frontend/src/ui/components/ListaPresetColonneDrawer.vue) | Sub-drawer composizione preset (`lista_preset_colonna`): replace atomico via PUT con `Idempotency-Key`. Catalogo colonne grezzo come pool, riordino ▲▼ + flag visibile/fissata + larghezza inline. |
+| `ListaColonnaPermessoPanel` | [ListaColonnaPermessoPanel.vue](../../../../frontend/src/ui/components/ListaColonnaPermessoPanel.vue) | Tab "Permessi colonne" — DataTable permessi (colonna × profilo × livello), drawer create/edit. |
+| `ListaColonnaPermessoDrawer` | [ListaColonnaPermessoDrawer.vue](../../../../frontend/src/ui/components/ListaColonnaPermessoDrawer.vue) | Drawer UPSERT permesso colonna su `(colonna_id, profilo_accesso_id)` — Idempotency-Key per la POST. Livello accesso enum `LIVELLO_ACCESSO` (TUTTO/LETTURA/BLOCCATO). |
+
+### Fase 2 — DEF-5b CRUD definizioni + colonne (`/amm-software/personalizzazioni-liste-tecniche`, SUPER_ADMIN)
+
+| Componente | File | Descrizione |
+| --- | --- | --- |
+| `ListaDefinizionePanel` | [ListaDefinizionePanel.vue](../../../../frontend/src/ui/components/ListaDefinizionePanel.vue) | Tab "Definizioni" — DataTable globale `ui.lista_definizione` (incluse disattivate), kebab actions edit/delete, drawer create/edit. Emette `@definizione-changed` per sincronizzare il `ListaCorrenteSelect` header del tab "Catalogo colonne" condiviso. |
+| `ListaDefinizioneDrawer` | [ListaDefinizioneDrawer.vue](../../../../frontend/src/ui/components/ListaDefinizioneDrawer.vue) | Drawer crea/modifica definizione lista. Form 6 campi (codice, descrizione, schema_dati, vista_sql, note, attivo). Workflow draft: `attivo=false` o `vista_sql` vuoto bypassano il trigger `valida_vista_sql` per registrare prima della creazione DDL. |
+| `ListaColonnaPanel` | [ListaColonnaPanel.vue](../../../../frontend/src/ui/components/ListaColonnaPanel.vue) | Tab "Catalogo colonne" — master-detail su `listaCorrenteId` del Select header. DataTable colonne (incluse disattivate, campi completi: ordine, codice, etichetta, tipo_colonna Tag, tipo_dato, campo_sorgente, gruppo, attivo). Empty state "seleziona prima una lista". |
+| `ListaColonnaDrawer` | [ListaColonnaDrawer.vue](../../../../frontend/src/ui/components/ListaColonnaDrawer.vue) | Drawer crea/modifica colonna. 17 campi distribuiti in 3 sotto-tab `<Tabs>` PrimeVue 4: **Generale** (codice, etichette + i18n_key, tipo_colonna, tipo_dato, campo_sorgente), **Comportamento** (filtrabile, ordinabile, esportabile, ricercabile_full, sensibile, attivo), **Layout** (ordine_default, larghezza_default, allineamento, formato, gruppo, gruppo_ordine). UX vincolo: `tipo_colonna='azione'` disabilita e forza off `esportabile` (CHECK `chk_ui_lista_colonna_azione_non_esportabile`). Snapshot `drawerListaId` all'apertura per evitare drift se l'utente cambia il Select header con drawer aperto. Width `DRAWER_WIDTH.WIDE`. |
+
+### Stores Pinia (`src/ui/stores/`)
+
+| Store | File | Descrizione |
+| --- | --- | --- |
+| `useUiAdminStore` | [uiAdmin.js](../../../../frontend/src/ui/stores/uiAdmin.js) | Stato condiviso fra i tab admin: lookup definizioni `liste`, selezione `listaCorrenteId`, `loadListe(force)` idempotente. `userScoped: true`. |
+| `useUiPresetAdminStore` | [uiPresetAdmin.js](../../../../frontend/src/ui/stores/uiPresetAdmin.js) | CRUD `ui.lista_preset` + composizione (`lista_preset_colonna` replace atomico). Emette `TAB_ENTITIES.UI_PRESET` post-write. |
+| `useUiPermessoAdminStore` | [uiPermessoAdmin.js](../../../../frontend/src/ui/stores/uiPermessoAdmin.js) | UPSERT/DELETE permessi colonna. Emette `TAB_ENTITIES.UI_PERMESSO`. |
+| `useUiDefinizioneAdminStore` | [uiDefinizioneAdmin.js](../../../../frontend/src/ui/stores/uiDefinizioneAdmin.js) | **DEF-5b.** CRUD `ui.lista_definizione`. `fetchAll()`, `getById(id)`, `create/update/destroy`. Emette `TAB_ENTITIES.UI_DEFINIZIONE`. `userScoped: true`. |
+| `useUiColonnaAdminStore` | [uiColonnaAdmin.js](../../../../frontend/src/ui/stores/uiColonnaAdmin.js) | **DEF-5b.** CRUD `ui.lista_colonna`. `fetchByLista(listaId)`, `getById(id)`, `create/update/destroy`. Emette `TAB_ENTITIES.UI_COLONNA`. `userScoped: true`. |

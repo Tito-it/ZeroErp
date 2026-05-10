@@ -7,6 +7,7 @@ import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { displayDate, toDateString } from '../../core/utils/date'
@@ -189,10 +190,7 @@ const canSave = computed(() => {
   return !!form.value.tipo_prestazione_id && !!form.value.priorita_id
 })
 
-function onClose() {
-  emit('update:visible', false)
-  emit('cancelled')
-}
+const onClose = useDrawerClose(emit, 'cancelled')
 </script>
 
 <template>

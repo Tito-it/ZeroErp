@@ -226,6 +226,18 @@ export function listClienti(params = {}) {
   return api.get(`${BASE}/clienti/`, { params })
 }
 
+// Scopo: Export CSV/Excel della lista clienti (DEF-1).
+//        `params` accetta gli stessi filtri del list endpoint
+//        (search/utility_id/stato_cliente_id/order_*) + obbligatorio
+//        `format` ('csv' | 'xlsx'). Risposta come Blob per download
+//        diretto. Errori: 422 se >10.000 righe (caller deve gestire).
+export function exportClienti(params = {}) {
+  return api.get(`${BASE}/clienti/export/`, {
+    params,
+    responseType: 'blob',
+  })
+}
+
 export function getCliente(id) {
   return api.get(`${BASE}/clienti/${id}/`)
 }

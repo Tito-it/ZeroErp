@@ -10,13 +10,14 @@
 # con commesse e pratiche.
 
 import json
+import logging
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
-from django.db import transaction
+from django.db import DatabaseError, transaction
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityRepository
@@ -1483,8 +1484,13 @@ def elimina_riga(preventivo_id: int, riga_id: int) -> dict[str, Any]:
 
 
 # Scopo: Push preventivo accettato in commessa per pipeline fatturazione.
-# Obiettivo: guard stato ACCETTATO, discovery righe eleggibili, creazione/upsert commessa.
-# Perimetro: invoca fn DB esistenti; idempotente via segment_key.
+# Obiettivo: guard stato ACCETTATO + discovery righe eleggibili, poi delega
+# al CommessaPushOrchestrator filtrato sul singolo preventivo
+# (`pr_run_commesse_push_one(sorgente_codice='PREVENTIVO', sorgente_uid=preventivo_id)`).
+# Perimetro: questa fn copre solo la Fase 1 (commesse_attivita); l'emit
+# verso attivita_fatturabili (Fase 3) per preventivi `fatturazione_immediata=TRUE`
+# e' tracciato in PR2 (vedi WIP sviluppo-push-singolo-preventivo §9).
+# Idempotente via segment_key sul layer DB (lo gestisce fn_upsert_commessa_attivita).
 def push_a_commessa(preventivo_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = repo.get_preventivo(preventivo_id)
@@ -1510,9 +1516,49 @@ def push_a_commessa(preventivo_id: int) -> dict[str, Any]:
         detail=f"preventivo_id={preventivo_id}",
         function_name=f"{_FN}.push_a_commessa",
     )
-    # TODO: invocare CommessePushOrchestrator per push singolo preventivo.
-    # Per ora restituisce il conteggio righe eleggibili.
-    return {"righe_pushable": righe_count, "preventivo_id": preventivo_id}
+
+    # Delega al CommessaPushOrchestrator filtrato: scrive commesse + righe
+    # via fn DB esistenti, logga su commesse_push_log + event_log.
+    # Import locale per evitare ciclo (commesse_service importa repo che importa
+    # preventivi_repository in altri punti).
+    from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+    report = pr_run_commesse_push_one(
+        sorgente_codice="PREVENTIVO",
+        sorgente_uid=preventivo_id,
+    )
+
+    # Transizione automatica ACCETTATO → EVASO se push completato.
+    # La transizione e' seedata in `config.transizioni_stati_preventivi`
+    # con `meta.manuale=false` (vedi brief DB
+    # docs/it/dev/work-in-progress/brief-db-stato-preventivo-evaso.md).
+    # Se PARZIALE/ERRORE/SKIPPED il preventivo resta ACCETTATO:
+    # serve un ri-push per completare prima di poter evadere.
+    # Robustezza al deploy parziale: se la fn DB rifiuta la transizione
+    # (es. seed non ancora atterrato), logga warning e prosegue — il
+    # push e' gia' avvenuto, lo stato si allineera' al re-run successivo.
+    if report["stato"] == "COMPLETATO":
+        try:
+            repo.cambia_stato(preventivo_id, "EVASO", "django_api")
+        except DatabaseError as exc:
+            logging.getLogger(__name__).warning(
+                "preventivi.push.transizione_evaso_skipped preventivo_id=%s reason=%s",
+                preventivo_id, str(exc),
+            )
+
+    return {
+        "preventivo_id": preventivo_id,
+        "stato": report["stato"],
+        "push_log_id": report["push_log_id"],
+        "durata_ms": report["durata_ms"],
+        "handlers": report["handlers"],
+        # Diagnostico pre-push: utile a confronto con il delta operato dall'orchestrator.
+        "righe_pushable": righe_count,
+        # Flag testata necessario al FE per decidere se mostrare l'hint
+        # "fatturazione immediata: emit AF avverra' al prossimo run pipeline lotto"
+        # (PR2 implementera' il servizio emissione immediata).
+        "fatturazione_immediata": bool(testata.get("fatturazione_immediata")),
+    }
 
 
 # Scopo: Stato fatturazione del preventivo nel pipeline downstream.

@@ -6,6 +6,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
+import { generateIdempotencyKey } from '../../core/utils/idempotency'
 import {
   deleteAdminPermesso,
   listAdminPermessiByLista,
@@ -44,7 +45,7 @@ export const useUiPermessoAdminStore = defineStore('ui-permesso-admin', () => {
 
   // Scopo: UPSERT permesso. La response include id (nuovo o aggiornato).
   async function upsert(payload) {
-    const idempotencyKey = crypto.randomUUID()
+    const idempotencyKey = generateIdempotencyKey()
     const res = await upsertAdminPermesso(payload, idempotencyKey)
     emitDataChanged(TAB_ENTITIES.UI_PERMESSO, res.data.data.id)
     return res.data.data

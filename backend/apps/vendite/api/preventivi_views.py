@@ -479,7 +479,11 @@ class ApiPreventivoPushCommessa(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Push preventivo in commessa per fatturazione via POST.
+    # Scopo: Push preventivo in commessa per fatturazione via POST. Ritorna
+    # report dell'orchestrator: stato (COMPLETATO/PARZIALE/ERRORE), push_log_id,
+    # durata_ms, handlers (dettaglio per handler con counters e errors), e
+    # righe_pushable (diagnostico pre-push). Idempotency-Key obbligatoria
+    # (write-once: evita doppio push su retry/click multipli).
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             return preventivi_service.push_a_commessa(preventivo_id)

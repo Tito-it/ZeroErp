@@ -163,12 +163,16 @@ export function statoVersioneVisibile(versione) {
 }
 
 // --- Mappa stati preventivo vendita ---
-// DRAFT=grigio, EMESSO=azzurro, ACCETTATO=verde, RIFIUTATO=rosso,
-// SCADUTO=arancio, ANNULLATO=rosso
+// DRAFT=grigio, EMESSO=azzurro, ACCETTATO=verde, EVASO=azzurro,
+// RIFIUTATO=rosso, SCADUTO=arancio, ANNULLATO=rosso.
+// EVASO = stato terminale post-push commessa (transizione automatica
+// ACCETTATO -> EVASO BE-driven): info per distinguerlo da ACCETTATO
+// (= accettato dal cliente, fase vendita) e segnalare "lavorato".
 export const STATO_PREVENTIVO_MAP = {
   DRAFT: 'secondary',
   EMESSO: 'info',
   ACCETTATO: 'success',
+  EVASO: 'info',
   RIFIUTATO: 'danger',
   SCADUTO: 'warn',
   ANNULLATO: 'danger',

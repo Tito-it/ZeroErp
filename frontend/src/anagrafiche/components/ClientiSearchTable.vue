@@ -22,6 +22,8 @@ import { useI18n } from 'vue-i18n'
 import { useClientiStore } from '../stores/clienti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
+import { useFileDownload } from '../../core/composables/useFileDownload'
+import { exportClienti } from '../api/anagrafiche'
 import { MANAGE_ICONS, TIPO_RUOLO, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
@@ -35,6 +37,7 @@ import LookupSelect from '../../core/components/LookupSelect.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 
@@ -63,6 +66,41 @@ const configReady = computed(() => listaRef.value?.config != null)
 // Filtri custom (toolbar caller)
 const utilityFilter = ref(null)
 const statoFilter = ref(null)
+
+// Export DEF-1: scarica CSV o Excel con i filtri attualmente applicati.
+// Il dialog `ExportDialog` chiede il formato all'utente; il
+// `useFileDownload` poi triggera il download del Blob (su Chrome/Edge
+// HTTPS apre il dialog "Salva con nome" nativo OS, altrove fallback al
+// download standard). Errori (es. 422 oltre 10.000 righe) sono
+// notificati dall'interceptor axios via useApiHandler.
+const { download: downloadFile, loading: exportLoading } = useFileDownload()
+const exportDialogVisible = ref(false)
+
+function buildExportParams(format) {
+  // NB: il query param si chiama `formato` (italiano) NON `format`.
+  // `format` e' un magic parameter DRF (content-negotiation): se non ha
+  // un renderer registrato per il valore passato, DRF risponde 404
+  // PRIMA di entrare nella view. Convenzione di progetto: usare nomi
+  // italiani per query param custom evita collisioni con DRF default.
+  const p = { formato: format }
+  if (searchText.value?.trim()) p.search = searchText.value.trim()
+  if (utilityFilter.value != null) p.utility_id = utilityFilter.value
+  if (statoFilter.value != null) p.stato_cliente_id = statoFilter.value
+  return p
+}
+
+async function onExportConfirm(format) {
+  const result = await downloadFile(
+    () => exportClienti(buildExportParams(format)),
+    { successMessage: t('lista_config.export_success') },
+  )
+  // Chiudi il dialog solo a download avviato con successo. Su errore
+  // (es. 422 cap superato), useApiHandler ha mostrato il toast: il
+  // dialog resta aperto cosi' l'utente puo' raffinare i filtri e
+  // riprovare senza ricliccare "Esporta".
+  if (result !== null) exportDialogVisible.value = false
+}
+
 const pageActions = computed(() => [
   {
     key: 'reload',
@@ -83,6 +121,15 @@ const pageActions = computed(() => [
     icon: 'pi pi-cog',
     disabled: !configReady.value,
     command: () => listaRef.value?.openModal?.(),
+  },
+  {
+    key: 'export',
+    kind: 'utility',
+    label: t('lista_config.export'),
+    tooltip: t('lista_config.export_tooltip'),
+    icon: 'pi pi-download',
+    disabled: exportLoading.value,
+    command: () => { exportDialogVisible.value = true },
   },
   {
     key: 'new',
@@ -286,5 +333,11 @@ onMounted(() => {
         </template>
       </ListaConfigurabile>
     </template>
+
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @export="onExportConfirm"
+    />
   </div>
 </template>

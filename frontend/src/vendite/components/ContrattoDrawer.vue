@@ -11,6 +11,7 @@ import { ref, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
@@ -456,10 +457,7 @@ async function eseguiCambioStato(targetState) {
   if (result !== null) await refreshDetail()
 }
 
-function onClose() {
-  emit('update:visible', false)
-  emit('cancelled')
-}
+const onClose = useDrawerClose(emit, 'cancelled')
 </script>
 
 <template>

@@ -21,10 +21,14 @@ export const PRICING_ACTIONS = Object.freeze({
 
 // Codici stato preventivo (`config.stati_doc_preventivi.codice_interno`).
 // NB: 'Bozza' e' la descrizione it-IT, il codice tecnico stabile e' DRAFT.
+// EVASO e' lo stato terminale post-push commessa: transizione automatica
+// ACCETTATO -> EVASO scatenata dal BE (preventivi_service.push_a_commessa)
+// quando tutte le righe pushable sono in commessa.
 export const STATO_PREVENTIVO = Object.freeze({
   DRAFT: 'DRAFT',
   EMESSO: 'EMESSO',
   ACCETTATO: 'ACCETTATO',
+  EVASO: 'EVASO',
   RIFIUTATO: 'RIFIUTATO',
   SCADUTO: 'SCADUTO',
   ANNULLATO: 'ANNULLATO',

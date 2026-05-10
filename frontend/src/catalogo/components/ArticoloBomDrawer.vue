@@ -6,14 +6,19 @@
 //     non sono modificabili in place: trigger DB E_BOM_MODIFICA_VIETATA li
 //     blocca. Per cambiare valori si usa "chiudi riga" + nuovo "Aggiungi
 //     componente" con i nuovi parametri (operazioni esplicite, intenzionali).
-//   - "Duplica versione": dal Fase 3 e' un'azione **atomica DB** che chiude
-//     la sorgente e apre una nuova riga con stessi valori (nessun edit lato
-//     FE). Endpoint: POST .../duplica-versione/ con Idempotency-Key.
+//   - "Duplica versione" (workflow 2 step, dal 2026-05-10): step 1 chiude la
+//     sorgente con PATCH valido_al (stessa via di "Chiudi riga"), step 2
+//     apre il form add pre-compilato dai valori della sorgente con
+//     valido_dal = chiudi_al + 1. L'utente puo' modificare i campi prima
+//     di salvare. Niente DB function dedicata: tutto su endpoint esistenti
+//     (PATCH valido_al + POST create), con perdita di atomicita' DB-side
+//     accettata (eventuale annullo dello step 2 lascia la sorgente chiusa
+//     senza nuova versione, recuperabile manualmente con "+").
 //   - delete BoM bloccato dal trigger: il pattern di "rimozione" è chiusura
-//     con valido_al = oggi (chiusura immediata) o data futura (programmata).
-//   - valido_al è l'unico campo struttura editabile inline (chiusura riga)
-//     o via dialog dedicato (pattern simmetrico a ChiudiVersioneDialog dei
-//     listini, vedi feedback_stato_terminale_con_data).
+//     con valido_al = oggi (chiusura immediata) o data futura (programmata),
+//     unica via via dialog dedicato dal kebab "Chiudi riga" (pattern
+//     simmetrico a ChiudiVersioneDialog dei listini, vedi
+//     feedback_stato_terminale_con_data).
 // Standard sub-drawer: paginazione 10 righe, PageActionsBar + F5, filtro
 // client-side articolo, sort default articolo_descrizione.
 
@@ -21,12 +26,12 @@ import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import {
   listArticoloComponenti, createArticoloComponente,
   updateArticoloComponente,
-  duplicaComponenteVersione,
   listComponenteNote, createComponenteNota,
 } from '../api/catalogo'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
@@ -34,6 +39,7 @@ import { displayDate, toDateString } from '../../core/utils/date'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import CatalogoNoteDrawer from '../../core/components/CatalogoNoteDrawer.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import Drawer from 'primevue/drawer'
@@ -112,12 +118,6 @@ const pageActions = computed(() => [
   },
 ])
 
-// Edit inline: traccia quale riga ha il DatePicker valido_al aperto.
-// valido_al è l'unico campo modificabile in place (DEC-4): permette
-// chiusura immediata della riga senza passare dal kebab.
-const editingValidoAlId = ref(null)
-const editingValidoAlValue = ref(null)
-
 // Dialog chiusura riga (pattern simmetrico a ChiudiVersioneDialog).
 // L'admin sceglie data di chiusura (oggi = immediata, futura = programmata).
 // Min-date e default-date arrivano DAL BE come capability di riga
@@ -136,15 +136,24 @@ const chiudiDialogIsImmediata = computed(() => {
   return sel.getTime() === today.getTime()
 })
 
-// Dialog "Duplica versione" (Fase 3): l'admin sceglie chiudi_al, il BE
-// chiude la sorgente e apre una nuova riga con stessi valori in singola TX.
-// Niente edit dei valori in questo flusso: per cambiarli si usa
-// "Chiudi riga" + nuovo "Aggiungi componente" (azioni intenzionali).
-// Min-date: BE espone `data_min_chiusura` su vw_articoli_componenti_dettaglio
+// Dialog "Duplica versione": l'admin sceglie chiudi_al, alla conferma il
+// BE chiude SOLO la sorgente (PATCH valido_al, stessa path di "Chiudi
+// riga", trigger BoM lo permette). Subito dopo il drawer apre il form
+// "Aggiungi componente" pre-compilato dai valori della sorgente, con
+// `valido_dal = chiudi_al + 1`. L'utente puo' modificare i campi prima
+// di salvare, e il save fa l'INSERT della nuova versione.
+// Vantaggio: niente DB function dedicata, tutto su endpoint esistenti
+// (PATCH valido_al + POST create), e l'utente puo' personalizzare i
+// valori della nuova versione senza scontrarsi col trigger
+// E_BOM_MODIFICA_VIETATA (l'INSERT porta gia' i valori finali).
+// Min-date dialog: BE espone `data_min_chiusura` su vw_articoli_componenti_dettaglio
 // (= valido_dal della sorgente).
 const duplicaDialogVisible = ref(false)
 const duplicaDialogRow = ref(null)
 const duplicaDialogChiudiAl = ref(null)
+// Stato del flow duplica post-chiusura: se != null, il form add e' stato
+// aperto pre-compilato dalla sorgente (titolo + banner dedicato).
+const duplicaFlowSource = ref(null)
 const duplicaDialogMinDate = computed(() => parseDate(duplicaDialogRow.value?.data_min_chiusura))
 const duplicaDialogIsImmediata = computed(() => {
   if (!duplicaDialogChiudiAl.value) return false
@@ -187,10 +196,13 @@ function defaultForm() {
 
 // Scopo: reset stato del form add. Comune a cancel, save-success
 // e apertura drawer: evita duplicazione delle reassegnazioni.
+// Resetta anche lo stato del flow duplica: se l'utente annulla il form
+// pre-compilato, il banner/title torna allo stato "Aggiungi componente".
 function resetFormState() {
   adding.value = false
   form.value = defaultForm()
   componenteObj.value = null
+  duplicaFlowSource.value = null
 }
 
 // Scopo: Converte stringa ISO date in Date object per DatePicker.
@@ -223,7 +235,6 @@ watch(() => props.visible, async (val) => {
   // mentre la fetch dei defaults e' ancora in volo.
   await loadDefaults()
   resetFormState()
-  editingValidoAlId.value = null
   filtroArticolo.value = ''
   loadComponenti()
 })
@@ -256,6 +267,11 @@ function cancelAdd() {
   resetFormState()
 }
 
+// Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
+// Nasconde il footer in modalita' adding per non duplicarlo con Annulla/Salva
+// del form e non spingere il form sotto al fold.
+const onClose = useDrawerClose(emit)
+
 // Scopo: apre il dialog "Duplica versione". L'operazione di chiusura+apertura
 // e' atomica lato DB (Fase 3, fn_duplica_componente_versione): il FE non
 // ricompone il flusso, manda solo `chiudi_al` e ricarica.
@@ -272,21 +288,56 @@ function annullaDuplicaVersione() {
   duplicaDialogChiudiAl.value = null
 }
 
-// Scopo: invia POST /duplica-versione/ con Idempotency-Key (gestita dal
-// client API). I codici errore E_BOM_* (P0001 dal DB) vengono mappati
-// dalle policy lato BE a HTTP 409/404/400 e visualizzati via useApiHandler.
+// Scopo: step 1 del flow duplica-versione. Chiude SOLO la sorgente con
+// PATCH valido_al (endpoint esistente updateArticoloComponente, stesso
+// path di "Chiudi riga"). Su successo apre il form add pre-compilato
+// dai valori della sorgente, con valido_dal = chiudi_al + 1. L'utente
+// modifica i campi se serve e su Save l'endpoint create inserisce la
+// nuova versione (step 2).
 async function confermaDuplicaVersione() {
   if (!duplicaDialogRow.value || !duplicaDialogChiudiAl.value) return
+  const chiudiAlDate = new Date(duplicaDialogChiudiAl.value)
+  const chiudiAlIso = toDateString(chiudiAlDate)
+  // Snapshot della sorgente prima di chiudere il dialog: serve a
+  // pre-compilare il form quando duplicaDialogRow viene azzerata.
+  const sourceRow = { ...duplicaDialogRow.value }
+
   const result = await execute(
-    () => duplicaComponenteVersione(props.articoloId, duplicaDialogRow.value.id, {
-      chiudi_al: toDateString(duplicaDialogChiudiAl.value),
+    () => updateArticoloComponente(props.articoloId, sourceRow.id, {
+      valido_al: chiudiAlIso,
     }),
-    { successMessage: t('catalogo.duplica_versione_ok') },
+    { successMessage: t('catalogo.componente_chiuso') },
   )
-  if (result !== null) {
-    annullaDuplicaVersione()
-    await loadComponenti()
-    emit('saved')
+  if (result === null) return
+  annullaDuplicaVersione()
+  await loadComponenti()
+  emit('saved')
+
+  // Apre il form add pre-compilato. valido_dal default = chiudi_al + 1
+  // (la nuova versione apre il giorno successivo alla chiusura, evita
+  // overlap col range chiuso). Tutti i campi sono editabili.
+  const nextDay = new Date(chiudiAlDate)
+  nextDay.setDate(nextDay.getDate() + 1)
+
+  duplicaFlowSource.value = {
+    chiudi_al: chiudiAlIso,
+    componente_codice: sourceRow.componente_codice,
+  }
+  adding.value = true
+  form.value = {
+    componente_id: sourceRow.componente_id,
+    coeff_qta: sourceRow.coeff_qta,
+    partecipa_qta: sourceRow.partecipa_qta,
+    obbligatorio: sourceRow.obbligatorio,
+    determina_qta_padre: sourceRow.determina_qta_padre,
+    esposto_in_fattura: sourceRow.esposto_in_fattura,
+    valido_dal: nextDay,
+    valido_al: null,
+  }
+  componenteObj.value = {
+    id: sourceRow.componente_id,
+    codice: sourceRow.componente_codice,
+    descrizione: sourceRow.componente_descrizione,
   }
 }
 
@@ -314,32 +365,6 @@ async function onSaveNew() {
   resetFormState()
   await loadComponenti()
   emit('saved')
-}
-
-// Scopo: Apre edit inline valido_al per una riga.
-function startEditValidoAl(row) {
-  editingValidoAlId.value = row.id
-  editingValidoAlValue.value = parseDate(row.valido_al)
-}
-
-// Scopo: Salva valido_al modificato inline.
-async function confirmEditValidoAl(row) {
-  const result = await execute(
-    () => updateArticoloComponente(props.articoloId, row.id, {
-      valido_al: toDateString(editingValidoAlValue.value),
-    }),
-    { successMessage: t('catalogo.componente_salvato') }
-  )
-  if (result === null) return
-  editingValidoAlId.value = null
-  editingValidoAlValue.value = null
-  await loadComponenti()
-  emit('saved')
-}
-
-function cancelEditValidoAl() {
-  editingValidoAlId.value = null
-  editingValidoAlValue.value = null
 }
 
 // Scopo: apre il dialog di chiusura riga BoM con DatePicker. Pattern
@@ -477,8 +502,12 @@ function buildRigaActions(row) {
           removable-sort
           data-key="id"
         >
-          <Column field="componente_codice" :header="t('catalogo.col_codice')" sortable />
-          <Column field="componente_descrizione" :header="t('catalogo.col_descrizione')" sortable />
+          <Column field="componente_codice" :header="t('catalogo.col_codice')" sortable style="width: 110px;">
+            <template #body="{ data }">
+              <span class="bom-codice-truncate" :title="data.componente_codice">{{ data.componente_codice }}</span>
+            </template>
+          </Column>
+          <Column field="componente_descrizione" :header="t('catalogo.col_descrizione')" sortable style="width: 220px;" />
           <Column field="coeff_qta" :header="t('catalogo.col_coeff_qta')" style="width: 70px;" sortable />
           <Column field="esposto_in_fattura" :header="t('catalogo.col_esposto_fattura')" style="width: 80px;">
             <template #body="{ data }">
@@ -487,25 +516,7 @@ function buildRigaActions(row) {
           </Column>
           <Column field="valido_al" :header="t('catalogo.field_valido_al')" style="width: 130px;" sortable>
             <template #body="{ data }">
-              <template v-if="editingValidoAlId === data.id">
-                <div class="flex gap-1 align-items-center">
-                  <DatePicker v-model="editingValidoAlValue" :date-format="DATE_FORMAT"
-                    show-icon show-button-bar style="width: 110px;" />
-                  <Button :icon="MANAGE_ICONS.CONFIRM" text rounded size="small" class="app-action-btn"
-                    @click="confirmEditValidoAl(data)" />
-                  <Button :icon="MANAGE_ICONS.CANCEL" text rounded size="small"
-                    @click="cancelEditValidoAl" />
-                </div>
-              </template>
-              <template v-else>
-                <!-- Edit inline ammesso solo se la riga e' chiudibile (capability BE).
-                     Riga gia' chiusa o readonly user: sola visualizzazione. -->
-                <span v-if="!isReadonly && data.puo_chiudersi" class="valido-al-cell" @click="startEditValidoAl(data)">
-                  {{ displayDate(data.valido_al) || '—' }}
-                  <i class="pi pi-pencil" style="font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.5;" />
-                </span>
-                <span v-else>{{ displayDate(data.valido_al) || '—' }}</span>
-              </template>
+              {{ displayDate(data.valido_al) || '—' }}
             </template>
           </Column>
           <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
@@ -517,12 +528,26 @@ function buildRigaActions(row) {
 
         <!-- Form inserimento nuovo componente. Pulsante di apertura ora
              nella toolbar in alto (PageActionsBar); qui solo il form quando
-             adding=true. -->
+             adding=true. Quando `duplicaFlowSource` e' valorizzato il form
+             arriva pre-compilato dai valori della sorgente chiusa: titolo +
+             banner cambiano per chiarire all'utente che sta inserendo la
+             nuova versione successiva alla riga appena chiusa. -->
         <template v-if="!isReadonly">
           <template v-if="adding">
             <div class="app-drawer-section">
-              <h4>{{ t('catalogo.nuovo_componente') }}</h4>
+              <h4>{{ duplicaFlowSource ? t('catalogo.nuova_versione_componente') : t('catalogo.nuovo_componente') }}</h4>
             </div>
+            <Message
+              v-if="duplicaFlowSource"
+              severity="warn"
+              :closable="false"
+              class="mt-025"
+            >
+              {{ t('catalogo.nuova_versione_hint', {
+                codice: duplicaFlowSource.componente_codice,
+                data: displayDate(duplicaFlowSource.chiudi_al),
+              }) }}
+            </Message>
             <div class="form-grid">
               <div class="form-field">
                 <label>{{ t('catalogo.field_componente') }} *</label>
@@ -573,6 +598,8 @@ function buildRigaActions(row) {
           </template>
         </template>
       </template>
+
+      <DrawerFooter v-if="!adding" close-only @cancel="onClose" />
     </div>
   </Drawer>
 
@@ -631,11 +658,11 @@ function buildRigaActions(row) {
     </div>
   </Dialog>
 
-  <!-- Dialog "Duplica versione" (Fase 3): chiama l'endpoint atomico
-       /duplica-versione/. Il BE chiude la sorgente con valido_al=chiudi_al
-       e apre una nuova riga con valido_dal=chiudi_al+1, copia verbatim
-       della struttura. min-date = valido_dal sorgente (dal BE come
-       data_min_chiusura). Idempotency-Key generata client-side. -->
+  <!-- Dialog "Duplica versione": step 1 del flow (chiusura sorgente).
+       Sceglie chiudi_al e su conferma fa PATCH valido_al sulla sorgente.
+       Subito dopo il drawer apre il form add pre-compilato con
+       valido_dal = chiudi_al + 1 (step 2 in confermaDuplicaVersione).
+       min-date = valido_dal sorgente (dal BE come data_min_chiusura). -->
   <Dialog
     :visible="duplicaDialogVisible"
     @update:visible="v => { if (!v) annullaDuplicaVersione() }"
@@ -684,12 +711,14 @@ function buildRigaActions(row) {
 </template>
 
 <style scoped>
-.valido-al-cell {
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-}
-.valido-al-cell:hover {
-  color: var(--p-primary-color);
+/* Solo il codice componente (identificatore) tronca con ellipsis. La
+   descrizione wrappa per parole in modo naturale: su drawer stretto
+   la cella cresce in altezza invece di sovrapporsi. */
+.bom-codice-truncate {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
+
