@@ -29,7 +29,6 @@ from apps.catalogo.services.catalogo_service import (
     fn_get_articolo_form_defaults,
     fn_get_uom_tipo,
     fn_riattiva_articolo,
-    fn_duplica_componente_versione,
     fn_get_articolo,
     fn_get_unita_misura,
     fn_list_componenti,
@@ -519,40 +518,6 @@ class ApiArticoloComponenteDetail(DomainAPIView):
 # Endpoint atomico Fase 3: chiusura sorgente + apertura nuova versione in
 # singola TX DB con advisory lock. Idempotency-Key obbligatoria perche'
 # l'azione modifica stato (UPDATE + INSERT atomici).
-class ApiArticoloComponenteDuplicaVersione(DomainAPIView):
-    area_funzionale = "catalogo"
-    model_permission = ("catalogo", "articolo")
-
-    @extend_schema(
-        request=inline_serializer(
-            name="CatalogoArticoloComponenteDuplicaVersioneRequest",
-            fields={
-                "chiudi_al": serializers.DateField(
-                    required=False,
-                    allow_null=True,
-                    help_text=(
-                        "Data di chiusura della sorgente (default: oggi). "
-                        "La nuova versione apre il giorno successivo."
-                    ),
-                ),
-            },
-        ),
-        responses={
-            200: inline_serializer(
-                name="CatalogoArticoloComponenteDuplicaVersioneResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Duplica versione corrente del componente BoM (atomic).
-    def post(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        return handle_post_json(
-            request,
-            handler=lambda payload: fn_duplica_componente_versione(articolo_id, comp_id, payload),
-            require_idempotency_key=True,
-        )
-
-
 class ApiArticoloNoteList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")

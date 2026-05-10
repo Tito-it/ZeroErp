@@ -15,6 +15,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import PortaleAccessoPanel from './PortaleAccessoPanel.vue'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { DRAWER_WIDTH } from '../../core/constants'
 
 const { t } = useI18n()
@@ -39,9 +40,7 @@ function isReadonly() {
   return props.readonly || injectedReadonly.value
 }
 
-function onClose() {
-  emit('update:visible', false)
-}
+const onClose = useDrawerClose(emit)
 </script>
 
 <template>

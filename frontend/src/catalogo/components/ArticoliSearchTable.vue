@@ -163,11 +163,7 @@ onMounted(() => {
           <span class="codice-truncate" :title="data.codice">{{ data.codice }}</span>
         </template>
       </Column>
-      <Column field="descrizione" :header="t('catalogo.col_descrizione')" sortable style="width: 220px;">
-        <template #body="{ data }">
-          <span class="desc-truncate" :title="data.descrizione">{{ data.descrizione }}</span>
-        </template>
-      </Column>
+      <Column field="descrizione" :header="t('catalogo.col_descrizione')" sortable style="width: 220px;" />
       <Column field="uom_codice" :header="t('catalogo.col_uom')" sortable style="width: 80px;" />
       <Column field="tipologia_descrizione" :header="t('catalogo.col_tipologia')" style="width: 120px;" />
       <Column field="gruppo_descrizione" :header="t('catalogo.col_gruppo')" style="width: 120px;" />
@@ -195,8 +191,11 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.codice-truncate,
-.desc-truncate {
+/* Solo il codice (identificatore) tronca con ellipsis: e' un token,
+   andare a capo non ha senso. La descrizione invece wrappa per parole
+   in modo naturale (default browser, white-space: normal): la cella
+   cresce in altezza su schermi stretti, niente sovrapposizioni. */
+.codice-truncate {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;

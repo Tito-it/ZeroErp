@@ -6,6 +6,7 @@ import { ref, computed, watch } from 'vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContrattiStore } from '../stores/contratti'
 import { listContratti } from '../api/contratti'
@@ -166,9 +167,7 @@ const billingAccountPrefill = computed(() => (
     : null
 ))
 
-function onClose() {
-  emit('update:visible', false)
-}
+const onClose = useDrawerClose(emit)
 </script>
 
 <template>

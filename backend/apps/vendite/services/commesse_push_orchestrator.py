@@ -115,6 +115,7 @@ class CommessaPushOrchestrator:
         *,
         source_types: list[str] | None = None,
         dry_run: bool = False,
+        sorgente_uid: int | None = None,
     ) -> PushReport:
         """Esegue il push per tutti gli handler (o per i source_types selezionati).
 
@@ -122,6 +123,9 @@ class CommessaPushOrchestrator:
             source_types — None = tutti; lista di nomi = sottoinsieme
             dry_run      — True: gli handler non scrivono, ma il log viene comunque
                            scritto con dry_run=True per audit
+            sorgente_uid — None = batch standard; valorizzato = push singolo
+                           filtrato sulla riga sorgente del documento. Tipicamente
+                           usato con `source_types=[<codice unico>]`.
 
         Restituisce PushReport con stato, risultati per handler e push_log_id.
         Se un altro run è già in corso restituisce PushReport con stato SKIPPED.
@@ -131,7 +135,7 @@ class CommessaPushOrchestrator:
 
         try:
             return self._run_locked(
-                source_types=source_types, dry_run=dry_run,
+                source_types=source_types, dry_run=dry_run, sorgente_uid=sorgente_uid,
             )
         finally:
             self._release_lock()
@@ -141,22 +145,29 @@ class CommessaPushOrchestrator:
         *,
         source_types: list[str] | None,
         dry_run: bool,
+        sorgente_uid: int | None = None,
     ) -> PushReport:
         """Logica di run effettiva, eseguita sotto advisory lock."""
         t0 = time.monotonic()
         results: list[HandlerResult] = []
 
+        # `sorgente_uid` propagato nel payload event_log per tracciabilita'
+        # del push singolo (correlation con la riga sorgente specifica).
         self._repo.log_event(
             domain="COMMESSE",
             entity_type="TASK_RUN",
             entity_id=0,
             event_code="PUSH_STARTED",
-            payload={"source_types": source_types, "dry_run": dry_run},
+            payload={
+                "source_types": source_types,
+                "dry_run": dry_run,
+                "sorgente_uid": sorgente_uid,
+            },
         )
 
         for handler in self._resolve_handlers(source_types):
             try:
-                result = handler.run(dry_run=dry_run)
+                result = handler.run(dry_run=dry_run, sorgente_uid=sorgente_uid)
             except Exception as exc:
                 result = HandlerResult(
                     handler_name=handler.name,
@@ -197,6 +208,7 @@ class CommessaPushOrchestrator:
                 "push_log_id": push_log_id,
                 "handlers_count": len(results),
                 "errors_count": errors_count,
+                "sorgente_uid": sorgente_uid,
             },
         )
 

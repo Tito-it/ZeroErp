@@ -68,10 +68,21 @@ pattern standard `{ "data": ..., "meta": { "request_id": "..." } }`.
 | 9 | `GET /admin/liste/{id}/permessi/` | permesso | Permessi colonna di una lista |
 | 10 | `POST /admin/permessi/` | permesso | UPSERT permesso colonna |
 | 11 | `DELETE /admin/permessi/{id}/` | permesso | Cancella permesso |
+| 12 | `GET /admin/definizioni/` | admin | Lista completa definizioni (incluse disattivate) |
+| 13 | `POST /admin/definizioni/` | admin | Crea definizione lista |
+| 14 | `GET /admin/definizioni/{id}/` | admin | Dettaglio definizione |
+| 15 | `PATCH /admin/definizioni/{id}/` | admin | Aggiorna campi mutabili |
+| 16 | `DELETE /admin/definizioni/{id}/` | admin | Cancella (RESTRICT su FK) |
+| 17 | `GET /admin/definizioni/{id}/colonne/` | admin | Lista colonne admin (full) |
+| 18 | `POST /admin/definizioni/{id}/colonne/` | admin | Crea colonna |
+| 19 | `GET /admin/colonne/{id}/` | admin | Dettaglio colonna |
+| 20 | `PATCH /admin/colonne/{id}/` | admin | Aggiorna campi mutabili |
+| 21 | `DELETE /admin/colonne/{id}/` | admin | Cancella (soft-block preferenze) |
 
 Legenda Auth: `OR` = SUPER_ADMIN OR `ui_preset_manage` OR
 `ui_permesso_manage`; `preset` = SUPER_ADMIN OR `ui_preset_manage`;
-`permesso` = SUPER_ADMIN OR `ui_permesso_manage`.
+`permesso` = SUPER_ADMIN OR `ui_permesso_manage`; `admin` = SUPER_ADMIN
+unico (Fase 2 DEF-5b, `IsAdminZeroERP`).
 
 ---
 
@@ -612,8 +623,22 @@ Azioni di processo (seedate in `config.azioni_processo` 2026-05-08):
 ## Note di migrazione
 
 - Blocco F Fase 1: implementati i 2 CRUD operativi (preset + permessi
-  colonna). Le 2 tabelle tecniche `lista_definizione` e `lista_colonna`
-  restano gestite via seed CSV (Fase 2).
+  colonna).
+- **Blocco F Fase 2 (DEF-5b, 2026-05-10)**: implementati i CRUD su
+  `ui.lista_definizione` e `ui.lista_colonna`. SUPER_ADMIN-only
+  (`AdminAPIView` + `IsAdminZeroERP`), niente nuove azioni di processo.
+  Workflow draft per registrare liste con vista SQL non ancora atterrata:
+  creare con `attivo=false` (o `vista_sql=null`), il trigger
+  `trgfn_ui_lista_definizione_a10_valida_vista_sql` skippa la
+  validazione. Cancellazione bloccata da FK RESTRICT
+  (`E_UI_DEFINIZIONE_IN_USO` / `E_UI_COLONNA_IN_USO`) e da soft-block
+  applicativo per preferenze utente (count JSONB
+  `configurazione->colonne` per codice). UX vincolo: forzato
+  `esportabile=false` quando `tipo_colonna='azione'` (CHECK
+  `chk_ui_lista_colonna_azione_non_esportabile`). Pagina FE:
+  `/amm-software/personalizzazioni-liste-tecniche`, voce sidebar
+  `adminOnly: true`. Voce sidebar separata da `/config/personalizzazioni-liste`
+  (Fase 1, operativa). Endpoint nuovi: §12-§21 della tabella sopra.
 - **Pagina FE: solo `/config/personalizzazioni-liste`** in Fase 1.
   Decisione 2026-05-08: la doppia voce sidebar ipotizzata in §11/Blocco F
   del WIP (config + amm-software) e' stata semplificata a una sola

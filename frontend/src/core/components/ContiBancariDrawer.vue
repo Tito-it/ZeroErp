@@ -8,6 +8,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode, useInjectBlocked } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
+import { useDrawerClose } from '../composables/useDrawerClose'
 import { useContoBancarioForm } from '../composables/useContoBancarioForm'
 import { useConfirmAction } from '../composables/useConfirmAction'
 import {
@@ -208,6 +209,9 @@ function usoSeverity(uso) {
   const map = { INCASSO: 'success', PAGAMENTO: 'info', RIMBORSO: 'warn', GENERICO: 'secondary' }
   return map[uso] || 'secondary'
 }
+
+// Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
+const onClose = useDrawerClose(emit)
 </script>
 
 <template>
@@ -277,6 +281,8 @@ function usoSeverity(uso) {
         </div>
 
       </template>
+
+      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
 
       <!-- Form (aggiungi o modifica) -->
       <template v-if="formMode">

@@ -9,6 +9,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import { listArticoloUom, createArticoloUom, updateArticoloUom, deleteArticoloUom } from '../api/catalogo'
@@ -256,6 +257,9 @@ function buildRigaActions(row) {
     },
   ]
 }
+
+// Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
+const onClose = useDrawerClose(emit)
 </script>
 
 <template>
@@ -330,6 +334,8 @@ function buildRigaActions(row) {
           />
         </div>
       </template>
+
+      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
 
       <template v-if="formMode">
         <div class="app-drawer-section">

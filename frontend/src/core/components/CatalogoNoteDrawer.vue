@@ -9,6 +9,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
+import { useDrawerClose } from '../composables/useDrawerClose'
 import { updateNota, deleteNota } from '../../catalogo/api/catalogo'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import LookupSelect from './LookupSelect.vue'
@@ -129,6 +130,9 @@ async function onDelete(n) {
     emit('saved')
   }
 }
+
+// Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
+const onClose = useDrawerClose(emit)
 </script>
 
 <template>
@@ -178,6 +182,8 @@ async function onDelete(n) {
           />
         </div>
       </template>
+
+      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
 
       <template v-if="formMode">
         <div class="app-drawer-section">

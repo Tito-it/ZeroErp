@@ -118,7 +118,7 @@ Eseguire come Admin (Scenario 1 prerequisito).
 
 1. **Setup admin pricing v5** (categorie, matrice, listini, contratti modalità A e C, promo)
 2. **Pricing operativo** (preventivo + auto-fill + L1+L2+L3)
-3. **BoM versionata** (chiudi+duplica nuova versione, edit inline valido_al)
+3. **BoM versionata** (chiudi riga + duplica nuova versione)
 4. **Workflow L3** (richiedi → coda → approva/rifiuta)
 5. **Defense-in-depth trigger DB**
 6. **Readonly cumulativo + accesso bloccato** (LETTURA area, route guard Amm. Software, BLOCCATO livello oggetto)
@@ -217,31 +217,102 @@ Eseguire come Admin (Scenario 1 prerequisito).
 
 ### 3.1 Trigger guard immutabilità
 
-- [ ] Articolo composito creato in 1.6 → riapri sub-drawer BoM
-- [ ] Verifica banner info "BoM immutabile" presente
-- [ ] Verifica menu kebab di riga: presenti "Gestisci Note", "Duplica come nuova versione", "Chiudi riga". **NESSUN "Elimina"** (rimosso intenzionalmente)
-- [ ] Click "Chiudi riga" sul componente C1 → dialog conferma `valido_al = oggi`
-- [ ] Conferma → toast "Riga BoM chiusa", riga ora ha `valido_al` valorizzato
+- [X] Articolo composito creato in 1.6 → riapri sub-drawer BoM
+- [X] Verifica banner info "BoM immutabile" presente
+- [X] Verifica menu kebab di riga: presenti "Gestisci Note", "Duplica come nuova versione", "Chiudi riga". **NESSUN "Elimina"** (rimosso intenzionalmente)
+- [X] Click "Chiudi riga" sul componente C1 → dialog conferma `valido_al = oggi`
+- [X] Conferma → toast "Riga BoM chiusa", riga ora ha `valido_al` valorizzato
 
 ### 3.2 Duplica come nuova versione
 
-- [ ] Click kebab sulla riga chiusa → "Duplica come nuova versione"
-- [ ] Form si apre con titolo "Nuova versione componente" + banner warn hint versionamento
-- [ ] Campi pre-compilati con valori della riga sorgente, `valido_dal=oggi`
-- [ ] Cambia `coeff_qta` (es. da 2 a 3)
-- [ ] Salva → toast "Componente aggiunto"
-- [ ] Lista BoM ora mostra 2 righe (vecchia chiusa + nuova attiva)
+Workflow a 2 step (riallineato 2026-05-10):
+
+- [X] Click kebab sulla riga **aperta** → "Duplica come nuova versione"
+- [X] Si apre il **dialog "Duplica versione componente"** con DatePicker `chiudi_al` (default oggi) + messaggi info/warn
+- [X] Conferma "Duplica versione" → toast **"Riga BoM chiusa"**, dialog si chiude, sorgente nella lista ora ha `valido_al` valorizzato
+- [X] Subito dopo si **apre il form "Nuova versione componente"** con banner warn `nuova_versione_hint` ("Sorgente '{codice}' chiusa al {data}…")
+- [D] Campi pre-compilati dai valori della riga sorgente, `valido_dal = chiudi_al + 1`
+- [S] Cambia `coeff_qta` (es. da 2 a 3) — tutti i campi sono editabili
+- [S] Salva → toast **"Componente aggiunto"**
+- [S] Lista BoM ora mostra 2 righe (vecchia chiusa + nuova attiva con `coeff_qta=3`)
+- [X] Variante: clicca "Annulla" sul form pre-compilato → la sorgente resta chiusa, nessuna nuova riga creata. Riapri il flow con "+" o ripeti "Duplica" per inserire la nuova versione manualmente
 
 ### 3.3 Defense-in-depth trigger DB
 
-- [ ] Apri DevTools console e tenta UPDATE diretto via API: `PATCH /catalogo/articoli/{id}/componenti/{componente_id}/` con `coeff_qta` modificato → errore 409 `E_BOM_MODIFICA_VIETATA` con hint "chiudi+inserisci"
-- [ ] Prova a chiudere una riga con `valido_al < valido_dal` via console DevTools (`updateArticoloComponente(..., { valido_al: '1999-01-01' })`) → backend risponde `E_BOM_VALIDO_AL_INVALIDO`, toast con messaggio parlante "valido_al deve essere >= valido_dal"
+Lo scenario verifica che i trigger DB siano l'ultima linea di difesa: anche
+se la UI viene bypassata (FE buggato, attaccante con curl), il backend
+rifiuta le modifiche di struttura BoM con codice errore parlante. Si
+esegue dalla Console DevTools del browser (utente gia' loggato).
 
-### 3.3bis Edit inline valido_al (chiusura rapida)
+#### Step 0 — trova `articolo_id` e `componente_id` di una riga aperta
 
-- [ ] Click sulla cella `valido_al` di una riga aperta → input inline
-- [ ] Imposta data oggi → save → riga chiusa (comportamento coerente con azione kebab "Chiudi riga")
-- [ ] Riapri: edit inline con `valido_al < valido_dal` → stesso errore `E_BOM_VALIDO_AL_INVALIDO`
+L'`articolo_id` lo prendi dal Network tab guardando l'URL della GET
+`/api/v1/catalogo/articoli/<UUID>/` quando apri il drawer dell'articolo
+"Pacchetto-test" (§1.6).
+
+```js
+const TOKEN = localStorage.getItem('access_token')
+const ARTICOLO_ID = 'PASTE_UUID_ARTICOLO_QUI'
+const r = await fetch(`/api/v1/catalogo/articoli/${ARTICOLO_ID}/componenti/`, {
+  headers: { Authorization: `Bearer ${TOKEN}` }
+})
+const body = await r.json()
+const aperta = body.data.results.find(x => !x.valido_al)
+console.log({ ARTICOLO_ID, COMPONENTE_ID: aperta?.id, valido_dal: aperta?.valido_dal })
+window.__test = { ARTICOLO_ID, COMPONENTE_ID: aperta?.id, TOKEN }
+```
+
+#### Test 3.3 #1 — modifica campo struttura via PATCH diretto
+
+- [X] Esegui in Console lo snippet sotto. **Verde 2026-05-10.**
+
+```js
+const { ARTICOLO_ID, COMPONENTE_ID, TOKEN } = window.__test
+const r = await fetch(`/api/v1/catalogo/articoli/${ARTICOLO_ID}/componenti/${COMPONENTE_ID}/`, {
+  method: 'PATCH',
+  headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ coeff_qta: 99 })
+})
+console.log(r.status, await r.json())
+```
+
+Atteso: HTTP **409**, body `error.code = "E_BOM_MODIFICA_VIETATA"`,
+`error.message` con hint "chiudi+inserisci" (dal seed `messaggi_errore`).
+
+> **Bug fix 2026-05-10**: la prima esecuzione di questo test ha rilevato
+> che la policy `E_BOM_MODIFICA_VIETATA` mancava in
+> [error_policies.py](../../../../backend/apps/core/services/error_policies.py),
+> per cui il middleware cadeva sul fallback HTTP 400 invece di 409. Policy
+> aggiunta esplicitamente con `http_status=409` + `user_message`. Vedi
+> tabella "Bug trovati" in fondo al documento.
+
+#### Test 3.3 #2 — chiusura con data invalida (`valido_al < valido_dal`)
+
+- [X] Esegui in Console lo snippet sotto. **Verde 2026-05-10.**
+
+```js
+const { ARTICOLO_ID, COMPONENTE_ID, TOKEN } = window.__test
+const r = await fetch(`/api/v1/catalogo/articoli/${ARTICOLO_ID}/componenti/${COMPONENTE_ID}/`, {
+  method: 'PATCH',
+  headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ valido_al: '1999-01-01' })
+})
+console.log(r.status, await r.json())
+```
+
+Atteso: HTTP **400**, body `error.code = "E_BOM_VALIDO_AL_INVALIDO"`,
+`error.message` parlante "valido_al non puo' essere precedente a valido_dal".
+
+#### Note di pipeline
+
+Perche' i codici `E_*` arrivano dal DB ma escono come 4xx puliti: i trigger
+BoM sollevano P0001 via `script.fn_log_and_raise_error`. Lato Django,
+anche se `fn_update_componente` non cattura esplicitamente la
+`DatabaseError` (cattura solo `IntegrityError`), il middleware globale
+[`ErrorTranslator._from_database_error`](../../../../backend/apps/core/services/error_translator.py)
+estrae il codice `E_*` dal `message_primary` della DatabaseError e applica
+la policy registrata in `error_policies.py` (HTTP status + user_message).
+Funziona quindi senza translator dedicato lato service.
 
 ### 3.4 Espansione compositi nella pipeline (S14.C-BE-1/BE-2)
 
@@ -383,11 +454,40 @@ Chiavi i18n nuove introdotte da Sprint C+D+E sono ~38; lista completa in
 
 ## Bug trovati durante esecuzione
 
-(da popolare durante i test)
+### #1 — §3.3 Test #1: HTTP status 400 invece di 409
 
-| #   | Scenario | Sintomo | Codice errore | Workaround | Status |
-| --- | -------- | ------- | ------------- | ---------- | ------ |
-| -   | -        | -       | -             | -          | -      |
+- **Sintomo**: PATCH `coeff_qta` su una riga BoM ritornava `HTTP 400`, mentre il test plan attendeva `HTTP 409`. Il body era già parlante (codice `E_BOM_MODIFICA_VIETATA`, message + hint dal seed `messaggi_errore`), solo lo status era off.
+- **Codice errore**: `E_BOM_MODIFICA_VIETATA`
+- **Causa**: la policy non era registrata in
+  [apps/core/services/error_policies.py](../../../../backend/apps/core/services/error_policies.py)
+  per cui il middleware cadeva sul fallback generico `http_status=400` per
+  qualunque codice `E_*` non noto.
+- **Workaround**: nessuno — il codice e il message arrivavano comunque corretti, ma il toast UI veniva classificato come "validazione" invece che come "conflitto".
+- **Status**: **Fixato 2026-05-10**. Aggiunta policy esplicita con `http_status=409` + `user_message`. Test BE 501/501 verdi. Richiesto restart gunicorn (no `--reload`).
+
+### #2 — §3.4 push commessa: `E_IDEMPOTENCY_KEY_REQUIRED`
+
+- **Sintomo**: click su "Push commessa" da `PreventiviIntegrazione.vue` → toast errore con `error.code = "E_IDEMPOTENCY_KEY_REQUIRED"`, body `detail = "Header Idempotency-Key mancante."`
+- **Codice errore**: `E_IDEMPOTENCY_KEY_REQUIRED`
+- **Causa**: in [preventiviApi.js](../../../../frontend/src/vendite/preventivi/api/preventiviApi.js)
+  le funzioni `pushCommessa` e `generaPratica` chiamano endpoint BE con
+  `require_idempotency_key=True` ma non inviavano l'header.
+- **Workaround**: nessuno.
+- **Status**: **Fixato 2026-05-10**. Entrambe le funzioni usano ora il
+  helper centralizzato `generateIdempotencyKey()` da
+  [core/utils/idempotency.js](../../../../frontend/src/core/utils/idempotency.js)
+  (con fallback per non-secure context). Build vite verde.
+
+### Pattern emerso
+
+I bug #1 della duplica versione BoM (sessione precedente) e #2 di push
+commessa sono entrambi del **tipo "FE non invia Idempotency-Key dove il BE
+la richiede"**. Lo helper `generateIdempotencyKey()` esiste, ma scoprire i
+chiamanti orfani avviene a runtime un endpoint alla volta. Opportunita'
+di refactor: introdurre un wrapper API tipo `apiPostIdempotent(url,
+payload)` che imposta l'header automaticamente, oppure esporre una
+property `idempotent: true` lato BE/OpenAPI da usare per il check.
+Per ora la regola sta nei commenti dei wrapper FE singoli.
 
 ---
 

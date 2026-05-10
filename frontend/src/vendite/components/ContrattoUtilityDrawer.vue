@@ -5,6 +5,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -83,9 +84,7 @@ async function handleSave() {
   }
 }
 
-function onClose() {
-  emit('update:visible', false)
-}
+const onClose = useDrawerClose(emit)
 </script>
 
 <template>

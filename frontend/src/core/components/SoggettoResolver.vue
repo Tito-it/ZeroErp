@@ -7,6 +7,7 @@ import { ref, watch, computed, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { listSoggetti, getConfigResolver, listSoggettoContatti } from '../../anagrafiche/api/anagrafiche'
+import { useDrawerClose } from '../composables/useDrawerClose'
 import SoggettoDrawer from '../../anagrafiche/components/SoggettoDrawer.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
@@ -152,10 +153,7 @@ async function onSoggettoCreatoDaDrawer(data) {
   emit('update:visible', false)
 }
 
-function onClose() {
-  emit('update:visible', false)
-  emit('annullato')
-}
+const onClose = useDrawerClose(emit, 'annullato')
 </script>
 
 <template>

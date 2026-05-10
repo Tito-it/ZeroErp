@@ -9,6 +9,7 @@
 // Reagisce automaticamente al cambio di emittenteId.
 import { reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -26,10 +27,19 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import EmittenteRoundingModeSelect from './EmittenteRoundingModeSelect.vue'
 
 const { t } = useI18n()
+const router = useRouter()
 const store = useEmittentiFiscaliStore()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
+
+// Scopo: Naviga alla pagina admin matrice utilities/ruoli da empty
+//        state. La matrice e' prerequisito di questo drawer: senza
+//        righe per ruolo EF lato `config.utilities_tipi_ruolo` qui non
+//        si vedono utility da configurare.
+function goToMatriceUtilitiesRuoli() {
+  router.push({ name: 'amm-software-matrice-utilities-ruoli' })
+}
 
 const props = defineProps({
   emittenteId: { type: Number, required: true },
@@ -351,7 +361,19 @@ watch(() => props.emittenteId, async (id) => {
       </Column>
 
       <template #empty>
-        <div class="app-empty">{{ t('amm_emittenti_fiscali.ut_empty_matrix') }}</div>
+        <div class="app-empty ut-empty">
+          <i class="pi pi-info-circle ut-empty-icon" />
+          <div class="ut-empty-msg">{{ t('amm_emittenti_fiscali.ut_empty_matrix') }}</div>
+          <div class="ut-empty-hint">{{ t('amm_emittenti_fiscali.ut_empty_matrix_hint') }}</div>
+          <Button
+            v-if="!isReadonly"
+            :label="t('amm_emittenti_fiscali.ut_empty_matrix_cta')"
+            icon="pi pi-external-link"
+            text
+            size="small"
+            @click="goToMatriceUtilitiesRuoli"
+          />
+        </div>
       </template>
     </DataTable>
   </div>
@@ -376,5 +398,25 @@ watch(() => props.emittenteId, async (id) => {
    deve restringersi per stare nel resto della cella. */
 .ut-matrix-table :deep(.ut-cell-input.p-inputnumber) {
   flex-wrap: nowrap;
+}
+.ut-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+.ut-empty-icon {
+  font-size: 2rem;
+  color: var(--app-text-muted);
+}
+.ut-empty-msg {
+  font-weight: 500;
+}
+.ut-empty-hint {
+  color: var(--app-text-muted);
+  font-size: 0.9rem;
+  max-width: 480px;
 }
 </style>

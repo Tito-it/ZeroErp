@@ -6,6 +6,7 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRepartiStore } from '../stores/reparti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useLookup } from '../../core/composables/useLookup'
 import { listAreeFunzionali, listAzioniProcesso } from '../api/amministrazione'
 import { LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
@@ -90,10 +91,7 @@ function onSave() {
   }, t('amm.profilo_save_confirm'))
 }
 
-function onClose() {
-  emit('update:visible', false)
-  emit('cancelled')
-}
+const onClose = useDrawerClose(emit, 'cancelled')
 </script>
 
 <template>

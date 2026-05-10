@@ -142,6 +142,31 @@ class CommesseSourceHandlersTests(TestCase):
         inputs = repo.batch_upsert_attivita.call_args[0][0]
         self.assertEqual(len(inputs), 1)
 
+    # Scopo: sorgente_uid valorizzato → propagato a fetch_pushable_rows del repo.
+    # Assicura che il push singolo UI-driven filtri davvero a livello DB.
+    def test_run_propaga_sorgente_uid_al_fetch_pushable_rows(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [_make_row()]
+        handler = HandlerPreventivi(repo)
+
+        handler.run(sorgente_uid=42)
+
+        repo.fetch_pushable_rows.assert_called_once()
+        kwargs = repo.fetch_pushable_rows.call_args.kwargs
+        self.assertEqual(kwargs["sorgente_uid"], 42)
+
+    # Scopo: sorgente_uid omesso → fetch_pushable_rows riceve None
+    # (regressione: comportamento batch invariato).
+    def test_run_senza_sorgente_uid_passa_none(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [_make_row()]
+        handler = HandlerPreventivi(repo)
+
+        handler.run()
+
+        kwargs = repo.fetch_pushable_rows.call_args.kwargs
+        self.assertIsNone(kwargs["sorgente_uid"])
+
     # Scopo: dry_run=True → nessuna chiamata batch_upsert, ma commessa creata e linked.
     def test_process_rows_dry_run_skippa_upsert(self):
         repo = _mock_repo()

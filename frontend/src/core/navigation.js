@@ -104,7 +104,15 @@ export const DOMAIN_MENUS = {
     { key: 'audit-log', icon: NAV_ICONS.HISTORY, to: '/amm-software/audit-log' },
     { key: 'email-accounts', icon: NAV_ICONS.AT, to: '/amm-software/email-accounts' },
     { key: 'email-templates', icon: NAV_ICONS.FILE_EDIT, to: '/amm-software/email-templates' },
-    { key: 'email-log', icon: NAV_ICONS.ENVELOPE, to: '/amm-software/email-log' }
+    { key: 'email-log', icon: NAV_ICONS.ENVELOPE, to: '/amm-software/email-log' },
+    {
+      key: 'personalizzazioni-liste-tecniche',
+      icon: NAV_ICONS.PERSONALIZZAZIONI_LISTE,
+      to: '/amm-software/personalizzazioni-liste-tecniche',
+      // Pagina tecnica SUPER_ADMIN-only: voce visibile solo per admin
+      // (BE: AdminAPIView bocca chi non e' SUPER_ADMIN). Coerente con il
+      // dominio amm-software gia' marcato adminOnly nei DOMAINS.
+    }
   ],
   'anagrafiche': [
     { key: 'soggetti', icon: NAV_ICONS.ANAGRAFICHE, to: '/anagrafiche/soggetti' },

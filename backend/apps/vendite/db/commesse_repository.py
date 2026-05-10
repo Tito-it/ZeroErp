@@ -300,6 +300,11 @@ class CommesseRepository:
 
     # Scopo: invoca la fn_list_<sorgente>_da_pushare parametrizzata e restituisce
     # le righe normalizzate come PushableRow. Unico punto di accesso per tutti gli handler.
+    # `sorgente_uid` (opzionale) restringe la query alla riga sorgente del documento
+    # specifico (es. preventivo_id per sorgente PREVENTIVO): None = lista globale del
+    # batch orchestrator, valorizzato = push singolo UI-driven. Allinea col 4o param
+    # `p_<sorgente>_id DEFAULT NULL` aggiunto alle fn DB lato `dev/db-tid` (vedi
+    # docs/it/dev/work-in-progress/brief-db-fn-list-preventivi-push-singolo.md).
     def fetch_pushable_rows(
         self,
         sorgente_codice: str,
@@ -307,6 +312,7 @@ class CommesseRepository:
         competenza_mese: date | None = None,
         billing_account_id: int | None = None,
         limit: int | None = None,
+        sorgente_uid: int | None = None,
     ) -> list[PushableRow]:
         """Chiama fn_list_<sorgente>_da_pushare e restituisce PushableRow normalizzati."""
         fn_name = _SORGENTE_FN_MAP.get(sorgente_codice)
@@ -319,8 +325,10 @@ class CommesseRepository:
 
         with connection.cursor() as cursor:
             cursor.execute(
-                f"SELECT * FROM {fn_name}(%s, %s, %s)",  # noqa: S608 — fn_name da whitelist
-                [competenza_mese, billing_account_id, limit],
+                # 4 param posizionali: il 4o e' il filtro per id sorgente
+                # (DEFAULT NULL lato DB se omesso, ma qui lo passiamo sempre).
+                f"SELECT * FROM {fn_name}(%s, %s, %s, %s)",  # noqa: S608 — fn_name da whitelist
+                [competenza_mese, billing_account_id, limit, sorgente_uid],
             )
             # Costruisce mappa colonna → indice per estrarre solo le 25 condivise.
             col_names = [desc[0] for desc in cursor.description]
