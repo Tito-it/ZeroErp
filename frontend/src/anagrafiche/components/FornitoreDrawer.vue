@@ -7,6 +7,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFornitoriStore } from '../stores/fornitori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
@@ -198,10 +199,7 @@ async function onSave() {
 
 const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
 
-function onClose() {
-  emit('update:visible', false)
-  emit('cancelled')
-}
+const onClose = useDrawerClose(emit, 'cancelled')
 </script>
 
 <template>

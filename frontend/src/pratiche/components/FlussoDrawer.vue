@@ -5,6 +5,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
 import { DRAWER_WIDTH, STATO_FLUSSO } from '../../core/constants'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
@@ -66,7 +67,7 @@ async function onCompleta() {
   if (result !== null) { emit('saved'); emit('update:visible', false) }
 }
 
-function onClose() { emit('update:visible', false) }
+const onClose = useDrawerClose(emit)
 </script>
 
 <template>

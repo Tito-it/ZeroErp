@@ -586,14 +586,14 @@ form dettaglio sotto — tutto nello stesso drawer, zero drawer annidati.
 │ ART-001  │ kWh │ 25.50  │ 1   │ CANONE │ 🗑  ← sel.    │
 │ ART-002  │ mc  │ 12.00  │ 1   │ CONSUMO│ 🗑             │
 ├─────────────────────────────────────────────────────────┤
-│ ═══════ Modifica riga ═══════                           │
+│ ═══════ Modifica riga ═══════                           │  ← visibile solo in form mode
 │ Articolo: [ART-001 ...] (disabled)                      │
 │ UoM: [kWh ▼]         Tipo: [CANONE ▼]                   │
 │ Prezzo: [25.50]       Qta: [1]                           │
 │ Ordine: [10]                                             │
 │                            [Annulla]  [Salva]            │
 ├─────────────────────────────────────────────────────────┤
-│                                          [Chiudi]        │
+│                                          [Chiudi]        │  ← visibile solo in lista, sparisce in form mode
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -610,6 +610,7 @@ form dettaglio sotto — tutto nello stesso drawer, zero drawer annidati.
 9. **Salva/Annulla**: sempre in basso dopo il form. Salva crea o aggiorna, chiude form, emette `changed`. Annulla chiude form e deseleziona riga
 10. **Elimina**: icona cestino sulla riga (`@click.stop` per non triggerare selezione). Se stavo editando quella riga, chiude il form
 11. **`formMode`**: ref con 3 stati: `null` (nessun form), `'create'`, `'edit'`. Governa visibilita' e comportamento
+12. **Pulsante Chiudi del drawer (obbligatorio)**: in fondo al drawer, in modalita' lista, deve essere presente un `<DrawerFooter close-only>` con la sola voce "Chiudi". Quando si entra in form mode (Nuovo/Modifica riga), **il footer scompare** (`v-if="!formMode"`): il form ha gia' Annulla/Salva, e il footer del drawer duplicherebbe l'azione e spingerebbe il form sotto il fold. Vale per qualunque drawer di sub-entita' con lista (BoM, righe contratto, indirizzi, contatti, conti, ecc.). La X in alto resta come escape rapido (semantica diversa: dismiss vs completion). Vedi sezione "Componente `DrawerFooter`"
 
 ### Riferimento implementativo
 
@@ -706,11 +707,40 @@ const drawer = useDrawerState()
 
 ### Componente `DrawerFooter`
 
-Footer standard Annulla/Salva — mai duplicare i pulsanti inline:
+Footer standard del drawer — mai duplicare i pulsanti inline. Due modalita':
+
+**1. Default (form di add/edit)**: Annulla + Salva.
 
 ```html
 <DrawerFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
 ```
+
+**2. `close-only` (drawer di lista / sola visualizzazione)**: solo "Chiudi". Obbligatorio in qualsiasi drawer che mostra una lista di sub-entita' (vedi pattern Master-Detail inline §"Regole del pattern" punto 12). Senza esso, l'operatore deve raggiungere la X in alto per uscire — UX storta su touch e violazione di Fitts's law.
+
+```html
+<DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
+```
+
+Regola di visibilita': **nascondere il close-only quando il drawer e' in form mode** (`v-if="!formMode"` o `v-if="!adding"`). Motivi:
+
+* il form ha gia' Annulla/Salva: il footer "Chiudi" duplicherebbe l'azione
+* senza `v-if`, il "Chiudi" spinge il form sotto il fold
+
+Pattern di riferimento: `ContrattoRigheDrawer.vue`, `ArticoloBomDrawer.vue`, `CatalogoNoteDrawer.vue`, `ArticoloUomDrawer.vue`, `UomConversioniDrawer.vue`, `ContiBancariDrawer.vue`, `ContattiSoggettoDrawer.vue`, `IndirizziSoggettoDrawer.vue`, `VersioneDrawer.vue`.
+
+Handler standard di chiusura: usare il composable `useDrawerClose(emit)` da
+`core/composables/useDrawerClose.js` (centralizza il pattern, evita 20+
+copie identiche). Per drawer che notificano il parent della chiusura con
+un evento secondario (es. `cancelled` in pratiche/anagrafiche, `annullato`
+in `SoggettoResolver`), passare il nome come secondo argomento:
+
+```js
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
+const onClose = useDrawerClose(emit)              // base
+const onClose = useDrawerClose(emit, 'cancelled') // con notifica al parent
+```
+
+Note: la X in alto del drawer PrimeVue resta come escape rapido (semantica diversa da "Chiudi"): X = dismiss/escape, Chiudi = completion deliberata. Non sono duplicati, vanno tenuti entrambi.
 
 ### Classi CSS form
 

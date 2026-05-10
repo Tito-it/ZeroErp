@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Drop catalogo.fn_duplica_componente_versione.
+#
+# La funzione e' ora orfana: il flow "Duplica versione" e' stato
+# riscritto lato FE in 2 step (PATCH valido_al + form add precompilato)
+# che usano gli endpoint esistenti senza passare dalla fn DB.
+# Il pattern verbatim copy era limitante (niente override dei parametri);
+# il nuovo workflow permette all'utente di personalizzare i valori prima
+# di salvare la nuova versione.
+#
+# Migration originale (solo riferimento, NON modificata):
+#   20260428-04-create-fn-duplica-componente-versione-mctit.yaml
+#
+# Verificato 2026-05-08: nessun altro trigger, funzione o migration
+# chiama questa fn al di fuori della sua creation migration e del
+# test pgTAP associato (rimosso separatamente via git rm).
+# I 4 codici errore associati (id 400-403) rimossi da messaggi_errore
+# tramite changeset 20260508-06.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260508-05-drop-fn-duplica-componente-versione-mctit.yaml
+
+  - changeSet:
+      id: 20260508-05-drop-fn-duplica-componente-versione
+      author: mctit
+      comment: "Drop catalogo.fn_duplica_componente_versione: flow riscritto FE in 2 step (2026-05-08)"
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS catalogo.fn_duplica_componente_versione(uuid, uuid, date);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Per rollback, riapplicare il body dalla migration originale:
+              -- 20260428-04-create-fn-duplica-componente-versione-mctit.yaml
+              SELECT 'Rollback manuale richiesto: vedere 20260428-04';

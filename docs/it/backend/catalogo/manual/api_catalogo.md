@@ -548,65 +548,14 @@ Allineato lato DDL: `articoli_componenti.partecipa_qta` ha `DEFAULT true`
 - Il delete struttura BoM e' bloccato dal trigger
   `block_modifica_struttura`: usare 4.3 chiudere la riga (`valido_al`).
 
-### 4.5 Duplica versione componente (Fase 3)
+### ~~4.5 Duplica versione componente~~ — rimosso 2026-05-08
 
-| | |
-|---|---|
-| **Metodo** | `POST` |
-| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/componenti/{comp_id}/duplica-versione/` |
-| **Header** | `Idempotency-Key: <UUID v4>` (obbligatorio) |
+L'endpoint `POST .../duplica-versione/` e la DB function
+`catalogo.fn_duplica_componente_versione` sono stati rimossi.
+Il flow e' ora realizzato in 2 step FE usando gli endpoint esistenti:
 
-Endpoint atomico DB per duplicare la versione corrente di un componente
-BoM. Pattern "chiudi sorgente + apri nuova" in singola TX, coperto da
-`pg_advisory_xact_lock` per articolo.
-
-#### Body JSON
-
-```json
-{
-  "chiudi_al": "2026-04-28"
-}
-```
-
-| Campo | Tipo | Obbligatorio | Significato |
-|---|---|---|---|
-| `chiudi_al` | date | No | Data di chiusura della sorgente. Default `CURRENT_DATE`. La nuova versione apre il giorno successivo. |
-
-#### Risposta duplica versione (200)
-
-Detail della **nuova** riga creata (per UI: focus + reload). I campi
-struttura sono ereditati dalla sorgente; `valido_dal = chiudi_al + 1`,
-`valido_al = NULL`, `attivo = true` forzato.
-
-```json
-{
-  "data": {
-    "id": "11111111-2222-3333-4444-555555555556",
-    "componente_id": "...",
-    "coeff_qta": 1.0,
-    "valido_dal": "2026-04-29",
-    "valido_al": null,
-    "attivo": true,
-    "puo_chiudersi": true,
-    "data_min_chiusura": "2026-04-29",
-    "data_default_chiusura": "2026-04-29"
-  }
-}
-```
-
-#### Codici errore (P0001 dal DB tradotti in ServiceError)
-
-| Codice | HTTP | Quando |
-|---|---|---|
-| `E_BOM_RIGA_NOT_FOUND` | 404 | Riga sorgente inesistente o parametri NULL |
-| `E_BOM_PRODOTTO_MISMATCH` | 400 | `row.prodotto_id != p_articolo_id` (FE stale) |
-| `E_BOM_SORGENTE_GIA_CHIUSA` | 409 | Sorgente con `valido_al NOT NULL` (versione storica) |
-| `E_BOM_VALIDO_AL_INVALIDO` | 400 | `chiudi_al < valido_dal` (propagato dal trigger esistente) |
-| `E_BOM_VERSIONE_OVERLAP` | 409 | Esiste gia' una versione futura sullo stesso (prodotto, componente) |
-| `E_CATALOGO_VALIDATION` | 400 | Payload con chiavi non whitelisted o P0001 non riconosciuto (fallback) |
-
-Riferimento DB:
-[catalogo.fn_duplica_componente_versione](/dbzero/catalogo/manual/fn_duplica_componente_versione).
+1. PATCH `valido_al` sulla sorgente (§4.3).
+2. POST nuova riga dal form precompilato (§4.1) — l'utente puo' personalizzare i valori prima di salvare.
 
 ---
 
@@ -798,8 +747,6 @@ sono ancora dirette e vanno considerate debito tecnico noto.
   - `catalogo.vw_articoli_note`
   - `catalogo.fn_get_uom_base(...)`
   - `catalogo.fn_get_uom_factor(...)`
-  - `catalogo.fn_duplica_componente_versione(...)` (Fase 3: endpoint
-    atomico chiusura+nuova versione)
   - `dbops.vw_non_editable_fields` (Fase 5: alias semantico filtrato)
 
 ## Note di migrazione

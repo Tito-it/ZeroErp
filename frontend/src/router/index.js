@@ -197,6 +197,12 @@ const router = createRouter({
           component: () => import('../amministrazione/views/EmailLogsListView.vue'),
           meta: { domain: 'amm-software', menuKey: 'email-log' }
         },
+        {
+          path: 'amm-software/personalizzazioni-liste-tecniche',
+          name: 'amm-software-personalizzazioni-liste-tecniche',
+          component: () => import('../ui/views/PersonalizzazioniListeTecnicheView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'personalizzazioni-liste-tecniche' }
+        },
 
         // --- Anagrafiche ---
         {

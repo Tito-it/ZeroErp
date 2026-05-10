@@ -583,7 +583,7 @@ function openAcceptDialog() {
 async function confirmAcceptDialog() {
   const f = acceptForm.value
   acceptDialogVisible.value = false
-  await eseguiCambioStato('ACCETTATO', {
+  await eseguiCambioStato(STATO_PREVENTIVO.ACCETTATO, {
     fatturazione_immediata: f.fatturazione_immediata,
     competenza_mese: f.competenza_mese ? toDateString(f.competenza_mese) : null,
   })
@@ -592,7 +592,7 @@ async function confirmAcceptDialog() {
 function onCambiaStato(action) {
   // Transizione → ACCETTATO: richiede dialog dedicato per scegliere modalita'
   // di fatturazione. Tutte le altre transizioni usano la conferma generica.
-  if (action.target_state === 'ACCETTATO') {
+  if (action.target_state === STATO_PREVENTIVO.ACCETTATO) {
     openAcceptDialog()
     return
   }
@@ -701,7 +701,7 @@ function onNuovaRevisione() {
         <!-- PDF stato-aware (Tranche M+):
                - DRAFT     -> Anteprima inline (no save)
                - EMESSO    -> Genera PDF (con dialog conferma rigenerazione)
-               - ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
+               - ACCETTATO/EVASO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
              Visibile appena c'e' detail. Coerente con la regola di dominio
              "EMESSO == almeno una versione PDF" (atomica BE). -->
         <PreventivoPdfButton
@@ -766,7 +766,8 @@ function onNuovaRevisione() {
       <template v-if="contentReady && hasDetail">
         <template v-if="canPushCommessa">
           <Divider />
-          <PreventiviIntegrazione :preventivo-id="effectivePreventivoId" />
+          <PreventiviIntegrazione :preventivo-id="effectivePreventivoId"
+            @push-completato="loadDetail()" />
         </template>
         <Message v-else-if="pushCommessaReasonKey" severity="info" :closable="false"
           class="mt-1">

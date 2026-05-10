@@ -3,16 +3,20 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Repository admin per CRUD diretti sulle tabelle dello
-#        schema `ui` (Blocco F Fase 1):
-#          - ui.lista_definizione   -> read-only (lista per Select header)
+#        schema `ui`:
+#        Blocco F Fase 1:
 #          - ui.lista_preset        -> list / create / update / delete
 #          - ui.lista_preset_colonna -> replace atomico composizione preset
-#          - ui.lista_colonna       -> read-only (helper composizione preset)
 #          - ui.lista_colonna_permesso -> list / upsert / delete
+#        Blocco F Fase 2 (DEF-5b):
+#          - ui.lista_definizione   -> list / get / create / update / delete
+#          - ui.lista_colonna       -> list (esistente) / create / update /
+#                                      delete (T2 BE)
 #
 #        Logica di dominio nei trigger DB (CHECK ambito_refs, partial
-#        UNIQUE is_default). Il repository si limita a marshalling
-#        cursor + propagazione IntegrityError al service.
+#        UNIQUE is_default, valida_vista_sql, valida_campo_sorgente). Il
+#        repository si limita a marshalling cursor + propagazione
+#        IntegrityError al service.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -71,11 +75,30 @@ class UiAdminRepository:
     """Accesso DB per CRUD admin tabelle `ui.*` (Blocco F Fase 1)."""
 
     # =================================================================
-    # ui.lista_definizione - read-only
+    # ui.lista_definizione - CRUD (Fase 2 DEF-5b)
     # =================================================================
 
+    # SELECT esteso usato dalla pagina tecnica Fase 2: include vista_sql,
+    # note, audit. La proiezione "Fase 1" (id/codice/descrizione/schema_dati/
+    # attivo) resta esposta da `list_definizioni` come header del select.
+    _DEFINIZIONE_SELECT_FULL = """
+        SELECT id,
+               codice,
+               descrizione,
+               schema_dati,
+               vista_sql,
+               note,
+               attivo,
+               data_insert,
+               user_insert,
+               data_update,
+               user_update
+          FROM ui.lista_definizione
+    """
+
     # Scopo: Lista delle definizioni di lista attive. Usato dall'header
-    #        "Lista corrente" della pagina admin per popolare il Select.
+    #        "Lista corrente" della pagina admin per popolare il Select
+    #        (Fase 1, proiezione minima).
     def list_definizioni(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -85,6 +108,18 @@ class UiAdminRepository:
                  WHERE attivo = TRUE
                  ORDER BY descrizione, id
                 """
+            )
+            cols = [c[0] for c in cursor.description]
+            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # Scopo: Lista TUTTE le definizioni (incluse disattivate) con campi
+    #        completi per la pagina tecnica Fase 2. Ordinate per
+    #        attive-prima poi codice per UX coerente.
+    def list_definizioni_admin(self) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                self._DEFINIZIONE_SELECT_FULL
+                + " ORDER BY attivo DESC, codice, id"
             )
             cols = [c[0] for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]
@@ -109,9 +144,142 @@ class UiAdminRepository:
             cols = [c[0] for c in cursor.description]
             return dict(zip(cols, row))
 
+    # Scopo: Restituisce la definizione per id (anche disattivate, campi
+    #        completi inclusi vista_sql/note/audit). Usato dal service
+    #        admin Fase 2 per get post-mutazione e validazione id update/
+    #        delete: la pagina tecnica deve poter editare anche record
+    #        soft-disabled.
+    def get_definizione_admin(
+        self, lista_id: int
+    ) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                self._DEFINIZIONE_SELECT_FULL + " WHERE id = %s",
+                [lista_id],
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cols = [c[0] for c in cursor.description]
+            return dict(zip(cols, row))
+
+    # Scopo: INSERT lista_definizione. Il trigger
+    #        trgfn_ui_lista_definizione_a10_valida_vista_sql verifica
+    #        l'esistenza della view in pg_catalog ma skippa se attivo=
+    #        FALSE o vista_sql=NULL: il workflow draft "registra prima,
+    #        attiva dopo aver creato la view" e' supportato nativamente.
+    def create_definizione(
+        self,
+        data: dict[str, Any],
+        user_insert: str,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO ui.lista_definizione (
+                    codice,
+                    descrizione,
+                    schema_dati,
+                    vista_sql,
+                    note,
+                    attivo,
+                    user_insert
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                [
+                    data["codice"],
+                    data["descrizione"],
+                    data["schema_dati"],
+                    data.get("vista_sql"),
+                    data.get("note"),
+                    data.get("attivo", True),
+                    user_insert,
+                ],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return int(row[0])
+
+    # Scopo: UPDATE lista_definizione sui soli campi presenti in `data`.
+    #        Il trigger guard verifica vista_sql come per l'INSERT.
+    def update_definizione(
+        self,
+        lista_id: int,
+        data: dict[str, Any],
+        user_update: str,
+    ) -> bool:
+        if not data:
+            return False
+        sets: list[str] = []
+        params: list[Any] = []
+        for field in ("codice", "descrizione", "schema_dati",
+                      "vista_sql", "note", "attivo"):
+            if field in data:
+                sets.append(f"{field} = %s")
+                params.append(data[field])
+        sets.append("data_update = now()")
+        sets.append("user_update = %s")
+        params.append(user_update)
+        params.append(lista_id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE ui.lista_definizione "
+                f"SET {', '.join(sets)} WHERE id = %s",
+                params,
+            )
+            return cursor.rowcount > 0
+
+    # Scopo: DELETE lista_definizione. Le FK su lista_colonna,
+    #        lista_preset e lista_preferenza_utente sono RESTRICT (NO
+    #        ACTION default): se la definizione e' in uso il DB solleva
+    #        IntegrityError, il service la traduce in E_UI_DEFINIZIONE_
+    #        IN_USO. Soft-disable disponibile via update attivo=false.
+    def delete_definizione(self, lista_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM ui.lista_definizione WHERE id = %s",
+                [lista_id],
+            )
+            return cursor.rowcount > 0
+
     # =================================================================
-    # ui.lista_colonna - read-only (composizione preset)
+    # ui.lista_colonna - read (Fase 1) + CRUD (Fase 2 DEF-5b)
     # =================================================================
+
+    # SELECT esteso usato dalla pagina tecnica Fase 2: include tutti i
+    # campi della tabella (etichetta_i18n_key, formato, allineamento,
+    # gruppo, flag comportamento, audit). La proiezione "Fase 1" per la
+    # composizione preset resta in `list_colonne_by_lista` (helper FE).
+    _COLONNA_SELECT_FULL = """
+        SELECT id,
+               lista_id,
+               codice,
+               etichetta,
+               etichetta_estesa,
+               etichetta_i18n_key,
+               campo_sorgente,
+               tipo_colonna::text       AS tipo_colonna,
+               tipo_dato::text          AS tipo_dato,
+               formato,
+               larghezza_default,
+               ordine_default,
+               allineamento::text       AS allineamento,
+               gruppo,
+               gruppo_ordine,
+               filtrabile,
+               ordinabile,
+               esportabile,
+               ricercabile_full,
+               sensibile,
+               attivo,
+               data_insert,
+               user_insert,
+               data_update,
+               user_update
+          FROM ui.lista_colonna
+    """
 
     # Scopo: Lista colonne attive di una lista, ordinate per gruppo +
     #        ordine_default. Usato dal sub-drawer composizione preset
@@ -146,6 +314,213 @@ class UiAdminRepository:
             )
             cols = [c[0] for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # Scopo: Lista TUTTE le colonne di una lista (incluse disattivate)
+    #        con campi completi per la pagina tecnica Fase 2. Stesso
+    #        ordering della Fase 1 ma include disattive in coda.
+    def list_colonne_by_lista_admin(
+        self, lista_id: int
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                self._COLONNA_SELECT_FULL
+                + " WHERE lista_id = %s "
+                  " ORDER BY attivo DESC, "
+                  "          COALESCE(gruppo_ordine, 9999), "
+                  "          gruppo NULLS FIRST, "
+                  "          ordine_default, id",
+                [lista_id],
+            )
+            cols = [c[0] for c in cursor.description]
+            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # Scopo: Restituisce la colonna per id (campi completi, anche
+    #        disattivate). Usato dal service admin Fase 2 per get
+    #        post-mutazione e validazione id update/delete.
+    def get_colonna_admin(
+        self, colonna_id: int
+    ) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                self._COLONNA_SELECT_FULL + " WHERE id = %s",
+                [colonna_id],
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cols = [c[0] for c in cursor.description]
+            return dict(zip(cols, row))
+
+    # Scopo: INSERT lista_colonna. Il trigger valida_campo_sorgente
+    #        verifica esistenza dell'attributo nella vista_sql della
+    #        lista padre, ma skippa per tipo_colonna='azione' o
+    #        campo_sorgente NULL. Defaults applicativi su filtrabile/
+    #        ordinabile/esportabile vengono passati esplicitamente per
+    #        chiarezza (anche se la tabella ha default DDL).
+    def create_colonna(
+        self,
+        data: dict[str, Any],
+        user_insert: str,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO ui.lista_colonna (
+                    lista_id,
+                    codice,
+                    etichetta,
+                    etichetta_estesa,
+                    etichetta_i18n_key,
+                    campo_sorgente,
+                    tipo_colonna,
+                    tipo_dato,
+                    formato,
+                    larghezza_default,
+                    ordine_default,
+                    allineamento,
+                    gruppo,
+                    gruppo_ordine,
+                    filtrabile,
+                    ordinabile,
+                    esportabile,
+                    ricercabile_full,
+                    sensibile,
+                    attivo,
+                    user_insert
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s, %s,
+                    %s::ui.tipo_colonna,
+                    %s::ui.tipo_dato,
+                    %s, %s, %s,
+                    %s::ui.allineamento_colonna,
+                    %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s
+                )
+                RETURNING id
+                """,
+                [
+                    data["lista_id"],
+                    data["codice"],
+                    data["etichetta"],
+                    data.get("etichetta_estesa"),
+                    data.get("etichetta_i18n_key"),
+                    data.get("campo_sorgente"),
+                    data["tipo_colonna"],
+                    data["tipo_dato"],
+                    data.get("formato"),
+                    data.get("larghezza_default"),
+                    data["ordine_default"],
+                    data.get("allineamento", "left"),
+                    data.get("gruppo"),
+                    data.get("gruppo_ordine"),
+                    data.get("filtrabile", True),
+                    data.get("ordinabile", True),
+                    data.get("esportabile", True),
+                    data.get("ricercabile_full", False),
+                    data.get("sensibile", False),
+                    data.get("attivo", True),
+                    user_insert,
+                ],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return int(row[0])
+
+    # Scopo: UPDATE lista_colonna sui soli campi presenti in `data`.
+    #        Il trigger guard ricontrolla campo_sorgente come per
+    #        l'INSERT. lista_id NON e' aggiornabile (nel service e'
+    #        immutabile), per spostare una colonna serve cancellarla e
+    #        ricrearla.
+    def update_colonna(
+        self,
+        colonna_id: int,
+        data: dict[str, Any],
+        user_update: str,
+    ) -> bool:
+        if not data:
+            return False
+        # Mappa campo -> snippet SET con cast espliciti per gli enum.
+        cast_map = {
+            "tipo_colonna": "tipo_colonna = %s::ui.tipo_colonna",
+            "tipo_dato": "tipo_dato = %s::ui.tipo_dato",
+            "allineamento": "allineamento = %s::ui.allineamento_colonna",
+        }
+        plain_fields = (
+            "codice", "etichetta", "etichetta_estesa", "etichetta_i18n_key",
+            "campo_sorgente", "formato", "larghezza_default",
+            "ordine_default", "gruppo", "gruppo_ordine", "filtrabile",
+            "ordinabile", "esportabile", "ricercabile_full", "sensibile",
+            "attivo",
+        )
+        sets: list[str] = []
+        params: list[Any] = []
+        for field in plain_fields:
+            if field in data:
+                sets.append(f"{field} = %s")
+                params.append(data[field])
+        for field, snippet in cast_map.items():
+            if field in data:
+                sets.append(snippet)
+                params.append(data[field])
+        sets.append("data_update = now()")
+        sets.append("user_update = %s")
+        params.append(user_update)
+        params.append(colonna_id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE ui.lista_colonna "
+                f"SET {', '.join(sets)} WHERE id = %s",
+                params,
+            )
+            return cursor.rowcount > 0
+
+    # Scopo: DELETE lista_colonna. Le FK su lista_preset_colonna e
+    #        lista_colonna_permesso hanno ON DELETE CASCADE: vengono
+    #        ripulite automaticamente. Le preferenze utente referenziano
+    #        per CODICE colonna nel JSONB `configurazione->colonne` e
+    #        non hanno FK: il service esegue prima un soft-block via
+    #        `count_preferenze_referenced_by_colonna` per evitare
+    #        configurazioni stale silenziose.
+    def delete_colonna(self, colonna_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM ui.lista_colonna WHERE id = %s",
+                [colonna_id],
+            )
+            return cursor.rowcount > 0
+
+    # Scopo: Conta le preferenze utente che referenziano la colonna nel
+    #        JSONB `configurazione->colonne`. Il match e' per `codice`
+    #        (le preferenze non memorizzano l'id colonna, ma il codice
+    #        stabile cross-environment) e per `lista_id` (la struttura
+    #        e' per lista). Usato dal soft-block DELETE.
+    def count_preferenze_referenced_by_colonna(
+        self,
+        lista_id: int,
+        codice: str,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                  FROM ui.lista_preferenza_utente lpu
+                 WHERE lpu.lista_id = %s
+                   AND EXISTS (
+                       SELECT 1
+                         FROM jsonb_array_elements(
+                              COALESCE(lpu.configurazione->'colonne',
+                                       '[]'::jsonb)
+                         ) AS elem
+                        WHERE elem->>'codice' = %s
+                   )
+                """,
+                [lista_id, codice],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return int(row[0])
 
     # =================================================================
     # ui.lista_preset - CRUD

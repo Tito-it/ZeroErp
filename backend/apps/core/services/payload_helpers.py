@@ -264,6 +264,50 @@ class PayloadValidator:
             )
         return value
 
+    # Scopo: Estrae stringa opzionale dal payload con normalizzazione
+    #        empty -> None (pattern null_vs_empty: backend tratta stringa
+    #        vuota e null come equivalenti, ma normalizza sempre a NULL).
+    #        Ritorna None se chiave assente, valore None esplicito, o
+    #        stringa vuota dopo strip. Cap lunghezza opzionale via
+    #        `max_len`.
+    def optional_string(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        max_len: int | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> str | None:
+        if key not in payload:
+            return None
+        raw = payload[key]
+        if raw is None:
+            return None
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        ErrorManager.require(
+            isinstance(raw, str),
+            code=self._code,
+            message=f"Campo '{key}' deve essere una stringa o null.",
+            detail=f"Tipo ricevuto: {type(raw).__name__}",
+            context={key: raw, "field": key},
+            **em,
+        )
+        assert isinstance(raw, str)
+        value = raw.strip()
+        if value == "":
+            return None
+        if max_len is not None:
+            ErrorManager.require(
+                len(value) <= max_len,
+                code=self._code,
+                message=f"Campo '{key}' troppo lungo.",
+                detail=f"Lunghezza massima: {max_len} caratteri.",
+                context={key: value, "len": len(value), "field": key},
+                **em,
+            )
+        return value
+
     # =================================================================
     # Estrazione interi
     # =================================================================

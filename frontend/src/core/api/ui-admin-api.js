@@ -33,7 +33,8 @@ export function listAdminPresetByLista(listaId) {
 }
 
 // Scopo: Crea preset (testata). Idempotency-Key obbligatoria, generata
-//        dal caller via crypto.randomUUID().
+//        dal caller via core/utils/idempotency.generateIdempotencyKey()
+//        (wrapper su crypto.randomUUID con fallback per non-secure context).
 export function createAdminPreset(listaId, payload, idempotencyKey) {
   return api.post(
     `${BASE}/liste/${encodeURIComponent(listaId)}/preset/`,
@@ -85,4 +86,87 @@ export function upsertAdminPermesso(payload, idempotencyKey) {
 // Scopo: Elimina permesso per id.
 export function deleteAdminPermesso(permessoId) {
   return api.delete(`${BASE}/permessi/${encodeURIComponent(permessoId)}/`)
+}
+
+// ── Fase 2 — DEF-5b CRUD definizioni (SUPER_ADMIN only) ───────────────
+//
+// Pagina tecnica `/amm-software/personalizzazioni-liste-tecniche`. La
+// permission e' gestita lato BE (`AdminAPIView` -> `IsAdminZeroERP`):
+// utenti senza SUPER_ADMIN ricevono 403 anche se chiamano direttamente.
+
+// Scopo: Lista completa definizioni (incluse disattivate) per la pagina
+//        tecnica. Proiezione full (vista_sql, note, audit).
+export function listAdminDefinizioniAdmin() {
+  return api.get(`${BASE}/definizioni/`)
+}
+
+// Scopo: Crea una nuova definizione lista. Idempotency-Key obbligatoria
+//        (UNIQUE codice mappato lato service).
+export function createAdminDefinizione(payload, idempotencyKey) {
+  return api.post(
+    `${BASE}/definizioni/`,
+    payload,
+    { headers: { 'Idempotency-Key': idempotencyKey } },
+  )
+}
+
+// Scopo: Dettaglio definizione (campi completi, anche disattivate).
+export function getAdminDefinizione(listaId) {
+  return api.get(`${BASE}/definizioni/${encodeURIComponent(listaId)}/`)
+}
+
+// Scopo: Aggiorna campi mutabili. Tutti i campi mutabili eccetto `id`
+//        (lo schema non ha colonne immutabili by design).
+export function updateAdminDefinizione(listaId, payload) {
+  return api.patch(
+    `${BASE}/definizioni/${encodeURIComponent(listaId)}/`,
+    payload,
+  )
+}
+
+// Scopo: Cancella definizione. FK RESTRICT su lista_colonna,
+//        lista_preset e lista_preferenza_utente: in uso -> 409.
+export function deleteAdminDefinizione(listaId) {
+  return api.delete(`${BASE}/definizioni/${encodeURIComponent(listaId)}/`)
+}
+
+// ── Fase 2 — DEF-5b CRUD colonne (SUPER_ADMIN only) ───────────────────
+
+// Scopo: Lista completa colonne admin di una lista (incluse disattive).
+//        Endpoint distinto da `listAdminListaColonne` (Fase 1, proiezione
+//        minima per composizione preset) perche' qui vogliamo i 17 campi
+//        editabili dalla pagina tecnica.
+export function listAdminColonneAdmin(listaId) {
+  return api.get(
+    `${BASE}/definizioni/${encodeURIComponent(listaId)}/colonne/`,
+  )
+}
+
+// Scopo: Crea colonna nella lista indicata. Idempotency-Key obbligatoria.
+export function createAdminColonna(listaId, payload, idempotencyKey) {
+  return api.post(
+    `${BASE}/definizioni/${encodeURIComponent(listaId)}/colonne/`,
+    payload,
+    { headers: { 'Idempotency-Key': idempotencyKey } },
+  )
+}
+
+// Scopo: Dettaglio colonna per id (campi completi).
+export function getAdminColonna(colonnaId) {
+  return api.get(`${BASE}/colonne/${encodeURIComponent(colonnaId)}/`)
+}
+
+// Scopo: Aggiorna campi mutabili. lista_id e' immutabile: per spostare
+//        una colonna fra liste, cancellarla e ricrearla.
+export function updateAdminColonna(colonnaId, payload) {
+  return api.patch(
+    `${BASE}/colonne/${encodeURIComponent(colonnaId)}/`,
+    payload,
+  )
+}
+
+// Scopo: Cancella colonna. Soft-block applicativo se referenziata da
+//        preferenze utente; FK CASCADE su preset_colonna e permessi.
+export function deleteAdminColonna(colonnaId) {
+  return api.delete(`${BASE}/colonne/${encodeURIComponent(colonnaId)}/`)
 }

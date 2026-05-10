@@ -38,15 +38,7 @@ Indice test eseguiti:
 28) CatalogoServiceTests.test_fn_create_componente_esposto_in_fattura_ok
 29) CatalogoServiceTests.test_fn_list_uom_rounding_modes_ok
 30) CatalogoServiceTests.test_fn_list_uom_rounding_modes_coverage
-31) CatalogoServiceTests.test_fn_duplica_componente_versione_ok
-32) CatalogoServiceTests.test_fn_duplica_componente_versione_chiudi_al_passed
-33) CatalogoServiceTests.test_fn_duplica_componente_versione_chiave_non_consentita
-34) CatalogoServiceTests.test_fn_duplica_componente_versione_db_overlap
-35) CatalogoServiceTests.test_fn_duplica_componente_versione_db_sorgente_chiusa
-36) CatalogoServiceTests.test_fn_duplica_componente_versione_db_riga_not_found
-37) CatalogoServiceTests.test_fn_duplica_componente_versione_db_prodotto_mismatch
-38) CatalogoServiceTests.test_fn_duplica_componente_versione_db_unknown_falls_back_validation
-39) CatalogoServiceTests.test_fn_create_componente_valido_dal_fallback_today
+31) CatalogoServiceTests.test_fn_create_componente_valido_dal_fallback_today
 40) CatalogoServiceTests.test_fn_create_uom_operativa_valido_dal_fallback_today
 41) CatalogoServiceTests.test_fn_create_conversione_valido_dal_fallback_today
 42) CatalogoServiceTests.test_fn_get_articolo_includes_non_editable_fields
@@ -66,7 +58,7 @@ Indice test eseguiti:
 from unittest import TestCase
 from unittest.mock import patch
 
-from django.db import DatabaseError, IntegrityError
+from django.db import IntegrityError
 
 from apps.core.services.service_errors import ServiceError
 
@@ -660,111 +652,6 @@ class CatalogoServiceTests(TestCase):
 
         descritti = {codice for codice, _desc, _ord in svc._ROUNDING_MODE_DESCRIZIONI}
         self.assertEqual(descritti, svc._ROUNDING_MODE_VALIDI)
-
-    # =================================================================
-    # Fase 3 — duplica versione componente BoM
-    # =================================================================
-
-    _ARTICOLO = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
-    _COMP_SRC = "019bbee2-5f6a-704f-bbd0-34ed84db252e"
-    _COMP_NEW = "019bbee2-5f6a-704f-bbd0-34ed84db252f"
-
-    # Scopo: payload vuoto -> service chiama repo con chiudi_al=None (default DB).
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
-    def test_fn_duplica_componente_versione_ok(self, mock_repo_cls, mock_bom_repo_cls):
-        from apps.catalogo.services.catalogo_service import fn_duplica_componente_versione
-
-        mock_repo_cls.return_value.get_articolo.return_value = {"id": self._ARTICOLO}
-        bom_repo = mock_bom_repo_cls.return_value
-        bom_repo.duplica_versione.return_value = self._COMP_NEW
-        bom_repo.get_componente.return_value = {
-            "id": self._COMP_NEW,
-            "valido_dal": "2026-04-29",
-            "valido_al": None,
-        }
-
-        result = fn_duplica_componente_versione(self._ARTICOLO, self._COMP_SRC, {})
-
-        self.assertEqual(result["id"], self._COMP_NEW)
-        bom_repo.duplica_versione.assert_called_once_with(self._ARTICOLO, self._COMP_SRC, None)
-
-    # Scopo: payload con chiudi_al -> service propaga la data al repo.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
-    def test_fn_duplica_componente_versione_chiudi_al_passed(self, mock_repo_cls, mock_bom_repo_cls):
-        from datetime import date
-
-        from apps.catalogo.services.catalogo_service import fn_duplica_componente_versione
-
-        mock_repo_cls.return_value.get_articolo.return_value = {"id": self._ARTICOLO}
-        bom_repo = mock_bom_repo_cls.return_value
-        bom_repo.duplica_versione.return_value = self._COMP_NEW
-        bom_repo.get_componente.return_value = {"id": self._COMP_NEW}
-
-        fn_duplica_componente_versione(self._ARTICOLO, self._COMP_SRC, {"chiudi_al": "2026-05-15"})
-
-        args = bom_repo.duplica_versione.call_args.args
-        self.assertEqual(args[0], self._ARTICOLO)
-        self.assertEqual(args[1], self._COMP_SRC)
-        self.assertEqual(args[2], date(2026, 5, 15))
-
-    # Scopo: chiave non whitelisted -> ServiceError validazione (sicurezza payload).
-    def test_fn_duplica_componente_versione_chiave_non_consentita(self):
-        from apps.catalogo.services.catalogo_service import fn_duplica_componente_versione
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_duplica_componente_versione(self._ARTICOLO, self._COMP_SRC, {"componente_id": "x"})
-        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
-
-    # Scopo: 5 P0001 noti -> ServiceError con codice originale preservato.
-    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
-    def _assert_db_p0001_translated(
-        self, mock_repo_cls, mock_bom_repo_cls, *, db_message: str, expected_code: str
-    ):
-        from apps.catalogo.services.catalogo_service import fn_duplica_componente_versione
-
-        mock_repo_cls.return_value.get_articolo.return_value = {"id": self._ARTICOLO}
-        mock_bom_repo_cls.return_value.duplica_versione.side_effect = DatabaseError(db_message)
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_duplica_componente_versione(self._ARTICOLO, self._COMP_SRC, {})
-        self.assertEqual(ctx.exception.code, expected_code)
-
-    def test_fn_duplica_componente_versione_db_overlap(self):
-        self._assert_db_p0001_translated(
-            db_message=(
-                "La nuova versione del componente con valido_dal=2026-05-29 "
-                "si sovrappone a una versione esistente per lo stesso prodotto/componente."
-            ),
-            expected_code="E_BOM_VERSIONE_OVERLAP",
-        )
-
-    def test_fn_duplica_componente_versione_db_sorgente_chiusa(self):
-        self._assert_db_p0001_translated(
-            db_message="La riga sorgente della BoM e' gia' chiusa (valido_al=2026-02-15): impossibile duplicarla.",
-            expected_code="E_BOM_SORGENTE_GIA_CHIUSA",
-        )
-
-    def test_fn_duplica_componente_versione_db_riga_not_found(self):
-        self._assert_db_p0001_translated(
-            db_message="Riga BoM non trovata: id=00000000-0000-0000-0000-000000000000.",
-            expected_code="E_BOM_RIGA_NOT_FOUND",
-        )
-
-    def test_fn_duplica_componente_versione_db_prodotto_mismatch(self):
-        self._assert_db_p0001_translated(
-            db_message=f"La riga BoM appartiene al prodotto {self._ARTICOLO}, atteso aaa-bbb.",
-            expected_code="E_BOM_PRODOTTO_MISMATCH",
-        )
-
-    # Scopo: P0001 sconosciuto -> fallback E_CATALOGO_VALIDATION (no leak DB raw).
-    def test_fn_duplica_componente_versione_db_unknown_falls_back_validation(self):
-        self._assert_db_p0001_translated(
-            db_message="Errore DB sconosciuto non riconducibile a marker.",
-            expected_code="E_CATALOGO_VALIDATION",
-        )
 
     # =================================================================
     # Fase 4 — fallback valido_dal=today lato service (DB declined)

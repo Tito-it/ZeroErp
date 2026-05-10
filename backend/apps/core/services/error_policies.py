@@ -353,41 +353,18 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Nota non trovata.",
         ),
-        # ── Catalogo BoM — duplica versione (Fase 3 refactor catalogo) ──
-        # Codici sollevati da catalogo.fn_duplica_componente_versione() via
-        # script.fn_log_and_raise_error (SQLSTATE P0001). Contratto:
-        # docs/it/dbzero/catalogo/manual/fn_duplica_componente_versione.md.
-        "E_BOM_VERSIONE_OVERLAP": ErrorPolicy(
-            code="E_BOM_VERSIONE_OVERLAP",
+        # ── Catalogo BoM — guard immutabilita' struttura ──
+        # E_BOM_MODIFICA_VIETATA e E_BOM_VALIDO_AL_INVALIDO sono sollevati
+        # dal trigger catalogo.trgfn_articoli_componenti_block_modifica_struttura
+        # come defense-in-depth oltre lo schema (pattern chiudi+inserisci).
+        "E_BOM_MODIFICA_VIETATA": ErrorPolicy(
+            code="E_BOM_MODIFICA_VIETATA",
             http_status=409,
             ui_action="show_error_banner",
             user_message=(
-                "Esiste gia' una versione futura per lo stesso prodotto/componente: "
-                "scegliere una data di chiusura precedente o rivedere il piano versioni."
-            ),
-        ),
-        "E_BOM_SORGENTE_GIA_CHIUSA": ErrorPolicy(
-            code="E_BOM_SORGENTE_GIA_CHIUSA",
-            http_status=409,
-            ui_action="show_error_banner",
-            user_message=(
-                "La riga sorgente e' gia' chiusa: selezionare la versione corrente "
-                "(senza data di fine) come sorgente per la duplicazione."
-            ),
-        ),
-        "E_BOM_RIGA_NOT_FOUND": ErrorPolicy(
-            code="E_BOM_RIGA_NOT_FOUND",
-            http_status=404,
-            ui_action="show_empty_state",
-            user_message="Riga BoM non trovata: aggiornare la lista e riprovare.",
-        ),
-        "E_BOM_PRODOTTO_MISMATCH": ErrorPolicy(
-            code="E_BOM_PRODOTTO_MISMATCH",
-            http_status=400,
-            ui_action="show_error_banner",
-            user_message=(
-                "La riga selezionata appartiene a un altro articolo: "
-                "aggiornare la lista componenti corrente e riprovare."
+                "Struttura BoM immutabile: i campi di struttura non sono "
+                "modificabili. Per correggere, chiudere la riga e inserirne "
+                "una nuova versione."
             ),
         ),
         "E_BOM_VALIDO_AL_INVALIDO": ErrorPolicy(
@@ -1573,6 +1550,84 @@ class ErrorPolicyRegistry:
             http_status=404,
             ui_action="show_empty_state",
             user_message="Permesso colonna non trovato.",
+        ),
+        # Blocco F Fase 2 (DEF-5b): CRUD `ui.lista_definizione` e
+        # `ui.lista_colonna`. SUPER_ADMIN-only. La cancellazione di una
+        # definizione e' bloccata dalle FK RESTRICT (preferenze utente,
+        # colonne, preset): il messaggio E_UI_DEFINIZIONE_IN_USO e'
+        # mappato dal service via map_integrity_error.
+        "E_UI_DEFINIZIONE_VALIDAZIONE": ErrorPolicy(
+            code="E_UI_DEFINIZIONE_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Definizione lista non valida.",
+        ),
+        "E_UI_DEFINIZIONE_NON_TROVATA": ErrorPolicy(
+            code="E_UI_DEFINIZIONE_NON_TROVATA",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Definizione lista non trovata.",
+        ),
+        "E_UI_DEFINIZIONE_IN_USO": ErrorPolicy(
+            code="E_UI_DEFINIZIONE_IN_USO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La definizione lista e' in uso (preferenze utente, "
+                "colonne o preset). Disattivala con attivo=false invece "
+                "di eliminarla."
+            ),
+        ),
+        # CRUD ui.lista_colonna (DEF-5b T2). E_UI_COLONNA_IN_USO viene
+        # sollevato sia da FK RESTRICT (lista_preset_colonna,
+        # lista_colonna_permesso) sia dal soft-block applicativo che
+        # conta le preferenze utente che referenziano la colonna nel
+        # JSONB `configurazione->colonne`.
+        "E_UI_COLONNA_VALIDAZIONE": ErrorPolicy(
+            code="E_UI_COLONNA_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Colonna lista non valida.",
+        ),
+        "E_UI_COLONNA_NON_TROVATA": ErrorPolicy(
+            code="E_UI_COLONNA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Colonna lista non trovata.",
+        ),
+        "E_UI_COLONNA_IN_USO": ErrorPolicy(
+            code="E_UI_COLONNA_IN_USO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La colonna e' in uso (preferenze utente, preset o "
+                "permessi). Disattivala con attivo=false invece di "
+                "eliminarla."
+            ),
+        ),
+        # DEF-1: export CSV/Excel delle liste configurabili. Hard cap
+        # sincrono 10.000 righe (decisione 3) -> 422 con messaggio
+        # parlante "raffinare i filtri". Format invalido -> 400.
+        "E_UI_EXPORT_LIMIT_EXCEEDED": ErrorPolicy(
+            code="E_UI_EXPORT_LIMIT_EXCEEDED",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "L'export supera il limite di righe consentito. "
+                "Raffina i filtri e riprova."
+            ),
+        ),
+        "E_UI_EXPORT_FORMAT_INVALID": ErrorPolicy(
+            code="E_UI_EXPORT_FORMAT_INVALID",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Formato export non supportato (ammessi: csv, xlsx).",
+        ),
+        "E_UI_EXPORT_FAILED": ErrorPolicy(
+            code="E_UI_EXPORT_FAILED",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Generazione export non riuscita.",
         ),
         # Fallback per DatabaseError non riconosciute dai marker noti
         # nello schema `ui` (allineato a E_VENDITE_PRICING_FAILED).

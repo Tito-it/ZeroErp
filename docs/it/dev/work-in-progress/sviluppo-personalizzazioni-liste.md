@@ -1,7 +1,7 @@
 # Colonne visualizzate in liste — architettura
 
 **Modulo:** UI / Presentazione
-**Stato:** Blocchi **A+B+C+D+E** completati. DB-1..DB-4 atterrati. Prossimo: smoke test E end-to-end (operatore reale apre `/anagrafiche/clienti`), poi **Blocco F** (gestione amministrazione `ui.*`).
+**Stato:** Blocchi **A+B+C+D+E+F** completati (incluso F Fase 2 / DEF-5b 2026-05-10) + **DEF-1 export CSV/Excel** atterrato 2026-05-10 sulla lista clienti. DB-1..DB-4 atterrati, Blocco F.2 (i18n + seed clienti) applicato. Prossimo: **DEF-8** (estensione pattern + export ad altre liste — fornitori, articoli, contratti, ...) — vedi [_def.md](sviluppo-personalizzazioni-liste_def.md).
 **Coerenza:** Sviluppo Concentrico — strato di presentazione che si appoggia ai domini funzionali senza modificarli
 **Revisione 2026-05-06 (post-A/B)**: allineato a DB landed (tipi BIGINT, output JSONB completo), recepiti i pattern di [api.md](../api.md) (skip_area_check, Idempotency-Key, base view) e dei due cataloghi building block. Variazioni in §4.3, §4.5, §5, §10, §11. Brief al team DB raccolti in §10.
 
@@ -19,6 +19,10 @@ Stato cronologico:
 | 2026-05-07 | **Blocco E5 — migrazione FE** atterrata: `ClientiSearchTable.vue` ora usa `<ListaConfigurabile codice="anagrafiche.clienti">`. Build vite verde, `ClientiView` invariato |
 | 2026-05-07 | **Smoke test E** preparato in `backend/scripts/tests/smoke-test-ui-personalizzazioni-liste.sh` (10 scenari). **Esecuzione bloccata** dal mancato GRANT su schema `ui` per `zeroerp_app` — brief DB-5 in §10.2-bis |
 | 2026-05-07 | Decisioni prese su **Blocco F** (gestione amministrazione `ui.*`): split visibilità config/amm-software, Fase 1 minimal (preset + permessi colonne). Implementazione dopo smoke test E. Promemoria 2 decisioni aperte (area azioni di processo + profilo seed) in §11/Blocco F |
+| 2026-05-08 | **Blocco F Fase 1** atterrato end-to-end (DB+BE+FE+test+doc): preset + permessi colonne sotto `/config/personalizzazioni-liste`. 9 endpoint admin, 19 nuovi test (54/54 verdi totali). Decisioni operative chiuse: area azioni `config` (1A), nessun profilo seed (2B). |
+| 2026-05-08 | **Blocco F.2** (i18n etichette + fix seed clienti) atterrato dal team DB: nuova colonna `ui.lista_colonna.etichetta_i18n_key` + `fn_resolve_lista_config` aggiornata + seed clienti corretto (composta `sosp_riatt`). Refactor toolbar lista standard (`<ListaConfigurabile>` + `ClientiSearchTable`). |
+| 2026-05-10 | **Blocco F Fase 2 — DEF-5b** atterrato end-to-end (BE+FE+test+doc): CRUD `ui.lista_definizione` + `ui.lista_colonna` SUPER_ADMIN-only sotto `/amm-software/personalizzazioni-liste-tecniche`. 8 endpoint admin nuovi, 39 test (93/93 ui verdi totali, 590 BE complessivi). 8 decisioni operative chiuse — vedi [_def.md DEF-5b](sviluppo-personalizzazioni-liste_def.md). Helper `optional_string` estratto in `PayloadValidator` (refactor anti-duplicazione). |
+| 2026-05-10 | **DEF-1 export CSV/Excel** atterrato sulla lista clienti (BE+FE+test+doc): renderer puro `ListaExportService` no-fetch (genera bytes da righe + config colonne), endpoint dedicato `GET /api/v1/anagrafiche/clienti/export/` con query param `format=csv` o `xlsx`, hard cap 10.000 righe pre-render via `total_count` window function, foglio "Filtri applicati" XLSX + header con prefisso `#` JSON dei filtri in CSV con BOM UTF-8. Composable FE riusabile `useFileDownload` (pattern Content-Disposition RFC 5987). Aggiunto `openpyxl>=3.1` a requirements (autorizzato Tid). 12 nuovi test renderer. 4 decisioni operative chiuse — vedi [_def.md DEF-1](sviluppo-personalizzazioni-liste_def.md). Refinement architetturale: il modulo `ui` espone solo il renderer (no SQL dinamico sulla `vista_sql`); ogni dominio in DEF-8 estende il proprio repository per ottenere righe e delega al renderer. |
 
 ---
 
@@ -981,7 +985,7 @@ Componenti previsti:
 
 #### F.4 — Out of scope per Fase 1
 
-- CRUD `lista_definizione` e `lista_colonna` via UI: rinviato a Fase 2. In Fase 1 questi restano gestiti da seed CSV (pattern atterrato per `anagrafiche.clienti` in E1+E2).
+- CRUD `lista_definizione` e `lista_colonna` via UI: ~~rinviato a Fase 2~~ → **atterrato 2026-05-10 (DEF-5b)** sotto `/amm-software/personalizzazioni-liste-tecniche` come pagina tecnica SUPER_ADMIN-only. Vedi sezione `_def.md` DEF-5b per sintesi delivery + decisioni operative chiuse e `api_ui_admin_personalizzazioni.md` §12-§21 per il contratto endpoint.
 - Validazione runtime di `vista_sql` / `campo_sorgente` lato BE Python: i trigger DB B1/B2 sono già la guardia finale; non servono validazioni Python aggiuntive.
 - Versionamento dei preset: rinviato (ogni modifica sovrascrive; lo snapshot `preset_base_data_update` lato preferenza utente è già sufficiente per il badge "preset aggiornato" DEF-2).
 

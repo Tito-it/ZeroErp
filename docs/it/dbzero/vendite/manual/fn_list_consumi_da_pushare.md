@@ -36,6 +36,25 @@ Il fan-out 1→N e responsabilita dell'handler, non di questa funzione.
   * `p_competenza_mese`
   * `p_billing_account_id`
   * `p_limit`
+  * `p_consumo_id` *(2026-05)* — vedi sezione dedicata
+
+---
+
+### Push singolo consumo (estensione coordinata)
+
+> **Aggiunto:** 2026-05 — migration `20260510-05`
+
+Il parametro `p_consumo_id` (tipo `vendite.attivita_consumi.id%TYPE`, default `NULL`) consente
+di restringere il risultato a un singolo consumo.
+
+| Valore  | Comportamento                                                |
+|---------|--------------------------------------------------------------|
+| `NULL`  | Lista globale — comportamento batch invariato                |
+| `> 0`   | Filtra al consumo specificato; tutti gli altri filtri in AND |
+| `<= 0`  | Guard: solleva `E_PUSH_SORGENTE_ID_INVALIDO` (id 433)        |
+
+Estensione coordinata con le altre 4 `fn_list_*_da_pushare` per uniformare
+la signature al client Python `CommesseRepository.fetch_pushable_rows` (4 args posizionali).
 
 ---
 
@@ -72,7 +91,9 @@ fn_emit_attivita_fatturabili_da_commessa → attivita_fatturabili x N
 
 ---
 
-### Esempio d'uso
+### Esempi d'uso
+
+**Batch globale (orchestrator):**
 
 ```sql
 SELECT *
@@ -80,6 +101,15 @@ FROM vendite.fn_list_consumi_da_pushare(
   p_competenza_mese => DATE '2026-02-01',
   p_billing_account_id => NULL,
   p_limit => 500
+);
+```
+
+**Push singolo consumo:**
+
+```sql
+SELECT *
+FROM vendite.fn_list_consumi_da_pushare(
+  p_consumo_id => 12345
 );
 ```
 

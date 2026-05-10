@@ -14,7 +14,12 @@ from apps.anagrafiche.api.views_categorie_clienti_listini import (
     CategorieClientiListiniTipiVariazioneLookupView,
     CategorieClientiListiniView,
 )
-from apps.anagrafiche.api.views_clienti import ClientiDetailView, ClientiView, UtilitiesManualLookupView
+from apps.anagrafiche.api.views_clienti import (
+    ClientiDetailView,
+    ClientiExportView,
+    ClientiView,
+    UtilitiesManualLookupView,
+)
 from apps.anagrafiche.api.views_invito_portale import (
     ClientiDisattivaPortaleView,
     ClientiDisattivaShopView,
@@ -72,6 +77,10 @@ from apps.anagrafiche.api.views_toponomastica import ToponomasticaDetailView, To
 urlpatterns = [
     # Clienti
     path("clienti/", ClientiView.as_view(), name="anagrafiche-clienti-list"),
+    # Export DEF-1: deve precedere /<int:cliente_id>/ per non collidere
+    # con il route detail (Django scarta su tipo, ma l'ordine semantico
+    # tiene insieme i route della stessa risorsa).
+    path("clienti/export/", ClientiExportView.as_view(), name="anagrafiche-clienti-export"),
     path("clienti/<int:cliente_id>/", ClientiDetailView.as_view(), name="anagrafiche-clienti-detail"),
     path(
         "clienti/<int:cliente_id>/invita-portale/",

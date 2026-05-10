@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useClientiStore } from '../stores/clienti'
 import { useAuthStore } from '../../stores/auth'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useNotify } from '../../core/composables/useNotify'
 import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
@@ -382,10 +383,7 @@ const eventoStatoDetail = computed(() => {
 })
 
 
-function onClose() {
-  emit('update:visible', false)
-  emit('cancelled')
-}
+const onClose = useDrawerClose(emit, 'cancelled')
 </script>
 
 <template>

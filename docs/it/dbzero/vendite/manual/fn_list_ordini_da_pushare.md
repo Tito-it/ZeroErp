@@ -32,6 +32,25 @@ delegati a `fn_list_ddt_da_pushare`.
   * `p_competenza_mese`
   * `p_billing_account_id`
   * `p_limit`
+  * `p_ordine_id` *(2026-05)* — vedi sezione dedicata
+
+---
+
+### Push singolo ordine (estensione coordinata)
+
+> **Aggiunto:** 2026-05 — migration `20260510-02`
+
+Il parametro `p_ordine_id` (tipo `vendite.ordini.id%TYPE`, default `NULL`) consente
+di restringere il risultato a un singolo ordine.
+
+| Valore  | Comportamento                                                |
+|---------|--------------------------------------------------------------|
+| `NULL`  | Lista globale — comportamento batch invariato                |
+| `> 0`   | Filtra all'ordine specificato; tutti gli altri filtri in AND |
+| `<= 0`  | Guard: solleva `E_PUSH_SORGENTE_ID_INVALIDO` (id 433)        |
+
+Estensione coordinata con le altre 4 `fn_list_*_da_pushare` per uniformare
+la signature al client Python `CommesseRepository.fetch_pushable_rows` (4 args posizionali).
 
 ---
 
@@ -60,14 +79,25 @@ Restituisce per ogni riga candidata:
 
 ---
 
-### Esempio d’uso
+### Esempi d’uso
+
+**Batch globale (orchestrator):**
 
 ```sql
 SELECT *
 FROM vendite.fn_list_ordini_da_pushare(
-  p_competenza_mese => DATE '2026-02-01',
+  p_competenza_mese => DATE ‘2026-02-01’,
   p_billing_account_id => NULL,
   p_limit => 500
+);
+```
+
+**Push singolo ordine:**
+
+```sql
+SELECT *
+FROM vendite.fn_list_ordini_da_pushare(
+  p_ordine_id => 12345
 );
 ```
 

@@ -3,6 +3,7 @@
 // Ref: backend/apps/vendite/api/preventivi_urls.py
 
 import api from '../../../core/api'
+import { generateIdempotencyKey } from '../../../core/utils/idempotency'
 
 const BASE = '/vendite/preventivi'
 
@@ -89,16 +90,29 @@ export function upsertIndirizzo(preventivoId, payload) {
 
 // --- Integrazione ---
 
+// Idempotency-Key obbligatoria lato BE (`require_idempotency_key=True` su
+// preventivi_views.py): push-commessa e' write-once, evitare doppio push
+// in caso di retry/click ripetuto.
 export function pushCommessa(preventivoId) {
-  return api.post(`${BASE}/${preventivoId}/push-commessa/`, {})
+  return api.post(
+    `${BASE}/${preventivoId}/push-commessa/`,
+    {},
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
 }
 
 export function statoFatturazione(preventivoId) {
   return api.get(`${BASE}/${preventivoId}/stato-fatturazione/`)
 }
 
+// Idempotency-Key obbligatoria lato BE (`require_idempotency_key=True`):
+// la generazione pratica e' write-once, evita doppia pratica su retry.
 export function generaPratica(preventivoId, payload) {
-  return api.post(`${BASE}/${preventivoId}/genera-pratica/`, payload)
+  return api.post(
+    `${BASE}/${preventivoId}/genera-pratica/`,
+    payload,
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
 }
 
 export function listPratiche(preventivoId) {

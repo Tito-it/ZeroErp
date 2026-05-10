@@ -282,9 +282,11 @@ class BaseSourceHandler(ABC):
         # test per isolare la logica del handler dal resolver pricing.
         self._bom_expander = bom_expander or BoMComponentExpander()
 
-    def run(self, *, dry_run: bool = False) -> HandlerResult:
-        """Esegue la sincronizzazione della sorgente verso commesse_attivita."""
-        return self._process_rows(dry_run=dry_run)
+    # Scopo: esegue la sincronizzazione della sorgente verso commesse_attivita.
+    # `sorgente_uid` (opzionale) restringe l'esecuzione alla riga sorgente del
+    # documento specifico (push singolo UI-driven); None = batch handler standard.
+    def run(self, *, dry_run: bool = False, sorgente_uid: int | None = None) -> HandlerResult:
+        return self._process_rows(dry_run=dry_run, sorgente_uid=sorgente_uid)
 
     # --- Logica condivisa ---
 
@@ -295,6 +297,7 @@ class BaseSourceHandler(ABC):
         competenza_mese=None,
         billing_account_id=None,
         limit=None,
+        sorgente_uid: int | None = None,
     ) -> HandlerResult:
         """Ciclo principale: fetch → get_or_create_commessa → link → upsert.
 
@@ -307,6 +310,7 @@ class BaseSourceHandler(ABC):
             competenza_mese=competenza_mese,
             billing_account_id=billing_account_id,
             limit=limit,
+            sorgente_uid=sorgente_uid,
         )
 
         # Cache locale: evita round-trip DB ripetuti per la stessa commessa.

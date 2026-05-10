@@ -118,20 +118,6 @@ def _apply_valido_dal_default(valido_dal, *, for_create: bool):
     return valido_dal
 
 
-# Marker per riconoscere i codici di dominio sollevati da
-# `catalogo.fn_duplica_componente_versione` via P0001. Pattern simmetrico a
-# `vendite.pricing_service._KNOWN_DB_ERROR_MARKERS`: tutti i substring devono
-# matchare (no false positive da template generici). I template vivono in
-# `config.messaggi_errore`: cambi DB richiedono aggiornamento coordinato qui.
-_DUPLICA_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("E_BOM_VERSIONE_OVERLAP", ("La nuova versione del componente", "si sovrappone")),
-    ("E_BOM_SORGENTE_GIA_CHIUSA", ("La riga sorgente della BoM e' gia' chiusa",)),
-    ("E_BOM_PRODOTTO_MISMATCH", ("La riga BoM appartiene al prodotto",)),
-    ("E_BOM_RIGA_NOT_FOUND", ("Riga BoM non trovata",)),
-    ("E_BOM_VALIDO_AL_INVALIDO", ("valido_al", "non puo' essere precedente a valido_dal")),
-)
-
-
 class _MissingType:
     pass
 
@@ -1689,90 +1675,6 @@ def fn_delete_componente(articolo_id: UUID | str, componente_row_id: UUID | str)
         log_to_db=False,
     )
     return {"deleted": True}
-
-
-# Scopo: Duplica atomicamente la versione corrente di un componente BoM.
-#        Facade su `catalogo.fn_duplica_componente_versione`: chiude la riga
-#        sorgente con `valido_al = chiudi_al` (default oggi) e ne apre una
-#        nuova con `valido_dal = chiudi_al + 1`, copia verbatim della
-#        struttura. Tutto in singola TX, con advisory lock per articolo
-#        (no race con duplicazioni concorrenti sullo stesso prodotto).
-#        Eventuali raise applicativi del DB (P0001) vengono tradotti in
-#        ServiceError preservando il codice originale (E_BOM_*).
-#
-#        Restituisce il dettaglio della NUOVA riga (per UI: refresh + eventuale
-#        focus). La sorgente chiusa va recuperata con `fn_list_componenti`.
-#
-#        Payload: {"chiudi_al": "YYYY-MM-DD" | None}.
-def fn_duplica_componente_versione(
-    articolo_id: UUID | str,
-    componente_row_id: UUID | str,
-    payload: dict[str, Any],
-) -> dict[str, object]:
-    function_name = "catalogo.catalogo_service.fn_duplica_componente_versione"
-    _validate_payload_keys(
-        payload,
-        allowed_keys=frozenset({"chiudi_al"}),
-        function_name=function_name,
-        message="Payload duplica versione non valido.",
-    )
-    chiudi_al = _extract_payload_date(
-        payload,
-        "chiudi_al",
-        function_name=function_name,
-        nullable=True,
-        message="Payload duplica versione non valido.",
-    )
-    # _MISSING -> chiave assente: equivale a None (default DB = CURRENT_DATE).
-    if chiudi_al is _MISSING:
-        chiudi_al = None
-    _get_articolo_base(articolo_id)
-    repository = CatalogoBomRepository()
-    try:
-        new_id = repository.duplica_versione(articolo_id, componente_row_id, chiudi_al)
-    except DatabaseError as exc:
-        _raise_duplica_versione_error(
-            exc,
-            function_name=function_name,
-            context={
-                "articolo_id": str(articolo_id),
-                "componente_row_id": str(componente_row_id),
-                "chiudi_al": chiudi_al.isoformat() if isinstance(chiudi_al, date) else None,
-            },
-        )
-    result = repository.get_componente(articolo_id, new_id)
-    assert result is not None
-    return result
-
-
-# Scopo: Traduce una DatabaseError sollevata da fn_duplica_componente_versione
-#        (P0001 via fn_log_and_raise_error) in ServiceError. Riconosce i 5
-#        codici noti via marker multi-substring sul MESSAGE; se nessun match,
-#        propaga come E_CATALOGO_VALIDATION (catch-all consistente col resto
-#        del catalogo_service). Pattern simmetrico a
-#        `vendite.pricing_service._raise_pricing_error`.
-def _raise_duplica_versione_error(
-    exc: DatabaseError,
-    *,
-    function_name: str,
-    context: dict[str, Any],
-) -> None:
-    msg = str(exc)
-    matched_code: str | None = None
-    for code_candidate, markers in _DUPLICA_DB_ERROR_MARKERS:
-        if all(marker in msg for marker in markers):
-            matched_code = code_candidate
-            break
-    code = matched_code or "E_CATALOGO_VALIDATION"
-    ErrorManager.raise_error(
-        code=code,
-        message="Impossibile duplicare la versione del componente BoM.",
-        detail=msg,
-        context=context,
-        cause=exc,
-        log_to_db=True,
-        function_name=function_name,
-    )
 
 
 # Scopo: Lista note articolo con dati arricchiti.

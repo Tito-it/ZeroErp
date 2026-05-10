@@ -16,7 +16,10 @@ Indice test eseguiti:
 7) test_gestisci_riga_articolo_mancante — validazione articolo_id obbligatorio
 8) test_elimina_riga_ok — soft delete riga
 9) test_elimina_riga_not_found — riga inesistente
-10) test_push_a_commessa_ok — push preventivo ACCETTATO con righe eleggibili
+10) test_push_a_commessa_ok — push preventivo ACCETTATO con righe eleggibili + transizione EVASO
+10b) test_push_a_commessa_propaga_fatturazione_immediata — flag testata nel payload
+10c) test_push_a_commessa_parziale_non_evade — PARZIALE non transita stato
+10d) test_push_a_commessa_transizione_db_error_logged_no_raise — fallimento transizione e' soft (warning)
 11) test_push_a_commessa_stato_non_ammesso — guard su stato BOZZA
 12) test_push_a_commessa_nessuna_riga — guard nessuna riga eleggibile
 13) test_genera_pratica_ok — genera pratica da ACCETTATO via BB crea_pratica
@@ -534,16 +537,123 @@ class TestPreventiviService(unittest.TestCase):
 
     # ── Push commessa ──
 
-    # Scopo: Verifica push preventivo ACCETTATO con righe eleggibili.
-    def test_push_a_commessa_ok(self):
+    # Scopo: Verifica push preventivo ACCETTATO con righe eleggibili: il service
+    # delega al CommessaPushOrchestrator filtrato (pr_run_commesse_push_one) e
+    # restituisce il report aumentato di righe_pushable diagnostico.
+    @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
+    def test_push_a_commessa_ok(self, mock_push_one):
         from apps.vendite.services.preventivi_service import push_a_commessa
 
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
         }
         self.mock_repo.count_righe_pushable.return_value = 3
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO",
+            "dry_run": False,
+            "push_log_id": 42,
+            "durata_ms": 12,
+            "handlers": [{"handler_name": "HandlerPreventivi", "errors": []}],
+        }
+
         result = push_a_commessa(1)
+
+        # Orchestrator chiamato con codice + uid corretti.
+        mock_push_one.assert_called_once_with(
+            sorgente_codice="PREVENTIVO",
+            sorgente_uid=1,
+        )
+        # Payload completo: campi orchestrator + righe_pushable diagnostico
+        # + flag fatturazione_immediata dalla testata (per hint UX FE).
+        self.assertEqual(result["preventivo_id"], 1)
+        self.assertEqual(result["stato"], "COMPLETATO")
+        self.assertEqual(result["push_log_id"], 42)
+        self.assertEqual(result["durata_ms"], 12)
         self.assertEqual(result["righe_pushable"], 3)
+        self.assertEqual(len(result["handlers"]), 1)
+        # testata mock non ha "fatturazione_immediata" -> default False (no hint UX).
+        self.assertFalse(result["fatturazione_immediata"])
+        # Stato="COMPLETATO" -> transizione automatica a EVASO via fn DB.
+        self.mock_repo.cambia_stato.assert_called_once_with(1, "EVASO", "django_api")
+
+    # Scopo: push parziale (qualche riga fallita) NON deve transitare il
+    # preventivo a EVASO: lo stato terminale richiede push completo.
+    # L'utente potra' ritentare il push per coprire le righe mancanti
+    # e solo allora il preventivo evolvera' a EVASO.
+    @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
+    def test_push_a_commessa_parziale_non_evade(self, mock_push_one):
+        from apps.vendite.services.preventivi_service import push_a_commessa
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
+        }
+        self.mock_repo.count_righe_pushable.return_value = 4
+        mock_push_one.return_value = {
+            "stato": "PARZIALE",
+            "dry_run": False,
+            "push_log_id": 43,
+            "durata_ms": 30,
+            "handlers": [{
+                "handler_name": "HandlerPreventivi",
+                "errors": ["Errore riga segment_key=PREV:abc:R:3: ..."],
+            }],
+        }
+
+        result = push_a_commessa(1)
+
+        self.assertEqual(result["stato"], "PARZIALE")
+        # PARZIALE -> nessuna transizione di stato.
+        self.mock_repo.cambia_stato.assert_not_called()
+
+    # Scopo: se la fn DB cambia_stato rifiuta la transizione (es. seed
+    # EVASO non ancora atterrato in DB), il push e' gia' avvenuto e
+    # ritorna comunque con stato COMPLETATO. La transizione fallita
+    # viene loggata come warning, non fa fallire la richiesta utente.
+    @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
+    def test_push_a_commessa_transizione_db_error_logged_no_raise(self, mock_push_one):
+        from django.db import DatabaseError
+        from apps.vendite.services.preventivi_service import push_a_commessa
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
+        }
+        self.mock_repo.count_righe_pushable.return_value = 1
+        self.mock_repo.cambia_stato.side_effect = DatabaseError(
+            "transizione ACCETTATO->EVASO non ammessa"
+        )
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "dry_run": False,
+            "push_log_id": 44, "durata_ms": 10, "handlers": [],
+        }
+
+        # Non deve sollevare: il push e' atterrato, lo stato e' un effetto
+        # collaterale che puo' restare disallineato finche' il deploy DB
+        # non e' completo.
+        result = push_a_commessa(1)
+        self.assertEqual(result["stato"], "COMPLETATO")
+
+    # Scopo: payload include flag `fatturazione_immediata=True` se settato in
+    # testata: serve al FE per mostrare hint warn "emit AF al prossimo lotto"
+    # (placeholder per PR2 servizio emissione immediata).
+    @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
+    def test_push_a_commessa_propaga_fatturazione_immediata(self, mock_push_one):
+        from apps.vendite.services.preventivi_service import push_a_commessa
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1,
+            "stato_codice_interno": "ACCETTATO",
+            "uid": "abc",
+            "fatturazione_immediata": True,
+        }
+        self.mock_repo.count_righe_pushable.return_value = 1
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "dry_run": False,
+            "push_log_id": 7, "durata_ms": 5, "handlers": [],
+        }
+
+        result = push_a_commessa(1)
+
+        self.assertTrue(result["fatturazione_immediata"])
 
     # Scopo: Verifica guard su stato non ACCETTATO.
     def test_push_a_commessa_stato_non_ammesso(self):

@@ -13,8 +13,8 @@
 //           restano in archivio"). Le rigenerazioni accumulano versioni;
 //           niente sostituzione (memoria modello documenti_generati).
 //
-//         - ACCETTATO / RIFIUTATO / SCADUTO / ANNULLATO -> "Scarica
-//           PDF": apre `PdfDocumentiSorgenteDialog` con la lista
+//         - ACCETTATO / EVASO / RIFIUTATO / SCADUTO / ANNULLATO ->
+//           "Scarica PDF": apre `PdfDocumentiSorgenteDialog` con la lista
 //           archiviata; l'utente sceglie quale versione scaricare.
 //           Niente generazione: PDF cristallizzati post-emissione.
 //
@@ -31,6 +31,7 @@ import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumen
 import { useDocumentiPerSorgenteStore } from '../../../documenti/stores/documentiPerSorgente'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { downloadBlob } from '../../../core/utils/download'
+import { STATO_PREVENTIVO } from '../../constants'
 
 const SORGENTE_CODE = 'PREVENTIVO'
 
@@ -38,7 +39,11 @@ const SORGENTE_CODE = 'PREVENTIVO'
 // rigenerazione). Coerenti con i codice_interno di
 // config.stati_doc_preventivi.
 const STATI_TERMINALI = new Set([
-  'ACCETTATO', 'RIFIUTATO', 'SCADUTO', 'ANNULLATO',
+  STATO_PREVENTIVO.ACCETTATO,
+  STATO_PREVENTIVO.EVASO,
+  STATO_PREVENTIVO.RIFIUTATO,
+  STATO_PREVENTIVO.SCADUTO,
+  STATO_PREVENTIVO.ANNULLATO,
 ])
 
 const props = defineProps({
@@ -62,8 +67,8 @@ const baseDisabled = computed(
 
 const mode = computed(() => {
   if (!props.statoCodice) return 'disabled'
-  if (props.statoCodice === 'DRAFT') return 'preview'
-  if (props.statoCodice === 'EMESSO') return 'genera'
+  if (props.statoCodice === STATO_PREVENTIVO.DRAFT) return 'preview'
+  if (props.statoCodice === STATO_PREVENTIVO.EMESSO) return 'genera'
   if (STATI_TERMINALI.has(props.statoCodice)) return 'scarica'
   return 'disabled'
 })

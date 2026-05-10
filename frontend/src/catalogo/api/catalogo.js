@@ -85,20 +85,6 @@ export function deleteArticoloComponente(articoloId, compId) {
   return api.delete(`${BASE}/articoli/${articoloId}/componenti/${compId}/`)
 }
 
-// Scopo: Endpoint atomico Fase 3 — duplica versione corrente del componente.
-//        Il BE chiude la sorgente con valido_al=chiudi_al (default oggi) e
-//        crea una nuova riga con valido_dal=chiudi_al+1, copia verbatim
-//        della struttura. Tutto in singola TX DB con advisory lock.
-//        Idempotency-Key (UUID v4) e' obbligatoria: il BE rifiuta senza header.
-//        payload: { chiudi_al?: 'YYYY-MM-DD' }
-export function duplicaComponenteVersione(articoloId, compId, payload = {}) {
-  return api.post(
-    `${BASE}/articoli/${articoloId}/componenti/${compId}/duplica-versione/`,
-    payload,
-    { headers: { 'Idempotency-Key': crypto.randomUUID() } },
-  )
-}
-
 // --- Note articolo ---
 
 export function listArticoloNote(articoloId) {

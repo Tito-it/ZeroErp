@@ -9,6 +9,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
@@ -362,9 +363,7 @@ function onDelete(r) {
   })
 }
 
-function onClose() {
-  emit('update:visible', false)
-}
+const onClose = useDrawerClose(emit)
 
 // Scopo: azioni di riga per il master-detail righe contratto.
 //        Le righe con origine='DA_LISTINO' (preview puro, no contratti_righe)
@@ -589,7 +588,7 @@ function origineSeverity(origine) {
         </div>
       </template>
 
-      <DrawerFooter close-only @cancel="onClose" />
+      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
     </div>
   </Drawer>
 </template>

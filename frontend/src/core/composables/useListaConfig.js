@@ -13,11 +13,12 @@
 // (es. via useGlobalLookup) e' un'evoluzione successiva quando emergeranno
 // hot path.
 //
-// Idempotency-Key: generata via crypto.randomUUID() ad ogni save (pattern
-// gia' usato in catalogo.js per i comandi BoM).
+// Idempotency-Key: generata via core/utils/idempotency.generateIdempotencyKey()
+// (wrapper su crypto.randomUUID con fallback per non-secure context).
 
 import { ref, computed } from 'vue'
 import { useApiHandler } from './useApiHandler'
+import { generateIdempotencyKey } from '../utils/idempotency'
 import {
   getListaConfig,
   getListaCatalogo,
@@ -136,9 +137,7 @@ export function useListaConfig(codice) {
     // il PUT le invierebbe ma il PayloadValidator BE le rifiuterebbe
     // con E_UI_PREFERENZA_VALIDAZIONE: errore parlante, no danni.
     const payload = _extractWritablePayload(config.value)
-    const idempotencyKey = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const idempotencyKey = generateIdempotencyKey()
     const result = await execute(
       () => putListaPreferenza(codice, payload, idempotencyKey),
     )

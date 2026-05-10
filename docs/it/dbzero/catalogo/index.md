@@ -12,7 +12,6 @@
 - [uom_tipi](tabelle/uom_tipi.md)
 
 ## ⚙️ Funzioni
-- [fn_duplica_componente_versione](funzioni/fn_duplica_componente_versione.md) — (latest review 28-04-2026)
 - [fn_get_uom_base](funzioni/fn_get_uom_base.md) — (latest updates 13-01-26) La funzione **`catalogo.fn_get_uom_base(p_articolo_id)`** ritorna la **UoM base** dell’articolo, leggendo il campo `catalogo.articoli.uom_id`.
 - [fn_get_uom_factor](funzioni/fn_get_uom_factor.md) — (latest review 13-01-26) La funzione **`catalogo.fn_get_uom_factor(p_articolo_id, p_uom_id)`** ritorna il **fattore di conversione** dalla UoM richiesta alla **UoM base** dell’articolo.
 - [fn_riattiva_articolo](funzioni/fn_riattiva_articolo.md) — (latest review 28-04-2026)

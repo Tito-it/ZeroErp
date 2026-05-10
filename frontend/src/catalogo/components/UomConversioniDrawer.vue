@@ -7,6 +7,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { listConversioniUom, createConversioneUom, updateConversioneUom } from '../api/catalogo'
 import { lookupCodici } from '../../core/apiCore'
@@ -15,6 +16,7 @@ import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -162,6 +164,11 @@ function cancelEditFattore() {
   editingFattoreId.value = null
   editingFattoreValue.value = null
 }
+
+// Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
+// Nasconde il footer in modalita' adding per non duplicarlo con Annulla/Salva
+// del form e non spingere il form sotto al fold.
+const onClose = useDrawerClose(emit)
 </script>
 
 <template>
@@ -277,6 +284,8 @@ function cancelEditFattore() {
           </template>
         </template>
       </template>
+
+      <DrawerFooter v-if="!adding" close-only @cancel="onClose" />
     </div>
   </Drawer>
 </template>
