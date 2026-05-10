@@ -28,6 +28,7 @@
 | user_insert | character varying | NO |  |
 | data_update | timestamp without time zone | YES |  |
 | user_update | character varying | YES |  |
+| etichetta_i18n_key | character varying | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

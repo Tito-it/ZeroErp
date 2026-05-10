@@ -163,8 +163,7 @@ UPDATE catalogo.articoli
 ### Note operative
 
 * **Nessun lock advisory**: l'UPDATE su PK lockata dal sistema e' sufficiente.
-  Diversamente da [`fn_duplica_componente_versione`](/dbzero/catalogo/funzioni/fn_duplica_componente_versione)
-  qui non c'e' EXCLUDE GIST in gioco e l'azione e' su una sola riga.
+  Qui non c'e' EXCLUDE GIST in gioco e l'azione e' su una sola riga.
 * **Nessun `SELECT FOR UPDATE` separato**: il filtro `WHERE attivo = false`
   nell'UPDATE basta a garantire l'idempotenza senza una select preliminare.
 * **`EXISTS` solo nel ramo "0 rows"**: il check di esistenza viene fatto

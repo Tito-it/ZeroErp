@@ -10,7 +10,6 @@
 - [uom_tipi](manual/uom_tipi.md)
 
 ## ⚙️ Funzioni (manuale)
-- [fn_duplica_componente_versione](manual/fn_duplica_componente_versione.md) — (latest review 28-04-2026)
 - [fn_get_uom_base](manual/fn_get_uom_base.md) — (latest updates 13-01-26) La funzione **`catalogo.fn_get_uom_base(p_articolo_id)`** ritorna la **UoM base** dell’articolo, leggendo il campo `catalogo.articoli.uom_id`.
 - [fn_get_uom_factor](manual/fn_get_uom_factor.md) — (latest review 13-01-26) La funzione **`catalogo.fn_get_uom_factor(p_articolo_id, p_uom_id)`** ritorna il **fattore di conversione** dalla UoM richiesta alla **UoM base** dell’articolo.
 - [fn_riattiva_articolo](manual/fn_riattiva_articolo.md) — (latest review 28-04-2026)

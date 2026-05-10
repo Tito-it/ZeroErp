@@ -20,6 +20,7 @@ AS $function$
 -- DB-3: step 2b usa JOIN + ORDER BY pa.priorita per cascata deterministica.
 -- DB-4: legge app.ruolo_applicativo dalla GUC per filtrare la veste corrente.
 --       Fallback sicuro: GUC assente/vuota/non-ENUM -> NULL -> tutte le vesti.
+-- F.2:  step 5 aggiunge etichetta_i18n_key al JSONB colonna.
 DECLARE
   v_lista_id         INTEGER;
   v_config_colonne   JSONB;
@@ -274,16 +275,18 @@ BEGIN
   --    - sensibile=TRUE senza grant esplicito: BLOCCATO
   --    - colonne BLOCCATE: rimosse
   --    - colonne LETTURA: esportabile=false
+  --    - F.2: aggiunge etichetta_i18n_key (NULL se non valorizzata)
   -- -------------------------------------------------------
   SELECT jsonb_agg(
       jsonb_build_object(
-        'codice',       elem ->> 'codice',
-        'ordine',       (elem ->> 'ordine')::INTEGER,
-        'larghezza',    (elem ->> 'larghezza')::INTEGER,
-        'visibile',     visibile_norm,
-        'fissata',      fissata_norm,
-        'esportabile',  CASE WHEN livello_eff = 'LETTURA' THEN FALSE ELSE esportabile END,
-        'tipo_colonna', tipo_colonna::text
+        'codice',             elem ->> 'codice',
+        'ordine',             (elem ->> 'ordine')::INTEGER,
+        'larghezza',          (elem ->> 'larghezza')::INTEGER,
+        'visibile',           visibile_norm,
+        'fissata',            fissata_norm,
+        'esportabile',        CASE WHEN livello_eff = 'LETTURA' THEN FALSE ELSE esportabile END,
+        'tipo_colonna',       tipo_colonna::text,
+        'etichetta_i18n_key', etichetta_i18n_key
       )
       ORDER BY (elem ->> 'ordine')::INTEGER
     )
@@ -293,6 +296,7 @@ BEGIN
         elem,
         lc.tipo_colonna,
         lc.esportabile,
+        lc.etichetta_i18n_key,
         COALESCE(
           v_permessi ->> (elem ->> 'codice'),
           CASE WHEN lc.sensibile THEN 'BLOCCATO' ELSE 'TUTTO' END
@@ -335,7 +339,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve la configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione obbligatorie, filtro autorizzativo. Ritorna JSONB per il frontend. DB-3+DB-4 (2026-05-07).';
+IS 'Risolve la configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione obbligatorie, filtro autorizzativo. Ritorna JSONB per il frontend inclusa etichetta_i18n_key. DB-3+DB-4 (2026-05-07), F.2 (2026-05-08).';
 ```
 
 ---
