@@ -15,7 +15,10 @@ AS $function$
 -- Scopo: verifica che campo_sorgente esista come attributo della view
 -- referenziata da lista_definizione.vista_sql, prima di permettere
 -- INSERT/UPDATE su lista_colonna.
--- Skip per tipo_colonna='azione', campo_sorgente NULL, o lista senza view.
+-- Skip per:
+--   - tipo_colonna='azione'           (nessun campo sorgente per disegno)
+--   - campo_sorgente IS NULL o ''     (colonna calcolata FE, es. sosp_riatt)
+--   - lista senza vista_sql definita
 DECLARE
   v_vista_sql        VARCHAR(120);
   v_colonna_esiste   BOOLEAN;
@@ -26,7 +29,8 @@ BEGIN
   END IF;
 
   -- Nessuna validazione se campo_sorgente non valorizzato
-  IF NEW.campo_sorgente IS NULL THEN
+  -- (NULL = colonna calcolata; '' = equivalente nel seed CSV via loadUpdateData)
+  IF NEW.campo_sorgente IS NULL OR NEW.campo_sorgente = '' THEN
     RETURN NEW;
   END IF;
 
@@ -75,7 +79,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
-IS 'Guard INSERT/UPDATE: verifica esistenza di campo_sorgente in pg_catalog.pg_attribute sulla view della lista. Skip per tipo_colonna=azione.';
+IS 'Guard INSERT/UPDATE: verifica esistenza di campo_sorgente in pg_catalog.pg_attribute sulla view della lista. Skip per tipo_colonna=azione o campo_sorgente NULL/vuoto (colonne calcolate FE).';
 ```
 
 ---
