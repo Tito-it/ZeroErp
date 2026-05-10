@@ -47,6 +47,25 @@ Supporta **due modalita`**:
   * `p_competenza_mese`
   * `p_billing_account_id`
   * `p_limit`
+  * `p_ddt_id` *(2026-05)* — vedi sezione dedicata
+
+---
+
+### Push singolo DDT (estensione coordinata)
+
+> **Aggiunto:** 2026-05 — migration `20260510-04`
+
+Il parametro `p_ddt_id` (tipo `vendite.ddt.id%TYPE`, default `NULL`) consente
+di restringere il risultato a un singolo DDT.
+
+| Valore  | Comportamento                                            |
+|---------|----------------------------------------------------------|
+| `NULL`  | Lista globale — comportamento batch invariato            |
+| `> 0`   | Filtra al DDT specificato; tutti gli altri filtri in AND |
+| `<= 0`  | Guard: solleva `E_PUSH_SORGENTE_ID_INVALIDO` (id 433)    |
+
+Estensione coordinata con le altre 4 `fn_list_*_da_pushare` per uniformare
+la signature al client Python `CommesseRepository.fetch_pushable_rows` (4 args posizionali).
 
 ---
 
@@ -77,7 +96,9 @@ Restituisce per ogni riga candidata:
 
 ---
 
-### Esempio d'uso
+### Esempi d'uso
+
+**Batch globale (orchestrator):**
 
 ```sql
 SELECT *
@@ -85,6 +106,15 @@ FROM vendite.fn_list_ddt_da_pushare(
   p_competenza_mese => DATE '2026-03-01',
   p_billing_account_id => NULL,
   p_limit => 500
+);
+```
+
+**Push singolo DDT:**
+
+```sql
+SELECT *
+FROM vendite.fn_list_ddt_da_pushare(
+  p_ddt_id => 12345
 );
 ```
 

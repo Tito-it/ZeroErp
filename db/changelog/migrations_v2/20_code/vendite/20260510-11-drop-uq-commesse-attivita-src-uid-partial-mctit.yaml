@@ -1,0 +1,23 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260510-11-drop-uq-commesse-attivita-src-uid-partial-mctit.yaml
+
+  - changeSet:
+      id: 20260510-11-drop-uq-commesse-attivita-src-uid-partial
+      author: mctit
+      comment: "Fix bug 2026-05: drop di uq_commesse_attivita_src_uid_partial — constraint ridondante che impedisce multi-riga per documento sorgente (1 documento -> N righe commessa). La semantica '1 doc -> 1 commessa ROOT' e' gia' garantita da uq_commesse_sorgenti_src_uid_ruolo su commesse_sorgenti; la semantica delle righe e' garantita da uq_commesse_attivita_commessa_segment (commessa_id, segment_key)."
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              DROP INDEX IF EXISTS vendite.uq_commesse_attivita_src_uid_partial;

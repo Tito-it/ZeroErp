@@ -87,7 +87,6 @@
 | ix_commesse_attivita_origine_prezzo | `CREATE INDEX ix_commesse_attivita_origine_prezzo ON vendite.commesse_attivita USING btree (origine_prezzo)` |
 | pk_commesse_attivita | `CREATE UNIQUE INDEX pk_commesse_attivita ON vendite.commesse_attivita USING btree (id)` |
 | uq_commesse_attivita_commessa_segment | `CREATE UNIQUE INDEX uq_commesse_attivita_commessa_segment ON vendite.commesse_attivita USING btree (commessa_id, segment_key)` |
-| uq_commesse_attivita_src_uid_partial | `CREATE UNIQUE INDEX uq_commesse_attivita_src_uid_partial ON vendite.commesse_attivita USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_tipo_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
