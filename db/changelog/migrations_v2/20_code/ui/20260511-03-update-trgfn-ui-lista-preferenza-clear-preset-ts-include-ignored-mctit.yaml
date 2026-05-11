@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DEF-2: aggiorna trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts
+# per azzerare anche preset_aggiornato_ignored_at quando preset_base_id cambia.
+#
+# Why: quando l'utente passa a un preset diverso (A→B) o il preset viene
+# eliminato (A→NULL via ON DELETE SET NULL), il tombstone preset_aggiornato_ignored_at
+# si riferiva al vecchio preset. Conservarlo causerebbe un flag preset_aggiornato
+# errato rispetto al nuovo preset. Azzerarlo insieme a preset_base_data_update
+# mantiene la coerenza: il BE sara' libero di salvare il nuovo snapshot al
+# prossimo upsert della preferenza.
+#
+# Differenza dalla versione precedente (20260507-04):
+#   - Condizione allargata: IS DISTINCT FROM (non solo IS NULL) per coprire
+#     anche il cambio A→B (vecchio preset rimosso ma utente ne sceglie uno nuovo).
+#   - Aggiunta pulizia di preset_aggiornato_ignored_at.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260511-03-update-trgfn-ui-lista-preferenza-clear-preset-ts-include-ignored-mctit.yaml
+
+  - changeSet:
+      id: 20260511-03-update-trgfn-ui-lista-preferenza-clear-preset-ts-include-ignored
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DEF-2: amplia trgfn_...clear_preset_base_ts per azzerare anche
+        preset_aggiornato_ignored_at quando preset_base_id cambia
+        (IS DISTINCT FROM, non solo IS NULL).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: ui
+                tableName: lista_preferenza_utente
+            - columnExists:
+                schemaName: ui
+                tableName: lista_preferenza_utente
+                columnName: preset_aggiornato_ignored_at
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo: mantiene la coerenza tra preset_base_id e i campi derivati
+              -- (snapshot data_update + tombstone ignore). Quando preset_base_id cambia
+              -- verso qualsiasi valore diverso (NULL o altro preset), entrambi i campi
+              -- perdono significato: si riferivano al vecchio preset.
+              -- IS DISTINCT FROM copre: NULL->valore, valore->NULL, valore->valore diverso.
+              BEGIN
+                IF NEW.preset_base_id IS DISTINCT FROM OLD.preset_base_id THEN
+                  NEW.preset_base_data_update       := NULL;
+                  NEW.preset_aggiornato_ignored_at  := NULL;
+                END IF;
+                RETURN NEW;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts()
+              IS 'DEF-2 (2026-05-11): azzera preset_base_data_update e preset_aggiornato_ignored_at '
+                 'quando preset_base_id cambia (IS DISTINCT FROM). Previene badge FE ''preset aggiornato'' '
+                 'non coerente dopo cambio o eliminazione del preset di base.';
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd
+                ON ui.lista_preferenza_utente;
+
+              CREATE TRIGGER trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd
+                BEFORE UPDATE OF preset_base_id
+                ON ui.lista_preferenza_utente
+                FOR EACH ROW
+                EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristina la versione precedente (20260507-04) con sola condizione IS NULL
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              BEGIN
+                IF NEW.preset_base_id IS NULL AND OLD.preset_base_id IS NOT NULL THEN
+                  NEW.preset_base_data_update := NULL;
+                END IF;
+                RETURN NEW;
+              END;
+              $fn$;
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd
+                ON ui.lista_preferenza_utente;
+
+              CREATE TRIGGER trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd
+                BEFORE UPDATE OF preset_base_id
+                ON ui.lista_preferenza_utente
+                FOR EACH ROW
+                EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts();

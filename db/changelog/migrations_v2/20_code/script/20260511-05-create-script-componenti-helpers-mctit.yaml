@@ -1,0 +1,420 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Helper generiche per il pattern "righe componenti BoM CASO A".
+# Tutte le 5 tabelle *_righe_componenti condividono queste stesse
+# 5 funzioni; i trigger wrapper passano i parametri schema/tabella
+# via TG_ARGV.
+#
+# Funzioni create:
+#   05-01  script.fn_ricalcola_prezzo_padre_da_componenti   (fn pura, VOID)
+#   05-02  script.trgfn_componenti_ricalcola_padre          (AFTER INS/UPD/DLT)
+#   05-03  script.trgfn_componenti_guard_coerenza_bom       (BEFORE INS/UPD)
+#   05-04  script.trgfn_componenti_propaga_qta              (AFTER UPD OF quantita)
+#   05-05  script.trgfn_componenti_calcola_quantita         (BEFORE INS/UPD)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260511-05-create-script-componenti-helpers-mctit.yaml
+
+  # -----------------------------------------------------------------------
+  # 05-01  fn_ricalcola_prezzo_padre_da_componenti
+  #        Funzione pura: aggiorna prezzo_unitario del padre come
+  #        SUM(figli.prezzo_unitario * figli.coeff_qta_snapshot) dove attivo=TRUE.
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: 20260511-05-01-create-fn-ricalcola-prezzo-padre-da-componenti
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Funzione generica script.fn_ricalcola_prezzo_padre_da_componenti.
+        Usata da trgfn_componenti_ricalcola_padre via PERFORM.
+        Parametrizzata su schema/tabelle/colonna FK per riuso su
+        tutte e 5 le tabelle _righe_componenti CASO A.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(
+                  p_schema        text,
+                  p_tab_padre     text,
+                  p_tab_figli     text,
+                  p_col_fk_padre  text,
+                  p_riga_padre_id BIGINT
+              ) RETURNS VOID
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sql text;
+              BEGIN
+                  -- Ricalcola prezzo_unitario del padre come somma pesata
+                  -- dei figli attivi: SUM(prezzo_unitario * coeff_qta_snapshot).
+                  -- Se nessun figlio attivo, imposta 0 (COALESCE).
+                  v_sql := format(
+                      $q$UPDATE %1$I.%2$I
+                            SET prezzo_unitario = COALESCE((
+                                SELECT SUM(c.prezzo_unitario * c.coeff_qta_snapshot)
+                                  FROM %1$I.%3$I c
+                                 WHERE c.%4$I = $1
+                                   AND c.attivo = TRUE
+                            ), 0)
+                          WHERE id = $1$q$,
+                      p_schema,
+                      p_tab_padre,
+                      p_tab_figli,
+                      p_col_fk_padre
+                  );
+                  EXECUTE v_sql USING p_riga_padre_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(text, text, text, text, bigint)
+              IS 'Helper generica BoM CASO A: aggiorna prezzo_unitario della riga padre come SUM(figli.prezzo_unitario * coeff_qta_snapshot) WHERE attivo=TRUE. Parametrizzata su schema/tabella/FK per riuso su 5 sorgenti. Chiamata da trgfn_componenti_ricalcola_padre.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_ricalcola_prezzo_padre_da_componenti(text, text, text, text, bigint);
+
+  # -----------------------------------------------------------------------
+  # 05-02  trgfn_componenti_ricalcola_padre
+  #        Trigger wrapper AFTER INSERT/UPDATE/DELETE su tab figli.
+  #        TG_ARGV: schema, tab_padre, tab_figli, col_fk_padre
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: 20260511-05-02-create-trgfn-componenti-ricalcola-padre
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger function AFTER INS/UPD/DLT su _righe_componenti.
+        Legge id riga padre via dynamic SQL su TG_ARGV[3] e chiama
+        fn_ricalcola_prezzo_padre_da_componenti.
+        TG_ARGV: [0]=schema [1]=tab_padre [2]=tab_figli [3]=col_fk_padre
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_ricalcola_prezzo_padre_da_componenti';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_componenti_ricalcola_padre()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- TG_ARGV[0]: schema (es. 'vendite')
+                  -- TG_ARGV[1]: tab_padre (es. 'preventivi_righe')
+                  -- TG_ARGV[2]: tab_figli (es. 'preventivi_righe_componenti')
+                  -- TG_ARGV[3]: col FK figli->padre (es. 'riga_preventivo_id')
+                  v_riga_padre_id BIGINT;
+              BEGIN
+                  -- Legge FK padre dalla riga coinvolta:
+                  -- OLD per DELETE, NEW per INSERT/UPDATE.
+                  IF TG_OP = 'DELETE' THEN
+                      EXECUTE format('SELECT ($1).%I', TG_ARGV[3])
+                        INTO v_riga_padre_id USING OLD;
+                  ELSE
+                      EXECUTE format('SELECT ($1).%I', TG_ARGV[3])
+                        INTO v_riga_padre_id USING NEW;
+                  END IF;
+
+                  PERFORM script.fn_ricalcola_prezzo_padre_da_componenti(
+                      TG_ARGV[0], TG_ARGV[1], TG_ARGV[2], TG_ARGV[3],
+                      v_riga_padre_id
+                  );
+
+                  RETURN NULL;  -- AFTER trigger
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_componenti_ricalcola_padre()
+              IS 'Trigger function AFTER INS/UPD/DLT: ricalcola prezzo_unitario riga padre da SUM figli attivi. TG_ARGV[0]=schema [1]=tab_padre [2]=tab_figli [3]=col_fk_padre. Usata da 5 tabelle *_righe_componenti CASO A.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.trgfn_componenti_ricalcola_padre();
+
+  # -----------------------------------------------------------------------
+  # 05-03  trgfn_componenti_guard_coerenza_bom
+  #        Trigger BEFORE INSERT/UPDATE su tab figli.
+  #        Verifica: is_composito padre, appartenenza BoM,
+  #        esposto_in_fattura, validita BoM, coerenza componente_id.
+  #        TG_ARGV: schema, tab_padre, col_fk_figli_padre,
+  #                 tab_testata, col_fk_padre_testata, col_data_testata
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: 20260511-05-03-create-trgfn-componenti-guard-coerenza-bom
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger function BEFORE INSERT OR UPDATE: valida coerenza BoM CASO A.
+        5 guard: (1) articolo padre is_composito, (2) articolo_componente_id
+        appartiene alla BoM del padre, (3) componente_id coerente con BoM,
+        (4) esposto_in_fattura=TRUE, (5) validita BoM copre la data documento.
+        TG_ARGV: [0]=schema [1]=tab_padre [2]=col_fk_figli->padre
+                 [3]=tab_testata [4]=col_fk_padre->testata [5]=col_data_testata
+        Accede direttamente a NEW.articolo_componente_id e NEW.componente_id:
+        tutti le 5 tabelle _righe_componenti adottano questi nomi di colonna.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_componenti_guard_coerenza_bom()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- TG_ARGV[0]: schema padre (es. 'vendite')
+                  -- TG_ARGV[1]: tabella padre (es. 'preventivi_righe')
+                  -- TG_ARGV[2]: col FK figli->padre (es. 'riga_preventivo_id')
+                  -- TG_ARGV[3]: tabella testata documento (es. 'preventivi')
+                  -- TG_ARGV[4]: col FK padre->testata (es. 'preventivo_id')
+                  -- TG_ARGV[5]: col data riferimento su testata (es. 'data')
+                  v_riga_padre_id     BIGINT;
+                  v_articolo_id_padre catalogo.articoli.id%TYPE;
+                  v_is_composito      catalogo.articoli.is_composito%TYPE;
+                  v_data_rif          date;
+                  v_sql               text;
+                  v_bom               record;
+              BEGIN
+                  -- Legge id riga padre da NEW tramite nome colonna FK in TG_ARGV[2]
+                  EXECUTE format('SELECT ($1).%I', TG_ARGV[2])
+                    INTO v_riga_padre_id USING NEW;
+
+                  -- Legge articolo_id, is_composito del padre e data documento in un colpo
+                  -- solo: JOIN padre->articoli->testata. Elimina una SELECT separata
+                  -- rispetto al pattern precedente (is_composito era round-trip extra).
+                  v_sql := format(
+                      $q$SELECT pr.articolo_id, a.is_composito, d.%5$I
+                           FROM %1$I.%2$I  pr
+                           JOIN catalogo.articoli a  ON a.id  = pr.articolo_id
+                           JOIN %1$I.%4$I  d  ON d.id  = pr.%3$I
+                          WHERE pr.id = $1$q$,
+                      TG_ARGV[0],   -- 1: schema
+                      TG_ARGV[1],   -- 2: tab_padre
+                      TG_ARGV[4],   -- 3: col FK padre->testata
+                      TG_ARGV[3],   -- 4: tab_testata
+                      TG_ARGV[5]    -- 5: col data testata
+                  );
+                  EXECUTE v_sql INTO v_articolo_id_padre, v_is_composito, v_data_rif
+                    USING v_riga_padre_id;
+
+                  -- Guard 1: l'articolo della riga padre deve essere composito
+                  IF NOT COALESCE(v_is_composito, FALSE) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_RIGA_NON_COMPOSITO',
+                          jsonb_build_object(
+                              'riga_padre_id',    v_riga_padre_id,
+                              'articolo_id',      v_articolo_id_padre
+                          ),
+                          NULL::uuid,
+                          v_riga_padre_id::text
+                      );
+                  END IF;
+
+                  -- Guard 2+3+4+5: legge la riga BoM e verifica tutti i vincoli
+                  SELECT ac.componente_id,
+                         ac.esposto_in_fattura,
+                         ac.validita
+                    INTO v_bom
+                    FROM catalogo.articoli_componenti ac
+                   WHERE ac.id          = NEW.articolo_componente_id
+                     AND ac.prodotto_id = v_articolo_id_padre;
+
+                  -- Guard 2: articolo_componente_id deve appartere alla BoM del padre
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_COMPONENTE_NON_BOM',
+                          jsonb_build_object(
+                              'articolo_componente_id', NEW.articolo_componente_id,
+                              'articolo_id_padre',      v_articolo_id_padre
+                          ),
+                          NULL::uuid,
+                          v_riga_padre_id::text
+                      );
+                  END IF;
+
+                  -- Guard 3: componente_id deve coincidere con BoM.componente_id
+                  IF v_bom.componente_id IS DISTINCT FROM NEW.componente_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_COMPONENTE_ID_INCOERENTE',
+                          jsonb_build_object(
+                              'componente_id_ricevuto',  NEW.componente_id,
+                              'componente_id_atteso',    v_bom.componente_id,
+                              'articolo_componente_id',  NEW.articolo_componente_id
+                          ),
+                          NULL::uuid,
+                          v_riga_padre_id::text
+                      );
+                  END IF;
+
+                  -- Guard 4: il componente BoM deve essere esposto in fattura (CASO A)
+                  IF NOT COALESCE(v_bom.esposto_in_fattura, FALSE) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_COMPONENTE_NON_ESPOSTO',
+                          jsonb_build_object(
+                              'articolo_componente_id', NEW.articolo_componente_id,
+                              'componente_id',          NEW.componente_id
+                          ),
+                          NULL::uuid,
+                          v_riga_padre_id::text
+                      );
+                  END IF;
+
+                  -- Guard 5: BoM deve essere valida alla data documento
+                  -- (skip se data non disponibile: v_data_rif IS NULL)
+                  IF v_data_rif IS NOT NULL AND NOT (v_bom.validita @> v_data_rif) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_DOC_COMPONENTE_BOM_NON_VALIDA',
+                          jsonb_build_object(
+                              'articolo_componente_id', NEW.articolo_componente_id,
+                              'validita_bom',           v_bom.validita::text,
+                              'data_riferimento',       v_data_rif
+                          ),
+                          NULL::uuid,
+                          v_riga_padre_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_componenti_guard_coerenza_bom()
+              IS 'Trigger function BEFORE INS/UPD: 5 guard BoM CASO A — (1) padre is_composito, (2) articolo_componente_id in BoM padre, (3) componente_id coerente con BoM, (4) esposto_in_fattura=TRUE, (5) validita BoM @> data documento. TG_ARGV[0..5]: schema, tab_padre, col_fk_figli_padre, tab_testata, col_fk_padre_testata, col_data_testata.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.trgfn_componenti_guard_coerenza_bom();
+
+  # -----------------------------------------------------------------------
+  # 05-04  trgfn_componenti_propaga_qta
+  #        Trigger AFTER UPDATE OF quantita su tab_padre.
+  #        Aggiorna quantita sui figli: coeff_qta_snapshot * NEW.quantita.
+  #        TG_ARGV: schema, tab_figli, col_fk_figli_padre
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: 20260511-05-04-create-trgfn-componenti-propaga-qta
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger function AFTER UPDATE OF quantita su riga padre.
+        Propaga la nuova quantita a tutti i figli attivi come
+        quantita = coeff_qta_snapshot * NEW.quantita.
+        TG_ARGV: [0]=schema [1]=tab_figli [2]=col_fk_figli->padre
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_componenti_propaga_qta()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- TG_ARGV[0]: schema (es. 'vendite')
+                  -- TG_ARGV[1]: tab_figli (es. 'preventivi_righe_componenti')
+                  -- TG_ARGV[2]: col FK figli->padre (es. 'riga_preventivo_id')
+                  v_sql text;
+              BEGIN
+                  -- Guard difensivo: quantita non cambiata
+                  -- (UPDATE OF quantita garantisce gia' il cambio, ma
+                  -- il guard protegge da chiamate dirette accidentali)
+                  IF NEW.quantita IS NOT DISTINCT FROM OLD.quantita THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Aggiorna quantita su tutti i figli attivi:
+                  -- quantita = coeff_qta_snapshot * NEW.quantita (padre)
+                  v_sql := format(
+                      $q$UPDATE %1$I.%2$I
+                            SET quantita = coeff_qta_snapshot * $1
+                          WHERE %3$I = $2
+                            AND attivo = TRUE$q$,
+                      TG_ARGV[0],
+                      TG_ARGV[1],
+                      TG_ARGV[2]
+                  );
+                  EXECUTE v_sql USING NEW.quantita, NEW.id;
+
+                  RETURN NULL;  -- AFTER trigger
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_componenti_propaga_qta()
+              IS 'Trigger function AFTER UPDATE OF quantita su riga padre: propaga quantita ai figli attivi come coeff_qta_snapshot * NEW.quantita. TG_ARGV[0]=schema [1]=tab_figli [2]=col_fk_figli->padre. Usata su 5 tabelle sorgente CASO A.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.trgfn_componenti_propaga_qta();
+
+  # -----------------------------------------------------------------------
+  # 05-05  trgfn_componenti_calcola_quantita
+  #        Trigger BEFORE INSERT/UPDATE su tab figli.
+  #        Popola NEW.quantita = NEW.coeff_qta_snapshot * qta_padre.
+  #        Defense-in-depth: corregge valori inconsistenti dal BE.
+  #        TG_ARGV: schema, tab_padre, col_fk_figli_padre
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: 20260511-05-05-create-trgfn-componenti-calcola-quantita
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger function BEFORE INSERT/UPDATE su _righe_componenti:
+        popola NEW.quantita = NEW.coeff_qta_snapshot * quantita_padre.
+        Defense-in-depth: corregge se il BE invia quantita inconsistente.
+        TG_ARGV: [0]=schema [1]=tab_padre [2]=col_fk_figli->padre
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_componenti_calcola_quantita()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- TG_ARGV[0]: schema padre (es. 'vendite')
+                  -- TG_ARGV[1]: tab_padre (es. 'preventivi_righe')
+                  -- TG_ARGV[2]: col FK figli->padre (es. 'riga_preventivo_id')
+                  v_riga_padre_id BIGINT;
+                  v_qta_padre     NUMERIC;
+                  v_sql           text;
+              BEGIN
+                  -- Legge id riga padre da NEW
+                  EXECUTE format('SELECT ($1).%I', TG_ARGV[2])
+                    INTO v_riga_padre_id USING NEW;
+
+                  -- Legge quantita del padre
+                  v_sql := format(
+                      'SELECT quantita FROM %1$I.%2$I WHERE id = $1',
+                      TG_ARGV[0], TG_ARGV[1]
+                  );
+                  EXECUTE v_sql INTO v_qta_padre USING v_riga_padre_id;
+
+                  -- Calcola e imposta quantita componente
+                  NEW.quantita := NEW.coeff_qta_snapshot * COALESCE(v_qta_padre, 1);
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_componenti_calcola_quantita()
+              IS 'Trigger function BEFORE INS/UPD su _righe_componenti: imposta NEW.quantita = NEW.coeff_qta_snapshot * quantita_riga_padre. Defense-in-depth contro BE che invia quantita inconsistente. TG_ARGV[0]=schema [1]=tab_padre [2]=col_fk_figli->padre.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.trgfn_componenti_calcola_quantita();

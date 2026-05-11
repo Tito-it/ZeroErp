@@ -21,12 +21,13 @@ AS $function$
 -- DB-4: legge app.ruolo_applicativo dalla GUC per filtrare la veste corrente.
 --       Fallback sicuro: GUC assente/vuota/non-ENUM -> NULL -> tutte le vesti.
 -- F.2:  step 5 aggiunge etichetta_i18n_key al JSONB colonna.
+-- DEF-2: step 2.5 calcola preset_aggiornato (flag banner "novita' preset").
 DECLARE
-  v_lista_id         INTEGER;
+  v_lista_id         ui.lista_definizione.id%TYPE;
   v_config_colonne   JSONB;
   v_ordinamento      JSONB;
   v_filtri           JSONB;
-  v_pagina_dim       INTEGER := 25;
+  v_pagina_dim       ui.lista_preset.pagina_dimensione%TYPE := 25;
   v_profili_ids      INTEGER[];
   v_colonne_nuove    INTEGER := 0;
   v_permessi         JSONB   := '{}'::JSONB;
@@ -34,6 +35,15 @@ DECLARE
   -- DB-4: veste corrente dalla GUC (raw TEXT per cast sicuro sotto)
   v_ruolo_guc_raw    TEXT    := NULLIF(current_setting('app.ruolo_applicativo', true), '');
   v_ruolo_guc        config.ruolo_applicativo;
+
+  -- DEF-2: snapshot preset di base dalla preferenza utente
+  v_pref_preset_base_id    ui.lista_preferenza_utente.preset_base_id%TYPE;
+  v_pref_preset_base_ts    ui.lista_preferenza_utente.preset_base_data_update%TYPE;
+  v_pref_preset_ignored_at ui.lista_preferenza_utente.preset_aggiornato_ignored_at%TYPE;
+  -- DEF-2: data_update corrente del preset di base (lookup step 2.5)
+  v_preset_data_update     ui.lista_preset.data_update%TYPE;
+  -- DEF-2: flag risultato
+  v_preset_aggiornato      BOOLEAN := FALSE;
 BEGIN
   -- Cast GUC -> ENUM blindato: valore non nel ENUM (bug middleware,
   -- variabile env errata) -> fallback NULL = tutte le vesti, mai eccezione.
@@ -80,12 +90,18 @@ BEGIN
   -- -------------------------------------------------------
 
   -- 2a. Preferenza personale utente
+  --     DEF-2: legge anche preset_base_id, preset_base_data_update,
+  --     preset_aggiornato_ignored_at per il calcolo del flag al step 2.5.
   SELECT
       (pu.configurazione -> 'colonne'),
       (pu.configurazione -> 'ordinamento'),
       (pu.configurazione -> 'filtri'),
-      COALESCE((pu.configurazione ->> 'pagina_dimensione')::INTEGER, 25)
-    INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim
+      COALESCE((pu.configurazione ->> 'pagina_dimensione')::INTEGER, 25),
+      pu.preset_base_id,
+      pu.preset_base_data_update,
+      pu.preset_aggiornato_ignored_at
+    INTO v_config_colonne, v_ordinamento, v_filtri, v_pagina_dim,
+         v_pref_preset_base_id, v_pref_preset_base_ts, v_pref_preset_ignored_at
     FROM ui.lista_preferenza_utente pu
    WHERE pu.auth_user_id = p_auth_user_id
      AND pu.lista_id    = v_lista_id;
@@ -211,6 +227,30 @@ BEGIN
   END IF;
 
   -- -------------------------------------------------------
+  -- 2.5 DEF-2: lookup data_update corrente del preset di base.
+  --     Solo se la preferenza utente ha preset_base_id non-null
+  --     E uno snapshot valorizzato (preset_base_data_update).
+  --     Poi calcola il flag: TRUE sse il preset e' piu' recente
+  --     dello snapshot E l'utente non ha ancora ignorato
+  --     (o il preset e' cambiato di nuovo dopo l'ignore).
+  -- -------------------------------------------------------
+  IF v_pref_preset_base_id IS NOT NULL AND v_pref_preset_base_ts IS NOT NULL THEN
+    SELECT lp.data_update
+      INTO v_preset_data_update
+      FROM ui.lista_preset lp
+     WHERE lp.id = v_pref_preset_base_id;
+  END IF;
+
+  v_preset_aggiornato :=
+        v_pref_preset_base_ts IS NOT NULL
+    AND v_preset_data_update  IS NOT NULL
+    AND v_preset_data_update  > v_pref_preset_base_ts
+    AND (
+          v_pref_preset_ignored_at IS NULL
+      OR  v_pref_preset_ignored_at < v_preset_data_update
+    );
+
+  -- -------------------------------------------------------
   -- 3. Merge automatico colonne nuove dal catalogo
   --    (presenti in catalogo ma assenti dalla configurazione)
   -- -------------------------------------------------------
@@ -332,14 +372,15 @@ BEGIN
     'ordinamento',       COALESCE(v_ordinamento, '[]'::JSONB),
     'filtri',            COALESCE(v_filtri, '{}'::JSONB),
     'pagina_dimensione', v_pagina_dim,
-    'colonne_nuove',     v_colonne_nuove
+    'colonne_nuove',     v_colonne_nuove,
+    'preset_aggiornato', v_preset_aggiornato
   );
 
 END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve la configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione obbligatorie, filtro autorizzativo. Ritorna JSONB per il frontend inclusa etichetta_i18n_key. DB-3+DB-4 (2026-05-07), F.2 (2026-05-08).';
+IS 'Risolve configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. DEF-2 (2026-05-11): aggiunge preset_aggiornato (TRUE se preset modificato dopo snapshot e non ignorato).';
 ```
 
 ---

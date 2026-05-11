@@ -45,6 +45,7 @@
 | trg_unita_misura_a10_movimenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'movimenti', 'uom_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_ordini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini_righe', 'uom_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_preventivi_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe', 'uom_operativa_id', 'id', 'attivo')` |
+| trg_unita_misura_a10_preventivi_righe_componenti_block_d_34c143 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe_componenti', 'uom_operativa_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_promo_articoli_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'promo_articoli', 'uom_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_unita_misura_conversioni_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'unita_misura_conversioni', 'uom_from_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_uom_tipi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'uom_tipi', 'attivo', 'tipo_uom_id', 'id')` |
