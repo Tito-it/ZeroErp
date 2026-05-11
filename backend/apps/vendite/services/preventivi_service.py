@@ -690,10 +690,17 @@ def gestisci_riga(
 
     # Init componenti BoM CASO A (refactor componenti, 2026-05-11).
     # La fn DB e' idempotente e gestisce il caso "articolo non composito"
-    # come no-op (ritorna 0). Pre-check non-raise dell'emittente: admin
-    # globale (lista vuota) e operatore senza data preventivo skippano
-    # silenziosamente — i loro flussi non sono CASO A. La fn DB richiede
-    # emittente_sr_id NOT NULL: non possiamo invocarla senza.
+    # come no-op (ritorna 0). La fn DB richiede emittente_sr_id NOT NULL.
+    #
+    # Risoluzione emittente in 2 step (precedenza preventivo > operatore):
+    #  1) Se il preventivo ha `emittente_fiscale_id` esplicito (caso admin
+    #     globale che ha settato l'emittente nel payload, o operatore che
+    #     ha cambiato emittente del preventivo), uso quello. Altrimenti:
+    #  2) Fallback all'emittente assegnato all'operatore (operatore singolo
+    #     emittente: il preventivo eredita).
+    # Senza emittente da nessuna fonte (admin globale + preventivo senza
+    # emittente esplicito) lo skip silenzioso resta — caso edge per cui
+    # non sappiamo come pricing.
     # Il prezzo_unitario della riga padre verra' immediatamente
     # sovrascritto dal trigger DB di ricalcolo se almeno un componente
     # viene creato (CASO A). CASO B: prezzo padre invariato.
@@ -701,7 +708,14 @@ def gestisci_riga(
     riga_id_created = result.get("id")
     data_riferimento_str = testata.get("data")
     if riga_id_created is not None and data_riferimento_str is not None:
-        emittente_sr_id = _resolve_emittente_sr_id_safe(auth_user_id)
+        emittente_sr_id: int | None = None
+        emittente_fiscale_id_prev = testata.get("emittente_fiscale_id")
+        if emittente_fiscale_id_prev is not None:
+            emittente_sr_id = repo.get_emittente_sr_id_by_fiscale_id(
+                int(emittente_fiscale_id_prev),
+            )
+        if emittente_sr_id is None:
+            emittente_sr_id = _resolve_emittente_sr_id_safe(auth_user_id)
         if emittente_sr_id is not None:
             repo.init_componenti_riga(
                 riga_id=int(riga_id_created),

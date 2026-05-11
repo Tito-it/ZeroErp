@@ -658,6 +658,24 @@ class PreventiviRepository:
     # componenti × coeff_qta_snapshot — il backend NON deve toccarlo
     # esplicitamente.
 
+    # Scopo: Converte emittente_fiscale_id (PK `anagrafiche.emittenti_fiscali.id`)
+    # nel suo `soggetto_ruolo_id` corrispondente. Helper usato dal flusso
+    # init componenti CASO A quando il preventivo dichiara un emittente
+    # esplicito che NON coincide con quello dell'operatore (caso admin
+    # globale o override). Restituisce None se l'id non esiste.
+    # Vedi memoria `feedback_emittente_pk_vs_soggetto_ruolo`: la tabella
+    # `emittenti_fiscali` ha sia `id` (PK) che `soggetto_ruolo_id` (FK),
+    # serve la conversione PK -> sr_id per le fn pricing che attendono sr_id.
+    def get_emittente_sr_id_by_fiscale_id(self, fiscale_id: int) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali "
+                "WHERE id = %s",
+                [fiscale_id],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row else None
+
     # Scopo: Popola i componenti CASO A per una riga padre composita
     # invocando la fn DB `vendite.fn_preventivo_riga_componenti_init`.
     # Idempotente: ritorna 0 se gia' presenti componenti su quella riga

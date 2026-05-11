@@ -30,13 +30,24 @@ dettagli completi.
 
 | Componente | Stato | Owner |
 | --- | --- | --- |
-| Brief DB preventivi + helper `script.*` | Atterrato 2026-05-11 (non committato) | DB team |
-| Brief DB ordini/contratti/DDT/consumi | Da inviare dopo merge preventivi | DB team |
+| Brief DB preventivi + helper `script.*` | Atterrato + committato 2026-05-12 (PR #659) | DB team |
+| Brief DB ordini/contratti/DDT (Casi A simmetrici) | **Atterrato dal team DB 2026-05-12** | DB team |
+| Brief DB consumi | Da valutare (use case raro, vedi §7) | DB team |
+| Fix `fn_log_and_raise_error` signature `text[]` | Atterrato dal team DB 2026-05-12 | DB team |
+| Fix opzione A: rimosso fallback prezzo=0 nelle 4 fn init, raise `E_DOC_COMPONENTE_LISTINO_MANCANTE` | Atterrato 2026-05-12 (cross-dominio) | DB team |
+| Rename `vendite.contratti_righe.quantita_fissa → quantita` (migration 20260511-31) | Atterrato dal team DB 2026-05-12 | DB team |
+| Nuova colonna `vendite.ordini.utility_id` | Atterrato dal team DB 2026-05-12 | DB team |
 | Fix all-or-nothing push singolo | Atterrato 2026-05-11 | BE |
 | Guida `gestione-listini.md` aggiornata §5.2.1 + §6.2 | Atterrato 2026-05-11 | BE |
 | Test plan §3.4 esteso 3 scenari | Atterrato 2026-05-11 | BE |
-| Implementazione BE preventivi (Fasi 1-4) | In corso | BE |
-| Implementazione FE preventivi (Fase 5) | Bloccato in attesa BE | FE |
+| Implementazione BE preventivi (Fasi 1-4) + Fase 5 FE | **Atterrato + mergiato 2026-05-12 (PR #660)** | BE/FE |
+| Refactor BE `quantita_fissa → quantita` (4 file: contratti repo+service+views + ai_tools) | **Atterrato 2026-05-12** | BE |
+| Registrazione `E_DOC_COMPONENTE_LISTINO_MANCANTE` in `error_policies.py` + i18n keys | **Atterrato 2026-05-12** | BE/FE |
+| Smoke API end-to-end domain validation path | **Atterrato 2026-05-12** (`smoke-test-preventivi-componenti.sh`) | BE |
+| Smoke API end-to-end path felice (init success) | **Pending** — serve fixture con listino mappato | BE |
+| Implementazione BE/FE ordini Fasi 1-5 + colonna `utility_id` | **Da fare** (sviluppo futuro) | BE/FE |
+| Implementazione BE/FE contratti Fasi 1-5 (note: riga a consumo `quantita IS NULL` → init ritorna 0 silenzioso, BE deve gestire) | **Da fare** (sviluppo futuro) | BE/FE |
+| Implementazione BE/FE DDT Fasi 1-5 | **Da fare** (sviluppo futuro) | BE/FE |
 
 ## 2.1 Delta DB rispetto al brief originale (recepito 2026-05-11)
 
@@ -303,24 +314,46 @@ Per ognuno dei 4 sorgenti (ORDINI, CONTRATTI, DDT, CONSUMI):
 - Pattern UX espander tabella + sezione componenti drawer
 - Pattern L1/L2/L3 sui singoli componenti (stessi parametri di sistema)
 
-### Differenze per sorgente da chiarire prima di iniziare la PR
+### Stato sorgenti (aggiornato 2026-05-12)
 
-- **ORDINI**: pattern identico a preventivi. Verificare nomi colonna testata.
-- **CONTRATTI**: pricing modalita' A/B/C (vedi §3 `gestione-listini.md`) puo'
-  richiedere logica init diversa. In modalita' B alcuni componenti potrebbero
-  arrivare gia' con override sulla riga contratto — l'init deve rispettarli.
-  Brief specifico da inviare prima della PR.
-- **DDT**: se il DDT eredita da un ordine, i componenti potrebbero essere
-  copiati dall'ordine senza re-init. Da decidere: cascata automatica o
-  init separato sul DDT?
-- **CONSUMI**: verificare se esistono articoli compositi CASO A nei consumi.
-  Probabilmente raro (i consumi sono letture per UoM, non aggregati). Se non
-  esiste use case reale, possiamo skippare la PR consumi.
+| Sorgente | DB tabella + fn init | DB delta extra | BE Repo+Service+API | FE Fasi 4+5 | Note |
+| --- | --- | --- | --- | --- | --- |
+| PREVENTIVI | ✅ Atterrato | — | ✅ Atterrato (PR #660) | ✅ Atterrato (PR #660) | Implementazione di riferimento |
+| ORDINI | ✅ Atterrato 2026-05-12 | ✅ Nuova colonna `vendite.ordini.utility_id` (INTEGER nullable, FK config.utilities) | **Da fare** | **Da fare** | Pattern identico a preventivi. Repo/service ordini deve leggere/scrivere `utility_id` dove rilevante (allinearsi a DDT/preventivi) |
+| CONTRATTI | ✅ Atterrato 2026-05-12 | ✅ Rename `contratti_righe.quantita_fissa → quantita` (migration 20260511-31). BE allineato 2026-05-12 (4 file refactored). | **Da fare** | **Da fare** | **Note specifiche**: (1) se `contratti_righe.quantita IS NULL` (riga a consumo) la fn init ritorna 0 silenzioso — il BE service deve gestire (no-op atteso); (2) `p_data_riferimento` da passare come `COALESCE(contratti.valido_dal, contratti.data)` — non solo `data` come per preventivi |
+| DDT | ✅ Atterrato 2026-05-12 | — | **Da fare** | **Da fare** | Pattern identico. Verificare se ereditarieta' da ordine richiede skip init su righe gia' popolate da copia ordine |
+| CONSUMI | ⏸ Da valutare | — | — | — | Use case raro (letture per UoM, non aggregati). Skippare la PR consumi salvo richiesta esplicita |
+
+### Cambia per sorgente (recap riusabile)
+
+- Nome tabella (`<sorgente>_righe_componenti`)
+- Nome FK padre (`riga_<sorgente>_id`)
+- Nome tabella testata (`ordini` / `contratti` / `ddt`)
+- Colonna data riferimento: `data` (ordini, ddt) / `COALESCE(valido_dal, data)` (contratti)
+- Fn helper dominio init (`fn_<sorgente>_riga_componenti_init`)
+- Repository + Service di dominio (`ordini_service`, `contratti_service`, `ddt_service`)
+- API view nidificata sotto la testata del sorgente
+- Componenti FE (`<Sorgente>RigheTable.vue`, `<Sorgente>RigaForm.vue`)
+- Store + composable FE (variante per sorgente di `usePreventivoRigaComponenti`)
 
 ### Stima effort per sorgente (post-preventivi)
 
-~3gg a sorgente (DB merge da team in 0.5gg + BE+FE ~2.5gg).
-Totale 4 sorgenti = ~12gg.
+~3gg a sorgente (DB gia' merged → BE+FE ~2.5gg + smoke 0.5gg).
+Totale 3 sorgenti restanti (ordini + contratti + ddt) = ~9gg.
+
+### Implementazione invocazione fn init (template per ogni sorgente)
+
+```python
+# In gestisci_riga (ordini/contratti/ddt) post-create_riga della riga padre:
+cursor.callproc(
+    'vendite.fn_<sorgente>_riga_componenti_init',
+    [riga_id, emittente_sr_id, data_riferimento],
+)
+# Risoluzione emittente: precedenza testata.emittente_fiscale_id (via
+# repo.get_emittente_sr_id_by_fiscale_id), fallback a operatore.
+# Pattern identico a preventivi (preventivi_service.gestisci_riga §691-720).
+# Per CONTRATTI: data_riferimento = COALESCE(testata.valido_dal, testata.data).
+```
 
 ## 8. Decisioni di dominio gia' chiuse (riferimento)
 
@@ -335,6 +368,18 @@ Da non riaprire — gia' concordate con Tid:
 5. Helper trigger DRY in `script.*` parametrizzate via TG_ARGV
 6. Push singolo all-or-nothing (gia' atterrato 2026-05-11): se anche
    un solo componente fallisce in fase di push, rollback totale
+7. **Componente esposto DEVE avere prezzo non zero** (CHECK
+   `chk_<sorgente>_righe_comp_prezzo_nonneg = <> 0`, opzione A 2026-05-12):
+   il fallback resolver_failed e' stato rimosso dalle 4 fn init. Quando
+   manca listino, `E_DOC_COMPONENTE_LISTINO_MANCANTE` (HTTP 422) blocca
+   l'init e l'operatore deve configurare il listino prima di creare la
+   riga. Codice errore registrato in `apps/core/services/error_policies.py`
+   e i18n key `preventivi.componenti_errore_listino_mancante`.
+8. **Risoluzione emittente nel flusso init** (precedenza
+   `testata.emittente_fiscale_id` > operatore): admin globali e operatori
+   con override emittente possono creare CASO A. Helper repository
+   `get_emittente_sr_id_by_fiscale_id(fiscale_id)` convertono PK emittente
+   in `soggetto_ruolo_id` per le fn pricing.
 
 ## 9. Riferimenti
 

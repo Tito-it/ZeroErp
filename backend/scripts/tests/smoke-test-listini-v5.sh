@@ -447,7 +447,7 @@ if [[ "$LAST_STATUS" == "200" ]]; then
     log_ok "Create contratto B (HTTP 200)"
     # Aggiungo riga override
     do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_B_ID}/righe/" \
-        "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_erogazione\":\"CANONE\",\"prezzo_unitario\":\"30.0000000000\",\"qta_operativa\":\"1\",\"quantita_fissa\":\"1\"}"
+        "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_erogazione\":\"CANONE\",\"prezzo_unitario\":\"30.0000000000\",\"qta_operativa\":\"1\",\"quantita\":\"1\"}"
     check "Riga override contratto B" "200" ".data.id"
 else
     log_info "Contratto B salta (HTTP $LAST_STATUS) — continuo"
@@ -476,7 +476,7 @@ log_info "Codice errore: ${EXTRACTED:-n/d}"
 echo ""
 echo "-- 21. Aggiungi riga con prezzo_unitario --"
 do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_C_ID}/righe/" \
-    "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_erogazione\":\"CANONE\",\"prezzo_unitario\":\"40.0000000000\",\"qta_operativa\":\"1\",\"quantita_fissa\":\"1\"}"
+    "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_erogazione\":\"CANONE\",\"prezzo_unitario\":\"40.0000000000\",\"qta_operativa\":\"1\",\"quantita\":\"1\"}"
 check "Riga contratto C con prezzo" "200"
 
 # --- 22. Contratto C: attivazione ora OK ---
