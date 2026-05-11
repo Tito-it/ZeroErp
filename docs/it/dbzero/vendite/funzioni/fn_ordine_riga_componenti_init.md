@@ -16,7 +16,7 @@ DECLARE
     -- Scopo: Popola ordini_righe_componenti per una riga composita CASO A.
     --   Chiama fn_resolve_prezzo_composito per prezzi/origini per componente.
     --   Idempotente: no-op se componenti gia' presenti o articolo non composito.
-    --   Fallback P0001: inserisce tutti i componenti BoM con prezzo=0, MANUALE.
+    --   P0001 dal resolver: propaga E_DOC_COMPONENTE_LISTINO_MANCANTE (rev 12-05-2026).
     --   Legge utility_id da ordini (aggiunto in 20260511-29).
     v_articolo_id    catalogo.articoli.id%TYPE;
     v_uom_id         catalogo.unita_misura.id%TYPE;
@@ -27,9 +27,8 @@ DECLARE
     v_utility_id     vendite.ordini.utility_id%TYPE;
     v_bom_entry_id   catalogo.articoli_componenti.id%TYPE;
     v_comp           record;
-    v_bom_rec        record;
+    v_err_msg        text;
     v_inserted       integer := 0;
-    v_resolve_failed boolean := FALSE;
 BEGIN
     -- Guard input
     IF p_riga_id IS NULL OR p_riga_id <= 0 THEN
@@ -92,9 +91,9 @@ BEGIN
       INTO v_ba_id, v_utility_id
       FROM vendite.ordini o WHERE o.id = v_ordine_id;
 
-    -- Chiama resolver composito (CASO A: N righe, solo esposti)
+    -- Chiama resolver composito (CASO A: N righe, solo esposti).
     -- Sottoblocco con savepoint: cattura P0001 (listino mancante)
-    -- e attiva fallback.
+    -- e propaga come errore business E_DOC_COMPONENTE_LISTINO_MANCANTE.
     BEGIN
         FOR v_comp IN
             SELECT *
@@ -157,67 +156,26 @@ BEGIN
         END LOOP;
 
     EXCEPTION WHEN SQLSTATE 'P0001' THEN
-        -- Resolver fallito: rollback inserimenti parziali, attiva fallback
-        v_inserted       := 0;
-        v_resolve_failed := TRUE;
+        GET STACKED DIAGNOSTICS v_err_msg = MESSAGE_TEXT;
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_ordine_riga_componenti_init',
+            'E_DOC_COMPONENTE_LISTINO_MANCANTE',
+            jsonb_build_object(
+                'p_riga_id',        p_riga_id,
+                'data_riferimento', p_data_riferimento,
+                'dettaglio',        v_err_msg
+            ),
+            NULL::uuid,
+            p_riga_id::text
+        );
     END;
-
-    -- Fallback: resolver ha fallito -> inserisce tutti i componenti
-    -- dalla BoM con prezzo=0 e origine=MANUALE.
-    IF v_resolve_failed THEN
-        FOR v_bom_rec IN
-            SELECT ac.id     AS bom_entry_id,
-                   ac.componente_id,
-                   ac.coeff_qta,
-                   a.uom_id  AS componente_uom_id,
-                   a.iva_id  AS componente_iva_id
-              FROM catalogo.articoli_componenti ac
-              JOIN catalogo.articoli a ON a.id = ac.componente_id
-             WHERE ac.prodotto_id        = v_articolo_id
-               AND ac.esposto_in_fattura = TRUE
-               AND ac.validita          @> p_data_riferimento
-        LOOP
-            INSERT INTO vendite.ordini_righe_componenti (
-                riga_ordine_id,
-                articolo_componente_id,
-                componente_id,
-                coeff_qta_snapshot,
-                quantita,
-                uom_operativa_id,
-                factor_to_base,
-                prezzo_unitario,
-                iva_id,
-                origine_prezzo,
-                prezzo_resolver_context
-            ) VALUES (
-                p_riga_id,
-                v_bom_rec.bom_entry_id,
-                v_bom_rec.componente_id,
-                v_bom_rec.coeff_qta,
-                v_bom_rec.coeff_qta * v_qta_padre,
-                v_bom_rec.componente_uom_id,
-                1,
-                0,
-                v_bom_rec.componente_iva_id,
-                'MANUALE',
-                jsonb_build_object(
-                    'error',            'resolver_failed',
-                    'emittente_sr_id',  p_emittente_sr_id,
-                    'data_riferimento', p_data_riferimento,
-                    'ba_id',            v_ba_id,
-                    'utility_id',       v_utility_id
-                )
-            );
-            v_inserted := v_inserted + 1;
-        END LOOP;
-    END IF;
 
     RETURN v_inserted;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ordine_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date)
-IS 'Inizializza componenti BoM CASO A per una riga ordine composita. Chiama fn_resolve_prezzo_composito e inserisce una riga per ogni componente esposto_in_fattura=TRUE. Idempotente (no-op se componenti gia'' presenti o articolo non composito). Fallback P0001: inserisce tutti i componenti con prezzo=0/MANUALE. Ritorna n. componenti inseriti. Legge utility_id da ordini (aggiunto in 20260511-29): allineato a preventivi/ddt.';
+IS 'Inizializza componenti BoM CASO A per una riga ordine composita. Chiama fn_resolve_prezzo_composito e inserisce una riga per ogni componente esposto_in_fattura=TRUE. Idempotente (no-op se componenti gia'' presenti o articolo non composito). P0001 dal resolver: propaga E_DOC_COMPONENTE_LISTINO_MANCANTE (rev 12-05-2026, rimosso fallback prezzo=0). Legge utility_id da ordini (20260511-29). Ritorna n. componenti inseriti.';
 ```
 
 ---
