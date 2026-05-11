@@ -247,7 +247,7 @@ _RIGA_CREATE_REQUEST = inline_serializer(
         "prezzo_unitario": serializers.DecimalField(
             max_digits=18, decimal_places=6, required=False, allow_null=True,
         ),
-        "quantita_fissa": serializers.DecimalField(
+        "quantita": serializers.DecimalField(
             max_digits=18, decimal_places=6, required=False, allow_null=True,
         ),
         "qta_operativa": serializers.DecimalField(
@@ -275,7 +275,7 @@ _RIGA_PATCH_REQUEST = inline_serializer(
         "prezzo_unitario": serializers.DecimalField(
             max_digits=18, decimal_places=6, required=False, allow_null=True,
         ),
-        "quantita_fissa": serializers.DecimalField(
+        "quantita": serializers.DecimalField(
             max_digits=18, decimal_places=6, required=False, allow_null=True,
         ),
         "qta_operativa": serializers.DecimalField(

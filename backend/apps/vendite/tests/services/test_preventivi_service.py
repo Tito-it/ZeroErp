@@ -44,6 +44,7 @@ Indice test eseguiti:
 31) test_repository_list_righe_filtra_solo_attive — righe soft-delete escluse
 32) test_gestisci_riga_init_componenti_chiamato — post-create_riga la fn init e' invocata
 33) test_gestisci_riga_init_componenti_skip_admin_globale — admin globale (no emittente) salta init
+33b) test_gestisci_riga_init_componenti_usa_emittente_preventivo — admin + emittente esplicito sul preventivo OK
 34) test_aggiorna_riga_non_tocca_componenti — articolo_id immutabile, componenti stabili
 35) test_list_componenti_riga_ok — lista componenti riga padre
 36) test_list_componenti_riga_not_found — riga padre inesistente
@@ -591,8 +592,9 @@ class TestPreventiviService(unittest.TestCase):
         self.assertEqual(kwargs["riga_id"], 42)
         self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 100)
 
-    # Scopo: admin globale (helper safe ritorna None) NON triggera init —
-    # la create di righe non-CASO-A non deve essere bloccata.
+    # Scopo: admin globale (helper safe ritorna None) e preventivo SENZA
+    # emittente_fiscale_id esplicito NON triggera init. Caso edge: skip
+    # silenzioso perche' non sappiamo come pricing.
     def test_gestisci_riga_init_componenti_skip_admin_globale(self):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
@@ -600,6 +602,7 @@ class TestPreventiviService(unittest.TestCase):
             "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
             "data": "2026-05-11",
             "billing_account_id": 5, "utility_id": 5,
+            "emittente_fiscale_id": None,
         }
         self.mock_repo.create_riga.return_value = {"id": 42}
         # Sovrascrivi mock setUp: emittente safe = None (admin globale)
@@ -612,6 +615,34 @@ class TestPreventiviService(unittest.TestCase):
                 auth_user_id=100,
             )
         self.mock_repo.init_componenti_riga.assert_not_called()
+
+    # Scopo: admin globale CON `emittente_fiscale_id` esplicito sul
+    # preventivo triggera init usando quell'emittente (precedenza
+    # preventivo > operatore). Risolve bug "admin non puo' creare CASO A
+    # via API" — refactor componenti rev 2026-05-12.
+    def test_gestisci_riga_init_componenti_usa_emittente_preventivo(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+            "emittente_fiscale_id": 99,  # PK emittente del preventivo
+        }
+        self.mock_repo.create_riga.return_value = {"id": 42}
+        self.mock_repo.get_emittente_sr_id_by_fiscale_id.return_value = 200
+        with patch(
+            "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+            return_value=None,  # operatore admin globale, no emittente proprio
+        ):
+            gestisci_riga(
+                1, {"articolo_id": "uuid-art-1", "uom_operativa_id": 1},
+                auth_user_id=100,
+            )
+        self.mock_repo.get_emittente_sr_id_by_fiscale_id.assert_called_once_with(99)
+        self.mock_repo.init_componenti_riga.assert_called_once()
+        kwargs = self.mock_repo.init_componenti_riga.call_args.kwargs
+        self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 200)
 
     # Scopo: `aggiorna_riga` NON ammette cambio articolo (whitelist update
     # exclude `articolo_id`). I componenti CASO A iniziali dell'init

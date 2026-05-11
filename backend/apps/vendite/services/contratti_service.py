@@ -155,7 +155,7 @@ _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "generazione_canone",
     "competenza_canone",
     "prezzo_unitario",
-    "quantita_fissa",
+    "quantita",
     "qta_operativa",
     "uom_operativa_id",
     "factor_to_base",
@@ -171,7 +171,7 @@ _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "generazione_canone",
     "competenza_canone",
     "prezzo_unitario",
-    "quantita_fissa",
+    "quantita",
     "qta_operativa",
     "uom_operativa_id",
     "factor_to_base",
@@ -1250,7 +1250,7 @@ class ContrattiService:
                 payload, "articolo_id", message=_MESSAGE_RIGA,
             )
         # Numeric opzionali.
-        for field in ("prezzo_unitario", "quantita_fissa", "qta_operativa", "factor_to_base"):
+        for field in ("prezzo_unitario", "quantita", "qta_operativa", "factor_to_base"):
             if field in payload:
                 raw = payload[field]
                 if raw is None:

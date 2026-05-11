@@ -1317,6 +1317,24 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Componente preventivo non trovato.",
         ),
+        # Cross-dominio (script.fn_<sorgente>_riga_componenti_init): sollevato
+        # quando il pricing resolver non trova un listino mappato per uno dei
+        # componenti BoM CASO A. Decisione di dominio 2026-05-12 (opzione A):
+        # blocco esplicito invece di fallback prezzo=0 (vincolo dominio
+        # `chk_prevrighe_comp_prezzo_nonneg = <> 0`). L'operatore deve
+        # configurare il listino del componente prima di creare la riga.
+        # Detail context (jsonb) contiene `componente_codice` / `componente_id`
+        # / `data_riferimento` + dettaglio dal resolver per il log.
+        "E_DOC_COMPONENTE_LISTINO_MANCANTE": ErrorPolicy(
+            code="E_DOC_COMPONENTE_LISTINO_MANCANTE",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "Listino non configurato per uno dei componenti esposti in "
+                "fattura. Configura il listino del componente prima di creare "
+                "la riga."
+            ),
+        ),
         "E_PREV_NESSUNA_RIGA": ErrorPolicy(
             code="E_PREV_NESSUNA_RIGA",
             http_status=400,
