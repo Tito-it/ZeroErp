@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Aggiorna trgfn_preventivi_guard_transizione_approvazione per
+# includere il check su preventivi_righe_componenti.
+#
+# Con l'introduzione di preventivi_righe_componenti (BoM CASO A),
+# anche i componenti possono avere stato_approvazione_prezzo=PENDING
+# (L3 out-of-policy). Il guard esistente controllava solo
+# preventivi_righe; ora controlla anche i componenti via JOIN.
+#
+# Il trigger stesso (trg_preventivi_a10_guard_transizione_approvazione_upd)
+# non viene ricreato: e' gia' su vendite.preventivi con UPDATE OF
+# stato_doc_preventivo_id — rimane invariato.
+# Nessun DROP: firma identica, usa CREATE OR REPLACE.
+# runOnChange: true per ri-applicare ad ogni modifica del file.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260511-10-update-trgfn-preventivi-guard-transizione-approvazione-mctit.yaml
+
+  - changeSet:
+      id: 20260511-10-01-update-trgfn-preventivi-guard-transizione-approvazione
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Aggiorna vendite.trgfn_preventivi_guard_transizione_approvazione:
+        aggiunge check EXISTS su preventivi_righe_componenti per bloccare
+        la transizione ad ACCETTATO anche se un componente BoM CASO A
+        ha stato_approvazione_prezzo=PENDING.
+        Raise E_PREVENTIVO_RIGHE_PRICING_PENDENTI (stesso codice errore
+        del check su preventivi_righe, hint differente per componenti).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: preventivi_righe_componenti
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_transizione_approvazione()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato_codice config.stati_doc_preventivi.codice_interno%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Bloccare la transizione a stato_interno='ACCETTATO' di un
+                  --   preventivo che ha righe o componenti BoM CASO A ancora in
+                  --   workflow approvazione prezzo (stato_approvazione_prezzo=
+                  --   'PENDING'). Garantisce che le richieste L3 siano esitate
+                  --   prima della finalizzazione commerciale.
+                  --
+                  -- Regole:
+                  --   1. Risolve codice_interno del nuovo stato (NEW).
+                  --   2. Se diverso da 'ACCETTATO' -> pass-through.
+                  --   3. Se ACCETTATO -> check PENDING su preventivi_righe.
+                  --   4. Se ACCETTATO -> check PENDING su preventivi_righe_componenti
+                  --      (aggiunto 2026-05-11: BoM CASO A).
+                  --
+                  -- Naming: uso codice_interno (non codice) per stabilita'
+                  -- rispetto a relabelling UX del codice business-visible.
+                  -- =========================================================
+
+                  SELECT sdp.codice_interno
+                    INTO v_stato_codice
+                    FROM config.stati_doc_preventivi sdp
+                   WHERE sdp.id = NEW.stato_doc_preventivo_id;
+
+                  IF v_stato_codice IS DISTINCT FROM 'ACCETTATO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Check 1: righe preventivo con prezzo PENDING
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.preventivi_righe pr
+                       WHERE pr.preventivo_id = NEW.id
+                         AND pr.stato_approvazione_prezzo =
+                             'PENDING'::config.stato_approvazione_prezzo
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_PREVENTIVO_RIGHE_PRICING_PENDENTI',
+                          jsonb_build_object(
+                              'preventivo_id', NEW.id,
+                              'hint', 'Riga preventivo in attesa di approvazione prezzo. '
+                                   || 'Attendi esito o rifiuta la richiesta prima di accettare.'
+                          ),
+                          NULL::uuid,
+                          NEW.id::text
+                      );
+                  END IF;
+
+                  -- Check 2: componenti BoM CASO A con prezzo PENDING
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.preventivi_righe pr
+                        JOIN vendite.preventivi_righe_componenti prc
+                          ON prc.riga_preventivo_id = pr.id
+                       WHERE pr.preventivo_id = NEW.id
+                         AND prc.stato_approvazione_prezzo =
+                             'PENDING'::config.stato_approvazione_prezzo
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_PREVENTIVO_RIGHE_PRICING_PENDENTI',
+                          jsonb_build_object(
+                              'preventivo_id', NEW.id,
+                              'hint', 'Componente BoM CASO A in attesa di approvazione prezzo. '
+                                   || 'Attendi esito su tutti i componenti prima di accettare.'
+                          ),
+                          NULL::uuid,
+                          NEW.id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_transizione_approvazione()
+              IS 'Trigger function: blocca transizione preventivo ad ACCETTATO se esistono '
+                 'righe o componenti BoM CASO A con stato_approvazione_prezzo=PENDING. '
+                 'Sprint E listini v5 §14.6 (DB-E-4). Aggiornato 2026-05-11: aggiunto '
+                 'check su preventivi_righe_componenti. Raise E_PREVENTIVO_RIGHE_PRICING_PENDENTI.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_transizione_approvazione()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato_codice config.stati_doc_preventivi.codice_interno%TYPE;
+              BEGIN
+                  SELECT sdp.codice_interno
+                    INTO v_stato_codice
+                    FROM config.stati_doc_preventivi sdp
+                   WHERE sdp.id = NEW.stato_doc_preventivo_id;
+
+                  IF v_stato_codice IS DISTINCT FROM 'ACCETTATO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.preventivi_righe pr
+                       WHERE pr.preventivo_id = NEW.id
+                         AND pr.stato_approvazione_prezzo =
+                             'PENDING'::config.stato_approvazione_prezzo
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_PREVENTIVO_RIGHE_PRICING_PENDENTI',
+                          jsonb_build_object(
+                              'preventivo_id', NEW.id,
+                              'hint', 'Attendi esito dell''approvazione pendente o rifiuta '
+                                   || 'la richiesta prima di accettare il preventivo.'
+                          ),
+                          NULL::uuid,
+                          NEW.id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;

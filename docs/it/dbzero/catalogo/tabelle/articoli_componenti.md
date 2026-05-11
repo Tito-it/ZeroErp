@@ -58,17 +58,18 @@
 | trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()` |
 | trg_articoli_componenti_a10_block_solo_componente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_solo_componente()` |
 | trg_articoli_componenti_a10_block_solo_componente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_solo_componente()` |
-| trg_articoli_componenti_a10_guard_is_composito_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito()` |
 | trg_articoli_componenti_a10_guard_is_composito_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito()` |
+| trg_articoli_componenti_a10_guard_is_composito_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_is_composito()` |
 | trg_articoli_componenti_a10_note_articoli_componenti_blo_a2749a | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'note_articoli_componenti', 'target_id', 'id', 'attivo')` |
+| trg_articoli_componenti_a10_preventivi_righe_componenti__48a14a | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe_componenti', 'articolo_componente_id', 'id', 'attivo')` |
 | trg_articoli_componenti_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
 | trg_articoli_componenti_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |
 | trg_articoli_componenti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_articoli_componenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_articoli_componenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_articoli_componenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_articoli_componenti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('articoli_componenti_id')` |
 | trg_articoli_componenti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('articoli_componenti_id')` |
+| trg_articoli_componenti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('articoli_componenti_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}
