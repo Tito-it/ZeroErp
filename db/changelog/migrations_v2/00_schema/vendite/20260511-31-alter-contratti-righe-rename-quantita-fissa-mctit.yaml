@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Rinomina quantita_fissa -> quantita su vendite.contratti_righe.
+#
+# Motivazione: allineamento al pattern BoM CASO A (5 tabelle
+# *_righe_componenti). Le helper generiche script.trgfn_componenti_*
+# assumono che la colonna quantita si chiami 'quantita' su tutte
+# le tabelle padre. quantita_fissa era un nome semanticamente
+# ridondante (e' gia' implicito nel tipo di riga contratto).
+#
+# Impatti DB coordinati nelle migration successive:
+#   20260511-32: trigger trg_contratti_righe_a10_qta_from_operativa_ins_upd
+#                aggiornato con TG_ARGV 'quantita' (era 'quantita_fissa')
+#   20260511-33: fn_list_contratti_da_pushare aggiornata
+#                (cr.quantita_fissa -> cr.quantita)
+#
+# Impatti backend (da aggiornare manualmente):
+#   contratti_repository.py, contratti_service.py, views_contratti.py
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/vendite/20260511-31-alter-contratti-righe-rename-quantita-fissa-mctit.yaml
+
+    - changeSet:
+          id: 20260511-31-01-alter-contratti-righe-rename-quantita-fissa
+          author: mctit
+          comment: >
+              Rinomina colonna quantita_fissa -> quantita su vendite.contratti_righe.
+              Prerequisito per contratti_righe_componenti (pattern BoM CASO A):
+              le helper generiche script.* assumono che la colonna quantita
+              sulle tabelle padre si chiami 'quantita'.
+          preConditions:
+              - onFail: HALT
+              - and:
+                    - columnExists:
+                          schemaName: vendite
+                          tableName: contratti_righe
+                          columnName: quantita_fissa
+                    - not:
+                          - columnExists:
+                                schemaName: vendite
+                                tableName: contratti_righe
+                                columnName: quantita
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        ALTER TABLE vendite.contratti_righe
+                            RENAME COLUMN quantita_fissa TO quantita;
+
+                        COMMENT ON COLUMN vendite.contratti_righe.quantita IS
+                            'Quantita base della riga contratto (rinominata da quantita_fissa in '
+                            '20260511-31). Calcolata dal trigger trgfn_qta_from_operativa come '
+                            'qta_operativa * factor_to_base. Nullable: NULL indica riga a consumo '
+                            'senza quantita fissa definita.';
+          rollback:
+              - sql:
+                    sql: |
+                        ALTER TABLE vendite.contratti_righe
+                            RENAME COLUMN quantita TO quantita_fissa;

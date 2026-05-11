@@ -430,6 +430,12 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Attivita` commessa non trovata.",
         ),
+        "E_COMMESSA_PUSH_PARZIALE_VIETATO": ErrorPolicy(
+            code="E_COMMESSA_PUSH_PARZIALE_VIETATO",
+            http_status=422,
+            ui_action="show_toast_error",
+            user_message="Push fallito: nessuna riga inviata.",
+        ),
         "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA": ErrorPolicy(
             code="E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA",
             http_status=409,
@@ -1305,6 +1311,30 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Riga preventivo non trovata.",
         ),
+        "E_PREV_COMPONENTE_NOT_FOUND": ErrorPolicy(
+            code="E_PREV_COMPONENTE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Componente preventivo non trovato.",
+        ),
+        # Cross-dominio (script.fn_<sorgente>_riga_componenti_init): sollevato
+        # quando il pricing resolver non trova un listino mappato per uno dei
+        # componenti BoM CASO A. Decisione di dominio 2026-05-12 (opzione A):
+        # blocco esplicito invece di fallback prezzo=0 (vincolo dominio
+        # `chk_prevrighe_comp_prezzo_nonneg = <> 0`). L'operatore deve
+        # configurare il listino del componente prima di creare la riga.
+        # Detail context (jsonb) contiene `componente_codice` / `componente_id`
+        # / `data_riferimento` + dettaglio dal resolver per il log.
+        "E_DOC_COMPONENTE_LISTINO_MANCANTE": ErrorPolicy(
+            code="E_DOC_COMPONENTE_LISTINO_MANCANTE",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "Listino non configurato per uno dei componenti esposti in "
+                "fattura. Configura il listino del componente prima di creare "
+                "la riga."
+            ),
+        ),
         "E_PREV_NESSUNA_RIGA": ErrorPolicy(
             code="E_PREV_NESSUNA_RIGA",
             http_status=400,
@@ -1523,6 +1553,15 @@ class ErrorPolicyRegistry:
             http_status=400,
             ui_action="highlight_form_fields",
             user_message="Preferenza lista non valida.",
+        ),
+        # DEF-2 "preset aggiornato": l'endpoint POST /preferenza/ignore-preset-update/
+        # solleva quando l'utente non ha ancora una preferenza salvata sulla lista
+        # (banner non dovrebbe essere visibile, ma l'errore lato BE e' parlante).
+        "E_UI_PREFERENZA_NON_TROVATA": ErrorPolicy(
+            code="E_UI_PREFERENZA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Preferenza utente non trovata per questa lista.",
         ),
         # Blocco F (admin CRUD ui.*): codici dedicati per preset e permessi colonna.
         # Le validazioni di scoperto/duplicato vengono mappate via map_integrity_error

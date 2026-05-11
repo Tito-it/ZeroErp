@@ -38,3 +38,15 @@ export const STATO_PREVENTIVO = Object.freeze({
 // preventivo target. Coerente col BE
 // `_approvazioni_prezzo_constants.META_KEY_RIGA_PREVENTIVO_ID`.
 export const META_KEY_RIGA_PREVENTIVO_ID = 'riga_preventivo_id'
+
+// Codici origine prezzo del pricing resolver v5 (5 valori, post refactor
+// componenti BoM CASO A 2026-05-11). Allineato al CHECK DB su
+// `vendite.preventivi_righe_componenti.origine_prezzo` e su
+// `vendite.preventivi_righe.origine_prezzo` (quando esteso).
+export const ORIGINE_PREZZO = Object.freeze({
+  PROMO: 'PROMO',
+  CONTRATTO_OVERRIDE: 'CONTRATTO_OVERRIDE',
+  CONTRATTO_LISTINO: 'CONTRATTO_LISTINO',
+  CATEGORIA: 'CATEGORIA',
+  MANUALE: 'MANUALE',
+})

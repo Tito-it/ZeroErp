@@ -687,6 +687,42 @@ def gestisci_riga(
             link_riga_a_pratica,
         )
         link_riga_a_pratica(pratica_id=pratica_id_l3, riga_id=int(result["id"]))
+
+    # Init componenti BoM CASO A (refactor componenti, 2026-05-11).
+    # La fn DB e' idempotente e gestisce il caso "articolo non composito"
+    # come no-op (ritorna 0). La fn DB richiede emittente_sr_id NOT NULL.
+    #
+    # Risoluzione emittente in 2 step (precedenza preventivo > operatore):
+    #  1) Se il preventivo ha `emittente_fiscale_id` esplicito (caso admin
+    #     globale che ha settato l'emittente nel payload, o operatore che
+    #     ha cambiato emittente del preventivo), uso quello. Altrimenti:
+    #  2) Fallback all'emittente assegnato all'operatore (operatore singolo
+    #     emittente: il preventivo eredita).
+    # Senza emittente da nessuna fonte (admin globale + preventivo senza
+    # emittente esplicito) lo skip silenzioso resta — caso edge per cui
+    # non sappiamo come pricing.
+    # Il prezzo_unitario della riga padre verra' immediatamente
+    # sovrascritto dal trigger DB di ricalcolo se almeno un componente
+    # viene creato (CASO A). CASO B: prezzo padre invariato.
+    # Vedi guida `gestione-listini.md` §5.2.1 e brief DB.
+    riga_id_created = result.get("id")
+    data_riferimento_str = testata.get("data")
+    if riga_id_created is not None and data_riferimento_str is not None:
+        emittente_sr_id: int | None = None
+        emittente_fiscale_id_prev = testata.get("emittente_fiscale_id")
+        if emittente_fiscale_id_prev is not None:
+            emittente_sr_id = repo.get_emittente_sr_id_by_fiscale_id(
+                int(emittente_fiscale_id_prev),
+            )
+        if emittente_sr_id is None:
+            emittente_sr_id = _resolve_emittente_sr_id_safe(auth_user_id)
+        if emittente_sr_id is not None:
+            repo.init_componenti_riga(
+                riga_id=int(riga_id_created),
+                emittente_soggetto_ruolo_id=emittente_sr_id,
+                data_riferimento=date.fromisoformat(str(data_riferimento_str)),
+            )
+
     # Ricalcolo totali gestito da trigger DB AFTER su preventivi_righe
     return result
 
@@ -879,6 +915,12 @@ def aggiorna_riga(
 
     # Nota: il link riga<->pratica e' gia' stato eseguito dentro
     # _orchestrate_l3_request (riga_id_for_link=riga_id).
+    #
+    # Cambio articolo padre: NON gestito qui per design. `articolo_id` non
+    # e' nella whitelist `update_fields` sopra — la regola del dominio e'
+    # "articolo immutabile post-create" (l'operatore elimina + ricrea la
+    # riga). Quindi i componenti CASO A iniziali dell'init (gestisci_riga)
+    # restano coerenti per tutta la vita della riga.
 
     return {"status": "ok", "riga_id": riga_id}
 
@@ -1332,6 +1374,57 @@ def _check_limite_variazione_prezzo(
 #        del preventivo. L'emittente_soggetto_ruolo_id e' derivato dal JWT
 #        operatore via PermissionResolver.
 #
+# Scopo: Variante non-raise di `_resolve_emittente_sr_id_or_raise`. Ritorna
+#        None per admin globale (no emittenti assegnati) o utente
+#        inesistente, invece di sollevare. Usata dal flusso init componenti
+#        CASO A in `gestisci_riga` dove l'init e' opzionale: se l'utente
+#        non ha emittente non c'e' modo di chiamare il resolver, ma cio'
+#        non deve bloccare la create di righe non-CASO-A.
+def _resolve_emittente_sr_id_safe(auth_user_id: int | None) -> int | None:
+    if auth_user_id is None:
+        return None
+    user_model = get_user_model()
+    try:
+        user = user_model.objects.get(pk=auth_user_id)
+    except user_model.DoesNotExist:
+        return None
+    emittenti_sr = PermissionResolver.get_emittenti_sr_ids(user) or []
+    if not emittenti_sr:
+        return None
+    return int(emittenti_sr[0])
+
+
+# Scopo: Estrae l'unico (o primo) emittente_soggetto_ruolo_id autorizzato
+#        per l'utente. Helper privato condiviso da `suggerisci_prezzo_riga`
+#        (flusso resolver prezzo) e da altri ingressi che richiedono
+#        emittente obbligatorio. Solleva E_PREV_VALIDAZIONE se l'utente non
+#        e' trovato o non ha emittenti. Modello operatore-emittenti 1-a-1:
+#        in pratica la lista ha sempre 1 elemento (a parte admin globali
+#        che non passano per qui).
+def _resolve_emittente_sr_id_or_raise(
+    auth_user_id: int | None, *, function_name: str,
+) -> int:
+    user_model = get_user_model()
+    try:
+        user = user_model.objects.get(pk=auth_user_id)
+    except user_model.DoesNotExist:
+        ErrorManager.raise_error(
+            code="E_PREV_VALIDAZIONE",
+            message="Utente non trovato.",
+            detail=f"auth_user_id={auth_user_id}",
+            function_name=function_name,
+        )
+    emittenti_sr = PermissionResolver.get_emittenti_sr_ids(user) or []
+    ErrorManager.require(
+        len(emittenti_sr) > 0,
+        code="E_PREV_VALIDAZIONE",
+        message="Impossibile risolvere l'emittente fiscale dell'operatore.",
+        detail="L'operatore non ha emittenti autorizzati.",
+        function_name=function_name,
+    )
+    return int(emittenti_sr[0])
+
+
 #        Uso tipico: chiamata FE all'apertura del drawer riga per
 #        pre-compilare il campo prezzo. L'operatore puo' accettare il
 #        suggerito o fornire un override (controllato da permesso L1 in
@@ -1392,25 +1485,9 @@ def suggerisci_prezzo_riga(
 
     # Emittente dell'operatore: PermissionResolver ritorna lista (o None=admin).
     # Prendiamo il primo disponibile: per operatori 1-a-1 e' sempre univoco.
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
-        ErrorManager.raise_error(
-            code="E_PREV_VALIDAZIONE",
-            message="Utente non trovato.",
-            detail=f"auth_user_id={auth_user_id}",
-            function_name=function_name,
-        )
-    emittenti_sr = PermissionResolver.get_emittenti_sr_ids(user) or []
-    ErrorManager.require(
-        len(emittenti_sr) > 0,
-        code="E_PREV_VALIDAZIONE",
-        message="Impossibile risolvere l'emittente fiscale dell'operatore.",
-        detail="L'operatore non ha emittenti autorizzati.",
-        function_name=function_name,
+    emittente_sr_id = _resolve_emittente_sr_id_or_raise(
+        auth_user_id, function_name=function_name,
     )
-    emittente_sr_id = int(emittenti_sr[0])
 
     # Data di riferimento: data del preventivo (il resolver la usa per
     # selezionare la versione listino attiva, il contratto nel periodo
@@ -1476,6 +1553,155 @@ def elimina_riga(preventivo_id: int, riga_id: int) -> dict[str, Any]:
     )
     # Ricalcolo totali gestito da trigger DB AFTER su preventivi_righe
     return {"status": "ok", "riga_id": riga_id}
+
+
+# ══════════════════════════════════════════════════════════
+#  Componenti BoM CASO A — service pubblico
+# ══════════════════════════════════════════════════════════
+# Refactor componenti 2026-05-11. Vedi `refactor-componenti.md` +
+# `gestione-listini.md` §5.2.1. I componenti vivono in
+# `vendite.preventivi_righe_componenti`; `init_componenti_riga` e' chiamato
+# automaticamente da `gestisci_riga` / `aggiorna_riga` (cambio articolo).
+# Qui le API di consultazione + modifica fine ai singoli componenti.
+
+
+# Scopo: Lista componenti CASO A di una riga padre composita per la UI.
+#        Filtra solo i componenti `attivo=TRUE`. Guard di esistenza:
+#        riga padre deve esistere ed appartenere al preventivo richiesto.
+def list_componenti_riga(preventivo_id: int, riga_id: int) -> list[dict[str, Any]]:
+    repo = PreventiviRepository()
+    riga = repo.get_riga(riga_id)
+    ErrorManager.require(
+        riga is not None,
+        code="E_PREV_RIGA_NOT_FOUND",
+        message="Riga preventivo non trovata.",
+        detail=f"riga_id={riga_id}",
+        function_name=f"{_FN}.list_componenti_riga",
+    )
+    assert riga is not None
+    ErrorManager.require(
+        riga.get("preventivo_id") == preventivo_id,
+        code="E_PREV_RIGA_NOT_FOUND",
+        message="Riga preventivo non trovata.",
+        detail=f"riga_id={riga_id} non appartiene a preventivo_id={preventivo_id}",
+        function_name=f"{_FN}.list_componenti_riga",
+    )
+    return repo.list_componenti_riga(riga_id)
+
+
+# Scopo: Helper privato condiviso da update/delete componente. Esegue le 3
+#        query di guard + scope check + stato preventivo e ritorna le 3
+#        entita' fetchate. Evita duplicazione del pattern in update_componente
+#        e delete_componente. Solleva ServiceError (404 / 422 a seconda).
+#        Scope check sia su `riga_id` URL (anti-tampering) che su
+#        `preventivo_id`: due livelli di defense-in-depth contro URL forgiati.
+def _load_componente_for_modification(
+    repo: PreventiviRepository,
+    *,
+    preventivo_id: int,
+    riga_id: int,
+    componente_id: int,
+    function_name: str,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    componente = repo.get_componente(componente_id)
+    ErrorManager.require(
+        componente is not None,
+        code="E_PREV_COMPONENTE_NOT_FOUND",
+        message="Componente non trovato.",
+        detail=f"componente_id={componente_id}",
+        function_name=function_name,
+    )
+    assert componente is not None
+
+    # Anti-tampering URL: il `riga_id` dalla rotta deve matchare la riga
+    # padre reale del componente. Altrimenti l'utente potrebbe forgiare
+    # una URL `/preventivi/1/righe/999/componenti/50/` con riga falsa.
+    ErrorManager.require(
+        int(componente["riga_preventivo_id"]) == riga_id,
+        code="E_PREV_COMPONENTE_NOT_FOUND",
+        message="Componente non trovato.",
+        detail=(
+            f"componente_id={componente_id} non appartiene a "
+            f"riga_id={riga_id} (riga reale={componente['riga_preventivo_id']})"
+        ),
+        function_name=function_name,
+    )
+
+    riga_padre = repo.get_riga(int(componente["riga_preventivo_id"]))
+    ErrorManager.require(
+        riga_padre is not None and riga_padre.get("preventivo_id") == preventivo_id,
+        code="E_PREV_COMPONENTE_NOT_FOUND",
+        message="Componente non trovato.",
+        detail=f"componente_id={componente_id} fuori scope preventivo_id={preventivo_id}",
+        function_name=function_name,
+    )
+    assert riga_padre is not None
+
+    testata = repo.get_preventivo(preventivo_id)
+    assert testata is not None  # garantito da get_riga ok sopra
+    ErrorManager.require(
+        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
+        code="E_PREV_STATO_NON_MODIFICABILE",
+        message="Componenti non modificabili nello stato corrente.",
+        detail=f"stato={testata['stato_codice_interno']}",
+        function_name=function_name,
+    )
+    return componente, riga_padre, testata
+
+
+# Scopo: Modifica componente esistente. Guard stato preventivo modificabile
+#        + esistenza componente + match URL anti-tampering. Whitelist campi
+#        via repo.
+#        TODO (post-smoke iniziale): L1/L2/L3 sui componenti come per la
+#        riga padre. Oggi accettiamo qualsiasi `prezzo_unitario` se il
+#        preventivo e' modificabile — sufficiente per UI di test (3.4.A/B/C
+#        in `sviluppo-listini-v5-test-ui.md`). Il trigger DB di guard
+#        PENDING `trgfn_preventivi_righe_componenti_guard_pending` resta
+#        come safety net.
+def update_componente(
+    preventivo_id: int,
+    riga_id: int,
+    componente_id: int,
+    payload: dict[str, Any],
+    *,
+    auth_user_id: int | None = None,  # noqa: ARG001 — riservato a L1/L2/L3 futuro
+) -> dict[str, Any]:
+    repo = PreventiviRepository()
+    _load_componente_for_modification(
+        repo,
+        preventivo_id=preventivo_id, riga_id=riga_id, componente_id=componente_id,
+        function_name=f"{_FN}.update_componente",
+    )
+
+    # Solo campi della whitelist repo finiscono nell'UPDATE (defense-in-depth).
+    # Il prezzo_unitario del padre verra' ricalcolato dal trigger DB.
+    updated = repo.update_componente(componente_id, **payload)
+    ErrorManager.require(
+        updated,
+        code="E_PREV_COMPONENTE_NOT_FOUND",
+        message="Nessun campo aggiornato sul componente.",
+        detail="Payload vuoto o senza campi nella whitelist.",
+        function_name=f"{_FN}.update_componente",
+    )
+    return {"status": "ok", "componente_id": componente_id}
+
+
+# Scopo: Soft delete componente (`attivo=FALSE`). Guard stato + esistenza
+#        + match URL anti-tampering. Il trigger DB di ricalcolo padre
+#        esclude i componenti inattivi dalla SUM, quindi il prezzo padre
+#        si aggiorna in automatico.
+def delete_componente(
+    preventivo_id: int, riga_id: int, componente_id: int,
+) -> dict[str, Any]:
+    repo = PreventiviRepository()
+    _load_componente_for_modification(
+        repo,
+        preventivo_id=preventivo_id, riga_id=riga_id, componente_id=componente_id,
+        function_name=f"{_FN}.delete_componente",
+    )
+    deleted = repo.delete_componente(componente_id)
+    # idempotenza: se gia' soft-deleted ritorna False — non e' errore qui.
+    return {"status": "ok", "componente_id": componente_id, "deleted": deleted}
 
 
 # ══════════════════════════════════════════════════════════

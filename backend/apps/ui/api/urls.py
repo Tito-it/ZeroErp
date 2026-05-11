@@ -13,6 +13,7 @@ from django.urls import path
 from apps.ui.api.views import (
     ApiListaCatalogoView,
     ApiListaConfigView,
+    ApiListaIgnorePresetUpdateView,
     ApiListaPreferenzaView,
 )
 from apps.ui.api.views_admin import (
@@ -51,6 +52,12 @@ urlpatterns = [
         "liste/<str:codice>/preferenza/",
         ApiListaPreferenzaView.as_view(),
         name="ui-liste-preferenza",
+    ),
+    # DEF-2: tombstone "ignora banner preset aggiornato"
+    path(
+        "liste/<str:codice>/preferenza/ignore-preset-update/",
+        ApiListaIgnorePresetUpdateView.as_view(),
+        name="ui-liste-preferenza-ignore-preset-update",
     ),
     # ── Admin CRUD (Blocco F Fase 1) ────────────────────────────────────
     # Selectore "Lista corrente" + catalogo colonne grezzo

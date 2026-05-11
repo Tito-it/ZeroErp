@@ -1,0 +1,183 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_preventivo_riga_componenti_init.md" %}
+# ⚙️ Funzione `fn_preventivo_riga_componenti_init`
+
+```sql
+CREATE FUNCTION fn_preventivo_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_preventivo_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date)
+ RETURNS integer
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    -- Scopo: Popola preventivi_righe_componenti per una riga composita CASO A.
+    --   Chiama fn_resolve_prezzo_composito per prezzi/origini per componente.
+    --   Idempotente: no-op se componenti gia' presenti o articolo non composito.
+    --   P0001 dal resolver: propaga E_DOC_COMPONENTE_LISTINO_MANCANTE (rev 12-05-2026).
+    v_articolo_id    catalogo.articoli.id%TYPE;
+    v_uom_id         catalogo.unita_misura.id%TYPE;
+    v_qta_padre      vendite.preventivi_righe.quantita%TYPE;
+    v_preventivo_id  vendite.preventivi.id%TYPE;
+    v_is_composito   catalogo.articoli.is_composito%TYPE;
+    v_ba_id          anagrafiche.billing_account.id%TYPE;
+    v_utility_id     vendite.preventivi.utility_id%TYPE;
+    v_bom_entry_id   catalogo.articoli_componenti.id%TYPE;
+    v_comp           record;
+    v_err_msg        text;
+    v_inserted       integer := 0;
+BEGIN
+    -- Guard input
+    IF p_riga_id IS NULL OR p_riga_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_preventivo_riga_componenti_init',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_riga_id'),
+            NULL::uuid,
+            'p_riga_id obbligatorio e > 0'
+        );
+    END IF;
+
+    IF p_emittente_sr_id IS NULL OR p_emittente_sr_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_preventivo_riga_componenti_init',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_emittente_sr_id'),
+            NULL::uuid,
+            'p_emittente_sr_id obbligatorio e > 0'
+        );
+    END IF;
+
+    -- Legge dati riga padre
+    SELECT pr.articolo_id,
+           pr.uom_operativa_id,
+           pr.quantita,
+           pr.preventivo_id
+      INTO v_articolo_id, v_uom_id, v_qta_padre, v_preventivo_id
+      FROM vendite.preventivi_righe pr
+     WHERE pr.id = p_riga_id;
+
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_preventivo_riga_componenti_init',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('p_riga_id', p_riga_id),
+            NULL::uuid,
+            'riga preventivo non trovata'
+        );
+    END IF;
+
+    -- No-op silenzioso su articolo non composito (CASO B: non e' un errore)
+    SELECT a.is_composito INTO v_is_composito
+      FROM catalogo.articoli a WHERE a.id = v_articolo_id;
+
+    IF NOT COALESCE(v_is_composito, FALSE) THEN
+        RETURN 0;
+    END IF;
+
+    -- Idempotenza: se gia' presenti componenti, no-op
+    IF EXISTS (
+        SELECT 1 FROM vendite.preventivi_righe_componenti
+         WHERE riga_preventivo_id = p_riga_id
+    ) THEN
+        RETURN 0;
+    END IF;
+
+    -- Parametri preventivo per il resolver
+    SELECT p.billing_account_id, p.utility_id
+      INTO v_ba_id, v_utility_id
+      FROM vendite.preventivi p WHERE p.id = v_preventivo_id;
+
+    -- Chiama resolver composito (CASO A: N righe, solo esposti).
+    -- Sottoblocco con savepoint: cattura P0001 (listino mancante)
+    -- e propaga come errore business E_DOC_COMPONENTE_LISTINO_MANCANTE.
+    BEGIN
+        FOR v_comp IN
+            SELECT *
+              FROM vendite.fn_resolve_prezzo_composito(
+                  v_articolo_id,
+                  COALESCE(v_uom_id, (SELECT uom_id FROM catalogo.articoli WHERE id = v_articolo_id)),
+                  p_data_riferimento,
+                  v_ba_id,
+                  v_utility_id,
+                  p_emittente_sr_id,
+                  NULL
+              )
+             WHERE esposto_in_fattura = TRUE
+        LOOP
+            -- Trova id riga BoM per il componente (coerente con filtri resolver)
+            SELECT ac.id INTO v_bom_entry_id
+              FROM catalogo.articoli_componenti ac
+             WHERE ac.prodotto_id            = v_articolo_id
+               AND ac.componente_id          = v_comp.componente_id
+               AND ac.esposto_in_fattura     = TRUE
+               AND COALESCE(ac.attivo, TRUE) = TRUE
+               AND ac.validita              @> p_data_riferimento
+             LIMIT 1;
+
+            IF v_bom_entry_id IS NULL THEN
+                CONTINUE;
+            END IF;
+
+            INSERT INTO vendite.preventivi_righe_componenti (
+                riga_preventivo_id,
+                articolo_componente_id,
+                componente_id,
+                coeff_qta_snapshot,
+                quantita,
+                uom_operativa_id,
+                factor_to_base,
+                prezzo_unitario,
+                iva_id,
+                origine_prezzo,
+                prezzo_resolver_context
+            ) VALUES (
+                p_riga_id,
+                v_bom_entry_id,
+                v_comp.componente_id,
+                v_comp.coeff_qta,
+                v_comp.coeff_qta * v_qta_padre,
+                v_comp.uom_id,
+                1,
+                v_comp.prezzo_unitario,
+                v_comp.iva_id::integer,
+                COALESCE(v_comp.origine_prezzo, 'MANUALE'),
+                jsonb_build_object(
+                    'emittente_sr_id',  p_emittente_sr_id,
+                    'data_riferimento', p_data_riferimento,
+                    'ba_id',            v_ba_id,
+                    'utility_id',       v_utility_id
+                )
+            );
+            v_inserted := v_inserted + 1;
+        END LOOP;
+
+    EXCEPTION WHEN SQLSTATE 'P0001' THEN
+        -- Listino mancante: propaga come codice errore business.
+        -- Il dettaglio del resolver e' catturato in v_err_msg per il log.
+        GET STACKED DIAGNOSTICS v_err_msg = MESSAGE_TEXT;
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_preventivo_riga_componenti_init',
+            'E_DOC_COMPONENTE_LISTINO_MANCANTE',
+            jsonb_build_object(
+                'p_riga_id',        p_riga_id,
+                'data_riferimento', p_data_riferimento,
+                'dettaglio',        v_err_msg
+            ),
+            NULL::uuid,
+            p_riga_id::text
+        );
+    END;
+
+    RETURN v_inserted;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.fn_preventivo_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date)
+IS 'Inizializza componenti BoM CASO A per una riga preventivo composita. Chiama fn_resolve_prezzo_composito e inserisce una riga per ogni componente esposto_in_fattura=TRUE. Idempotente (no-op se componenti gia'' presenti o articolo non composito). P0001 dal resolver: propaga E_DOC_COMPONENTE_LISTINO_MANCANTE (rev 12-05-2026, rimosso fallback prezzo=0). Ritorna n. componenti inseriti.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

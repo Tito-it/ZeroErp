@@ -184,7 +184,7 @@ class DettaglioContrattoTool(AITool):
                 "uom": r.get("uom_codice"),
                 "tipo_erogazione": r.get("tipo_erogazione"),
                 "prezzo_unitario": str(r.get("prezzo_unitario") or ""),
-                "quantita_fissa": str(r.get("quantita_fissa") or ""),
+                "quantita": str(r.get("quantita") or ""),
                 "attivo": r.get("attivo"),
             }
             for r in righe_input

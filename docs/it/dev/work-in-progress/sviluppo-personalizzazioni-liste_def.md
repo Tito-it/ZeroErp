@@ -29,14 +29,14 @@ Questo documento e' la **roadmap operativa** degli sviluppi non implementati: pe
 | DEF-5b | Fase 2 Blocco F (CRUD `lista_definizione` + `lista_colonna` + `etichetta_i18n_key` UX) | 🟢 Done 2026-05-10 | L | — | — |
 | DEF-8 | Estendere parametrizzazione ad altre liste (incrementale) | 🟡 Parziale (1/N done) | S per lista | **Alta** | Blocco F Fase 1 done |
 | DEF-1 | Export CSV/Excel con metadati filtri | 🟢 Done 2026-05-10 | M | — | — |
-| DEF-2 | Notifica "preset aggiornato" | 🟡 Parziale (DB pronto) | S | Media | Blocco D done |
+| DEF-2 | Notifica "preset aggiornato" | 🟢 Done 2026-05-11 (BE+FE; DB in brief) | S | — | — |
 | DEF-10 | Pattern formalizzato colonne composte FE-only | 🟡 Parziale (esiste come trick) | S | Media | DEF-5b o standalone |
 | DEF-6 | Layout mobile / card list responsive | 🔴 Todo | M | Bassa | Blocco D done |
 | DEF-3 | Viste nominate multiple per utente | 🔴 Todo | L | Bassa | Migration `lista_preferenza_utente` |
 | DEF-4 | Condivisione viste tra utenti | 🔴 Todo | M | Bassa | DEF-3 |
 | DEF-7 | Colonne calcolate lato client (`tipo_colonna='calcolata'`) | 🔴 Todo | L | Futura | Contratto formula stabile |
 
-**Ordine consigliato di esecuzione**: DEF-8 (incrementale) → DEF-2 (chiude UX preset) → DEF-1 (export) → resto in base a richieste utenti. (DEF-5b atterrato 2026-05-10).
+**Ordine consigliato di esecuzione**: DEF-8 (incrementale) → DEF-10 (colonne composte) → DEF-6 (mobile) → resto in base a richieste utenti. (DEF-1, DEF-2, DEF-5b atterrati 2026-05-10/11).
 
 ---
 
@@ -81,31 +81,43 @@ Questo documento e' la **roadmap operativa** degli sviluppi non implementati: pe
 
 ## DEF-2 — Notifica "preset aggiornato"
 
-**Stato:** 🟡 Parziale — DB completamente pronto, manca BE + FE
-**Sforzo:** S
+**Stato:** 🟢 Done — BE+FE atterrati 2026-05-11; brief DB attivo in parallelo
+**Sforzo:** S (consuntivo coerente con stima)
 
-### Cosa serve
+### Decisioni operative chiuse 2026-05-11
 
-Quando un admin modifica un preset di base (sistema/ruolo/emittente), gli utenti che hanno una preferenza salvata da quel preset devono vedere un banner non intrusivo: *"La configurazione del tuo ruolo e' stata aggiornata. Vedi novita'?"*. Click → modale personalizzazione con colonne nuove evidenziate.
+1. **Logica calcolo flag**: lato DB in `ui.fn_resolve_lista_config` (single source of truth, coerente DB-first).
+2. **Comportamento "Ignora"**: tombstone separato `preset_aggiornato_ignored_at TIMESTAMPTZ NULL` su `lista_preferenza_utente`. Banner riappare se il preset viene modificato di nuovo (`preset.data_update > ignored_at`).
+3. **UX banner**: PrimeVue `<Message severity="info">` inline sopra `<DataTable>` dentro `ListaConfigurabile` (non chiudibile, dismissione esplicita via CTA "Ignora"). Cosi' tutti i caller di `ListaConfigurabile` (clienti + DEF-8 futuri) ereditano il banner gratis.
 
-### Stato attuale
+### Sintesi delivery
 
-- ✅ DB: campo `lista_preferenza_utente.preset_base_data_update` (snapshot) + trigger `trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd` (azzera lo snapshot quando cambia il `preset_base_id`) — landed Blocco B/F.2.
-- ✅ BE write: `ListaPreferenzaService.upsert` calcola e salva lo snapshot a ogni save (vedi `apps/ui/db/ui_repository.py:get_preset_base_snapshot`).
-- ❌ BE read: `ui.fn_resolve_lista_config` (o `UiService.get_lista_config`) NON espone oggi il flag `preset_aggiornato` nella response.
-- ❌ FE: nessun banner.
+- **DB** (brief consegnato al team DB su `dev/db-tid`, `brief-db-def2-preset-aggiornato.md`):
+  - Nuova colonna `ui.lista_preferenza_utente.preset_aggiornato_ignored_at TIMESTAMPTZ NULL`.
+  - Update `ui.fn_resolve_lista_config`: nuovo campo nell'output JSONB `preset_aggiornato: bool` (TRUE se snapshot < preset.data_update corrente E (ignored_at IS NULL OR ignored_at < preset.data_update)).
+  - Update trigger `trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts`: azzera anche `preset_aggiornato_ignored_at` quando cambia `preset_base_id`.
+  - pgTAP `test-fn-resolve-lista-config-preset-aggiornato-v1.sql` con 7 casi (allineato/aggiornato/ignorato/riaggiornato/no-pref/cambio-preset-base).
+- **BE** (`apps/ui/`):
+  - Nuovo error code `E_UI_PREFERENZA_NON_TROVATA` (404) in `error_policies.py`.
+  - `UiRepository.set_preset_aggiornato_ignored(auth_user_id, lista_id)` — UPDATE atomico con cursor.rowcount per soft-404.
+  - `ListaPreferenzaService.ignore_preset_update(user, lista_codice)` — guard lista + tombstone + 404 se nessuna preferenza.
+  - View `ApiListaIgnorePresetUpdateView` (DomainAPIView, skip_area_check=True) — POST body vuoto, no Idempotency-Key.
+  - Route `POST /api/v1/ui/liste/<codice>/preferenza/ignore-preset-update/`.
+  - `UiService.get_lista_config` passthrough naturale del nuovo campo `preset_aggiornato` (gia' restituito dal JSONB della fn DB; fallback `?? false` lato FE).
+  - 3 nuovi test service + 2 nuovi test API (24/24 verdi totali).
+- **FE** (`src/core/`):
+  - `ui-api.js`: `ignorePresetUpdate(codice)` axios POST.
+  - `useListaConfig.js`: computed `presetAggiornato` (passthrough `config.value.preset_aggiornato`) + action `ignorePresetUpdate()` (API + reload).
+  - `ListaConfigurabile.vue`: `<Message severity="info" :closable="false">` sopra il DataTable, visibile solo se `presetAggiornato`. CTA "Vedi novita'" -> apre modale personalizzazione (al successivo save lo snapshot si riallinea). CTA "Ignora" -> POST tombstone + reload.
+  - `defineExpose` esteso: il caller (futuro DEF-8) puo' renderizzare `presetAggiornato` come Tag/Badge nella propria toolbar se preferisce un'UX alternativa.
+  - i18n IT+EN: 3 chiavi nuove (`preset_aggiornato_messaggio`, `_vedi_novita`, `_ignora`).
+- **Doc**: `api_ui_liste.md` esteso con §5 POST ignore-preset-update.
 
-### Decisioni operative aperte
+### Note implementative
 
-1. **Logica calcolo flag**: lato fn DB (modifica `fn_resolve_lista_config` per JOIN su `lista_preset.data_update` + confronto) oppure lato Python (`UiService.get_lista_config` aggiunge il campo dopo che la fn ha risolto)? La prima e' coerente col pattern DB-first, la seconda e' piu' veloce da implementare.
-2. **Comportamento dopo click "Vedi novita'"**: l'utente vede le colonne nuove nella modale; al save l'`preset_base_data_update` si riallinea al `lista_preset.data_update` corrente. Se preme "Ignora": resettiamo lo snapshot? (Pro: badge non riappare. Contro: utente puo' perdere visibilita' su altre future modifiche del preset.) Proposta: "Ignora" salva un timestamp tombstone separato (campo nuovo `preset_aggiornato_ignored_at`) per non confondere lo snapshot funzionale. Decidere.
-3. **UX banner**: posizione (top toolbar / dentro modale toolbar / toast)? PrimeVue `Message` inline o componente custom?
-
-### Architettura
-
-- **DB**: opzionalmente nuovo campo `preset_aggiornato_ignored_at TIMESTAMP NULL` su `lista_preferenza_utente` se decidiamo di tracciare l'ignore (vedi decisione 2). Brief team DB minimo. Aggiornare `ui.fn_resolve_lista_config` se decidiamo opzione 1 (decisione 1).
-- **BE**: estendere il JSONB di response con `preset_aggiornato: bool`. Guard: `preferenza.preset_base_id IS NOT NULL AND preferenza.preset_base_data_update IS NOT NULL AND preset_corrente.data_update > preferenza.preset_base_data_update`.
-- **FE**: composable `useListaConfig` espone `presetAggiornato`. `ListaConfigurabile` (o caller) renderizza un banner con CTA. Modale "Personalizza colonne" evidenzia le colonne aggiunte/modificate dopo lo snapshot.
+- Il banner vive dentro `ListaConfigurabile` (non nel caller): cosi' DEF-8 fornitori/articoli/contratti/... lo ereditano gratis senza duplicare logica.
+- `Message :closable="false"` voluto: la dismissione "X" PrimeVue sarebbe locale al render (banner riappare al ricaricamento). La dismissione vera passa per il tombstone server-side via CTA "Ignora".
+- "Vedi novita'" oggi apre la modale standard: in versione futura puo' evidenziare colonne aggiunte dopo lo snapshot (richiede esporre il delta dalla fn DB — out of scope DEF-2).
 
 ### Dipendenze
 

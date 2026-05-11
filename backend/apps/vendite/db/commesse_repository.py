@@ -29,6 +29,10 @@ _SORGENTE_FN_MAP: dict[str, str] = {
 }
 
 # Nomi delle 26 colonne condivise da tutte le fn_list_*_da_pushare.
+# La colonna opzionale `riga_id` (presente in preventivi/ordini/contratti/ddt,
+# assente in consumi) e' aggiunta al col_map a runtime dentro
+# `fetch_pushable_rows` e mappata su `PushableRow.riga_sorgente_id`
+# (refactor componenti 2026-05-11).
 _PUSHABLE_SHARED_COLS = (
     "billing_account_id",
     "utility_id",
@@ -180,6 +184,13 @@ class PushableRow:
     valuta_id: int | None
     meta: dict[str, Any]
     tipo_doc_fiscale_id: int | None
+    # ID della riga sorgente (es. `preventivi_righe.id`, `ordini_righe.id`).
+    # Popolato dalle fn DB che lo espongono — None per sorgenti che non
+    # hanno granularita' riga (es. CONSUMI) o nei test legacy senza override.
+    # Usato dal BoMComponentExpander per leggere componenti pre-popolati su
+    # `<sorgente>_righe_componenti` (refactor componenti 2026-05-11) invece
+    # di chiamare il resolver al push. Default None per backward compat.
+    riga_sorgente_id: int | None = None
 
 
 def _decode_jsonb(value: Any, default: Any) -> Any:
@@ -214,6 +225,13 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
     raw_factor = _col("factor_to_base")
     factor_to_base = raw_factor if raw_factor is not None else Decimal(1)
 
+    # riga_sorgente_id mappato dalla colonna `riga_id` se presente nella fn DB.
+    # Le fn `fn_list_preventivi_da_pushare`/`fn_list_ordini_da_pushare`/etc.
+    # lo espongono; CONSUMI no -> None default. `col_map.get` evita KeyError.
+    riga_sorgente_id_raw = (
+        row[col_map["riga_id"]] if "riga_id" in col_map else None
+    )
+
     return PushableRow(
         billing_account_id=_col("billing_account_id"),
         utility_id=_col("utility_id"),
@@ -223,6 +241,9 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         fatturazione_immediata=bool(_col("fatturazione_immediata")),
         sorgente_tipo_id=_col("sorgente_tipo_id"),
         sorgente_uid=str(raw_sorgente_uid),
+        riga_sorgente_id=(
+            int(riga_sorgente_id_raw) if riga_sorgente_id_raw is not None else None
+        ),
         segment_key=str(raw_segment_key),
         articolo_id=_col("articolo_id"),
         istanza_utility_id=_col("istanza_utility_id"),
@@ -333,6 +354,12 @@ class CommesseRepository:
             # Costruisce mappa colonna → indice per estrarre solo le 25 condivise.
             col_names = [desc[0] for desc in cursor.description]
             col_map = {name: idx for idx, name in enumerate(col_names) if name in _PUSHABLE_SHARED_COLS}
+            # Include `riga_id` opzionalmente: alcune fn lo espongono
+            # (preventivi/ordini/contratti/ddt), CONSUMI no. Serve al
+            # BoMComponentExpander per leggere componenti pre-popolati
+            # nelle tabelle `<sorgente>_righe_componenti` (refactor 2026-05-11).
+            if "riga_id" in col_names:
+                col_map["riga_id"] = col_names.index("riga_id")
             rows = cursor.fetchall()
 
         return [_map_pushable_row(col_map, row) for row in rows]

@@ -20,6 +20,10 @@
 #  10. delete_happy_path
 #  11. delete_lista_inesistente_raises
 #  12. delete_idempotente_se_pref_assente
+#  13. ignore_preset_update_happy_path (DEF-2)
+#  14. ignore_preset_update_lista_inesistente_raises (DEF-2)
+#  15. ignore_preset_update_senza_preferenza_raises (DEF-2)
+#  16. ignore_preset_update_pref_senza_preset_base_id (DEF-2 — edge)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ from django.test import SimpleTestCase
 from apps.core.services.service_errors import ServiceError
 from apps.ui.services.lista_preferenza_service import (
     E_UI_LISTA_NON_TROVATA,
+    E_UI_PREFERENZA_NON_TROVATA,
     E_UI_PREFERENZA_VALIDAZIONE,
     ListaPreferenzaService,
 )
@@ -265,3 +270,56 @@ class ListaPreferenzaDeleteTests(SimpleTestCase):
 
         # Non solleva — solo `deleted=False`.
         self.assertFalse(result["deleted"])
+
+
+class ListaPreferenzaIgnorePresetUpdateTests(SimpleTestCase):
+    """DEF-2: tombstone 'ignora banner preset aggiornato'."""
+
+    def test_ignore_preset_update_happy_path(self) -> None:
+        repo = MagicMock()
+        repo.get_lista_id.return_value = 1
+        repo.set_preset_aggiornato_ignored.return_value = True
+        svc = ListaPreferenzaService(repository=repo)
+
+        result = svc.ignore_preset_update(_make_user(), "anagrafiche.clienti")
+
+        self.assertTrue(result["ignored"])
+        repo.set_preset_aggiornato_ignored.assert_called_once_with(
+            auth_user_id=42, lista_id=1,
+        )
+
+    def test_ignore_preset_update_lista_inesistente_raises(self) -> None:
+        repo = MagicMock()
+        repo.get_lista_id.return_value = None
+        svc = ListaPreferenzaService(repository=repo)
+
+        with self.assertRaises(ServiceError) as ctx:
+            svc.ignore_preset_update(_make_user(), "non.esiste")
+        self.assertEqual(ctx.exception.code, E_UI_LISTA_NON_TROVATA)
+        repo.set_preset_aggiornato_ignored.assert_not_called()
+
+    def test_ignore_preset_update_senza_preferenza_raises(self) -> None:
+        repo = MagicMock()
+        repo.get_lista_id.return_value = 1
+        repo.set_preset_aggiornato_ignored.return_value = False  # no riga
+        svc = ListaPreferenzaService(repository=repo)
+
+        with self.assertRaises(ServiceError) as ctx:
+            svc.ignore_preset_update(_make_user(), "anagrafiche.clienti")
+        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_NON_TROVATA)
+
+    def test_ignore_preset_update_pref_senza_preset_base_id(self) -> None:
+        # Edge: preferenza esiste ma `preset_base_id` e' NULL (utente ha
+        # salvato senza preset applicabile). L'UPDATE setta comunque il
+        # tombstone — il trigger DB non si attiva (preset_base_id non
+        # cambia) e la fn DB ritorna sempre preset_aggiornato=false. Il
+        # service non deve sollevare: dal suo punto di vista la riga
+        # esiste e l'UPDATE e' atomico.
+        repo = MagicMock()
+        repo.get_lista_id.return_value = 1
+        repo.set_preset_aggiornato_ignored.return_value = True
+        svc = ListaPreferenzaService(repository=repo)
+
+        result = svc.ignore_preset_update(_make_user(), "anagrafiche.clienti")
+
+        self.assertTrue(result["ignored"])

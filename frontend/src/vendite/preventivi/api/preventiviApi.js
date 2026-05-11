@@ -78,6 +78,34 @@ export function getRiepilogoIva(preventivoId) {
   return api.get(`${BASE}/${preventivoId}/riepilogo-iva/`)
 }
 
+// --- Componenti BoM CASO A (refactor componenti 2026-05-11) ---
+// Ogni componente esposto in fattura della riga padre composita CASO A diventa
+// una riga negoziabile a se stante. Init implicito post-create_riga via
+// gestisci_riga BE — niente POST pubblico dedicato.
+// Il prezzo della riga padre e' SUM(componenti × coeff_qta), ricalcolato dai
+// trigger DB a ogni mutazione del componente.
+
+export function listRigaComponenti(preventivoId, rigaId) {
+  return api.get(`${BASE}/${preventivoId}/righe/${rigaId}/componenti/`)
+}
+
+// Update fine del singolo componente (prezzo override, IVA, ordine, origine).
+// PATCH coerente con updateRiga/updatePreventivo: nessuna Idempotency-Key
+// (BE non la richiede, usa request.data diretto, no handle_post_json).
+export function updateRigaComponente(preventivoId, rigaId, componenteId, payload) {
+  return api.patch(
+    `${BASE}/${preventivoId}/righe/${rigaId}/componenti/${componenteId}/`,
+    payload,
+  )
+}
+
+// Soft delete componente: il trigger DB ricalcola il prezzo della riga padre.
+export function deleteRigaComponente(preventivoId, rigaId, componenteId) {
+  return api.delete(
+    `${BASE}/${preventivoId}/righe/${rigaId}/componenti/${componenteId}/`,
+  )
+}
+
 // --- Indirizzi ---
 
 export function listIndirizzi(preventivoId) {

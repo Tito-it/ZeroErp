@@ -20,6 +20,10 @@ Indice test eseguiti:
 11) CommesseServiceTests.test_pr_run_commesse_push_one_ok_passa_sorgente_uid
 12) CommesseServiceTests.test_pr_run_commesse_push_one_codice_sorgente_invalido
 13) CommesseServiceTests.test_pr_run_commesse_push_one_sorgente_uid_invalido
+13a) CommesseServiceTests.test_pr_run_commesse_push_one_parziale_solleva_all_or_nothing
+13b) CommesseServiceTests.test_pr_run_commesse_push_one_errore_solleva_all_or_nothing
+13c) CommesseServiceTests.test_pr_run_commesse_push_one_skipped_passa_dritto
+13d) CommesseServiceTests.test_pr_run_commesse_push_one_dry_run_parziale_non_solleva
 14) CommesseServiceTests.test_variazione_eccezionale_ok
 12) CommesseServiceTests.test_variazione_eccezionale_commessa_stato_bloccato
 13) CommesseServiceTests.test_variazione_eccezionale_riga_fatturata_bloccata
@@ -186,6 +190,131 @@ class CommesseServiceTests(TestCase):
             with self.assertRaises(ServiceError) as ctx:
                 pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=invalid_uid)
             self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+
+    # Scopo: all-or-nothing su PARZIALE — l'orchestrator ritorna PARZIALE
+    # (qualche riga fallita), pr_run_commesse_push_one solleva
+    # E_COMMESSA_PUSH_PARZIALE_VIETATO con detail = primo errore handler.
+    # L'atomic esterna rolla ogni scrittura: niente attivita orfane in commessa.
+    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_one_parziale_solleva_all_or_nothing(
+        self, mock_build, mock_repo_cls, mock_orch_cls,
+    ):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+        mock_repo_cls.return_value = MagicMock()
+        handler_mock = MagicMock()
+        handler_mock.sorgente_codice = "PREVENTIVO"
+        mock_build.return_value = [handler_mock]
+
+        report = PushReport(
+            dry_run=False,
+            stato="PARZIALE",
+            handlers=[HandlerResult(
+                handler_name="HandlerPreventivi",
+                created=3,
+                errors=["Errore riga segment_key=PREV:abc:R:4: ServiceError: ..."],
+            )],
+            push_log_id=99,
+            durata_ms=42,
+        )
+        mock_orch_cls.return_value.run.return_value = report
+
+        with self.assertRaises(ServiceError) as ctx:
+            pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=7)
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
+        self.assertIn("segment_key=PREV:abc:R:4", ctx.exception.detail)
+
+    # Scopo: all-or-nothing su ERRORE — stesso pattern del PARZIALE
+    # (ogni handler con errors → rollback totale + raise).
+    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_one_errore_solleva_all_or_nothing(
+        self, mock_build, mock_repo_cls, mock_orch_cls,
+    ):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+        mock_repo_cls.return_value = MagicMock()
+        handler_mock = MagicMock()
+        handler_mock.sorgente_codice = "PREVENTIVO"
+        mock_build.return_value = [handler_mock]
+
+        report = PushReport(
+            dry_run=False,
+            stato="ERRORE",
+            handlers=[HandlerResult(
+                handler_name="HandlerPreventivi",
+                errors=["Exception: connessione DB persa"],
+            )],
+            push_log_id=100,
+            durata_ms=15,
+        )
+        mock_orch_cls.return_value.run.return_value = report
+
+        with self.assertRaises(ServiceError) as ctx:
+            pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=8)
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
+
+    # Scopo: dry_run con esito PARZIALE NON solleva — la simulazione e'
+    # esente dall'all-or-nothing perche' non scrive nulla in DB (niente da
+    # proteggere). L'utente vuole vedere la diagnostica delle righe che
+    # fallirebbero, non un errore generico.
+    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_one_dry_run_parziale_non_solleva(
+        self, mock_build, mock_repo_cls, mock_orch_cls,
+    ):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+        mock_repo_cls.return_value = MagicMock()
+        handler_mock = MagicMock()
+        handler_mock.sorgente_codice = "PREVENTIVO"
+        mock_build.return_value = [handler_mock]
+
+        report = PushReport(
+            dry_run=True,
+            stato="PARZIALE",
+            handlers=[HandlerResult(
+                handler_name="HandlerPreventivi",
+                created=3,
+                errors=["Errore riga simulato"],
+            )],
+            push_log_id=101,
+            durata_ms=5,
+        )
+        mock_orch_cls.return_value.run.return_value = report
+
+        result = pr_run_commesse_push_one(
+            sorgente_codice="PREVENTIVO", sorgente_uid=10, dry_run=True,
+        )
+        # Diagnostica esposta normalmente: caller decide cosa farne.
+        self.assertEqual(result["stato"], "PARZIALE")
+        self.assertTrue(result["dry_run"])
+
+    # Scopo: SKIPPED (lock gia' acquisito da altro run) NON e' un errore di
+    # dominio: nessun rollback, nessuna raise — l'utente vede il toast warn
+    # "push gia' in corso" tramite la response JSON normale.
+    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_one_skipped_passa_dritto(
+        self, mock_build, mock_repo_cls, mock_orch_cls,
+    ):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+        mock_repo_cls.return_value = MagicMock()
+        handler_mock = MagicMock()
+        handler_mock.sorgente_codice = "PREVENTIVO"
+        mock_build.return_value = [handler_mock]
+
+        report = PushReport(dry_run=False, stato="SKIPPED", durata_ms=0)
+        mock_orch_cls.return_value.run.return_value = report
+
+        result = pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=9)
+        self.assertEqual(result["stato"], "SKIPPED")
 
     # --- fn_get_commesse_push_log ---
 

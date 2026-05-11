@@ -39,6 +39,8 @@ import { computed, ref, onMounted, watch, useSlots } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import Message from 'primevue/message'
+import Button from 'primevue/button'
 import { PAGINATION } from '../constants'
 import { useListaConfig } from '../composables/useListaConfig'
 import { displayDate, displayTimestamp } from '../utils/date'
@@ -102,11 +104,13 @@ const {
   dirty,
   loading: configLoading,
   colonneNuove,
+  presetAggiornato,
   load,
   ensureCatalogo,
   applyChange,
   save,
   reset,
+  ignorePresetUpdate,
 } = useListaConfig(props.codice)
 
 // Stato modale di personalizzazione.
@@ -239,6 +243,20 @@ async function openModal() {
   modalVisible.value = true
 }
 
+// DEF-2: CTA "Vedi novita'" del banner preset aggiornato → apre la
+// modale di personalizzazione. Niente reset del flag qui: il riallineo
+// avviene naturalmente al successivo save (lo snapshot si aggiorna a
+// `preset.data_update` corrente in `ListaPreferenzaService.upsert`).
+async function onSeePresetUpdate() {
+  await openModal()
+}
+
+// DEF-2: CTA "Ignora" del banner preset aggiornato → POST tombstone +
+// reload config (composable). Toast/error handling via useApiHandler.
+async function onIgnorePresetUpdate() {
+  await ignorePresetUpdate()
+}
+
 // Modale -> apply: aggiorna config locale e salva sul server.
 async function onApply(payload) {
   applyChange((c) => {
@@ -263,16 +281,19 @@ const effectivePaginatorOptions = computed(() => ({
 
 // API esposta al caller. `openModal` permette di trasformare il bottone
 // "Personalizza colonne" in un'azione utility del PageActionsBar
-// esterno (kebab-compact su touch). `dirty` / `colonneNuove` / `config`
-// per eventuali Tag / Badge che il caller mostra nella sua toolbar.
+// esterno (kebab-compact su touch). `dirty` / `colonneNuove` /
+// `presetAggiornato` / `config` per eventuali Tag / Badge che il caller
+// mostra nella sua toolbar.
 defineExpose({
   config,
   dirty,
   colonneNuove,
+  presetAggiornato,
   save,
   reset,
   applyChange,
   openModal,
+  ignorePresetUpdate,
 })
 </script>
 
@@ -285,6 +306,43 @@ defineExpose({
          e badge colonne nuove (`colonneNuove`) sono anch'essi esposti e
          renderizzabili nel suffix della PageActionsBar del caller — su
          touch finiscono nel kebab insieme alle altre azioni. -->
+
+    <!-- DEF-2: banner "preset aggiornato". Visibile solo quando il BE
+         segnala che l'admin ha modificato il preset di base dopo lo
+         snapshot della preferenza utente (e l'utente non ha ancora
+         dismissato). PrimeVue Message severity=info non chiudibile: la
+         dismissione esplicita avviene via CTA "Ignora" (tombstone). -->
+    <Message
+      v-if="presetAggiornato"
+      severity="info"
+      :closable="false"
+      class="lista-preset-aggiornato"
+    >
+      <div class="lista-preset-aggiornato__row">
+        <span class="lista-preset-aggiornato__msg">
+          {{ t('lista_config.preset_aggiornato_messaggio') }}
+        </span>
+        <div class="lista-preset-aggiornato__actions">
+          <Button
+            severity="info"
+            size="small"
+            :label="t('lista_config.preset_aggiornato_vedi_novita')"
+            icon="pi pi-eye"
+            :disabled="configLoading"
+            @click="onSeePresetUpdate"
+          />
+          <Button
+            severity="secondary"
+            text
+            size="small"
+            :label="t('lista_config.preset_aggiornato_ignora')"
+            :disabled="configLoading"
+            @click="onIgnorePresetUpdate"
+          />
+        </div>
+      </div>
+    </Message>
+
     <DataTable
       v-bind="effectivePaginatorOptions"
       :value="rows"
@@ -361,5 +419,27 @@ defineExpose({
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+.lista-preset-aggiornato {
+  margin-bottom: 0.5rem;
+}
+
+.lista-preset-aggiornato__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.lista-preset-aggiornato__msg {
+  flex: 1 1 auto;
+  min-width: 12rem;
+}
+
+.lista-preset-aggiornato__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 </style>

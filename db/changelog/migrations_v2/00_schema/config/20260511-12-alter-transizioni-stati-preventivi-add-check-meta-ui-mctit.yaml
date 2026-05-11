@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ALTER config.transizioni_stati_preventivi — ADD CHECK meta UI.
+#
+# Why: la colonna meta e' NOT NULL DEFAULT '{}', quindi una riga inserita
+# senza aggiornare il seed 20260430-60 ottiene meta='{}'. Questa riga
+# supera il filtro COALESCE(manuale, true) IS TRUE perche' la chiave
+# 'manuale' e' assente (COALESCE la tratta come true) ed entra in
+# available_actions con action_key=NULL e label_key=NULL.
+#
+# Il CHECK impone il contratto: ogni transizione esplicitamente manuale
+# (manuale != false) deve avere almeno action_key e label_key valorizzati.
+# Le transizioni automatiche (manuale=false, es. EMESSO->SCADUTO) sono
+# esentate: il loro meta minimo {"manuale":false} rimane valido.
+#
+# Dati attuali: tutte le 7 righe esistenti soddisfano il CHECK (verificato
+# contro il seed 20260430-60 runOnChange). Nessun backfill necessario.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260511-12-alter-transizioni-stati-preventivi-add-check-meta-ui-mctit.yaml
+
+  - changeSet:
+      id: 20260511-12-alter-transizioni-stati-preventivi-add-check-meta-ui
+      author: mctit
+      comment: >
+        Aggiunge CHECK ck_transizioni_stati_prev_meta_ui su
+        config.transizioni_stati_preventivi. Garantisce che ogni
+        transizione manuale (meta->>'manuale' != false) abbia almeno
+        le chiavi UI obbligatorie action_key e label_key nel JSONB meta.
+        Le transizioni automatiche (manuale=false) sono esentate.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: transizioni_stati_preventivi
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.transizioni_stati_preventivi
+                ADD CONSTRAINT ck_transizioni_stati_prev_meta_ui
+                CHECK (
+                    -- Transizione automatica (es. EMESSO->SCADUTO): meta minima ok
+                    (meta->>'manuale')::boolean IS FALSE
+                    -- Transizione manuale/default: richiede chiavi UI obbligatorie
+                    -- Nota: ?? e' l'escape JDBC per l'operatore ? di JSONB
+                    --   (? in SQL non dollar-quoted viene interpretato da JDBC
+                    --    come placeholder di parametro).
+                    OR (meta ?? 'action_key' AND meta ?? 'label_key')
+                );

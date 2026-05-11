@@ -12,6 +12,7 @@
 | configurazione | jsonb | NO |  |
 | data_insert | timestamp without time zone | NO | now() |
 | data_update | timestamp without time zone | YES |  |
+| preset_aggiornato_ignored_at | timestamp without time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

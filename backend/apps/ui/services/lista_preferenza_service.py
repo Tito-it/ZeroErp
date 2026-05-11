@@ -25,11 +25,13 @@ __all__ = [
     "ListaPreferenzaService",
     "E_UI_LISTA_NON_TROVATA",
     "E_UI_PREFERENZA_VALIDAZIONE",
+    "E_UI_PREFERENZA_NON_TROVATA",
 ]
 
 
 E_UI_LISTA_NON_TROVATA = "E_UI_LISTA_NON_TROVATA"
 E_UI_PREFERENZA_VALIDAZIONE = "E_UI_PREFERENZA_VALIDAZIONE"
+E_UI_PREFERENZA_NON_TROVATA = "E_UI_PREFERENZA_NON_TROVATA"
 
 # Whitelist root del payload preferenza.
 _PAYLOAD_KEYS = frozenset(
@@ -50,6 +52,22 @@ class ListaPreferenzaService:
             validation_code=E_UI_PREFERENZA_VALIDAZIONE,
         )
 
+    # Scopo: Risolve `lista_codice -> lista_id` con errore parlante 404
+    #        `E_UI_LISTA_NON_TROVATA` se la lista non esiste / non e' attiva.
+    #        Pattern centralizzato (helper privato) per non duplicare la
+    #        guardia in ogni metodo del service.
+    def _require_lista_id(self, lista_codice: str) -> int:
+        lista_id = self._repo.get_lista_id(lista_codice)
+        ErrorManager.require(
+            lista_id is not None,
+            code=E_UI_LISTA_NON_TROVATA,
+            message="Lista non trovata.",
+            detail=f"codice lista: '{lista_codice}'",
+            context={"lista_codice": lista_codice},
+        )
+        assert lista_id is not None
+        return lista_id
+
     # Scopo: UPSERT preferenza utente per (auth_user, lista_codice).
     #        Valida la struttura JSONB in ingresso, calcola lo snapshot
     #        del preset di base e materializza il record. Ritorna l'id
@@ -61,15 +79,7 @@ class ListaPreferenzaService:
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         # 1. Lista deve esistere
-        lista_id = self._repo.get_lista_id(lista_codice)
-        ErrorManager.require(
-            lista_id is not None,
-            code=E_UI_LISTA_NON_TROVATA,
-            message="Lista non trovata.",
-            detail=f"codice lista: '{lista_codice}'",
-            context={"lista_codice": lista_codice},
-        )
-        assert lista_id is not None
+        lista_id = self._require_lista_id(lista_codice)
 
         # 2. Whitelist + tipi del payload
         configurazione = self._validate_payload(payload)
@@ -105,21 +115,46 @@ class ListaPreferenzaService:
         user: Any,
         lista_codice: str,
     ) -> dict[str, Any]:
-        lista_id = self._repo.get_lista_id(lista_codice)
-        ErrorManager.require(
-            lista_id is not None,
-            code=E_UI_LISTA_NON_TROVATA,
-            message="Lista non trovata.",
-            detail=f"codice lista: '{lista_codice}'",
-            context={"lista_codice": lista_codice},
-        )
-        assert lista_id is not None
+        lista_id = self._require_lista_id(lista_codice)
 
         deleted = self._repo.delete_preferenza(
             auth_user_id=user.id,
             lista_id=lista_id,
         )
         return {"deleted": deleted}
+
+    # Scopo: Tombstone "Ignora banner preset aggiornato" (DEF-2). Setta
+    #        `preset_aggiornato_ignored_at = NOW()` sulla preferenza utente.
+    #        Il flag `preset_aggiornato` di `fn_resolve_lista_config` torna
+    #        FALSE finche' il preset non viene modificato di nuovo
+    #        (`preset.data_update > ignored_at`).
+    #        Solleva E_UI_LISTA_NON_TROVATA se la lista non esiste e
+    #        E_UI_PREFERENZA_NON_TROVATA se l'utente non ha ancora una
+    #        preferenza (caso patologico: il banner non sarebbe visibile,
+    #        ma chiamata diretta da retry/script va comunque rifiutata).
+    def ignore_preset_update(
+        self,
+        user: Any,
+        lista_codice: str,
+    ) -> dict[str, Any]:
+        lista_id = self._require_lista_id(lista_codice)
+
+        ignored = self._repo.set_preset_aggiornato_ignored(
+            auth_user_id=user.id,
+            lista_id=lista_id,
+        )
+        ErrorManager.require(
+            ignored,
+            code=E_UI_PREFERENZA_NON_TROVATA,
+            message="Preferenza utente non trovata per questa lista.",
+            detail=(
+                "Nessuna preferenza salvata per "
+                f"(user_id={user.id}, codice='{lista_codice}')."
+            ),
+            context={"lista_codice": lista_codice},
+        )
+
+        return {"ignored": True}
 
     # Scopo: Valida il payload contro le whitelist e ritorna il dict
     #        normalizzato pronto per il salvataggio JSONB. Difende da

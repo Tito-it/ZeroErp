@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DEF-2: aggiunge colonna preset_aggiornato_ignored_at su
+# ui.lista_preferenza_utente.
+#
+# Why: tombstone separato per il banner "preset aggiornato". Quando
+# l'utente preme "Ignora", il backend scrive NOW() qui. La fn
+# fn_resolve_lista_config calcola preset_aggiornato=TRUE solo se
+# lista_preset.data_update > preset_aggiornato_ignored_at, cioe'
+# il preset e' stato modificato DI NUOVO dopo l'ultimo ignore.
+#
+# Tipo TIMESTAMP WITHOUT TIME ZONE (non TIMESTAMPTZ) per coerenza
+# con preset_base_data_update e lista_preset.data_update che usano
+# lo stesso tipo: confronti omogenei, nessun cast implicito con
+# timezone di sessione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260511-01-alter-ui-lista-preferenza-utente-add-preset-aggiornato-ignored-at-mctit.yaml
+
+  - changeSet:
+      id: 20260511-01-alter-ui-lista-preferenza-add-preset-aggiornato-ignored-at
+      author: mctit
+      failOnError: true
+      comment: >
+        DEF-2: aggiunge preset_aggiornato_ignored_at TIMESTAMP NULL
+        su ui.lista_preferenza_utente. Tombstone per banner "preset
+        aggiornato": valorizzata dal BE quando l'utente preme Ignora.
+        TIMESTAMP (senza timezone) per coerenza con preset_base_data_update.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: ui
+              tableName: lista_preferenza_utente
+          - not:
+              - columnExists:
+                  schemaName: ui
+                  tableName: lista_preferenza_utente
+                  columnName: preset_aggiornato_ignored_at
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.lista_preferenza_utente
+                ADD COLUMN preset_aggiornato_ignored_at TIMESTAMP WITHOUT TIME ZONE NULL;
+
+              COMMENT ON COLUMN ui.lista_preferenza_utente.preset_aggiornato_ignored_at IS
+                'Tombstone DEF-2: valorizzata dal BE quando l''utente preme "Ignora" sul '
+                'banner "preset aggiornato". fn_resolve_lista_config calcola '
+                'preset_aggiornato=TRUE solo se lista_preset.data_update > questo valore '
+                '(il preset e'' stato modificato DI NUOVO dopo l''ultimo ignore). '
+                'NULL = mai ignorato. Azzerata dal trigger quando preset_base_id cambia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE ui.lista_preferenza_utente
+                DROP COLUMN IF EXISTS preset_aggiornato_ignored_at;
