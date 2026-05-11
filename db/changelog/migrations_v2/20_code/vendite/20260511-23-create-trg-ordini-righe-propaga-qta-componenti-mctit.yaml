@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger su vendite.ordini_righe (tabella esistente):
+# propaga quantita ai figli in ordini_righe_componenti
+# quando la quantita della riga padre cambia.
+#
+# File separato da YAML 22 perche' agisce su una tabella diversa
+# (ordini_righe, gia' esistente) rispetto alla tabella nuova.
+#
+# Naming _z90_propaga_: fase finale, ordine lessicografico
+# 'propaga' < 'ricalcola' garantisce esecuzione prima di
+# eventuali trg_ordini_righe_z90_ricalcola_*.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260511-23-create-trg-ordini-righe-propaga-qta-componenti-mctit.yaml
+
+  - changeSet:
+      id: 20260511-23-01-trg-ordrighe-z90-propaga-qta-componenti
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        AFTER UPDATE OF quantita su vendite.ordini_righe _z90_:
+        propaga la nuova quantita ai componenti BoM CASO A come
+        quantita = coeff_qta_snapshot * NEW.quantita.
+        UPDATE OF quantita: scatta solo quando quantita cambia,
+        evita overhead su ogni UPDATE.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ordini_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'trgfn_componenti_propaga_qta';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_z90_propaga_qta_componenti_upd
+                  ON vendite.ordini_righe;
+
+              CREATE TRIGGER trg_ordini_righe_z90_propaga_qta_componenti_upd
+                  AFTER UPDATE OF quantita
+                  ON vendite.ordini_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_componenti_propaga_qta(
+                      'vendite',
+                      'ordini_righe_componenti',
+                      'riga_ordine_id'
+                  );
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_z90_propaga_qta_componenti_upd
+                  ON vendite.ordini_righe;

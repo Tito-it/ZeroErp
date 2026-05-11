@@ -18,6 +18,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | ck_transizioni_stati_prev_da_diverso_a |  |
+| CHECK | ck_transizioni_stati_prev_meta_ui |  |
 | FOREIGN KEY | fk_transizioni_stati_prev_a | stato_a_id |
 | FOREIGN KEY | fk_transizioni_stati_prev_da | stato_da_id |
 | PRIMARY KEY | pk_transizioni_stati_preventivi | id |

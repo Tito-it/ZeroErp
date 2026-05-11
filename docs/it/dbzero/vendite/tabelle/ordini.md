@@ -32,6 +32,7 @@
 | termine_pagamento_id | bigint | YES |  |
 | fatturazione_trigger | character varying | NO | 'CONFERMATO'::character varying |
 | canale_origine | USER-DEFINED | NO | 'ADMIN'::config.canale_origine |
+| utility_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -43,6 +44,7 @@
 | FOREIGN KEY | fk_ordini_v_modpag | modalita_pagamento_id |
 | FOREIGN KEY | fk_ordini_v_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_ordini_v_stato_ordine | stato_doc_ordine_id |
+| FOREIGN KEY | fk_ordini_v_utility | utility_id |
 | FOREIGN KEY | fk_ordini_v_valute | valuta_id |
 | PRIMARY KEY | pk_ordini | id |
 

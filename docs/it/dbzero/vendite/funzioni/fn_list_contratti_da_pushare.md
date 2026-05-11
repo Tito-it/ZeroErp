@@ -60,7 +60,7 @@ BEGIN
     COALESCE(c.valido_dal, c.data),
     -- uom_id canonica da catalogo.articoli (fix bug proiezione NULL)
     a.uom_id,
-    cr.quantita_fissa,
+    cr.quantita,
     cr.qta_operativa,
     cr.uom_operativa_id,
     COALESCE(cr.factor_to_base, 1::numeric),
@@ -105,7 +105,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_contratti_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_contratto_id bigint)
-IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS.';
+IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna)';
 ```
 
 ---

@@ -49,6 +49,7 @@ BEGIN
       USING v_riga_padre_id;
 
     -- Guard 1: l'articolo della riga padre deve essere composito
+    -- Template: "...riga_padre_id=%s..." (1 placeholder)
     IF NOT COALESCE(v_is_composito, FALSE) THEN
         PERFORM script.fn_log_and_raise_error(
             'script', TG_NAME, 'E_DOC_RIGA_NON_COMPOSITO',
@@ -57,7 +58,7 @@ BEGIN
                 'articolo_id',      v_articolo_id_padre
             ),
             NULL::uuid,
-            v_riga_padre_id::text
+            v_riga_padre_id::text          -- %s #1: riga_padre_id
         );
     END IF;
 
@@ -71,6 +72,7 @@ BEGIN
        AND ac.prodotto_id = v_articolo_id_padre;
 
     -- Guard 2: articolo_componente_id deve appartere alla BoM del padre
+    -- Template: "...articolo_componente_id=%s...articolo_id=%s" (2 placeholder)
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
             'script', TG_NAME, 'E_DOC_COMPONENTE_NON_BOM',
@@ -79,11 +81,13 @@ BEGIN
                 'articolo_id_padre',      v_articolo_id_padre
             ),
             NULL::uuid,
-            v_riga_padre_id::text
+            NEW.articolo_componente_id::text,  -- %s #1: articolo_componente_id
+            v_articolo_id_padre::text           -- %s #2: articolo_id
         );
     END IF;
 
     -- Guard 3: componente_id deve coincidere con BoM.componente_id
+    -- Template: "...componente_id [%s]...componente_id [%s]...articolo_componente_id=%s" (3 placeholder)
     IF v_bom.componente_id IS DISTINCT FROM NEW.componente_id THEN
         PERFORM script.fn_log_and_raise_error(
             'script', TG_NAME, 'E_DOC_COMPONENTE_ID_INCOERENTE',
@@ -93,11 +97,14 @@ BEGIN
                 'articolo_componente_id',  NEW.articolo_componente_id
             ),
             NULL::uuid,
-            v_riga_padre_id::text
+            NEW.componente_id::text,            -- %s #1: componente_id_ricevuto
+            v_bom.componente_id::text,          -- %s #2: componente_id_atteso
+            NEW.articolo_componente_id::text    -- %s #3: articolo_componente_id
         );
     END IF;
 
     -- Guard 4: il componente BoM deve essere esposto in fattura (CASO A)
+    -- Template: "...articolo_componente_id=%s..." (1 placeholder)
     IF NOT COALESCE(v_bom.esposto_in_fattura, FALSE) THEN
         PERFORM script.fn_log_and_raise_error(
             'script', TG_NAME, 'E_DOC_COMPONENTE_NON_ESPOSTO',
@@ -106,12 +113,13 @@ BEGIN
                 'componente_id',          NEW.componente_id
             ),
             NULL::uuid,
-            v_riga_padre_id::text
+            NEW.articolo_componente_id::text   -- %s #1: articolo_componente_id
         );
     END IF;
 
     -- Guard 5: BoM deve essere valida alla data documento
     -- (skip se data non disponibile: v_data_rif IS NULL)
+    -- Template: "...articolo_componente_id=%s...data=%s" (2 placeholder)
     IF v_data_rif IS NOT NULL AND NOT (v_bom.validita @> v_data_rif) THEN
         PERFORM script.fn_log_and_raise_error(
             'script', TG_NAME, 'E_DOC_COMPONENTE_BOM_NON_VALIDA',
@@ -121,7 +129,8 @@ BEGIN
                 'data_riferimento',       v_data_rif
             ),
             NULL::uuid,
-            v_riga_padre_id::text
+            NEW.articolo_componente_id::text,  -- %s #1: articolo_componente_id
+            v_data_rif::text                    -- %s #2: data
         );
     END IF;
 
@@ -130,7 +139,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_componenti_guard_coerenza_bom()
-IS 'Trigger function BEFORE INS/UPD: 5 guard BoM CASO A — (1) padre is_composito, (2) articolo_componente_id in BoM padre, (3) componente_id coerente con BoM, (4) esposto_in_fattura=TRUE, (5) validita BoM @> data documento. TG_ARGV[0..5]: schema, tab_padre, col_fk_figli_padre, tab_testata, col_fk_padre_testata, col_data_testata.';
+IS 'Trigger function BEFORE INS/UPD: 5 guard BoM CASO A — (1) padre is_composito, (2) articolo_componente_id in BoM padre, (3) componente_id coerente con BoM, (4) esposto_in_fattura=TRUE, (5) validita BoM @> data documento. TG_ARGV[0..5]: schema, tab_padre, col_fk_figli_padre, tab_testata, col_fk_padre_testata, col_data_testata. rev 12-05-2026: fix VARIADIC args allineati ai %s dei template messaggi_errore.';
 ```
 
 ---
