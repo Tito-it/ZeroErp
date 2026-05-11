@@ -314,12 +314,132 @@ estrae il codice `E_*` dal `message_primary` della DatabaseError e applica
 la policy registrata in `error_policies.py` (HTTP status + user_message).
 Funziona quindi senza translator dedicato lato service.
 
-### 3.4 Espansione compositi nella pipeline (S14.C-BE-1/BE-2)
+### 3.4 Espansione compositi nella pipeline — nuovo modello componenti CASO A
 
-- [ ] Push preventivo con riga articolo composito → run commesse_push
-- [ ] Verifica creazione N attività in `vendite.commesse_attivita` (1 per componente)
-- [ ] `segment_key` differenziato con suffix `#CMP:{componente_id}`
-- [ ] `quantita = quantita_padre × coeff_qta` (no rounding)
+> **Riferimenti**: [refactor-componenti.md](refactor-componenti.md),
+> guida `gestione-listini.md` §5.2.1 e §6.2.
+> **Pre-requisito**: brief DB
+> [brief-db-preventivi-righe-componenti-override.md](brief-db-preventivi-righe-componenti-override.md)
+> mergato + BE Fasi 1-4 (vedi piano) atterrate + FE Fase 5 attiva.
+
+#### Setup comune ai 3 scenari
+
+- [ ] Articolo composito **`ART-COMP-001`** con BoM:
+  - Componente 1 (`ART-CTR`): `esposto_in_fattura = TRUE`,
+    `coeff_qta = 1`, UoM `pz`
+  - Componente 2 (`ART-LAV`): `esposto_in_fattura = TRUE`,
+    `coeff_qta = 4`, UoM `h`
+- [ ] Listino categoria del cliente popolato per `ART-CTR` a €200/pz
+- [ ] Preventivo `PRV0000XXX` in stato DRAFT con cliente in categoria
+  STANDARD, utility configurata, emittente assegnato all'operatore
+
+#### Scenario 3.4.A — Tutto da listino (path felice)
+
+- [ ] Setup: listino popolato anche per `ART-LAV` a €75/h
+- [ ] Da `PreventiviRigaForm`, aggiungi riga su `ART-COMP-001` qty=1
+- [ ] Drawer si apre con sezione "Componenti esposti in fattura":
+  - [ ] `ART-CTR` qty=1, suggerito €200 (LISTINO), prezzo €200
+  - [ ] `ART-LAV` qty=4, suggerito €75 (LISTINO), prezzo €75
+- [ ] Prezzo padre readonly = €500 (200·1 + 75·4)
+- [ ] Salva → riga padre €500, 2 componenti su `preventivi_righe_componenti`
+- [ ] Verifica DB: `SELECT origine_prezzo FROM preventivi_righe_componenti
+      WHERE riga_preventivo_id = ?` → entrambi `LISTINO`/`CATEGORIA`
+      (a seconda del resolver)
+- [ ] EMETTI → ACCETTA preventivo (verifica transizione OK)
+- [ ] Push commessa → toast verde "Push completato: 2 righe inviate"
+- [ ] Verifica `commesse_attivita`:
+  - [ ] 2 righe create
+  - [ ] `segment_key` differenziato con suffix `#CMP:{componente_id}`
+  - [ ] `prezzo_unitario` esatto = €200 e €75 (da componenti, NON da resolver al push)
+  - [ ] `quantita` = 1×1 = 1 e 4×1 = 4
+- [ ] Stato preventivo → EVASO (transizione automatica)
+
+#### Scenario 3.4.B — Listino mancante + override manuale
+
+- [ ] Setup: `categorie_clienti_listini` NON ha mappa per `ART-LAV`
+  (categoria, utility, emittente) — listino del componente assente
+- [ ] Operatore con autorizzazione `prezzo_override_manuale`
+- [ ] Da `PreventiviRigaForm`, aggiungi riga su `ART-COMP-001` qty=1
+- [ ] Sezione componenti popolata, ma:
+  - [ ] `ART-CTR`: prezzo €200 (LISTINO), tutto verde
+  - [ ] `ART-LAV`: ⚠ warning inline "Nessuna mappa listino", campo
+    prezzo vuoto, suggerito non disponibile
+- [ ] Operatore digita €75 manualmente sul componente `ART-LAV` →
+  origine diventa MANUALE (badge ✏️)
+- [ ] Prezzo padre readonly = €500 (200·1 + 75·4)
+- [ ] Salva → componenti salvati: `ART-CTR` con origine `CATEGORIA`,
+  `ART-LAV` con origine `MANUALE` + `prezzo_resolver_context.error =
+  'E_CATEGORIA_LISTINO_NON_MAPPATA'`
+- [ ] EMETTI → ACCETTA → push commessa: **toast verde** (niente errore!)
+- [ ] Verifica `commesse_attivita`: 2 righe con prezzi €200 + €75
+- [ ] Stato preventivo → EVASO
+
+**Verifica negativa**: operatore SENZA `prezzo_override_manuale` deve
+ricevere `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` al tentativo di salvare
+prezzo manuale.
+
+- [ ] Login operatore senza `prezzo_override_manuale`
+- [ ] Stesso flusso → su prezzo manuale su `ART-LAV` → 403
+  `E_PREZZO_OVERRIDE_NON_AUTORIZZATO`
+- [ ] Il save fallisce, l'utente deve far popolare il listino prima di
+  proseguire
+
+#### Scenario 3.4.C — Sconto commerciale puntuale su un componente
+
+- [ ] Setup: stesso di 3.4.A (entrambi i listini popolati)
+- [ ] Operatore con `prezzo_override_manuale` autorizzato
+- [ ] Operatore vuole concedere sconto **solo su `ART-LAV`** a cliente VIP
+- [ ] Da `PreventiviRigaForm`, aggiungi riga su `ART-COMP-001` qty=1
+- [ ] Sezione componenti popolata con suggeriti €200 e €75
+- [ ] Operatore lascia `ART-CTR` a €200 (CATEGORIA invariato) e modifica
+  `ART-LAV` a €50 (era €75)
+  - [ ] Verifica delta % entro L2 (`VENDITE_MAX_SCONTO_PCT`) — se entro,
+    salva senza richiesta approvazione
+  - [ ] Origine `ART-LAV` diventa MANUALE, badge ✏️
+- [ ] Prezzo padre readonly = €400 (200·1 + 50·4)
+- [ ] Salva → componenti `CATEGORIA` + `MANUALE`
+- [ ] EMETTI → ACCETTA → push: `commesse_attivita` con €200 + €50
+- [ ] Stato preventivo → EVASO
+
+**Variante L3 — sconto oltre L2**:
+
+- [ ] Operatore modifica `ART-LAV` a €25 (sconto >40%, oltre L2 al 25%)
+- [ ] Save normale → banner inline `E_PREV_SCONTO_ECCESSIVO`, pulsante
+  "Richiedi approvazione" attivo (analogo al pattern §4.1)
+- [ ] Click "Richiedi approvazione" → toast success, componente con
+  `stato_approvazione_prezzo = 'PENDING'`
+- [ ] Tenta accettazione preventivo →
+  `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (il guard estende anche ai
+  componenti, non solo alle righe padre)
+- [ ] Login approver, approva → componente passa a APPROVED, preventivo
+  ora accettabile
+
+#### Verifica defense-in-depth (cross-scenario)
+
+- [ ] Tenta INSERT diretto su `preventivi_righe_componenti` con
+  `componente_id` NON appartenente al BoM dell'articolo padre → trigger
+  guard `E_DOC_COMPONENTE_NON_BOM`
+- [ ] Tenta INSERT con componente `esposto_in_fattura = FALSE` →
+  `E_DOC_COMPONENTE_NON_ESPOSTO`
+- [ ] Tenta INSERT con BoM scaduta alla data preventivo →
+  `E_DOC_COMPONENTE_BOM_NON_VALIDA`
+- [ ] Tenta INSERT con riga padre non composita →
+  `E_DOC_RIGA_NON_COMPOSITO`
+- [ ] DELETE riga padre → componenti eliminati (FK CASCADE)
+- [ ] UPDATE quantita riga padre da 1 a 3 → componenti ricalcolati
+  via trigger `script.trgfn_componenti_propaga_qta` (quantita
+  componente = `coeff_qta_snapshot × 3`)
+
+#### Edge case all-or-nothing (post-fix 2026-05-11)
+
+- [ ] Setup: preventivo con riga composito CASO A + altra riga normale
+- [ ] Simula errore push su un componente (es. integrità DB violata
+  in `commesse_attivita` con dato sporco)
+- [ ] Push → HTTP 422 `E_COMMESSA_PUSH_PARZIALE_VIETATO`
+- [ ] Verifica `commesse_attivita`: **zero righe create** (rollback
+  totale atomic)
+- [ ] Stato preventivo: **resta ACCETTATO** (no transizione EVASO)
+- [ ] `commesse_push_log`: nessun record (rolled back)
 
 ---
 

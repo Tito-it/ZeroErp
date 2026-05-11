@@ -337,6 +337,121 @@ class ApiPreventivoRigaDetail(DomainAPIView):
         return success_response(result)
 
 
+# ── Componenti BoM CASO A (refactor componenti 2026-05-11) ──
+#
+# Endpoint nidificati sotto riga padre:
+#   GET    /preventivi/<id>/righe/<riga_id>/componenti/
+#   PATCH  /preventivi/<id>/righe/<riga_id>/componenti/<componente_id>/
+#   DELETE /preventivi/<id>/righe/<riga_id>/componenti/<componente_id>/
+# Init e' implicito post-create_riga via `gestisci_riga` — niente POST
+# pubblico dedicato. Vedi `refactor-componenti.md`.
+
+
+class ApiPreventivoRigaComponentiList(DomainAPIView):
+    """GET /api/v1/vendite/preventivi/<id>/righe/<riga_id>/componenti/
+
+    Lista i componenti BoM CASO A di una riga padre composita.
+    Restituisce array vuoto se la riga non e' CASO A (no componenti).
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PreventivoRigaComponentiListResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Restituisce via GET la lista componenti di una riga padre.
+    def get(
+        self, request: Request, preventivo_id: int, riga_id: int,
+    ) -> JsonResponse:
+        result = preventivi_service.list_componenti_riga(preventivo_id, riga_id)
+        return success_response(result)
+
+
+class ApiPreventivoRigaComponenteDetail(DomainAPIView):
+    """PATCH/DELETE /api/v1/vendite/preventivi/<id>/righe/<riga_id>/componenti/<componente_id>/
+
+    Modifica fine (prezzo override, ecc.) e soft delete del singolo
+    componente. Il trigger DB di ricalcolo aggiorna automaticamente il
+    `prezzo_unitario` della riga padre come SUM(componenti × coeff_qta).
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="PreventivoRigaComponenteUpdateRequest",
+            fields={
+                "prezzo_unitario": serializers.DecimalField(
+                    max_digits=22, decimal_places=10, required=False,
+                ),
+                "origine_prezzo": serializers.CharField(required=False),
+                "iva_id": serializers.IntegerField(required=False),
+                "ordine": serializers.IntegerField(required=False),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="PreventivoRigaComponenteUpdateResponse",
+            fields={"data": inline_serializer(
+                name="PreventivoRigaComponenteUpdateData", fields={
+                    "status": serializers.CharField(),
+                    "componente_id": serializers.IntegerField(),
+                },
+            )},
+        )},
+    )
+    # Scopo: Aggiorna componente via PATCH. Solo campi nella whitelist
+    #        repo `_COMPONENTE_UPDATE_ALLOWED` sono applicati: gli altri
+    #        vengono ignorati silenziosamente (defense-in-depth).
+    #        `riga_id` URL passato al service per check anti-tampering
+    #        (deve matchare la riga padre reale del componente).
+    def patch(
+        self,
+        request: Request,
+        preventivo_id: int,
+        riga_id: int,
+        componente_id: int,
+    ) -> JsonResponse:
+        auth_user_id = (
+            request.user.id if request.user and request.user.is_authenticated else None
+        )
+        result = preventivi_service.update_componente(
+            preventivo_id, riga_id, componente_id, request.data,
+            auth_user_id=auth_user_id,
+        )
+        return success_response(result)
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PreventivoRigaComponenteDeleteResponse",
+            fields={"data": inline_serializer(
+                name="PreventivoRigaComponenteDeleteData", fields={
+                    "status": serializers.CharField(),
+                    "componente_id": serializers.IntegerField(),
+                    "deleted": serializers.BooleanField(),
+                },
+            )},
+        )},
+    )
+    # Scopo: Soft delete componente via DELETE. `riga_id` URL passato al
+    #        service per check anti-tampering (deve matchare la riga padre
+    #        reale del componente).
+    def delete(
+        self,
+        request: Request,  # noqa: ARG002 — DRF richiede signature
+        preventivo_id: int,
+        riga_id: int,
+        componente_id: int,
+    ) -> JsonResponse:
+        result = preventivi_service.delete_componente(
+            preventivo_id, riga_id, componente_id,
+        )
+        return success_response(result)
+
+
 # ── Suggerimento prezzo riga via pricing resolver v5 ──
 
 

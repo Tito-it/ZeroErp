@@ -194,19 +194,45 @@ export function dominioListinoSeverity(codice) {
 }
 
 // --- Mappa origine match resolver pricing v5 ---
-// PROMO=arancio (offerta speciale, stadio 0 batte tutto), CONTRATTO/CONTRATTO_LISTINO=
-// azzurro (condizioni cliente specifiche), CATEGORIA=verde (listino di default
-// per categoria cliente). Default 'secondary' per origini sconosciute o future.
+// PROMO=arancio (offerta speciale, stadio 0 batte tutto),
+// CONTRATTO/CONTRATTO_LISTINO/CONTRATTO_OVERRIDE=azzurro (condizioni cliente
+// specifiche), CATEGORIA=verde (listino di default per categoria cliente),
+// MANUALE=secondary (override manuale operatore, niente colore di sistema).
+// Default 'secondary' per origini sconosciute o future.
 // Usato cross-dominio: PreventiviRigaForm (badge sotto prezzo riga),
+// PreventiviRigheTable (badge sotto componenti CASO A),
 // TestResolverDialog (badge esito test), futuri prospect/ordini/fatture.
 export const PRICING_ORIGINE_MAP = {
   PROMO: 'warn',
   CONTRATTO: 'info',
   CONTRATTO_LISTINO: 'info',
+  CONTRATTO_OVERRIDE: 'info',
   CATEGORIA: 'success',
+  MANUALE: 'secondary',
 }
 export function pricingOrigineSeverity(codice) {
   return resolveSeverity(PRICING_ORIGINE_MAP, codice)
+}
+
+// Mapping origine -> chiave i18n del badge. Centralizzato per evitare drift
+// fra consumer (PreventiviRigaForm legacy + PreventiviRigaComponentiPanel
+// post-refactor 2026-05-11). Include `CONTRATTO` legacy (resolver vecchio,
+// pre-distinzione listino/override) per fallback grazia.
+// Quando il pattern verra' replicato sui 4 sorgenti futuri valutare lo
+// spostamento delle chiavi i18n in `common.pricing_origine_*`.
+export const PRICING_ORIGINE_LABEL_KEY = {
+  PROMO: 'preventivi.badge_origine_promo',
+  CONTRATTO: 'preventivi.badge_origine_contratto',
+  CONTRATTO_LISTINO: 'preventivi.badge_origine_contratto',
+  CONTRATTO_OVERRIDE: 'preventivi.badge_origine_contratto_override',
+  CATEGORIA: 'preventivi.badge_origine_categoria',
+  MANUALE: 'preventivi.badge_origine_manuale',
+}
+
+// Scopo: Ritorna la chiave i18n per il codice origine, o null se sconosciuto.
+//        Il chiamante decide il fallback (es. mostrare il codice raw).
+export function pricingOrigineLabelKey(codice) {
+  return PRICING_ORIGINE_LABEL_KEY[codice] || null
 }
 
 // --- Mappa stati contratto (v5) ---

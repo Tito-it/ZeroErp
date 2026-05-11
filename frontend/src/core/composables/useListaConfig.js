@@ -24,6 +24,7 @@ import {
   getListaCatalogo,
   putListaPreferenza,
   deleteListaPreferenza,
+  ignorePresetUpdate as apiIgnorePresetUpdate,
 } from '../api/ui-api'
 
 /**
@@ -162,6 +163,31 @@ export function useListaConfig(codice) {
   // Computed: count delle nuove colonne disponibili (badge UX).
   const colonneNuove = computed(() => config.value?.colonne_nuove ?? 0)
 
+  // Computed DEF-2: TRUE quando il preset di base e' stato modificato
+  // dall'admin dopo lo snapshot della preferenza utente E l'utente non
+  // ha dismissato il banner per quella versione del preset. Calcolato
+  // lato DB da `fn_resolve_lista_config`: passthrough qui.
+  // `?? false` fallback safe: se il DB non espone ancora il campo
+  // (brief team DB non atterrato), il banner FE resta nascosto.
+  const presetAggiornato = computed(
+    () => config.value?.preset_aggiornato ?? false,
+  )
+
+  // Scopo: DEF-2 — "Ignora" banner preset aggiornato. POST tombstone +
+  //        reload per riallineare `config.value.preset_aggiornato` a false.
+  //        Idempotency-Key generata per request (handle_post_json strong
+  //        mode lato BE). Toast/error gestito da useApiHandler.
+  async function ignorePresetUpdate() {
+    const idempotencyKey = generateIdempotencyKey()
+    const result = await execute(
+      () => apiIgnorePresetUpdate(codice, idempotencyKey),
+    )
+    if (result !== null) {
+      await load()
+    }
+    return result
+  }
+
   return {
     config,
     catalogo,
@@ -169,11 +195,13 @@ export function useListaConfig(codice) {
     dirty,
     loading,
     colonneNuove,
+    presetAggiornato,
     load,
     ensureCatalogo,
     applyChange,
     save,
     reset,
+    ignorePresetUpdate,
   }
 }
 

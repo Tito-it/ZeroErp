@@ -44,6 +44,14 @@ _HANDLER_REGISTRY: dict[str, type[BaseSourceHandler]] = {
     "ATTIVITA_CONSUMI": HandlerConsumi,
 }
 
+# Stati `PushReport.stato` che richiedono rollback all-or-nothing nel push
+# singolo (`pr_run_commesse_push_one`):
+# - PARZIALE: almeno una riga fallita, alcune OK -> scritture inconsistenti
+# - ERRORE: nessun handler senza errori (lock acquisito ma fallimento totale)
+# COMPLETATO e SKIPPED NON sono qui: il primo e' successo, il secondo non
+# ha tentato scritture (lock concorrente).
+_STATI_PUSH_FALLIMENTO = frozenset({"PARZIALE", "ERRORE"})
+
 
 def _build_handlers(repo: CommesseRepository) -> list[BaseSourceHandler]:
     """Costruisce handler solo per le sorgenti attive in config.sorgenti.
@@ -96,7 +104,15 @@ def pr_run_commesse_push(
 # Scopo: Variante puntuale del push commesse — esegue UN solo handler con
 # filtro sulla riga sorgente identificata da `sorgente_uid`. Riusa
 # orchestrator (lock + log su commesse_push_log + event_log): differisce
-# dal batch solo per perimetro di processing (1 documento invece di N).
+# dal batch sia per perimetro (1 documento invece di N) sia per
+# semantica transazionale: all-or-nothing. Un documento sorgente
+# (preventivo/ordine/contratto/DDT/consumi) e' un'unita' transazionale
+# singola — inviare un sottoinsieme delle sue righe lascerebbe commessa
+# orfana e testata sorgente semi-evasa. Se anche solo una riga fallisce,
+# rollback dell'intera scrittura (commesse + attivita + link sorgente +
+# push_log + event_log) e raise E_COMMESSA_PUSH_PARZIALE_VIETATO.
+# Il batch globale `pr_run_commesse_push` mantiene best-effort per-riga
+# (cron giornaliero su N documenti: 1 riga rotta non blocca le altre).
 # Usato dal pulsante UI "Push commessa" del drawer preventivo (e in futuro
 # dai pulsanti analoghi su ordini/DDT). Validazione stretta sul codice
 # sorgente per evitare run vuoti silenziosi su typo durante refactor.
@@ -129,11 +145,41 @@ def pr_run_commesse_push_one(
     )
 
     orch = CommessaPushOrchestrator(repo, handlers)
-    report = orch.run(
-        source_types=[sorgente_codice],
-        dry_run=dry_run,
-        sorgente_uid=sorgente_uid,
-    )
+
+    # Atomic esterna: il raise sotto rolla TUTTE le scritture del run
+    # (commesse, attivita, link sorgente, push_log, event_log).
+    # L'advisory lock dell'orchestrator e' session-level e viene rilasciato
+    # dal finally interno indipendentemente dal rollback della transazione.
+    # Dry-run e' esente: in simulazione l'utente vuole il report diagnostico
+    # (es. "3 OK + 1 fallirebbe"), non un errore generico — niente scritture
+    # da proteggere, niente raise.
+    with transaction.atomic():
+        report = orch.run(
+            source_types=[sorgente_codice],
+            dry_run=dry_run,
+            sorgente_uid=sorgente_uid,
+        )
+        if not dry_run and report.stato in _STATI_PUSH_FALLIMENTO:
+            # Estrai il primo errore tra tutti gli handler per dare contesto
+            # operativo. La user_message resta generica (policy); il detail
+            # propaga il messaggio tecnico utile al fix dati/configurazione.
+            first_error = next(
+                (e for h in report.handlers for e in h.errors),
+                "errore sconosciuto",
+            )
+            ErrorManager.raise_error(
+                code="E_COMMESSA_PUSH_PARZIALE_VIETATO",
+                message="Push fallito: nessuna riga inviata.",
+                detail=first_error,
+                hint="Risolvi la causa indicata e ri-prova il push.",
+                context={
+                    "sorgente_codice": sorgente_codice,
+                    "sorgente_uid": sorgente_uid,
+                    "stato_report": report.stato,
+                    "errors_count": sum(len(h.errors) for h in report.handlers),
+                },
+                function_name="vendite.commesse_service.pr_run_commesse_push_one",
+            )
     return {
         "stato": report.stato,
         "dry_run": report.dry_run,

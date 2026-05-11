@@ -17,11 +17,13 @@ import { formatCurrency, formatNumber } from '../../../core/utils/format'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
 import { STATO_APPROVAZIONE } from '../../constants'
 import PreventiviRigaForm from './PreventiviRigaForm.vue'
+import PreventiviRigaComponentiPanel from './PreventiviRigaComponentiPanel.vue'
 import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
+import Button from 'primevue/button'
 
 const { t } = useI18n()
 const store = usePreventiviStore()
@@ -48,6 +50,27 @@ const rigaSelezionata = ref(null)
 // Selezione riga DataTable: evidenzia visivamente la riga in edit (pattern
 // ContrattoRigheDrawer). Sincronizzata con rigaSelezionata.
 const selezione = ref(null)
+// Expander componenti BoM CASO A (refactor 2026-05-11): mappa {rigaId: true}
+// per le righe espanse. PrimeVue DataTable usa data-key per la chiave: qui id
+// e' int, quindi mappa object-style. Lo chevron e' visibile solo per righe
+// con is_composito_caso_a=true (flag derivato dal BE list_righe via EXISTS
+// subquery — evita N+1 fetch lato client).
+const expandedRows = ref({})
+
+function isExpanded(data) {
+  return !!expandedRows.value[data.id]
+}
+
+// Scopo: toggle manuale espansione riga. Usiamo un Column custom + button al
+//        posto del Column expander standard di PrimeVue per nascondere lo
+//        chevron sulle righe non composite (UX: lo chevron-where-nothing-
+//        happens confonde l'operatore).
+function toggleExpansion(data) {
+  const next = { ...expandedRows.value }
+  if (next[data.id]) delete next[data.id]
+  else next[data.id] = true
+  expandedRows.value = next
+}
 const pageActions = computed(() => [
   {
     key: 'reload',
@@ -105,6 +128,16 @@ function chiudiForm() {
 //        notifica il parent (totale_* aggregato lato DB ricalcolato).
 async function onRigaSaved() {
   chiudiForm()
+  await loadRighe()
+  emit('changed')
+}
+
+// Scopo: Mutation su un componente BoM CASO A (PATCH prezzo o DELETE):
+//        ricarica le righe per riflettere il nuovo prezzo padre calcolato
+//        dai trigger DB (SUM componenti × coeff_qta), MA NON chiude il form
+//        — l'operatore puo' continuare a editare altri componenti.
+//        Propaga `changed` al parent (drawer) per refresh totali aggregati.
+async function onComponentiChanged() {
   await loadRighe()
   emit('changed')
 }
@@ -209,12 +242,25 @@ defineExpose({ loadRighe })
       :row-hover="isModificabile"
       :selection-mode="isModificabile ? 'single' : null"
       v-model:selection="selezione"
+      v-model:expanded-rows="expandedRows"
       paginator
       :rows="10"
       :rows-per-page-options="[10, 25, 50]"
       paginator-position="top"
       removable-sort
       @row-click="onRowClick">
+      <!-- Expander custom per componenti BoM CASO A: chevron visibile solo
+           dove `is_composito_caso_a=true`. @click.stop evita che il click
+           apra anche il drawer di edit della riga. -->
+      <Column style="width: 2.5rem;" :exportable="false">
+        <template #body="{ data }">
+          <Button v-if="data.is_composito_caso_a"
+            :icon="isExpanded(data) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
+            text rounded size="small"
+            v-tooltip.top="t('preventivi.componenti_section_title')"
+            @click.stop="toggleExpansion(data)" />
+        </template>
+      </Column>
       <Column field="articolo_codice" :header="t('preventivi.riga_articolo')" sortable style="min-width: 140px;" />
       <Column field="descrizione" :header="t('preventivi.riga_descrizione')" sortable style="min-width: 180px;" />
       <Column field="quantita" :header="t('preventivi.riga_quantita')" sortable style="width: 90px;">
@@ -248,6 +294,17 @@ defineExpose({ loadRighe })
           <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </Column>
+      <!-- Sub-tabella componenti BoM CASO A — read-only nell'expander.
+           L'edit fine dei prezzi componente avviene nel form dettaglio riga
+           (click sulla riga → PreventiviRigaForm con sezione componenti edit). -->
+      <template #expansion="{ data }">
+        <div style="padding: 0.25rem 0 0.5rem 2rem; background: var(--app-table-stripe-bg);">
+          <PreventiviRigaComponentiPanel
+            :preventivo-id="preventivoId"
+            :riga-id="data.id"
+            :readonly="true" />
+        </div>
+      </template>
     </DataTable>
 
     <!-- Form master-detail inline (Fase 3.F3): visibile SOLO quando attivo,
@@ -260,6 +317,7 @@ defineExpose({ loadRighe })
         :preventivo-id="preventivoId"
         :riga="rigaSelezionata"
         @saved="onRigaSaved"
+        @componenti-changed="onComponentiChanged"
         @cancel="chiudiForm"
       />
     </div>

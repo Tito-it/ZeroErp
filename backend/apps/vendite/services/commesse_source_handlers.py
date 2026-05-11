@@ -112,16 +112,26 @@ class BoMComponentExpander:
         self,
         pricing_service: PricingService | None = None,
         is_composito_fn: Callable[[Any], bool] | None = None,
+        componenti_loader: Callable[[int], list[dict[str, Any]]] | None = None,
     ) -> None:
         # Lazy default: PricingService istanziato solo se serve davvero.
         # Permette di iniettare un mock nei test senza setup DB.
         self._pricing_service = pricing_service
         self._is_composito_fn = is_composito_fn or self._default_is_composito
+        # componenti_loader: snapshot pricing pre-popolato (refactor 2026-05-11).
+        # Se valorizzato + row.riga_sorgente_id presente, legge i componenti
+        # gia' fissati al preventivo (origine_prezzo, override manuale ecc.) e
+        # bypassa il resolver al push. None (default legacy) = resolver al push.
+        # Vedi `refactor-componenti.md`.
+        self._componenti_loader = componenti_loader
         self._composite_cache: dict[Any, bool] = {}
         self._resolve_cache: dict[tuple, list[dict[str, Any]]] = {}
 
     # Scopo: applica la logica BoM v5 a una riga sorgente, restituendo
-    #        1 o N PushableRow secondo l'esito del resolver composito.
+    #        1 o N PushableRow.
+    #        Path snapshot (preferito quando disponibile): legge i componenti
+    #        gia' negoziati al preventivo via `componenti_loader`.
+    #        Path legacy fallback: invoca il resolver al push.
     def expand(self, row: PushableRow) -> list[PushableRow]:
         # Pre-filtri: condizioni in cui la BoM non si applica o non e'
         # risolvibile. Pass-through silenzioso, no errore.
@@ -140,6 +150,18 @@ class BoMComponentExpander:
         if not self._is_composito_cached(row.articolo_id):
             return [row]
 
+        # Path snapshot: leggi componenti gia' negoziati al preventivo.
+        # Lista vuota = CASO B (composito senza componenti esposti) o riga
+        # legacy pre-deploy non popolata -> fallback al resolver.
+        if (
+            self._componenti_loader is not None
+            and row.riga_sorgente_id is not None
+        ):
+            snapshot = self._componenti_loader(row.riga_sorgente_id)
+            if snapshot:
+                return [self._build_componente_row_from_snapshot(row, c) for c in snapshot]
+
+        # Path legacy: resolver al push.
         righe = self._resolve_cached(row)
 
         # CASO B (resolver ritorna 1 riga padre): pass-through. Il prezzo
@@ -185,38 +207,41 @@ class BoMComponentExpander:
         self._resolve_cache[cache_key] = righe
         return righe
 
-    # Scopo: costruisce una PushableRow per un singolo componente, ereditando
-    #        dal padre tutti i campi di contesto (sorgente, BA, utility,
-    #        competenza, tipo_doc_fiscale, valuta) e sostituendo solo i campi
-    #        specifici del componente (articolo, uom, prezzo, quantita,
-    #        segment_key, meta).
+    # Scopo: core riusabile per costruire una PushableRow di componente
+    #        a partire dal padre. Eredita tutto il contesto (sorgente, BA,
+    #        utility, competenza, tipo_doc_fiscale, valuta) e sostituisce
+    #        solo i 6 campi specifici del componente (articolo, uom, qta,
+    #        prezzo, segment_key, meta). Riusato sia dal path resolver
+    #        (`_build_componente_row`) che dal path snapshot
+    #        (`_build_componente_row_from_snapshot`): cambiano i nomi dei
+    #        field nella sorgente dati (resolver vs preventivi_righe_componenti),
+    #        non la logica.
+    #        DEC-3: quantita_componente = quantita_padre × coeff_qta (no
+    #        rounding — arrotondamento avviene a fatturazione).
+    #        DEC-2: segment_key suffix '#CMP:{componente_id}' deterministico
+    #        e idempotente per re-run.
     @staticmethod
-    def _build_componente_row(
+    def _build_componente_pushable_row(
         row: PushableRow,
-        resolver_riga: dict[str, Any],
+        *,
+        componente_id: Any,
+        componente_uom_id: int | None,
+        componente_prezzo: Any,
+        coeff_qta: Decimal,
+        esposto_in_fattura: bool,
+        origine_prezzo: str | None = None,
     ) -> PushableRow:
-        componente_id = resolver_riga["componente_id"]
-        componente_uom_id = resolver_riga["uom_id"]
-        componente_prezzo = resolver_riga["prezzo_unitario"]
-        # coeff_qta dal resolver (DB-3 — vedi docstring classe).
-        coeff_qta = Decimal(resolver_riga["coeff_qta"])
-        componente_esposto = bool(resolver_riga.get("esposto_in_fattura", False))
-
-        # DEC-3: quantita = padre x coeff_qta, senza rounding (sotto-componenti
-        # piene, l'arrotondamento avviene a fatturazione su qta x prezzo).
         quantita_padre = row.quantita if row.quantita is not None else Decimal(0)
         quantita_componente = quantita_padre * coeff_qta
 
-        # Meta: preservo tutto del padre, aggiungo audit specifici componente.
-        # 'componente_di' permette tracing inverso in commesse_attivita.
+        # Meta: preservo tutto del padre, aggiungo audit componente.
+        # `componente_di` permette tracing inverso in commesse_attivita.
         nuovo_meta = dict(row.meta or {})
-        nuovo_meta["esposto_in_fattura"] = componente_esposto
+        nuovo_meta["esposto_in_fattura"] = esposto_in_fattura
         nuovo_meta["componente_di"] = str(row.articolo_id)
         nuovo_meta["coeff_qta"] = str(coeff_qta)
-
-        # DEC-2: segment_key suffix '#CMP:{componente_id}' — deterministico,
-        # idempotente per re-run, leggibile in audit.
-        new_segment_key = f"{row.segment_key}#CMP:{componente_id}"
+        if origine_prezzo is not None:
+            nuovo_meta["origine_prezzo"] = origine_prezzo
 
         return dataclasses.replace(
             row,
@@ -224,8 +249,50 @@ class BoMComponentExpander:
             uom_id=componente_uom_id,
             quantita=quantita_componente,
             prezzo_snapshot=componente_prezzo,
-            segment_key=new_segment_key,
+            segment_key=f"{row.segment_key}#CMP:{componente_id}",
             meta=nuovo_meta,
+        )
+
+    # Scopo: adatta il dict ritorno resolver al builder generico.
+    @classmethod
+    def _build_componente_row(
+        cls,
+        row: PushableRow,
+        resolver_riga: dict[str, Any],
+    ) -> PushableRow:
+        # `Decimal(str(...))` per evitare precisione errata se la fn DB
+        # ritornasse mai un float (oggi e' numeric -> Decimal nativo).
+        return cls._build_componente_pushable_row(
+            row,
+            componente_id=resolver_riga["componente_id"],
+            componente_uom_id=resolver_riga["uom_id"],
+            componente_prezzo=resolver_riga["prezzo_unitario"],
+            coeff_qta=Decimal(str(resolver_riga["coeff_qta"])),
+            esposto_in_fattura=bool(resolver_riga.get("esposto_in_fattura", False)),
+        )
+
+    # Scopo: adatta il dict componente preventivo al builder generico
+    #        (refactor 2026-05-11). Differenze chiave dict vs resolver:
+    #          - `uom_operativa_id` invece di `uom_id`
+    #          - `coeff_qta_snapshot` invece di `coeff_qta`
+    #          - `origine_prezzo` propagato in meta per audit downstream.
+    #        Tutti i componenti snapshot sono per definizione CASO A
+    #        (esposto_in_fattura=True): l'init non popola componenti non
+    #        esposti.
+    @classmethod
+    def _build_componente_row_from_snapshot(
+        cls,
+        row: PushableRow,
+        componente: dict[str, Any],
+    ) -> PushableRow:
+        return cls._build_componente_pushable_row(
+            row,
+            componente_id=componente["componente_id"],
+            componente_uom_id=componente.get("uom_operativa_id") or row.uom_id,
+            componente_prezzo=componente["prezzo_unitario"],
+            coeff_qta=Decimal(str(componente["coeff_qta_snapshot"])),
+            esposto_in_fattura=True,
+            origine_prezzo=componente.get("origine_prezzo"),
         )
 
     # Scopo: query lean per is_composito (vs CatalogoRepository.get_articolo
@@ -442,10 +509,37 @@ class BaseSourceHandler(ABC):
 
 
 class HandlerPreventivi(BaseSourceHandler):
-    """Sincronizza preventivi accettati → commesse."""
+    """Sincronizza preventivi accettati → commesse.
+
+    Override del costruttore per iniettare nel BoMComponentExpander un loader
+    di componenti CASO A pre-popolati su `vendite.preventivi_righe_componenti`
+    (refactor 2026-05-11): permette al push di leggere prezzi snapshot
+    negoziati al preventivo invece di chiamare il resolver. Se la riga
+    non ha componenti popolati (CASO B o legacy), l'expander fa fallback
+    automatico al resolver.
+    """
 
     name = "HandlerPreventivi"
     sorgente_codice = "PREVENTIVO"
+
+    def __init__(
+        self,
+        repo: CommesseRepository,
+        bom_expander: BoMComponentExpander | None = None,
+    ) -> None:
+        if bom_expander is None:
+            # Import locale per evitare ciclo: preventivi_repository importa
+            # types del dominio vendite. Il loader e' un closure leggero
+            # con cache modulo-level dentro PreventiviRepository.
+            from apps.vendite.db.preventivi_repository import PreventiviRepository
+
+            prev_repo = PreventiviRepository()
+
+            def _componenti_loader(riga_id: int) -> list[dict[str, Any]]:
+                return prev_repo.list_componenti_riga(riga_id)
+
+            bom_expander = BoMComponentExpander(componenti_loader=_componenti_loader)
+        super().__init__(repo, bom_expander=bom_expander)
 
 
 class HandlerOrdini(BaseSourceHandler):

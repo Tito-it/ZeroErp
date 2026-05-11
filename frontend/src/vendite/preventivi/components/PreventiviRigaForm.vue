@@ -10,11 +10,12 @@ import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
 import { useAuthStore } from '../../../stores/auth'
 import { suggerisciPrezzoRiga } from '../api/preventiviApi'
-import { pricingOrigineSeverity } from '../../../core/utils/severity'
+import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/utils/severity'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
 import { PRICING_ACTIONS } from '../../constants'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
+import PreventiviRigaComponentiPanel from './PreventiviRigaComponentiPanel.vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -33,9 +34,14 @@ const props = defineProps({
   preventivoId: { type: Number, required: true },
   riga: { type: Object, default: null }
 })
-const emit = defineEmits(['saved', 'cancel'])
+const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 
 const isEdit = computed(() => props.riga != null)
+
+// Refactor componenti 2026-05-11: rilevamento riga padre CASO A. Flag derivato
+// dal BE list_righe (EXISTS subquery su preventivi_righe_componenti attivi).
+// In create il flag e' undefined: la sezione componenti compare solo in edit.
+const isCasoA = computed(() => isEdit.value && !!props.riga?.is_composito_caso_a)
 
 const form = ref({
   articolo_id: null,
@@ -230,20 +236,14 @@ function onArticoloSelect(item) {
   caricaUomConPickBase(item.id)
 }
 
-// Mappa locale origine -> i18n key del badge. Le label sono dominio-specifiche
-// (preventivi.*), quindi restano qui. La severity (codice colore) e' invece
-// centralizzata in core/utils/severity.js (`pricingOrigineSeverity`) e
-// condivisa con TestResolverDialog + futuri consumer (ordini, fatture).
-const ORIGINE_LABEL_KEY = {
-  PROMO: 'preventivi.badge_origine_promo',
-  CONTRATTO: 'preventivi.badge_origine_contratto',
-  CONTRATTO_LISTINO: 'preventivi.badge_origine_contratto',
-  CATEGORIA: 'preventivi.badge_origine_categoria',
-}
+// Badge origine prezzo: label centralizzate in severity.js
+// (`pricingOrigineLabelKey`) per evitare drift con PreventiviRigaComponentiPanel
+// post refactor componenti 2026-05-11 (5 valori inclusi CONTRATTO_OVERRIDE +
+// MANUALE). La severity (colore) viene dalla stessa fonte.
 const prezzoOrigineBadge = computed(() => {
   const code = prezzoOrigine.value
   if (!code) return null
-  const key = ORIGINE_LABEL_KEY[code]
+  const key = pricingOrigineLabelKey(code)
   if (!key) return null
   return { key, severity: pricingOrigineSeverity(code) }
 })
@@ -253,9 +253,13 @@ const prezzoOrigineBadge = computed(() => {
 // Token pattern interno (`_resolverToken`, dichiarato prima del watch sopra
 // per evitare TDZ sull'immediate fire) per scartare risposte stantie su
 // selezioni veloci.
+// Skip per righe CASO A (il padre non ha singolo prezzo listino: e' SUM
+// componenti). Il resolver per il singolo articolo composito o solleva o
+// ritorna un prezzo non rappresentativo — meglio non chiamarlo.
 async function suggerisciPrezzo() {
   if (!props.preventivoId) return
   if (!form.value.articolo_id || !form.value.uom_operativa_id) return
+  if (isCasoA.value) return
   // Auto-apply: in CREATE, e solo se il campo prezzo e' vuoto (rispetto
   // override manuale). In EDIT non scriviamo mai sul form: la riga ha
   // gia' un prezzo persistito, ma vogliamo COMUNQUE chiamare il resolver
@@ -334,12 +338,19 @@ const canSave = computed(() => {
 function buildRigaPayload(extras = {}) {
   const f = form.value
   if (isEdit.value) {
-    return {
+    const base = {
       quantita: f.quantita,
-      prezzo_unitario: f.prezzo_unitario,
       sconto_percentuale: f.sconto_percentuale,
-      ...extras,
     }
+    // Refactor componenti 2026-05-11: per riga CASO A il prezzo padre e'
+    // calcolato dai trigger DB come SUM(componenti × coeff_qta). Inviarlo
+    // qui scatenerebbe inutilmente il workflow L1/L2 override su un valore
+    // che verra' comunque sovrascritto dal trigger. La modifica del prezzo
+    // delle CASO A avviene per componente via PreventiviRigaComponentiPanel.
+    if (!isCasoA.value) {
+      base.prezzo_unitario = f.prezzo_unitario
+    }
+    return { ...base, ...extras }
   }
   return {
     articolo_id: f.articolo_id,
@@ -439,18 +450,26 @@ async function handleRichiediApprovazione() {
             :severity="prezzoOrigineBadge.severity"
             :value="t(prezzoOrigineBadge.key)"
             v-tooltip.top="t('preventivi.badge_origine_tooltip', { origine: prezzoOrigine })" />
+          <Tag v-if="isCasoA"
+            severity="secondary"
+            :value="t('preventivi.componenti_padre_calcolato')"
+            v-tooltip.top="t('preventivi.componenti_section_hint')" />
         </label>
         <InputNumber v-model="form.prezzo_unitario" mode="currency" currency="EUR" locale="it-IT"
-          :min-fraction-digits="6" :max-fraction-digits="6" />
+          :min-fraction-digits="6" :max-fraction-digits="6"
+          :disabled="isCasoA" />
         <small class="text-color-secondary">{{ limitiPricingText }}</small>
       </div>
-      <!-- Prezzo listino: cella sempre visibile accanto al prezzo editabile.
+      <!-- Prezzo listino: cella visibile accanto al prezzo editabile.
            Sorgente: resolver vivo (cambio articolo/uom) o meta denormalizzato.
            Read-only — il bottone undo (visibile solo se il valore attuale
            differisce dal listino e l'operatore puo' fare override) ricopia
            il valore listino nel campo prezzo. Utile dopo un rifiuto: vede
-           subito il valore originale per riallineare. -->
-      <div class="form-field">
+           subito il valore originale per riallineare.
+           Nascosta per righe CASO A: il padre non ha un singolo prezzo
+           listino (e' SUM componenti); il riferimento listino e' sui singoli
+           componenti, mostrato nel pannello sotto. -->
+      <div v-if="!isCasoA" class="form-field">
         <label style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
           <span>{{ t('preventivi.riga_prezzo_listino') }}</span>
           <Button
@@ -519,6 +538,31 @@ async function handleRichiediApprovazione() {
         </div>
       </div>
     </Message>
+
+    <!-- Sezione componenti BoM CASO A (refactor 2026-05-11): visibile solo
+         per righe padre composite con componenti esposti in fattura. Il
+         prezzo padre sopra e' calcolato dai trigger DB come SUM(componenti
+         × coeff_qta) — il PATCH del prezzo componente ricalcola anche il
+         padre. Pannello in edit mode: prezzo InputNumber + Save + cestino.
+         L1/L2 sui componenti applicate lato BE (stessi parametri della riga
+         padre). -->
+    <div v-if="isCasoA" class="app-drawer-section" style="margin-top: 1rem;">
+      <h4 style="margin: 0 0 0.5rem 0; font-size: 1rem;">
+        {{ t('preventivi.componenti_section_title') }}
+      </h4>
+      <!-- @changed dal panel: NON propagare come `saved` (chiuderebbe il form
+           durante l'edit di altri componenti). Propaga come `componenti-changed`
+           per consentire al parent di ricaricare le righe in background
+           senza chiudere. Il display di prezzo padre nel form resta
+           leggermente stale (tag "Calcolato dai componenti" lo segnala) fino
+           alla chiusura del form: il padre prezzo viene aggiornato dal trigger
+           DB SUM su ogni componente PATCH/DELETE. -->
+      <PreventiviRigaComponentiPanel
+        :preventivo-id="preventivoId"
+        :riga-id="props.riga.id"
+        :readonly="false"
+        @changed="emit('componenti-changed')" />
+    </div>
 
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">
       <Button :label="t('common.cancel')" severity="secondary" @click="emit('cancel')" />

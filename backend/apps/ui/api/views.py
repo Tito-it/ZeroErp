@@ -13,6 +13,8 @@
 #          - GET    /liste/<codice>/catalogo      -> catalogo colonne (modale)
 #          - PUT    /liste/<codice>/preferenza    -> upsert preferenza utente
 #          - DELETE /liste/<codice>/preferenza    -> elimina preferenza utente
+#          - POST   /liste/<codice>/preferenza/ignore-preset-update
+#                                                 -> tombstone DEF-2 "preset aggiornato"
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -125,3 +127,38 @@ class ApiListaPreferenzaView(DomainAPIView):
     def delete(self, request: Request, codice: str) -> JsonResponse:
         result = ListaPreferenzaService().delete(request.user, codice)
         return success_response(result)
+
+
+class ApiListaIgnorePresetUpdateView(DomainAPIView):
+    """
+    POST /api/v1/ui/liste/<codice>/preferenza/ignore-preset-update
+
+    Tombstone "Ignora banner preset aggiornato" (DEF-2): setta
+    `preset_aggiornato_ignored_at = NOW()` sulla preferenza utente per
+    (request.user, lista_codice). Il flag `preset_aggiornato` di
+    `fn_resolve_lista_config` torna FALSE finche' il preset non viene
+    modificato di nuovo.
+
+    Body vuoto ammesso. `handle_post_json` + `require_idempotency_key=True`
+    per allineamento al pattern POST di api.md (envelope uniforme, strong
+    idempotency replay su `dbops.idempotency_keys`).
+    """
+
+    skip_area_check = True
+
+    @extend_schema(
+        request=None,
+        responses={200: _DATA_RESPONSE},
+    )
+    # Scopo: Setta il tombstone "ignore" del banner DEF-2 per (user, lista).
+    def post(self, request: Request, codice: str) -> JsonResponse:
+        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+            return ListaPreferenzaService().ignore_preset_update(
+                request.user, codice,
+            )
+
+        return handle_post_json(
+            request,
+            handler=_handler,
+            require_idempotency_key=True,
+        )

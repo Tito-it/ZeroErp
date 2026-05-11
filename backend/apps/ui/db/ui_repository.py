@@ -207,6 +207,27 @@ class UiRepository:
         assert row is not None
         return int(row[0])
 
+    # Scopo: Setta `preset_aggiornato_ignored_at = NOW()` sulla preferenza
+    #        utente (DEF-2 "Ignora" banner preset aggiornato). Ritorna True
+    #        se ha aggiornato una riga, False se la preferenza non esiste
+    #        (il chiamante service trasforma False in
+    #        E_UI_PREFERENZA_NON_TROVATA 404).
+    def set_preset_aggiornato_ignored(
+        self, auth_user_id: int, lista_id: int
+    ) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE ui.lista_preferenza_utente
+                   SET preset_aggiornato_ignored_at = now(),
+                       data_update                  = now()
+                 WHERE auth_user_id = %s
+                   AND lista_id     = %s
+                """,
+                [auth_user_id, lista_id],
+            )
+            return cursor.rowcount > 0
+
     # Scopo: Elimina preferenza utente per (user, lista). Idempotente:
     #        ritorna True se ha eliminato una riga, False se non esisteva.
     def delete_preferenza(self, auth_user_id: int, lista_id: int) -> bool:
@@ -221,12 +242,19 @@ class UiRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Snapshot (id, data_update) del preset di base risolto per
+    # Scopo: Snapshot (id, snapshot_ts) del preset di base risolto per
     #        l'utente, da memorizzare nella preferenza al momento del
     #        salvataggio. La logica replica la cascata Step 2b/c/d di
     #        `ui.fn_resolve_lista_config`: ruolo (priorita ASC) ->
     #        emittente -> sistema. Ritorna `(None, None)` se nessun
     #        preset applicabile (preferenza partira' dal catalogo grezzo).
+    #
+    # `snapshot_ts = COALESCE(lp.data_update, lp.data_insert)`: i preset
+    # seedati hanno `data_update=NULL` finche' non vengono modificati.
+    # Salvare `NULL` come snapshot rompe il calcolo `preset_aggiornato`
+    # in fn_resolve_lista_config (`NULL > qualcosa` e' sempre NULL/false).
+    # Il fallback su `data_insert` garantisce uno snapshot valorizzato
+    # per ogni preset esistente (DEF-2 bug latente fissato 2026-05-11).
     #
     # ATTENZIONE — drift risk: questa cascata duplica la logica DB.
     #        Se in futuro `fn_resolve_lista_config` cambia (nuovo livello
@@ -245,7 +273,7 @@ class UiRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
-                SELECT lp.id, lp.data_update
+                SELECT lp.id, COALESCE(lp.data_update, lp.data_insert)
                   FROM ui.lista_preset lp
                   JOIN script.fn_get_profili_accesso_applicabili(
                          %s,
@@ -270,7 +298,7 @@ class UiRepository:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id, data_update
+                    SELECT id, COALESCE(data_update, data_insert)
                       FROM ui.lista_preset
                      WHERE lista_id             = %s
                        AND ambito               = 'emittente_fiscale'
@@ -289,7 +317,7 @@ class UiRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, data_update
+                SELECT id, COALESCE(data_update, data_insert)
                   FROM ui.lista_preset
                  WHERE lista_id   = %s
                    AND ambito     = 'sistema'
