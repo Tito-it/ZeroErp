@@ -143,21 +143,21 @@ function severityForTipoColonna(tipo) {
       @row-click="(e) => drawer.editRow(e.data, 'id')"
     >
       <Column field="ordine_default" :header="t('ui_admin.colonna_ordine')" style="width: 80px" sortable />
-      <Column field="codice" :header="t('ui_admin.colonna_codice')" style="width: 200px" sortable />
-      <Column field="etichetta" :header="t('ui_admin.colonna_etichetta')" style="width: 220px" sortable />
-      <Column field="tipo_colonna" :header="t('ui_admin.colonna_tipo_colonna')" style="width: 150px">
+      <Column field="codice" :header="t('ui_admin.colonna_codice')" sortable />
+      <Column field="etichetta" :header="t('ui_admin.colonna_etichetta')" sortable />
+      <Column field="tipo_colonna" :header="t('ui_admin.colonna_tipo_colonna')">
         <template #body="{ data }">
           <Tag :value="data.tipo_colonna" :severity="severityForTipoColonna(data.tipo_colonna)" />
         </template>
       </Column>
-      <Column field="tipo_dato" :header="t('ui_admin.colonna_tipo_dato')" style="width: 110px" />
-      <Column field="campo_sorgente" :header="t('ui_admin.colonna_campo_sorgente')" style="width: 180px">
+      <Column field="tipo_dato" :header="t('ui_admin.colonna_tipo_dato')" />
+      <Column field="campo_sorgente" :header="t('ui_admin.colonna_campo_sorgente')">
         <template #body="{ data }">
           <span v-if="data.campo_sorgente">{{ data.campo_sorgente }}</span>
           <span v-else class="muted">—</span>
         </template>
       </Column>
-      <Column field="gruppo" :header="t('ui_admin.colonna_gruppo')" style="width: 140px">
+      <Column field="gruppo" :header="t('ui_admin.colonna_gruppo')">
         <template #body="{ data }">
           <span v-if="data.gruppo">{{ data.gruppo }}</span>
           <span v-else class="muted">—</span>

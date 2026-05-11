@@ -321,6 +321,71 @@ Errori:
 
 ---
 
+### 5. POST preferenza/ignore-preset-update (DEF-2)
+
+#### Scopo
+
+Tombstone "Ignora banner preset aggiornato": setta
+`ui.lista_preferenza_utente.preset_aggiornato_ignored_at = NOW()` sulla
+preferenza utente per `(request.user, codice)`. Il flag
+`preset_aggiornato` ritornato da `ui.fn_resolve_lista_config` torna
+`false` finche' il preset non viene modificato di nuovo
+(`preset.data_update > ignored_at`).
+
+L'endpoint chiude la conversazione "l'amministratore ha aggiornato il
+preset del tuo ruolo, vedi novita' / ignora": "Vedi novita'" si chiude
+naturalmente al successivo save preferenza (lo snapshot
+`preset_base_data_update` si riallinea); "Ignora" usa questo endpoint
+per nascondere il banner senza modificare la configurazione utente.
+
+#### Input
+
+- Metodo: `POST`
+- Path canonico: `/api/v1/ui/liste/{codice}/preferenza/ignore-preset-update/`
+- Header sicurezza: `Authorization: Bearer <access_token>`
+- Header obbligatorio: `Idempotency-Key: <uuid>` (allineamento al pattern POST `handle_post_json`, strong mode replay su `dbops.idempotency_keys`)
+- Path parameter: `codice` (vedi §1)
+- Body: nessuno
+
+#### Output
+
+- `200`:
+
+```json
+{
+  "data": {"ignored": true},
+  "meta": {"request_id": "..."}
+}
+```
+
+Errori:
+
+- `400` `E_IDEMPOTENCY_KEY_REQUIRED` — header `Idempotency-Key` mancante
+- `401` — JWT mancante o non valido
+- `404` `E_UI_LISTA_NON_TROVATA` — codice lista non esistente
+- `404` `E_UI_PREFERENZA_NON_TROVATA` — l'utente non ha ancora una
+  preferenza salvata sulla lista (caso patologico: il banner non
+  sarebbe visibile, ma chiamata diretta da retry/script viene
+  rifiutata)
+
+#### Note DEF-2
+
+- **Idempotency-Key**: obbligatoria per coerenza con il pattern POST
+  (api.md). Il replay strong mode garantisce che retry FE non duplichino
+  side-effect anche se `now()` viene comunque sovrascritto in modo
+  benigno.
+- **Reset automatico tombstone**: il trigger
+  `trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts` azzera
+  anche `preset_aggiornato_ignored_at` quando cambia `preset_base_id`
+  (cambio preset di base = relazione utente-preset resettata, il
+  tombstone storico riferisce al vecchio preset).
+- **Riapparizione banner**: il banner torna visibile alla prossima
+  modifica del preset (`preset.data_update > ignored_at`). Pattern by
+  design: l'utente che "ignora una volta" non perde visibilita' sulle
+  future modifiche.
+
+---
+
 ## Regole
 
 - **Permessi**: `skip_area_check = True` su tutte le view. JWT

@@ -38,3 +38,19 @@ export function putListaPreferenza(codice, configurazione, idempotencyKey) {
 export function deleteListaPreferenza(codice) {
   return api.delete(`${BASE}/liste/${encodeURIComponent(codice)}/preferenza/`)
 }
+
+// Scopo: DEF-2 — tombstone "ignora banner preset aggiornato". POST senza
+// body: setta `preset_aggiornato_ignored_at = NOW()` sulla preferenza
+// utente. Il flag `preset_aggiornato` di fn_resolve_lista_config torna
+// FALSE finche' il preset non viene modificato di nuovo. 404 se l'utente
+// non ha ancora una preferenza salvata (caso patologico).
+//
+// Idempotency-Key obbligatoria (handle_post_json strong mode lato BE):
+// il composable la genera per request via `generateIdempotencyKey`.
+export function ignorePresetUpdate(codice, idempotencyKey) {
+  return api.post(
+    `${BASE}/liste/${encodeURIComponent(codice)}/preferenza/ignore-preset-update/`,
+    null,
+    { headers: { 'Idempotency-Key': idempotencyKey } },
+  )
+}

@@ -217,10 +217,70 @@ Esempi:
 
 Un articolo composito (`is_composito = true`) ha una distinta base in `articoli_componenti`. Il flag `esposto_in_fattura` decide il comportamento:
 
-- **Nessun componente esposto**: il composito ha un prezzo unico (riga listino sul composito, o somma componenti a fallback)
-- **Almeno un componente esposto**: il resolver ritorna N righe (una per componente), la pipeline di creazione attività espande l'articolo composito in N righe `commesse_attivita` separate
+- **Nessun componente esposto** (CASO B / B1 / B2): il composito ha un prezzo unico (riga listino sul composito, o somma componenti a fallback). Resolver al push, status quo.
+- **Almeno un componente esposto** (CASO A): il resolver ritorna N righe (una per componente). Ogni componente esposto diventa una **riga negoziabile a se' stante** dentro il documento sorgente — vedi §5.2.1 sotto. Al push, la pipeline espande l'articolo composito in N righe `commesse_attivita` separate.
 
 Logica completa in [vendite.fn_resolve_prezzo_composito](/dbzero/vendite/funzioni/fn_resolve_prezzo_composito).
+
+#### 5.2.1 Componenti CASO A nel ciclo preventivo → commessa
+
+> **Decisione di dominio 2026-05-11**: il prezzo della riga padre di un
+> composito CASO A non e' negoziabile direttamente — e' un valore
+> derivato dalla somma dei componenti. Ogni componente esposto vive
+> come riga propria, con prezzo proprio risolto dal resolver e
+> override manuale ammesso (L1).
+
+**Razionale.** Prima del 2026-05-11 la riga preventivo di un composito
+CASO A salvava un `prezzo_unitario` sul padre che pero' veniva
+**ignorato silenziosamente al push**: il resolver risolveva N prezzi
+per i componenti dal listino e quelli finivano in fattura. Cliente
+vedeva X nel preventivo e Y nella fattura. Inoltre, se anche solo un
+componente non aveva mappa listino, il push esplodeva **dopo** che
+l'utente aveva accettato il preventivo. Bug logico del modello:
+asimmetria fra preventivo (prezzo manuale ammesso sul padre) e push
+(prezzo manuale ignorato, resolver obbligatorio per ogni componente).
+
+**Modello nuovo**: per ogni documento sorgente che genera commesse
+(preventivi, ordini, contratti, DDT, attivita consumi) esiste una
+tabella `<sorgente>_righe_componenti` parallela a `<sorgente>_righe`.
+Quando l'operatore inserisce una riga su articolo composito CASO A:
+
+1. Il backend chiama `fn_<sorgente>_riga_componenti_init` che invoca
+   il resolver e popola un record per ogni componente esposto, con
+   `prezzo_unitario` = prezzo suggerito + `origine_prezzo` (PROMO /
+   CONTRATTO_OVERRIDE / CONTRATTO_LISTINO / CATEGORIA — vedi §3).
+2. Se il resolver fallisce su un componente (es. listino mancante),
+   il componente viene comunque creato con `prezzo_unitario = 0` e
+   `origine_prezzo = 'MANUALE'`. L'UI mostra un warning e l'operatore
+   digita il prezzo a mano (richiede L1, vedi §6).
+3. Il `prezzo_unitario` della riga padre e' **readonly** lato UI e
+   ricalcolato automaticamente da un trigger DB come
+   `SUM(prezzo_componente × coeff_qta_snapshot)`. Cambia ad ogni
+   modifica di componenti.
+4. Al push commessa, il `BoMComponentExpander` legge direttamente i
+   prezzi gia' fissati su `<sorgente>_righe_componenti` — **senza
+   ri-chiamare il resolver**. Snapshot pricing immutabile
+   post-accettazione, simmetrico al pattern `prezzo_bloccato`.
+
+**Componenti vs riga padre**: la riga padre composita CASO A esiste
+sul documento sorgente come "ricetta" + totale calcolato. I componenti
+vivono nella tabella parallela. In fattura ogni componente esposto
+genera 1 riga `commesse_attivita` con `articolo_id = componente_id`,
+`quantita = quantita_componente × quantita_padre`, `prezzo_unitario =
+quello fissato sul componente preventivo`.
+
+**Cascade quantita padre**: se l'operatore cambia la `quantita` della
+riga padre, un trigger DB propaga il ricalcolo della `quantita` di
+tutti i componenti come `coeff_qta_snapshot × quantita_padre`. Il
+prezzo unitario dei componenti resta invariato.
+
+**Cosa NON entra nella tabella componenti**: componenti con
+`esposto_in_fattura = FALSE`. Restano interni al composito, vivono
+solo nella BoM `articoli_componenti` e non sono mai negoziabili —
+contribuiscono al prezzo via fallback "somma componenti" del resolver
+nel CASO B.
+
+**Workflow L1/L2/L3 sui componenti**: vedi §6.2.
 
 ### 5.3 Immutabilità della BoM — pattern "chiudi + nuova versione"
 
@@ -248,9 +308,47 @@ Nel preventivo, il prezzo suggerito dal resolver può essere **sovrascritto manu
   - Autorizzato: salva con origine `MANUALE`, traccia in `meta` il resolver originale
   - Non autorizzato: `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` (403)
 
-Il badge UI mostra l'origine del prezzo (listino/contratto/promo/manuale) e il delta eventuale.
+Il badge UI mostra l'origine del prezzo (`PROMO` / `CONTRATTO_OVERRIDE` /
+`CONTRATTO_LISTINO` / `CATEGORIA` / `MANUALE`) e il delta eventuale.
 
 L2 (limite sconto/maggiorazione %) è in produzione (Sprint D 22-04-2026): vedi `VENDITE_MAX_SCONTO_PCT` / `VENDITE_MAX_MAGGIORAZIONE_PCT` in `config.parameters` e l'endpoint diagnostico `GET /vendite/pricing/limiti-utente/`.
+
+### 6.2 L1/L2/L3 sui componenti BoM CASO A
+
+> **Eccezione al §6**: su articoli compositi CASO A (vedi §5.2.1)
+> l'override L1 si applica **sui singoli componenti esposti**, non sul
+> prezzo padre. Il prezzo padre e' un valore calcolato readonly. Solo
+> i componenti sono righe negoziabili.
+
+Stesso flusso L1 della riga normale, applicato alla riga componente:
+
+- Se `prezzo_unitario` del componente = suggerito dal resolver → passa
+- Se diverso → service verifica `prezzo_override_manuale`
+  - Autorizzato: salva con `origine_prezzo = 'MANUALE'`, traccia in
+    `prezzo_resolver_context` JSONB il suggerito originale + delta
+  - Non autorizzato: `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` (403)
+
+**Listino mancante sul componente**: caso speciale del L1. Quando il
+resolver fallisce su un componente al popolamento iniziale (es.
+`E_CATEGORIA_LISTINO_NON_MAPPATA`), il componente viene creato con
+`prezzo_unitario = 0`, `origine_prezzo = 'MANUALE'`,
+`prezzo_resolver_context.error = '<codice_errore>'`. L'UI mostra
+warning inline "listino mancante" e l'operatore digita il prezzo a
+mano. Se ha `prezzo_override_manuale` passa, altrimenti errore L1
+classico (e deve far aggiungere il listino prima di proseguire).
+
+**L2 sui componenti**: stessi parametri di sistema della riga padre
+(`VENDITE_MAX_SCONTO_PCT`, `VENDITE_MAX_MAGGIORAZIONE_PCT`). Il delta %
+e' calcolato componente per componente vs il suo suggerito.
+
+**L3 sui componenti**: workflow approvazione PENDING/APPROVED/REJECTED
+opera anche su `<sorgente>_righe_componenti.stato_approvazione_prezzo`.
+Il guard `trgfn_<sorgente>_guard_transizione_approvazione` blocca la
+transizione del documento sorgente verso lo stato terminale (es.
+preventivo → ACCETTATO) se esiste anche un solo componente PENDING. La
+modifica della struttura del componente PENDING e' bloccata da
+`trgfn_<sorgente>_righe_componenti_guard_pending` (simmetrico al guard
+della riga padre).
 
 ### 6.1 L3 — Workflow approvazione out-of-policy (Sprint E)
 

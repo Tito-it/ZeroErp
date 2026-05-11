@@ -14,6 +14,10 @@ Indice test eseguiti:
 5) test_cambio_stato_200 — POST cambio stato OK
 6) test_add_riga_200 — POST aggiunta riga OK
 7) test_push_commessa_200 — POST push commessa OK
+8) test_list_componenti_riga_200 — GET componenti riga padre OK
+9) test_update_componente_200 — PATCH override prezzo componente OK
+10) test_delete_componente_200 — DELETE soft delete componente OK
+11) test_get_componente_404 — GET su riga inesistente -> 404
 """
 
 import unittest
@@ -106,3 +110,49 @@ class TestPreventiviApiViews(JwtMockedApiTest):
             HTTP_IDEMPOTENCY_KEY="test-key-1",
         )
         self.assertIn(response.status_code, [200, 401, 403])
+
+    # ── Componenti BoM CASO A ──
+
+    # Scopo: GET lista componenti di una riga padre (refactor componenti 2026-05-11).
+    def test_list_componenti_riga_200(self):
+        self.mock_svc.list_componenti_riga.return_value = [
+            {"id": 1, "componente_id": "c1", "prezzo_unitario": "200"},
+            {"id": 2, "componente_id": "c2", "prezzo_unitario": "75"},
+        ]
+        response = self.client.get(
+            "/api/v1/vendite/preventivi/1/righe/10/componenti/",
+        )
+        self.assertIn(response.status_code, [200, 401, 403])
+
+    # Scopo: PATCH override prezzo componente.
+    def test_update_componente_200(self):
+        self.mock_svc.update_componente.return_value = {
+            "status": "ok", "componente_id": 50,
+        }
+        response = self.client.patch(
+            "/api/v1/vendite/preventivi/1/righe/10/componenti/50/",
+            data='{"prezzo_unitario": "150.00", "origine_prezzo": "MANUALE"}',
+            content_type="application/json",
+        )
+        self.assertIn(response.status_code, [200, 401, 403])
+
+    # Scopo: DELETE soft delete componente.
+    def test_delete_componente_200(self):
+        self.mock_svc.delete_componente.return_value = {
+            "status": "ok", "componente_id": 50, "deleted": True,
+        }
+        response = self.client.delete(
+            "/api/v1/vendite/preventivi/1/righe/10/componenti/50/",
+        )
+        self.assertIn(response.status_code, [200, 401, 403])
+
+    # Scopo: GET componenti su riga inesistente -> 404 dal service.
+    def test_get_componente_404(self):
+        from apps.core.services.service_errors import ServiceError
+        self.mock_svc.list_componenti_riga.side_effect = ServiceError(
+            code="E_PREV_RIGA_NOT_FOUND", message="Riga preventivo non trovata.",
+        )
+        response = self.client.get(
+            "/api/v1/vendite/preventivi/1/righe/999/componenti/",
+        )
+        self.assertIn(response.status_code, [401, 403, 404])

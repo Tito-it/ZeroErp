@@ -18,7 +18,7 @@ Indice test eseguiti:
 9) test_elimina_riga_not_found — riga inesistente
 10) test_push_a_commessa_ok — push preventivo ACCETTATO con righe eleggibili + transizione EVASO
 10b) test_push_a_commessa_propaga_fatturazione_immediata — flag testata nel payload
-10c) test_push_a_commessa_parziale_non_evade — PARZIALE non transita stato
+10c) test_push_a_commessa_parziale_propaga_e_non_evade — all-or-nothing: ServiceError, niente transizione
 10d) test_push_a_commessa_transizione_db_error_logged_no_raise — fallimento transizione e' soft (warning)
 11) test_push_a_commessa_stato_non_ammesso — guard su stato BOZZA
 12) test_push_a_commessa_nessuna_riga — guard nessuna riga eleggibile
@@ -42,6 +42,19 @@ Indice test eseguiti:
 29) test_gestisci_riga_deriva_qta_operativa_da_factor — qta_op = quantita*factor
 30) test_gestisci_riga_deriva_qta_operativa_factor_default_1 — fallback factor=1
 31) test_repository_list_righe_filtra_solo_attive — righe soft-delete escluse
+32) test_gestisci_riga_init_componenti_chiamato — post-create_riga la fn init e' invocata
+33) test_gestisci_riga_init_componenti_skip_admin_globale — admin globale (no emittente) salta init
+34) test_aggiorna_riga_non_tocca_componenti — articolo_id immutabile, componenti stabili
+35) test_list_componenti_riga_ok — lista componenti riga padre
+36) test_list_componenti_riga_not_found — riga padre inesistente
+37) test_list_componenti_riga_scope_violation — riga padre di altro preventivo
+38) test_update_componente_ok — modifica prezzo componente
+39) test_update_componente_not_found — componente inesistente
+40) test_update_componente_url_tampering_riga_id — anti-tampering URL riga falsa
+41) test_update_componente_scope_violation — componente di altro preventivo
+42) test_update_componente_stato_non_modificabile — guard preventivo EMESSO
+43) test_delete_componente_ok — soft delete componente
+44) test_delete_componente_not_found — componente inesistente
 """
 
 import unittest
@@ -99,11 +112,31 @@ class TestPreventiviService(unittest.TestCase):
         mock_atomic.return_value.__enter__ = MagicMock(return_value=None)
         mock_atomic.return_value.__exit__ = MagicMock(return_value=False)
 
+        # Mock degli helper che fanno user_model.objects.get(pk=...): senza
+        # DB reale (test unit) la query fallirebbe. I test che vogliono
+        # testare la logica emittente specifica possono ri-patcharli
+        # localmente con side_effect/return_value.
+        self.emittente_patcher = patch(
+            "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_or_raise",
+            return_value=100,
+        )
+        self.emittente_patcher.start()
+        # Variante safe chiamata da gestisci_riga per init componenti CASO A
+        # (mockata a 100; i test che testano admin globale possono override
+        # localmente a None).
+        self.emittente_safe_patcher = patch(
+            "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+            return_value=100,
+        )
+        self.emittente_safe_patcher.start()
+
     def tearDown(self):
         self.repo_patcher.stop()
         self.ba_repo_patcher.stop()
         self.iu_repo_patcher.stop()
         self.atomic_patcher.stop()
+        self.emittente_patcher.stop()
+        self.emittente_safe_patcher.stop()
 
     # ── Creazione ──
 
@@ -535,6 +568,221 @@ class TestPreventiviService(unittest.TestCase):
             elimina_riga(1, 999)
         self.assertEqual(ctx.exception.code, "E_PREV_RIGA_NOT_FOUND")
 
+    # ── Componenti BoM CASO A ──
+
+    # Scopo: post-create riga, init_componenti_riga viene chiamato col
+    # set di parametri attesi (emittente_sr_id dal helper safe, data dalla
+    # testata). Refactor componenti 2026-05-11.
+    def test_gestisci_riga_init_componenti_chiamato(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+        }
+        self.mock_repo.create_riga.return_value = {"id": 42}
+        gestisci_riga(
+            1, {"articolo_id": "uuid-art-1", "uom_operativa_id": 1},
+            auth_user_id=100,
+        )
+        self.mock_repo.init_componenti_riga.assert_called_once()
+        kwargs = self.mock_repo.init_componenti_riga.call_args.kwargs
+        self.assertEqual(kwargs["riga_id"], 42)
+        self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 100)
+
+    # Scopo: admin globale (helper safe ritorna None) NON triggera init —
+    # la create di righe non-CASO-A non deve essere bloccata.
+    def test_gestisci_riga_init_componenti_skip_admin_globale(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+        }
+        self.mock_repo.create_riga.return_value = {"id": 42}
+        # Sovrascrivi mock setUp: emittente safe = None (admin globale)
+        with patch(
+            "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+            return_value=None,
+        ):
+            gestisci_riga(
+                1, {"articolo_id": "uuid-art-1", "uom_operativa_id": 1},
+                auth_user_id=100,
+            )
+        self.mock_repo.init_componenti_riga.assert_not_called()
+
+    # Scopo: `aggiorna_riga` NON ammette cambio articolo (whitelist update
+    # exclude `articolo_id`). I componenti CASO A iniziali dell'init
+    # restano stabili: nessun purge/re-init scatta dal flusso update.
+    # Verifica defense-in-depth: anche se il caller passa `articolo_id`
+    # nel payload, viene ignorato dalla whitelist e i componenti non
+    # vengono toccati.
+    def test_aggiorna_riga_non_tocca_componenti(self):
+        from apps.vendite.services.preventivi_service import aggiorna_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+        }
+        self.mock_repo.update_riga.return_value = True
+
+        # Payload con articolo_id (ignorato) + descrizione (ammessa)
+        aggiorna_riga(
+            1, 10,
+            {"articolo_id": "uuid-new-art", "descrizione": "nuova"},
+            auth_user_id=100,
+        )
+        self.mock_repo.purge_componenti_riga.assert_not_called()
+        self.mock_repo.init_componenti_riga.assert_not_called()
+
+    # Scopo: list_componenti_riga ritorna la lista dal repo.
+    def test_list_componenti_riga_ok(self):
+        from apps.vendite.services.preventivi_service import list_componenti_riga
+
+        self.mock_repo.get_riga.return_value = {
+            "id": 10, "preventivo_id": 1,
+            "articolo_id": "uuid-art", "meta": {},
+        }
+        self.mock_repo.list_componenti_riga.return_value = [
+            {"id": 1, "componente_id": "c1", "prezzo_unitario": "200"},
+            {"id": 2, "componente_id": "c2", "prezzo_unitario": "75"},
+        ]
+        result = list_componenti_riga(1, 10)
+        self.assertEqual(len(result), 2)
+        self.mock_repo.list_componenti_riga.assert_called_once_with(10)
+
+    # Scopo: list su riga inesistente -> E_PREV_RIGA_NOT_FOUND.
+    def test_list_componenti_riga_not_found(self):
+        from apps.vendite.services.preventivi_service import list_componenti_riga
+
+        self.mock_repo.get_riga.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            list_componenti_riga(1, 999)
+        self.assertEqual(ctx.exception.code, "E_PREV_RIGA_NOT_FOUND")
+
+    # Scopo: defense-in-depth — riga padre di altro preventivo -> 404.
+    def test_list_componenti_riga_scope_violation(self):
+        from apps.vendite.services.preventivi_service import list_componenti_riga
+
+        self.mock_repo.get_riga.return_value = {
+            "id": 10, "preventivo_id": 999,  # altro preventivo
+            "articolo_id": "uuid-art", "meta": {},
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            list_componenti_riga(1, 10)
+        self.assertEqual(ctx.exception.code, "E_PREV_RIGA_NOT_FOUND")
+
+    # Scopo: update componente in BOZZA -> ok, delegato a repo.
+    def test_update_componente_ok(self):
+        from apps.vendite.services.preventivi_service import update_componente
+
+        self.mock_repo.get_componente.return_value = {
+            "id": 50, "riga_preventivo_id": 10,
+            "componente_id": "c1", "prezzo_unitario": "200",
+            "origine_prezzo": "CATEGORIA",
+        }
+        self.mock_repo.get_riga.return_value = {
+            "id": 10, "preventivo_id": 1, "articolo_id": "uuid-art", "meta": {},
+        }
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        self.mock_repo.update_componente.return_value = True
+
+        result = update_componente(
+            1, 10, 50, {"prezzo_unitario": "150.00", "origine_prezzo": "MANUALE"},
+        )
+        self.assertEqual(result["componente_id"], 50)
+        self.mock_repo.update_componente.assert_called_once()
+
+    # Scopo: componente inesistente -> 404.
+    def test_update_componente_not_found(self):
+        from apps.vendite.services.preventivi_service import update_componente
+
+        self.mock_repo.get_componente.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            update_componente(1, 10, 999, {"prezzo_unitario": "100"})
+        self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")
+
+    # Scopo: anti-tampering URL — `riga_id` URL non matcha la riga padre
+    # reale del componente -> 404. Defense-in-depth contro URL forgiati.
+    def test_update_componente_url_tampering_riga_id(self):
+        from apps.vendite.services.preventivi_service import update_componente
+
+        self.mock_repo.get_componente.return_value = {
+            "id": 50, "riga_preventivo_id": 10,  # riga reale = 10
+            "componente_id": "c1", "prezzo_unitario": "200",
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            # URL falso: riga_id=999 ma componente appartiene a riga=10
+            update_componente(1, 999, 50, {"prezzo_unitario": "100"})
+        self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")
+
+    # Scopo: defense-in-depth — componente su altra riga/preventivo -> 404.
+    def test_update_componente_scope_violation(self):
+        from apps.vendite.services.preventivi_service import update_componente
+
+        self.mock_repo.get_componente.return_value = {
+            "id": 50, "riga_preventivo_id": 10,
+            "componente_id": "c1", "prezzo_unitario": "200",
+        }
+        self.mock_repo.get_riga.return_value = {
+            "id": 10, "preventivo_id": 999,  # altro preventivo
+            "articolo_id": "uuid-art", "meta": {},
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            update_componente(1, 10, 50, {"prezzo_unitario": "100"})
+        self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")
+
+    # Scopo: guard stato preventivo non modificabile.
+    def test_update_componente_stato_non_modificabile(self):
+        from apps.vendite.services.preventivi_service import update_componente
+
+        self.mock_repo.get_componente.return_value = {
+            "id": 50, "riga_preventivo_id": 10,
+            "componente_id": "c1", "prezzo_unitario": "200",
+        }
+        self.mock_repo.get_riga.return_value = {
+            "id": 10, "preventivo_id": 1, "articolo_id": "uuid-art", "meta": {},
+        }
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "EMESSO", "uid": "abc",
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            update_componente(1, 10, 50, {"prezzo_unitario": "100"})
+        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
+
+    # Scopo: soft delete componente in BOZZA.
+    def test_delete_componente_ok(self):
+        from apps.vendite.services.preventivi_service import delete_componente
+
+        self.mock_repo.get_componente.return_value = {
+            "id": 50, "riga_preventivo_id": 10,
+        }
+        self.mock_repo.get_riga.return_value = {
+            "id": 10, "preventivo_id": 1, "articolo_id": "uuid-art", "meta": {},
+        }
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        self.mock_repo.delete_componente.return_value = True
+        result = delete_componente(1, 10, 50)
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(result["deleted"])
+        self.mock_repo.delete_componente.assert_called_once_with(50)
+
+    # Scopo: delete componente inesistente -> 404.
+    def test_delete_componente_not_found(self):
+        from apps.vendite.services.preventivi_service import delete_componente
+
+        self.mock_repo.get_componente.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            delete_componente(1, 10, 999)
+        self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")
+
     # ── Push commessa ──
 
     # Scopo: Verifica push preventivo ACCETTATO con righe eleggibili: il service
@@ -576,33 +824,29 @@ class TestPreventiviService(unittest.TestCase):
         # Stato="COMPLETATO" -> transizione automatica a EVASO via fn DB.
         self.mock_repo.cambia_stato.assert_called_once_with(1, "EVASO", "django_api")
 
-    # Scopo: push parziale (qualche riga fallita) NON deve transitare il
-    # preventivo a EVASO: lo stato terminale richiede push completo.
-    # L'utente potra' ritentare il push per coprire le righe mancanti
-    # e solo allora il preventivo evolvera' a EVASO.
+    # Scopo: post all-or-nothing, pr_run_commesse_push_one solleva
+    # E_COMMESSA_PUSH_PARZIALE_VIETATO su PARZIALE/ERRORE rollando ogni
+    # scrittura. push_a_commessa propaga l'eccezione e NON transita stato:
+    # il preventivo resta ACCETTATO, niente righe orfane in commessa.
     @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
-    def test_push_a_commessa_parziale_non_evade(self, mock_push_one):
+    def test_push_a_commessa_parziale_propaga_e_non_evade(self, mock_push_one):
         from apps.vendite.services.preventivi_service import push_a_commessa
 
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
         }
         self.mock_repo.count_righe_pushable.return_value = 4
-        mock_push_one.return_value = {
-            "stato": "PARZIALE",
-            "dry_run": False,
-            "push_log_id": 43,
-            "durata_ms": 30,
-            "handlers": [{
-                "handler_name": "HandlerPreventivi",
-                "errors": ["Errore riga segment_key=PREV:abc:R:3: ..."],
-            }],
-        }
+        mock_push_one.side_effect = ServiceError(
+            code="E_COMMESSA_PUSH_PARZIALE_VIETATO",
+            message="Push fallito: nessuna riga inviata.",
+            detail="Errore riga segment_key=PREV:abc:R:3: ...",
+        )
 
-        result = push_a_commessa(1)
+        with self.assertRaises(ServiceError) as ctx:
+            push_a_commessa(1)
 
-        self.assertEqual(result["stato"], "PARZIALE")
-        # PARZIALE -> nessuna transizione di stato.
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
+        # All-or-nothing: nessuna transizione stato, nessuna chiamata DB.
         self.mock_repo.cambia_stato.assert_not_called()
 
     # Scopo: se la fn DB cambia_stato rifiuta la transizione (es. seed

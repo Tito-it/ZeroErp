@@ -22,6 +22,8 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoPushCommessa,
     ApiPreventivoRevisione,
     ApiPreventivoRiepilogoIva,
+    ApiPreventivoRigaComponenteDetail,
+    ApiPreventivoRigaComponentiList,
     ApiPreventivoRigaDetail,
     ApiPreventivoRigaSuggerisciPrezzo,
     ApiPreventivoRigheList,
@@ -75,6 +77,17 @@ urlpatterns = [
         "<int:preventivo_id>/righe/suggerisci-prezzo/",
         ApiPreventivoRigaSuggerisciPrezzo.as_view(),
         name="vendite-preventivi-righe-suggerisci-prezzo",
+    ),
+    # Componenti BoM CASO A nidificati sotto la riga padre (refactor 2026-05-11)
+    path(
+        "<int:preventivo_id>/righe/<int:riga_id>/componenti/",
+        ApiPreventivoRigaComponentiList.as_view(),
+        name="vendite-preventivi-riga-componenti-list",
+    ),
+    path(
+        "<int:preventivo_id>/righe/<int:riga_id>/componenti/<int:componente_id>/",
+        ApiPreventivoRigaComponenteDetail.as_view(),
+        name="vendite-preventivi-riga-componente-detail",
     ),
     # Riepilogo IVA aggregato (regola fiscale art. 21 DPR 633/72)
     path(

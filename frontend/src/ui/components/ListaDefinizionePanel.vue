@@ -120,10 +120,10 @@ async function onDrawerSaved() {
       striped-rows
       @row-click="(e) => drawer.editRow(e.data, 'id')"
     >
-      <Column field="codice" :header="t('ui_admin.definizione_codice')" style="width: 240px" sortable />
+      <Column field="codice" :header="t('ui_admin.definizione_codice')" sortable />
       <Column field="descrizione" :header="t('ui_admin.definizione_descrizione')" sortable />
-      <Column field="schema_dati" :header="t('ui_admin.definizione_schema_dati')" style="width: 140px" sortable />
-      <Column field="vista_sql" :header="t('ui_admin.definizione_vista_sql')" style="width: 220px">
+      <Column field="schema_dati" :header="t('ui_admin.definizione_schema_dati')" sortable />
+      <Column field="vista_sql" :header="t('ui_admin.definizione_vista_sql')">
         <template #body="{ data }">
           <span v-if="data.vista_sql">{{ data.vista_sql }}</span>
           <span v-else class="muted">—</span>

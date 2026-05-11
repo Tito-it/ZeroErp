@@ -430,6 +430,12 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Attivita` commessa non trovata.",
         ),
+        "E_COMMESSA_PUSH_PARZIALE_VIETATO": ErrorPolicy(
+            code="E_COMMESSA_PUSH_PARZIALE_VIETATO",
+            http_status=422,
+            ui_action="show_toast_error",
+            user_message="Push fallito: nessuna riga inviata.",
+        ),
         "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA": ErrorPolicy(
             code="E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA",
             http_status=409,
@@ -1305,6 +1311,12 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Riga preventivo non trovata.",
         ),
+        "E_PREV_COMPONENTE_NOT_FOUND": ErrorPolicy(
+            code="E_PREV_COMPONENTE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Componente preventivo non trovato.",
+        ),
         "E_PREV_NESSUNA_RIGA": ErrorPolicy(
             code="E_PREV_NESSUNA_RIGA",
             http_status=400,
@@ -1523,6 +1535,15 @@ class ErrorPolicyRegistry:
             http_status=400,
             ui_action="highlight_form_fields",
             user_message="Preferenza lista non valida.",
+        ),
+        # DEF-2 "preset aggiornato": l'endpoint POST /preferenza/ignore-preset-update/
+        # solleva quando l'utente non ha ancora una preferenza salvata sulla lista
+        # (banner non dovrebbe essere visibile, ma l'errore lato BE e' parlante).
+        "E_UI_PREFERENZA_NON_TROVATA": ErrorPolicy(
+            code="E_UI_PREFERENZA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Preferenza utente non trovata per questa lista.",
         ),
         # Blocco F (admin CRUD ui.*): codici dedicati per preset e permessi colonna.
         # Le validazioni di scoperto/duplicato vengono mappate via map_integrity_error

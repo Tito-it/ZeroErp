@@ -13,6 +13,9 @@
 #   3. put_preferenza_idempotency_key_obbligatoria
 #   4. put_preferenza_happy_path_con_idempotency_key
 #   5. delete_preferenza_envelope_corretto
+#   6. post_ignore_preset_update_envelope_corretto (DEF-2)
+#   7. post_ignore_preset_update_richiede_jwt (DEF-2)
+#   8. post_ignore_preset_update_richiede_idempotency_key (DEF-2)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -153,3 +156,46 @@ class UiListaApiTests(JwtMockedApiTest):
         body = response.json()
         self.assertTrue(body["data"]["deleted"])
         mock_svc.assert_called_once()
+
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(_UserStub(), None),
+    )
+    @patch(
+        "apps.ui.api.views.ListaPreferenzaService.ignore_preset_update",
+        return_value={"ignored": True},
+    )
+    def test_post_ignore_preset_update_envelope_corretto(
+        self, mock_svc, _mock_auth
+    ) -> None:
+        response = self.client.post(
+            "/api/v1/ui/liste/anagrafiche.clienti/preferenza/ignore-preset-update/",
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["data"]["ignored"])
+        mock_svc.assert_called_once()
+
+    def test_post_ignore_preset_update_richiede_jwt(self) -> None:
+        # Senza Authorization header: 401 (DRF default per SimpleJWT).
+        response = self.client.post(
+            "/api/v1/ui/liste/anagrafiche.clienti/preferenza/ignore-preset-update/",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(_UserStub(), None),
+    )
+    def test_post_ignore_preset_update_richiede_idempotency_key(
+        self, _mock_auth,
+    ) -> None:
+        # Senza Idempotency-Key: 400 (handle_post_json con
+        # require_idempotency_key=True).
+        response = self.client.post(
+            "/api/v1/ui/liste/anagrafiche.clienti/preferenza/ignore-preset-update/",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)

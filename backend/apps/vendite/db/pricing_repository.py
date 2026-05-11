@@ -103,6 +103,9 @@ class PricingRepository:
     # Scopo: Invoca `vendite.fn_resolve_prezzo_composito`; ritorna N righe
     #        per articolo composito con componenti esposti (CASO A) oppure
     #        1 riga per articoli semplici / fallback (CASO B1/B2).
+    # Nota: la fn DB ritorna 8 colonne dal 2026-05-11 (aggiunta
+    # `origine_prezzo` per popolamento componenti CASO A — vedi brief
+    # `brief-db-preventivi-righe-componenti-override.md`).
     def resolve_prezzo_composito(
         self,
         *,
@@ -124,7 +127,8 @@ class PricingRepository:
                     iva_id,
                     descrizione_fattura,
                     esposto_in_fattura,
-                    coeff_qta
+                    coeff_qta,
+                    origine_prezzo
                   FROM vendite.fn_resolve_prezzo_composito(
                            %s::uuid, %s, %s, %s, %s, %s, %s
                        )

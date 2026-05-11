@@ -32,11 +32,11 @@ export function useEntityCapabilities(detailRef, opts = {}) {
 
   // Azioni disponibili sullo stato corrente (cambio stato + revisione, ecc.).
   // Sempre array (anche se detail null) per rendere safe il v-for nel template.
-  // Defense-in-depth: filtra le azioni con `label_key` non valorizzato
-  // (mai renderizzabili come pulsante). Una transizione `meta.manuale=false`
-  // BE-only non dovrebbe arrivare qui, ma se la fn DB la include con campi
-  // NULL (vedi bug fn_available_actions_preventivo 2026-05-10) il `t(null)`
-  // del template crasha l'intero render. Il filtro evita il crash silente.
+  // Defense-in-depth: filtra le azioni con `label_key` non valorizzato. Una
+  // transizione con `meta.manuale=false` o con `meta` mal popolato non
+  // dovrebbe arrivare qui (responsabilita' fn DB + seed `meta`), ma se ci
+  // arriva il `t(null)` del template crasha l'intero render. Il filtro
+  // degrada silentemente nascondendo il pulsante non renderizzabile.
   const availableActions = computed(() => {
     const raw = detailRef.value?.available_actions || []
     return raw.filter((a) => a && typeof a.label_key === 'string' && a.label_key)
