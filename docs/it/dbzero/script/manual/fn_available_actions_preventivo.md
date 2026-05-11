@@ -137,3 +137,11 @@ esclusa dalla lista.
 - **Meta mancante**: se una transizione non ha `manuale` in meta, viene
   trattata come manuale (`COALESCE(..., true)`). Se non ha `requires_confirm`,
   il valore default è `false`.
+- **Guard meta keys (rev 11-05-2026)**: la WHERE dell'aggregazione include
+  `AND t.meta ? 'action_key' AND t.meta ? 'label_key'`. Questo è un layer
+  defense-in-depth rispetto al CHECK `ck_transizioni_stati_prev_meta_ui`
+  sulla tabella: anche se un DBA inserisse una riga manuale con meta incompleto
+  bypassando il vincolo, la funzione non la esporrebbe. Sicuro in questo
+  punto perché siamo già nella branch `manuale IS TRUE` (COALESCE sopra),
+  quindi le transizioni automatiche (es. EMESSO→SCADUTO con `manuale=false`)
+  sono già escluse prima di questo check.

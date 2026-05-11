@@ -1,0 +1,276 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger su vendite.ordini_righe_componenti.
+#
+# Tutti i trigger (tranne audit e tx_id) sono wrapper minimi delle
+# helper generiche script.* introdotte con preventivi (20260511-05).
+#
+# Ordine esecuzione (lessicografico):
+#   BEFORE: _a10_guard_bom_coerenza (guard BoM)
+#           _m50_calcola_quantita   (calcola qta da coeff*padre)
+#           audit_data_user         (audit ins/upd)
+#           gen_tx_id               (tx_id managed)
+#   AFTER:  _a10_articoli_require_attivo (FK check articolo)
+#           _a10_iva_require_attivo      (FK check iva, se valorizzato)
+#           _z90_ricalcola_padre         (SUM -> prezzo padre)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260511-22-create-trg-ordini-righe-componenti-mctit.yaml
+
+  # --- BEFORE INSERT OR UPDATE: guard coerenza BoM -----------------------
+  - changeSet:
+      id: 20260511-22-01-trg-ordrighe-comp-a10-guard-bom
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        BEFORE INSERT OR UPDATE: verifica coerenza BoM CASO A tramite
+        script.trgfn_componenti_guard_coerenza_bom. 5 guard:
+        is_composito padre, appartenenza BoM, componente_id coerente,
+        esposto_in_fattura=TRUE, validita BoM @> data documento.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ordini_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'trgfn_componenti_guard_coerenza_bom';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_a10_guard_bom_coerenza_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+              CREATE TRIGGER trg_ordini_righe_componenti_a10_guard_bom_coerenza_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON vendite.ordini_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_componenti_guard_coerenza_bom(
+                      'vendite',
+                      'ordini_righe',
+                      'riga_ordine_id',
+                      'ordini',
+                      'ordine_id',
+                      'data'
+                  );
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_a10_guard_bom_coerenza_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+  # --- BEFORE INSERT OR UPDATE: calcola quantita (intermedio _m50_) ------
+  - changeSet:
+      id: 20260511-22-02-trg-ordrighe-comp-m50-calcola-quantita
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        BEFORE INSERT OR UPDATE _m50_: imposta quantita =
+        coeff_qta_snapshot * quantita_riga_padre. Fase _m50_ garantisce
+        esecuzione dopo i guard _a10_ e prima di _z90_.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'trgfn_componenti_calcola_quantita';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_m50_calcola_quantita_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+              CREATE TRIGGER trg_ordini_righe_componenti_m50_calcola_quantita_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON vendite.ordini_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_componenti_calcola_quantita(
+                      'vendite',
+                      'ordini_righe',
+                      'riga_ordine_id'
+                  );
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_m50_calcola_quantita_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+  # --- BEFORE INSERT OR UPDATE: audit ------------------------------------
+  - changeSet:
+      id: 20260511-22-03-trg-ordrighe-comp-audit
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        BEFORE INSERT OR UPDATE: audit data_update/user_update tramite
+        script.trgfn_audit_data_user_generic.
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_audit_data_user_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+              CREATE TRIGGER trg_ordini_righe_componenti_audit_data_user_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON vendite.ordini_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_audit_data_user_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+  # --- BEFORE INSERT OR UPDATE: tx_id ------------------------------------
+  - changeSet:
+      id: 20260511-22-04-trg-ordrighe-comp-tx-id
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        BEFORE INSERT OR UPDATE: genera/recupera tx_id di sessione
+        tramite dbops.trgfn_tx_id_managed.
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_gen_tx_id_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+              CREATE TRIGGER trg_ordini_righe_componenti_gen_tx_id_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON vendite.ordini_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_gen_tx_id_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+  # --- AFTER INSERT OR UPDATE: FK check articolo attivo ------------------
+  - changeSet:
+      id: 20260511-22-05-trg-ordrighe-comp-a10-articoli-attivo
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        AFTER INSERT OR UPDATE: verifica che l'articolo componente
+        (componente_id) sia attivo in catalogo.articoli.
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_a10_articoli_require_attivo_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+              CREATE TRIGGER trg_ordini_righe_componenti_a10_articoli_require_attivo_ins_upd
+                  AFTER INSERT OR UPDATE
+                  ON vendite.ordini_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(
+                      'catalogo', 'articoli', 'attivo', 'componente_id', 'id'
+                  );
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_a10_articoli_require_attivo_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+  # --- AFTER INSERT OR UPDATE: FK check iva attivo (se valorizzato) ------
+  - changeSet:
+      id: 20260511-22-06-trg-ordrighe-comp-a10-iva-attivo
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        AFTER INSERT OR UPDATE: verifica che iva_id sia attivo in
+        config.iva. Skip automatico se iva_id IS NULL (campo opzionale).
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_a10_iva_require_attivo_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+              CREATE TRIGGER trg_ordini_righe_componenti_a10_iva_require_attivo_ins_upd
+                  AFTER INSERT OR UPDATE
+                  ON vendite.ordini_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(
+                      'config', 'iva', 'attivo', 'iva_id', 'id'
+                  );
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_a10_iva_require_attivo_ins_upd
+                  ON vendite.ordini_righe_componenti;
+
+  # --- AFTER INSERT OR UPDATE OR DELETE: ricalcola prezzo padre ----------
+  - changeSet:
+      id: 20260511-22-07-trg-ordrighe-comp-z90-ricalcola-padre
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        AFTER INSERT OR UPDATE OR DELETE _z90_: ricalcola prezzo_unitario
+        della riga padre come SUM(prezzo_unitario * coeff_qta_snapshot)
+        dei figli attivi. Tramite script.trgfn_componenti_ricalcola_padre.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'trgfn_componenti_ricalcola_padre';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_z90_ricalcola_padre_ins_upd_dlt
+                  ON vendite.ordini_righe_componenti;
+
+              CREATE TRIGGER trg_ordini_righe_componenti_z90_ricalcola_padre_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE
+                  ON vendite.ordini_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_componenti_ricalcola_padre(
+                      'vendite',
+                      'ordini_righe',
+                      'ordini_righe_componenti',
+                      'riga_ordine_id'
+                  );
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_z90_ricalcola_padre_ins_upd_dlt
+                  ON vendite.ordini_righe_componenti;

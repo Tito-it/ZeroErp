@@ -19,13 +19,18 @@ Linee guida:
 
 ### 🎯 Scopo Principale
 
-(latest review 26-04-2026)
+(latest review 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
 
 La trigger function **`vendite.trgfn_contratti_guard_transizione_stato()`**
 blocca le transizioni di stato non ammesse sul workflow contratti
 (`DRAFT -> ATTIVO -> CESSATO`) e impone la **precondizione temporale**
 sulla cessazione: `ATTIVO -> CESSATO` e' consentita **solo se**
 `valido_al < CURRENT_DATE`.
+
+**Aggiornamento 2026-05-12**: blocca anche la transizione `DRAFT -> ATTIVO`
+se qualsiasi componente BoM CASO A (`contratti_righe_componenti`) ha
+`stato_approvazione_prezzo = 'PENDING'`. Un contratto non deve diventare
+operativo con prezzi in attesa di approvazione L3.
 
 E' applicata dal trigger
 `trg_contratti_a10_guard_transizione_stato_upd` (fase `_a10_`,
@@ -40,9 +45,9 @@ del codice business-visible (codice_interno e' immutabile per
 
 ### Matrice transizioni
 
-| Da | A | Ammessa | Condizione |
+| Da | A | Ammessa | Condizione aggiuntiva |
 | --- | --- | --- | --- |
-| DRAFT | ATTIVO | si | — |
+| DRAFT | ATTIVO | si | Nessun componente BoM CASO A con PENDING (dal 12-05-2026) |
 | ATTIVO | CESSATO | si | `NEW.valido_al IS NOT NULL AND NEW.valido_al < CURRENT_DATE` |
 | (qualsiasi) | (stesso stato) | si | no-op (filtrato dal `WHEN` del trigger) |
 | DRAFT | CESSATO | **no** | la bozza si cancella, non si chiude |
@@ -98,9 +103,10 @@ Semantica `valido_al`: ultimo giorno **incluso** (convenzione
 
 ### Errori sollevati
 
-| Codice | Contesto |
-| --- | --- |
-| `E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA` | `contratto_id`, `numero`, `stato_da`, `stato_a`, `valido_al`. Quattro placeholder `%s` nel template messaggio (`config.messaggi_errore` id 392). |
+| Codice | Quando | Contesto |
+| --- | --- | --- |
+| `E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA` | Transizione non ammessa | `contratto_id`, `numero`, `stato_da`, `stato_a`, `valido_al`. |
+| `E_COMPONENTE_PREZZO_PENDENTE` (id 439) | DRAFT→ATTIVO con componente PENDING | `contratto_id`, hint. Aggiunto 2026-05-12. |
 
 ---
 

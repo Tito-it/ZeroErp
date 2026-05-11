@@ -62,6 +62,8 @@ BEGIN
 
     -- Transizioni manuali disponibili per lo stato corrente.
     -- COALESCE su meta.manuale: se assente si assume manuale = true.
+    -- Guard meta keys: esclude transizioni manuali con meta incompleto
+    --   (defense-in-depth su ck_transizioni_stati_prev_meta_ui).
     -- COALESCE su meta.requires_confirm: se assente si assume false.
     SELECT COALESCE(
         jsonb_agg(
@@ -82,7 +84,9 @@ BEGIN
     JOIN config.stati_doc_preventivi sa ON sa.id = t.stato_a_id
     WHERE t.stato_da_id = v_stato_id
       AND t.attivo IS TRUE
-      AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE;
+      AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+      AND t.meta ? 'action_key'
+      AND t.meta ? 'label_key';
 
     -- Capability derivate dallo stato corrente.
     -- can_edit: solo DRAFT (allineato a _STATI_MODIFICABILI Python).
@@ -123,7 +127,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
-IS 'Capability preventivo per detail API: available_actions (da matrice transizioni), can_edit_*, can_push_commessa, can_create_revisione, non_editable_fields. rev 03-05-2026: can_create_revisione solo da EMESSO (allineato a vendite.fn_crea_revisione_preventivo).';
+IS 'Capability preventivo per detail API: available_actions (da matrice transizioni), can_edit_*, can_push_commessa, can_create_revisione, non_editable_fields. rev 03-05-2026: can_create_revisione solo da EMESSO. rev 11-05-2026: WHERE guard meta ?''action_key'' + ?''label_key'' (defense-in-depth su ck_transizioni_stati_prev_meta_ui).';
 ```
 
 ---

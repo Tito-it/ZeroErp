@@ -18,16 +18,14 @@ AS $function$
 -- valido_al < CURRENT_DATE. Coerente col job pgAgent
 -- chiusura_scadenze_daily che soddisfa la condizione per
 -- costruzione.
--- Lookup codice_interno per stabilita' a relabelling.
--- Il filtro WHEN del trigger garantisce che si entra solo
--- se OLD.stato e' DISTINCT da NEW.stato; non serve double-check.
+-- Aggiornato 2026-05-12: blocca DRAFT->ATTIVO anche se
+-- un componente BoM CASO A ha prezzo in attesa di approvazione
+-- (stato_approvazione_prezzo = PENDING).
 DECLARE
     v_codice_da config.stati_doc_contratti.codice_interno%TYPE;
     v_codice_a  config.stati_doc_contratti.codice_interno%TYPE;
     v_ammessa   boolean := false;
 BEGIN
-    -- Risolve codice_interno OLD e NEW in una sola query (pivot
-    -- via MAX(CASE...)). Riduce 2 round-trip a 1 sul catalog.
     SELECT
         max(CASE WHEN id = OLD.stato_doc_contratto_id THEN codice_interno END),
         max(CASE WHEN id = NEW.stato_doc_contratto_id THEN codice_interno END)
@@ -35,26 +33,14 @@ BEGIN
       FROM config.stati_doc_contratti
      WHERE id IN (OLD.stato_doc_contratto_id, NEW.stato_doc_contratto_id);
 
-    -- Dispatch transizioni ammesse.
     IF v_codice_da = 'DRAFT' AND v_codice_a = 'ATTIVO' THEN
         v_ammessa := true;
     ELSIF v_codice_da = 'ATTIVO' AND v_codice_a = 'CESSATO' THEN
-        -- Cessazione consentita solo a finestra gia' scaduta.
-        -- Coerente col principio "le date comandano": evita
-        -- stato CESSATO con validita' ancora aperta.
         v_ammessa := (NEW.valido_al IS NOT NULL
                       AND NEW.valido_al < CURRENT_DATE);
     END IF;
-    -- Tutte le altre transizioni vietate:
-    --   DRAFT -> CESSATO  : la bozza si cancella
-    --   ATTIVO -> DRAFT   : irreversibile
-    --   CESSATO -> *      : terminale
-    --   * -> SOSPESO / SOSPESO -> *: non in scope ora
 
     IF NOT v_ammessa THEN
-        -- NEW.tx_id disponibile dal 20260426-09 (ALTER ADD).
-        -- Popolato automaticamente dal trigger
-        -- dbops.trgfn_tx_id_managed registrato via automation.
         PERFORM script.fn_log_and_raise_error(
             'database',
             TG_NAME::text,
@@ -74,12 +60,39 @@ BEGIN
         );
     END IF;
 
+    -- Check componenti BoM CASO A con prezzo PENDING (solo su DRAFT->ATTIVO).
+    -- La cessazione avviene su contratti gia' attivi con prezzi approvati.
+    IF v_codice_da = 'DRAFT' AND v_codice_a = 'ATTIVO' THEN
+        IF EXISTS (
+            SELECT 1
+              FROM vendite.contratti_righe cr
+              JOIN vendite.contratti_righe_componenti crc
+                ON crc.riga_contratto_id = cr.id
+             WHERE cr.contratto_id = NEW.id
+               AND crc.stato_approvazione_prezzo =
+                   'PENDING'::config.stato_approvazione_prezzo
+        ) THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                TG_NAME::text,
+                'E_COMPONENTE_PREZZO_PENDENTE',
+                jsonb_build_object(
+                    'contratto_id', NEW.id,
+                    'hint', 'Componente BoM CASO A in attesa di approvazione prezzo. '
+                         || 'Attendi esito su tutti i componenti prima di attivare il contratto.'
+                ),
+                NEW.tx_id,
+                NEW.id::text
+            );
+        END IF;
+    END IF;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
-IS 'Guard transizione stato contratto (FK con lookup codice_interno). Ammette DRAFT->ATTIVO e ATTIVO->CESSATO solo con valido_al<CURRENT_DATE. Raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA.';
+IS 'Trigger function: controlla transizioni stato contratto (DRAFT->ATTIVO->CESSATO). ATTIVO->CESSATO solo se valido_al < CURRENT_DATE. Aggiornato 2026-05-12: blocca DRAFT->ATTIVO se componenti BoM CASO A hanno stato_approvazione_prezzo=PENDING (E_COMPONENTE_PREZZO_PENDENTE).';
 ```
 
 ---

@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Aggiorna trigger trg_contratti_righe_a10_qta_from_operativa_ins_upd
+# dopo il rename quantita_fissa -> quantita (20260511-31).
+#
+# TG_ARGV[2] cambia da 'quantita_fissa' a 'quantita': la funzione
+# generica script.trgfn_qta_from_operativa usa il branch ELSE
+# (default) che assegna NEW.quantita -- gia' presente e corretto.
+# Il branch IF v_target_col = 'quantita_fissa' diventa dead code
+# ma non causa errori; sara' rimosso in pulizia futura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260511-32-update-trg-contratti-righe-qta-from-operativa-mctit.yaml
+
+  - changeSet:
+      id: 20260511-32-01-update-trg-contratti-righe-qta-from-operativa
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Ricrea trigger qta_from_operativa su contratti_righe con
+        TG_ARGV[2]='quantita' (era 'quantita_fissa' prima del rename
+        20260511-31). La funzione generica script.trgfn_qta_from_operativa
+        usa il branch ELSE NEW.quantita per qualsiasi target diverso da
+        'quantita_fissa', quindi funziona correttamente senza modifiche.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: contratti_righe
+            columnName: quantita
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                  ON vendite.contratti_righe;
+
+              CREATE TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita');
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                  ON vendite.contratti_righe;
+
+              CREATE TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita_fissa');

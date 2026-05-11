@@ -35,7 +35,7 @@ ogni transizione di stato, rendendo le regole configurabili senza rilasciare cod
 | 6 | EMESSO (2) | ANNULLATO (9) | Annullamento operatore |
 | 7 | ACCETTATO (4) | ANNULLATO (9) | Annullamento post-accettazione |
 
-```
+```text
 DRAFT ---------> EMESSO ---------> ACCETTATO ---------> (push commessa / genera pratica)
   |                |                   |
   |                |                   +-> ANNULLATO (guard commessa attiva)
@@ -53,6 +53,29 @@ DRAFT ---------> EMESSO ---------> ACCETTATO ---------> (push commessa / genera 
 |---------|------|-------------|
 | `uq_transizioni_stati_preventivi` | UNIQUE | `(stato_da_id, stato_a_id)` — una sola regola per coppia |
 | `ck_transizioni_stati_prev_da_diverso_a` | CHECK | Lo stato di partenza deve essere diverso da quello di arrivo |
+| `ck_transizioni_stati_prev_meta_ui` | CHECK | Transizioni manuali (`meta->>'manuale' != false`) devono avere `action_key` e `label_key` nel JSONB `meta` |
+
+---
+
+### Campo `meta` — contratto obbligatorio
+
+Il campo `meta jsonb NOT NULL DEFAULT '{}'` porta i metadati UI letti da
+`script.fn_available_actions_preventivo`. Il contratto e' **obbligatorio** per le
+transizioni manuali ed e' imposto dal CHECK `ck_transizioni_stati_prev_meta_ui`.
+
+| Chiave | Tipo | Obbligatoria | Descrizione |
+|--------|------|:---:|---|
+| `action_key` | `text` | Sì (manuale) | Chiave semantica dell'azione letta dal FE (es. `emetti`, `annulla`) |
+| `label_key` | `text` | Sì (manuale) | Chiave i18n per il label del bottone Vue (`$t(label_key)`) |
+| `severity` | `text` | No | Severity PrimeVue: `info` / `success` / `danger` |
+| `icon` | `text` | No | Classe PrimeIcons (es. `pi pi-send`) |
+| `requires_confirm` | `boolean` | No | `true` → il drawer mostra dialog di conferma prima di eseguire |
+| `manuale` | `boolean` | No | `false` = transizione automatica (job/trigger), esclusa dalla lista UI. Default: `true` |
+
+**Regola**: ogni volta che si aggiunge una riga a questa tabella, aggiornare anche il seed
+`80_data/changelog/20260430-60-update-transizioni-stati-preventivi-meta-ui-mctit.yaml`
+(`runOnChange: true`) con l'UPDATE corrispondente. Il CHECK blocca INSERT/UPDATE con meta
+incompleto sulle transizioni manuali, rendendo immediatamente visibile un seed dimenticato.
 
 ---
 
@@ -61,7 +84,8 @@ DRAFT ---------> EMESSO ---------> ACCETTATO ---------> (push commessa / genera 
 * **Attivo**: il flag `attivo` consente di disabilitare una transizione senza eliminarla.
 * **Guard aggiuntivi**: la funzione `fn_cambia_stato_preventivo` applica guard supplementari
   non gestibili dalla sola matrice (es. righe attive per emissione, commessa attiva per annullamento).
-* **Estensibilita'**: il campo `meta` JSONB consente future estensioni (es. `richiede_conferma`, `note_ui`).
+* **Meta obbligatorio**: il campo `meta` NON e' piu' opzionale per le transizioni manuali.
+  Vedi sezione "Campo meta" sopra e CHECK `ck_transizioni_stati_prev_meta_ui`.
 
 ---
 
