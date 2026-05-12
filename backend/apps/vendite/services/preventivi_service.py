@@ -12,7 +12,7 @@
 import json
 import logging
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from django.contrib.auth import get_user_model
@@ -613,6 +613,13 @@ def gestisci_riga(
     # resolver: anticipa i CHECK DB con messaggio parlante.
     _validate_riga_economic(payload, function_name=f"{_FN}.gestisci_riga")
 
+    # Gating L1 sui componenti_overrides (form atomic 2026-05-12): se il
+    # payload contiene overrides ma l'operatore non ha l'azione
+    # prezzo_override_manuale, solleva 403 prima di toccare DB.
+    _validate_componenti_overrides_authorization(
+        payload, auth_user_id, function_name=f"{_FN}.gestisci_riga",
+    )
+
     uom_id = payload.get("uom_operativa_id")
     payload_prezzo = payload.get("prezzo_unitario")
     richiesta_approvazione = bool(payload.get("richiesta_approvazione", False))
@@ -708,19 +715,26 @@ def gestisci_riga(
     riga_id_created = result.get("id")
     data_riferimento_str = testata.get("data")
     if riga_id_created is not None and data_riferimento_str is not None:
-        emittente_sr_id: int | None = None
-        emittente_fiscale_id_prev = testata.get("emittente_fiscale_id")
-        if emittente_fiscale_id_prev is not None:
-            emittente_sr_id = repo.get_emittente_sr_id_by_fiscale_id(
-                int(emittente_fiscale_id_prev),
-            )
-        if emittente_sr_id is None:
-            emittente_sr_id = _resolve_emittente_sr_id_safe(auth_user_id)
+        emittente_sr_id = _resolve_emittente_sr_id_for_preventivo(
+            repo, testata, auth_user_id,
+        )
         if emittente_sr_id is not None:
+            # Form atomic (decisione di dominio 2026-05-12): il FE invia
+            # `componenti_overrides` raccolti nel drawer riga in 2 step.
+            # Mappa {componente_id_uuid: prezzo}. Il caller deve aver
+            # gia' applicato il gating L1 (prezzo_override_manuale): vedi
+            # _validate_componenti_overrides_authorization sopra. Senza
+            # overrides equivale al comportamento strict (resolver mancante
+            # -> raise E_DOC_COMPONENTE_LISTINO_MANCANTE).
+            componenti_overrides = _normalize_componenti_overrides(
+                payload.get("componenti_overrides"),
+                function_name=f"{_FN}.gestisci_riga",
+            )
             repo.init_componenti_riga(
                 riga_id=int(riga_id_created),
                 emittente_soggetto_ruolo_id=emittente_sr_id,
                 data_riferimento=date.fromisoformat(str(data_riferimento_str)),
+                componenti_overrides=componenti_overrides,
             )
 
     # Ricalcolo totali gestito da trigger DB AFTER su preventivi_righe
@@ -1394,6 +1408,108 @@ def _resolve_emittente_sr_id_safe(auth_user_id: int | None) -> int | None:
     return int(emittenti_sr[0])
 
 
+# Scopo: Risolve l'emittente_soggetto_ruolo_id per le operazioni che dipendono
+#        dal contesto preventivo (init componenti CASO A, preview componenti).
+#        Precedenza: emittente esplicito sulla testata > emittente operatore.
+#        Ritorna None se nessuna fonte: il caller decide se sollevare (preview,
+#        path strict) o procedere skip silenzioso (init in gestisci_riga, caso
+#        admin globale + preventivo senza emittente). Pattern estratto per
+#        evitare duplicazione fra gestisci_riga e preview_componenti_riga.
+def _resolve_emittente_sr_id_for_preventivo(
+    repo: PreventiviRepository,
+    testata: dict[str, Any],
+    auth_user_id: int | None,
+) -> int | None:
+    emittente_fiscale_id_prev = testata.get("emittente_fiscale_id")
+    if emittente_fiscale_id_prev is not None:
+        sr_id = repo.get_emittente_sr_id_by_fiscale_id(
+            int(emittente_fiscale_id_prev),
+        )
+        if sr_id is not None:
+            return sr_id
+    return _resolve_emittente_sr_id_safe(auth_user_id)
+
+
+# Scopo: Valida e normalizza `componenti_overrides` (form atomic 2026-05-12).
+#        Forma attesa: {componente_id_uuid: numero}. Decimal-safe: scarta a
+#        monte boolean/oggetti/stringhe non numeriche che fallirebbero al
+#        CAST::numeric lato fn DB con un errore poco parlante. Restituisce
+#        un dict normalizzato a {str: str(Decimal)} (None/{} -> None).
+#        Solleva E_PREV_VALIDAZIONE su valori invalidi.
+def _normalize_componenti_overrides(
+    overrides: Any,
+    *,
+    function_name: str,
+) -> dict[str, str] | None:
+    if overrides is None or overrides == {}:
+        return None
+    ErrorManager.require(
+        isinstance(overrides, dict),
+        code="E_PREV_VALIDAZIONE",
+        message="componenti_overrides deve essere un oggetto JSON.",
+        function_name=function_name,
+    )
+    assert isinstance(overrides, dict)
+    normalized: dict[str, str] = {}
+    for k, v in overrides.items():
+        ErrorManager.require(
+            v is not None and v != "",
+            code="E_PREV_VALIDAZIONE",
+            message=f"Prezzo override mancante per componente {k!r}.",
+            function_name=function_name,
+        )
+        try:
+            dec = Decimal(str(v))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            ErrorManager.require(
+                False,
+                code="E_PREV_VALIDAZIONE",
+                message=(
+                    f"Prezzo override non valido per componente {k!r}: {v!r}."
+                ),
+                function_name=function_name,
+            )
+            raise AssertionError("unreachable") from exc
+        normalized[str(k)] = format(dec, "f")
+    return normalized or None
+
+
+# Scopo: Gating L1 sugli override prezzo componenti (form atomic 2026-05-12).
+#        Solleva `E_PREV_OVERRIDE_NON_AUTORIZZATO` (esistente) se il payload
+#        contiene `componenti_overrides` non vuoti e l'operatore non ha
+#        l'azione `prezzo_override_manuale`. Stesso pattern del gating su
+#        prezzo override della riga padre: la fn DB accetta gli overrides
+#        senza check (responsabilita' BE), defense-in-depth contro bypass
+#        via curl/DevTools.
+def _validate_componenti_overrides_authorization(
+    payload: dict[str, Any],
+    auth_user_id: int | None,
+    *,
+    function_name: str,
+) -> None:
+    overrides = payload.get("componenti_overrides")
+    if not overrides:
+        return
+    user_model = get_user_model()
+    user = None
+    if auth_user_id is not None:
+        try:
+            user = user_model.objects.get(pk=auth_user_id)
+        except user_model.DoesNotExist:
+            user = None
+    authorized = (
+        user is not None
+        and PermissionResolver.check_azione(user, AZIONE_OVERRIDE_PREZZO)
+    )
+    ErrorManager.require(
+        authorized,
+        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+        message="Override prezzo componenti richiede autorizzazione 'prezzo_override_manuale'.",
+        detail="L'operatore non ha l'azione `prezzo_override_manuale` necessaria per inserire prezzi manuali sui componenti.",
+        function_name=function_name,
+    )
+
+
 # Scopo: Estrae l'unico (o primo) emittente_soggetto_ruolo_id autorizzato
 #        per l'utente. Helper privato condiviso da `suggerisci_prezzo_riga`
 #        (flusso resolver prezzo) e da altri ingressi che richiedono
@@ -1563,6 +1679,77 @@ def elimina_riga(preventivo_id: int, riga_id: int) -> dict[str, Any]:
 # `vendite.preventivi_righe_componenti`; `init_componenti_riga` e' chiamato
 # automaticamente da `gestisci_riga` / `aggiorna_riga` (cambio articolo).
 # Qui le API di consultazione + modifica fine ai singoli componenti.
+
+
+# Scopo: Preview componenti CASO A per il drawer riga (form atomic
+#        2026-05-12). Read-only: il FE invoca PRIMA del save di una riga
+#        composita per ottenere i prezzi suggeriti dei componenti esposti.
+#        Per ogni componente: prezzo_suggerito + origine_prezzo, oppure
+#        NULL + resolver_error_reason se il listino manca. Il FE pre-popola
+#        la tabella editabile; l'operatore valorizza i NULL prima del save.
+#        Il payload del save include `componenti_overrides` con i prezzi
+#        manuali (vedi `gestisci_riga` + gating L1).
+#
+#        Risoluzione emittente: stesso pattern di `gestisci_riga`
+#        (precedenza emittente del preventivo > operatore).
+#        Solleva 404 se preventivo non esiste, 422 se data preventivo NULL
+#        o emittente non risolvibile.
+def preview_componenti_riga(
+    preventivo_id: int,
+    *,
+    articolo_id: str,
+    uom_operativa_id: int | None,
+    quantita,
+    auth_user_id: int | None = None,
+) -> list[dict[str, Any]]:
+    repo = PreventiviRepository()
+    testata = repo.get_preventivo(preventivo_id)
+    ErrorManager.require(
+        testata is not None,
+        code="E_PREV_NOT_FOUND",
+        message="Preventivo non trovato.",
+        function_name=f"{_FN}.preview_componenti_riga",
+    )
+    assert testata is not None
+    data_riferimento_str = testata.get("data")
+    ErrorManager.require(
+        data_riferimento_str is not None,
+        code="E_PREV_VALIDAZIONE",
+        message="Data preventivo obbligatoria per preview componenti.",
+        function_name=f"{_FN}.preview_componenti_riga",
+    )
+    emittente_sr_id = _resolve_emittente_sr_id_for_preventivo(
+        repo, testata, auth_user_id,
+    )
+    ErrorManager.require(
+        emittente_sr_id is not None,
+        code="E_PREV_VALIDAZIONE",
+        message="Impossibile risolvere l'emittente fiscale per la preview.",
+        function_name=f"{_FN}.preview_componenti_riga",
+    )
+    assert emittente_sr_id is not None
+    # Guard utility_id: la preview ha senso solo con utility nota (il
+    # resolver deriva listino/categoria da (utility, data)). Senza guard
+    # un utility_id NULL sarebbe coerciato silenziosamente a 0 e farebbe
+    # esplodere la fn DB con un errore poco parlante.
+    utility_id_raw = testata.get("utility_id")
+    ErrorManager.require(
+        utility_id_raw is not None,
+        code="E_PREV_VALIDAZIONE",
+        message="Utility preventivo obbligatoria per preview componenti.",
+        function_name=f"{_FN}.preview_componenti_riga",
+    )
+    assert utility_id_raw is not None
+
+    return repo.preview_componenti_riga(
+        articolo_id=articolo_id,
+        uom_id=uom_operativa_id,
+        quantita_padre=quantita,
+        data_riferimento=date.fromisoformat(str(data_riferimento_str)),
+        ba_id=testata.get("billing_account_id"),
+        utility_id=int(utility_id_raw),
+        emittente_soggetto_ruolo_id=emittente_sr_id,
+    )
 
 
 # Scopo: Lista componenti CASO A di una riga padre composita per la UI.

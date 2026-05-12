@@ -181,15 +181,18 @@ class PreventiviRepository:
                 -- delle righe passera' dallo STADIO 2 (matrice categoria→
                 -- listino) e l'operatore puo' anticipare l'eventuale errore
                 -- E_CATEGORIA_LISTINO_NON_MAPPATA. Non bloccante.
+                -- Filtro su c.utility_id nativo (colonna NOT NULL di
+                -- vendite.contratti): coerente con fn_resolve_prezzo_listino_v2.
+                -- Non usare vendite.contratti_utilities qui: e' snapshot
+                -- precontrattuale OPZIONALE — se assente il contratto risulta
+                -- erroneamente "non attivo" pur essendo presente.
                 EXISTS (
                     SELECT 1
                       FROM vendite.contratti c
                       JOIN config.stati_doc_contratti sdc
                         ON sdc.id = c.stato_doc_contratto_id
-                      JOIN vendite.contratti_utilities cu
-                        ON cu.contratto_id = c.id
                      WHERE c.billing_account_id = p.billing_account_id
-                       AND cu.utility_id = p.utility_id
+                       AND c.utility_id = p.utility_id
                        AND sdc.codice_interno = 'ATTIVO'
                        AND c.validita @> p.data
                 ) AS ba_ha_contratto_attivo,
@@ -679,23 +682,98 @@ class PreventiviRepository:
     # Scopo: Popola i componenti CASO A per una riga padre composita
     # invocando la fn DB `vendite.fn_preventivo_riga_componenti_init`.
     # Idempotente: ritorna 0 se gia' presenti componenti su quella riga
-    # o se l'articolo non e' composito. Il resolver e' chiamato
-    # internamente alla fn DB; se manca listino su un componente, la fn
-    # crea comunque la riga con origine=MANUALE + prezzo=0 (vedi guida
-    # `gestione-listini.md` §6.2). Caller a monte: `preventivi_service`
-    # post-INSERT della riga padre.
+    # o se l'articolo non e' composito.
+    #
+    # `componenti_overrides` (decisione di dominio 2026-05-12 form atomic):
+    # mappa opzionale `{componente_id_uuid: prezzo_decimal}` raccolta dal FE
+    # (drawer riga in 2 step) per i componenti su cui l'operatore ha inserito
+    # un prezzo manuale. Per ogni componente la fn DB:
+    #   - applica l'override se presente (origine_prezzo='MANUALE')
+    #   - altrimenti delega al pricing resolver; se manca listino solleva
+    #     `E_DOC_COMPONENTE_LISTINO_MANCANTE` (HTTP 422, path strict)
+    # Il caller (service) deve gating L1: passare overrides non vuoti solo
+    # se l'utente ha l'azione `prezzo_override_manuale`. Senza overrides
+    # equivale al comportamento strict invariato.
+    # Vedi guida `gestione-listini.md` §6.2 + brief
+    # `brief-db-componenti-form-atomic.md`.
     def init_componenti_riga(
         self,
         *,
         riga_id: int,
         emittente_soggetto_ruolo_id: int,
         data_riferimento: date,
+        componenti_overrides: dict[str, Any] | None = None,
     ) -> int:
-        sql = "SELECT vendite.fn_preventivo_riga_componenti_init(%s, %s, %s)"
+        # Cast esplicito a jsonb per disambiguare l'overload della fn DB
+        # (3 args strict vs 4 args jsonb vs 4 args boolean legacy):
+        # None -> NULL, dict -> json.dumps. Il caller (service) e' tenuto
+        # a validare la forma dei valori (numero non vuoto) prima di passarli
+        # qui — vedi `_normalize_componenti_overrides` in preventivi_service.
+        overrides_json: str | None
+        if componenti_overrides is None:
+            overrides_json = None
+        else:
+            overrides_json = json.dumps(
+                {str(k): str(v) for k, v in componenti_overrides.items()},
+            )
+        sql = (
+            "SELECT vendite.fn_preventivo_riga_componenti_init("
+            "%s, %s, %s, %s::jsonb)"
+        )
         with connection.cursor() as cursor:
-            cursor.execute(sql, [riga_id, emittente_soggetto_ruolo_id, data_riferimento])
+            cursor.execute(sql, [
+                riga_id, emittente_soggetto_ruolo_id, data_riferimento,
+                overrides_json,
+            ])
             row = cursor.fetchone()
             return int(row[0]) if row else 0
+
+    # Scopo: Preview componenti CASO A per drawer riga (form atomic).
+    # Read-only, no side-effect. Per ogni componente esposto del padre
+    # ritorna prezzo_suggerito (NULL se resolver fail per quel componente)
+    # + resolver_error_reason. Consumato dal FE per pre-popolare la
+    # tabella componenti del drawer riga PRIMA del save.
+    # Decisione di dominio 2026-05-12 form atomic.
+    def preview_componenti_riga(
+        self,
+        *,
+        articolo_id: str,
+        uom_id: int | None,
+        quantita_padre,
+        data_riferimento: date,
+        ba_id: int | None,
+        utility_id: int,
+        emittente_soggetto_ruolo_id: int,
+        classe_utenza_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        # Proiezione allineata alla fn DB form atomic (12 colonne):
+        # `iva_codice` NON e' esposto dalla fn (solo `iva_id`). Il FE non
+        # mostra l'aliquota IVA in tabella preview, e' un dato gia'
+        # presente sull'articolo padre nel form.
+        sql = """
+            SELECT articolo_componente_id,
+                   componente_id,
+                   componente_codice,
+                   componente_descrizione,
+                   coeff_qta_snapshot,
+                   quantita_componente,
+                   uom_id,
+                   uom_codice,
+                   iva_id,
+                   prezzo_suggerito,
+                   origine_prezzo,
+                   resolver_error_reason
+              FROM vendite.fn_preventivo_riga_componenti_preview(
+                  %s, %s, %s, %s, %s, %s, %s, %s
+              )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                articolo_id, uom_id, quantita_padre, data_riferimento,
+                ba_id, utility_id, emittente_soggetto_ruolo_id,
+                classe_utenza_id,
+            ])
+            return rows_to_list(cursor)
 
     # Scopo: Lista componenti CASO A di una riga padre con denormalizzazioni
     # articolo/uom/iva per UI. Filtra solo i componenti `attivo=TRUE`

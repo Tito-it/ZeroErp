@@ -25,6 +25,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoRigaComponenteDetail,
     ApiPreventivoRigaComponentiList,
     ApiPreventivoRigaDetail,
+    ApiPreventivoRigaPreviewComponenti,
     ApiPreventivoRigaSuggerisciPrezzo,
     ApiPreventivoRigheList,
     ApiPreventivoStato,
@@ -79,6 +80,12 @@ urlpatterns = [
         name="vendite-preventivi-righe-suggerisci-prezzo",
     ),
     # Componenti BoM CASO A nidificati sotto la riga padre (refactor 2026-05-11)
+    # Preview componenti pre-save (form atomic 2026-05-12)
+    path(
+        "<int:preventivo_id>/righe/preview-componenti/",
+        ApiPreventivoRigaPreviewComponenti.as_view(),
+        name="vendite-preventivi-righe-preview-componenti",
+    ),
     path(
         "<int:preventivo_id>/righe/<int:riga_id>/componenti/",
         ApiPreventivoRigaComponentiList.as_view(),
