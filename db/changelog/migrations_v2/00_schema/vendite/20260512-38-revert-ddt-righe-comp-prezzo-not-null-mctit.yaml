@@ -1,0 +1,32 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Stesso rationale di 20260512-36 per ddt.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260512-38-revert-ddt-righe-comp-prezzo-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260512-38-revert-ddt-righe-comp-prezzo-not-null
+      author: mctit
+      comment: Ripristina NOT NULL + CHECK <> 0 su ddt_righe_componenti.prezzo_unitario.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: ddt_righe_componenti
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ddt_righe_componenti
+                ALTER COLUMN prezzo_unitario SET NOT NULL;
+
+              ALTER TABLE vendite.ddt_righe_componenti
+                DROP CONSTRAINT chk_ddtrighe_comp_prezzo_nonneg;
+
+              ALTER TABLE vendite.ddt_righe_componenti
+                ADD CONSTRAINT chk_ddtrighe_comp_prezzo_nonneg
+                CHECK (prezzo_unitario <> 0);

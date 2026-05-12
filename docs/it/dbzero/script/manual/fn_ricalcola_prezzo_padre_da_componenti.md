@@ -2,12 +2,12 @@
 
 ### Scopo
 
-Funzione pura generica del pattern "righe componenti BoM CASO A": aggiorna `prezzo_unitario` della riga padre come `SUM(figli.prezzo_unitario × figli.coeff_qta_snapshot)` sui figli attivi. Parametrizzata su schema/tabella/FK per essere riusata da tutte e 5 le sorgenti documentali (preventivi, ordini, contratti, DDT, consumi).
+Funzione generica del pattern "righe componenti BoM CASO A": aggiorna `prezzo_unitario` della riga padre come `COALESCE(SUM(figli.prezzo_unitario × figli.coeff_qta_snapshot), 0)` sui figli attivi. Parametrizzata su schema/tabella/FK per essere riusata da tutte e 4 le sorgenti documentali (preventivi, ordini, contratti, DDT).
 
 > **Vedi anche**
 >
 > - [script.trgfn_componenti_ricalcola_padre](/dbzero/script/funzioni/trgfn_componenti_ricalcola_padre) — trigger wrapper che chiama questa funzione
-> - [vendite.preventivi_righe_componenti](/dbzero/vendite/tabelle/preventivi_righe_componenti) — prima delle 5 tabelle che la usano
+> - [vendite.preventivi_righe_componenti](/dbzero/vendite/tabelle/preventivi_righe_componenti) — prima delle 4 tabelle che la usano
 
 ## Schema
 
@@ -41,51 +41,33 @@ Esegue via SQL dinamico (`format` con `%I` per identifier quoting):
 
 ```sql
 UPDATE <schema>.<tab_padre>
-   SET prezzo_unitario = CASE
-       -- Almeno un componente attivo con prezzo NULL → padre = NULL
-       WHEN EXISTS (
-           SELECT 1 FROM <schema>.<tab_figli> c
-            WHERE c.<col_fk_padre> = <id>
-              AND c.attivo = TRUE
-              AND c.prezzo_unitario IS NULL
-       ) THEN NULL
-       -- Nessun componente attivo → 0 (BoM vuota o tutti inattivi)
-       WHEN NOT EXISTS (
-           SELECT 1 FROM <schema>.<tab_figli> c
-            WHERE c.<col_fk_padre> = <id>
-              AND c.attivo = TRUE
-       ) THEN 0
-       -- Caso normale: somma pesata dei componenti attivi
-       ELSE (
-           SELECT SUM(c.prezzo_unitario * c.coeff_qta_snapshot)
-             FROM <schema>.<tab_figli> c
-            WHERE c.<col_fk_padre> = <id>
-              AND c.attivo = TRUE
-       )
-   END
+   SET prezzo_unitario = COALESCE((
+       SELECT SUM(c.prezzo_unitario * c.coeff_qta_snapshot)
+         FROM <schema>.<tab_figli> c
+        WHERE c.<col_fk_padre> = <id>
+          AND c.attivo = TRUE
+   ), 0)
  WHERE id = <id>
 ```
 
 - **Figli inattivi esclusi**: `attivo = TRUE` — i componenti disattivati non concorrono al prezzo padre.
-- **Componente attivo con prezzo NULL → padre NULL**: se almeno un componente attivo ha `prezzo_unitario IS NULL` (valorizzazione manuale pendente autorizzata), il padre riflette lo stato di incompletezza. Il `CASE` esplicito è necessario perché PostgreSQL `SUM` ignora i NULL e restituirebbe comunque un valore parziale, mascherando la pendenza.
-- **Nessun componente attivo → 0**: se la BoM è vuota o tutti i componenti sono inattivi, il prezzo padre viene impostato a `0`.
-- **Caso normale → SUM pesata**: somma dei prodotti `prezzo_unitario × coeff_qta_snapshot` sui componenti attivi con prezzo valorizzato.
-- **SQL dinamico sicuro**: gli identificatori schema/tabella/colonna passano per `%I` di `format()`, che li quota correttamente — nessun rischio SQL injection.
+- **Somma pesata**: `prezzo_unitario × coeff_qta_snapshot` per ogni componente attivo.
+- **Nessun componente attivo → 0**: `COALESCE(..., 0)` gestisce la BoM vuota o con tutti i componenti inattivi.
+- **SQL dinamico sicuro**: gli identificatori schema/tabella/colonna passano per `%I` di `format()` — nessun rischio SQL injection.
 
 ## Invariante componenti
 
-Il vincolo DB su tutte le tabelle `*_righe_componenti` è:
+Con il pattern form atomic (rev. 12-05-2026b), `prezzo_unitario` è sempre NOT NULL su tutte le tabelle `*_righe_componenti`. Il vincolo DB è:
 
 ```sql
-CHECK (prezzo_unitario IS NULL OR prezzo_unitario <> 0)
+prezzo_unitario NUMERIC NOT NULL CHECK (prezzo_unitario <> 0)
 ```
 
-NULL è ammesso solo via `fn_*_riga_componenti_init` con `p_force_manuale = TRUE` (attivato dal service BE quando l'operatore ha l'azione `prezzo_override_manuale`). Il valore `0` è sempre vietato.
+La somma dei componenti attivi è quindi sempre un valore numerico non nullo: `SUM` non produce mai NULL (i figli attivi hanno prezzo valorizzato), e `COALESCE` copre solo il caso di BoM vuota.
 
 ## Note operative
 
 - Chiamata esclusivamente da `script.trgfn_componenti_ricalcola_padre` via `PERFORM`.
-- Assume che `<tab_padre>` abbia colonna `prezzo_unitario NUMERIC` (nullable) e `id BIGINT/identico al tipo FK`.
-- Assume che `<tab_figli>` abbia colonne `prezzo_unitario NUMERIC` (nullable), `coeff_qta_snapshot NUMERIC` e `attivo BOOLEAN`.
-- Il padre eredita `NULL` se anche un solo figlio attivo è pending: questa propagazione è intenzionale e consente ai guard di transizione di bloccare la finalizzazione del documento.
+- Assume che `<tab_padre>` abbia colonna `prezzo_unitario NUMERIC NOT NULL` e `id BIGINT` (o compatibile con il tipo FK).
+- Assume che `<tab_figli>` abbia colonne `prezzo_unitario NUMERIC NOT NULL`, `coeff_qta_snapshot NUMERIC` e `attivo BOOLEAN`.
 - `LANGUAGE plpgsql` con SQL dinamico: non marcata `STABLE` perché esegue UPDATE.

@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# ROLLBACK opzione A relaxed — DROP TRIGGER guard ordini + ddt.
+#
+# Why: i trigger trg_ordini_a10_guard_transizione_approvazione_upd e
+# trg_ddt_a10_guard_transizione_approvazione_upd bloccavano CONFERMATO/
+# EMESSO se componenti avevano prezzo NULL. Con form atomic (2026-05-12
+# pomeriggio) il prezzo e' sempre valorizzato prima del save: i guard
+# non servono piu'. DROP prima delle funzioni (20260512-28).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260512-27-drop-trg-ordini-ddt-guard-transizione-approvazione-mctit.yaml
+
+  - changeSet:
+      id: 20260512-27-drop-trg-ordini-guard-transizione-approvazione
+      author: mctit
+      comment: DROP trigger guard transizione approvazione su vendite.ordini.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: vendite
+            tableName: ordini
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_transizione_approvazione_upd
+                ON vendite.ordini;
+
+  - changeSet:
+      id: 20260512-27-drop-trg-ddt-guard-transizione-approvazione
+      author: mctit
+      comment: DROP trigger guard transizione approvazione su vendite.ddt.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: vendite
+            tableName: ddt
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_transizione_approvazione_upd
+                ON vendite.ddt;

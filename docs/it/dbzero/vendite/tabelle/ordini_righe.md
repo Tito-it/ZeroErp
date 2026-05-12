@@ -10,7 +10,7 @@
 | articolo_id | uuid | NO |  |
 | descrizione | character varying | NO |  |
 | quantita | numeric | NO |  |
-| prezzo_unitario | numeric | YES |  |
+| prezzo_unitario | numeric | NO |  |
 | sconto_perc | numeric | YES |  |
 | iva_id | integer | YES |  |
 | iva_perc | numeric | YES |  |

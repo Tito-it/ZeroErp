@@ -9,7 +9,7 @@
 | articolo_id | uuid | NO |  |
 | descrizione | character varying | YES |  |
 | quantita | numeric | NO |  |
-| prezzo_unitario | numeric | YES |  |
+| prezzo_unitario | numeric | NO |  |
 | sconto_percentuale | numeric | YES | 0 |
 | iva_id | integer | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |

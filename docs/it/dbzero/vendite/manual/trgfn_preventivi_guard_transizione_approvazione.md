@@ -17,13 +17,13 @@
 >
 > [Sviluppo Listini v5 §14.6](/dev/work-in-progress/sviluppo-listini-v5) — workflow L3 approvazione out-of-policy
 
-La trigger function **`vendite.trgfn_preventivi_guard_transizione_approvazione()`** blinda la finalizzazione commerciale del preventivo: **impedisce la transizione allo stato `ACCETTATO`** se esistono righe con `stato_approvazione_prezzo = 'PENDING'` (richieste L3 in attesa di esito) oppure se esistono componenti BoM CASO A attivi con `prezzo_unitario IS NULL` (valorizzazione manuale autorizzata ma non ancora completata).
+La trigger function **`vendite.trgfn_preventivi_guard_transizione_approvazione()`** blinda la finalizzazione commerciale del preventivo: **impedisce la transizione allo stato `ACCETTATO`** se esistono righe con `stato_approvazione_prezzo = 'PENDING'` (richieste L3 in attesa di esito).
 
 ---
 
 ### 🎯 Scopo Principale
 
-(latest revision 22-04-2026, Sprint E listini v5 §14.6)
+(latest revision 12-05-2026b — form atomic: rimosso Check 3 prezzo NULL; Sprint E listini v5 §14.6)
 
 - **Garanzia di coerenza commerciale** — un preventivo ACCETTATO e' un impegno vincolante: non puo' essere finalizzato mentre ci sono prezzi "proposti ma non approvati". Il workflow L3 deve esitare (APPROVED o REJECTED) o essere annullato (clear a NULL) prima della accettazione.
 - **Point-of-no-return** — l'accettazione apre la pipeline commerciale (ordini, fatturazione, commesse). Richieste pendenti su prezzi sarebbero ambigue downstream.
@@ -36,10 +36,9 @@ La trigger function **`vendite.trgfn_preventivi_guard_transizione_approvazione()
 1. Risolve il `codice_interno` dello stato target (`NEW.stato_doc_preventivo_id`) via lookup su `config.stati_doc_preventivi`.
 2. **Early return** se il nuovo stato e' diverso da `'ACCETTATO'` — il guard ha scopo limitato alla transizione finale. Transizioni a `DRAFT`, `EMESSO`, `RIFIUTATO`, `SCADUTO`, `ANNULLATO` non hanno vincoli su workflow approvazione.
 3. **Check 1 — righe PENDING** (invariante pricing L3): controlla `EXISTS` righe in `preventivi_righe` con `preventivo_id = NEW.id` e `stato_approvazione_prezzo = 'PENDING'`. Se esistono, raise `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`.
-4. **Check 2 — componenti BoM PENDING approvazione**: controlla `EXISTS` in `preventivi_righe_componenti` (via JOIN su `preventivi_righe`) con `stato_approvazione_prezzo = 'PENDING'`. Se esistono, raise `E_COMPONENTE_PREZZO_PENDENTE`.
-5. **Check 3 — componenti BoM con prezzo NULL** (aggiunto 2026-05-12): controlla `EXISTS` componenti attivi in `preventivi_righe_componenti` con `prezzo_unitario IS NULL`. Se esistono, raise `E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE` (id 441). Un componente NULL significa valorizzazione manuale autorizzata ma non ancora completata dall'operatore.
+4. **Check 2 — componenti BoM PENDING approvazione**: controlla `EXISTS` in `preventivi_righe_componenti` (via JOIN su `preventivi_righe`) con `stato_approvazione_prezzo = 'PENDING'`. Se esistono, raise `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`.
 
-Context payload JSONB (comune ai check 1-3):
+Context payload JSONB (comune ai check 1-2):
 
 - `preventivo_id` — l'id del preventivo che sta tentando la transizione
 - `hint` — suggerimento UX contestuale al check che ha fallito
@@ -77,15 +76,14 @@ Specifiche:
 
 ### Codici errore sollevati
 
-| Check   | Codice                                   | id  | Quando                                                                |
-| ------- | ---------------------------------------- | --- | --------------------------------------------------------------------- |
-| Check 1 | `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`    | 389 | Righe con `stato_approvazione_prezzo = 'PENDING'`                     |
-| Check 2 | `E_COMPONENTE_PREZZO_PENDENTE`           | 439 | Componenti BoM con `stato_approvazione_prezzo = 'PENDING'`            |
-| Check 3 | `E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE`| 441 | Componenti attivi con `prezzo_unitario IS NULL` (aggiunto 2026-05-12) |
+| Check   | Codice                                | id  | Quando                                                     |
+| ------- | ------------------------------------- | --- | ---------------------------------------------------------- |
+| Check 1 | `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` | 389 | Righe con `stato_approvazione_prezzo = 'PENDING'`          |
+| Check 2 | `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` | 389 | Componenti BoM con `stato_approvazione_prezzo = 'PENDING'` |
 
 **`E_PREVENTIVO_RIGHE_PRICING_PENDENTI`** — Seminato in `20260422`. Messaggio: `"Preventivo <id>: impossibile transire ad ACCETTATO, esistono righe con prezzo in attesa di approvazione."`. Soluzione: attendere l'esito dell'approvazione pendente oppure rifiutare la richiesta.
 
-**`E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE`** — Seminato in `20260512`. Messaggio: preventivo non finalizzabile finché almeno un componente BoM CASO A attivo non ha prezzo valorizzato. Soluzione: completare la valorizzazione manuale dei componenti in UI prima di accettare il preventivo.
+> Con il pattern form atomic (rev. 12-05-2026b), `prezzo_unitario` è sempre NOT NULL prima del save: il Check 3 sul prezzo NULL (aggiunto da opzione A relaxed il 12-05-2026a) è stato rimosso.
 
 ---
 

@@ -15,8 +15,9 @@ AS $function$
 -- Scopo: blocca transizioni stato non ammesse sul workflow contratti
 --   (DRAFT -> ATTIVO -> CESSATO).
 -- Regola chiave: ATTIVO->CESSATO ammessa solo se valido_al < CURRENT_DATE.
--- Check PENDING approvazione: blocca DRAFT->ATTIVO se componenti PENDING.
--- Check prezzo NULL: blocca DRAFT->ATTIVO se componenti con prezzo NULL.
+-- Aggiornato 2026-05-12: blocca DRAFT->ATTIVO anche se
+--   un componente BoM CASO A ha prezzo in attesa di approvazione
+--   (stato_approvazione_prezzo = PENDING).
 DECLARE
     v_codice_da config.stati_doc_contratti.codice_interno%TYPE;
     v_codice_a  config.stati_doc_contratti.codice_interno%TYPE;
@@ -48,10 +49,8 @@ BEGIN
         );
     END IF;
 
-    -- Check PENDING e NULL solo su DRAFT->ATTIVO.
+    -- Check componenti BoM CASO A con prezzo PENDING (solo su DRAFT->ATTIVO).
     IF v_codice_da = 'DRAFT' AND v_codice_a = 'ATTIVO' THEN
-
-        -- Check PENDING approvazione prezzo
         IF EXISTS (
             SELECT 1 FROM vendite.contratti_righe cr
               JOIN vendite.contratti_righe_componenti crc
@@ -67,25 +66,6 @@ BEGIN
                 NEW.tx_id, NEW.id::text
             );
         END IF;
-
-        -- Check prezzo NULL (pending valorizzazione manuale)
-        IF EXISTS (
-            SELECT 1 FROM vendite.contratti_righe cr
-              JOIN vendite.contratti_righe_componenti crc
-                ON crc.riga_contratto_id = cr.id
-             WHERE cr.contratto_id = NEW.id
-               AND crc.attivo = TRUE
-               AND crc.prezzo_unitario IS NULL
-        ) THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database', TG_NAME::text, 'E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE',
-                jsonb_build_object('contratto_id', NEW.id,
-                    'hint', 'Uno o piu'' componenti BoM CASO A hanno prezzo non valorizzato. '
-                         || 'Valorizzare tutti i prezzi prima di attivare il contratto.'),
-                NEW.tx_id, NEW.id::text
-            );
-        END IF;
-
     END IF;
 
     RETURN NEW;
@@ -93,7 +73,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
-IS 'Trigger function: controlla transizioni stato contratto (DRAFT->ATTIVO->CESSATO). ATTIVO->CESSATO solo se valido_al < CURRENT_DATE. Blocca DRAFT->ATTIVO se componenti PENDING approvazione (E_COMPONENTE_PREZZO_PENDENTE) o prezzo NULL (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). rev 12-05-2026b: aggiunto check prezzo NULL.';
+IS 'Trigger function: controlla transizioni stato contratto (DRAFT->ATTIVO->CESSATO). ATTIVO->CESSATO solo se valido_al < CURRENT_DATE. Blocca DRAFT->ATTIVO se componenti PENDING approvazione (E_COMPONENTE_PREZZO_PENDENTE). Check prezzo NULL rimosso (form atomic 12-05-2026b).';
 ```
 
 ---
