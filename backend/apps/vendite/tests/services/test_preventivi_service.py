@@ -45,6 +45,8 @@ Indice test eseguiti:
 32) test_gestisci_riga_init_componenti_chiamato — post-create_riga la fn init e' invocata
 33) test_gestisci_riga_init_componenti_skip_admin_globale — admin globale (no emittente) salta init
 33b) test_gestisci_riga_init_componenti_usa_emittente_preventivo — admin + emittente esplicito sul preventivo OK
+33c) test_gestisci_riga_init_componenti_overrides_passati — form atomic: componenti_overrides nel payload → init
+33d) test_gestisci_riga_componenti_overrides_unauthorized — gating L1 senza override → 403 E_PREV_OVERRIDE_NON_AUTORIZZATO
 34) test_aggiorna_riga_non_tocca_componenti — articolo_id immutabile, componenti stabili
 35) test_list_componenti_riga_ok — lista componenti riga padre
 36) test_list_componenti_riga_not_found — riga padre inesistente
@@ -56,6 +58,19 @@ Indice test eseguiti:
 42) test_update_componente_stato_non_modificabile — guard preventivo EMESSO
 43) test_delete_componente_ok — soft delete componente
 44) test_delete_componente_not_found — componente inesistente
+45) test_preview_componenti_riga_ok — happy path preview (form atomic)
+46) test_preview_componenti_riga_not_found — preventivo inesistente → 404
+47) test_preview_componenti_riga_data_mancante — data NULL → 422
+48) test_preview_componenti_riga_utility_mancante — utility NULL → 422 (no fallback 0)
+49) test_preview_componenti_riga_emittente_non_risolvibile — admin globale + no emittente → 422
+50) test_preview_componenti_riga_usa_emittente_preventivo — precedenza emittente preventivo
+
+TestNormalizeComponentiOverrides:
+- test_none_ritorna_none, test_dict_vuoto_ritorna_none
+- test_decimal_string_normalizzato, test_numero_python_normalizzato,
+  test_decimal_native_normalizzato
+- test_valore_none_solleva, test_valore_stringa_vuota_solleva,
+  test_valore_non_numerico_solleva, test_overrides_non_dict_solleva
 """
 
 import unittest
@@ -130,6 +145,16 @@ class TestPreventiviService(unittest.TestCase):
             return_value=100,
         )
         self.emittente_safe_patcher.start()
+        # _validate_componenti_overrides_authorization chiama
+        # PermissionResolver.check_azione (SQL diretto con user.id) quando il
+        # payload contiene componenti_overrides. Per i test unit senza DB,
+        # mocco il validator a no-op per default. Test specifici che vogliono
+        # esercitare il gating L1 ri-patchano localmente.
+        self.gating_overrides_patcher = patch(
+            "apps.vendite.services.preventivi_service._validate_componenti_overrides_authorization",
+            return_value=None,
+        )
+        self.gating_overrides_patcher.start()
 
     def tearDown(self):
         self.repo_patcher.stop()
@@ -138,6 +163,7 @@ class TestPreventiviService(unittest.TestCase):
         self.atomic_patcher.stop()
         self.emittente_patcher.stop()
         self.emittente_safe_patcher.stop()
+        self.gating_overrides_patcher.stop()
 
     # ── Creazione ──
 
@@ -615,6 +641,69 @@ class TestPreventiviService(unittest.TestCase):
                 auth_user_id=100,
             )
         self.mock_repo.init_componenti_riga.assert_not_called()
+
+    # Scopo: form atomic 2026-05-12 — il payload puo' includere
+    # `componenti_overrides` (mappa componente_id → prezzo) raccolti dal
+    # drawer FE. Il service li passa alla fn DB init, che applica gli
+    # override invece del resolver. Gating L1 mockato (default no-op nei
+    # test unit), il caso "unauthorized" e' coperto dal test apposito sotto.
+    def test_gestisci_riga_init_componenti_overrides_passati(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+        }
+        self.mock_repo.create_riga.return_value = {"id": 42}
+        overrides = {"019d57c1-b2b2-7d3a-9ebb-421addc5f393": "75.00"}
+        gestisci_riga(
+            1, {
+                "articolo_id": "uuid-art-1", "uom_operativa_id": 1,
+                "componenti_overrides": overrides,
+            },
+            auth_user_id=100,
+        )
+        self.mock_repo.init_componenti_riga.assert_called_once()
+        kwargs = self.mock_repo.init_componenti_riga.call_args.kwargs
+        self.assertEqual(kwargs["componenti_overrides"], overrides)
+
+    # Scopo: gating L1 — payload con componenti_overrides ma operatore
+    # senza `prezzo_override_manuale` solleva E_PREV_OVERRIDE_NON_AUTORIZZATO
+    # (ServiceError 403) PRIMA di qualsiasi tocco DB.
+    def test_gestisci_riga_componenti_overrides_unauthorized(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+        from apps.core.services.error_manager import ServiceError
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+        }
+        # Sovrascrivi mock setUp: rimetti il vero validator + mock check_azione
+        # a False (operatore senza azione prezzo_override_manuale).
+        self.gating_overrides_patcher.stop()
+        try:
+            with patch(
+                "apps.vendite.services.preventivi_service.PermissionResolver.check_azione",
+                return_value=False,
+            ), patch(
+                "apps.vendite.services.preventivi_service.get_user_model",
+            ) as mock_user_model:
+                mock_user_model.return_value.objects.get.return_value = MagicMock()
+                with self.assertRaises(ServiceError) as ctx:
+                    gestisci_riga(
+                        1, {
+                            "articolo_id": "uuid-art-1", "uom_operativa_id": 1,
+                            "componenti_overrides": {"uuid-c1": "10.00"},
+                        },
+                        auth_user_id=100,
+                    )
+                self.assertEqual(ctx.exception.code, "E_PREV_OVERRIDE_NON_AUTORIZZATO")
+        finally:
+            # Ripristina patcher per i test successivi (il setUp sara' rieseguito
+            # ma per non rompere questo test specifico ricominciamo il patch).
+            self.gating_overrides_patcher.start()
 
     # Scopo: admin globale CON `emittente_fiscale_id` esplicito sul
     # preventivo triggera init usando quell'emittente (precedenza
@@ -1790,6 +1879,210 @@ class TestPreventiviService(unittest.TestCase):
         kwargs = self.mock_repo.update_riga.call_args.kwargs
         self.assertEqual(kwargs["stato_approvazione_prezzo"], "PENDING")
         self.assertEqual(kwargs["pratica_approvazione_prezzo_id"], 200)
+
+    # ── preview_componenti_riga (form atomic 2026-05-12) ──
+
+    # Scopo: happy path — testata valida → repo invocato con args corretti.
+    def test_preview_componenti_riga_ok(self):
+        from apps.vendite.services.preventivi_service import preview_componenti_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 7,
+            "emittente_fiscale_id": None,
+        }
+        self.mock_repo.preview_componenti_riga.return_value = [
+            {"componente_id": "uuid-c1", "prezzo_suggerito": "10.00"},
+        ]
+
+        out = preview_componenti_riga(
+            1, articolo_id="uuid-art", uom_operativa_id=2, quantita="3",
+            auth_user_id=42,
+        )
+        self.assertEqual(len(out), 1)
+        kwargs = self.mock_repo.preview_componenti_riga.call_args.kwargs
+        self.assertEqual(kwargs["articolo_id"], "uuid-art")
+        self.assertEqual(kwargs["uom_id"], 2)
+        self.assertEqual(kwargs["utility_id"], 7)
+        self.assertEqual(kwargs["ba_id"], 5)
+        self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 100)
+
+    # Scopo: preventivo inesistente → E_PREV_NOT_FOUND.
+    def test_preview_componenti_riga_not_found(self):
+        from apps.vendite.services.preventivi_service import preview_componenti_riga
+
+        self.mock_repo.get_preventivo.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            preview_componenti_riga(
+                999, articolo_id="uuid", uom_operativa_id=1, quantita="1",
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_NOT_FOUND")
+        self.mock_repo.preview_componenti_riga.assert_not_called()
+
+    # Scopo: data preventivo NULL → E_PREV_VALIDAZIONE.
+    def test_preview_componenti_riga_data_mancante(self):
+        from apps.vendite.services.preventivi_service import preview_componenti_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "data": None,
+            "billing_account_id": 5, "utility_id": 7,
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            preview_componenti_riga(
+                1, articolo_id="uuid", uom_operativa_id=1, quantita="1",
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.preview_componenti_riga.assert_not_called()
+
+    # Scopo: utility_id NULL → E_PREV_VALIDAZIONE (guard A2: niente fallback
+    # silente a 0).
+    def test_preview_componenti_riga_utility_mancante(self):
+        from apps.vendite.services.preventivi_service import preview_componenti_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": None,
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            preview_componenti_riga(
+                1, articolo_id="uuid", uom_operativa_id=1, quantita="1",
+                auth_user_id=42,
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.preview_componenti_riga.assert_not_called()
+
+    # Scopo: emittente non risolvibile (no emittente sul preventivo + admin
+    # globale senza emittenti assegnati) → E_PREV_VALIDAZIONE.
+    def test_preview_componenti_riga_emittente_non_risolvibile(self):
+        from apps.vendite.services.preventivi_service import preview_componenti_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 7,
+            "emittente_fiscale_id": None,
+        }
+        # Sovrascrivi mock setUp: admin globale → safe ritorna None.
+        self.emittente_safe_patcher.stop()
+        try:
+            with patch(
+                "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+                return_value=None,
+            ):
+                with self.assertRaises(ServiceError) as ctx:
+                    preview_componenti_riga(
+                        1, articolo_id="uuid", uom_operativa_id=1,
+                        quantita="1", auth_user_id=None,
+                    )
+                self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        finally:
+            self.emittente_safe_patcher.start()
+        self.mock_repo.preview_componenti_riga.assert_not_called()
+
+    # Scopo: emittente esplicito sul preventivo ha precedenza sul fallback
+    # operatore — verifica helper di risoluzione condiviso.
+    def test_preview_componenti_riga_usa_emittente_preventivo(self):
+        from apps.vendite.services.preventivi_service import preview_componenti_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 7,
+            "emittente_fiscale_id": 77,
+        }
+        self.mock_repo.get_emittente_sr_id_by_fiscale_id.return_value = 999
+        self.mock_repo.preview_componenti_riga.return_value = []
+
+        preview_componenti_riga(
+            1, articolo_id="uuid", uom_operativa_id=1, quantita="1",
+            auth_user_id=42,
+        )
+        kwargs = self.mock_repo.preview_componenti_riga.call_args.kwargs
+        # 999 dal preventivo, NON 100 dall'operatore (precedenza preventivo).
+        self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 999)
+
+
+class TestNormalizeComponentiOverrides(unittest.TestCase):
+    """Form atomic 2026-05-12: validazione/normalizzazione overrides
+    prima del cast jsonb lato repo. Decimal-safe.
+    """
+
+    def test_none_ritorna_none(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_overrides,
+        )
+        self.assertIsNone(_normalize_componenti_overrides(None, function_name="t"))
+
+    def test_dict_vuoto_ritorna_none(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_overrides,
+        )
+        self.assertIsNone(_normalize_componenti_overrides({}, function_name="t"))
+
+    def test_decimal_string_normalizzato(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_overrides,
+        )
+        out = _normalize_componenti_overrides(
+            {"uuid-c1": "12.500"}, function_name="t",
+        )
+        self.assertEqual(out, {"uuid-c1": "12.500"})
+
+    def test_numero_python_normalizzato(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_overrides,
+        )
+        out = _normalize_componenti_overrides(
+            {"uuid-c1": 75}, function_name="t",
+        )
+        self.assertEqual(out, {"uuid-c1": "75"})
+
+    def test_decimal_native_normalizzato(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_overrides,
+        )
+        out = _normalize_componenti_overrides(
+            {"uuid-c1": Decimal("3.14")}, function_name="t",
+        )
+        self.assertEqual(out, {"uuid-c1": "3.14"})
+
+    def test_valore_none_solleva(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_overrides,
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            _normalize_componenti_overrides(
+                {"uuid-c1": None}, function_name="t",
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+
+    def test_valore_stringa_vuota_solleva(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_overrides,
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            _normalize_componenti_overrides(
+                {"uuid-c1": ""}, function_name="t",
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+
+    def test_valore_non_numerico_solleva(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_overrides,
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            _normalize_componenti_overrides(
+                {"uuid-c1": "abc"}, function_name="t",
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+
+    def test_overrides_non_dict_solleva(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_overrides,
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            _normalize_componenti_overrides(
+                ["uuid-c1", "10"], function_name="t",
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
 
 class TestCoerceMetaToDict(unittest.TestCase):

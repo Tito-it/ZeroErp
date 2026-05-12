@@ -52,6 +52,7 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
+import Checkbox from 'primevue/checkbox'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -84,11 +85,19 @@ loadDefaults()
 // Coerente con il pattern ContrattoRigheDrawer: la lista BoM è tipicamente
 // sotto le 50-100 righe per articolo, niente bisogno di filtro server-side.
 const filtroArticolo = ref('')
+const filtroValiditaTutto = ref(false)
+const filtroValiditaData = ref(new Date())
 
 const componentiView = computed(() => {
   const filtro = (filtroArticolo.value || '').trim().toLowerCase()
-  if (!filtro) return componentiList.value
+  const dataFiltro = filtroValiditaData.value ? toDateString(filtroValiditaData.value) : null
+
   return componentiList.value.filter(r => {
+    if (!filtroValiditaTutto.value && dataFiltro) {
+      const validoAl = r.valido_al || null
+      if (validoAl && validoAl < dataFiltro) return false
+    }
+    if (!filtro) return true
     const codice = (r.componente_codice || '').toLowerCase()
     const desc = (r.componente_descrizione || '').toLowerCase()
     return codice.includes(filtro) || desc.includes(filtro)
@@ -236,6 +245,8 @@ watch(() => props.visible, async (val) => {
   await loadDefaults()
   resetFormState()
   filtroArticolo.value = ''
+  filtroValiditaTutto.value = false
+  filtroValiditaData.value = new Date()
   loadComponenti()
 })
 
@@ -478,6 +489,20 @@ function buildRigaActions(row) {
               v-model="filtroArticolo"
               :placeholder="t('catalogo.filtro_componente_placeholder')"
               style="min-width: 240px;" />
+            <DatePicker
+              v-if="componentiList.length > 0"
+              v-model="filtroValiditaData"
+              :date-format="DATE_FORMAT"
+              show-icon
+              show-button-bar
+              :disabled="filtroValiditaTutto"
+              :placeholder="t('catalogo.filtro_bom_validi_al')"
+              style="width: 160px;"
+            />
+            <div v-if="componentiList.length > 0" class="flex align-items-center gap-2">
+              <Checkbox v-model="filtroValiditaTutto" input-id="bom-filter-all" binary />
+              <label for="bom-filter-all">{{ t('catalogo.filtro_bom_tutto') }}</label>
+            </div>
           </div>
           <PageActionsBar :actions="pageActions" />
         </div>
@@ -721,4 +746,3 @@ function buildRigaActions(row) {
   white-space: nowrap;
 }
 </style>
-

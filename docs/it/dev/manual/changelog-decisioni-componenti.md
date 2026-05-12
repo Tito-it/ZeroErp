@@ -1,0 +1,16 @@
+# Changelog decisioni di dominio — Componenti BoM
+
+> Append-only. Ogni riga = un giro di chat. Conservare per ricostruzione
+> storica e audit. Il modello CORRENTE vive in
+> [modello-componenti-bom.md](modello-componenti-bom.md) — quando una
+> decisione cambia, sovrascrivere lo' la, NON appendere qui sotto al
+> modello.
+
+| Data | Decisione | Razionale | Sostituisce |
+|---|---|---|---|
+| 2026-04-14 | Introduzione `esposto_in_fattura` su `articoli_componenti` | Pricing v5: distinzione CASO A (esposti = righe in fattura) vs CASO B (composito singolo prezzo) | — |
+| 2026-05-11 | CASO A: ogni componente esposto e' riga negoziabile con prezzo proprio; padre = SUM(esposti × coeff); 5 tabelle simmetriche `*_righe_componenti`; helper `script.*` parametrizzati TG_ARGV | Bug push commessa allo smoke §3.4 — il prezzo padre era ignorato silenziosamente, push fallibile post accettazione | — |
+| 2026-05-12 mat | Opzione A strict: `prezzo_unitario` NOT NULL, CHECK `<> 0`, fn `_init` rimuove fallback prezzo=0, errore `E_DOC_COMPONENTE_LISTINO_MANCANTE` HTTP 422 | Rimuovere prezzo=0/MANUALE silente come fallback resolver | 2026-05-11 (raffinamento) |
+| 2026-05-12 mezzogiorno | Opzione A relaxed (SUPERSEDED): prezzo NULL ammesso come "pending valorizzazione", fn init `p_force_manuale BOOLEAN`, banner pending FE | Tentativo di consentire path "operatore valorizza al volo" se ha azione `prezzo_override_manuale` | 2026-05-12 mat |
+| 2026-05-12 pomeriggio | Form atomic: rollback NULL, nuove fn `_preview` + fn `_init` overload jsonb `p_componenti_overrides`, drawer riga FE pre-popola tabella + payload Save include overrides | NULL propagato ovunque (trigger ricalcola_padre, ricalcola_iva) → invasivo. Spostare gestione "manca listino" lato UX form atomic | 2026-05-12 mezzogiorno |
+| 2026-05-12 sera | **Modello unificato + simmetria listino padre-figli**: niente piu' CASO A vs CASO B; padre composito = sempre SUM(tutti i figli); `esposto_in_fattura` retrocede a flag presentazione fattura; CHECK `<> 0` rilassato (obbligatori `<> 0`, opzionali qualsiasi); nuova tabella `listini_righe_componenti` per prezzi bundle; resolver pricing v5 bundle-aware via `p_articolo_padre_contesto`; IVA coerente padre-figli (trigger catalogo); guard obbligatorio non disattivabile; errore `E_DOC_COMPOSITO_BOM_VUOTA`; UX Dialog modale 90vw (sostituisce tabella inline); building block riusabili DB/BE/FE | (1) bug logico smoke: composito senza esposti = preview vuota deadlock UX, distinzione CASO A/B fragile. (2) asimmetria BoM (con figli) vs listino (vietato sui compositi) → andra' allineata, meglio farlo subito invece di rimettere mano al resolver. (3) building block standard riducono sforzo per le 4 sorgenti future | 2026-05-12 pomeriggio |

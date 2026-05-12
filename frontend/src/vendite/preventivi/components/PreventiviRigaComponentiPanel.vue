@@ -92,6 +92,8 @@ function approvazioneLabel(stato) {
 }
 
 // Dirty check: il prezzo editato e' diverso da quello del componente?
+// Form atomic 2026-05-12: il DB non ammette piu' prezzo NULL (rollback
+// opzione A relaxed). Tutti i componenti hanno sempre prezzo valorizzato.
 function isDirty(comp) {
   const editVal = prezzoEditato.value[comp.id]
   if (editVal == null) return false

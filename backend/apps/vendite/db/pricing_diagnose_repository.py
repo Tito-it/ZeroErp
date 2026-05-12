@@ -88,13 +88,14 @@ class PricingDiagnoseRepository:
                     WHEN c.listino_id IS NULL THEN 'C'
                     ELSE 'A_O_B'
                 END                 AS modalita_pricing
+              -- Filtro su c.utility_id nativo (NOT NULL): coerente con
+              -- fn_resolve_prezzo_listino_v2. Non usare contratti_utilities
+              -- (snapshot precontrattuale opzionale) per il lookup contratto.
               FROM vendite.contratti c
               JOIN config.stati_doc_contratti sdc
                 ON sdc.id = c.stato_doc_contratto_id
-              JOIN vendite.contratti_utilities cu
-                ON cu.contratto_id = c.id
              WHERE c.billing_account_id = %s
-               AND cu.utility_id = %s
+               AND c.utility_id = %s
                AND sdc.codice_interno = 'ATTIVO'
                AND c.validita @> %s::date
              ORDER BY c.id DESC

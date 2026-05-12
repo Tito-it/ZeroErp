@@ -1,0 +1,289 @@
+# Modello logico — Componenti BoM padre-figli
+
+> **Stato**: VIVO. Riflette il modello corrente del dominio. Quando una
+> decisione cambia, **sovrascrivere** questo file (non appendere). Lo
+> storico delle iterazioni e' in
+> [changelog-decisioni-componenti.md](changelog-decisioni-componenti.md).
+>
+> **Ultimo aggiornamento**: 2026-05-12 sera (decisione "modello unificato
+> + simmetria listino-padre-figli").
+
+---
+
+## 1. Cos'e' un articolo composito
+
+Un articolo `catalogo.articoli` con `is_composito = TRUE` rappresenta un
+**contenitore**: un prodotto che ha una propria identita' commerciale
+(codice, descrizione, UoM, IVA) ma il cui prezzo e' la **somma dei
+prezzi dei suoi componenti** (vedi §4).
+
+Gli articoli compositi sono usati per modellare kit, pacchetti, bundle,
+prodotti complessi. Esempi: "Kit installazione caldaia", "Pacchetto
+manutenzione annuale", "Bundle promo Estate 2026".
+
+## 2. La BoM (Bill of Materials)
+
+Il composito ha una **lista materiali** (`catalogo.articoli_componenti`)
+che definisce QUALI componenti lo compongono e in che **quantita'
+relativa**.
+
+Ogni riga BoM e' immutabile per design (UPDATE strutturale bloccato):
+per evolvere la BoM si applica il pattern "chiudi+inserisci nuova
+versione" (chiudi `valido_al` della riga corrente, inserisci nuova riga
+con `valido_dal` successivo). Garantisce ricostruzione storica e audit.
+
+Colonne strutturali (immutabili):
+
+| Colonna | Significato |
+|---|---|
+| `prodotto_id` | articolo padre composito |
+| `componente_id` | articolo figlio (puo' essere a sua volta composito? No, vedi §9) |
+| `coeff_qta` | quantita' del figlio per unita' di padre |
+| `obbligatorio` | TRUE = sempre incluso, FALSE = opzionale |
+| `esposto_in_fattura` | TRUE = riga descrittiva in fattura, FALSE = invisibile in fattura |
+| `valido_dal`, `valido_al`, `validita` (range) | versionamento daterange |
+| `attivo` | soft-delete logico |
+
+Colonne `partecipa_qta` e `determina_qta_padre`: scheletro per logiche
+future di calcolo quantita', non lette runtime dalle fn attuali.
+
+## 3. Simmetria padre-figli a 3 livelli
+
+Il pattern padre-figli **si ripete identico** in tre tabelle, una per
+livello:
+
+```
+LIVELLO 1 — STRUTTURA (catalogo)
+  catalogo.articoli                    (padre composito)
+    ├──> catalogo.articoli_componenti  (figli BoM)
+
+LIVELLO 2 — PREZZO (catalogo / vendite)
+  vendite.listini_righe_componenti     (prezzi figli in contesto padre)
+    ├──> riferisce catalogo.articoli_componenti via FK
+
+LIVELLO 3 — ISTANZA COMMERCIALE (documento)
+  vendite.<sorgente>_righe             (riga padre nel documento)
+    ├──> vendite.<sorgente>_righe_componenti (righe figli del documento)
+       <sorgente> ∈ {preventivi, ordini, contratti, ddt}
+```
+
+Conseguenze pratiche:
+
+- Lo stesso pattern di **trigger guard** vale a tutti e tre i livelli
+  (`script.trgfn_componenti_*` parametrizzati via TG_ARGV)
+- Lo stesso pattern di **Dialog "Componenti di X"** vale lato FE
+  (componente Vue riusabile)
+- Lo stesso pattern di **Repository/Service** vale lato BE
+  (gerarchia parametrizzata per sorgente)
+
+## 4. Regola del prezzo padre
+
+> **Il prezzo padre di un composito e' SEMPRE la somma dei prezzi
+> figli pesata per il coefficiente di quantita'.**
+
+- Nel **documento**: trigger DB `_z90_ricalcola_padre` aggiorna
+  `<sorgente>_righe.prezzo_unitario = SUM(figli.prezzo_unitario ×
+  coeff_qta_snapshot)` ad ogni INSERT/UPDATE/DELETE dei figli
+- Nel **listino**: niente persistenza del prezzo padre composito (la
+  tabella `vendite.listini_righe` per padri compositi e' **vietata**,
+  vedi §7). Il prezzo padre del listino si calcola al volo via vista o
+  ricavando SUM dal resolver.
+
+Conseguenza: **nessun caller direttamente legge il prezzo padre**;
+qualsiasi consumatore (resolver, generazione fattura, riepilogo IVA)
+deriva dalla somma figli.
+
+## 5. Regole sui prezzi
+
+| Soggetto | NULL | 0 | Negativo |
+|---|---|---|---|
+| Figlio `obbligatorio=TRUE` | NO | NO (`<> 0`) | si' |
+| Figlio `obbligatorio=FALSE` | NO | si' | si' |
+| Padre composito (calcolato) | NO | si' | si' |
+
+Razionale:
+
+- Un obbligatorio "deve produrre valore": prezzo non zero
+- Un opzionale puo' essere "incluso a costo zero" o "non venduto"
+- Il padre, essendo somma, puo' essere 0 (figli a zero) o negativo
+  (figli con segni misti — sconti, abbuoni)
+- NULL mai ammesso: ogni componente del documento ha un prezzo certo
+
+## 6. IVA coerente padre-figli
+
+Vincolo di dominio: il padre composito e tutti i suoi figli BoM
+condividono la **stessa aliquota IVA**.
+
+Trigger `catalogo.trgfn_articoli_componenti_guard_iva`:
+
+- BEFORE INSERT/UPDATE su `catalogo.articoli_componenti`: NEW.componente
+  deve avere `iva_id` uguale al padre
+- BEFORE UPDATE su `catalogo.articoli.iva_id`: se l'articolo e' padre
+  composito di righe BoM attive → tutti i figli devono avere stessa
+  IVA; se l'articolo e' figlio in BoM attive → il padre deve avere
+  stessa IVA
+
+Conseguenza: il riepilogo IVA del documento e' indistintamente
+calcolabile da padre o da figli (stessa aliquota).
+
+## 7. Esposto in fattura = flag di presentazione (non di pricing)
+
+- `esposto_in_fattura = TRUE` → il figlio appare in fattura come riga
+  descrittiva separata (oltre al padre)
+- `esposto_in_fattura = FALSE` → il figlio non appare in fattura come
+  riga separata; il suo prezzo e' gia' incluso nel padre tramite SUM
+
+**Importante**: `esposto_in_fattura` NON e' gate di pricing — non
+filtra quali componenti finiscono in `*_righe_componenti`. Tutti i
+figli validi alla data vi finiscono. Il flag e' letto SOLO al momento
+della generazione fattura per decidere come aggregare la
+presentazione.
+
+**Snapshot non necessario** in catena (`*_righe_componenti`,
+`commesse_attivita`, `attivita_fatturabili`, `fatture_righe`): la BoM
+e' immutabile per design, quindi JOIN runtime su
+`articoli_componenti.esposto_in_fattura` e' sempre coerente.
+
+## 8. Listino composito (livello 2): bundle-aware
+
+### 8.1 Niente listino diretto sul padre
+
+INSERT in `vendite.listini_righe` per articoli `is_composito = TRUE` e'
+vietato (errore `E_LISTINO_RIGA_COMPOSITO_VIETATO`). Il prezzo padre
+non e' un dato di listino ma una conseguenza della somma figli.
+
+### 8.2 `vendite.listini_righe_componenti` — prezzo figli in contesto bundle
+
+Tabella nuova, simmetrica a `<sorgente>_righe_componenti`. Una riga =
+"in questa versione listino, il componente X del padre Y ha prezzo Z".
+
+Vincoli (trigger guard):
+
+- `articolo_componente_id` punta a riga BoM esistente e attiva
+- `padre.is_composito = TRUE`
+- IVA figlio = IVA padre (estensione regola §6)
+- `validita` listino ⊆ `validita` BoM ⊆ `validita` versione listino
+- Immutabilita' v5: INSERT solo in versione non-attiva; UPDATE prezzo
+  bloccato in versione attiva (pattern listini v5 esistente)
+
+### 8.3 Resolver pricing v5 bundle-aware
+
+`vendite.fn_resolve_prezzo_listino_v2` accetta nuovo parametro opzionale
+`p_articolo_padre_contesto UUID DEFAULT NULL`:
+
+- **NULL** → resolver standalone come oggi (STADIO 1-3 invariati)
+- **NOT NULL** → STADIO 0 nuovo, prima di STADIO 1:
+  1. Identifica `listino_versione_id` corrente per (BA, utility, data)
+  2. Cerca in `listini_righe_componenti(versione, padre, figlio, data)`
+  3. Se trovato → prezzo bundle + `origine = LISTINO_BUNDLE`
+  4. Altrimenti → fallback a STADIO 1 standalone
+
+I caller compositi (`fn_<sorgente>_riga_componenti_init`, `_preview`)
+passano sempre `p_articolo_padre_contesto = riga.articolo_id`. Caller
+standalone passano NULL → comportamento invariato.
+
+## 9. Edge case
+
+### 9.1 BoM vuota alla data
+`is_composito = TRUE` ma nessuna riga `articoli_componenti` con
+`validita @> data_documento` e `attivo = TRUE`: errore
+`E_DOC_COMPOSITO_BOM_VUOTA` sollevato dalla fn `_init` al primo uso
+del composito nel documento. Significa "articolo scaduto/non
+configurato per questa data".
+
+### 9.2 Compositi annidati (BoM ricorsiva)
+Non gestiti dal modello attuale. Un figlio puo' a sua volta essere
+`is_composito = TRUE`? Da definire. Soluzione pragmatica: VIETATO via
+guard "figlio non puo' essere composito".
+
+### 9.3 Aggiunta componenti al volo
+Non ammessa. I figli inseriti in `<sorgente>_righe_componenti` sono
+**solo** quelli della BoM corrente. L'operatore puo' decidere
+prezzi/attivazione, non quali componenti.
+
+### 9.4 Obbligatorio non disattivabile
+Trigger BEFORE UPDATE su `<sorgente>_righe_componenti`: se
+`OLD.attivo = TRUE` e `NEW.attivo = FALSE` su un componente
+`obbligatorio = TRUE` → raise `E_DOC_COMPONENTE_OBBLIGATORIO`.
+
+### 9.5 Promo articoli e contratti modalita' C
+Interazione con prezzo bundle (STADIO 0):
+
+- Promo articoli su componente: per default NON si applica nel
+  contesto bundle (il bundle ha il suo prezzo). Override via flag
+  `vale_in_contesto_padre BOOLEAN DEFAULT FALSE` su promo articoli.
+- Contratto modalita' C (negoziazione puntuale BA-emittente): vince
+  sempre sopra il prezzo bundle. E' negoziazione esplicita.
+
+## 10. Catena propagazione documento → fattura
+
+```
+preventivi_righe + preventivi_righe_componenti
+  -> (push commessa)
+commesse_attivita (tutti i figli, niente filtro esposto_in_fattura)
+  -> (run pipeline fatturazione)
+attivita_fatturabili
+  -> (generazione lotto)
+fatture_righe (padre con totale + figli esposti come righe descrittive)
+```
+
+In ogni passaggio: tutti i componenti, niente snapshot del flag
+`esposto_in_fattura`. La presentazione finale (fattura PDF / XML SDI /
+report) legge runtime via JOIN su `articoli_componenti`.
+
+## 11. Costanti / errori
+
+Codici errore di dominio (registrati in `config.messaggi_errore`):
+
+| Codice | Quando |
+|---|---|
+| `E_DOC_COMPOSITO_BOM_VUOTA` | `_init` su composito senza BoM valida alla data |
+| `E_DOC_COMPONENTE_OBBLIGATORIO` | UPDATE `attivo=FALSE` su figlio obbligatorio |
+| `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | Figlio obbligatorio con prezzo 0 |
+| `E_BOM_IVA_DISCORDANTE` | INSERT/UPDATE BoM o `articoli.iva_id` con IVA padre-figlio diversa |
+| `E_LISTINO_RIGA_COMPOSITO_VIETATO` | INSERT `listini_righe` per `is_composito=TRUE` |
+| `E_LISTINO_COMPONENTE_COERENZA_BOM` | INSERT/UPDATE `listini_righe_componenti` con BoM/IVA/validita' incoerente |
+
+## 12. Building block riusabili
+
+Pattern simmetrico **da implementare** come componenti riusabili:
+
+### 12.1 DB
+
+- `script.trgfn_componenti_guard_coerenza_bom` — gia' esistente,
+  parametrizzato via TG_ARGV. Riusato su 4 `*_righe_componenti` +
+  esteso a `listini_righe_componenti` (5° caller, stesse verifiche
+  meno propaga_qta)
+- `script.trgfn_componenti_ricalcola_padre` — gia' esistente, usato
+  su 4 `*_righe_componenti`. Non applicabile al listino (prezzo padre
+  listino e' virtuale, non persistito)
+- `script.trgfn_componenti_guard_obbligatorio` (nuovo) — su 4
+  `*_righe_componenti`
+- `script.trgfn_componenti_check_prezzo_obbligatorio` (nuovo) —
+  parametrizzato, su 4 `*_righe_componenti`
+
+### 12.2 BE Python
+
+- Repository generico `ComponentiRepository` o classe base
+  parametrizzata sul nome tabella sorgente
+- Service generico `ComponentiService`
+- Helper `_normalize_componenti_overrides` (gia' esistente nel
+  service preventivi) — promuovere a helper condiviso
+
+### 12.3 FE Vue
+
+- `ComponentiDialog.vue` — Dialog modale 90vw, parametrizzato sul
+  contesto (sorgente, articoloPadre, listinoVersione opzionale)
+- `ComponentiPanel.vue` (EDIT) — tabella read/edit dei componenti
+  esistenti, parametrizzato come Dialog
+- i18n condiviso `componenti.*` (sub-namespace cross-dominio,
+  separato da `preventivi.componenti_*`)
+
+## 13. Riferimenti
+
+- Iterazioni storiche: [changelog-decisioni-componenti.md](changelog-decisioni-componenti.md)
+- Piano operativo corrente: [`work-in-progress/refactor-componenti.md`](../work-in-progress/refactor-componenti.md)
+- Brief DB attivo: [`work-in-progress/brief-db-componenti-modello-unificato.md`](../work-in-progress/brief-db-componenti-modello-unificato.md)
+- Modello tabelle: `docs/it/dbzero/catalogo/manual/articoli_componenti.md`
+- Resolver pricing v5: `docs/it/dbzero/vendite/manual/fn_resolve_prezzo_listino_v2.md`
+- Guida BoM: `docs/it/guide/gestione-listini.md` §6

@@ -1,391 +1,155 @@
-# Refactor Componenti BoM CASO A — Piano di Sviluppo BE/FE
-
-> **Stato**: aperto 2026-05-11. Primo del pattern, sorgente PREVENTIVI.
-> **Brief DB collegato**: [brief-db-preventivi-righe-componenti-override.md](brief-db-preventivi-righe-componenti-override.md).
-> **Pattern**: replicabile su 4 sorgenti future (ordini, contratti, DDT, consumi).
-
-## 1. Contesto e obiettivo
-
-Bug logico del modello scoperto allo smoke §3.4 del 2026-05-11: per
-articoli compositi con componenti `esposto_in_fattura = TRUE` (CASO A),
-il prezzo della riga padre del documento sorgente e' un **dato fantasma**:
-al push viene ignorato silenziosamente perche' il resolver risolve N
-prezzi per i componenti dal listino. Se uno dei listini manca, il push
-esplode dopo l'accettazione del preventivo.
-
-**Soluzione** (decisione di dominio 2026-05-11): ogni componente esposto
-diventa una riga negoziabile a se' stante con prezzo proprio (suggerito
-dal resolver + override manuale ammesso via L1). La riga padre diventa
-contenitore con prezzo calcolato come SUM(componenti × coeff_qta) via
-trigger DB. Al push i prezzi sono propagati ai componenti
-`commesse_attivita` **senza ri-chiamare il resolver** (snapshot
-pricing immutabile post-accettazione).
-
-Strategia "5 tabelle simmetriche + helper `script.*`": 5 nuove tabelle
-`<sorgente>_righe_componenti` con FK reali, logica trigger DRY tramite 4
-fn generiche in `script.*` parametrizzate via TG_ARGV. Vedi brief DB per
-dettagli completi.
-
-## 2. Stato dipendenze
-
-| Componente | Stato | Owner |
-| --- | --- | --- |
-| Brief DB preventivi + helper `script.*` | Atterrato + committato 2026-05-12 (PR #659) | DB team |
-| Brief DB ordini/contratti/DDT (Casi A simmetrici) | **Atterrato dal team DB 2026-05-12** | DB team |
-| Brief DB consumi | Da valutare (use case raro, vedi §7) | DB team |
-| Fix `fn_log_and_raise_error` signature `text[]` | Atterrato dal team DB 2026-05-12 | DB team |
-| Fix opzione A: rimosso fallback prezzo=0 nelle 4 fn init, raise `E_DOC_COMPONENTE_LISTINO_MANCANTE` | Atterrato 2026-05-12 (cross-dominio) | DB team |
-| Rename `vendite.contratti_righe.quantita_fissa → quantita` (migration 20260511-31) | Atterrato dal team DB 2026-05-12 | DB team |
-| Nuova colonna `vendite.ordini.utility_id` | Atterrato dal team DB 2026-05-12 | DB team |
-| Fix all-or-nothing push singolo | Atterrato 2026-05-11 | BE |
-| Guida `gestione-listini.md` aggiornata §5.2.1 + §6.2 | Atterrato 2026-05-11 | BE |
-| Test plan §3.4 esteso 3 scenari | Atterrato 2026-05-11 | BE |
-| Implementazione BE preventivi (Fasi 1-4) + Fase 5 FE | **Atterrato + mergiato 2026-05-12 (PR #660)** | BE/FE |
-| Refactor BE `quantita_fissa → quantita` (4 file: contratti repo+service+views + ai_tools) | **Atterrato 2026-05-12** | BE |
-| Registrazione `E_DOC_COMPONENTE_LISTINO_MANCANTE` in `error_policies.py` + i18n keys | **Atterrato 2026-05-12** | BE/FE |
-| Smoke API end-to-end domain validation path | **Atterrato 2026-05-12** (`smoke-test-preventivi-componenti.sh`) | BE |
-| Smoke API end-to-end path felice (init success) | **Pending** — serve fixture con listino mappato | BE |
-| Implementazione BE/FE ordini Fasi 1-5 + colonna `utility_id` | **Da fare** (sviluppo futuro) | BE/FE |
-| Implementazione BE/FE contratti Fasi 1-5 (note: riga a consumo `quantita IS NULL` → init ritorna 0 silenzioso, BE deve gestire) | **Da fare** (sviluppo futuro) | BE/FE |
-| Implementazione BE/FE DDT Fasi 1-5 | **Da fare** (sviluppo futuro) | BE/FE |
-
-## 2.1 Delta DB rispetto al brief originale (recepito 2026-05-11)
-
-Modifiche fatte dal team DB rispetto al brief inviato:
-
-| Elemento | Brief proposto | DB team ha implementato |
-| --- | --- | --- |
-| Colonna FK articolo componente | `articolo_id` | `componente_id` (no ambiguita' con padre) |
-| CHECK origine_prezzo | 6 valori (LISTINO incluso) | **5 valori**: `PROMO`, `CONTRATTO_OVERRIDE`, `CONTRATTO_LISTINO`, `CATEGORIA`, `MANUALE` (no `LISTINO`) |
-| `fn_resolve_prezzo_composito` | 7 colonne in return | 8 colonne (aggiunta `origine_prezzo` finale) |
-| Trigger calcola_quantita | `_a20_` | `_m50_` (fase intermedia valida) |
-| Trigger propaga_qta su preventivi_righe | `_a30_` | `_z90_` (e' effetto AFTER, ordine lessicografico < ricalcola) |
-| Trigger guard_pending componenti | Non incluso | **Aggiunto** `trgfn_preventivi_righe_componenti_guard_pending` (simmetrico a riga padre) |
-| `trgfn_preventivi_guard_transizione_approvazione` | Non toccato | **Esteso** per controllare anche componenti PENDING |
-
-**Impatto su Fase 1 (Repository)**:
-
-- Query Python su `vendite.preventivi_righe_componenti` usa `componente_id`
-  (NON `articolo_id`).
-- `pricing_repository.resolve_prezzo_composito` deve aggiornare il `SELECT`
-  per includere `origine_prezzo` (8a colonna).
-- TypedDict `PreventivoRigaComponenteRow` ha campo `componente_id: UUID`.
-
-**Impatto su Fase 2 (Service)**:
-
-- Validazione `origine_prezzo` su `PayloadValidator.optional_*`: whitelist
-  5 valori (NON 6).
-
-**Impatto su Fase 5 (FE)**:
-
-- Badge icone origine_prezzo: 5 (PROMO 🎁, CONTRATTO_OVERRIDE 📃, CONTRATTO_LISTINO 📋, CATEGORIA 📋, MANUALE ✏️). Niente icona "LISTINO" generica.
-
-## 3. Cosa posso iniziare ORA (pre-merge DB)
-
-Lavori indipendenti dalla tabella nuova, da fare in parallelo al team DB:
-
-### 3.1 Documentazione guida `gestione-listini.md`
-- §5.2: aggiungere paragrafo "Componenti CASO A nel ciclo preventivo
-  -> commessa" con la regola del nuovo modello.
-- §6: aggiungere eccezione "su compositi CASO A l'override L1 si
-  applica sui singoli componenti, non sul padre".
-- Nuova sottosezione §6.2 con esempio del flusso UX (3 scenari A/B/C
-  dal mock).
-
-### 3.2 Test plan smoke §3.4 esteso
-- Aggiornare `sviluppo-listini-v5-test-ui.md` §3.4 con i 3 scenari:
-  - **3.4.A** Tutto da listino (path felice)
-  - **3.4.B** Componente con listino mancante + override manuale
-  - **3.4.C** Sconto commerciale puntuale su un componente
-
-### 3.3 Scaffolding FE (mock-driven)
-- Composable `usePreventivoRigaComponenti.js` con API stub (404 finche'
-  il BE non c'e') — pronto a essere "cablato" al merge BE.
-- Bozza dei tipi TS/JSDoc per `RigaComponente` (id, articolo_componente_id,
-  prezzo_unitario, origine_prezzo, listino_suggerito, warnings).
-- Estensione `PreventiviRigheTable.vue` con prop `expanderEnabled` (default false): l'expander resta nascosto finche' la riga padre non ha `is_composito_caso_a = true` (flag derivato dal detail).
+# Refactor Componenti BoM — Piano operativo BE/FE
 
-### 3.4 Mock test BE
-- Skeleton di test unitari per `preventivi_service.crea_riga` /
-  `gestisci_riga` / `update_componente` / `delete_componente` con mock
-  repository — testano la logica di service, non l'integrazione DB.
+> **Scope**: piano operativo corrente. Nessuna decisione di dominio
+> qui — quelle stanno nel modello.
+>
+> **Riferimenti obbligatori**:
+>
+> - Modello logico: [`manual/modello-componenti-bom.md`](../manual/modello-componenti-bom.md)
+> - Changelog decisioni: [`manual/changelog-decisioni-componenti.md`](../manual/changelog-decisioni-componenti.md)
+> - Brief DB attivo: [`brief-db-componenti-modello-unificato.md`](brief-db-componenti-modello-unificato.md)
 
-### 3.5 Riprenotare risorse per smoke
-- Verificare che il preventivo PRV0000034 (legacy ACCETTATO pre-fix
-  EVASO) sia ancora utilizzabile come fixture, o crearne uno nuovo
-  ad-hoc post-merge.
+## 1. Stato corrente (snapshot 2026-05-12 sera)
 
-## 4. Cosa devo aspettare (post-merge DB)
-
-Tutto cio' che tocca la nuova tabella + fn dominio:
+### DB
 
-- Repository BE reale (cursor con SELECT/INSERT/UPDATE su
-  `preventivi_righe_componenti`)
-- Service che chiama `fn_preventivo_riga_componenti_init` (DB)
-- API view nidificata reali (CRUD componenti)
-- `BoMComponentExpander` rewrite (legge da tabella invece di chiamare
-  resolver al push)
-- Test integrazione + smoke utente
+- Atterrate: 5 tabelle `*_righe_componenti` (preventivi/ordini/ddt/contratti + helper `script.*`), trigger guard BoM, trigger `_z90_ricalcola_padre`, fn `_init` + fn `_preview` (4 sorgenti), errore `E_DOC_COMPONENTE_LISTINO_MANCANTE`
+- Pendenti (brief attivo): rollback gate `esposto_in_fattura`, rilassamento CHECK `<> 0`, guard obbligatorio non disattivabile, errore `E_DOC_COMPOSITO_BOM_VUOTA`, coerenza IVA padre-figli (trigger catalogo), tabella `vendite.listini_righe_componenti`, resolver bundle-aware via `p_articolo_padre_contesto`, deprecazione `fn_resolve_prezzo_composito`
 
-## 5. Fasi PREVENTIVI (post-DB)
+### BE preventivi
 
-### Fase 1 — Repository
+- Atterrate: repository (`init_componenti_riga`, `preview_componenti_riga`), service (gating L1, `_normalize_componenti_overrides`, `_resolve_emittente_sr_id_for_preventivo`), API (`ApiPreventivoRigaPreviewComponenti`), types, +16 test
+- Pendenti: nuova mappa `componenti_attivazioni` per opzionali; field aggiuntivi `obbligatorio` + `esposto_in_fattura` nella proiezione preview; integrazione con `p_articolo_padre_contesto` per pricing bundle (post-DB)
 
-File: `backend/apps/vendite/db/preventivi_repository.py` (estendere)
+### FE preventivi
 
-Nuovi metodi su `PreventiviRepository`:
-- `init_componenti(riga_padre_id, emittente_sr_id, data_riferimento) -> int`
-  wrapper su `vendite.fn_preventivo_riga_componenti_init`. Ritorna numero
-  componenti inseriti.
-- `list_componenti(riga_padre_id) -> list[ComponenteRow]` (SELECT con JOIN
-  ad `articoli_componenti` + `articoli` per display fields)
-- `update_componente(componente_id, payload) -> ComponenteRow` (UPDATE
-  prezzo + origine_prezzo + meta + prezzo_resolver_context)
-- `delete_componente(componente_id) -> bool` (soft delete: `attivo = FALSE`)
-- `get_componente(componente_id) -> ComponenteRow | None` (lookup singolo)
-
-TypedDict nuovo in `types.py`: `PreventivoRigaComponenteRow`.
-
-Test repository: con mock cursor, copertura CRUD + edge case (id non esistente, riga padre non composita).
-
-### Fase 2 — Service
-
-File: `backend/apps/vendite/services/preventivi_service.py` (estendere)
-
-**Modifica `crea_riga`** (post-INSERT della riga padre):
-- Se `articolo.is_composito = TRUE` e CASO A (almeno 1 componente esposto):
-  chiama `repo.init_componenti(riga_padre_id, emittente_sr_id, data_riferimento)`.
-- Il prezzo della riga padre verra' immediatamente sovrascritto dal trigger
-  DB di ricalcolo — niente azione esplicita lato Python.
-
-**Modifica `gestisci_riga` / `aggiorna_riga`**:
-- Se cambia `articolo_id` su una riga esistente e l'articolo nuovo e' di
-  natura diversa (composito CASO A ↔ semplice / CASO B): DELETE
-  componenti esistenti + init se il nuovo e' CASO A.
-- Se l'articolo padre resta lo stesso CASO A: niente azione (i componenti
-  restano stabili).
-
-**Nuovo `update_componente(componente_id, payload, auth_user_id)`**:
-- Estrae `prezzo_unitario` + `meta` dal payload
-- Calcola `prezzo_suggerito` dal `prezzo_resolver_context` del componente
-- Se prezzo nuovo != suggerito: applica L1 (`prezzo_override_manuale`)
-- Applica L2 (limiti % `VENDITE_MAX_SCONTO_PCT` ecc.) — stesso helper di oggi
-- Applica L3 (richiesta_approvazione → crea pratica APPROVAZIONE_PREZZO
-  se violazione L2) — stesso helper
-- UPDATE via repo
-
-**Nuovo `delete_componente(componente_id)`**:
-- Soft delete (attivo=false). Il trigger DB ricalcola il padre.
-- Guard: stato preventivo modificabile (DRAFT/EMESSO).
-
-**Nuovo `list_componenti(riga_padre_id)`**:
-- Wrapper su repo per la view di lettura.
-
-Test service: 15+ test nuovi con mock repository (creazione composito,
-update componente con override autorizzato/negato, delete idempotente,
-guard stato).
-
-### Fase 3 — API view
-
-File: `backend/apps/vendite/api/preventivi_views.py` + `urls_v1.py`
-
-Endpoint nidificati sotto la riga padre:
-
-- `GET /api/v1/vendite/preventivi/<id>/righe/<riga_id>/componenti/`
-- `PATCH /api/v1/vendite/preventivi/<id>/righe/<riga_id>/componenti/<componente_id>/`
-- `DELETE /api/v1/vendite/preventivi/<id>/righe/<riga_id>/componenti/<componente_id>/`
-
-`POST` (init) non e' esposto come endpoint dedicato: l'init avviene
-automaticamente dentro `crea_riga` e `gestisci_riga`. Se in futuro
-serve un "rinegozia componenti" esplicito (re-init forzato), si potra'
-aggiungere.
-
-Tutti i POST/PATCH/DELETE richiedono `Idempotency-Key` (policy progetto).
-
-`@extend_schema` inline per OpenAPI. Test API: 8+ test (CRUD + auth + scope + idempotency).
-
-### Fase 4 — `BoMComponentExpander` rewrite
-
-File: `backend/apps/vendite/services/commesse_source_handlers.py`
-
-Modificare `BoMComponentExpander._expand_rows`:
-- Se `sorgente_codice = 'PREVENTIVO'` e la riga padre ha componenti in
-  `preventivi_righe_componenti` (CASO A): bypassa resolver, legge
-  direttamente i componenti dalla tabella. Costruisce le PushableRow
-  usando `prezzo_unitario`, `quantita`, `articolo_id` di ogni componente.
-- Status quo per CASO B (resolver al push) e per gli altri 4 sorgenti
-  che non hanno ancora la propria tabella componenti — verra' esteso
-  alla loro PR.
-
-Cache modulo-level `is_caso_a` invalidata al boot (TTL 5 min come
-`is_composito_cache` esistente).
-
-Test BE: 5+ test su `BoMComponentExpander` con scenari CASO A vs CASO B.
-
-### Fase 5 — Frontend
-
-File:
-- `frontend/src/vendite/preventivi/components/PreventiviRigheTable.vue`
-- `frontend/src/vendite/preventivi/components/PreventiviRigaForm.vue`
-- `frontend/src/vendite/preventivi/api/preventiviApi.js` (estendere)
-- `frontend/src/vendite/preventivi/stores/preventivi.js` (azioni componenti)
-- `frontend/src/core/composables/usePreventivoRigaComponenti.js` (nuovo)
-- `frontend/src/locales/it.json` + `en.json` (chiavi nuove)
-
-**Tabella righe (`PreventiviRigheTable.vue`)**:
-- PrimeVue DataTable expander per righe con `is_composito_caso_a = true`
-- Sotto-righe componenti renderizzate con indent `├─ └─`
-- Icone origine prezzo (📋 LISTINO, ✏️ MANUALE, 🎁 PROMO, 📃 CONTRATTO)
-- ⚠ accanto a icona se warning su listino mancante
-
-**Form editing riga (`PreventiviRigaForm.vue`)**:
-- Sezione "Componenti esposti in fattura" sotto il form padre
-- Prezzo padre readonly (= "calcolato da componenti")
-- Per ogni componente: prezzo editabile, badge origine, prezzo suggerito
-  visibile, warning inline su listino mancante
-- L1/L2/L3 indicators sui singoli componenti
-
-**Composable (`usePreventivoRigaComponenti.js`)**:
-- `load(rigaPadreId)` → list componenti
-- `updateComponente(componenteId, payload)` → PATCH + reload
-- `deleteComponente(componenteId)` → DELETE + reload
-- Cache locale per non rifare fetch alla riapertura del drawer
-
-**i18n keys nuove** (IT + EN):
-- `preventivi.componenti.section_title` "Componenti esposti in fattura"
-- `preventivi.componenti.prezzo_suggerito` "Suggerito da listino"
-- `preventivi.componenti.listino_mancante` "Nessuna mappa listino"
-- `preventivi.componenti.origine_*` (LISTINO/MANUALE/PROMO/CONTRATTO/CATEGORIA)
-- `preventivi.componenti.l1_richiede_autorizzazione` "Richiede autorizzazione `prezzo_override_manuale`"
-
-Test FE: smoke manuale + eventuale snapshot test se appropriate al progetto.
-
-### Fase 6 — Smoke utente §3.4 end-to-end
-
-Aggiornare `sviluppo-listini-v5-test-ui.md` §3.4 con i 3 scenari A/B/C
-gia' definiti nei mock UX (sessione 2026-05-11).
-
-Acceptance criteria:
-- §3.4.A — tutte le mappe listino popolate → push OK, fattura con prezzi
-  identici al preventivo
-- §3.4.B — listino mancante su 1 componente → operatore inserisce manuale
-  con autorizzazione L1, push OK, fattura riporta il prezzo manuale
-- §3.4.C — sconto puntuale su 1 componente → push OK, fattura riporta
-  il prezzo scontato
-
-## 6. Stima effort PREVENTIVI
-
-| Fase | Effort | Bloccato da |
-| --- | --- | --- |
-| 0 (pre-DB, ora) | 0.5gg | nulla |
-| 1 (Repository) | 0.5gg | DDL DB merged |
-| 2 (Service) | 1gg | Fase 1 + fn DB init merged |
-| 3 (API) | 0.5gg | Fase 2 |
-| 4 (Expander) | 0.5gg | Fase 1 |
-| 5 (FE) | 1.5gg | Fase 3 |
-| 6 (Smoke) | 0.5gg | Fase 5 |
-| **Totale** | **5gg** | |
-
-Tempi reali dipendono da quanto velocemente il team DB consegna il DDL +
-fn helper + fn dominio init.
-
-## 7. Pattern replicabile sui 4 sorgenti futuri
-
-Per ognuno dei 4 sorgenti (ORDINI, CONTRATTI, DDT, CONSUMI):
-
-### Cambia per sorgente
-
-- Nome tabella (`<sorgente>_righe_componenti`)
-- Nome FK padre (`riga_<sorgente>_id`)
-- Nome tabella testata (`<sorgente>` / `contratti` / `attivita_consumi`)
-- Colonna data riferimento (`data` / `valido_dal` / `data_lettura`)
-- Fn helper dominio init (`fn_<sorgente>_riga_componenti_init`)
-- Repository + Service di dominio (`ordini_service`, `contratti_service`, ecc.)
-- API view nidificata sotto la testata del sorgente
-- Componenti FE (`<Sorgente>RigheTable.vue`, `<Sorgente>RigaForm.vue`)
-- Store + composable FE
-
-### NON cambia (riusato dal pattern preventivi)
-
-- 4 helper trigger function in `script.*` (gia' generiche con TG_ARGV)
-- 3 codici errore `E_DOC_COMPONENTE_*` cross-dominio (gia' nel pattern)
-- `BoMComponentExpander` logic: dispatch su `sorgente_codice` per leggere
-  dalla tabella corretta (la logica espansione resta uguale)
-- Pattern UX espander tabella + sezione componenti drawer
-- Pattern L1/L2/L3 sui singoli componenti (stessi parametri di sistema)
-
-### Stato sorgenti (aggiornato 2026-05-12)
-
-| Sorgente | DB tabella + fn init | DB delta extra | BE Repo+Service+API | FE Fasi 4+5 | Note |
-| --- | --- | --- | --- | --- | --- |
-| PREVENTIVI | ✅ Atterrato | — | ✅ Atterrato (PR #660) | ✅ Atterrato (PR #660) | Implementazione di riferimento |
-| ORDINI | ✅ Atterrato 2026-05-12 | ✅ Nuova colonna `vendite.ordini.utility_id` (INTEGER nullable, FK config.utilities) | **Da fare** | **Da fare** | Pattern identico a preventivi. Repo/service ordini deve leggere/scrivere `utility_id` dove rilevante (allinearsi a DDT/preventivi) |
-| CONTRATTI | ✅ Atterrato 2026-05-12 | ✅ Rename `contratti_righe.quantita_fissa → quantita` (migration 20260511-31). BE allineato 2026-05-12 (4 file refactored). | **Da fare** | **Da fare** | **Note specifiche**: (1) se `contratti_righe.quantita IS NULL` (riga a consumo) la fn init ritorna 0 silenzioso — il BE service deve gestire (no-op atteso); (2) `p_data_riferimento` da passare come `COALESCE(contratti.valido_dal, contratti.data)` — non solo `data` come per preventivi |
-| DDT | ✅ Atterrato 2026-05-12 | — | **Da fare** | **Da fare** | Pattern identico. Verificare se ereditarieta' da ordine richiede skip init su righe gia' popolate da copia ordine |
-| CONSUMI | ⏸ Da valutare | — | — | — | Use case raro (letture per UoM, non aggregati). Skippare la PR consumi salvo richiesta esplicita |
-
-### Cambia per sorgente (recap riusabile)
-
-- Nome tabella (`<sorgente>_righe_componenti`)
-- Nome FK padre (`riga_<sorgente>_id`)
-- Nome tabella testata (`ordini` / `contratti` / `ddt`)
-- Colonna data riferimento: `data` (ordini, ddt) / `COALESCE(valido_dal, data)` (contratti)
-- Fn helper dominio init (`fn_<sorgente>_riga_componenti_init`)
-- Repository + Service di dominio (`ordini_service`, `contratti_service`, `ddt_service`)
-- API view nidificata sotto la testata del sorgente
-- Componenti FE (`<Sorgente>RigheTable.vue`, `<Sorgente>RigaForm.vue`)
-- Store + composable FE (variante per sorgente di `usePreventivoRigaComponenti`)
-
-### Stima effort per sorgente (post-preventivi)
-
-~3gg a sorgente (DB gia' merged → BE+FE ~2.5gg + smoke 0.5gg).
-Totale 3 sorgenti restanti (ordini + contratti + ddt) = ~9gg.
-
-### Implementazione invocazione fn init (template per ogni sorgente)
-
-```python
-# In gestisci_riga (ordini/contratti/ddt) post-create_riga della riga padre:
-cursor.callproc(
-    'vendite.fn_<sorgente>_riga_componenti_init',
-    [riga_id, emittente_sr_id, data_riferimento],
-)
-# Risoluzione emittente: precedenza testata.emittente_fiscale_id (via
-# repo.get_emittente_sr_id_by_fiscale_id), fallback a operatore.
-# Pattern identico a preventivi (preventivi_service.gestisci_riga §691-720).
-# Per CONTRATTI: data_riferimento = COALESCE(testata.valido_dal, testata.data).
+- Atterrate: nuovo flusso form atomic (preview inline), Dialog assente, `isPadreComposito` helper, gating UI override, debounce preview
+- Pendenti: sostituzione tabella inline con `ComponentiDialog.vue`, EDIT panel coerente (colonne nuove), riepilogo sintetico nel drawer riga padre
+
+### Altre sorgenti (ordini / contratti / ddt)
+
+- DB tabelle + trigger atterrate (simmetria 5 tabelle 2026-05-11)
+- BE: non avviato
+- FE: non avviato
+
+## 2. Piano operativo per fasi
+
+### Fase A — Brief DB modello unificato (team DB su `dev/db-tid`)
+
+Vedi [`brief-db-componenti-modello-unificato.md`](brief-db-componenti-modello-unificato.md).
+Sblocca tutte le fasi successive.
+
+### Fase B — BE preventivi (post DB)
+
+Sequenza:
+
+1. `apps/vendite/db/preventivi_repository.py`: aggiornare proiezione `preview_componenti_riga` con `obbligatorio` + `esposto_in_fattura`; aggiornare `init_componenti_riga` per accettare nuovo arg `componenti_attivazioni` (mappa `componente_id -> bool`)
+2. `apps/vendite/services/preventivi_service.py`: estendere `gestisci_riga` per accettare `componenti_attivazioni` nel payload; rimuovere helper legacy `_can_force_componenti_manuale` se residuo
+3. `apps/vendite/api/preventivi_views.py`: accettare `componenti_attivazioni` nel payload riga
+4. `apps/vendite/types.py`: aggiungere campi a `PreventivoRigaComponentePreviewRow`
+5. Tests: conservare 16 form atomic, aggiungere 4 nuovi (`bom_vuota`, `attivazioni_passate`, `obbligatorio_disattivazione_bloccata`, `obbligatorio_prezzo_zero`)
+
+Stima: 0.5 sessione.
+
+### Fase C — FE preventivi nuovo `ComponentiDialog.vue`
+
+Sequenza:
+
+1. Creare `frontend/src/vendite/preventivi/components/ComponentiDialog.vue`: PrimeVue Dialog 90vw, props `articolo`, `preventivoId`, `uomOperativaId`, `quantita`; v-model payload con `componenti_overrides` + `componenti_attivazioni`; tabella editabile con colonne aggiunte (obbligatorio + attivo + esposto in fattura)
+2. Rimuovere blocco preview inline da `PreventiviRigaForm.vue` (linee correnti ~675-737): tutto migra nella Dialog. Sostituire con riepilogo `{n componenti — totale stimato €X}` + bottone "Modifica componenti"
+3. Apertura Dialog automatica al lookup di articolo composito (watch su `articoloObj.is_composito`)
+4. `isPadreComposito`: semantica unificata, basta `articoloObj.is_composito === true` (niente piu' CASO A/B)
+5. `canSave` richiede `componentiPayload != null` per i compositi
+6. i18n: aggiungere `componenti_dialog_*`, `componenti_summary`, `componenti_modifica`, `componenti_col_attivo`, `componenti_col_esposto`. Rimuovere chiavi inline preview obsolete
+
+Stima: 0.8 sessione.
+
+### Fase D — EDIT path coerenza (`PreventiviRigaComponentiPanel.vue`)
+
+- Aggiungere colonne `obbligatorio` (icona), `attivo` (checkbox disabilitato per obbligatori), `esposto_in_fattura` (tag)
+- Validazione: blocco UPDATE `prezzo = 0` su obbligatori (defense-in-depth oltre al DB)
+- Riusare componenti tabella della Dialog se possibile (TODO building block §5)
+
+Stima: 0.3 sessione.
+
+### Fase E — Censimento + aggiornamento expansion BE→commessa
+
+- Censimento fn DB/Python che fanno expansion `<sorgente>_righe + componenti` → `commesse_attivita`
+- Verificare filtro `esposto_in_fattura`: rimuoverlo (tutti i figli passano in commessa)
+- Eventuale aggiornamento `BoMComponentExpander` Python o omologhi
+- Verificare generazione `fatture_righe` da `commesse_attivita`: padre con totale + figli esposti come righe descrittive
+
+Stima: 1 sessione.
+
+### Fase F — Smoke UI utente §3.4 rivisto
+
+3 scenari aggiornati per nuovo modello:
+
+- F.1 — padre con solo obbligatori, tutti con listino → save senza override
+- F.2 — padre con obbligatori + opzionali, operatore attiva 1 opzionale, prezzo manuale su 1 obbligatorio → save con `componenti_overrides` + `componenti_attivazioni`
+- F.3 — padre con BoM scaduta → errore parlante `E_DOC_COMPOSITO_BOM_VUOTA`
+- F.4 (nuovo) — listino bundle vs standalone: due preventivi a date diverse mostrano prezzi diversi se cambia il `listini_righe_componenti`
+
+Aggiornare `sviluppo-listini-v5-test-ui.md` §3.4 con questi scenari.
+
+Stima: 1 sessione.
+
+### Fase G — Replicazione 4 sorgenti (ordini / contratti / ddt)
+
+Pattern preventivi replicato simmetricamente. Una sessione per sorgente:
+
+- BE: repo + service + API + types + tests
+- FE: riuso `ComponentiDialog.vue` + adapter per sorgente; nuovo drawer riga sorgente segue stesso pattern preventivi
+- Smoke specifico per sorgente
+
+Stima: 4 sessioni totali (1 per sorgente).
+
+### Fase H — Building block riusabili
+
+Estrazione progressiva, post replicazione 4 sorgenti:
+
+- BE: classe base `ComponentiRepository` / `ComponentiService` parametrizzata per sorgente
+- FE: `ComponentiDialog.vue` gia' parametrizzato; eventuale estrazione tabella in sotto-componente `ComponentiTable.vue`
+- i18n: namespace `componenti.*` cross-dominio (separato dai `<sorgente>.componenti_*` specifici)
+- DB helper: helper `script.*` gia' parametrizzati (TG_ARGV)
+
+Stima: 1.5 sessione totale.
+
+## 3. Ordine consigliato
+
+```text
+A (DB)  →  B (BE prev)  →  C (FE Dialog)  →  D (FE EDIT panel)  →  F (smoke)
+                                  ↓
+                              E (expansion commessa)
+                                  ↓
+                              G (4 sorgenti replicate)
+                                  ↓
+                              H (building block)
 ```
 
-## 8. Decisioni di dominio gia' chiuse (riferimento)
+Step A blocca tutto il resto. B, C, D paralleli dopo A. E indipendente
+da C/D ma serve prima del push commessa effettivo. G replica solo dopo
+che F (smoke preventivi) e' verde.
 
-Da non riaprire — gia' concordate con Tid:
+## 4. Stima totale
 
-1. Solo CASO A (componenti `esposto_in_fattura = TRUE`)
-2. Stessi parametri L1/L2/L3 della riga padre — niente parametri dedicati
-3. Quantita padre ≠ 1 ammessa: `quantita_componente_in_preventivo =
-   coeff_qta × 1`, propagazione moltiplicativa al push
-   (`quantita_in_commessa = quantita_componente × quantita_padre`)
-4. 5 tabelle simmetriche con FK reali, NO tabella polimorfica
-5. Helper trigger DRY in `script.*` parametrizzate via TG_ARGV
-6. Push singolo all-or-nothing (gia' atterrato 2026-05-11): se anche
-   un solo componente fallisce in fase di push, rollback totale
-7. **Componente esposto DEVE avere prezzo non zero** (CHECK
-   `chk_<sorgente>_righe_comp_prezzo_nonneg = <> 0`, opzione A 2026-05-12):
-   il fallback resolver_failed e' stato rimosso dalle 4 fn init. Quando
-   manca listino, `E_DOC_COMPONENTE_LISTINO_MANCANTE` (HTTP 422) blocca
-   l'init e l'operatore deve configurare il listino prima di creare la
-   riga. Codice errore registrato in `apps/core/services/error_policies.py`
-   e i18n key `preventivi.componenti_errore_listino_mancante`.
-8. **Risoluzione emittente nel flusso init** (precedenza
-   `testata.emittente_fiscale_id` > operatore): admin globali e operatori
-   con override emittente possono creare CASO A. Helper repository
-   `get_emittente_sr_id_by_fiscale_id(fiscale_id)` convertono PK emittente
-   in `soggetto_ruolo_id` per le fn pricing.
+| Fase | Sessioni |
+| --- | --- |
+| A — Brief DB | 1 (team DB) |
+| B — BE preventivi | 0.5 |
+| C — FE Dialog | 0.8 |
+| D — FE EDIT panel | 0.3 |
+| E — Expansion commessa | 1 |
+| F — Smoke §3.4 | 1 |
+| G — 4 sorgenti | 4 |
+| H — Building block | 1.5 |
+| **TOTALE** | **~10 sessioni** |
 
-## 9. Riferimenti
+## 5. Stato lavorazione
 
-- Brief DB: [brief-db-preventivi-righe-componenti-override.md](brief-db-preventivi-righe-componenti-override.md)
-- Guida: `docs/it/guide/gestione-listini.md`
-- Test UI: `docs/it/dev/work-in-progress/sviluppo-listini-v5-test-ui.md`
-- WIP push singolo (handoff): `docs/it/dev/work-in-progress/sviluppo-push-singolo-preventivo.md`
-- Memoria progetto: `feedback_bug_logici_modello`, `feedback_concentrico_no_yagni`
-- Mock UX (sessione 2026-05-11, in chat): 3 scenari A/B/C
+Verificare prima di iniziare ogni fase:
+
+- Brief DB applicato? `git log dev/db-tid` per migrazioni recenti
+- Memorie aggiornate? Handoff piu' recente legge a quel punto
+- Test BE verdi? `./manage-test.sh apps.vendite -v 1`
+- Vite build? `./node_modules/.bin/vite build`

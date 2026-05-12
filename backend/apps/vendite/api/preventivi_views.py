@@ -345,6 +345,67 @@ class ApiPreventivoRigaDetail(DomainAPIView):
 #   DELETE /preventivi/<id>/righe/<riga_id>/componenti/<componente_id>/
 # Init e' implicito post-create_riga via `gestisci_riga` — niente POST
 # pubblico dedicato. Vedi `refactor-componenti.md`.
+#
+# Form atomic 2026-05-12: nuovo endpoint preview pre-save:
+#   POST /preventivi/<id>/righe/preview-componenti/
+# Restituisce la lista dei componenti esposti del padre con prezzi
+# suggeriti (NULL + reason se resolver fail). Consumato dal drawer riga FE
+# per pre-popolare la tabella editabile prima del save.
+
+
+class ApiPreventivoRigaPreviewComponenti(DomainAPIView):
+    """POST /api/v1/vendite/preventivi/<id>/righe/preview-componenti/
+
+    Preview componenti BoM CASO A per il drawer riga (form atomic). Read-only:
+    no side-effect. Per ogni componente esposto del padre ritorna prezzo
+    suggerito + origine, oppure NULL + resolver_error_reason se manca listino.
+    Il FE pre-popola la tabella editabile dei componenti, l'operatore
+    valorizza eventuali NULL prima del save (con autorizzazione
+    `prezzo_override_manuale`).
+
+    Payload: `{articolo_id: uuid, uom_operativa_id: int, quantita: number}`
+    Risposta: `{data: [{componente_id, codice, prezzo_suggerito, ...}]}`
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="PreventivoRigaPreviewComponentiRequest",
+            fields={
+                "articolo_id": serializers.UUIDField(),
+                "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
+                "quantita": serializers.DecimalField(
+                    max_digits=22, decimal_places=10,
+                ),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="PreventivoRigaPreviewComponentiResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Restituisce via POST la preview componenti CASO A per drawer riga.
+    def post(
+        self, request: Request, preventivo_id: int,
+    ) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> list[dict[str, object]]:
+            auth_user_id = (
+                request.user.id if request.user and request.user.is_authenticated
+                else None
+            )
+            articolo_id = str(payload.get("articolo_id") or "")
+            uom_id = optional_int(payload, "uom_operativa_id")
+            quantita_raw = payload.get("quantita")
+            return preventivi_service.preview_componenti_riga(
+                preventivo_id,
+                articolo_id=articolo_id,
+                uom_operativa_id=uom_id,
+                quantita=quantita_raw,
+                auth_user_id=auth_user_id,
+            )
+
+        return handle_post_json(request, handler=_handler)
 
 
 class ApiPreventivoRigaComponentiList(DomainAPIView):
