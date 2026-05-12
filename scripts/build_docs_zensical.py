@@ -22,6 +22,21 @@ ANY_INCLUDE_RE = re.compile(r"\{\%\s*include-markdown\s+\"([^\"]+)\"\s*\%\}")
 INCLUDE_MD_RE = re.compile(r"\.md$", re.IGNORECASE)
 MARKDOWN_ABS_LINK_RE = re.compile(r"\]\((/(?!/)[^)]+)\)")
 HTML_ABS_HREF_RE = re.compile(r'href="(/(?!/)[^"]*)"')
+MARKDOWN_LINK_RE = re.compile(r"\]\(([^)]+)\)")
+HTML_HREF_RE = re.compile(r'href="([^"]*)"')
+CHECKLIST_STATUS_RE = re.compile(
+    r"(?m)^(\s*[-*]\s+)\[(DONE|TODO|WIP)\](?=\s)"
+)
+IDENTIFIER_EMPTY_BRACKETS_RE = re.compile(
+    r"(?<!\\)(\b[A-Za-z_][A-Za-z0-9_.:%-]*)\[\]"
+)
+IDENTIFIER_INDEX_RE = re.compile(
+    r"(?<!\\)(\b[A-Za-z_][A-Za-z0-9_.:%-]*)\[([A-Za-z0-9_., -]+)\]"
+)
+STANDALONE_BRACKET_LITERAL_RE = re.compile(
+    r"(?<!\\)\[([^\]\n]{1,80})\](?!\(|:)"
+)
+URI_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 
 # Scopo: risolvere il path del file incluso con fallback robusto.
@@ -37,6 +52,51 @@ def resolve_include_target(target: str, docs_root: Path, current_file: Path) -> 
         if candidate.exists():
             return candidate.resolve()
     return candidates[0].resolve()
+
+
+# Scopo: capire se un target va lasciato invariato o ribasato rispetto al file includente.
+def is_rebasable_relative_target(target: str) -> bool:
+    stripped = target.strip()
+    if not stripped or stripped.startswith(("/", "#")):
+        return False
+    if URI_SCHEME_RE.match(stripped):
+        return False
+    return True
+
+
+# Scopo: ribasare i link relativi di un file incluso verso il file che lo incorpora.
+def rebase_relative_links(text: str, from_file: Path, to_file: Path) -> str:
+    from_dir = from_file.parent
+    to_dir = to_file.parent
+
+    def rebase_target(raw_target: str) -> str:
+        path_part, suffix = raw_target, ""
+        for sep in ("#", "?"):
+            if sep in path_part:
+                idx = path_part.find(sep)
+                suffix = path_part[idx:] + suffix
+                path_part = path_part[:idx]
+
+        if not is_rebasable_relative_target(path_part):
+            return raw_target
+
+        resolved = (from_dir / path_part).resolve()
+        rebased = os.path.relpath(resolved, start=to_dir)
+        if not rebased.startswith("."):
+            rebased = f"./{rebased}"
+        if path_part.endswith("/") and not rebased.endswith("/"):
+            rebased = f"{rebased}/"
+        return f"{rebased}{suffix}"
+
+    def repl_md(match: re.Match[str]) -> str:
+        return f"]({rebase_target(match.group(1))})"
+
+    def repl_html(match: re.Match[str]) -> str:
+        return f'href="{rebase_target(match.group(1))}"'
+
+    rebased = MARKDOWN_LINK_RE.sub(repl_md, text)
+    rebased = HTML_HREF_RE.sub(repl_html, rebased)
+    return rebased
 
 
 # Scopo: espandere ricorsivamente i tag include-markdown evitando loop.
@@ -82,7 +142,7 @@ def expand_includes(
             source_texts,
         )
         expanded_count += nested_count
-        return expanded_text
+        return rebase_relative_links(expanded_text, include_path, current_file)
 
     previous = text
     while True:
@@ -135,6 +195,15 @@ def rewrite_root_links(text: str, docs_root: Path, current_file: Path) -> tuple[
     return rewritten, rewritten_count
 
 
+# Scopo: neutralizzare marker checklist testuali che Zensical interpreta come reference link.
+def normalize_ambiguous_markdown(text: str) -> str:
+    normalized = CHECKLIST_STATUS_RE.sub(r"\1\\[\2\\]", text)
+    normalized = IDENTIFIER_EMPTY_BRACKETS_RE.sub(r"\1\\[\\]", normalized)
+    normalized = IDENTIFIER_INDEX_RE.sub(r"\1\\[\2\\]", normalized)
+    normalized = STANDALONE_BRACKET_LITERAL_RE.sub(r"\\[\1\\]", normalized)
+    return normalized
+
+
 # Scopo: preprocessare tutti i file markdown in una copia temporanea della cartella docs.
 def preprocess_docs(src_docs: Path, dst_docs: Path) -> tuple[int, int, int, list[str]]:
     if dst_docs.exists():
@@ -156,7 +225,8 @@ def preprocess_docs(src_docs: Path, dst_docs: Path) -> tuple[int, int, int, list
             text, dst_docs, md, (md.resolve(),), warnings, source_texts
         )
         rewritten, link_count = rewrite_root_links(expanded, dst_docs, md)
-        md.write_text(rewritten, encoding="utf-8")
+        normalized = normalize_ambiguous_markdown(rewritten)
+        md.write_text(normalized, encoding="utf-8")
 
         processed_files += 1
         include_expansions += include_count

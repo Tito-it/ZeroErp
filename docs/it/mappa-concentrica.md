@@ -428,7 +428,7 @@ Il caso pratiche e' istruttivo perche' mostra cosa succede applicando il manifes
 
 > **La differenza non sta nel "se astrarre", ma nel "quando".** Astrarre prima di vedere e' progetto; astrarre dopo aver visto e' sintesi. Il manifesto §7 codifica questa distinzione perche' la prima e' debito travestito da architettura, la seconda e' architettura genuina.
 
-Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-in-progress/automazione-chiusure-scadenze.md).
+Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-done/automazione-chiusure-scadenze.md).
 
 ---
 
@@ -548,7 +548,7 @@ Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-in-
   - Backend + frontend chiusi, 49 test verdi, doc consolidata in [work-done/gestione-articoli.md](dev/work-done/gestione-articoli.md)
   - Building block prodotti: `ArticoloLookup.vue` cross-dominio + endpoint lookup
 - ~~Consolidamento WIP listini~~ — **FATTO** (6 aprile 2026)
-  - I due vecchi WIP `gestione-articoli-listini.md` + `gestione-listini.md` consolidati in sviluppo-listini.md (ora in [work-done](dev/work-done/sviluppo-listini-v1.md), superseded da [sviluppo-listini-v3.md](dev/work-in-progress/sviluppo-listini-v3.md))
+  - I due vecchi WIP `gestione-articoli-listini.md` + `gestione-listini.md` consolidati in sviluppo-listini.md (ora in [work-done](dev/work-done/sviluppo-listini-v1.md), superseded da [sviluppo-listini-v3.md](dev/work-done/sviluppo-listini-v3.md))
   - Estratte rettifiche prezzi (DB-L4) in [sviluppo-rettifiche.md](dev/work-in-progress/sviluppo-rettifiche.md)
 - ~~Drawer dedicato gestione permessi operatore~~ — **FATTO** (6 aprile 2026)
   - `OperatorePermessiTab` reso riutilizzabile (watch su `authUserId`)
@@ -575,7 +575,7 @@ Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-in-
   - Fase 3: 2 tabelle pratiche con `tstzrange`
   - Backend: ottimizzazione query repository (`validita @>` al posto dei doppi confronti)
   - Linee guida SQL: sezione 7b aggiunta
-  - Analisi: [migrazione-daterange.md](dev/work-in-progress/migrazione-daterange.md)
+  - Analisi: [migrazione-daterange.md](dev/work-done/migrazione-daterange.md)
 - ~~Listini v3 — Sprint B completo~~ — **FATTO** (12 aprile 2026)
   - **N8a** Variazione % massa su BOZZA (backend + frontend dialog + 9 test)
   - **N2** Alert scadenze versioni (backend + frontend widget badge + 2 test)
@@ -585,7 +585,7 @@ Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-in-
   - Avviso UX programmazione chiusura versione ATTIVA (`ProgrammaChiusuraDialog.vue`)
   - Documentazione: N3 lifecycle preventivo→commessa, N4 nota match_level 3, N8b guida "listino post-it"
   - 2 doc API create/aggiornate, error policies registrate, 1231 test totali
-  - Analisi: [sviluppo-listini-v3.md](dev/work-in-progress/sviluppo-listini-v3.md)
+  - Analisi: [sviluppo-listini-v3.md](dev/work-done/sviluppo-listini-v3.md)
 - ~~Emittenti fiscali CRUD + BA mapping + Utilities~~ — **FATTO** (8 aprile 2026)
   - Admin CRUD + sub-resource mapping BA + matrice utilities slot/override
   - BB `list_entity_utility_matrix` + `UtilityPerRuoloSelect`, validazione P.IVA

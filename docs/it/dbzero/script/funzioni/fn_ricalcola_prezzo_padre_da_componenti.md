@@ -17,7 +17,9 @@ DECLARE
 BEGIN
     -- Ricalcola prezzo_unitario del padre come somma pesata
     -- dei figli attivi: SUM(prezzo_unitario * coeff_qta_snapshot).
-    -- Se nessun figlio attivo, imposta 0 (COALESCE).
+    -- Se nessun figlio attivo: 0 (COALESCE).
+    -- Con form atomic prezzo_unitario e' sempre NOT NULL:
+    -- SUM standard e' sufficiente (no NULL propagation).
     v_sql := format(
         $q$UPDATE %1$I.%2$I
               SET prezzo_unitario = COALESCE((
@@ -37,7 +39,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(p_schema text, p_tab_padre text, p_tab_figli text, p_col_fk_padre text, p_riga_padre_id bigint)
-IS 'Helper generica BoM CASO A: aggiorna prezzo_unitario della riga padre come SUM(figli.prezzo_unitario * coeff_qta_snapshot) WHERE attivo=TRUE. Parametrizzata su schema/tabella/FK per riuso su 5 sorgenti. Chiamata da trgfn_componenti_ricalcola_padre.';
+IS 'Helper generica BoM CASO A: aggiorna prezzo_unitario della riga padre come COALESCE(SUM(figli.prezzo_unitario * coeff_qta_snapshot), 0) WHERE attivo=TRUE. Parametrizzata su schema/tabella/FK per riuso su 4 sorgenti. rev 12-05-2026b: ripristino SUM standard (form atomic — prezzo sempre NOT NULL).';
 ```
 
 ---

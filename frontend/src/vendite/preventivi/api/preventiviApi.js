@@ -85,6 +85,19 @@ export function getRiepilogoIva(preventivoId) {
 // Il prezzo della riga padre e' SUM(componenti × coeff_qta), ricalcolato dai
 // trigger DB a ogni mutazione del componente.
 
+// Form atomic 2026-05-12: preview pre-save dei componenti per il drawer riga.
+// Read-only: per ogni componente esposto del padre ritorna prezzo_suggerito
+// (NULL + resolver_error_reason se manca listino), origine_prezzo, qta.
+// Il FE pre-popola una tabella editabile; l'operatore valorizza eventuali
+// NULL prima del save (con autorizzazione `prezzo_override_manuale`).
+// Il payload del save include `componenti_overrides` con i prezzi manuali.
+export function previewRigaComponenti(preventivoId, payload) {
+  return api.post(
+    `${BASE}/${preventivoId}/righe/preview-componenti/`,
+    payload,
+  )
+}
+
 export function listRigaComponenti(preventivoId, rigaId) {
   return api.get(`${BASE}/${preventivoId}/righe/${rigaId}/componenti/`)
 }

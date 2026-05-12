@@ -222,7 +222,7 @@ Le tabelle con validita` temporale usano il pattern **colonne input + colonna ra
 **Regole**:
 
 * La colonna `validita` e` **sempre** calcolata dal trigger `script.trgfn_set_validita()` — mai scritta direttamente
-* Il trigger usa `COALESCE(valido_dal, '-infinity')` e `COALESCE(valido_al, 'infinity')` con bounds `[]`
+* Il trigger usa `COALESCE(valido_dal, '-infinity')` e `COALESCE(valido_al, 'infinity')` con bounds <code>[]</code>
   (PG canonicalizza in `[)` per date). `validita` non e` **mai** NULL
 * Per tabelle con colonne sorgente diverse (es. `data_inizio`/`data_fine`): trigger specifico nello schema di dominio
 * Per `TIMESTAMPTZ` usare `tstzrange` con bounds `[)` e trigger specifico
@@ -271,7 +271,7 @@ Quando una tabella ha **sia** una colonna `stato` (ciclo vita gestionale: es. `B
 4. **Sync stato -> data**: il framework parametrico **`dbops.fn_apply_chiusura_scadenze()`** + job pgAgent unico **`chiusura_scadenze_daily`** (00:05) esegue l'UPDATE massivo `stato = terminale` per le righe scadute (`valido_al < CURRENT_DATE`) su tutte le tabelle configurate. L'UPDATE attraversa il guard trigger e lo soddisfa per costruzione. Vedi sotto "Framework dbops.automazione_chiusura_scadenze".
 5. **Niente trigger di sync `valido_al` -> `stato`** e nessuna colonna generata: lo stato **non e'** derivato in tempo reale dalla data (es. l'utente puo' programmare `valido_al` futuro e lo stato resta ATTIVA finche' il job non scatta). La sincronizzazione e' asincrona e "cosmetica".
 6. **INSERT**: non vincolare l'INSERT con la matrice transizioni (per permettere seed/import con stati diretti). Il guard scatta solo su UPDATE OF stato.
-7. **Semantica `valido_al`**: ultimo giorno **incluso** (convenzione `script.trgfn_set_validita`, bounds `[]` canonicalizzati a `[)`). Esempio: `valido_al = 2026-04-26` → la riga e' operativamente valida fino al 2026-04-26 23:59:59, scade dal 2026-04-27. Conseguenza: la query `valido_al < CURRENT_DATE` chiude **dal giorno successivo** a `valido_al` — schedule 00:05 cattura al primo momento utile dopo il cambio data.
+7. **Semantica `valido_al`**: ultimo giorno **incluso** (convenzione `script.trgfn_set_validita`, bounds <code>[]</code> canonicalizzati a <code>[)</code>). Esempio: `valido_al = 2026-04-26` → la riga e' operativamente valida fino al 2026-04-26 23:59:59, scade dal 2026-04-27. Conseguenza: la query `valido_al < CURRENT_DATE` chiude **dal giorno successivo** a `valido_al` — schedule 00:05 cattura al primo momento utile dopo il cambio data.
 
 #### Framework `dbops.automazione_chiusura_scadenze` (post 26-04-2026)
 

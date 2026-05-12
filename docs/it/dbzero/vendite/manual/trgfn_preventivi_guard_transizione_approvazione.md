@@ -17,13 +17,13 @@
 >
 > [Sviluppo Listini v5 §14.6](/dev/work-in-progress/sviluppo-listini-v5) — workflow L3 approvazione out-of-policy
 
-La trigger function **`vendite.trgfn_preventivi_guard_transizione_approvazione()`** blinda la finalizzazione commerciale del preventivo: **impedisce la transizione allo stato `ACCETTATO` se esistono righe con `stato_approvazione_prezzo = 'PENDING'`**, ovvero richieste L3 di override prezzo ancora in attesa di esito.
+La trigger function **`vendite.trgfn_preventivi_guard_transizione_approvazione()`** blinda la finalizzazione commerciale del preventivo: **impedisce la transizione allo stato `ACCETTATO`** se esistono righe con `stato_approvazione_prezzo = 'PENDING'` (richieste L3 in attesa di esito).
 
 ---
 
 ### 🎯 Scopo Principale
 
-(latest revision 22-04-2026, Sprint E listini v5 §14.6)
+(latest revision 12-05-2026b — form atomic: rimosso Check 3 prezzo NULL; Sprint E listini v5 §14.6)
 
 - **Garanzia di coerenza commerciale** — un preventivo ACCETTATO e' un impegno vincolante: non puo' essere finalizzato mentre ci sono prezzi "proposti ma non approvati". Il workflow L3 deve esitare (APPROVED o REJECTED) o essere annullato (clear a NULL) prima della accettazione.
 - **Point-of-no-return** — l'accettazione apre la pipeline commerciale (ordini, fatturazione, commesse). Richieste pendenti su prezzi sarebbero ambigue downstream.
@@ -35,12 +35,13 @@ La trigger function **`vendite.trgfn_preventivi_guard_transizione_approvazione()
 
 1. Risolve il `codice_interno` dello stato target (`NEW.stato_doc_preventivo_id`) via lookup su `config.stati_doc_preventivi`.
 2. **Early return** se il nuovo stato e' diverso da `'ACCETTATO'` — il guard ha scopo limitato alla transizione finale. Transizioni a `DRAFT`, `EMESSO`, `RIFIUTATO`, `SCADUTO`, `ANNULLATO` non hanno vincoli su workflow approvazione.
-3. Se nuovo stato e' `ACCETTATO`: controlla `EXISTS` righe in `preventivi_righe` con `preventivo_id = NEW.id` e `stato_approvazione_prezzo = 'PENDING'`. Se esistono, raise.
+3. **Check 1 — righe PENDING** (invariante pricing L3): controlla `EXISTS` righe in `preventivi_righe` con `preventivo_id = NEW.id` e `stato_approvazione_prezzo = 'PENDING'`. Se esistono, raise `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`.
+4. **Check 2 — componenti BoM PENDING approvazione**: controlla `EXISTS` in `preventivi_righe_componenti` (via JOIN su `preventivi_righe`) con `stato_approvazione_prezzo = 'PENDING'`. Se esistono, raise `E_PREVENTIVO_RIGHE_PRICING_PENDENTI`.
 
-Context payload JSONB:
+Context payload JSONB (comune ai check 1-2):
 
 - `preventivo_id` — l'id del preventivo che sta tentando la transizione
-- `hint` — suggerimento UX (attendi esito / rifiuta richiesta)
+- `hint` — suggerimento UX contestuale al check che ha fallito
 
 Il messaggio include il `preventivo_id` formattato via `%s` dal CSV `messaggi_errore`.
 
@@ -73,15 +74,16 @@ Specifiche:
 
 ---
 
-### Codice errore sollevato
+### Codici errore sollevati
 
-**`E_PREVENTIVO_RIGHE_PRICING_PENDENTI`** (id 389) — `config.messaggi_errore` CSV. Seminato in `20260422` con il trigger.
+| Check   | Codice                                | id  | Quando                                                     |
+| ------- | ------------------------------------- | --- | ---------------------------------------------------------- |
+| Check 1 | `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` | 389 | Righe con `stato_approvazione_prezzo = 'PENDING'`          |
+| Check 2 | `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` | 389 | Componenti BoM con `stato_approvazione_prezzo = 'PENDING'` |
 
-Messaggio: `"Preventivo <id>: impossibile transire ad ACCETTATO, esistono righe con prezzo in attesa di approvazione."`.
+**`E_PREVENTIVO_RIGHE_PRICING_PENDENTI`** — Seminato in `20260422`. Messaggio: `"Preventivo <id>: impossibile transire ad ACCETTATO, esistono righe con prezzo in attesa di approvazione."`. Soluzione: attendere l'esito dell'approvazione pendente oppure rifiutare la richiesta.
 
-Causa (CSV): Il workflow approvazione prezzo out-of-policy richiede che tutte le richieste L3 siano esitate prima della finalizzazione.
-
-Soluzione suggerita (CSV): attendere l'esito dell'approvazione pendente (dashboard approvazioni) oppure rifiutare la richiesta.
+> Con il pattern form atomic (rev. 12-05-2026b), `prezzo_unitario` è sempre NOT NULL prima del save: il Check 3 sul prezzo NULL (aggiunto da opzione A relaxed il 12-05-2026a) è stato rimosso.
 
 ---
 

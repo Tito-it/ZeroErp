@@ -1,0 +1,32 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20260513-01-delete-messaggi-errore-deprecati-bom
+      author: mctit
+      logicalFilePath: db/changelog/migrations_v2/80_data/changelog/20260513-01-delete-messaggi-errore-deprecati-bom-mctit.yaml
+      comment: >
+        Rimozione fisica dei codici errore BoM deprecati dal modello unificato
+        (refactor 2026-05-13). Rimossi: E_DOC_COMPONENTE_NON_ESPOSTO (436) —
+        gate esposto_in_fattura abbandonato; E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE
+        (441) — opzione A relaxed mai entrata in produzione.
+        Il CSV messaggi_errore.csv non include piu' questi ID: questa migration
+        esegue la DELETE fisica poiche' loadUpdateData non elimina righe orfane.
+      failOnError: true
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: config
+            tableName: messaggi_errore
+      changes:
+        - sql:
+            sql: |
+              DELETE FROM config.messaggi_errore
+               WHERE id IN (436, 441);

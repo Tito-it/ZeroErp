@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# ROLLBACK opzione A relaxed — ripristina fn_ricalcola_prezzo_padre_da_componenti
+# a SUM standard (senza NULL propagation introdotta in 20260512-12).
+#
+# Con form atomic prezzo_unitario e' sempre NOT NULL -> SUM standard
+# e' nuovamente sufficiente. COALESCE gestisce il caso nessun componente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260512-31-update-fn-ricalcola-prezzo-padre-da-componenti-revert-null-mctit.yaml
+
+  - changeSet:
+      id: 20260512-31-update-fn-ricalcola-prezzo-padre-da-componenti-revert-null
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Ripristina fn_ricalcola_prezzo_padre_da_componenti a COALESCE(SUM, 0).
+        Rimuove CASE NULL propagation (20260512-12): non necessario con form atomic.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_ricalcola_prezzo_padre_da_componenti'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(
+                  p_schema        text,
+                  p_tab_padre     text,
+                  p_tab_figli     text,
+                  p_col_fk_padre  text,
+                  p_riga_padre_id BIGINT
+              ) RETURNS VOID
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sql text;
+              BEGIN
+                  -- Ricalcola prezzo_unitario del padre come somma pesata
+                  -- dei figli attivi: SUM(prezzo_unitario * coeff_qta_snapshot).
+                  -- Se nessun figlio attivo: 0 (COALESCE).
+                  -- Con form atomic prezzo_unitario e' sempre NOT NULL:
+                  -- SUM standard e' sufficiente (no NULL propagation).
+                  v_sql := format(
+                      $q$UPDATE %1$I.%2$I
+                            SET prezzo_unitario = COALESCE((
+                                SELECT SUM(c.prezzo_unitario * c.coeff_qta_snapshot)
+                                  FROM %1$I.%3$I c
+                                 WHERE c.%4$I = $1
+                                   AND c.attivo = TRUE
+                            ), 0)
+                          WHERE id = $1$q$,
+                      p_schema,
+                      p_tab_padre,
+                      p_tab_figli,
+                      p_col_fk_padre
+                  );
+                  EXECUTE v_sql USING p_riga_padre_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(text, text, text, text, bigint)
+              IS 'Helper generica BoM CASO A: aggiorna prezzo_unitario della riga padre come COALESCE(SUM(figli.prezzo_unitario * coeff_qta_snapshot), 0) WHERE attivo=TRUE. Parametrizzata su schema/tabella/FK per riuso su 4 sorgenti. rev 12-05-2026b: ripristino SUM standard (form atomic — prezzo sempre NOT NULL).';

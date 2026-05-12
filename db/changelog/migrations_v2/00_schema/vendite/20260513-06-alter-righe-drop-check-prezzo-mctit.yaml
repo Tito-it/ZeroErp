@@ -1,0 +1,222 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260513-06-alter-righe-drop-check-prezzo-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Rilassamento CHECK prezzo_unitario su *_righe_componenti e *_righe
+  # (modello unificato BoM 2026-05-13, §3).
+  #
+  # *_righe_componenti (4 tabelle): CHECK (<> 0) universale rimosso.
+  #   Sostituito da trigger script.trgfn_componenti_check_prezzo_obbligatorio
+  #   (migration 20260513-07) che blocca SOLO prezzo=0 per obbligatori.
+  #   Opzionali e padre composito ammettono 0 e negativi.
+  #
+  # *_righe padre (2 tabelle con constraint esistente):
+  #   preventivi_righe: chk_prevrighe_quantita_prezzo (quantita>0 AND prezzo>=0)
+  #     -> ricreato come chk_prevrighe_quantita_pos (solo quantita>0)
+  #   ordini_righe: chk_ordini_v_r_prezzo_pos (prezzo>=0) -> DROP senza sostituto
+  #   ddt_righe, contratti_righe: nessun constraint prezzo esistente -> noop
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260513-06-01-alter-prevrighe-comp-drop-check-prezzo
+      author: mctit
+      comment: >
+        preventivi_righe_componenti: DROP CHECK chk_prevrighe_comp_prezzo_nonneg
+        (<> 0). Sostituito da trigger prezzo obbligatorio (20260513-07).
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: preventivi_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_constraint c
+                  JOIN pg_class r ON r.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = r.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND r.relname = 'preventivi_righe_componenti'
+                   AND c.conname = 'chk_prevrighe_comp_prezzo_nonneg';
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  DROP CONSTRAINT chk_prevrighe_comp_prezzo_nonneg;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  ADD CONSTRAINT chk_prevrighe_comp_prezzo_nonneg
+                  CHECK (prezzo_unitario <> 0);
+
+  - changeSet:
+      id: 20260513-06-02-alter-ordrighe-comp-drop-check-prezzo
+      author: mctit
+      comment: >
+        ordini_righe_componenti: DROP CHECK chk_ordrighe_comp_prezzo_nonneg (<> 0).
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ordini_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_constraint c
+                  JOIN pg_class r ON r.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = r.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND r.relname = 'ordini_righe_componenti'
+                   AND c.conname = 'chk_ordrighe_comp_prezzo_nonneg';
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.ordini_righe_componenti
+                  DROP CONSTRAINT chk_ordrighe_comp_prezzo_nonneg;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.ordini_righe_componenti
+                  ADD CONSTRAINT chk_ordrighe_comp_prezzo_nonneg
+                  CHECK (prezzo_unitario <> 0);
+
+  - changeSet:
+      id: 20260513-06-03-alter-ddtrighe-comp-drop-check-prezzo
+      author: mctit
+      comment: >
+        ddt_righe_componenti: DROP CHECK chk_ddtrighe_comp_prezzo_nonneg (<> 0).
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ddt_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_constraint c
+                  JOIN pg_class r ON r.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = r.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND r.relname = 'ddt_righe_componenti'
+                   AND c.conname = 'chk_ddtrighe_comp_prezzo_nonneg';
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.ddt_righe_componenti
+                  DROP CONSTRAINT chk_ddtrighe_comp_prezzo_nonneg;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.ddt_righe_componenti
+                  ADD CONSTRAINT chk_ddtrighe_comp_prezzo_nonneg
+                  CHECK (prezzo_unitario <> 0);
+
+  - changeSet:
+      id: 20260513-06-04-alter-contrighe-comp-drop-check-prezzo
+      author: mctit
+      comment: >
+        contratti_righe_componenti: DROP CHECK chk_contrighe_comp_prezzo_nonneg (<> 0).
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: contratti_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_constraint c
+                  JOIN pg_class r ON r.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = r.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND r.relname = 'contratti_righe_componenti'
+                   AND c.conname = 'chk_contrighe_comp_prezzo_nonneg';
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.contratti_righe_componenti
+                  DROP CONSTRAINT chk_contrighe_comp_prezzo_nonneg;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.contratti_righe_componenti
+                  ADD CONSTRAINT chk_contrighe_comp_prezzo_nonneg
+                  CHECK (prezzo_unitario <> 0);
+
+  - changeSet:
+      id: 20260513-06-05-alter-prevrighe-regen-check-quantita
+      author: mctit
+      comment: >
+        preventivi_righe: DROP chk_prevrighe_quantita_prezzo (quantita>0 AND prezzo>=0),
+        ADD chk_prevrighe_quantita_pos (quantita>0 solo). Prezzo composito puo'
+        essere 0 o negativo (SUM figli con segni misti).
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: preventivi_righe
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_constraint c
+                  JOIN pg_class r ON r.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = r.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND r.relname = 'preventivi_righe'
+                   AND c.conname = 'chk_prevrighe_quantita_prezzo';
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  DROP CONSTRAINT chk_prevrighe_quantita_prezzo;
+
+              ALTER TABLE vendite.preventivi_righe
+                  ADD CONSTRAINT chk_prevrighe_quantita_pos
+                  CHECK (quantita > 0);
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  DROP CONSTRAINT IF EXISTS chk_prevrighe_quantita_pos;
+              ALTER TABLE vendite.preventivi_righe
+                  ADD CONSTRAINT chk_prevrighe_quantita_prezzo
+                  CHECK (quantita > 0 AND prezzo_unitario >= 0);
+
+  - changeSet:
+      id: 20260513-06-06-alter-ordrighe-drop-check-prezzo-pos
+      author: mctit
+      comment: >
+        ordini_righe: DROP chk_ordini_v_r_prezzo_pos (prezzo>=0). Prezzo composito
+        puo' essere negativo (SUM figli con segni misti).
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ordini_righe
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_constraint c
+                  JOIN pg_class r ON r.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = r.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND r.relname = 'ordini_righe'
+                   AND c.conname = 'chk_ordini_v_r_prezzo_pos';
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.ordini_righe
+                  DROP CONSTRAINT chk_ordini_v_r_prezzo_pos;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.ordini_righe
+                  ADD CONSTRAINT chk_ordini_v_r_prezzo_pos
+                  CHECK (prezzo_unitario >= 0);

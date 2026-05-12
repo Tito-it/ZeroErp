@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Form singola riga preventivo — articolo (autocomplete), UoM, quantita', prezzo, sconto, IVA.
 // Il prezzo viene proposto dal listino ma e' sempre sovrascrivibile dall'operatore.
-import { ref, watch, computed, onMounted } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
@@ -9,7 +9,9 @@ import { usePreventiviStore } from '../stores/preventivi'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
 import { useAuthStore } from '../../../stores/auth'
-import { suggerisciPrezzoRiga } from '../api/preventiviApi'
+import { suggerisciPrezzoRiga, previewRigaComponenti } from '../api/preventiviApi'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/utils/severity'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
 import { PRICING_ACTIONS } from '../../constants'
@@ -40,7 +42,9 @@ const isEdit = computed(() => props.riga != null)
 
 // Refactor componenti 2026-05-11: rilevamento riga padre CASO A. Flag derivato
 // dal BE list_righe (EXISTS subquery su preventivi_righe_componenti attivi).
-// In create il flag e' undefined: la sezione componenti compare solo in edit.
+// In create il flag e' undefined: la sezione componenti compare solo in edit
+// (form atomic 2026-05-12: in CREATE i componenti sono raccolti via preview
+// + tabella editabile pre-save, gestiti separatamente — TODO Fase 6).
 const isCasoA = computed(() => isEdit.value && !!props.riga?.is_composito_caso_a)
 
 const form = ref({
@@ -147,6 +151,15 @@ watch(
 // Articolo selezionato (per restore autocomplete)
 const articoloObj = ref(null)
 
+// Unifica EDIT CASO A (riga padre composita persistita) e CREATE composito
+// (lookup ritorna is_composito=true): in entrambi i casi il prezzo padre
+// non e' rappresentativo (e' SUM(componenti × coeff_qta) calcolato dai
+// trigger DB) e il resolver del singolo articolo non va chiamato — per
+// admin globali solleverebbe E_PREV_VALIDAZIONE su emittente mancante.
+const isPadreComposito = computed(
+  () => isCasoA.value || articoloObj.value?.is_composito === true,
+)
+
 // UoM operative dell'articolo (pattern VersioneDrawer/ContrattoRigheDrawer):
 // le UoM ammesse per la riga sono solo quelle definite a livello articolo,
 // non l'intero catalogo.unita_misura. Caricate al cambio articolo.
@@ -166,6 +179,153 @@ async function caricaUomConPickBase(articoloId) {
   if (!isEdit.value && !form.value.uom_operativa_id) {
     form.value.uom_operativa_id = pickBaseUomId(list)
   }
+}
+
+// Form atomic 2026-05-12: preview componenti CASO A in CREATE.
+// Quando l'operatore seleziona un articolo composito (lookup ritorna
+// is_composito=true), un debounced fetch chiama il preview BE che ritorna
+// la lista dei componenti esposti con prezzi suggeriti (NULL se manca
+// listino). Il form mostra una tabella editabile sotto: l'operatore
+// valorizza eventuali NULL e/o modifica i suggeriti, poi al Save il
+// payload include `componenti_overrides` con SOLO i prezzi modificati
+// rispetto al suggerito (gli altri restano governati dal resolver lato
+// fn DB init).
+// NB: questo blocco DEVE stare dopo le dichiarazioni di `form` e
+// `articoloObj`: anche senza `immediate: true`, Vue 3 valuta sincronamente
+// il source-getter dei watch in setup() per memorizzare l'old value
+// iniziale -> accedere a `form`/`articoloObj` prima della loro `const`
+// scatena un ReferenceError TDZ che fa crashare il setup del componente.
+const componentiPreview = ref([])
+const componentiPreviewLoading = ref(false)
+const componentiPreviewError = ref(null)
+// Mappa locale prezzi modificati: componente_id -> prezzo (number).
+// I componenti con prezzo_suggerito=NULL hanno SEMPRE un'entry qui (anche
+// vuota) per renderli "obbligatori da valorizzare".
+const componentiOverrides = ref({})
+let _previewToken = 0
+
+const showComponentiPreview = computed(
+  () => !isEdit.value
+    && articoloObj.value?.is_composito === true
+    && !!form.value.articolo_id
+    && !!form.value.uom_operativa_id
+    && (form.value.quantita || 0) > 0,
+)
+
+async function caricaComponentiPreview() {
+  if (!showComponentiPreview.value) {
+    componentiPreview.value = []
+    componentiOverrides.value = {}
+    componentiPreviewError.value = null
+    return
+  }
+  const tk = ++_previewToken
+  componentiPreviewLoading.value = true
+  componentiPreviewError.value = null
+  try {
+    const res = await previewRigaComponenti(props.preventivoId, {
+      articolo_id: form.value.articolo_id,
+      uom_operativa_id: form.value.uom_operativa_id,
+      quantita: form.value.quantita,
+    })
+    if (tk !== _previewToken) return
+    const rows = res.data?.data ?? []
+    componentiPreview.value = rows
+    // Inizializza la mappa overrides con i suggeriti (modificabile).
+    // Componenti senza listino (NULL) restano vuoti -> operatore obbligato
+    // a inserire prima del save.
+    const init = {}
+    for (const c of rows) {
+      init[c.componente_id] = c.prezzo_suggerito != null ? Number(c.prezzo_suggerito) : null
+    }
+    componentiOverrides.value = init
+  } catch (err) {
+    if (tk !== _previewToken) return
+    componentiPreviewError.value = extractApiError(err, t('preventivi.componenti_errore_caricamento'))
+    componentiPreview.value = []
+    componentiOverrides.value = {}
+  } finally {
+    if (tk === _previewToken) componentiPreviewLoading.value = false
+  }
+}
+
+// Watch su (articolo, uom, qty) per ri-fetchare preview a ogni cambio
+// significativo. Non in EDIT (isEdit guard dentro showComponentiPreview).
+// Debounce 300ms: il `quantita` cambia ad ogni keystroke su InputNumber e
+// senza debounce la POST partirebbe per ogni cifra digitata (martellio BE).
+// Il token interno (_previewToken) protegge gia' dalle risposte stantie,
+// ma non evita le richieste; setTimeout + clearTimeout taglia il rumore.
+// Pattern coerente con SearchDrawer.vue e SoggettoResolver.vue.
+let _previewDebounceTimer = null
+watch(
+  () => [form.value.articolo_id, form.value.uom_operativa_id, form.value.quantita],
+  () => {
+    if (_previewDebounceTimer) clearTimeout(_previewDebounceTimer)
+    _previewDebounceTimer = setTimeout(() => {
+      _previewDebounceTimer = null
+      caricaComponentiPreview()
+    }, 300)
+  },
+)
+onUnmounted(() => {
+  if (_previewDebounceTimer) clearTimeout(_previewDebounceTimer)
+})
+
+// Helper template: prezzo originalmente suggerito dal preview (per confronto).
+function getPrezzoSuggerito(comp) {
+  return comp.prezzo_suggerito != null ? Number(comp.prezzo_suggerito) : null
+}
+
+// Helper template: setta il prezzo override locale (callback InputNumber).
+function setComponenteOverride(componenteId, val) {
+  componentiOverrides.value = { ...componentiOverrides.value, [componenteId]: val }
+}
+
+// Helper: blocca il Save se almeno un componente non ha un prezzo valido.
+// Casi bloccanti:
+//  - showComponentiPreview true + preview in errore (la fn DB preview ha
+//    fallito → dati incompleti, non possiamo dedurre i componenti). Senza
+//    questo guard il Save procederebbe e il path init lato DB potrebbe
+//    rompersi a meta' transazione con errori criptici.
+//  - showComponentiPreview true + preview vuota (articolo composito senza
+//    componenti esposti dovrebbe essere impossibile, ma il guard previene
+//    bug a monte).
+//  - resolver fail (prezzo_suggerito NULL) + override vuoto/non valorizzato
+//  - override === 0 in qualsiasi caso (CHECK DB `<> 0` su prezzo componente:
+//    senza guard FE l'operatore scoprirebbe il vincolo solo al Save con un
+//    errore criptico). Coerente col CHECK *_righe_componenti_prezzo.
+const componentiPreviewBloccato = computed(() => {
+  if (!showComponentiPreview.value) return false
+  if (componentiPreviewLoading.value) return true
+  if (componentiPreviewError.value) return true
+  if (componentiPreview.value.length === 0) return true
+  for (const c of componentiPreview.value) {
+    const override = componentiOverrides.value[c.componente_id]
+    const overrideMissing = override == null || override === ''
+    if (c.prezzo_suggerito == null && overrideMissing) return true
+    if (!overrideMissing && Number(override) === 0) return true
+  }
+  return false
+})
+
+// Build mappa componenti_overrides per il payload Save: include SOLO i
+// componenti il cui prezzo finale differisce dal suggerito (o ha prezzo
+// suggerito NULL). Gli altri restano resolver-driven lato fn DB.
+function buildComponentiOverridesPayload() {
+  const out = {}
+  for (const c of componentiPreview.value) {
+    const override = componentiOverrides.value[c.componente_id]
+    if (override == null || override === '') continue  // skip non valorizzati
+    const suggerito = c.prezzo_suggerito != null ? Number(c.prezzo_suggerito) : null
+    if (suggerito == null) {
+      // Resolver fail: l'operatore DEVE aver inserito il prezzo manuale.
+      out[c.componente_id] = String(override)
+    } else if (Math.abs(Number(override) - suggerito) > 1e-6) {
+      // Operatore ha modificato il suggerito: invia come override.
+      out[c.componente_id] = String(override)
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null
 }
 
 // State usato da suggerisciPrezzo(): DEVE stare prima del watch `immediate`
@@ -259,7 +419,11 @@ const prezzoOrigineBadge = computed(() => {
 async function suggerisciPrezzo() {
   if (!props.preventivoId) return
   if (!form.value.articolo_id || !form.value.uom_operativa_id) return
-  if (isCasoA.value) return
+  // Skip per articoli compositi (CASO A in EDIT, lookup is_composito in
+  // CREATE): il prezzo padre e' SUM componenti via trigger DB, il resolver
+  // del singolo articolo non va chiamato — per admin globali solleverebbe
+  // E_PREV_VALIDAZIONE su emittente mancante.
+  if (isPadreComposito.value) return
   // Auto-apply: in CREATE, e solo se il campo prezzo e' vuoto (rispetto
   // override manuale). In EDIT non scriviamo mai sul form: la riga ha
   // gia' un prezzo persistito, ma vogliamo COMUNQUE chiamare il resolver
@@ -327,8 +491,15 @@ const canSave = computed(() => {
   if (!f.articolo_id) return false
   if (!f.uom_operativa_id) return false
   if (!(f.quantita > 0)) return false
-  if (f.prezzo_unitario == null || f.prezzo_unitario === '') return false
+  // Per articoli compositi (CREATE composito o EDIT CASO A) il prezzo
+  // padre e' SUM(componenti × coeff_qta) ricalcolato dai trigger DB:
+  // non lo richiediamo nel payload e non lo validiamo qui.
+  if (!isPadreComposito.value && (f.prezzo_unitario == null || f.prezzo_unitario === '')) return false
   if (!f.iva_id) return false
+  // Form atomic 2026-05-12: in CREATE su articolo composito CASO A, blocca
+  // il save se la preview ha componenti senza listino + senza override
+  // valorizzato dall'operatore.
+  if (componentiPreviewBloccato.value) return false
   return true
 })
 
@@ -352,17 +523,28 @@ function buildRigaPayload(extras = {}) {
     }
     return { ...base, ...extras }
   }
-  return {
+  // CREATE: include componenti_overrides quando l'articolo e' composito
+  // (form atomic 2026-05-12). buildComponentiOverridesPayload() ritorna
+  // null se nessuna modifica/valorizzazione → il BE/DB usa solo resolver.
+  const overrides = showComponentiPreview.value ? buildComponentiOverridesPayload() : null
+  const payload = {
     articolo_id: f.articolo_id,
     descrizione: f.descrizione || null,
     quantita: f.quantita,
-    prezzo_unitario: f.prezzo_unitario,
     sconto_percentuale: f.sconto_percentuale,
     iva_id: f.iva_id,
     uom_operativa_id: f.uom_operativa_id,
     ordine: f.ordine,
     ...extras,
   }
+  // Articolo composito CREATE: il prezzo padre e' SUM(componenti) via
+  // trigger DB — non inviarlo (verrebbe sovrascritto). Stesso pattern
+  // di EDIT CASO A. Per articoli semplici lo inviamo regolarmente.
+  if (!isPadreComposito.value) {
+    payload.prezzo_unitario = f.prezzo_unitario
+  }
+  if (overrides) payload.componenti_overrides = overrides
+  return payload
 }
 
 // Scopo: invia il payload riga al backend, gestendo edit vs create.
@@ -450,14 +632,14 @@ async function handleRichiediApprovazione() {
             :severity="prezzoOrigineBadge.severity"
             :value="t(prezzoOrigineBadge.key)"
             v-tooltip.top="t('preventivi.badge_origine_tooltip', { origine: prezzoOrigine })" />
-          <Tag v-if="isCasoA"
+          <Tag v-if="isPadreComposito"
             severity="secondary"
             :value="t('preventivi.componenti_padre_calcolato')"
             v-tooltip.top="t('preventivi.componenti_section_hint')" />
         </label>
         <InputNumber v-model="form.prezzo_unitario" mode="currency" currency="EUR" locale="it-IT"
           :min-fraction-digits="6" :max-fraction-digits="6"
-          :disabled="isCasoA" />
+          :disabled="isPadreComposito" />
         <small class="text-color-secondary">{{ limitiPricingText }}</small>
       </div>
       <!-- Prezzo listino: cella visibile accanto al prezzo editabile.
@@ -469,7 +651,7 @@ async function handleRichiediApprovazione() {
            Nascosta per righe CASO A: il padre non ha un singolo prezzo
            listino (e' SUM componenti); il riferimento listino e' sui singoli
            componenti, mostrato nel pannello sotto. -->
-      <div v-if="!isCasoA" class="form-field">
+      <div v-if="!isPadreComposito" class="form-field">
         <label style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
           <span>{{ t('preventivi.riga_prezzo_listino') }}</span>
           <Button
@@ -539,29 +721,79 @@ async function handleRichiediApprovazione() {
       </div>
     </Message>
 
-    <!-- Sezione componenti BoM CASO A (refactor 2026-05-11): visibile solo
-         per righe padre composite con componenti esposti in fattura. Il
-         prezzo padre sopra e' calcolato dai trigger DB come SUM(componenti
-         × coeff_qta) — il PATCH del prezzo componente ricalcola anche il
-         padre. Pannello in edit mode: prezzo InputNumber + Save + cestino.
-         L1/L2 sui componenti applicate lato BE (stessi parametri della riga
-         padre). -->
+    <!-- Sezione componenti BoM CASO A: due rendering distinti.
+         (1) EDIT (isCasoA): pannello componenti già persistiti, modifica prezzo
+             per singolo componente via PATCH (Panel readonly=false).
+         (2) CREATE form atomic 2026-05-12: preview pre-save con tabella
+             editabile. Operatore valorizza prezzi mancanti (override
+             autorizzato), Save include `componenti_overrides` che la fn DB
+             init applica. -->
     <div v-if="isCasoA" class="app-drawer-section" style="margin-top: 1rem;">
       <h4 style="margin: 0 0 0.5rem 0; font-size: 1rem;">
         {{ t('preventivi.componenti_section_title') }}
       </h4>
-      <!-- @changed dal panel: NON propagare come `saved` (chiuderebbe il form
-           durante l'edit di altri componenti). Propaga come `componenti-changed`
-           per consentire al parent di ricaricare le righe in background
-           senza chiudere. Il display di prezzo padre nel form resta
-           leggermente stale (tag "Calcolato dai componenti" lo segnala) fino
-           alla chiusura del form: il padre prezzo viene aggiornato dal trigger
-           DB SUM su ogni componente PATCH/DELETE. -->
       <PreventiviRigaComponentiPanel
         :preventivo-id="preventivoId"
         :riga-id="props.riga.id"
         :readonly="false"
         @changed="emit('componenti-changed')" />
+    </div>
+    <div v-if="showComponentiPreview" class="app-drawer-section" style="margin-top: 1rem;">
+      <h4 style="margin: 0 0 0.25rem 0; font-size: 1rem;">
+        {{ t('preventivi.componenti_preview_titolo') }}
+      </h4>
+      <small style="display: block; color: var(--app-text-muted); margin-bottom: 0.5rem;">
+        {{ t('preventivi.componenti_preview_hint') }}
+      </small>
+      <div v-if="componentiPreviewLoading" style="padding: 0.5rem;">
+        <i class="pi pi-spin pi-spinner" /> {{ t('common.loading') }}
+      </div>
+      <Message v-else-if="componentiPreviewError" severity="error" :closable="false">
+        {{ componentiPreviewError }}
+      </Message>
+      <Message v-else-if="componentiPreview.length === 0" severity="warn" :closable="false">
+        {{ t('preventivi.componenti_non_caso_a') }}
+      </Message>
+      <DataTable v-else-if="componentiPreview.length > 0"
+        :value="componentiPreview" size="small" class="app-datatable" data-key="componente_id">
+        <Column field="componente_codice" :header="t('preventivi.componenti_col_codice')" style="width: 160px;" />
+        <Column field="componente_descrizione" :header="t('preventivi.componenti_col_descrizione')" style="min-width: 180px;" />
+        <Column :header="t('preventivi.componenti_col_qta')" style="width: 90px;">
+          <template #body="{ data }">{{ data.quantita_componente }}</template>
+        </Column>
+        <Column field="uom_codice" :header="t('preventivi.componenti_col_uom')" style="width: 70px;" />
+        <Column :header="t('preventivi.componenti_col_prezzo_suggerito')" style="width: 150px;">
+          <template #body="{ data }">
+            <span v-if="getPrezzoSuggerito(data) != null">
+              {{ new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', minimumFractionDigits: 6, maximumFractionDigits: 6 }).format(data.prezzo_suggerito) }}
+            </span>
+            <Tag v-else severity="warn"
+              :value="t('preventivi.componenti_preview_listino_mancante')" />
+          </template>
+        </Column>
+        <Column :header="t('preventivi.componenti_col_prezzo_finale')" style="width: 180px;">
+          <template #body="{ data }">
+            <InputNumber
+              :model-value="componentiOverrides[data.componente_id]"
+              mode="currency" currency="EUR" locale="it-IT"
+              :min-fraction-digits="6" :max-fraction-digits="6"
+              :disabled="!canOverride && getPrezzoSuggerito(data) != null"
+              @update:model-value="(v) => setComponenteOverride(data.componente_id, v)"
+              style="width: 140px;" />
+          </template>
+        </Column>
+        <Column :header="t('preventivi.componenti_col_origine')" style="width: 130px;">
+          <template #body="{ data }">
+            <Tag v-if="data.origine_prezzo"
+              :severity="pricingOrigineSeverity(data.origine_prezzo)"
+              :value="t(pricingOrigineLabelKey(data.origine_prezzo) || 'preventivi.badge_origine_manuale')" />
+          </template>
+        </Column>
+      </DataTable>
+      <Message v-if="componentiPreviewBloccato && !canOverride"
+        severity="warn" :closable="false" style="margin-top: 0.5rem;">
+        {{ t('preventivi.componenti_preview_richiede_override') }}
+      </Message>
     </div>
 
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">

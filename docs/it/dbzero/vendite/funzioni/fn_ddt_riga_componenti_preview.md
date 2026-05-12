@@ -1,0 +1,67 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_ddt_riga_componenti_preview.md" %}
+# ⚙️ Funzione `fn_ddt_riga_componenti_preview`
+
+```sql
+CREATE FUNCTION fn_ddt_riga_componenti_preview(p_articolo_id uuid, p_uom_id bigint, p_quantita_padre numeric, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_sr_id bigint, p_classe_utenza_id integer)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_ddt_riga_componenti_preview(p_articolo_id uuid, p_uom_id bigint, p_quantita_padre numeric, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_sr_id bigint, p_classe_utenza_id integer DEFAULT NULL::integer)
+ RETURNS TABLE(articolo_componente_id uuid, componente_id uuid, componente_codice character varying, componente_descrizione character varying, coeff_qta_snapshot numeric, quantita_componente numeric, uom_id bigint, uom_codice character varying, iva_id bigint, prezzo_suggerito numeric, origine_prezzo character varying, resolver_error_reason text)
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+DECLARE
+    v_rec     record;
+    v_resolve record;
+BEGIN
+    FOR v_rec IN
+        SELECT ac.id AS bom_entry_id, ac.componente_id, ac.coeff_qta,
+               a.codice AS a_codice, a.descrizione AS a_descrizione,
+               a.uom_id AS a_uom_id, a.iva_id AS a_iva_id,
+               um.codice AS um_codice
+          FROM catalogo.articoli_componenti ac
+          JOIN catalogo.articoli a ON a.id = ac.componente_id
+          LEFT JOIN catalogo.unita_misura um ON um.id = a.uom_id
+         WHERE ac.prodotto_id        = p_articolo_id
+           AND ac.esposto_in_fattura = TRUE
+           AND COALESCE(ac.attivo, TRUE) = TRUE
+           AND ac.validita           @> p_data_riferimento
+    LOOP
+        articolo_componente_id := v_rec.bom_entry_id;
+        componente_id          := v_rec.componente_id;
+        componente_codice      := v_rec.a_codice;
+        componente_descrizione := v_rec.a_descrizione;
+        coeff_qta_snapshot     := v_rec.coeff_qta;
+        quantita_componente    := v_rec.coeff_qta * p_quantita_padre;
+        uom_id                 := v_rec.a_uom_id;
+        uom_codice             := v_rec.um_codice;
+        iva_id                 := v_rec.a_iva_id;
+
+        BEGIN
+            SELECT * INTO v_resolve
+              FROM vendite.fn_resolve_prezzo_listino_v2(
+                  v_rec.componente_id, v_rec.a_uom_id, p_data_riferimento,
+                  p_ba_id, p_utility_id::integer, p_emittente_sr_id, p_classe_utenza_id);
+            prezzo_suggerito      := v_resolve.prezzo_finale;
+            origine_prezzo        := v_resolve.origine;
+            resolver_error_reason := NULL;
+        EXCEPTION WHEN SQLSTATE 'P0001' THEN
+            GET STACKED DIAGNOSTICS resolver_error_reason = MESSAGE_TEXT;
+            prezzo_suggerito := NULL;
+            origine_prezzo   := NULL;
+        END;
+
+        RETURN NEXT;
+    END LOOP;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.fn_ddt_riga_componenti_preview(p_articolo_id uuid, p_uom_id bigint, p_quantita_padre numeric, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_sr_id bigint, p_classe_utenza_id integer)
+IS 'Preview componenti BoM CASO A per drawer riga DDT (form atomic). Allineato a fn_preventivo_riga_componenti_preview.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

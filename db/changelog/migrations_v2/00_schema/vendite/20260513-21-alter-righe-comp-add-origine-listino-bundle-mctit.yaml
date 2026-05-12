@@ -1,0 +1,195 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260513-21-alter-righe-comp-add-origine-listino-bundle-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Aggiunta 'LISTINO_BUNDLE' ai CHECK origine_prezzo su 4 *_righe_componenti
+  # (modello unificato 2026-05-13, §7.2).
+  #
+  # Il nuovo STADIO BUNDLE del resolver (fn_resolve_prezzo_listino_v2 v2.1)
+  # restituisce origine='LISTINO_BUNDLE'. Il CHECK esistente non ammette
+  # questo valore → DROP + ADD constraint aggiornato.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260513-21-01-alter-prevrighe-comp-add-origine-bundle
+      author: mctit
+      comment: >
+        preventivi_righe_componenti: DROP chk_prevrighe_comp_origine + ADD con LISTINO_BUNDLE.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: preventivi_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_constraint c
+                  JOIN pg_class r ON r.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = r.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND r.relname = 'preventivi_righe_componenti'
+                   AND c.conname = 'chk_prevrighe_comp_origine';
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  DROP CONSTRAINT chk_prevrighe_comp_origine;
+
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  ADD CONSTRAINT chk_prevrighe_comp_origine
+                  CHECK (origine_prezzo IN (
+                      'PROMO', 'CONTRATTO_OVERRIDE', 'CONTRATTO_LISTINO',
+                      'CATEGORIA', 'MANUALE', 'LISTINO_BUNDLE'
+                  ));
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  DROP CONSTRAINT IF EXISTS chk_prevrighe_comp_origine;
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  ADD CONSTRAINT chk_prevrighe_comp_origine
+                  CHECK (origine_prezzo IN (
+                      'PROMO', 'CONTRATTO_OVERRIDE', 'CONTRATTO_LISTINO',
+                      'CATEGORIA', 'MANUALE'
+                  ));
+
+  - changeSet:
+      id: 20260513-21-02-alter-ordrighe-comp-add-origine-bundle
+      author: mctit
+      comment: >
+        ordini_righe_componenti: DROP chk_ordrighe_comp_origine + ADD con LISTINO_BUNDLE.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ordini_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_constraint c
+                  JOIN pg_class r ON r.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = r.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND r.relname = 'ordini_righe_componenti'
+                   AND c.conname = 'chk_ordrighe_comp_origine';
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.ordini_righe_componenti
+                  DROP CONSTRAINT chk_ordrighe_comp_origine;
+
+              ALTER TABLE vendite.ordini_righe_componenti
+                  ADD CONSTRAINT chk_ordrighe_comp_origine
+                  CHECK (origine_prezzo IN (
+                      'PROMO', 'CONTRATTO_OVERRIDE', 'CONTRATTO_LISTINO',
+                      'CATEGORIA', 'MANUALE', 'LISTINO_BUNDLE'
+                  ));
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.ordini_righe_componenti
+                  DROP CONSTRAINT IF EXISTS chk_ordrighe_comp_origine;
+              ALTER TABLE vendite.ordini_righe_componenti
+                  ADD CONSTRAINT chk_ordrighe_comp_origine
+                  CHECK (origine_prezzo IN (
+                      'PROMO', 'CONTRATTO_OVERRIDE', 'CONTRATTO_LISTINO',
+                      'CATEGORIA', 'MANUALE'
+                  ));
+
+  - changeSet:
+      id: 20260513-21-03-alter-ddtrighe-comp-add-origine-bundle
+      author: mctit
+      comment: >
+        ddt_righe_componenti: DROP chk_ddtrighe_comp_origine + ADD con LISTINO_BUNDLE.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ddt_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_constraint c
+                  JOIN pg_class r ON r.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = r.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND r.relname = 'ddt_righe_componenti'
+                   AND c.conname = 'chk_ddtrighe_comp_origine';
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.ddt_righe_componenti
+                  DROP CONSTRAINT chk_ddtrighe_comp_origine;
+
+              ALTER TABLE vendite.ddt_righe_componenti
+                  ADD CONSTRAINT chk_ddtrighe_comp_origine
+                  CHECK (origine_prezzo IN (
+                      'PROMO', 'CONTRATTO_OVERRIDE', 'CONTRATTO_LISTINO',
+                      'CATEGORIA', 'MANUALE', 'LISTINO_BUNDLE'
+                  ));
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.ddt_righe_componenti
+                  DROP CONSTRAINT IF EXISTS chk_ddtrighe_comp_origine;
+              ALTER TABLE vendite.ddt_righe_componenti
+                  ADD CONSTRAINT chk_ddtrighe_comp_origine
+                  CHECK (origine_prezzo IN (
+                      'PROMO', 'CONTRATTO_OVERRIDE', 'CONTRATTO_LISTINO',
+                      'CATEGORIA', 'MANUALE'
+                  ));
+
+  - changeSet:
+      id: 20260513-21-04-alter-contrighe-comp-add-origine-bundle
+      author: mctit
+      comment: >
+        contratti_righe_componenti: DROP chk_contrighe_comp_origine + ADD con LISTINO_BUNDLE.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: contratti_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_constraint c
+                  JOIN pg_class r ON r.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = r.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND r.relname = 'contratti_righe_componenti'
+                   AND c.conname = 'chk_contrighe_comp_origine';
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.contratti_righe_componenti
+                  DROP CONSTRAINT chk_contrighe_comp_origine;
+
+              ALTER TABLE vendite.contratti_righe_componenti
+                  ADD CONSTRAINT chk_contrighe_comp_origine
+                  CHECK (origine_prezzo IN (
+                      'PROMO', 'CONTRATTO_OVERRIDE', 'CONTRATTO_LISTINO',
+                      'CATEGORIA', 'MANUALE', 'LISTINO_BUNDLE'
+                  ));
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.contratti_righe_componenti
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_comp_origine;
+              ALTER TABLE vendite.contratti_righe_componenti
+                  ADD CONSTRAINT chk_contrighe_comp_origine
+                  CHECK (origine_prezzo IN (
+                      'PROMO', 'CONTRATTO_OVERRIDE', 'CONTRATTO_LISTINO',
+                      'CATEGORIA', 'MANUALE'
+                  ));

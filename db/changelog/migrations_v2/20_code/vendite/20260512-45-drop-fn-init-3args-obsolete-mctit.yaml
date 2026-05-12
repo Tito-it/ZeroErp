@@ -1,0 +1,41 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# DROP overload 3-args (originale pre-BoM) delle 4 fn_*_riga_componenti_init.
+#
+# Con form atomic (20260512-32..35) l'unica versione valida e' quella
+# a 4 argomenti con p_componenti_overrides jsonb. L'overload 3-args
+# (senza 4° parametro) e' il residuo dell'implementazione pre-BoM CASO A
+# e non deve essere richiamabile accidentalmente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260512-45-drop-fn-init-3args-obsolete-mctit.yaml
+
+  - changeSet:
+      id: 20260512-45-drop-fn-init-3args-obsolete
+      author: mctit
+      comment: >
+        DROP overload 3-args di fn_preventivo/ordine/ddt/contratto_riga_componenti_init.
+        Residui pre-BoM CASO A. Unico overload valido rimane (bigint, bigint, date, jsonb).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_preventivo_riga_componenti_init'
+                 AND pg_get_function_identity_arguments(p.oid)
+                     = 'p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date'
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_preventivo_riga_componenti_init(bigint, bigint, date);
+              DROP FUNCTION IF EXISTS vendite.fn_ordine_riga_componenti_init(bigint, bigint, date);
+              DROP FUNCTION IF EXISTS vendite.fn_ddt_riga_componenti_init(bigint, bigint, date);
+              DROP FUNCTION IF EXISTS vendite.fn_contratto_riga_componenti_init(bigint, bigint, date);
