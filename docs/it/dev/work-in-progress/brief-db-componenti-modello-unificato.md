@@ -1,14 +1,20 @@
 # Brief DB — Modello unificato componenti BoM + simmetria listino
 
-> **Data**: 2026-05-12 sera
+> **Data**: 2026-05-12 sera — **Applicato**: 2026-05-13
 >
 > **Branch**: `dev/db-tid`
 >
 > **Razionale e modello**: vedi [`manual/modello-componenti-bom.md`](../manual/modello-componenti-bom.md).
 > Questo brief contiene SOLO le modifiche DB da applicare.
 >
-> **Atomico**: tutte le modifiche fanno parte di una singola iterazione
-> ("modello unificato + simmetria listino"). Vanno applicate insieme.
+> **Stato**: ✅ MIGRATION FILES PRONTI — da committare e applicare.
+> Migration 20260513-01..24 in `db/changelog/migrations_v2/`.
+> Vedere §13 per ordine e file corrispondenti.
+>
+> **Pendente post-DB**: backfill manuale BoM IVA incoerenti e righe listino su compositi;
+> BE aggiornare `pricing_repository.py` + `pricing_service.py` prima del DROP `fn_resolve_prezzo_composito`;
+> BE aggiornare `fetch_pushable_rows` se tocca `esposto_in_fattura`;
+> pgTAP suite da aggiornare per i 4 guard nuovi (§14 brief).
 
 ---
 
@@ -28,14 +34,13 @@
 
 ---
 
-## 1. `script.trgfn_componenti_guard_coerenza_bom` — rimozione guard 4
+## 1. `script.trgfn_componenti_guard_coerenza_bom` — rimozione guard 4 ✅
+
+> **Migration**: `20_code/script/20260513-08-update-trgfn-componenti-guard-coerenza-bom-remove-esposto-mctit.yaml`
 
 **Cosa**: rimuovere il guard "esposto_in_fattura = TRUE" e l'errore
 `E_DOC_COMPONENTE_NON_ESPOSTO`. Restano i 4 guard (is_composito padre,
 appartenenza BoM, coerenza componente_id, validita BoM).
-
-**Dove**: `db/changelog/migrations_v2/20_code/script/` — nuovo file
-`runOnChange: true`.
 
 **Caller di questo trigger**: 4 tabelle `<sorgente>_righe_componenti` +
 nuova `listini_righe_componenti` (vedi §6).
@@ -250,9 +255,12 @@ BOOLEAN:
 - Permette al FE di evitare apertura Dialog componenti su compositi
   con BoM scaduta (mostra subito errore parlante)
 
-## 12. Nuovi error code in `config.messaggi_errore`
+## 12. Nuovi error code in `config.messaggi_errore` ✅
 
-Aggiungere al seed (IT + EN per ognuno):
+> **Migration**: `80_data/changelog/20260513-01-delete-messaggi-errore-deprecati-bom-mctit.yaml` (DELETE fisico);
+> `80_data/sql/config/messaggi_errore.csv` aggiornato (6 nuovi, 2 rimossi).
+
+Aggiunto al seed:
 
 | Codice | Messaggio (IT) |
 | --- | --- |
@@ -270,23 +278,32 @@ Da rimuovere (deprecati):
 | `E_DOC_COMPONENTE_NON_ESPOSTO` | Gate `esposto_in_fattura` abbandonato |
 | `E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE` | (gia' rimosso post form atomic) |
 
-## 13. Ordine di applicazione consigliato
+## 13. Ordine di applicazione — file migration ✅
 
-1. `messaggi_errore.csv` — nuovi codici (prerequisito per i trigger)
-2. Trigger guard catalogo: IVA (§6) + listino composito (§9) —
-   indipendenti, applicare per primi
-3. Backfill manuale dev: BoM incoerenti + righe listino su compositi
-4. CHECK rilassati + trigger check prezzo obbligatorio (§3) — 4 tabelle
-5. Aggiornamento `script.trgfn_componenti_guard_coerenza_bom` (§1)
-6. Aggiornamento 4 fn `_init` + 4 fn `_preview` (§2, §5)
-7. Trigger guard obbligatorio non disattivabile (§4)
-8. Tabella `listini_righe_componenti` (§8) + trigger guard
-9. Resolver `fn_resolve_prezzo_listino_v2` bundle-aware (§7)
-10. Aggiornamento caller resolver: 4 fn `_init` + `_preview` passano
-    `p_articolo_padre_contesto`
-11. Vista lookup `vw_articoli_dettaglio` (§11)
-12. Deprecazione `fn_resolve_prezzo_composito` (§10) — solo dopo
-    censimento caller
+| Step | File migration | Stato |
+| --- | --- | --- |
+| 1. messaggi_errore nuovi | `80_data/changelog/20260513-01-delete-messaggi-errore-deprecati-bom-mctit.yaml` + CSV | ✅ |
+| 2. Trigger IVA catalogo | `20_code/catalogo/20260513-02` (articoli_componenti) + `20260513-03` (articoli) | ✅ |
+| 3. Trigger listino composito | `20_code/vendite/20260513-04` + `20_code/catalogo/20260513-05` | ✅ |
+| 4a. CHECK rilassati *_righe_componenti | `00_schema/vendite/20260513-06` | ✅ |
+| 4b. Trigger check prezzo obbligatorio | `20_code/script/20260513-07` (fn + 4 trigger) | ✅ |
+| 5. trgfn_componenti_guard_coerenza_bom | `20_code/script/20260513-08` | ✅ |
+| 6a. 4 fn `_init` modello unificato | `20_code/vendite/20260513-09..12` | ✅ |
+| 6b. 4 fn `_preview` DROP+CREATE | `20_code/vendite/20260513-13..16` | ✅ |
+| 7. Trigger guard obbligatorio | `20_code/script/20260513-17` (fn + 4 trigger) | ✅ |
+| 8a. DDL listini_righe_componenti | `00_schema/vendite/20260513-18` + audit triggers | ✅ |
+| 8b. Guard coerenza BoM listino | `20_code/script/20260513-19` | ✅ |
+| 8c. Guard immutabilita' v5 listino | `20_code/vendite/20260513-20` | ✅ |
+| 9a. ALTER origine LISTINO_BUNDLE | `00_schema/vendite/20260513-21` (4 tabelle) | ✅ |
+| 9b. Resolver bundle-aware | `20_code/vendite/20260513-22` | ✅ |
+| 10. COMMENT DEPRECATED fn_resolve_prezzo_composito | `20_code/vendite/20260513-24` | ✅ |
+| 11. Vista has_componenti_alla_data | `20_code/catalogo/20260513-23` | ✅ |
+
+**Pendente (non automatizzabile con migration)**:
+
+- Backfill manuale: BoM con IVA incoerenti + righe listino su compositi
+- Aggiornare caller resolver: 4 fn `_init` + `_preview` passare `p_articolo_padre_contesto` (dopo smoke test)
+- pgTAP: aggiornare suite esistenti + aggiungere test §14
 
 ## 14. Test pgTAP suggeriti
 

@@ -33,6 +33,9 @@ IDENTIFIER_EMPTY_BRACKETS_RE = re.compile(
 IDENTIFIER_INDEX_RE = re.compile(
     r"(?<!\\)(\b[A-Za-z_][A-Za-z0-9_.:%-]*)\[([A-Za-z0-9_., -]+)\]"
 )
+STANDALONE_BRACKET_LITERAL_RE = re.compile(
+    r"(?<!\\)\[([^\]\n]{1,80})\](?!\(|:)"
+)
 URI_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 
@@ -197,6 +200,7 @@ def normalize_ambiguous_markdown(text: str) -> str:
     normalized = CHECKLIST_STATUS_RE.sub(r"\1\\[\2\\]", text)
     normalized = IDENTIFIER_EMPTY_BRACKETS_RE.sub(r"\1\\[\\]", normalized)
     normalized = IDENTIFIER_INDEX_RE.sub(r"\1\\[\2\\]", normalized)
+    normalized = STANDALONE_BRACKET_LITERAL_RE.sub(r"\\[\1\\]", normalized)
     return normalized
 
 

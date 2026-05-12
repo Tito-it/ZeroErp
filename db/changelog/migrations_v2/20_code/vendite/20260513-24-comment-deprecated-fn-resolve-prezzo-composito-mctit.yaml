@@ -1,0 +1,47 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260513-24-comment-deprecated-fn-resolve-prezzo-composito-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Marcatura DEPRECATED di vendite.fn_resolve_prezzo_composito (2026-05-13, §10).
+  #
+  # Con il modello unificato il branching CASO A / CASO B non ha piu' significato.
+  # Le 4 fn_*_riga_componenti_init ora usano direttamente fn_resolve_prezzo_listino_v2
+  # per-componente. La fn_resolve_prezzo_composito e' ancora referenziata da:
+  #   - backend/apps/vendite/db/pricing_repository.py (resolve_prezzo_composito)
+  #   - backend/apps/vendite/services/pricing_service.py
+  #   - db/pgtap/vendite/test-fn-resolve-prezzo-composito-v1.sql
+  #
+  # Il DROP effettivo avverra' solo dopo aggiornamento BE (Fase E o successiva).
+  # Questo changeSet aggiorna solo il COMMENT per segnalare la deprecazione.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260513-24-comment-deprecated-fn-resolve-prezzo-composito
+      author: mctit
+      comment: >
+        Aggiorna COMMENT ON FUNCTION fn_resolve_prezzo_composito marcandola DEPRECATED.
+        Il DROP avverra' solo dopo aggiornamento BE (pricing_repository.py).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_resolve_prezzo_composito';
+      changes:
+        - sql:
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_resolve_prezzo_composito(
+                  uuid, bigint, date, bigint, integer, bigint, integer) IS
+                  '[DEPRECATED 2026-05-13 — modello unificato BoM] '
+                  'Resolver BoM ibrido pricing v5 CASO A/B. '
+                  'Con il modello unificato padre=sempre SUM(figli), il branching '
+                  'CASO A/B non ha piu'' significato. Le fn_*_riga_componenti_init '
+                  'usano direttamente fn_resolve_prezzo_listino_v2 per-componente. '
+                  'Da rimuovere dopo aggiornamento backend pricing_repository.py.';
+      rollback:
+        - sql:
+            sql: SELECT 1;

@@ -319,7 +319,7 @@ Funziona quindi senza translator dedicato lato service.
 > **Riferimenti**: [refactor-componenti.md](refactor-componenti.md),
 > guida `gestione-listini.md` §5.2.1 e §6.2.
 > **Pre-requisito**: brief DB
-> [brief-db-preventivi-righe-componenti-override.md](brief-db-preventivi-righe-componenti-override.md)
+> [brief-db-preventivi-righe-componenti-override.md](../work-done/brief-db-preventivi-righe-componenti-override.md)
 > mergato + BE Fasi 1-4 (vedi piano) atterrate + FE Fase 5 attiva.
 
 #### Setup comune ai 3 scenari

@@ -226,6 +226,7 @@ src/
 
 ---
 
+<a id="5-store-pinia--navigationjs"></a>
 ## 5. Store Pinia — navigation.js
 
 Lo store centralizza due cose: qual è il dominio attivo (`currentDomain`) e la configurazione dei menu per ogni dominio. Aggiungere voci o domini è solo questione di editare l'oggetto `menus`.

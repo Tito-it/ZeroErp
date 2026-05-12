@@ -1,0 +1,167 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260513-03-create-trgfn-articoli-guard-iva-bom-attiva-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Guard IVA su catalogo.articoli — protezione modifica iva_id (2026-05-13).
+  #
+  # Quando si aggiorna iva_id su un articolo, verifica coerenza BoM attive:
+  #   - Se e' padre composito: tutti i figli attivi devono avere stessa IVA
+  #   - Se e' figlio in BoM attive: il padre deve avere stessa IVA
+  #
+  # 2 changeSet:
+  #   03-01  trgfn catalogo.trgfn_articoli_guard_iva_bom_attiva
+  #   03-02  trigger BEFORE UPDATE OF iva_id su catalogo.articoli
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260513-03-01-create-trgfn-articoli-guard-iva-bom-attiva
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger function catalogo.trgfn_articoli_guard_iva_bom_attiva.
+        BEFORE UPDATE OF iva_id: caso A padre composito -> figli attivi devono
+        avere stessa IVA; caso B figlio -> padre attivo deve avere stessa IVA.
+        Raise E_BOM_IVA_DISCORDANTE (445).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_iva_bom_attiva()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: BEFORE UPDATE OF iva_id su articoli — blocca modifiche che
+              --   renderebbero incoerente la BoM. Caso A: padre composito con figli
+              --   aventi IVA diversa da NEW.iva_id. Caso B: figlio in BoM attive
+              --   con padre avente IVA diversa da NEW.iva_id.
+              DECLARE
+                  v_codice_altro  catalogo.articoli.codice%TYPE;
+                  v_iva_altro     catalogo.articoli.iva_id%TYPE;
+              BEGIN
+                  -- Caso A: articolo e' padre composito — cerca figlio attivo con IVA diversa
+                  IF COALESCE(NEW.is_composito, FALSE) THEN
+                      SELECT a.codice, a.iva_id
+                        INTO v_codice_altro, v_iva_altro
+                        FROM catalogo.articoli_componenti ac
+                        JOIN catalogo.articoli a ON a.id = ac.componente_id
+                       WHERE ac.prodotto_id = NEW.id
+                         AND ac.attivo      = TRUE
+                         AND a.iva_id IS DISTINCT FROM NEW.iva_id
+                       LIMIT 1;
+
+                      IF FOUND THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', TG_NAME, 'E_BOM_IVA_DISCORDANTE',
+                              jsonb_build_object(
+                                  'prodotto_id',    NEW.id,
+                                  'iva_padre_nuova', NEW.iva_id,
+                                  'codice_figlio',   v_codice_altro,
+                                  'iva_figlio',      v_iva_altro
+                              ),
+                              NULL::uuid,
+                              NEW.codice,
+                              COALESCE(NEW.iva_id::text,    'NULL'),
+                              v_codice_altro,
+                              COALESCE(v_iva_altro::text,   'NULL')
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Caso B: articolo e' figlio — cerca padre attivo con IVA diversa
+                  SELECT a.codice, a.iva_id
+                    INTO v_codice_altro, v_iva_altro
+                    FROM catalogo.articoli_componenti ac
+                    JOIN catalogo.articoli a ON a.id = ac.prodotto_id
+                   WHERE ac.componente_id = NEW.id
+                     AND ac.attivo        = TRUE
+                     AND a.iva_id IS DISTINCT FROM NEW.iva_id
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', TG_NAME, 'E_BOM_IVA_DISCORDANTE',
+                          jsonb_build_object(
+                              'componente_id', NEW.id,
+                              'iva_figlio_nuova', NEW.iva_id,
+                              'codice_padre',   v_codice_altro,
+                              'iva_padre',      v_iva_altro
+                          ),
+                          NULL::uuid,
+                          v_codice_altro,
+                          COALESCE(v_iva_altro::text,   'NULL'),
+                          NEW.codice,
+                          COALESCE(NEW.iva_id::text,    'NULL')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_iva_bom_attiva() IS
+                  'Trigger BEFORE UPDATE OF iva_id su articoli: caso A padre composito -> '
+                  'figli attivi devono avere stessa IVA; caso B figlio -> padre attivo '
+                  'deve avere stessa IVA. Raise E_BOM_IVA_DISCORDANTE (445). rev 2026-05-13.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS catalogo.trgfn_articoli_guard_iva_bom_attiva();
+
+  - changeSet:
+      id: 20260513-03-02-create-trg-articoli-guard-iva-bom-attiva
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE UPDATE OF iva_id su catalogo.articoli, fase _a10_guard.
+        UPDATE OF iva_id: scatta solo quando iva_id cambia, minimizzando overhead.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'catalogo'
+                   AND p.proname = 'trgfn_articoli_guard_iva_bom_attiva';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_a10_guard_iva_bom_attiva_upd
+                  ON catalogo.articoli;
+
+              CREATE TRIGGER trg_articoli_a10_guard_iva_bom_attiva_upd
+                  BEFORE UPDATE OF iva_id
+                  ON catalogo.articoli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_guard_iva_bom_attiva();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_a10_guard_iva_bom_attiva_upd
+                  ON catalogo.articoli;

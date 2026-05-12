@@ -1,0 +1,140 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260513-02-create-trgfn-articoli-componenti-guard-iva-bom-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Guard IVA su catalogo.articoli_componenti (modello unificato BoM 2026-05-13).
+  #
+  # Regola di dominio: padre composito e tutti i suoi figli BoM devono
+  # condividere la stessa aliquota IVA. NULL = NULL = coerente (articolo
+  # senza IVA assegnata puo' essere figlio di padre senza IVA).
+  #
+  # 2 changeSet:
+  #   02-01  trgfn catalogo.trgfn_articoli_componenti_guard_iva
+  #   02-02  trigger BEFORE INSERT su catalogo.articoli_componenti
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260513-02-01-create-trgfn-articoli-componenti-guard-iva-bom
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger function catalogo.trgfn_articoli_componenti_guard_iva.
+        BEFORE INSERT: verifica iva_id figlio = iva_id padre composito
+        tramite JOIN su catalogo.articoli. Raise E_BOM_IVA_DISCORDANTE (445).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_guard_iva()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: BEFORE INSERT su articoli_componenti — verifica che iva_id del
+              --   componente coincida con iva_id del padre composito. NULL = NULL = coerente.
+              DECLARE
+                  v_iva_padre     catalogo.articoli.iva_id%TYPE;
+                  v_iva_figlio    catalogo.articoli.iva_id%TYPE;
+                  v_codice_padre  catalogo.articoli.codice%TYPE;
+                  v_codice_figlio catalogo.articoli.codice%TYPE;
+              BEGIN
+                  -- Legge iva_id e codice di padre e figlio in unica query
+                  SELECT a_padre.iva_id,  a_padre.codice,
+                         a_figlio.iva_id, a_figlio.codice
+                    INTO v_iva_padre,  v_codice_padre,
+                         v_iva_figlio, v_codice_figlio
+                    FROM catalogo.articoli a_padre
+                    JOIN catalogo.articoli a_figlio
+                      ON a_figlio.id = NEW.componente_id
+                   WHERE a_padre.id = NEW.prodotto_id;
+
+                  -- IVA padre e figlio devono coincidere (IS DISTINCT FROM gestisce NULL)
+                  IF v_iva_padre IS DISTINCT FROM v_iva_figlio THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', TG_NAME, 'E_BOM_IVA_DISCORDANTE',
+                          jsonb_build_object(
+                              'prodotto_id',   NEW.prodotto_id,
+                              'componente_id', NEW.componente_id,
+                              'iva_padre',     v_iva_padre,
+                              'iva_figlio',    v_iva_figlio
+                          ),
+                          NULL::uuid,
+                          v_codice_padre,
+                          COALESCE(v_iva_padre::text,  'NULL'),
+                          v_codice_figlio,
+                          COALESCE(v_iva_figlio::text, 'NULL')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_iva() IS
+                  'Trigger BEFORE INSERT su articoli_componenti: verifica iva_id figlio = '
+                  'iva_id padre composito. NULL = NULL = coerente. '
+                  'Raise E_BOM_IVA_DISCORDANTE (445). rev 2026-05-13.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS catalogo.trgfn_articoli_componenti_guard_iva();
+
+  - changeSet:
+      id: 20260513-02-02-create-trg-articoli-componenti-guard-iva-bom
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE INSERT su catalogo.articoli_componenti, fase _a10_guard.
+        UPDATE escluso: prodotto_id e componente_id sono immutabili per struttura
+        (bloccati da trg_articoli_componenti_a10_block_modifica_struttura);
+        iva_id non e' una colonna di articoli_componenti.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'catalogo'
+                   AND p.proname = 'trgfn_articoli_componenti_guard_iva';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_guard_iva_bom_ins
+                  ON catalogo.articoli_componenti;
+
+              CREATE TRIGGER trg_articoli_componenti_a10_guard_iva_bom_ins
+                  BEFORE INSERT
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_iva();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_guard_iva_bom_ins
+                  ON catalogo.articoli_componenti;

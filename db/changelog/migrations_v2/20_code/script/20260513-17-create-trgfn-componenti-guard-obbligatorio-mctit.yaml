@@ -1,0 +1,255 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260513-17-create-trgfn-componenti-guard-obbligatorio-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Trigger guard: componente obbligatorio non disattivabile (2026-05-13, §4).
+  #
+  # Regola: se attivo passa TRUE -> FALSE su una riga *_righe_componenti il
+  # cui articolo_componente (BoM) ha obbligatorio=TRUE, l'operazione e' vietata.
+  # I componenti obbligatori non possono essere esclusi dal documento: per
+  # escluderli occorre modificare la BoM in catalogo.
+  #
+  # 1 changeSet funzione (runOnChange) + 4 changeSet trigger (uno per sorgente):
+  #   17-01  trgfn script.trgfn_componenti_guard_obbligatorio
+  #   17-02  trigger preventivi_righe_componenti
+  #   17-03  trigger ordini_righe_componenti
+  #   17-04  trigger ddt_righe_componenti
+  #   17-05  trigger contratti_righe_componenti
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260513-17-01-create-trgfn-componenti-guard-obbligatorio
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger function script.trgfn_componenti_guard_obbligatorio.
+        BEFORE UPDATE OF attivo: se OLD.attivo=TRUE, NEW.attivo=FALSE e
+        articoli_componenti.obbligatorio=TRUE -> raise E_DOC_COMPONENTE_OBBLIGATORIO (443).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_componenti_guard_obbligatorio()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: BEFORE UPDATE OF attivo su *_righe_componenti — blocca
+              --   disattivazione (TRUE->FALSE) di componenti obbligatori.
+              --   I componenti obbligatori fanno sempre parte del documento;
+              --   per escluderli occorre modificare la BoM in catalogo.
+              DECLARE
+                  v_obbligatorio catalogo.articoli_componenti.obbligatorio%TYPE;
+                  v_codice_comp  catalogo.articoli.codice%TYPE;
+              BEGIN
+                  -- Scatta solo su transizione attivo TRUE -> FALSE
+                  IF OLD.attivo = TRUE AND NEW.attivo = FALSE THEN
+                      SELECT ac.obbligatorio, a.codice
+                        INTO v_obbligatorio, v_codice_comp
+                        FROM catalogo.articoli_componenti ac
+                        JOIN catalogo.articoli a ON a.id = ac.componente_id
+                       WHERE ac.id = OLD.articolo_componente_id;
+
+                      IF COALESCE(v_obbligatorio, TRUE) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', TG_NAME, 'E_DOC_COMPONENTE_OBBLIGATORIO',
+                              jsonb_build_object(
+                                  'articolo_componente_id', OLD.articolo_componente_id,
+                                  'componente_id',          OLD.componente_id
+                              ),
+                              NULL::uuid,
+                              COALESCE(v_codice_comp, OLD.componente_id::text)
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_componenti_guard_obbligatorio() IS
+                  'Trigger BEFORE UPDATE OF attivo su *_righe_componenti: blocca '
+                  'disattivazione (TRUE->FALSE) di componenti obbligatori. '
+                  'Raise E_DOC_COMPONENTE_OBBLIGATORIO (443). rev 2026-05-13.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.trgfn_componenti_guard_obbligatorio();
+
+  - changeSet:
+      id: 20260513-17-02-create-trg-prevrighe-comp-guard-obbligatorio
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE UPDATE OF attivo su vendite.preventivi_righe_componenti,
+        fase _a10_guard. Solo UPDATE OF attivo: minimizza overhead.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: preventivi_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'trgfn_componenti_guard_obbligatorio';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_prevrighe_comp_a10_guard_obbligatorio_upd
+                  ON vendite.preventivi_righe_componenti;
+
+              CREATE TRIGGER trg_prevrighe_comp_a10_guard_obbligatorio_upd
+                  BEFORE UPDATE OF attivo
+                  ON vendite.preventivi_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_componenti_guard_obbligatorio();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_prevrighe_comp_a10_guard_obbligatorio_upd
+                  ON vendite.preventivi_righe_componenti;
+
+  - changeSet:
+      id: 20260513-17-03-create-trg-ordrighe-comp-guard-obbligatorio
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE UPDATE OF attivo su vendite.ordini_righe_componenti,
+        fase _a10_guard.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ordini_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'trgfn_componenti_guard_obbligatorio';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordrighe_comp_a10_guard_obbligatorio_upd
+                  ON vendite.ordini_righe_componenti;
+
+              CREATE TRIGGER trg_ordrighe_comp_a10_guard_obbligatorio_upd
+                  BEFORE UPDATE OF attivo
+                  ON vendite.ordini_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_componenti_guard_obbligatorio();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordrighe_comp_a10_guard_obbligatorio_upd
+                  ON vendite.ordini_righe_componenti;
+
+  - changeSet:
+      id: 20260513-17-04-create-trg-ddtrighe-comp-guard-obbligatorio
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE UPDATE OF attivo su vendite.ddt_righe_componenti,
+        fase _a10_guard.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ddt_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'trgfn_componenti_guard_obbligatorio';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddtrighe_comp_a10_guard_obbligatorio_upd
+                  ON vendite.ddt_righe_componenti;
+
+              CREATE TRIGGER trg_ddtrighe_comp_a10_guard_obbligatorio_upd
+                  BEFORE UPDATE OF attivo
+                  ON vendite.ddt_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_componenti_guard_obbligatorio();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddtrighe_comp_a10_guard_obbligatorio_upd
+                  ON vendite.ddt_righe_componenti;
+
+  - changeSet:
+      id: 20260513-17-05-create-trg-contrighe-comp-guard-obbligatorio
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE UPDATE OF attivo su vendite.contratti_righe_componenti,
+        fase _a10_guard.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: contratti_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'trgfn_componenti_guard_obbligatorio';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contrighe_comp_a10_guard_obbligatorio_upd
+                  ON vendite.contratti_righe_componenti;
+
+              CREATE TRIGGER trg_contrighe_comp_a10_guard_obbligatorio_upd
+                  BEFORE UPDATE OF attivo
+                  ON vendite.contratti_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_componenti_guard_obbligatorio();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contrighe_comp_a10_guard_obbligatorio_upd
+                  ON vendite.contratti_righe_componenti;
