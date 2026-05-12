@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# CREATE TRIGGER trg_ordini_a10_guard_transizione_approvazione_upd
+#   Binding trigger su vendite.ordini per la funzione
+#   trgfn_ordini_guard_transizione_approvazione (20260512-19).
+#   BEFORE UPDATE OF stato_doc_ordine_id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260512-20-create-trg-ordini-guard-transizione-approvazione-upd-mctit.yaml
+
+  - changeSet:
+      id: 20260512-20-create-trg-ordini-guard-transizione-approvazione-upd
+      author: mctit
+      comment: >
+        Crea trigger trg_ordini_a10_guard_transizione_approvazione_upd su
+        vendite.ordini: BEFORE UPDATE OF stato_doc_ordine_id, chiama
+        trgfn_ordini_guard_transizione_approvazione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ordini
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_ordini_guard_transizione_approvazione'
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_transizione_approvazione_upd
+                ON vendite.ordini;
+
+              CREATE TRIGGER trg_ordini_a10_guard_transizione_approvazione_upd
+                BEFORE UPDATE OF stato_doc_ordine_id
+                ON vendite.ordini
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_ordini_guard_transizione_approvazione();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_transizione_approvazione_upd
+                ON vendite.ordini;

@@ -12,15 +12,11 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: bloccare transizioni stato non ammesse sul workflow
--- contratti (DRAFT -> ATTIVO -> CESSATO).
--- Regola chiave: ATTIVO -> CESSATO ammessa solo se
--- valido_al < CURRENT_DATE. Coerente col job pgAgent
--- chiusura_scadenze_daily che soddisfa la condizione per
--- costruzione.
--- Aggiornato 2026-05-12: blocca DRAFT->ATTIVO anche se
--- un componente BoM CASO A ha prezzo in attesa di approvazione
--- (stato_approvazione_prezzo = PENDING).
+-- Scopo: blocca transizioni stato non ammesse sul workflow contratti
+--   (DRAFT -> ATTIVO -> CESSATO).
+-- Regola chiave: ATTIVO->CESSATO ammessa solo se valido_al < CURRENT_DATE.
+-- Check PENDING approvazione: blocca DRAFT->ATTIVO se componenti PENDING.
+-- Check prezzo NULL: blocca DRAFT->ATTIVO se componenti con prezzo NULL.
 DECLARE
     v_codice_da config.stati_doc_contratti.codice_interno%TYPE;
     v_codice_a  config.stati_doc_contratti.codice_interno%TYPE;
@@ -36,55 +32,60 @@ BEGIN
     IF v_codice_da = 'DRAFT' AND v_codice_a = 'ATTIVO' THEN
         v_ammessa := true;
     ELSIF v_codice_da = 'ATTIVO' AND v_codice_a = 'CESSATO' THEN
-        v_ammessa := (NEW.valido_al IS NOT NULL
-                      AND NEW.valido_al < CURRENT_DATE);
+        v_ammessa := (NEW.valido_al IS NOT NULL AND NEW.valido_al < CURRENT_DATE);
     END IF;
 
     IF NOT v_ammessa THEN
         PERFORM script.fn_log_and_raise_error(
-            'database',
-            TG_NAME::text,
-            'E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA',
-            jsonb_build_object(
-                'contratto_id', NEW.id,
-                'numero',       NEW.numero,
-                'stato_da',     v_codice_da,
-                'stato_a',      v_codice_a,
-                'valido_al',    NEW.valido_al
-            ),
-            NEW.tx_id,
-            NEW.id::text,
+            'database', TG_NAME::text, 'E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA',
+            jsonb_build_object('contratto_id', NEW.id, 'numero', NEW.numero,
+                'stato_da', v_codice_da, 'stato_a', v_codice_a,
+                'valido_al', NEW.valido_al),
+            NEW.tx_id, NEW.id::text,
             coalesce(v_codice_da, 'NULL'),
             coalesce(v_codice_a,  'NULL'),
             coalesce(NEW.valido_al::text, 'NULL')
         );
     END IF;
 
-    -- Check componenti BoM CASO A con prezzo PENDING (solo su DRAFT->ATTIVO).
-    -- La cessazione avviene su contratti gia' attivi con prezzi approvati.
+    -- Check PENDING e NULL solo su DRAFT->ATTIVO.
     IF v_codice_da = 'DRAFT' AND v_codice_a = 'ATTIVO' THEN
+
+        -- Check PENDING approvazione prezzo
         IF EXISTS (
-            SELECT 1
-              FROM vendite.contratti_righe cr
+            SELECT 1 FROM vendite.contratti_righe cr
               JOIN vendite.contratti_righe_componenti crc
                 ON crc.riga_contratto_id = cr.id
              WHERE cr.contratto_id = NEW.id
-               AND crc.stato_approvazione_prezzo =
-                   'PENDING'::config.stato_approvazione_prezzo
+               AND crc.stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
         ) THEN
             PERFORM script.fn_log_and_raise_error(
-                'database',
-                TG_NAME::text,
-                'E_COMPONENTE_PREZZO_PENDENTE',
-                jsonb_build_object(
-                    'contratto_id', NEW.id,
+                'database', TG_NAME::text, 'E_COMPONENTE_PREZZO_PENDENTE',
+                jsonb_build_object('contratto_id', NEW.id,
                     'hint', 'Componente BoM CASO A in attesa di approvazione prezzo. '
-                         || 'Attendi esito su tutti i componenti prima di attivare il contratto.'
-                ),
-                NEW.tx_id,
-                NEW.id::text
+                         || 'Attendi esito su tutti i componenti prima di attivare il contratto.'),
+                NEW.tx_id, NEW.id::text
             );
         END IF;
+
+        -- Check prezzo NULL (pending valorizzazione manuale)
+        IF EXISTS (
+            SELECT 1 FROM vendite.contratti_righe cr
+              JOIN vendite.contratti_righe_componenti crc
+                ON crc.riga_contratto_id = cr.id
+             WHERE cr.contratto_id = NEW.id
+               AND crc.attivo = TRUE
+               AND crc.prezzo_unitario IS NULL
+        ) THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', TG_NAME::text, 'E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE',
+                jsonb_build_object('contratto_id', NEW.id,
+                    'hint', 'Uno o piu'' componenti BoM CASO A hanno prezzo non valorizzato. '
+                         || 'Valorizzare tutti i prezzi prima di attivare il contratto.'),
+                NEW.tx_id, NEW.id::text
+            );
+        END IF;
+
     END IF;
 
     RETURN NEW;
@@ -92,7 +93,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
-IS 'Trigger function: controlla transizioni stato contratto (DRAFT->ATTIVO->CESSATO). ATTIVO->CESSATO solo se valido_al < CURRENT_DATE. Aggiornato 2026-05-12: blocca DRAFT->ATTIVO se componenti BoM CASO A hanno stato_approvazione_prezzo=PENDING (E_COMPONENTE_PREZZO_PENDENTE).';
+IS 'Trigger function: controlla transizioni stato contratto (DRAFT->ATTIVO->CESSATO). ATTIVO->CESSATO solo se valido_al < CURRENT_DATE. Blocca DRAFT->ATTIVO se componenti PENDING approvazione (E_COMPONENTE_PREZZO_PENDENTE) o prezzo NULL (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). rev 12-05-2026b: aggiunto check prezzo NULL.';
 ```
 
 ---
