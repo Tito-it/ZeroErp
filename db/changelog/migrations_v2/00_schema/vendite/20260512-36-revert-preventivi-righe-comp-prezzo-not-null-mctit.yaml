@@ -1,0 +1,39 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# ROLLBACK opzione A relaxed — ripristina NOT NULL + CHECK strict
+# su vendite.preventivi_righe_componenti.prezzo_unitario.
+#
+# Deve avvenire DOPO 20260512-32 (fn init aggiornata: non inserisce piu' NULL).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260512-36-revert-preventivi-righe-comp-prezzo-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260512-36-revert-preventivi-righe-comp-prezzo-not-null
+      author: mctit
+      comment: >
+        Ripristina NOT NULL + CHECK prezzo_unitario <> 0 su preventivi_righe_componenti.
+        Reverte 20260512-08 (CHECK) e 20260512-23 (NOT NULL). Form atomic garantisce
+        che prezzo sia sempre valorizzato prima dell'INSERT.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: preventivi_righe_componenti
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe_componenti
+                ALTER COLUMN prezzo_unitario SET NOT NULL;
+
+              ALTER TABLE vendite.preventivi_righe_componenti
+                DROP CONSTRAINT chk_prevrighe_comp_prezzo_nonneg;
+
+              ALTER TABLE vendite.preventivi_righe_componenti
+                ADD CONSTRAINT chk_prevrighe_comp_prezzo_nonneg
+                CHECK (prezzo_unitario <> 0);

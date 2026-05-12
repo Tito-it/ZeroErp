@@ -206,10 +206,12 @@ i drawer (indirizzi, contatti, conti bancari).
 
 ## Regole di dominio
 
+<a id="r1--xor-normalizzatolibero"></a>
 ### R1 — XOR normalizzato/libero
 
 Un indirizzo e **normalizzato** oppure **libero**, mai entrambi. I check constraint `chk_indirizzi_xor_norm_libero` e `chk_indirizzi_soggetti_xor_norm_libero` lo garantiscono su entrambe le tabelle.
 
+<a id="r2--unicita-per-tipo"></a>
 ### R2 — Unicita per tipo
 
 Un solo indirizzo per tipo per entita:
@@ -230,18 +232,21 @@ I check constraint `chk_indirizzi_free_requirements` e `chk_indirizzi_soggetti_f
 
 Il campo `stradario_id` su `indirizzi_dettaglio` non puo essere modificato manualmente. Il guard `trgfn_indirizzi_dettaglio_protect_update` blocca l'operazione con errore `E_COLONNA_NON_MODIFICABILE`. La riclassificazione va eseguita tramite la procedura di manutenzione dedicata (vedi [Riclassificazione vie](/guide/riclassificazione-vie)).
 
+<a id="r5--validazione-tipo-indirizzo-per-ruolo"></a>
 ### R5 — Validazione tipo indirizzo per ruolo
 
 Il trigger `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` verifica che il `tipo_indirizzo_id` sia ammesso per il tipo di ruolo del soggetto, consultando la matrice `config.tipi_ruolo_tipi_indirizzo`.
 
 Regola: se la matrice non ha righe per quel tipo di ruolo, tutti i tipi sono ammessi (adozione progressiva). Se ha almeno una riga, sono ammessi solo quelli elencati come attivi e in periodo di validita.
 
+<a id="r6--validazione-tipo-indirizzo-per-soggetto"></a>
 ### R6 — Validazione tipo indirizzo per soggetto
 
 Il trigger `trgfn_indirizzi_soggetti_guard_tipo_indirizzo` verifica che il `tipo_indirizzo_id` sia ammesso per il tipo di soggetto dettaglio, consultando la matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
 
 Stessa logica di R5: senza righe nella matrice, nessuna restrizione; con righe, whitelist attiva.
 
+<a id="r7--unicita-del-civico"></a>
 ### R7 — Unicita del civico
 
 Il vincolo `uq_indirizzi_dettaglio_norm` su `indirizzi_dettaglio` garantisce che non esistano duplicati dello stesso civico: la combinazione (`stradario_id`, `civico`, `estensione_civico`, `palazzina`, `scala`, `piano`, `interno`) deve essere unica. I campi nullable sono normalizzati con `COALESCE(..., '')`.

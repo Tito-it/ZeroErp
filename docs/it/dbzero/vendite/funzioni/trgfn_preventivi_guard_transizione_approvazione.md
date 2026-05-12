@@ -14,8 +14,7 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_transizione_approvazio
 AS $function$
 -- Scopo: blocca la transizione a ACCETTATO di un preventivo con
 --   righe o componenti BoM CASO A ancora in workflow approvazione
---   prezzo (stato_approvazione_prezzo=PENDING) oppure con
---   componenti con prezzo_unitario IS NULL (pending valorizzazione).
+--   prezzo (stato_approvazione_prezzo=PENDING).
 DECLARE
     v_stato_codice config.stati_doc_preventivi.codice_interno%TYPE;
 BEGIN
@@ -59,30 +58,12 @@ BEGIN
         );
     END IF;
 
-    -- Check 3: componenti BoM CASO A con prezzo NULL (pending valorizzazione manuale)
-    IF EXISTS (
-        SELECT 1 FROM vendite.preventivi_righe pr
-          JOIN vendite.preventivi_righe_componenti prc
-            ON prc.riga_preventivo_id = pr.id
-         WHERE pr.preventivo_id = NEW.id
-           AND prc.attivo = TRUE
-           AND prc.prezzo_unitario IS NULL
-    ) THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', TG_NAME, 'E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE',
-            jsonb_build_object('preventivo_id', NEW.id,
-                'hint', 'Uno o piu'' componenti BoM CASO A hanno prezzo non valorizzato. '
-                     || 'Valorizzare tutti i prezzi prima di accettare.'),
-            NULL::uuid, NEW.id::text
-        );
-    END IF;
-
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_transizione_approvazione()
-IS 'Trigger function: blocca transizione preventivo ad ACCETTATO se righe/componenti in stato PENDING approvazione (E_PREVENTIVO_RIGHE_PRICING_PENDENTI) o se componenti hanno prezzo NULL (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). rev 12-05-2026: aggiunto Check 3 prezzo NULL.';
+IS 'Trigger function: blocca transizione preventivo ad ACCETTATO se righe/componenti in stato PENDING approvazione (E_PREVENTIVO_RIGHE_PRICING_PENDENTI). Check 3 prezzo NULL rimosso (form atomic 12-05-2026).';
 ```
 
 ---

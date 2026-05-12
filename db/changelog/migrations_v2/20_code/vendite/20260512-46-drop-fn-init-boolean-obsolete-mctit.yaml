@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# DROP overload 4-args boolean (opzione A relaxed, PR #665) delle 4
+# fn_*_riga_componenti_init.
+#
+# p_force_manuale boolean e' stato sostituito da p_componenti_overrides jsonb
+# con le migration 20260512-32..35 (form atomic). Il boolean overload e'
+# semanticamente incompatibile con il modello corrente (prezzo sempre NOT NULL)
+# e non deve essere richiamabile.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260512-46-drop-fn-init-boolean-obsolete-mctit.yaml
+
+  - changeSet:
+      id: 20260512-46-drop-fn-init-boolean-obsolete
+      author: mctit
+      comment: >
+        DROP overload 4-args boolean (p_force_manuale) di
+        fn_preventivo/ordine/ddt/contratto_riga_componenti_init.
+        Introdotto da opzione A relaxed (20260512-13..16), rollbackato.
+        Unico overload valido rimane (bigint, bigint, date, jsonb).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_preventivo_riga_componenti_init'
+                 AND pg_get_function_identity_arguments(p.oid)
+                     = 'p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_force_manuale boolean'
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_preventivo_riga_componenti_init(bigint, bigint, date, boolean);
+              DROP FUNCTION IF EXISTS vendite.fn_ordine_riga_componenti_init(bigint, bigint, date, boolean);
+              DROP FUNCTION IF EXISTS vendite.fn_ddt_riga_componenti_init(bigint, bigint, date, boolean);
+              DROP FUNCTION IF EXISTS vendite.fn_contratto_riga_componenti_init(bigint, bigint, date, boolean);
