@@ -424,15 +424,15 @@ Errori:
 
 ## Building block backend usati
 
-- [`apps.core.api.base_views.DomainAPIView`](../../core/manual/base_views.md)
+- [`apps.core.api.base_views.DomainAPIView`](../../core/manual/api-domain-conventions.md)
   con `skip_area_check=True`
-- [`apps.core.api.endpoint_helpers.handle_post_json`](../../core/manual/endpoint_helpers.md)
+- [`apps.core.api.endpoint_helpers.handle_post_json`](../../core/manual/api_endpoint_helpers.md)
   con `require_idempotency_key=True` (PUT preferenza)
-- [`apps.core.services.payload_helpers.PayloadValidator`](../../core/manual/payload_helpers.md)
+- [`apps.core.services.payload_helpers.PayloadValidator`](../../core/manual/payload-validation-api.md)
   per la whitelist JSONB
 - [`apps.core.services.permissions_resolver.PermissionResolver.get_emittente_for_user`](../../core/manual/permissions_resolver.md)
   per la derivazione 1:1 user->emittente
-- [`apps.core.services.error_manager.ErrorManager`](../../core/manual/error_manager.md)
+- [`apps.core.services.error_manager.ErrorManager`](../../core/manual/error-handling-api.md)
   per gli errori strutturati
 
 ## Codici errore registrati

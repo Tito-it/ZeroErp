@@ -190,17 +190,17 @@ Perché è una buona scelta?
     • Mini workflow di validazione e conguaglio
     • Mini ERD (Entity Relationship Diagram)
     • Mini esempio query (conguaglio, saldo, progressivi)
-[1] Lettura Grezza (letture_raw)
+\[1\] Lettura Grezza (letture_raw)
        ↓
-[2] Validazione Tecnica (scarti, controlli)
+\[2\] Validazione Tecnica (scarti, controlli)
        ↓
-[3] Classificazione:
-     ├─ Se è acconto → [letture_acconti]
-     └─ Se è definitiva → [letture_definitive]
+\[3\] Classificazione:
+     ├─ Se è acconto → \[letture_acconti\]
+     └─ Se è definitiva → \[letture_definitive\]
        ↓
-[4] Se è un acconto → in attesa di conguaglio
+\[4\] Se è un acconto → in attesa di conguaglio
        ↓
-[5] Quando arriva la definitiva:
+\[5\] Quando arriva la definitiva:
        - Ricalcolo
        - Scrittura definitiva (letture_definitive)
        - Segna acconto come "conguagliato"

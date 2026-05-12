@@ -64,7 +64,7 @@ riceve `403 Forbidden`.
 | `E_ANAG_DUPLICATO` | 409 | Vincolo univocita' violato (codice, soggetto, default) |
 
 > Eccezioni inattese vengono normalizzate dal middleware
-> [api_exception_middleware](../../core/manual/api_exception_middleware.md) in
+> [error-handling-api](../../core/manual/error-handling-api.md) in
 > envelope `{"error": {"code": "E_INTERNAL", ...}}` con HTTP 500.
 
 ## Dipendenze DB

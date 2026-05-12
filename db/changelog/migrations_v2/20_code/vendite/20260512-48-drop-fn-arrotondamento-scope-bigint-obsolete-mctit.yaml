@@ -1,0 +1,40 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# DROP overload bigint di fn_get_arrotondamento_scope e
+# fn_set_arrotondamento_scope.
+#
+# Il caller effettivo e' fn_ricalcola_totali_fattura, che dichiara
+# v_valuta_id come fatture.valuta_id%TYPE = integer. PostgreSQL
+# risolve quindi sull'overload integer, che resta.
+# L'overload bigint e' un residuo del refactor 20260217-07.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260512-48-drop-fn-arrotondamento-scope-bigint-obsolete-mctit.yaml
+
+  - changeSet:
+      id: 20260512-48-drop-fn-arrotondamento-scope-bigint-obsolete
+      author: mctit
+      comment: >
+        DROP overload p_valuta_id=bigint di fn_get_arrotondamento_scope e
+        fn_set_arrotondamento_scope. Il caller usa fatture.valuta_id%TYPE=integer:
+        l'overload integer e' l'unico in uso.
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_get_arrotondamento_scope'
+                 AND pg_get_function_identity_arguments(p.oid) LIKE '%valuta_id bigint%'
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_get_arrotondamento_scope(bigint, integer, bigint, bigint, bigint);
+              DROP FUNCTION IF EXISTS vendite.fn_set_arrotondamento_scope(bigint, integer, bigint, bigint, bigint, numeric);

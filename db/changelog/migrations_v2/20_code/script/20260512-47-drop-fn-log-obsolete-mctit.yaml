@@ -1,0 +1,36 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# DROP entrambi gli overload di script.fn_log (4-args e 5-args).
+#
+# La catena di logging attuale e':
+#   fn_log_and_raise_error -> fn_log_error_only (diretta)
+# fn_log non e' chiamata da nessuna funzione nel DB ne' dal backend.
+# Entrambi gli overload sono residui storici (baseline 20250822-01).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260512-47-drop-fn-log-obsolete-mctit.yaml
+
+  - changeSet:
+      id: 20260512-47-drop-fn-log-obsolete
+      author: mctit
+      comment: >
+        DROP script.fn_log(text,text,text,jsonb) e script.fn_log(text,text,text,jsonb,uuid).
+        Entrambi inutilizzati: la catena corrente e' fn_log_and_raise_error -> fn_log_error_only.
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_log'
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_log(text, text, text, jsonb);
+              DROP FUNCTION IF EXISTS script.fn_log(text, text, text, jsonb, uuid);
