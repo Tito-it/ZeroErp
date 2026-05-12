@@ -1,0 +1,132 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260513-05-create-trgfn-articoli-guard-listino-se-composito-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Guard: articolo che diventa composito non puo' avere righe in listini_righe
+  # (modello unificato BoM 2026-05-13, §9 — simmetria con 20260513-04).
+  #
+  # Se un articolo ha gia' prezzi in listini_righe e si tenta di marcarlo
+  # is_composito=TRUE, il vincolo e' violato: quei prezzi esistenti
+  # sarebbero semanticamente errati per un composito.
+  #
+  # 2 changeSet:
+  #   05-01  trgfn catalogo.trgfn_articoli_guard_listino_se_composito
+  #   05-02  trigger BEFORE UPDATE OF is_composito su catalogo.articoli
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260513-05-01-create-trgfn-articoli-guard-listino-se-composito
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger function catalogo.trgfn_articoli_guard_listino_se_composito.
+        BEFORE UPDATE OF is_composito: se is_composito passa FALSE->TRUE e
+        l'articolo ha gia' righe in vendite.listini_righe, raise
+        E_LISTINO_RIGA_COMPOSITO_VIETATO (446).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli
+          - tableExists:
+              schemaName: vendite
+              tableName: listini_righe
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_listino_se_composito()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: BEFORE UPDATE OF is_composito — blocca la promozione di un
+              --   articolo a composito se ha gia' righe dirette in listini_righe.
+              --   I prezzi diretti in listino sarebbero semanticamente errati per
+              --   un composito (prezzo = SUM componenti, non dato di listino).
+              BEGIN
+                  -- Scatta solo quando is_composito passa da FALSE/NULL a TRUE
+                  IF NOT COALESCE(OLD.is_composito, FALSE)
+                     AND COALESCE(NEW.is_composito, FALSE)
+                  THEN
+                      IF EXISTS (
+                          SELECT 1 FROM vendite.listini_righe lr
+                           WHERE lr.articolo_id = NEW.id
+                             AND lr.attivo = TRUE
+                           LIMIT 1
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', TG_NAME, 'E_LISTINO_RIGA_COMPOSITO_VIETATO',
+                              jsonb_build_object(
+                                  'articolo_id', NEW.id,
+                                  'hint', 'Disattivare le righe listino esistenti prima di rendere composito l''articolo.'
+                              ),
+                              NULL::uuid,
+                              NEW.codice
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_listino_se_composito() IS
+                  'Trigger BEFORE UPDATE OF is_composito su articoli: blocca promozione a '
+                  'composito se esistono righe attive in listini_righe. Raise '
+                  'E_LISTINO_RIGA_COMPOSITO_VIETATO (446). rev 2026-05-13.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS catalogo.trgfn_articoli_guard_listino_se_composito();
+
+  - changeSet:
+      id: 20260513-05-02-create-trg-articoli-guard-listino-se-composito
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE UPDATE OF is_composito su catalogo.articoli, fase _a10_guard.
+        UPDATE OF is_composito: scatta solo quando il flag composito cambia,
+        minimizzando overhead su update di altri campi articolo.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'catalogo'
+                   AND p.proname = 'trgfn_articoli_guard_listino_se_composito';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_a10_guard_listino_se_composito_upd
+                  ON catalogo.articoli;
+
+              CREATE TRIGGER trg_articoli_a10_guard_listino_se_composito_upd
+                  BEFORE UPDATE OF is_composito
+                  ON catalogo.articoli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_guard_listino_se_composito();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_a10_guard_listino_se_composito_upd
+                  ON catalogo.articoli;

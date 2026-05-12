@@ -266,6 +266,7 @@ export function updateSoggetto(id, data) {
 
 ---
 
+<a id="7-pattern-searchtable--drawer"></a>
 ## 7. Pattern SearchTable + Drawer
 
 Questo e' il pattern principale per tutte le schermate CRUD. Esempio: Soggetti.
