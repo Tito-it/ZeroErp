@@ -20,8 +20,9 @@ Inizializza i componenti BoM CASO A per una riga contratto composita: chiama `fn
 ```sql
 vendite.fn_contratto_riga_componenti_init(
     p_riga_id          vendite.contratti_righe.id%TYPE,
-    p_emittente_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
-    p_data_riferimento vendite.contratti.data%TYPE
+    p_emittente_sr_id  anagrafiche.soggetti_ruoli.id%TYPE,
+    p_data_riferimento date,
+    p_force_manuale    boolean DEFAULT FALSE
 ) RETURNS integer
 ```
 
@@ -32,6 +33,7 @@ vendite.fn_contratto_riga_componenti_init(
 | `p_riga_id` | `bigint` | Sì, `> 0` | ID della riga contratto padre. Guard raise `E_PARAMETRO_INVALIDO` se NULL o ≤ 0. |
 | `p_emittente_sr_id` | `bigint` | Sì, `> 0` | `soggetto_ruolo_id` dell'emittente fiscale. |
 | `p_data_riferimento` | `date` | Sì | Data di riferimento per resolver e validazione BoM. Di norma `COALESCE(contratti.valido_dal, contratti.data)`. |
+| `p_force_manuale` | `boolean` | No (default `FALSE`) | Se `TRUE`, in caso di errore `P0001` dal resolver inserisce i componenti con `prezzo_unitario = NULL` e `origine_prezzo = 'MANUALE'` invece di sollevare `E_DOC_COMPONENTE_LISTINO_MANCANTE`. |
 
 ## Output
 
@@ -52,7 +54,9 @@ vendite.fn_contratto_riga_componenti_init(
 6. **Lettura parametri contratto** — `billing_account_id`, `utility_id`, `istanza_utility_id` da `contratti`.
 7. **Chiamata resolver** — `fn_resolve_prezzo_composito(..., utility_id::bigint, ...)` filtrata su `esposto_in_fattura = TRUE`.
 8. **INSERT per ogni componente** — con `prezzo_unitario`, `origine_prezzo` e contesto JSONB (include `istanza_utility_id`).
-9. **Fallback P0001** — prezzo=0/MANUALE per tutti i componenti BoM.
+9. **Gestione P0001** — se il resolver lancia `SQLSTATE 'P0001'`:
+   - `p_force_manuale = FALSE` (default): annulla gli INSERT parziali via savepoint e rilancia `E_DOC_COMPONENTE_LISTINO_MANCANTE`.
+   - `p_force_manuale = TRUE`: annulla gli INSERT parziali via savepoint e reinserisce tutti i componenti con `prezzo_unitario = NULL`, `origine_prezzo = 'MANUALE'`. Il JSONB `prezzo_resolver_context` riporta `error = 'resolver_failed'`, `reason`, `force_manuale: true`.
 
 ## Differenze rispetto alle altre fn_init
 
@@ -64,6 +68,7 @@ vendite.fn_contratto_riga_componenti_init(
 
 ## `prezzo_resolver_context` JSONB
 
+Struttura in caso di successo resolver:
 ```jsonc
 {
     "emittente_sr_id": 42,
@@ -73,6 +78,22 @@ vendite.fn_contratto_riga_componenti_init(
     "istanza_utility_id": 7
 }
 ```
+
+Struttura in caso di fallback con `p_force_manuale = TRUE` (componenti inseriti con `prezzo_unitario = NULL`):
+```jsonc
+{
+    "error": "resolver_failed",
+    "reason": "<messaggio dell'eccezione P0001>",
+    "force_manuale": true,
+    "emittente_sr_id": 42,
+    "data_riferimento": "2026-05-12",
+    "ba_id": 100,
+    "utility_id": 3,
+    "istanza_utility_id": 7
+}
+```
+
+Con `p_force_manuale = FALSE` (default), il resolver P0001 viene rilanciato come `E_DOC_COMPONENTE_LISTINO_MANCANTE` e nessun componente viene inserito.
 
 ## Dipendenze
 

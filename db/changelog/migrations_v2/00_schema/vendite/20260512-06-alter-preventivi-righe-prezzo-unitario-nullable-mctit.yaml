@@ -1,0 +1,35 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# ALTER vendite.preventivi_righe — prezzo_unitario nullable.
+#
+# Why: le fn_*_riga_componenti_init con p_force_manuale=TRUE
+# inseriscono componenti con prezzo_unitario=NULL. Il trigger
+# trgfn_componenti_ricalcola_padre propaga NULL al padre quando
+# almeno un componente e' pending. preventivi_righe.prezzo_unitario
+# era NOT NULL e doveva ammettere NULL per supportare questo pattern.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260512-06-alter-preventivi-righe-prezzo-unitario-nullable-mctit.yaml
+
+  - changeSet:
+      id: 20260512-06-alter-preventivi-righe-prezzo-unitario-nullable
+      author: mctit
+      comment: >
+        ALTER vendite.preventivi_righe.prezzo_unitario: DROP NOT NULL.
+        Necessario per propagazione NULL dal trigger ricalcolo padre
+        quando componenti BoM CASO A hanno prezzo pending (NULL).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: preventivi_righe
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                ALTER COLUMN prezzo_unitario DROP NOT NULL;

@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# UPDATE script.fn_ricalcola_prezzo_padre_da_componenti
+#   Propaga NULL al padre se almeno un componente attivo ha
+#   prezzo_unitario IS NULL (componente pending valorizzazione).
+#
+# Why: la funzione originale usa COALESCE(SUM(...), 0). In PostgreSQL,
+# SUM ignora i NULL: se un componente ha prezzo NULL viene saltato e
+# il padre riceve la somma parziale degli altri, che e' scorretta.
+# Il nuovo comportamento: se COUNT(NULL prezzo attivi) > 0 -> padre NULL.
+# Se nessun componente attivo -> padre 0 (invariato).
+#
+# Logica:
+#   CASE
+#     WHEN COUNT(*) FILTER (WHERE prezzo_unitario IS NULL) > 0 THEN NULL
+#     ELSE COALESCE(SUM(prezzo_unitario * coeff_qta_snapshot), 0)
+#   END
+#
+# Stessa firma: CREATE OR REPLACE senza DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260512-12-update-fn-ricalcola-prezzo-padre-da-componenti-null-propagation-mctit.yaml
+
+  - changeSet:
+      id: 20260512-12-update-fn-ricalcola-prezzo-padre-da-componenti-null-propagation
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        NULL propagation in fn_ricalcola_prezzo_padre_da_componenti:
+        se almeno 1 componente attivo ha prezzo NULL (pending), il padre
+        riceve NULL. Se nessun componente attivo: 0 (invariato).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_ricalcola_prezzo_padre_da_componenti'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(
+                  p_schema        text,
+                  p_tab_padre     text,
+                  p_tab_figli     text,
+                  p_col_fk_padre  text,
+                  p_riga_padre_id BIGINT
+              ) RETURNS VOID
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sql text;
+              BEGIN
+                  -- Ricalcola prezzo_unitario del padre dai figli attivi.
+                  -- Se almeno 1 figlio attivo ha prezzo_unitario NULL (pending
+                  -- valorizzazione manuale) -> padre = NULL.
+                  -- Se nessun figlio attivo -> padre = 0 (COALESCE).
+                  -- Nota: SUM di PostgreSQL ignora NULL; il CASE e' necessario
+                  -- per propagare lo stato "pending" al padre.
+                  v_sql := format(
+                      $q$UPDATE %1$I.%2$I
+                            SET prezzo_unitario = (
+                                SELECT
+                                    CASE
+                                        WHEN COUNT(*) FILTER (WHERE c.prezzo_unitario IS NULL) > 0
+                                            THEN NULL
+                                        ELSE COALESCE(SUM(c.prezzo_unitario * c.coeff_qta_snapshot), 0)
+                                    END
+                                  FROM %1$I.%3$I c
+                                 WHERE c.%4$I = $1
+                                   AND c.attivo = TRUE
+                            )
+                          WHERE id = $1$q$,
+                      p_schema,
+                      p_tab_padre,
+                      p_tab_figli,
+                      p_col_fk_padre
+                  );
+                  EXECUTE v_sql USING p_riga_padre_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(text, text, text, text, bigint)
+              IS 'Helper generica BoM CASO A: aggiorna prezzo_unitario della riga padre. Se almeno 1 componente attivo ha prezzo NULL (pending), imposta NULL al padre. Se nessun componente attivo: 0. rev 12-05-2026: NULL propagation (SUM PostgreSQL ignora NULL, serve CASE esplicito).';
