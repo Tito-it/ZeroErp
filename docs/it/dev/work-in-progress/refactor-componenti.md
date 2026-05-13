@@ -69,6 +69,8 @@ Stima: 0.8 sessione.
 - Aggiungere colonne `obbligatorio` (icona), `attivo` (checkbox disabilitato per obbligatori), `esposto_in_fattura` (tag)
 - Validazione: blocco UPDATE `prezzo = 0` su obbligatori (defense-in-depth oltre al DB)
 - Riusare componenti tabella della Dialog se possibile (TODO building block §5)
+- BE: nuovo metodo `repo.apply_attivazioni(riga_id, attivazioni)` separato da `init_componenti_riga` (oggi le attivazioni sono UPDATE post-init, in CREATE va bene; in EDIT vanno applicate stand-alone — vedi commento `init_componenti_riga` "re-init implicito")
+- **Decisione aperta — gating L1 su `componenti_attivazioni`**: oggi non c'e' check permessi su attiva/disattiva opzionali (solo guard DB su obbligatori via `E_DOC_COMPONENTE_OBBLIGATORIO`). Probabilmente OK in quanto decisione operativa non economica, ma se serve un'azione dedicata "modifica composizione componenti" introdurla qui. Per ora lasciato aperto e non implementato.
 
 Stima: 0.3 sessione.
 

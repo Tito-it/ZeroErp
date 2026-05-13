@@ -98,8 +98,12 @@ export function previewRigaComponenti(preventivoId, payload) {
   )
 }
 
-export function listRigaComponenti(preventivoId, rigaId) {
-  return api.get(`${BASE}/${preventivoId}/righe/${rigaId}/componenti/`)
+// `soloAttivi=true` default backcompat (expander tabella righe vede solo
+// componenti attivi). EDIT panel passa false per includere anche gli
+// opzionali disattivati e permettere il toggle di riattivazione.
+export function listRigaComponenti(preventivoId, rigaId, { soloAttivi = true } = {}) {
+  const params = soloAttivi ? {} : { solo_attivi: 'false' }
+  return api.get(`${BASE}/${preventivoId}/righe/${rigaId}/componenti/`, { params })
 }
 
 // Update fine del singolo componente (prezzo override, IVA, ordine, origine).

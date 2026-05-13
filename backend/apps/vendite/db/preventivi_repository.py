@@ -679,23 +679,41 @@ class PreventiviRepository:
             row = cursor.fetchone()
             return int(row[0]) if row else None
 
-    # Scopo: Popola i componenti CASO A per una riga padre composita
-    # invocando la fn DB `vendite.fn_preventivo_riga_componenti_init`.
-    # Idempotente: ritorna 0 se gia' presenti componenti su quella riga
-    # o se l'articolo non e' composito.
+    # Scopo: Popola i componenti BoM per una riga padre composita invocando
+    # la fn DB `vendite.fn_preventivo_riga_componenti_init` (modello
+    # unificato 2026-05-13). Idempotente: ritorna 0 se gia' presenti
+    # componenti su quella riga o se l'articolo non e' composito.
+    # Se il padre e' composito ma BoM scaduta/non configurata alla data:
+    # la fn DB solleva `E_DOC_COMPOSITO_BOM_VUOTA`.
     #
-    # `componenti_overrides` (decisione di dominio 2026-05-12 form atomic):
-    # mappa opzionale `{componente_id_uuid: prezzo_decimal}` raccolta dal FE
-    # (drawer riga in 2 step) per i componenti su cui l'operatore ha inserito
-    # un prezzo manuale. Per ogni componente la fn DB:
+    # `componenti_overrides`: mappa opzionale {componente_id: prezzo} per
+    # i componenti su cui l'operatore ha inserito un prezzo manuale.
+    # Per ogni componente la fn DB:
     #   - applica l'override se presente (origine_prezzo='MANUALE')
-    #   - altrimenti delega al pricing resolver; se manca listino solleva
-    #     `E_DOC_COMPONENTE_LISTINO_MANCANTE` (HTTP 422, path strict)
-    # Il caller (service) deve gating L1: passare overrides non vuoti solo
-    # se l'utente ha l'azione `prezzo_override_manuale`. Senza overrides
-    # equivale al comportamento strict invariato.
-    # Vedi guida `gestione-listini.md` §6.2 + brief
-    # `brief-db-componenti-form-atomic.md`.
+    #   - altrimenti delega al pricing resolver bundle-aware (STADIO 0
+    #     listino bundle del padre, fallback STADIO 1 standalone); se
+    #     manca listino solleva `E_DOC_COMPONENTE_LISTINO_MANCANTE`
+    # Guard prezzo=0 solo per componenti `obbligatorio=TRUE` (modello
+    # unificato: opzionali ammettono prezzo 0/negativo).
+    # Il caller (service) deve gating L1: passare overrides non vuoti
+    # solo se l'utente ha l'azione `prezzo_override_manuale`.
+    #
+    # `componenti_attivazioni`: mappa opzionale {componente_id: bool} per
+    # sovrascrivere il default DB di `attivo` su componenti opzionali.
+    # Default DB (modello unificato): obbligatori = TRUE, opzionali =
+    # FALSE. L'operatore puo' attivare opzionali via questa mappa.
+    # Implementato come UPDATE post-init (la fn DB non accetta il
+    # parametro): il trigger guard DB
+    # `script.trgfn_componenti_guard_obbligatorio` impedisce di
+    # disattivare obbligatori (raise `E_DOC_COMPONENTE_OBBLIGATORIO`).
+    #
+    # ATTENZIONE re-init implicito: se la fn DB fa no-op (componenti gia'
+    # presenti, ritorna 0) la mappa attivazioni viene comunque applicata
+    # come UPDATE sui figli esistenti. In Fase B il caller reale e'
+    # `gestisci_riga` (CREATE riga, mai no-op): comportamento ininfluente.
+    # In Fase D (EDIT panel) servira' un metodo dedicato
+    # `apply_attivazioni(riga_id, attivazioni)` per separare init e
+    # modifica successive. Per ora non splittiamo perche' YAGNI.
     def init_componenti_riga(
         self,
         *,
@@ -703,9 +721,9 @@ class PreventiviRepository:
         emittente_soggetto_ruolo_id: int,
         data_riferimento: date,
         componenti_overrides: dict[str, Any] | None = None,
+        componenti_attivazioni: dict[str, bool] | None = None,
     ) -> int:
-        # Cast esplicito a jsonb per disambiguare l'overload della fn DB
-        # (3 args strict vs 4 args jsonb vs 4 args boolean legacy):
+        # Cast esplicito a jsonb per disambiguare l'overload della fn DB:
         # None -> NULL, dict -> json.dumps. Il caller (service) e' tenuto
         # a validare la forma dei valori (numero non vuoto) prima di passarli
         # qui — vedi `_normalize_componenti_overrides` in preventivi_service.
@@ -726,14 +744,40 @@ class PreventiviRepository:
                 overrides_json,
             ])
             row = cursor.fetchone()
-            return int(row[0]) if row else 0
+            inserted = int(row[0]) if row else 0
 
-    # Scopo: Preview componenti CASO A per drawer riga (form atomic).
-    # Read-only, no side-effect. Per ogni componente esposto del padre
-    # ritorna prezzo_suggerito (NULL se resolver fail per quel componente)
-    # + resolver_error_reason. Consumato dal FE per pre-popolare la
-    # tabella componenti del drawer riga PRIMA del save.
-    # Decisione di dominio 2026-05-12 form atomic.
+            # Applica attivazioni esplicite post-init. UPDATE selettivo per
+            # componente: il trigger DB guard scatta se il payload tenta di
+            # disattivare un obbligatorio. Niente UPDATE se il valore
+            # richiesto coincide con il default gia' applicato dalla fn
+            # `_init` (obbligatorio -> attivo=TRUE, opzionale -> attivo=FALSE):
+            # WHERE clause con `attivo IS DISTINCT FROM` impedisce UPDATE
+            # spurio e relativi trigger.
+            if componenti_attivazioni:
+                update_sql = (
+                    "UPDATE vendite.preventivi_righe_componenti "
+                    "SET attivo = %s "
+                    "WHERE riga_preventivo_id = %s "
+                    "  AND componente_id = %s "
+                    "  AND attivo IS DISTINCT FROM %s"
+                )
+                for componente_id, attivo in componenti_attivazioni.items():
+                    cursor.execute(update_sql, [
+                        bool(attivo), riga_id, str(componente_id),
+                        bool(attivo),
+                    ])
+
+            return inserted
+
+    # Scopo: Preview componenti BoM per drawer riga (modello unificato).
+    # Read-only, no side-effect. Per ogni componente attivo e valido alla
+    # data ritorna prezzo_suggerito (NULL se resolver fail per quel
+    # componente) + resolver_error_reason. Consumato dal FE per
+    # pre-popolare la tabella componenti del drawer riga PRIMA del save.
+    # Modello unificato 2026-05-13: tutti i componenti attivi sono
+    # restituiti (no filtro esposto_in_fattura), proiezione include
+    # `obbligatorio` (gate prezzo zero) e `esposto_in_fattura` (flag
+    # presentazione fattura).
     def preview_componenti_riga(
         self,
         *,
@@ -746,10 +790,9 @@ class PreventiviRepository:
         emittente_soggetto_ruolo_id: int,
         classe_utenza_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        # Proiezione allineata alla fn DB form atomic (12 colonne):
-        # `iva_codice` NON e' esposto dalla fn (solo `iva_id`). Il FE non
-        # mostra l'aliquota IVA in tabella preview, e' un dato gia'
-        # presente sull'articolo padre nel form.
+        # Proiezione allineata alla fn DB modello unificato (14 colonne):
+        # `iva_codice` NON e' esposto dalla fn (solo `iva_id`); l'aliquota
+        # del componente coincide con quella del padre (vincolo IVA BoM).
         sql = """
             SELECT articolo_componente_id,
                    componente_id,
@@ -762,7 +805,9 @@ class PreventiviRepository:
                    iva_id,
                    prezzo_suggerito,
                    origine_prezzo,
-                   resolver_error_reason
+                   resolver_error_reason,
+                   obbligatorio,
+                   esposto_in_fattura
               FROM vendite.fn_preventivo_riga_componenti_preview(
                   %s, %s, %s, %s, %s, %s, %s, %s
               )
@@ -775,11 +820,22 @@ class PreventiviRepository:
             ])
             return rows_to_list(cursor)
 
-    # Scopo: Lista componenti CASO A di una riga padre con denormalizzazioni
-    # articolo/uom/iva per UI. Filtra solo i componenti `attivo=TRUE`
-    # (i soft-deleted restano per audit ma non figurano).
-    def list_componenti_riga(self, riga_id: int) -> list[dict[str, Any]]:
-        sql = """
+    # Scopo: Lista componenti BoM di una riga padre con denormalizzazioni
+    # articolo/uom/iva + flag `obbligatorio` ed `esposto_in_fattura`
+    # (JOIN `articoli_componenti` — la BoM e' immutabile per design,
+    # JOIN runtime sempre coerente, no snapshot necessario).
+    # Modello unificato 2026-05-13.
+    #
+    # `solo_attivi=True` (default backcompat): filtra `c.attivo = TRUE`,
+    # esponendo solo i componenti attualmente inclusi nella riga.
+    # `solo_attivi=False`: include anche i componenti opzionali
+    # disattivati — usato dall'EDIT panel per consentire all'operatore
+    # di riattivare opzionali precedentemente esclusi.
+    def list_componenti_riga(
+        self, riga_id: int, *, solo_attivi: bool = True,
+    ) -> list[dict[str, Any]]:
+        filtro_attivo = "AND c.attivo = TRUE" if solo_attivi else ""
+        sql = f"""
             SELECT
                 c.id,
                 c.riga_preventivo_id,
@@ -803,13 +859,17 @@ class PreventiviRepository:
                 c.pratica_approvazione_prezzo_id,
                 c.meta,
                 c.ordine,
-                c.attivo
+                c.attivo,
+                ac.obbligatorio,
+                ac.esposto_in_fattura
               FROM vendite.preventivi_righe_componenti c
               LEFT JOIN catalogo.articoli a    ON a.id  = c.componente_id
               LEFT JOIN catalogo.unita_misura um ON um.id = c.uom_operativa_id
               LEFT JOIN config.iva iva         ON iva.id = c.iva_id
+              LEFT JOIN catalogo.articoli_componenti ac
+                     ON ac.id = c.articolo_componente_id
              WHERE c.riga_preventivo_id = %s
-               AND c.attivo = TRUE
+               {filtro_attivo}
              ORDER BY c.ordine NULLS LAST, c.id
         """
         with connection.cursor() as cursor:
@@ -843,11 +903,15 @@ class PreventiviRepository:
                 c.pratica_approvazione_prezzo_id,
                 c.meta,
                 c.ordine,
-                c.attivo
+                c.attivo,
+                ac.obbligatorio,
+                ac.esposto_in_fattura
               FROM vendite.preventivi_righe_componenti c
               LEFT JOIN catalogo.articoli a    ON a.id  = c.componente_id
               LEFT JOIN catalogo.unita_misura um ON um.id = c.uom_operativa_id
               LEFT JOIN config.iva iva         ON iva.id = c.iva_id
+              LEFT JOIN catalogo.articoli_componenti ac
+                     ON ac.id = c.articolo_componente_id
              WHERE c.id = %s
         """
         with connection.cursor() as cursor:

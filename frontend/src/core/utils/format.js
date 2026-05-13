@@ -2,6 +2,16 @@
 // Un solo punto di modifica per formati numerici/dimensioni in tutta l'applicazione.
 
 /**
+ * Tolleranza floating-point per confronti tra prezzi.
+ * = mezzo step del 6° decimale (InputNumber accetta `max-fraction-digits=6`).
+ * Usato per dirty-check / delta override vs prezzo suggerito: copre il
+ * rounding di display senza confondere modifiche genuine al 6° decimale.
+ * Centralizzato per evitare drift fra i caller (ComponentiDialog,
+ * PreventiviRigaComponentiPanel, futuri EDIT panel su ordini/contratti/ddt).
+ */
+export const PRICE_EPSILON = 5e-7
+
+/**
  * Formatta una dimensione in byte in formato leggibile (B, KB, MB, GB).
  *
  * @param {number|null} bytes - Dimensione in byte

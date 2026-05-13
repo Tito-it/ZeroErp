@@ -47,7 +47,13 @@ Indice test eseguiti:
 33b) test_gestisci_riga_init_componenti_usa_emittente_preventivo — admin + emittente esplicito sul preventivo OK
 33c) test_gestisci_riga_init_componenti_overrides_passati — form atomic: componenti_overrides nel payload → init
 33d) test_gestisci_riga_componenti_overrides_unauthorized — gating L1 senza override → 403 E_PREV_OVERRIDE_NON_AUTORIZZATO
+33e) test_gestisci_riga_init_componenti_attivazioni_passate — modello unificato: componenti_attivazioni propagato a repo.init
+33f) test_gestisci_riga_init_componenti_bom_vuota_propaga — repo solleva E_DOC_COMPOSITO_BOM_VUOTA → service propaga
+33g) test_gestisci_riga_init_componenti_obbligatorio_disattivazione_bloccata — repo solleva E_DOC_COMPONENTE_OBBLIGATORIO → service propaga
+33h) test_gestisci_riga_init_componenti_obbligatorio_prezzo_zero — repo solleva E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO → service propaga
 34) test_aggiorna_riga_non_tocca_componenti — articolo_id immutabile, componenti stabili
+34b) test_aggiorna_riga_rifiuta_componenti_overrides — PATCH con componenti_overrides → 422
+34c) test_aggiorna_riga_rifiuta_componenti_attivazioni — PATCH con componenti_attivazioni → 422
 35) test_list_componenti_riga_ok — lista componenti riga padre
 36) test_list_componenti_riga_not_found — riga padre inesistente
 37) test_list_componenti_riga_scope_violation — riga padre di altro preventivo
@@ -71,6 +77,11 @@ TestNormalizeComponentiOverrides:
   test_decimal_native_normalizzato
 - test_valore_none_solleva, test_valore_stringa_vuota_solleva,
   test_valore_non_numerico_solleva, test_overrides_non_dict_solleva
+
+TestNormalizeComponentiAttivazioni:
+- test_none_ritorna_none, test_dict_vuoto_ritorna_none
+- test_dict_bool_normalizzato
+- test_valore_non_bool_solleva, test_attivazioni_non_dict_solleva
 """
 
 import unittest
@@ -705,6 +716,113 @@ class TestPreventiviService(unittest.TestCase):
             # ma per non rompere questo test specifico ricominciamo il patch).
             self.gating_overrides_patcher.start()
 
+    # Scopo: modello unificato 2026-05-13 — il payload puo' includere
+    # `componenti_attivazioni` (mappa componente_id → bool) per attivare
+    # opzionali (default DB inserisce opzionali con `attivo=FALSE`) o
+    # disattivare opzionali in re-init. Il service li propaga al repo;
+    # il guard DB blocca tentativi su obbligatori.
+    def test_gestisci_riga_init_componenti_attivazioni_passate(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+        }
+        self.mock_repo.create_riga.return_value = {"id": 42}
+        attivazioni = {
+            "019d57c1-b2b2-7d3a-9ebb-421addc5f393": True,
+            "019d57c1-b2b2-7d3a-9ebb-421addc5f394": False,
+        }
+        gestisci_riga(
+            1, {
+                "articolo_id": "uuid-art-1", "uom_operativa_id": 1,
+                "componenti_attivazioni": attivazioni,
+            },
+            auth_user_id=100,
+        )
+        self.mock_repo.init_componenti_riga.assert_called_once()
+        kwargs = self.mock_repo.init_componenti_riga.call_args.kwargs
+        self.assertEqual(kwargs["componenti_attivazioni"], attivazioni)
+
+    # Scopo: padre composito con BoM scaduta/non configurata alla data:
+    # la fn DB solleva `E_DOC_COMPOSITO_BOM_VUOTA` e il service NON deve
+    # ingoiare l'errore (no try/except attorno a init_componenti_riga).
+    # Verifichiamo via side_effect sul mock repo.
+    def test_gestisci_riga_init_componenti_bom_vuota_propaga(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+        }
+        self.mock_repo.create_riga.return_value = {"id": 42}
+        self.mock_repo.init_componenti_riga.side_effect = ServiceError(
+            code="E_DOC_COMPOSITO_BOM_VUOTA",
+            message="BoM vuota",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(
+                1, {"articolo_id": "uuid-art-1", "uom_operativa_id": 1},
+                auth_user_id=100,
+            )
+        self.assertEqual(ctx.exception.code, "E_DOC_COMPOSITO_BOM_VUOTA")
+
+    # Scopo: opzionale disattivato tramite componenti_attivazioni e' OK
+    # via repo; obbligatorio disattivato fa scattare il trigger DB con
+    # E_DOC_COMPONENTE_OBBLIGATORIO che si propaga al service.
+    def test_gestisci_riga_init_componenti_obbligatorio_disattivazione_bloccata(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+        }
+        self.mock_repo.create_riga.return_value = {"id": 42}
+        self.mock_repo.init_componenti_riga.side_effect = ServiceError(
+            code="E_DOC_COMPONENTE_OBBLIGATORIO",
+            message="Componente obbligatorio: non disattivabile",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(
+                1, {
+                    "articolo_id": "uuid-art-1", "uom_operativa_id": 1,
+                    "componenti_attivazioni": {"uuid-c1": False},
+                },
+                auth_user_id=100,
+            )
+        self.assertEqual(ctx.exception.code, "E_DOC_COMPONENTE_OBBLIGATORIO")
+
+    # Scopo: override prezzo=0 su componente obbligatorio e' bloccato dalla
+    # fn DB con E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO; il service deve
+    # propagare l'errore (no swallow).
+    def test_gestisci_riga_init_componenti_obbligatorio_prezzo_zero(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+        }
+        self.mock_repo.create_riga.return_value = {"id": 42}
+        self.mock_repo.init_componenti_riga.side_effect = ServiceError(
+            code="E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO",
+            message="Componente obbligatorio: prezzo deve essere <> 0",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(
+                1, {
+                    "articolo_id": "uuid-art-1", "uom_operativa_id": 1,
+                    "componenti_overrides": {"uuid-c1": "0.00"},
+                },
+                auth_user_id=100,
+            )
+        self.assertEqual(
+            ctx.exception.code, "E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO",
+        )
+
     # Scopo: admin globale CON `emittente_fiscale_id` esplicito sul
     # preventivo triggera init usando quell'emittente (precedenza
     # preventivo > operatore). Risolve bug "admin non puo' creare CASO A
@@ -758,6 +876,44 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.purge_componenti_riga.assert_not_called()
         self.mock_repo.init_componenti_riga.assert_not_called()
 
+    # Scopo: PATCH riga con `componenti_overrides` o `componenti_attivazioni`
+    # nel payload deve fallire rumorosamente (422 E_PREV_VALIDAZIONE) invece
+    # di scartare i campi silenziosamente. Modifica componenti via endpoint
+    # dedicato `/righe/<riga_id>/componenti/<componente_id>/`.
+    def test_aggiorna_riga_rifiuta_componenti_overrides(self):
+        from apps.vendite.services.preventivi_service import aggiorna_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_riga(
+                1, 10,
+                {"componenti_overrides": {"uuid-c1": "10.00"}},
+                auth_user_id=100,
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.update_riga.assert_not_called()
+
+    def test_aggiorna_riga_rifiuta_componenti_attivazioni(self):
+        from apps.vendite.services.preventivi_service import aggiorna_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            "data": "2026-05-11",
+            "billing_account_id": 5, "utility_id": 5,
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_riga(
+                1, 10,
+                {"componenti_attivazioni": {"uuid-c1": True}},
+                auth_user_id=100,
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.update_riga.assert_not_called()
+
     # Scopo: list_componenti_riga ritorna la lista dal repo.
     def test_list_componenti_riga_ok(self):
         from apps.vendite.services.preventivi_service import list_componenti_riga
@@ -772,7 +928,9 @@ class TestPreventiviService(unittest.TestCase):
         ]
         result = list_componenti_riga(1, 10)
         self.assertEqual(len(result), 2)
-        self.mock_repo.list_componenti_riga.assert_called_once_with(10)
+        self.mock_repo.list_componenti_riga.assert_called_once_with(
+            10, solo_attivi=True,
+        )
 
     # Scopo: list su riga inesistente -> E_PREV_RIGA_NOT_FOUND.
     def test_list_componenti_riga_not_found(self):
@@ -2081,6 +2239,56 @@ class TestNormalizeComponentiOverrides(unittest.TestCase):
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_overrides(
                 ["uuid-c1", "10"], function_name="t",
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+
+
+class TestNormalizeComponentiAttivazioni(unittest.TestCase):
+    """Modello unificato 2026-05-13: validazione/normalizzazione mappa
+    {componente_id: bool}. Bool-only, no coercion da int/str."""
+
+    def test_none_ritorna_none(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_attivazioni,
+        )
+        self.assertIsNone(
+            _normalize_componenti_attivazioni(None, function_name="t"),
+        )
+
+    def test_dict_vuoto_ritorna_none(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_attivazioni,
+        )
+        self.assertIsNone(
+            _normalize_componenti_attivazioni({}, function_name="t"),
+        )
+
+    def test_dict_bool_normalizzato(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_attivazioni,
+        )
+        out = _normalize_componenti_attivazioni(
+            {"uuid-c1": True, "uuid-c2": False}, function_name="t",
+        )
+        self.assertEqual(out, {"uuid-c1": True, "uuid-c2": False})
+
+    def test_valore_non_bool_solleva(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_attivazioni,
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            _normalize_componenti_attivazioni(
+                {"uuid-c1": "true"}, function_name="t",
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+
+    def test_attivazioni_non_dict_solleva(self):
+        from apps.vendite.services.preventivi_service import (
+            _normalize_componenti_attivazioni,
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            _normalize_componenti_attivazioni(
+                ["uuid-c1", True], function_name="t",
             )
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 

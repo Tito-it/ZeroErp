@@ -197,6 +197,9 @@ export function dominioListinoSeverity(codice) {
 // PROMO=arancio (offerta speciale, stadio 0 batte tutto),
 // CONTRATTO/CONTRATTO_LISTINO/CONTRATTO_OVERRIDE=azzurro (condizioni cliente
 // specifiche), CATEGORIA=verde (listino di default per categoria cliente),
+// LISTINO_BUNDLE=help (prezzo bundle del padre composito, modello unificato
+// componenti BoM 2026-05-13, resolver bundle-aware STADIO 0; tinta distinta
+// da CATEGORIA per evidenziare che e' un prezzo contestualizzato al padre),
 // MANUALE=secondary (override manuale operatore, niente colore di sistema).
 // Default 'secondary' per origini sconosciute o future.
 // Usato cross-dominio: PreventiviRigaForm (badge sotto prezzo riga),
@@ -208,6 +211,7 @@ export const PRICING_ORIGINE_MAP = {
   CONTRATTO_LISTINO: 'info',
   CONTRATTO_OVERRIDE: 'info',
   CATEGORIA: 'success',
+  LISTINO_BUNDLE: 'help',
   MANUALE: 'secondary',
 }
 export function pricingOrigineSeverity(codice) {
@@ -226,6 +230,7 @@ export const PRICING_ORIGINE_LABEL_KEY = {
   CONTRATTO_LISTINO: 'preventivi.badge_origine_contratto',
   CONTRATTO_OVERRIDE: 'preventivi.badge_origine_contratto_override',
   CATEGORIA: 'preventivi.badge_origine_categoria',
+  LISTINO_BUNDLE: 'preventivi.badge_origine_listino_bundle',
   MANUALE: 'preventivi.badge_origine_manuale',
 }
 

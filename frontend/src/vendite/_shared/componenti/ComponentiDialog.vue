@@ -1,16 +1,21 @@
 <script setup>
-// Scopo: Dialog modale per la valorizzazione dei componenti BoM di un
-//        articolo composito (modello unificato 2026-05-12 sera).
-//        Sostituisce la tabella inline preview del form atomic.
+// Scopo: Building block riusabile per la valorizzazione dei componenti BoM
+//        di un articolo composito (modello unificato 2026-05-13).
+//        Costituisce il blocco UI per le 4 sorgenti documento commerciale
+//        (preventivi, ordini, contratti, ddt) — la variabilita' tra le
+//        sorgenti vive solo in 2 prop:
+//          * apiPreview(documentoId, params) -> Promise<axiosResponse>
+//          * documentoId (Number)
+//
 //        Lifecycle:
-//         1. Drawer riga preventivo apre la Dialog quando l'operatore
-//            seleziona un articolo composito (auto-open).
-//         2. Mount della Dialog -> chiama previewRigaComponenti API,
-//            popola tabella con prezzi suggeriti + flag obbligatorio,
-//            esposto_in_fattura, attivo (obbligatori TRUE, opzionali FALSE).
+//         1. Drawer riga apre la Dialog quando l'operatore seleziona un
+//            articolo composito (auto-open).
+//         2. Mount della Dialog -> chiama apiPreview, popola tabella con
+//            prezzi suggeriti + flag obbligatorio + esposto_in_fattura
+//            + attivo (obbligatori TRUE, opzionali FALSE per default DB).
 //         3. Operatore valorizza prezzi mancanti, attiva opzionali,
 //            modifica suggeriti dove ammesso.
-//         4. Conferma -> emit('confirm', { overrides, attivazioni }).
+//         4. Conferma -> emit('confirm', { overrides, attivazioni, summary }).
 //            Annulla -> emit('cancel') senza propagare.
 //        Il drawer padre raccoglie il payload e lo include in
 //        `componenti_overrides` + `componenti_attivazioni` del Save.
@@ -18,12 +23,9 @@
 //        Form atomic: NO persistenza dei figli finche' la riga padre
 //        non viene salvata. Tutto vive nel client.
 //
-// TODO post-DB modello unificato:
-//   - I campi `obbligatorio` ed `esposto_in_fattura` arriveranno dalla
-//     fn DB aggiornata. Finche' non atterra, fallback `obbligatorio=true`
-//     ed `esposto_in_fattura` derivata da articoli_componenti (placeholder).
-//   - Codice origine `LISTINO_BUNDLE` (resolver bundle-aware) sara'
-//     mappato da `pricingOrigineLabelKey` quando il backend lo ritorna.
+//        NOTA listini bundle: NON usa questo Dialog. La UX listini ha
+//        contesto diverso (versione listino, no data documento, no BA,
+//        no utility, no delta) — sara' un Dialog separato in Fase G/H.
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Dialog from 'primevue/dialog'
@@ -36,11 +38,10 @@ import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError } from '../../../core/utils/apiError'
-import { formatCurrency } from '../../../core/utils/format'
+import { formatCurrency, PRICE_EPSILON } from '../../../core/utils/format'
 import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/utils/severity'
 import { useAuthStore } from '../../../stores/auth'
 import { PRICING_ACTIONS } from '../../constants'
-import { previewRigaComponenti } from '../api/preventiviApi'
 
 const { t } = useI18n()
 const notify = useNotify()
@@ -52,9 +53,17 @@ const props = defineProps({
   // Articolo composito padre selezionato nel drawer riga
   // Oggetto: { id, codice, descrizione, is_composito }
   articolo: { type: Object, default: null },
-  preventivoId: { type: Number, required: true },
+  // ID del documento padre (preventivo, ordine, contratto, ddt).
+  // Generico — la callback apiPreview riceve questo come primo argomento.
+  documentoId: { type: Number, required: true },
   uomOperativaId: { type: Number, default: null },
   quantita: { type: [Number, String], default: 1 },
+  // Callback fetch preview iniettata dal caller (sorgente-specific).
+  // Firma: (documentoId, {articolo_id, uom_operativa_id, quantita})
+  //   -> Promise<axiosResponse con response.data.data = lista componenti>
+  // Per preventivi: passare previewRigaComponenti da preventiviApi.
+  // Per ordini/contratti/ddt: l'omologa di quella sorgente.
+  apiPreview: { type: Function, required: true },
   // Payload corrente (se l'operatore riapre la Dialog dopo conferma)
   // per ripristinare lo stato precedente
   initialPayload: { type: Object, default: null },
@@ -92,7 +101,7 @@ async function caricaPreview() {
   loading.value = true
   errore.value = null
   try {
-    const res = await previewRigaComponenti(props.preventivoId, {
+    const res = await props.apiPreview(props.documentoId, {
       articolo_id: props.articolo.id,
       uom_operativa_id: props.uomOperativaId,
       quantita: props.quantita,
@@ -103,7 +112,7 @@ async function caricaPreview() {
     initPayloadDaPreview(rows)
   } catch (err) {
     if (tk !== _previewToken) return
-    errore.value = extractApiError(err, t('preventivi.componenti_errore_caricamento'))
+    errore.value = extractApiError(err, t('vendite.componenti.errore_caricamento'))
     componenti.value = []
   } finally {
     if (tk === _previewToken) loading.value = false
@@ -126,13 +135,13 @@ function initPayloadDaPreview(rows) {
     } else {
       initOverrides[c.componente_id] = null  // resolver fail -> operatore deve valorizzare
     }
-    // Attivazione: ripristino esplicito > default per obbligatorio
+    // Attivazione: ripristino esplicito > default obbligatorio.
     if (c.componente_id in restoreAttivi) {
       initAttivi[c.componente_id] = !!restoreAttivi[c.componente_id]
     } else {
-      // TODO post-DB: usa c.obbligatorio; fallback true finche' la
-      // fn DB non espone il flag.
-      initAttivi[c.componente_id] = c.obbligatorio !== false
+      // Modello unificato: obbligatori = TRUE, opzionali = FALSE.
+      // La fn DB preview espone `obbligatorio` come boolean (no NULL).
+      initAttivi[c.componente_id] = c.obbligatorio === true
     }
   }
   prezzoOverrides.value = initOverrides
@@ -156,9 +165,12 @@ onMounted(() => {
 // ── Helper template ───────────────────────────────────────────────
 
 function isObbligatorio(comp) {
-  // TODO post-DB: leggere comp.obbligatorio direttamente.
-  // Finche' la fn DB non espone il flag, fallback a true (conservativo).
-  return comp.obbligatorio !== false
+  // Modello unificato 2026-05-13: la fn DB preview ritorna sempre
+  // boolean non-null. Comparazione stretta `=== true` coerente con
+  // `initPayloadDaPreview` (record con obbligatorio=null/undefined
+  // sono trattati come opzionali — opzione conservativa: default
+  // attivo=FALSE invece di TRUE).
+  return comp.obbligatorio === true
 }
 
 function isEsposto(comp) {
@@ -222,7 +234,15 @@ const summaryTotale = computed(() => {
     totale += prezzo * qta
     nAttivi += 1
   }
-  return { n: nAttivi, total: totale }
+  // qtaPadre: snapshot della qty padre al confirm, permette al caller di
+  // scalare il totale lato suo se la qty cambia post-confirm senza dover
+  // riaprire la Dialog (il prezzo unitario del componente non dipende
+  // dalla qty padre — solo `quantita_componente = coeff × qty_padre`).
+  return {
+    n: nAttivi,
+    total: totale,
+    qtaPadre: Number(props.quantita) || 0,
+  }
 })
 
 // ── Build payload + emit ──────────────────────────────────────────
@@ -238,9 +258,11 @@ function buildPayload() {
   for (const c of componenti.value) {
     const prezzoLocale = getPrezzoCorrente(c)
     const suggerito = c.prezzo_suggerito != null ? Number(c.prezzo_suggerito) : null
-    // Overrides: invia solo se prezzo locale != suggerito (o suggerito NULL)
+    // Overrides: invia solo se prezzo locale != suggerito (o suggerito NULL).
+    // PRICE_EPSILON centralizzato in core/utils/format (mezzo step del
+    // 6° decimale, coerente con InputNumber max-fraction-digits=6).
     if (prezzoLocale != null) {
-      if (suggerito == null || Math.abs(prezzoLocale - suggerito) > 1e-6) {
+      if (suggerito == null || Math.abs(prezzoLocale - suggerito) >= PRICE_EPSILON) {
         overrides[c.componente_id] = String(prezzoLocale)
       }
     }
@@ -260,7 +282,7 @@ function buildPayload() {
 
 function handleConfirm() {
   if (!canConfirm.value) {
-    notify.warn(t('preventivi.componenti_obbligatorio_mancante'))
+    notify.warn(t('vendite.componenti.obbligatorio_mancante'))
     return
   }
   emit('confirm', buildPayload())
@@ -278,7 +300,7 @@ function handleCancel() {
     :visible="props.visible"
     @update:visible="(v) => emit('update:visible', v)"
     :header="articolo
-      ? t('preventivi.componenti_dialog_titolo', {
+      ? t('vendite.componenti.dialog_titolo', {
           codice: articolo.codice || '',
           descrizione: articolo.descrizione || '',
         })
@@ -289,11 +311,11 @@ function handleCancel() {
     :pt="{ root: { class: 'app-dialog-componenti' } }"
   >
     <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-      <small class="text-color-secondary">{{ t('preventivi.componenti_dialog_hint') }}</small>
+      <small class="text-color-secondary">{{ t('vendite.componenti.dialog_hint') }}</small>
 
       <div v-if="loading" style="padding: 1rem; text-align: center;">
         <i class="pi pi-spin pi-spinner" style="margin-right: 0.5rem;" />
-        {{ t('preventivi.componenti_dialog_caricamento') }}
+        {{ t('vendite.componenti.dialog_caricamento') }}
       </div>
 
       <Message v-else-if="errore" severity="error" :closable="false">
@@ -301,7 +323,7 @@ function handleCancel() {
       </Message>
 
       <Message v-else-if="componenti.length === 0" severity="warn" :closable="false">
-        {{ t('preventivi.componenti_bom_vuota') }}
+        {{ t('vendite.componenti.bom_vuota') }}
       </Message>
 
       <DataTable
@@ -312,20 +334,20 @@ function handleCancel() {
         data-key="componente_id"
         responsive-layout="scroll"
       >
-        <Column :header="t('preventivi.componenti_col_codice')" style="width: 140px;">
+        <Column :header="t('vendite.componenti.col_codice')" style="width: 140px;">
           <template #body="{ data }">
             <div style="display: flex; flex-direction: column; gap: 0.15rem;">
               <strong>{{ data.componente_codice }}</strong>
               <Tag
                 v-if="isObbligatorio(data)"
                 severity="danger"
-                :value="t('preventivi.componenti_col_obbligatorio_tag')"
+                :value="t('vendite.componenti.col_obbligatorio_tag')"
                 class="app-tag-xs"
               />
               <Tag
                 v-else
                 severity="secondary"
-                :value="t('preventivi.componenti_col_opzionale_tag')"
+                :value="t('vendite.componenti.col_opzionale_tag')"
                 class="app-tag-xs"
               />
             </div>
@@ -334,17 +356,17 @@ function handleCancel() {
 
         <Column
           field="componente_descrizione"
-          :header="t('preventivi.componenti_col_descrizione')"
+          :header="t('vendite.componenti.col_descrizione')"
           style="min-width: 200px;"
         />
 
-        <Column :header="t('preventivi.componenti_col_qta')" style="width: 90px;">
+        <Column :header="t('vendite.componenti.col_qta')" style="width: 90px;">
           <template #body="{ data }">{{ data.quantita_componente }}</template>
         </Column>
 
-        <Column field="uom_codice" :header="t('preventivi.componenti_col_uom')" style="width: 70px;" />
+        <Column field="uom_codice" :header="t('vendite.componenti.col_uom')" style="width: 70px;" />
 
-        <Column :header="t('preventivi.componenti_col_prezzo_suggerito')" style="width: 140px;">
+        <Column :header="t('vendite.componenti.col_prezzo_suggerito')" style="width: 140px;">
           <template #body="{ data }">
             <span v-if="data.prezzo_suggerito != null">
               {{ formatCurrency(data.prezzo_suggerito) }}
@@ -352,13 +374,13 @@ function handleCancel() {
             <Tag
               v-else
               severity="warn"
-              :value="t('preventivi.componenti_preview_listino_mancante')"
+              :value="t('vendite.componenti.preview_listino_mancante')"
               class="app-tag-xs"
             />
           </template>
         </Column>
 
-        <Column :header="t('preventivi.componenti_col_prezzo_finale')" style="width: 170px;">
+        <Column :header="t('vendite.componenti.col_prezzo_finale')" style="width: 170px;">
           <template #body="{ data }">
             <InputNumber
               :model-value="prezzoOverrides[data.componente_id]"
@@ -380,7 +402,7 @@ function handleCancel() {
           </template>
         </Column>
 
-        <Column :header="t('preventivi.componenti_col_origine')" style="width: 130px;">
+        <Column :header="t('vendite.componenti.col_origine')" style="width: 130px;">
           <template #body="{ data }">
             <Tag
               v-if="data.origine_prezzo && badgeOrigine(data.origine_prezzo)"
@@ -391,33 +413,33 @@ function handleCancel() {
           </template>
         </Column>
 
-        <Column :header="t('preventivi.componenti_col_attivo')" style="width: 90px;">
+        <Column :header="t('vendite.componenti.col_attivo')" style="width: 90px;">
           <template #body="{ data }">
             <Checkbox
               :model-value="isAttivo(data)"
               binary
               :disabled="isObbligatorio(data)"
               v-tooltip.top="isObbligatorio(data)
-                ? t('preventivi.componenti_attivo_disabilitato_tooltip')
+                ? t('vendite.componenti.attivo_disabilitato_tooltip')
                 : null"
               @update:model-value="(v) => setAttivo(data.componente_id, v)"
             />
           </template>
         </Column>
 
-        <Column :header="t('preventivi.componenti_col_esposto')" style="width: 100px;">
+        <Column :header="t('vendite.componenti.col_esposto')" style="width: 100px;">
           <template #body="{ data }">
             <i
               v-if="isEsposto(data)"
               class="pi pi-eye"
               style="color: var(--app-text-info, var(--primary-color))"
-              v-tooltip.top="t('preventivi.componenti_esposto_in_fattura_tooltip')"
+              v-tooltip.top="t('vendite.componenti.esposto_in_fattura_tooltip')"
             />
             <i
               v-else
               class="pi pi-eye-slash"
               style="color: var(--app-text-muted)"
-              v-tooltip.top="t('preventivi.componenti_esposto_no_tooltip')"
+              v-tooltip.top="t('vendite.componenti.esposto_no_tooltip')"
             />
           </template>
         </Column>
@@ -428,7 +450,7 @@ function handleCancel() {
         severity="warn"
         :closable="false"
       >
-        {{ t('preventivi.componenti_obbligatorio_mancante') }}
+        {{ t('vendite.componenti.obbligatorio_mancante') }}
       </Message>
 
       <div
@@ -436,25 +458,25 @@ function handleCancel() {
         style="display: flex; justify-content: flex-end; padding-top: 0.5rem; font-size: 0.9rem;"
       >
         <span v-if="summaryTotale.n > 0">
-          {{ t('preventivi.componenti_summary', {
+          {{ t('vendite.componenti.summary', {
             n: summaryTotale.n,
             total: formatCurrency(summaryTotale.total),
           }) }}
         </span>
         <span v-else class="text-color-secondary">
-          {{ t('preventivi.componenti_summary_zero') }}
+          {{ t('vendite.componenti.summary_zero') }}
         </span>
       </div>
     </div>
 
     <template #footer>
       <Button
-        :label="t('preventivi.componenti_dialog_annulla')"
+        :label="t('vendite.componenti.dialog_annulla')"
         severity="secondary"
         @click="handleCancel"
       />
       <Button
-        :label="t('preventivi.componenti_dialog_conferma')"
+        :label="t('vendite.componenti.dialog_conferma')"
         :disabled="!canConfirm"
         @click="handleConfirm"
       />
