@@ -23,6 +23,7 @@ INCLUDE_MD_RE = re.compile(r"\.md$", re.IGNORECASE)
 MARKDOWN_ABS_LINK_RE = re.compile(r"\]\((/(?!/)[^)]+)\)")
 HTML_ABS_HREF_RE = re.compile(r'href="(/(?!/)[^"]*)"')
 MARKDOWN_LINK_RE = re.compile(r"\]\(([^)]+)\)")
+FULL_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 HTML_HREF_RE = re.compile(r'href="([^"]*)"')
 CHECKLIST_STATUS_RE = re.compile(
     r"(?m)^(\s*[-*]\s+)\[(DONE|TODO|WIP)\](?=\s)"
@@ -36,7 +37,23 @@ IDENTIFIER_INDEX_RE = re.compile(
 STANDALONE_BRACKET_LITERAL_RE = re.compile(
     r"(?<!\\)\[([^\]\n]{1,80})\](?!\(|:)"
 )
+EMPTY_BRACKET_LITERAL_RE = re.compile(r"(?<!\\)\[\](?!\(|:)")
 URI_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
+SOURCE_FILE_EXTENSIONS = {
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".vue",
+    ".sql",
+    ".sh",
+    ".yaml",
+    ".yml",
+    ".json",
+    ".csv",
+    ".txt",
+}
 
 
 # Scopo: risolvere il path del file incluso con fallback robusto.
@@ -97,6 +114,31 @@ def rebase_relative_links(text: str, from_file: Path, to_file: Path) -> str:
     rebased = MARKDOWN_LINK_RE.sub(repl_md, text)
     rebased = HTML_HREF_RE.sub(repl_html, rebased)
     return rebased
+
+
+# Scopo: evitare link docs rotti verso file sorgente del repository che nel sito statico non sono pagine navigabili.
+def normalize_source_file_links(text: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        label = match.group(1)
+        target = match.group(2).strip()
+
+        path_part = target
+        for sep in ("#", "?"):
+            if sep in path_part:
+                path_part = path_part.split(sep, 1)[0]
+
+        if not is_rebasable_relative_target(path_part):
+            return match.group(0)
+
+        if Path(path_part).suffix.lower() not in SOURCE_FILE_EXTENSIONS:
+            return match.group(0)
+
+        display = label
+        if display.startswith("`") and display.endswith("`") and len(display) >= 2:
+            display = display[1:-1]
+        return f"`{display}`"
+
+    return FULL_MARKDOWN_LINK_RE.sub(repl, text)
 
 
 # Scopo: espandere ricorsivamente i tag include-markdown evitando loop.
@@ -197,9 +239,11 @@ def rewrite_root_links(text: str, docs_root: Path, current_file: Path) -> tuple[
 
 # Scopo: neutralizzare marker checklist testuali che Zensical interpreta come reference link.
 def normalize_ambiguous_markdown(text: str) -> str:
-    normalized = CHECKLIST_STATUS_RE.sub(r"\1\\[\2\\]", text)
+    normalized = normalize_source_file_links(text)
+    normalized = CHECKLIST_STATUS_RE.sub(r"\1\\[\2\\]", normalized)
     normalized = IDENTIFIER_EMPTY_BRACKETS_RE.sub(r"\1\\[\\]", normalized)
     normalized = IDENTIFIER_INDEX_RE.sub(r"\1\\[\2\\]", normalized)
+    normalized = EMPTY_BRACKET_LITERAL_RE.sub(r"\\[\\]", normalized)
     normalized = STANDALONE_BRACKET_LITERAL_RE.sub(r"\\[\1\\]", normalized)
     return normalized
 
