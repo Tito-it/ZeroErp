@@ -273,6 +273,34 @@ class ErrorPolicyRegistry:
                 "distinta base del padre composito."
             ),
         ),
+        # Resolver pricing v5 (fn_resolve_prezzo_listino_v2, rev 2026-05-13
+        # bundle-prioritario): versione listino non trovata o non attiva
+        # alla data del documento. Indica un mismatch fra il listino eletto
+        # (contratto o categoria) e la disponibilita' di una versione
+        # operativa per quel periodo.
+        "E_LISTINO_VERSIONE_NON_ATTIVA": ErrorPolicy(
+            code="E_LISTINO_VERSIONE_NON_ATTIVA",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message=(
+                "Listino senza versione attiva alla data del documento. "
+                "Verificare le versioni del listino o la data di riferimento."
+            ),
+        ),
+        # Guard cessazione contratti (trgfn_contratti_guard_transizione_stato,
+        # rev 2026-05-14): la transizione manuale ATTIVO -> CESSATO non ammette
+        # valido_al retroattivo. Il job notturno pgAgent (`fn_apply_chiusura
+        # _scadenze` via GUC `app.cessazione_automatica`) e' invece autorizzato
+        # a cessare con valido_al passato.
+        "E_CONTRATTO_VALIDO_AL_RETROATTIVO": ErrorPolicy(
+            code="E_CONTRATTO_VALIDO_AL_RETROATTIVO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Cessazione contratto non ammessa con data retroattiva. La "
+                "data di fine validita' deve essere oggi o futura."
+            ),
+        ),
         # Guard Profilo A contratti: in stati post-DRAFT (ATTIVO/CESSATO)
         # le modifiche sono limitate o vietate. La testata ammette solo
         # `valido_al` e `meta` in ATTIVO; CESSATO immutabile. Le sotto
