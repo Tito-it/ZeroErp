@@ -311,6 +311,7 @@ Logica:
 
 ---
 
+<a id="coerenza-con-documentazione-esistente"></a>
 ## 4. Coerenza con documentazione esistente
 
 Verifiche fatte prima della stesura del WIP per evitare contraddizioni con scelte
@@ -529,6 +530,7 @@ Il primo draft di `test-billing-account-auto-link-ef.sql` usava `SAVEPOINT ... R
 
 Il primo pattern `'%disattivat%'` in `test-user-emittenti-fiscali-immutable.sql` non matchava il messaggio anche se la sottostringa era presente. Comportamento non spiegato, possibile peculiarità di `throws_like` su frammenti di parola con apostrofi/accenti vicini. **Regola adottata**: usare substring iniziali ASCII puri (es. `'%Eliminazione vietata%'`) come pattern, evitare frammenti di parola in mezzo.
 
+<a id="7bis6-dipendenza-backend--guc-appcurrent_user_id"></a>
 ### 7bis.6 Dipendenza backend — GUC `app.current_user_id`
 
 I trigger `trgfn_billing_account_guard_admin_globale` e `trgfn_billing_account_link_ef` dipendono dal GUC `app.current_user_id` settato dal middleware Django `JwtAuditMiddleware` ([backend/apps/core/middleware/jwt_audit_middleware.py](/it/backend/core/manual/jwt_audit_middleware)).

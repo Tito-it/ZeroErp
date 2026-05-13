@@ -356,6 +356,7 @@ watch(activeTab, (tab) => setTabCrumb(tab.label))
 
 ---
 
+<a id="8-pagine-con-tab--template"></a>
 ## 8. Pagine con Tab — Template
 
 Tutte le pagine di entità seguono lo stesso template. Le tab si aggiungono senza toccare nulla fuori dal file della pagina stessa.
@@ -400,6 +401,7 @@ function onTabChange(e) {
 
 ---
 
+<a id="9-home--stato-attuale-e-visione-futura"></a>
 ## 9. Home — Stato Attuale e Visione Futura
 
 ### 9.1 Stato attuale → transizione
@@ -432,6 +434,7 @@ Le card mostreranno dati filtrati per l'utente corrente (es. solo le sue pratich
 
 ---
 
+<a id="10-note-architetturali--integrazione-con-frontend-esistente"></a>
 ## 10. Note architetturali — Integrazione con frontend esistente
 
 ### 10.1 Content tabs, AppToolbar e tab di livello 3 — come convivono
@@ -1030,6 +1033,7 @@ La tab mostra un **indicatore visivo** (pallino o asterisco nella label) quando 
 
 ---
 
+<a id="11-riepilogo-attività-di-sviluppo"></a>
 ## 11. Riepilogo Attività di Sviluppo
 
 | #   | Componente              | Descrizione                                                      | Note                             |
