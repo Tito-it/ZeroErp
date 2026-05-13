@@ -12,25 +12,28 @@ CREATE OR REPLACE FUNCTION vendite.fn_preventivo_riga_componenti_init(p_riga_id 
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
--- Scopo: Popola preventivi_righe_componenti per una riga composita CASO A.
+-- Scopo: Popola preventivi_righe_componenti per una riga composita.
 --   Loop per-componente con fn_resolve_prezzo_listino_v2.
 --   Override: mappa {componente_id::text: prezzo_numeric}.
 --   Strict path: se nessun override e resolver fail -> raise.
 --   Idempotente: no-op se componenti gia' presenti o articolo non composito.
+--   Modello unificato: tutti i componenti attivi inseriti con attivo=TRUE.
+--   BoM = contratto immutabile: l'operatore non sceglie quali includere.
 DECLARE
-    v_articolo_id    catalogo.articoli.id%TYPE;
-    v_uom_id         catalogo.unita_misura.id%TYPE;
-    v_qta_padre      vendite.preventivi_righe.quantita%TYPE;
-    v_preventivo_id  vendite.preventivi.id%TYPE;
-    v_is_composito   catalogo.articoli.is_composito%TYPE;
-    v_ba_id          anagrafiche.billing_account.id%TYPE;
-    v_utility_id     vendite.preventivi.utility_id%TYPE;
-    v_comp           record;
-    v_resolve        record;
-    v_prezzo         vendite.listini_righe.prezzo%TYPE;
-    v_origine        vendite.preventivi_righe_componenti.origine_prezzo%TYPE;
-    v_err_msg        text;
-    v_inserted       integer := 0;
+    v_articolo_id      catalogo.articoli.id%TYPE;
+    v_codice_articolo  catalogo.articoli.codice%TYPE;
+    v_uom_id           catalogo.unita_misura.id%TYPE;
+    v_qta_padre        vendite.preventivi_righe.quantita%TYPE;
+    v_preventivo_id    vendite.preventivi.id%TYPE;
+    v_is_composito     catalogo.articoli.is_composito%TYPE;
+    v_ba_id            anagrafiche.billing_account.id%TYPE;
+    v_utility_id       vendite.preventivi.utility_id%TYPE;
+    v_comp             record;
+    v_resolve          record;
+    v_prezzo           vendite.listini_righe.prezzo%TYPE;
+    v_origine          vendite.preventivi_righe_componenti.origine_prezzo%TYPE;
+    v_err_msg          text;
+    v_inserted         integer := 0;
 BEGIN
     IF p_riga_id IS NULL OR p_riga_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -47,9 +50,13 @@ BEGIN
             NULL::uuid, 'p_emittente_sr_id obbligatorio e > 0');
     END IF;
 
-    SELECT pr.articolo_id, pr.uom_operativa_id, pr.quantita, pr.preventivo_id
-      INTO v_articolo_id, v_uom_id, v_qta_padre, v_preventivo_id
-      FROM vendite.preventivi_righe pr WHERE pr.id = p_riga_id;
+    SELECT pr.articolo_id, pr.uom_operativa_id, pr.quantita, pr.preventivo_id,
+           a.is_composito, a.codice
+      INTO v_articolo_id, v_uom_id, v_qta_padre, v_preventivo_id,
+           v_is_composito, v_codice_articolo
+      FROM vendite.preventivi_righe pr
+      JOIN catalogo.articoli a ON a.id = pr.articolo_id
+     WHERE pr.id = p_riga_id;
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_preventivo_riga_componenti_init',
@@ -57,11 +64,9 @@ BEGIN
             jsonb_build_object('p_riga_id', p_riga_id),
             NULL::uuid, 'riga preventivo non trovata');
     END IF;
-
-    SELECT a.is_composito INTO v_is_composito
-      FROM catalogo.articoli a WHERE a.id = v_articolo_id;
     IF NOT COALESCE(v_is_composito, FALSE) THEN RETURN 0; END IF;
 
+    -- Idempotenza: no-op se componenti gia' presenti
     IF EXISTS (
         SELECT 1 FROM vendite.preventivi_righe_componenti
          WHERE riga_preventivo_id = p_riga_id
@@ -71,26 +76,26 @@ BEGIN
       INTO v_ba_id, v_utility_id
       FROM vendite.preventivi p WHERE p.id = v_preventivo_id;
 
-    -- Loop per-componente sulla BoM esposta alla data
+    -- Loop su tutti i componenti attivi alla data (BoM = contratto immutabile)
     FOR v_comp IN
         SELECT ac.id          AS bom_entry_id,
                ac.componente_id,
                ac.coeff_qta,
+               ac.obbligatorio,
                a.uom_id       AS componente_uom_id,
                a.iva_id       AS componente_iva_id
           FROM catalogo.articoli_componenti ac
           JOIN catalogo.articoli a ON a.id = ac.componente_id
          WHERE ac.prodotto_id        = v_articolo_id
-           AND ac.esposto_in_fattura = TRUE
            AND COALESCE(ac.attivo, TRUE) = TRUE
            AND ac.validita           @> p_data_riferimento
     LOOP
-        -- Controlla se override presente per questo componente
         IF p_componenti_overrides IS NOT NULL
            AND p_componenti_overrides ? v_comp.componente_id::text THEN
             v_prezzo  := (p_componenti_overrides ->> v_comp.componente_id::text)::numeric;
             v_origine := 'MANUALE';
-            IF v_prezzo = 0 THEN
+            -- Guard prezzo=0 solo per componenti obbligatori
+            IF v_prezzo = 0 AND COALESCE(v_comp.obbligatorio, TRUE) THEN
                 PERFORM script.fn_log_and_raise_error(
                     'vendite', 'fn_preventivo_riga_componenti_init',
                     'E_PARAMETRO_INVALIDO',
@@ -101,19 +106,19 @@ BEGIN
             INSERT INTO vendite.preventivi_righe_componenti (
                 riga_preventivo_id, articolo_componente_id, componente_id,
                 coeff_qta_snapshot, quantita, uom_operativa_id, factor_to_base,
-                prezzo_unitario, iva_id, origine_prezzo, prezzo_resolver_context
+                prezzo_unitario, iva_id, origine_prezzo, attivo, prezzo_resolver_context
             ) VALUES (
                 p_riga_id, v_comp.bom_entry_id, v_comp.componente_id,
                 v_comp.coeff_qta, v_comp.coeff_qta * v_qta_padre,
                 v_comp.componente_uom_id, 1,
                 v_prezzo, v_comp.componente_iva_id, v_origine,
+                TRUE,
                 jsonb_build_object('override', true,
                     'emittente_sr_id', p_emittente_sr_id,
                     'data_riferimento', p_data_riferimento,
                     'ba_id', v_ba_id, 'utility_id', v_utility_id)
             );
         ELSE
-            -- Resolver path per singolo componente
             BEGIN
                 SELECT * INTO v_resolve
                   FROM vendite.fn_resolve_prezzo_listino_v2(
@@ -123,18 +128,20 @@ BEGIN
                       v_ba_id,
                       v_utility_id::integer,
                       p_emittente_sr_id,
-                      NULL
+                      NULL,
+                      v_articolo_id  -- p_articolo_padre_contesto: attiva STADIO BUNDLE
                   );
                 INSERT INTO vendite.preventivi_righe_componenti (
                     riga_preventivo_id, articolo_componente_id, componente_id,
                     coeff_qta_snapshot, quantita, uom_operativa_id, factor_to_base,
-                    prezzo_unitario, iva_id, origine_prezzo, prezzo_resolver_context
+                    prezzo_unitario, iva_id, origine_prezzo, attivo, prezzo_resolver_context
                 ) VALUES (
                     p_riga_id, v_comp.bom_entry_id, v_comp.componente_id,
                     v_comp.coeff_qta, v_comp.coeff_qta * v_qta_padre,
                     v_comp.componente_uom_id, 1,
                     v_resolve.prezzo_finale, v_comp.componente_iva_id,
                     v_resolve.origine,
+                    TRUE,
                     jsonb_build_object(
                         'emittente_sr_id', p_emittente_sr_id,
                         'data_riferimento', p_data_riferimento,
@@ -160,12 +167,24 @@ BEGIN
         v_inserted := v_inserted + 1;
     END LOOP;
 
+    IF v_inserted = 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_preventivo_riga_componenti_init',
+            'E_DOC_COMPOSITO_BOM_VUOTA',
+            jsonb_build_object('articolo_id', v_articolo_id,
+                'data_riferimento', p_data_riferimento),
+            NULL::uuid,
+            v_codice_articolo,
+            p_data_riferimento::text
+        );
+    END IF;
+
     RETURN v_inserted;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_preventivo_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
-IS 'Inizializza componenti BoM CASO A per una riga preventivo. Loop per-componente: override da p_componenti_overrides ({componente_id: prezzo}) oppure fn_resolve_prezzo_listino_v2. Strict: raise E_DOC_COMPONENTE_LISTINO_MANCANTE se nessun override e resolver fail. Idempotente. Form atomic (rev 12-05-2026b).';
+IS 'Inizializza componenti BoM per riga preventivo. Tutti i componenti attivi inseriti con attivo=TRUE (BoM = contratto immutabile). Guard prezzo=0 solo su obbligatori. Check BOM vuota. Fix ?? -> ?. Rev 2026-05-13.';
 ```
 
 ---

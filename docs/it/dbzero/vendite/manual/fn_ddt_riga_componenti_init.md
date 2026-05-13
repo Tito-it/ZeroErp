@@ -2,7 +2,7 @@
 
 ### Scopo
 
-Inizializza i componenti BoM CASO A per una riga DDT composita. Per ogni componente esposto della BoM: se presente un override in `p_componenti_overrides`, usa quel prezzo; altrimenti chiama `fn_resolve_prezzo_listino_v2` — se il resolver fallisce, solleva `E_DOC_COMPONENTE_LISTINO_MANCANTE`. Idempotente.
+Inizializza i componenti BoM (modello unificato) per una riga DDT composita. Per ogni componente attivo della BoM: se presente un override in `p_componenti_overrides`, usa quel prezzo; altrimenti chiama `fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto = v_articolo_id` per attivare il pricing bundle — se il resolver fallisce, solleva `E_DOC_COMPONENTE_LISTINO_MANCANTE`. Idempotente.
 
 > **Vedi anche**
 >
@@ -48,14 +48,16 @@ vendite.fn_ddt_riga_componenti_init(
 ## Logica
 
 1. **Guard input** — valida `p_riga_id` e `p_emittente_sr_id` (non NULL, > 0).
-2. **Lettura riga padre** — `SELECT articolo_id, uom_operativa_id, quantita, ddt_id` da `ddt_righe`. NOT FOUND → raise `E_PARAMETRO_INVALIDO`.
+2. **Lettura riga padre** — un'unica query JOIN tra `ddt_righe` e `catalogo.articoli` recupera in un solo round-trip: `articolo_id`, `codice`, `uom_operativa_id`, `quantita`, `ddt_id` e `is_composito`. NOT FOUND → raise `E_PARAMETRO_INVALIDO`.
 3. **No-op CASO B** — se `articoli.is_composito = FALSE`, ritorna 0.
 4. **Idempotenza** — se esistono già righe in `ddt_righe_componenti`, ritorna 0.
 5. **Lettura parametri DDT** — `billing_account_id`, `utility_id` da `ddt`. `utility_id` è di tipo `integer`.
-6. **Loop per-componente** — per ogni componente della BoM esposta:
-   - **Path override**: se `p_componenti_overrides ? componente_id::text` → prezzo = valore della mappa, `origine_prezzo = 'MANUALE'`. Prezzo = 0 → raise `E_PARAMETRO_INVALIDO`.
-   - **Path resolver**: chiama `fn_resolve_prezzo_listino_v2`. Se fallisce → raise `E_DOC_COMPONENTE_LISTINO_MANCANTE`.
+6. **Loop per-componente** — per ogni componente attivo della BoM (`attivo = TRUE`, `validita @> p_data_riferimento`), senza filtro su `esposto_in_fattura`:
+   - **Path override**: se `p_componenti_overrides ? componente_id::text` → prezzo = valore della mappa, `origine_prezzo = 'MANUALE'`. Prezzo = 0 → raise `E_PARAMETRO_INVALIDO` **solo** se `v_comp.obbligatorio = TRUE`; per i componenti opzionali, prezzo = 0 è ammesso.
+   - **Path resolver**: chiama `fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto := v_articolo_id`. Se esiste una riga in `vendite.listini_righe_componenti` per (listino_versione, padre, figlio, data), il resolver ritorna `origine = 'LISTINO_BUNDLE'`. Se fallisce → raise `E_DOC_COMPONENTE_LISTINO_MANCANTE`.
+   - **INSERT**: `attivo` = `v_comp.obbligatorio` — TRUE per i componenti obbligatori, FALSE per i componenti opzionali.
 7. **INSERT componente** — `prezzo_unitario` NOT NULL, `origine_prezzo`, `prezzo_resolver_context` JSONB.
+8. **Check BoM vuota** — se `v_inserted = 0` dopo il loop → raise `E_DOC_COMPOSITO_BOM_VUOTA` (442). Non scatta in caso di idempotenza (intercettata al passo 4).
 
 ## Differenze rispetto a `fn_preventivo_riga_componenti_init`
 
@@ -65,6 +67,8 @@ vendite.fn_ddt_riga_componenti_init(
 | Tabella testata | `vendite.preventivi` | `vendite.ddt` |
 | `utility_id` | `integer NOT NULL` da `preventivi.utility_id` | `integer` da `ddt.utility_id`, castato a `int` nel resolver |
 | Tabella destinazione | `preventivi_righe_componenti` | `ddt_righe_componenti` |
+| Loop BoM | tutti i componenti attivi (modello unificato) | identico |
+| `attivo` INSERT | `v_comp.obbligatorio` | identico |
 
 ## `prezzo_resolver_context` JSONB
 
@@ -109,12 +113,14 @@ Struttura via override:
 
 | Codice | Quando |
 |---|---|
-| `E_PARAMETRO_INVALIDO` | `p_riga_id`/`p_emittente_sr_id` NULL/≤0; riga non trovata; override con prezzo = 0 |
+| `E_PARAMETRO_INVALIDO` | `p_riga_id`/`p_emittente_sr_id` NULL/≤0; riga non trovata; override con prezzo = 0 su componente obbligatorio |
 | `E_DOC_COMPONENTE_LISTINO_MANCANTE` (id 440) | Resolver fallisce per un componente senza override |
+| `E_DOC_COMPOSITO_BOM_VUOTA` (442) | Articolo composito senza componenti attivi e validi alla data di riferimento |
 
 ## Note operative
 
 - **`utility_id` come `integer`**: `ddt.utility_id` è di tipo `integer`. Il CAST è implicito nella chiamata al resolver; nessuna perdita di dati.
-- **`prezzo_unitario` sempre NOT NULL**: con form atomic, ogni INSERT ha prezzo valorizzato.
+- **`prezzo_unitario` sempre NOT NULL**: con form atomic, ogni INSERT ha prezzo valorizzato. Il check prezzo ≠ 0 è condizionale: obbligatori non possono avere prezzo = 0 (`E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO`), opzionali ammettono qualsiasi valore incluso 0.
+- **Componenti opzionali** (`obbligatorio = FALSE`): vengono inseriti con `attivo = FALSE` — l'operatore può attivarli nel drawer.
 - **Trigger attivati**: INSERT in `ddt_righe_componenti` attiva `_a10_guard_bom_coerenza`, `_m50_calcola_quantita`, audit, tx_id e `_z90_ricalcola_padre`.
 - **Non STABLE**: VOLATILE per default.

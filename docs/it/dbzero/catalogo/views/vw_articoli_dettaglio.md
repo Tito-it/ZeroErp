@@ -51,7 +51,10 @@ SELECT a.id,
             WHEN (a.is_composito AND (NOT a.is_solo_componente)) THEN NULL::text
             WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
             ELSE 'ARTICOLO_NON_COMPOSITO'::text
-        END AS motivo_non_gestibile_bom
+        END AS motivo_non_gestibile_bom,
+    (a.is_composito AND (EXISTS ( SELECT 1
+           FROM catalogo.articoli_componenti ac
+          WHERE ((ac.prodotto_id = a.id) AND (ac.validita @> CURRENT_DATE) AND (ac.attivo = true))))) AS has_componenti_alla_data
    FROM ((((((catalogo.articoli a
      LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
      LEFT JOIN vendite.articoli_tipologie t ON ((t.id = a.tipo_voce_id)))

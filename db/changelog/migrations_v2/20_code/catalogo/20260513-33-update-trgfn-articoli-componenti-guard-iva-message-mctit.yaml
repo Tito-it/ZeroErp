@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Fix messaggio E_BOM_IVA_DISCORDANTE: mostra aliquota %
+# invece di iva_id numerico interno. Supera 20260513-02-01.
+# Aggiunge LEFT JOIN config.iva per leggere aliquota_iva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260513-33-update-trgfn-articoli-componenti-guard-iva-message-mctit.yaml
+
+  - changeSet:
+      id: 20260513-33-01-update-trgfn-articoli-componenti-guard-iva-message
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Migliora messaggio E_BOM_IVA_DISCORDANTE in trgfn_articoli_componenti_guard_iva:
+        sostituisce iva_id numerico con aliquota_iva percentuale tramite
+        LEFT JOIN config.iva. Ora VARIADIC passa (codice_padre, aliquota_padre%,
+        codice_figlio, aliquota_figlio%) invece di (codice, id, codice, id).
+        Supera 20260513-02-01. rev 2026-05-13.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+          - tableExists:
+              schemaName: config
+              tableName: iva
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_guard_iva()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: BEFORE INSERT su articoli_componenti — verifica che iva_id del
+              --   componente coincida con iva_id del padre composito. NULL = NULL = coerente.
+              --   Messaggio parlante: mostra aliquota % invece dell''id numerico interno.
+              DECLARE
+                  v_iva_padre      catalogo.articoli.iva_id%TYPE;
+                  v_iva_figlio     catalogo.articoli.iva_id%TYPE;
+                  v_codice_padre   catalogo.articoli.codice%TYPE;
+                  v_codice_figlio  catalogo.articoli.codice%TYPE;
+                  v_iva_padre_pct  text;
+                  v_iva_figlio_pct text;
+              BEGIN
+                  -- Legge iva_id, codice e aliquota % di padre e figlio in unica query
+                  SELECT a_padre.iva_id,  a_padre.codice,
+                         COALESCE(iva_p.aliquota_iva::text, '—'),
+                         a_figlio.iva_id, a_figlio.codice,
+                         COALESCE(iva_f.aliquota_iva::text, '—')
+                    INTO v_iva_padre,  v_codice_padre,  v_iva_padre_pct,
+                         v_iva_figlio, v_codice_figlio, v_iva_figlio_pct
+                    FROM catalogo.articoli a_padre
+                    JOIN catalogo.articoli a_figlio
+                      ON a_figlio.id = NEW.componente_id
+                    LEFT JOIN config.iva iva_p ON iva_p.id = a_padre.iva_id
+                    LEFT JOIN config.iva iva_f ON iva_f.id = a_figlio.iva_id
+                   WHERE a_padre.id = NEW.prodotto_id;
+
+                  -- IVA padre e figlio devono coincidere (IS DISTINCT FROM gestisce NULL)
+                  IF v_iva_padre IS DISTINCT FROM v_iva_figlio THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', TG_NAME, 'E_BOM_IVA_DISCORDANTE',
+                          jsonb_build_object(
+                              'prodotto_id',    NEW.prodotto_id,
+                              'componente_id',  NEW.componente_id,
+                              'iva_padre_id',   v_iva_padre,
+                              'iva_figlio_id',  v_iva_figlio,
+                              'iva_padre_pct',  v_iva_padre_pct,
+                              'iva_figlio_pct', v_iva_figlio_pct
+                          ),
+                          NULL::uuid,
+                          v_codice_padre,
+                          v_iva_padre_pct,
+                          v_codice_figlio,
+                          v_iva_figlio_pct
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_iva() IS
+                  'Trigger BEFORE INSERT su articoli_componenti: verifica iva_id figlio = '
+                  'iva_id padre composito. NULL = NULL = coerente. '
+                  'Messaggio mostra aliquota % (non id numerico). '
+                  'Raise E_BOM_IVA_DISCORDANTE (445). rev 2026-05-13.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS catalogo.trgfn_articoli_componenti_guard_iva();

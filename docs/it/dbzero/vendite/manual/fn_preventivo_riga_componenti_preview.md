@@ -2,7 +2,7 @@
 
 ### Scopo
 
-Preview read-only dei componenti BoM CASO A per il drawer riga preventivo (pattern form atomic). Per ogni componente esposto della BoM tenta `fn_resolve_prezzo_listino_v2`; se il resolver fallisce, restituisce `prezzo_suggerito = NULL` e la motivazione in `resolver_error_reason`. Nessun side-effect (STABLE).
+Preview read-only dei componenti BoM per il drawer riga preventivo (pattern form atomic). Per ogni componente attivo della BoM tenta `fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto = p_articolo_id` per attivare il pricing bundle; se il resolver fallisce, restituisce `prezzo_suggerito = NULL` e la motivazione in `resolver_error_reason`. Proietta anche `obbligatorio` e `esposto_in_fattura` per ogni componente. Nessun side-effect (STABLE).
 
 Consumata dal backend per l'endpoint `POST /vendite/preventivi/{id}/righe/preview-componenti/` prima del save della riga composita.
 
@@ -40,7 +40,9 @@ vendite.fn_preventivo_riga_componenti_preview(
     iva_id                 catalogo.articoli.iva_id%TYPE,
     prezzo_suggerito       vendite.listini_righe.prezzo%TYPE,
     origine_prezzo         vendite.preventivi_righe_componenti.origine_prezzo%TYPE,
-    resolver_error_reason  text
+    resolver_error_reason  text,
+    obbligatorio           boolean,
+    esposto_in_fattura     boolean
 )
 ```
 
@@ -71,16 +73,18 @@ vendite.fn_preventivo_riga_componenti_preview(
 | `uom_codice` | Codice leggibile UoM componente. |
 | `iva_id` | Aliquota IVA del componente. |
 | `prezzo_suggerito` | Prezzo da listino se trovato, `NULL` se il resolver fallisce. |
-| `origine_prezzo` | Origine del prezzo (es. `LISTINO`, `CONTRATTO`) — `NULL` se resolver fail. |
+| `origine_prezzo` | Origine del prezzo (es. `LISTINO`, `LISTINO_BUNDLE`, `CONTRATTO`) — `NULL` se resolver fail. |
 | `resolver_error_reason` | Messaggio di errore del resolver se `prezzo_suggerito = NULL`, altrimenti `NULL`. |
+| `obbligatorio` | TRUE se il componente BoM è obbligatorio (non disattivabile dall'operatore). |
+| `esposto_in_fattura` | Flag di presentazione fattura (solo informativo — non più gate di pricing nel modello unificato). |
 
 ## Logica
 
-1. Interroga la BoM esposta (`esposto_in_fattura = TRUE`, `attivo = TRUE`, `validita @> p_data_riferimento`) per `p_articolo_id`.
-2. Per ogni componente, tenta `fn_resolve_prezzo_listino_v2(componente_id, uom, data, ba, utility_id, emittente_sr, classe_utenza_id)`.
+1. Interroga la BoM (`attivo = TRUE`, `validita @> p_data_riferimento`) per `p_articolo_id` — tutti i componenti attivi, senza filtro su `esposto_in_fattura`.
+2. Per ogni componente, tenta `fn_resolve_prezzo_listino_v2(componente_id, uom, data, ba, utility_id, emittente_sr, classe_utenza_id, p_articolo_padre_contesto := p_articolo_id)`. Se esiste una riga in `vendite.listini_righe_componenti` per (listino_versione, padre, figlio, data), il resolver ritorna `origine_prezzo = 'LISTINO_BUNDLE'`.
 3. Se il resolver riesce → `prezzo_suggerito = prezzo_finale`, `origine_prezzo` da resolver, `resolver_error_reason = NULL`.
 4. Se il resolver fallisce (`SQLSTATE 'P0001'`) → `prezzo_suggerito = NULL`, `origine_prezzo = NULL`, `resolver_error_reason = MESSAGE_TEXT`.
-5. `RETURN NEXT` per ogni componente.
+5. `RETURN NEXT` per ogni componente, includendo `obbligatorio` e `esposto_in_fattura` dalla BoM sorgente.
 
 ## Pattern form atomic
 
@@ -101,5 +105,7 @@ BE chiama fn_preventivo_riga_componenti_init(riga_id, ..., p_componenti_override
 ## Note operative
 
 - **STABLE**: nessun side-effect. Può essere chiamata più volte senza problemi (es. refresh drawer).
-- Se `p_articolo_id` non ha componenti esposti → zero righe restituite (il BE può gestire come articolo non composito).
+- Se `p_articolo_id` non ha componenti attivi → zero righe restituite (il BE può gestire come articolo non composito).
 - Il risultato della preview non è persistito: serve solo per pre-popolare il drawer. La fonte di verità è il risultato di `fn_preventivo_riga_componenti_init`.
+- `obbligatorio = FALSE` indica un componente opzionale: il FE può mostrarlo come disattivato di default ma attivabile dall'operatore.
+- `esposto_in_fattura` è esposto a solo scopo informativo — nel modello unificato non è più il gate per il processing.

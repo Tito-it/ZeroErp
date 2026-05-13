@@ -101,11 +101,14 @@ SELECT has_check(
 );
 
 -- =========================================================
--- 9) CHECK prezzo_unitario <> 0
+-- 9) Trigger prezzo_obbligatorio registrato
+--    Modello unificato (20260513-06/07): CHECK prezzo_unitario<>0 droppato,
+--    sostituito da trigger condizionale (blocca solo per obbligatori).
 -- =========================================================
-SELECT col_has_check(
-    'vendite', 'ddt_righe_componenti', 'prezzo_unitario',
-    '9) CHECK chk_ddtrighe_comp_prezzo_nonneg su prezzo_unitario'
+SELECT has_trigger(
+    'vendite', 'ddt_righe_componenti',
+    'trg_ddtrighe_comp_a10_prezzo_obbligatorio_ins_upd',
+    '9) trigger prezzo_obbligatorio registrato (CHECK rimosso, modello unificato)'
 );
 
 -- =========================================================
@@ -126,15 +129,16 @@ SELECT has_index(
 );
 
 -- =========================================================
--- 12) Trigger registrati sulla tabella (7 attesi)
+-- 12) Trigger registrati sulla tabella (13 attesi)
+--     +2 da modello unificato 20260513: prezzo_obbligatorio + guard_obbligatorio
 -- =========================================================
 SELECT is(
     (SELECT COUNT(DISTINCT trigger_name)::integer
        FROM information_schema.triggers
       WHERE event_object_schema = 'vendite'
         AND event_object_table  = 'ddt_righe_componenti'),
-    8,
-    '12) 8 trigger registrati su ddt_righe_componenti'
+    13,
+    '12) 13 trigger registrati su ddt_righe_componenti'
 );
 
 -- =========================================================

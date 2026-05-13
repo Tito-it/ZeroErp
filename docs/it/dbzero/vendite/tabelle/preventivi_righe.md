@@ -29,7 +29,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_prevrighe_quantita_prezzo |  |
+| CHECK | chk_prevrighe_quantita_pos |  |
 | CHECK | chk_prevrighe_sconto |  |
 | FOREIGN KEY | fk_preventivi_vendita_r_uom_operativa | uom_operativa_id |
 | FOREIGN KEY | fk_prevrighe_articoli | articolo_id |

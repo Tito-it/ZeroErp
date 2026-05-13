@@ -13,7 +13,8 @@
 --   6)  FK fk_prevrighe_comp_componente esiste
 --   7)  UNIQUE uq_prevrighe_comp_riga_art_comp esiste
 --   8)  CHECK chk_prevrighe_comp_quantita_pos esiste
---   9)  CHECK chk_prevrighe_comp_prezzo_nonneg esiste
+--   9)  Trigger trgfn_componenti_check_prezzo_obbligatorio registrato
+--       (modello unificato: CHECK prezzo<>0 rimosso, sostituito da trigger condizionale)
 --   10) CHECK chk_prevrighe_comp_origine esiste
 --   11) Indice ix_vendite_prevrighe_comp_riga esiste
 --   12) Tutti gli 8 trigger registrati sulla tabella
@@ -124,11 +125,12 @@ SELECT ok(
     '8) CHECK chk_prevrighe_comp_quantita_pos esiste'
 );
 
-SELECT ok(
-    EXISTS (SELECT 1 FROM information_schema.table_constraints
-             WHERE constraint_name = 'chk_prevrighe_comp_prezzo_nonneg'
-               AND table_schema = 'vendite' AND table_name = 'preventivi_righe_componenti'),
-    '9) CHECK chk_prevrighe_comp_prezzo_nonneg esiste'
+-- Modello unificato (20260513-06/07): CHECK prezzo_unitario<>0 droppato,
+-- sostituito da trigger condizionale (blocca solo per obbligatori).
+SELECT has_trigger(
+    'vendite', 'preventivi_righe_componenti',
+    'trg_prevrighe_comp_a10_prezzo_obbligatorio_ins_upd',
+    '9) trigger prezzo_obbligatorio registrato (CHECK rimosso, modello unificato)'
 );
 
 SELECT ok(
@@ -150,11 +152,12 @@ SELECT ok(
 );
 
 -- =========================================================
--- 12) Tutti gli 8 trigger registrati
+-- 12) Tutti i 10 trigger nominali registrati
+--     +2 da modello unificato 20260513: prezzo_obbligatorio + guard_obbligatorio
 -- =========================================================
 SELECT ok(
     (
-        SELECT COUNT(*) = 8
+        SELECT COUNT(*) = 10
           FROM pg_trigger t
           JOIN pg_class c ON c.oid = t.tgrelid
           JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -169,10 +172,12 @@ SELECT ok(
                'trg_preventivi_righe_componenti_gen_tx_id_ins_upd',
                'trg_preventivi_righe_componenti_a10_articoli_require_attivo_ins_upd',
                'trg_preventivi_righe_componenti_a10_iva_require_attivo_ins_upd',
-               'trg_preventivi_righe_componenti_z90_ricalcola_padre_ins_upd_dlt'
+               'trg_preventivi_righe_componenti_z90_ricalcola_padre_ins_upd_dlt',
+               'trg_prevrighe_comp_a10_prezzo_obbligatorio_ins_upd',
+               'trg_prevrighe_comp_a10_guard_obbligatorio_upd'
            )
     ),
-    '12) tutti gli 8 trigger registrati su preventivi_righe_componenti'
+    '12) tutti i 10 trigger registrati su preventivi_righe_componenti'
 );
 
 -- =========================================================
