@@ -15,6 +15,7 @@ from apps.vendite.api.preventivi_documenti_views import (
 )
 from apps.vendite.api.preventivi_views import (
     ApiPreventiviList,
+    ApiPreventivoContestoPricing,
     ApiPreventivoDetail,
     ApiPreventivoGeneraPratica,
     ApiPreventivoIndirizzi,
@@ -101,6 +102,13 @@ urlpatterns = [
         "<int:preventivo_id>/riepilogo-iva/",
         ApiPreventivoRiepilogoIva.as_view(),
         name="vendite-preventivi-riepilogo-iva",
+    ),
+    # Contesto pricing (audit visivo header drawer): contratto attivo o
+    # listino categoria fallback applicato dal resolver al preventivo.
+    path(
+        "<int:preventivo_id>/contesto-pricing/",
+        ApiPreventivoContestoPricing.as_view(),
+        name="vendite-preventivi-contesto-pricing",
     ),
     # Indirizzi
     path(

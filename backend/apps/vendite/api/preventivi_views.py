@@ -641,6 +641,53 @@ class ApiPreventivoRiepilogoIva(DomainAPIView):
         return success_response(data)
 
 
+# ── Contesto pricing ──
+
+
+class ApiPreventivoContestoPricing(DomainAPIView):
+    """GET /api/v1/vendite/preventivi/<id>/contesto-pricing/
+
+    Ritorna il contesto pricing applicato al preventivo: contratto attivo
+    (se presente per BA/utility/data) oppure listino mappato alla categoria
+    cliente, oppure nessuna config. Lettura informativa per l'header del
+    drawer preventivo (audit visivo del path resolver). Lo stesso resolver
+    `fn_resolve_prezzo_listino_v2` applica la stessa logica al calcolo
+    prezzi riga.
+
+    Area `vendite` livello LETTURA sufficiente.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PreventivoContestoPricingResponse",
+            fields={"data": inline_serializer(
+                name="PreventivoContestoPricingData",
+                fields={
+                    "preventivo_id": serializers.IntegerField(),
+                    "data_riferimento": serializers.DateField(),
+                    "fonte": serializers.CharField(
+                        help_text="'CONTRATTO' | 'CATEGORIA' | 'NONE'",
+                    ),
+                    "contratto_id": serializers.IntegerField(allow_null=True),
+                    "contratto_numero": serializers.CharField(allow_null=True),
+                    "listino_id": serializers.IntegerField(allow_null=True),
+                    "listino_codice": serializers.CharField(allow_null=True),
+                    "listino_descrizione": serializers.CharField(allow_null=True),
+                    "categoria_cliente_id": serializers.IntegerField(allow_null=True),
+                    "categoria_cliente_codice": serializers.CharField(allow_null=True),
+                    "categoria_cliente_descrizione": serializers.CharField(allow_null=True),
+                },
+            )},
+        )},
+    )
+    # Scopo: Restituisce via GET il contesto pricing del preventivo.
+    def get(self, request: Request, preventivo_id: int) -> JsonResponse:
+        data = preventivi_service.get_contesto_pricing(preventivo_id)
+        return success_response(data or {})
+
+
 # ── Indirizzi ──
 
 

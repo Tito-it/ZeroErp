@@ -75,3 +75,30 @@ export function formatNumber(value, opts = {}) {
   if (maximumFractionDigits != null) formatOpts.maximumFractionDigits = maximumFractionDigits
   return Number(value).toLocaleString(locale, formatOpts)
 }
+
+/**
+ * Etichetta IVA per liste/colonne compatte.
+ * - Aliquota > 0 → "22%" (aliquota numerica)
+ * - Aliquota 0/NULL (esenti) → `iva_codice` (es. "N1", "ESENTE17") che e'
+ *   sempre univoco e breve. Lo schema `config.iva` garantisce per CHECK
+ *   che un'aliquota=0 abbia sempre natura o assoggettamento, quindi il
+ *   codice e' parlante per l'operatore. Fallback su `placeholder` se
+ *   anche il codice manca (record non agganciato a una riga `config.iva`).
+ *
+ * Per visualizzazioni piu' ricche (riepilogo IVA, drawer dettaglio) usare
+ * la descrizione estesa `iva_descrizione`; per la compattezza in liste e
+ * datatable usare questa.
+ *
+ * @param {object} row - Riga con almeno `iva_aliquota` e `iva_codice`.
+ * @param {object} [opts]
+ * @param {string} [opts.placeholder='—'] - Mostrato se mancano sia aliquota >0 sia codice.
+ * @returns {string}
+ */
+export function formatIvaLabel(row, opts = {}) {
+  const { placeholder = '—' } = opts
+  if (row == null) return placeholder
+  const aliquota = row.iva_aliquota != null ? Number(row.iva_aliquota) : null
+  if (aliquota != null && aliquota > 0) return `${row.iva_aliquota}%`
+  if (row.iva_codice) return String(row.iva_codice)
+  return placeholder
+}

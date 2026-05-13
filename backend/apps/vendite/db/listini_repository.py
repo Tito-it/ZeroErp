@@ -651,6 +651,13 @@ class ListiniRepository:
                 u.codice AS uom_codice,
                 u.descrizione AS uom_descrizione,
                 r.prezzo,
+                -- IVA dell'articolo (denormalizzata dal `vw_articoli_dettaglio`).
+                -- Necessaria per la lista unificata righe+compositi del drawer
+                -- versione listino: il FE mostra la colonna IVA per ogni riga
+                -- (audit visivo + coerenza padre-figlio nei bundle).
+                ad.iva_id,
+                ad.iva_codice,
+                ad.iva_aliquota_iva AS iva_aliquota,
                 r.meta,
                 r.attivo,
                 r.data_insert,
@@ -1015,3 +1022,206 @@ class ListiniRepository:
                 [utility_id],
             )
             return rows_to_list(cursor)
+
+    # ══════════════════════════════════════════════════════════
+    #  BUNDLE componenti (modello unificato BoM 2026-05-13)
+    # ══════════════════════════════════════════════════════════
+    #
+    # Tabella `vendite.listini_righe_componenti`: una riga = "in questa
+    # versione listino, il componente X del padre composito Y ha prezzo Z".
+    # Il prezzo padre composito NON e' un dato di listino (e' SUM dei
+    # componenti via resolver bundle-aware); listini_righe diretti su
+    # padre composito sono vietati (trigger 20260513-04).
+    #
+    # API repo: 3 metodi
+    #   - list_compositi_con_bundle(versione_id): elenco padri compositi
+    #     che hanno almeno 1 prezzo bundle definito in quella versione
+    #   - list_bundle_preview(versione_id, padre_id, data_riferimento):
+    #     BoM corrente del padre LEFT JOIN prezzi gia' definiti, per
+    #     popolare il Dialog di editing
+    #   - upsert_bundle(versione_id, padre_id, rows, validita_versione):
+    #     batch INSERT/UPDATE/soft-delete delle righe bundle per quel
+    #     padre, in transazione atomica.
+
+    # Scopo: Lista articoli compositi che hanno almeno 1 riga in
+    # `listini_righe_componenti` attiva per la versione data. Usata dal
+    # FE per popolare la sezione "Prezzi bundle compositi" del drawer
+    # versione listino. Una riga per padre, con conteggio componenti
+    # definiti + codice/descrizione articolo padre.
+    #
+    # Nota: NON proiettiamo un totale bundle qui. Il totale corretto e'
+    # SUM(prezzo_componente * coeff_qta) dai dati BoM (articoli_componenti)
+    # — un SUM(lrc.prezzo) puro sarebbe fuorviante perche' ignora i
+    # coefficienti. Il totale per padre vive nel preview del Dialog detail
+    # (`list_bundle_preview`) dove abbiamo accesso a `ac.coeff_qta`.
+    def list_compositi_con_bundle(
+        self, versione_id: int,
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                lrc.articolo_padre_id                 AS articolo_id,
+                ad.codice                             AS articolo_codice,
+                ad.descrizione                        AS articolo_descrizione,
+                ad.iva_id,
+                iva.codice                            AS iva_codice,
+                iva.aliquota_iva                      AS iva_aliquota,
+                COUNT(*)                              AS n_componenti_bundle
+              FROM vendite.listini_righe_componenti lrc
+              LEFT JOIN catalogo.vw_articoli_dettaglio ad
+                ON ad.id = lrc.articolo_padre_id
+              LEFT JOIN config.iva iva
+                ON iva.id = ad.iva_id
+             WHERE lrc.listino_versione_id = %s
+               AND lrc.attivo = TRUE
+             GROUP BY lrc.articolo_padre_id, ad.codice, ad.descrizione,
+                      ad.iva_id, iva.codice, iva.aliquota_iva
+             ORDER BY ad.codice NULLS LAST
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [versione_id])
+            return rows_to_list(cursor)
+
+    # Scopo: Preview BoM corrente di un padre composito + LEFT JOIN sui
+    # prezzi gia' definiti in `listini_righe_componenti` per la versione
+    # listino target. Restituisce 1 riga per ogni `articoli_componenti`
+    # valida alla data; `prezzo_listino_bundle` NULL se non ancora
+    # definito (l'admin lo valorizza nel Dialog).
+    # `data_riferimento`: data per filtrare BoM corrente (validita @>).
+    # Tipicamente = oggi o = validita versione listino (lower bound).
+    def list_bundle_preview(
+        self,
+        *,
+        versione_id: int,
+        articolo_padre_id: str,
+        data_riferimento: date,
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                ac.id                              AS articolo_componente_id,
+                ac.componente_id,
+                a.codice                           AS componente_codice,
+                a.descrizione                      AS componente_descrizione,
+                ac.coeff_qta,
+                ac.obbligatorio,
+                ac.esposto_in_fattura,
+                a.iva_id,
+                iva.codice                         AS iva_codice,
+                iva.aliquota_iva                   AS iva_aliquota,
+                a.uom_id,
+                um.codice                          AS uom_codice,
+                lrc.id                             AS listini_righe_componenti_id,
+                -- Alias `prezzo_suggerito` per uniformita' col `ComponentiDialog`
+                -- FE che si attende quel campo come valore di pre-populating;
+                -- semantica listino: e' il prezzo bundle gia' definito.
+                -- Nota: NON proiettare lrc.validita (daterange) perche'
+                -- psycopg fallisce su `infinity` ("date too large after year
+                -- 10K"). Se servira' al FE, castarla a testo con
+                -- `to_char(...)` o estrarre lower/upper come date guardate.
+                lrc.prezzo                         AS prezzo_suggerito
+              FROM catalogo.articoli_componenti ac
+              JOIN catalogo.articoli a            ON a.id = ac.componente_id
+              LEFT JOIN catalogo.unita_misura um   ON um.id = a.uom_id
+              LEFT JOIN config.iva iva             ON iva.id = a.iva_id
+              LEFT JOIN vendite.listini_righe_componenti lrc
+                ON lrc.listino_versione_id = %s
+               AND lrc.articolo_componente_id = ac.id
+               AND lrc.attivo = TRUE
+             WHERE ac.prodotto_id = %s
+               AND COALESCE(ac.attivo, TRUE) = TRUE
+               AND ac.validita @> %s
+             ORDER BY a.codice NULLS LAST, ac.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [versione_id, str(articolo_padre_id), data_riferimento])
+            return rows_to_list(cursor)
+
+    # Scopo: Batch upsert dei prezzi bundle di un padre composito su
+    # `listini_righe_componenti`. Strategia "tabula rasa idempotente":
+    #   1. SOFT-DELETE (attivo=FALSE) le righe bundle attive correnti per
+    #      (versione, padre) — l'EXCLUDE GIST WHERE attivo=TRUE non si
+    #      scontra con quelle disattivate, semplifica la riapplicazione
+    #   2. INSERT le nuove righe attive
+    # In una transazione atomica per evitare stato intermedio inconsistente.
+    #
+    # `rows`: lista di dict con chiavi:
+    #   - `articolo_componente_id` (UUID, BoM riga)
+    #   - `articolo_figlio_id`     (UUID, denorm)
+    #   - `prezzo`                 (Decimal)
+    #   - `iva_id`                 (int, default = IVA del figlio dal catalogo)
+    # `validita`: tuple (date_dal, date_al) o (date_dal, None) per `infinity`
+    # Le righe con `prezzo IS NULL` sono ignorate (= "non gestito a bundle").
+    def upsert_bundle_componenti(
+        self,
+        *,
+        versione_id: int,
+        articolo_padre_id: str,
+        rows: list[dict[str, Any]],
+        valido_dal: date,
+        valido_al: date | None = None,
+    ) -> dict[str, int]:
+        # `validita` della riga listino_righe_componenti = intersezione fra
+        # la validita' della versione listino e la validita' della riga BoM
+        # `catalogo.articoli_componenti` referenziata da articolo_componente_id.
+        # Il trigger DB `trgfn_listini_righe_comp_guard_coerenza_bom` esige
+        # contenimento stretto (riga listino ⊆ BoM); l'intersezione `*` lo
+        # garantisce automaticamente — nessun lavoro lato caller.
+        #
+        # Esempio: versione listino valida `[2026-04-07, infinity]`, BoM del
+        # componente valida `[2026-05-13, infinity]` → riga bundle salvata
+        # con validita = `[2026-05-13, infinity]` (la BoM e' il limite).
+        with connection.cursor() as cursor:
+            # Soft-delete riga attive correnti per la coppia (versione, padre).
+            cursor.execute(
+                """
+                UPDATE vendite.listini_righe_componenti
+                   SET attivo = FALSE
+                 WHERE listino_versione_id = %s
+                   AND articolo_padre_id = %s
+                   AND attivo = TRUE
+                """,
+                [versione_id, str(articolo_padre_id)],
+            )
+            n_disattivati = cursor.rowcount
+
+            # INSERT nuove righe attive (skip prezzo NULL).
+            n_inseriti = 0
+            for r in rows:
+                if r.get("prezzo") is None:
+                    continue
+                cursor.execute(
+                    """
+                    INSERT INTO vendite.listini_righe_componenti (
+                        listino_versione_id,
+                        articolo_componente_id,
+                        articolo_padre_id,
+                        articolo_figlio_id,
+                        prezzo,
+                        iva_id,
+                        validita,
+                        attivo
+                    )
+                    SELECT
+                        %s, ac.id, %s, %s, %s, %s,
+                        ac.validita * daterange(
+                            %s::date,
+                            COALESCE(%s::date, 'infinity'::date),
+                            '[]'
+                        ),
+                        TRUE
+                      FROM catalogo.articoli_componenti ac
+                     WHERE ac.id = %s::uuid
+                    """,
+                    [
+                        versione_id,
+                        str(articolo_padre_id),
+                        r["articolo_figlio_id"],
+                        r["prezzo"],
+                        r.get("iva_id"),
+                        valido_dal,
+                        valido_al,
+                        r["articolo_componente_id"],
+                    ],
+                )
+                n_inseriti += cursor.rowcount
+
+            return {"disattivati": n_disattivati, "inseriti": n_inseriti}

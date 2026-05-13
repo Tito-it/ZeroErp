@@ -243,6 +243,12 @@ export const MANAGE_ICONS = {
   DOWNLOAD: 'pi pi-download',
   DELETE: 'pi pi-trash',
   KEBAB: 'pi pi-ellipsis-v',
+  // Toggle collassa/espandi (accordion, expansion row, tree).
+  // Standard PrimeVue/Material: chevron-down sta nello stato collassato
+  // (invita ad aprire), chevron-up nello stato espanso (invita a chiudere).
+  // Usare sempre dinamicamente: `icon: isExpanded ? COLLAPSE : EXPAND`.
+  EXPAND: 'pi pi-chevron-down',
+  COLLAPSE: 'pi pi-chevron-up',
   // Workflow approvazione prezzi (Sprint E listini v5).
   APPROVE: 'pi pi-check',
   REJECT: 'pi pi-times',

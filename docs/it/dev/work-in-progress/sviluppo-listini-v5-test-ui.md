@@ -314,19 +314,20 @@ estrae il codice `E_*` dal `message_primary` della DatabaseError e applica
 la policy registrata in `error_policies.py` (HTTP status + user_message).
 Funziona quindi senza translator dedicato lato service.
 
-### 3.4 Espansione compositi — modello unificato (riscritto 2026-05-12 sera)
+### 3.4 Espansione compositi — modello unificato (riscritto 2026-05-13)
 
 > **Riferimenti**: [`manual/modello-componenti-bom.md`](../manual/modello-componenti-bom.md),
-> [refactor-componenti.md](refactor-componenti.md) §2 Fase F,
-> [brief-db-componenti-modello-unificato.md](brief-db-componenti-modello-unificato.md).
+> [refactor-componenti.md](refactor-componenti.md) §2 Fase F.
 >
-> **Pre-requisito**: brief DB atterrato su `dev/db-tid` + BE Fase B + FE
-> Fase C/D atterrate.
+> **Pre-requisito**: migration `20260513-01..32` applicate su `dev/db-tid`
+> (modello unificato + fix JSONB + default `attivo=TRUE` sempre); BE Fase
+> B + FE Fase C/D + Fase E atterrate.
 >
-> **Versioni precedenti dello smoke 3.4**: archiviate nel git history
-> dei changeset 2026-05-11 / 12 mattina-pomeriggio. Questa stesura
-> sostituisce gli scenari A/B/C "CASO A esposti only" con il nuovo
-> modello unificato.
+> **Decisione 2026-05-13 — BoM contratto immutabile**: tutti i figli BoM
+> validi alla data finiscono SEMPRE nella riga con `attivo=TRUE`.
+> L'operatore non sceglie la composizione (nessuna checkbox Attivo nel
+> Dialog/Panel). Modifica solo i prezzi con gating L1
+> `prezzo_override_manuale`.
 
 #### Setup comune ai 4 scenari
 
@@ -346,75 +347,79 @@ Funziona quindi senza translator dedicato lato service.
 - [ ] Preventivo `PRV0000XXX` in DRAFT, cliente in categoria STANDARD,
   utility configurata, emittente OK
 
-#### Scenario 3.4.A — Tutto da listino, solo obbligatori (path felice)
+#### Scenario 3.4.A — Tutto da listino (path felice, no override)
 
 - [ ] Operatore apre drawer riga preventivo, seleziona articolo
   `ART-COMP-001`, UoM, qty=1
 - [ ] Dialog "Componenti di ART-COMP-001" si apre automaticamente
-- [ ] Tabella popolata:
-  - `ART-CTR-OBB1`: tag "Obbligatorio", suggerito €200 (LISTINO), checkbox attivo TRUE/disabled, esposto-in-fattura SI'
-  - `ART-LAV-OBB2`: tag "Obbligatorio", suggerito €75 (LISTINO), checkbox attivo TRUE/disabled, esposto-in-fattura NO
-  - `ART-EXTRA-OPZ`: tag "Opzionale", suggerito €40 (LISTINO), checkbox attivo **FALSE**, esposto SI'
-- [ ] Riepilogo dialog mostra "2 componenti attivi — totale stimato €500"
-  (200·1 + 75·4, opzionale escluso)
-- [ ] Bottone "Conferma componenti" abilitato
+- [ ] Tabella popolata con **tutti e 3** i componenti (anche l'opzionale):
+  - `ART-CTR-OBB1`: tag "Obbligatorio", suggerito €200 (LISTINO), In fattura "Sì"
+  - `ART-LAV-OBB2`: tag "Obbligatorio", suggerito €75 (LISTINO), In fattura "No"
+  - `ART-EXTRA-OPZ`: tag "Opzionale", suggerito €40 (LISTINO), In fattura "Sì"
+- [ ] **Nessuna checkbox Attivo** (BoM contratto immutabile 2026-05-13)
+- [ ] Riepilogo dialog: "3 componenti — totale stimato €540"
+  (200·1 + 75·4 + 40·1 = €540)
+- [ ] Bottone "Conferma componenti" abilitato (nessun prezzo NULL)
 - [ ] Click Conferma → Dialog chiude, drawer riga padre mostra
-  "2 componenti attivi — totale stimato €500" + bottone "Modifica componenti"
+  "3 componenti — totale stimato €540" + bottone "Modifica componenti"
 - [ ] Campo prezzo padre disabilitato (tag "Calcolato dai componenti")
 - [ ] Click "Salva riga" → riga creata
 - [ ] Verifica DB:
-  - `preventivi_righe.prezzo_unitario = 500` (SUM trigger)
-  - `preventivi_righe_componenti`: 2 righe (i 2 obbligatori), opzionale NON inserito
-  - `origine_prezzo`: entrambi `LISTINO` o `CATEGORIA` (resolver)
+  - `preventivi_righe.prezzo_unitario = 540` (SUM trigger `_z90_ricalcola_padre`)
+  - `preventivi_righe_componenti`: **3 righe**, tutte `attivo=TRUE`
+  - `origine_prezzo`: tutti `CATEGORIA` o `LISTINO` (resolver standalone)
+- [ ] Verifica payload BE: `componenti_overrides` **NON** inviato (nessun
+  override), `componenti_attivazioni` **NON** inviato
 - [ ] EMETTI → ACCETTA → push commessa: toast verde "Push completato"
-- [ ] Verifica `commesse_attivita`: **2 righe** (tutti i componenti
-  ATTIVI passano in commessa)
+- [ ] Verifica `commesse_attivita`: **3 righe** (tutti i componenti
+  attivi passano in commessa, incluso opzionale)
 - [ ] Stato preventivo → EVASO automatico
 
-#### Scenario 3.4.B — Opzionale attivato + override manuale su obbligatorio
+#### Scenario 3.4.B — Override manuale prezzo su componente (gating L1)
 
 - [ ] Operatore con azione `prezzo_override_manuale`
 - [ ] Apre drawer riga, seleziona `ART-COMP-001` qty=2
 - [ ] Dialog aperta, righe come 3.4.A ma con qty raddoppiate
   (`ART-CTR` qty=2, `ART-LAV` qty=8, `ART-EXTRA` qty=2)
-- [ ] Operatore:
-  - Attiva checkbox `ART-EXTRA-OPZ`
-  - Modifica prezzo `ART-LAV-OBB2` da €75 a €60 (sconto entro L2)
-- [ ] Riepilogo aggiornato: "3 componenti attivi — totale stimato €960"
-  (200·2 + 60·8 + 40·2 = €960)
+- [ ] Operatore modifica prezzo `ART-LAV-OBB2` da €75 a €60 (sconto entro L2)
+- [ ] Riepilogo aggiornato: "3 componenti — totale stimato €1080"
+  (200·2 + 60·8 + 40·2 = €1080)
 - [ ] Conferma → drawer mostra summary aggiornato
 - [ ] Salva riga → backend riceve payload:
-  - `componenti_overrides`: `{ART-LAV-OBB2: "60.000000"}`
-  - `componenti_attivazioni`: `{ART-EXTRA-OPZ: true}`
+  - `componenti_overrides`: `{ART-LAV-OBB2: "60.000000"}` (solo il prezzo modificato)
+  - `componenti_attivazioni`: **NON inviato** (no toggle)
 - [ ] DB:
   - 3 righe in `preventivi_righe_componenti`, tutte `attivo=TRUE`
-  - `ART-LAV-OBB2.origine_prezzo = MANUALE`
+  - `ART-LAV-OBB2.origine_prezzo = MANUALE`, audit meta override
   - Altri due `LISTINO/CATEGORIA`
 - [ ] EMETTI → ACCETTA → push commessa: **3 righe** in `commesse_attivita`
-- [ ] Tentativo di disattivare `ART-CTR-OBB1` (obbligatorio) lato
-  EDIT panel post-creazione → backend solleva `E_DOC_COMPONENTE_OBBLIGATORIO`
-- [ ] Tentativo di mettere prezzo 0 su un obbligatorio → solleva
-  `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO`
+- [ ] Test gating L1 (operatore Junior senza `prezzo_override_manuale`):
+  - Tenta override prezzo componente nel Dialog → 403
+    `E_PREV_OVERRIDE_NON_AUTORIZZATO`
+- [ ] Test guard prezzo 0 obbligatorio: in EDIT panel, modifica
+  `ART-CTR-OBB1` a €0 + bottone Save → bottone disabled FE +
+  defense-in-depth BE/DB solleva `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO`
+- [ ] Test guard prezzo 0 opzionale: modifica `ART-EXTRA-OPZ` a €0 → OK
+  (opzionali ammettono 0)
 
 #### Scenario 3.4.C — BoM scaduta (errore parlante)
 
 - [ ] Setup: chiudere la riga BoM di `ART-CTR-OBB1` con
   `valido_al = ieri` (pattern chiudi+nuova versione)
 - [ ] Operatore apre drawer riga, seleziona `ART-COMP-001` qty=1
-- [ ] Dialog tenta di aprire → la chiamata preview/init rileva BoM con
-  meno componenti del previsto (solo 2 invece di 3)
-  - **Variante 1** se il lookup articolo ha `has_componenti_alla_data=FALSE`:
-    Dialog NON si apre, drawer riga mostra Message error
-    "Articolo composito senza componenti validi alla data..."
-  - **Variante 2** se la BoM resta con 2 figli (CTR-OBB1 scaduto, gli
-    altri 2 attivi): Dialog si apre con solo 2 componenti, padre =
-    €240 (60·4 + 0). Comportamento atteso definito dal modello.
-- [ ] Tentativo Salva → se BoM vuota completamente → fn `_init` solleva
-  `E_DOC_COMPOSITO_BOM_VUOTA` con messaggio "Articolo composito
-  ART-COMP-001 senza componenti validi alla data {data}: BoM scaduta
-  o non configurata."
-- [ ] Operatore: nessuna salvataggio possibile, deve aggiornare la BoM
-  in catalogo (creare nuova versione attiva) o cambiare data preventivo
+- [ ] Dialog tenta di aprire → la chiamata preview rileva BoM con
+  meno componenti del previsto:
+  - **Variante 1** lookup articolo `has_componenti_alla_data=FALSE`:
+    Dialog NON si apre, drawer mostra Message error parlante
+  - **Variante 2** BoM con 2 figli residui: Dialog si apre con 2
+    componenti, padre = €340 (75·4 + 40·1)
+- [ ] Tentativo Salva → se BoM **completamente** vuota alla data:
+  - Fn `_init` solleva `E_DOC_COMPOSITO_BOM_VUOTA` con messaggio
+    "Articolo composito ART-COMP-001 senza componenti validi alla
+    data {data}: BoM scaduta o non configurata."
+  - Riga padre **non viene creata** (transazione atomica `@transaction.atomic`)
+- [ ] Operatore: aggiornare BoM in catalogo (nuova versione attiva) o
+  cambiare data preventivo
 
 #### Scenario 3.4.D — Listino bundle vs standalone (resolver bundle-aware)
 
@@ -423,17 +428,32 @@ Funziona quindi senza translator dedicato lato service.
   - `(ART-COMP-001, ART-LAV-OBB2, 50€/h)` — prezzo bundle 50 invece
     di 75 standalone
 - [ ] Operatore apre drawer riga, seleziona `ART-COMP-001` qty=1
-- [ ] Dialog popolata: `ART-LAV-OBB2` suggerito €50 (LISTINO_BUNDLE),
-  badge "Listino bundle". `ART-CTR-OBB1` resta €200 (LISTINO standalone)
-- [ ] Riepilogo: "2 componenti attivi — totale stimato €400"
-  (200·1 + 50·4)
+- [ ] Dialog popolata:
+  - `ART-LAV-OBB2`: suggerito **€50**, badge **"Listino bundle"**
+    (severity `help`, codice origine `LISTINO_BUNDLE`)
+  - `ART-CTR-OBB1`: resta €200 (LISTINO standalone)
+  - `ART-EXTRA-OPZ`: resta €40 (LISTINO standalone)
+- [ ] Riepilogo: "3 componenti — totale stimato €440"
+  (200·1 + 50·4 + 40·1 = €440)
 - [ ] Conferma + Salva → DB:
   - `preventivi_righe_componenti.origine_prezzo` di `ART-LAV-OBB2` =
     `LISTINO_BUNDLE`
-  - Audit resolver_context include `listino_righe_componenti_id`
+  - Audit `prezzo_resolver_context.origine = LISTINO_BUNDLE`
 - [ ] Test variante storica: cambiare data preventivo a un periodo in
   cui `listini_righe_componenti` NON copre `ART-LAV-OBB2` (validita'
-  fuori range) → fallback a STADIO 1 standalone €75/h
+  fuori range) → resolver fallback a STADIO 1 standalone €75/h
+
+#### Verifiche finali post-smoke
+
+- [ ] Riepilogo IVA del preventivo: pannello sempre visibile (decisione
+  2026-05-13), mostra aggregato per aliquota IVA (footer con totale
+  imponibile + imposta + totale documento). I 3 totali compatti
+  fallback sono stati rimossi (ridondanti).
+- [ ] In `preventivi_righe`, prezzo padre = SUM(figli × coeff_qta) post
+  trigger `_z90_ricalcola_padre`
+- [ ] Nessun `prezzo_unitario` NULL su `preventivi_righe` (default `0`
+  placeholder se composito senza override + resolver fallisce, sovrascritto
+  dal trigger SUM)
 - [ ] Test promozione articolo standalone su `ART-LAV` (es. €60/h
   promo): nel contesto bundle resta €50 (il bundle vince, decisione
   dominio); per testare il flag `vale_in_contesto_padre = TRUE` sulla

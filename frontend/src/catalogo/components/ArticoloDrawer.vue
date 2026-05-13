@@ -11,6 +11,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { listArticoloUom, listArticoloComponenti, listArticoloNote, getArticoloFormDefaults } from '../api/catalogo'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -102,7 +103,14 @@ async function loadBomRiepilogo() {
   try {
     const res = await listArticoloComponenti(props.articoloId)
     const payload = res.data?.data
-    bomRiepilogo.value = payload?.results || payload || []
+    const righe = payload?.results || payload || []
+    const oggi = toDateString(new Date())
+    // Scopo: il riepilogo nel drawer articolo mostra le stesse righe
+    // inizialmente visibili nel sub-drawer BoM: righe senza valido_al
+    // oppure con valido_al maggiore/uguale a oggi.
+    bomRiepilogo.value = righe
+      .filter(r => !r.valido_al || r.valido_al >= oggi)
+      .sort((a, b) => (a.componente_codice || '').localeCompare(b.componente_codice || ''))
   } catch { bomRiepilogo.value = [] }
 }
 

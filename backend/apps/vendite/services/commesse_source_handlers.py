@@ -83,14 +83,28 @@ class HandlerResult:
 
 
 class BoMComponentExpander:
-    """Espande PushableRow di articoli compositi v5 in N righe componente.
+    """Espande PushableRow di articoli compositi in N righe componente.
 
-    Scopo: single-point per la logica F2-BE-12 (sviluppo-listini-v5 §14.4).
-    Una riga padre composito viene espansa in N righe (una per componente
-    obbligatorio attivo) quando il resolver DB ritorna piu' di una riga
-    (CASO A: almeno un componente esposto in fattura). Pass-through nei
-    casi B (1 riga) o quando non si applica la logica (articolo non
-    composito, parametri insufficienti).
+    Modello unificato componenti BoM 2026-05-13: il padre composito viene
+    sempre espanso in N righe (una per ciascun componente attivo della
+    riga sorgente). `esposto_in_fattura` ora e' un flag di presentazione
+    fattura, non gate di expansion: tutti i figli attivi passano in
+    commessa, la separazione fra "padre con totale" e "figli esposti
+    come righe descrittive" avviene a valle (generazione fatture_righe).
+
+    Path snapshot (preferito quando snapshot loader fornito al ctor):
+    legge i componenti gia' negoziati al preventivo via
+    `componenti_loader`, che internamente filtra `attivo=TRUE` (solo
+    componenti effettivamente inclusi). `esposto_in_fattura` arriva dalla
+    proiezione (JOIN runtime su `articoli_componenti`).
+
+    Path legacy resolver (fallback per sorgenti senza snapshot loader —
+    ordini/contratti/ddt fino a Fase G): invoca
+    `pricing_service.resolve_prezzo_composito` -> fn DB
+    `fn_resolve_prezzo_composito` (DEPRECATED dal 2026-05-13, modello
+    unificato). Il dict ritornato include `coeff_qta` (Decimal),
+    `esposto_in_fattura`. Path da rimuovere quando ordini/contratti/ddt
+    saranno migrati al pattern snapshot.
 
     Decisioni di design (sviluppo-listini-v5 §14.4.1):
     - DEC-2: segment_key suffix '#CMP:{componente_id}'
@@ -101,11 +115,6 @@ class BoMComponentExpander:
     Cache locale (vita = istanza, tipicamente vita = ciclo _process_rows):
     - composite_cache: evita lookup ripetuti is_composito per stesso articolo
     - resolve_cache: evita ri-chiamata resolver per parametri identici
-
-    Contratto resolver DB (post DB-3, 22-04-2026): il dict ritornato include
-    `coeff_qta` (Decimal). Per CASO A vale il `coeff_qta` letto da
-    `articoli_componenti`; per CASO B (1 riga padre) vale `1` (padre
-    neutro nel calcolo `quantita_padre * coeff_qta`).
     """
 
     def __init__(
@@ -127,11 +136,13 @@ class BoMComponentExpander:
         self._composite_cache: dict[Any, bool] = {}
         self._resolve_cache: dict[tuple, list[dict[str, Any]]] = {}
 
-    # Scopo: applica la logica BoM v5 a una riga sorgente, restituendo
+    # Scopo: applica la logica BoM a una riga sorgente, restituendo
     #        1 o N PushableRow.
     #        Path snapshot (preferito quando disponibile): legge i componenti
     #        gia' negoziati al preventivo via `componenti_loader`.
-    #        Path legacy fallback: invoca il resolver al push.
+    #        Path legacy fallback: invoca il resolver al push. TODO Fase G:
+    #        rimuovibile quando ordini/contratti/ddt avranno snapshot loader
+    #        e la fn DB `fn_resolve_prezzo_composito` sara' droppata.
     def expand(self, row: PushableRow) -> list[PushableRow]:
         # Pre-filtri: condizioni in cui la BoM non si applica o non e'
         # risolvibile. Pass-through silenzioso, no errore.
@@ -150,9 +161,10 @@ class BoMComponentExpander:
         if not self._is_composito_cached(row.articolo_id):
             return [row]
 
-        # Path snapshot: leggi componenti gia' negoziati al preventivo.
-        # Lista vuota = CASO B (composito senza componenti esposti) o riga
-        # legacy pre-deploy non popolata -> fallback al resolver.
+        # Path snapshot: leggi componenti gia' negoziati al preventivo
+        # (modello unificato: filtrati `attivo=TRUE` dal repository).
+        # Lista vuota = riga legacy pre-deploy non popolata -> fallback
+        # al resolver (caso edge in dev, atteso 0 in produzione).
         if (
             self._componenti_loader is not None
             and row.riga_sorgente_id is not None
@@ -161,16 +173,14 @@ class BoMComponentExpander:
             if snapshot:
                 return [self._build_componente_row_from_snapshot(row, c) for c in snapshot]
 
-        # Path legacy: resolver al push.
+        # Path legacy: resolver `fn_resolve_prezzo_composito` (DEPRECATED).
+        # Mantenuto solo per ordini/contratti/ddt finche' non hanno
+        # snapshot loader (Fase G). Per il modello unificato il resolver
+        # B (1 riga padre) e' inconsistente: il padre composito ha SEMPRE
+        # componenti BoM, mai 1 sola riga padre. Pass-through difensivo.
         righe = self._resolve_cached(row)
-
-        # CASO B (resolver ritorna 1 riga padre): pass-through. Il prezzo
-        # del composito e' gia' quello della riga, niente fan-out.
-        # Riconosciamo CASO B confrontando componente_id == articolo_id padre.
         if len(righe) == 1 and str(righe[0]["componente_id"]) == str(row.articolo_id):
             return [row]
-
-        # CASO A (N righe): genera N PushableRow, una per componente.
         return [self._build_componente_row(row, r) for r in righe]
 
     # Scopo: cache wrapper per is_composito_fn (1 lookup per articolo per istanza).
@@ -180,11 +190,17 @@ class BoMComponentExpander:
         return self._composite_cache[articolo_id]
 
     # Scopo: cache wrapper per resolver composito sui parametri-chiave
-    #        (articolo, BA, utility, data, emittente). Stessa coppia BoM/scenario
-    #        commerciale -> stesso risultato, evita N round-trip nel _process_rows.
+    #        (articolo, uom, BA, utility, data, emittente). Stessa coppia
+    #        BoM/scenario commerciale -> stesso risultato, evita N round-trip
+    #        nel _process_rows.
+    #        `uom_id` parte della key: la fn DB usa la UoM per calcolare il
+    #        factor_to_base e quindi il prezzo finale; due righe con stessi
+    #        (articolo, BA, utility, data, emittente) ma UoM diverse
+    #        avrebbero risultati distinti — la key le deve discriminare.
     def _resolve_cached(self, row: PushableRow) -> list[dict[str, Any]]:
         cache_key = (
             str(row.articolo_id),
+            row.uom_id,
             row.billing_account_id,
             row.utility_id,
             row.competenza_mese,
@@ -276,9 +292,13 @@ class BoMComponentExpander:
     #          - `uom_operativa_id` invece di `uom_id`
     #          - `coeff_qta_snapshot` invece di `coeff_qta`
     #          - `origine_prezzo` propagato in meta per audit downstream.
-    #        Tutti i componenti snapshot sono per definizione CASO A
-    #        (esposto_in_fattura=True): l'init non popola componenti non
-    #        esposti.
+    #        Modello unificato 2026-05-13: `esposto_in_fattura` arriva
+    #        dalla proiezione del repository (JOIN runtime su
+    #        `articoli_componenti`, BoM immutabile per design). Init popola
+    #        TUTTI i figli (no piu' filtro su esposto). Il `list_componenti_riga`
+    #        col default `solo_attivi=True` filtra solo i componenti
+    #        effettivamente inclusi nel documento (opzionali disattivati
+    #        esclusi dal push verso commessa).
     @classmethod
     def _build_componente_row_from_snapshot(
         cls,
@@ -291,7 +311,7 @@ class BoMComponentExpander:
             componente_uom_id=componente.get("uom_operativa_id") or row.uom_id,
             componente_prezzo=componente["prezzo_unitario"],
             coeff_qta=Decimal(str(componente["coeff_qta_snapshot"])),
-            esposto_in_fattura=True,
+            esposto_in_fattura=bool(componente.get("esposto_in_fattura", False)),
             origine_prezzo=componente.get("origine_prezzo"),
         )
 

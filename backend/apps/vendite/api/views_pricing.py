@@ -48,6 +48,15 @@ _RESOLVE_REQUEST = inline_serializer(
             required=False, allow_null=True,
             help_text="Override esplicito emittente. Se assente, derivato dal JWT operatore.",
         ),
+        "articolo_padre_contesto": serializers.UUIDField(
+            required=False, allow_null=True,
+            help_text=(
+                "UUID articolo composito padre per attivare STADIO BUNDLE "
+                "(modello unificato BoM 2026-05-13). Se fornito, il resolver "
+                "cerca prima il prezzo bundle in listini_righe_componenti "
+                "per la coppia (padre, figlio); fallback su standalone."
+            ),
+        ),
     },
 )
 
@@ -158,6 +167,7 @@ class PricingResolveView(DomainAPIView):
                 request, payload.get("emittente_soggetto_ruolo_id"),
             )
 
+            padre_raw = payload.get("articolo_padre_contesto")
             result = PricingService().resolve_prezzo(
                 articolo_id=str(articolo_id),
                 uom_id=int(payload.get("uom_id") or 0),
@@ -170,6 +180,7 @@ class PricingResolveView(DomainAPIView):
                     if payload.get("classe_utenza_id")
                     else None
                 ),
+                articolo_padre_contesto=str(padre_raw) if padre_raw else None,
             )
             return {k: _serialize_value(v) for k, v in result.items()}
 

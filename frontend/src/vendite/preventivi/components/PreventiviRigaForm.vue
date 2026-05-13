@@ -451,12 +451,12 @@ function buildRigaPayload(extras = {}) {
     }
     return { ...base, ...extras }
   }
-  // CREATE: include componenti_overrides + componenti_attivazioni
-  // quando l'articolo e' composito (modello unificato 2026-05-13).
-  // Il payload Dialog (`componentiPayload`) e' un delta: i campi sono
-  // valorizzati SOLO se l'operatore ha modificato i suggeriti / default.
-  // BE/DB applica resolver per i componenti senza override e default DB
-  // attivo per i componenti senza attivazione esplicita.
+  // CREATE: include componenti_overrides quando l'articolo e' composito
+  // e l'operatore ha modificato almeno un prezzo (modello unificato
+  // 2026-05-13). Il payload Dialog (`componentiPayload`) e' un delta:
+  // include solo i prezzi diversi dal suggerito. La composizione BoM e'
+  // contratto immutabile (tutti i figli sempre inclusi, default DB
+  // attivo=TRUE per tutti) — niente piu' `componenti_attivazioni`.
   const payload = {
     articolo_id: f.articolo_id,
     descrizione: f.descrizione || null,
@@ -473,13 +473,8 @@ function buildRigaPayload(extras = {}) {
   if (!isPadreComposito.value) {
     payload.prezzo_unitario = f.prezzo_unitario
   }
-  if (showComponentiButton.value && componentiPayload.value) {
-    if (componentiPayload.value.overrides) {
-      payload.componenti_overrides = componentiPayload.value.overrides
-    }
-    if (componentiPayload.value.attivazioni) {
-      payload.componenti_attivazioni = componentiPayload.value.attivazioni
-    }
+  if (showComponentiButton.value && componentiPayload.value?.overrides) {
+    payload.componenti_overrides = componentiPayload.value.overrides
   }
   return payload
 }
@@ -723,6 +718,12 @@ async function handleRichiediApprovazione() {
       @confirm="onComponentiConfirm"
     />
 
+    <!-- Bottoni Salva/Annulla della riga: sempre visibili quando l'utente
+         sta editando la riga. Il ComponentiDialog modale 90vw copre comunque
+         la pagina mentre aperto, quindi non c'e' duplicazione visiva con
+         i bottoni Conferma/Annulla del Dialog. I bottoni del DrawerFooter
+         testata preventivo invece si nascondono via `formRigaAperto` lato
+         PreventiviDrawer (pattern distinta base `ArticoloBomDrawer`). -->
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">
       <Button :label="t('common.cancel')" severity="secondary" @click="emit('cancel')" />
       <Button :label="t('common.save')" :loading="loading" :disabled="!canSave" @click="handleSave" />

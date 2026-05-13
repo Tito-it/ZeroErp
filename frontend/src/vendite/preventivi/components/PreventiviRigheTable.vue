@@ -35,10 +35,14 @@ const props = defineProps({
   isModificabile: { type: Boolean, default: true }
 })
 
-// Emette `changed` dopo ogni create/update/delete riga: il drawer parent
-// usa l'evento per ricaricare il detail (totale_imponibile/iva/documento
-// sono aggregati DB e cambiano a ogni mutazione delle righe).
-const emit = defineEmits(['changed'])
+// Eventi:
+//  - `changed`: dopo create/update/delete riga (parent ricarica detail).
+//  - `form-aperto`: emesso quando il form inline (master-detail) cambia
+//    stato. Il drawer parent (PreventiviDrawer) lo usa per nascondere
+//    il proprio DrawerFooter Salva/Annulla testata durante edit-riga,
+//    evitando duplicazione (stesso pattern distinta base BoM
+//    `ArticoloBomDrawer.isFormOpen`).
+const emit = defineEmits(['changed', 'form-aperto'])
 
 const righe = ref([])
 const loadingRighe = ref(false)
@@ -46,6 +50,7 @@ const loadingRighe = ref(false)
 // inline (frontend-standards): governa visibilita' e comportamento del form
 // sottostante senza apertura di Dialog annidato.
 const formMode = ref(null)
+watch(formMode, (m) => emit('form-aperto', m !== null))
 const rigaSelezionata = ref(null)
 // Selezione riga DataTable: evidenzia visivamente la riga in edit (pattern
 // ContrattoRigheDrawer). Sincronizzata con rigaSelezionata.

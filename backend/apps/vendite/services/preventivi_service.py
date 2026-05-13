@@ -190,6 +190,16 @@ def list_riepilogo_iva(preventivo_id: int) -> list[dict[str, Any]]:
     return repo.list_riepilogo_iva(preventivo_id)
 
 
+# Scopo: Restituisce il contesto pricing applicato al preventivo (contratto
+#        attivo o listino categoria fallback). Lettura puramente informativa
+#        usata dall'header del drawer preventivo per audit visivo del path
+#        di risoluzione prezzi. Lo stesso resolver `fn_resolve_prezzo_listino_v2`
+#        applica la stessa logica al momento del calcolo prezzi riga.
+def get_contesto_pricing(preventivo_id: int) -> dict[str, Any] | None:
+    repo = PreventiviRepository()
+    return repo.resolve_contesto_pricing(preventivo_id)
+
+
 # Scopo: Lista indirizzi di un preventivo.
 def list_indirizzi(preventivo_id: int) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
@@ -632,6 +642,30 @@ def gestisci_riga(
         function_name=f"{_FN}.gestisci_riga",
         richiesta_approvazione=richiesta_approvazione,
     )
+
+    # Padre composito (modello unificato 2026-05-13): il FE omette
+    # `prezzo_unitario` perche' il prezzo padre e' SUM(figli × coeff_qta)
+    # calcolata dal trigger DB `_z90_ricalcola_padre` post-init componenti.
+    # Il resolver `fn_resolve_prezzo_listino_v2` non risolve per articoli
+    # compositi (errore: nessun listino diretto sul composito,
+    # `E_LISTINO_RIGA_COMPOSITO_VIETATO` lato DB). Default a 0 come
+    # placeholder: il trigger lo sovrascrive sincrono dopo
+    # `fn_preventivo_riga_componenti_init` nello stesso `@transaction.atomic`.
+    # Senza default: NOT NULL violation -> E_DATABASE generico.
+    # NB: per articoli NON compositi senza prezzo, il `canSave` FE blocca
+    # prima dell'invio; defense-in-depth lato BE: il valido_riga_economic
+    # accetta prezzo None (skip), poi qui rilanciamo errore parlante.
+    if prezzo_finale is None:
+        if articolo_id and repo.is_articolo_composito(str(articolo_id)):
+            prezzo_finale = Decimal("0")
+        else:
+            ErrorManager.require(
+                False,
+                code="E_PREV_VALIDAZIONE",
+                message="Prezzo unitario obbligatorio per articoli non compositi.",
+                detail=f"articolo_id={articolo_id}",
+                function_name=f"{_FN}.gestisci_riga",
+            )
 
     # Merge meta esistente del payload con audit prezzo.
     merged_meta = _coerce_meta_to_dict(payload.get("meta"))

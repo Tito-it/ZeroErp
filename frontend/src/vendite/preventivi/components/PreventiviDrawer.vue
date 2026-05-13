@@ -19,7 +19,7 @@ import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefault
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
-import { createPreventivo } from '../api/preventiviApi'
+import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
 import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH, TAB_ENTITIES } from '../../../core/constants'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
@@ -81,20 +81,23 @@ const detail = ref(null)
 // DPR 633/72 art. 21: il calcolo IVA aggregato e' la single source of truth
 // per i totali del documento).
 const riepilogoIva = ref([])
-// Pannello riepilogo IVA visibile quando il documento ha piu' di una aliquota
-// distinta (mono-aliquota = ridondante coi 3 totali compatti).
-const showRiepilogoIva = computed(() => {
-  if (!riepilogoIva.value || riepilogoIva.value.length <= 1) return false
-  const aliquote = new Set()
-  for (const r of riepilogoIva.value) aliquote.add(r.iva_aliquota ?? 'NULL')
-  return aliquote.size > 1
-})
+// Pannello riepilogo IVA visibile sempre (almeno 1 riga). Il footer della
+// RiepilogoIvaTable mostra gia' totale imponibile + imposta + totale doc,
+// quindi i 3 totali compatti sotto diventano ridondanti e sono rimossi.
+const showRiepilogoIva = computed(
+  () => Array.isArray(riepilogoIva.value) && riepilogoIva.value.length > 0,
+)
 // Auto-save bozza: in CREATE, appena utility + istanza sono valorizzati, il
 // drawer crea il preventivo in BOZZA e si comporta da "edit-evolved" (mostra
 // righe + integrazione, salvataggi successivi diventano UPDATE). createdId
 // tiene l'id del preventivo creato in modalita' CREATE, null se ancora non
 // salvato. Pattern: master-detail inline (memoria feedback_master_detail_inline).
 const createdId = ref(null)
+// Stato form riga inline: quando l'operatore sta editando/aggiungendo
+// una riga, il DrawerFooter (Salva/Annulla testata) si nasconde per
+// evitare duplicazione con i bottoni del PreventiviRigaForm.
+// Aggiornato via `@form-aperto` (kebab) da PreventiviRigheTable.
+const formRigaAperto = ref(false)
 // Id effettivo per le sub-API (righe, integrazione, cambio stato): props.preventivoId
 // in EDIT classico, createdId dopo auto-save in CREATE.
 const effectivePreventivoId = computed(() => createdId.value ?? props.preventivoId)
@@ -214,10 +217,16 @@ watch(() => form.value.validita_dal, (nuovaDal) => {
   form.value.validita_al = al
 })
 
+// Contesto pricing del preventivo (audit visivo in header drawer):
+// contratto attivo applicabile o listino categoria fallback. Caricato in
+// parallelo al detail; assente in CREATE (nessun preventivo ancora salvato).
+const contestoPricing = ref(null)
+
 function resetForm() {
   form.value = defaultForm()
   detail.value = null
   createdId.value = null
+  contestoPricing.value = null
 }
 
 async function loadDetail(id = null) {
@@ -226,6 +235,15 @@ async function loadDetail(id = null) {
   const data = await store.fetchDetail(targetId)
   if (!data) return
   detail.value = data
+  // Carica in parallelo il contesto pricing per l'header del drawer (audit
+  // visivo: contratto attivo o listino categoria fallback). Best-effort:
+  // un fail non blocca il drawer ma logga in console per debug.
+  getContestoPricing(targetId)
+    .then((res) => { contestoPricing.value = res?.data?.data || null })
+    .catch((err) => {
+      contestoPricing.value = null
+      console.warn('contesto pricing fetch failed', err?.response?.data || err)
+    })
   // Sospende il watch di ricalcolo finche' non scarica entrambi i campi data:
   // assegnando form.value il watch fires su validita_dal e sovrascriverebbe
   // validita_al persistita.
@@ -643,7 +661,10 @@ function onNuovaRevisione() {
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
-      <!-- Header info: visibile in EDIT classico e in CREATE post auto-save (hasDetail). -->
+      <!-- Header info: visibile in EDIT classico e in CREATE post auto-save (hasDetail).
+           Cliente denominazione rimossa: gia' visibile nel form testata sotto.
+           Contesto pricing (contratto/listino) mostrato come badge per audit visivo
+           del path resolver applicato al preventivo. -->
       <div v-if="hasDetail" class="preventivo-drawer-header-row">
         <div class="preventivo-drawer-header-info">
           <Tag :value="`${detail.numero} rev.${detail.rev}`" severity="secondary" />
@@ -651,9 +672,36 @@ function onNuovaRevisione() {
           <span v-if="detail.data" class="preventivo-drawer-header-muted">
             {{ displayDate(detail.data) }}
           </span>
-          <span v-if="detail.cliente_denominazione" class="preventivo-drawer-header-client">
-            {{ detail.cliente_denominazione }}
-          </span>
+          <template v-if="contestoPricing && contestoPricing.fonte === 'CONTRATTO'">
+            <Tag
+              :value="t('preventivi.contesto_pricing_contratto', {
+                contratto: contestoPricing.contratto_numero,
+                listino: contestoPricing.listino_codice,
+              })"
+              severity="info"
+              icon="pi pi-file-edit"
+              v-tooltip.bottom="t('preventivi.contesto_pricing_contratto_tooltip')"
+            />
+          </template>
+          <template v-else-if="contestoPricing && contestoPricing.fonte === 'CATEGORIA'">
+            <Tag
+              :value="t('preventivi.contesto_pricing_categoria', {
+                listino: contestoPricing.listino_codice,
+                categoria: contestoPricing.categoria_cliente_codice,
+              })"
+              severity="info"
+              icon="pi pi-tag"
+              v-tooltip.bottom="t('preventivi.contesto_pricing_categoria_tooltip')"
+            />
+          </template>
+          <template v-else-if="contestoPricing && contestoPricing.fonte === 'NONE'">
+            <Tag
+              :value="t('preventivi.contesto_pricing_none')"
+              severity="warn"
+              icon="pi pi-exclamation-triangle"
+              v-tooltip.bottom="t('preventivi.contesto_pricing_none_tooltip')"
+            />
+          </template>
         </div>
         <Tag
           :value="detail.stato_descrizione"
@@ -738,27 +786,18 @@ function onNuovaRevisione() {
         <PreventiviRigheTable
           :preventivo-id="effectivePreventivoId"
           :is-modificabile="canEditRighe && !isReadonly"
-          @changed="loadDetail()" />
+          @changed="loadDetail()"
+          @form-aperto="(v) => { formRigaAperto = v }" />
 
-        <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21):
-             auto-mostrato solo per documenti multi-aliquota. Componente
-             riusabile cross-dominio (stesso pattern arrivera' su fatture).
-             Quando visibile contiene gia' i totali aggregati e il totale
-             documento: i 3 totali compatti sotto si nascondono per evitare
-             duplicazione. -->
+        <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
+             Sempre visibile quando c'e' almeno una riga (mono o multi
+             aliquota). Il footer della tabella mostra gia' totale
+             imponibile + imposta + totale documento. Componente riusabile
+             cross-dominio (stesso pattern arrivera' su fatture). -->
         <template v-if="showRiepilogoIva">
           <Divider />
           <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
         </template>
-
-        <!-- Totali compatti: visibili solo per documenti mono-aliquota,
-             dove il pannello riepilogo non ha senso (sarebbe una sola riga
-             ridondante coi 3 totali). -->
-        <div v-else style="display: flex; justify-content: flex-end; gap: 1.5rem; padding: 0.75rem 0; font-size: 0.9rem;">
-          <div><strong>{{ t('preventivi.totale_imponibile') }}:</strong> {{ formatCurrency(detail.totale_imponibile, { placeholder: '-' }) }}</div>
-          <div><strong>{{ t('preventivi.totale_iva') }}:</strong> {{ formatCurrency(detail.totale_iva, { placeholder: '-' }) }}</div>
-          <div><strong>{{ t('preventivi.totale_documento') }}:</strong> {{ formatCurrency(detail.totale_documento, { placeholder: '-' }) }}</div>
-        </div>
       </template>
 
       <!-- Integrazione: visibile quando il backend conferma can_push_commessa.
@@ -794,7 +833,7 @@ function onNuovaRevisione() {
         />
       </template>
 
-      <DrawerFooter v-if="canEditTestataEffective && !isReadonly" :loading="loading" :disabled="!canSave"
+      <DrawerFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto" :loading="loading" :disabled="!canSave"
         @save="handleSave" @cancel="close" />
     </div>
   </Drawer>
