@@ -29,7 +29,14 @@ import { TAB_ENTITIES } from '../constants'
 // reattivo se il valore puo' cambiare nel ciclo di vita dell'istanza.
 // Nella pratica corrente (table expander + form panel) e' un props number
 // stabile per istanza, ma la firma non si vincola al caso piu' restrittivo.
-export function usePreventivoRigaComponenti(preventivoIdInput) {
+//
+// `factoryOptions.soloAttivi` (default true): modalita' istanza-bound.
+//   - true: l'expander tabella righe vede solo componenti `attivo=TRUE`.
+//   - false: l'EDIT panel vede anche opzionali disattivati per il toggle
+//     di riattivazione.
+// Bound al factory: tutte le `load()` successive (incluse le ricariche
+// post `update`/`remove`) usano la stessa modalita'. Esplicito > implicito.
+export function usePreventivoRigaComponenti(preventivoIdInput, { soloAttivi = true } = {}) {
   const { emitDataChanged } = useTabEvents()
   const componenti = ref([])
   const loading = ref(false)
@@ -43,7 +50,7 @@ export function usePreventivoRigaComponenti(preventivoIdInput) {
   // Scopo: Carica i componenti per `rigaId`. Aggiorna `componenti` reattivo
   //        + `currentRigaId` per consentire al template di sapere quale
   //        riga padre e' attualmente esposta. Ritorna la lista (utile per
-  //        chain post-load).
+  //        chain post-load). La modalita' `soloAttivi` e' fissata al factory.
   async function load(rigaId) {
     if (rigaId == null) {
       componenti.value = []
@@ -54,7 +61,7 @@ export function usePreventivoRigaComponenti(preventivoIdInput) {
     loading.value = true
     currentRigaId.value = rigaId
     try {
-      const res = await listRigaComponenti(pid(), rigaId)
+      const res = await listRigaComponenti(pid(), rigaId, { soloAttivi })
       // Token pattern: scarta risposte di richieste superate da una piu' nuova.
       if (tk !== _token) return componenti.value
       componenti.value = res.data?.data ?? []

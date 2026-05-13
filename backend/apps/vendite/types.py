@@ -250,6 +250,25 @@ class PreventivoRigaComponenteRow(TypedDict):
     meta: dict[str, Any]
     ordine: int | None
     attivo: bool
+    obbligatorio: bool
+    esposto_in_fattura: bool
+
+
+class PreventivoRigaComponentePreviewRow(TypedDict):
+    articolo_componente_id: str
+    componente_id: str
+    componente_codice: str | None
+    componente_descrizione: str | None
+    coeff_qta_snapshot: str
+    quantita_componente: str
+    uom_id: int | None
+    uom_codice: str | None
+    iva_id: int | None
+    prezzo_suggerito: str | None
+    origine_prezzo: str | None
+    resolver_error_reason: str | None
+    obbligatorio: bool
+    esposto_in_fattura: bool
 
 
 class PreventivoIndirizzoRow(TypedDict):

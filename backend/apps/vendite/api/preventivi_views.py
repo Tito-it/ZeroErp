@@ -267,6 +267,24 @@ class ApiPreventivoRigheList(DomainAPIView):
                 "iva_id": serializers.IntegerField(required=False, allow_null=True),
                 "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
                 "ordine": serializers.IntegerField(required=False, allow_null=True),
+                "componenti_overrides": serializers.DictField(
+                    required=False,
+                    help_text=(
+                        "Mappa {componente_id: prezzo} per prezzi manuali sui "
+                        "componenti BoM del padre composito. Richiede azione "
+                        "`prezzo_override_manuale`."
+                    ),
+                ),
+                "componenti_attivazioni": serializers.DictField(
+                    required=False,
+                    child=serializers.BooleanField(),
+                    help_text=(
+                        "Mappa {componente_id: bool} per attivare componenti "
+                        "opzionali del padre composito (default DB: "
+                        "obbligatori attivi, opzionali disattivi). Disattivare "
+                        "obbligatori e' bloccato dal trigger DB."
+                    ),
+                ),
             },
         ),
         responses={200: inline_serializer(
@@ -419,16 +437,38 @@ class ApiPreventivoRigaComponentiList(DomainAPIView):
     is_search_endpoint = True
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="solo_attivi",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Default true: solo componenti `attivo=TRUE` "
+                    "(retrocompat expander tabella righe). false: include "
+                    "anche opzionali disattivati, usato dall'EDIT panel."
+                ),
+            ),
+        ],
         responses={200: inline_serializer(
             name="PreventivoRigaComponentiListResponse",
             fields={"data": serializers.ListField(child=serializers.DictField())},
         )},
     )
     # Scopo: Restituisce via GET la lista componenti di una riga padre.
+    #        Query param `solo_attivi` (default true) controlla se includere
+    #        gli opzionali disattivati.
     def get(
         self, request: Request, preventivo_id: int, riga_id: int,
     ) -> JsonResponse:
-        result = preventivi_service.list_componenti_riga(preventivo_id, riga_id)
+        # Parsing query param: stringhe "false"/"0"/"no" → False, altrimenti True.
+        solo_attivi_raw = request.query_params.get("solo_attivi", "true")
+        solo_attivi = str(solo_attivi_raw).strip().lower() not in (
+            "false", "0", "no", "off",
+        )
+        result = preventivi_service.list_componenti_riga(
+            preventivo_id, riga_id, solo_attivi=solo_attivi,
+        )
         return success_response(result)
 
 
