@@ -14,10 +14,12 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
 AS $function$
 -- Scopo: blocca transizioni stato non ammesse sul workflow contratti
 --   (DRAFT -> ATTIVO -> CESSATO).
--- Regola chiave: ATTIVO->CESSATO ammessa solo se valido_al < CURRENT_DATE.
--- Aggiornato 2026-05-12: blocca DRAFT->ATTIVO anche se
---   un componente BoM CASO A ha prezzo in attesa di approvazione
---   (stato_approvazione_prezzo = PENDING).
+-- ATTIVO->CESSATO: distingue job automatico da cessazione manuale.
+--   Job (GUC app.cessazione_automatica='true'): valido_al < CURRENT_DATE.
+--   Manuale: valido_al >= CURRENT_DATE (oggi o futura, no riscrittura storica).
+--   Manuale retroattiva: E_CONTRATTO_VALIDO_AL_RETROATTIVO (449).
+-- Aggiornato 2026-05-12: blocca DRAFT->ATTIVO se componente BoM PENDING.
+-- Aggiornato 2026-05-14: no-retroattiva su cessazione manuale.
 DECLARE
     v_codice_da config.stati_doc_contratti.codice_interno%TYPE;
     v_codice_a  config.stati_doc_contratti.codice_interno%TYPE;
@@ -32,8 +34,36 @@ BEGIN
 
     IF v_codice_da = 'DRAFT' AND v_codice_a = 'ATTIVO' THEN
         v_ammessa := true;
+
     ELSIF v_codice_da = 'ATTIVO' AND v_codice_a = 'CESSATO' THEN
-        v_ammessa := (NEW.valido_al IS NOT NULL AND NEW.valido_al < CURRENT_DATE);
+        IF current_setting('app.cessazione_automatica', true) = 'true' THEN
+            -- Job notturno (fn_apply_chiusura_scadenze): contratto gia' scaduto.
+            -- Ammette valido_al < CURRENT_DATE (comportamento invariato pre-fix).
+            v_ammessa := (NEW.valido_al IS NOT NULL
+                          AND NEW.valido_al < CURRENT_DATE);
+        ELSE
+            -- Cessazione manuale da UI: vietata la riscrittura storica.
+            -- Retroattiva (valido_al < oggi): raise codice specifico e esci.
+            IF NEW.valido_al IS NOT NULL AND NEW.valido_al < CURRENT_DATE THEN
+                PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME::text,
+                    'E_CONTRATTO_VALIDO_AL_RETROATTIVO',
+                    jsonb_build_object(
+                        'contratto_id', NEW.id,
+                        'numero',       NEW.numero,
+                        'valido_al',    NEW.valido_al,
+                        'today',        CURRENT_DATE
+                    ),
+                    NEW.tx_id,
+                    NEW.valido_al::text,
+                    CURRENT_DATE::text
+                );
+            END IF;
+            -- Ammessa se valido_al IS NOT NULL AND valido_al >= CURRENT_DATE.
+            -- NULL: v_ammessa resta false -> raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA.
+            v_ammessa := (NEW.valido_al IS NOT NULL);
+        END IF;
     END IF;
 
     IF NOT v_ammessa THEN
@@ -73,7 +103,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
-IS 'Trigger function: controlla transizioni stato contratto (DRAFT->ATTIVO->CESSATO). ATTIVO->CESSATO solo se valido_al < CURRENT_DATE. Blocca DRAFT->ATTIVO se componenti PENDING approvazione (E_COMPONENTE_PREZZO_PENDENTE). Check prezzo NULL rimosso (form atomic 12-05-2026b).';
+IS 'Trigger function: controlla transizioni stato contratto (DRAFT->ATTIVO->CESSATO). ATTIVO->CESSATO: job automatico (GUC app.cessazione_automatica=true) ammette valido_al<oggi; cessazione manuale ammette valido_al>=oggi (no retroattiva). Retroattiva raise E_CONTRATTO_VALIDO_AL_RETROATTIVO (449); NULL raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA. Blocca DRAFT->ATTIVO se componenti PENDING (E_COMPONENTE_PREZZO_PENDENTE). rev 2026-05-14.';
 ```
 
 ---

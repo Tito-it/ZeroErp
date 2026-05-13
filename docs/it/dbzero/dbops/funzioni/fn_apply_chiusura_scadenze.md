@@ -26,6 +26,13 @@ AS $function$
 --   3. Aggregazione conteggio in JSONB.
 --   4. Audit log dell'esito.
 --
+-- GUC app.cessazione_automatica:
+--   Impostato a 'true' (LOCAL) prima del loop per segnalare
+--   ai guard trigger che questa e' una chiusura automatica
+--   (non una transizione manuale da UI). Permette ai guard
+--   di usare regole piu' permissive per la chiusura automatica
+--   (es. valido_al < CURRENT_DATE ammessa dal job ma non dall'utente).
+--
 -- Sicurezza SQL dinamico:
 --   - format(%I) per identificatori (quote_ident implicito)
 --   - format(%L) per valori (quote_literal implicito)
@@ -43,6 +50,10 @@ DECLARE
     v_id_attivo        bigint;
     v_col_count        smallint;
 BEGIN
+    -- Segnala ai guard trigger che si tratta di chiusura automatica.
+    -- LOCAL: il GUC torna al valore precedente alla fine della transazione.
+    PERFORM set_config('app.cessazione_automatica', 'true', true);
+
     FOR v_row IN
         SELECT *
           FROM dbops.automazione_chiusura_scadenze
@@ -266,7 +277,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_apply_chiusura_scadenze()
-IS 'Motore del framework di chiusura per scadenza. Itera su dbops.automazione_chiusura_scadenze (attivo=true), esegue UPDATE dinamici (VARCHAR/FK), ritorna JSONB con conteggi. Eseguita dal job pgAgent chiusura_scadenze_daily.';
+IS 'Motore del framework di chiusura per scadenza. Itera su dbops.automazione_chiusura_scadenze (attivo=true), esegue UPDATE dinamici (VARCHAR/FK), ritorna JSONB con conteggi. Imposta GUC app.cessazione_automatica=true (LOCAL) prima del loop per permettere ai guard trigger di distinguere chiusura automatica da cessazione manuale. Eseguita dal job pgAgent chiusura_scadenze_daily. rev 2026-05-14.';
 ```
 
 ---

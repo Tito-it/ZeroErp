@@ -818,7 +818,7 @@ Quindi struttura tabelle e seed sono completi. Le **guard funzionali**, i
   e' la soluzione robusta richiesta dal §6.5.
 - La FK `generato_da_user_id -> django.auth_user(id)` e' creata in changeSet
   separato con `preConditions/tableExists`, secondo il pattern del repo
-  ([feedback_django_refs_in_liquibase.md](file:///home/tid/.claude/projects/-home-tid-software-ZeroErp/memory/feedback_django_refs_in_liquibase.md)).
+  (memoria progetto `feedback_django_refs_in_liquibase`).
 - `template_documenti_versioni` e `template_asset` hanno `valido_dal`,
   `valido_al`, `validita daterange`, trigger `script.trgfn_set_validita`,
   e — per le versioni — `EXCLUDE USING gist` solo su `(attivo, stato='PUBBLICATA')`.
@@ -1112,7 +1112,7 @@ Tutto da scrivere, in `db/pgtap/documenti/`:
 - seed parametri `config.parameters` idempotenti.
 
 I test seguono il pattern del repo
-([feedback_pgtap_patterns.md](file:///home/tid/.claude/projects/-home-tid-software-ZeroErp/memory/feedback_pgtap_patterns.md)):
+(memoria progetto `feedback_pgtap_patterns`):
 `BEGIN; ... ROLLBACK;`, codici fiscali validi fissi per fixture soggetti, no
 collisioni UNIQUE con seed/migrazioni.
 
@@ -1159,7 +1159,7 @@ ancora la guard di immutabilita').
 
 5. **F — test pgTAP** in `db/pgtap/documenti/`, scritti nello stesso
    commit della guard relativa
-   ([feedback_guard_breaks_existing_tests.md](file:///home/tid/.claude/projects/-home-tid-software-ZeroErp/memory/feedback_guard_breaks_existing_tests.md)).
+   (memoria progetto `feedback_guard_breaks_existing_tests`).
    Ordine pratico: prima i test che non dipendono dalle guard
    (deduplica sha256, default unico, anti-overlap, NULLS NOT DISTINCT,
    indice principale), poi i test delle guard man mano che atterrano.
@@ -1175,8 +1175,8 @@ ancora la guard di immutabilita').
 
 Punto critico cross-step: ogni nuovo changelog file aggiunto **dopo** un
 push pubblico va numerato successivo all'ultimo (`20260430-NN-...`), mai
-modificare i 51-59 se gia' su remoto. Vedi
-[feedback su Liquibase phase ordering](file:///home/tid/.claude/projects/-home-tid-software-ZeroErp/memory/feedback_liquibase_phase_ordering_preconditions.md).
+modificare i 51-59 se gia' su remoto. Vedi la memoria progetto
+`feedback_liquibase_phase_ordering_preconditions`.
 
 ### 13.5 Note di metodo
 
@@ -1187,8 +1187,8 @@ modificare i 51-59 se gia' su remoto. Vedi
   (vedi `liquibase-setup-workflow.md`).
 - Niente modifiche ai changeset 51-59 se sono gia' stati pushati su
   `dev/db-tid` o oltre: aggiungere sempre un nuovo file con numerazione
-  successiva (regola
-  [feedback_pg_returns_table_drop_required.md](file:///home/tid/.claude/projects/-home-tid-software-ZeroErp/memory/feedback_pg_returns_table_drop_required.md)
+  successiva (regola memoria progetto
+  `feedback_pg_returns_table_drop_required`
   per i drop-and-recreate vale solo per cambi di firma; qui parliamo di
   immutabilita' del file gia' pushato).
 - Le guard dovrebbero usare `script.fn_log_and_raise_error` con codice
