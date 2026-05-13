@@ -10,6 +10,8 @@ from apps.vendite.api.views_listini import (
     ApiListiniTipologiePerUtility,
     ApiListinoDetail,
     ApiListinoVersioneApplicaVariazione,
+    ApiListinoVersioneBundleCompositi,
+    ApiListinoVersioneBundleDetail,
     ApiListinoVersioneClona,
     ApiListinoVersioneRigaRettificaControllata,
     ApiListinoVersioneDetail,
@@ -29,6 +31,18 @@ urlpatterns = [
     path("<int:listino_id>/versioni/<int:ver_id>/righe/<int:riga_id>/rettifica-controllata/", ApiListinoVersioneRigaRettificaControllata.as_view(), name="vendite-listino-versione-riga-rettifica-controllata"),
     path("<int:listino_id>/versioni/<int:ver_id>/righe/<int:riga_id>/", ApiListinoVersioneRigaDetail.as_view(), name="vendite-listino-versione-riga-detail"),
     path("<int:listino_id>/versioni/<int:ver_id>/righe/", ApiListinoVersioneRigheList.as_view(), name="vendite-listino-versione-righe-list"),
+    # Bundle componenti BoM (modello unificato 2026-05-13): prezzi bundle
+    # dei figli di un padre composito. Tabella `listini_righe_componenti`.
+    path(
+        "<int:listino_id>/versioni/<int:ver_id>/bundle/<uuid:padre_id>/",
+        ApiListinoVersioneBundleDetail.as_view(),
+        name="vendite-listino-versione-bundle-detail",
+    ),
+    path(
+        "<int:listino_id>/versioni/<int:ver_id>/bundle/",
+        ApiListinoVersioneBundleCompositi.as_view(),
+        name="vendite-listino-versione-bundle-list",
+    ),
     path("<int:listino_id>/versioni/<int:ver_id>/applica-variazione/", ApiListinoVersioneApplicaVariazione.as_view(), name="vendite-listino-versione-applica-variazione"),
     path("<int:listino_id>/versioni/<int:ver_id>/stato/", ApiListinoVersioneStato.as_view(), name="vendite-listino-versione-stato"),
     # Form-defaults (Fase 2.B5b/c refactor frontend vendite). Specifici PRIMA

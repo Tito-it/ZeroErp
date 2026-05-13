@@ -74,6 +74,7 @@
 | `normalizeUpperNoSpaces` / `normalizeUpper` | [string.js](../../../../frontend/src/core/utils/string.js) | Normalizza campo a UPPERCASE (con/senza spazi) |
 | `sortByFonte` | [string.js](../../../../frontend/src/core/utils/string.js) | Ordina per gerarchia fonte (soggetto→ruolo→istanza) |
 | `formatSize` | [format.js](../../../../frontend/src/core/utils/format.js) | Formatta bytes in B/KB/MB/GB |
+| `formatIvaLabel` | [format.js](../../../../frontend/src/core/utils/format.js) | Etichetta IVA compatta per liste/datatable. Aliquota > 0 → `"22%"`; aliquota 0/NULL (esenti) → `iva_codice` (es. `"N1"`, `"ESENTE17"`). Sfrutta il CHECK `chk_iva_zero_requires_natura_or_assogg`: un'aliquota=0 ha sempre codice parlante. Per visualizzazioni ricche (riepilogo IVA, drawer dettaglio) preferire `iva_descrizione` esteso. |
 | `isEmailValid` | [validators.js](../../../../frontend/src/core/utils/validators.js) | Validazione formato email/PEC (UX, non RFC) |
 | `resolveSeverity` | [severity.js](../../../../frontend/src/core/utils/severity.js) | Risolve severity PrimeVue da mappa codice |
 | `statoClienteSeverity` / `statoFornitoreSeverity` | [severity.js](../../../../frontend/src/core/utils/severity.js) | Colori stato cliente/fornitore |
@@ -132,7 +133,7 @@
 | `LIVELLO_ACCESSO` | Enum livelli accesso (TUTTO, LETTURA, BLOCCATO) |
 | `STATO_PRATICA` | Enum stati pratica (BOZZA, APERTA, SOSPESA, CHIUSA, ANNULLATA) |
 | `STATO_FLUSSO` | Enum stati flusso (DA_ESEGUIRE, IN_CORSO, COMPLETATO, ecc.) |
-| `MANAGE_ICONS` | Icone gestione riga centralizzate per dominio e azioni trasversali (CONTATTI, INDIRIZZI, CONTI_BANCARI, UOM, BOM, NOTE, CONVERSIONI, DELETE, KEBAB) |
+| `MANAGE_ICONS` | Icone gestione riga centralizzate per dominio e azioni trasversali. Categorie: dominio (CONTATTI, INDIRIZZI, CONTI_BANCARI, UOM, BOM, NOTE, CONVERSIONI, VERSIONI, CONTRATTI), trasversali (EDIT, ADD, CONFIRM, CANCEL, PLAY, PUBLISH, CLONE, CLOSE, CLOSE_DATE, PERMISSIONS, BILLING_ACCOUNT, UTILITY, LIST, BUILDING, RELOAD, DOWNLOAD, DELETE, KEBAB), workflow (APPROVE, REJECT), **toggle dinamico (EXPAND `pi-chevron-down` / COLLAPSE `pi-chevron-up`)** per accordion/expansion row/tree — usare sempre dinamicamente: `icon: isExpanded ? COLLAPSE : EXPAND` |
 | `SHORTCUTS` | Scorciatoie tastiera (Ctrl+K ricerca, Ctrl+Tab prossima tab, ecc.) |
 
 ---

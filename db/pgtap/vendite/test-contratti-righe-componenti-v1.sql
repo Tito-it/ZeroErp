@@ -13,11 +13,13 @@
 --   6)  FK fk_contrighe_comp_componente esiste
 --   7)  UNIQUE uq_contrighe_comp_riga_art_comp esiste
 --   8)  CHECK chk_contrighe_comp_quantita_pos esiste
---   9)  CHECK chk_contrighe_comp_prezzo_nonneg esiste
+--   9)  Trigger trgfn_componenti_check_prezzo_obbligatorio registrato
+--       (modello unificato: CHECK prezzo<>0 rimosso, sostituito da trigger condizionale)
 --   10) CHECK chk_contrighe_comp_origine esiste
 --   11) Indice ix_vendite_contrighe_comp_riga esiste
 --   12) Colonna quantita presente su contratti_righe (rename da quantita_fissa)
---   13) Tutti i 7 trigger registrati sulla tabella
+--   13) Tutti i 13 trigger registrati sulla tabella
+--       (+2 da modello unificato: prezzo_obbligatorio + guard_obbligatorio)
 --   14) Trigger propaga_qta registrato su contratti_righe
 --   15) Trigger qta_from_operativa usa 'quantita' (non 'quantita_fissa')
 --   16) fn_contratto_riga_componenti_init: p_riga_id NULL -> raise
@@ -104,11 +106,14 @@ SELECT has_check(
 );
 
 -- =========================================================
--- 9) CHECK prezzo_unitario <> 0
+-- 9) Trigger prezzo_obbligatorio registrato
+--    Modello unificato (20260513-06/07): CHECK prezzo_unitario<>0 droppato,
+--    sostituito da trigger condizionale (blocca solo per obbligatori).
 -- =========================================================
-SELECT col_has_check(
-    'vendite', 'contratti_righe_componenti', 'prezzo_unitario',
-    '9) CHECK chk_contrighe_comp_prezzo_nonneg su prezzo_unitario'
+SELECT has_trigger(
+    'vendite', 'contratti_righe_componenti',
+    'trg_contrighe_comp_a10_prezzo_obbligatorio_ins_upd',
+    '9) trigger prezzo_obbligatorio registrato (CHECK rimosso, modello unificato)'
 );
 
 -- =========================================================
@@ -137,15 +142,16 @@ SELECT has_column(
 );
 
 -- =========================================================
--- 13) Trigger registrati sulla tabella (7 attesi)
+-- 13) Trigger registrati sulla tabella (13 attesi)
+--     +2 da modello unificato 20260513: prezzo_obbligatorio, guard_obbligatorio
 -- =========================================================
 SELECT is(
     (SELECT COUNT(DISTINCT trigger_name)::integer
        FROM information_schema.triggers
       WHERE event_object_schema = 'vendite'
         AND event_object_table  = 'contratti_righe_componenti'),
-    8,
-    '13) 8 trigger registrati su contratti_righe_componenti'
+    13,
+    '13) 13 trigger registrati su contratti_righe_componenti'
 );
 
 -- =========================================================

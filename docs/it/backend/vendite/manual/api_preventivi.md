@@ -160,21 +160,24 @@ Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: nient
   - `articolo_id` (uuid string, **obbligatorio**)
   - `descrizione` (string, opzionale — override descrizione articolo)
   - `quantita` (decimal, opzionale)
-  - `prezzo_unitario` (decimal, opzionale — **auto-fill dal resolver pricing v5 se omesso**)
+  - `prezzo_unitario` (decimal, opzionale — **auto-fill dal resolver pricing v5 se omesso**; per articoli **compositi** non va inviato: il padre e' SUM(figli × coeff_qta) calcolato dai trigger DB)
   - `sconto_percentuale` (decimal, opzionale, default 0)
   - `iva_id` (int, opzionale)
   - `uom_operativa_id` (int, opzionale)
   - `ordine` (int, opzionale)
   - `richiesta_approvazione` (bool, opzionale, default `false`) — **L3 workflow Sprint E**: se `true` e il prezzo viola L2, invece di sollevare `E_PREV_SCONTO_ECCESSIVO`/`E_PREV_MAGGIORAZIONE_ECCESSIVA` la riga viene salvata con `stato_approvazione_prezzo='PENDING'` collegata a una pratica `APPROVAZIONE_PREZZO` aperta automaticamente
+  - `componenti_overrides` (object `{componente_id: prezzo_string}`, opzionale) — **modello unificato componenti BoM 2026-05-13**: mappa di prezzi manuali per i figli del padre composito. Solo se l'articolo `is_composito=TRUE`. Richiede l'azione `prezzo_override_manuale` come per il prezzo padre; altrimenti `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403). Per i componenti senza entry, il backend invoca il resolver bundle-aware (STADIO 0 listino bundle del padre, fallback STADIO 1 standalone). Vedi `modello-componenti-bom.md`.
+  - `componenti_attivazioni` (object `{componente_id: bool}`, opzionale) — **modello unificato**: mappa per attivare/disattivare componenti opzionali. Default DB: obbligatori `attivo=TRUE`, opzionali `attivo=FALSE`. Inviare solo i delta. Disattivare componenti `obbligatorio=TRUE` e' bloccato dal trigger DB con `E_DOC_COMPONENTE_OBBLIGATORIO` (422). Nessun gate L1 dedicato — decisione operativa, non economica
 - Regole:
   - Ammesso solo in stato BOZZA
   - **Auto-fill prezzo**: se `prezzo_unitario` non e' nel payload e la testata ha BA+utility+data validi, il service chiama `PricingService.resolve_prezzo` e popola il prezzo dal resolver v5 (3 stadi: promo/contratto/categoria)
-  - **L1 override**: se `prezzo_unitario` e' passato e differisce dal resolver, serve l'azione di processo `prezzo_override_manuale`; altrimenti `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403). Superuser bypassato
+  - **L1 override**: se `prezzo_unitario` e' passato e differisce dal resolver, serve l'azione di processo `prezzo_override_manuale`; altrimenti `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403). Stessa autorizzazione per `componenti_overrides` non vuoto. Superuser bypassato
   - **L2 limite variazione (Sprint D)**: dopo L1, se `prezzo_resolver` e' noto e non zero, calcola `delta_pct` firmato; sconto > `VENDITE_MAX_SCONTO_PCT` o maggiorazione > `VENDITE_MAX_MAGGIORAZIONE_PCT` -> `E_PREV_SCONTO_ECCESSIVO`/`E_PREV_MAGGIORAZIONE_ECCESSIVA` (403, **`retryable=True`** dopo Fase 5.B2: il FE puo' offrire CTA "richiedi approvazione" e ri-tentare con `richiesta_approvazione=true`). Parametri risolti via `ParameterService` cascata user→group→emittente→default. Superuser bypass.
   - **L3 workflow approvazione (Sprint E)**: se `richiesta_approvazione=true` e L2 viola, l'errore L2 viene catturato, viene creata pratica `APPROVAZIONE_PREZZO` (stato APERTA) e la riga inserita con `stato_approvazione_prezzo='PENDING'` + `pratica_approvazione_prezzo_id`. Email best-effort al recipient configurato in parameter `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL`. La pratica e' visibile nella coda approver via `GET /vendite/approvazioni-prezzo/`.
-  - **Meta audit**: popolato sempre con `origine_prezzo` (PROMO/CONTRATTO_OVERRIDE/CONTRATTO_LISTINO/CATEGORIA/MANUALE) + `prezzo_resolver_context` (listino/contratto/promo + variazione). Se override manuale: anche `prezzo_base_resolver`, `delta_override`, `delta_override_pct`, `override_user_id`. Se workflow L3: anche `richiesta_approvazione_pending=true` + `violazione_l2` (tipo, variazione_abs_pct, limite_pct).
-  - Ricalcolo totali automatico dopo insert (trigger DB)
-- Errori: `E_PREV_VALIDAZIONE` (400), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403), `E_PREV_SCONTO_ECCESSIVO` (403), `E_PREV_MAGGIORAZIONE_ECCESSIVA` (403)
+  - **Componenti BoM CASO composito**: dopo `create_riga`, se l'articolo e' `is_composito=TRUE`, il service invoca `fn_preventivo_riga_componenti_init` che popola `preventivi_righe_componenti` per tutti i figli BoM validi alla data. Errori bloccanti: `E_DOC_COMPOSITO_BOM_VUOTA` (422) se la BoM e' vuota/scaduta alla data del documento; `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422) se un override mette prezzo 0 su un obbligatorio; `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422) se il resolver fallisce per un componente senza override. Tutta la transazione e' atomica (init + UPDATE attivazioni avvengono in `@transaction.atomic`).
+  - **Meta audit**: popolato sempre con `origine_prezzo` (PROMO/CONTRATTO_OVERRIDE/CONTRATTO_LISTINO/CATEGORIA/MANUALE/LISTINO_BUNDLE) + `prezzo_resolver_context` (listino/contratto/promo + variazione). Se override manuale: anche `prezzo_base_resolver`, `delta_override`, `delta_override_pct`, `override_user_id`. Se workflow L3: anche `richiesta_approvazione_pending=true` + `violazione_l2` (tipo, variazione_abs_pct, limite_pct).
+  - Ricalcolo totali automatico dopo insert (trigger DB). Per padri compositi il prezzo unitario padre viene **immediatamente sovrascritto** dal trigger `_z90_ricalcola_padre` come SUM(figli × coeff_qta_snapshot).
+- Errori: `E_PREV_VALIDAZIONE` (400), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403), `E_PREV_SCONTO_ECCESSIVO` (403), `E_PREV_MAGGIORAZIONE_ECCESSIVA` (403), `E_DOC_COMPOSITO_BOM_VUOTA` (422), `E_DOC_COMPONENTE_OBBLIGATORIO` (422), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422), `E_DOC_COMPONENTE_LISTINO_MANCANTE` (422)
 
 ---
 
@@ -193,6 +196,74 @@ Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: nient
 
 ---
 
+### 8c. Preview componenti riga (modello unificato BoM)
+
+- Metodo: `POST`
+- Path: `/api/v1/vendite/preventivi/{id}/righe/preview-componenti/`
+- Body JSON:
+  - `articolo_id` (uuid string, **obbligatorio**) — articolo composito padre
+  - `uom_operativa_id` (int, opzionale)
+  - `quantita` (decimal, **obbligatorio**)
+- Scopo: ritorna i componenti BoM validi alla data del preventivo con prezzo suggerito dal resolver bundle-aware. Consumato dal `ComponentiDialog` FE (building block riusabile in `vendite/_shared/componenti/`) per la valorizzazione pre-save dei componenti del padre composito. Read-only, nessun side-effect (fn DB `STABLE`)
+- Output `200`: `{ "data": [ { "articolo_componente_id": "...", "componente_id": "...", "componente_codice": "...", "componente_descrizione": "...", "coeff_qta_snapshot": "1.5", "quantita_componente": "3.0", "uom_id": 1, "uom_codice": "PZ", "iva_id": 1, "prezzo_suggerito": "10.00", "origine_prezzo": "LISTINO_BUNDLE", "resolver_error_reason": null, "obbligatorio": true, "esposto_in_fattura": true }, ... ] }`
+- Comportamento per componente:
+  - Resolver invocato in modalita' **bundle-aware**: STADIO 0 cerca prezzo in `vendite.listini_righe_componenti` (bundle del padre, origine `LISTINO_BUNDLE`); fallback STADIO 1 standalone (origine `CATEGORIA`/`PROMO`/`CONTRATTO_LISTINO`/`CONTRATTO_OVERRIDE`)
+  - Resolver fallito su un componente → `prezzo_suggerito: null` + `resolver_error_reason: "messaggio"`; l'operatore deve inserire prezzo manuale via `componenti_overrides` al save riga
+- Contesto derivato: BA, utility, data, emittente dalla testata preventivo (precedenza `emittente_fiscale_id` esplicito > operatore JWT)
+- Area: `vendite` livello LETTURA sufficiente
+- Errori:
+  - `E_PREV_NOT_FOUND` (404) — preventivo inesistente
+  - `E_PREV_VALIDAZIONE` (422) — data preventivo NULL, utility NULL, emittente non risolvibile
+- Vedi anche: [`modello-componenti-bom.md`](../../../dev/manual/modello-componenti-bom.md)
+
+---
+
+### 8d. Lista componenti riga padre
+
+- Metodo: `GET`
+- Path: `/api/v1/vendite/preventivi/{id}/righe/{rid}/componenti/`
+- Query params:
+  - `solo_attivi` (bool, opzionale, default `true`) — `true`: solo componenti `attivo=TRUE` (vista compatta retro-compatibile, expander tabella righe). `false`: include anche opzionali disattivati — usato dall'EDIT panel FE per consentire riattivazione via toggle. Accetta `"false"`/`"0"`/`"no"`/`"off"` come falsy
+- Scopo: lista i componenti BoM persistiti su `preventivi_righe_componenti` per la riga padre composita, con denormalizzazioni catalogo/uom/iva + flag `obbligatorio` ed `esposto_in_fattura` (JOIN runtime su `articoli_componenti` — BoM immutabile per design)
+- Output `200`: `{ "data": [ { "id": 1, "riga_preventivo_id": 10, "articolo_componente_id": "...", "componente_id": "...", "componente_codice": "...", "componente_descrizione": "...", "coeff_qta_snapshot": "1.5", "quantita": "3.0", "uom_operativa_id": 1, "uom_codice": "PZ", "factor_to_base": "1.0", "qta_operativa": "3.0", "prezzo_unitario": "10.00", "iva_id": 1, "iva_codice": "22", "iva_aliquota": "22.00", "origine_prezzo": "LISTINO_BUNDLE", "prezzo_resolver_context": {...}, "stato_approvazione_prezzo": null, "pratica_approvazione_prezzo_id": null, "meta": {}, "ordine": 1, "attivo": true, "obbligatorio": true, "esposto_in_fattura": true } ] }`
+- Area: `vendite` livello LETTURA sufficiente
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404 — riga inesistente o non appartenente al preventivo)
+
+---
+
+### 8e. Aggiorna componente singolo
+
+- Metodo: `PATCH`
+- Path: `/api/v1/vendite/preventivi/{id}/righe/{rid}/componenti/{cid}/`
+- Body JSON (campi nella whitelist `_COMPONENTE_UPDATE_ALLOWED`):
+  - `prezzo_unitario` (decimal, opzionale)
+  - `origine_prezzo` (string, opzionale)
+  - `iva_id` (int, opzionale)
+  - `ordine` (int, opzionale)
+- Regole:
+  - Ammesso solo se il preventivo e' in stato BOZZA
+  - Anti-tampering URL: il service verifica che `componente_id` appartenga davvero alla `riga_id` URL (altrimenti `E_PREV_RIGA_NOT_FOUND`)
+  - Trigger DB `_z90_ricalcola_padre` aggiorna il `prezzo_unitario` della riga padre come SUM(figli × coeff_qta) post-update
+  - **Guard prezzo zero**: `prezzo_unitario=0` su componente obbligatorio rejected dal trigger `script.trgfn_componenti_check_prezzo_obbligatorio` con `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422)
+- Area: `vendite` livello SCRITTURA + azione `prezzo_override_manuale` per modifica `prezzo_unitario`
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403), `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` (422)
+
+---
+
+### 8f. Elimina componente singolo
+
+- Metodo: `DELETE`
+- Path: `/api/v1/vendite/preventivi/{id}/righe/{rid}/componenti/{cid}/`
+- Regole:
+  - Soft delete (`attivo=FALSE`), ammesso solo in stato BOZZA
+  - Anti-tampering URL come §8e
+  - **Guard componente obbligatorio**: tentativo di disattivare un componente `obbligatorio=TRUE` rejected dal trigger `script.trgfn_componenti_guard_obbligatorio` con `E_DOC_COMPONENTE_OBBLIGATORIO` (422)
+  - Trigger DB `_z90_ricalcola_padre` aggiorna il `prezzo_unitario` della riga padre post-delete
+- Output `200`: `{ "data": { "status": "deleted", "componente_id": 1, "deleted": true } }`
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_DOC_COMPONENTE_OBBLIGATORIO` (422)
+
+---
+
 ### 9. Aggiorna riga
 
 - Metodo: `PATCH`
@@ -201,7 +272,8 @@ Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: nient
 - Regole: ammesso solo in stato BOZZA, ricalcolo totali dopo update
 - **L1+L2+L3 su PATCH**: se il payload tocca `prezzo_unitario`, scattano gli stessi check dell'insert (autorizzazione + audit meta + L2 limite + L3 workflow opzionale via flag `richiesta_approvazione=true`). L'articolo/UoM della riga esistente sono usati come contesto resolver
 - **Trigger DB guard riga PENDING**: se la riga ha `stato_approvazione_prezzo='PENDING'`, il trigger `trg_preventivi_righe_a10_guard_pending_upd` (Sprint E) blocca modifica di campi struttura (prezzo, qta, articolo, sconto, ecc.) con `E_RIGA_PREZZO_PENDENTE` (409). Solo `stato_approvazione_prezzo`, `pratica_approvazione_prezzo_id` e `meta` sono ammessi. Per modificare prezzo: prima chiudere il workflow (approva/rifiuta) o annullare la pratica.
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403), `E_PREV_SCONTO_ECCESSIVO` (403), `E_PREV_MAGGIORAZIONE_ECCESSIVA` (403), `E_RIGA_PREZZO_PENDENTE` (409)
+- **Guard componenti via PATCH riga**: payload con `componenti_overrides` o `componenti_attivazioni` viene rifiutato con `E_PREV_VALIDAZIONE` (422). La PATCH riga e' solo testata; per modificare i componenti BoM usare gli endpoint dedicati §8e (PATCH componente) / §8f (DELETE componente).
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403), `E_PREV_SCONTO_ECCESSIVO` (403), `E_PREV_MAGGIORAZIONE_ECCESSIVA` (403), `E_RIGA_PREZZO_PENDENTE` (409), `E_PREV_VALIDAZIONE` (422 — payload con campi componenti)
 
 ---
 
@@ -295,6 +367,39 @@ Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: nient
 
 ---
 
+### 17. Contesto pricing
+
+- Metodo: `GET`
+- Path: `/api/v1/vendite/preventivi/{id}/contesto-pricing/`
+- Scopo: Restituisce il **path di risoluzione prezzi** applicato al preventivo (contratto attivo o listino categoria fallback). Lettura puramente informativa per l'header del drawer FE — audit visivo di quale listino verra' usato dal resolver al calcolo prezzi riga. Stessa logica applicata da `fn_resolve_prezzo_listino_v2` (STADIO 1 contratto / STADIO 2 categoria).
+- Output `200`:
+  ```json
+  {
+    "data": {
+      "preventivo_id": 53,
+      "data_riferimento": "2026-05-14",
+      "fonte": "CONTRATTO",
+      "contratto_id": 23,
+      "contratto_numero": "CNT0000023",
+      "listino_id": 85,
+      "listino_codice": "com-002",
+      "listino_descrizione": "...",
+      "categoria_cliente_id": null,
+      "categoria_cliente_codice": null,
+      "categoria_cliente_descrizione": null
+    }
+  }
+  ```
+- Campo `fonte`:
+  - `"CONTRATTO"`: contratto attivo trovato per (BA, utility, data). I prezzi vengono dal listino del contratto (`contratto_*` valorizzati, `categoria_*` NULL).
+  - `"CATEGORIA"`: nessun contratto attivo, listino mappato in `categorie_clienti_listini` per la categoria cliente + utility, classe NULL (`categoria_*` e `listino_*` valorizzati, `contratto_*` NULL).
+  - `"NONE"`: nessuna config (no contratto, no mapping categoria-listino). Il FE mostra warning all'admin. Resolver fallira' al calcolo prezzi riga.
+- Pattern lookup: replica intenzionalmente STADIO 1+2 del resolver per coerenza UI (vedi `feedback_db_actions_passaggio_team` — refactor a fn DB `fn_get_contesto_pricing` rimandato).
+- Area: `vendite` livello LETTURA sufficiente.
+- Errori: nessuno specifico (preventivo inesistente → `{}` payload). Errori DB → `E_DATABASE` middleware.
+
+---
+
 ## Dipendenze DB
 
 | Tabella/funzione | Ruolo |
@@ -337,6 +442,11 @@ Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: nient
 | `E_PREV_OVERRIDE_NON_AUTORIZZATO` | 403 | Modifica manuale del prezzo riga non autorizzata (serve azione `prezzo_override_manuale`). L1 del sistema autorizzazioni prezzi. **`retryable=False`**: senza permesso non c'e' nulla da ritentare. Vedi [sviluppo-autorizzazioni-prezzi](../../../dev/work-in-progress/sviluppo-autorizzazioni-prezzi) |
 | `E_PREV_SCONTO_ECCESSIVO` | 403 | Sconto > `VENDITE_MAX_SCONTO_PCT`. **`retryable=True`** (Fase 5.B2): il FE puo' offrire CTA "richiedi approvazione" e ritentare con `richiesta_approvazione=true` (workflow L3) |
 | `E_PREV_MAGGIORAZIONE_ECCESSIVA` | 403 | Maggiorazione > `VENDITE_MAX_MAGGIORAZIONE_PCT`. **`retryable=True`** come sconto eccessivo |
+| `E_RIGA_PREZZO_PENDENTE` | 409 | Riga con prezzo in approvazione PENDING: modifica campi struttura bloccata dal trigger DB `trg_preventivi_righe_a10_guard_pending_upd` |
+| `E_DOC_COMPOSITO_BOM_VUOTA` | 422 | Articolo composito senza componenti BoM validi alla data del documento. Sollevato da `fn_preventivo_riga_componenti_init` al primo init. **Bloccante**: la riga padre non viene creata (rollback transazionale via `@transaction.atomic`) |
+| `E_DOC_COMPONENTE_OBBLIGATORIO` | 422 | Tentativo di disattivare un componente `obbligatorio=TRUE` via `componenti_attivazioni` o DELETE componente. Sollevato dal trigger DB `script.trgfn_componenti_guard_obbligatorio` |
+| `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | 422 | Prezzo 0 su componente `obbligatorio=TRUE`. Sollevato da `fn_preventivo_riga_componenti_init` (su `componenti_overrides`) o dal trigger DB `script.trgfn_componenti_check_prezzo_obbligatorio` (su PATCH componente). Componenti opzionali ammettono prezzo 0 |
+| `E_DOC_COMPONENTE_LISTINO_MANCANTE` | 422 | Resolver fallito per un componente senza override esplicito. L'operatore deve aggiungere il prezzo manuale in `componenti_overrides` (richiede `prezzo_override_manuale`) o l'admin deve configurare il listino bundle/standalone per quel componente |
 
 ## Integrazione pricing v5
 

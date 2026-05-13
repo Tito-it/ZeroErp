@@ -75,6 +75,7 @@ frontend/src/
 
 ---
 
+<a id="2-componenti-vue--convenzioni"></a>
 ## 2. Componenti Vue — convenzioni
 
 ### Stile obbligatorio
@@ -107,6 +108,7 @@ frontend/src/
 
 ---
 
+<a id="3-composable--pattern-e-catalogo"></a>
 ## 3. Composable — pattern e catalogo
 
 ### Dove
@@ -220,6 +222,7 @@ export function resolveTabLabel(meta, t) {
 
 ---
 
+<a id="6-api-client--come-aggiungere-endpoint"></a>
 ## 6. API client — come aggiungere endpoint
 
 ### Struttura file API

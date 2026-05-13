@@ -247,6 +247,32 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Associazione listino non trovata.",
         ),
+        # Trigger DB immutabilita' v5 su listini_righe / listini_righe_componenti
+        # (script.fn_log_and_raise_error, P0001): blocca INS/UPD/DLT quando
+        # la versione listino non e' in BOZZA. Solleva il service
+        # `fn_save_bundle` quando l'admin tenta di modificare prezzi bundle
+        # su versione ATTIVA/CHIUSA.
+        "E_RIGA_LISTINO_VERSIONE_CHIUSA": ErrorPolicy(
+            code="E_RIGA_LISTINO_VERSIONE_CHIUSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Modifica righe listino non consentita: la versione non e' "
+                "in stato BOZZA."
+            ),
+        ),
+        # Trigger DB guard coerenza BoM su listini_righe_componenti: blocca
+        # prezzi bundle riferiti a componenti non presenti nella BoM corrente
+        # del padre composito (o fuori dal range di validita' della BoM).
+        "E_LISTINO_RIGA_COMP_BOM_INCOERENTE": ErrorPolicy(
+            code="E_LISTINO_RIGA_COMP_BOM_INCOERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message=(
+                "Prezzo bundle riferito a un componente non presente nella "
+                "distinta base del padre composito."
+            ),
+        ),
         # Guard Profilo A contratti: in stati post-DRAFT (ATTIVO/CESSATO)
         # le modifiche sono limitate o vietate. La testata ammette solo
         # `valido_al` e `meta` in ATTIVO; CESSATO immutabile. Le sotto

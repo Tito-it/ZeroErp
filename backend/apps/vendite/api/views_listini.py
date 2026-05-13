@@ -33,10 +33,13 @@ from apps.vendite.services.listini_service import (
     fn_delete_versione,
     fn_get_listino_dettaglio,
     fn_get_versione,
+    fn_list_bundle_compositi,
     fn_list_listini,
     fn_list_righe,
     fn_list_tipologie_per_utility,
     fn_list_versioni,
+    fn_preview_bundle,
+    fn_save_bundle,
     fn_update_listino,
     fn_update_riga,
     fn_update_versione,
@@ -575,3 +578,106 @@ class ApiListiniTipologiePerUtility(DomainAPIView):
             )
         utility_id = qp_int_strict(raw_utility_id, "utility_id", 0)
         return success_response({"results": fn_list_tipologie_per_utility(utility_id)})
+
+
+# ── Bundle componenti BoM (modello unificato 2026-05-13) ──
+#
+# 3 endpoint per gestire `listini_righe_componenti` (prezzi bundle dei
+# figli BoM di un padre composito in contesto versione listino):
+#   - GET  /listini/<lid>/versioni/<vid>/bundle/                lista compositi con bundle definito
+#   - GET  /listini/<lid>/versioni/<vid>/bundle/<padre_id>/     preview BoM + prezzi esistenti
+#   - POST /listini/<lid>/versioni/<vid>/bundle/<padre_id>/     upsert batch prezzi bundle
+#
+# Persistenza assoluta (no delta). Solo versioni BOZZA editabili
+# (guard service + trigger DB immutabilita' v5).
+
+
+class ApiListinoVersioneBundleCompositi(DomainAPIView):
+    """GET /api/v1/vendite/listini/<lid>/versioni/<vid>/bundle/
+
+    Lista articoli compositi che hanno almeno 1 prezzo bundle definito
+    in quella versione listino. Per popolare la sezione "Prezzi bundle
+    compositi" del drawer versione.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="VenditeListinoVersioneBundleCompositiResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    def get(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:  # noqa: ARG002
+        results = fn_list_bundle_compositi(listino_id, ver_id)
+        return success_response(results)
+
+
+class ApiListinoVersioneBundleDetail(DomainAPIView):
+    """GET / POST `/api/v1/vendite/listini/<lid>/versioni/<vid>/bundle/<padre_id>/`
+
+    GET: preview BoM del padre composito + prezzi bundle gia' definiti
+         per quella versione (per popolare il Dialog di editing).
+    POST: upsert batch dei prezzi bundle (strategia tabula rasa
+         idempotente: soft-disattiva le righe correnti + inserisce le
+         nuove). Solo versione BOZZA editabile.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="VenditeListinoVersioneBundlePreviewResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Preview BoM + prezzi bundle gia' definiti.
+    def get(
+        self, request: Request, listino_id: int, ver_id: int, padre_id: str,  # noqa: ARG002
+    ) -> JsonResponse:
+        results = fn_preview_bundle(listino_id, ver_id, padre_id)
+        return success_response(results)
+
+    @extend_schema(
+        request=inline_serializer(
+            name="VenditeListinoVersioneBundleSaveRequest",
+            fields={
+                "rows": serializers.ListField(
+                    child=serializers.DictField(),
+                    help_text=(
+                        "Lista oggetti {articolo_componente_id, "
+                        "articolo_figlio_id, prezzo, iva_id?}. Righe con "
+                        "`prezzo` null vengono ignorate (non gestite a bundle)."
+                    ),
+                ),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="VenditeListinoVersioneBundleSaveResponse",
+            fields={"data": inline_serializer(
+                name="VenditeListinoVersioneBundleSaveData",
+                fields={
+                    "disattivati": serializers.IntegerField(),
+                    "inseriti": serializers.IntegerField(),
+                },
+            )},
+        )},
+    )
+    # Scopo: Upsert batch dei prezzi bundle per il padre composito.
+    def post(
+        self, request: Request, listino_id: int, ver_id: int, padre_id: str,
+    ) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            rows_raw = payload.get("rows") or []
+            if not isinstance(rows_raw, list):
+                from apps.core.services.error_manager import ErrorManager
+
+                ErrorManager.raise_error(
+                    code="E_VENDITE_VALIDATION",
+                    message="Campo 'rows' deve essere una lista.",
+                    function_name="vendite.api.ApiListinoVersioneBundleDetail.post",
+                )
+            return fn_save_bundle(listino_id, ver_id, padre_id, rows_raw)
+
+        return handle_post_json(request, handler=_handler)

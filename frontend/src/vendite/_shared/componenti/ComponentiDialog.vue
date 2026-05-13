@@ -1,48 +1,53 @@
 <script setup>
-// Scopo: Dialog modale per la valorizzazione dei componenti BoM di un
-//        articolo composito (modello unificato 2026-05-12 sera).
-//        Sostituisce la tabella inline preview del form atomic.
+// Scopo: Building block riusabile per la valorizzazione dei componenti BoM
+//        di un articolo composito (modello unificato 2026-05-13).
+//        Costituisce il blocco UI per le 4 sorgenti documento commerciale
+//        (preventivi, ordini, contratti, ddt) — la variabilita' tra le
+//        sorgenti vive solo in 2 prop:
+//          * apiPreview(documentoId, params) -> Promise<axiosResponse>
+//          * documentoId (Number)
+//
 //        Lifecycle:
-//         1. Drawer riga preventivo apre la Dialog quando l'operatore
-//            seleziona un articolo composito (auto-open).
-//         2. Mount della Dialog -> chiama previewRigaComponenti API,
-//            popola tabella con prezzi suggeriti + flag obbligatorio,
-//            esposto_in_fattura, attivo (obbligatori TRUE, opzionali FALSE).
+//         1. Drawer riga apre la Dialog quando l'operatore seleziona un
+//            articolo composito (auto-open).
+//         2. Mount della Dialog -> chiama apiPreview, popola tabella con
+//            prezzi suggeriti + flag obbligatorio + esposto_in_fattura
+//            + attivo (obbligatori TRUE, opzionali FALSE per default DB).
 //         3. Operatore valorizza prezzi mancanti, attiva opzionali,
 //            modifica suggeriti dove ammesso.
-//         4. Conferma -> emit('confirm', { overrides, attivazioni }).
+//         4. Conferma -> emit('confirm', { overrides, summary }).
 //            Annulla -> emit('cancel') senza propagare.
-//        Il drawer padre raccoglie il payload e lo include in
-//        `componenti_overrides` + `componenti_attivazioni` del Save.
+//        Il drawer padre raccoglie il payload e include `componenti_overrides`
+//        nel Save (`componenti_attivazioni` non piu' modificabile: decisione
+//        di dominio 2026-05-13 — BoM contratto immutabile per documento).
 //
 //        Form atomic: NO persistenza dei figli finche' la riga padre
 //        non viene salvata. Tutto vive nel client.
 //
-// TODO post-DB modello unificato:
-//   - I campi `obbligatorio` ed `esposto_in_fattura` arriveranno dalla
-//     fn DB aggiornata. Finche' non atterra, fallback `obbligatorio=true`
-//     ed `esposto_in_fattura` derivata da articoli_componenti (placeholder).
-//   - Codice origine `LISTINO_BUNDLE` (resolver bundle-aware) sara'
-//     mappato da `pricingOrigineLabelKey` quando il backend lo ritorna.
+//        Listini bundle: stesso Dialog parametrizzato (decisione
+//        2026-05-13). Le prop `showPrezzoSuggerito=false` e
+//        `i18nPrefix='vendite.componenti.bundle'` consentono al caller
+//        listino di adattare il Dialog (no colonna prezzo suggerito,
+//        no colonna origine, titoli/hint dedicati). I prezzi sono
+//        autoritativi (nessun resolver alle spalle), persistenza
+//        assoluta lato caller via API listino bundle.
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
-import Checkbox from 'primevue/checkbox'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError } from '../../../core/utils/apiError'
-import { formatCurrency } from '../../../core/utils/format'
+import { formatCurrency, PRICE_EPSILON } from '../../../core/utils/format'
 import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/utils/severity'
 import { useAuthStore } from '../../../stores/auth'
 import { PRICING_ACTIONS } from '../../constants'
-import { previewRigaComponenti } from '../api/preventiviApi'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const notify = useNotify()
 const auth = useAuthStore()
 
@@ -52,13 +57,51 @@ const props = defineProps({
   // Articolo composito padre selezionato nel drawer riga
   // Oggetto: { id, codice, descrizione, is_composito }
   articolo: { type: Object, default: null },
-  preventivoId: { type: Number, required: true },
+  // ID del documento padre (preventivo, ordine, contratto, ddt) o
+  // della versione listino per il caso bundle (modello unificato).
+  // Generico — la callback apiPreview riceve questo come primo argomento.
+  documentoId: { type: Number, required: true },
   uomOperativaId: { type: Number, default: null },
   quantita: { type: [Number, String], default: 1 },
+  // Callback fetch preview iniettata dal caller (sorgente-specific).
+  // Firma: (documentoId, {articolo_id, uom_operativa_id, quantita})
+  //   -> Promise<axiosResponse con response.data.data = lista componenti>
+  // Per preventivi: passare previewRigaComponenti da preventiviApi.
+  // Per ordini/contratti/ddt: l'omologa di quella sorgente.
+  // Per listino bundle: API che ritorna BoM + prezzi già definiti.
+  apiPreview: { type: Function, required: true },
   // Payload corrente (se l'operatore riapre la Dialog dopo conferma)
   // per ripristinare lo stato precedente
   initialPayload: { type: Object, default: null },
+  // Mostra colonna "Prezzo suggerito" (default true). False per i caller
+  // che non hanno un resolver pricing alle spalle (es. listino bundle:
+  // l'admin definisce il prezzo, non c'e' suggerimento da pre-popolare).
+  showPrezzoSuggerito: { type: Boolean, default: true },
+  // Namespace i18n del Dialog (default `vendite.componenti`). Override
+  // per varianti contestuali: per il listino bundle viene passato
+  // `vendite.componenti.bundle`. Le chiavi non definite nel namespace
+  // override fanno fallback automatico al namespace base (vedi
+  // `localizedKey` sotto).
+  i18nPrefix: { type: String, default: 'vendite.componenti' },
+  // Modalita' emissione overrides nel payload di confirm:
+  //   - false (default, preventivi/ordini/contratti/ddt): SOLO i prezzi
+  //     diversi dal `prezzo_suggerito` (resolver listino). Semantica delta.
+  //   - true (listino bundle): TUTTI i prezzi non-null, anche invariati.
+  //     Necessario perche' il caller BE fa tabula rasa idempotente
+  //     (soft-delete + re-insert): senza tutti i prezzi, il composito si
+  //     svuoterebbe ad ogni re-conferma senza modifiche.
+  emitAllPrices: { type: Boolean, default: false },
 })
+
+// Helper risoluzione i18n con fallback al namespace base. Permette di
+// definire `vendite.componenti.bundle.*` solo per le chiavi che
+// differiscono (titolo, hint, conferma, prezzo_finale, summary).
+// Le chiavi comuni (col_codice, col_qta, esposto_tooltip, ecc.) restano
+// solo in `vendite.componenti.*` e cadono qui per fallback automatico.
+function localizedKey(key) {
+  const prefixed = `${props.i18nPrefix}.${key}`
+  return te(prefixed) ? prefixed : `vendite.componenti.${key}`
+}
 
 const emit = defineEmits(['update:visible', 'confirm', 'cancel'])
 
@@ -70,11 +113,10 @@ const errore = ref(null)
 
 // Mappa componente_id -> prezzo override (modificato dall'operatore)
 // Inizializzato col suggerito al fetch; rimane editabile.
+// Decisione di dominio 2026-05-13: la BoM e' contratto immutabile per
+// documento — l'operatore non sceglie la composizione, solo i prezzi
+// override (con gating L1). Nessun toggle attivo/inattivo qui.
 const prezzoOverrides = ref({})
-
-// Mappa componente_id -> attivo (TRUE = incluso nella riga)
-// Default: obbligatori TRUE, opzionali FALSE.
-const attivazioni = ref({})
 
 const canOverride = computed(() => auth.isActionAllowed(PRICING_ACTIONS.OVERRIDE))
 
@@ -92,7 +134,7 @@ async function caricaPreview() {
   loading.value = true
   errore.value = null
   try {
-    const res = await previewRigaComponenti(props.preventivoId, {
+    const res = await props.apiPreview(props.documentoId, {
       articolo_id: props.articolo.id,
       uom_operativa_id: props.uomOperativaId,
       quantita: props.quantita,
@@ -103,20 +145,18 @@ async function caricaPreview() {
     initPayloadDaPreview(rows)
   } catch (err) {
     if (tk !== _previewToken) return
-    errore.value = extractApiError(err, t('preventivi.componenti_errore_caricamento'))
+    errore.value = extractApiError(err, t(localizedKey('errore_caricamento')))
     componenti.value = []
   } finally {
     if (tk === _previewToken) loading.value = false
   }
 }
 
-// Inizializza prezzoOverrides + attivazioni dai dati preview.
+// Inizializza prezzoOverrides dai dati preview.
 // Se initialPayload fornito (riapertura) -> ripristina lo stato precedente.
 function initPayloadDaPreview(rows) {
   const initOverrides = {}
-  const initAttivi = {}
   const restoreOverrides = props.initialPayload?.overrides || {}
-  const restoreAttivi = props.initialPayload?.attivazioni || {}
   for (const c of rows) {
     const restored = restoreOverrides[c.componente_id]
     if (restored != null && restored !== '') {
@@ -126,17 +166,8 @@ function initPayloadDaPreview(rows) {
     } else {
       initOverrides[c.componente_id] = null  // resolver fail -> operatore deve valorizzare
     }
-    // Attivazione: ripristino esplicito > default per obbligatorio
-    if (c.componente_id in restoreAttivi) {
-      initAttivi[c.componente_id] = !!restoreAttivi[c.componente_id]
-    } else {
-      // TODO post-DB: usa c.obbligatorio; fallback true finche' la
-      // fn DB non espone il flag.
-      initAttivi[c.componente_id] = c.obbligatorio !== false
-    }
   }
   prezzoOverrides.value = initOverrides
-  attivazioni.value = initAttivi
 }
 
 // Watch sui parametri chiave: se cambia articolo/uom/qta mentre la
@@ -156,21 +187,16 @@ onMounted(() => {
 // ── Helper template ───────────────────────────────────────────────
 
 function isObbligatorio(comp) {
-  // TODO post-DB: leggere comp.obbligatorio direttamente.
-  // Finche' la fn DB non espone il flag, fallback a true (conservativo).
-  return comp.obbligatorio !== false
+  // Modello unificato 2026-05-13: la fn DB preview ritorna sempre
+  // boolean non-null. Comparazione stretta `=== true` coerente con
+  // `initPayloadDaPreview` (record con obbligatorio=null/undefined
+  // sono trattati come opzionali — opzione conservativa: default
+  // attivo=FALSE invece di TRUE).
+  return comp.obbligatorio === true
 }
 
 function isEsposto(comp) {
   return comp.esposto_in_fattura === true
-}
-
-function isAttivo(comp) {
-  return !!attivazioni.value[comp.componente_id]
-}
-
-function setAttivo(componenteId, val) {
-  attivazioni.value = { ...attivazioni.value, [componenteId]: !!val }
 }
 
 function setPrezzo(componenteId, val) {
@@ -192,12 +218,13 @@ function badgeOrigine(origine) {
 // ── Validazione ───────────────────────────────────────────────────
 
 const obbligatoriInvalidi = computed(() => {
-  // Obbligatori devono avere prezzo non-null e non zero.
-  // Opzionali attivi devono avere prezzo non-null (zero ammesso).
+  // Tutti i componenti BoM finiscono nella riga (decisione di dominio
+  // 2026-05-13: BoM contratto immutabile). Verifica:
+  //   - obbligatori: prezzo non-null e non zero
+  //   - opzionali: prezzo non-null (zero ammesso)
   return componenti.value.filter((c) => {
-    if (!isAttivo(c)) return false
     const prezzo = getPrezzoCorrente(c)
-    if (prezzo == null) return true  // attivo senza prezzo
+    if (prezzo == null) return true
     if (isObbligatorio(c) && Number(prezzo) === 0) return true
     return false
   })
@@ -212,17 +239,26 @@ const canConfirm = computed(() => {
 })
 
 const summaryTotale = computed(() => {
+  // Tutti i componenti BoM partecipano al totale (decisione di dominio
+  // 2026-05-13: BoM contratto immutabile per documento).
   let totale = 0
-  let nAttivi = 0
+  let nComponenti = 0
   for (const c of componenti.value) {
-    if (!isAttivo(c)) continue
     const prezzo = getPrezzoCorrente(c)
     if (prezzo == null) continue
     const qta = Number(c.quantita_componente || 0)
     totale += prezzo * qta
-    nAttivi += 1
+    nComponenti += 1
   }
-  return { n: nAttivi, total: totale }
+  // qtaPadre: snapshot della qty padre al confirm, permette al caller di
+  // scalare il totale lato suo se la qty cambia post-confirm senza dover
+  // riaprire la Dialog (il prezzo unitario del componente non dipende
+  // dalla qty padre — solo `quantita_componente = coeff × qty_padre`).
+  return {
+    n: nComponenti,
+    total: totale,
+    qtaPadre: Number(props.quantita) || 0,
+  }
 })
 
 // ── Build payload + emit ──────────────────────────────────────────
@@ -230,37 +266,38 @@ const summaryTotale = computed(() => {
 // Payload per il drawer padre:
 //   overrides: { componente_id: prezzo } -- include SOLO i prezzi
 //     modificati rispetto al suggerito (o senza suggerito).
-//   attivazioni: { componente_id: bool } -- include SOLO le
-//     differenze rispetto al default obbligatorio=TRUE/opzionale=FALSE.
+// La selezione attivo/inattivo non e' piu' modificabile dall'operatore
+// (BoM contratto immutabile, decisione di dominio 2026-05-13): il
+// payload non include `componenti_attivazioni`.
 function buildPayload() {
   const overrides = {}
-  const attivazioniDelta = {}
   for (const c of componenti.value) {
     const prezzoLocale = getPrezzoCorrente(c)
-    const suggerito = c.prezzo_suggerito != null ? Number(c.prezzo_suggerito) : null
-    // Overrides: invia solo se prezzo locale != suggerito (o suggerito NULL)
-    if (prezzoLocale != null) {
-      if (suggerito == null || Math.abs(prezzoLocale - suggerito) > 1e-6) {
-        overrides[c.componente_id] = String(prezzoLocale)
-      }
+    if (prezzoLocale == null) continue
+    if (props.emitAllPrices) {
+      // Caller fa tabula rasa idempotente lato BE (es. listino bundle):
+      // serve sempre l'elenco completo dei prezzi non-null, anche invariati.
+      overrides[c.componente_id] = String(prezzoLocale)
+      continue
     }
-    // Attivazioni: invia solo se diverso dal default
-    const defaultAttivo = isObbligatorio(c)  // obbligatori default TRUE
-    const correnteAttivo = isAttivo(c)
-    if (correnteAttivo !== defaultAttivo) {
-      attivazioniDelta[c.componente_id] = correnteAttivo
+    // Semantica delta (preventivi/ordini/contratti/ddt): invia solo se
+    // diverso dal `prezzo_suggerito`. PRICE_EPSILON centralizzato in
+    // core/utils/format (mezzo step del 6° decimale, coerente con
+    // InputNumber max-fraction-digits=6).
+    const suggerito = c.prezzo_suggerito != null ? Number(c.prezzo_suggerito) : null
+    if (suggerito == null || Math.abs(prezzoLocale - suggerito) >= PRICE_EPSILON) {
+      overrides[c.componente_id] = String(prezzoLocale)
     }
   }
   return {
     overrides: Object.keys(overrides).length > 0 ? overrides : null,
-    attivazioni: Object.keys(attivazioniDelta).length > 0 ? attivazioniDelta : null,
     summary: summaryTotale.value,  // utile al drawer padre per il riepilogo
   }
 }
 
 function handleConfirm() {
   if (!canConfirm.value) {
-    notify.warn(t('preventivi.componenti_obbligatorio_mancante'))
+    notify.warn(t(localizedKey('obbligatorio_mancante')))
     return
   }
   emit('confirm', buildPayload())
@@ -278,7 +315,7 @@ function handleCancel() {
     :visible="props.visible"
     @update:visible="(v) => emit('update:visible', v)"
     :header="articolo
-      ? t('preventivi.componenti_dialog_titolo', {
+      ? t(localizedKey('dialog_titolo'), {
           codice: articolo.codice || '',
           descrizione: articolo.descrizione || '',
         })
@@ -289,11 +326,11 @@ function handleCancel() {
     :pt="{ root: { class: 'app-dialog-componenti' } }"
   >
     <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-      <small class="text-color-secondary">{{ t('preventivi.componenti_dialog_hint') }}</small>
+      <small class="text-color-secondary">{{ t(localizedKey('dialog_hint')) }}</small>
 
       <div v-if="loading" style="padding: 1rem; text-align: center;">
         <i class="pi pi-spin pi-spinner" style="margin-right: 0.5rem;" />
-        {{ t('preventivi.componenti_dialog_caricamento') }}
+        {{ t(localizedKey('dialog_caricamento')) }}
       </div>
 
       <Message v-else-if="errore" severity="error" :closable="false">
@@ -301,7 +338,7 @@ function handleCancel() {
       </Message>
 
       <Message v-else-if="componenti.length === 0" severity="warn" :closable="false">
-        {{ t('preventivi.componenti_bom_vuota') }}
+        {{ t(localizedKey('bom_vuota')) }}
       </Message>
 
       <DataTable
@@ -312,20 +349,20 @@ function handleCancel() {
         data-key="componente_id"
         responsive-layout="scroll"
       >
-        <Column :header="t('preventivi.componenti_col_codice')" style="width: 140px;">
+        <Column :header="t(localizedKey('col_codice'))" style="width: 140px;">
           <template #body="{ data }">
             <div style="display: flex; flex-direction: column; gap: 0.15rem;">
               <strong>{{ data.componente_codice }}</strong>
               <Tag
                 v-if="isObbligatorio(data)"
                 severity="danger"
-                :value="t('preventivi.componenti_col_obbligatorio_tag')"
+                :value="t(localizedKey('col_obbligatorio_tag'))"
                 class="app-tag-xs"
               />
               <Tag
                 v-else
                 severity="secondary"
-                :value="t('preventivi.componenti_col_opzionale_tag')"
+                :value="t(localizedKey('col_opzionale_tag'))"
                 class="app-tag-xs"
               />
             </div>
@@ -334,17 +371,17 @@ function handleCancel() {
 
         <Column
           field="componente_descrizione"
-          :header="t('preventivi.componenti_col_descrizione')"
+          :header="t(localizedKey('col_descrizione'))"
           style="min-width: 200px;"
         />
 
-        <Column :header="t('preventivi.componenti_col_qta')" style="width: 90px;">
+        <Column :header="t(localizedKey('col_qta'))" style="width: 90px;">
           <template #body="{ data }">{{ data.quantita_componente }}</template>
         </Column>
 
-        <Column field="uom_codice" :header="t('preventivi.componenti_col_uom')" style="width: 70px;" />
+        <Column field="uom_codice" :header="t(localizedKey('col_uom'))" style="width: 70px;" />
 
-        <Column :header="t('preventivi.componenti_col_prezzo_suggerito')" style="width: 140px;">
+        <Column v-if="showPrezzoSuggerito" :header="t(localizedKey('col_prezzo_suggerito'))" style="width: 140px;">
           <template #body="{ data }">
             <span v-if="data.prezzo_suggerito != null">
               {{ formatCurrency(data.prezzo_suggerito) }}
@@ -352,35 +389,34 @@ function handleCancel() {
             <Tag
               v-else
               severity="warn"
-              :value="t('preventivi.componenti_preview_listino_mancante')"
+              :value="t(localizedKey('preview_listino_mancante'))"
               class="app-tag-xs"
             />
           </template>
         </Column>
 
-        <Column :header="t('preventivi.componenti_col_prezzo_finale')" style="width: 170px;">
+        <Column :header="t(localizedKey('col_prezzo_finale'))" style="width: 170px; min-width: 170px;">
           <template #body="{ data }">
             <InputNumber
               :model-value="prezzoOverrides[data.componente_id]"
               mode="currency"
               currency="EUR"
               locale="it-IT"
-              :min-fraction-digits="6"
+              :min-fraction-digits="2"
               :max-fraction-digits="6"
               :disabled="!canOverride && data.prezzo_suggerito != null"
               :class="{
-                'p-invalid': isAttivo(data) && (
-                  prezzoOverrides[data.componente_id] == null
+                'p-invalid': prezzoOverrides[data.componente_id] == null
                   || (isObbligatorio(data) && Number(prezzoOverrides[data.componente_id]) === 0)
-                )
               }"
               @update:model-value="(v) => setPrezzo(data.componente_id, v)"
-              style="width: 100%;"
+              :input-style="{ width: '100%' }"
+              style="width: 150px;"
             />
           </template>
         </Column>
 
-        <Column :header="t('preventivi.componenti_col_origine')" style="width: 130px;">
+        <Column v-if="showPrezzoSuggerito" :header="t(localizedKey('col_origine'))" style="width: 100px;">
           <template #body="{ data }">
             <Tag
               v-if="data.origine_prezzo && badgeOrigine(data.origine_prezzo)"
@@ -391,33 +427,21 @@ function handleCancel() {
           </template>
         </Column>
 
-        <Column :header="t('preventivi.componenti_col_attivo')" style="width: 90px;">
+        <Column :header="t(localizedKey('col_esposto'))" style="width: 70px;">
           <template #body="{ data }">
-            <Checkbox
-              :model-value="isAttivo(data)"
-              binary
-              :disabled="isObbligatorio(data)"
-              v-tooltip.top="isObbligatorio(data)
-                ? t('preventivi.componenti_attivo_disabilitato_tooltip')
-                : null"
-              @update:model-value="(v) => setAttivo(data.componente_id, v)"
-            />
-          </template>
-        </Column>
-
-        <Column :header="t('preventivi.componenti_col_esposto')" style="width: 100px;">
-          <template #body="{ data }">
-            <i
+            <Tag
               v-if="isEsposto(data)"
-              class="pi pi-eye"
-              style="color: var(--app-text-info, var(--primary-color))"
-              v-tooltip.top="t('preventivi.componenti_esposto_in_fattura_tooltip')"
+              severity="info"
+              :value="t('common.yes')"
+              class="app-tag-xs"
+              v-tooltip.top="t(localizedKey('esposto_in_fattura_tooltip'))"
             />
-            <i
+            <Tag
               v-else
-              class="pi pi-eye-slash"
-              style="color: var(--app-text-muted)"
-              v-tooltip.top="t('preventivi.componenti_esposto_no_tooltip')"
+              severity="secondary"
+              :value="t('common.no')"
+              class="app-tag-xs"
+              v-tooltip.top="t(localizedKey('esposto_no_tooltip'))"
             />
           </template>
         </Column>
@@ -428,7 +452,7 @@ function handleCancel() {
         severity="warn"
         :closable="false"
       >
-        {{ t('preventivi.componenti_obbligatorio_mancante') }}
+        {{ t(localizedKey('obbligatorio_mancante')) }}
       </Message>
 
       <div
@@ -436,25 +460,25 @@ function handleCancel() {
         style="display: flex; justify-content: flex-end; padding-top: 0.5rem; font-size: 0.9rem;"
       >
         <span v-if="summaryTotale.n > 0">
-          {{ t('preventivi.componenti_summary', {
+          {{ t(localizedKey('summary'), {
             n: summaryTotale.n,
             total: formatCurrency(summaryTotale.total),
           }) }}
         </span>
         <span v-else class="text-color-secondary">
-          {{ t('preventivi.componenti_summary_zero') }}
+          {{ t(localizedKey('summary_zero')) }}
         </span>
       </div>
     </div>
 
     <template #footer>
       <Button
-        :label="t('preventivi.componenti_dialog_annulla')"
+        :label="t(localizedKey('dialog_annulla'))"
         severity="secondary"
         @click="handleCancel"
       />
       <Button
-        :label="t('preventivi.componenti_dialog_conferma')"
+        :label="t(localizedKey('dialog_conferma'))"
         :disabled="!canConfirm"
         @click="handleConfirm"
       />

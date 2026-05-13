@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Form singola riga preventivo — articolo (autocomplete), UoM, quantita', prezzo, sconto, IVA.
 // Il prezzo viene proposto dal listino ma e' sempre sovrascrivibile dall'operatore.
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
@@ -10,14 +10,14 @@ import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
 import { useAuthStore } from '../../../stores/auth'
 import { suggerisciPrezzoRiga, previewRigaComponenti } from '../api/preventiviApi'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/utils/severity'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
+import { formatCurrency } from '../../../core/utils/format'
 import { PRICING_ACTIONS } from '../../constants'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import PreventiviRigaComponentiPanel from './PreventiviRigaComponentiPanel.vue'
+import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -181,30 +181,25 @@ async function caricaUomConPickBase(articoloId) {
   }
 }
 
-// Form atomic 2026-05-12: preview componenti CASO A in CREATE.
-// Quando l'operatore seleziona un articolo composito (lookup ritorna
-// is_composito=true), un debounced fetch chiama il preview BE che ritorna
-// la lista dei componenti esposti con prezzi suggeriti (NULL se manca
-// listino). Il form mostra una tabella editabile sotto: l'operatore
-// valorizza eventuali NULL e/o modifica i suggeriti, poi al Save il
-// payload include `componenti_overrides` con SOLO i prezzi modificati
-// rispetto al suggerito (gli altri restano governati dal resolver lato
-// fn DB init).
-// NB: questo blocco DEVE stare dopo le dichiarazioni di `form` e
-// `articoloObj`: anche senza `immediate: true`, Vue 3 valuta sincronamente
-// il source-getter dei watch in setup() per memorizzare l'old value
-// iniziale -> accedere a `form`/`articoloObj` prima della loro `const`
-// scatena un ReferenceError TDZ che fa crashare il setup del componente.
-const componentiPreview = ref([])
-const componentiPreviewLoading = ref(false)
-const componentiPreviewError = ref(null)
-// Mappa locale prezzi modificati: componente_id -> prezzo (number).
-// I componenti con prezzo_suggerito=NULL hanno SEMPRE un'entry qui (anche
-// vuota) per renderli "obbligatori da valorizzare".
-const componentiOverrides = ref({})
-let _previewToken = 0
+// Fase C 2026-05-13: integrazione ComponentiDialog (modello unificato).
+// Sostituisce la tabella inline preview del form atomic precedente. La
+// Dialog e' un building block riusabile in vendite/_shared/componenti/
+// che riceve la callback fetch come prop (apiPreview) e ritorna un
+// payload delta { overrides, attivazioni, summary } da inglobare nel
+// Save della riga padre.
+//
+// Apertura: automatica al primo cambio (articolo composito, UoM, qta)
+//   con valori validi; manuale via bottone "Modifica componenti" per
+//   revisioni successive.
+// Stato: il payload Dialog viene memorizzato in `componentiPayload`
+//   finche' l'operatore non cambia un parametro chiave (articolo/UoM/qta)
+//   -> reset implicito + auto-riapertura per nuova valorizzazione.
+const componentiDialogVisible = ref(false)
+const componentiPayload = ref(null)
 
-const showComponentiPreview = computed(
+// Trigger di apertura Dialog: solo in CREATE su articolo composito con
+// UoM + qta valida (lo stato in EDIT viaggia via PreventiviRigaComponentiPanel).
+const showComponentiButton = computed(
   () => !isEdit.value
     && articoloObj.value?.is_composito === true
     && !!form.value.articolo_id
@@ -212,120 +207,52 @@ const showComponentiPreview = computed(
     && (form.value.quantita || 0) > 0,
 )
 
-async function caricaComponentiPreview() {
-  if (!showComponentiPreview.value) {
-    componentiPreview.value = []
-    componentiOverrides.value = {}
-    componentiPreviewError.value = null
-    return
-  }
-  const tk = ++_previewToken
-  componentiPreviewLoading.value = true
-  componentiPreviewError.value = null
-  try {
-    const res = await previewRigaComponenti(props.preventivoId, {
-      articolo_id: form.value.articolo_id,
-      uom_operativa_id: form.value.uom_operativa_id,
-      quantita: form.value.quantita,
-    })
-    if (tk !== _previewToken) return
-    const rows = res.data?.data ?? []
-    componentiPreview.value = rows
-    // Inizializza la mappa overrides con i suggeriti (modificabile).
-    // Componenti senza listino (NULL) restano vuoti -> operatore obbligato
-    // a inserire prima del save.
-    const init = {}
-    for (const c of rows) {
-      init[c.componente_id] = c.prezzo_suggerito != null ? Number(c.prezzo_suggerito) : null
-    }
-    componentiOverrides.value = init
-  } catch (err) {
-    if (tk !== _previewToken) return
-    componentiPreviewError.value = extractApiError(err, t('preventivi.componenti_errore_caricamento'))
-    componentiPreview.value = []
-    componentiOverrides.value = {}
-  } finally {
-    if (tk === _previewToken) componentiPreviewLoading.value = false
-  }
-}
-
-// Watch su (articolo, uom, qty) per ri-fetchare preview a ogni cambio
-// significativo. Non in EDIT (isEdit guard dentro showComponentiPreview).
-// Debounce 300ms: il `quantita` cambia ad ogni keystroke su InputNumber e
-// senza debounce la POST partirebbe per ogni cifra digitata (martellio BE).
-// Il token interno (_previewToken) protegge gia' dalle risposte stantie,
-// ma non evita le richieste; setTimeout + clearTimeout taglia il rumore.
-// Pattern coerente con SearchDrawer.vue e SoggettoResolver.vue.
-let _previewDebounceTimer = null
+// Watch su (articolo, UoM): cambia il CONTESTO di pricing → invalida i
+// prezzi suggeriti precedenti, reset del payload + auto-apertura Dialog
+// per nuova valorizzazione. La quantita' NON e' qui: cambiare la qty
+// non invalida i prezzi unitari dei componenti (il modello e' prezzo ×
+// coeff_qta_snapshot × qty_padre; solo il summary va scalato). EDIT
+// non scatta mai (articolo_id e uom_operativa_id sono disabled e
+// l'init avviene via watch su props.riga).
+let _autoOpenedFor = null
 watch(
-  () => [form.value.articolo_id, form.value.uom_operativa_id, form.value.quantita],
-  () => {
-    if (_previewDebounceTimer) clearTimeout(_previewDebounceTimer)
-    _previewDebounceTimer = setTimeout(() => {
-      _previewDebounceTimer = null
-      caricaComponentiPreview()
-    }, 300)
+  () => [form.value.articolo_id, form.value.uom_operativa_id],
+  ([articoloId, uomId]) => {
+    if (isEdit.value) return
+    componentiPayload.value = null
+    const tupleKey = `${articoloId}|${uomId}`
+    if (showComponentiButton.value && _autoOpenedFor !== tupleKey) {
+      _autoOpenedFor = tupleKey
+      componentiDialogVisible.value = true
+    } else if (!showComponentiButton.value) {
+      _autoOpenedFor = null
+      componentiDialogVisible.value = false
+    }
   },
 )
-onUnmounted(() => {
-  if (_previewDebounceTimer) clearTimeout(_previewDebounceTimer)
+
+// Summary "live" che scala il totale del payload confermato con la qty
+// corrente. Il Dialog ritorna `summary.qtaPadre` (snapshot alla
+// conferma); il totale e' lineare in qty_padre → moltiplicazione
+// proporzionale al cambio attuale. Se la qty va a 0 → summary nullo
+// (canSave gia' blocca per qty<=0 a monte).
+const componentiSummaryLive = computed(() => {
+  const s = componentiPayload.value?.summary
+  if (!s) return null
+  const qtaPadreSnapshot = Number(s.qtaPadre) || 0
+  const qtaCorrente = Number(form.value.quantita) || 0
+  if (qtaPadreSnapshot <= 0 || qtaCorrente <= 0) return { n: s.n, total: 0 }
+  const scale = qtaCorrente / qtaPadreSnapshot
+  return { n: s.n, total: s.total * scale }
 })
 
-// Helper template: prezzo originalmente suggerito dal preview (per confronto).
-function getPrezzoSuggerito(comp) {
-  return comp.prezzo_suggerito != null ? Number(comp.prezzo_suggerito) : null
+function apriComponentiDialog() {
+  componentiDialogVisible.value = true
 }
 
-// Helper template: setta il prezzo override locale (callback InputNumber).
-function setComponenteOverride(componenteId, val) {
-  componentiOverrides.value = { ...componentiOverrides.value, [componenteId]: val }
-}
-
-// Helper: blocca il Save se almeno un componente non ha un prezzo valido.
-// Casi bloccanti:
-//  - showComponentiPreview true + preview in errore (la fn DB preview ha
-//    fallito → dati incompleti, non possiamo dedurre i componenti). Senza
-//    questo guard il Save procederebbe e il path init lato DB potrebbe
-//    rompersi a meta' transazione con errori criptici.
-//  - showComponentiPreview true + preview vuota (articolo composito senza
-//    componenti esposti dovrebbe essere impossibile, ma il guard previene
-//    bug a monte).
-//  - resolver fail (prezzo_suggerito NULL) + override vuoto/non valorizzato
-//  - override === 0 in qualsiasi caso (CHECK DB `<> 0` su prezzo componente:
-//    senza guard FE l'operatore scoprirebbe il vincolo solo al Save con un
-//    errore criptico). Coerente col CHECK *_righe_componenti_prezzo.
-const componentiPreviewBloccato = computed(() => {
-  if (!showComponentiPreview.value) return false
-  if (componentiPreviewLoading.value) return true
-  if (componentiPreviewError.value) return true
-  if (componentiPreview.value.length === 0) return true
-  for (const c of componentiPreview.value) {
-    const override = componentiOverrides.value[c.componente_id]
-    const overrideMissing = override == null || override === ''
-    if (c.prezzo_suggerito == null && overrideMissing) return true
-    if (!overrideMissing && Number(override) === 0) return true
-  }
-  return false
-})
-
-// Build mappa componenti_overrides per il payload Save: include SOLO i
-// componenti il cui prezzo finale differisce dal suggerito (o ha prezzo
-// suggerito NULL). Gli altri restano resolver-driven lato fn DB.
-function buildComponentiOverridesPayload() {
-  const out = {}
-  for (const c of componentiPreview.value) {
-    const override = componentiOverrides.value[c.componente_id]
-    if (override == null || override === '') continue  // skip non valorizzati
-    const suggerito = c.prezzo_suggerito != null ? Number(c.prezzo_suggerito) : null
-    if (suggerito == null) {
-      // Resolver fail: l'operatore DEVE aver inserito il prezzo manuale.
-      out[c.componente_id] = String(override)
-    } else if (Math.abs(Number(override) - suggerito) > 1e-6) {
-      // Operatore ha modificato il suggerito: invia come override.
-      out[c.componente_id] = String(override)
-    }
-  }
-  return Object.keys(out).length > 0 ? out : null
+function onComponentiConfirm(payload) {
+  // payload = { overrides, attivazioni, summary }; null se nessuna modifica.
+  componentiPayload.value = payload
 }
 
 // State usato da suggerisciPrezzo(): DEVE stare prima del watch `immediate`
@@ -496,10 +423,11 @@ const canSave = computed(() => {
   // non lo richiediamo nel payload e non lo validiamo qui.
   if (!isPadreComposito.value && (f.prezzo_unitario == null || f.prezzo_unitario === '')) return false
   if (!f.iva_id) return false
-  // Form atomic 2026-05-12: in CREATE su articolo composito CASO A, blocca
-  // il save se la preview ha componenti senza listino + senza override
-  // valorizzato dall'operatore.
-  if (componentiPreviewBloccato.value) return false
+  // Modello unificato 2026-05-13: in CREATE su articolo composito,
+  // blocca il save finche' la ComponentiDialog non e' stata confermata
+  // almeno una volta (componentiPayload != null). Se l'operatore
+  // annulla, resta bloccato — deve riaprire e confermare.
+  if (showComponentiButton.value && componentiPayload.value == null) return false
   return true
 })
 
@@ -524,9 +452,11 @@ function buildRigaPayload(extras = {}) {
     return { ...base, ...extras }
   }
   // CREATE: include componenti_overrides quando l'articolo e' composito
-  // (form atomic 2026-05-12). buildComponentiOverridesPayload() ritorna
-  // null se nessuna modifica/valorizzazione → il BE/DB usa solo resolver.
-  const overrides = showComponentiPreview.value ? buildComponentiOverridesPayload() : null
+  // e l'operatore ha modificato almeno un prezzo (modello unificato
+  // 2026-05-13). Il payload Dialog (`componentiPayload`) e' un delta:
+  // include solo i prezzi diversi dal suggerito. La composizione BoM e'
+  // contratto immutabile (tutti i figli sempre inclusi, default DB
+  // attivo=TRUE per tutti) — niente piu' `componenti_attivazioni`.
   const payload = {
     articolo_id: f.articolo_id,
     descrizione: f.descrizione || null,
@@ -543,7 +473,9 @@ function buildRigaPayload(extras = {}) {
   if (!isPadreComposito.value) {
     payload.prezzo_unitario = f.prezzo_unitario
   }
-  if (overrides) payload.componenti_overrides = overrides
+  if (showComponentiButton.value && componentiPayload.value?.overrides) {
+    payload.componenti_overrides = componentiPayload.value.overrides
+  }
   return payload
 }
 
@@ -738,64 +670,60 @@ async function handleRichiediApprovazione() {
         :readonly="false"
         @changed="emit('componenti-changed')" />
     </div>
-    <div v-if="showComponentiPreview" class="app-drawer-section" style="margin-top: 1rem;">
-      <h4 style="margin: 0 0 0.25rem 0; font-size: 1rem;">
-        {{ t('preventivi.componenti_preview_titolo') }}
-      </h4>
-      <small style="display: block; color: var(--app-text-muted); margin-bottom: 0.5rem;">
-        {{ t('preventivi.componenti_preview_hint') }}
-      </small>
-      <div v-if="componentiPreviewLoading" style="padding: 0.5rem;">
-        <i class="pi pi-spin pi-spinner" /> {{ t('common.loading') }}
+    <!-- Modello unificato 2026-05-13: riepilogo componenti + bottone
+         "Modifica componenti". La valorizzazione vive nella Dialog
+         shared (vendite/_shared/componenti/ComponentiDialog.vue) che si
+         apre automaticamente al primo trigger valido (articolo
+         composito + UoM + qta) e poi a richiesta. -->
+    <div v-if="showComponentiButton" class="app-drawer-section" style="margin-top: 1rem;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+        <div style="display: flex; flex-direction: column; gap: 0.15rem;">
+          <strong style="font-size: 0.95rem;">
+            {{ t('preventivi.componenti_section_title') }}
+          </strong>
+          <small style="color: var(--app-text-muted);">
+            <template v-if="componentiSummaryLive?.n > 0">
+              {{ t('vendite.componenti.summary', {
+                n: componentiSummaryLive.n,
+                total: formatCurrency(componentiSummaryLive.total),
+              }) }}
+            </template>
+            <template v-else-if="componentiPayload">
+              {{ t('vendite.componenti.summary_zero') }}
+            </template>
+            <template v-else>
+              {{ t('preventivi.componenti_preview_hint') }}
+            </template>
+          </small>
+        </div>
+        <Button
+          icon="pi pi-cog"
+          :label="t('preventivi.componenti_modifica')"
+          size="small"
+          severity="secondary"
+          @click="apriComponentiDialog"
+        />
       </div>
-      <Message v-else-if="componentiPreviewError" severity="error" :closable="false">
-        {{ componentiPreviewError }}
-      </Message>
-      <Message v-else-if="componentiPreview.length === 0" severity="warn" :closable="false">
-        {{ t('preventivi.componenti_non_caso_a') }}
-      </Message>
-      <DataTable v-else-if="componentiPreview.length > 0"
-        :value="componentiPreview" size="small" class="app-datatable" data-key="componente_id">
-        <Column field="componente_codice" :header="t('preventivi.componenti_col_codice')" style="width: 160px;" />
-        <Column field="componente_descrizione" :header="t('preventivi.componenti_col_descrizione')" style="min-width: 180px;" />
-        <Column :header="t('preventivi.componenti_col_qta')" style="width: 90px;">
-          <template #body="{ data }">{{ data.quantita_componente }}</template>
-        </Column>
-        <Column field="uom_codice" :header="t('preventivi.componenti_col_uom')" style="width: 70px;" />
-        <Column :header="t('preventivi.componenti_col_prezzo_suggerito')" style="width: 150px;">
-          <template #body="{ data }">
-            <span v-if="getPrezzoSuggerito(data) != null">
-              {{ new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', minimumFractionDigits: 6, maximumFractionDigits: 6 }).format(data.prezzo_suggerito) }}
-            </span>
-            <Tag v-else severity="warn"
-              :value="t('preventivi.componenti_preview_listino_mancante')" />
-          </template>
-        </Column>
-        <Column :header="t('preventivi.componenti_col_prezzo_finale')" style="width: 180px;">
-          <template #body="{ data }">
-            <InputNumber
-              :model-value="componentiOverrides[data.componente_id]"
-              mode="currency" currency="EUR" locale="it-IT"
-              :min-fraction-digits="6" :max-fraction-digits="6"
-              :disabled="!canOverride && getPrezzoSuggerito(data) != null"
-              @update:model-value="(v) => setComponenteOverride(data.componente_id, v)"
-              style="width: 140px;" />
-          </template>
-        </Column>
-        <Column :header="t('preventivi.componenti_col_origine')" style="width: 130px;">
-          <template #body="{ data }">
-            <Tag v-if="data.origine_prezzo"
-              :severity="pricingOrigineSeverity(data.origine_prezzo)"
-              :value="t(pricingOrigineLabelKey(data.origine_prezzo) || 'preventivi.badge_origine_manuale')" />
-          </template>
-        </Column>
-      </DataTable>
-      <Message v-if="componentiPreviewBloccato && !canOverride"
-        severity="warn" :closable="false" style="margin-top: 0.5rem;">
-        {{ t('preventivi.componenti_preview_richiede_override') }}
-      </Message>
     </div>
 
+    <ComponentiDialog
+      v-if="showComponentiButton"
+      v-model:visible="componentiDialogVisible"
+      :articolo="articoloObj"
+      :documento-id="preventivoId"
+      :uom-operativa-id="form.uom_operativa_id"
+      :quantita="form.quantita"
+      :api-preview="previewRigaComponenti"
+      :initial-payload="componentiPayload"
+      @confirm="onComponentiConfirm"
+    />
+
+    <!-- Bottoni Salva/Annulla della riga: sempre visibili quando l'utente
+         sta editando la riga. Il ComponentiDialog modale 90vw copre comunque
+         la pagina mentre aperto, quindi non c'e' duplicazione visiva con
+         i bottoni Conferma/Annulla del Dialog. I bottoni del DrawerFooter
+         testata preventivo invece si nascondono via `formRigaAperto` lato
+         PreventiviDrawer (pattern distinta base `ArticoloBomDrawer`). -->
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">
       <Button :label="t('common.cancel')" severity="secondary" @click="emit('cancel')" />
       <Button :label="t('common.save')" :loading="loading" :disabled="!canSave" @click="handleSave" />

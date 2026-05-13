@@ -179,7 +179,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_prezzo_composito(p_prodotto_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer)
-IS 'Resolver BoM ibrido pricing v5 (post 22-04-2026): N righe se composito ha componenti esposti, 1 riga altrimenti (prezzo diretto o Sigma pesata). Espone coeff_qta per BoMComponentExpander (DEC-3 §14.4.1). origine_prezzo aggiunta 2026-05-11 (ultima colonna, backward-compat by-position): CASO A = origine componente, CASO B1 = origine padre, CASO B2 = NULL.';
+IS '[DEPRECATED 2026-05-13 — modello unificato BoM] Resolver BoM ibrido pricing v5 CASO A/B. Con il modello unificato padre=sempre SUM(figli), il branching CASO A/B non ha piu'' significato. Le fn_*_riga_componenti_init usano direttamente fn_resolve_prezzo_listino_v2 per-componente. Da rimuovere dopo aggiornamento backend pricing_repository.py.';
 ```
 
 ---

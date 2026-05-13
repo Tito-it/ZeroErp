@@ -190,6 +190,16 @@ def list_riepilogo_iva(preventivo_id: int) -> list[dict[str, Any]]:
     return repo.list_riepilogo_iva(preventivo_id)
 
 
+# Scopo: Restituisce il contesto pricing applicato al preventivo (contratto
+#        attivo o listino categoria fallback). Lettura puramente informativa
+#        usata dall'header del drawer preventivo per audit visivo del path
+#        di risoluzione prezzi. Lo stesso resolver `fn_resolve_prezzo_listino_v2`
+#        applica la stessa logica al momento del calcolo prezzi riga.
+def get_contesto_pricing(preventivo_id: int) -> dict[str, Any] | None:
+    repo = PreventiviRepository()
+    return repo.resolve_contesto_pricing(preventivo_id)
+
+
 # Scopo: Lista indirizzi di un preventivo.
 def list_indirizzi(preventivo_id: int) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
@@ -633,6 +643,30 @@ def gestisci_riga(
         richiesta_approvazione=richiesta_approvazione,
     )
 
+    # Padre composito (modello unificato 2026-05-13): il FE omette
+    # `prezzo_unitario` perche' il prezzo padre e' SUM(figli × coeff_qta)
+    # calcolata dal trigger DB `_z90_ricalcola_padre` post-init componenti.
+    # Il resolver `fn_resolve_prezzo_listino_v2` non risolve per articoli
+    # compositi (errore: nessun listino diretto sul composito,
+    # `E_LISTINO_RIGA_COMPOSITO_VIETATO` lato DB). Default a 0 come
+    # placeholder: il trigger lo sovrascrive sincrono dopo
+    # `fn_preventivo_riga_componenti_init` nello stesso `@transaction.atomic`.
+    # Senza default: NOT NULL violation -> E_DATABASE generico.
+    # NB: per articoli NON compositi senza prezzo, il `canSave` FE blocca
+    # prima dell'invio; defense-in-depth lato BE: il valido_riga_economic
+    # accetta prezzo None (skip), poi qui rilanciamo errore parlante.
+    if prezzo_finale is None:
+        if articolo_id and repo.is_articolo_composito(str(articolo_id)):
+            prezzo_finale = Decimal("0")
+        else:
+            ErrorManager.require(
+                False,
+                code="E_PREV_VALIDAZIONE",
+                message="Prezzo unitario obbligatorio per articoli non compositi.",
+                detail=f"articolo_id={articolo_id}",
+                function_name=f"{_FN}.gestisci_riga",
+            )
+
     # Merge meta esistente del payload con audit prezzo.
     merged_meta = _coerce_meta_to_dict(payload.get("meta"))
     if prezzo_meta is not None:
@@ -730,11 +764,21 @@ def gestisci_riga(
                 payload.get("componenti_overrides"),
                 function_name=f"{_FN}.gestisci_riga",
             )
+            # Mappa attivazioni opzionali (modello unificato 2026-05-13):
+            # default DB inserisce obbligatori `attivo=TRUE` e opzionali
+            # `attivo=FALSE`; l'operatore puo' sovrascrivere via
+            # `componenti_attivazioni`. Disattivare obbligatori e' bloccato
+            # dal trigger guard DB.
+            componenti_attivazioni = _normalize_componenti_attivazioni(
+                payload.get("componenti_attivazioni"),
+                function_name=f"{_FN}.gestisci_riga",
+            )
             repo.init_componenti_riga(
                 riga_id=int(riga_id_created),
                 emittente_soggetto_ruolo_id=emittente_sr_id,
                 data_riferimento=date.fromisoformat(str(data_riferimento_str)),
                 componenti_overrides=componenti_overrides,
+                componenti_attivazioni=componenti_attivazioni,
             )
 
     # Ricalcolo totali gestito da trigger DB AFTER su preventivi_righe
@@ -789,6 +833,25 @@ def aggiorna_riga(
     # parlante. In update i campi possono essere assenti: il helper li
     # ignora se non presenti nel payload.
     _validate_riga_economic(payload, function_name=f"{_FN}.aggiorna_riga")
+
+    # Guard "componenti via PATCH riga": il drawer FE puo' riusare lo
+    # stesso payload del CREATE per re-applicare scelte sui componenti,
+    # ma la PATCH riga e' solo testata. Senza guard quei due campi
+    # verrebbero scartati silenziosamente da `update_fields` (whitelist).
+    # Path corretto per modificare i componenti: endpoint dedicati
+    # `/preventivi/<id>/righe/<riga_id>/componenti/<componente_id>/`
+    # (PATCH/DELETE singoli) — vedi Fase D del piano refactor-componenti.
+    for _campo_componenti in ("componenti_overrides", "componenti_attivazioni"):
+        ErrorManager.require(
+            _campo_componenti not in payload,
+            code="E_PREV_VALIDAZIONE",
+            message=(
+                f"Campo '{_campo_componenti}' non ammesso in PATCH riga: "
+                "modifica componenti via endpoint dedicato "
+                "/righe/<riga_id>/componenti/."
+            ),
+            function_name=f"{_FN}.aggiorna_riga",
+        )
 
     richiesta_approvazione = bool(payload.get("richiesta_approvazione", False))
     update_fields: dict[str, Any] = {}
@@ -1474,6 +1537,43 @@ def _normalize_componenti_overrides(
     return normalized or None
 
 
+# Scopo: Valida e normalizza `componenti_attivazioni` (modello unificato
+#        2026-05-13). Forma attesa: {componente_id_uuid: bool}. Mappa
+#        l'operatore puo' usare per attivare componenti opzionali (default
+#        DB: opzionali inseriti con `attivo=FALSE`) o disattivare opzionali
+#        gia' attivati in re-init. Tentativi di disattivare obbligatori
+#        sono respinti dal trigger DB con `E_DOC_COMPONENTE_OBBLIGATORIO`.
+#        Restituisce un dict normalizzato a {str: bool} (None/{} -> None).
+#        Solleva E_PREV_VALIDAZIONE su valori non bool/null.
+def _normalize_componenti_attivazioni(
+    attivazioni: Any,
+    *,
+    function_name: str,
+) -> dict[str, bool] | None:
+    if attivazioni is None or attivazioni == {}:
+        return None
+    ErrorManager.require(
+        isinstance(attivazioni, dict),
+        code="E_PREV_VALIDAZIONE",
+        message="componenti_attivazioni deve essere un oggetto JSON.",
+        function_name=function_name,
+    )
+    assert isinstance(attivazioni, dict)
+    normalized: dict[str, bool] = {}
+    for k, v in attivazioni.items():
+        ErrorManager.require(
+            isinstance(v, bool),
+            code="E_PREV_VALIDAZIONE",
+            message=(
+                f"Valore attivazione non valido per componente {k!r}: "
+                "atteso bool."
+            ),
+            function_name=function_name,
+        )
+        normalized[str(k)] = bool(v)
+    return normalized or None
+
+
 # Scopo: Gating L1 sugli override prezzo componenti (form atomic 2026-05-12).
 #        Solleva `E_PREV_OVERRIDE_NON_AUTORIZZATO` (esistente) se il payload
 #        contiene `componenti_overrides` non vuoti e l'operatore non ha
@@ -1752,10 +1852,16 @@ def preview_componenti_riga(
     )
 
 
-# Scopo: Lista componenti CASO A di una riga padre composita per la UI.
-#        Filtra solo i componenti `attivo=TRUE`. Guard di esistenza:
-#        riga padre deve esistere ed appartenere al preventivo richiesto.
-def list_componenti_riga(preventivo_id: int, riga_id: int) -> list[dict[str, Any]]:
+# Scopo: Lista componenti BoM di una riga padre composita per la UI.
+#        Guard di esistenza: riga padre deve esistere ed appartenere al
+#        preventivo richiesto.
+#        `solo_attivi=True` (default backcompat — expander tabella righe
+#        readonly): solo componenti `attivo=TRUE`.
+#        `solo_attivi=False` (EDIT panel): include anche opzionali
+#        disattivati, per permettere all'operatore di riattivarli.
+def list_componenti_riga(
+    preventivo_id: int, riga_id: int, *, solo_attivi: bool = True,
+) -> list[dict[str, Any]]:
     repo = PreventiviRepository()
     riga = repo.get_riga(riga_id)
     ErrorManager.require(
@@ -1773,7 +1879,7 @@ def list_componenti_riga(preventivo_id: int, riga_id: int) -> list[dict[str, Any
         detail=f"riga_id={riga_id} non appartiene a preventivo_id={preventivo_id}",
         function_name=f"{_FN}.list_componenti_riga",
     )
-    return repo.list_componenti_riga(riga_id)
+    return repo.list_componenti_riga(riga_id, solo_attivi=solo_attivi)
 
 
 # Scopo: Helper privato condiviso da update/delete componente. Esegue le 3

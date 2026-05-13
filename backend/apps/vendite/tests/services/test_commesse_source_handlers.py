@@ -53,6 +53,7 @@ Ottimizzazioni post-review (O1 cache modulo + O2 skip qta zero):
 
 Path snapshot componenti pre-popolati (refactor 2026-05-11):
 38) BoMComponentExpanderTests.test_snapshot_loader_genera_pushable_rows_da_componenti
+38b) BoMComponentExpanderTests.test_snapshot_loader_esposto_default_false_se_assente
 39) BoMComponentExpanderTests.test_snapshot_loader_vuoto_fallback_resolver
 40) BoMComponentExpanderTests.test_snapshot_loader_skip_se_riga_sorgente_id_none
 """
@@ -469,6 +470,8 @@ class BoMComponentExpanderTests(TestCase):
     # Scopo: con componenti_loader iniettato + riga_sorgente_id valorizzato +
     # snapshot non vuoto, l'expander genera PushableRow dai componenti
     # pre-popolati e NON chiama il resolver al push.
+    # Modello unificato 2026-05-13: `esposto_in_fattura` arriva dal
+    # snapshot (proiezione JOIN su articoli_componenti), propagato nel meta.
     def test_snapshot_loader_genera_pushable_rows_da_componenti(self):
         pricing = MagicMock()
         snapshot_loader = MagicMock(return_value=[
@@ -477,7 +480,8 @@ class BoMComponentExpanderTests(TestCase):
                 "uom_operativa_id": 42,
                 "prezzo_unitario": Decimal("200.00"),
                 "coeff_qta_snapshot": Decimal("1"),
-                "origine_prezzo": "CATEGORIA",
+                "origine_prezzo": "LISTINO_BUNDLE",
+                "esposto_in_fattura": True,
             },
             {
                 "componente_id": "cmp-02",
@@ -485,6 +489,7 @@ class BoMComponentExpanderTests(TestCase):
                 "prezzo_unitario": Decimal("75.00"),
                 "coeff_qta_snapshot": Decimal("4"),
                 "origine_prezzo": "MANUALE",
+                "esposto_in_fattura": False,
             },
         ])
         expander = BoMComponentExpander(
@@ -508,11 +513,44 @@ class BoMComponentExpanderTests(TestCase):
         self.assertEqual(result[0].quantita, Decimal("3"))
         self.assertEqual(result[1].quantita, Decimal("12"))
         # origine_prezzo propagato in meta per audit downstream
-        self.assertEqual(result[0].meta["origine_prezzo"], "CATEGORIA")
+        self.assertEqual(result[0].meta["origine_prezzo"], "LISTINO_BUNDLE")
         self.assertEqual(result[1].meta["origine_prezzo"], "MANUALE")
+        # esposto_in_fattura letto dal snapshot (modello unificato): True
+        # per il primo, False per il secondo. Era hardcoded True nel
+        # vecchio modello (CASO A: solo esposti popolati in init).
+        self.assertEqual(result[0].meta["esposto_in_fattura"], True)
+        self.assertEqual(result[1].meta["esposto_in_fattura"], False)
 
-    # Scopo: snapshot vuoto -> fallback al resolver (riga legacy pre-deploy
-    # o articolo CASO B senza componenti esposti pre-popolati).
+    # Scopo: snapshot privo del flag `esposto_in_fattura` → default False.
+    # Defense-in-depth contro caller che non popolano il campo (es. test
+    # legacy, snapshot pre-modello-unificato non aggiornati).
+    def test_snapshot_loader_esposto_default_false_se_assente(self):
+        pricing = MagicMock()
+        snapshot_loader = MagicMock(return_value=[
+            {
+                "componente_id": "cmp-01",
+                "uom_operativa_id": 42,
+                "prezzo_unitario": Decimal("100.00"),
+                "coeff_qta_snapshot": Decimal("1"),
+                "origine_prezzo": "MANUALE",
+                # Nessun esposto_in_fattura
+            },
+        ])
+        expander = BoMComponentExpander(
+            pricing_service=pricing,
+            is_composito_fn=MagicMock(return_value=True),
+            componenti_loader=snapshot_loader,
+        )
+        row = _make_composito_row(riga_sorgente_id=42)
+
+        result = expander.expand(row)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].meta["esposto_in_fattura"], False)
+
+    # Scopo: snapshot vuoto -> fallback al resolver (riga legacy pre-deploy,
+    # caso atteso 0 in produzione col modello unificato: init popola SEMPRE
+    # tutti i figli BoM. Resta safety net per casi edge dev/test).
     def test_snapshot_loader_vuoto_fallback_resolver(self):
         pricing = MagicMock()
         pricing.resolve_prezzo_composito.return_value = [

@@ -12,20 +12,24 @@ CREATE OR REPLACE FUNCTION vendite.fn_ddt_riga_componenti_init(p_riga_id bigint,
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
+-- Scopo: Popola ddt_righe_componenti per una riga composita.
+--   Modello unificato: tutti i componenti attivi inseriti con attivo=TRUE.
+--   BoM = contratto immutabile: l'operatore non sceglie quali includere.
 DECLARE
-    v_articolo_id    catalogo.articoli.id%TYPE;
-    v_uom_id         catalogo.unita_misura.id%TYPE;
-    v_qta_padre      vendite.ddt_righe.quantita%TYPE;
-    v_ddt_id         vendite.ddt.id%TYPE;
-    v_is_composito   catalogo.articoli.is_composito%TYPE;
-    v_ba_id          anagrafiche.billing_account.id%TYPE;
-    v_utility_id     vendite.ddt.utility_id%TYPE;
-    v_comp           record;
-    v_resolve        record;
-    v_prezzo         vendite.listini_righe.prezzo%TYPE;
-    v_origine        vendite.ddt_righe_componenti.origine_prezzo%TYPE;
-    v_err_msg        text;
-    v_inserted       integer := 0;
+    v_articolo_id      catalogo.articoli.id%TYPE;
+    v_codice_articolo  catalogo.articoli.codice%TYPE;
+    v_uom_id           catalogo.unita_misura.id%TYPE;
+    v_qta_padre        vendite.ddt_righe.quantita%TYPE;
+    v_ddt_id           vendite.ddt.id%TYPE;
+    v_is_composito     catalogo.articoli.is_composito%TYPE;
+    v_ba_id            anagrafiche.billing_account.id%TYPE;
+    v_utility_id       vendite.ddt.utility_id%TYPE;
+    v_comp             record;
+    v_resolve          record;
+    v_prezzo           vendite.listini_righe.prezzo%TYPE;
+    v_origine          vendite.ddt_righe_componenti.origine_prezzo%TYPE;
+    v_err_msg          text;
+    v_inserted         integer := 0;
 BEGIN
     IF p_riga_id IS NULL OR p_riga_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -42,9 +46,13 @@ BEGIN
             NULL::uuid, 'p_emittente_sr_id obbligatorio e > 0');
     END IF;
 
-    SELECT dr.articolo_id, dr.uom_operativa_id, dr.quantita, dr.ddt_id
-      INTO v_articolo_id, v_uom_id, v_qta_padre, v_ddt_id
-      FROM vendite.ddt_righe dr WHERE dr.id = p_riga_id;
+    SELECT dr.articolo_id, dr.uom_operativa_id, dr.quantita, dr.ddt_id,
+           a.is_composito, a.codice
+      INTO v_articolo_id, v_uom_id, v_qta_padre, v_ddt_id,
+           v_is_composito, v_codice_articolo
+      FROM vendite.ddt_righe dr
+      JOIN catalogo.articoli a ON a.id = dr.articolo_id
+     WHERE dr.id = p_riga_id;
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_ddt_riga_componenti_init',
@@ -52,9 +60,6 @@ BEGIN
             jsonb_build_object('p_riga_id', p_riga_id),
             NULL::uuid, 'riga ddt non trovata');
     END IF;
-
-    SELECT a.is_composito INTO v_is_composito
-      FROM catalogo.articoli a WHERE a.id = v_articolo_id;
     IF NOT COALESCE(v_is_composito, FALSE) THEN RETURN 0; END IF;
 
     IF EXISTS (
@@ -67,12 +72,15 @@ BEGIN
       FROM vendite.ddt d WHERE d.id = v_ddt_id;
 
     FOR v_comp IN
-        SELECT ac.id AS bom_entry_id, ac.componente_id, ac.coeff_qta,
-               a.uom_id AS componente_uom_id, a.iva_id AS componente_iva_id
+        SELECT ac.id          AS bom_entry_id,
+               ac.componente_id,
+               ac.coeff_qta,
+               ac.obbligatorio,
+               a.uom_id       AS componente_uom_id,
+               a.iva_id       AS componente_iva_id
           FROM catalogo.articoli_componenti ac
           JOIN catalogo.articoli a ON a.id = ac.componente_id
          WHERE ac.prodotto_id        = v_articolo_id
-           AND ac.esposto_in_fattura = TRUE
            AND COALESCE(ac.attivo, TRUE) = TRUE
            AND ac.validita           @> p_data_riferimento
     LOOP
@@ -80,9 +88,10 @@ BEGIN
            AND p_componenti_overrides ? v_comp.componente_id::text THEN
             v_prezzo  := (p_componenti_overrides ->> v_comp.componente_id::text)::numeric;
             v_origine := 'MANUALE';
-            IF v_prezzo = 0 THEN
+            IF v_prezzo = 0 AND COALESCE(v_comp.obbligatorio, TRUE) THEN
                 PERFORM script.fn_log_and_raise_error(
-                    'vendite', 'fn_ddt_riga_componenti_init', 'E_PARAMETRO_INVALIDO',
+                    'vendite', 'fn_ddt_riga_componenti_init',
+                    'E_PARAMETRO_INVALIDO',
                     jsonb_build_object('componente_id', v_comp.componente_id,
                         'hint', 'prezzo override deve essere diverso da zero'),
                     NULL::uuid, p_riga_id::text);
@@ -90,12 +99,13 @@ BEGIN
             INSERT INTO vendite.ddt_righe_componenti (
                 riga_ddt_id, articolo_componente_id, componente_id,
                 coeff_qta_snapshot, quantita, uom_operativa_id, factor_to_base,
-                prezzo_unitario, iva_id, origine_prezzo, prezzo_resolver_context
+                prezzo_unitario, iva_id, origine_prezzo, attivo, prezzo_resolver_context
             ) VALUES (
                 p_riga_id, v_comp.bom_entry_id, v_comp.componente_id,
                 v_comp.coeff_qta, v_comp.coeff_qta * v_qta_padre,
                 v_comp.componente_uom_id, 1,
                 v_prezzo, v_comp.componente_iva_id, v_origine,
+                TRUE,
                 jsonb_build_object('override', true,
                     'emittente_sr_id', p_emittente_sr_id,
                     'data_riferimento', p_data_riferimento,
@@ -107,22 +117,27 @@ BEGIN
                   FROM vendite.fn_resolve_prezzo_listino_v2(
                       v_comp.componente_id, v_comp.componente_uom_id,
                       p_data_riferimento, v_ba_id, v_utility_id::integer,
-                      p_emittente_sr_id, NULL);
+                      p_emittente_sr_id, NULL,
+                      v_articolo_id  -- p_articolo_padre_contesto: attiva STADIO BUNDLE
+                  );
                 INSERT INTO vendite.ddt_righe_componenti (
                     riga_ddt_id, articolo_componente_id, componente_id,
                     coeff_qta_snapshot, quantita, uom_operativa_id, factor_to_base,
-                    prezzo_unitario, iva_id, origine_prezzo, prezzo_resolver_context
+                    prezzo_unitario, iva_id, origine_prezzo, attivo, prezzo_resolver_context
                 ) VALUES (
                     p_riga_id, v_comp.bom_entry_id, v_comp.componente_id,
                     v_comp.coeff_qta, v_comp.coeff_qta * v_qta_padre,
                     v_comp.componente_uom_id, 1,
                     v_resolve.prezzo_finale, v_comp.componente_iva_id,
                     v_resolve.origine,
+                    TRUE,
                     jsonb_build_object('emittente_sr_id', p_emittente_sr_id,
                         'data_riferimento', p_data_riferimento,
                         'ba_id', v_ba_id, 'utility_id', v_utility_id,
                         'listino_id', v_resolve.listino_id,
                         'listino_versione_id', v_resolve.listino_versione_id,
+                        'listino_riga_id', v_resolve.listino_riga_id,
+                        'contratto_id', v_resolve.contratto_id,
                         'origine', v_resolve.origine)
                 );
             EXCEPTION WHEN SQLSTATE 'P0001' THEN
@@ -140,12 +155,24 @@ BEGIN
         v_inserted := v_inserted + 1;
     END LOOP;
 
+    IF v_inserted = 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_ddt_riga_componenti_init',
+            'E_DOC_COMPOSITO_BOM_VUOTA',
+            jsonb_build_object('articolo_id', v_articolo_id,
+                'data_riferimento', p_data_riferimento),
+            NULL::uuid,
+            v_codice_articolo,
+            p_data_riferimento::text
+        );
+    END IF;
+
     RETURN v_inserted;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ddt_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
-IS 'Inizializza componenti BoM CASO A per una riga DDT. Override JSONB o fn_resolve_prezzo_listino_v2 per-componente. Strict raise su listino mancante senza override. Form atomic (rev 12-05-2026b).';
+IS 'Inizializza componenti BoM per riga DDT. Tutti i componenti attivi inseriti con attivo=TRUE (BoM = contratto immutabile). Guard prezzo=0 solo su obbligatori. Fix ?? -> ?. Rev 2026-05-13.';
 ```
 
 ---

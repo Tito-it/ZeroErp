@@ -2,6 +2,16 @@
 // Un solo punto di modifica per formati numerici/dimensioni in tutta l'applicazione.
 
 /**
+ * Tolleranza floating-point per confronti tra prezzi.
+ * = mezzo step del 6° decimale (InputNumber accetta `max-fraction-digits=6`).
+ * Usato per dirty-check / delta override vs prezzo suggerito: copre il
+ * rounding di display senza confondere modifiche genuine al 6° decimale.
+ * Centralizzato per evitare drift fra i caller (ComponentiDialog,
+ * PreventiviRigaComponentiPanel, futuri EDIT panel su ordini/contratti/ddt).
+ */
+export const PRICE_EPSILON = 5e-7
+
+/**
  * Formatta una dimensione in byte in formato leggibile (B, KB, MB, GB).
  *
  * @param {number|null} bytes - Dimensione in byte
@@ -64,4 +74,31 @@ export function formatNumber(value, opts = {}) {
   const formatOpts = { minimumFractionDigits }
   if (maximumFractionDigits != null) formatOpts.maximumFractionDigits = maximumFractionDigits
   return Number(value).toLocaleString(locale, formatOpts)
+}
+
+/**
+ * Etichetta IVA per liste/colonne compatte.
+ * - Aliquota > 0 → "22%" (aliquota numerica)
+ * - Aliquota 0/NULL (esenti) → `iva_codice` (es. "N1", "ESENTE17") che e'
+ *   sempre univoco e breve. Lo schema `config.iva` garantisce per CHECK
+ *   che un'aliquota=0 abbia sempre natura o assoggettamento, quindi il
+ *   codice e' parlante per l'operatore. Fallback su `placeholder` se
+ *   anche il codice manca (record non agganciato a una riga `config.iva`).
+ *
+ * Per visualizzazioni piu' ricche (riepilogo IVA, drawer dettaglio) usare
+ * la descrizione estesa `iva_descrizione`; per la compattezza in liste e
+ * datatable usare questa.
+ *
+ * @param {object} row - Riga con almeno `iva_aliquota` e `iva_codice`.
+ * @param {object} [opts]
+ * @param {string} [opts.placeholder='—'] - Mostrato se mancano sia aliquota >0 sia codice.
+ * @returns {string}
+ */
+export function formatIvaLabel(row, opts = {}) {
+  const { placeholder = '—' } = opts
+  if (row == null) return placeholder
+  const aliquota = row.iva_aliquota != null ? Number(row.iva_aliquota) : null
+  if (aliquota != null && aliquota > 0) return `${row.iva_aliquota}%`
+  if (row.iva_codice) return String(row.iva_codice)
+  return placeholder
 }

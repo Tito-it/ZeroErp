@@ -1642,7 +1642,7 @@ della pipeline di fatturazione, che chiama `fn_emit_attivita_fatturabili_da_comm
 #### 25.3.5 Test aggiunti in `test_commesse_repository.py`
 
 - [x] `test_list_commesse_emittibili_returns_ids` — verifica call DB, parametri, return list[int]
-- [x] `test_list_commesse_emittibili_empty` — nessun risultato, ritorna []
+- [x] `test_list_commesse_emittibili_empty` — nessun risultato, ritorna lista vuota
 
 #### 25.3.6 Configurazione DB (completata — team DB)
 

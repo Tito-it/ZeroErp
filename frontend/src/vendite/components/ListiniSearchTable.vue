@@ -217,7 +217,7 @@ const pageActions = computed(() => [
     label: allRowsExpanded.value
       ? t('listini.comprimi_tutte_versioni')
       : t('listini.espandi_tutte_versioni'),
-    icon: MANAGE_ICONS.VERSIONI,
+    icon: allRowsExpanded.value ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
     severity: 'info',
     disabled: store.items.length === 0,
     command: toggleAllRows,
@@ -260,7 +260,7 @@ function buildListinoActions(data) {
     {
       key: 'toggle-versioni',
       label: expandedRows.value[data.id] ? t('listini.nascondi_versioni') : t('listini.mostra_versioni'),
-      icon: MANAGE_ICONS.VERSIONI,
+      icon: expandedRows.value[data.id] ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
       command: () => toggleExpand(data),
     },
     {
@@ -303,6 +303,9 @@ function buildVersioneActions(ver, listino) {
       key: 'clona',
       label: t('listini.clona_versione'),
       icon: MANAGE_ICONS.CLONE,
+      // Disabilitato in BOZZA: la versione e' ancora editabile, non ha
+      // senso clonarla — l'admin lavora direttamente sulla BOZZA stessa.
+      disabled: isBozza,
       command: () => emit('open-clona-versione', ver, listino),
     },
     {

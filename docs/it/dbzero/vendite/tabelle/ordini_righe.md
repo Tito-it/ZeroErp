@@ -34,7 +34,6 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | check_ordini_righe_qta_operativa_pos |  |
-| CHECK | chk_ordini_v_r_prezzo_pos |  |
 | CHECK | chk_ordini_v_r_qta_pos |  |
 | CHECK | chk_ordini_v_r_sconto_perc |  |
 | FOREIGN KEY | fk_ordini_vendita_r_uom_operativa | uom_operativa_id |
@@ -64,6 +63,7 @@
 | trg_ordini_righe_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_ordini_righe_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_ordini_righe_a10_note_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'note_ordini', 'target_riga_id', 'id', 'attivo')` |
+| trg_ordini_righe_a10_ordini_righe_componenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe_componenti', 'riga_ordine_id', 'id', 'attivo')` |
 | trg_ordini_righe_a10_ordini_righe_fulfillment_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe_fulfillment', 'ordine_riga_id', 'id', 'attivo')` |
 | trg_ordini_righe_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false')` |
 | trg_ordini_righe_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false')` |
