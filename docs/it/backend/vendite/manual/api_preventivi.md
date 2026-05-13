@@ -367,6 +367,39 @@ Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: nient
 
 ---
 
+### 17. Contesto pricing
+
+- Metodo: `GET`
+- Path: `/api/v1/vendite/preventivi/{id}/contesto-pricing/`
+- Scopo: Restituisce il **path di risoluzione prezzi** applicato al preventivo (contratto attivo o listino categoria fallback). Lettura puramente informativa per l'header del drawer FE — audit visivo di quale listino verra' usato dal resolver al calcolo prezzi riga. Stessa logica applicata da `fn_resolve_prezzo_listino_v2` (STADIO 1 contratto / STADIO 2 categoria).
+- Output `200`:
+  ```json
+  {
+    "data": {
+      "preventivo_id": 53,
+      "data_riferimento": "2026-05-14",
+      "fonte": "CONTRATTO",
+      "contratto_id": 23,
+      "contratto_numero": "CNT0000023",
+      "listino_id": 85,
+      "listino_codice": "com-002",
+      "listino_descrizione": "...",
+      "categoria_cliente_id": null,
+      "categoria_cliente_codice": null,
+      "categoria_cliente_descrizione": null
+    }
+  }
+  ```
+- Campo `fonte`:
+  - `"CONTRATTO"`: contratto attivo trovato per (BA, utility, data). I prezzi vengono dal listino del contratto (`contratto_*` valorizzati, `categoria_*` NULL).
+  - `"CATEGORIA"`: nessun contratto attivo, listino mappato in `categorie_clienti_listini` per la categoria cliente + utility, classe NULL (`categoria_*` e `listino_*` valorizzati, `contratto_*` NULL).
+  - `"NONE"`: nessuna config (no contratto, no mapping categoria-listino). Il FE mostra warning all'admin. Resolver fallira' al calcolo prezzi riga.
+- Pattern lookup: replica intenzionalmente STADIO 1+2 del resolver per coerenza UI (vedi `feedback_db_actions_passaggio_team` — refactor a fn DB `fn_get_contesto_pricing` rimandato).
+- Area: `vendite` livello LETTURA sufficiente.
+- Errori: nessuno specifico (preventivo inesistente → `{}` payload). Errori DB → `E_DATABASE` middleware.
+
+---
+
 ## Dipendenze DB
 
 | Tabella/funzione | Ruolo |

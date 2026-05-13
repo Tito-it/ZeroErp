@@ -12,6 +12,8 @@ Indice test eseguiti:
 3) test_aggiorna_preventivo_ok — aggiornamento in BOZZA
 4) test_aggiorna_preventivo_stato_non_modificabile — guard su stato EMESSO
 5) test_gestisci_riga_ok — aggiunta riga in BOZZA con ricalcolo totali
+5b) test_gestisci_riga_padre_composito_prezzo_default_zero — composito senza prezzo → 0 placeholder
+5c) test_gestisci_riga_non_composito_senza_prezzo_solleva — non composito + prezzo None → E_PREV_VALIDAZIONE
 6) test_gestisci_riga_stato_non_modificabile — guard riga su stato EMESSO
 7) test_gestisci_riga_articolo_mancante — validazione articolo_id obbligatorio
 8) test_elimina_riga_ok — soft delete riga
@@ -544,6 +546,46 @@ class TestPreventiviService(unittest.TestCase):
         with self.assertRaises(ServiceError) as ctx:
             gestisci_riga(1, {"articolo_id": "uuid-art-1"})
         self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
+
+    # Scopo: padre composito con payload senza prezzo_unitario → BE usa
+    # placeholder 0 (sara' sovrascritto dal trigger DB _z90_ricalcola_padre
+    # post fn_preventivo_riga_componenti_init). Verifica che repo.create_riga
+    # riceva prezzo_unitario != None per non violare il NOT NULL DB.
+    def test_gestisci_riga_padre_composito_prezzo_default_zero(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        self.mock_repo.is_articolo_composito.return_value = True
+        self.mock_repo.create_riga.return_value = {"id": 10}
+
+        gestisci_riga(1, {"articolo_id": "uuid-art-composito"})
+
+        self.mock_repo.create_riga.assert_called_once()
+        kwargs = self.mock_repo.create_riga.call_args.kwargs
+        # Decimal(0) come placeholder, NON None
+        self.assertIsNotNone(kwargs["prezzo_unitario"])
+        self.assertEqual(Decimal(kwargs["prezzo_unitario"]), Decimal("0"))
+
+    # Scopo: articolo NON composito + payload senza prezzo_unitario + resolver
+    # che non valorizza → E_PREV_VALIDAZIONE parlante (defense-in-depth: FE
+    # `canSave` blocca prima, ma il BE deve dare errore comprensibile invece
+    # di lasciare passare None → E_DATABASE su NOT NULL violation).
+    def test_gestisci_riga_non_composito_senza_prezzo_solleva(self):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+            # missing_resolver_ctx: no BA/utility/data → resolver skip,
+            # prezzo_finale=None propagato.
+        }
+        self.mock_repo.is_articolo_composito.return_value = False
+
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(1, {"articolo_id": "uuid-art-semplice"})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: Verifica errore se articolo_id mancante.
     def test_gestisci_riga_articolo_mancante(self):

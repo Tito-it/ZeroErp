@@ -40,6 +40,11 @@ const form = ref({
   ba_obj: null,
   utility_id: null,
   classe_utenza_id: null,
+  // Opzionale: UUID articolo padre composito per attivare lo STADIO BUNDLE
+  // del resolver (modello unificato BoM 2026-05-13). Quando valorizzato, il
+  // resolver cerca prima il prezzo bundle in listini_righe_componenti per
+  // la coppia (padre, figlio); fallback su standalone se non trovato.
+  articolo_padre_obj: null,
 })
 const result = ref(null)
 const errorMsg = ref(null)
@@ -142,6 +147,9 @@ async function doTest() {
   if (form.value.classe_utenza_id) {
     payload.classe_utenza_id = form.value.classe_utenza_id
   }
+  if (form.value.articolo_padre_obj?.id) {
+    payload.articolo_padre_contesto = form.value.articolo_padre_obj.id
+  }
   try {
     const apiRes = await resolvePrezzoV5(payload)
     result.value = apiRes.data.data
@@ -226,6 +234,13 @@ function close() {
       <div class="form-field">
         <label>{{ t('listini.field_data_riferimento') }} *</label>
         <DatePicker v-model="form.data_riferimento" :dateFormat="DATE_FORMAT" showIcon showButtonBar />
+      </div>
+      <div class="form-field" style="grid-column: 1 / -1;">
+        <label>{{ t('listini.field_articolo_padre_contesto') }}</label>
+        <ArticoloLookup v-model="form.articolo_padre_obj" />
+        <small class="text-color-secondary">
+          {{ t('listini.field_articolo_padre_contesto_hint') }}
+        </small>
       </div>
     </div>
 

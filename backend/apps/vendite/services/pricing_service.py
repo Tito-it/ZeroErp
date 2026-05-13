@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import warnings
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -121,6 +122,7 @@ class PricingService:
         utility_id: int,
         emittente_soggetto_ruolo_id: int,
         classe_utenza_id: int | None = None,
+        articolo_padre_contesto: UUID | str | None = None,
     ) -> dict[str, Any]:
         # require_uuid accetta solo payload dict; simulo un payload per
         # riutilizzare l'helper centralizzato del validator.
@@ -140,6 +142,14 @@ class PricingService:
         )
         if classe_utenza_id is not None:
             self._v.guard_positive_int(classe_utenza_id, field="classe_utenza_id")
+        # Validazione articolo_padre_contesto opzionale (modello unificato BoM
+        # 2026-05-13): se fornito attiva lo STADIO BUNDLE del resolver DB.
+        padre_str: str | None = None
+        if articolo_padre_contesto is not None:
+            padre_str = self._v.require_uuid(
+                {"articolo_padre_contesto": articolo_padre_contesto},
+                "articolo_padre_contesto",
+            )
 
         try:
             return self._repo.resolve_prezzo_listino_v2(
@@ -150,6 +160,7 @@ class PricingService:
                 utility_id=utility_id,
                 emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
                 classe_utenza_id=classe_utenza_id,
+                articolo_padre_contesto=padre_str,
             )
         except DatabaseError as exc:
             self._raise_pricing_error(
@@ -160,6 +171,7 @@ class PricingService:
                     "ba_id": ba_id,
                     "utility_id": utility_id,
                     "data_riferimento": data_riferimento.isoformat(),
+                    "articolo_padre_contesto": padre_str,
                 },
             )
             raise AssertionError("unreachable")  # pragma: no cover
@@ -173,6 +185,15 @@ class PricingService:
     #        righe (una per componente obbligatorio attivo). Altrimenti
     #        ritorna 1 riga: prezzo del padre (CASO B1) o Sigma componenti
     #        (CASO B2 fallback). Il DB decide il caso.
+    #
+    # DEPRECATED 2026-05-13 (modello unificato componenti BoM): la fn DB
+    # `fn_resolve_prezzo_composito` ha COMMENT DEPRECATED dal migration
+    # 20260513-24. La distinzione CASO A vs CASO B non ha piu' senso col
+    # modello unificato (padre = sempre SUM(figli × coeff_qta)). Questo
+    # wrapper resta come fallback per `BoMComponentExpander` quando il
+    # caller non ha snapshot loader (ordini/contratti/ddt fino a Fase G).
+    # Per il path standard preventivi/ordini/contratti/ddt usare le fn
+    # DB `fn_<sorgente>_riga_componenti_init/preview` (modello unificato).
     def resolve_prezzo_composito(
         self,
         *,
@@ -184,6 +205,19 @@ class PricingService:
         emittente_soggetto_ruolo_id: int,
         classe_utenza_id: int | None = None,
     ) -> list[dict[str, Any]]:
+        # Deprecation runtime: ogni chiamata emette DeprecationWarning una
+        # tantum (Python filterwarnings 'default' suppress duplicati). Aiuta
+        # a vedere nei log di test/CI quale caller residuo usa ancora il
+        # path legacy `fn_resolve_prezzo_composito`. Rimuovere in Fase G
+        # insieme alla fn DB.
+        warnings.warn(
+            "resolve_prezzo_composito e' deprecato (modello unificato BoM "
+            "2026-05-13). Usare le fn DB `fn_<sorgente>_riga_componenti_init/preview` "
+            "che chiamano `fn_resolve_prezzo_listino_v2` bundle-aware. "
+            "Rimozione prevista in Fase G.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         prodotto_str = self._v.require_uuid({"prodotto_id": prodotto_id}, "prodotto_id")
         self._v.guard_positive_int(uom_id, field="uom_id")
         self._v.guard_positive_int(ba_id, field="ba_id")

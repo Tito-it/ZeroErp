@@ -575,6 +575,163 @@ Campi ammessi:
 
 ---
 
+## 4bis. Bundle compositi (modello unificato BoM 2026-05-13)
+
+Le righe `listini_righe` su articoli compositi sono **vietate** (trigger DB
+`E_LISTINO_RIGA_COMPOSITO_VIETATO`, file 20260513-04). I prezzi dei
+componenti di un articolo composito vivono nella tabella dedicata
+`vendite.listini_righe_componenti`: una riga per ogni `(versione listino,
+componente BoM)`. Il resolver bundle-aware (`fn_resolve_prezzo_listino_v2`
+con `p_articolo_padre_contesto`) li legge prioritariamente, con fallback su
+standalone.
+
+Vedi `docs/it/dev/manual/modello-componenti-bom.md` §8 per il modello.
+
+### 4bis.1 Lista compositi con prezzi bundle definiti
+
+|     |     |
+| --- | --- |
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/bundle/` |
+
+#### Risposta lista bundle (200)
+
+```json
+{
+  "data": [
+    {
+      "articolo_id": "019d5...",
+      "articolo_codice": "art-comp-001",
+      "articolo_descrizione": "Kit pulizia casa",
+      "iva_id": 1,
+      "iva_codice": "22",
+      "iva_aliquota": "22.00",
+      "n_componenti_bundle": 3
+    }
+  ],
+  "meta": {"request_id": "..."}
+}
+```
+
+#### Regole lista bundle
+
+- Una riga per articolo padre composito con almeno 1 prezzo bundle attivo (`attivo=TRUE`) in `listini_righe_componenti` per quella versione.
+- `n_componenti_bundle`: conteggio componenti con prezzo bundle definito (non il numero totale di componenti BoM).
+- Niente `prezzo_totale_bundle`: il totale corretto richiede `SUM(prezzo × coeff_qta)` con i coefficienti BoM — calcolato solo nel preview detail (`/bundle/{padre_id}/`).
+- Ordinamento per codice articolo padre (NULLS LAST).
+- Ammesso su qualsiasi stato versione (BOZZA/ATTIVA/CHIUSA): lettura per audit.
+
+---
+
+### 4bis.2 Preview BoM padre + prezzi bundle definiti
+
+|     |     |
+| --- | --- |
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/bundle/{padre_id}/` |
+
+Mostra la BoM corrente del padre composito + i prezzi bundle gia' definiti (LEFT JOIN). Usato dal `ComponentiDialog` FE per popolare il form di editing. Read-only.
+
+#### Path param
+
+- `padre_id` (uuid string, obbligatorio) — UUID articolo composito padre.
+
+#### Risposta preview bundle (200)
+
+```json
+{
+  "data": [
+    {
+      "articolo_componente_id": "019d6...",
+      "componente_id": "019d5...",
+      "componente_codice": "componente",
+      "componente_descrizione": "Componente A",
+      "coeff_qta": "1.0",
+      "obbligatorio": true,
+      "esposto_in_fattura": false,
+      "iva_id": 1,
+      "iva_codice": "22",
+      "iva_aliquota": "22.00",
+      "uom_id": 1,
+      "uom_codice": "PZ",
+      "listini_righe_componenti_id": 60,
+      "prezzo_suggerito": "2.00"
+    }
+  ]
+}
+```
+
+#### Regole preview bundle
+
+- 1 riga per ogni `articoli_componenti` valida alla `data_riferimento` (BoM corrente).
+- `prezzo_suggerito`: NULL se nessun prezzo bundle ancora definito (operatore deve valorizzare); altrimenti il prezzo salvato in `listini_righe_componenti.prezzo`.
+- `data_riferimento` di default = oggi. Override esplicito ammesso lato service per audit di versioni ATTIVE/CHIUSE (simulare il momento dell'attivazione).
+- Filtro `attivo=TRUE` su `articoli_componenti` e sulla riga bundle.
+- Validazione: `articolo_padre_id` UUID non vuoto. `E_VENDITE_VALIDATION` se mancante.
+- Validita' bundle (`lrc.validita`) NON proiettata: psycopg fallisce su `'infinity'` daterange. Se servira' al FE, castare a testo con `to_char(...)` o estrarre lower/upper.
+
+---
+
+### 4bis.3 Salva prezzi bundle (upsert batch)
+
+|     |     |
+| --- | --- |
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/bundle/{padre_id}/` |
+| **Idempotency-Key** | richiesta tramite `handle_post_json` |
+
+#### Body JSON salva bundle
+
+```json
+{
+  "rows": [
+    {
+      "articolo_componente_id": "019d6...",
+      "articolo_figlio_id": "019d5...",
+      "prezzo": "2.00",
+      "iva_id": 1
+    }
+  ]
+}
+```
+
+#### Risposta salva bundle (200)
+
+```json
+{
+  "data": {
+    "disattivati": 3,
+    "inseriti": 3
+  }
+}
+```
+
+#### Regole salva bundle
+
+- **Solo versione BOZZA**: il guard `_assert_versione_bozza_for_riga_op` rifiuta UPDATE su versioni ATTIVA/CHIUSA. Defense-in-depth col trigger DB `_immutabilita_v5` (codice `E_RIGA_LISTINO_VERSIONE_CHIUSA`, 409).
+- **Strategia tabula rasa idempotente**: il repo prima soft-disattiva (`attivo=FALSE`) tutte le righe attive correnti per la coppia (versione, padre), poi inserisce le nuove. Garantisce stato esatto senza diff complesso. Transazione atomica.
+- **Validita' = intersezione `ac.validita ∩ versione.validita`** (operatore daterange `*`): garantisce per costruzione il vincolo del trigger `trgfn_listini_righe_componenti_guard_coerenza_bom` (riga listino ⊆ BoM).
+- **Skip prezzo null**: righe con `prezzo == NULL` vengono ignorate (= "non gestito a bundle"; il resolver fa fallback STADIO 1 standalone). Confermare con tutti i prezzi NULL = svuotare il composito (= "elimina composito" lato UI).
+- **`iva_id` opzionale**: default lato DB.
+- **Trigger DB coerenza BoM**: `trgfn_listini_righe_componenti_guard_coerenza_bom` verifica:
+  - `articolo_componente_id` esistente + attivo
+  - padre `is_composito=TRUE`
+  - IVA padre = IVA figlio (guard catalogo)
+  - validita riga ⊆ validita BoM + validita versione
+  - Solleva `E_LISTINO_RIGA_COMP_BOM_INCOERENTE` (400) con detail testuale.
+
+#### Errori
+
+| Codice | HTTP | Sorgente |
+| --- | --- | --- |
+| `E_VENDITE_VALIDATION` | 400 | service (BOZZA-only guard, rows non lista, articolo_padre_id vuoto, versione senza valido_dal) |
+| `E_RIGA_LISTINO_VERSIONE_CHIUSA` | 409 | trigger DB immutabilita' v5 (rev 2026-05-13) |
+| `E_LISTINO_RIGA_COMP_BOM_INCOERENTE` | 400 | trigger DB guard coerenza BoM |
+
+Il service cattura `DatabaseError` P0001 e traduce in `ServiceError` preservando il codice originale (helper `_raise_bundle_db_error` con substring matchers — debito tecnico: stesso pattern di `pricing_service._raise_pricing_error`, refactor possibile in `core/services/db_error_translator.py`).
+
+---
+
 ## 5. Associazioni listino
 
 ### 5.1 Lista associazioni

@@ -5,8 +5,8 @@
 > storico delle iterazioni e' in
 > [changelog-decisioni-componenti.md](changelog-decisioni-componenti.md).
 >
-> **Ultimo aggiornamento**: 2026-05-12 sera (decisione "modello unificato
-> + simmetria listino-padre-figli").
+> **Ultimo aggiornamento**: 2026-05-13 (decisione "BoM contratto
+> immutabile per documento" — vedi §9.3).
 
 ---
 
@@ -196,15 +196,31 @@ Non gestiti dal modello attuale. Un figlio puo' a sua volta essere
 `is_composito = TRUE`? Da definire. Soluzione pragmatica: VIETATO via
 guard "figlio non puo' essere composito".
 
-### 9.3 Aggiunta componenti al volo
-Non ammessa. I figli inseriti in `<sorgente>_righe_componenti` sono
-**solo** quelli della BoM corrente. L'operatore puo' decidere
-prezzi/attivazione, non quali componenti.
+### 9.3 BoM contratto immutabile per documento (2026-05-13)
 
-### 9.4 Obbligatorio non disattivabile
-Trigger BEFORE UPDATE su `<sorgente>_righe_componenti`: se
-`OLD.attivo = TRUE` e `NEW.attivo = FALSE` su un componente
-`obbligatorio = TRUE` → raise `E_DOC_COMPONENTE_OBBLIGATORIO`.
+L'operatore non sceglie la composizione: **tutti** i figli BoM validi
+alla data del documento finiscono nella riga con `attivo=TRUE` (default
+fn `_init`). Il flag `obbligatorio` non determina piu' l'attivazione
+iniziale (era `attivo = obbligatorio` fino al 2026-05-12). Conseguenze:
+
+- L'operatore puo' modificare solo i **prezzi** dei componenti (con
+  gating L1 `prezzo_override_manuale`); non puo' aggiungere ne'
+  escludere componenti dalla riga.
+- Il flag `obbligatorio` mantiene un solo significato runtime: **gate
+  prezzo zero** (`script.trgfn_componenti_check_prezzo_obbligatorio`).
+  Obbligatori non ammettono `prezzo_unitario = 0`; opzionali sì.
+- UX FE: nessuna checkbox "attivo" nel Dialog/Panel componenti.
+  Restano i tag info Obbligatorio/Opzionale + In fattura Sì/No.
+
+### 9.4 Obbligatorio non disattivabile (safety net)
+
+Trigger BEFORE UPDATE su `<sorgente>_righe_componenti`
+(`script.trgfn_componenti_guard_obbligatorio`): se `OLD.attivo = TRUE`
+e `NEW.attivo = FALSE` su un componente `obbligatorio = TRUE` → raise
+`E_DOC_COMPONENTE_OBBLIGATORIO`. Dato il modello "BoM contratto
+immutabile" (§9.3) la UI non emette mai questa transizione: il trigger
+resta come safety net difensivo (es. UPDATE diretti via SQL, bug
+futuri).
 
 ### 9.5 Promo articoli e contratti modalita' C
 Interazione con prezzo bundle (STADIO 0):

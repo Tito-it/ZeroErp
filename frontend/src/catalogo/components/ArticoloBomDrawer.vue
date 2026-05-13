@@ -108,6 +108,9 @@ const componentiView = computed(() => {
 const form = ref({})
 const componenteObj = ref(null)
 const adding = ref(false)
+const viewing = ref(false)
+const isFormOpen = computed(() => adding.value || viewing.value)
+const isFormReadonly = computed(() => viewing.value)
 const pageActions = computed(() => [
   {
     key: 'reload',
@@ -122,7 +125,7 @@ const pageActions = computed(() => [
     label: t('common.new'),
     tooltip: t('catalogo.aggiungi_componente'),
     icon: MANAGE_ICONS.ADD,
-    disabled: adding.value,
+    disabled: isFormOpen.value,
     command: startAdd,
   },
 ])
@@ -209,6 +212,7 @@ function defaultForm() {
 // pre-compilato, il banner/title torna allo stato "Aggiungi componente".
 function resetFormState() {
   adding.value = false
+  viewing.value = false
   form.value = defaultForm()
   componenteObj.value = null
   duplicaFlowSource.value = null
@@ -275,6 +279,34 @@ function startAdd() {
 }
 
 function cancelAdd() {
+  resetFormState()
+}
+
+// Scopo: apre la riga BoM nello stesso form, ma in sola lettura.
+// Le righe sono immutabili: il click riga serve solo a consultare i campi
+// non presenti nella lista compatta.
+function openReadonlyDetail(row) {
+  adding.value = false
+  viewing.value = true
+  duplicaFlowSource.value = null
+  form.value = {
+    componente_id: row.componente_id,
+    coeff_qta: row.coeff_qta,
+    partecipa_qta: row.partecipa_qta,
+    obbligatorio: row.obbligatorio,
+    determina_qta_padre: row.determina_qta_padre,
+    esposto_in_fattura: row.esposto_in_fattura,
+    valido_dal: parseDate(row.valido_dal),
+    valido_al: parseDate(row.valido_al),
+  }
+  componenteObj.value = {
+    id: row.componente_id,
+    codice: row.componente_codice,
+    descrizione: row.componente_descrizione,
+  }
+}
+
+function closeReadonlyDetail() {
   resetFormState()
 }
 
@@ -526,6 +558,7 @@ function buildRigaActions(row) {
           :sort-order="1"
           removable-sort
           data-key="id"
+          @row-click="event => openReadonlyDetail(event.data)"
         >
           <Column field="componente_codice" :header="t('catalogo.col_codice')" sortable style="width: 110px;">
             <template #body="{ data }">
@@ -546,7 +579,9 @@ function buildRigaActions(row) {
           </Column>
           <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
             <template #body="{ data }">
-              <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
+              <span @click.stop>
+                <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
+              </span>
             </template>
           </Column>
         </DataTable>
@@ -558,9 +593,15 @@ function buildRigaActions(row) {
              banner cambiano per chiarire all'utente che sta inserendo la
              nuova versione successiva alla riga appena chiusa. -->
         <template v-if="!isReadonly">
-          <template v-if="adding">
+          <template v-if="isFormOpen">
             <div class="app-drawer-section">
-              <h4>{{ duplicaFlowSource ? t('catalogo.nuova_versione_componente') : t('catalogo.nuovo_componente') }}</h4>
+              <h4>
+                {{
+                  isFormReadonly
+                    ? t('catalogo.dettaglio_componente')
+                    : (duplicaFlowSource ? t('catalogo.nuova_versione_componente') : t('catalogo.nuovo_componente'))
+                }}
+              </h4>
             </div>
             <Message
               v-if="duplicaFlowSource"
@@ -573,58 +614,98 @@ function buildRigaActions(row) {
                 data: displayDate(duplicaFlowSource.chiudi_al),
               }) }}
             </Message>
-            <div class="form-grid">
+            <div class="form-grid" :class="{ 'app-readonly': isFormReadonly }">
               <div class="form-field">
                 <label>{{ t('catalogo.field_componente') }} *</label>
                 <ArticoloLookup
                   :model-value="componenteObj"
                   :placeholder="t('catalogo.search_componente')"
+                  :disabled="isFormReadonly"
                   @select="onComponenteSelect"
                 />
               </div>
               <div class="form-field">
                 <label>{{ t('catalogo.field_coeff_qta') }} *</label>
                 <InputNumber v-model="form.coeff_qta" :min="0" :min-fraction-digits="2"
-                  :max-fraction-digits="6" class="w-full" />
+                  :max-fraction-digits="6" class="w-full" :disabled="isFormReadonly" />
               </div>
             </div>
-            <div class="form-grid-2col mt-05">
+            <div class="form-grid-2col mt-05" :class="{ 'app-readonly': isFormReadonly }">
               <div class="form-field">
                 <label>{{ t('catalogo.field_valido_dal') }}</label>
                 <DatePicker v-model="form.valido_dal" :date-format="DATE_FORMAT"
-                  show-icon show-button-bar class="w-full" />
+                  show-icon show-button-bar class="w-full" :disabled="isFormReadonly" />
               </div>
               <div class="form-field">
                 <label>{{ t('catalogo.field_valido_al') }}</label>
                 <DatePicker v-model="form.valido_al" :date-format="DATE_FORMAT"
-                  show-icon show-button-bar class="w-full" />
+                  show-icon show-button-bar class="w-full" :disabled="isFormReadonly" />
               </div>
             </div>
-            <div class="form-grid-2col mt-05">
+            <div class="form-grid-2col mt-05" :class="{ 'app-readonly': isFormReadonly }">
               <div class="form-field">
                 <label>{{ t('catalogo.field_obbligatorio') }}</label>
-                <ToggleSwitch v-model="form.obbligatorio" />
+                <span
+                  v-if="isFormReadonly"
+                  class="bom-readonly-switch"
+                  :class="{ 'bom-readonly-switch--on': form.obbligatorio }"
+                >
+                  <span class="bom-readonly-switch__knob" />
+                  <span class="bom-readonly-switch__label">{{ form.obbligatorio ? t('common.yes') : t('common.no') }}</span>
+                </span>
+                <ToggleSwitch v-else v-model="form.obbligatorio" />
               </div>
               <div class="form-field">
                 <label>{{ t('catalogo.field_partecipa_qta') }}</label>
-                <ToggleSwitch v-model="form.partecipa_qta" />
+                <span
+                  v-if="isFormReadonly"
+                  class="bom-readonly-switch"
+                  :class="{ 'bom-readonly-switch--on': form.partecipa_qta }"
+                >
+                  <span class="bom-readonly-switch__knob" />
+                  <span class="bom-readonly-switch__label">{{ form.partecipa_qta ? t('common.yes') : t('common.no') }}</span>
+                </span>
+                <ToggleSwitch v-else v-model="form.partecipa_qta" />
               </div>
             </div>
-            <div class="form-grid-2col mt-05">
+            <div class="form-grid-2col mt-05" :class="{ 'app-readonly': isFormReadonly }">
+              <div class="form-field">
+                <label>{{ t('catalogo.field_determina_qta_padre') }}</label>
+                <span
+                  v-if="isFormReadonly"
+                  class="bom-readonly-switch"
+                  :class="{ 'bom-readonly-switch--on': form.determina_qta_padre }"
+                >
+                  <span class="bom-readonly-switch__knob" />
+                  <span class="bom-readonly-switch__label">{{ form.determina_qta_padre ? t('common.yes') : t('common.no') }}</span>
+                </span>
+                <ToggleSwitch v-else v-model="form.determina_qta_padre" />
+              </div>
               <div class="form-field">
                 <label>{{ t('catalogo.field_esposto_fattura') }}</label>
-                <ToggleSwitch v-model="form.esposto_in_fattura" />
+                <span
+                  v-if="isFormReadonly"
+                  class="bom-readonly-switch"
+                  :class="{ 'bom-readonly-switch--on': form.esposto_in_fattura }"
+                >
+                  <span class="bom-readonly-switch__knob" />
+                  <span class="bom-readonly-switch__label">{{ form.esposto_in_fattura ? t('common.yes') : t('common.no') }}</span>
+                </span>
+                <ToggleSwitch v-else v-model="form.esposto_in_fattura" />
               </div>
             </div>
-            <div class="flex justify-end gap-2 mt-05">
-              <Button :label="t('common.cancel')" text @click="cancelAdd" />
-              <Button :label="t('common.save')" :loading="loading" :disabled="!canSaveForm" @click="onSaveNew" />
+            <template v-if="isFormReadonly">
+              <DrawerFooter close-only @cancel="closeReadonlyDetail" />
+            </template>
+            <div v-else class="flex justify-end gap-2 mt-05">
+                <Button :label="t('common.cancel')" text @click="cancelAdd" />
+                <Button :label="t('common.save')" :loading="loading" :disabled="!canSaveForm" @click="onSaveNew" />
             </div>
           </template>
         </template>
       </template>
 
-      <DrawerFooter v-if="!adding" close-only @cancel="onClose" />
+      <DrawerFooter v-if="!isFormOpen" close-only @cancel="onClose" />
     </div>
   </Drawer>
 
@@ -744,5 +825,51 @@ function buildRigaActions(row) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bom-readonly-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--app-text-muted);
+  font-size: 0.9rem;
+}
+
+.bom-readonly-switch::before {
+  content: '';
+  display: inline-block;
+  width: 2.5rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--p-surface-400);
+  background: var(--p-surface-200);
+}
+
+.bom-readonly-switch__knob {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-left: 0.1875rem;
+  border-radius: 999px;
+  background: var(--p-surface-0);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
+}
+
+.bom-readonly-switch--on {
+  color: var(--p-primary-color);
+  font-weight: 600;
+}
+
+.bom-readonly-switch--on::before {
+  border-color: var(--p-primary-color);
+  background: var(--p-primary-color);
+}
+
+.bom-readonly-switch--on .bom-readonly-switch__knob {
+  margin-left: 1.4375rem;
 }
 </style>

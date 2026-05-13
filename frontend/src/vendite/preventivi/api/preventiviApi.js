@@ -78,6 +78,15 @@ export function getRiepilogoIva(preventivoId) {
   return api.get(`${BASE}/${preventivoId}/riepilogo-iva/`)
 }
 
+// Contesto pricing: contratto attivo o listino categoria fallback.
+// Risposta: { fonte: 'CONTRATTO'|'CATEGORIA'|'NONE',
+//   contratto_id, contratto_numero, listino_id, listino_codice,
+//   listino_descrizione, categoria_cliente_codice, ... }.
+// Usato dall'header del drawer preventivo per audit visivo path resolver.
+export function getContestoPricing(preventivoId) {
+  return api.get(`${BASE}/${preventivoId}/contesto-pricing/`)
+}
+
 // --- Componenti BoM CASO A (refactor componenti 2026-05-11) ---
 // Ogni componente esposto in fattura della riga padre composita CASO A diventa
 // una riga negoziabile a se stante. Init implicito post-create_riga via

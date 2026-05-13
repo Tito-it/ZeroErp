@@ -1258,6 +1258,42 @@ in base alla `severity`.
 Per aggiungere una nuova icona gestione: inserire la chiave in `MANAGE_ICONS` e usarla nel componente.
 Per cambiare il colore di tutte le icone gestione: modificare `.app-manage-btn` in `main.css`.
 
+#### Pattern toggle dinamico: `EXPAND` / `COLLAPSE`
+
+Per accordion, expansion row di DataTable, tree e qualsiasi azione che apre/chiude
+contenuto, usare la coppia dinamica `MANAGE_ICONS.EXPAND` (`pi pi-chevron-down`,
+stato collassato — invita ad aprire) e `MANAGE_ICONS.COLLAPSE` (`pi pi-chevron-up`,
+stato espanso — invita a chiudere). Standard PrimeVue/Material allineato.
+
+```js
+// In toolbar globale (PageActionsBar) — toggle di tutte le righe
+{
+  key: 'toggle-all',
+  kind: 'utility',
+  label: allExpanded.value ? t('common.comprimi_tutte') : t('common.espandi_tutte'),
+  icon: allExpanded.value ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
+  command: toggleAll,
+}
+
+// In azione di riga (RowActionsMenu) — toggle di una singola riga
+{
+  key: 'toggle-row',
+  label: expanded[row.id] ? t('common.nascondi') : t('common.mostra'),
+  icon: expanded[row.id] ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
+  command: () => toggle(row),
+}
+```
+
+**Regole**:
+
+- Sempre dinamico (`isExpanded ? COLLAPSE : EXPAND`). Mai una sola icona statica
+  per un toggle: l'utente perderebbe il feedback dello stato corrente.
+- Non confondere `EXPAND`/`COLLAPSE` con `RELOAD` (`pi pi-refresh`): l'icona
+  precedente `pi pi-history` era stata scelta per "cronologia versioni" ma in
+  ruolo toggle veniva scambiata per refresh. Tenere `MANAGE_ICONS.VERSIONI`
+  (`pi pi-history`) solo per uso decorativo dove rappresenta cronologia
+  (es. header dell'expansion che mostra "Versioni storiche"), mai per toggle.
+
 **Colonna azioni di riga** (pattern standard): i pulsanti `app-manage-btn` non si mettono piu'
 direttamente in un `<template #body>` del `<Column>`. Usare sempre il building block
 `RowActionsMenu` — gestisce automaticamente lo switch desktop inline / tablet kebab

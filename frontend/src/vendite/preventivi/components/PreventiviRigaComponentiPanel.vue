@@ -28,7 +28,6 @@ import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
-import Checkbox from 'primevue/checkbox'
 
 const { t } = useI18n()
 const notify = useNotify()
@@ -168,19 +167,10 @@ async function onSalvaPrezzo(comp) {
   }
 }
 
-// Toggle attivo/disattivo del componente. Il guard DB
-// `script.trgfn_componenti_guard_obbligatorio` blocca il flip su
-// obbligatori → l'errore arriva come `E_DOC_COMPONENTE_OBBLIGATORIO`.
-// In FE il checkbox e' gia' disabled per obbligatori (defense-in-depth):
-// il guard DB resta safety net.
-async function onToggleAttivo(comp, nuovoAttivo) {
-  try {
-    await update(props.rigaId, comp.id, { attivo: !!nuovoAttivo })
-    emit('changed')
-  } catch (err) {
-    notify.error(extractApiError(err, t('preventivi.componenti_errore_aggiornamento')))
-  }
-}
+// Toggle attivo: rimosso (decisione di dominio 2026-05-13 — BoM contratto
+// immutabile per documento). Tutti i figli BoM validi alla data finiscono
+// sempre con `attivo=TRUE` (default DB), nessuna UI di disattivazione.
+// Resta solo modifica prezzo con gating L1 (`prezzo_override_manuale`).
 
 </script>
 
@@ -192,9 +182,8 @@ async function onToggleAttivo(comp, nuovoAttivo) {
     <div v-else-if="componenti.length === 0" style="padding: 0.75rem; color: var(--app-text-muted); font-size: 0.85rem;">
       {{ t('preventivi.componenti_non_caso_a') }}
     </div>
-    <DataTable v-else :value="componenti" size="small" class="app-datatable" data-key="id"
-      :row-class="(data) => !data.attivo ? 'app-row-muted' : null">
-      <Column :header="t('preventivi.componenti_col_codice')" style="width: 160px;">
+    <DataTable v-else :value="componenti" size="small" class="app-datatable" data-key="id">
+      <Column :header="t('preventivi.componenti_col_codice')" style="width: 130px;">
         <template #body="{ data }">
           <div style="display: flex; flex-direction: column; gap: 0.15rem;">
             <span style="display: inline-flex; align-items: center; gap: 0.25rem;">
@@ -214,28 +203,28 @@ async function onToggleAttivo(comp, nuovoAttivo) {
           </div>
         </template>
       </Column>
-      <Column field="componente_descrizione" :header="t('preventivi.componenti_col_descrizione')" style="min-width: 180px;" />
+      <Column field="componente_descrizione" :header="t('preventivi.componenti_col_descrizione')" style="min-width: 140px;" />
       <Column :header="t('preventivi.componenti_col_qta')" style="width: 90px;">
         <template #body="{ data }">{{ formatNumber(data.quantita) }}</template>
       </Column>
       <Column field="uom_codice" :header="t('preventivi.componenti_col_uom')" style="width: 70px;" />
-      <Column :header="t('preventivi.componenti_col_prezzo')" style="width: 200px;">
+      <Column :header="t('preventivi.componenti_col_prezzo')" style="width: 180px; min-width: 180px;">
         <template #body="{ data }">
           <template v-if="readonly">
-            <span>{{ formatCurrency(data.prezzo_unitario, { minimumFractionDigits: 6, maximumFractionDigits: 6 }) }}</span>
+            <span>{{ formatCurrency(data.prezzo_unitario, { minimumFractionDigits: 2, maximumFractionDigits: 6 }) }}</span>
           </template>
           <template v-else>
             <div style="display: flex; align-items: center; gap: 0.25rem;">
               <InputNumber
                 :model-value="getPrezzoVisualizzato(data)"
                 mode="currency" currency="EUR" locale="it-IT"
-                :min-fraction-digits="6" :max-fraction-digits="6"
+                :min-fraction-digits="2" :max-fraction-digits="6"
                 :disabled="!canOverride
                   || loading
-                  || data.stato_approvazione_prezzo === STATO_APPROVAZIONE.PENDING
-                  || !data.attivo"
+                  || data.stato_approvazione_prezzo === STATO_APPROVAZIONE.PENDING"
                 :class="{ 'p-invalid': isDirty(data) && !isPrezzoEditatoValido(data) }"
                 @update:model-value="(v) => setPrezzoEditato(data.id, v)"
+                :input-style="{ width: '100%' }"
                 style="width: 130px;" />
               <Button
                 v-if="isDirty(data)"
@@ -252,47 +241,37 @@ async function onToggleAttivo(comp, nuovoAttivo) {
           </template>
         </template>
       </Column>
-      <Column :header="t('preventivi.componenti_col_origine')" style="width: 160px;">
+      <Column :header="t('preventivi.componenti_col_origine')" style="width: 100px;">
         <template #body="{ data }">
           <div style="display: flex; flex-direction: column; gap: 0.15rem; align-items: flex-start;">
             <Tag
               v-if="data.origine_prezzo"
               :severity="pricingOrigineSeverity(data.origine_prezzo)"
               :value="origineLabel(data.origine_prezzo)"
+              class="app-tag-xs"
               v-tooltip.top="t('preventivi.badge_origine_tooltip', { origine: data.origine_prezzo })" />
             <Tag
               v-if="data.stato_approvazione_prezzo"
               :severity="approvazioneSeverity(data.stato_approvazione_prezzo)"
-              :value="approvazioneLabel(data.stato_approvazione_prezzo)" />
+              :value="approvazioneLabel(data.stato_approvazione_prezzo)"
+              class="app-tag-xs" />
           </div>
         </template>
       </Column>
-      <Column field="iva_codice" :header="t('preventivi.componenti_col_iva')" style="width: 70px;" />
-      <Column v-if="!readonly" :header="t('vendite.componenti.col_attivo')" style="width: 90px;">
+      <Column field="iva_codice" :header="t('preventivi.componenti_col_iva')" style="width: 50px;" />
+      <Column :header="t('vendite.componenti.col_esposto')" style="width: 70px;">
         <template #body="{ data }">
-          <Checkbox
-            :model-value="data.attivo"
-            binary
-            :disabled="isObbligatorio(data)
-              || loading
-              || data.stato_approvazione_prezzo === STATO_APPROVAZIONE.PENDING"
-            v-tooltip.top="isObbligatorio(data)
-              ? t('vendite.componenti.attivo_disabilitato_tooltip')
-              : null"
-            @update:model-value="(v) => onToggleAttivo(data, v)" />
-        </template>
-      </Column>
-      <Column :header="t('vendite.componenti.col_esposto')" style="width: 90px;">
-        <template #body="{ data }">
-          <i
+          <Tag
             v-if="isEsposto(data)"
-            class="pi pi-eye"
-            style="color: var(--app-text-info, var(--primary-color));"
+            severity="info"
+            :value="t('common.yes')"
+            class="app-tag-xs"
             v-tooltip.top="t('vendite.componenti.esposto_in_fattura_tooltip')" />
-          <i
+          <Tag
             v-else
-            class="pi pi-eye-slash"
-            style="color: var(--app-text-muted);"
+            severity="secondary"
+            :value="t('common.no')"
+            class="app-tag-xs"
             v-tooltip.top="t('vendite.componenti.esposto_no_tooltip')" />
         </template>
       </Column>
@@ -310,12 +289,5 @@ async function onToggleAttivo(comp, nuovoAttivo) {
 .app-tag-xs {
   font-size: 0.7rem;
   padding: 0.1rem 0.35rem;
-}
-/* Righe componenti con `attivo=FALSE` (opzionali disattivati): mostrate
-   in muted per distinguerle dagli attivi senza nasconderle. L'operatore
-   puo' riattivarle via checkbox. */
-.app-datatable :deep(tr.app-row-muted td) {
-  opacity: 0.55;
-  font-style: italic;
 }
 </style>

@@ -13,7 +13,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
@@ -2046,3 +2046,225 @@ def fn_applica_variazione_percentuale(
         "variazione_percentuale": str(variazione_pct),
         "arrotondamento_decimali": arrotondamento_decimali,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  BUNDLE componenti BoM (modello unificato 2026-05-13)
+# ══════════════════════════════════════════════════════════════════════
+#
+# Vedi `manual/modello-componenti-bom.md` §8 e
+# `db/changelog/migrations_v2/00_schema/vendite/20260513-18-...yaml`.
+# Tabella `vendite.listini_righe_componenti`: prezzi bundle dei figli
+# BoM di un articolo composito in contesto versione listino.
+# Le righe `listini_righe` su padri compositi sono vietate (trigger
+# 20260513-04 `E_LISTINO_RIGA_COMPOSITO_VIETATO`); l'unico modo per
+# dare un prezzo al composito e' via questa tabella (somma figli).
+
+
+# Codici noti dei trigger DB su `listini_righe_componenti` sollevati via
+# `script.fn_log_and_raise_error` (P0001). Pattern speculare a
+# `_KNOWN_DB_ERROR_MARKERS` in `pricing_service`: ogni voce e' la tupla
+# (codice, markers_substring) — TUTTI i marker devono comparire nel MESSAGE
+# perche' il codice DB originale venga preservato nel ServiceError.
+#
+# Trigger noti:
+#   - 20260513-20 `trgfn_listini_righe_comp_guard_immutabilita_v5`:
+#     blocca INS/UPD/DLT su versioni ATTIVA/CHIUSA → `E_RIGA_LISTINO_VERSIONE_CHIUSA`
+#   - guard coerenza BoM (lato team DB): blocca prezzo su componente
+#     fuori dalla BoM corrente del padre composito.
+#
+# Quando aggiungiamo un nuovo trigger DB su `listini_righe_componenti`
+# aggiungiamo qui la sua tupla — il codice DB compare in `detail` anche
+# senza match (fallback `E_VENDITE_VALIDATION`).
+_KNOWN_BUNDLE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "E_RIGA_LISTINO_VERSIONE_CHIUSA",
+        ("E_RIGA_LISTINO_VERSIONE_CHIUSA",),
+    ),
+    (
+        "E_LISTINO_RIGA_COMP_BOM_INCOERENTE",
+        ("E_LISTINO_RIGA_COMP_BOM_INCOERENTE",),
+    ),
+)
+
+
+# Scopo: Converte un `DatabaseError` (P0001 via `script.fn_log_and_raise_error`)
+#        in `ServiceError` preservando il codice DB originale quando matcha
+#        un trigger noto. Pattern speculare a `pricing_service._raise_pricing_error`.
+#        Fallback `E_VENDITE_VALIDATION` con il MESSAGE DB in `detail`.
+def _raise_bundle_db_error(
+    exc: DatabaseError, *, function_name: str, context: dict[str, Any],
+) -> None:
+    msg = str(exc)
+    matched_code: str | None = None
+    for code_candidate, markers in _KNOWN_BUNDLE_DB_ERROR_MARKERS:
+        if all(marker in msg for marker in markers):
+            matched_code = code_candidate
+            break
+    code = matched_code or "E_VENDITE_VALIDATION"
+    ErrorManager.raise_error(
+        code=code,
+        message="Impossibile salvare i prezzi bundle.",
+        detail=msg,
+        context=context,
+        cause=exc,
+        log_to_db=True,
+        function_name=function_name,
+    )
+
+
+# Scopo: Lista articoli compositi che hanno almeno 1 prezzo bundle
+#        definito in `listini_righe_componenti` per la versione data.
+#        Usata dal FE per popolare la sezione "Prezzi bundle compositi"
+#        del drawer versione listino. Sola lettura, ammessa su versione
+#        in qualsiasi stato (BOZZA per editing, ATTIVA/CHIUSA per audit).
+def fn_list_bundle_compositi(
+    listino_id: int,
+    versione_id: int,
+) -> list[dict[str, Any]]:
+    function_name = "vendite.listini_service.fn_list_bundle_compositi"
+    listino = _get_listino_or_raise(listino_id, function_name=function_name)
+    _ = listino  # guard solo: la versione vive sotto il listino
+    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    repository = ListiniRepository()
+    return repository.list_compositi_con_bundle(versione_id)
+
+
+# Scopo: Preview della BoM di un padre composito in contesto versione
+#        listino: 1 riga per ogni `articoli_componenti` valida alla data,
+#        LEFT JOIN su `listini_righe_componenti` per i prezzi gia'
+#        definiti (NULL se non ancora). Usata dal FE per popolare il
+#        Dialog di editing dei prezzi bundle.
+#        `data_riferimento`: di default = oggi. L'admin in BOZZA editing
+#        vuole vedere la BoM corrente (con cui sta progettando i prezzi),
+#        non quella valida al `versione.valido_dal` futuro (che potrebbe
+#        non essere ancora configurata in catalogo o avere range diverso).
+#        Allinea al pattern preventivi (passa `data_documento`).
+#        Override esplicito ammesso per simulazioni admin / audit di
+#        versioni ATTIVE/CHIUSE (caller passa `versione.valido_dal`).
+def fn_preview_bundle(
+    listino_id: int,
+    versione_id: int,
+    articolo_padre_id: str,
+    *,
+    data_riferimento: date | None = None,
+) -> list[dict[str, Any]]:
+    function_name = "vendite.listini_service.fn_preview_bundle"
+    _get_listino_or_raise(listino_id, function_name=function_name)
+    _get_versione_or_raise(
+        listino_id, versione_id, function_name=function_name,
+    )
+    # Validazione UUID padre: il _v PayloadValidator e' su instance ma qui
+    # bastiamo a check positivo (UUID malformato → invalid).
+    ErrorManager.require(
+        bool(articolo_padre_id),
+        code="E_VENDITE_VALIDATION",
+        message="articolo_padre_id obbligatorio.",
+        function_name=function_name,
+    )
+    repository = ListiniRepository()
+    return repository.list_bundle_preview(
+        versione_id=versione_id,
+        articolo_padre_id=str(articolo_padre_id),
+        data_riferimento=data_riferimento or date.today(),
+    )
+
+
+# Scopo: Salva (upsert batch) i prezzi bundle di un padre composito per
+#        la versione listino. Strategia "tabula rasa idempotente": il
+#        repo soft-disattiva le righe attive correnti per (versione, padre)
+#        e inserisce le nuove. Tutto in `transaction.atomic`.
+#
+#        Guard di stato: solo versione BOZZA modificabile (allinea al
+#        pattern righe standalone via `_assert_versione_bozza_for_riga_op`
+#        e al trigger DB di immutabilita' v5 `_immutabilita_v5`).
+#
+#        `rows`: lista di dict `{articolo_componente_id, articolo_figlio_id,
+#        prezzo, iva_id?}`. Righe con `prezzo` None/null vengono ignorate
+#        ("non gestito a bundle" — il resolver fa fallback STADIO 1
+#        standalone). `valido_dal`/`valido_al` default = validita della
+#        versione listino.
+def fn_save_bundle(
+    listino_id: int,
+    versione_id: int,
+    articolo_padre_id: str,
+    rows: list[dict[str, Any]],
+) -> dict[str, int]:
+    function_name = "vendite.listini_service.fn_save_bundle"
+    _get_listino_or_raise(listino_id, function_name=function_name)
+    versione = _get_versione_or_raise(
+        listino_id, versione_id, function_name=function_name,
+    )
+    _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
+    ErrorManager.require(
+        bool(articolo_padre_id),
+        code="E_VENDITE_VALIDATION",
+        message="articolo_padre_id obbligatorio.",
+        function_name=function_name,
+    )
+    ErrorManager.require(
+        isinstance(rows, list),
+        code="E_VENDITE_VALIDATION",
+        message="rows deve essere una lista.",
+        function_name=function_name,
+    )
+
+    # Validita default = validita versione listino (semplifica UX; il
+    # trigger DB di guard coerenza BoM (`_listini_righe_comp_guard`)
+    # blocca comunque se la BoM corrente e' piu' corta del range
+    # richiesto — errore parlante al save).
+    valido_dal_raw = versione.get("valido_dal")
+    valido_al_raw = versione.get("valido_al")
+    ErrorManager.require(
+        valido_dal_raw is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Versione listino senza valido_dal.",
+        function_name=function_name,
+    )
+
+    def _to_date(val: Any) -> date | None:
+        if val is None:
+            return None
+        if isinstance(val, date):
+            return val
+        # psycopg di solito ritorna date nativi; fallback ISO string
+        return date.fromisoformat(str(val))
+
+    valido_dal = _to_date(valido_dal_raw)
+    valido_al = _to_date(valido_al_raw)
+    assert valido_dal is not None  # require sopra
+
+    err_context = {
+        "listino_id": listino_id,
+        "versione_id": versione_id,
+        "articolo_padre_id": str(articolo_padre_id),
+        "n_rows": len(rows),
+    }
+    repository = ListiniRepository()
+    try:
+        with transaction.atomic():
+            result = repository.upsert_bundle_componenti(
+                versione_id=versione_id,
+                articolo_padre_id=str(articolo_padre_id),
+                rows=rows,
+                valido_dal=valido_dal,
+                valido_al=valido_al,
+            )
+    except IntegrityError as exc:
+        # IntegrityError e' sottoclasse di DatabaseError: catch prima per
+        # mappare i vincoli UNIQUE/FK/CHECK con messaggi parlanti standard.
+        _translate_integrity_error(
+            exc, function_name=function_name, entity="bundle",
+        )
+        raise AssertionError("unreachable")  # pragma: no cover
+    except DatabaseError as exc:
+        # P0001 dai trigger DB su `listini_righe_componenti`
+        # (immutabilita' versione ATTIVA/CHIUSA, guard coerenza BoM).
+        # Senza questo catch il codice DB strutturato verrebbe perso e
+        # il middleware mapperebbe a `E_DATABASE` generico.
+        _raise_bundle_db_error(
+            exc, function_name=function_name, context=err_context,
+        )
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    return result

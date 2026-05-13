@@ -553,6 +553,23 @@ class PreventiviRepository:
     #  trg_preventivi_righe_z90_ricalcola_totali_ins_upd_dlt
     # ══════════════════════════════════════════════════════════
 
+    # Scopo: Lookup lean del flag `is_composito` di un articolo. Usato dal
+    #        service `gestisci_riga` per default `prezzo_unitario=0` su
+    #        padre composito quando il payload non lo passa (FE lo
+    #        omette per articoli compositi: il prezzo padre e' SUM(figli)
+    #        calcolato dal trigger DB `_z90_ricalcola_padre` post init
+    #        componenti). Senza default, l'INSERT viola il NOT NULL della
+    #        colonna `prezzo_unitario` con E_DATABASE generico.
+    #        Ritorna False se articolo non trovato (defensive).
+    def is_articolo_composito(self, articolo_id: str) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT is_composito FROM catalogo.articoli WHERE id = %s",
+                [str(articolo_id)],
+            )
+            row = cursor.fetchone()
+            return bool(row[0]) if row else False
+
     # Scopo: Restituisce il factor_to_base della UoM operativa di un articolo.
     #        Usato dal service per derivare qta_operativa = quantita * factor
     #        quando il payload FE non passa esplicitamente i due campi
@@ -1083,6 +1100,91 @@ class PreventiviRepository:
     # soggetto_id e soggetto_ruolo_id ricavati dal billing_account del preventivo.
     # L'emittente fiscale viene risolto via anagrafiche.fn_get_emittente_fiscale_pk
     # (mapping specifico BA -> fallback gestore globale, errore esplicito se manca).
+    # Scopo: Risolve il contesto pricing applicato al preventivo: contratto
+    # attivo (se presente) o listino categoria fallback. Mostrato in header
+    # del drawer preventivo per audit visivo del path resolver. Non chiama
+    # il resolver effettivo (lettura informativa); l'effettivo prezzo riga
+    # passa per `fn_resolve_prezzo_listino_v2` con la stessa logica.
+    #
+    # Ritorna dict con campi:
+    #   - fonte: 'CONTRATTO' | 'CATEGORIA' | 'NONE'
+    #   - contratto_id, contratto_numero (NULL se fonte != CONTRATTO)
+    #   - listino_id, listino_codice, listino_descrizione (NULL se fonte == NONE)
+    #   - categoria_cliente_id, categoria_cliente_codice, categoria_cliente_descrizione
+    #     (solo se fonte == CATEGORIA)
+    def resolve_contesto_pricing(self, preventivo_id: int) -> dict[str, Any] | None:
+        sql = """
+            WITH preventivo AS (
+                SELECT
+                    p.id,
+                    p.billing_account_id,
+                    p.utility_id,
+                    p.data::date AS data_riferimento,
+                    ba.categoria_cliente_id
+                  FROM vendite.preventivi p
+                  JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
+                 WHERE p.id = %s
+            ),
+            -- Contratto attivo applicabile al preventivo (stessa logica resolver:
+            -- billing_account + utility + data, stato ATTIVO, piu' recente).
+            contratto_attivo AS (
+                SELECT c.id, c.numero, c.listino_id
+                  FROM vendite.contratti c
+                  JOIN config.stati_doc_contratti s
+                    ON s.id = c.stato_doc_contratto_id
+                  JOIN preventivo prev ON TRUE
+                 WHERE c.billing_account_id = prev.billing_account_id
+                   AND c.utility_id         = prev.utility_id
+                   AND c.validita          @> prev.data_riferimento
+                   AND s.codice_interno     = 'ATTIVO'
+                 ORDER BY c.id DESC
+                 LIMIT 1
+            ),
+            -- Listino categoria fallback (solo se non c'e' contratto).
+            -- Match su classe NULL: la versione UI non passa classe utenza,
+            -- privilegiamo il default `classe_utenza_id IS NULL`.
+            listino_categoria AS (
+                SELECT ccl.id AS categoria_cliente_listino_id,
+                       ccl.listino_id,
+                       prev.categoria_cliente_id
+                  FROM anagrafiche.categorie_clienti_listini ccl
+                  JOIN preventivo prev ON TRUE
+                 WHERE NOT EXISTS (SELECT 1 FROM contratto_attivo)
+                   AND ccl.categoria_cliente_id = prev.categoria_cliente_id
+                   AND ccl.utility_id           = prev.utility_id
+                   AND ccl.classe_utenza_id IS NULL
+                   AND ccl.validita            @> prev.data_riferimento
+                   AND ccl.attivo               = TRUE
+                 LIMIT 1
+            )
+            SELECT
+                prev.id AS preventivo_id,
+                prev.data_riferimento,
+                CASE
+                    WHEN ca.id IS NOT NULL THEN 'CONTRATTO'
+                    WHEN lc.listino_id IS NOT NULL THEN 'CATEGORIA'
+                    ELSE 'NONE'
+                END AS fonte,
+                ca.id     AS contratto_id,
+                ca.numero AS contratto_numero,
+                COALESCE(ca.listino_id, lc.listino_id) AS listino_id,
+                l.codice      AS listino_codice,
+                l.descrizione AS listino_descrizione,
+                cc.id         AS categoria_cliente_id,
+                cc.codice     AS categoria_cliente_codice,
+                cc.descrizione AS categoria_cliente_descrizione
+              FROM preventivo prev
+              LEFT JOIN contratto_attivo ca ON TRUE
+              LEFT JOIN listino_categoria lc ON TRUE
+              LEFT JOIN vendite.listini l
+                ON l.id = COALESCE(ca.listino_id, lc.listino_id)
+              LEFT JOIN anagrafiche.categorie_clienti cc
+                ON cc.id = lc.categoria_cliente_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [preventivo_id])
+            return row_to_dict(cursor)
+
     def resolve_contesto_pratica(self, preventivo_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT

@@ -28,6 +28,12 @@ class PricingRepository:
     #        riga risolta come dict. La funzione DB ritorna 1 riga per match;
     #        se non esiste prezzo risolvibile solleva P0001 che bubble-a al
     #        service chiamante.
+    # `articolo_padre_contesto`: UUID opzionale per attivare lo STADIO BUNDLE
+    # bundle-aware (modello unificato BoM 2026-05-13). Se NOT NULL, la fn DB
+    # cerca prima in `listini_righe_componenti` per la coppia (padre, figlio)
+    # nella versione listino determinata, poi fallback su `listini_righe`
+    # standalone del componente. Quando NULL, comportamento standalone
+    # tradizionale (resolver 3 stadi promo/contratto/categoria).
     def resolve_prezzo_listino_v2(
         self,
         *,
@@ -38,6 +44,7 @@ class PricingRepository:
         utility_id: int,
         emittente_soggetto_ruolo_id: int,
         classe_utenza_id: int | None = None,
+        articolo_padre_contesto: UUID | str | None = None,
     ) -> dict[str, Any]:
         # Wrapper LEFT JOIN sulle 4 entita' referenziate dal return della
         # funzione (listino, listino_versione, contratto, promo, categoria
@@ -71,7 +78,7 @@ class PricingRepository:
                     r.classe_utenza_id_snapshot,
                     clu.descrizione         AS classe_utenza_descrizione
                   FROM vendite.fn_resolve_prezzo_listino_v2(
-                           %s::uuid, %s, %s, %s, %s, %s, %s
+                           %s::uuid, %s, %s, %s, %s, %s, %s, %s::uuid
                        ) r
                   LEFT JOIN vendite.listini l
                     ON l.id = r.listino_id
@@ -94,6 +101,7 @@ class PricingRepository:
                     utility_id,
                     emittente_soggetto_ruolo_id,
                     classe_utenza_id,
+                    str(articolo_padre_contesto) if articolo_padre_contesto else None,
                 ],
             )
             result = row_to_dict(cursor)
@@ -104,8 +112,16 @@ class PricingRepository:
     #        per articolo composito con componenti esposti (CASO A) oppure
     #        1 riga per articoli semplici / fallback (CASO B1/B2).
     # Nota: la fn DB ritorna 8 colonne dal 2026-05-11 (aggiunta
-    # `origine_prezzo` per popolamento componenti CASO A — vedi brief
-    # `brief-db-preventivi-righe-componenti-override.md`).
+    # `origine_prezzo` per popolamento componenti CASO A).
+    #
+    # DEPRECATED 2026-05-13 (modello unificato componenti BoM): la fn DB
+    # `fn_resolve_prezzo_composito` ha COMMENT DEPRECATED dal migration
+    # 20260513-24. Il nuovo path passa per il resolver bundle-aware
+    # `fn_resolve_prezzo_listino_v2(... p_articolo_padre_contesto)` invocato
+    # internamente dalle fn `fn_<sorgente>_riga_componenti_init/preview`.
+    # Questo wrapper resta come fallback per `BoMComponentExpander` quando
+    # il caller non ha snapshot loader (ordini/contratti/ddt fino a Fase G).
+    # Rimuovere insieme alla fn DB quando sara' droppata.
     def resolve_prezzo_composito(
         self,
         *,

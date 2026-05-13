@@ -124,3 +124,30 @@ export function diagnoseConfigurazionePricing(payload) {
 export function getLimitiPricingUtente() {
   return api.get('/vendite/pricing/limiti-utente/')
 }
+
+// --- Bundle componenti BoM (modello unificato 2026-05-13) ---
+// Endpoint per gestire `vendite.listini_righe_componenti`: prezzi bundle
+// dei figli BoM di un padre composito in contesto versione listino.
+// Vedi `manual/modello-componenti-bom.md` §8.
+
+// Lista articoli compositi che hanno almeno 1 prezzo bundle definito
+// nella versione. Per la sezione "Prezzi bundle compositi" del drawer.
+export function listBundleCompositi(listinoId, verId) {
+  return api.get(`${BASE}/${listinoId}/versioni/${verId}/bundle/`)
+}
+
+// Preview BoM corrente del padre composito + prezzi bundle già definiti
+// per quella versione listino. Pre-popola il Dialog di editing.
+export function previewBundleComponenti(listinoId, verId, padreId) {
+  return api.get(`${BASE}/${listinoId}/versioni/${verId}/bundle/${padreId}/`)
+}
+
+// Upsert batch dei prezzi bundle per il padre composito. Solo versione BOZZA.
+// `rows`: [{ articolo_componente_id, articolo_figlio_id, prezzo, iva_id? }, ...]
+// Righe con prezzo null vengono ignorate (non gestite a bundle).
+export function saveBundleComponenti(listinoId, verId, padreId, rows) {
+  return api.post(
+    `${BASE}/${listinoId}/versioni/${verId}/bundle/${padreId}/`,
+    { rows },
+  )
+}
