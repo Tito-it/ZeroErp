@@ -89,9 +89,36 @@ TestNormalizeComponentiAttivazioni:
 import unittest
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
+from apps.vendite.services._componenti_service_helpers import (
+    normalize_componenti_attivazioni,
+    normalize_componenti_overrides,
+)
+
+
+# Wrapper helper test-only: i `TestNormalizeComponenti*` chiamano l'helper
+# fissando `error_code='E_PREV_VALIDAZIONE'` (semantica dominio preventivi).
+# Evitano di replicare `error_code=...` sui ~15 callsite mantenendo la
+# storica firma `(payload, *, function_name)` dei test pre-Fase H.
+def _normalize_componenti_overrides(  # noqa: D401 — test helper
+    overrides: Any, *, function_name: str,
+) -> dict[str, str] | None:
+    return normalize_componenti_overrides(
+        overrides, function_name=function_name,
+        error_code="E_PREV_VALIDAZIONE",
+    )
+
+
+def _normalize_componenti_attivazioni(
+    attivazioni: Any, *, function_name: str,
+) -> dict[str, bool] | None:
+    return normalize_componenti_attivazioni(
+        attivazioni, function_name=function_name,
+        error_code="E_PREV_VALIDAZIONE",
+    )
 
 
 class TestPreventiviService(unittest.TestCase):
@@ -2206,48 +2233,30 @@ class TestNormalizeComponentiOverrides(unittest.TestCase):
     """
 
     def test_none_ritorna_none(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         self.assertIsNone(_normalize_componenti_overrides(None, function_name="t"))
 
     def test_dict_vuoto_ritorna_none(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         self.assertIsNone(_normalize_componenti_overrides({}, function_name="t"))
 
     def test_decimal_string_normalizzato(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         out = _normalize_componenti_overrides(
             {"uuid-c1": "12.500"}, function_name="t",
         )
         self.assertEqual(out, {"uuid-c1": "12.500"})
 
     def test_numero_python_normalizzato(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         out = _normalize_componenti_overrides(
             {"uuid-c1": 75}, function_name="t",
         )
         self.assertEqual(out, {"uuid-c1": "75"})
 
     def test_decimal_native_normalizzato(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         out = _normalize_componenti_overrides(
             {"uuid-c1": Decimal("3.14")}, function_name="t",
         )
         self.assertEqual(out, {"uuid-c1": "3.14"})
 
     def test_valore_none_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_overrides(
                 {"uuid-c1": None}, function_name="t",
@@ -2255,9 +2264,6 @@ class TestNormalizeComponentiOverrides(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     def test_valore_stringa_vuota_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_overrides(
                 {"uuid-c1": ""}, function_name="t",
@@ -2265,9 +2271,6 @@ class TestNormalizeComponentiOverrides(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     def test_valore_non_numerico_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_overrides(
                 {"uuid-c1": "abc"}, function_name="t",
@@ -2275,9 +2278,6 @@ class TestNormalizeComponentiOverrides(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     def test_overrides_non_dict_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_overrides(
                 ["uuid-c1", "10"], function_name="t",
@@ -2290,34 +2290,22 @@ class TestNormalizeComponentiAttivazioni(unittest.TestCase):
     {componente_id: bool}. Bool-only, no coercion da int/str."""
 
     def test_none_ritorna_none(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_attivazioni,
-        )
         self.assertIsNone(
             _normalize_componenti_attivazioni(None, function_name="t"),
         )
 
     def test_dict_vuoto_ritorna_none(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_attivazioni,
-        )
         self.assertIsNone(
             _normalize_componenti_attivazioni({}, function_name="t"),
         )
 
     def test_dict_bool_normalizzato(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_attivazioni,
-        )
         out = _normalize_componenti_attivazioni(
             {"uuid-c1": True, "uuid-c2": False}, function_name="t",
         )
         self.assertEqual(out, {"uuid-c1": True, "uuid-c2": False})
 
     def test_valore_non_bool_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_attivazioni,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_attivazioni(
                 {"uuid-c1": "true"}, function_name="t",
@@ -2325,9 +2313,6 @@ class TestNormalizeComponentiAttivazioni(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     def test_attivazioni_non_dict_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_attivazioni,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_attivazioni(
                 ["uuid-c1", True], function_name="t",

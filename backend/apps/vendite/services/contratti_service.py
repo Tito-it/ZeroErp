@@ -995,24 +995,11 @@ class ContrattiService:
     # =================================================================
     # Componenti BoM riga contratto (modello unificato 2026-05-13)
     # =================================================================
-    # Specchio simmetrico del pattern preventivi (preventivi_service §1500+).
-    # I componenti vivono in `vendite.contratti_righe_componenti`; l'init e'
-    # invocato automaticamente da `create_riga` quando l'articolo e' composito.
-    # Helper `_normalize_*` e `_load_componente_for_modification` replicano
-    # la logica preventivi — refactor in building block comune previsto Fase H
-    # (vedi `refactor-componenti.md` §G + §H).
-
-    # Backward-compat alias per test pre-refactor (mockano metodo statico
-    # `_normalize_componenti_overrides` della classe ContrattiService).
-    # Delega all'helper Fase H. Rimuovere al prossimo refactor test.
-    @staticmethod
-    def _normalize_componenti_overrides(
-        overrides: Any, *, function_name: str,
-    ) -> dict[str, str] | None:
-        return normalize_componenti_overrides(
-            overrides, function_name=function_name,
-            error_code=E_VENDITE_VALIDATION,
-        )
+    # Specchio simmetrico del pattern preventivi. I componenti vivono in
+    # `vendite.contratti_righe_componenti`; l'init e' invocato automaticamente
+    # da `create_riga` quando l'articolo e' composito. Helper di
+    # normalizzazione overrides + resolve emittente in
+    # `_componenti_service_helpers.py` (Fase H BB).
 
     # Scopo: Helper privato condiviso da update/delete componente. Esegue
     # guard + scope check + stato contratto modificabile. Solleva

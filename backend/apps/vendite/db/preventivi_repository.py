@@ -574,14 +574,13 @@ class PreventiviRepository(ComponentiRepositoryMixin):
     #        componenti). Senza default, l'INSERT viola il NOT NULL della
     #        colonna `prezzo_unitario` con E_DATABASE generico.
     #        Ritorna False se articolo non trovato (defensive).
+    # Thin delegate cross-dominio (Fase H residue 2026-05-14): l'implementazione
+    # vive in `apps.catalogo.db.catalogo_repository.CatalogoRepository.is_articolo_composito`.
+    # I caller `preventivi_service` continuano a usare `self._repo.is_articolo_composito`
+    # (no churn lato caller + mock test backward-compat).
     def is_articolo_composito(self, articolo_id: str) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT is_composito FROM catalogo.articoli WHERE id = %s",
-                [str(articolo_id)],
-            )
-            row = cursor.fetchone()
-            return bool(row[0]) if row else False
+        from apps.catalogo.db.catalogo_repository import CatalogoRepository
+        return CatalogoRepository().is_articolo_composito(articolo_id)
 
     # Scopo: Restituisce il factor_to_base della UoM operativa di un articolo.
     #        Usato dal service per derivare qta_operativa = quantita * factor
@@ -699,15 +698,13 @@ class PreventiviRepository(ComponentiRepositoryMixin):
     # Vedi memoria `feedback_emittente_pk_vs_soggetto_ruolo`: la tabella
     # `emittenti_fiscali` ha sia `id` (PK) che `soggetto_ruolo_id` (FK),
     # serve la conversione PK -> sr_id per le fn pricing che attendono sr_id.
+    # Thin delegate cross-dominio (Fase H residue 2026-05-14): implementazione
+    # in `apps.anagrafiche.db.emittenti_fiscali_repository.EmittentiFiscaliRepository.get_sr_id_by_fiscale_id`.
     def get_emittente_sr_id_by_fiscale_id(self, fiscale_id: int) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali "
-                "WHERE id = %s",
-                [fiscale_id],
-            )
-            row = cursor.fetchone()
-            return int(row[0]) if row else None
+        from apps.anagrafiche.db.emittenti_fiscali_repository import (
+            EmittentiFiscaliRepository,
+        )
+        return EmittentiFiscaliRepository().get_sr_id_by_fiscale_id(fiscale_id)
 
     # Scopo: Popola i componenti BoM per una riga padre composita invocando
     # la fn DB `vendite.fn_preventivo_riga_componenti_init` (modello

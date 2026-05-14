@@ -108,6 +108,7 @@ _SELECT_COLS_RIGA = """
     r.articolo_id,
     a.codice AS articolo_codice,
     a.descrizione AS articolo_descrizione,
+    a.is_composito AS is_composito,
     r.uom_operativa_id,
     um.codice AS uom_codice,
     um.descrizione AS uom_descrizione,
@@ -480,6 +481,7 @@ class ContrattiRepository(ComponentiRepositoryMixin):
                     a.id AS articolo_id,
                     a.codice AS articolo_codice,
                     a.descrizione AS articolo_descrizione,
+                    a.is_composito AS is_composito,
                     lr.uom_id,
                     um.codice AS uom_codice,
                     um.descrizione AS uom_descrizione,
@@ -528,6 +530,7 @@ class ContrattiRepository(ComponentiRepositoryMixin):
                     a.id AS articolo_id,
                     a.codice AS articolo_codice,
                     a.descrizione AS articolo_descrizione,
+                    a.is_composito AS is_composito,
                     cr.uom_operativa_id AS uom_id,
                     um.codice AS uom_codice,
                     um.descrizione AS uom_descrizione,
@@ -663,31 +666,24 @@ class ContrattiRepository(ComponentiRepositoryMixin):
             )
             return cursor.rowcount > 0
 
-    # Scopo: Lookup soggetto_ruolo_id dell'emittente fiscale (helper
-    # condiviso col preventivi_repository per derivare emittente da fiscale_id
-    # snapshot — refactor in `emittenti_repository` cross-dominio Fase H).
+    # Scopo: Lookup soggetto_ruolo_id dell'emittente fiscale. Thin delegate
+    # cross-dominio (Fase H residue 2026-05-14): implementazione in
+    # `apps.anagrafiche.db.emittenti_fiscali_repository.EmittentiFiscaliRepository.get_sr_id_by_fiscale_id`.
+    # I caller `contratti_service` continuano a usare `self._repo.X` (no
+    # churn lato caller + mock test backward-compat).
     def get_emittente_sr_id_by_fiscale_id(self, fiscale_id: int) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali "
-                "WHERE id = %s",
-                [fiscale_id],
-            )
-            row = cursor.fetchone()
-            return int(row[0]) if row else None
+        from apps.anagrafiche.db.emittenti_fiscali_repository import (
+            EmittentiFiscaliRepository,
+        )
+        return EmittentiFiscaliRepository().get_sr_id_by_fiscale_id(fiscale_id)
 
     # Scopo: Verifica se un articolo e' composito. Usato dal service per
-    # decidere se invocare auto-init componenti dopo `create_riga`.
-    # Duplicato simmetrico di `PreventiviRepository.is_articolo_composito`
-    # — estrazione in `catalogo_repository` (BB Fase H, refactor-componenti.md).
+    # decidere se invocare auto-init componenti dopo `create_riga`. Thin
+    # delegate cross-dominio (Fase H residue 2026-05-14): implementazione
+    # in `apps.catalogo.db.catalogo_repository.CatalogoRepository.is_articolo_composito`.
     def is_articolo_composito(self, articolo_id: str) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT is_composito FROM catalogo.articoli WHERE id = %s",
-                [str(articolo_id)],
-            )
-            row = cursor.fetchone()
-            return bool(row[0]) if row else False
+        from apps.catalogo.db.catalogo_repository import CatalogoRepository
+        return CatalogoRepository().is_articolo_composito(articolo_id)
 
     # =================================================================
     # Componenti BoM riga contratto (modello unificato 2026-05-13)

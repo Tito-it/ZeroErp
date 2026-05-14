@@ -1076,26 +1076,30 @@ class ContrattiServiceComponentiTests(TestCase):
     contro `ContrattiRepository` per non dipendere da DB reale.
     """
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_normalize_componenti_overrides_dict_invalid(self, repo_cls):
+    def test_normalize_componenti_overrides_dict_invalid(self):
         """Validator solleva su valori non-numero."""
-        from apps.vendite.services.contratti_service import ContrattiService
+        from apps.vendite.services._componenti_service_helpers import (
+            normalize_componenti_overrides,
+        )
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService._normalize_componenti_overrides(
+            normalize_componenti_overrides(
                 {"abc-uuid": "non-numero"},
                 function_name="test",
+                error_code="E_VENDITE_VALIDATION",
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_normalize_componenti_overrides_empty(self, repo_cls):
+    def test_normalize_componenti_overrides_empty(self):
         """{} → None (skip path init)."""
-        from apps.vendite.services.contratti_service import ContrattiService
+        from apps.vendite.services._componenti_service_helpers import (
+            normalize_componenti_overrides,
+        )
 
         self.assertIsNone(
-            ContrattiService._normalize_componenti_overrides(
+            normalize_componenti_overrides(
                 {}, function_name="test",
+                error_code="E_VENDITE_VALIDATION",
             )
         )
 
@@ -1305,14 +1309,16 @@ class ContrattiServiceComponentiTests(TestCase):
 
         repo.init_componenti_riga.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_normalize_componenti_overrides_infinity_rejected(self, repo_cls):
+    def test_normalize_componenti_overrides_infinity_rejected(self):
         """Decimal('Infinity') rifiutato dal check is_finite()."""
-        from apps.vendite.services.contratti_service import ContrattiService
+        from apps.vendite.services._componenti_service_helpers import (
+            normalize_componenti_overrides,
+        )
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService._normalize_componenti_overrides(
+            normalize_componenti_overrides(
                 {"abc-uuid": "Infinity"}, function_name="test",
+                error_code="E_VENDITE_VALIDATION",
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         self.assertIn("non finito", str(ctx.exception.message))

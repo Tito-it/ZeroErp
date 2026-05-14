@@ -1457,30 +1457,7 @@ def _check_limite_variazione_prezzo(
 # (refactor Fase H 2026-05-14): `normalize_componenti_overrides`,
 # `normalize_componenti_attivazioni`, `resolve_emittente_sr_id_safe`,
 # `resolve_emittente_sr_id_for_testata`. Importati al top del modulo.
-#
-# Backward-compat alias per test pre-refactor (mock path
-# `apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe` e
-# import `_normalize_componenti_overrides`). Rimuovere al prossimo refactor
-# dei test verso `_componenti_service_helpers` puro.
-_resolve_emittente_sr_id_safe = resolve_emittente_sr_id_safe
-
-
-def _normalize_componenti_overrides(  # noqa: D401 — alias backward-compat
-    overrides: Any, *, function_name: str,
-) -> dict[str, str] | None:
-    return normalize_componenti_overrides(
-        overrides, function_name=function_name,
-        error_code="E_PREV_VALIDAZIONE",
-    )
-
-
-def _normalize_componenti_attivazioni(  # noqa: D401 — alias backward-compat
-    attivazioni: Any, *, function_name: str,
-) -> dict[str, bool] | None:
-    return normalize_componenti_attivazioni(
-        attivazioni, function_name=function_name,
-        error_code="E_PREV_VALIDAZIONE",
-    )
+# I test importano direttamente dal modulo helpers (no piu' alias qui).
 
 
 # Scopo: Gating L1 sugli override prezzo componenti (form atomic 2026-05-12).

@@ -27,6 +27,28 @@ class EmittentiFiscaliRepository:
     """Accesso DB per emittenti fiscali."""
 
     # =================================================================
+    # Lookup
+    # =================================================================
+
+    # Scopo: Risolve il `soggetto_ruolo_id` dell'emittente fiscale dato il
+    # suo `id` (PK reale). Single source of truth per i caller cross-dominio
+    # (vendite/preventivi/contratti) che devono passare lo sr_id alle fn
+    # pricing/componenti (che lavorano su soggetto_ruolo_id, non sulla PK
+    # `emittenti_fiscali.id`). Vedi memoria `feedback_emittente_pk_vs_soggetto_ruolo`.
+    # Ritorna None se l'id non esiste. Estratto da
+    # `*Repository.get_emittente_sr_id_by_fiscale_id` duplicato simmetrico
+    # (Fase H residue 2026-05-14): i repo sorgente ora delegano qui.
+    def get_sr_id_by_fiscale_id(self, fiscale_id: int) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali "
+                "WHERE id = %s",
+                [fiscale_id],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row else None
+
+    # =================================================================
     # Creazione
     # =================================================================
 

@@ -300,10 +300,16 @@ Il dettaglio (`GET /<id>/`) include:
     "categoria_cliente_snapshot_descrizione": "Cliente gold",
     "valido_dal": "2026-01-01", "valido_al": "2026-12-31",
     "utility": {"id": 5, "tipo_utenza_codice": "DOM", ...},
-    "righe": [{"id": 99, "articolo_codice": "ART-001", "prezzo_unitario": "25.50"}, ...]
+    "righe": [{"id": 99, "articolo_codice": "ART-001", "is_composito": false, "prezzo_unitario": "25.50"}, ...]
   }
 }
 ```
+
+Ogni riga espone `is_composito` denormalizzato (JOIN `catalogo.articoli`) sia
+nel detail (`/righe` interne al contratto) sia nella preview righe applicate
+(`/righe-preview/`). Driver lato FE per detection auto-apertura
+`ComponentiDialog` e visibilita' `ComponentiPanel` in EDIT senza round-trip
+extra al catalogo.
 
 ## Regole
 

@@ -83,7 +83,7 @@ Workaround: scenari senza override (resolver pricing valorizza tutto) funzionano
 
 Stima: 1 sessione (post fix DB).
 
-### Fase G — Replicazione 4 sorgenti (ordini / contratti / ddt) — IN_CORSO
+### Fase G — Replicazione 4 sorgenti (ordini / contratti / ddt) — PARZIALE
 
 Pattern preventivi replicato simmetricamente. Una sessione per sorgente:
 
@@ -98,9 +98,32 @@ ordini e ddt a seguire. Riordino: contratti -> ordini -> ddt -> consumi.
 per ogni sorgente, NON solo preview pre-save. Estrazione building block FE
 `ComponentiPanel.vue` anticipata gia' in fase G-contratti (vedi Fase H).
 
-Dopo Fase G si potrà rimuovere il path legacy `resolve_prezzo_composito` (repo + service + DB DROP fn).
+**Decisione 2026-05-14 (post commit G-contratti)**: ordini/ddt **rinviati a
+data da definirsi**. Scoperta in fase di kickoff Fase G-ordini: i moduli
+Python ed Vue per `ordini` e `ddt` **non esistono nel codebase**. Le tabelle
+DB e le fn `_init`/`_preview` sono state atterrate dal team DB nelle scorse
+sessioni (vedi `docs/it/dbzero/vendite/funzioni/` + `tabelle/`), ma non c'e'
+ancora il modulo BE base (CRUD testata, righe, indirizzi, fulfillment, stati)
+ne' il modulo FE base (SearchTable, Drawer, store, API client).
 
-Stima: 4 sessioni totali (1 per sorgente, contratti → ordini → ddt → consumi se previsto).
+Costruire ordini/ddt da zero non e' scope "Fase G componenti BoM": e'
+un sotto-progetto autonomo che richiede decisioni di dominio aperte
+(stati ordine, modalita' pricing, integrazione preventivo→ordine,
+ordine→commessa, fulfillment, ciclo DDT). Stima realistica del solo
+modulo base BE+FE: ~7 sessioni totali (2 BE ordini + 2 FE ordini +
+1.5 BE ddt + 1.5 FE ddt) prima ancora di toccare i componenti BoM.
+
+Quando i moduli ordini/ddt esisteranno, l'aggiunta dei componenti BoM
+sara' di ~30 min repo + 1h service+API per ogni sorgente grazie al
+`ComponentiRepositoryMixin` e a `ComponentiPanel`/`ComponentiDialog` FE
+(Fase H atterrata).
+
+Dopo Fase G **completa** si potra' rimuovere il path legacy
+`resolve_prezzo_composito` (repo + service + DB DROP fn). **Oggi resta
+attivo** finche' ordini/ddt non sono riallineati.
+
+Stima residua componenti BoM (post sotto-progetto ordini/ddt):
+~2 sessioni per replicare il pattern (1 per sorgente).
 
 #### Fase G-contratti — IN_CORSO 2026-05-14
 
@@ -197,9 +220,13 @@ stima originale 1.5 grazie all'anticipo BE.
 | 4 | Brief DB **default `attivo=TRUE` sempre** in 4 fn `*_init` (decisione "BoM contratto immutabile" §9.3 del modello) | Team DB | ✅ done 2026-05-13 (Liquibase applied) |
 | 5 | **Fase F smoke** §3.4 (4 scenari) | Tid + io | aperta — sbloccata da #1+#4 |
 | 6 | Decisione gating L1 `componenti_attivazioni` (Fase D) | Tid (dominio) | ✅ chiusa con #4 — operatore non sceglie composizione, nessun gating richiesto |
-| 7 | **Fase G** replicazione 4 sorgenti (ordini/contratti/ddt) | io | aperta |
-| 8 | DROP `fn_resolve_prezzo_composito` + cleanup `pricing_repository.resolve_prezzo_composito` + `pricing_service.resolve_prezzo_composito` + path legacy `BoMComponentExpander._resolve_cached` + path BE dormiente `componenti_attivazioni` | Tid + team DB, post Fase G | aperta |
-| 9 | **Fase H** building block (BE base class, FE `ComponentiTable`, `useTokenedFetch`) | io | ✅ BE atterrato 2026-05-14 (mixin repo + helper service); FE pendente sessione successiva |
+| 7 | **Fase G** replicazione 4 sorgenti (ordini/contratti/ddt) | io | ⏸️ parziale: preventivi+contratti done 2026-05-14; ordini+ddt rinviati (moduli BE/FE inesistenti — sotto-progetto autonomo) |
+| 8 | DROP `fn_resolve_prezzo_composito` + cleanup `pricing_repository.resolve_prezzo_composito` + `pricing_service.resolve_prezzo_composito` + path legacy `BoMComponentExpander._resolve_cached` + path BE dormiente `componenti_attivazioni` | Tid + team DB, post Fase G completa | bloccata da #7 (ordini+ddt) |
+| 9 | **Fase H** building block (BE mixin/helper, FE `ComponentiPanel` + `useTokenedFetch` + `useRigaComponenti`) | io | ✅ done 2026-05-14 (BE + FE atterrati nel commit `b8068878f`) |
+| 10 | Esporre `is_composito` denormalizzato in proiezione `contratti_righe` (BE) per consentire detection FE in EDIT senza round-trip extra | io | aperta (rilevata in review FE 2026-05-14) |
+| 11 | Estrarre `is_articolo_composito` + `get_emittente_sr_id_by_fiscale_id` in helper cross-dominio (`catalogo_repository`/`anagrafiche_repository`) | io | aperta (cleanup Fase H residue) |
+| 12 | Rimozione ~20 aliases backward-compat `_normalize_*` / `_resolve_emittente_sr_id_safe` in preventivi/contratti service + refactor mock test verso `_componenti_service_helpers` | io | aperta (cleanup Fase H residue) |
+| 13 | Fix #2 (`_load_componente_for_modification`: 3 query → 1 JOIN) | io | rinviato — beneficio basso, non hot path |
 
 ## 4. Stima residua
 
@@ -210,10 +237,11 @@ stima originale 1.5 grazie all'anticipo BE.
 | C — FE Dialog | ✅ done | 0 |
 | D — FE EDIT panel | ✅ done | 0 |
 | E — Expansion commessa | ✅ done | 0 |
-| F — Smoke §3.4 | aperta (blocco DB JSONB) | 1 |
-| G — 4 sorgenti | in_corso (contratti BE done; FE + ordini + ddt pending) | 3.5 |
-| H — Building block | in_corso (BE done 2026-05-14; FE pending) | 1 |
-| **RESIDUO** | | **~5.5 sessioni** |
+| F — Smoke §3.4 | aperta | 1 (Tid + io quando ha tempo) |
+| G — 4 sorgenti | parziale: preventivi+contratti done. Ordini+ddt rinviati (moduli base inesistenti) | ~2 sessioni quando i moduli ordini/ddt esisteranno (oggi blocked) |
+| H — Building block | ✅ done 2026-05-14 (BE+FE) | 0 |
+| Cleanup residue (#10-#13) | aperto | ~0.5 sessioni totali |
+| **RESIDUO immediato (escluso sotto-progetto ordini/ddt)** | | **~1.5 sessioni** |
 
 ## 5. Stato lavorazione
 
