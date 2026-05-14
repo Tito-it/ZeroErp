@@ -582,6 +582,33 @@ class PreventiviRepository(ComponentiRepositoryMixin):
         from apps.catalogo.db.catalogo_repository import CatalogoRepository
         return CatalogoRepository().is_articolo_composito(articolo_id)
 
+    # Scopo: Load atomico di un componente con guard scope completo
+    # (componente → riga → preventivo) in UN'unica query JOIN. Sostituisce
+    # la sequenza 3-query (`get_componente` + `get_riga` + `get_preventivo`)
+    # del service `_load_componente_for_modification` (Fix #2 perf,
+    # refactor-componenti.md §13). Ritorna `None` se il componente non
+    # esiste; altrimenti dict con `{componente_id, riga_preventivo_id,
+    # preventivo_id, stato_codice_interno}` strettamente necessari ai
+    # check del service.
+    def load_componente_with_scope(
+        self, componente_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT c.id          AS componente_id,
+                   c.riga_preventivo_id,
+                   r.preventivo_id,
+                   sdp.codice_interno AS stato_codice_interno
+              FROM vendite.preventivi_righe_componenti c
+              JOIN vendite.preventivi_righe r ON r.id = c.riga_preventivo_id
+              JOIN vendite.preventivi p       ON p.id = r.preventivo_id
+              JOIN config.stati_doc_preventivi sdp
+                                              ON sdp.id = p.stato_doc_preventivo_id
+             WHERE c.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [componente_id])
+            return row_to_dict(cursor)
+
     # Scopo: Restituisce il factor_to_base della UoM operativa di un articolo.
     #        Usato dal service per derivare qta_operativa = quantita * factor
     #        quando il payload FE non passa esplicitamente i due campi

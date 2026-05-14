@@ -40,7 +40,6 @@ from apps.vendite.db.commesse_repository import (
     CommesseRepository,
     PushableRow,
 )
-from apps.vendite.services.pricing_service import PricingService
 
 logger = logging.getLogger(__name__)
 
@@ -92,19 +91,15 @@ class BoMComponentExpander:
     commessa, la separazione fra "padre con totale" e "figli esposti
     come righe descrittive" avviene a valle (generazione fatture_righe).
 
-    Path snapshot (preferito quando snapshot loader fornito al ctor):
-    legge i componenti gia' negoziati al preventivo via
+    Path snapshot (unico, post cleanup legacy 2026-05-14): legge i
+    componenti gia' negoziati al documento sorgente via
     `componenti_loader`, che internamente filtra `attivo=TRUE` (solo
     componenti effettivamente inclusi). `esposto_in_fattura` arriva dalla
     proiezione (JOIN runtime su `articoli_componenti`).
 
-    Path legacy resolver (fallback per sorgenti senza snapshot loader —
-    ordini/contratti/ddt fino a Fase G): invoca
-    `pricing_service.resolve_prezzo_composito` -> fn DB
-    `fn_resolve_prezzo_composito` (DEPRECATED dal 2026-05-13, modello
-    unificato). Il dict ritornato include `coeff_qta` (Decimal),
-    `esposto_in_fattura`. Path da rimuovere quando ordini/contratti/ddt
-    saranno migrati al pattern snapshot.
+    Articolo composito senza loader o con snapshot vuoto: pass-through
+    difensivo + `logger.warning` (la riga padre va in commessa non
+    espansa). Atteso solo in dev o per handler senza loader iniettato.
 
     Decisioni di design (sviluppo-listini-v5 §14.4.1):
     - DEC-2: segment_key suffix '#CMP:{componente_id}'
@@ -114,35 +109,31 @@ class BoMComponentExpander:
 
     Cache locale (vita = istanza, tipicamente vita = ciclo _process_rows):
     - composite_cache: evita lookup ripetuti is_composito per stesso articolo
-    - resolve_cache: evita ri-chiamata resolver per parametri identici
     """
 
     def __init__(
         self,
-        pricing_service: PricingService | None = None,
         is_composito_fn: Callable[[Any], bool] | None = None,
         componenti_loader: Callable[[int], list[dict[str, Any]]] | None = None,
     ) -> None:
-        # Lazy default: PricingService istanziato solo se serve davvero.
-        # Permette di iniettare un mock nei test senza setup DB.
-        self._pricing_service = pricing_service
         self._is_composito_fn = is_composito_fn or self._default_is_composito
-        # componenti_loader: snapshot pricing pre-popolato (refactor 2026-05-11).
-        # Se valorizzato + row.riga_sorgente_id presente, legge i componenti
-        # gia' fissati al preventivo (origine_prezzo, override manuale ecc.) e
-        # bypassa il resolver al push. None (default legacy) = resolver al push.
-        # Vedi `refactor-componenti.md`.
+        # componenti_loader: snapshot pricing pre-popolato (modello unificato
+        # BoM 2026-05-13). Obbligatorio per sorgenti che generano commesse
+        # da articoli compositi: senza loader la riga padre composita resta
+        # non espansa (pass-through difensivo + warning audit). Il path
+        # legacy `fn_resolve_prezzo_composito` e' stato rimosso col cleanup
+        # 2026-05-14 (mai realmente esercitato in produzione: preventivi ha
+        # snapshot, ordini/ddt non esistono).
         self._componenti_loader = componenti_loader
         self._composite_cache: dict[Any, bool] = {}
-        self._resolve_cache: dict[tuple, list[dict[str, Any]]] = {}
 
-    # Scopo: applica la logica BoM a una riga sorgente, restituendo
-    #        1 o N PushableRow.
-    #        Path snapshot (preferito quando disponibile): legge i componenti
-    #        gia' negoziati al preventivo via `componenti_loader`.
-    #        Path legacy fallback: invoca il resolver al push. TODO Fase G:
-    #        rimuovibile quando ordini/contratti/ddt avranno snapshot loader
-    #        e la fn DB `fn_resolve_prezzo_composito` sara' droppata.
+    # Scopo: applica la logica BoM a una riga sorgente, restituendo 1 o N
+    #        PushableRow. Path unico (modello unificato 2026-05-13): legge
+    #        i componenti gia' negoziati al documento via `componenti_loader`
+    #        (snapshot pricing pre-popolato lato repository sorgente).
+    #        Senza loader o con loader che ritorna lista vuota: pass-through
+    #        difensivo con warning audit (la riga padre composita resta non
+    #        espansa, ma il push non si blocca).
     def expand(self, row: PushableRow) -> list[PushableRow]:
         # Pre-filtri: condizioni in cui la BoM non si applica o non e'
         # risolvibile. Pass-through silenzioso, no errore.
@@ -161,67 +152,38 @@ class BoMComponentExpander:
         if not self._is_composito_cached(row.articolo_id):
             return [row]
 
-        # Path snapshot: leggi componenti gia' negoziati al preventivo
-        # (modello unificato: filtrati `attivo=TRUE` dal repository).
-        # Lista vuota = riga legacy pre-deploy non popolata -> fallback
-        # al resolver (caso edge in dev, atteso 0 in produzione).
+        # Path snapshot (unico, post cleanup legacy 2026-05-14): legge
+        # componenti gia' negoziati al documento sorgente (modello unificato:
+        # filtrati `attivo=TRUE` dal repository).
         if (
             self._componenti_loader is not None
             and row.riga_sorgente_id is not None
         ):
             snapshot = self._componenti_loader(row.riga_sorgente_id)
             if snapshot:
-                return [self._build_componente_row_from_snapshot(row, c) for c in snapshot]
+                return [
+                    self._build_componente_row_from_snapshot(row, c) for c in snapshot
+                ]
 
-        # Path legacy: resolver `fn_resolve_prezzo_composito` (DEPRECATED).
-        # Mantenuto solo per ordini/contratti/ddt finche' non hanno
-        # snapshot loader (Fase G). Per il modello unificato il resolver
-        # B (1 riga padre) e' inconsistente: il padre composito ha SEMPRE
-        # componenti BoM, mai 1 sola riga padre. Pass-through difensivo.
-        righe = self._resolve_cached(row)
-        if len(righe) == 1 and str(righe[0]["componente_id"]) == str(row.articolo_id):
-            return [row]
-        return [self._build_componente_row(row, r) for r in righe]
+        # Articolo composito senza snapshot loader o con lista vuota.
+        # Pass-through difensivo + warning audit: la riga padre va in
+        # commessa non espansa. Atteso solo in dev (pre-deploy modello
+        # unificato) o per handler senza loader iniettato. Quando una nuova
+        # sorgente verra' wirata, fornire un loader analogo a HandlerPreventivi.
+        logger.warning(
+            "BoMComponentExpander.expand: articolo composito senza snapshot "
+            "loader o snapshot vuoto, pass-through padre. "
+            "articolo_id=%s riga_sorgente_id=%s",
+            row.articolo_id,
+            row.riga_sorgente_id,
+        )
+        return [row]
 
     # Scopo: cache wrapper per is_composito_fn (1 lookup per articolo per istanza).
     def _is_composito_cached(self, articolo_id: Any) -> bool:
         if articolo_id not in self._composite_cache:
             self._composite_cache[articolo_id] = bool(self._is_composito_fn(articolo_id))
         return self._composite_cache[articolo_id]
-
-    # Scopo: cache wrapper per resolver composito sui parametri-chiave
-    #        (articolo, uom, BA, utility, data, emittente). Stessa coppia
-    #        BoM/scenario commerciale -> stesso risultato, evita N round-trip
-    #        nel _process_rows.
-    #        `uom_id` parte della key: la fn DB usa la UoM per calcolare il
-    #        factor_to_base e quindi il prezzo finale; due righe con stessi
-    #        (articolo, BA, utility, data, emittente) ma UoM diverse
-    #        avrebbero risultati distinti — la key le deve discriminare.
-    def _resolve_cached(self, row: PushableRow) -> list[dict[str, Any]]:
-        cache_key = (
-            str(row.articolo_id),
-            row.uom_id,
-            row.billing_account_id,
-            row.utility_id,
-            row.competenza_mese,
-            row.emittente_soggetto_ruolo_id,
-        )
-        if cache_key in self._resolve_cache:
-            return self._resolve_cache[cache_key]
-
-        if self._pricing_service is None:
-            self._pricing_service = PricingService()
-
-        righe = self._pricing_service.resolve_prezzo_composito(
-            prodotto_id=row.articolo_id,
-            uom_id=row.uom_id,
-            data_riferimento=row.competenza_mese,
-            ba_id=row.billing_account_id,
-            utility_id=row.utility_id,
-            emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
-        )
-        self._resolve_cache[cache_key] = righe
-        return righe
 
     # Scopo: core riusabile per costruire una PushableRow di componente
     #        a partire dal padre. Eredita tutto il contesto (sorgente, BA,
@@ -267,24 +229,6 @@ class BoMComponentExpander:
             prezzo_snapshot=componente_prezzo,
             segment_key=f"{row.segment_key}#CMP:{componente_id}",
             meta=nuovo_meta,
-        )
-
-    # Scopo: adatta il dict ritorno resolver al builder generico.
-    @classmethod
-    def _build_componente_row(
-        cls,
-        row: PushableRow,
-        resolver_riga: dict[str, Any],
-    ) -> PushableRow:
-        # `Decimal(str(...))` per evitare precisione errata se la fn DB
-        # ritornasse mai un float (oggi e' numeric -> Decimal nativo).
-        return cls._build_componente_pushable_row(
-            row,
-            componente_id=resolver_riga["componente_id"],
-            componente_uom_id=resolver_riga["uom_id"],
-            componente_prezzo=resolver_riga["prezzo_unitario"],
-            coeff_qta=Decimal(str(resolver_riga["coeff_qta"])),
-            esposto_in_fattura=bool(resolver_riga.get("esposto_in_fattura", False)),
         )
 
     # Scopo: adatta il dict componente preventivo al builder generico

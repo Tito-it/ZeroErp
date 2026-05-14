@@ -1002,16 +1002,11 @@ class ContrattiService:
     # `_componenti_service_helpers.py` (Fase H BB).
 
     # Scopo: Helper privato condiviso da update/delete componente. Esegue
-    # guard + scope check + stato contratto modificabile. Solleva
-    # `E_VENDITE_NOT_FOUND` su componente inesistente o fuori scope (riga_id
-    # URL o contratto_id), `E_CONTRATTO_NON_MODIFICABILE` se contratto post-
-    # DRAFT. Defense-in-depth contro URL forgiati: scope check sia su
-    # `riga_id` (anti-tampering) sia su `contratto_id` via JOIN runtime.
-    #
-    # Performance: 3 query (`get_componente` + `get_riga` +
-    # `_assert_contratto_draft` che fa internamente `get_contratto`).
-    # Refactor a 1 JOIN rinviato (vedi `refactor-componenti.md` §H —
-    # beneficio basso, non hot path).
+    # guard + scope check (riga_id URL + contratto_id) + stato contratto
+    # modificabile in UN'unica query JOIN componente→riga→contratto (Fix #2
+    # refactor-componenti.md). Solleva `E_VENDITE_NOT_FOUND` su componente
+    # inesistente o fuori scope, `E_CONTRATTO_NON_MODIFICABILE` se contratto
+    # post-DRAFT.
     def _load_componente_for_modification(
         self,
         *,
@@ -1020,32 +1015,32 @@ class ContrattiService:
         componente_id: int,
         function_name: str,
     ) -> None:
-        componente = self._repo.get_componente(componente_id)
+        scope = self._repo.load_componente_with_scope(componente_id)
         ErrorManager.require(
-            componente is not None,
+            scope is not None,
             code=E_VENDITE_NOT_FOUND,
             message="Componente contratto non trovato.",
             detail=f"componente_id={componente_id}",
             function_name=function_name,
         )
-        assert componente is not None
+        assert scope is not None
 
         # Anti-tampering URL: riga_id dalla rotta deve matchare riga reale.
+        riga_reale = int(scope["riga_contratto_id"])
         ErrorManager.require(
-            int(componente["riga_contratto_id"]) == riga_id,
+            riga_reale == riga_id,
             code=E_VENDITE_NOT_FOUND,
             message="Componente contratto non trovato.",
             detail=(
                 f"componente_id={componente_id} non appartiene a "
-                f"riga_id={riga_id} (riga reale={componente['riga_contratto_id']})"
+                f"riga_id={riga_id} (riga reale={riga_reale})"
             ),
             function_name=function_name,
         )
 
-        riga_padre = self._repo.get_riga(int(componente["riga_contratto_id"]))
+        # Scope contratto: defense-in-depth contro URL forgiati.
         ErrorManager.require(
-            riga_padre is not None
-                and int(riga_padre.get("contratto_id") or 0) == contratto_id,
+            int(scope["contratto_id"]) == contratto_id,
             code=E_VENDITE_NOT_FOUND,
             message="Componente contratto non trovato.",
             detail=(
@@ -1056,12 +1051,24 @@ class ContrattiService:
         )
 
         # Guard stato modificabile: contratti_righe_componenti seguono la
-        # stessa policy delle righe padre (solo DRAFT modificabile).
-        # `_assert_contratto_draft` fa internamente `get_contratto` — non
-        # duplichiamo la query qui.
-        self._assert_contratto_draft(
-            contratto_id, op_label="Modifica componente riga contratto",
-        )
+        # stessa policy delle righe padre (solo DRAFT modificabile). Lo
+        # stato e' gia' nella tupla del JOIN — nessun round-trip extra.
+        stato = str(scope.get("stato_codice") or "")
+        if stato != "DRAFT":
+            ErrorManager.raise_error(
+                code="E_CONTRATTO_NON_MODIFICABILE",
+                message="Operazione non consentita nello stato corrente.",
+                detail=(
+                    "Modifica componente riga contratto ammessa solo su "
+                    f"contratti in stato DRAFT. Stato corrente: {stato}. "
+                    "Per modifiche su contratti post-DRAFT creare un nuovo contratto."
+                ),
+                context={
+                    "contratto_id": contratto_id,
+                    "stato_codice": stato,
+                    "op": "Modifica componente riga contratto",
+                },
+            )
 
     # Scopo: Preview componenti BoM per drawer riga contratto (ComponentiDialog
     # FE). Read-only: il FE invoca PRIMA del save di una riga composita per

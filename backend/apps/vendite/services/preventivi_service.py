@@ -1769,12 +1769,15 @@ def list_componenti_riga(
     return repo.list_componenti_riga(riga_id, solo_attivi=solo_attivi)
 
 
-# Scopo: Helper privato condiviso da update/delete componente. Esegue le 3
-#        query di guard + scope check + stato preventivo e ritorna le 3
-#        entita' fetchate. Evita duplicazione del pattern in update_componente
-#        e delete_componente. Solleva ServiceError (404 / 422 a seconda).
-#        Scope check sia su `riga_id` URL (anti-tampering) che su
-#        `preventivo_id`: due livelli di defense-in-depth contro URL forgiati.
+# Scopo: Helper privato condiviso da update/delete componente. Esegue
+#        guard + scope check (riga_id URL + preventivo_id) + stato
+#        preventivo modificabile in UN'unica query JOIN
+#        componente→riga→preventivo (Fix #2 perf, refactor-componenti.md).
+#        Solleva `E_PREV_COMPONENTE_NOT_FOUND` su componente inesistente
+#        o fuori scope, `E_PREV_STATO_NON_MODIFICABILE` se preventivo non
+#        in `_STATI_RIGHE_MODIFICABILI`.
+#        Defense-in-depth: scope check sia su `riga_id` (anti-tampering
+#        URL) sia su `preventivo_id` via JOIN runtime.
 def _load_componente_for_modification(
     repo: PreventiviRepository,
     *,
@@ -1782,51 +1785,53 @@ def _load_componente_for_modification(
     riga_id: int,
     componente_id: int,
     function_name: str,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    componente = repo.get_componente(componente_id)
+) -> None:
+    scope = repo.load_componente_with_scope(componente_id)
     ErrorManager.require(
-        componente is not None,
+        scope is not None,
         code="E_PREV_COMPONENTE_NOT_FOUND",
         message="Componente non trovato.",
         detail=f"componente_id={componente_id}",
         function_name=function_name,
     )
-    assert componente is not None
+    assert scope is not None
 
     # Anti-tampering URL: il `riga_id` dalla rotta deve matchare la riga
-    # padre reale del componente. Altrimenti l'utente potrebbe forgiare
-    # una URL `/preventivi/1/righe/999/componenti/50/` con riga falsa.
+    # padre reale del componente.
+    riga_reale = int(scope["riga_preventivo_id"])
     ErrorManager.require(
-        int(componente["riga_preventivo_id"]) == riga_id,
+        riga_reale == riga_id,
         code="E_PREV_COMPONENTE_NOT_FOUND",
         message="Componente non trovato.",
         detail=(
             f"componente_id={componente_id} non appartiene a "
-            f"riga_id={riga_id} (riga reale={componente['riga_preventivo_id']})"
+            f"riga_id={riga_id} (riga reale={riga_reale})"
         ),
         function_name=function_name,
     )
 
-    riga_padre = repo.get_riga(int(componente["riga_preventivo_id"]))
+    # Scope preventivo: defense-in-depth contro URL forgiati.
     ErrorManager.require(
-        riga_padre is not None and riga_padre.get("preventivo_id") == preventivo_id,
+        int(scope["preventivo_id"]) == preventivo_id,
         code="E_PREV_COMPONENTE_NOT_FOUND",
         message="Componente non trovato.",
-        detail=f"componente_id={componente_id} fuori scope preventivo_id={preventivo_id}",
+        detail=(
+            f"componente_id={componente_id} fuori scope "
+            f"preventivo_id={preventivo_id}"
+        ),
         function_name=function_name,
     )
-    assert riga_padre is not None
 
-    testata = repo.get_preventivo(preventivo_id)
-    assert testata is not None  # garantito da get_riga ok sopra
+    # Guard stato modificabile: il JOIN porta gia' lo stato — niente
+    # round-trip extra a `get_preventivo`.
+    stato = str(scope.get("stato_codice_interno") or "")
     ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
+        stato in _STATI_RIGHE_MODIFICABILI,
         code="E_PREV_STATO_NON_MODIFICABILE",
         message="Componenti non modificabili nello stato corrente.",
-        detail=f"stato={testata['stato_codice_interno']}",
+        detail=f"stato={stato}",
         function_name=function_name,
     )
-    return componente, riga_padre, testata
 
 
 # Scopo: Modifica componente esistente. Guard stato preventivo modificabile

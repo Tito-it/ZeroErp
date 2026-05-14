@@ -1026,16 +1026,12 @@ class TestPreventiviService(unittest.TestCase):
     def test_update_componente_ok(self):
         from apps.vendite.services.preventivi_service import update_componente
 
-        self.mock_repo.get_componente.return_value = {
-            "id": 50, "riga_preventivo_id": 10,
-            "componente_id": "c1", "prezzo_unitario": "200",
-            "origine_prezzo": "CATEGORIA",
-        }
-        self.mock_repo.get_riga.return_value = {
-            "id": 10, "preventivo_id": 1, "articolo_id": "uuid-art", "meta": {},
-        }
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        # 1-JOIN restituisce scope completo + stato in colpo unico.
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 1,
+            "stato_codice_interno": "DRAFT",
         }
         self.mock_repo.update_componente.return_value = True
 
@@ -1049,7 +1045,7 @@ class TestPreventiviService(unittest.TestCase):
     def test_update_componente_not_found(self):
         from apps.vendite.services.preventivi_service import update_componente
 
-        self.mock_repo.get_componente.return_value = None
+        self.mock_repo.load_componente_with_scope.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             update_componente(1, 10, 999, {"prezzo_unitario": "100"})
         self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")
@@ -1059,26 +1055,27 @@ class TestPreventiviService(unittest.TestCase):
     def test_update_componente_url_tampering_riga_id(self):
         from apps.vendite.services.preventivi_service import update_componente
 
-        self.mock_repo.get_componente.return_value = {
-            "id": 50, "riga_preventivo_id": 10,  # riga reale = 10
-            "componente_id": "c1", "prezzo_unitario": "200",
+        # 1-JOIN: componente esiste ma appartiene a riga 10, URL chiede 999.
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,  # riga reale = 10
+            "preventivo_id": 1,
+            "stato_codice_interno": "DRAFT",
         }
         with self.assertRaises(ServiceError) as ctx:
-            # URL falso: riga_id=999 ma componente appartiene a riga=10
             update_componente(1, 999, 50, {"prezzo_unitario": "100"})
         self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")
 
-    # Scopo: defense-in-depth — componente su altra riga/preventivo -> 404.
+    # Scopo: defense-in-depth — componente su altro preventivo -> 404.
     def test_update_componente_scope_violation(self):
         from apps.vendite.services.preventivi_service import update_componente
 
-        self.mock_repo.get_componente.return_value = {
-            "id": 50, "riga_preventivo_id": 10,
-            "componente_id": "c1", "prezzo_unitario": "200",
-        }
-        self.mock_repo.get_riga.return_value = {
-            "id": 10, "preventivo_id": 999,  # altro preventivo
-            "articolo_id": "uuid-art", "meta": {},
+        # 1-JOIN: componente vive su preventivo 999, URL chiede 1.
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 999,  # altro preventivo
+            "stato_codice_interno": "DRAFT",
         }
         with self.assertRaises(ServiceError) as ctx:
             update_componente(1, 10, 50, {"prezzo_unitario": "100"})
@@ -1088,15 +1085,11 @@ class TestPreventiviService(unittest.TestCase):
     def test_update_componente_stato_non_modificabile(self):
         from apps.vendite.services.preventivi_service import update_componente
 
-        self.mock_repo.get_componente.return_value = {
-            "id": 50, "riga_preventivo_id": 10,
-            "componente_id": "c1", "prezzo_unitario": "200",
-        }
-        self.mock_repo.get_riga.return_value = {
-            "id": 10, "preventivo_id": 1, "articolo_id": "uuid-art", "meta": {},
-        }
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "EMESSO", "uid": "abc",
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 1,
+            "stato_codice_interno": "EMESSO",  # non modificabile
         }
         with self.assertRaises(ServiceError) as ctx:
             update_componente(1, 10, 50, {"prezzo_unitario": "100"})
@@ -1106,14 +1099,11 @@ class TestPreventiviService(unittest.TestCase):
     def test_delete_componente_ok(self):
         from apps.vendite.services.preventivi_service import delete_componente
 
-        self.mock_repo.get_componente.return_value = {
-            "id": 50, "riga_preventivo_id": 10,
-        }
-        self.mock_repo.get_riga.return_value = {
-            "id": 10, "preventivo_id": 1, "articolo_id": "uuid-art", "meta": {},
-        }
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 1,
+            "stato_codice_interno": "DRAFT",
         }
         self.mock_repo.delete_componente.return_value = True
         result = delete_componente(1, 10, 50)
@@ -1125,7 +1115,7 @@ class TestPreventiviService(unittest.TestCase):
     def test_delete_componente_not_found(self):
         from apps.vendite.services.preventivi_service import delete_componente
 
-        self.mock_repo.get_componente.return_value = None
+        self.mock_repo.load_componente_with_scope.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             delete_componente(1, 10, 999)
         self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")

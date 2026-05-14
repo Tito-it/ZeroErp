@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Repository per il resolver prezzi v5 (pricing v5). Wrapper su:
-#        - vendite.fn_resolve_prezzo_listino_v2 (resolver 3 stadi)
-#        - vendite.fn_resolve_prezzo_composito (BoM ibrido A/B1/B2)
-#        Gli errori di dominio sollevati dalle funzioni via
+# Scopo: Repository per il resolver prezzi v5 (pricing v5). Wrapper su
+#        `vendite.fn_resolve_prezzo_listino_v2` (resolver 3 stadi
+#        bundle-aware). Gli errori di dominio sollevati dalle funzioni via
 #        script.fn_log_and_raise_error (P0001) vengono propagati al service
 #        che li traduce in ServiceError.
+#        Note: il legacy `vendite.fn_resolve_prezzo_composito` (BoM ibrido
+#        A/B1/B2 pre-modello-unificato) e' stato rimosso dal Python con
+#        cleanup 2026-05-14. DROP DB pendente (brief in work-in-progress).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from uuid import UUID
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import row_to_dict
 
 
 class PricingRepository:
@@ -108,55 +110,3 @@ class PricingRepository:
         assert result is not None
         return result
 
-    # Scopo: Invoca `vendite.fn_resolve_prezzo_composito`; ritorna N righe
-    #        per articolo composito con componenti esposti (CASO A) oppure
-    #        1 riga per articoli semplici / fallback (CASO B1/B2).
-    # Nota: la fn DB ritorna 8 colonne dal 2026-05-11 (aggiunta
-    # `origine_prezzo` per popolamento componenti CASO A).
-    #
-    # DEPRECATED 2026-05-13 (modello unificato componenti BoM): la fn DB
-    # `fn_resolve_prezzo_composito` ha COMMENT DEPRECATED dal migration
-    # 20260513-24. Il nuovo path passa per il resolver bundle-aware
-    # `fn_resolve_prezzo_listino_v2(... p_articolo_padre_contesto)` invocato
-    # internamente dalle fn `fn_<sorgente>_riga_componenti_init/preview`.
-    # Questo wrapper resta come fallback per `BoMComponentExpander` quando
-    # il caller non ha snapshot loader (ordini/contratti/ddt fino a Fase G).
-    # Rimuovere insieme alla fn DB quando sara' droppata.
-    def resolve_prezzo_composito(
-        self,
-        *,
-        prodotto_id: UUID | str,
-        uom_id: int,
-        data_riferimento: date,
-        ba_id: int,
-        utility_id: int,
-        emittente_soggetto_ruolo_id: int,
-        classe_utenza_id: int | None = None,
-    ) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    componente_id,
-                    uom_id,
-                    prezzo_unitario,
-                    iva_id,
-                    descrizione_fattura,
-                    esposto_in_fattura,
-                    coeff_qta,
-                    origine_prezzo
-                  FROM vendite.fn_resolve_prezzo_composito(
-                           %s::uuid, %s, %s, %s, %s, %s, %s
-                       )
-                """,
-                [
-                    str(prodotto_id),
-                    uom_id,
-                    data_riferimento,
-                    ba_id,
-                    utility_id,
-                    emittente_soggetto_ruolo_id,
-                    classe_utenza_id,
-                ],
-            )
-            return rows_to_list(cursor)

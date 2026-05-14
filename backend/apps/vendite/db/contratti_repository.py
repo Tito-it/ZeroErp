@@ -685,6 +685,34 @@ class ContrattiRepository(ComponentiRepositoryMixin):
         from apps.catalogo.db.catalogo_repository import CatalogoRepository
         return CatalogoRepository().is_articolo_composito(articolo_id)
 
+    # Scopo: Load atomico di un componente con guard scope completo
+    # (componente → riga → contratto) in UN'unica query JOIN. Sostituisce
+    # la sequenza 3-query (`get_componente` + `get_riga` + `get_contratto`)
+    # del service `_load_componente_for_modification` (Fix #2 perf,
+    # refactor-componenti.md §13). Ritorna `None` se il componente non
+    # esiste; altrimenti `{componente_id, riga_id, contratto_id,
+    # stato_codice}` con i 4 dati strettamente necessari ai check del
+    # service. Defense-in-depth: il caller verifica scope `riga_id` URL +
+    # `contratto_id` + stato modificabile sulla tupla ritornata.
+    def load_componente_with_scope(
+        self, componente_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT c.id          AS componente_id,
+                   c.riga_contratto_id,
+                   r.contratto_id,
+                   sd.codice_interno AS stato_codice
+              FROM vendite.contratti_righe_componenti c
+              JOIN vendite.contratti_righe r ON r.id = c.riga_contratto_id
+              JOIN vendite.contratti co      ON co.id = r.contratto_id
+              JOIN config.stati_doc_contratti sd
+                                             ON sd.id = co.stato_doc_contratto_id
+             WHERE c.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [componente_id])
+            return row_to_dict(cursor)
+
     # =================================================================
     # Componenti BoM riga contratto (modello unificato 2026-05-13)
     # =================================================================

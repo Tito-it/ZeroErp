@@ -1195,9 +1195,12 @@ class ContrattiServiceComponentiTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = MagicMock()
-        # componente esiste ma appartiene a riga 99, non 5
-        repo.get_componente.return_value = {
-            "id": 100, "riga_contratto_id": 99,
+        # 1-JOIN: componente esiste ma appartiene a riga 99, non 5
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 99,
+            "contratto_id": 1,
+            "stato_codice": "DRAFT",
         }
         repo_cls.return_value = repo
 
@@ -1329,11 +1332,13 @@ class ContrattiServiceComponentiTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = MagicMock()
-        repo.get_componente.return_value = {
-            "id": 100, "riga_contratto_id": 5,
+        # 1-JOIN restituisce scope completo + stato DRAFT in colpo unico
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 5,
+            "contratto_id": 1,
+            "stato_codice": "DRAFT",
         }
-        repo.get_riga.return_value = {"id": 5, "contratto_id": 1}
-        repo.get_contratto.return_value = _testata_default()
         repo.delete_componente.return_value = True
         repo_cls.return_value = repo
 
