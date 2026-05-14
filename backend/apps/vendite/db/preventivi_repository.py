@@ -16,6 +16,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
+from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.types import (
     PreventivoDetailRow,
     PreventivoIndirizzoRow,
@@ -26,7 +27,19 @@ from apps.vendite.types import (
 )
 
 
-class PreventiviRepository:
+class PreventiviRepository(ComponentiRepositoryMixin):
+    """Repository preventivi.
+
+    Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM
+    modello unificato (`preventivi_righe_componenti`). I metodi specifici
+    `init_componenti_riga` (chiama `fn_preventivo_riga_componenti_init`)
+    e `preview_componenti_riga` (chiama `fn_preventivo_riga_componenti_preview`)
+    sono definiti localmente.
+    """
+
+    # Configurazione mixin componenti.
+    _componenti_table_name = "vendite.preventivi_righe_componenti"
+    _componenti_fk_riga = "riga_preventivo_id"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista vw_preventivi_list)
@@ -561,14 +574,40 @@ class PreventiviRepository:
     #        componenti). Senza default, l'INSERT viola il NOT NULL della
     #        colonna `prezzo_unitario` con E_DATABASE generico.
     #        Ritorna False se articolo non trovato (defensive).
+    # Thin delegate cross-dominio (Fase H residue 2026-05-14): l'implementazione
+    # vive in `apps.catalogo.db.catalogo_repository.CatalogoRepository.is_articolo_composito`.
+    # I caller `preventivi_service` continuano a usare `self._repo.is_articolo_composito`
+    # (no churn lato caller + mock test backward-compat).
     def is_articolo_composito(self, articolo_id: str) -> bool:
+        from apps.catalogo.db.catalogo_repository import CatalogoRepository
+        return CatalogoRepository().is_articolo_composito(articolo_id)
+
+    # Scopo: Load atomico di un componente con guard scope completo
+    # (componente → riga → preventivo) in UN'unica query JOIN. Sostituisce
+    # la sequenza 3-query (`get_componente` + `get_riga` + `get_preventivo`)
+    # del service `_load_componente_for_modification` (Fix #2 perf,
+    # refactor-componenti.md §13). Ritorna `None` se il componente non
+    # esiste; altrimenti dict con `{componente_id, riga_preventivo_id,
+    # preventivo_id, stato_codice_interno}` strettamente necessari ai
+    # check del service.
+    def load_componente_with_scope(
+        self, componente_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT c.id          AS componente_id,
+                   c.riga_preventivo_id,
+                   r.preventivo_id,
+                   sdp.codice_interno AS stato_codice_interno
+              FROM vendite.preventivi_righe_componenti c
+              JOIN vendite.preventivi_righe r ON r.id = c.riga_preventivo_id
+              JOIN vendite.preventivi p       ON p.id = r.preventivo_id
+              JOIN config.stati_doc_preventivi sdp
+                                              ON sdp.id = p.stato_doc_preventivo_id
+             WHERE c.id = %s
+        """
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT is_composito FROM catalogo.articoli WHERE id = %s",
-                [str(articolo_id)],
-            )
-            row = cursor.fetchone()
-            return bool(row[0]) if row else False
+            cursor.execute(sql, [componente_id])
+            return row_to_dict(cursor)
 
     # Scopo: Restituisce il factor_to_base della UoM operativa di un articolo.
     #        Usato dal service per derivare qta_operativa = quantita * factor
@@ -686,15 +725,13 @@ class PreventiviRepository:
     # Vedi memoria `feedback_emittente_pk_vs_soggetto_ruolo`: la tabella
     # `emittenti_fiscali` ha sia `id` (PK) che `soggetto_ruolo_id` (FK),
     # serve la conversione PK -> sr_id per le fn pricing che attendono sr_id.
+    # Thin delegate cross-dominio (Fase H residue 2026-05-14): implementazione
+    # in `apps.anagrafiche.db.emittenti_fiscali_repository.EmittentiFiscaliRepository.get_sr_id_by_fiscale_id`.
     def get_emittente_sr_id_by_fiscale_id(self, fiscale_id: int) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali "
-                "WHERE id = %s",
-                [fiscale_id],
-            )
-            row = cursor.fetchone()
-            return int(row[0]) if row else None
+        from apps.anagrafiche.db.emittenti_fiscali_repository import (
+            EmittentiFiscaliRepository,
+        )
+        return EmittentiFiscaliRepository().get_sr_id_by_fiscale_id(fiscale_id)
 
     # Scopo: Popola i componenti BoM per una riga padre composita invocando
     # la fn DB `vendite.fn_preventivo_riga_componenti_init` (modello
@@ -837,171 +874,8 @@ class PreventiviRepository:
             ])
             return rows_to_list(cursor)
 
-    # Scopo: Lista componenti BoM di una riga padre con denormalizzazioni
-    # articolo/uom/iva + flag `obbligatorio` ed `esposto_in_fattura`
-    # (JOIN `articoli_componenti` — la BoM e' immutabile per design,
-    # JOIN runtime sempre coerente, no snapshot necessario).
-    # Modello unificato 2026-05-13.
-    #
-    # `solo_attivi=True` (default backcompat): filtra `c.attivo = TRUE`,
-    # esponendo solo i componenti attualmente inclusi nella riga.
-    # `solo_attivi=False`: include anche i componenti opzionali
-    # disattivati — usato dall'EDIT panel per consentire all'operatore
-    # di riattivare opzionali precedentemente esclusi.
-    def list_componenti_riga(
-        self, riga_id: int, *, solo_attivi: bool = True,
-    ) -> list[dict[str, Any]]:
-        filtro_attivo = "AND c.attivo = TRUE" if solo_attivi else ""
-        sql = f"""
-            SELECT
-                c.id,
-                c.riga_preventivo_id,
-                c.articolo_componente_id,
-                c.componente_id,
-                a.codice                AS componente_codice,
-                a.descrizione           AS componente_descrizione,
-                c.coeff_qta_snapshot,
-                c.quantita,
-                c.uom_operativa_id,
-                um.codice               AS uom_codice,
-                c.factor_to_base,
-                c.qta_operativa,
-                c.prezzo_unitario,
-                c.iva_id,
-                iva.codice              AS iva_codice,
-                iva.aliquota_iva        AS iva_aliquota,
-                c.origine_prezzo,
-                c.prezzo_resolver_context,
-                c.stato_approvazione_prezzo,
-                c.pratica_approvazione_prezzo_id,
-                c.meta,
-                c.ordine,
-                c.attivo,
-                ac.obbligatorio,
-                ac.esposto_in_fattura
-              FROM vendite.preventivi_righe_componenti c
-              LEFT JOIN catalogo.articoli a    ON a.id  = c.componente_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = c.uom_operativa_id
-              LEFT JOIN config.iva iva         ON iva.id = c.iva_id
-              LEFT JOIN catalogo.articoli_componenti ac
-                     ON ac.id = c.articolo_componente_id
-             WHERE c.riga_preventivo_id = %s
-               {filtro_attivo}
-             ORDER BY c.ordine NULLS LAST, c.id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [riga_id])
-            return rows_to_list(cursor)
-
-    # Scopo: Lookup singolo componente per id. None se inesistente.
-    # Stesse denormalizzazioni di `list_componenti_riga`.
-    def get_componente(self, componente_id: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT
-                c.id,
-                c.riga_preventivo_id,
-                c.articolo_componente_id,
-                c.componente_id,
-                a.codice                AS componente_codice,
-                a.descrizione           AS componente_descrizione,
-                c.coeff_qta_snapshot,
-                c.quantita,
-                c.uom_operativa_id,
-                um.codice               AS uom_codice,
-                c.factor_to_base,
-                c.qta_operativa,
-                c.prezzo_unitario,
-                c.iva_id,
-                iva.codice              AS iva_codice,
-                iva.aliquota_iva        AS iva_aliquota,
-                c.origine_prezzo,
-                c.prezzo_resolver_context,
-                c.stato_approvazione_prezzo,
-                c.pratica_approvazione_prezzo_id,
-                c.meta,
-                c.ordine,
-                c.attivo,
-                ac.obbligatorio,
-                ac.esposto_in_fattura
-              FROM vendite.preventivi_righe_componenti c
-              LEFT JOIN catalogo.articoli a    ON a.id  = c.componente_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = c.uom_operativa_id
-              LEFT JOIN config.iva iva         ON iva.id = c.iva_id
-              LEFT JOIN catalogo.articoli_componenti ac
-                     ON ac.id = c.articolo_componente_id
-             WHERE c.id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [componente_id])
-            return row_to_dict(cursor)
-
-    # Scopo: Update componente (prezzo, origine, stato approvazione, meta).
-    # Whitelist colonne anti-injection. I campi struttura
-    # (`componente_id`, `articolo_componente_id`, `coeff_qta_snapshot`,
-    # `riga_preventivo_id`) sono immutabili — non li accettiamo.
-    # `quantita` e' ricalcolato dai trigger DB, non passarlo qui.
-    _COMPONENTE_UPDATE_ALLOWED = frozenset({
-        "prezzo_unitario",
-        "iva_id",
-        "uom_operativa_id",
-        "factor_to_base",
-        "qta_operativa",
-        "origine_prezzo",
-        "prezzo_resolver_context",
-        "stato_approvazione_prezzo",
-        "pratica_approvazione_prezzo_id",
-        "meta",
-        "ordine",
-        "attivo",
-    })
-
-    def update_componente(self, componente_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if col not in self._COMPONENTE_UPDATE_ALLOWED:
-                continue  # silenzioso defense-in-depth (whitelist)
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(componente_id)
-        sql = (  # noqa: S608 — colonne whitelisted, parametri bound
-            f"UPDATE vendite.preventivi_righe_componenti "
-            f"SET {', '.join(fields)} WHERE id = %s"
-        )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
-
-    # Scopo: Soft delete singolo componente (attivo=false). Il trigger
-    # DB di ricalcolo padre lo escludera' dalla SUM (filtro `attivo`).
-    def delete_componente(self, componente_id: int) -> bool:
-        sql = (
-            "UPDATE vendite.preventivi_righe_componenti "
-            "SET attivo = FALSE WHERE id = %s AND attivo = TRUE"
-        )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [componente_id])
-            return cursor.rowcount > 0
-
-    # Scopo: Hard delete TUTTI i componenti di una riga padre. Usato dal
-    # service quando l'articolo padre cambia (es. da composito a non
-    # composito, o cambia BoM): i vecchi componenti non hanno piu' senso,
-    # vanno purged prima del re-init. Naming `purge_*` per distinguere
-    # esplicitamente dal pattern soft-delete `delete_*` del file
-    # (`delete_riga`, `delete_componente`).
-    def purge_componenti_riga(self, riga_id: int) -> int:
-        sql = "DELETE FROM vendite.preventivi_righe_componenti WHERE riga_preventivo_id = %s"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [riga_id])
-            return cursor.rowcount
+    # CRUD componenti (list/get/update/delete/purge) ereditato da
+    # `ComponentiRepositoryMixin`. Vedi `_componenti_repo_mixin.py`.
 
     # ══════════════════════════════════════════════════════════
     #  SCRITTURE — Indirizzi

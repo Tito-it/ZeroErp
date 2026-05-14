@@ -1060,3 +1060,289 @@ class ContrattiRepositoryNumberTests(TestCase):
         cursor.execute.assert_called_once_with(
             "SELECT script.fn_generate_codice(%s)", ["contratto"]
         )
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Componenti BoM riga contratto (modello unificato 2026-05-13)
+# ══════════════════════════════════════════════════════════════════════
+# Test specchio del pattern preventivi (test_preventivi_service §componenti):
+# preview, list, update, delete con guard scope contratto/riga/componente.
+
+
+class ContrattiServiceComponentiTests(TestCase):
+    """Suite componenti riga contratto (modello unificato BoM 2026-05-13).
+
+    Specchio simmetrico di `PreventiviServiceComponentiTests`. Tutto mockato
+    contro `ContrattiRepository` per non dipendere da DB reale.
+    """
+
+    def test_normalize_componenti_overrides_dict_invalid(self):
+        """Validator solleva su valori non-numero."""
+        from apps.vendite.services._componenti_service_helpers import (
+            normalize_componenti_overrides,
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            normalize_componenti_overrides(
+                {"abc-uuid": "non-numero"},
+                function_name="test",
+                error_code="E_VENDITE_VALIDATION",
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    def test_normalize_componenti_overrides_empty(self):
+        """{} → None (skip path init)."""
+        from apps.vendite.services._componenti_service_helpers import (
+            normalize_componenti_overrides,
+        )
+
+        self.assertIsNone(
+            normalize_componenti_overrides(
+                {}, function_name="test",
+                error_code="E_VENDITE_VALIDATION",
+            )
+        )
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_preview_componenti_riga_not_found(self, repo_cls):
+        """Contratto inesistente → E_VENDITE_NOT_FOUND."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_contratto.return_value = None
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().preview_componenti_riga(
+                999,
+                articolo_id="abc",
+                uom_operativa_id=1,
+                quantita=Decimal("1"),
+                auth_user_id=None,
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    @patch(
+        "apps.vendite.services.contratti_service.ContrattiService."
+        "_resolve_emittente_sr_id_for_contratto",
+        return_value=99,
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_preview_componenti_riga_ok(self, repo_cls, _mock_resolve):
+        """Preview chiama repo.preview_componenti_riga con args derivati dal contratto."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_contratto.return_value = {
+            **_testata_default(),
+            "valido_dal": date(2026, 5, 1),
+            "emittente_fiscale_id": 7,
+        }
+        repo.preview_componenti_riga.return_value = [
+            {"componente_id": "abc", "prezzo_suggerito": "10.00"},
+        ]
+        repo_cls.return_value = repo
+
+        result = ContrattiService().preview_componenti_riga(
+            1,
+            articolo_id="comp-uuid",
+            uom_operativa_id=2,
+            quantita=Decimal("3"),
+            auth_user_id=42,
+        )
+
+        self.assertEqual(len(result), 1)
+        repo.preview_componenti_riga.assert_called_once()
+        kwargs = repo.preview_componenti_riga.call_args.kwargs
+        self.assertEqual(kwargs["articolo_id"], "comp-uuid")
+        self.assertEqual(kwargs["uom_id"], 2)
+        self.assertEqual(kwargs["data_riferimento"], date(2026, 5, 1))
+        self.assertEqual(kwargs["ba_id"], 10)
+        self.assertEqual(kwargs["utility_id"], 3)
+        # Emittente risolto internamente dal service (mock → 99)
+        self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 99)
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_list_componenti_riga_riga_fuori_scope(self, repo_cls):
+        """Riga appartiene a contratto diverso → E_VENDITE_NOT_FOUND."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_riga.return_value = {"id": 5, "contratto_id": 99}
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().list_componenti_riga(1, 5)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_list_componenti_riga_ok(self, repo_cls):
+        """List delega al repo passando solo_attivi."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_riga.return_value = {"id": 5, "contratto_id": 1}
+        repo.list_componenti_riga.return_value = [{"id": 100}]
+        repo_cls.return_value = repo
+
+        result = ContrattiService().list_componenti_riga(1, 5, solo_attivi=False)
+        self.assertEqual(result, [{"id": 100}])
+        repo.list_componenti_riga.assert_called_once_with(5, solo_attivi=False)
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_componente_anti_tampering_riga(self, repo_cls):
+        """riga_id URL non matcha riga reale → E_VENDITE_NOT_FOUND."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        # 1-JOIN: componente esiste ma appartiene a riga 99, non 5
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 99,
+            "contratto_id": 1,
+            "stato_codice": "DRAFT",
+        }
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_componente_riga(
+                1, 5, 100, {"prezzo_unitario": "10"},
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch(
+        "apps.vendite.services.contratti_service.ContrattiService."
+        "_resolve_emittente_sr_id_for_contratto",
+        return_value=99,
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_articolo_composito_auto_init(
+        self, repo_cls, _mock_resolve, _mock_atomic,
+    ):
+        """Articolo composito → auto-init componenti in transazione atomica."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_contratto.return_value = _testata_default()
+        repo.create_riga.return_value = 500
+        repo.is_articolo_composito.return_value = True  # ← composito
+        repo.init_componenti_riga.return_value = 3  # 3 componenti inseriti
+        repo.get_riga.return_value = {"id": 500, "contratto_id": 1}
+        repo_cls.return_value = repo
+
+        result = ContrattiService().create_riga(
+            1,
+            {
+                "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
+                "prezzo_unitario": "0",
+                "quantita": "1",
+                "componenti_overrides": {"figlio-1": "5.50"},
+            },
+            auth_user_id=42,
+        )
+
+        # Verifica chiamate: create_riga + init_componenti_riga in atomic.
+        repo.create_riga.assert_called_once()
+        repo.is_articolo_composito.assert_called_once_with("019d544c-7ef6-7993-9dcb-0cd1ad77d4aa")
+        repo.init_componenti_riga.assert_called_once()
+        init_kwargs = repo.init_componenti_riga.call_args.kwargs
+        self.assertEqual(init_kwargs["riga_id"], 500)
+        self.assertEqual(init_kwargs["emittente_soggetto_ruolo_id"], 99)
+        # componenti_overrides normalizzato (Decimal-safe).
+        self.assertEqual(init_kwargs["componenti_overrides"], {"figlio-1": "5.50"})
+        self.assertEqual(result["id"], 500)
+
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch(
+        "apps.vendite.services.contratti_service.ContrattiService."
+        "_resolve_emittente_sr_id_for_contratto",
+        return_value=None,  # ← admin globale, niente emittente
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_articolo_composito_skip_init_senza_emittente(
+        self, repo_cls, _mock_resolve, _mock_atomic,
+    ):
+        """Articolo composito + emittente non risolvibile → skip init con log warning."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_contratto.return_value = _testata_default()
+        repo.create_riga.return_value = 500
+        repo.is_articolo_composito.return_value = True
+        repo.get_riga.return_value = {"id": 500, "contratto_id": 1}
+        repo_cls.return_value = repo
+
+        with self.assertLogs(
+            "apps.vendite.services.contratti_service", level="WARNING",
+        ) as logs:
+            ContrattiService().create_riga(
+                1,
+                {"articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa", "prezzo_unitario": "0", "quantita": "1"},
+                auth_user_id=None,
+            )
+
+        # Init NON chiamato + warning emesso per audit.
+        repo.init_componenti_riga.assert_not_called()
+        self.assertTrue(
+            any("auto_init_componenti_skipped" in msg for msg in logs.output),
+            f"Atteso warning skip in: {logs.output}",
+        )
+
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_articolo_non_composito_no_init(
+        self, repo_cls, _mock_atomic,
+    ):
+        """Articolo non composito → NO auto-init (path semplice)."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_contratto.return_value = _testata_default()
+        repo.create_riga.return_value = 500
+        repo.is_articolo_composito.return_value = False  # ← NON composito
+        repo.get_riga.return_value = {"id": 500, "contratto_id": 1}
+        repo_cls.return_value = repo
+
+        ContrattiService().create_riga(
+            1,
+            {"articolo_id": "019d53f6-58ca-7cb7-b77b-86d201ce9787", "prezzo_unitario": "10", "quantita": "1"},
+            auth_user_id=42,
+        )
+
+        repo.init_componenti_riga.assert_not_called()
+
+    def test_normalize_componenti_overrides_infinity_rejected(self):
+        """Decimal('Infinity') rifiutato dal check is_finite()."""
+        from apps.vendite.services._componenti_service_helpers import (
+            normalize_componenti_overrides,
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            normalize_componenti_overrides(
+                {"abc-uuid": "Infinity"}, function_name="test",
+                error_code="E_VENDITE_VALIDATION",
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("non finito", str(ctx.exception.message))
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_delete_componente_ok(self, repo_cls):
+        """Soft delete con scope OK → ritorna {deleted: True}."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        # 1-JOIN restituisce scope completo + stato DRAFT in colpo unico
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 5,
+            "contratto_id": 1,
+            "stato_codice": "DRAFT",
+        }
+        repo.delete_componente.return_value = True
+        repo_cls.return_value = repo
+
+        result = ContrattiService().delete_componente_riga(1, 5, 100)
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(result["deleted"])
+        repo.delete_componente.assert_called_once_with(100)

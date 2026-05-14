@@ -1656,7 +1656,33 @@
       "bom_vuota": "Articolo composito senza componenti validi alla data del documento. BoM scaduta o non configurata in catalogo.",
       "errore_caricamento": "Errore durante il caricamento dei componenti.",
       "summary": "{n} componenti attivi — totale stimato {total}",
-      "summary_zero": "Nessun componente attivo (preview ancora da confermare)"
+      "summary_zero": "Nessun componente attivo (preview ancora da confermare)",
+      "panel": {
+        "section_title": "Componenti del prodotto",
+        "create_hint": "L'articolo selezionato è un composito. Definisci i prezzi dei componenti dalla finestra dedicata prima di salvare la riga.",
+        "modifica_componenti": "Modifica componenti",
+        "summary_create": "{n} componenti pronti — saranno creati al salvataggio della riga.",
+        "padre_calcolato": "Calcolato",
+        "padre_calcolato_tooltip": "Il prezzo della riga padre composita è ricalcolato dal database come somma dei componenti × quantità.",
+        "vuoto": "Nessun componente BoM per questa riga.",
+        "col_codice": "Codice",
+        "col_descrizione": "Descrizione",
+        "col_qta": "Q.tà",
+        "col_uom": "UoM",
+        "col_prezzo": "Prezzo",
+        "col_origine": "Origine",
+        "col_iva": "IVA",
+        "errore_caricamento": "Errore durante il caricamento dei componenti.",
+        "errore_aggiornamento": "Errore durante l'aggiornamento del componente.",
+        "obbligatorio_zero": "Il componente obbligatorio {codice} richiede un prezzo maggiore di zero.",
+        "prezzo_aggiornato": "Prezzo componente aggiornato.",
+        "section_hint": "Modifica il prezzo di un componente: il prezzo padre verrà ricalcolato automaticamente.",
+        "l1_richiede_autorizzazione": "Autorizzazione necessaria per modificare i prezzi dei componenti.",
+        "badge_origine_tooltip": "Origine prezzo: {origine}",
+        "badge_approvazione_approved": "Approvato",
+        "badge_approvazione_rejected": "Rifiutato",
+        "badge_approvazione_pending": "In approvazione"
+      }
     }
   },
   "listini": {

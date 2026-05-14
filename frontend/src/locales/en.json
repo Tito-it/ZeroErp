@@ -1651,7 +1651,33 @@
       "bom_vuota": "Composite article with no components valid at the document date. BoM expired or not configured in the catalogue.",
       "errore_caricamento": "Error while loading components.",
       "summary": "{n} active components — estimated total {total}",
-      "summary_zero": "No active component (preview still to confirm)"
+      "summary_zero": "No active component (preview still to confirm)",
+      "panel": {
+        "section_title": "Product components",
+        "create_hint": "Selected article is a composite. Set component prices from the dedicated dialog before saving the row.",
+        "modifica_componenti": "Edit components",
+        "summary_create": "{n} components ready — will be created when the row is saved.",
+        "padre_calcolato": "Computed",
+        "padre_calcolato_tooltip": "The composite parent row price is recomputed by the database as sum of components × quantity.",
+        "vuoto": "No BoM components for this row.",
+        "col_codice": "Code",
+        "col_descrizione": "Description",
+        "col_qta": "Qty",
+        "col_uom": "UoM",
+        "col_prezzo": "Price",
+        "col_origine": "Source",
+        "col_iva": "VAT",
+        "errore_caricamento": "Error while loading components.",
+        "errore_aggiornamento": "Error while updating the component.",
+        "obbligatorio_zero": "Required component {codice} needs a price greater than zero.",
+        "prezzo_aggiornato": "Component price updated.",
+        "section_hint": "Edit a component price: the parent price will be recomputed automatically.",
+        "l1_richiede_autorizzazione": "Authorization required to edit component prices.",
+        "badge_origine_tooltip": "Price source: {origine}",
+        "badge_approvazione_approved": "Approved",
+        "badge_approvazione_rejected": "Rejected",
+        "badge_approvazione_pending": "Pending approval"
+      }
     }
   },
   "listini": {

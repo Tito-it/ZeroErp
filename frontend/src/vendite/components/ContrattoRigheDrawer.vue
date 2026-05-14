@@ -12,13 +12,21 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import {
+  previewRigaComponenti,
+  listRigaComponenti as listContrattoRigaComponenti,
+  updateRigaComponente as updateContrattoRigaComponente,
+  deleteRigaComponente as deleteContrattoRigaComponente,
+} from '../api/contratti'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
+import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -180,6 +188,64 @@ const rigaEditId = ref(null)
 const form = ref({})
 const selectedRow = ref(null)
 
+// Articolo selezionato corrente con flag `is_composito` (dal lookup
+// `ArticoloLookup` o ricostruito in `onRowSelect` per EDIT). Driver della
+// detection auto-apertura ComponentiDialog + visibilita' ComponentiPanel
+// (modello unificato BoM 2026-05-13).
+const articoloObj = ref(null)
+
+// === ComponentiDialog state (modello unificato BoM 2026-05-13) ===
+// Pattern speculare a `PreventiviRigaForm.vue`: in CREATE su articolo
+// composito, la Dialog si auto-apre al primo set di (articolo, uom, qta)
+// validi; in EDIT lo stato componenti viaggia via `ComponentiPanel` sotto
+// il form (lista persistita).
+const componentiDialogVisible = ref(false)
+const componentiPayload = ref(null)
+
+// Trigger di apertura Dialog: solo in CREATE su articolo composito con
+// UoM + qty valida. In EDIT il flusso e' diverso (panel sotto, no Dialog).
+const showComponentiDialog = computed(
+  () => formMode.value === 'create'
+    && articoloObj.value?.is_composito === true
+    && !!form.value.articolo_id
+    && !!form.value.uom_operativa_id
+    && (form.value.qta_operativa || 0) > 0,
+)
+
+// Watch su (articolo, UoM): cambia il CONTESTO di pricing → invalida i
+// prezzi suggeriti precedenti, reset del payload + auto-apertura Dialog
+// per nuova valorizzazione. La qty NON e' qui (non invalida i prezzi
+// unitari, solo il summary). EDIT non scatta mai.
+let _autoOpenedFor = null
+watch(
+  () => [form.value.articolo_id, form.value.uom_operativa_id],
+  ([articoloId, uomId]) => {
+    if (formMode.value !== 'create') return
+    componentiPayload.value = null
+    const tupleKey = `${articoloId}|${uomId}`
+    if (showComponentiDialog.value && _autoOpenedFor !== tupleKey) {
+      _autoOpenedFor = tupleKey
+      componentiDialogVisible.value = true
+    } else if (!showComponentiDialog.value) {
+      _autoOpenedFor = null
+      componentiDialogVisible.value = false
+    }
+  },
+)
+
+// Riapertura manuale (revisione) — bottone "Modifica componenti" sotto al
+// form in CREATE.
+function apriComponentiDialog() {
+  componentiDialogVisible.value = true
+}
+
+// Conferma Dialog: il payload e' { overrides, summary } (delta prezzi
+// diversi dal suggerito + summary live). Il drawer lo memorizza nel
+// payload del save riga (`componenti_overrides`).
+function onComponentiConfirm(payload) {
+  componentiPayload.value = payload
+}
+
 // === UoM operative dell'articolo selezionato ===
 // Composable centralizzato (Fase 4.F1). Autopick base se il form e' attivo
 // (create OR edit con UoM mancante) — replica l'esatto criterio originale.
@@ -217,6 +283,15 @@ function defaultForm() {
   }
 }
 
+// Reset stato componenti BoM: chiamato da `closeForm` e da `onNew`.
+// Tiene insieme `articoloObj` + Dialog state per evitare drift.
+function resetComponentiState() {
+  articoloObj.value = null
+  componentiDialogVisible.value = false
+  componentiPayload.value = null
+  _autoOpenedFor = null
+}
+
 // === Lifecycle ===
 watch(() => props.visible, (v) => {
   if (v) {
@@ -237,6 +312,7 @@ function onNew() {
   rigaEditId.value = null
   selectedRow.value = null
   resetUomOptions()
+  resetComponentiState()
 }
 
 function onRowSelect(event) {
@@ -273,6 +349,20 @@ function onRowSelect(event) {
     uom_operativa_id: r.uom_operativa_id ?? r.uom_id,
     ordine: r.ordine || 10,
   }
+  // Modello unificato BoM 2026-05-13: in EDIT articoloObj porta is_composito
+  // se disponibile dalla riga (proiezione BE denormalizzata; fallback false
+  // se non esposto). Driver visibilita' ComponentiPanel sotto il form.
+  articoloObj.value = {
+    id: r.articolo_id,
+    codice: r.articolo_codice,
+    descrizione: r.articolo_descrizione,
+    is_composito: r.is_composito === true,
+  }
+  // EDIT: chiudi ogni Dialog stantia, il pannello sotto e' l'entrypoint
+  // per modificare i componenti persistiti (no Dialog).
+  componentiDialogVisible.value = false
+  componentiPayload.value = null
+  _autoOpenedFor = null
   formMode.value = 'edit'
   rigaEditId.value = rigaId
   // Edit con UoM pre-popolata dalla riga: niente autopick, solo fetch.
@@ -282,6 +372,14 @@ function onRowSelect(event) {
 function onArticoloSelected(item) {
   form.value.articolo_id = item?.id || null
   form.value.uom_operativa_id = null
+  // Modello unificato BoM 2026-05-13: snapshot articolo (incluso flag
+  // `is_composito` esposto dal lookup) per detection ComponentiDialog
+  // post pickBase UoM nel watch sopra.
+  articoloObj.value = item || null
+  // Cambio articolo: reset payload Dialog precedente (era riferito al
+  // vecchio articolo) e key auto-open per consentire riapertura sul nuovo.
+  componentiPayload.value = null
+  _autoOpenedFor = null
   // Cambio articolo in form aperto: autopick base.
   caricaUomConPickBase(item?.id)
 }
@@ -292,6 +390,7 @@ function closeForm() {
   form.value = {}
   selectedRow.value = null
   resetUomOptions()
+  resetComponentiState()
 }
 
 // === Validazione ===
@@ -300,7 +399,16 @@ const canSave = computed(() => {
   if (!formMode.value) return false
   if (!form.value.articolo_id) return false
   if (!form.value.uom_operativa_id) return false
-  if (props.contrattoModalita === 'C' && (form.value.prezzo_unitario == null || form.value.prezzo_unitario === '')) return false
+  // Modalita' C: prezzo padre obbligatorio EXCEPT per articoli compositi
+  // (prezzo = SUM componenti via trigger DB, popolato post-init).
+  if (props.contrattoModalita === 'C'
+      && !articoloObj.value?.is_composito
+      && (form.value.prezzo_unitario == null || form.value.prezzo_unitario === '')) return false
+  // Modello unificato BoM 2026-05-13: in CREATE su articolo composito,
+  // blocca il save finche' la ComponentiDialog non e' stata confermata
+  // almeno una volta (componentiPayload != null). Se l'operatore annulla
+  // resta bloccato — deve riaprire e confermare.
+  if (showComponentiDialog.value && componentiPayload.value == null) return false
   return true
 })
 
@@ -322,6 +430,13 @@ async function onSave() {
   }
   if (formMode.value === 'create') {
     payload.articolo_id = f.articolo_id
+    // Modello unificato BoM 2026-05-13: includi `componenti_overrides`
+    // se l'articolo e' composito e la Dialog ha prodotto overrides delta.
+    // Il BE auto-init i componenti nella stessa transazione di `create_riga`.
+    if (articoloObj.value?.is_composito === true
+        && componentiPayload.value?.overrides) {
+      payload.componenti_overrides = componentiPayload.value.overrides
+    }
     const result = await execute(
       () => store.addRiga(props.contrattoId, payload),
       { successMessage: t('contratti.riga_creata') }
@@ -565,9 +680,15 @@ function origineSeverity(origine) {
           <div class="form-field">
             <label>
               {{ t('contratti.field_prezzo_unitario') }}
-              <span v-if="contrattoModalita === 'C'">*</span>
+              <span v-if="contrattoModalita === 'C' && !articoloObj?.is_composito">*</span>
+              <Tag v-if="articoloObj?.is_composito"
+                severity="info"
+                :value="t('vendite.componenti.panel.padre_calcolato')"
+                v-tooltip.top="t('vendite.componenti.panel.padre_calcolato_tooltip')"
+                class="contratti-componenti-padre-tag" />
             </label>
             <InputNumber v-model="form.prezzo_unitario" class="w-full"
+              :disabled="articoloObj?.is_composito === true"
               :min-fraction-digits="2" :max-fraction-digits="4" showButtons />
           </div>
           <div class="form-field">
@@ -582,6 +703,45 @@ function origineSeverity(origine) {
           <InputNumber v-model="form.ordine" class="w-full" :min="0" />
         </div>
 
+        <!-- Sezione componenti BoM (modello unificato 2026-05-13).
+             CREATE: il payload Dialog viaggia col save riga
+             (componenti_overrides). Mostra bottone "Modifica componenti"
+             + summary live. EDIT: ComponentiPanel carica i componenti
+             persistiti e li espone editabili. -->
+        <template v-if="articoloObj?.is_composito">
+          <div class="app-drawer-section">
+            <h4>{{ t('vendite.componenti.panel.section_title') }}</h4>
+          </div>
+          <div v-if="formMode === 'create'" class="contratti-componenti-create">
+            <Message severity="info" :closable="false" size="small">
+              {{ t('vendite.componenti.panel.create_hint') }}
+            </Message>
+            <Button
+              :label="t('vendite.componenti.panel.modifica_componenti')"
+              :icon="MANAGE_ICONS.BOM"
+              outlined
+              :disabled="!form.articolo_id || !form.uom_operativa_id
+                || !((form.qta_operativa || 0) > 0)"
+              @click="apriComponentiDialog" />
+            <small v-if="componentiPayload?.summary"
+              class="contratti-componenti-summary">
+              {{ t('vendite.componenti.panel.summary_create', {
+                n: componentiPayload.summary.n,
+              }) }}
+            </small>
+          </div>
+          <ComponentiPanel
+            v-else
+            :documento-id="props.contrattoId"
+            :riga-id="rigaEditId"
+            :readonly="isReadonly || formMode !== 'edit'"
+            :api-list="listContrattoRigaComponenti"
+            :api-update="updateContrattoRigaComponente"
+            :api-delete="deleteContrattoRigaComponente"
+            :tab-entity="TAB_ENTITIES.CONTRATTO"
+            @changed="emit('changed')" />
+        </template>
+
         <div class="app-drawer-footer">
           <Button :label="t('common.cancel')" severity="secondary" @click="closeForm" />
           <Button :label="t('common.save')" :disabled="!canSave || loading" :loading="loading" @click="onSave" />
@@ -590,5 +750,34 @@ function origineSeverity(origine) {
 
       <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
     </div>
+
+    <!-- ComponentiDialog modale: pre-popola i prezzi dei componenti BoM
+         prima del save di una riga padre composita. La conferma alimenta
+         `componentiPayload`; il save include `componenti_overrides`. -->
+    <ComponentiDialog
+      v-model:visible="componentiDialogVisible"
+      :articolo="articoloObj"
+      :documento-id="props.contrattoId"
+      :uom-operativa-id="form.uom_operativa_id"
+      :quantita="form.qta_operativa"
+      :api-preview="previewRigaComponenti"
+      :initial-payload="componentiPayload"
+      @confirm="onComponentiConfirm" />
   </Drawer>
 </template>
+
+<style scoped>
+.contratti-componenti-padre-tag {
+  font-size: 0.65rem;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.3rem;
+}
+.contratti-componenti-create {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.contratti-componenti-summary {
+  color: var(--app-text-muted);
+}
+</style>

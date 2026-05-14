@@ -89,9 +89,36 @@ TestNormalizeComponentiAttivazioni:
 import unittest
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
+from apps.vendite.services._componenti_service_helpers import (
+    normalize_componenti_attivazioni,
+    normalize_componenti_overrides,
+)
+
+
+# Wrapper helper test-only: i `TestNormalizeComponenti*` chiamano l'helper
+# fissando `error_code='E_PREV_VALIDAZIONE'` (semantica dominio preventivi).
+# Evitano di replicare `error_code=...` sui ~15 callsite mantenendo la
+# storica firma `(payload, *, function_name)` dei test pre-Fase H.
+def _normalize_componenti_overrides(  # noqa: D401 — test helper
+    overrides: Any, *, function_name: str,
+) -> dict[str, str] | None:
+    return normalize_componenti_overrides(
+        overrides, function_name=function_name,
+        error_code="E_PREV_VALIDAZIONE",
+    )
+
+
+def _normalize_componenti_attivazioni(
+    attivazioni: Any, *, function_name: str,
+) -> dict[str, bool] | None:
+    return normalize_componenti_attivazioni(
+        attivazioni, function_name=function_name,
+        error_code="E_PREV_VALIDAZIONE",
+    )
 
 
 class TestPreventiviService(unittest.TestCase):
@@ -154,7 +181,7 @@ class TestPreventiviService(unittest.TestCase):
         # (mockata a 100; i test che testano admin globale possono override
         # localmente a None).
         self.emittente_safe_patcher = patch(
-            "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+            "apps.vendite.services._componenti_service_helpers.resolve_emittente_sr_id_safe",
             return_value=100,
         )
         self.emittente_safe_patcher.start()
@@ -686,7 +713,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.create_riga.return_value = {"id": 42}
         # Sovrascrivi mock setUp: emittente safe = None (admin globale)
         with patch(
-            "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+            "apps.vendite.services._componenti_service_helpers.resolve_emittente_sr_id_safe",
             return_value=None,
         ):
             gestisci_riga(
@@ -881,7 +908,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.create_riga.return_value = {"id": 42}
         self.mock_repo.get_emittente_sr_id_by_fiscale_id.return_value = 200
         with patch(
-            "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+            "apps.vendite.services._componenti_service_helpers.resolve_emittente_sr_id_safe",
             return_value=None,  # operatore admin globale, no emittente proprio
         ):
             gestisci_riga(
@@ -999,16 +1026,12 @@ class TestPreventiviService(unittest.TestCase):
     def test_update_componente_ok(self):
         from apps.vendite.services.preventivi_service import update_componente
 
-        self.mock_repo.get_componente.return_value = {
-            "id": 50, "riga_preventivo_id": 10,
-            "componente_id": "c1", "prezzo_unitario": "200",
-            "origine_prezzo": "CATEGORIA",
-        }
-        self.mock_repo.get_riga.return_value = {
-            "id": 10, "preventivo_id": 1, "articolo_id": "uuid-art", "meta": {},
-        }
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        # 1-JOIN restituisce scope completo + stato in colpo unico.
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 1,
+            "stato_codice_interno": "DRAFT",
         }
         self.mock_repo.update_componente.return_value = True
 
@@ -1022,7 +1045,7 @@ class TestPreventiviService(unittest.TestCase):
     def test_update_componente_not_found(self):
         from apps.vendite.services.preventivi_service import update_componente
 
-        self.mock_repo.get_componente.return_value = None
+        self.mock_repo.load_componente_with_scope.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             update_componente(1, 10, 999, {"prezzo_unitario": "100"})
         self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")
@@ -1032,26 +1055,27 @@ class TestPreventiviService(unittest.TestCase):
     def test_update_componente_url_tampering_riga_id(self):
         from apps.vendite.services.preventivi_service import update_componente
 
-        self.mock_repo.get_componente.return_value = {
-            "id": 50, "riga_preventivo_id": 10,  # riga reale = 10
-            "componente_id": "c1", "prezzo_unitario": "200",
+        # 1-JOIN: componente esiste ma appartiene a riga 10, URL chiede 999.
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,  # riga reale = 10
+            "preventivo_id": 1,
+            "stato_codice_interno": "DRAFT",
         }
         with self.assertRaises(ServiceError) as ctx:
-            # URL falso: riga_id=999 ma componente appartiene a riga=10
             update_componente(1, 999, 50, {"prezzo_unitario": "100"})
         self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")
 
-    # Scopo: defense-in-depth — componente su altra riga/preventivo -> 404.
+    # Scopo: defense-in-depth — componente su altro preventivo -> 404.
     def test_update_componente_scope_violation(self):
         from apps.vendite.services.preventivi_service import update_componente
 
-        self.mock_repo.get_componente.return_value = {
-            "id": 50, "riga_preventivo_id": 10,
-            "componente_id": "c1", "prezzo_unitario": "200",
-        }
-        self.mock_repo.get_riga.return_value = {
-            "id": 10, "preventivo_id": 999,  # altro preventivo
-            "articolo_id": "uuid-art", "meta": {},
+        # 1-JOIN: componente vive su preventivo 999, URL chiede 1.
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 999,  # altro preventivo
+            "stato_codice_interno": "DRAFT",
         }
         with self.assertRaises(ServiceError) as ctx:
             update_componente(1, 10, 50, {"prezzo_unitario": "100"})
@@ -1061,15 +1085,11 @@ class TestPreventiviService(unittest.TestCase):
     def test_update_componente_stato_non_modificabile(self):
         from apps.vendite.services.preventivi_service import update_componente
 
-        self.mock_repo.get_componente.return_value = {
-            "id": 50, "riga_preventivo_id": 10,
-            "componente_id": "c1", "prezzo_unitario": "200",
-        }
-        self.mock_repo.get_riga.return_value = {
-            "id": 10, "preventivo_id": 1, "articolo_id": "uuid-art", "meta": {},
-        }
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "EMESSO", "uid": "abc",
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 1,
+            "stato_codice_interno": "EMESSO",  # non modificabile
         }
         with self.assertRaises(ServiceError) as ctx:
             update_componente(1, 10, 50, {"prezzo_unitario": "100"})
@@ -1079,14 +1099,11 @@ class TestPreventiviService(unittest.TestCase):
     def test_delete_componente_ok(self):
         from apps.vendite.services.preventivi_service import delete_componente
 
-        self.mock_repo.get_componente.return_value = {
-            "id": 50, "riga_preventivo_id": 10,
-        }
-        self.mock_repo.get_riga.return_value = {
-            "id": 10, "preventivo_id": 1, "articolo_id": "uuid-art", "meta": {},
-        }
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        self.mock_repo.load_componente_with_scope.return_value = {
+            "componente_id": 50,
+            "riga_preventivo_id": 10,
+            "preventivo_id": 1,
+            "stato_codice_interno": "DRAFT",
         }
         self.mock_repo.delete_componente.return_value = True
         result = delete_componente(1, 10, 50)
@@ -1098,7 +1115,7 @@ class TestPreventiviService(unittest.TestCase):
     def test_delete_componente_not_found(self):
         from apps.vendite.services.preventivi_service import delete_componente
 
-        self.mock_repo.get_componente.return_value = None
+        self.mock_repo.load_componente_with_scope.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             delete_componente(1, 10, 999)
         self.assertEqual(ctx.exception.code, "E_PREV_COMPONENTE_NOT_FOUND")
@@ -2165,7 +2182,7 @@ class TestPreventiviService(unittest.TestCase):
         self.emittente_safe_patcher.stop()
         try:
             with patch(
-                "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+                "apps.vendite.services._componenti_service_helpers.resolve_emittente_sr_id_safe",
                 return_value=None,
             ):
                 with self.assertRaises(ServiceError) as ctx:
@@ -2206,48 +2223,30 @@ class TestNormalizeComponentiOverrides(unittest.TestCase):
     """
 
     def test_none_ritorna_none(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         self.assertIsNone(_normalize_componenti_overrides(None, function_name="t"))
 
     def test_dict_vuoto_ritorna_none(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         self.assertIsNone(_normalize_componenti_overrides({}, function_name="t"))
 
     def test_decimal_string_normalizzato(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         out = _normalize_componenti_overrides(
             {"uuid-c1": "12.500"}, function_name="t",
         )
         self.assertEqual(out, {"uuid-c1": "12.500"})
 
     def test_numero_python_normalizzato(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         out = _normalize_componenti_overrides(
             {"uuid-c1": 75}, function_name="t",
         )
         self.assertEqual(out, {"uuid-c1": "75"})
 
     def test_decimal_native_normalizzato(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         out = _normalize_componenti_overrides(
             {"uuid-c1": Decimal("3.14")}, function_name="t",
         )
         self.assertEqual(out, {"uuid-c1": "3.14"})
 
     def test_valore_none_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_overrides(
                 {"uuid-c1": None}, function_name="t",
@@ -2255,9 +2254,6 @@ class TestNormalizeComponentiOverrides(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     def test_valore_stringa_vuota_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_overrides(
                 {"uuid-c1": ""}, function_name="t",
@@ -2265,9 +2261,6 @@ class TestNormalizeComponentiOverrides(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     def test_valore_non_numerico_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_overrides(
                 {"uuid-c1": "abc"}, function_name="t",
@@ -2275,9 +2268,6 @@ class TestNormalizeComponentiOverrides(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     def test_overrides_non_dict_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_overrides,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_overrides(
                 ["uuid-c1", "10"], function_name="t",
@@ -2290,34 +2280,22 @@ class TestNormalizeComponentiAttivazioni(unittest.TestCase):
     {componente_id: bool}. Bool-only, no coercion da int/str."""
 
     def test_none_ritorna_none(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_attivazioni,
-        )
         self.assertIsNone(
             _normalize_componenti_attivazioni(None, function_name="t"),
         )
 
     def test_dict_vuoto_ritorna_none(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_attivazioni,
-        )
         self.assertIsNone(
             _normalize_componenti_attivazioni({}, function_name="t"),
         )
 
     def test_dict_bool_normalizzato(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_attivazioni,
-        )
         out = _normalize_componenti_attivazioni(
             {"uuid-c1": True, "uuid-c2": False}, function_name="t",
         )
         self.assertEqual(out, {"uuid-c1": True, "uuid-c2": False})
 
     def test_valore_non_bool_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_attivazioni,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_attivazioni(
                 {"uuid-c1": "true"}, function_name="t",
@@ -2325,9 +2303,6 @@ class TestNormalizeComponentiAttivazioni(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     def test_attivazioni_non_dict_solleva(self):
-        from apps.vendite.services.preventivi_service import (
-            _normalize_componenti_attivazioni,
-        )
         with self.assertRaises(ServiceError) as ctx:
             _normalize_componenti_attivazioni(
                 ["uuid-c1", True], function_name="t",
