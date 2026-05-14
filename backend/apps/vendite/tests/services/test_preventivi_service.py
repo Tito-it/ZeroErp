@@ -154,7 +154,7 @@ class TestPreventiviService(unittest.TestCase):
         # (mockata a 100; i test che testano admin globale possono override
         # localmente a None).
         self.emittente_safe_patcher = patch(
-            "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+            "apps.vendite.services._componenti_service_helpers.resolve_emittente_sr_id_safe",
             return_value=100,
         )
         self.emittente_safe_patcher.start()
@@ -686,7 +686,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.create_riga.return_value = {"id": 42}
         # Sovrascrivi mock setUp: emittente safe = None (admin globale)
         with patch(
-            "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+            "apps.vendite.services._componenti_service_helpers.resolve_emittente_sr_id_safe",
             return_value=None,
         ):
             gestisci_riga(
@@ -881,7 +881,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.create_riga.return_value = {"id": 42}
         self.mock_repo.get_emittente_sr_id_by_fiscale_id.return_value = 200
         with patch(
-            "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+            "apps.vendite.services._componenti_service_helpers.resolve_emittente_sr_id_safe",
             return_value=None,  # operatore admin globale, no emittente proprio
         ):
             gestisci_riga(
@@ -2165,7 +2165,7 @@ class TestPreventiviService(unittest.TestCase):
         self.emittente_safe_patcher.stop()
         try:
             with patch(
-                "apps.vendite.services.preventivi_service._resolve_emittente_sr_id_safe",
+                "apps.vendite.services._componenti_service_helpers.resolve_emittente_sr_id_safe",
                 return_value=None,
             ):
                 with self.assertRaises(ServiceError) as ctx:

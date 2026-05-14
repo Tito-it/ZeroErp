@@ -26,6 +26,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
@@ -45,6 +46,12 @@ from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
 from apps.vendite.db.contratti_repository import ContrattiRepository
+from apps.vendite.services._componenti_service_helpers import (
+    normalize_componenti_overrides,
+    resolve_emittente_sr_id_for_testata,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # Codici errore (registrati in error_policies.py).
@@ -162,6 +169,11 @@ _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "ordine",
     "attivo",
     "meta",
+    # Modello unificato BoM 2026-05-13: override prezzi componenti per
+    # auto-init post-create_riga su articoli compositi. Forma:
+    # {componente_id_uuid: prezzo_numeric}. Validato/normalizzato da
+    # `_normalize_componenti_overrides` prima dell'init.
+    "componenti_overrides",
 })
 
 _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
@@ -840,7 +852,10 @@ class ContrattiService:
     # Scopo: Aggiunge una riga al contratto. Il trigger guard modalita' C
     #        impone prezzo_unitario NOT NULL se contratto gia' ATTIVO in
     #        modalita' C — gestito con traduzione P0001.
-    def create_riga(self, contratto_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    def create_riga(
+        self, contratto_id: int, payload: dict[str, Any],
+        *, auth_user_id: int | None = None,
+    ) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         self._assert_contratto_draft(contratto_id, op_label="Aggiunta riga contratto")
         self._v.reject_keys(
@@ -850,17 +865,77 @@ class ContrattiService:
             detail_prefix="Campi rifiutati",
         )
         self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_RIGA, message=_MESSAGE_RIGA)
+        # `componenti_overrides` non e' campo di `contratti_righe`: estraiamo
+        # PRIMA di `_build_data_riga` cosi' non finisce nell'INSERT.
+        componenti_overrides_raw = payload.pop("componenti_overrides", None)
+        componenti_overrides = normalize_componenti_overrides(
+            componenti_overrides_raw,
+            function_name="contratti_service.create_riga",
+            error_code=E_VENDITE_VALIDATION,
+        )
+
         data = self._build_data_riga(payload, for_create=True)
 
-        with self._db_errors(
+        articolo_id = payload.get("articolo_id")
+
+        # Transazione atomica: create_riga + (se composito) auto-init
+        # componenti. Stesso pattern di preventivi_service. Senza atomic, una
+        # riga padre composito potrebbe restare senza componenti se la fn DB
+        # `fn_contratto_riga_componenti_init` solleva (es. BoM scaduta).
+        with transaction.atomic(), self._db_errors(
             {"contratto_id": contratto_id},
             fallback_message="Violazione vincolo DB su riga contratto.",
         ):
             new_id = self._repo.create_riga(contratto_id, data)
 
+            if articolo_id and self._repo.is_articolo_composito(str(articolo_id)):
+                testata = self._repo.get_contratto(contratto_id)
+                assert testata is not None
+                emittente_sr_id = self._resolve_emittente_sr_id_for_contratto(
+                    testata, auth_user_id,
+                )
+                valido_dal_raw = testata.get("valido_dal")
+                # Skip silenzioso ammesso solo se mancano emittente o
+                # valido_dal: l'admin potra' ri-eseguire l'init manualmente.
+                # Logghiamo warning per audit (gap visibile in produzione).
+                if emittente_sr_id is None or valido_dal_raw is None:
+                    logger.warning(
+                        "contratti.create_riga.auto_init_componenti_skipped "
+                        "contratto_id=%s riga_id=%s articolo_id=%s "
+                        "motivo=%s — la riga padre composita resta senza "
+                        "componenti; init manuale richiesto.",
+                        contratto_id, new_id, articolo_id,
+                        ("emittente_non_risolvibile" if emittente_sr_id is None
+                         else "valido_dal_null"),
+                    )
+                else:
+                    data_riferimento = (
+                        valido_dal_raw if isinstance(valido_dal_raw, date)
+                        else date.fromisoformat(str(valido_dal_raw))
+                    )
+                    self._repo.init_componenti_riga(
+                        riga_id=new_id,
+                        emittente_soggetto_ruolo_id=emittente_sr_id,
+                        data_riferimento=data_riferimento,
+                        componenti_overrides=componenti_overrides,
+                    )
+
         result = self._repo.get_riga(new_id)
         assert result is not None
         return result
+
+    # Scopo: Risolve emittente_soggetto_ruolo_id per le operazioni componenti
+    # del contratto. Thin wrapper su `resolve_emittente_sr_id_for_testata`
+    # (helper Fase H) per non duplicare la logica di lookup + fallback.
+    def _resolve_emittente_sr_id_for_contratto(
+        self,
+        testata: dict[str, Any],
+        auth_user_id: int | None,
+    ) -> int | None:
+        return resolve_emittente_sr_id_for_testata(
+            testata, auth_user_id,
+            repo_get_sr_id_by_fiscale_id=self._repo.get_emittente_sr_id_by_fiscale_id,
+        )
 
     # Scopo: Aggiorna una riga contratto. articolo_id immutabile.
     def update_riga(
@@ -916,6 +991,259 @@ class ContrattiService:
             message="Riga contratto non trovata.",
             context={"riga_id": riga_id},
         )
+
+    # =================================================================
+    # Componenti BoM riga contratto (modello unificato 2026-05-13)
+    # =================================================================
+    # Specchio simmetrico del pattern preventivi (preventivi_service §1500+).
+    # I componenti vivono in `vendite.contratti_righe_componenti`; l'init e'
+    # invocato automaticamente da `create_riga` quando l'articolo e' composito.
+    # Helper `_normalize_*` e `_load_componente_for_modification` replicano
+    # la logica preventivi — refactor in building block comune previsto Fase H
+    # (vedi `refactor-componenti.md` §G + §H).
+
+    # Backward-compat alias per test pre-refactor (mockano metodo statico
+    # `_normalize_componenti_overrides` della classe ContrattiService).
+    # Delega all'helper Fase H. Rimuovere al prossimo refactor test.
+    @staticmethod
+    def _normalize_componenti_overrides(
+        overrides: Any, *, function_name: str,
+    ) -> dict[str, str] | None:
+        return normalize_componenti_overrides(
+            overrides, function_name=function_name,
+            error_code=E_VENDITE_VALIDATION,
+        )
+
+    # Scopo: Helper privato condiviso da update/delete componente. Esegue
+    # guard + scope check + stato contratto modificabile. Solleva
+    # `E_VENDITE_NOT_FOUND` su componente inesistente o fuori scope (riga_id
+    # URL o contratto_id), `E_CONTRATTO_NON_MODIFICABILE` se contratto post-
+    # DRAFT. Defense-in-depth contro URL forgiati: scope check sia su
+    # `riga_id` (anti-tampering) sia su `contratto_id` via JOIN runtime.
+    #
+    # Performance: 3 query (`get_componente` + `get_riga` +
+    # `_assert_contratto_draft` che fa internamente `get_contratto`).
+    # Refactor a 1 JOIN rinviato (vedi `refactor-componenti.md` §H —
+    # beneficio basso, non hot path).
+    def _load_componente_for_modification(
+        self,
+        *,
+        contratto_id: int,
+        riga_id: int,
+        componente_id: int,
+        function_name: str,
+    ) -> None:
+        componente = self._repo.get_componente(componente_id)
+        ErrorManager.require(
+            componente is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Componente contratto non trovato.",
+            detail=f"componente_id={componente_id}",
+            function_name=function_name,
+        )
+        assert componente is not None
+
+        # Anti-tampering URL: riga_id dalla rotta deve matchare riga reale.
+        ErrorManager.require(
+            int(componente["riga_contratto_id"]) == riga_id,
+            code=E_VENDITE_NOT_FOUND,
+            message="Componente contratto non trovato.",
+            detail=(
+                f"componente_id={componente_id} non appartiene a "
+                f"riga_id={riga_id} (riga reale={componente['riga_contratto_id']})"
+            ),
+            function_name=function_name,
+        )
+
+        riga_padre = self._repo.get_riga(int(componente["riga_contratto_id"]))
+        ErrorManager.require(
+            riga_padre is not None
+                and int(riga_padre.get("contratto_id") or 0) == contratto_id,
+            code=E_VENDITE_NOT_FOUND,
+            message="Componente contratto non trovato.",
+            detail=(
+                f"componente_id={componente_id} fuori scope "
+                f"contratto_id={contratto_id}"
+            ),
+            function_name=function_name,
+        )
+
+        # Guard stato modificabile: contratti_righe_componenti seguono la
+        # stessa policy delle righe padre (solo DRAFT modificabile).
+        # `_assert_contratto_draft` fa internamente `get_contratto` — non
+        # duplichiamo la query qui.
+        self._assert_contratto_draft(
+            contratto_id, op_label="Modifica componente riga contratto",
+        )
+
+    # Scopo: Preview componenti BoM per drawer riga contratto (ComponentiDialog
+    # FE). Read-only: il FE invoca PRIMA del save di una riga composita per
+    # ottenere prezzi suggeriti dei componenti. Per ogni componente:
+    # `prezzo_suggerito` + `origine_prezzo`, oppure NULL +
+    # `resolver_error_reason` se il listino manca per quel componente.
+    # `auth_user_id`: utente loggato. L'emittente_soggetto_ruolo_id viene
+    # risolto internamente (precedenza emittente esplicito sulla testata >
+    # operatore loggato). Pattern simmetrico preventivi: la view non deve
+    # accedere a membri privati del service per risolvere l'emittente.
+    # Solleva `E_VENDITE_NOT_FOUND` se contratto inesistente, `E_VENDITE_VALIDATION`
+    # se data/utility/emittente non risolvibili.
+    def preview_componenti_riga(
+        self,
+        contratto_id: int,
+        *,
+        articolo_id: str,
+        uom_operativa_id: int | None,
+        quantita: Any,
+        auth_user_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        testata = self._repo.get_contratto(contratto_id)
+        ErrorManager.require(
+            testata is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Contratto non trovato.",
+            function_name="contratti_service.preview_componenti_riga",
+        )
+        assert testata is not None
+
+        # Risoluzione emittente incapsulata: nessun accesso a membri privati
+        # dal caller (view). Precedenza emittente esplicito sulla testata >
+        # operatore. Solleva E_VENDITE_VALIDATION se nessuna sorgente.
+        emittente_sr_id = self._resolve_emittente_sr_id_for_contratto(
+            testata, auth_user_id,
+        )
+        ErrorManager.require(
+            emittente_sr_id is not None,
+            code=E_VENDITE_VALIDATION,
+            message=(
+                "Impossibile risolvere l'emittente fiscale per la preview "
+                "componenti contratto."
+            ),
+            function_name="contratti_service.preview_componenti_riga",
+        )
+        assert emittente_sr_id is not None
+
+        # Data riferimento: usiamo `valido_dal` del contratto. Il resolver
+        # bundle-aware cerca prezzi validi a quella data; coerente col fatto
+        # che il contratto e' una promessa contrattuale valida per il range.
+        valido_dal_raw = testata.get("valido_dal")
+        ErrorManager.require(
+            valido_dal_raw is not None,
+            code=E_VENDITE_VALIDATION,
+            message="valido_dal contratto obbligatorio per preview componenti.",
+            function_name="contratti_service.preview_componenti_riga",
+        )
+        assert valido_dal_raw is not None
+        data_riferimento = (
+            valido_dal_raw if isinstance(valido_dal_raw, date)
+            else date.fromisoformat(str(valido_dal_raw))
+        )
+
+        utility_id_raw = testata.get("utility_id")
+        ErrorManager.require(
+            utility_id_raw is not None,
+            code=E_VENDITE_VALIDATION,
+            message="Utility contratto obbligatoria per preview componenti.",
+            function_name="contratti_service.preview_componenti_riga",
+        )
+        assert utility_id_raw is not None
+
+        return self._repo.preview_componenti_riga(
+            articolo_id=str(articolo_id),
+            uom_id=uom_operativa_id,
+            quantita_padre=quantita,
+            data_riferimento=data_riferimento,
+            ba_id=testata.get("billing_account_id"),
+            utility_id=int(utility_id_raw),
+            emittente_soggetto_ruolo_id=emittente_sr_id,
+        )
+
+    # Scopo: Lista componenti BoM di una riga padre composita contratto.
+    # Guard di esistenza: la riga deve appartenere al contratto richiesto.
+    # `solo_attivi=True` (default backcompat): solo componenti attivi.
+    # `solo_attivi=False` (EDIT panel): include opzionali disattivati.
+    def list_componenti_riga(
+        self,
+        contratto_id: int, riga_id: int,
+        *, solo_attivi: bool = True,
+    ) -> list[dict[str, Any]]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        self._v.guard_positive_int(riga_id, field="riga_id")
+        riga = self._repo.get_riga(riga_id)
+        ErrorManager.require(
+            riga is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Riga contratto non trovata.",
+            detail=f"riga_id={riga_id}",
+            function_name="contratti_service.list_componenti_riga",
+        )
+        assert riga is not None
+        ErrorManager.require(
+            int(riga.get("contratto_id") or 0) == contratto_id,
+            code=E_VENDITE_NOT_FOUND,
+            message="Riga contratto non trovata.",
+            detail=(
+                f"riga_id={riga_id} non appartiene a contratto_id={contratto_id}"
+            ),
+            function_name="contratti_service.list_componenti_riga",
+        )
+        return self._repo.list_componenti_riga(riga_id, solo_attivi=solo_attivi)
+
+    # Scopo: Modifica componente riga contratto esistente. Guard stato
+    # contratto modificabile + esistenza componente + match URL
+    # anti-tampering. Whitelist campi via repo.
+    def update_componente_riga(
+        self,
+        contratto_id: int, riga_id: int, componente_id: int,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        self._v.guard_positive_int(riga_id, field="riga_id")
+        self._v.guard_positive_int(componente_id, field="componente_id")
+        self._load_componente_for_modification(
+            contratto_id=contratto_id, riga_id=riga_id,
+            componente_id=componente_id,
+            function_name="contratti_service.update_componente_riga",
+        )
+        with self._db_errors(
+            {"componente_id": componente_id, "riga_id": riga_id},
+            fallback_message="Violazione vincolo DB su componente riga contratto.",
+        ):
+            updated = self._repo.update_componente(componente_id, **payload)
+        ErrorManager.require(
+            updated,
+            code=E_VENDITE_VALIDATION,
+            message="Nessun campo aggiornato sul componente.",
+            detail="Payload vuoto o senza campi nella whitelist.",
+            function_name="contratti_service.update_componente_riga",
+        )
+        return {"status": "ok", "componente_id": componente_id}
+
+    # Scopo: Soft delete componente riga contratto (`attivo=FALSE`). Guard
+    # stato + esistenza + match URL anti-tampering. Il trigger DB di
+    # ricalcolo padre esclude i componenti inattivi dalla SUM.
+    def delete_componente_riga(
+        self,
+        contratto_id: int, riga_id: int, componente_id: int,
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        self._v.guard_positive_int(riga_id, field="riga_id")
+        self._v.guard_positive_int(componente_id, field="componente_id")
+        self._load_componente_for_modification(
+            contratto_id=contratto_id, riga_id=riga_id,
+            componente_id=componente_id,
+            function_name="contratti_service.delete_componente_riga",
+        )
+        with self._db_errors(
+            {"componente_id": componente_id, "riga_id": riga_id},
+            fallback_message="Impossibile eliminare il componente (dipendenze).",
+        ):
+            deleted = self._repo.delete_componente(componente_id)
+        return {
+            "status": "ok",
+            "componente_id": componente_id,
+            "deleted": deleted,
+        }
 
     # =================================================================
     # Utility 1:1

@@ -271,6 +271,37 @@ class PreventivoRigaComponentePreviewRow(TypedDict):
     esposto_in_fattura: bool
 
 
+# Componente BoM di riga contratto (modello unificato 2026-05-13). Specchio
+# simmetrico di `PreventivoRigaComponenteRow`, differisce solo per FK
+# `riga_contratto_id` (vs `riga_preventivo_id`).
+class ContrattoRigaComponenteRow(TypedDict):
+    id: int
+    riga_contratto_id: int
+    articolo_componente_id: str
+    componente_id: str
+    componente_codice: str | None
+    componente_descrizione: str | None
+    coeff_qta_snapshot: str
+    quantita: str
+    uom_operativa_id: int | None
+    uom_codice: str | None
+    factor_to_base: str | None
+    qta_operativa: str | None
+    prezzo_unitario: str
+    iva_id: int | None
+    iva_codice: str | None
+    iva_aliquota: str | None
+    origine_prezzo: str
+    prezzo_resolver_context: dict[str, Any] | None
+    stato_approvazione_prezzo: str | None
+    pratica_approvazione_prezzo_id: int | None
+    meta: dict[str, Any]
+    ordine: int | None
+    attivo: bool
+    obbligatorio: bool
+    esposto_in_fattura: bool
+
+
 class PreventivoIndirizzoRow(TypedDict):
     id: int
     preventivo_id: int

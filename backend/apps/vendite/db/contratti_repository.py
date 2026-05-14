@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any
 
@@ -23,6 +24,7 @@ from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 
 
 # Mappa colonna -> tipo, usata per placeholder/cast jsonb e adattamento param.
@@ -167,8 +169,19 @@ _FROM_JOINS_UTILITY = """
 """
 
 
-class ContrattiRepository:
-    """Accesso DB a `vendite.contratti` + righe + utility 1:1."""
+class ContrattiRepository(ComponentiRepositoryMixin):
+    """Accesso DB a `vendite.contratti` + righe + utility 1:1.
+
+    Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM
+    modello unificato (`contratti_righe_componenti`). I metodi specifici
+    `init_componenti_riga` (chiama `fn_contratto_riga_componenti_init`)
+    e `preview_componenti_riga` (chiama `fn_contratto_riga_componenti_preview`)
+    sono definiti localmente.
+    """
+
+    # Configurazione mixin componenti.
+    _componenti_table_name = "vendite.contratti_righe_componenti"
+    _componenti_fk_riga = "riga_contratto_id"
 
     # =================================================================
     # Lista e dettaglio testata
@@ -649,6 +662,140 @@ class ContrattiRepository:
                 [riga_id],
             )
             return cursor.rowcount > 0
+
+    # Scopo: Lookup soggetto_ruolo_id dell'emittente fiscale (helper
+    # condiviso col preventivi_repository per derivare emittente da fiscale_id
+    # snapshot — refactor in `emittenti_repository` cross-dominio Fase H).
+    def get_emittente_sr_id_by_fiscale_id(self, fiscale_id: int) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali "
+                "WHERE id = %s",
+                [fiscale_id],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row else None
+
+    # Scopo: Verifica se un articolo e' composito. Usato dal service per
+    # decidere se invocare auto-init componenti dopo `create_riga`.
+    # Duplicato simmetrico di `PreventiviRepository.is_articolo_composito`
+    # — estrazione in `catalogo_repository` (BB Fase H, refactor-componenti.md).
+    def is_articolo_composito(self, articolo_id: str) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT is_composito FROM catalogo.articoli WHERE id = %s",
+                [str(articolo_id)],
+            )
+            row = cursor.fetchone()
+            return bool(row[0]) if row else False
+
+    # =================================================================
+    # Componenti BoM riga contratto (modello unificato 2026-05-13)
+    # =================================================================
+    # Specchio simmetrico di `preventivi_righe_componenti`. La FK e' qui
+    # `riga_contratto_id` (vs `riga_preventivo_id`); le altre colonne sono
+    # identiche per design del modello unificato.
+    #
+    # Fn DB chiamate:
+    #   - vendite.fn_contratto_riga_componenti_init(riga_id, emittente_sr_id,
+    #       data_riferimento, componenti_overrides::jsonb) -> integer
+    #   - vendite.fn_contratto_riga_componenti_preview(articolo_id, uom_id,
+    #       quantita_padre, data_riferimento, ba_id, utility_id,
+    #       emittente_sr_id, classe_utenza_id) -> SETOF record
+    #
+    # Trigger DB attivi su `contratti_righe_componenti`:
+    #   - trg_contratti_righe_propaga_qta_componenti: ricalcolo quantita
+    #     componente al cambio quantita padre
+    #   - trgfn_contratti_righe_componenti_guard_pending: immutabilita' su
+    #     righe con `stato_approvazione_prezzo = PENDING`
+
+    # Scopo: Init componenti BoM per una riga padre composita. Wrapper
+    # `fn_contratto_riga_componenti_init`. La fn DB e' idempotente: no-op
+    # se componenti gia' presenti o articolo non composito. Modello unificato
+    # 2026-05-13: default `attivo=TRUE` per tutti i componenti (BoM contratto
+    # immutabile, vedi changelog-decisioni-componenti.md §9.3).
+    #
+    # `componenti_overrides`: mappa `{componente_id::text: prezzo_numeric}`
+    # per override prezzo manuale. Componenti senza override → resolver
+    # bundle-aware con `p_articolo_padre_contesto=padre`.
+    def init_componenti_riga(
+        self,
+        *,
+        riga_id: int,
+        emittente_soggetto_ruolo_id: int,
+        data_riferimento: date,
+        componenti_overrides: dict[str, Any] | None = None,
+    ) -> int:
+        # Cast esplicito a jsonb per disambiguare overload fn DB: None -> NULL.
+        # Il caller (service) valida la forma valori prima di passarli qui.
+        overrides_json: str | None
+        if componenti_overrides is None:
+            overrides_json = None
+        else:
+            overrides_json = json.dumps(
+                {str(k): str(v) for k, v in componenti_overrides.items()},
+            )
+        sql = (
+            "SELECT vendite.fn_contratto_riga_componenti_init("
+            "%s, %s, %s, %s::jsonb)"
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                riga_id, emittente_soggetto_ruolo_id, data_riferimento,
+                overrides_json,
+            ])
+            row = cursor.fetchone()
+            return int(row[0]) if row else 0
+
+    # Scopo: Preview componenti BoM per drawer riga contratto (modello
+    # unificato). Read-only STABLE. Per ogni componente attivo e valido alla
+    # data ritorna prezzo_suggerito (NULL se resolver fail) +
+    # resolver_error_reason. Consumato dal FE per pre-popolare ComponentiDialog
+    # PRIMA del save riga.
+    def preview_componenti_riga(
+        self,
+        *,
+        articolo_id: str,
+        uom_id: int | None,
+        quantita_padre,
+        data_riferimento: date,
+        ba_id: int | None,
+        utility_id: int,
+        emittente_soggetto_ruolo_id: int,
+        classe_utenza_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        # Proiezione allineata alla fn DB modello unificato. `iva_codice` NON
+        # esposto: l'aliquota componente coincide con quella del padre
+        # (vincolo IVA BoM trigger DB).
+        sql = """
+            SELECT articolo_componente_id,
+                   componente_id,
+                   componente_codice,
+                   componente_descrizione,
+                   coeff_qta_snapshot,
+                   quantita_componente,
+                   uom_id,
+                   uom_codice,
+                   iva_id,
+                   prezzo_suggerito,
+                   origine_prezzo,
+                   resolver_error_reason,
+                   obbligatorio,
+                   esposto_in_fattura
+              FROM vendite.fn_contratto_riga_componenti_preview(
+                  %s, %s, %s, %s, %s, %s, %s, %s
+              )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                articolo_id, uom_id, quantita_padre, data_riferimento,
+                ba_id, utility_id, emittente_soggetto_ruolo_id,
+                classe_utenza_id,
+            ])
+            return rows_to_list(cursor)
+
+    # CRUD componenti (list/get/update/delete/purge) ereditato da
+    # `ComponentiRepositoryMixin`. Vedi `_componenti_repo_mixin.py`.
 
     # =================================================================
     # Contratti_utilities (1:1 con contratto)

@@ -17,7 +17,10 @@ from apps.vendite.api.views_contratti import (
     ApiContrattiList,
     ApiContrattoCambiaStato,
     ApiContrattoDetail,
+    ApiContrattoRigaComponenteDetail,
+    ApiContrattoRigaComponentiList,
     ApiContrattoRigaDetail,
+    ApiContrattoRigaPreviewComponenti,
     ApiContrattoRigheList,
     ApiContrattoRighePreview,
     ApiContrattoUtility,
@@ -54,6 +57,22 @@ urlpatterns = [
         "<int:contratto_id>/righe/<int:riga_id>/",
         ApiContrattoRigaDetail.as_view(),
         name="vendite-contratto-riga-detail",
+    ),
+    # Componenti BoM (modello unificato 2026-05-13) nidificati sotto riga.
+    path(
+        "<int:contratto_id>/righe/preview-componenti/",
+        ApiContrattoRigaPreviewComponenti.as_view(),
+        name="vendite-contratto-righe-preview-componenti",
+    ),
+    path(
+        "<int:contratto_id>/righe/<int:riga_id>/componenti/",
+        ApiContrattoRigaComponentiList.as_view(),
+        name="vendite-contratto-riga-componenti-list",
+    ),
+    path(
+        "<int:contratto_id>/righe/<int:riga_id>/componenti/<int:componente_id>/",
+        ApiContrattoRigaComponenteDetail.as_view(),
+        name="vendite-contratto-riga-componente-detail",
     ),
     path(
         "<int:contratto_id>/utility/",

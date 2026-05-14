@@ -20,7 +20,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
@@ -302,10 +302,14 @@ class ApiContrattoRigheList(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Aggiunge una riga al contratto.
+    # Scopo: Aggiunge una riga al contratto. Auto-init componenti se
+    # articolo composito (modello unificato BoM 2026-05-13).
     def post(self, request: Request, contratto_id: int) -> JsonResponse:
         return success_response(
-            ContrattiService().create_riga(contratto_id, request.data)
+            ContrattiService().create_riga(
+                contratto_id, request.data,
+                auth_user_id=get_scope_user_id(request),
+            )
         )
 
 
@@ -417,4 +421,191 @@ class ApiContrattoUtility(DomainAPIView):
     def patch(self, request: Request, contratto_id: int) -> JsonResponse:
         return success_response(
             ContrattiService().update_utility(contratto_id, request.data)
+        )
+
+
+# =================================================================
+# Componenti BoM riga contratto (modello unificato 2026-05-13)
+# =================================================================
+# Pattern simmetrico preventivi:
+#   POST /righe/preview-componenti/    -> ComponentiDialog FE pre-save
+#   GET  /righe/<rid>/componenti/      -> EDIT panel post-save
+#   PATCH/DELETE /righe/<rid>/componenti/<cid>/  -> CRUD singolo componente
+
+
+_RIGA_PREVIEW_COMPONENTI_REQUEST = inline_serializer(
+    name="VenditeContrattoRigaPreviewComponentiReq",
+    fields={
+        "articolo_id": serializers.UUIDField(),
+        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
+        "quantita": serializers.DecimalField(
+            max_digits=22, decimal_places=10, required=True,
+        ),
+    },
+)
+
+
+class ApiContrattoRigaPreviewComponenti(DomainAPIView):
+    """POST /api/v1/vendite/contratti/<id>/righe/preview-componenti/
+
+    Read-only: ritorna i componenti BoM con prezzo suggerito dal resolver
+    bundle-aware per pre-popolare il ComponentiDialog FE PRIMA del save
+    di una riga padre composita. Specchio simmetrico di
+    `ApiPreventivoRigaPreviewComponenti`.
+
+    Nessun side-effect (fn DB STABLE). Area `vendite` LETTURA sufficiente.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_RIGA_PREVIEW_COMPONENTI_REQUEST,
+        responses={200: inline_serializer(
+            name="VenditeContrattoRigaPreviewComponentiResp",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    def post(self, request: Request, contratto_id: int) -> JsonResponse:
+        # Cattura auth_user_id PRIMA dell'handler chiuso: il service risolve
+        # internamente l'emittente (precedenza testata > operatore), evitando
+        # accesso a membri privati dal caller.
+        auth_user_id = get_scope_user_id(request)
+
+        def _handler(payload: dict[str, object]) -> list[dict[str, object]]:
+            articolo_id = str(payload.get("articolo_id") or "")
+            uom_raw = payload.get("uom_operativa_id")
+            uom_operativa_id = int(uom_raw) if uom_raw not in (None, "") else None
+            quantita = payload.get("quantita")
+            return ContrattiService().preview_componenti_riga(
+                contratto_id,
+                articolo_id=articolo_id,
+                uom_operativa_id=uom_operativa_id,
+                quantita=quantita,
+                auth_user_id=auth_user_id,
+            )
+
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiContrattoRigaComponentiList(DomainAPIView):
+    """GET /api/v1/vendite/contratti/<id>/righe/<rid>/componenti/
+
+    Lista componenti BoM persistiti su `contratti_righe_componenti` per la
+    riga padre composita. Specchio simmetrico di `ApiPreventivoRigaComponentiList`.
+
+    Query param `solo_attivi` (bool, default `true`): se `false` include
+    anche opzionali disattivati (usato dall'EDIT panel FE per riattivazione).
+
+    Area `vendite` LETTURA sufficiente.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="solo_attivi", type=bool, default=True,
+                description=(
+                    "Default true: solo componenti attivi. Se false include "
+                    "anche opzionali disattivati (EDIT panel)."
+                ),
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="VenditeContrattoRigaComponentiListResp",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    def get(
+        self, request: Request, contratto_id: int, riga_id: int,
+    ) -> JsonResponse:
+        solo_attivi_raw = request.query_params.get("solo_attivi", "true")
+        solo_attivi = str(solo_attivi_raw).lower() not in ("false", "0", "no", "off")
+        return success_response(
+            ContrattiService().list_componenti_riga(
+                contratto_id, riga_id, solo_attivi=solo_attivi,
+            )
+        )
+
+
+# Schema OpenAPI allineato a `COMPONENTE_UPDATE_ALLOWED` (whitelist mixin
+# `ComponentiRepositoryMixin`). Tutti i campi sono opzionali e applicati in
+# delta. Campi struttura (`componente_id`, `articolo_componente_id`,
+# `coeff_qta_snapshot`, `riga_contratto_id`, `quantita`) sono silenziosamente
+# ignorati dal mixin (defense-in-depth).
+_RIGA_COMPONENTE_PATCH_REQUEST = inline_serializer(
+    name="VenditeContrattoRigaComponentePatchReq",
+    fields={
+        "prezzo_unitario": serializers.DecimalField(
+            max_digits=22, decimal_places=10, required=False, allow_null=True,
+        ),
+        "iva_id": serializers.IntegerField(required=False, allow_null=True),
+        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
+        "factor_to_base": serializers.DecimalField(
+            max_digits=22, decimal_places=10, required=False, allow_null=True,
+        ),
+        "qta_operativa": serializers.DecimalField(
+            max_digits=22, decimal_places=10, required=False, allow_null=True,
+        ),
+        "origine_prezzo": serializers.CharField(required=False, allow_null=True),
+        "prezzo_resolver_context": serializers.JSONField(
+            required=False, allow_null=True,
+        ),
+        "stato_approvazione_prezzo": serializers.CharField(
+            required=False, allow_null=True,
+        ),
+        "pratica_approvazione_prezzo_id": serializers.IntegerField(
+            required=False, allow_null=True,
+        ),
+        "meta": serializers.JSONField(required=False, allow_null=True),
+        "ordine": serializers.IntegerField(required=False, allow_null=True),
+        "attivo": serializers.BooleanField(required=False),
+    },
+)
+
+
+class ApiContrattoRigaComponenteDetail(DomainAPIView):
+    """PATCH/DELETE /api/v1/vendite/contratti/<id>/righe/<rid>/componenti/<cid>/
+
+    CRUD singolo componente BoM riga contratto. Specchio simmetrico di
+    `ApiPreventivoRigaComponenteDetail`. Match URL anti-tampering:
+    `contratto_id` + `riga_id` + `componente_id` devono essere coerenti.
+
+    Area `vendite` LETTURA + azione `prezzo_override_manuale` per UPDATE
+    prezzo (TODO Sprint E: oggi accettiamo qualsiasi UPDATE su contratto
+    DRAFT, il trigger DB PENDING guard e' safety net).
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_RIGA_COMPONENTE_PATCH_REQUEST,
+        responses={200: inline_serializer(
+            name="VenditeContrattoRigaComponentePatchResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    def patch(
+        self, request: Request, contratto_id: int, riga_id: int, componente_id: int,
+    ) -> JsonResponse:
+        return success_response(
+            ContrattiService().update_componente_riga(
+                contratto_id, riga_id, componente_id, dict(request.data),
+            )
+        )
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="VenditeContrattoRigaComponenteDeleteResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    def delete(
+        self, request: Request, contratto_id: int, riga_id: int, componente_id: int,
+    ) -> JsonResponse:
+        del request
+        return success_response(
+            ContrattiService().delete_componente_riga(
+                contratto_id, riga_id, componente_id,
+            )
         )

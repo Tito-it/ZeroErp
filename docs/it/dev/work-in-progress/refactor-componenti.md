@@ -83,7 +83,7 @@ Workaround: scenari senza override (resolver pricing valorizza tutto) funzionano
 
 Stima: 1 sessione (post fix DB).
 
-### Fase G — Replicazione 4 sorgenti (ordini / contratti / ddt) — APERTA
+### Fase G — Replicazione 4 sorgenti (ordini / contratti / ddt) — IN_CORSO
 
 Pattern preventivi replicato simmetricamente. Una sessione per sorgente:
 
@@ -91,21 +91,101 @@ Pattern preventivi replicato simmetricamente. Una sessione per sorgente:
 - FE: riuso `ComponentiDialog.vue` con `apiPreview` sorgente-specific; drawer riga sorgente segue stesso pattern preventivi
 - Smoke specifico per sorgente
 
+**Priorita' rivista 2026-05-14**: contratti anticipato (Tid lo chiede prima),
+ordini e ddt a seguire. Riordino: contratti -> ordini -> ddt -> consumi.
+
+**Scope esteso** (decisione Tid 2026-05-14): EDIT panel post-save replicato
+per ogni sorgente, NON solo preview pre-save. Estrazione building block FE
+`ComponentiPanel.vue` anticipata gia' in fase G-contratti (vedi Fase H).
+
 Dopo Fase G si potrà rimuovere il path legacy `resolve_prezzo_composito` (repo + service + DB DROP fn).
 
-Stima: 4 sessioni totali (1 per sorgente, ordini → contratti → ddt → consumi se previsto).
+Stima: 4 sessioni totali (1 per sorgente, contratti → ordini → ddt → consumi se previsto).
 
-### Fase H — Building block riusabili — APERTA
+#### Fase G-contratti — IN_CORSO 2026-05-14
 
-Estrazione progressiva, post replicazione 4 sorgenti:
+Due sub-sessioni:
 
-- BE: classe base `ComponentiRepository` / `ComponentiService` parametrizzata per sorgente
-- FE: `ComponentiDialog.vue` già parametrizzato; eventuale estrazione tabella in sotto-componente `ComponentiTable.vue` se EDIT panel ne riusa la struttura
-- i18n: namespace `componenti.*` cross-dominio già spostato in Fase C
-- DB helper: helper `script.*` già parametrizzati (TG_ARGV)
-- Composable `useTokenedFetch` per i 3+ pattern `_previewToken`/`_resolverToken`
+- **G-contratti-BE** (sessione corrente):
+  - `contratti_repository.py`: metodi `init_componenti_riga` / `list_componenti_riga` /
+    `get_componente` / `update_componente` / `delete_componente` / `purge_componenti_riga`
+    su `vendite.contratti_righe_componenti` con whitelist `_COMPONENTE_UPDATE_ALLOWED`
+  - `contratti_service.py`: `preview_riga_componenti` (per ComponentiDialog FE),
+    CRUD componente, auto-init in `crea_riga` quando `articolo.is_composito`
+    (transazione atomica)
+  - `contratti_views.py` + `contratti_urls`: 4 endpoint
+    (`POST /righe/preview-componenti/`, `GET/PATCH/DELETE /righe/<rid>/componenti/...`)
+  - `types.py`: `ContrattoRigaComponenteRow` TypedDict
+  - Test unit service mockati
+  - Doc `api_contratti.md` aggiornata
+- **G-contratti-FE** (sessione successiva):
+  - `contratti.js`: client API
+  - `ContrattoRigheDrawer.vue`: detection `is_composito` al lookup, riuso
+    `ComponentiDialog`, bridge `componenti_overrides` al save riga, mostra
+    `ComponentiPanel` building block sotto la riga in edit
+  - **Building block FE `ComponentiPanel.vue`** estratto durante questa sessione
+    (anticipo Fase H): generalizza `PreventiviRigaComponentiPanel.vue` rendendolo
+    parametrico per `sorgente` (preventivo/contratto/ordine/ddt). Migrazione
+    `PreventiviRigaComponentiPanel` → wrapper thin sul building block.
 
-Stima: 1.5 sessione totale.
+### Fase H — Building block riusabili — IN_CORSO (anticipata 2026-05-14)
+
+Estrazione progressiva, **anticipata** rispetto al piano (originariamente
+post-Fase G completa). Decisione 2026-05-14: con 2 sample (preventivi +
+contratti) il design del BB e' gia' sufficientemente vincolato. Estrarre
+ora evita di scrivere ordini/ddt copiando codice gia' duplicato.
+
+**Atterrato sessione 2026-05-14 (BE)**:
+
+- ✅ `backend/apps/vendite/db/_componenti_repo_mixin.py`:
+  `ComponentiRepositoryMixin` parametrico su `_componenti_table_name` e
+  `_componenti_fk_riga`. Espone 5 metodi `list_componenti_riga` /
+  `get_componente` / `update_componente` (con costante `COMPONENTE_UPDATE_ALLOWED`
+  module-level) / `delete_componente` / `purge_componenti_riga`.
+- ✅ `backend/apps/vendite/services/_componenti_service_helpers.py`: 4 pure
+  functions parametrizzabili su `error_code`: `normalize_componenti_overrides`
+  (con check `is_finite()` per Infinity/NaN), `normalize_componenti_attivazioni`,
+  `resolve_emittente_sr_id_safe`, `resolve_emittente_sr_id_for_testata`.
+- ✅ `PreventiviRepository` e `ContrattiRepository` ereditano dal mixin.
+  Aliases backward-compat `_normalize_componenti_overrides` /
+  `_normalize_componenti_attivazioni` / `_resolve_emittente_sr_id_safe`
+  nel `preventivi_service` per mantenere stabili i mock dei test esistenti
+  (~20 punti di patch evitati). Aliases nel `contratti_service` per i test
+  della classe `ContrattiService`. Rimuovere aliases nel prossimo refactor
+  test mirato.
+
+**`listini_righe_componenti` esplicitamente FUORI dal mixin**: pattern
+strutturalmente diverso (tabula rasa idempotente per immutabilita' v5, no
+CRUD per-componente). `ListiniRepository.upsert_bundle_componenti` segue
+una propria strategia. Documentato nel docstring del mixin.
+
+**Riduzione codice**: ~200 righe rimosse fra `preventivi_repository`,
+`contratti_repository`, `preventivi_service`, `contratti_service` (vs stima
+iniziale ~400: 200 di queste sono nei service helpers e potrebbero ridursi
+ulteriormente al refactor dei test).
+
+**Pendenti FE Fase H** (sessione successiva FE contratti + estrazione BB):
+
+- `ComponentiPanel.vue` (estratto da `PreventiviRigaComponentiPanel.vue`):
+  parametrico su `sorgente`. Migrazione `PreventiviRigaComponentiPanel` →
+  wrapper thin.
+- `useTokenedFetch` composable per i 3+ pattern `_previewToken`/
+  `_resolverToken`.
+- i18n namespace `componenti.*` cross-dominio (gia' spostato in Fase C).
+
+**Pendenti BE Fase H residui**:
+
+- Fix #2 (3 query→1 JOIN in `_load_componente_for_modification`): rinviato.
+  Richiede ~4 attributi configurabili sul mixin (tabella riga padre,
+  FK padre, tabella testata, stato JOIN). Beneficio reale basso (operazioni
+  manuali non hot path). Da valutare quando ordini/ddt arriveranno: se
+  emerge un design naturale, applicare; altrimenti accettare le 3 query.
+- Estrarre `is_articolo_composito` e `get_emittente_sr_id_by_fiscale_id`
+  in `catalogo_repository` / `anagrafiche_repository` (helper cross-dominio):
+  oggi duplicati nei 2 repo sorgenti. Refactor minore.
+
+Stima residua: 1 sessione FE (BB FE + composable) — molto meno della
+stima originale 1.5 grazie all'anticipo BE.
 
 ## 3. Pendenti aperti (priorità ordinata)
 
@@ -119,7 +199,7 @@ Stima: 1.5 sessione totale.
 | 6 | Decisione gating L1 `componenti_attivazioni` (Fase D) | Tid (dominio) | ✅ chiusa con #4 — operatore non sceglie composizione, nessun gating richiesto |
 | 7 | **Fase G** replicazione 4 sorgenti (ordini/contratti/ddt) | io | aperta |
 | 8 | DROP `fn_resolve_prezzo_composito` + cleanup `pricing_repository.resolve_prezzo_composito` + `pricing_service.resolve_prezzo_composito` + path legacy `BoMComponentExpander._resolve_cached` + path BE dormiente `componenti_attivazioni` | Tid + team DB, post Fase G | aperta |
-| 9 | **Fase H** building block (BE base class, FE `ComponentiTable`, `useTokenedFetch`) | io, post Fase G | aperta |
+| 9 | **Fase H** building block (BE base class, FE `ComponentiTable`, `useTokenedFetch`) | io | ✅ BE atterrato 2026-05-14 (mixin repo + helper service); FE pendente sessione successiva |
 
 ## 4. Stima residua
 
@@ -131,9 +211,9 @@ Stima: 1.5 sessione totale.
 | D — FE EDIT panel | ✅ done | 0 |
 | E — Expansion commessa | ✅ done | 0 |
 | F — Smoke §3.4 | aperta (blocco DB JSONB) | 1 |
-| G — 4 sorgenti | aperta | 4 |
-| H — Building block | aperta | 1.5 |
-| **RESIDUO** | | **~6.5 sessioni** |
+| G — 4 sorgenti | in_corso (contratti BE done; FE + ordini + ddt pending) | 3.5 |
+| H — Building block | in_corso (BE done 2026-05-14; FE pending) | 1 |
+| **RESIDUO** | | **~5.5 sessioni** |
 
 ## 5. Stato lavorazione
 

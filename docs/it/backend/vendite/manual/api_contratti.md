@@ -143,6 +143,83 @@ mutabili; `articolo_id` immutabile.
 `DELETE /api/v1/vendite/contratti/<id>/righe/<riga_id>/` hard-delete
 (bloccato dal trigger se note collegate).
 
+### Componenti BoM riga contratto (modello unificato 2026-05-13)
+
+Specchio simmetrico del pattern preventivi (vedi
+[api_preventivi.md](api_preventivi.md) §8c-8f). Quando si crea una riga
+contratto per un articolo `is_composito=TRUE`, il service invoca
+automaticamente `fn_contratto_riga_componenti_init` che popola
+`vendite.contratti_righe_componenti` per tutti i figli BoM validi alla
+data `valido_dal` del contratto. Il resolver pricing usato e' quello
+bundle-aware (`fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto`).
+
+Auto-init transazione atomica con `create_riga`: se l'init fallisce
+(BoM scaduta, componente obbligatorio senza prezzo, ecc.) tutta la
+create rolla back.
+
+Payload `POST /righe/` accetta anche `componenti_overrides` (opzionale,
+mappa `{componente_id: prezzo_numeric}`) per pre-impostare prezzi
+manuali su componenti specifici al momento della create.
+
+#### Preview componenti `POST /api/v1/vendite/contratti/<id>/righe/preview-componenti/`
+
+```json
+{
+  "articolo_id": "abc-uuid",
+  "uom_operativa_id": 2,
+  "quantita": "1"
+}
+```
+
+Read-only (no side-effect): ritorna i componenti BoM validi con
+`prezzo_suggerito` dal resolver bundle-aware. Il FE
+(`ComponentiDialog.vue`) chiama PRIMA del save di una riga composita per
+mostrare i prezzi pre-popolati. Per ogni componente vengono restituiti
+`prezzo_suggerito` ed `origine_prezzo`, oppure `null` con
+`resolver_error_reason` se il listino manca. Solleva
+`E_VENDITE_VALIDATION` se `valido_dal`/`utility_id` contratto NULL o
+emittente non risolvibile.
+
+#### Lista componenti `GET /api/v1/vendite/contratti/<id>/righe/<rid>/componenti/`
+
+Query param `solo_attivi` (bool, default `true`):
+
+- `true`: solo componenti `attivo=TRUE` (vista compatta)
+- `false`: include opzionali disattivati — usato dall'EDIT panel FE per
+  consentire riattivazione via toggle. Accetta `"false"`/`"0"`/`"no"`/`"off"`
+
+Output: una riga per componente con denormalizzazioni
+articolo/uom/iva + flag `obbligatorio` ed `esposto_in_fattura` (JOIN
+runtime su `articoli_componenti`).
+
+#### Update componente `PATCH /api/v1/vendite/contratti/<id>/righe/<rid>/componenti/<cid>/`
+
+```json
+{
+  "prezzo_unitario": "12.50",
+  "iva_id": 1,
+  "attivo": true,
+  "meta": {}
+}
+```
+
+Whitelist campi modificabili: `prezzo_unitario`, `iva_id`,
+`uom_operativa_id`, `factor_to_base`, `qta_operativa`, `origine_prezzo`,
+`prezzo_resolver_context`, `stato_approvazione_prezzo`,
+`pratica_approvazione_prezzo_id`, `meta`, `ordine`, `attivo`. Campi
+struttura immutabili (`componente_id`, `articolo_componente_id`,
+`coeff_qta_snapshot`, `riga_contratto_id`) silenziosamente ignorati.
+
+Anti-tampering URL: `riga_id` URL deve matchare riga reale del
+componente; mismatch → `E_VENDITE_NOT_FOUND`. Solo contratto in stato
+DRAFT modificabile (altrimenti `E_CONTRATTO_NON_MODIFICABILE`).
+
+#### Delete componente `DELETE /api/v1/vendite/contratti/<id>/righe/<rid>/componenti/<cid>/`
+
+Soft delete (`attivo=FALSE`). Il trigger DB di ricalcolo padre lo esclude
+dalla SUM. Idempotente: se gia' soft-deleted ritorna `{deleted: false}`
+senza errore. Stesso scope check anti-tampering di update.
+
 ### Utility 1:1 `POST /api/v1/vendite/contratti/<id>/utility/`
 
 ```json
@@ -255,21 +332,50 @@ Il dettaglio (`GET /<id>/`) include:
 
 | Codice | HTTP | Origine | Trigger DB |
 |---|---|---|---|
-| `E_VENDITE_VALIDATION` | 400 | Service (struttura/coerenza modalita') | — |
-| `E_VENDITE_NOT_FOUND` | 404 | Service | — |
+| `E_VENDITE_VALIDATION` | 400 | Service (struttura/coerenza modalita', componenti_overrides non finito o non numerico, preview senza emittente/utility/valido_dal) | — |
+| `E_VENDITE_NOT_FOUND` | 404 | Service (contratto/riga/componente; anti-tampering URL componenti) | — |
 | `E_VENDITE_DUPLICATO` | 400 | UNIQUE `uq_contratti_numero` o `uq_contratti_utilities_contratto_id` | — |
 | `E_VENDITE_FK` | 400 | FK su BA/istanza/utility/listino/parent/stato/articolo/UoM/tipo/classe utenza/categoria cliente snapshot | — |
 | `E_VENDITE_CONTRATTO_OVERLAP` | 409 | EXCLUDE `ex_contratti_no_overlap` | — |
+| `E_CONTRATTO_NON_MODIFICABILE` | 409 | Service (operazioni righe/componenti su contratto post-DRAFT) | — |
+| `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
 | `E_CONTRATTO_MODALITA_C_SENZA_RIGHE` | 400 | DB P0001 | `trgfn_contratti_guard_modalita_c_activation` |
 | `E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE` | 400 | DB P0001 | `trgfn_contratti_guard_modalita_c_activation` |
 | `E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO` | 400 | DB P0001 | `trgfn_contratti_righe_guard_modalita_c` |
 | `E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |
 | `E_CONTRATTO_CLASSE_TIPO_INCOERENTE` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |
 | `E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |
+| `E_DOC_COMPOSITO_BOM_VUOTA` | 400 | DB P0001 (auto-init componenti riga: articolo composito senza figli BoM validi alla data) | `fn_contratto_riga_componenti_init` |
+| `E_DOC_COMPONENTE_OBBLIGATORIO` | 400 | DB P0001 (tentativo di disattivare un componente obbligatorio) | `trgfn_contratti_righe_componenti_guard_obbligatorio` |
+| `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | 400 | DB P0001 (override prezzo 0 su componente obbligatorio) | `trgfn_contratti_righe_componenti_guard_prezzo` |
+| `E_BOM_IVA_DISCORDANTE` | 400 | DB P0001 (IVA componente diversa da padre — vincolo modello unificato) | trigger catalogo IVA coerenza |
 
 ## Dipendenze DB
 
-Tabelle: `vendite.contratti`, `vendite.contratti_righe`,
-`vendite.contratti_utilities`. Funzioni: `script.fn_generate_codice`.
-Trigger autoritativi: come da tabella codici errore. Stati gestiti via
-`config.stati_doc_contratti` (DRAFT/ATTIVO/SOSPESO/CESSATO).
+**Tabelle**: `vendite.contratti`, `vendite.contratti_righe`,
+`vendite.contratti_utilities`, `vendite.contratti_righe_componenti`
+(modello unificato BoM 2026-05-13, simmetrico a `preventivi_righe_componenti`).
+
+**Funzioni**:
+
+- `script.fn_generate_codice('contratto')` — numero contratto (prefix `CNT`).
+- `vendite.fn_contratto_riga_componenti_init(riga_id, emittente_sr_id, data_riferimento, componenti_overrides::jsonb) -> integer`
+  — auto-init componenti BoM idempotente. Default `attivo=TRUE` per tutti i
+  componenti (BoM contratto immutabile, decisione 2026-05-13).
+- `vendite.fn_contratto_riga_componenti_preview(articolo_id, uom_id, quantita_padre, data_riferimento, ba_id, utility_id, emittente_sr_id, classe_utenza_id) -> SETOF record`
+  — read-only STABLE, ritorna 14 colonne (vedi `contratti_repository.preview_componenti_riga`).
+- `vendite.fn_resolve_prezzo_listino_v2(..., p_articolo_padre_contesto)` — resolver
+  bundle-aware usato dalla preview (vedi [api_pricing.md](api_pricing.md)).
+
+**Trigger autoritativi**: come da tabella codici errore. Inoltre su
+`contratti_righe_componenti`:
+
+- `trg_contratti_righe_propaga_qta_componenti` — ricalcolo `quantita` componente
+  al cambio `quantita` riga padre.
+- `trgfn_contratti_righe_componenti_guard_pending` — immutabilita' componenti
+  quando `stato_approvazione_prezzo = PENDING` (L3 approvazioni prezzo).
+
+**Stati** gestiti via `config.stati_doc_contratti`
+(DRAFT/ATTIVO/SOSPESO/CESSATO). Cessazione manuale solo con
+`valido_al >= CURRENT_DATE`; il job pgAgent `fn_apply_chiusura_scadenze`
+chiude i contratti scaduti via GUC `app.cessazione_automatica='true'`.
