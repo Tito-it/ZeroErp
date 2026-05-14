@@ -1,0 +1,61 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260514-11-alter-articoli-componenti-add-temporal-unique-id-period-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Prerequisito per temporal FK da listini_righe_componenti (Step 3).
+  #
+  # PG 18 richiede che la tabella padre di un temporal FK abbia un temporal
+  # PRIMARY KEY o UNIQUE sui campi referenziati.
+  # La FK sara': FOREIGN KEY (articolo_componente_id, PERIOD validita)
+  #              REFERENCES catalogo.articoli_componenti (id, PERIOD validita)
+  #
+  # Serve quindi UNIQUE (id, validita WITHOUT OVERLAPS) su articoli_componenti.
+  # Semanticamente triviale (id e' UUID PK, una sola riga per id), ma
+  # necessaria per registrare il "periodo" ai fini del temporal FK.
+  #
+  # Nota: gia' esiste uq_articoli_componenti_no_overlap (prodotto_id,
+  # componente_id, validita WITHOUT OVERLAPS) per l'anti-overlap BoM.
+  # Questo e' un secondo temporal UNIQUE con chiave diversa, finalizzato
+  # esclusivamente al supporto della FK da listini_righe_componenti.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-11-alter-articoli-componenti-add-temporal-unique-id-period
+      author: mctit
+      comment: >
+        Aggiunge UNIQUE (id, validita WITHOUT OVERLAPS) su catalogo.articoli_componenti:
+        prerequisito PG 18 per temporal FK da vendite.listini_righe_componenti.id
+        verso articoli_componenti.id con PERIOD validita.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+          - sqlCheck:
+              expectedResult: 0
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_constraint con
+                  JOIN pg_class c ON c.oid = con.conrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'catalogo'
+                   AND c.relname = 'articoli_componenti'
+                   AND con.contype = 'u'
+                   AND con.conname = 'uq_articoli_componenti_id_temporal'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Aggiunge temporal UNIQUE su (id, validita WITHOUT OVERLAPS).
+              -- id e' UUID PK (una riga per id), quindi il constraint e' trivialmente
+              -- soddisfatto ma e' richiesto da PG 18 per la temporal FK reference.
+              ALTER TABLE catalogo.articoli_componenti
+                  ADD CONSTRAINT uq_articoli_componenti_id_temporal
+                  UNIQUE (id, validita WITHOUT OVERLAPS);
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE catalogo.articoli_componenti
+                  DROP CONSTRAINT IF EXISTS uq_articoli_componenti_id_temporal;

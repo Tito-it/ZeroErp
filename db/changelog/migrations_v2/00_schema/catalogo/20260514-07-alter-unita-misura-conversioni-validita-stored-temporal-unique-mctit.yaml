@@ -1,0 +1,119 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260514-07-alter-unita-misura-conversioni-validita-stored-temporal-unique-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 2a (piano-miglioramenti-db-pg18.md) — catalogo.unita_misura_conversioni:
+  # converte validita da colonna ordinaria (trigger-based) a STORED generated
+  # e sostituisce EXCLUDE USING gist con temporal UNIQUE (PG 18 SQL:2011).
+  #
+  # Tabella: autonoma, zero dipendenze temporali con altre — primo banco
+  # di prova del pattern STORED + temporal UNIQUE.
+  #
+  # Sequenza:
+  #   1. DROP trigger trg_uom_conversioni_a20_set_validita_ins_upd
+  #   2. DROP COLUMN validita CASCADE
+  #      (CASCADE rimuove anche ex_uom_conv_no_overlap: EXCLUDE constraint + GiST index)
+  #   3. ADD COLUMN validita DATERANGE GENERATED ALWAYS AS (...) STORED NOT NULL
+  #   4. ADD CONSTRAINT uq_uom_conv_no_overlap UNIQUE (uom_from_id, uom_to_id, validita WITHOUT OVERLAPS)
+  #      L'indice GiST del constraint copre anche query WHERE validita @> data (D-OPEN-2).
+  #   5. UPDATE dbops.automazione_overlap SET active=false
+  #      fn_apply_automazione_overlap (20260514-03) skippa gia' per temporal UNIQUE,
+  #      ma active=false documenta esplicitamente il pathway.
+  #
+  # Nessuna vista dipende da validita (verificato doc auto-gen 2026-05-14).
+  # Nessun guard trigger da riscrivere per questa tabella.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-07-alter-unita-misura-conversioni-validita-stored-temporal-unique
+      author: mctit
+      comment: >
+        Step 2a PG18: converte validita da trigger-based a STORED generated column
+        e sostituisce EXCLUDE gist con temporal UNIQUE (WITHOUT OVERLAPS) su
+        catalogo.unita_misura_conversioni.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: unita_misura_conversioni
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'catalogo'
+                   AND c.relname = 'unita_misura_conversioni'
+                   AND a.attname = 'validita'
+                   AND a.attnum > 0
+                   AND NOT a.attisdropped
+                   AND a.attgenerated = ''
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rimuove il trigger set_validita: sostituito da STORED generated
+              DROP TRIGGER IF EXISTS trg_uom_conversioni_a20_set_validita_ins_upd
+                  ON catalogo.unita_misura_conversioni;
+
+              -- Rimuove la colonna ordinaria; CASCADE droppera' anche
+              -- ex_uom_conv_no_overlap (EXCLUDE constraint + indice GiST)
+              ALTER TABLE catalogo.unita_misura_conversioni
+                  DROP COLUMN validita CASCADE;
+
+              -- Aggiunge validita come STORED generated: sempre coerente,
+              -- non scrivibile dall'API, compatibile con temporal constraints
+              ALTER TABLE catalogo.unita_misura_conversioni
+                  ADD COLUMN validita DATERANGE
+                      GENERATED ALWAYS AS (
+                          daterange(
+                              COALESCE(valido_dal, '-infinity'::date),
+                              COALESCE(valido_al,  'infinity'::date),
+                              '[]'
+                          )
+                      ) STORED NOT NULL;
+
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. '
+                  'Non scrivibile direttamente. rev 2026-05-14.';
+
+              -- Aggiunge temporal UNIQUE PG 18 SQL:2011: sostituisce EXCLUDE USING gist.
+              -- L'indice GiST del constraint copre anche query WHERE validita @> data (D-OPEN-2).
+              ALTER TABLE catalogo.unita_misura_conversioni
+                  ADD CONSTRAINT uq_uom_conv_no_overlap
+                  UNIQUE (uom_from_id, uom_to_id, validita WITHOUT OVERLAPS);
+
+              -- Segna come non attiva in automazione_overlap: fn_apply (20260514-03)
+              -- skipperebbe gia' per temporal UNIQUE esistente, ma active=false
+              -- documenta esplicitamente che questa tabella usa il pathway PG 18.
+              UPDATE dbops.automazione_overlap
+                 SET active = false
+               WHERE target_schema = 'catalogo'
+                 AND target_table  = 'unita_misura_conversioni';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristina validita come colonna ordinaria + EXCLUDE
+              ALTER TABLE catalogo.unita_misura_conversioni
+                  DROP CONSTRAINT IF EXISTS uq_uom_conv_no_overlap;
+              ALTER TABLE catalogo.unita_misura_conversioni
+                  DROP COLUMN IF EXISTS validita;
+              ALTER TABLE catalogo.unita_misura_conversioni
+                  ADD COLUMN validita DATERANGE;
+              UPDATE catalogo.unita_misura_conversioni
+                 SET validita = daterange(
+                     COALESCE(valido_dal, '-infinity'::date),
+                     COALESCE(valido_al,  'infinity'::date), '[]');
+              ALTER TABLE catalogo.unita_misura_conversioni
+                  ALTER COLUMN validita SET NOT NULL;
+              ALTER TABLE catalogo.unita_misura_conversioni
+                  ADD CONSTRAINT ex_uom_conv_no_overlap
+                  EXCLUDE USING gist (uom_from_id WITH =, uom_to_id WITH =, validita WITH &&);
+              UPDATE dbops.automazione_overlap
+                 SET active = true
+               WHERE target_schema = 'catalogo'
+                 AND target_table  = 'unita_misura_conversioni';

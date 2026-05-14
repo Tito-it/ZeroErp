@@ -1,0 +1,67 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260514-12-alter-listini-righe-componenti-add-temporal-fk-articoli-componenti-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 3 (piano-miglioramenti-db-pg18.md) — temporal FK da
+  # vendite.listini_righe_componenti verso catalogo.articoli_componenti.
+  #
+  # Semantica: per ogni riga listino componente, la sua validita deve essere
+  # CONTENUTA nella validita della BoM (articoli_componenti) referenziata.
+  # Questa e' la stessa semantica del guard 6 in
+  # trgfn_listini_righe_comp_guard_coerenza_bom (che viene rimosso in 20260514-13).
+  #
+  # Prerequisiti (garantiti da migrations precedenti):
+  #   - listini_righe_componenti.validita e' STORED generated (20260514-04)
+  #   - articoli_componenti.validita e' STORED generated (20260514-08)
+  #   - articoli_componenti ha UNIQUE (id, validita WITHOUT OVERLAPS) (20260514-11)
+  #
+  # Guard 6 rimosso nel changeSet 20260514-13 (20_code/script).
+  # Guard 7 (riga ⊆ versione listino) rimane nel trigger: listini_versioni
+  # non ha temporal UNIQUE senza WHERE, quindi la FK verso listini_versioni
+  # non e' applicabile.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-12-alter-listini-righe-componenti-add-temporal-fk-articoli-componenti
+      author: mctit
+      comment: >
+        Step 3 PG18: aggiunge temporal FK (PERIOD validita) da
+        listini_righe_componenti verso articoli_componenti.
+        Formalizza la semantica di containment validita gia' implementata
+        dal guard 6 (rimosso in 20260514-13).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: listini_righe_componenti
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+          - sqlCheck:
+              expectedResult: 0
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_constraint con
+                  JOIN pg_class c ON c.oid = con.conrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND c.relname = 'listini_righe_componenti'
+                   AND con.conname = 'fk_listrighe_comp_articoli_comp_temporal'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Temporal FK PG 18 SQL:2011: listini_righe_componenti.validita
+              -- deve essere contenuta in articoli_componenti.validita.
+              -- Sostituisce il guard 6 nel trigger (20260514-13).
+              ALTER TABLE vendite.listini_righe_componenti
+                  ADD CONSTRAINT fk_listrighe_comp_articoli_comp_temporal
+                  FOREIGN KEY (articolo_componente_id, PERIOD validita)
+                  REFERENCES catalogo.articoli_componenti (id, PERIOD validita);
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.listini_righe_componenti
+                  DROP CONSTRAINT IF EXISTS fk_listrighe_comp_articoli_comp_temporal;

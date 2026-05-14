@@ -1,0 +1,123 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260514-08-alter-articoli-componenti-validita-stored-temporal-unique-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 2a (piano-miglioramenti-db-pg18.md) — catalogo.articoli_componenti:
+  # converte validita da colonna ordinaria (trigger-based) a STORED generated
+  # e sostituisce EXCLUDE USING gist con temporal UNIQUE (PG 18 SQL:2011).
+  #
+  # Importante: trgfn_articoli_componenti_block_modifica_struttura contiene
+  # il check "NEW.validita IS DISTINCT FROM OLD.validita". Dopo questa migration,
+  # NEW.validita e' NULL in BEFORE trigger (STORED generated, verificato D-OPEN-1)
+  # => il check diventa sempre TRUE => qualsiasi UPDATE solleva E_BOM_MODIFICA_VIETATA.
+  # Il fix e' nel changeSet 20260514-09 (20_code/catalogo), che viene applicato
+  # immediatamente dopo per ordinamento NN autogen.
+  #
+  # Sequenza:
+  #   1. DROP trigger trg_articoli_componenti_a20_set_validita_ins_upd
+  #   2. DROP COLUMN validita CASCADE
+  #      (CASCADE rimuove anche ex_articoli_componenti_no_overlap: EXCLUDE + GiST)
+  #   3. ADD COLUMN validita DATERANGE GENERATED ALWAYS AS (...) STORED NOT NULL
+  #   4. ADD CONSTRAINT uq_articoli_componenti_no_overlap UNIQUE
+  #      (prodotto_id, componente_id, validita WITHOUT OVERLAPS)
+  #   5. UPDATE dbops.automazione_overlap SET active=false
+  #
+  # Dopo Step 2a diventa disponibile la temporal FK da listini_righe_componenti
+  # verso questa tabella (Step 3 del piano).
+  #
+  # Nessuna vista dipende da validita (verificato doc auto-gen 2026-05-14).
+  # Guard da riscrivere: trgfn_articoli_componenti_block_modifica_struttura (20260514-09).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-08-alter-articoli-componenti-validita-stored-temporal-unique
+      author: mctit
+      comment: >
+        Step 2a PG18: converte validita da trigger-based a STORED generated column
+        e sostituisce EXCLUDE gist con temporal UNIQUE (WITHOUT OVERLAPS) su
+        catalogo.articoli_componenti. Guard fix in 20260514-09.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'catalogo'
+                   AND c.relname = 'articoli_componenti'
+                   AND a.attname = 'validita'
+                   AND a.attnum > 0
+                   AND NOT a.attisdropped
+                   AND a.attgenerated = ''
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rimuove il trigger set_validita: sostituito da STORED generated
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a20_set_validita_ins_upd
+                  ON catalogo.articoli_componenti;
+
+              -- Rimuove la colonna ordinaria; CASCADE droppera' anche
+              -- ex_articoli_componenti_no_overlap (EXCLUDE constraint + indice GiST)
+              ALTER TABLE catalogo.articoli_componenti
+                  DROP COLUMN validita CASCADE;
+
+              -- Aggiunge validita come STORED generated: sempre coerente,
+              -- non scrivibile dall'API, compatibile con temporal constraints
+              ALTER TABLE catalogo.articoli_componenti
+                  ADD COLUMN validita DATERANGE
+                      GENERATED ALWAYS AS (
+                          daterange(
+                              COALESCE(valido_dal, '-infinity'::date),
+                              COALESCE(valido_al,  'infinity'::date),
+                              '[]'
+                          )
+                      ) STORED NOT NULL;
+
+              COMMENT ON COLUMN catalogo.articoli_componenti.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. '
+                  'Non scrivibile direttamente. rev 2026-05-14.';
+
+              -- Aggiunge temporal UNIQUE PG 18 SQL:2011: sostituisce EXCLUDE USING gist.
+              -- L'indice GiST del constraint copre anche query WHERE validita @> data (D-OPEN-2).
+              -- Prerequisito per temporal FK da listini_righe_componenti (Step 3).
+              ALTER TABLE catalogo.articoli_componenti
+                  ADD CONSTRAINT uq_articoli_componenti_no_overlap
+                  UNIQUE (prodotto_id, componente_id, validita WITHOUT OVERLAPS);
+
+              -- Segna come non attiva in automazione_overlap
+              UPDATE dbops.automazione_overlap
+                 SET active = false
+               WHERE target_schema = 'catalogo'
+                 AND target_table  = 'articoli_componenti';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristina validita come colonna ordinaria + EXCLUDE
+              ALTER TABLE catalogo.articoli_componenti
+                  DROP CONSTRAINT IF EXISTS uq_articoli_componenti_no_overlap;
+              ALTER TABLE catalogo.articoli_componenti
+                  DROP COLUMN IF EXISTS validita;
+              ALTER TABLE catalogo.articoli_componenti
+                  ADD COLUMN validita DATERANGE;
+              UPDATE catalogo.articoli_componenti
+                 SET validita = daterange(
+                     COALESCE(valido_dal, '-infinity'::date),
+                     COALESCE(valido_al,  'infinity'::date), '[]');
+              ALTER TABLE catalogo.articoli_componenti
+                  ALTER COLUMN validita SET NOT NULL;
+              ALTER TABLE catalogo.articoli_componenti
+                  ADD CONSTRAINT ex_articoli_componenti_no_overlap
+                  EXCLUDE USING gist (prodotto_id WITH =, componente_id WITH =, validita WITH &&);
+              UPDATE dbops.automazione_overlap
+                 SET active = true
+               WHERE target_schema = 'catalogo'
+                 AND target_table  = 'articoli_componenti';

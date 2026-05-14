@@ -1,0 +1,100 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260514-28-alter-articoli-uom-operativa-validita-stored-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 2b — catalogo.articoli_uom_operativa.
+  # La vista vw_articoli_uom_operativa_dettaglio seleziona validita:
+  # DROP COLUMN CASCADE la droppera'. Ricreata esplicitamente dopo ADD COLUMN.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-28-alter-articoli-uom-operativa-validita-stored
+      author: mctit
+      comment: >
+        Step 2b PG18: converte validita a STORED generated su
+        catalogo.articoli_uom_operativa. Ricrea vw_articoli_uom_operativa_dettaglio
+        droppata da CASCADE.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_uom_operativa
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname='catalogo' AND c.relname='articoli_uom_operativa'
+                   AND a.attname='validita' AND a.attnum>0
+                   AND NOT a.attisdropped AND a.attgenerated=''
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_uom_operativa_a20_set_validita_ins_upd
+                  ON catalogo.articoli_uom_operativa;
+
+              -- DROP CASCADE rimuove anche vw_articoli_uom_operativa_dettaglio
+              ALTER TABLE catalogo.articoli_uom_operativa DROP COLUMN validita CASCADE;
+
+              ALTER TABLE catalogo.articoli_uom_operativa
+                  ADD COLUMN validita DATERANGE
+                      GENERATED ALWAYS AS (
+                          daterange(COALESCE(valido_dal,'-infinity'::date),
+                                    COALESCE(valido_al, 'infinity'::date),'[]')
+                      ) STORED NOT NULL;
+
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. rev 2026-05-14.';
+
+              -- Ricrea la vista droppata da CASCADE (definizione invariata,
+              -- validita ora e' STORED generated ma ancora selezionabile)
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_uom_operativa_dettaglio AS
+              SELECT auo.id,
+                  auo.articolo_id,
+                  auo.uom_id,
+                  auo.is_base,
+                  auo.factor_to_base,
+                  auo.is_sell_uom,
+                  auo.is_purchase_uom,
+                  auo.is_logistic_uom,
+                  auo.qty_step,
+                  auo.rounding_mode,
+                  auo.max_decimals,
+                  auo.forbid_fraction,
+                  auo.require_lot,
+                  auo.gtin,
+                  auo.valido_dal,
+                  auo.valido_al,
+                  auo.validita,
+                  auo.attivo,
+                  auo.meta,
+                  auo.user_insert,
+                  auo.user_update,
+                  auo.data_insert,
+                  auo.data_update,
+                  auo.tx_id,
+                  auo.storicizza,
+                  u.codice  AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  a.codice  AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  (NOT auo.is_base) AS puo_eliminarsi,
+                  CASE WHEN auo.is_base THEN 'UOM_BASE_NON_ELIMINABILE'::text
+                       ELSE NULL::text
+                  END AS motivo_non_eliminabile
+              FROM catalogo.articoli_uom_operativa auo
+              LEFT JOIN catalogo.unita_misura u  ON u.id = auo.uom_id
+              LEFT JOIN catalogo.articoli a      ON a.id = auo.articolo_id;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS catalogo.vw_articoli_uom_operativa_dettaglio;
+              ALTER TABLE catalogo.articoli_uom_operativa DROP COLUMN IF EXISTS validita;
+              ALTER TABLE catalogo.articoli_uom_operativa ADD COLUMN validita DATERANGE;
+              UPDATE catalogo.articoli_uom_operativa SET validita=daterange(COALESCE(valido_dal,'-infinity'::date),COALESCE(valido_al,'infinity'::date),'[]');
+              ALTER TABLE catalogo.articoli_uom_operativa ALTER COLUMN validita SET NOT NULL;
