@@ -1,0 +1,297 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Aggiunge check idempotenza temporal UNIQUE (WITHOUT OVERLAPS) a
+# fn_apply_automazione_overlap. Senza questo fix, dopo la migrazione
+# di una tabella da EXCLUDE USING gist a temporal UNIQUE, una run
+# successiva di fn_apply_automazione_overlap ricreerebbe il vecchio
+# EXCLUDE perche' non trova piu' vincoli contype='x'.
+# Vedi: docs/it/dev/work-in-progress/piano-miglioramenti-db-pg18.md §D-OPEN-3
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260514-03-update-fn-apply-automazione-overlap-temporal-unique-mctit.yaml
+
+  - changeSet:
+      id: 20260514-03-update-fn-apply-automazione-overlap-temporal-unique
+      author: mctit
+      runOnChange: true
+      comment: >
+        Aggiunge variabile v_temporal_unique_exists e relativo check:
+        se sulla tabella target esiste gia' un UNIQUE (WITHOUT OVERLAPS) che
+        referenzia la colonna periodo, la funzione skippa senza creare l'EXCLUDE.
+        Rende la funzione idempotente per tabelle migrate a temporal UNIQUE PG 18.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, p_dry_run boolean)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: applica vincoli EXCLUDE GiST su tabelle configurate in
+              --   dbops.automazione_overlap (active=true). Dual codepath: colonna
+              --   daterange nativa (range_col) o espressione calcolata (valido_dal/al).
+              --   Idempotente: skippa se esiste gia' EXCLUDE, altro EXCLUDE sul periodo,
+              --   o temporal UNIQUE (WITHOUT OVERLAPS) sulla stessa colonna.
+              DECLARE
+                rconf record;
+                v_rel regclass;
+                v_cols text[];
+                v_col text;
+                v_key_expr text;
+                v_range_expr text;
+                v_bounds text;
+                v_constraint text;
+                v_constraint_exists    boolean;
+                v_any_exclusion        boolean;
+                v_temporal_unique_exists boolean;
+                v_skip_status text;
+              BEGIN
+                v_skip_status := CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'WARN' END;
+                FOR rconf IN
+                  SELECT *
+                    FROM dbops.automazione_overlap
+                   WHERE active
+                     AND (upper(btrim(exec_mode)) = 'AUTO' OR exec_mode = p_exec_mode)
+                   ORDER BY target_schema, target_table
+                LOOP
+                  v_rel := (quote_ident(rconf.target_schema)||'.'||quote_ident(rconf.target_table))::regclass;
+
+                  IF rconf.key_columns IS NULL OR array_length(rconf.key_columns, 1) IS NULL THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_apply_automazione_overlap',
+                      p_status        => v_skip_status,
+                      p_rule_type     => 'OVERLAP',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['OVERLAP'],
+                      p_dry_run       => p_dry_run,
+                      p_params        => jsonb_build_object(
+                                          'table', rconf.target_schema||'.'||rconf.target_table,
+                                          'reason', 'NO_KEY_COLUMNS'
+                                        ),
+                      p_message       => 'Skip: key_columns missing'
+                    );
+                    CONTINUE;
+                  END IF;
+
+                  -- Validazione colonne periodo: se range_col e` valorizzata verifica
+                  -- che esista nella tabella, altrimenti verifica valido_dal_col/valido_al_col
+                  IF rconf.range_col IS NOT NULL THEN
+                    IF NOT dbops.fn_col_exists(rconf.target_schema, rconf.target_table, rconf.range_col) THEN
+                      PERFORM dbops.fn_audit_log_once(
+                        p_function_name => 'dbops.fn_apply_automazione_overlap',
+                        p_status        => v_skip_status,
+                        p_rule_type     => 'OVERLAP',
+                        p_exec_mode     => p_exec_mode,
+                        p_parts         => ARRAY['OVERLAP'],
+                        p_dry_run       => p_dry_run,
+                        p_params        => jsonb_build_object(
+                                            'table', rconf.target_schema||'.'||rconf.target_table,
+                                            'range_col', rconf.range_col,
+                                            'reason', 'RANGE_COL_MISSING'
+                                          ),
+                        p_message       => 'Skip: range_col not found in table'
+                      );
+                      CONTINUE;
+                    END IF;
+                  ELSE
+                    IF NOT dbops.fn_col_exists(rconf.target_schema, rconf.target_table, rconf.valido_dal_col)
+                       OR NOT dbops.fn_col_exists(rconf.target_schema, rconf.target_table, rconf.valido_al_col) THEN
+                      PERFORM dbops.fn_audit_log_once(
+                        p_function_name => 'dbops.fn_apply_automazione_overlap',
+                        p_status        => v_skip_status,
+                        p_rule_type     => 'OVERLAP',
+                        p_exec_mode     => p_exec_mode,
+                        p_parts         => ARRAY['OVERLAP'],
+                        p_dry_run       => p_dry_run,
+                        p_params        => jsonb_build_object(
+                                            'table', rconf.target_schema||'.'||rconf.target_table,
+                                            'valido_dal_col', rconf.valido_dal_col,
+                                            'valido_al_col', rconf.valido_al_col,
+                                            'reason', 'PERIOD_COLUMNS_MISSING'
+                                          ),
+                        p_message       => 'Skip: period columns missing'
+                      );
+                      CONTINUE;
+                    END IF;
+                  END IF;
+
+                  -- Costruzione key expression
+                  v_cols := ARRAY[]::text[];
+                  FOREACH v_col IN ARRAY rconf.key_columns
+                  LOOP
+                    IF dbops.fn_col_exists(rconf.target_schema, rconf.target_table, v_col) THEN
+                      v_cols := array_append(v_cols, quote_ident(v_col) || ' WITH =');
+                    END IF;
+                  END LOOP;
+
+                  IF array_length(v_cols, 1) IS NULL THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_apply_automazione_overlap',
+                      p_status        => v_skip_status,
+                      p_rule_type     => 'OVERLAP',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['OVERLAP'],
+                      p_dry_run       => p_dry_run,
+                      p_params        => jsonb_build_object(
+                                          'table', rconf.target_schema||'.'||rconf.target_table,
+                                          'key_columns', rconf.key_columns,
+                                          'reason', 'KEY_COLUMNS_NOT_FOUND'
+                                        ),
+                      p_message       => 'Skip: key_columns not found in table'
+                    );
+                    CONTINUE;
+                  END IF;
+
+                  -- Costruzione range expression: dual codepath
+                  IF rconf.range_col IS NOT NULL THEN
+                    -- Colonna daterange/tstzrange nativa: uso diretto
+                    v_range_expr := format('%I WITH &&', rconf.range_col);
+                  ELSE
+                    -- Costruzione range al volo da colonne separate (retrocompatibile)
+                    v_bounds := COALESCE(NULLIF(btrim(rconf.range_bounds), ''), '[]');
+                    v_range_expr := format(
+                      'daterange(%I, COALESCE(%I, ''infinity''::date), %L) WITH &&',
+                      rconf.valido_dal_col,
+                      rconf.valido_al_col,
+                      v_bounds
+                    );
+                  END IF;
+
+                  v_key_expr := array_to_string(v_cols, ', ');
+
+                  v_constraint := COALESCE(rconf.constraint_name,
+                                   dbops.fn_name_from_template('ex_{table}_no_overlap', rconf.target_schema, rconf.target_table, NULL, NULL, NULL, NULL));
+
+                  -- Se il nome e` gia` usato da un indice o altro oggetto, usa un suffisso
+                  IF EXISTS (
+                    SELECT 1
+                      FROM pg_class c
+                      JOIN pg_namespace n ON n.oid = c.relnamespace
+                     WHERE n.nspname = rconf.target_schema
+                       AND c.relname = v_constraint
+                  ) THEN
+                    v_constraint := dbops.fn_name_from_template('ex_{table}_no_overlap_c', rconf.target_schema, rconf.target_table, NULL, NULL, NULL, NULL);
+                  END IF;
+
+                  -- Verifica EXCLUDE con nome atteso
+                  SELECT EXISTS (
+                    SELECT 1
+                      FROM pg_constraint con
+                     WHERE con.conrelid = v_rel
+                       AND con.contype = 'x'
+                       AND con.conname = v_constraint
+                  )
+                  INTO v_constraint_exists;
+
+                  -- Verifica se esiste gia` un vincolo EXCLUDE che referenzia le colonne periodo
+                  -- Per range_col cerca il nome colonna, per le colonne separate cerca valido_dal_col
+                  SELECT EXISTS (
+                    SELECT 1
+                      FROM pg_constraint con
+                     WHERE con.conrelid = v_rel
+                       AND con.contype = 'x'
+                       AND pg_get_constraintdef(con.oid) ILIKE '%' ||
+                           COALESCE(rconf.range_col, rconf.valido_dal_col) || '%'
+                  )
+                  INTO v_any_exclusion;
+
+                  -- Verifica se esiste gia` un temporal UNIQUE (WITHOUT OVERLAPS) sulla
+                  -- colonna periodo: tabella migrata a PG 18 temporal constraint.
+                  -- contype='u' perche' temporal UNIQUE non e' EXCLUDE ma UNIQUE standard.
+                  SELECT EXISTS (
+                    SELECT 1
+                      FROM pg_constraint con
+                     WHERE con.conrelid = v_rel
+                       AND con.contype = 'u'
+                       AND pg_get_constraintdef(con.oid) ILIKE '%WITHOUT OVERLAPS%'
+                       AND pg_get_constraintdef(con.oid) ILIKE '%' ||
+                           COALESCE(rconf.range_col, rconf.valido_dal_col) || '%'
+                  )
+                  INTO v_temporal_unique_exists;
+
+                  IF v_constraint_exists OR v_any_exclusion OR v_temporal_unique_exists THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_apply_automazione_overlap',
+                      p_status        => v_skip_status,
+                      p_rule_type     => 'OVERLAP',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['OVERLAP'],
+                      p_dry_run       => p_dry_run,
+                      p_params        => jsonb_build_object(
+                                          'table', rconf.target_schema||'.'||rconf.target_table,
+                                          'constraint', v_constraint,
+                                          'reason', CASE
+                                            WHEN v_temporal_unique_exists THEN 'TEMPORAL_UNIQUE_EXISTS'
+                                            ELSE 'EXCLUDE_EXISTS'
+                                          END
+                                        ),
+                      p_message       => CASE
+                        WHEN v_temporal_unique_exists
+                          THEN 'Skip: temporal unique (WITHOUT OVERLAPS) already present'
+                        ELSE 'Skip: exclude constraint already present'
+                      END
+                    );
+                    CONTINUE;
+                  END IF;
+
+                  IF p_dry_run THEN
+                    PERFORM dbops.fn_audit_log_once(
+                      p_function_name => 'dbops.fn_apply_automazione_overlap',
+                      p_status        => 'DRYRUN',
+                      p_rule_type     => 'OVERLAP',
+                      p_exec_mode     => p_exec_mode,
+                      p_parts         => ARRAY['OVERLAP'],
+                      p_dry_run       => true,
+                      p_params        => jsonb_build_object(
+                                          'table', rconf.target_schema||'.'||rconf.target_table,
+                                          'constraint', v_constraint,
+                                          'key_columns', rconf.key_columns,
+                                          'range_col', rconf.range_col,
+                                          'valido_dal_col', rconf.valido_dal_col,
+                                          'valido_al_col', rconf.valido_al_col,
+                                          'range_bounds', COALESCE(rconf.range_bounds, '[]'),
+                                          'action', 'DRYRUN_CREATE_EXCLUDE'
+                                        ),
+                      p_message       => 'Exclude constraint would be created'
+                    );
+                    CONTINUE;
+                  END IF;
+
+                  EXECUTE format(
+                    'ALTER TABLE %I.%I ADD CONSTRAINT %I EXCLUDE USING gist (%s, %s)',
+                    rconf.target_schema,
+                    rconf.target_table,
+                    v_constraint,
+                    v_key_expr,
+                    v_range_expr
+                  );
+                  PERFORM dbops.fn_audit_log_once(
+                    p_function_name => 'dbops.fn_apply_automazione_overlap',
+                    p_status        => 'OK',
+                    p_rule_type     => 'OVERLAP',
+                    p_exec_mode     => p_exec_mode,
+                    p_parts         => ARRAY['OVERLAP'],
+                    p_dry_run       => false,
+                    p_params        => jsonb_build_object(
+                                        'table', rconf.target_schema||'.'||rconf.target_table,
+                                        'constraint', v_constraint,
+                                        'key_columns', rconf.key_columns,
+                                        'range_col', rconf.range_col,
+                                        'valido_dal_col', rconf.valido_dal_col,
+                                        'valido_al_col', rconf.valido_al_col,
+                                        'range_bounds', COALESCE(rconf.range_bounds, '[]'),
+                                        'action', 'CREATE_EXCLUDE'
+                                      ),
+                    p_message       => 'Exclude constraint created'
+                  );
+                END LOOP;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, p_dry_run boolean)
+              IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap. Dual codepath: colonna daterange nativa (range_col) o espressione calcolata (valido_dal/al). Idempotente per EXCLUDE esistenti e per temporal UNIQUE (WITHOUT OVERLAPS) PG 18.';

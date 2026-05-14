@@ -12,18 +12,24 @@ CREATE OR REPLACE FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, 
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
+-- Scopo: applica vincoli EXCLUDE GiST su tabelle configurate in
+--   dbops.automazione_overlap (active=true). Dual codepath: colonna
+--   daterange nativa (range_col) o espressione calcolata (valido_dal/al).
+--   Idempotente: skippa se esiste gia' EXCLUDE, altro EXCLUDE sul periodo,
+--   o temporal UNIQUE (WITHOUT OVERLAPS) sulla stessa colonna.
 DECLARE
-  rconf record;
-  v_rel regclass;
-  v_cols text[];
-  v_col text;
-  v_key_expr text;
-  v_range_expr text;
-  v_bounds text;
-  v_constraint text;
-  v_constraint_exists boolean;
-  v_any_exclusion boolean;
-  v_skip_status text;
+  rconf                  record;
+  v_rel                  regclass;
+  v_cols                 text[];
+  v_col                  text;
+  v_key_expr             text;
+  v_range_expr           text;
+  v_bounds               text;
+  v_constraint           text;
+  v_constraint_exists    boolean;
+  v_any_exclusion        boolean;
+  v_temporal_unique_exists boolean;
+  v_skip_status          text;
 BEGIN
   v_skip_status := CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'WARN' END;
   FOR rconf IN
@@ -52,8 +58,7 @@ BEGIN
       CONTINUE;
     END IF;
 
-    -- Validazione colonne periodo: se range_col e` valorizzata verifica
-    -- che esista nella tabella, altrimenti verifica valido_dal_col/valido_al_col
+    -- Validazione colonne periodo
     IF rconf.range_col IS NOT NULL THEN
       IF NOT dbops.fn_col_exists(rconf.target_schema, rconf.target_table, rconf.range_col) THEN
         PERFORM dbops.fn_audit_log_once(
@@ -123,10 +128,8 @@ BEGIN
 
     -- Costruzione range expression: dual codepath
     IF rconf.range_col IS NOT NULL THEN
-      -- Colonna daterange/tstzrange nativa: uso diretto
       v_range_expr := format('%I WITH &&', rconf.range_col);
     ELSE
-      -- Costruzione range al volo da colonne separate (retrocompatibile)
       v_bounds := COALESCE(NULLIF(btrim(rconf.range_bounds), ''), '[]');
       v_range_expr := format(
         'daterange(%I, COALESCE(%I, ''infinity''::date), %L) WITH &&',
@@ -141,39 +144,29 @@ BEGIN
     v_constraint := COALESCE(rconf.constraint_name,
                      dbops.fn_name_from_template('ex_{table}_no_overlap', rconf.target_schema, rconf.target_table, NULL, NULL, NULL, NULL));
 
-    -- Se il nome e` gia` usato da un indice o altro oggetto, usa un suffisso
     IF EXISTS (
-      SELECT 1
-        FROM pg_class c
+      SELECT 1 FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname = rconf.target_schema
-         AND c.relname = v_constraint
+       WHERE n.nspname = rconf.target_schema AND c.relname = v_constraint
     ) THEN
       v_constraint := dbops.fn_name_from_template('ex_{table}_no_overlap_c', rconf.target_schema, rconf.target_table, NULL, NULL, NULL, NULL);
     END IF;
 
-    SELECT EXISTS (
-      SELECT 1
-        FROM pg_constraint con
-       WHERE con.conrelid = v_rel
-         AND con.contype = 'x'
-         AND con.conname = v_constraint
-    )
-    INTO v_constraint_exists;
+    -- Verifica idempotenza: una scan su pg_constraint con LATERAL evita
+    -- 3 query separate e chiama pg_get_constraintdef() una volta per riga
+    SELECT
+        bool_or(con.contype = 'x' AND con.conname = v_constraint),
+        bool_or(con.contype = 'x'
+                AND cd.cdef ILIKE '%' || COALESCE(rconf.range_col, rconf.valido_dal_col) || '%'),
+        bool_or(con.contype = 'u'
+                AND cd.cdef ILIKE '%WITHOUT OVERLAPS%'
+                AND cd.cdef ILIKE '%' || COALESCE(rconf.range_col, rconf.valido_dal_col) || '%')
+    FROM pg_constraint con
+    CROSS JOIN LATERAL (SELECT pg_get_constraintdef(con.oid)) AS cd(cdef)
+    WHERE con.conrelid = v_rel
+    INTO v_constraint_exists, v_any_exclusion, v_temporal_unique_exists;
 
-    -- Verifica se esiste gia` un vincolo EXCLUDE che referenzia le colonne periodo
-    -- Per range_col cerca il nome colonna, per le colonne separate cerca valido_dal_col
-    SELECT EXISTS (
-      SELECT 1
-        FROM pg_constraint con
-       WHERE con.conrelid = v_rel
-         AND con.contype = 'x'
-         AND pg_get_constraintdef(con.oid) ILIKE '%' ||
-             COALESCE(rconf.range_col, rconf.valido_dal_col) || '%'
-    )
-    INTO v_any_exclusion;
-
-    IF v_constraint_exists OR v_any_exclusion THEN
+    IF v_constraint_exists OR v_any_exclusion OR v_temporal_unique_exists THEN
       PERFORM dbops.fn_audit_log_once(
         p_function_name => 'dbops.fn_apply_automazione_overlap',
         p_status        => v_skip_status,
@@ -184,9 +177,16 @@ BEGIN
         p_params        => jsonb_build_object(
                             'table', rconf.target_schema||'.'||rconf.target_table,
                             'constraint', v_constraint,
-                            'reason', 'EXCLUDE_EXISTS'
+                            'reason', CASE
+                              WHEN v_temporal_unique_exists THEN 'TEMPORAL_UNIQUE_EXISTS'
+                              ELSE 'EXCLUDE_EXISTS'
+                            END
                           ),
-        p_message       => 'Skip: exclude constraint already present'
+        p_message       => CASE
+          WHEN v_temporal_unique_exists
+            THEN 'Skip: temporal unique (WITHOUT OVERLAPS) already present'
+          ELSE 'Skip: exclude constraint already present'
+        END
       );
       CONTINUE;
     END IF;
@@ -246,7 +246,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, p_dry_run boolean)
-IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap. Supporta dual codepath: colonna daterange nativa (range_col) o espressione calcolata (valido_dal_col/valido_al_col).';
+IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap. Dual codepath: colonna daterange nativa (range_col) o espressione calcolata (valido_dal/al). Idempotente per EXCLUDE esistenti e per temporal UNIQUE (WITHOUT OVERLAPS) PG 18. Verifica idempotenza in unica scan pg_constraint (LATERAL).';
 ```
 
 ---

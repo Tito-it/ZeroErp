@@ -17,7 +17,6 @@
 | emittente_fiscale_id | bigint | NO |  |
 | valido_dal | date | NO | CURRENT_DATE |
 | valido_al | date | YES |  |
-| validita | daterange | NO |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
@@ -26,6 +25,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| validita | daterange | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -64,12 +64,10 @@
 | trg_template_asset_a10_emittenti_fiscali_require_attivo__1ac740 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_template_asset_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
 | trg_template_asset_a10_protect_file_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_template_asset_protect_file()` |
-| trg_template_asset_a10_tipi_asset_documento_require_atti_9bfc45 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'tipi_asset_documento', 'attivo', 'asset_tipo_id', 'id')` |
 | trg_template_asset_a10_tipi_asset_documento_require_atti_9bfc45 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'tipi_asset_documento', 'attivo', 'asset_tipo_id', 'id')` |
-| trg_template_asset_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
-| trg_template_asset_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |
-| trg_template_asset_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_template_asset_a10_tipi_asset_documento_require_atti_9bfc45 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'tipi_asset_documento', 'attivo', 'asset_tipo_id', 'id')` |
 | trg_template_asset_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_template_asset_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_template_asset_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_template_asset_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_template_asset_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('template_asset_id')` |

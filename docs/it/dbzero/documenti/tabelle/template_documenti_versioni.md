@@ -22,7 +22,6 @@
 | margin_left_mm | numeric | NO | 10 |
 | valido_dal | date | YES |  |
 | valido_al | date | YES |  |
-| validita | daterange | NO |  |
 | context_schema | jsonb | NO | '{}'::jsonb |
 | meta | jsonb | NO | '{}'::jsonb |
 | attivo | boolean | NO | true |
@@ -32,6 +31,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| validita | daterange | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -70,10 +70,8 @@
 | trg_template_documenti_versioni_a10_render_engine_docume_fac063 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'render_engine_documento', 'attivo', 'render_engine_id', 'id')` |
 | trg_template_documenti_versioni_a10_template_documenti_r_6d5768 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
 | trg_template_documenti_versioni_a10_template_documenti_r_6d5768 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
-| trg_template_documenti_versioni_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |
-| trg_template_documenti_versioni_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
-| trg_template_documenti_versioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_template_documenti_versioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_template_documenti_versioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_template_documenti_versioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_template_documenti_versioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_template_documenti_versioni_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('template_documenti_versioni_id')` |

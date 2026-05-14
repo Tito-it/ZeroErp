@@ -1,0 +1,46 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260514-26-alter-utilities-tipi-ruolo-validita-stored-mctit.yaml
+
+  - changeSet:
+      id: 20260514-26-alter-utilities-tipi-ruolo-validita-stored
+      author: mctit
+      comment: "Step 2b PG18: converte validita a STORED generated su config.utilities_tipi_ruolo."
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: utilities_tipi_ruolo
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname='config' AND c.relname='utilities_tipi_ruolo'
+                   AND a.attname='validita' AND a.attnum>0
+                   AND NOT a.attisdropped AND a.attgenerated=''
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_utilities_tipi_ruolo_a20_set_validita_ins_upd
+                  ON config.utilities_tipi_ruolo;
+              ALTER TABLE config.utilities_tipi_ruolo DROP COLUMN validita CASCADE;
+              ALTER TABLE config.utilities_tipi_ruolo
+                  ADD COLUMN validita DATERANGE
+                      GENERATED ALWAYS AS (
+                          daterange(COALESCE(valido_dal,'-infinity'::date),
+                                    COALESCE(valido_al, 'infinity'::date),'[]')
+                      ) STORED NOT NULL;
+              COMMENT ON COLUMN config.utilities_tipi_ruolo.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. rev 2026-05-14.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.utilities_tipi_ruolo DROP COLUMN IF EXISTS validita;
+              ALTER TABLE config.utilities_tipi_ruolo ADD COLUMN validita DATERANGE;
+              UPDATE config.utilities_tipi_ruolo SET validita=daterange(COALESCE(valido_dal,'-infinity'::date),COALESCE(valido_al,'infinity'::date),'[]');
+              ALTER TABLE config.utilities_tipi_ruolo ALTER COLUMN validita SET NOT NULL;

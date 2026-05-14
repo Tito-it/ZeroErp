@@ -1,0 +1,140 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260514-04-alter-listini-righe-componenti-validita-stored-generated-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Converte vendite.listini_righe_componenti al pattern standard PG 18:
+  # aggiunge valido_dal/valido_al come colonne input, converte validita a
+  # STORED generated column (calcolata automaticamente, non piu' colonna diretta).
+  #
+  # Motivazione: la tabella e' stata creata in 20260513-18 con validita come
+  # colonna diretta (senza trigger set_validita). Adottando il pattern STORED
+  # generated si elimina il rischio di inserimento con validita=NULL e si
+  # allinea la tabella al nuovo standard PG 18 (piano-miglioramenti-db-pg18.md).
+  #
+  # Sequenza:
+  #   1. ADD valido_dal DATE NOT NULL, valido_al DATE NULL
+  #   2. DROP COLUMN validita CASCADE  (rimuove anche ex_listini_righe_comp_no_overlap)
+  #   3. ADD COLUMN validita daterange GENERATED ALWAYS AS (...) STORED
+  #   4. Ricrea indice GiST anti-overlap con WHERE attivo=TRUE
+  #   5. Ricrea indice btree ix_listini_righe_comp_padre_data
+  #
+  # Nota: i guard trigger (20260513-19, 20260513-20) vengono aggiornati
+  # contestualmente in quei file (runOnChange: true, validCheckSum: [ANY]).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-04-alter-listini-righe-componenti-validita-stored-generated
+      author: mctit
+      comment: >
+        Converte validita da colonna diretta a STORED generated column.
+        Aggiunge valido_dal (NOT NULL) e valido_al (NULL = aperto).
+        Ridrop e ricrea indici dipendenti.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: listini_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND c.relname = 'listini_righe_componenti'
+                   AND a.attname = 'validita'
+                   AND a.attnum > 0
+                   AND NOT a.attisdropped
+                   AND a.attgenerated = ''
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Aggiunge le colonne input periodo (IF NOT EXISTS: idempotente in caso di
+              -- run parziale precedente). Nullable inizialmente per permettere il backfill.
+              ALTER TABLE vendite.listini_righe_componenti
+                  ADD COLUMN IF NOT EXISTS valido_dal DATE,
+                  ADD COLUMN IF NOT EXISTS valido_al  DATE;
+
+              -- Backfill da validita esistente solo dove valido_dal e' ancora NULL.
+              -- lower() = inizio periodo, upper()-1 = fine inclusiva
+              -- (PG canonicalizza bounds [] in [): upper() e' esclusivo, -1 riporta a inclusivo)
+              UPDATE vendite.listini_righe_componenti
+                 SET valido_dal = lower(validita),
+                     valido_al  = CASE
+                                     WHEN upper(validita) = 'infinity'::date THEN NULL
+                                     ELSE upper(validita) - 1
+                                 END
+               WHERE validita IS NOT NULL
+                 AND valido_dal IS NULL;
+
+              -- Impone NOT NULL su valido_dal dopo il backfill
+              ALTER TABLE vendite.listini_righe_componenti
+                  ALTER COLUMN valido_dal SET NOT NULL;
+
+              COMMENT ON COLUMN vendite.listini_righe_componenti.valido_dal IS
+                  'Data inizio validita'' (input API). Obbligatoria.';
+
+              COMMENT ON COLUMN vendite.listini_righe_componenti.valido_al IS
+                  'Data fine validita'' (input API). NULL = aperto.';
+
+              -- Rimuove la colonna diretta: CASCADE droppera' anche
+              -- ex_listini_righe_comp_no_overlap e ix_listini_righe_comp_padre_data
+              ALTER TABLE vendite.listini_righe_componenti
+                  DROP COLUMN validita CASCADE;
+
+              -- Aggiunge validita come STORED generated: sempre coerente,
+              -- nessun trigger necessario, non scrivibile dall'API
+              ALTER TABLE vendite.listini_righe_componenti
+                  ADD COLUMN validita DATERANGE
+                      GENERATED ALWAYS AS (
+                          daterange(
+                              COALESCE(valido_dal, '-infinity'::date),
+                              COALESCE(valido_al,  'infinity'::date),
+                              '[]'
+                          )
+                      ) STORED NOT NULL;
+
+              COMMENT ON COLUMN vendite.listini_righe_componenti.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. '
+                  'Non scrivibile direttamente. rev 2026-05-14.';
+
+              -- Ricrea indice GiST anti-overlap (ex_* droppato da CASCADE su validita;
+              -- DROP IF EXISTS per idempotenza in caso di run parziale)
+              DROP INDEX IF EXISTS vendite.ex_listini_righe_comp_no_overlap;
+              CREATE INDEX ex_listini_righe_comp_no_overlap
+                  ON vendite.listini_righe_componenti
+                  USING gist (listino_versione_id, articolo_componente_id, validita)
+                  WHERE (attivo = TRUE);
+
+              -- Ricrea indice btree per ricerca bundle-aware nel resolver pricing
+              -- (NON droppato da CASCADE: non dipende da validita, serve DROP esplicito)
+              DROP INDEX IF EXISTS vendite.ix_listini_righe_comp_padre_data;
+              CREATE INDEX ix_listini_righe_comp_padre_data
+                  ON vendite.listini_righe_componenti
+                  USING btree (articolo_padre_id, listino_versione_id)
+                  WHERE (attivo = TRUE);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback: ritorna a validita come colonna diretta
+              DROP INDEX IF EXISTS vendite.ex_listini_righe_comp_no_overlap;
+              DROP INDEX IF EXISTS vendite.ix_listini_righe_comp_padre_data;
+              ALTER TABLE vendite.listini_righe_componenti
+                  DROP COLUMN IF EXISTS validita,
+                  DROP COLUMN IF EXISTS valido_dal,
+                  DROP COLUMN IF EXISTS valido_al;
+              ALTER TABLE vendite.listini_righe_componenti
+                  ADD COLUMN validita DATERANGE NOT NULL;
+              CREATE INDEX ex_listini_righe_comp_no_overlap
+                  ON vendite.listini_righe_componenti
+                  USING gist (listino_versione_id, articolo_componente_id, validita)
+                  WHERE (attivo = TRUE);
+              CREATE INDEX ix_listini_righe_comp_padre_data
+                  ON vendite.listini_righe_componenti
+                  USING btree (articolo_padre_id, listino_versione_id)
+                  WHERE (attivo = TRUE);

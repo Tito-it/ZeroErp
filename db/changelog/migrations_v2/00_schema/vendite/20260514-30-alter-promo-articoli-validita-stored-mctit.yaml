@@ -1,0 +1,76 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260514-30-alter-promo-articoli-validita-stored-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 2b — vendite.promo_articoli.
+  # Ha due indici su validita da ricreare dopo CASCADE:
+  #   - ex_promo_articoli_no_overlap: EXCLUDE gist (articolo_id, uom_id, validita)
+  #                                   WHERE (attivo IS TRUE)
+  #   - ix_promo_articoli_validita_gist: GiST standalone su validita
+  # valido_al e' NOT NULL in questa tabella (colonna obbligatoria).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-30-alter-promo-articoli-validita-stored
+      author: mctit
+      comment: >
+        Step 2b PG18: converte validita a STORED generated su vendite.promo_articoli.
+        Ricrea ex_promo_articoli_no_overlap e ix_promo_articoli_validita_gist.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: promo_articoli
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname='vendite' AND c.relname='promo_articoli'
+                   AND a.attname='validita' AND a.attnum>0
+                   AND NOT a.attisdropped AND a.attgenerated=''
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_promo_articoli_a20_set_validita_ins_upd
+                  ON vendite.promo_articoli;
+
+              -- DROP CASCADE rimuove ex_promo_articoli_no_overlap e ix_promo_articoli_validita_gist
+              ALTER TABLE vendite.promo_articoli DROP COLUMN validita CASCADE;
+
+              -- valido_al e' NOT NULL su questa tabella: COALESCE non serve per valido_al
+              -- ma manteniamo il pattern uniforme con COALESCE per robustezza
+              ALTER TABLE vendite.promo_articoli
+                  ADD COLUMN validita DATERANGE
+                      GENERATED ALWAYS AS (
+                          daterange(COALESCE(valido_dal,'-infinity'::date),
+                                    COALESCE(valido_al, 'infinity'::date),'[]')
+                      ) STORED NOT NULL;
+
+              COMMENT ON COLUMN vendite.promo_articoli.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. rev 2026-05-14.';
+
+              CREATE INDEX ex_promo_articoli_no_overlap
+                  ON vendite.promo_articoli
+                  USING gist (articolo_id, uom_id, validita)
+                  WHERE (attivo IS TRUE);
+
+              CREATE INDEX ix_promo_articoli_validita_gist
+                  ON vendite.promo_articoli
+                  USING gist (validita);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ex_promo_articoli_no_overlap;
+              DROP INDEX IF EXISTS vendite.ix_promo_articoli_validita_gist;
+              ALTER TABLE vendite.promo_articoli DROP COLUMN IF EXISTS validita;
+              ALTER TABLE vendite.promo_articoli ADD COLUMN validita DATERANGE;
+              UPDATE vendite.promo_articoli SET validita=daterange(COALESCE(valido_dal,'-infinity'::date),COALESCE(valido_al,'infinity'::date),'[]');
+              ALTER TABLE vendite.promo_articoli ALTER COLUMN validita SET NOT NULL;
+              CREATE INDEX ex_promo_articoli_no_overlap ON vendite.promo_articoli USING gist (articolo_id, uom_id, validita) WHERE (attivo IS TRUE);
+              CREATE INDEX ix_promo_articoli_validita_gist ON vendite.promo_articoli USING gist (validita);

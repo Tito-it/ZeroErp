@@ -1,0 +1,67 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260514-29-alter-listini-versioni-validita-stored-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 2b — vendite.listini_versioni.
+  # Ha EXCLUDE USING gist (listino_id, validita) WHERE (attivo IS TRUE AND stato='ATTIVA').
+  # DROP COLUMN CASCADE lo droppera'; ricreato esplicitamente dopo ADD COLUMN.
+  # automazione_overlap rimane active=true: gestisce questa tabella con WHERE.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-29-alter-listini-versioni-validita-stored
+      author: mctit
+      comment: >
+        Step 2b PG18: converte validita a STORED generated su vendite.listini_versioni.
+        Ricrea ex_listini_versioni_no_overlap droppato da CASCADE.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: listini_versioni
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname='vendite' AND c.relname='listini_versioni'
+                   AND a.attname='validita' AND a.attnum>0
+                   AND NOT a.attisdropped AND a.attgenerated=''
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_versioni_a20_set_validita_ins_upd
+                  ON vendite.listini_versioni;
+
+              -- DROP CASCADE rimuove anche ex_listini_versioni_no_overlap
+              ALTER TABLE vendite.listini_versioni DROP COLUMN validita CASCADE;
+
+              ALTER TABLE vendite.listini_versioni
+                  ADD COLUMN validita DATERANGE
+                      GENERATED ALWAYS AS (
+                          daterange(COALESCE(valido_dal,'-infinity'::date),
+                                    COALESCE(valido_al, 'infinity'::date),'[]')
+                      ) STORED NOT NULL;
+
+              COMMENT ON COLUMN vendite.listini_versioni.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. rev 2026-05-14.';
+
+              -- Ricrea EXCLUDE anti-overlap (con WHERE: resta GIST, non candidabile a temporal UNIQUE)
+              CREATE INDEX ex_listini_versioni_no_overlap
+                  ON vendite.listini_versioni
+                  USING gist (listino_id, validita)
+                  WHERE (attivo IS TRUE AND stato = 'ATTIVA');
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ex_listini_versioni_no_overlap;
+              ALTER TABLE vendite.listini_versioni DROP COLUMN IF EXISTS validita;
+              ALTER TABLE vendite.listini_versioni ADD COLUMN validita DATERANGE;
+              UPDATE vendite.listini_versioni SET validita=daterange(COALESCE(valido_dal,'-infinity'::date),COALESCE(valido_al,'infinity'::date),'[]');
+              ALTER TABLE vendite.listini_versioni ALTER COLUMN validita SET NOT NULL;
+              CREATE INDEX ex_listini_versioni_no_overlap ON vendite.listini_versioni USING gist (listino_id, validita) WHERE (attivo IS TRUE AND stato='ATTIVA');

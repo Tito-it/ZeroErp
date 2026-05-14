@@ -19,25 +19,24 @@ BEGIN
     --   una volta inserita. Pattern admin "chiudi+inserisci":
     --   per correggere si chiude la riga esistente (UPDATE
     --   valido_al alla data di fine) e si inserisce una
-    --   nuova riga con valido_dal successivo. L'EXCLUDE
-    --   constraint ex_articoli_componenti_no_overlap
-    --   garantisce non-overlap sul triplo (prodotto,
-    --   componente, validita).
+    --   nuova riga con valido_dal successivo. Il temporal UNIQUE
+    --   constraint uq_articoli_componenti_no_overlap (PG 18)
+    --   garantisce non-overlap sul triplo (prodotto, componente,
+    --   validita WITHOUT OVERLAPS).
     --
     -- Regole:
     --   1. DELETE -> bloccato sempre (E_BOM_MODIFICA_VIETATA).
     --   2. UPDATE dei campi di struttura -> bloccato
     --      (coeff_qta, componente_id, obbligatorio,
     --      esposto_in_fattura, partecipa_qta,
-    --      determina_qta_padre, valido_dal, validita).
-    --      Nota: validita e' incluso per difesa in
-    --      profondita' anche se a20_set_validita lo
-    --      ricalcola da valido_dal/valido_al.
+    --      determina_qta_padre, valido_dal).
+    --      Nota: validita rimossa dalla lista perche' e' ora
+    --      STORED generated: PostgreSQL rifiuta scritture dirette
+    --      prima che il trigger venga eseguito; in BEFORE trigger
+    --      NEW.validita e' NULL e non puo' essere usata per check.
     --   3. UPDATE di solo valido_al ammesso + check
     --      NEW.valido_al >= OLD.valido_dal -> altrimenti
-    --      E_BOM_VALIDO_AL_INVALIDO (chk_articoli_componenti_valid_dates
-    --      esistente copre > ma diamo error code custom
-    --      UI-friendly per il caso <).
+    --      E_BOM_VALIDO_AL_INVALIDO.
     --   4. UPDATE di campi note/meta/attivo + audit
     --      (user_update/data_update/tx_id) -> ammesso.
     -- =========================================================
@@ -61,14 +60,15 @@ BEGIN
 
     IF TG_OP = 'UPDATE' THEN
         -- Blocca modifiche ai campi di struttura.
-        IF NEW.coeff_qta             IS DISTINCT FROM OLD.coeff_qta
-           OR NEW.componente_id      IS DISTINCT FROM OLD.componente_id
-           OR NEW.obbligatorio       IS DISTINCT FROM OLD.obbligatorio
-           OR NEW.esposto_in_fattura IS DISTINCT FROM OLD.esposto_in_fattura
-           OR NEW.partecipa_qta      IS DISTINCT FROM OLD.partecipa_qta
+        -- validita non inclusa: e' STORED generated, scritture dirette
+        -- sono gia' rifiutate da PostgreSQL prima che il trigger esegua.
+        IF NEW.coeff_qta              IS DISTINCT FROM OLD.coeff_qta
+           OR NEW.componente_id       IS DISTINCT FROM OLD.componente_id
+           OR NEW.obbligatorio        IS DISTINCT FROM OLD.obbligatorio
+           OR NEW.esposto_in_fattura  IS DISTINCT FROM OLD.esposto_in_fattura
+           OR NEW.partecipa_qta       IS DISTINCT FROM OLD.partecipa_qta
            OR NEW.determina_qta_padre IS DISTINCT FROM OLD.determina_qta_padre
-           OR NEW.valido_dal         IS DISTINCT FROM OLD.valido_dal
-           OR NEW.validita           IS DISTINCT FROM OLD.validita
+           OR NEW.valido_dal          IS DISTINCT FROM OLD.valido_dal
         THEN
             PERFORM script.fn_log_and_raise_error(
                 'database',
@@ -117,7 +117,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()
-IS 'Trigger function: blocca DELETE e UPDATE dei campi di struttura di catalogo.articoli_componenti (BoM immutabile, pattern chiudi+inserisci). Ammette UPDATE di valido_al (con check >=valido_dal), attivo, note, meta, audit. Error code: E_BOM_MODIFICA_VIETATA (387), E_BOM_VALIDO_AL_INVALIDO (388).';
+IS 'Trigger function: blocca DELETE e UPDATE dei campi di struttura di catalogo.articoli_componenti (BoM immutabile, pattern chiudi+inserisci). Ammette UPDATE di valido_al (con check >=valido_dal), attivo, note, meta, audit. validita e'' STORED generated: scritture dirette rifiutate da PG. Error code: E_BOM_MODIFICA_VIETATA (387), E_BOM_VALIDO_AL_INVALIDO (388). rev 2026-05-14.';
 ```
 
 ---

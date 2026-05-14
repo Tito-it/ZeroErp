@@ -1,0 +1,71 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260514-15-alter-trg-articoli-componenti-block-struttura-update-of-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Ottimizzazione trigger: aggiunge UPDATE OF ai campi di struttura su
+  # trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt.
+  #
+  # Problema attuale: il trigger si attiva su ogni UPDATE di articoli_componenti,
+  # incluse modifiche a meta, attivo, note_id, user_update, tx_id — campi che
+  # il guard esplicitamente consente. Il corpo del trigger viene invocato
+  # inutilmente in questi casi.
+  #
+  # Fix: UPDATE OF sui soli campi che il guard controlla:
+  #   - Campi di struttura bloccati (regola 2): coeff_qta, componente_id,
+  #     obbligatorio, esposto_in_fattura, partecipa_qta, determina_qta_padre, valido_dal
+  #   - Campo di chiusura (regola 3): valido_al
+  # Il trigger salta completamente per UPDATE di meta, attivo, note_id,
+  # note_target_tipo, user_update, data_update, tx_id, storicizza.
+  #
+  # DELETE resta senza colonne (non applicabile per eventi DELETE).
+  #
+  # Richiede DROP + CREATE: PostgreSQL non permette ALTER TRIGGER per
+  # aggiungere UPDATE OF a un trigger esistente.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-15-alter-trg-articoli-componenti-block-struttura-update-of
+      author: mctit
+      comment: >
+        Ottimizzazione: aggiunge UPDATE OF (campi struttura + valido_al) a
+        trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt.
+        Il trigger non si attiva piu' per UPDATE di meta, attivo, note, audit.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: catalogo
+            tableName: articoli_componenti
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ricrea il trigger con UPDATE OF: salta per modifiche a campi non-struttura.
+              -- DROP IF EXISTS per idempotenza.
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  ON catalogo.articoli_componenti;
+
+              CREATE TRIGGER trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  BEFORE DELETE OR UPDATE OF
+                      coeff_qta,
+                      componente_id,
+                      obbligatorio,
+                      esposto_in_fattura,
+                      partecipa_qta,
+                      determina_qta_padre,
+                      valido_dal,
+                      valido_al
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW EXECUTE FUNCTION
+                      catalogo.trgfn_articoli_componenti_block_modifica_struttura();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  ON catalogo.articoli_componenti;
+              CREATE TRIGGER trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  BEFORE DELETE OR UPDATE
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW EXECUTE FUNCTION
+                      catalogo.trgfn_articoli_componenti_block_modifica_struttura();
