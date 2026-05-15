@@ -38,12 +38,12 @@ const statoFilter = ref(null)
 const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
 const dataAlFilter = ref(null)
 // Toggle "mostra storico revisioni": negazione del filtro store
-// (mostraStorico=ON ⇔ solo_revisione_attiva=false). computed get/set per
+// (mostraStorico=ON ⇔ solo_attiva=false). computed get/set per
 // restare allineato al filtro reale anche se cambia altrove (reset, logout,
 // ripristino sessione): single source of truth = store.
 const mostraStorico = computed({
-  get: () => !store.filters.solo_revisione_attiva,
-  set: (val) => { store.filters.solo_revisione_attiva = !val },
+  get: () => !store.filters.solo_attiva,
+  set: (val) => { store.filters.solo_attiva = !val },
 })
 const pageActions = computed(() => [
   {

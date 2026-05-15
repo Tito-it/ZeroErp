@@ -41,7 +41,7 @@ def _testata_row() -> dict[str, Any]:
         "uid": "0190a000-0000-0000-0000-000000000001",
         "numero": "P-2026-0001",
         "rev": 0,
-        "is_revision_attiva": True,
+        "is_attiva": True,
         "has_next_revision": False,
         "data": "2026-05-04",
         "stato_doc_preventivo_id": 3,

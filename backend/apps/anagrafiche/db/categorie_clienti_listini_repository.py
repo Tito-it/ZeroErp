@@ -191,9 +191,8 @@ class CategorieClientiListiniRepository:
     # =================================================================
 
     # Scopo: Inserisce una nuova riga di matrice usando solo colonne
-    #        whitelisted. `validita` NON e' scrivibile: il trigger
-    #        `trg_categorie_clienti_listini_a20_set_validita_ins_upd`
-    #        la calcola automaticamente da valido_dal/valido_al.
+    #        whitelisted. `validita` NON e' scrivibile: e' STORED generated
+    #        column (PG 18) calcolata automaticamente da valido_dal/valido_al.
     def create_matrice(self, data: dict[str, Any]) -> int:
         write_cols = (
             "categoria_cliente_id",

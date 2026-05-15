@@ -58,7 +58,7 @@ class PreventiviRepository(ComponentiRepositoryMixin):
         data_da: date | None = None,
         data_al: date | None = None,
         search: str | None = None,
-        solo_revisione_attiva: bool = True,
+        solo_attiva: bool = True,
         auth_user_id: int | None = None,
         limit: int,
         offset: int,
@@ -91,22 +91,15 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             like = f"%{search}%"
             params.extend([like, like])
         # Filtro revisione attiva: di default mostra solo l'ultima revisione
-        # per numero. La condizione corretta e' "non esiste una revisione
-        # successiva per lo stesso numero": copre sia i preventivi mai
-        # revisionati (single-rev, is_revision_attiva=false di default DDL)
-        # sia le revisioni effettive (rev N+1 dopo fn_crea_revisione_preventivo).
-        # NB: NON usiamo `is_revision_attiva IS TRUE` perche' il flag e' false
-        # di default su crea_preventivo: filtrarlo escluderebbe quasi tutti i
-        # preventivi single-revision. Subquery NOT EXISTS supportata da indice
-        # implicito su (numero, rev). Quando l'operatore vuole vedere lo
-        # storico, il FE passa solo_revisione_attiva=false.
-        if solo_revisione_attiva:
-            conditions.append(
-                "NOT EXISTS ("
-                " SELECT 1 FROM vendite.preventivi p2"
-                "  WHERE p2.numero = v.numero AND p2.rev > v.rev"
-                ")"
-            )
+        # "viva" per numero. La condizione e' `is_attiva IS TRUE` calcolata
+        # dalla vista `vw_preventivi_list` (predicato derivato post-refactor
+        # 2026-05-15): "non esiste una rev superiore non-abortita per lo
+        # stesso numero". Una rev annullata (`is_abortito=TRUE` su stato)
+        # NON oscura il predecessore, che ricompare in lista come attiva.
+        # Quando l'operatore vuole vedere lo storico completo (incluse rev
+        # annullate e superseded), il FE passa solo_attiva=false.
+        if solo_attiva:
+            conditions.append("v.is_attiva IS TRUE")
 
         # Scope emittente: la vista espone emittente_fiscale_id (PK reale di
         # anagrafiche.emittenti_fiscali.id, post brief preventivi rev2). Usa
@@ -154,12 +147,15 @@ class PreventiviRepository(ComponentiRepositoryMixin):
                 p.uid::text AS uid,
                 p.numero,
                 p.rev,
-                p.is_revision_attiva,
+                p.is_attiva,
                 -- has_next_revision: true se esiste un'altra riga con stesso
-                -- numero e rev maggiore (= questo preventivo e' superseded).
-                -- Affidabile indipendentemente dal flag is_revision_attiva
-                -- (default DDL false: non e' single source of truth — vedi
-                -- nota in repo.list_preventivi).
+                -- numero e rev maggiore (= questo preventivo e' superseded
+                -- da qualsiasi revisione successiva, anche se abortita).
+                -- Diverso da `!is_attiva`: `is_attiva` ignora le rev abortite
+                -- (ANNULLATO). Esempi:
+                --   rev 0 EMESSO + rev 1 DRAFT     → has_next=T, is_attiva=F
+                --   rev 0 EMESSO + rev 1 ANNULLATO → has_next=T, is_attiva=T
+                -- Il FE puo' usare il predicato piu' adatto al caso d'uso.
                 EXISTS (
                   SELECT 1 FROM vendite.preventivi p2
                    WHERE p2.numero = p.numero AND p2.rev > p.rev
@@ -215,7 +211,7 @@ class PreventiviRepository(ComponentiRepositoryMixin):
                 p.user_insert,
                 p.data_update::text AS data_update,
                 p.user_update
-            FROM vendite.preventivi p
+            FROM vendite.vw_preventivi p
             JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
             LEFT JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
             LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
@@ -697,9 +693,16 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, params)
             return cursor.rowcount > 0
 
-    # Scopo: Disattiva una riga preventivo (soft delete).
+    # Scopo: Elimina una riga preventivo (HARD DELETE).
+    # Pattern simmetrico a `contratti_repository.delete_riga`: l'eliminazione
+    # avviene solo in DRAFT (guard nel service `_STATI_RIGHE_MODIFICABILI`),
+    # in cui la riga e' una bozza non ancora pushed in commessa. La FK
+    # `preventivi_righe_componenti.riga_preventivo_id` ha ON DELETE CASCADE
+    # (migration 20260511-06): il DB pulisce automaticamente i componenti
+    # BoM, niente UPDATE attivo=FALSE sui figli, niente trigger
+    # `componenti_guard_obbligatorio` da bypassare.
     def delete_riga(self, riga_id: int) -> bool:
-        sql = "UPDATE vendite.preventivi_righe SET attivo = false WHERE id = %s"
+        sql = "DELETE FROM vendite.preventivi_righe WHERE id = %s"
         with connection.cursor() as cursor:
             cursor.execute(sql, [riga_id])
             return cursor.rowcount > 0

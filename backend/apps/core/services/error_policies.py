@@ -109,6 +109,21 @@ class ErrorPolicyRegistry:
             user_message="Esiste gia' una promo attiva per questo "
                          "(articolo, unita' di misura) nel periodo indicato.",
         ),
+        # Pattern simmetrico a `E_VENDITE_CONTRATTO_OVERLAP` / `E_VENDITE_PROMO_OVERLAP`:
+        # `ex_listini_versioni_no_overlap` (EXCLUDE GIST con WHERE attivo+stato=ATTIVA)
+        # blocca sovrapposizioni di versioni listino ATTIVE. La risoluzione richiede
+        # chiusura della versione precedente (valido_al = nuova_valido_dal - 1).
+        "E_VENDITE_LISTINO_VERSIONE_OVERLAP": ErrorPolicy(
+            code="E_VENDITE_LISTINO_VERSIONE_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Esiste gia' una versione ATTIVA sovrapposta per il listino. "
+                "Chiudi la vecchia (valido_al = nuova_valido_dal - 1) e poi "
+                "attiva la nuova: la nuova decorrenza deve essere almeno 1 "
+                "giorno dopo l'inizio della precedente."
+            ),
+        ),
         # Guard Profilo A promo data-driven (vendite.promo_articoli):
         # le date governano lo stato (FUTURA / INIZIATA / SCADUTA) e vincolano
         # i campi modificabili. Pattern simmetrico a Profilo A contratti

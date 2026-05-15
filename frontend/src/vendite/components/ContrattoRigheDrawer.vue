@@ -14,6 +14,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
+import { formatCurrency, formatNumber } from '../../core/utils/format'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
 import {
@@ -613,18 +614,28 @@ function origineSeverity(origine) {
         <!-- Modalita' C: prezzo singolo. A/B: prezzo listino + prezzo finale + origine. -->
         <template v-if="isModalitaC">
           <Column field="prezzo_unitario" :header="t('contratti.col_prezzo')" style="width: 90px;">
-            <template #body="{ data }">{{ data.prezzo_unitario ?? '—' }}</template>
+            <template #body="{ data }">
+              {{ formatCurrency(data.prezzo_unitario, { placeholder: '—', maximumFractionDigits: 2 }) }}
+            </template>
           </Column>
-          <Column field="qta_operativa" :header="t('contratti.col_qta')" style="width: 70px;" />
+          <Column field="qta_operativa" :header="t('contratti.col_qta')" style="width: 70px;">
+            <template #body="{ data }">
+              {{ formatNumber(data.qta_operativa, { placeholder: '—', minimumFractionDigits: 0, maximumFractionDigits: 4 }) }}
+            </template>
+          </Column>
           <Column field="tipo_erogazione" :header="t('contratti.col_tipo_erogazione')" style="width: 100px;" />
         </template>
         <template v-else>
           <Column :header="t('contratti.col_prezzo_listino')" style="width: 110px;">
-            <template #body="{ data }">{{ data.prezzo_listino ?? '—' }}</template>
+            <template #body="{ data }">
+              {{ formatCurrency(data.prezzo_listino, { placeholder: '—', maximumFractionDigits: 2 }) }}
+            </template>
           </Column>
           <Column :header="t('contratti.col_prezzo_finale')" style="width: 110px;">
             <template #body="{ data }">
-              <span class="font-bold">{{ data.prezzo_finale ?? '—' }}</span>
+              <span class="font-bold">
+                {{ formatCurrency(data.prezzo_finale, { placeholder: '—', maximumFractionDigits: 2 }) }}
+              </span>
             </template>
           </Column>
           <Column :header="t('contratti.col_origine')" style="width: 110px;">

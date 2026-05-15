@@ -115,10 +115,10 @@ Restituisce il dettaglio completo del listino creato, con array `versioni` e `as
 
 - `400` `E_VENDITE_VALIDATION`:
   - `utility_id` o `tipologia_id` mancanti, nulli, non numerici, non positivi
-  - `utility_id` / `tipologia_id` non esistenti (FK violation)
   - Combinazione `(utility_id, tipologia_id)` non ammessa dalla matrice `config.listini_tipologie_utilities`
-  - codice duplicato (`uq_listini_codice`)
   - payload JSON non coerente
+- `400` `E_VENDITE_FK`: `utility_id` / `tipologia_id` non esistenti (FK violation)
+- `409` `E_VENDITE_DUPLICATO`: codice listino duplicato (`uq_listini_codice`)
 
 ---
 
@@ -499,6 +499,7 @@ all'operatore l'elenco delle versioni che verranno auto-chiuse e la nuova
 
 - `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`
 - `400` `E_VENDITE_VALIDATION` per transizione non ammessa o versione senza righe attive
+- `409` `E_VENDITE_LISTINO_VERSIONE_OVERLAP` se il pattern auto-close fallisce e il vincolo `ex_listini_versioni_no_overlap` viene urtato (pattern simmetrico a `E_VENDITE_CONTRATTO_OVERLAP` / `E_VENDITE_PROMO_OVERLAP`)
 
 ---
 
@@ -701,34 +702,45 @@ Mostra la BoM corrente del padre composito + i prezzi bundle gia' definiti (LEFT
 {
   "data": {
     "disattivati": 3,
-    "inseriti": 3
+    "inseriti": 3,
+    "skipped_no_overlap": 0
   }
 }
 ```
+
+`skipped_no_overlap` (PG18, additivo): conta le righe non inserite perche'
+l'intersezione fra `valido_dal/valido_al` della versione e quelli della
+riga BoM e' vuota (es. richiesta una validita' antecedente alla BoM
+corrente del componente). Le righe skippate sono loggate come warning
+applicativo. Se > 0 il FE puo' mostrare un avviso all'operatore.
 
 #### Regole salva bundle
 
 - **Solo versione BOZZA**: il guard `_assert_versione_bozza_for_riga_op` rifiuta UPDATE su versioni ATTIVA/CHIUSA. Defense-in-depth col trigger DB `_immutabilita_v5` (codice `E_RIGA_LISTINO_VERSIONE_CHIUSA`, 409).
 - **Strategia tabula rasa idempotente**: il repo prima soft-disattiva (`attivo=FALSE`) tutte le righe attive correnti per la coppia (versione, padre), poi inserisce le nuove. Garantisce stato esatto senza diff complesso. Transazione atomica.
-- **Validita' = intersezione `ac.validita ∩ versione.validita`** (operatore daterange `*`): garantisce per costruzione il vincolo del trigger `trgfn_listini_righe_componenti_guard_coerenza_bom` (riga listino ⊆ BoM).
+- **Validita' = intersezione `versione ∩ BoM`** (PG18, calcolata su `valido_dal`/`valido_al` con `GREATEST`/`LEAST`): la colonna `validita` daterange e' STORED generated. Se l'intersezione e' vuota, la riga e' ignorata con warning + conteggio in `skipped_no_overlap` (evita errore SQL `range lower > upper`). La temporal FK `fk_listrighe_comp_articoli_comp_temporal` garantisce a livello DB il contenimento riga ⊆ BoM.
 - **Skip prezzo null**: righe con `prezzo == NULL` vengono ignorate (= "non gestito a bundle"; il resolver fa fallback STADIO 1 standalone). Confermare con tutti i prezzi NULL = svuotare il composito (= "elimina composito" lato UI).
 - **`iva_id` opzionale**: default lato DB.
-- **Trigger DB coerenza BoM**: `trgfn_listini_righe_componenti_guard_coerenza_bom` verifica:
-  - `articolo_componente_id` esistente + attivo
-  - padre `is_composito=TRUE`
-  - IVA padre = IVA figlio (guard catalogo)
-  - validita riga ⊆ validita BoM + validita versione
-  - Solleva `E_LISTINO_RIGA_COMP_BOM_INCOERENTE` (400) con detail testuale.
+- **Guard coerenza BoM PG18**: validita riga ⊆ validita BoM ora enforced da
+  **temporal FK** `fk_listrighe_comp_articoli_comp_temporal` (migration 20260514-12,
+  sostituisce guard 6 trigger rimosso con migration 20260514-13). Validita riga ⊆
+  validita versione resta enforced dal trigger `trgfn_listini_righe_comp_guard_coerenza_bom`
+  (guard residuo). Altri check (articolo_componente_id attivo, padre `is_composito=TRUE`,
+  IVA padre = IVA figlio) restano nel trigger. Tutti producono `E_LISTINO_RIGA_COMP_BOM_INCOERENTE` (400).
 
 #### Errori
 
 | Codice | HTTP | Sorgente |
 | --- | --- | --- |
 | `E_VENDITE_VALIDATION` | 400 | service (BOZZA-only guard, rows non lista, articolo_padre_id vuoto, versione senza valido_dal) |
+| `E_VENDITE_DUPLICATO` | 409 | UNIQUE `uq_listini_righe_key_attiva` (riga prezzo gia' esistente) |
 | `E_RIGA_LISTINO_VERSIONE_CHIUSA` | 409 | trigger DB immutabilita' v5 (rev 2026-05-13) |
-| `E_LISTINO_RIGA_COMP_BOM_INCOERENTE` | 400 | trigger DB guard coerenza BoM |
+| `E_LISTINO_RIGA_COMP_BOM_INCOERENTE` | 400 | temporal FK PG18 `fk_listrighe_comp_articoli_comp_temporal` + guard residuo coerenza BoM |
 
-Il service cattura `DatabaseError` P0001 e traduce in `ServiceError` preservando il codice originale (helper `_raise_bundle_db_error` con substring matchers — debito tecnico: stesso pattern di `pricing_service._raise_pricing_error`, refactor possibile in `core/services/db_error_translator.py`).
+Il service cattura `IntegrityError` e `DatabaseError`:
+
+- `IntegrityError` → `_translate_integrity_error` via `map_integrity_error` (mappa UNIQUE/FK/CHECK + temporal FK BoM con codice parlante).
+- `DatabaseError` P0001 → `_raise_bundle_db_error` (helper interno) preserva codici trigger (`E_RIGA_LISTINO_VERSIONE_CHIUSA`, `E_LISTINO_RIGA_COMP_BOM_INCOERENTE`).
 
 ---
 

@@ -135,7 +135,7 @@ class PreventivoListRow(TypedDict):
     uid: str
     numero: str
     rev: int
-    is_revision_attiva: bool
+    is_attiva: bool
     data: str
     stato_doc_preventivo_id: int
     stato_codice: str
@@ -167,7 +167,7 @@ class PreventivoDetailRow(TypedDict):
     uid: str
     numero: str
     rev: int
-    is_revision_attiva: bool
+    is_attiva: bool
     data: str
     stato_doc_preventivo_id: int
     stato_codice_interno: str

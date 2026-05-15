@@ -65,6 +65,7 @@ Indice test eseguiti:
 54) ListiniServiceTests.test_update_listino_tipologia_id_null
 55) ListiniServiceTests.test_update_listino_empty_payload
 56) ListiniServiceTests.test_translate_integrity_fk_tipologia
+57) ListiniServiceTests.test_translate_integrity_fk_listrighe_comp_temporal
 """
 
 from datetime import date
@@ -101,11 +102,15 @@ class ListiniServiceTests(TestCase):
         self.assertNotIn("associazioni", result)
 
     # Scopo: Verifica traduzione duplicate code su create listino.
+    #        UNIQUE constraint → E_VENDITE_DUPLICATO (HTTP 409) via
+    #        map_integrity_error.
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_create_listino_duplicate_code(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_create_listino
 
-        mock_repo_cls.return_value.create_listino.side_effect = IntegrityError("uq_listini_codice")
+        mock_repo_cls.return_value.create_listino.side_effect = IntegrityError(
+            'duplicate key value violates unique constraint "uq_listini_codice"'
+        )
 
         with self.assertRaises(ServiceError) as ctx:
             fn_create_listino(
@@ -114,9 +119,10 @@ class ListiniServiceTests(TestCase):
                     "descrizione": "Listino Utility Base",
                     "utility_id": 1,
                     "tipologia_id": 1,
+                    "emittente_soggetto_ruolo_id": 1,
                 }
             )
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_DUPLICATO")
 
     # Scopo: Verifica che create_listino richieda utility_id.
     def test_create_listino_missing_utility_id(self):
@@ -139,12 +145,14 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: Verifica traduzione FK tipologia non valida dal DB.
+    #        FK constraint → E_VENDITE_FK (HTTP 400) via map_integrity_error.
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_create_listino_invalid_tipologia_fk(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_create_listino
 
         mock_repo_cls.return_value.create_listino.side_effect = IntegrityError(
-            "listini_tipologia_id_fkey"
+            'insert or update on table "listini" violates foreign key constraint '
+            '"listini_tipologia_id_fkey"'
         )
 
         with self.assertRaises(ServiceError) as ctx:
@@ -154,9 +162,10 @@ class ListiniServiceTests(TestCase):
                     "descrizione": "X",
                     "utility_id": 1,
                     "tipologia_id": 999,
+                    "emittente_soggetto_ruolo_id": 1,
                 }
             )
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_FK")
 
     # Scopo: Verifica update listino accetta tipologia_id (passaggio al repository).
     @patch("apps.vendite.services.listini_service.ListiniRepository")
@@ -287,6 +296,7 @@ class ListiniServiceTests(TestCase):
         mock_repo_cls.return_value.update_listino.assert_not_called()
 
     # Scopo: Verifica traduzione FK tipologia in messaggio applicativo.
+    #        FK constraint → E_VENDITE_FK (HTTP 400) via map_integrity_error.
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_translate_integrity_fk_tipologia(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_create_listino
@@ -306,8 +316,8 @@ class ListiniServiceTests(TestCase):
                     "emittente_soggetto_ruolo_id": 1,
                 }
             )
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertIn("tipologia", (ctx.exception.detail or "").lower())
+        self.assertEqual(ctx.exception.code, "E_VENDITE_FK")
+        self.assertIn("tipologia", (ctx.exception.message or "").lower())
 
     # Scopo: Verifica not found su dettaglio versione.
     @patch("apps.vendite.services.listini_service.ListiniRepository")
@@ -1151,3 +1161,71 @@ class ListiniServiceTests(TestCase):
             fn_rettifica_controllata_riga(10, 101, 501, {"prezzo": 12.25, "motivo": "test"})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         self.assertIn("operativamente attive", ctx.exception.message or "")
+
+
+class TranslateIntegrityErrorTests(TestCase):
+    """Test diretti su `_translate_integrity_error` per i path FK temporal PG18."""
+
+    # Scopo: Verifica che la temporal FK PG18 `fk_listrighe_comp_articoli_comp_temporal`
+    #        (sostituisce guard 6 di `trgfn_listini_righe_comp_guard_coerenza_bom`,
+    #        rimosso con migration 20260514-13) venga tradotta nel codice parlante
+    #        `E_LISTINO_RIGA_COMP_BOM_INCOERENTE`, e non nel fallback FK generico.
+    def test_translate_integrity_fk_listrighe_comp_temporal(self):
+        from apps.vendite.services.listini_service import _translate_integrity_error
+
+        exc = IntegrityError(
+            'insert or update on table "listini_righe_componenti" violates foreign key constraint '
+            '"fk_listrighe_comp_articoli_comp_temporal"'
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            _translate_integrity_error(exc, function_name="test", entity="bundle")
+        self.assertEqual(ctx.exception.code, "E_LISTINO_RIGA_COMP_BOM_INCOERENTE")
+        self.assertIn("distinta base", (ctx.exception.message or "").lower())
+
+
+class FnDeleteBundleTests(TestCase):
+    """Wrapper DELETE prezzi bundle composito (tabula rasa idempotente).
+
+    Verifica che `fn_delete_bundle` deleghi a `fn_save_bundle(rows=[])`
+    riusando tutti i guard esistenti (BOZZA, listino/versione esistenti).
+    """
+
+    # Scopo: fn_delete_bundle e' un thin wrapper di fn_save_bundle(rows=[]).
+    # Verifica che il payload passato sia effettivamente lista vuota.
+    @patch("apps.vendite.services.listini_service.fn_save_bundle")
+    def test_fn_delete_bundle_delega_a_save_bundle_con_rows_vuota(self, mock_save):
+        from apps.vendite.services.listini_service import fn_delete_bundle
+
+        mock_save.return_value = {"disattivati": 3, "inseriti": 0}
+
+        result = fn_delete_bundle(10, 101, "abc-uuid")
+
+        self.assertEqual(result, {"disattivati": 3, "inseriti": 0})
+        mock_save.assert_called_once_with(10, 101, "abc-uuid", rows=[])
+
+    # Scopo: idempotenza — composito senza prezzi bundle ritorna 0 disattivati,
+    # nessuna eccezione. Pattern DELETE coerente.
+    @patch("apps.vendite.services.listini_service.fn_save_bundle")
+    def test_fn_delete_bundle_idempotente_zero_disattivati(self, mock_save):
+        from apps.vendite.services.listini_service import fn_delete_bundle
+
+        mock_save.return_value = {"disattivati": 0, "inseriti": 0}
+
+        result = fn_delete_bundle(10, 101, "abc-uuid")
+
+        self.assertEqual(result["disattivati"], 0)
+
+    # Scopo: il guard BOZZA-only ereditato si propaga senza intercettazioni.
+    # Versione ATTIVA → `fn_save_bundle` solleva, fn_delete_bundle propaga.
+    @patch("apps.vendite.services.listini_service.fn_save_bundle")
+    def test_fn_delete_bundle_propaga_guard_non_bozza(self, mock_save):
+        from apps.vendite.services.listini_service import fn_delete_bundle
+
+        mock_save.side_effect = ServiceError(
+            code="E_LISTINO_VERSIONE_NON_BOZZA",
+            message="Solo versioni BOZZA",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_delete_bundle(10, 101, "abc-uuid")
+        self.assertEqual(ctx.exception.code, "E_LISTINO_VERSIONE_NON_BOZZA")

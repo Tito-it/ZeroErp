@@ -151,3 +151,12 @@ export function saveBundleComponenti(listinoId, verId, padreId, rows) {
     { rows },
   )
 }
+
+// Elimina TUTTI i prezzi bundle del composito dalla versione. Tabula rasa
+// idempotente: soft-delete cascade su `listini_righe_componenti`. Solo
+// versione BOZZA. Idempotente: 0 disattivati senza errore se gia' vuoto.
+export function deleteBundleComponenti(listinoId, verId, padreId) {
+  return api.delete(
+    `${BASE}/${listinoId}/versioni/${verId}/bundle/${padreId}/`,
+  )
+}

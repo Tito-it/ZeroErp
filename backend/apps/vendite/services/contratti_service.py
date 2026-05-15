@@ -243,7 +243,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         E_VENDITE_DUPLICATO,
         "Numero contratto gia' esistente.",
     ),
-    "ex_contratti_no_overlap": (
+    "uq_contratti_no_overlap": (
         E_VENDITE_CONTRATTO_OVERLAP,
         "Esiste gia' un contratto sovrapposto per questa combinazione "
         "cliente/istanza/utility/ambito nel periodo indicato.",
@@ -430,7 +430,15 @@ class ContrattiService:
         )
         assert testata is not None
         testata["utility"] = self._repo.get_utility(contratto_id)
-        testata["righe"] = self._repo.list_righe(contratto_id)
+        righe = self._repo.list_righe(contratto_id)
+        testata["righe"] = righe
+        # Il badge FE "Gestisci righe" deve riflettere la lista effettiva
+        # mostrata dal sub-drawer: in A/B e' preview listino+override, in C
+        # sono le righe negoziate persistite in contratti_righe.
+        if testata.get("listino_id"):
+            testata["righe_count"] = len(self._repo.list_righe_preview(contratto_id))
+        else:
+            testata["righe_count"] = len(righe)
         capabilities = self._repo.get_capabilities(contratto_id)
         testata.update(capabilities)
         return testata
