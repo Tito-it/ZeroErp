@@ -220,6 +220,7 @@
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
 
 ## 🔍 Views
+- [vw_preventivi](views/vw_preventivi.md)
 - [vw_preventivi_list](views/vw_preventivi_list.md) — (latest review 02-05-2026 — rev3)
 - [vw_preventivi_pratiche](views/vw_preventivi_pratiche.md) — (latest review 03-04-2026) `vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita** tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
 - [vw_preventivi_riepilogo_iva_dettaglio](views/vw_preventivi_riepilogo_iva_dettaglio.md)

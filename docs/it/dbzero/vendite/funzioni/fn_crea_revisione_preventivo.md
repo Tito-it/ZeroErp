@@ -24,20 +24,18 @@ BEGIN
   -- ==========================================================
   -- Scopo:
   --   Creare una nuova revisione in DRAFT a partire da un
-  --   preventivo in stato EMESSO. Copia testata, righe
-  --   attive e indirizzi. Disattiva la revisione corrente.
+  --   preventivo in stato EMESSO. Copia testata, righe attive,
+  --   indirizzi e componenti BoM (con FK remap). Non gestisce
+  --   is_revision_attiva: l'attivazione e' derivata in
+  --   vendite.vw_preventivi tramite is_abortito degli stati.
   --
-  -- Regole (rev 03-05-2026):
-  --   - stato corrente DEVE essere EMESSO (ACCETTATO non
-  --     piu' ammesso: chiude la negoziazione e abilita
-  --     push commessa, non e' rivisitabile)
-  --   - non deve esistere gia' una revisione DRAFT per lo
-  --     stesso numero
-  --   - la revisione corrente viene disattivata
-  --     (is_revision_attiva = false)
-  --   - la nuova revisione ha rev = max(rev)+1, stato DRAFT,
-  --     is_revision_attiva = true
-  --   - righe copiate: solo attive con quantita > 0
+  -- Regole (rev 2026-05-15):
+  --   - stato corrente DEVE essere EMESSO
+  --   - non deve esistere gia' una revisione DRAFT per lo stesso numero
+  --   - la nuova revisione ha rev = max(rev)+1, stato DRAFT
+  --   - righe copiate: solo attive con quantita > 0, ORDER BY ordine, id
+  --   - componenti BoM: copiati con FK remap old→new riga_id
+  --     via ROW_NUMBER su (ordine, id); solo attivi
   --   - indirizzi: tutti copiati
   --
   -- Parametri:
@@ -73,8 +71,7 @@ BEGIN
     );
   END IF;
 
-  -- Guard: revisione ammessa SOLO da EMESSO (rev 03-05-2026:
-  -- ACCETTATO rimosso, vedi commento di scopo).
+  -- Guard: revisione ammessa SOLO da EMESSO
   IF v_stato_corrente_cod NOT IN ('EMESSO') THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_crea_revisione_preventivo',
@@ -128,17 +125,11 @@ BEGIN
     FROM vendite.preventivi p
    WHERE p.numero = v_numero;
 
-  -- Disattiva revisione corrente
-  UPDATE vendite.preventivi
-     SET is_revision_attiva = false,
-         user_update = COALESCE(p_user, CURRENT_USER)
-   WHERE id = p_preventivo_id;
-
   -- Crea nuova testata (copia campi dal preventivo originale).
   -- Totali a 0: il trigger STATEMENT su preventivi_righe li ricalcolera'
   -- dopo l'INSERT bulk delle righe copiate (una sola invocazione).
   INSERT INTO vendite.preventivi (
-    numero, rev, is_revision_attiva,
+    numero, rev,
     billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al,
     totale_imponibile, totale_iva, totale_documento,
@@ -148,7 +139,7 @@ BEGIN
     user_insert, user_update
   )
   SELECT
-    p.numero, v_new_rev, true,
+    p.numero, v_new_rev,
     p.billing_account_id, p.istanza_utility_id, p.utility_id,
     p.validita_dal, p.validita_al,
     0, 0, 0,
@@ -160,7 +151,9 @@ BEGIN
   WHERE p.id = p_preventivo_id
   RETURNING id INTO v_new_id;
 
-  -- Copia righe attive
+  -- Copia righe attive.
+  -- ORDER BY ordine, id: ordine deterministico necessario per il
+  -- remap FK componenti tramite ROW_NUMBER (vedi blocco successivo).
   INSERT INTO vendite.preventivi_righe (
     preventivo_id, articolo_id, descrizione,
     quantita, prezzo_unitario, sconto_percentuale,
@@ -179,7 +172,56 @@ BEGIN
   FROM vendite.preventivi_righe pr
   WHERE pr.preventivo_id = p_preventivo_id
     AND pr.attivo IS TRUE
-    AND pr.quantita > 0;
+    AND pr.quantita > 0
+  ORDER BY pr.ordine, pr.id;
+
+  -- Copia componenti BoM per le righe padre composite.
+  -- FK remap old_riga_id → new_riga_id via ROW_NUMBER su (ordine, id):
+  -- la SELECT righe usa ORDER BY ordine, id → i nuovi id (IDENTITY
+  -- sequenziale) sono assegnati nello stesso ordine → RN allineati 1:1.
+  -- Il trigger trgfn_componenti_calcola_quantita (BEFORE INSERT)
+  -- ricalcola quantita/qta_operativa da coeff_qta_snapshot: i valori
+  -- copiati vengono sovrасcritti correttamente.
+  WITH old_righe AS (
+      SELECT id AS old_riga_id,
+             ROW_NUMBER() OVER (ORDER BY ordine, id) AS rn
+        FROM vendite.preventivi_righe
+       WHERE preventivo_id = p_preventivo_id
+         AND attivo IS TRUE
+         AND quantita > 0
+  ),
+  new_righe AS (
+      SELECT id AS new_riga_id,
+             ROW_NUMBER() OVER (ORDER BY ordine, id) AS rn
+        FROM vendite.preventivi_righe
+       WHERE preventivo_id = v_new_id
+  ),
+  riga_map AS (
+      SELECT old_r.old_riga_id, new_r.new_riga_id
+        FROM old_righe old_r
+        JOIN new_righe new_r USING (rn)
+  )
+  INSERT INTO vendite.preventivi_righe_componenti (
+      riga_preventivo_id, articolo_componente_id, componente_id,
+      coeff_qta_snapshot, quantita, prezzo_unitario, iva_id,
+      origine_prezzo, prezzo_resolver_context,
+      stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
+      uom_operativa_id, factor_to_base, qta_operativa,
+      ordine, attivo, meta,
+      user_insert, user_update
+  )
+  SELECT
+      rm.new_riga_id,
+      prc.articolo_componente_id, prc.componente_id,
+      prc.coeff_qta_snapshot, prc.quantita, prc.prezzo_unitario, prc.iva_id,
+      prc.origine_prezzo, prc.prezzo_resolver_context,
+      prc.stato_approvazione_prezzo, prc.pratica_approvazione_prezzo_id,
+      prc.uom_operativa_id, prc.factor_to_base, prc.qta_operativa,
+      prc.ordine, prc.attivo, prc.meta,
+      COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+    FROM vendite.preventivi_righe_componenti prc
+    JOIN riga_map rm ON rm.old_riga_id = prc.riga_preventivo_id
+   WHERE prc.attivo IS TRUE;
 
   -- Copia indirizzi
   INSERT INTO vendite.preventivi_indirizzi (
@@ -201,7 +243,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
-IS 'Crea nuova revisione preventivo vendita: copia testata + righe attive + indirizzi. Disattiva revisione corrente. Guard: stato EMESSO (rev 03-05-2026: ACCETTATO non piu'' ammesso, chiude la negoziazione), no DRAFT esistente. Stessa firma %TYPE.';
+IS 'Crea nuova revisione preventivo: copia testata + righe attive + componenti BoM (con FK remap ROW_NUMBER) + indirizzi. Non gestisce is_revision_attiva (derivata in vendite.vw_preventivi tramite stati_doc_preventivi.is_abortito). Guard: stato EMESSO, no DRAFT esistente. rev 2026-05-15.';
 ```
 
 ---

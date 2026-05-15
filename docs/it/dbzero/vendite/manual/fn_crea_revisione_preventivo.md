@@ -4,15 +4,18 @@
 >
 [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)
 > [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe)
+> [vendite.preventivi_righe_componenti](/dbzero/vendite/tabelle/preventivi_righe_componenti)
 > [vendite.preventivi_indirizzi](/dbzero/vendite/tabelle/preventivi_indirizzi)
+> [vendite.vw_preventivi](/dbzero/vendite/views/vw_preventivi)
 > [vendite.fn_ricalcola_totali_preventivo](/dbzero/vendite/funzioni/fn_ricalcola_totali_preventivo)
 
 ---
 ### 🎯 Scopo Principale
-(latest review 03-05-2026)
+(latest review 15-05-2026)
 `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione**
-di un preventivo vendita: copia testata, righe attive e indirizzi, disattivando la
-revisione corrente.
+di un preventivo vendita: copia testata, righe attive, componenti BoM e indirizzi.
+L'attivazione della revisione non e' piu' gestita qui: il flag `is_revision_attiva` e' stato
+rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendite.vw_preventivi`.
 
 > ⚠️ **Cambio di regola 03-05-2026**: la revisione e' ora ammessa **solo** da preventivi
 > in stato `EMESSO`. Lo stato `ACCETTATO` chiude la negoziazione (preventivo confermato
@@ -32,9 +35,17 @@ revisione corrente.
 * **No DRAFT esistente**: non deve esistere gia' una revisione in DRAFT per lo stesso numero.
 * **Guard stato DRAFT**: se lo stato DRAFT non e' configurato/attivo in `config.stati_doc_preventivi`,
   errore esplicito `E_CONFIG_MANCANTE` (non fallisce con FK generico).
-* La revisione corrente viene disattivata (`is_revision_attiva = false`).
-* La nuova revisione ha `rev = max(rev) + 1`, `is_revision_attiva = true`, stato DRAFT.
-* **Righe copiate**: solo attive con `quantita > 0`.
+* La nuova revisione ha `rev = max(rev) + 1`, stato DRAFT.
+* **Attivazione derivata**: non viene piu' aggiornato alcun flag sul predecessore.
+  `is_attiva` e' calcolata dinamicamente in `vendite.vw_preventivi` — la nuova rev
+  DRAFT (non-abortita) rende automaticamente non-attiva la rev precedente.
+* **Righe copiate**: solo attive con `quantita > 0`, `ORDER BY ordine, id`
+  (ordinamento deterministico necessario per il remap FK componenti).
+* **Componenti BoM copiati** (15-05-2026): le righe `preventivi_righe_componenti`
+  vengono copiate con FK remap `old_riga_id → new_riga_id` tramite
+  `ROW_NUMBER() OVER (ORDER BY ordine, id)`. Solo componenti con `attivo IS TRUE`.
+  Il trigger `trgfn_componenti_calcola_quantita` (BEFORE INSERT) ricalcola
+  `quantita` e `qta_operativa` da `coeff_qta_snapshot`.
 * **Indirizzi**: tutti copiati.
 
 ---

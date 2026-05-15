@@ -7,7 +7,6 @@
 | id | bigint | NO |  |
 | numero | character varying | NO |  |
 | rev | integer | NO | 0 |
-| is_revision_attiva | boolean | NO | false |
 | billing_account_id | bigint | YES |  |
 | istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
@@ -54,7 +53,6 @@
 | pk_preventivi | `CREATE UNIQUE INDEX pk_preventivi ON vendite.preventivi USING btree (id)` |
 | uq_preventivi_numero_rev | `CREATE UNIQUE INDEX uq_preventivi_numero_rev ON vendite.preventivi USING btree (numero, rev)` |
 | uq_preventivi_uid | `CREATE UNIQUE INDEX uq_preventivi_uid ON vendite.preventivi USING btree (uid)` |
-| ux_preventivi_numero_attiva | `CREATE UNIQUE INDEX ux_preventivi_numero_attiva ON vendite.preventivi USING btree (numero) WHERE (is_revision_attiva = true)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

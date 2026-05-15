@@ -20,11 +20,26 @@ Approfondimento funzioni:
 
 ### 🎯 Scopo Principale
 
-(latest review 02-05-2026 — rev3)
+(latest review 15-05-2026 — rev4)
 
 `vendite.vw_preventivi_list` e' la vista denormalizzata principale per la **lista
 preventivi vendita**. Espone tutti i dati necessari al frontend (tabella lista) e
 al backend (filtro permessi per scope emittente).
+
+---
+
+### 🆕 Cambi rev4 (15-05-2026)
+
+| Campo | Cambio |
+| --- | --- |
+| `is_revision_attiva` | **Rimosso** — colonna droppata da `vendite.preventivi` |
+| `is_attiva` | **Nuovo**: derivata da `vendite.vw_preventivi` (`TRUE` se non esiste rev superiore non-abortita) |
+| `FROM` | Cambiato da `vendite.preventivi` a **`vendite.vw_preventivi`** per ereditare `is_attiva` |
+
+**Motivazione**: `is_revision_attiva` era un flag persistito soggetto a drift (in particolare
+dopo annullamento di una revisione il predecessore restava con `FALSE` anche se era la rev viva).
+Il nuovo modello deriva l'informazione da `stati_doc_preventivi.is_abortito`, eliminando
+la necessità di aggiornare manualmente il flag.
 
 ---
 
@@ -78,7 +93,7 @@ esplodeva su `BA NULL` con `E_PARAMETRO_INVALIDO`.
 
 ### 📑 Campi chiave esposti
 
-* **Identificatori**: id, uid, numero, rev, is_revision_attiva, data
+* **Identificatori**: id, uid, numero, rev, **is_attiva**, data
 * **Stato**: stato_doc_preventivo_id, stato_codice, **stato_codice_interno**, stato_descrizione
 * **Billing account**: billing_account_id, **billing_account_codice**, ba_utility_id
 * **Soggetto (via istanza)**: soggetto_id, cliente_denominazione, **id_fiscale**
