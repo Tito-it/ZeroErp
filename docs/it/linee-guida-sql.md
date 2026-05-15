@@ -234,7 +234,17 @@ validita   daterange GENERATED ALWAYS AS (
 
 * `validita` e` **STORED generated**: calcolata automaticamente da PG ad ogni INSERT/UPDATE su `valido_dal`/`valido_al` — mai scrivibile direttamente
 * Non e` necessario nessun trigger per mantenerla aggiornata
-* Nei **BEFORE trigger** `NEW.validita` e` **NULL** (la generazione avviene dopo tutti i BEFORE trigger). Usare sempre `daterange(NEW.valido_dal, NEW.valido_al, '[]')` in guard trigger che necessitano del range del nuovo valore
+* Nei **BEFORE trigger** `NEW.validita` e` **NULL** (la generazione avviene dopo tutti i BEFORE trigger). Per calcolare il range del nuovo valore usare **con COALESCE simmetrico** all'espressione STORED:
+
+  ```sql
+  daterange(
+      COALESCE(NEW.valido_dal, '-infinity'::date),
+      COALESCE(NEW.valido_al,  'infinity'::date),
+      '[]'
+  )
+  ```
+
+  **Motivazione**: `daterange(d, NULL, '[]')` produce `upper_inf=true` (testo: `[d,)`), mentre la STORED con COALESCE produce `upper_inf=false, upper='infinity'::date` (testo: `[d,infinity]`). L'operatore `@>` confronta le rappresentazioni interne: `[d,infinity] @> [d,)` restituisce **false** anche se semanticamente equivalenti. Applicare COALESCE garantisce rappresentazioni identiche e `@>` corretto.
 * Per tabelle con colonne sorgente diverse (es. `data_inizio`/`data_fine`): colonna STORED con espressione adattata
 * Per `TIMESTAMPTZ` usare `tstzrange` con bounds `[)` e colonna STORED adattata
 
