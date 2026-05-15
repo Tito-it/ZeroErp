@@ -28,6 +28,7 @@ from apps.vendite.services.listini_service import (
     fn_create_listino,
     fn_create_riga,
     fn_create_versione,
+    fn_delete_bundle,
     fn_delete_listino,
     fn_delete_riga,
     fn_delete_versione,
@@ -681,3 +682,28 @@ class ApiListinoVersioneBundleDetail(DomainAPIView):
             return fn_save_bundle(listino_id, ver_id, padre_id, rows_raw)
 
         return handle_post_json(request, handler=_handler)
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="VenditeListinoVersioneBundleDeleteResponse",
+            fields={"data": inline_serializer(
+                name="VenditeListinoVersioneBundleDeleteData",
+                fields={
+                    "disattivati": serializers.IntegerField(),
+                    "inseriti": serializers.IntegerField(),
+                },
+            )},
+        )},
+    )
+    # Scopo: Elimina tutti i prezzi bundle del composito dalla versione
+    # listino. Tabula rasa idempotente: soft-delete cascade su
+    # `listini_righe_componenti` per la coppia (versione, padre).
+    # Guard BOZZA-only ereditato dal service. Idempotente: 0 disattivati
+    # senza errore se il composito non aveva prezzi bundle.
+    def delete(
+        self, request: Request, listino_id: int, ver_id: int, padre_id: str,
+    ) -> JsonResponse:
+        del request
+        return success_response(
+            fn_delete_bundle(listino_id, ver_id, padre_id)
+        )

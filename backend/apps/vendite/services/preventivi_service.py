@@ -77,7 +77,7 @@ def list_preventivi(
     data_da: date | None = None,
     data_al: date | None = None,
     search: str | None = None,
-    solo_revisione_attiva: bool = True,
+    solo_attiva: bool = True,
     auth_user_id: int | None = None,
     page: int = 1,
     page_size: int = 50,
@@ -97,7 +97,7 @@ def list_preventivi(
         data_da=data_da,
         data_al=data_al,
         search=search,
-        solo_revisione_attiva=solo_revisione_attiva,
+        solo_attiva=solo_attiva,
         auth_user_id=auth_user_id,
         limit=page_size,
         offset=offset,
@@ -1628,7 +1628,12 @@ def suggerisci_prezzo_riga(
     return {k: _normalize(v) for k, v in result.items()}
 
 
-# Scopo: Elimina riga (soft delete) con guard su stato + ricalcolo totali.
+# Scopo: Elimina riga preventivo (HARD DELETE) con guard su stato +
+# ricalcolo totali. Pattern simmetrico a `contratti_service.delete_riga`:
+# la guard limita l'operazione a DRAFT, dove la riga non e' ancora pushed
+# in commessa. Eventuali componenti BoM su `preventivi_righe_componenti`
+# vengono puliti automaticamente dal DB via FK ON DELETE CASCADE (no
+# trigger UPDATE attivato).
 def elimina_riga(preventivo_id: int, riga_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = repo.get_preventivo(preventivo_id)

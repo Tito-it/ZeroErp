@@ -16,7 +16,7 @@ from uuid import UUID
 from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import PayloadValidator
+from apps.core.services.payload_helpers import PayloadValidator, map_integrity_error
 from apps.vendite.db.listini_repository import (
     LISTINI_ORDER_COLUMNS,
     LISTINO_CREATE_COLUMNS,
@@ -45,11 +45,20 @@ _VERSIONE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(VERSIONE_UPDATE_COLUMN
 _RIGA_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(RIGA_CREATE_COLUMNS.keys())
 _RIGA_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(RIGA_UPDATE_COLUMNS.keys())
 
+# Codici errore applicativi (registrati in core.error_policies). Costanti
+# modulo-level per simmetria col pattern di `contratti_service.py` e per
+# evitare stringhe magic nelle mappe `map_integrity_error`.
+E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
+E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
+E_VENDITE_FK = "E_VENDITE_FK"
+E_VENDITE_LISTINO_VERSIONE_OVERLAP = "E_VENDITE_LISTINO_VERSIONE_OVERLAP"
+E_LISTINO_RIGA_COMP_BOM_INCOERENTE = "E_LISTINO_RIGA_COMP_BOM_INCOERENTE"
+
 # Validator modulo-level: log_to_db=True per telemetria pipeline vendite,
 # function_name override per-chiamata (riflette il metodo service specifico).
 # Ref: apps/core/services/payload_helpers.py (V6-B1/V6-B2).
 _V = PayloadValidator(
-    validation_code="E_VENDITE_VALIDATION",
+    validation_code=E_VENDITE_VALIDATION,
     log_to_db=True,
 )
 
@@ -583,70 +592,80 @@ def _get_riga_or_raise(
     return result
 
 
-# Scopo: Traduce i vincoli DB piu' comuni del sottodominio listini in errori applicativi leggibili.
+# Scopo: Traduce i vincoli DB del sottodominio listini in errori applicativi
+#        parlanti via il building block `map_integrity_error` (catalogo BB
+#        backend §Services). Codici differenziati per categoria di constraint:
+#        UNIQUE → E_VENDITE_DUPLICATO (409), FK → E_VENDITE_FK (400),
+#        CHECK → E_VENDITE_VALIDATION (400), overlap versioni →
+#        E_VENDITE_LISTINO_VERSIONE_OVERLAP (409, pattern simmetrico a
+#        E_VENDITE_PROMO_OVERLAP / E_VENDITE_CONTRATTO_OVERLAP), temporal FK
+#        coerenza BoM (PG18) → E_LISTINO_RIGA_COMP_BOM_INCOERENTE (400,
+#        sostituisce guard 6 trigger rimosso con migration 20260514-13).
 def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entity: str) -> None:
-    error_text = str(exc)
-    constraint_map: tuple[tuple[str, str, str], ...] = (
-        ("fk_listini_utility", "Utility non valida.", "utility_id non corrisponde a nessuna utility in config.utilities."),
-        (
+    map_integrity_error(
+        exc,
+        unique_constraints={
+            "uq_listini_codice": (
+                E_VENDITE_DUPLICATO,
+                "Codice listino duplicato: esiste gia' un listino con lo stesso codice.",
+            ),
+            "uq_listini_versioni_listino_codice": (
+                E_VENDITE_DUPLICATO,
+                "Codice versione duplicato per questo listino.",
+            ),
+            "uq_listini_righe_key_attiva": (
+                E_VENDITE_DUPLICATO,
+                "Riga prezzo duplicata: esiste gia' una riga attiva con lo stesso articolo/UoM/perimetro.",
+            ),
+            # EXCLUDE GIST con WHERE attivo+stato=ATTIVA: non migrabile a temporal
+            # UNIQUE (vedi piano-miglioramenti-db-pg18.md §3.4). Match nominale
+            # comunque tramite la mappa unique_constraints (map_integrity_error
+            # cerca il nome nel msg dell'eccezione, indipendentemente dal tipo).
+            "ex_listini_versioni_no_overlap": (
+                E_VENDITE_LISTINO_VERSIONE_OVERLAP,
+                # Allineato a error_policies.E_VENDITE_LISTINO_VERSIONE_OVERLAP.user_message:
+                # error_translator preferisce ServiceError.message su policy.user_message,
+                # quindi i due testi DEVONO coincidere per UX consistente.
+                "Esiste gia' una versione ATTIVA sovrapposta per il listino. "
+                "Chiudi la vecchia (valido_al = nuova_valido_dal - 1) e poi "
+                "attiva la nuova: la nuova decorrenza deve essere almeno 1 "
+                "giorno dopo l'inizio della precedente.",
+            ),
+        },
+        fk_constraints={
+            "fk_listini_utility": (
+                E_VENDITE_FK,
+                "Utility non valida: utility_id non corrisponde a nessuna utility in config.utilities.",
+            ),
             # Nome generato da PostgreSQL (pattern <table>_<col>_fkey) dalla
             # migration 20260413-05 che usa ADD COLUMN ... REFERENCES senza
             # CONSTRAINT esplicito. Se la migration viene rinominata, aggiornare.
-            "listini_tipologia_id_fkey",
-            "Tipologia listino non valida.",
-            "tipologia_id non corrisponde a nessuna tipologia in config.listini_tipologie.",
-        ),
-        ("uq_listini_codice", "Codice listino duplicato.", "Esiste gia' un listino con lo stesso codice."),
-        (
-            "uq_listini_versioni_listino_codice",
-            "Codice versione duplicato.",
-            "Esiste gia' una versione con lo stesso codice per questo listino.",
-        ),
-        (
-            "chk_listini_versioni_stato",
-            "Stato versione non valido.",
-            "stato deve essere BOZZA, ATTIVA o CHIUSA.",
-        ),
-        (
-            "ex_listini_versioni_no_overlap",
-            "Intervallo versione sovrapposto.",
-            "Esiste gia' una versione ATTIVA sovrapposta per il listino. "
-            "Usa il pattern di sostituzione: chiudi la vecchia "
-            "(valido_al = nuova_valido_dal - 1) e poi attiva la nuova. "
-            "La nuova decorrenza deve essere almeno 1 giorno dopo l'inizio "
-            "della precedente."
-        ),
-        (
-            "uq_listini_righe_key_attiva",
-            "Riga prezzo duplicata.",
-            "Esiste gia' una riga attiva con lo stesso articolo/UoM/perimetro.",
-        ),
-        (
-            "chk_listini_righe_prezzo",
-            "Prezzo riga non valido.",
-            "prezzo deve essere >= 0.",
-        ),
+            "listini_tipologia_id_fkey": (
+                E_VENDITE_FK,
+                "Tipologia listino non valida.",
+            ),
+            # Temporal FK PG18 (migration 20260514-12) — sostituisce il guard
+            # trigger di coerenza BoM (guard 6 rimosso con migration 20260514-13).
+            "fk_listrighe_comp_articoli_comp_temporal": (
+                E_LISTINO_RIGA_COMP_BOM_INCOERENTE,
+                "Prezzo bundle riferito a un componente non presente nella "
+                "distinta base del padre composito alla data o per l'intervallo richiesto.",
+            ),
+        },
+        check_constraints={
+            "chk_listini_versioni_stato": (
+                E_VENDITE_VALIDATION,
+                "Stato versione non valido: stato deve essere BOZZA, ATTIVA o CHIUSA.",
+            ),
+            "chk_listini_righe_prezzo": (
+                E_VENDITE_VALIDATION,
+                "Prezzo riga non valido: prezzo deve essere >= 0.",
+            ),
+        },
+        fallback_code=E_VENDITE_VALIDATION,
+        fallback_message="Violazione vincolo DB su listino.",
+        context={"entity": entity, "function": function_name},
     )
-    for constraint_name, message, detail in constraint_map:
-        if constraint_name in error_text:
-            ErrorManager.raise_error(
-                code="E_VENDITE_VALIDATION",
-                message=message,
-                detail=detail,
-                context={"constraint": constraint_name, "entity": entity},
-                function_name=function_name,
-                log_to_db=True,
-            )
-    if "violates foreign key constraint" in error_text:
-        ErrorManager.raise_error(
-            code="E_VENDITE_VALIDATION",
-            message="Riferimento non valido.",
-            detail="Uno dei riferimenti collegati non esiste o non e' piu' attivo.",
-            context={"entity": entity},
-            function_name=function_name,
-            log_to_db=True,
-        )
-    raise exc
 
 
 # Scopo: Normalizza payload create listino.
@@ -2209,10 +2228,10 @@ def fn_save_bundle(
         function_name=function_name,
     )
 
-    # Validita default = validita versione listino (semplifica UX; il
-    # trigger DB di guard coerenza BoM (`_listini_righe_comp_guard`)
-    # blocca comunque se la BoM corrente e' piu' corta del range
-    # richiesto — errore parlante al save).
+    # Validita default = validita versione listino (semplifica UX; la
+    # temporal FK PG18 `fk_listrighe_comp_articoli_comp_temporal` blocca
+    # comunque se la BoM corrente e' piu' corta del range richiesto —
+    # errore parlante al save via `_translate_integrity_error`).
     valido_dal_raw = versione.get("valido_dal")
     valido_al_raw = versione.get("valido_al")
     ErrorManager.require(
@@ -2268,3 +2287,20 @@ def fn_save_bundle(
         raise AssertionError("unreachable")  # pragma: no cover
 
     return result
+
+
+# Scopo: Elimina TUTTI i prezzi bundle di un composito da una versione
+#        listino in BOZZA. Pattern semantico DELETE: tabula rasa idempotente
+#        gia' incapsulata da `upsert_bundle_componenti` quando `rows=[]`.
+#        Equivalente a `fn_save_bundle(rows=[])` ma esposto come endpoint
+#        dedicato per chiarezza REST + audit log.
+#
+#        Idempotente: 0 disattivati su composito senza prezzi bundle,
+#        nessun errore. Guard BOZZA via `_assert_versione_bozza_for_riga_op`
+#        ereditata da `fn_save_bundle`.
+def fn_delete_bundle(
+    listino_id: int,
+    versione_id: int,
+    articolo_padre_id: str,
+) -> dict[str, int]:
+    return fn_save_bundle(listino_id, versione_id, articolo_padre_id, rows=[])

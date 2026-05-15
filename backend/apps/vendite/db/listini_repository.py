@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -16,6 +17,16 @@ from django.db import connection
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+
+logger = logging.getLogger(__name__)
+
+# Sentinel SQL per il bound "open-ended" sui daterange. Allineato alla canonical
+# form usata dalle STORED column `validita` su `listini_versioni` e
+# `listini_righe_componenti` (`daterange(coalesce(d,'-infinity'),
+# coalesce(a,'infinity'), '[]')`). Se la convenzione DB evolvera' (es. switch a
+# `9999-12-31`), aggiornare qui — punto unico di drift.
+_SQL_DATE_INFINITY = "'infinity'::date"
+
 
 LISTINI_ORDER_COLUMNS: dict[str, str] = {
     "codice": "l.codice",
@@ -309,7 +320,11 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Restituisce le versioni del listino con conteggio righe e ordinamento stabile.
+    # Scopo: Restituisce le versioni del listino con conteggio righe e
+    # ordinamento stabile. `righe_count` = N standalone + M compositi
+    # distinti (modello unificato BoM 2026-05-13): un articolo composito
+    # vive in `listini_righe_componenti` come N righe figlio, ma in UX
+    # conta come UNA riga "articolo" della versione.
     def list_versioni(self, listino_id: int) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -331,6 +346,10 @@ class ListiniRepository:
                         SELECT COUNT(*)
                           FROM vendite.listini_righe r
                          WHERE r.listino_versione_id = v.id
+                    ) + (
+                        SELECT COUNT(DISTINCT lrc.articolo_padre_id)
+                          FROM vendite.listini_righe_componenti lrc
+                         WHERE lrc.listino_versione_id = v.id
                     ) AS righe_count
                   FROM vendite.listini_versioni v
                  WHERE v.listino_id = %s
@@ -340,7 +359,9 @@ class ListiniRepository:
             )
             return rows_to_list(cursor)
 
-    # Scopo: Restituisce il dettaglio singolo della versione verificando l'appartenenza al listino.
+    # Scopo: Restituisce il dettaglio singolo della versione verificando
+    # l'appartenenza al listino. Stessa semantica `righe_count` di
+    # `list_versioni`: standalone + compositi distinti.
     def get_versione(self, listino_id: int, versione_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -362,6 +383,10 @@ class ListiniRepository:
                         SELECT COUNT(*)
                           FROM vendite.listini_righe r
                          WHERE r.listino_versione_id = v.id
+                    ) + (
+                        SELECT COUNT(DISTINCT lrc.articolo_padre_id)
+                          FROM vendite.listini_righe_componenti lrc
+                         WHERE lrc.listino_versione_id = v.id
                     ) AS righe_count
                   FROM vendite.listini_versioni v
                  WHERE v.listino_id = %s
@@ -478,14 +503,81 @@ class ListiniRepository:
                 [target_versione_id, src_versione_id],
             )
 
+            # 3) Copy delle righe bundle compositi ATTIVE
+            #    (`listini_righe_componenti`) della sorgente nella nuova
+            #    versione (modello unificato BoM 2026-05-13). Ricalcolo
+            #    `valido_dal`/`valido_al` come intersezione fra validita'
+            #    della BoM (`articoli_componenti`) e validita' della versione
+            #    target (NON della sorgente: l'admin si aspetta prezzi validi
+            #    per il nuovo range).
+            #
+            #    `GREATEST`/`LEAST` sono NULL-safe in PG: NULL viene ignorato
+            #    nel calcolo. Quindi `LEAST(NULL, date)=date`, `LEAST(NULL,NULL)=NULL`.
+            #    NULL su `valido_al` significa "open-ended" e la formula lo
+            #    propaga correttamente (post-fix DB 2026-05-15 il trigger
+            #    `trgfn_listini_righe_comp_guard_coerenza_bom` coalesce
+            #    simmetricamente vs STORED su listini_versioni.validita).
+            #
+            #    Skip riga se intersezione vuota (es. BoM scaduta o non
+            #    coperta dalla versione target): il WHERE finale lo intercetta
+            #    via COALESCE→'infinity', evitando l'errore PG cripto
+            #    `range lower bound must be less than or equal to range upper bound`
+            #    sulla STORED column daterange.
+            cursor.execute(
+                f"""
+                INSERT INTO vendite.listini_righe_componenti (
+                    listino_versione_id,
+                    articolo_componente_id,
+                    articolo_padre_id,
+                    articolo_figlio_id,
+                    prezzo,
+                    iva_id,
+                    valido_dal,
+                    valido_al,
+                    attivo
+                )
+                SELECT
+                    %s,
+                    lrc.articolo_componente_id,
+                    lrc.articolo_padre_id,
+                    lrc.articolo_figlio_id,
+                    lrc.prezzo,
+                    lrc.iva_id,
+                    GREATEST(ac.valido_dal, target_v.valido_dal) AS v_dal,
+                    LEAST(ac.valido_al, target_v.valido_al) AS v_al,
+                    TRUE
+                  FROM vendite.listini_righe_componenti lrc
+                  JOIN catalogo.articoli_componenti ac
+                       ON ac.id = lrc.articolo_componente_id
+                  JOIN vendite.listini_versioni target_v
+                       ON target_v.id = %s
+                 WHERE lrc.listino_versione_id = %s
+                   AND lrc.attivo IS TRUE
+                   AND GREATEST(ac.valido_dal, target_v.valido_dal) <=
+                       LEAST(
+                           COALESCE(ac.valido_al, {_SQL_DATE_INFINITY}),
+                           COALESCE(target_v.valido_al, {_SQL_DATE_INFINITY})
+                       )
+                """,
+                [target_versione_id, target_versione_id, src_versione_id],
+            )
+
         return target_versione_id
 
     # Scopo: Elimina una versione e le sue righe in cascata. Usato solo per
     #        versioni in stato BOZZA: il guard di stato e' nel service. La cascade
     #        sulle righe e` esplicita perche' la FK puo' non avere ON DELETE CASCADE
     #        (le righe ATTIVE non vanno mai cancellate, qui si parla solo di BOZZA).
+    #        Cascade su 2 tabelle figlie:
+    #          - `listini_righe` (standalone)
+    #          - `listini_righe_componenti` (compositi, modello unificato 2026-05-13)
     def delete_versione(self, listino_id: int, versione_id: int) -> bool:
         with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM vendite.listini_righe_componenti "
+                "WHERE listino_versione_id = %s",
+                [versione_id],
+            )
             cursor.execute(
                 "DELETE FROM vendite.listini_righe WHERE listino_versione_id = %s",
                 [versione_id],
@@ -565,17 +657,29 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Conta le righe prezzo della versione per guard di pubblicazione.
+    # Scopo: Conta le righe prezzo ATTIVE della versione per guard di
+    # pubblicazione (BOZZA → ATTIVA richiede >= 1 riga). Somma standalone
+    # + compositi distinti (modello unificato BoM 2026-05-13). Senza
+    # contare i compositi un listino di soli compositi non si potrebbe mai
+    # attivare.
     def count_active_righe_versione(self, versione_id: int) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT COUNT(*)
-                  FROM vendite.listini_righe
-                 WHERE listino_versione_id = %s
-                   AND attivo IS TRUE
+                SELECT
+                    (
+                        SELECT COUNT(*)
+                          FROM vendite.listini_righe
+                         WHERE listino_versione_id = %s
+                           AND attivo IS TRUE
+                    ) + (
+                        SELECT COUNT(DISTINCT articolo_padre_id)
+                          FROM vendite.listini_righe_componenti
+                         WHERE listino_versione_id = %s
+                           AND attivo IS TRUE
+                    )
                 """,
-                [versione_id],
+                [versione_id, versione_id],
             )
             row = cursor.fetchone()
         assert row is not None
@@ -1159,16 +1263,18 @@ class ListiniRepository:
         valido_dal: date,
         valido_al: date | None = None,
     ) -> dict[str, int]:
-        # `validita` della riga listino_righe_componenti = intersezione fra
+        # Validita' della riga listino_righe_componenti = intersezione fra
         # la validita' della versione listino e la validita' della riga BoM
         # `catalogo.articoli_componenti` referenziata da articolo_componente_id.
-        # Il trigger DB `trgfn_listini_righe_comp_guard_coerenza_bom` esige
-        # contenimento stretto (riga listino ⊆ BoM); l'intersezione `*` lo
-        # garantisce automaticamente — nessun lavoro lato caller.
+        # Calcolata su `valido_dal`/`valido_al`: la colonna `validita` daterange
+        # e' STORED generated (PG 18, migration 20260514-04). La temporal FK
+        # `fk_listrighe_comp_articoli_comp_temporal` (migration 20260514-12)
+        # garantisce il contenimento riga listino ⊆ BoM al posto del guard
+        # trigger rimosso con migration 20260514-13.
         #
         # Esempio: versione listino valida `[2026-04-07, infinity]`, BoM del
         # componente valida `[2026-05-13, infinity]` → riga bundle salvata
-        # con validita = `[2026-05-13, infinity]` (la BoM e' il limite).
+        # con valido_dal = `2026-05-13`, valido_al = NULL (la BoM e' il limite).
         with connection.cursor() as cursor:
             # Soft-delete riga attive correnti per la coppia (versione, padre).
             cursor.execute(
@@ -1184,12 +1290,34 @@ class ListiniRepository:
             n_disattivati = cursor.rowcount
 
             # INSERT nuove righe attive (skip prezzo NULL).
+            # Intersezione valido_dal/valido_al con la BoM via CTE:
+            #  - valido_dal = GREATEST(ac.valido_dal, requested)
+            #  - valido_al  = LEAST(ac.valido_al, requested)
+            # `GREATEST`/`LEAST` sono NULL-safe in PG (ignorano i NULL),
+            # quindi NULL su uno dei due lati propaga correttamente la
+            # semantica "open-ended" (post-fix DB 2026-05-15 il trigger
+            # `trgfn_listini_righe_comp_guard_coerenza_bom` coalesce
+            # simmetricamente vs STORED su listini_versioni.validita).
+            # Guard intersezione vuota: il WHERE finale skippa l'INSERT se
+            # `v_dal > v_al` (es. versione [2026-04, 2026-04] vs BoM [2026-05,..]).
+            # Senza guard la STORED column daterange(v_dal,v_al,'[]') solleverebbe
+            # `range lower bound must be less than or equal to range upper bound`
+            # (errore PG cripto). rowcount=0 → log warning + conteggio skippati.
             n_inseriti = 0
+            n_skipped_no_overlap = 0
             for r in rows:
                 if r.get("prezzo") is None:
                     continue
                 cursor.execute(
-                    """
+                    f"""
+                    WITH bom AS (
+                        SELECT
+                            ac.id AS componente_id,
+                            ac.valido_dal AS bom_valido_dal,
+                            ac.valido_al AS bom_valido_al
+                          FROM catalogo.articoli_componenti ac
+                         WHERE ac.id = %s::uuid
+                    )
                     INSERT INTO vendite.listini_righe_componenti (
                         listino_versione_id,
                         articolo_componente_id,
@@ -1197,21 +1325,29 @@ class ListiniRepository:
                         articolo_figlio_id,
                         prezzo,
                         iva_id,
-                        validita,
+                        valido_dal,
+                        valido_al,
                         attivo
                     )
                     SELECT
-                        %s, ac.id, %s, %s, %s, %s,
-                        ac.validita * daterange(
-                            %s::date,
-                            COALESCE(%s::date, 'infinity'::date),
-                            '[]'
-                        ),
+                        %s,
+                        bom.componente_id,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        GREATEST(bom.bom_valido_dal, %s::date) AS v_dal,
+                        LEAST(bom.bom_valido_al, %s::date) AS v_al,
                         TRUE
-                      FROM catalogo.articoli_componenti ac
-                     WHERE ac.id = %s::uuid
+                      FROM bom
+                     WHERE GREATEST(bom.bom_valido_dal, %s::date) <=
+                           LEAST(
+                               COALESCE(bom.bom_valido_al, {_SQL_DATE_INFINITY}),
+                               COALESCE(%s::date, {_SQL_DATE_INFINITY})
+                           )
                     """,
                     [
+                        r["articolo_componente_id"],
                         versione_id,
                         str(articolo_padre_id),
                         r["articolo_figlio_id"],
@@ -1219,9 +1355,25 @@ class ListiniRepository:
                         r.get("iva_id"),
                         valido_dal,
                         valido_al,
-                        r["articolo_componente_id"],
+                        valido_dal,
+                        valido_al,
                     ],
                 )
-                n_inseriti += cursor.rowcount
+                if cursor.rowcount == 0:
+                    n_skipped_no_overlap += 1
+                    logger.warning(
+                        "listini_righe_componenti.upsert_bundle.skip_no_overlap "
+                        "versione_id=%s articolo_padre_id=%s articolo_componente_id=%s "
+                        "valido_dal=%s valido_al=%s — intersezione vuota fra "
+                        "validita' versione e BoM, riga ignorata.",
+                        versione_id, articolo_padre_id, r["articolo_componente_id"],
+                        valido_dal, valido_al,
+                    )
+                else:
+                    n_inseriti += cursor.rowcount
 
-            return {"disattivati": n_disattivati, "inseriti": n_inseriti}
+            return {
+                "disattivati": n_disattivati,
+                "inseriti": n_inseriti,
+                "skipped_no_overlap": n_skipped_no_overlap,
+            }

@@ -39,8 +39,8 @@ Indice test eseguiti:
 24) test_gestisci_riga_L2_maggiorazione_oltre_limite_bloccato — +10% > limite 5% -> E_PREV_MAGGIORAZIONE_ECCESSIVA
 25) test_gestisci_riga_L2_superuser_bypass — superuser salta anche L2
 26) test_list_riepilogo_iva_delega_a_repo — facade lettura riepilogo IVA aggregato
-27) test_list_preventivi_default_solo_revisione_attiva_true — filtro lista default
-28) test_list_preventivi_solo_revisione_attiva_false — toggle "Mostra storico"
+27) test_list_preventivi_default_solo_attiva_true — filtro lista default
+28) test_list_preventivi_solo_attiva_false — toggle "Mostra storico"
 29) test_gestisci_riga_deriva_qta_operativa_da_factor — qta_op = quantita*factor
 30) test_gestisci_riga_deriva_qta_operativa_factor_default_1 — fallback factor=1
 31) test_repository_list_righe_filtra_solo_attive — righe soft-delete escluse
@@ -1868,9 +1868,9 @@ class TestPreventiviService(unittest.TestCase):
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["iva_aliquota"], 22)
 
-    # Scopo: filtro solo_revisione_attiva default True. Verifica che il
+    # Scopo: filtro solo_attiva default True. Verifica che il
     #        service propaghi True al repo quando il parametro non e' passato.
-    def test_list_preventivi_default_solo_revisione_attiva_true(self):
+    def test_list_preventivi_default_solo_attiva_true(self):
         from apps.vendite.services.preventivi_service import list_preventivi
 
         self.mock_repo.list_preventivi.return_value = ([], 0)
@@ -1878,19 +1878,19 @@ class TestPreventiviService(unittest.TestCase):
         list_preventivi(page=1, page_size=10)
 
         kwargs = self.mock_repo.list_preventivi.call_args.kwargs
-        self.assertTrue(kwargs["solo_revisione_attiva"])
+        self.assertTrue(kwargs["solo_attiva"])
 
-    # Scopo: filtro solo_revisione_attiva pass-through esplicito False
+    # Scopo: filtro solo_attiva pass-through esplicito False
     #        (il FE col toggle "Mostra storico" passa false).
-    def test_list_preventivi_solo_revisione_attiva_false(self):
+    def test_list_preventivi_solo_attiva_false(self):
         from apps.vendite.services.preventivi_service import list_preventivi
 
         self.mock_repo.list_preventivi.return_value = ([], 0)
 
-        list_preventivi(page=1, page_size=10, solo_revisione_attiva=False)
+        list_preventivi(page=1, page_size=10, solo_attiva=False)
 
         kwargs = self.mock_repo.list_preventivi.call_args.kwargs
-        self.assertFalse(kwargs["solo_revisione_attiva"])
+        self.assertFalse(kwargs["solo_attiva"])
 
     # Scopo: derivazione qta_operativa quando il payload manda solo `quantita`
     #        (UX standard riga preventivo). Il service consulta factor_to_base

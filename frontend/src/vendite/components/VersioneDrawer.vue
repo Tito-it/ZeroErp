@@ -22,6 +22,7 @@ import {
   listBundleCompositi,
   previewBundleComponenti,
   saveBundleComponenti,
+  deleteBundleComponenti,
 } from '../api/listini'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
 import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
@@ -360,17 +361,18 @@ async function onSave() {
 // === Eliminazione riga (con conferma) ===
 // Branching:
 //   - Riga standalone (`_isComposito=false`): DELETE su `listini_righe`.
-//   - Riga composito: `saveBundleComponenti(rows=[])` → tabula rasa
-//     idempotente (soft-delete tutte le righe `listini_righe_componenti`
-//     del padre per la versione, nessun re-insert). Allinea il pattern
-//     di rimozione totale del composito alle righe standalone.
+//   - Riga composito: DELETE dedicato su /bundle/<padre>/ → tabula rasa
+//     idempotente lato BE (soft-delete tutte le righe
+//     `listini_righe_componenti` del padre per la versione). Endpoint REST
+//     semanticamente corretto sostituisce il vecchio workaround
+//     `saveBundleComponenti(rows=[])`.
 function onDelete(row) {
   const label = row.articolo_codice || row.articolo_descrizione || `#${row.id}`
   confirmDelete(label, async () => {
     if (row._isComposito) {
       const result = await execute(
-        () => saveBundleComponenti(
-          props.listinoId, props.versione.id, row.articolo_id, [],
+        () => deleteBundleComponenti(
+          props.listinoId, props.versione.id, row.articolo_id,
         ),
         { successMessage: t('listini.composito_eliminato') },
       )

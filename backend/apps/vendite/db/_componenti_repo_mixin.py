@@ -211,6 +211,11 @@ class ComponentiRepositoryMixin:
     # l'articolo padre cambia: i vecchi componenti non hanno piu' senso,
     # vanno purged prima del re-init. Naming `purge_*` per distinguere
     # esplicitamente dal pattern soft-delete `delete_*`.
+    #
+    # Nota: NON serve un helper "soft cascade" sui componenti — l'eliminazione
+    # della riga padre passa per HARD DELETE in entrambi i sorgenti
+    # (preventivi+contratti) e la FK `ON DELETE CASCADE` su
+    # `*_righe_componenti.riga_<sorgente>_id` pulisce automaticamente lato DB.
     def purge_componenti_riga(self, riga_id: int) -> int:
         sql = (  # noqa: S608 — attributi di classe whitelisted
             f"DELETE FROM {self._componenti_table_name} "

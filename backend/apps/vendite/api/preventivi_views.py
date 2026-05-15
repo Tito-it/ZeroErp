@@ -40,7 +40,7 @@ class ApiPreventiviList(DomainAPIView):
             OpenApiParameter(name="data_al", type=str, required=False, description="ISO date"),
             OpenApiParameter(name="search", type=str, required=False),
             OpenApiParameter(
-                name="solo_revisione_attiva", type=bool, required=False,
+                name="solo_attiva", type=bool, required=False,
                 description="Default true: mostra solo l'ultima revisione per numero. "
                             "Passare false per includere lo storico revisioni superseded.",
             ),
@@ -65,7 +65,7 @@ class ApiPreventiviList(DomainAPIView):
             search=qp_str(qp.get("search")),
             # Default true: lista pulita senza storico revisioni. Il FE
             # passa "false" esplicito col toggle "Mostra storico".
-            solo_revisione_attiva=qp_bool(qp.get("solo_revisione_attiva"), default=True),
+            solo_attiva=qp_bool(qp.get("solo_attiva"), default=True),
             auth_user_id=auth_user_id,
             page=qp_int(qp.get("page"), 1),
             page_size=qp_int(qp.get("page_size"), 50),

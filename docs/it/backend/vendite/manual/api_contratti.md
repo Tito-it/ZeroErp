@@ -24,12 +24,12 @@ Riferimento concettuale: [sviluppo-listini-v5.md](/dev/work-in-progress/sviluppo
 - Lo **stato iniziale** di ogni contratto e' `DRAFT` (risolto dal service
   via `config.stati_doc_contratti.codice_interno`).
 - Le coerenze cross-table (modalita' C senza righe/prezzi all'attivazione,
-  tipo/classe utenza per ambito utility, EXCLUDE no-overlap) sono
-  enforced dai trigger DB:
+  tipo/classe utenza per ambito utility, no-overlap) sono enforced dai
+  trigger DB e dal temporal UNIQUE PG18:
   - `trgfn_contratti_guard_modalita_c_activation`
   - `trgfn_contratti_righe_guard_modalita_c`
   - `trgfn_contratti_utilities_guard_tipo_classe`
-  - EXCLUDE `ex_contratti_no_overlap` su `(billing_account_id, istanza_utility_id, utility_id, ambito, validita)`.
+  - Temporal UNIQUE `uq_contratti_no_overlap` su `(billing_account_id, istanza_utility_id, utility_id, ambito, validita WITHOUT OVERLAPS)` — sostituisce il vecchio `ex_contratti_no_overlap` (migration 20260514-10).
 - Il service `ContrattiService` traduce gli errori `P0001` dei trigger nei
   codici applicativi documentati piu' sotto.
 
@@ -342,7 +342,7 @@ extra al catalogo.
 | `E_VENDITE_NOT_FOUND` | 404 | Service (contratto/riga/componente; anti-tampering URL componenti) | — |
 | `E_VENDITE_DUPLICATO` | 400 | UNIQUE `uq_contratti_numero` o `uq_contratti_utilities_contratto_id` | — |
 | `E_VENDITE_FK` | 400 | FK su BA/istanza/utility/listino/parent/stato/articolo/UoM/tipo/classe utenza/categoria cliente snapshot | — |
-| `E_VENDITE_CONTRATTO_OVERLAP` | 409 | EXCLUDE `ex_contratti_no_overlap` | — |
+| `E_VENDITE_CONTRATTO_OVERLAP` | 409 | Temporal UNIQUE `uq_contratti_no_overlap` (WITHOUT OVERLAPS, PG18) | — |
 | `E_CONTRATTO_NON_MODIFICABILE` | 409 | Service (operazioni righe/componenti su contratto post-DRAFT) | — |
 | `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
 | `E_CONTRATTO_MODALITA_C_SENZA_RIGHE` | 400 | DB P0001 | `trgfn_contratti_guard_modalita_c_activation` |

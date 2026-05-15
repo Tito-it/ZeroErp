@@ -75,6 +75,7 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 const canChangeState = computed(() => caps.flag('can_change_state'))
 const nonEditableFields = caps.nonEditableFields
 const isLocked = caps.isLocked
+const righeCount = computed(() => detail.value?.righe_count ?? detail.value?.righe?.length ?? 0)
 
 // isContractLocked deriva ora da !canEditTestata (mantenuto per leggibilita'
 // del template "banner contratto bloccato"). In create non c'e' detail, quindi
@@ -693,7 +694,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <Button :icon="MANAGE_ICONS.LIST" :label="t('contratti.gestisci_righe')"
             outlined class="app-manage-btn"
             @click="righeVisible = true" />
-          <span class="text-color-secondary">{{ detail.righe?.length || 0 }} {{ t('contratti.righe_count_label') }}</span>
+          <span class="text-color-secondary">{{ righeCount }} {{ t('contratti.righe_count_label') }}</span>
         </div>
       </template>
 
@@ -703,6 +704,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <DocumentiGeneratiSorgenteList
             sorgente-code="CONTRATTO"
             :sorgente-id="props.contrattoId"
+            hide-header-when-empty
           />
         </div>
       </template>

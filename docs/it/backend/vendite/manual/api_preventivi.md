@@ -42,7 +42,7 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
         "uid": "01970...",
         "numero": "P-0001",
         "rev": 0,
-        "is_revision_attiva": true,
+        "is_attiva": true,
         "data": "2026-04-03",
         "stato_codice": "BOZZA",
         "stato_descrizione": "Bozza",

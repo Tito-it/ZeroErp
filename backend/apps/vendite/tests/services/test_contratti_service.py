@@ -17,7 +17,7 @@ Indice test eseguiti:
 8) create_contratto_modalita_C_con_variazione_fallisce
 9) create_contratto_variazione_coppia_incompleta_fallisce
 10) create_contratto_rifiuta_numero_in_payload
-11) create_contratto_overlap_exclude_mappato
+11) create_contratto_overlap_temporal_unique_mappato
 12) create_contratto_genera_numero_e_stato_draft
 13) update_contratto_rifiuta_identificativi_immutabili
 13b) update_contratto_rifiuta_categoria_snapshot_non_draft
@@ -36,6 +36,8 @@ Indice test eseguiti:
 26) update_utility_immutabili_rifiutati
 27) update_contratto_modalita_B_con_listino_esistente_patch_solo_variazione (regressione review)
 28) repository_create_contratto_usa_cast_jsonb_per_meta (regressione review)
+29) get_contratto_righe_count_usa_preview_per_modalita_ab
+30) get_contratto_righe_count_usa_righe_persistite_per_modalita_c
 """
 
 from datetime import date, timedelta
@@ -123,6 +125,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = {"id": 5}
         repo.list_righe.return_value = [{"id": 99}]
+        repo.list_righe_preview.return_value = [{"articolo_id": "a"}, {"articolo_id": "b"}]
         repo.get_capabilities.return_value = {}
 
         result = ContrattiService().get_contratto(1)
@@ -130,6 +133,7 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(result["id"], 1)
         self.assertEqual(result["utility"], {"id": 5})
         self.assertEqual(result["righe"], [{"id": 99}])
+        self.assertEqual(result["righe_count"], 2)
 
     # Scopo: Verifica che get_contratto includa nel detail il blob capabilities
     #        ritornato da script.fn_available_actions_contratto (Fase 1.B2).
@@ -141,6 +145,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
+        repo.list_righe_preview.return_value = []
         repo.get_capabilities.return_value = {
             "stato_codice": "ATTIVO",
             "available_actions": [{
@@ -166,6 +171,46 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(action["default_date"], "2026-04-30")
         self.assertIn("billing_account_id", result["non_editable_fields"])
         repo.get_capabilities.assert_called_once_with(1)
+
+    # Scopo: in modalita' A/B il conteggio righe del detail usa la preview
+    #        effettivamente mostrata dal drawer (listino + override).
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_get_contratto_righe_count_usa_preview_per_modalita_ab(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+        repo.list_righe_preview.return_value = [
+            {"articolo_id": "a"},
+            {"articolo_id": "b"},
+            {"articolo_id": "c"},
+        ]
+        repo.get_capabilities.return_value = {}
+
+        result = ContrattiService().get_contratto(1)
+
+        self.assertEqual(result["righe_count"], 3)
+
+    # Scopo: in modalita' C il conteggio righe usa le righe persistite,
+    #        perche' non esiste preview da listino.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_get_contratto_righe_count_usa_righe_persistite_per_modalita_c(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        testata = _testata_default()
+        testata["listino_id"] = None
+        repo.get_contratto.return_value = testata
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = [{"id": 1}, {"id": 2}]
+        repo.get_capabilities.return_value = {}
+
+        result = ContrattiService().get_contratto(1)
+
+        self.assertEqual(result["righe_count"], 2)
+        repo.list_righe_preview.assert_not_called()
 
     # --- preview righe applicate -------------------------------------
 
@@ -409,14 +454,17 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_contratto_overlap_exclude_mappato(self, repo_cls):
+    def test_create_contratto_overlap_temporal_unique_mappato(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
         repo.generate_numero.return_value = "CNT0000003"
         repo.get_stato_id_by_codice.return_value = 1
+        # Scopo: PG18 temporal UNIQUE (WITHOUT OVERLAPS) sulla colonna `validita`
+        #        STORED generated → messaggio standard "unique constraint",
+        #        nome `uq_contratti_no_overlap` (migration 20260514-10).
         repo.create_contratto.side_effect = IntegrityError(
-            "duplicate key value violates exclusion constraint \"ex_contratti_no_overlap\""
+            "duplicate key value violates unique constraint \"uq_contratti_no_overlap\""
         )
 
         with self.assertRaises(ServiceError) as ctx:

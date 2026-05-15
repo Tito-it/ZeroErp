@@ -6,6 +6,7 @@ import { useNotify } from '../composables/useNotify'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
+import Badge from 'primevue/badge'
 import api from '../api'
 
 const { t } = useI18n()
@@ -14,6 +15,7 @@ const notify = useNotify()
 
 const sessioni = ref([])
 const loading = ref(false)
+const expanded = ref(false)
 
 async function fetchSessioni() {
   loading.value = true
@@ -73,10 +75,32 @@ function confermaRevoca(sessione) {
   })
 }
 
+function confermaRevocaTutte() {
+  confirm.require({
+    header: t('sessions.revoke_all_confirm_title'),
+    message: t('sessions.revoke_all_confirm_message', { count: sessioni.value.length }),
+    acceptLabel: t('sessions.revoke_all'),
+    rejectLabel: t('common.cancel'),
+    acceptClass: 'p-button-danger',
+    accept: revocaTutteSessioni,
+  })
+}
+
 async function revocaSessione(jti) {
   try {
     await api.post(`/core/me/sessioni/${jti}/revoca/`)
     notify.success(t('sessions.revoke_success'))
+    await fetchSessioni()
+  } catch {
+    notify.error()
+  }
+}
+
+async function revocaTutteSessioni() {
+  try {
+    await api.post('/core/me/sessioni/revoca-tutte/')
+    notify.success(t('sessions.revoke_all_success'))
+    expanded.value = false
     await fetchSessioni()
   } catch {
     notify.error()
@@ -88,11 +112,33 @@ onMounted(fetchSessioni)
 
 <template>
   <div v-if="sessioni.length > 0" class="sessioni-panel">
-    <h3 class="sessioni-title">
-      <i class="pi pi-shield"></i>
-      {{ t('sessions.other_active', { count: sessioni.length }) }}
-    </h3>
-    <DataTable :value="sessioni" size="small" stripedRows class="app-datatable">
+    <div class="sessioni-header">
+      <h3 class="sessioni-title">
+        <i class="pi pi-shield"></i>
+        <span>{{ t('sessions.other_active_title') }}</span>
+        <Badge :value="sessioni.length" severity="warn" />
+      </h3>
+      <div class="sessioni-actions">
+        <Button
+          :label="t('sessions.revoke_all')"
+          icon="pi pi-times"
+          severity="danger"
+          text
+          size="small"
+          @click="confermaRevocaTutte"
+        />
+        <Button
+          :icon="expanded ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"
+          text
+          rounded
+          size="small"
+          :aria-label="expanded ? t('sessions.hide_list') : t('sessions.show_list')"
+          v-tooltip.left="expanded ? t('sessions.hide_list') : t('sessions.show_list')"
+          @click="expanded = !expanded"
+        />
+      </div>
+    </div>
+    <DataTable v-if="expanded" :value="sessioni" size="small" stripedRows class="app-datatable">
       <Column :header="t('sessions.device')">
         <template #body="{ data }">
           {{ parseUserAgent(data.user_agent) }}
@@ -132,6 +178,20 @@ onMounted(fetchSessioni)
 
 /* Font e padding DataTable ereditati da .app-datatable (main.css) */
 
+.sessioni-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.sessioni-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .sessioni-title {
   display: flex;
   align-items: center;
@@ -139,7 +199,7 @@ onMounted(fetchSessioni)
   font-size: var(--app-font-size-base);
   font-weight: 600;
   color: var(--p-text-color);
-  margin-bottom: 0.75rem;
+  margin: 0;
 }
 
 .sessioni-title i {
