@@ -1,0 +1,34 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260515-09-truncate-contratti-dev-reset-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 2.0 — Reset dati contratti (sviluppo)
+  #
+  # TRUNCATE a cascata di tutte le tabelle contratto, eseguito PRIMA di
+  # qualsiasi ALTER TABLE della Fase 2 per permettere l'aggiunta di colonne
+  # NOT NULL senza default temporanei.
+  #
+  # Ambiente sviluppo/test esclusivamente — nessun dato da preservare
+  # (decisione §3.8 refactor-contratti-modalita.md).
+  #
+  # Vedere: brief-db-refactor-contratti-completo.md §Fase 2 Step 2.0
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260515-09-truncate-contratti-dev-reset
+      author: mctit
+      comment: >
+        Reset tabelle contratto per Fase 2 refactor. Solo sviluppo/test,
+        nessun dato di produzione. Prerequisito DDL per Step 2.1-2.4.
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              TRUNCATE
+                  vendite.contratti_righe_componenti,
+                  vendite.contratti_righe,
+                  vendite.contratti_utilities,
+                  vendite.contratti
+              RESTART IDENTITY CASCADE;
+      rollback:
+        - empty

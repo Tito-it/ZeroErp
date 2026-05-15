@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_preventivi.md" %}
 # 🔍 View `vw_preventivi`
 
 ```sql

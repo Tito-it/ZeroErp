@@ -2,8 +2,7 @@ id,code,default_value,description,data_insert,user_insert,data_update,user_updat
 38,VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG,30,Giorni di validita' di un preventivo (validita_al = oggi + N).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
 39,VENDITE_PREVENTIVO_DEFAULT_FATTURAZIONE_IMMEDIATA,false,Default fatturazione immediata in create preventivo.,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
 40,VENDITE_CONTRATTO_DEFAULT_AMBITO,COMMODITY,Ambito proposto in create contratto (COMMODITY/COMMERCIO).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
-41,VENDITE_CONTRATTO_DEFAULT_MODALITA,A,Modalita' pricing proposta in create contratto (A/B/C).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
-42,VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE,PERCENTUALE,Tipo variazione proposto in modalita A (PERCENTUALE/VALORE_FISSO).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
+42,VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE,PERCENTUALE,Tipo variazione proposto in create contratto (PERCENTUALE/VALORE_FISSO).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
 43,VENDITE_CONTRATTO_DEFAULT_DATA_LEAD_GG,0,Lead-time giorni per il campo data del contratto (0 = oggi).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
 44,VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG,0,Lead-time giorni per valido_dal in create contratto (0 = oggi).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
 45,VENDITE_LISTINI_NEW_VERSIONE_LEAD_GG,0,Lead-time giorni per valido_dal in create versione listino (0 = oggi).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t

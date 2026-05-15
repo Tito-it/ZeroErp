@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# Step 2.5 — Drop parameter VENDITE_CONTRATTO_DEFAULT_MODALITA
+#
+# Il parametro forniva la modalità pricing di default (A/B/C) nel form
+# di creazione contratto. Con il refactor Step 2.1 (modello unificato)
+# la distinzione A/B/C è eliminata: il contratto non ha più una "modalità"
+# come input operatore. Il parametro è quindi obsoleto.
+#
+# Le eventuali parameter_overrides collegate vengono eliminate in CASCADE
+# via FK fk_overrides_parameters.
+#
+# Vedere: brief-db-refactor-contratti-completo.md §Fase 2 Step 2.5
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260515-16-delete-parameter-vendite-contratto-default-modalita-mctit.yaml
+
+  - changeSet:
+      id: 20260515-16-delete-parameter-vendite-contratto-default-modalita
+      author: mctit
+      comment: >
+        Step 2.5: rimozione parametro VENDITE_CONTRATTO_DEFAULT_MODALITA (id 41).
+        La distinzione modalità A/B/C è eliminata con il refactor contratti Step 2.1
+        (modello unificato). Gli eventuali parameter_overrides vengono rimossi in CASCADE.
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM config.parameters
+               WHERE code = 'VENDITE_CONTRATTO_DEFAULT_MODALITA';
+      changes:
+        - delete:
+            tableName: parameters
+            schemaName: config
+            where: "code = 'VENDITE_CONTRATTO_DEFAULT_MODALITA'"
+      rollback:
+        - insert:
+            tableName: parameters
+            schemaName: config
+            columns:
+              - column:
+                  name: id
+                  value: 41
+              - column:
+                  name: code
+                  value: VENDITE_CONTRATTO_DEFAULT_MODALITA
+              - column:
+                  name: default_value
+                  value: A
+              - column:
+                  name: description
+                  value: "Modalita' pricing proposta in create contratto (A/B/C)."
+              - column:
+                  name: storicizza
+                  valueBoolean: true

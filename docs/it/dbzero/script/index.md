@@ -43,7 +43,7 @@
 - [fn_get_operatore_detail](funzioni/fn_get_operatore_detail.md)
 - [fn_get_or_create_soggetto_ruolo](funzioni/fn_get_or_create_soggetto_ruolo.md) — (latest review 09-12-25) La funzione **`script.fn_get_or_create_soggetto_ruolo`** è una **factory di dominio** per garantire l’esistenza di un legame tra:
 - [fn_get_override_scaduti](funzioni/fn_get_override_scaduti.md) — (latest review 08-03-2026) La funzione **`script.fn_get_override_scaduti`** restituisce tutti gli override utente la cui data `valido_al` e scaduta. Unisce le 3 tabelle override (aree, oggetti, azioni) in un unico risultato.
-- [fn_get_parameter_full](funzioni/fn_get_parameter_full.md) — (latest update 03-04-26)
+- [fn_get_parameter_full](funzioni/fn_get_parameter_full.md)
 - [fn_get_profili_accesso_applicabili](funzioni/fn_get_profili_accesso_applicabili.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_get_record_id_as_of](funzioni/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
 - [fn_get_ruolo_sistema](funzioni/fn_get_ruolo_sistema.md)
