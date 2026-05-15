@@ -607,94 +607,107 @@ resolver in preview interpreterà diversamente la combinazione finale.
 
 ---
 
-## 5. Cosa cambia in pratica nel codebase — piano operativo
+## 5. Piano operativo BE / FE — step con prerequisiti DB
 
-Riscritto in 2 fasi sequenziali coerenti con §3-bis-D.
+> Il dettaglio completo delle modifiche DB (DDL, funzioni, trigger, pgTAP) vive nel brief
+> dedicato [`brief-db-refactor-contratti-completo.md`](brief-db-refactor-contratti-completo.md).
+> Questa sezione elenca i workstream BE/FE che il backend agent prenderà in carico,
+> indicando per ognuno il **prerequisito DB** (step del brief che deve essere chiuso e con
+> pgTAP verde) e il **prerequisito BE** (per gli step FE).
+>
+> Pattern operativo: appena il team DB notifica la chiusura di uno step, il backend agent
+> avvia in parallelo tutti i workstream che hanno solo quello come prerequisito.
 
-### 5.1 FASE 1 — PR DB-1: cascata parametri estesa
+### 5.1 FASE 1 — Workstream BE/FE preventivi (cascata parametri estesa)
 
-#### 5.1.1 DB
+Trigger di avvio: chiusura step DB 1.2 (`fn_get_parameter_full` con
+`categoria_cliente_id`).
 
-| Modifica                                                                | Tipo     | Note                                           |
-| ----------------------------------------------------------------------- | -------- | ---------------------------------------------- |
-| Colonna `categoria_cliente_id` in `config.parameters_overrides`         | Schema   | Nullable, FK a `anagrafiche.categorie_clienti` |
-| Nuovo signature `fn_resolve_parameter(...)`                             | Funzione | Aggiunto argomento `categoria_cliente_id`      |
-| Logica cascata `user → categoria_cliente → group → emittente → default` | Funzione | Vedi §3-bis-C                                  |
-| Test L1 della funzione                                                  | Test     | Coprire tutti i 5 livelli + combinazioni       |
+| Step | Lavoro | Area | Prerequisito | File principali |
+| --- | --- | --- | --- | --- |
+| **BE 1.1** | Gate 2 chiama la nuova fn passando `categoria_cliente_id` recuperato dal BA del preventivo | service | DB 1.2 chiuso | `preventivi_service.py` (`_check_limite_variazione_prezzo`) |
+| **BE 1.2** | `PricingLimitiUtenteView` accetta `billing_account_id` opzionale per risolvere il limite corretto in funzione della categoria | api | DB 1.2 chiuso | `views_pricing.py`, `pricing_service.py` |
+| **BE 1.3** | Aggiornamento test L2 esistenti dei preventivi al nuovo signature | test | BE 1.1 + BE 1.2 | `tests/services/`, `tests/api/test_pricing_api.py` |
+| **FE 1.1** | Chiamata `PricingLimitiUtenteView` aggiornata con `billing_account_id`; banner mostra la soglia corretta in funzione della categoria | UI preventivi | BE 1.2 | `frontend/src/vendite/preventivi/` (componente banner L2) |
+| **DOC 1.1** | Aggiornare `api_preventivi.md` per la nuova cascata parametri (sezione L2) | doc | BE 1.1 + BE 1.2 | `docs/it/backend/vendite/manual/api_preventivi.md` |
 
-#### 5.1.2 Backend (preventivi)
+Stima Fase 1 (BE+FE+DOC): 1-2 sessioni.
 
-| Modifica                                                 | File                                 | Note                             |
-| -------------------------------------------------------- | ------------------------------------ | -------------------------------- |
-| Gate 2 chiama nuovo signature con `categoria_cliente_id` | `preventivi_service.py`              | Recupera categoria dal BA        |
-| Endpoint hint UI accetta `billing_account_id`            | `views.py` (PricingLimitiUtenteView) | Per ritornare il limite corretto |
-| Aggiornamento test L2 esistenti dei preventivi           | tests                                | Tutti i chiamanti del gate       |
+### 5.2 FASE 2 — Workstream BE/FE contratti (refactor unificato)
 
-#### 5.1.3 Frontend (preventivi)
+I trigger di avvio sono differenziati per step DB di Fase 2 perché ogni step DB abilita
+un sottoinsieme di workstream BE/FE (vedi tabella dipendenze in fondo al brief DB).
 
-| Modifica                                                               | File          | Note                             |
-| ---------------------------------------------------------------------- | ------------- | -------------------------------- |
-| Chiamata `PricingLimitiUtenteView` aggiornata con `billing_account_id` | preventivi UI | Mostra soglia corretta in banner |
+#### 5.2.1 Indipendenti — possono partire subito
 
-Stima Fase 1: 1-2 sessioni totali.
+| Step | Lavoro | Area | Prerequisito | File principali |
+| --- | --- | --- | --- | --- |
+| **FE 2.0** | Cleanup default prop del bug recap §3.1 (FE) | UI contratti | Nessuno | `ContrattoRigheDrawer.vue` (vedi `recap-contratti-post-componenti.md` §3.2) |
 
-### 5.2 FASE 2 — PR DB-2: refactor contratti unificato
+#### 5.2.2 Dipendenti da DB Fase 1 (cascata parametri)
 
-#### 5.2.1 DB
+Possono partire alla chiusura della Fase 1 DB, indipendenti dalla Fase 2 DB.
 
-| Modifica                                                                    | Tipo      | Note                                                         |
-| --------------------------------------------------------------------------- | --------- | ------------------------------------------------------------ |
-| Nuova colonna `listino_versione_id` su `vendite.contratti`                  | Schema    | Nullable in DRAFT, NOT NULL post-attivazione (trigger)       |
-| Verifica/rilassamento CHECK constraint su modalità                          | Schema    | Ammettere coesistenza listino + variazione + eccezioni       |
-| Nuova colonna `tipo_eccezione` enum su `contratti_righe`                    | Schema    | OVERRIDE/ESCLUSIONE/AGGIUNTA, NOT NULL                       |
-| Constraint univocità parziale (contratto, articolo) per OVERRIDE/ESCLUSIONE | Schema    | Unique parziale o trigger                                    |
-| CHECK su `prezzo_unitario` per tipo_eccezione                               | Schema    | NULL solo se ESCLUSIONE                                      |
-| Aggiornamento `fn_resolve_prezzo_listino_v2`                                | Funzione  | Gestione 3 tipi eccezione + lettura versione listino fissata |
-| Trigger attivazione: fissa `listino_versione_id`                            | Trigger   | Se NULL e DRAFT→ATTIVO, riempie con versione corrente        |
-| Drop trigger / CHECK obsoleti su modalità                                   | Cleanup   | Quelli che bloccavano transizioni A/B/C                      |
-| Drop parameter `VENDITE_CONTRATTO_DEFAULT_MODALITA`                         | Cleanup   | Non più necessario                                           |
-| Rimozione dati contratti esistenti (dev)                                    | Migration | §3.8: schema pulito, no backward compat                      |
+| Step | Lavoro | Area | Prerequisito | File principali |
+| --- | --- | --- | --- | --- |
+| **BE 2.0** | Implementazione dei 3 gate prezzo (L1+L2+L3) per `contratti_service`, mutuati da `preventivi_service` — preparati ma non ancora invocati finché DB 2.x non chiude. Lo step può essere scritto e testato in isolamento. | service | DB 1.2 chiuso | `contratti_service.py` (nuove fn `_check_permesso_override_prezzo`, `_check_limite_variazione_prezzo`, `_resolve_or_check_override_prezzo`) |
 
-#### 5.2.2 Backend
+#### 5.2.3 Dipendenti da DB step 2.1 (cleanup modalità su contratti)
 
-| Modifica                                                          | File    | Note                                                       |
-| ----------------------------------------------------------------- | ------- | ---------------------------------------------------------- |
-| Rimozione logica gating modalità in `contratti_service.py`        | service | `_validate_modalita_coerente` semplificato o eliminato     |
-| `list_righe_preview` ritorna forme con/senza listino              | service | Sostituisce derivazione A/B/C                              |
-| Implementazione 3 gate prezzo per `contratti_service`             | service | Mutuati da `preventivi_service`                            |
-| Gate prezzo applicato anche a variazione globale al PATCH testata | service | §3-bis-E                                                   |
-| Blocco rimozione listino con eccezioni OVERRIDE/ESCLUSIONE        | service | 422 §3-bis-F                                               |
-| Endpoint contratti aggiornati per nuovi tipi eccezione            | views   | Serializzatori per OVERRIDE/ESCLUSIONE/AGGIUNTA            |
-| Endpoint contesto pricing su contratti                            | views   | Per banner UI (mutuato dai preventivi)                     |
-| Test regressione                                                  | tests   | Coprono bug §3.1 recap + nuovo flusso + Profilo A snapshot |
+| Step | Lavoro | Area | Prerequisito | File principali |
+| --- | --- | --- | --- | --- |
+| **BE 2.1** | Rimozione logica gating modalità: `_validate_modalita_coerente` eliminato; `list_righe_preview` non deriva più A/B/C ma restituisce forma `con_listino` / `senza_listino` | service | DB 2.1 | `contratti_service.py` |
+| **FE 2.1** | Rimozione SelectButton A/B/C; sezione "Pricing" semplificata in "Listino opzionale" + "Variazione globale opzionale" (gated permesso); badge `derivedModalita` readonly post-save | UI contratti | BE 2.1 | `ContrattoDrawer.vue` |
 
-#### 5.2.3 Frontend
+#### 5.2.4 Dipendenti da DB step 2.2 (tipo_eccezione su contratti_righe)
 
-| Modifica                                                       | File                                               | Note                                                  |
-| -------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------- |
-| Rimozione SelectButton modalità                                | `ContrattoDrawer.vue`                              | Insieme alle dipendenze condizionali sui campi        |
-| Sezione Pricing semplificata                                   | `ContrattoDrawer.vue`                              | Listino opz + variazione globale opz (gated permesso) |
-| Badge informativo `derivedModalita` post-save                  | `ContrattoDrawer.vue`                              | Readonly                                              |
-| Banner contesto pricing                                        | `ContrattoRigheDrawer.vue`                         | Mostra `listino_versione_id` fissato se ATTIVO        |
-| Azioni riga: "Modifica prezzo", "Escludi", "Aggiungi articolo" | `ContrattoRigheDrawer.vue`                         | Tutte gated sul permesso                              |
-| Handling 403 retryable per richiesta approvazione              | `ContrattoRigheDrawer.vue` + `ContrattoDrawer.vue` | Pattern preventivi, su riga e su testata              |
-| Handling 422 blocco rimozione listino                          | `ContrattoDrawer.vue`                              | Messaggio chiaro all'operatore                        |
-| Cleanup default prop bug recap                                 | `ContrattoRigheDrawer.vue`                         | Insieme al fix recap §3                               |
+| Step | Lavoro | Area | Prerequisito | File principali |
+| --- | --- | --- | --- | --- |
+| **BE 2.2** | Service di gestione eccezioni: `aggiungi_eccezione`, `aggiorna_eccezione`, `rimuovi_eccezione` con dispatch sui 3 tipi OVERRIDE/ESCLUSIONE/AGGIUNTA; `list_righe_preview` JOIN listino + eccezioni | service | DB 2.2 | `contratti_service.py`, `contratti_repository.py` |
+| **BE 2.3** | Endpoint REST aggiornati per i 3 tipi eccezione (serializzatori, payload validation) | api | BE 2.2 | `views_contratti.py` |
+| **BE 2.4** | Blocco rimozione listino con eccezioni OVERRIDE/ESCLUSIONE (422 `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`) | service | DB 2.2 | `contratti_service.py` (in `aggiorna_contratto` / `patch_testata`) |
+| **FE 2.2** | Azioni di riga "Modifica prezzo", "Escludi", "Aggiungi articolo" su `ContrattoRigheDrawer.vue`, tutte gated sul permesso "ritocca prezzi" | UI contratti | BE 2.3 | `ContrattoRigheDrawer.vue` |
 
-#### 5.2.4 Documentazione
+#### 5.2.5 Dipendenti da DB step 2.3 (trigger attivazione + lock post-attivazione)
 
-| Doc                            | Modifica                                                                                                                                            |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `api_contratti.md`             | Reworked completo: no modalità A/B/C, modello unificato, delta + tipo_eccezione, listino_versione_id, 3 gate                                        |
-| `modello-contratti.md` (nuovo) | Documento di riferimento del modello contratto + relazioni con listino                                                                              |
-| Glossario                      | Aggiornare termini: rimuovere "modalità A/B/C", aggiungere "forma derivata", "eccezione (OVERRIDE/ESCLUSIONE/AGGIUNTA)", "versione listino fissata" |
-| Doc preventivi                 | Aggiornare la cascata parametri con `categoria_cliente_id` (già nella Fase 1)                                                                       |
+| Step | Lavoro | Area | Prerequisito | File principali |
+| --- | --- | --- | --- | --- |
+| **BE 2.5** | Mapping dei nuovi errori DB attivazione (`E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE`, `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`) in `error_policies.py`; gestione transizione DRAFT→ATTIVO | service + policy | DB 2.3 | `contratti_service.py`, `error_policies.py` |
+| **FE 2.3** | Handling 403 retryable per "richiedi approvazione" su testata (variazione globale gate L3) + 422 blocco rimozione listino | UI contratti | BE 2.5 + BE 2.4 | `ContrattoDrawer.vue`, `ContrattoRigheDrawer.vue` |
 
-Stima Fase 2: 4-5 sessioni totali (DB + BE + FE + doc).
+#### 5.2.6 Dipendenti da DB step 2.4 (resolver aggiornato)
 
-### 5.3 Stima complessiva
+| Step | Lavoro | Area | Prerequisito | File principali |
+| --- | --- | --- | --- | --- |
+| **BE 2.6** | Endpoint contesto pricing contratti `GET /api/v1/vendite/contratti/<id>/contesto-pricing/` (mutuato da preventivi) | api | DB 2.4 | `contratti_repository.py` (`resolve_contesto_pricing_contratto`), `views_contratti.py` |
+| **FE 2.4** | Banner contesto pricing in `ContrattoRigheDrawer.vue` (mostra `listino` + `versione fissata` se ATTIVO, o "versione corrente" se DRAFT); banner drift listino in DRAFT (§3-bis-A) | UI contratti | BE 2.6 | `ContrattoRigheDrawer.vue` |
 
-5-7 sessioni di sviluppo distribuite su 2 PR DB.
+#### 5.2.7 Documentazione (a chiusura del refactor)
+
+| Step | Lavoro | Area | Prerequisito | File principali |
+| --- | --- | --- | --- | --- |
+| **DOC 2.1** | `api_contratti.md` reworked completo: nuovo modello unificato, 3 tipi eccezione, listino_versione_id, 3 gate, errori nuovi | doc | Tutti BE Fase 2 | `docs/it/backend/vendite/manual/api_contratti.md` |
+| **DOC 2.2** | Nuovo `modello-contratti.md`: reference del modello contratto + relazioni con listino (snapshot versione, eccezioni, simmetria/asimmetria con preventivi) | doc | Tutti BE Fase 2 | `docs/it/backend/vendite/manual/modello-contratti.md` |
+| **DOC 2.3** | Aggiornamento glossario: rimuovere "modalità A/B/C", aggiungere "forma derivata", "eccezione", "versione listino fissata", "drift listino" | doc | DOC 2.1 + DOC 2.2 | `docs/it/glossario.md` o equivalente |
+
+### 5.3 Ordine di esecuzione consigliato
+
+1. **DB Fase 1** (team DB) → Step 1.1 → 1.2 → 1.3
+2. Chiusura DB 1.2 → **BE 1.1 + BE 1.2 + BE 2.0** in parallelo (3 workstream)
+3. Chiusura DB 1.3 → **BE 1.3 + FE 1.1 + DOC 1.1** in parallelo
+4. **FE 2.0** (cleanup default prop) può partire in qualsiasi momento, indipendente
+5. **DB Fase 2** (team DB) → Step 2.1 → 2.2 → 2.3 → 2.4 → 2.5 → 2.6 → 2.7
+6. Chiusura DB 2.1 → **BE 2.1** → **FE 2.1**
+7. Chiusura DB 2.2 → **BE 2.2 + BE 2.4** in parallelo → **BE 2.3** → **FE 2.2**
+8. Chiusura DB 2.3 → **BE 2.5** → **FE 2.3**
+9. Chiusura DB 2.4 → **BE 2.6** → **FE 2.4**
+10. Chiusura DB 2.7 → **DOC 2.1 + DOC 2.2** → **DOC 2.3**
+
+### 5.4 Stima complessiva
+
+5-7 sessioni di sviluppo BE/FE distribuite su 2 PR DB. Il piano sopra è ottimizzato per
+massimizzare la parallelizzazione: i workstream non in catena di dipendenza vengono
+avviati appena il loro prerequisito DB è chiuso.
 
 ---
 
@@ -717,9 +730,10 @@ Stima Fase 2: 4-5 sessioni totali (DB + BE + FE + doc).
   versione listino) è preparato per ricevere in futuro un push da un'eventuale entità
   `offerta_commerciale`, ma non la richiede oggi. Per il ragionamento di dominio e le
   opzioni considerate vedi [`Analisi-iniziale-offerta-commerciale.md`](Analisi-iniziale-offerta-commerciale.md).
-- Prossimi documenti da produrre:
-  - **Brief DB Fase 1** con migrations, signature funzione cascata estesa
-  - **Brief DB Fase 2** con migrations contratti unificato + tipo_eccezione +
-    listino_versione_id
-  - **Piano operativo** per fase 2, simile a `refactor-componenti.md`
-  - **`modello-contratti.md`** come reference del nuovo modello unificato
+- Documenti prodotti:
+  - ✅ [`brief-db-refactor-contratti-completo.md`](brief-db-refactor-contratti-completo.md)
+    — brief DB completo Fase 1 + Fase 2 a step incrementali, per passaggio al team DB su
+    `dev/db-tid`
+  - ✅ §5 di questo doc — piano operativo BE/FE step-per-step con prerequisiti DB
+- Da produrre durante l'esecuzione:
+  - **`modello-contratti.md`** (Step DOC 2.2) — reference del nuovo modello unificato
