@@ -1,0 +1,215 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Test: Step 1.2 — nuovo overload script.fn_get_parameter_full a 7 parametri
+--       con livello categoria_cliente nella cascata.
+--       Migration: 20260515-08
+--
+-- Cascata testata: user -> categoria_cliente -> group -> emittente
+--                  -> session -> function -> default
+--
+-- Indice test (1..9):
+--   1) user vince su tutto (user + categoria + group + emittente presenti)
+--   2) categoria_cliente vince su group (CASO CHIAVE del refactor)
+--   3) group vince su emittente
+--   4) emittente vince su session
+--   5) session vince su function
+--   6) function vince su default
+--   7) fallback a default (nessun override)
+--   8) p_categoria_cliente_id=NULL skippa il livello (cade su group)
+--   9) parametro inesistente solleva ERRORE_PARAMETRI_TABELLA (P0001)
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(9);
+
+-- ============================================================
+-- Setup: parametro di test + fixtures dai dati esistenti
+-- ============================================================
+
+-- Parametro dedicato al test.
+-- id calcolato come MAX(id)+1000 per evitare collisioni con la sequenza
+-- (che potrebbe non essere allineata con i dati seed).
+INSERT INTO config.parameters (id, code, default_value, description)
+SELECT MAX(id) + 1000,
+       'TEST_FN_CASCATA_CAT_CLI_20260515',
+       'LIVELLO_DEFAULT',
+       'Parametro temporaneo per test cascata categoria_cliente'
+  FROM config.parameters;
+
+-- Raccoglie id delle entita' necessarie dalla fixture esistente.
+CREATE TEMP TABLE tmp_cascata_ctx AS
+SELECT
+    (SELECT id FROM config.parameters
+      WHERE code = 'TEST_FN_CASCATA_CAT_CLI_20260515')           AS param_id,
+    (SELECT id FROM django.auth_user   ORDER BY id LIMIT 1)      AS user_id,
+    (SELECT id FROM django.auth_group  ORDER BY id LIMIT 1)      AS group_id,
+    (SELECT id FROM anagrafiche.emittenti_fiscali
+      WHERE attivo = true ORDER BY id LIMIT 1)                   AS emittente_id,
+    (SELECT id FROM anagrafiche.categorie_clienti
+      WHERE attivo = true ORDER BY id LIMIT 1)                   AS categoria_id;
+
+-- Inserisce un override per ogni livello della cascata.
+-- La UNIQUE v4 su (parameter_id, emittente, user, group, categoria, session, function)
+-- e' rispettata: ogni riga ha esattamente UNA dimensione valorizzata.
+INSERT INTO config.parameter_overrides (parameter_id, overridden_value, django_user_id)
+SELECT param_id, 'LIVELLO_USER', user_id FROM tmp_cascata_ctx;
+
+INSERT INTO config.parameter_overrides (parameter_id, overridden_value, categoria_cliente_id)
+SELECT param_id, 'LIVELLO_CATEGORIA', categoria_id FROM tmp_cascata_ctx;
+
+-- Group level: solo se esiste almeno un gruppo Django (tabella potrebbe essere vuota).
+INSERT INTO config.parameter_overrides (parameter_id, overridden_value, django_group_id)
+SELECT param_id, 'LIVELLO_GROUP', group_id FROM tmp_cascata_ctx
+ WHERE group_id IS NOT NULL;
+
+INSERT INTO config.parameter_overrides (parameter_id, overridden_value, emittente_fiscale_id)
+SELECT param_id, 'LIVELLO_EMITTENTE', emittente_id FROM tmp_cascata_ctx;
+
+INSERT INTO config.parameter_overrides (parameter_id, overridden_value, session_key)
+VALUES (
+    (SELECT param_id FROM tmp_cascata_ctx),
+    'LIVELLO_SESSION',
+    'test_session_cascata_20260515'
+);
+
+INSERT INTO config.parameter_overrides (parameter_id, overridden_value, function_name)
+VALUES (
+    (SELECT param_id FROM tmp_cascata_ctx),
+    'LIVELLO_FUNCTION',
+    'test_function_cascata_20260515'
+);
+
+-- ============================================================
+-- 1) user vince su tutto
+-- ============================================================
+SELECT is(
+    script.fn_get_parameter_full(
+        'TEST_FN_CASCATA_CAT_CLI_20260515',
+        p_django_user_id       => (SELECT user_id     FROM tmp_cascata_ctx),
+        p_categoria_cliente_id => (SELECT categoria_id FROM tmp_cascata_ctx),
+        p_group_ids            => ARRAY[(SELECT group_id FROM tmp_cascata_ctx)],
+        p_emittente_fiscale_id => (SELECT emittente_id FROM tmp_cascata_ctx)
+    ),
+    'LIVELLO_USER',
+    '1) user vince su categoria + group + emittente'
+);
+
+-- ============================================================
+-- 2) categoria_cliente vince su group (CASO CHIAVE del refactor)
+-- ============================================================
+SELECT is(
+    script.fn_get_parameter_full(
+        'TEST_FN_CASCATA_CAT_CLI_20260515',
+        p_categoria_cliente_id => (SELECT categoria_id FROM tmp_cascata_ctx),
+        p_group_ids            => ARRAY[(SELECT group_id FROM tmp_cascata_ctx)],
+        p_emittente_fiscale_id => (SELECT emittente_id FROM tmp_cascata_ctx)
+    ),
+    'LIVELLO_CATEGORIA',
+    '2) categoria_cliente vince su group e emittente (nessun user override)'
+);
+
+-- ============================================================
+-- 3) group vince su emittente
+-- ============================================================
+SELECT CASE
+    WHEN (SELECT group_id FROM tmp_cascata_ctx) IS NULL
+    THEN skip('3) Nessun gruppo Django disponibile — test saltato')
+    ELSE is(
+        script.fn_get_parameter_full(
+            'TEST_FN_CASCATA_CAT_CLI_20260515',
+            p_group_ids            => ARRAY[(SELECT group_id FROM tmp_cascata_ctx)],
+            p_emittente_fiscale_id => (SELECT emittente_id FROM tmp_cascata_ctx),
+            p_categoria_cliente_id => NULL
+        ),
+        'LIVELLO_GROUP',
+        '3) group vince su emittente (nessun user, nessuna categoria)'
+    )
+END;
+
+-- ============================================================
+-- 4) emittente vince su session
+-- ============================================================
+SELECT is(
+    script.fn_get_parameter_full(
+        'TEST_FN_CASCATA_CAT_CLI_20260515',
+        p_emittente_fiscale_id => (SELECT emittente_id FROM tmp_cascata_ctx),
+        p_session_key          => 'test_session_cascata_20260515',
+        p_categoria_cliente_id => NULL
+    ),
+    'LIVELLO_EMITTENTE',
+    '4) emittente vince su session (nessun user/categoria/group)'
+);
+
+-- ============================================================
+-- 5) session vince su function
+-- ============================================================
+SELECT is(
+    script.fn_get_parameter_full(
+        'TEST_FN_CASCATA_CAT_CLI_20260515',
+        p_session_key          => 'test_session_cascata_20260515',
+        p_function_name        => 'test_function_cascata_20260515',
+        p_categoria_cliente_id => NULL
+    ),
+    'LIVELLO_SESSION',
+    '5) session vince su function'
+);
+
+-- ============================================================
+-- 6) function vince su default
+-- ============================================================
+SELECT is(
+    script.fn_get_parameter_full(
+        'TEST_FN_CASCATA_CAT_CLI_20260515',
+        p_function_name        => 'test_function_cascata_20260515',
+        p_categoria_cliente_id => NULL
+    ),
+    'LIVELLO_FUNCTION',
+    '6) function vince su default'
+);
+
+-- ============================================================
+-- 7) fallback a default (nessun override applicabile)
+-- ============================================================
+SELECT is(
+    script.fn_get_parameter_full(
+        'TEST_FN_CASCATA_CAT_CLI_20260515',
+        p_categoria_cliente_id => NULL
+    ),
+    'LIVELLO_DEFAULT',
+    '7) fallback a default quando nessun override applicabile'
+);
+
+-- ============================================================
+-- 8) p_categoria_cliente_id=NULL skippa il livello, cade su group
+-- ============================================================
+SELECT CASE
+    WHEN (SELECT group_id FROM tmp_cascata_ctx) IS NULL
+    THEN skip('8) Nessun gruppo Django disponibile — test saltato')
+    ELSE is(
+        script.fn_get_parameter_full(
+            'TEST_FN_CASCATA_CAT_CLI_20260515',
+            p_categoria_cliente_id => NULL,
+            p_group_ids            => ARRAY[(SELECT group_id FROM tmp_cascata_ctx)]
+        ),
+        'LIVELLO_GROUP',
+        '8) categoria_cliente NULL skippa il livello, group prende il controllo'
+    )
+END;
+
+-- ============================================================
+-- 9) parametro inesistente -> raise ERRORE_PARAMETRI_TABELLA
+-- ============================================================
+SELECT throws_ok(
+    $$SELECT script.fn_get_parameter_full(
+        'PARAM_INESISTENTE_XYZ_20260515',
+        p_categoria_cliente_id => NULL
+    )$$,
+    'P0001',
+    NULL,
+    '9) parametro inesistente solleva errore P0001'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

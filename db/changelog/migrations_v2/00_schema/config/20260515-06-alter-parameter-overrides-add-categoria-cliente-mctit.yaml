@@ -1,0 +1,105 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260515-06-alter-parameter-overrides-add-categoria-cliente-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 1.1 — Refactor cascata parametri: dimensione categoria_cliente
+  #
+  # Aggiunge config.parameter_overrides.categoria_cliente_id (smallint NULL)
+  # per supportare override di parametro soglia a livello di categoria cliente.
+  #
+  # Modifiche:
+  #   - ADD COLUMN categoria_cliente_id smallint NULL
+  #     FK -> anagrafiche.categorie_clienti(id)
+  #   - DROP UNIQUE uq_overrides_full_scope_v3
+  #   - CREATE UNIQUE uq_overrides_full_scope_v4
+  #     (aggiunge categoria_cliente_id alle colonne di unicita')
+  #   - CREATE INDEX ix_overrides_param_categoria_cliente
+  #     su (parameter_id, categoria_cliente_id) per la lookup COALESCE
+  #
+  # Vedere: brief-db-refactor-contratti-completo.md §Fase 1 Step 1.1
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260515-06-alter-parameter-overrides-add-categoria-cliente
+      author: mctit
+      comment: >
+        Estende config.parameter_overrides con categoria_cliente_id (smallint NULL)
+        per la cascata parametri categoria_cliente. Aggiorna UNIQUE v3->v4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameter_overrides
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: categorie_clienti
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Nuova dimensione di scope: categoria cliente del BA destinatario.
+              -- smallint allineato a anagrafiche.categorie_clienti.id (smallint).
+              ALTER TABLE config.parameter_overrides
+                ADD COLUMN categoria_cliente_id smallint NULL;
+
+              COMMENT ON COLUMN config.parameter_overrides.categoria_cliente_id IS
+                  'Dimensione scope categoria cliente (anagrafiche.categorie_clienti.id). '
+                  'NULL = override non vincolato a una categoria specifica. '
+                  'Usato dalla cascata: user -> categoria_cliente -> group -> emittente -> default.';
+
+              -- FK verso categorie_clienti.
+              ALTER TABLE config.parameter_overrides
+                ADD CONSTRAINT fk_overrides_categoria_cliente
+                FOREIGN KEY (categoria_cliente_id)
+                REFERENCES anagrafiche.categorie_clienti(id)
+                ON UPDATE CASCADE
+                ON DELETE RESTRICT;
+
+              -- Aggiorna vincolo di unicita': v3 includeva 6 dimensioni,
+              -- v4 aggiunge categoria_cliente_id per permettere override
+              -- distinti per categoria, mantenendo la coerenza dello scope.
+              ALTER TABLE config.parameter_overrides
+                DROP CONSTRAINT IF EXISTS uq_overrides_full_scope_v3;
+
+              ALTER TABLE config.parameter_overrides
+                ADD CONSTRAINT uq_overrides_full_scope_v4
+                UNIQUE (
+                    parameter_id,
+                    emittente_fiscale_id,
+                    django_user_id,
+                    django_group_id,
+                    categoria_cliente_id,
+                    session_key,
+                    function_name
+                );
+
+              -- Indice dedicato per la subquery COALESCE livello categoria_cliente
+              -- in script.fn_get_parameter_full.
+              CREATE INDEX ix_overrides_param_categoria_cliente
+                ON config.parameter_overrides (parameter_id, categoria_cliente_id);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS config.ix_overrides_param_categoria_cliente;
+
+              ALTER TABLE config.parameter_overrides
+                DROP CONSTRAINT IF EXISTS uq_overrides_full_scope_v4;
+
+              ALTER TABLE config.parameter_overrides
+                ADD CONSTRAINT uq_overrides_full_scope_v3
+                UNIQUE (
+                    parameter_id,
+                    emittente_fiscale_id,
+                    django_user_id,
+                    django_group_id,
+                    session_key,
+                    function_name
+                );
+
+              ALTER TABLE config.parameter_overrides
+                DROP CONSTRAINT IF EXISTS fk_overrides_categoria_cliente;
+
+              ALTER TABLE config.parameter_overrides
+                DROP COLUMN IF EXISTS categoria_cliente_id;

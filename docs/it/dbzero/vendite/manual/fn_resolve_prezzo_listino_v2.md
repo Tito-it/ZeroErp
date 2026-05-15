@@ -26,7 +26,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(latest review 15-04-2026)
+(rev 2026-05-15 — Step 2.4: tipo_eccezione + versione fissata)
 
 `vendite.fn_resolve_prezzo_listino_v2` e' il **resolver prezzi pricing v5**. Riceve le dimensioni di calcolo (articolo, uom, data, BA, utility, emittente, classe utenza opzionale) e restituisce **una sola riga** con il prezzo risolto, il prezzo base pre-variazione e tutti i metadati necessari per lo snapshot in `commesse_attivita` / `attivita_fatturabili`.
 
@@ -36,15 +36,25 @@ La risoluzione avviene in **stadi deterministici** (nessun tie-break): la prima 
 
 ### Ordine di valutazione (3 stadi + BUNDLE)
 
-| Stadio | Fonte prezzo                                     | Origine output             |
-| ------ | ------------------------------------------------ | -------------------------- |
-| **0**  | `vendite.promo_articoli` (overlay)               | `PROMO`                    |
-| **1a** | `vendite.contratti_righe.prezzo_unitario`        | `CONTRATTO_OVERRIDE`       |
-| **1b** | `vendite.contratti.listino_id` + var. globale    | `CONTRATTO_LISTINO`        |
+| Stadio | Fonte prezzo | Origine output |
+| ------ | ------------ | -------------- |
+| **0** | `vendite.promo_articoli` (overlay, non in contesto bundle) | `PROMO` |
+| **1a** | `vendite.contratti_righe.tipo_eccezione` — OVERRIDE o AGGIUNTA | `CONTRATTO_OVERRIDE` / `CONTRATTO_AGGIUNTA` |
+| **1a-ESC** | `vendite.contratti_righe.tipo_eccezione` = ESCLUSIONE | raise `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` |
+| **1b** | Versione listino contratto + variazione globale (standalone) | `CONTRATTO_LISTINO` |
 | **BUNDLE** | `vendite.listini_righe_componenti` (se `p_articolo_padre_contesto IS NOT NULL`) | `LISTINO_BUNDLE` |
-| **2**  | Matrice `categorie_clienti_listini` + variazione | `CATEGORIA`                |
+| **2** | Matrice `categorie_clienti_listini` + variazione | `CATEGORIA` |
 
-**STADIO BUNDLE**: si attiva solo se `p_articolo_padre_contesto IS NOT NULL`. Viene valutato dopo aver determinato `listino_versione_id` (da STADIO 1b o STADIO 2) e PRIMA di applicare la variazione contratto/categoria. Cerca una riga in `vendite.listini_righe_componenti` per la quadrupla (listino_versione_id, padre, figlio, data). Se trovata, usa quel prezzo come `prezzo_base` e ritorna `origine = 'LISTINO_BUNDLE'`. `CONTRATTO_OVERRIDE` (STADIO 1a) bypassa sempre il BUNDLE.
+**STADIO 1a — tipo_eccezione (dal 2026-05-15)**: cerca riga in `contratti_righe` per `(contratto_id, articolo_id)` e legge `tipo_eccezione`. Tre esiti:
+
+* `OVERRIDE` → usa `prezzo_unitario` come prezzo finale, origine `CONTRATTO_OVERRIDE`. Bypassa sempre BUNDLE e listino.
+* `ESCLUSIONE` → raise `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` (453). L'articolo non è fatturabile con questo contratto.
+* `AGGIUNTA` → usa `prezzo_unitario` come prezzo finale, origine `CONTRATTO_AGGIUNTA`. È un articolo fuori listino aggiunto al contratto.
+* Nessuna riga → procede a STADIO 1b.
+
+**STADIO 1b — versione listino fissata (dal 2026-05-15)**: se il contratto ha `listino_versione_id IS NOT NULL` (snapshot fissato all'attivazione, vedi `trgfn_contratti_freeze_listino_versione`), usa quella versione direttamente. Altrimenti fallback sulla versione attiva a `p_data_riferimento` (§4.4).
+
+**STADIO BUNDLE**: si attiva solo se `p_articolo_padre_contesto IS NOT NULL`. Viene valutato dopo aver determinato `listino_versione_id` (da STADIO 1b o STADIO 2) e PRIMA di applicare la variazione contratto/categoria. Cerca una riga in `vendite.listini_righe_componenti` per la quadrupla (listino_versione_id, padre, figlio, data). Se trovata, usa quel prezzo come `prezzo_base` e ritorna `origine = 'LISTINO_BUNDLE'`. `CONTRATTO_OVERRIDE` e `CONTRATTO_AGGIUNTA` (STADIO 1a) bypassano sempre il BUNDLE.
 
 La promo overlay (STADIO 0) non viene applicata se `v_bundle_used = TRUE` — il prezzo bundle è già il prezzo specifico negoziato per il componente in quel contesto.
 
@@ -68,19 +78,20 @@ vendite.fn_resolve_prezzo_listino_v2(
     p_articolo_padre_contesto     uuid DEFAULT NULL
 )
 RETURNS TABLE (
-    prezzo_finale                  numeric,
-    prezzo_base_snapshot           numeric,
-    tipo_variazione_applicata      varchar,
-    valore_variazione_applicata    numeric,
+    prezzo_finale                  vendite.listini_righe.prezzo%TYPE,
+    prezzo_base_snapshot           vendite.listini_righe.prezzo%TYPE,
+    tipo_variazione_applicata      anagrafiche.categorie_clienti_listini.tipo_variazione%TYPE,
+    valore_variazione_applicata    anagrafiche.categorie_clienti_listini.valore_variazione%TYPE,
     origine                        varchar,
-    listino_id                     bigint,
-    listino_versione_id            bigint,
-    listino_riga_id                bigint,
-    contratto_id                   bigint,
-    promo_id                       bigint,
-    categoria_cliente_listino_id   bigint,
-    categoria_cliente_id_snapshot  smallint,
-    classe_utenza_id_snapshot      integer
+    listino_id                     vendite.listini.id%TYPE,
+    listino_versione_id            vendite.listini_versioni.id%TYPE,
+    listino_riga_id                vendite.listini_righe.id%TYPE,
+    contratto_id                   vendite.contratti.id%TYPE,
+    promo_id                       vendite.promo_articoli.id%TYPE,
+    categoria_cliente_listino_id   anagrafiche.categorie_clienti_listini.id%TYPE,
+    categoria_cliente_id_snapshot  anagrafiche.billing_account.categoria_cliente_id%TYPE,
+    classe_utenza_id_snapshot      config.classi_utenze.id%TYPE,
+    tipo_eccezione                 vendite.tipo_eccezione_contratto   -- Step 2.4: NULL se non STADIO 1a
 )
 ```
 
@@ -109,15 +120,16 @@ RETURNS TABLE (
 | `prezzo_base_snapshot` | numeric | Prezzo base pre-variazione (utile per ricostruire l'aritmetica) |
 | `tipo_variazione_applicata` | varchar | `PERCENTUALE` \| `VALORE_FISSO` \| `PREZZO_FISSO` \| `NESSUNA` |
 | `valore_variazione_applicata` | numeric | Valore della variazione (NULL se `NESSUNA`) |
-| `origine` | varchar | `PROMO` \| `CONTRATTO_OVERRIDE` \| `CONTRATTO_LISTINO` \| `LISTINO_BUNDLE` \| `CATEGORIA` |
-| `listino_id` | bigint | Listino risolto (NULL se `CONTRATTO_OVERRIDE` modalita' C) |
-| `listino_versione_id` | bigint | Versione attiva del listino usata |
-| `listino_riga_id` | bigint | Riga listino usata (NULL se override) |
-| `contratto_id` | bigint | Contratto coinvolto se origine `CONTRATTO_*` |
-| `promo_id` | bigint | Promo applicata se origine `PROMO` |
-| `categoria_cliente_listino_id` | bigint | Riga matrice usata se origine `CATEGORIA` |
-| `categoria_cliente_id_snapshot` | smallint | Categoria cliente al momento del calcolo: dal contratto (STADIO 1, congelata alla creazione) oppure dal BA (STADIO 2). Fallback al BA se il contratto pre-v5 ha il campo ancora NULL. |
-| `classe_utenza_id_snapshot` | integer | Classe utenza al momento del calcolo. STADIO 1: letta da `contratti_utilities.classe_utenza_id` del contratto attivo (fallback a `p_classe_utenza_id` se la riga manca o ha classe NULL). STADIO 2: `p_classe_utenza_id` input. |
+| `origine` | varchar | `PROMO` \| `CONTRATTO_OVERRIDE` \| `CONTRATTO_AGGIUNTA` \| `CONTRATTO_LISTINO` \| `LISTINO_BUNDLE` \| `CATEGORIA` |
+| `listino_id` | — | Listino risolto (NULL se `CONTRATTO_AGGIUNTA` su contratto senza listino) |
+| `listino_versione_id` | — | Versione usata. STADIO 1b: snapshot fissato all'attivazione o versione corrente §4.4. STADIO 2: versione corrente alla data. |
+| `listino_riga_id` | — | Riga listino standalone usata (NULL se eccezione o bundle) |
+| `contratto_id` | — | Contratto coinvolto se origine `CONTRATTO_*` |
+| `promo_id` | — | Promo applicata se origine `PROMO` |
+| `categoria_cliente_listino_id` | — | Riga matrice usata se origine `CATEGORIA` |
+| `categoria_cliente_id_snapshot` | — | Categoria cliente al momento del calcolo: dal contratto (STADIO 1, congelata alla creazione) oppure dal BA (STADIO 2). |
+| `classe_utenza_id_snapshot` | — | STADIO 1: da `contratti_utilities` (fallback `p_classe_utenza_id`). STADIO 2: `p_classe_utenza_id` input. |
+| `tipo_eccezione` | `vendite.tipo_eccezione_contratto` | Non-NULL solo per `CONTRATTO_OVERRIDE` e `CONTRATTO_AGGIUNTA`. NULL per tutti gli altri path. Utile per badge/banner UI e audit. |
 
 ---
 
@@ -139,13 +151,15 @@ PREZZO_FISSO: valore                              -- prezzo assoluto (solo PROMO
 
 Tutti via `script.fn_log_and_raise_error` (`SQLSTATE 'P0001'`).
 
-| Codice                                     | Quando                                                                                      |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| `E_PARAMETRO_INVALIDO`                     | ID NULL o <= 0, data NULL, BA non trovato                                                   |
-| `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C`  | Contratto ATTIVO in modalita' C ma nessuna riga con prezzo per l'articolo                   |
-| `E_PREZZO_LISTINO_RIGA_NON_TROVATA`        | Listino risolto, ma manca riga attiva per (articolo, uom, versione valida alla data)        |
-| `E_PREZZO_LISTINO_NON_TROVATO`             | BA senza categoria_cliente_id (difensivo: post-backfill e' NOT NULL)                        |
-| `E_CATEGORIA_LISTINO_NON_MAPPATA`          | Nessuna riga in `categorie_clienti_listini` per la quadrupla richiesta                      |
+| Codice | HTTP (BE) | Quando |
+| --- | --- | --- |
+| `E_PARAMETRO_INVALIDO` | 400 | ID NULL o <= 0, data NULL, BA non trovato |
+| `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` (453) | 422 | Articolo ha `tipo_eccezione = ESCLUSIONE` nel contratto attivo (Step 2.4) |
+| `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` | 422 | Contratto senza listino (`listino_id NULL`) e nessuna eccezione per l'articolo |
+| `E_LISTINO_VERSIONE_NON_ATTIVA` (448) | 422 | Listino determinato ma nessuna versione attiva alla data di riferimento |
+| `E_PREZZO_LISTINO_RIGA_NON_TROVATA` | 422 | Versione trovata, ma manca riga attiva per (articolo, uom) — né bundle né standalone |
+| `E_PREZZO_LISTINO_NON_TROVATO` | 422 | BA senza `categoria_cliente_id` e senza contratto attivo (difensivo) |
+| `E_CATEGORIA_LISTINO_NON_MAPPATA` | 422 | Nessuna riga in `categorie_clienti_listini` per la quadrupla richiesta |
 
 Il resolver non restituisce mai `NULL`: o risolve un prezzo o solleva errore esplicito.
 

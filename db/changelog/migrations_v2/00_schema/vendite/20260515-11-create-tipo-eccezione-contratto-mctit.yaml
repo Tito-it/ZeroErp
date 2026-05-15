@@ -1,0 +1,106 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260515-11-create-tipo-eccezione-contratto-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 2.2 — Refactor contratti: tipo_eccezione su contratti_righe
+  #
+  # - CREATE TYPE vendite.tipo_eccezione_contratto AS ENUM
+  #     ('OVERRIDE', 'ESCLUSIONE', 'AGGIUNTA')
+  # - ADD COLUMN tipo_eccezione NOT NULL su vendite.contratti_righe
+  #   (NOT NULL safe: contratti_righe è stata TRUNCATEd in Step 2.0)
+  # - ADD CONSTRAINT chk_contrighe_prezzo_per_tipo_eccezione
+  #     ESCLUSIONE  -> prezzo_unitario IS NULL
+  #     OVERRIDE / AGGIUNTA -> prezzo_unitario IS NOT NULL
+  # - CREATE UNIQUE INDEX uq_contrighe_one_eccezione_per_articolo
+  #     (contratto_id, articolo_id) WHERE tipo_eccezione IN ('OVERRIDE','ESCLUSIONE')
+  #     => al più 1 riga tra OVERRIDE e ESCLUSIONE per coppia
+  # - CREATE UNIQUE INDEX uq_contrighe_one_aggiunta_per_articolo
+  #     (contratto_id, articolo_id) WHERE tipo_eccezione = 'AGGIUNTA'
+  #     => al più 1 AGGIUNTA per coppia
+  #
+  # Prerequisito: Step 2.0 (TRUNCATE contratti_righe CASCADE) già applicato.
+  # Vedere: brief-db-refactor-contratti-completo.md §Fase 2 Step 2.2
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260515-11-create-tipo-eccezione-contratto
+      author: mctit
+      comment: >
+        Step 2.2: ENUM tipo_eccezione_contratto + colonna NOT NULL su contratti_righe
+        + CHECK coerenza prezzo + UNIQUE parziali (eccezione e aggiunta).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti_righe
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: contratti_righe
+                    columnName: tipo_eccezione
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Enum: identifica la natura della riga rispetto al listino del contratto.
+              -- OVERRIDE   = sostituzione prezzo per articolo già nel listino.
+              -- ESCLUSIONE = articolo del listino escluso dal contratto (nessun prezzo).
+              -- AGGIUNTA   = articolo non presente nel listino, negoziato ad hoc.
+              CREATE TYPE vendite.tipo_eccezione_contratto AS ENUM (
+                  'OVERRIDE',
+                  'ESCLUSIONE',
+                  'AGGIUNTA'
+              );
+
+              COMMENT ON TYPE vendite.tipo_eccezione_contratto IS
+                  'Tipo di eccezione di una riga contratto rispetto al listino: '
+                  'OVERRIDE = prezzo alternativo per articolo del listino; '
+                  'ESCLUSIONE = articolo del listino escluso (prezzo_unitario NULL); '
+                  'AGGIUNTA = articolo non in listino aggiunto con prezzo negoziato.';
+
+              -- Colonna NOT NULL: sicura perché contratti_righe è stata
+              -- TRUNCATEd con CASCADE in Step 2.0 (nessuna riga preesistente).
+              ALTER TABLE vendite.contratti_righe
+                ADD COLUMN tipo_eccezione vendite.tipo_eccezione_contratto NOT NULL;
+
+              COMMENT ON COLUMN vendite.contratti_righe.tipo_eccezione IS
+                  'Tipo di eccezione della riga rispetto al listino del contratto. '
+                  'OVERRIDE: prezzo_unitario NOT NULL. '
+                  'ESCLUSIONE: prezzo_unitario NULL. '
+                  'AGGIUNTA: prezzo_unitario NOT NULL; articolo deve essere fuori listino '
+                  '(guard: trg_contratti_righe_a10_guard_aggiunta_fuori_listino, Step 2.2).';
+
+              -- CHECK: coerenza strutturale tipo eccezione / presenza prezzo.
+              -- ESCLUSIONE => nessun prezzo; OVERRIDE/AGGIUNTA => prezzo obbligatorio.
+              ALTER TABLE vendite.contratti_righe
+                ADD CONSTRAINT chk_contrighe_prezzo_per_tipo_eccezione
+                CHECK (
+                    (tipo_eccezione = 'ESCLUSIONE' AND prezzo_unitario IS NULL)
+                    OR (tipo_eccezione IN ('OVERRIDE', 'AGGIUNTA') AND prezzo_unitario IS NOT NULL)
+                );
+
+              -- UNIQUE parziale: al più 1 riga tra OVERRIDE e ESCLUSIONE per coppia.
+              -- OVERRIDE e ESCLUSIONE sono mutuamente esclusivi sullo stesso articolo.
+              CREATE UNIQUE INDEX uq_contrighe_one_eccezione_per_articolo
+                ON vendite.contratti_righe (contratto_id, articolo_id)
+                WHERE tipo_eccezione IN ('OVERRIDE', 'ESCLUSIONE');
+
+              -- UNIQUE parziale: al più 1 AGGIUNTA per coppia (contratto, articolo).
+              CREATE UNIQUE INDEX uq_contrighe_one_aggiunta_per_articolo
+                ON vendite.contratti_righe (contratto_id, articolo_id)
+                WHERE tipo_eccezione = 'AGGIUNTA';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_contrighe_one_aggiunta_per_articolo;
+              DROP INDEX IF EXISTS vendite.uq_contrighe_one_eccezione_per_articolo;
+
+              ALTER TABLE vendite.contratti_righe
+                DROP CONSTRAINT IF EXISTS chk_contrighe_prezzo_per_tipo_eccezione;
+
+              ALTER TABLE vendite.contratti_righe
+                DROP COLUMN IF EXISTS tipo_eccezione;
+
+              DROP TYPE IF EXISTS vendite.tipo_eccezione_contratto;
