@@ -1459,8 +1459,8 @@ class TestPreventiviService(unittest.TestCase):
 
     # Scopo: L1 — override prezzo (payload != resolver) bloccato se l'utente
     #        non ha permesso azione prezzo_override_manuale.
-    @patch("apps.vendite.services.preventivi_service.get_user_model")
-    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_override_non_autorizzato(
         self, mock_suggerisci, mock_perm, mock_user_model
@@ -1490,7 +1490,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: L1 — override prezzo ammesso per superuser (bypass).
-    @patch("apps.vendite.services.preventivi_service.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_override_superuser_ok(
         self, mock_suggerisci, mock_user_model
@@ -1525,9 +1525,9 @@ class TestPreventiviService(unittest.TestCase):
 
     # Scopo: L2 — sconto entro il limite VENDITE_MAX_SCONTO_PCT passa.
     #        Resolver 50, manuale 45 = -10% sconto, limite 15% -> OK.
-    @patch("apps.vendite.services.preventivi_service.ParameterService")
-    @patch("apps.vendite.services.preventivi_service.get_user_model")
-    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_L2_sconto_entro_limite_ok(
         self, mock_suggerisci, mock_perm, mock_user_model, mock_param_service
@@ -1561,9 +1561,9 @@ class TestPreventiviService(unittest.TestCase):
 
     # Scopo: L2 — sconto oltre il limite blocca con E_PREV_SCONTO_ECCESSIVO.
     #        Resolver 50, manuale 40 = -20% sconto, limite 15% -> bloccato.
-    @patch("apps.vendite.services.preventivi_service.ParameterService")
-    @patch("apps.vendite.services.preventivi_service.get_user_model")
-    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_L2_sconto_oltre_limite_bloccato(
         self, mock_suggerisci, mock_perm, mock_user_model, mock_param_service
@@ -1598,9 +1598,9 @@ class TestPreventiviService(unittest.TestCase):
     # Scopo: L2 — maggiorazione oltre il limite blocca con
     #        E_PREV_MAGGIORAZIONE_ECCESSIVA. Resolver 50, manuale 55 = +10%,
     #        limite 5% -> bloccato.
-    @patch("apps.vendite.services.preventivi_service.ParameterService")
-    @patch("apps.vendite.services.preventivi_service.get_user_model")
-    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_L2_maggiorazione_oltre_limite_bloccato(
         self, mock_suggerisci, mock_perm, mock_user_model, mock_param_service
@@ -1633,11 +1633,15 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: L2 — superuser salta sia L1 che L2 anche con limiti a 0.
-    @patch("apps.vendite.services.preventivi_service.ParameterService")
-    @patch("apps.vendite.services.preventivi_service.get_user_model")
+    # Verifica anche che il lookup BA (categoria_cliente) NON venga eseguito
+    # in caso di superuser bypass: ottimizzazione 2026-05-15, evita
+    # round-trip DB inutile.
+    @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository")
+    @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_L2_superuser_bypass(
-        self, mock_suggerisci, mock_user_model, mock_param_service
+        self, mock_suggerisci, mock_user_model, mock_param_service, mock_ba_repo
     ):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
@@ -1661,8 +1665,55 @@ class TestPreventiviService(unittest.TestCase):
 
         # ParameterService MAI chiamato (bypass L2 avviene prima).
         mock_param_service.return_value.get_parameter_decimal.assert_not_called()
+        # BillingAccountRepository MAI chiamato (ottimizzazione 2026-05-15:
+        # il lookup categoria viene dopo l'early-return superuser).
+        mock_ba_repo.return_value.get_categoria_cliente_id.assert_not_called()
         call = self.mock_repo.create_riga.call_args.kwargs
         self.assertEqual(str(call["prezzo_unitario"]), "30.00")
+
+    # Scopo: L2 — categoria_cliente del BA viene recuperata e propagata a
+    # ParameterService come livello della cascata estesa (refactor 2026-05-15).
+    # Verifica che _check_limite_variazione_prezzo (post early-return) chiami
+    # BillingAccountRepository.get_categoria_cliente_id sull'id della testata
+    # e passi il risultato come kwarg `categoria_cliente_id` al risolutore.
+    @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository")
+    @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    def test_gestisci_riga_L2_propaga_categoria_cliente(
+        self, mock_suggerisci, mock_perm, mock_user_model,
+        mock_param_service, mock_ba_repo,
+    ):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        self.mock_repo.create_riga.return_value = {"id": 32}
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "50.00", "origine": "CATEGORIA",
+            "listino_id": 100, "contratto_id": None, "promo_id": None,
+            "tipo_variazione_applicata": None,
+            "valore_variazione_applicata": None,
+        }
+        mock_user = MagicMock()
+        mock_user.is_superuser = False
+        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_perm.check_azione.return_value = True
+        mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
+        # BA 10 (vedi _testata_completa) ha categoria 42 (PREMIUM).
+        mock_ba_repo.return_value.get_categoria_cliente_id.return_value = 42
+
+        gestisci_riga(
+            1,
+            {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "45.00"},
+            auth_user_id=42,
+        )
+
+        # 1. BA repo chiamato con id 10 (da _testata_completa).
+        mock_ba_repo.return_value.get_categoria_cliente_id.assert_called_once_with(10)
+        # 2. get_parameter_decimal chiamato con categoria_cliente_id=42.
+        _, kwargs = mock_param_service.return_value.get_parameter_decimal.call_args
+        self.assertEqual(kwargs.get("categoria_cliente_id"), 42)
 
     # ── Sprint E: hook L3 richiesta_approvazione ──
 
@@ -1670,9 +1721,9 @@ class TestPreventiviService(unittest.TestCase):
     #        solleva, crea pratica via service e salva riga PENDING con FK
     #        pratica. Verifica che create_riga riceva i nuovi campi corretti.
     @patch("apps.vendite.services.approvazioni_prezzo_service.link_riga_a_pratica")
-    @patch("apps.vendite.services.preventivi_service.ParameterService")
-    @patch("apps.vendite.services.preventivi_service.get_user_model")
-    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
     def test_gestisci_riga_L3_violazione_con_richiesta_crea_pratica_pending(
@@ -1722,9 +1773,9 @@ class TestPreventiviService(unittest.TestCase):
 
     # Scopo: L3 — flag richiesta_approvazione=False (default): violazione L2
     #        solleva normalmente, NESSUNA pratica creata.
-    @patch("apps.vendite.services.preventivi_service.ParameterService")
-    @patch("apps.vendite.services.preventivi_service.get_user_model")
-    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
     def test_gestisci_riga_L3_default_no_pratica_solo_errore_l2(
@@ -1763,9 +1814,9 @@ class TestPreventiviService(unittest.TestCase):
 
     # Scopo: L3 — sotto limite L2 anche con richiesta_approvazione=True:
     #        pratica NON creata (violazione assente), riga normale (no PENDING).
-    @patch("apps.vendite.services.preventivi_service.ParameterService")
-    @patch("apps.vendite.services.preventivi_service.get_user_model")
-    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
     def test_gestisci_riga_L3_sotto_limite_no_pratica(
@@ -1807,9 +1858,9 @@ class TestPreventiviService(unittest.TestCase):
     #        Modifica prezzo oltre L2 con flag -> crea pratica + UPDATE riga
     #        con stato_approvazione_prezzo=PENDING.
     @patch("apps.vendite.services.approvazioni_prezzo_service.link_riga_a_pratica")
-    @patch("apps.vendite.services.preventivi_service.ParameterService")
-    @patch("apps.vendite.services.preventivi_service.get_user_model")
-    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
     def test_aggiorna_riga_L3_violazione_con_richiesta_crea_pratica(

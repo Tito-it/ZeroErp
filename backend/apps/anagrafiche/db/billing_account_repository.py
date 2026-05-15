@@ -203,6 +203,22 @@ class BillingAccountRepository:
             row = cursor.fetchone()
         return int(row[0]) if row and row[0] is not None else None
 
+    # Scopo: Risolve la categoria_cliente_id del BA (FK NOT NULL sulla tabella).
+    #        Usato dai gate L2 dei service di dominio (preventivi, contratti)
+    #        per alimentare il livello "categoria_cliente" della cascata di
+    #        risoluzione parametri (es. VENDITE_MAX_SCONTO_PCT puo' variare per
+    #        categoria PREMIUM vs STANDARD, indipendentemente dall'operatore).
+    # Risultato: int (categoria) oppure None se BA non esiste.
+    def get_categoria_cliente_id(self, billing_account_id: int) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT categoria_cliente_id FROM anagrafiche.billing_account "
+                "WHERE id = %s LIMIT 1",
+                [billing_account_id],
+            )
+            row = cursor.fetchone()
+        return int(row[0]) if row and row[0] is not None else None
+
     # Scopo: Restituisce il singolo billing_account arricchito per restore lato client.
     #        Usato in edit quando il form ha solo l'id e deve ricostruire il _obj
     #        dell'AutoComplete senza doppio round-trip.

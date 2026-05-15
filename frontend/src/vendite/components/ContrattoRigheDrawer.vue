@@ -1,10 +1,14 @@
 <script setup>
-// Scopo: Sub-drawer gestione righe contratto — pattern master-detail inline.
-//        Lista paginata sopra (10 righe/pagina), form dettaglio sotto.
-//        Click riga = edit, pulsante Nuovo = create, Salva/Annulla sempre in basso.
-//        Modalita' C: prezzo_unitario obbligatorio su tutte le righe.
-//        Modalita' B: opzionale (solo se serve override).
-//        Modalita' A: di norma non necessarie (solo override puntuali).
+// Scopo: Sub-drawer gestione righe contratto (modello unificato 2026-05-15)
+//        — pattern master-detail inline. Lista paginata sopra (10 righe/pagina),
+//        form dettaglio sotto. Click riga = edit, pulsante Nuovo = create,
+//        Salva/Annulla sempre in basso.
+//
+// Refactor modalita 2026-05-15: le righe sono ECCEZIONI tipizzate del listino
+// (tipo_eccezione = OVERRIDE / ESCLUSIONE / AGGIUNTA), non piu' "righe di
+// modalita C". La forma del contratto e' "con_listino" o "senza_listino",
+// derivata dalla testata. Le azioni "Modifica prezzo" (OVERRIDE), "Escludi"
+// (ESCLUSIONE), "Aggiungi articolo" (AGGIUNTA) corrispondono ai 3 tipi.
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
@@ -22,6 +26,7 @@ import {
   listRigaComponenti as listContrattoRigaComponenti,
   updateRigaComponente as updateContrattoRigaComponente,
   deleteRigaComponente as deleteContrattoRigaComponente,
+  getContrattoContestoPricing,
 } from '../api/contratti'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -49,7 +54,12 @@ const isReadonly = useInjectReadonly()
 const props = defineProps({
   visible: Boolean,
   contrattoId: { type: Number, required: true },
-  contrattoModalita: { type: String, default: 'B' },
+  // Refactor modalita 2026-05-15: niente piu' modalita A/B/C. La "forma"
+  // arriva dal parent (derivata dai campi testata) ed e' "con_listino" o
+  // "senza_listino". Default null: il drawer attende il dato dal parent
+  // o fallback a `previewMeta.forma` dopo loadPreview (recap §3.2 fix:
+  // niente piu' hardcoded 'B' default).
+  contrattoForma: { type: String, default: null },
   righeIniziali: { type: Array, default: () => [] },
   // Contesto contratto (per intestazione riepilogativa)
   contrattoNumero: { type: String, default: '' },
@@ -63,20 +73,28 @@ const emit = defineEmits(['update:visible', 'changed'])
 
 const righe = ref([])
 
-// === Preview righe applicate (modalita' A/B) ===
-// previewMeta: testata sintetica (modalita derivata, listino, variazione)
-// previewRighe: lista preview (origine='DA_LISTINO' o 'OVERRIDE')
+// === Preview righe applicate (refactor modalita 2026-05-15) ===
+// previewMeta: testata sintetica (forma, listino, listino_versione_id, variazione)
+// previewRighe: lista preview con origine = 'DA_LISTINO' | 'OVERRIDE' |
+//   'ESCLUSIONE' | 'AGGIUNTA' (post step 2.4 resolver BE)
 const previewMeta = ref(null)
 const previewRighe = ref([])
 const previewLoading = ref(false)
 
-// In modalita' A/B la lista visualizzata e' la preview (combinata override
-// + da_listino), in modalita' C resta la lista contratti_righe diretta.
-// La modalita' usata per le decisioni di rendering e` quella derivata dal
-// BE (previewMeta.modalita) se disponibile, altrimenti la prop
-// contrattoModalita di fallback.
-const modalitaEffettiva = computed(() => previewMeta.value?.modalita || props.contrattoModalita)
-const isModalitaC = computed(() => modalitaEffettiva.value === 'C')
+// === Contesto pricing contratto (FE 2.2) ===
+// Mutuato dal pattern preventivi `getContestoPricing`. Espone forma, listino
+// + versione fissata (post-attivazione) o corrente (DRAFT), variazione,
+// categoria cliente. Renderizzato come banner informativo nell'header drawer.
+const contestoPricing = ref(null)
+
+// Forma effettiva: priorita' al backend (previewMeta.forma o contestoPricing.forma),
+// fallback alla prop. None = drawer non ancora inizializzato.
+const formaEffettiva = computed(() =>
+  previewMeta.value?.forma
+  || contestoPricing.value?.forma
+  || props.contrattoForma,
+)
+const isSenzaListino = computed(() => formaEffettiva.value === 'senza_listino')
 
 // Filtro full-text articolo (codice + descrizione, case-insensitive).
 // Applicato client-side: la lista preview e' gia' paginata nel DataTable
@@ -98,7 +116,7 @@ const righeView = computed(() => {
     const desc = (r.articolo_descrizione || '').toLowerCase()
     return codice.includes(filtro) || desc.includes(filtro)
   }
-  if (isModalitaC.value) {
+  if (isSenzaListino.value) {
     return righe.value.filter(matchFiltro)
   }
   return (previewRighe.value || [])
@@ -139,8 +157,10 @@ function rowClass(data) {
 
 async function loadPreview() {
   if (!props.contrattoId) return
-  if (props.contrattoModalita === 'C') {
-    previewMeta.value = { modalita: 'C', righe: [] }
+  // Forma "senza_listino" (ex-modalita C): nessuna preview da caricare —
+  // le righe vivono direttamente in `contratti_righe` (tutte AGGIUNTA).
+  if (props.contrattoForma === 'senza_listino') {
+    previewMeta.value = { forma: 'senza_listino', righe: [] }
     previewRighe.value = []
     return
   }
@@ -157,12 +177,29 @@ async function loadPreview() {
   }
 }
 
+// Carica il contesto pricing per il banner header (FE 2.2). Mutuato dal
+// pattern preventivi: best-effort, un fail non blocca il drawer.
+async function loadContestoPricing() {
+  if (!props.contrattoId) {
+    contestoPricing.value = null
+    return
+  }
+  try {
+    const res = await getContrattoContestoPricing(props.contrattoId)
+    contestoPricing.value = res?.data?.data || null
+  } catch (err) {
+    contestoPricing.value = null
+    console.warn('contratto contesto pricing fetch failed',
+      err?.response?.data || err)
+  }
+}
+
 // Reload completo: in modalita' A/B ricarica la preview dal BE; in modalita'
 // C la lista contratti_righe viene rinfrescata dal parent (emit changed).
 // Usato sia dal pulsante Ricarica sia dallo shortcut F5 globale.
 async function reloadList() {
   if (!props.visible) return
-  if (isModalitaC.value) {
+  if (isSenzaListino.value) {
     emit('changed')
   } else {
     await loadPreview()
@@ -273,14 +310,35 @@ const tipoErogazioneOptions = computed(() => [
 ])
 
 function defaultForm() {
+  // Refactor modalita 2026-05-15: `tipo_eccezione` obbligatorio in create
+  // (BE _build_data_riga valida + DB CHECK). Default OVERRIDE (caso piu'
+  // frequente: cambio prezzo articolo del listino). Cambiabile via Select
+  // nel form (CREATE only — in EDIT e' immutabile).
   return {
     articolo_id: null,
     articolo_obj: null,
+    tipo_eccezione: 'OVERRIDE',
     tipo_erogazione: 'CANONE',
     prezzo_unitario: null,
     qta_operativa: 1,
     uom_operativa_id: null,
     ordine: 10,
+  }
+}
+
+// Options Select tipo_eccezione (3 valori). Mostra label i18n + codice.
+const tipoEccezioneOptions = computed(() => [
+  { value: 'OVERRIDE', label: t('contratti.tipo_eccezione_OVERRIDE') },
+  { value: 'ESCLUSIONE', label: t('contratti.tipo_eccezione_ESCLUSIONE') },
+  { value: 'AGGIUNTA', label: t('contratti.tipo_eccezione_AGGIUNTA') },
+])
+
+// Quando l'operatore cambia tipo_eccezione: ESCLUSIONE azzera prezzo
+// (vincolo BE: ESCLUSIONE -> prezzo NULL); OVERRIDE/AGGIUNTA lo lasciano
+// come e' (l'operatore lo compila).
+function onTipoEccezioneChange(nuovo) {
+  if (nuovo === 'ESCLUSIONE') {
+    form.value.prezzo_unitario = null
   }
 }
 
@@ -299,6 +357,9 @@ watch(() => props.visible, (v) => {
     righe.value = [...(props.righeIniziali || [])]
     closeForm()
     loadPreview()
+    loadContestoPricing()
+  } else {
+    contestoPricing.value = null
   }
 })
 
@@ -342,6 +403,10 @@ function onRowSelect(event) {
   form.value = {
     articolo_id: r.articolo_id,
     articolo_obj: { id: r.articolo_id, codice: r.articolo_codice, descrizione: r.articolo_descrizione, _display: `${r.articolo_codice} — ${r.articolo_descrizione}` },
+    // tipo_eccezione: immutabile in EDIT (refactor 2026-05-15). Mostrato
+    // come Tag readonly nel template form. Fallback OVERRIDE per righe
+    // legacy che non avevano ancora il campo (transitorio).
+    tipo_eccezione: r.tipo_eccezione || 'OVERRIDE',
     tipo_erogazione: r.tipo_erogazione || 'CANONE',
     prezzo_unitario: (r.prezzo_unitario ?? r.override_prezzo) != null
       ? Number(r.prezzo_unitario ?? r.override_prezzo)
@@ -400,11 +465,18 @@ const canSave = computed(() => {
   if (!formMode.value) return false
   if (!form.value.articolo_id) return false
   if (!form.value.uom_operativa_id) return false
-  // Modalita' C: prezzo padre obbligatorio EXCEPT per articoli compositi
-  // (prezzo = SUM componenti via trigger DB, popolato post-init).
-  if (props.contrattoModalita === 'C'
+  // Refactor modalita 2026-05-15: coerenza prezzo_unitario / tipo_eccezione
+  // (specchio del check BE _build_data_riga):
+  //   - ESCLUSIONE: prezzo NULL ammesso (l'articolo non e' disponibile)
+  //   - OVERRIDE / AGGIUNTA: prezzo obbligatorio (e' il prezzo finale),
+  //     EXCEPT articoli compositi dove il prezzo padre = SUM(componenti)
+  //     viene popolato dal trigger DB post-init.
+  const tipo = form.value.tipo_eccezione
+  const prezzoMancante = form.value.prezzo_unitario == null
+    || form.value.prezzo_unitario === ''
+  if (tipo !== 'ESCLUSIONE'
       && !articoloObj.value?.is_composito
-      && (form.value.prezzo_unitario == null || form.value.prezzo_unitario === '')) return false
+      && prezzoMancante) return false
   // Modello unificato BoM 2026-05-13: in CREATE su articolo composito,
   // blocca il save finche' la ComponentiDialog non e' stata confermata
   // almeno una volta (componentiPayload != null). Se l'operatore annulla
@@ -431,6 +503,12 @@ async function onSave() {
   }
   if (formMode.value === 'create') {
     payload.articolo_id = f.articolo_id
+    // Refactor modalita 2026-05-15: tipo_eccezione obbligatorio in create.
+    payload.tipo_eccezione = f.tipo_eccezione || 'OVERRIDE'
+    // ESCLUSIONE: BE rifiuta prezzo non-null. Forziamo null per safety.
+    if (payload.tipo_eccezione === 'ESCLUSIONE') {
+      payload.prezzo_unitario = null
+    }
     // Modello unificato BoM 2026-05-13: includi `componenti_overrides`
     // se l'articolo e' composito e la Dialog ha prodotto overrides delta.
     // Il BE auto-init i componenti nella stessa transazione di `create_riga`.
@@ -443,7 +521,7 @@ async function onSave() {
       { successMessage: t('contratti.riga_creata') }
     )
     if (result !== null) {
-      if (!isModalitaC.value) await loadPreview()
+      if (!isSenzaListino.value) await loadPreview()
       emit('changed')
       closeForm()
     }
@@ -453,7 +531,7 @@ async function onSave() {
       { successMessage: t('contratti.riga_salvata') }
     )
     if (result !== null) {
-      if (!isModalitaC.value) await loadPreview()
+      if (!isSenzaListino.value) await loadPreview()
       emit('changed')
       closeForm()
     }
@@ -473,7 +551,7 @@ function onDelete(r) {
       // Se stavo editando questa riga, chiudi il form.
       if (rigaEditId.value === rigaId) closeForm()
       // In A/B la preview va ricaricata; in C il parent rilegge dalle righe.
-      if (!isModalitaC.value) await loadPreview()
+      if (!isSenzaListino.value) await loadPreview()
       emit('changed')
     }
   })
@@ -547,25 +625,41 @@ function origineSeverity(origine) {
         </div>
       </div>
 
-      <!-- Avviso modalita' C: tutte le righe sono custom, prezzo obbligatorio -->
-      <Message v-if="modalitaEffettiva === 'C'" severity="warn" :closable="false" size="small">
-        {{ t('contratti.righe_c_warn') }}
+      <!-- Banner contesto pricing (refactor modalita 2026-05-15, FE 2.2):
+           mostra forma derivata + listino + versione fissata (post-attivazione)
+           o corrente (DRAFT) + categoria cliente. Mutuato dal pattern preventivi. -->
+      <Message v-if="contestoPricing"
+        :severity="isSenzaListino ? 'warn' : 'info'"
+        :closable="false" size="small">
+        <div>
+          <strong>{{ t(`contratti.forma_${formaEffettiva}_descrizione`) }}</strong>
+        </div>
+        <div v-if="contestoPricing.listino_codice" class="text-sm">
+          {{ t('contratti.contesto_listino', {
+            codice: contestoPricing.listino_codice,
+            versione: contestoPricing.listino_versione_codice || '—',
+          }) }}
+          <Tag v-if="contestoPricing.listino_versione_fissata"
+               :value="t('contratti.contesto_versione_fissata')"
+               severity="success" class="ml-1" />
+        </div>
+        <div v-if="contestoPricing.tipo_variazione_globale" class="text-sm">
+          {{ t('contratti.contesto_variazione', {
+            tipo: contestoPricing.tipo_variazione_globale,
+            valore: contestoPricing.valore_variazione_globale,
+          }) }}
+        </div>
+        <div v-if="contestoPricing.categoria_cliente_codice" class="text-sm">
+          {{ t('contratti.contesto_categoria', {
+            codice: contestoPricing.categoria_cliente_codice,
+          }) }}
+        </div>
       </Message>
 
-      <!-- Banner contesto preview modalita' A/B: riassume listino + variazione -->
-      <Message v-else-if="previewMeta?.listino_codice"
-        severity="info" :closable="false" size="small">
-        <div>
-          <strong>{{ t('contratti.preview_modalita', { mod: previewMeta.modalita }) }}</strong>:
-          {{ t('contratti.preview_listino', { codice: previewMeta.listino_codice }) }}
-          <span v-if="previewMeta.tipo_variazione_globale">
-            — {{ t('contratti.preview_variazione', {
-              tipo: previewMeta.tipo_variazione_globale,
-              valore: previewMeta.valore_variazione_globale,
-            }) }}
-          </span>
-        </div>
-        <div class="text-sm">{{ t('contratti.preview_hint') }}</div>
+      <!-- Avviso "senza_listino": tutte le righe AGGIUNTA, prezzo obbligatorio. -->
+      <Message v-if="isSenzaListino && !contestoPricing"
+               severity="warn" :closable="false" size="small">
+        {{ t('contratti.righe_senza_listino_warn') }}
       </Message>
 
       <!-- Avviso: listino associato ma senza versione operativa oggi.
@@ -593,7 +687,7 @@ function origineSeverity(origine) {
         v-model:selection="selectedRow"
         :loading="previewLoading"
         selection-mode="single"
-        :data-key="isModalitaC ? 'id' : '_row_key'"
+        :data-key="isSenzaListino ? 'id' : '_row_key'"
         :row-class="rowClass"
         class="app-datatable"
         striped-rows
@@ -612,7 +706,7 @@ function origineSeverity(origine) {
           <template #body="{ data }">{{ data.uom_codice ?? '—' }}</template>
         </Column>
         <!-- Modalita' C: prezzo singolo. A/B: prezzo listino + prezzo finale + origine. -->
-        <template v-if="isModalitaC">
+        <template v-if="isSenzaListino">
           <Column field="prezzo_unitario" :header="t('contratti.col_prezzo')" style="width: 90px;">
             <template #body="{ data }">
               {{ formatCurrency(data.prezzo_unitario, { placeholder: '—', maximumFractionDigits: 2 }) }}
@@ -658,14 +752,32 @@ function origineSeverity(origine) {
           <h4>{{ formTitle }}</h4>
         </div>
 
-        <div class="form-field">
-          <label>{{ t('contratti.field_articolo') }} *</label>
-          <ArticoloLookup
-            v-model="form.articolo_obj"
-            @update:modelValue="onArticoloSelected"
-            :disabled="formMode === 'edit'"
-            :placeholder="t('contratti.select_articolo')"
-          />
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('contratti.field_articolo') }} *</label>
+            <ArticoloLookup
+              v-model="form.articolo_obj"
+              @update:modelValue="onArticoloSelected"
+              :disabled="formMode === 'edit'"
+              :placeholder="t('contratti.select_articolo')"
+            />
+          </div>
+          <div class="form-field">
+            <!-- Refactor modalita 2026-05-15: tipo_eccezione in create
+                 (immutabile in edit, mostrato come Tag readonly). -->
+            <label>{{ t('contratti.field_tipo_eccezione') }} *</label>
+            <Select
+              v-if="formMode === 'create'"
+              v-model="form.tipo_eccezione"
+              :options="tipoEccezioneOptions"
+              option-label="label"
+              option-value="value"
+              @change="onTipoEccezioneChange(form.tipo_eccezione)"
+              class="w-full" />
+            <Tag v-else
+              :value="t(`contratti.tipo_eccezione_${form.tipo_eccezione}`)"
+              severity="secondary" />
+          </div>
         </div>
 
         <div class="form-grid-2col">
@@ -691,15 +803,21 @@ function origineSeverity(origine) {
           <div class="form-field">
             <label>
               {{ t('contratti.field_prezzo_unitario') }}
-              <span v-if="contrattoModalita === 'C' && !articoloObj?.is_composito">*</span>
-              <Tag v-if="articoloObj?.is_composito"
+              <!-- Obbligatorio per OVERRIDE/AGGIUNTA (default tipo) non
+                   composito. ESCLUSIONE = prezzo NULL. -->
+              <span v-if="form.tipo_eccezione !== 'ESCLUSIONE' && !articoloObj?.is_composito">*</span>
+              <Tag v-if="form.tipo_eccezione === 'ESCLUSIONE'"
+                severity="warn"
+                :value="t('contratti.prezzo_esclusione_n_a')" />
+              <Tag v-else-if="articoloObj?.is_composito"
                 severity="info"
                 :value="t('vendite.componenti.panel.padre_calcolato')"
                 v-tooltip.top="t('vendite.componenti.panel.padre_calcolato_tooltip')"
                 class="contratti-componenti-padre-tag" />
             </label>
             <InputNumber v-model="form.prezzo_unitario" class="w-full"
-              :disabled="articoloObj?.is_composito === true"
+              :disabled="articoloObj?.is_composito === true
+                         || form.tipo_eccezione === 'ESCLUSIONE'"
               :min-fraction-digits="2" :max-fraction-digits="4" showButtons />
           </div>
           <div class="form-field">

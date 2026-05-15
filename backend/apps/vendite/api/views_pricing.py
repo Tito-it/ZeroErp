@@ -14,10 +14,11 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.request_parsers import parse_iso_date
@@ -309,8 +310,14 @@ class PricingLimitiUtenteView(DomainAPIView):
 
     Ritorna i limiti percentuali configurati per l'utente corrente:
     `max_sconto_pct` e `max_maggiorazione_pct`. Risolve la cascata
-    scope user -> group -> emittente -> default via
-    `ParameterService.get_parameter`.
+    user -> categoria_cliente -> group -> emittente -> default via
+    `ParameterService.get_parameter` (cascata estesa 2026-05-15).
+
+    Query param opzionale `billing_account_id`: se fornito, il livello
+    `categoria_cliente` della cascata viene alimentato con la categoria
+    del BA destinatario. Senza, il livello viene saltato e si applica
+    la soglia "generica" per l'utente. Il FE deve passarlo nel drawer
+    riga preventivo per mostrare la soglia coerente con il cliente target.
 
     Il FE usa questi valori per mostrare hint sotto il campo prezzo
     nel drawer riga preventivo (sconto max, warning vicino al limite)
@@ -325,6 +332,19 @@ class PricingLimitiUtenteView(DomainAPIView):
         responses={200: _LIMITI_UTENTE_RESPONSE},
         tags=["vendite"],
         summary="Limiti L2 variazione prezzo per l'utente corrente",
+        parameters=[
+            OpenApiParameter(
+                name="billing_account_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Opzionale. ID del billing account destinatario: se "
+                    "presente, la cascata include il livello categoria_cliente "
+                    "del BA. Senza, il livello categoria viene saltato."
+                ),
+            ),
+        ],
     )
     def get(self, request: Request):
         auth_user_id = request.user.id if request.user.is_authenticated else None
@@ -332,19 +352,33 @@ class PricingLimitiUtenteView(DomainAPIView):
         # Valori ritornati come stringa (envelope stabile); il FE le converte
         # in Number (zero-safe) per l'interpolazione dell'hint.
         # Derivazione emittente dell'operatore: senza questo passaggio la
-        # cascata user → group → emittente → default salterebbe lo step
-        # "emittente" e gli override impostati per EF non sarebbero mai
-        # applicati (sintomo: admin imposta MAX_SCONTO_PCT=10 per emittente
-        # X, l'operatore vede sempre 0 nel drawer).
+        # cascata user → categoria_cliente → group → emittente → default
+        # salterebbe lo step "emittente" e gli override impostati per EF non
+        # sarebbero mai applicati (sintomo: admin imposta MAX_SCONTO_PCT=10
+        # per emittente X, l'operatore vede sempre 0 nel drawer).
+        # Derivazione categoria: solo se il FE passa billing_account_id come
+        # query param. Senza BA il livello categoria_cliente viene saltato.
         param_service = ParameterService()
         emittente_fiscale_id = (
             param_service.get_emittente_fiscale_id_for_user(auth_user_id)
             if auth_user_id is not None else None
         )
+        categoria_cliente_id: int | None = None
+        ba_id_raw = request.query_params.get("billing_account_id")
+        if ba_id_raw:
+            try:
+                ba_id = int(ba_id_raw)
+            except (TypeError, ValueError):
+                ba_id = None
+            if ba_id is not None and ba_id > 0:
+                categoria_cliente_id = (
+                    BillingAccountRepository().get_categoria_cliente_id(ba_id)
+                )
         values = param_service.get_defaults(
             [PARAM_MAX_SCONTO_PCT, PARAM_MAX_MAGGIORAZIONE_PCT],
             django_user_id=auth_user_id,
             emittente_fiscale_id=emittente_fiscale_id,
+            categoria_cliente_id=categoria_cliente_id,
         )
 
         def _to_decimal_str(raw):

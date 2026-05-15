@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Form singola riga preventivo — articolo (autocomplete), UoM, quantita', prezzo, sconto, IVA.
 // Il prezzo viene proposto dal listino ma e' sempre sovrascrivibile dall'operatore.
-import { ref, watch, computed, onMounted } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
@@ -30,12 +30,20 @@ const store = usePreventiviStore()
 const loading = ref(false)
 const notify = useNotify()
 const { limiti, load: loadLimiti, L2_ERROR_CODES } = useLimitiPricing()
-onMounted(loadLimiti)
 
 const props = defineProps({
   preventivoId: { type: Number, required: true },
+  // Refactor cascata 2026-05-15: BA del preventivo per popolare il livello
+  // categoria_cliente della cascata soglie. Senza, soglia "generica" utente.
+  billingAccountId: { type: Number, default: null },
   riga: { type: Object, default: null }
 })
+
+// Carica i limiti per il BA corrente. Watch + immediate: lo scatto immediato
+// vale anche da `onMounted` (Vue setup esegue immediate prima del mount),
+// quindi NON serve un onMounted aggiuntivo — eviterebbe solo doppio fetch
+// al primo mount (cache modulo-level dedupa per BA in useLimitiPricing).
+watch(() => props.billingAccountId, (baId) => loadLimiti(baId), { immediate: true })
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 
 const isEdit = computed(() => props.riga != null)

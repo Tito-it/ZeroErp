@@ -50,6 +50,9 @@ from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_overrides,
     resolve_emittente_sr_id_for_testata,
 )
+from apps.vendite.services._pricing_gate_helpers import (
+    check_limite_variazione_globale,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,9 +156,14 @@ _FORBIDDEN_TESTATA_UPDATE: frozenset[str] = frozenset({
 })
 
 
-# Righe contratto: chiavi ammesse create/update.
+# Righe contratto: chiavi ammesse create/update. tipo_eccezione e' la
+# classificazione introdotta dal refactor 2026-05-15: distingue OVERRIDE,
+# ESCLUSIONE, AGGIUNTA. Obbligatoria in create (NOT NULL nello schema),
+# immutabile in update (per cambiare tipo serve DELETE + INSERT — meno
+# zone grigie di un cambio di semantica in-place).
 _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id",
+    "tipo_eccezione",
     "tipo_erogazione",
     "fonte_quantita_attesa",
     "periodicita",
@@ -192,10 +200,16 @@ _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "meta",
 })
 
-# In create: contratto_id arriva dall'URL, non da payload. articolo_id e'
-# obbligatorio e accettato. In update: articolo_id diventa immutabile.
+# In create: contratto_id arriva dall'URL, non da payload. articolo_id e
+# tipo_eccezione sono obbligatori e accettati. In update: articolo_id e
+# tipo_eccezione diventano immutabili (cambio tipo = DELETE + INSERT).
 _FORBIDDEN_RIGA_CREATE: frozenset[str] = frozenset({"contratto_id"})
-_FORBIDDEN_RIGA_UPDATE: frozenset[str] = frozenset({"articolo_id", "contratto_id"})
+_FORBIDDEN_RIGA_UPDATE: frozenset[str] = frozenset({
+    "articolo_id", "contratto_id", "tipo_eccezione",
+})
+
+# Tipi eccezione ammessi su contratti_righe (refactor 2026-05-15).
+_TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA"})
 
 
 # Utility 1:1: chiavi ammesse in create/update. istanza_utility_id e
@@ -288,17 +302,24 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 # stretto (tutti i marker della tupla devono comparire nel MESSAGE).
 # Coerente con pricing_service._KNOWN_DB_ERROR_MARKERS.
 _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # Refactor modalita 2026-05-15: i vecchi marker E_CONTRATTO_MODALITA_C_*
+    # sono stati droppati dal team DB con i trigger correlati. I nuovi
+    # marker coprono il modello unificato a 3 eccezioni + lock attivazione.
     (
-        "E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
-        ("modalita' C senza righe attive",),
+        "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE",
+        ("contratto senza listino", "almeno un'AGGIUNTA"),
     ),
     (
-        "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
-        ("modalita' C", "prive di prezzo_unitario"),
+        "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO",
+        ("AGGIUNTA", "gia' presente nel listino"),
     ),
     (
-        "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO",
-        ("modalita' C", "prezzo_unitario obbligatorio"),
+        "E_ARTICOLO_ESCLUSO_DA_CONTRATTO",
+        ("articolo escluso dal contratto",),
+    ),
+    (
+        "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE",
+        ("contratto ATTIVO", "campi bloccati"),
     ),
     (
         "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI",
@@ -499,10 +520,16 @@ class ContrattiService:
     # =================================================================
 
     # Scopo: Aggiorna una testata contratto sui soli campi mutabili.
-    #        Validazione modalita' A/B/C pre-DB. Il cambio stato passa
-    #        da cambia_stato().
+    #        Validazione coerenza coppia variazione globale pre-DB.
+    #        `auth_user_id`: usato dal gate L2 sulla variazione globale
+    #        (refactor 2026-05-15 §3-bis-E) per risolvere la soglia con la
+    #        cascata user→categoria→group→emittente. None = gate L2 skip.
     def update_contratto(
-        self, contratto_id: int, payload: dict[str, Any]
+        self,
+        contratto_id: int,
+        payload: dict[str, Any],
+        *,
+        auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         self._v.reject_keys(
@@ -564,6 +591,55 @@ class ContrattiService:
             message="Nessun campo aggiornabile presente nel payload.",
             context={"allowed_keys": sorted(_UPDATE_KEYS_TESTATA)},
         )
+
+        # Refactor modalita 2026-05-15 §3-bis-E: se il PATCH tocca la
+        # variazione globale e il tipo e' PERCENTUALE, applichiamo il gate L2
+        # sulla soglia configurata per (utente, categoria cliente, ...).
+        # Per VALORE_FISSO il gate non e' applicabile (non e' una percentuale)
+        # e viene saltato — decisione operativa §3-bis-E "decisione brief DB".
+        self._check_limite_variazione_globale(
+            existing=existing,
+            data=data,
+            auth_user_id=auth_user_id,
+        )
+
+        # Refactor modalita 2026-05-15 §3-bis-F: se il PATCH rimuove il
+        # listino_id (NOT NULL -> NULL) e esistono eccezioni OVERRIDE o
+        # ESCLUSIONE attive, blocca con 422 — il significato di quelle
+        # eccezioni dipende dal listino e cancellarle silenziosamente sarebbe
+        # un cambio di semantica nascosto. AGGIUNTA non blocca (vale anche
+        # senza listino). L'operatore deve prima rimuovere/sostituire le
+        # eccezioni esplicitamente.
+        sta_rimuovendo_listino = (
+            "listino_id" in data
+            and data["listino_id"] is None
+            and existing.get("listino_id") is not None
+        )
+        if sta_rimuovendo_listino:
+            counts = self._repo.count_eccezioni_bloccanti(contratto_id)
+            n_override = counts.get("OVERRIDE", 0)
+            n_esclusione = counts.get("ESCLUSIONE", 0)
+            if n_override > 0 or n_esclusione > 0:
+                totale = n_override + n_esclusione
+                dettagli = []
+                if n_override:
+                    dettagli.append(f"{n_override} OVERRIDE")
+                if n_esclusione:
+                    dettagli.append(f"{n_esclusione} ESCLUSIONE")
+                ErrorManager.raise_error(
+                    code="E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI",
+                    message="Impossibile rimuovere il listino di riferimento dal contratto.",
+                    detail=(
+                        f"{totale} eccezioni ({', '.join(dettagli)}) sono ancora "
+                        f"associate. Rimuovi prima le eccezioni o sostituiscile "
+                        f"con AGGIUNTA per articoli fuori-listino."
+                    ),
+                    context={
+                        "contratto_id": contratto_id,
+                        "override_count": n_override,
+                        "esclusione_count": n_esclusione,
+                    },
+                )
 
         with self._db_errors({"contratto_id": contratto_id}):
             updated = self._repo.update_contratto(contratto_id, data)
@@ -745,6 +821,22 @@ class ContrattiService:
         )
 
     # =================================================================
+    # Contesto pricing (banner FE)
+    # =================================================================
+
+    # Scopo: Restituisce il contesto pricing applicato al contratto (forma,
+    #        listino + versione fissata/corrente, variazione globale,
+    #        categoria cliente). Mutuato dal pattern preventivi
+    #        `get_contesto_pricing` per la simmetria UI: l'header del drawer
+    #        contratto mostra un badge con questi dati per audit visivo del
+    #        path resolver applicato. Lettura puramente informativa.
+    def get_contesto_pricing(
+        self, contratto_id: int,
+    ) -> dict[str, Any] | None:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        return self._repo.resolve_contesto_pricing_contratto(contratto_id)
+
+    # =================================================================
     # Righe contratto - preview pricing applicato
     # =================================================================
 
@@ -773,26 +865,26 @@ class ContrattiService:
         )
         assert contratto is not None
 
-        # Modalita' derivata (non persistita): listino_id NULL -> C, altrimenti
-        # B se almeno un override in contratti_righe, A se nessun override.
-        # La query preview ritorna gia' le origini riga, sfruttiamole per
-        # evitare un round-trip extra di conteggio.
+        # Forma derivata (non persistita) post refactor modalita 2026-05-15:
+        #   "con_listino"  : contratto ha un listino_id (variazione globale +
+        #                    eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA sono campi
+        #                    opzionali liberi)
+        #   "senza_listino": contratto interamente negoziato (le righe in
+        #                    `contratti_righe` sono tutte AGGIUNTA)
+        # Le vecchie modalita' A/B/C sono state rimosse — non esistono piu'
+        # nel modello dati ne' nell'UX.
         listino_id = contratto.get("listino_id")
         preview_rows: list[dict[str, Any]] = (
             self._repo.list_righe_preview(contratto_id) if listino_id else []
         )
-        if listino_id is None:
-            modalita = "C"
-        else:
-            has_overrides = any(r.get("origine") == "OVERRIDE" for r in preview_rows)
-            modalita = "B" if has_overrides else "A"
+        forma = "con_listino" if listino_id is not None else "senza_listino"
 
         # Flag per il FE: distingue il caso "listino senza versione operativa
-        # oggi" da modalita' C (lista vuota by design) e dal caso B con
-        # override extra-listino (righe presenti ma origine='OVERRIDE',
-        # nessuna 'DA_LISTINO'). Il flag e' True se il contratto ha listino
-        # ma la query non ha prodotto nemmeno una riga 'DA_LISTINO'
-        # (cioe' nessuna versione operativa o nessuna riga attiva).
+        # oggi" dal caso "senza_listino" (lista vuota by design) e dal caso
+        # con listino ma solo eccezioni extra-listino (righe presenti ma
+        # origine OVERRIDE/AGGIUNTA, nessuna 'DA_LISTINO'). Il flag e' True
+        # se il contratto ha listino ma la query non ha prodotto nemmeno una
+        # riga 'DA_LISTINO' (nessuna versione operativa o nessuna riga attiva).
         listino_senza_versione_oggi = (
             listino_id is not None
             and not any(r.get("origine") == "DA_LISTINO" for r in preview_rows)
@@ -800,8 +892,9 @@ class ContrattiService:
 
         return {
             "contratto_id": contratto_id,
-            "modalita": modalita,
+            "forma": forma,
             "listino_id": listino_id,
+            "listino_versione_id": contratto.get("listino_versione_id"),
             "listino_codice": contratto.get("listino_codice"),
             "listino_descrizione": contratto.get("listino_descrizione"),
             "tipo_variazione_globale": contratto.get("tipo_variazione_globale"),
@@ -945,7 +1038,10 @@ class ContrattiService:
             repo_get_sr_id_by_fiscale_id=self._repo.get_emittente_sr_id_by_fiscale_id,
         )
 
-    # Scopo: Aggiorna una riga contratto. articolo_id immutabile.
+    # Scopo: Aggiorna una riga contratto. articolo_id e tipo_eccezione
+    #        immutabili (refactor 2026-05-15: per cambiare tipo serve
+    #        DELETE + INSERT, meno zone grigie di un cambio di semantica
+    #        in-place).
     def update_riga(
         self, riga_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
@@ -954,7 +1050,7 @@ class ContrattiService:
         self._v.reject_keys(
             payload,
             forbidden=_FORBIDDEN_RIGA_UPDATE,
-            reason="articolo_id e contratto_id immutabili: per rimpiazzarli eliminare la riga e crearne una nuova.",
+            reason="articolo_id, contratto_id e tipo_eccezione immutabili: per rimpiazzarli eliminare la riga e crearne una nuova.",
             detail_prefix="Campi rifiutati",
         )
         self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_RIGA, message=_MESSAGE_RIGA)
@@ -966,6 +1062,46 @@ class ContrattiService:
             message="Nessun campo aggiornabile presente nel payload riga.",
             context={"allowed_keys": sorted(_UPDATE_KEYS_RIGA)},
         )
+
+        # Coerenza prezzo_unitario / tipo_eccezione (refactor 2026-05-15):
+        # se il PATCH tocca prezzo_unitario, valida contro il tipo_eccezione
+        # della riga esistente (immutabile). Pre-validation parlante invece
+        # del fallback E_DATABASE sul CHECK DB chk_contrighe_prezzo_per_tipo_eccezione.
+        if "prezzo_unitario" in data:
+            existing_riga = self._repo.get_riga(riga_id)
+            ErrorManager.require(
+                existing_riga is not None,
+                code=E_VENDITE_NOT_FOUND,
+                message="Riga contratto non trovata.",
+                context={"riga_id": riga_id},
+            )
+            assert existing_riga is not None
+            tipo_existing = existing_riga.get("tipo_eccezione")
+            nuovo_prezzo = data["prezzo_unitario"]
+            if tipo_existing == "ESCLUSIONE":
+                ErrorManager.require(
+                    nuovo_prezzo is None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        "ESCLUSIONE: prezzo_unitario deve essere NULL "
+                        "(l'articolo non e' disponibile per questo contratto). "
+                        "Per cambiare tipo, eliminare la riga e crearne una nuova."
+                    ),
+                    context={"riga_id": riga_id, "tipo_eccezione": tipo_existing},
+                )
+            elif tipo_existing in ("OVERRIDE", "AGGIUNTA"):
+                ErrorManager.require(
+                    nuovo_prezzo is not None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        f"{tipo_existing}: prezzo_unitario obbligatorio. "
+                        f"Per escludere l'articolo, eliminare la riga e "
+                        f"crearne una nuova come ESCLUSIONE."
+                    ),
+                    context={"riga_id": riga_id, "tipo_eccezione": tipo_existing},
+                )
 
         with self._db_errors(
             {"riga_id": riga_id},
@@ -1388,7 +1524,7 @@ class ContrattiService:
             payload, data, "listino_id", message=_MESSAGE,
         )
         self._apply_variazione_globale(payload, data)
-        self._validate_modalita_coerente(data, existing=None)
+        self._validate_variazione_globale_coppia_coerente(data, existing=None)
         # Snapshot categoria cliente: opzionale, nullable. Se fornito
         # congela il valore scelto dall'operatore; se omesso il trigger
         # DB lo popola dal BA.
@@ -1451,7 +1587,7 @@ class ContrattiService:
             or "tipo_variazione_globale" in data
             or "valore_variazione_globale" in data
         ):
-            self._validate_modalita_coerente(data, existing=existing)
+            self._validate_variazione_globale_coppia_coerente(data, existing=existing)
         # Categoria snapshot: ammessa in PATCH solo in DRAFT (guard gia' sopra).
         self._apply_optional_positive_int(
             payload, data, "categoria_cliente_id_snapshot", message=_MESSAGE,
@@ -1521,39 +1657,50 @@ class ContrattiService:
                 valore = self._coerce_decimal(raw, field="valore_variazione_globale")
                 data["valore_variazione_globale"] = valore
 
-    # Scopo: Verifica coerenza modalita' A/B/C pre-DB. Il CHECK DB enforcera'
-    #        lo stesso invariante ma il messaggio parlante e' piu' utile qui.
-    #
-    #        Regole (sviluppo-listini-v5 §5.1):
-    #          - se listino_id IS NULL (modalita' C) -> tipo/valore globali
-    #            DEVONO essere NULL.
-    #          - tipo/valore globali devono essere entrambi NULL o entrambi
-    #            NOT NULL (coppia coerente).
-    def _validate_modalita_coerente(
+    # Scopo: Gate L2 sulla variazione globale del contratto al PATCH testata
+    #        (refactor 2026-05-15 §3-bis-E). Wrapper sottile sul BB condiviso
+    #        `_pricing_gate_helpers.check_limite_variazione_globale` che
+    #        contiene la logica (cascata user→categoria→group→emittente,
+    #        superuser bypass, PERCENTUALE-only, raise retryable).
+    #        Qui ci limitiamo a estrarre i campi dal merge (data + existing)
+    #        prima di delegare.
+    def _check_limite_variazione_globale(
+        self,
+        *,
+        existing: dict[str, Any],
+        data: dict[str, Any],
+        auth_user_id: int | None,
+    ) -> None:
+        # Skip se il PATCH non tocca la variazione globale.
+        if "valore_variazione_globale" not in data:
+            return
+        tipo_post = data.get("tipo_variazione_globale") if "tipo_variazione_globale" in data else (
+            existing.get("tipo_variazione_globale")
+        )
+        check_limite_variazione_globale(
+            auth_user_id=auth_user_id,
+            tipo_variazione=tipo_post,
+            valore_variazione=data["valore_variazione_globale"],
+            function_name="contratti_service._check_limite_variazione_globale",
+            ba_id=existing.get("billing_account_id"),
+        )
+
+    # Scopo: Verifica coerenza della coppia variazione globale (tipo + valore).
+    #        Post refactor modalita' (2026-05-15): non c'e' piu' il vincolo
+    #        "listino_id NULL -> tipo/valore NULL" — il modello unificato
+    #        ammette qualunque combinazione di listino + variazione + eccezioni.
+    #        Resta solo il vincolo strutturale: tipo e valore devono essere
+    #        coppia (entrambi NULL o entrambi NOT NULL) per dare semantica a
+    #        `valore_variazione_globale`.
+    def _validate_variazione_globale_coppia_coerente(
         self, data: dict[str, Any], *, existing: dict[str, Any] | None
     ) -> None:
-        listino_id = data.get("listino_id") if "listino_id" in data else (
-            existing.get("listino_id") if existing else None
-        )
         tipo = data.get("tipo_variazione_globale") if "tipo_variazione_globale" in data else (
             existing.get("tipo_variazione_globale") if existing else None
         )
         valore = data.get("valore_variazione_globale") if "valore_variazione_globale" in data else (
             existing.get("valore_variazione_globale") if existing else None
         )
-        if listino_id is None:
-            ErrorManager.require(
-                tipo is None and valore is None,
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE,
-                detail="Contratto modalita' C (listino_id NULL): tipo/valore variazione globale devono essere NULL.",
-                context={
-                    "listino_id": listino_id,
-                    "tipo_variazione_globale": tipo,
-                    "valore_variazione_globale": str(valore) if valore is not None else None,
-                },
-            )
-        # Coppia coerente (tipo e valore entrambi NULL o entrambi NOT NULL).
         pair_complete = (tipo is None) == (valore is None)
         ErrorManager.require(
             pair_complete,
@@ -1570,15 +1717,76 @@ class ContrattiService:
     # Helpers privati — righe
     # =================================================================
 
-    # Scopo: Compone il dict CRUD per contratti_righe. articolo_id
-    #        obbligatorio in create; mutazione dei campi commerciali
-    #        solo sui campi presenti.
+    # Scopo: Compone il dict CRUD per contratti_righe. articolo_id e
+    #        tipo_eccezione sono obbligatori in create; mutazione dei campi
+    #        commerciali solo sui campi presenti. Il check di coerenza
+    #        (ESCLUSIONE -> prezzo NULL, OVERRIDE/AGGIUNTA -> prezzo NOT NULL)
+    #        e' enforced dal CHECK DB chk_contrighe_prezzo_per_tipo_eccezione,
+    #        pre-validato qui per messaggio parlante.
     def _build_data_riga(self, payload: dict[str, Any], *, for_create: bool) -> dict[str, Any]:
         data: dict[str, Any] = {}
         if for_create:
             data["articolo_id"] = self._v.require_uuid(
                 payload, "articolo_id", message=_MESSAGE_RIGA,
             )
+            # tipo_eccezione obbligatorio in create (NOT NULL nello schema).
+            tipo_eccezione_raw = payload.get("tipo_eccezione")
+            ErrorManager.require(
+                tipo_eccezione_raw is not None,
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE_RIGA,
+                detail=(
+                    "tipo_eccezione obbligatorio: uno tra "
+                    f"{', '.join(sorted(_TIPI_ECCEZIONE))}."
+                ),
+                context={"field": "tipo_eccezione"},
+            )
+            ErrorManager.require(
+                isinstance(tipo_eccezione_raw, str),
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE_RIGA,
+                detail="tipo_eccezione deve essere una stringa.",
+                context={"field": "tipo_eccezione"},
+            )
+            tipo_eccezione = tipo_eccezione_raw.strip().upper()
+            ErrorManager.require(
+                tipo_eccezione in _TIPI_ECCEZIONE,
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE_RIGA,
+                detail=(
+                    f"tipo_eccezione deve essere uno tra: "
+                    f"{', '.join(sorted(_TIPI_ECCEZIONE))}."
+                ),
+                context={"tipo_eccezione": tipo_eccezione},
+            )
+            data["tipo_eccezione"] = tipo_eccezione
+
+            # Coerenza prezzo_unitario / tipo_eccezione (pre-DB):
+            # - ESCLUSIONE -> prezzo NULL (l'articolo non e' disponibile)
+            # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
+            prezzo_raw = payload.get("prezzo_unitario")
+            if tipo_eccezione == "ESCLUSIONE":
+                ErrorManager.require(
+                    prezzo_raw is None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        "ESCLUSIONE: prezzo_unitario deve essere NULL "
+                        "(l'articolo non e' disponibile per questo contratto)."
+                    ),
+                    context={"tipo_eccezione": tipo_eccezione},
+                )
+            else:
+                # OVERRIDE / AGGIUNTA richiedono prezzo_unitario presente.
+                ErrorManager.require(
+                    prezzo_raw is not None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        f"{tipo_eccezione}: prezzo_unitario obbligatorio."
+                    ),
+                    context={"tipo_eccezione": tipo_eccezione},
+                )
         # Numeric opzionali.
         for field in ("prezzo_unitario", "quantita", "qta_operativa", "factor_to_base"):
             if field in payload:

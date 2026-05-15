@@ -24,6 +24,10 @@ from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityReposit
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.vendite.services._pricing_gate_helpers import (
+    check_limite_variazione_prezzo,
+    check_permesso_override_prezzo,
+)
 from apps.core.services.value_normalizer import empty_to_none
 from apps.documenti.db.documenti_repository import DocumentiRepository
 from apps.vendite.services._componenti_service_helpers import (
@@ -1275,7 +1279,7 @@ def _resolve_or_check_override_prezzo(
             }
 
     # Override: L1 richiesta azione processo prezzo_override_manuale.
-    _check_permesso_override_prezzo(auth_user_id, function_name=function_name)
+    check_permesso_override_prezzo(auth_user_id, function_name=function_name)
 
     # L2: limite percentuale sconto/maggiorazione (autorizzazioni prezzi Sprint D).
     # Se resolver non ha prezzo o e' 0 skip (non calcolabile); altrimenti
@@ -1284,12 +1288,18 @@ def _resolve_or_check_override_prezzo(
     # L3 (Sprint E): se chiamante chiede richiesta_approvazione, l'eventuale
     # violazione non solleva ma ritorna dict; il chiamante orchestrera'
     # la creazione pratica.
-    violazione_l2 = _check_limite_variazione_prezzo(
+    # Cascata estesa (2026-05-15): la categoria cliente del BA destinatario
+    # entra come livello tra user e group nella risoluzione della soglia. Il
+    # lookup BA -> categoria avviene DENTRO _check_limite_variazione_prezzo
+    # dopo gli early-return (superuser bypass / delta=0 / resolver nullo) per
+    # non sprecare round-trip DB quando L2 non si applica.
+    violazione_l2 = check_limite_variazione_prezzo(
         auth_user_id=auth_user_id,
         prezzo_resolver=prezzo_resolver,
         prezzo_manuale=payload_decimal,
         function_name=function_name,
         accept_for_approval=richiesta_approvazione,
+        ba_id=testata.get("billing_account_id"),
     )
 
     meta_patch: dict[str, Any] = {
@@ -1314,143 +1324,13 @@ def _resolve_or_check_override_prezzo(
     return payload_decimal, meta_patch
 
 
-# Scopo: Verifica che l'operatore abbia l'azione processo per override
-#        manuale del prezzo (livello L1 del sistema autorizzazioni prezzi).
-#        Bypass per superuser. Se auth_user_id None (chiamata non
-#        autenticata, es. script interni) -> blocca conservativamente.
-def _check_permesso_override_prezzo(
-    auth_user_id: int | None, *, function_name: str
-) -> None:
-    ErrorManager.require(
-        auth_user_id is not None,
-        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
-        message="Override prezzo non autorizzato.",
-        detail="Chiamata senza contesto utente — override bloccato conservativamente.",
-        function_name=function_name,
-    )
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
-        ErrorManager.raise_error(
-            code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
-            message="Override prezzo non autorizzato.",
-            detail="Utente non trovato.",
-            function_name=function_name,
-        )
-    if getattr(user, "is_superuser", False):
-        return
-    abilitato = PermissionResolver.check_azione(user, AZIONE_OVERRIDE_PREZZO)
-    ErrorManager.require(
-        abilitato,
-        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
-        message="Modifica manuale del prezzo non autorizzata.",
-        detail=(
-            "Usa il prezzo suggerito dal listino o richiedi l'autorizzazione "
-            "'prezzo_override_manuale' al tuo responsabile."
-        ),
-        function_name=function_name,
-    )
-
-
-# Scopo: Verifica che la variazione % fra prezzo manuale e prezzo risolto
-#        rientri nei limiti configurati per l'utente (L2 autorizzazioni
-#        prezzi). Se sconto (delta < 0) confronta con VENDITE_MAX_SCONTO_PCT;
-#        se maggiorazione (delta > 0) con VENDITE_MAX_MAGGIORAZIONE_PCT.
-#        Skip se prezzo_resolver e' None o 0 (non calcolabile / safe-fail).
-#        Superuser bypass. Parametri risolti via ParameterService con
-#        scope user -> group -> emittente -> default.
-#
-#        Restituisce:
-#          - None se variazione entro limite (caso normale L2 OK)
-#          - dict {tipo_violazione, variazione_abs_pct, limite_pct} se
-#            violazione + accept_for_approval=True (workflow L3 Sprint E)
-#
-#        Solleva ServiceError L2 (E_PREV_SCONTO_ECCESSIVO /
-#        E_PREV_MAGGIORAZIONE_ECCESSIVA) se violazione + accept_for_approval=False.
-def _check_limite_variazione_prezzo(
-    *,
-    auth_user_id: int | None,
-    prezzo_resolver,  # Decimal | None
-    prezzo_manuale,   # Decimal
-    function_name: str,
-    accept_for_approval: bool = False,
-) -> dict[str, Any] | None:
-    from decimal import Decimal
-
-    if prezzo_resolver is None or prezzo_resolver == 0:
-        return None  # Nessun riferimento per calcolare la percentuale.
-
-    if auth_user_id is None:
-        return None  # L1 ha gia' bloccato; unreachable difensivo.
-
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
-        return None  # L1 avrebbe gia' bloccato.
-    if getattr(user, "is_superuser", False):
-        return None
-
-    delta = prezzo_manuale - prezzo_resolver
-    if delta == 0:
-        return None  # Edge case: L1 avrebbe gia' fatto early-return.
-
-    delta_pct = (delta / prezzo_resolver) * Decimal("100")
-
-    # Sconto se delta negativo, maggiorazione se positivo. Per ogni caso
-    # risolviamo UNA sola chiave parametro dedicata e la confrontiamo con
-    # il valore assoluto del delta. get_parameter_decimal raise
-    # E_PARAMETER_VALIDATION se il parametro e' malformato: stato
-    # inconsistente che l'admin deve correggere (no silent fallback).
-    param_service = ParameterService()
-    is_sconto = delta_pct < 0
-    param_code = PARAM_MAX_SCONTO_PCT if is_sconto else PARAM_MAX_MAGGIORAZIONE_PCT
-    variazione_abs = -delta_pct if is_sconto else delta_pct
-    # Cascata user → group → emittente → default: senza derivazione EF
-    # gli override impostati per emittente non sarebbero mai applicati.
-    # Coerente con `PricingLimitiUtenteView` che alimenta l'hint FE.
-    emittente_fiscale_id = param_service.get_emittente_fiscale_id_for_user(
-        auth_user_id,
-    )
-    limite = param_service.get_parameter_decimal(
-        param_code,
-        django_user_id=auth_user_id,
-        emittente_fiscale_id=emittente_fiscale_id,
-    )
-
-    if variazione_abs <= limite:
-        return None
-
-    # Violazione L2. Se la chiamata e' nel contesto di richiesta approvazione
-    # L3, restituiamo i dettagli della violazione invece di sollevare:
-    # il chiamante orchestrera' la creazione della pratica.
-    kind_label = "Sconto" if is_sconto else "Maggiorazione"
-    if accept_for_approval:
-        return {
-            "tipo_violazione": "SCONTO" if is_sconto else "MAGGIORAZIONE",
-            "variazione_abs_pct": str(variazione_abs.quantize(Decimal("0.01"))),
-            "limite_pct": str(limite),
-            "kind_label": kind_label,
-        }
-
-    # Caso normale L2: solleva errore (FE banner attiva pulsante "richiedi
-    # approvazione" che ri-tentera' con accept_for_approval=True).
-    # Fase 5.B2: retryable=True esplicito → semantica "puoi riprovare con
-    # flag richiesta_approvazione=true" (workflow L3). L1
-    # E_PREV_OVERRIDE_NON_AUTORIZZATO resta retryable=False (default ServiceError):
-    # senza permesso prezzo_override_manuale non c'e' niente da ritentare.
-    error_code = "E_PREV_SCONTO_ECCESSIVO" if is_sconto else "E_PREV_MAGGIORAZIONE_ECCESSIVA"
-    ErrorManager.raise_error(
-        code=error_code,
-        message=f"{kind_label} oltre il limite consentito.",
-        detail=(
-            f"{kind_label} richiesto: {variazione_abs.quantize(Decimal('0.01'))}% — "
-            f"massimo ammesso: {limite}%."
-        ),
-        retryable=True,
-        function_name=function_name,
-    )
+# Gate autorizzazioni prezzi (L1+L2+L3) estratti come BB condiviso 2026-05-15
+# in `apps.vendite.services._pricing_gate_helpers`:
+#   - `check_permesso_override_prezzo` (era `_check_permesso_override_prezzo`)
+#   - `check_limite_variazione_prezzo` (era `_check_limite_variazione_prezzo`)
+#   - `check_limite_variazione_globale` (nuovo, per testata contratto)
+# Vedi catalogo BB sezione "Vendite — Gate autorizzazioni prezzi".
+# I caller di preventivi importano direttamente dal BB; nessun alias qui.
 
 
 # Helper componenti BoM estratti in `_componenti_service_helpers.py`

@@ -3,6 +3,13 @@
 > **Stato**: IN CORSO — `dev/db-tid` (2026-05-15).
 > Fase 1 ✅. Fase 2: Step 2.0–2.6 ✅ — **COMPLETATA**.
 >
+> **Workstream BE+DOC Fase 1 chiusi (2026-05-15)** su `dev/backend-tid`:
+> ParameterService cascata estesa, `BillingAccountRepository.get_categoria_cliente_id`,
+> `_check_limite_variazione_prezzo` con lookup BA post-early-return,
+> `PricingLimitiUtenteView` con query param `billing_account_id`,
+> doc `api_preventivi.md` + `api_pricing.md` + catalogo BB aggiornati. 2393/2393 test verdi.
+> Resta FE 1.1 (banner soglia per categoria). Procede BE Fase 2 (contratti).
+>
 > | Step | Migration | pgTAP | Stato |
 > |---|---|---|---|
 > | 1.1 `config.parameter_overrides` + `categoria_cliente_id` | 20260515-06, -07 | test-parameter-overrides-categoria-cliente-v1 12/12 | ✅ |
