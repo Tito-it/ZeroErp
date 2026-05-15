@@ -10,7 +10,7 @@
 
 ## Scopo
 
-Esegue 7 guard di coerenza per garantire che ogni riga inserita o aggiornata in `vendite.listini_righe_componenti` sia perfettamente allineata con la BoM catalogo, le regole IVA e i vincoli di validità temporale. Il trigger è il punto di verità centralizzato per l'integrità della tabella bundle: senza questi guard, le colonne denorm (`articolo_padre_id`, `articolo_figlio_id`) potrebbero divergere dalla BoM, o potrebbero esistere prezzi bundle per periodi non coperti dalla BoM o dalla versione listino.
+Esegue 6 guard di coerenza (1–5 + 7) per garantire che ogni riga inserita o aggiornata in `vendite.listini_righe_componenti` sia perfettamente allineata con la BoM catalogo, le regole IVA e i vincoli di validità temporale. È il punto di verità centralizzato per l'integrità della tabella bundle: senza questi guard, le colonne denorm (`articolo_padre_id`, `articolo_figlio_id`) potrebbero divergere dalla BoM, o potrebbero esistere prezzi bundle per periodi non coperti dalla versione listino.
 
 ---
 
@@ -29,7 +29,7 @@ LANGUAGE plpgsql
 ## Trigger associato
 
 | Attributo | Valore |
-|---|---|
+| --- | --- |
 | Nome trigger | `trg_listrighe_comp_a10_guard_coerenza_bom_ins_upd` |
 | Tabella | `vendite.listini_righe_componenti` |
 | Evento | `BEFORE INSERT OR UPDATE` |
@@ -38,70 +38,101 @@ LANGUAGE plpgsql
 
 ---
 
-## I 7 guard
-
-I guard 1-5 si basano su una singola `JOIN` unificata su `articoli_componenti + 2 articoli`. Il guard 7 richiede una seconda query separata su `listini_versioni`.
+## Guard attivi
 
 | # | Condizione verificata | Causa errore se fallisce |
-|---|---|---|
+| --- | --- | --- |
 | 1 | `articolo_componente_id` esiste in `catalogo.articoli_componenti` e `attivo = TRUE` | `articolo_componente_id non trovato o non attivo` |
 | 2 | `NEW.articolo_padre_id = ac.prodotto_id` (denorm coerente) | `articolo_padre_id non coincide con BoM.prodotto_id` |
 | 3 | `NEW.articolo_figlio_id = ac.componente_id` (denorm coerente) | `articolo_figlio_id non coincide con BoM.componente_id` |
 | 4 | `padre.is_composito = TRUE` | `articolo padre non e'' composito` |
 | 5 | `figlio.iva_id = padre.iva_id` (coerenza IVA) | `IVA padre != IVA figlio` |
-| 6 | `NEW.validita ⊆ ac.validita` (validità riga ⊆ validità BoM) | `validita riga listino comp non contenuta in validita BoM` |
-| 7 | `NEW.validita ⊆ lv.validita` (validità riga ⊆ validità versione listino) | `validita riga listino comp non contenuta in validita versione listino` |
+| ~~6~~ | ~~`NEW.validita ⊆ ac.validita`~~ | **RIMOSSO** (20260514-13): sostituito dalla temporal FK `fk_listrighe_comp_articoli_comp_temporal` su `(articolo_componente_id, PERIOD validita)` → `articoli_componenti (id, PERIOD validita)` |
+| 7 | `v_new_validita ⊆ lv.validita` (validità riga ⊆ validità versione listino) | `validita riga listino comp non contenuta in validita versione listino` |
 
-Tutti i 7 guard sollevano il codice `E_LISTINO_COMPONENTE_COERENZA_BOM` (447) con una causa specifica nel contesto JSON.
+Tutti i guard attivi sollevano `E_LISTINO_COMPONENTE_COERENZA_BOM` (447) con la causa specifica nel contesto JSON.
 
 ---
 
 ## Logica di esecuzione
 
-```sql
--- Lettura unificata guard 1-6
-SELECT ac.prodotto_id, ac.componente_id, ac.attivo, ac.validita,
-       a_padre.is_composito, a_padre.iva_id,
-       a_figlio.iva_id
-FROM catalogo.articoli_componenti ac
-JOIN catalogo.articoli a_padre ON a_padre.id = ac.prodotto_id
-JOIN catalogo.articoli a_figlio ON a_figlio.id = ac.componente_id
-WHERE ac.id = NEW.articolo_componente_id;
+La funzione esegue una **singola query con LEFT JOIN** per leggere in un round-trip tutti i dati necessari ai guard 1–5 e 7:
 
--- Guard 7: query separata
-SELECT lv.validita
-FROM vendite.listini_versioni lv
-WHERE lv.id = NEW.listino_versione_id;
+```sql
+-- Calcolo range riga: COALESCE simmetrico alla STORED expression di listini_versioni.validita
+v_new_validita := daterange(
+    COALESCE(NEW.valido_dal, '-infinity'::date),
+    COALESCE(NEW.valido_al,  'infinity'::date),
+    '[]'
+);
+
+-- Unica query: BoM + articoli padre/figlio + versione listino
+SELECT ac.prodotto_id, ac.componente_id, ac.attivo,
+       a_padre.is_composito, a_padre.iva_id,
+       a_figlio.iva_id,
+       lv.validita
+  FROM catalogo.articoli_componenti ac
+  JOIN catalogo.articoli a_padre  ON a_padre.id  = ac.prodotto_id
+  JOIN catalogo.articoli a_figlio ON a_figlio.id = ac.componente_id
+  LEFT JOIN vendite.listini_versioni lv ON lv.id = NEW.listino_versione_id
+ WHERE ac.id = NEW.articolo_componente_id;
 ```
 
-Il guard 6 usa l'operatore `@>` (containment) sui `DATERANGE`: `ac.validita @> NEW.validita` verifica che il periodo della riga bundle sia interamente contenuto nel periodo della BoM.
+`LEFT JOIN` su `listini_versioni`: se la versione non esiste, `lv.validita = NULL` → guard 7 si attiva via `v_lv_validita IS NULL`.
+
+### Calcolo v_new_validita — COALESCE obbligatorio
+
+`listini_righe_componenti.validita` è **STORED generated**: in un BEFORE trigger `NEW.validita` è sempre `NULL`. Il range viene calcolato manualmente applicando COALESCE su entrambi i bounds, in modo simmetrico alla STORED expression di `listini_versioni.validita`.
+
+Il COALESCE è essenziale per evitare un mismatch di rappresentazione interna:
+
+| Sorgente | `valido_al = NULL` → testo range | `upper_inf` interno |
+| --- | --- | --- |
+| `listini_versioni.validita` (STORED con COALESCE) | `[d,infinity]` | `false` — bound finito |
+| `daterange(d, NULL, '[]')` senza COALESCE | `[d,)` | `true` — unbounded |
+
+`[d,infinity] @> [d,)` restituisce `false` anche se i due range sono logicamente identici: PostgreSQL confronta le rappresentazioni interne, non la semantica. Con COALESCE entrambi i lati producono `[d,infinity]` e il confronto è corretto (fix 20260515-01).
 
 ---
 
 ## Codici errore
 
 | Codice | ID | Quando |
-|---|---|---|
-| `E_LISTINO_COMPONENTE_COERENZA_BOM` | 447 | Qualsiasi dei 7 guard fallisce; la causa specifica è nel contesto JSON |
+| --- | --- | --- |
+| `E_LISTINO_COMPONENTE_COERENZA_BOM` | 447 | Qualsiasi guard attivo fallisce; la causa specifica è nel contesto JSON |
 
-Il campo `causa` nel contesto JSON identifica quale guard ha prodotto l'errore. I valori possibili sono riportati nella tabella dei guard sopra.
+Il campo `causa` nel contesto JSON identifica quale guard ha prodotto l'errore.
 
 ---
 
 ## Dipendenze
 
 | Oggetto | Tipo | Motivo |
-|---|---|---|
-| `catalogo.articoli_componenti` | Tabella | Sorgente verità BoM per guard 1-6 |
-| `catalogo.articoli` | Tabella | Check `is_composito` (guard 4) e `iva_id` padre/figlio (guard 5) |
-| `vendite.listini_versioni` | Tabella | Verifica validità versione (guard 7) |
+| --- | --- | --- |
+| `catalogo.articoli_componenti` | Tabella | Sorgente verità BoM (guard 1–4) |
+| `catalogo.articoli` | Tabella | `is_composito` (guard 4), `iva_id` padre/figlio (guard 5) |
+| `vendite.listini_versioni` | Tabella | Verifica validità versione via `lv.validita` (guard 7) |
+| `fk_listrighe_comp_articoli_comp_temporal` | FK temporale PG 18 | Sostituisce guard 6: containment `riga.validita ⊆ ac.validita` garantito per costruzione |
 | `script.fn_log_and_raise_error` | Funzione | Registrazione e raise strutturato dell'errore |
 
 ---
 
 ## Note operative
 
-- Il guard 6 usa `v_ac_validita IS NULL OR NOT (v_ac_validita @> NEW.validita)`: se la BoM non ha validità (`NULL`), il controllo fallisce — le BoM senza periodo non possono avere prezzi bundle associati.
-- Allo stesso modo, il guard 7 fallisce se la versione listino non ha validità (`NULL`).
-- Il confronto IVA al guard 5 usa `IS DISTINCT FROM`: NULL = NULL è considerato uguale (coerenza con il guard IVA su `articoli_componenti`).
-- Migration di riferimento: `20260513-19`.
+- **Guard 6 rimosso (20260514-13)**: il containment `riga.validita ⊆ ac.validita` era ridondante con la temporal FK `fk_listrighe_comp_articoli_comp_temporal` introdotta in PG 18. La FK garantisce la proprietà per costruzione, senza codice procedurale.
+- **Guard 7 e `valido_al = NULL`**: il COALESCE in `v_new_validita` gestisce correttamente il caso di apertura indefinita. Se il caller passa `valido_al = NULL`, `COALESCE(NULL, 'infinity'::date)` produce `[d,infinity]`, identico alla STORED della versione con `valido_al = NULL`. Il guard 7 restituisce `true` correttamente.
+- **Guard 7 e versione mancante**: se `listino_versione_id` non esiste, il LEFT JOIN ritorna `lv.validita = NULL` → `v_lv_validita IS NULL` → guard 7 scatta.
+- **Guard 5 e NULL IVA**: usa `IS DISTINCT FROM` — `NULL = NULL` è considerato uguale.
+- **`NEW.validita` non usabile nei BEFORE trigger**: `listini_righe_componenti.validita` è STORED generated → sempre `NULL` nel BEFORE trigger (D-OPEN-1, verificato su PG 18.3). Usare sempre `daterange(COALESCE(NEW.valido_dal,...), COALESCE(NEW.valido_al,...), '[]')`.
+
+---
+
+## Storico revisioni
+
+| Rev | Migration | Modifica |
+| --- | --- | --- |
+| 2026-05-13 | 20260513-19 | Creazione — guards 1–7, due query separate |
+| 2026-05-14 | 20260514-05 | STORED generated su `listini_righe_componenti`: guards 6+7 usano `valido_dal/valido_al` invece di `NEW.validita` (NULL nei BEFORE trigger) |
+| 2026-05-14 | 20260514-13 | Guard 6 rimosso — sostituito da temporal FK |
+| 2026-05-14 | 20260514-14 | Ottimizzazione: unica query con LEFT JOIN (elimina round-trip extra per guard 7) |
+| 2026-05-15 | 20260515-01 | Fix COALESCE simmetrico su `v_new_validita`: corregge mismatch `upper_inf=true` vs `upper='infinity'::date` in `@>` quando `valido_al = NULL` |

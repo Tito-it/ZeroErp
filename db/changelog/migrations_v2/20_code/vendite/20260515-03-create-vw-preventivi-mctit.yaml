@@ -1,0 +1,77 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260515-03-create-vw-preventivi-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Crea vendite.vw_preventivi: wrapper di vendite.preventivi con la colonna
+  # derivata is_attiva.
+  #
+  # is_attiva: TRUE se non esiste una revisione superiore dello stesso numero
+  # con uno stato non-abortito. La derivazione garantisce che esattamente una
+  # revisione per numero sia is_attiva=TRUE in ogni momento, per costruzione
+  # matematica (impossibile avere due TRUE: se rev B > rev A con is_abortito=FALSE,
+  # allora rev A non puo' essere attiva).
+  #
+  # Sostituisce il flag persistito is_revision_attiva (droppato in 20260515-05).
+  # Il BE deve usare questa vista al posto di vendite.preventivi per le query
+  # che necessitano di is_attiva.
+  #
+  # Prerequisito: config.stati_doc_preventivi.is_abortito (20260515-02).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260515-03-create-vw-preventivi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vendite.vw_preventivi: p.* + is_attiva derivata tramite NOT EXISTS
+        su revisioni superiori non-abortite. Sostituisce il flag persistito
+        is_revision_attiva (compatibile con annullamento revisione senza drift).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: preventivi
+          - tableExists:
+              schemaName: config
+              tableName: stati_doc_preventivi
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'config'
+                   AND table_name   = 'stati_doc_preventivi'
+                   AND column_name  = 'is_abortito'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi AS
+              SELECT
+                  p.*,
+                  -- is_attiva: TRUE se non esiste una rev superiore non-abortita
+                  -- per lo stesso numero. Esattamente una rev e' attiva per numero.
+                  NOT EXISTS (
+                      SELECT 1
+                        FROM vendite.preventivi p2
+                        JOIN config.stati_doc_preventivi s2
+                          ON s2.id = p2.stato_doc_preventivo_id
+                       WHERE p2.numero = p.numero
+                         AND p2.rev    > p.rev
+                         AND s2.is_abortito IS FALSE
+                  ) AS is_attiva
+                FROM vendite.preventivi p;
+
+              COMMENT ON VIEW vendite.vw_preventivi IS
+                  'Wrapper di vendite.preventivi con is_attiva derivata: TRUE se non '
+                  'esiste revisione superiore non-abortita per lo stesso numero. '
+                  'Sostituisce is_revision_attiva (flag persistito, soggetto a drift). '
+                  'Il BE usa questa vista per list/detail preventivi. rev 2026-05-15.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_preventivi;

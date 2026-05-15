@@ -1,0 +1,54 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260515-02-alter-stati-doc-preventivi-add-is-abortito-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Aggiunge is_abortito BOOLEAN a config.stati_doc_preventivi.
+  #
+  # Semantica: TRUE = lo stato segnala che questa revisione e' stata abbandonata
+  # dall'operatore (es. ANNULLATO). Diverso da "terminale": RIFIUTATO/SCADUTO
+  # sono terminali ma chiudono l'intera negoziazione del numero, non solo
+  # la revisione corrente. Solo ANNULLATO e' abortito.
+  #
+  # Serve per il calcolo derivato di is_attiva in vendite.vw_preventivi:
+  #   "la rev attiva del numero e' quella con rev piu' alta tra le non-abortite".
+  # Permette di ripristinare automaticamente la rev N come attiva quando
+  # la rev N+1 viene annullata, senza flag persistiti.
+  #
+  # Seed: ANNULLATO = TRUE, tutti gli altri = FALSE (default).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260515-02-alter-stati-doc-preventivi-add-is-abortito
+      author: mctit
+      comment: >
+        Aggiunge is_abortito BOOLEAN NOT NULL DEFAULT FALSE a config.stati_doc_preventivi.
+        Setta is_abortito = TRUE per ANNULLATO. Prerequisito per vendite.vw_preventivi
+        e il refactor di fn_crea_revisione_preventivo (is_revision_attiva derivato).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_preventivi
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_preventivi
+                ADD COLUMN is_abortito BOOLEAN NOT NULL DEFAULT FALSE;
+
+              UPDATE config.stati_doc_preventivi
+                 SET is_abortito = TRUE
+               WHERE codice_interno = 'ANNULLATO';
+
+              COMMENT ON COLUMN config.stati_doc_preventivi.is_abortito IS
+                  'TRUE = la revisione con questo stato e'' stata abbandonata (es. ANNULLATO). '
+                  'Usato da vendite.vw_preventivi per derivare is_attiva: la rev attiva '
+                  'del numero e'' quella con rev massima tra le non-abortite. '
+                  'Diverso da terminale: RIFIUTATO/SCADUTO sono terminali ma non abortiti '
+                  '(chiudono la negoziazione, non la singola revisione).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_preventivi
+                DROP COLUMN IF EXISTS is_abortito;

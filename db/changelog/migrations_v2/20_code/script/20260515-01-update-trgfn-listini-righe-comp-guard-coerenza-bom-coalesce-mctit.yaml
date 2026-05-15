@@ -1,0 +1,219 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260515-01-update-trgfn-listini-righe-comp-guard-coerenza-bom-coalesce-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Fix COALESCE simmetrico in trgfn_listini_righe_comp_guard_coerenza_bom.
+  #
+  # Problema (rev 2026-05-14): Guard 7 confronta:
+  #   v_lv_validita  = vendite.listini_versioni.validita  (STORED GENERATED,
+  #                    con COALESCE NULL→'-infinity'/'infinity')
+  #   v_new_validita = daterange(NEW.valido_dal, NEW.valido_al, '[]')
+  #                    (calcolato nel trigger, senza COALESCE)
+  #
+  # Quando valido_al = NULL:
+  #   - versione (STORED):  [d, infinity]  → upper_inf=false, upper='infinity'::date
+  #   - riga (trigger):     [d,)           → upper_inf=true  (range illimitato)
+  # PostgreSQL @> confronta le rappresentazioni interne, non la semantica:
+  #   [d,infinity] @> [d,)  →  FALSE (range illimitato non contenuto in range finito
+  #   anche se il bound finito è 'infinity').
+  # Risultato: E_LISTINO_COMPONENTE_COERENZA_BOM spurio per ogni riga con valido_al=NULL.
+  #
+  # Fix: applicare COALESCE anche su v_new_validita, speculare alla STORED:
+  #   daterange(
+  #       COALESCE(NEW.valido_dal, '-infinity'::date),
+  #       COALESCE(NEW.valido_al,  'infinity'::date),
+  #       '[]'
+  #   )
+  # Per date non-NULL COALESCE è no-op; il fix tocca solo i casi NULL.
+  #
+  # Versione precedente: 20260514-14.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260515-01-update-trgfn-listini-righe-comp-guard-coerenza-bom-coalesce
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Fix COALESCE simmetrico in trgfn_listini_righe_comp_guard_coerenza_bom:
+        v_new_validita ora usa COALESCE(valido_al, 'infinity') per allinearsi alla
+        STORED expression di listini_versioni.validita ed evitare il mismatch
+        upper_inf=true vs upper='infinity'::date che causava guard 7 spurio.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: listini_righe_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'trgfn_listini_righe_comp_guard_coerenza_bom'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_listini_righe_comp_guard_coerenza_bom()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: BEFORE INS/UPD su listini_righe_componenti — guards 1-5 + 7 coerenza BoM.
+              --   Lettura in unica query: JOIN ac+articoli padre/figlio + LEFT JOIN listini_versioni.
+              --   LEFT JOIN per lv: preserva NOT FOUND di guard 1 (ac mancante), e gestisce
+              --   lv mancante via v_lv_validita IS NULL in guard 7.
+              --   Guard 6 rimosso: temporal FK fk_listrighe_comp_articoli_comp_temporal (20260514-12).
+              --   v_new_validita: daterange(COALESCE(valido_dal,'-infinity'), COALESCE(valido_al,'infinity'), '[]')
+              --   — match STORED expression su listini_versioni.validita per evitare mismatch
+              --   canonico upper_inf=true vs upper='infinity'::date (rev 2026-05-15).
+              DECLARE
+                  v_ac_prodotto_id   catalogo.articoli_componenti.prodotto_id%TYPE;
+                  v_ac_componente_id catalogo.articoli_componenti.componente_id%TYPE;
+                  v_ac_attivo        catalogo.articoli_componenti.attivo%TYPE;
+                  v_padre_is_comp    catalogo.articoli.is_composito%TYPE;
+                  v_padre_iva_id     catalogo.articoli.iva_id%TYPE;
+                  v_figlio_iva_id    catalogo.articoli.iva_id%TYPE;
+                  v_lv_validita      vendite.listini_versioni.validita%TYPE;
+                  v_new_validita     vendite.listini_righe_componenti.validita%TYPE;
+              BEGIN
+                  -- Calcola periodo riga con COALESCE simmetrico alla STORED di listini_versioni.validita.
+                  -- COALESCE necessario: daterange(d, NULL, '[]') produce upper_inf=true ([d,)) che
+                  -- PostgreSQL @> non considera contenuto in [d,infinity] (upper_inf=false), anche se
+                  -- semanticamente equivalenti (D-OPEN-1, fix 2026-05-15).
+                  v_new_validita := daterange(
+                      COALESCE(NEW.valido_dal, '-infinity'::date),
+                      COALESCE(NEW.valido_al,  'infinity'::date),
+                      '[]'
+                  );
+
+                  -- Lettura in unica query: BoM + articoli + versione listino
+                  SELECT ac.prodotto_id, ac.componente_id, ac.attivo,
+                         a_padre.is_composito, a_padre.iva_id,
+                         a_figlio.iva_id,
+                         lv.validita
+                    INTO v_ac_prodotto_id, v_ac_componente_id, v_ac_attivo,
+                         v_padre_is_comp, v_padre_iva_id,
+                         v_figlio_iva_id,
+                         v_lv_validita
+                    FROM catalogo.articoli_componenti ac
+                    JOIN catalogo.articoli a_padre  ON a_padre.id  = ac.prodotto_id
+                    JOIN catalogo.articoli a_figlio ON a_figlio.id = ac.componente_id
+                    LEFT JOIN vendite.listini_versioni lv ON lv.id = NEW.listino_versione_id
+                   WHERE ac.id = NEW.articolo_componente_id;
+
+                  -- Guard 1: articolo_componente_id deve esistere e essere attivo
+                  IF NOT FOUND OR NOT COALESCE(v_ac_attivo, TRUE) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_LISTINO_COMPONENTE_COERENZA_BOM',
+                          jsonb_build_object(
+                              'causa', 'articolo_componente_id non trovato o non attivo',
+                              'articolo_componente_id', NEW.articolo_componente_id
+                          ),
+                          NULL::uuid,
+                          format('articolo_componente_id=%s non trovato o non attivo',
+                                 NEW.articolo_componente_id)
+                      );
+                  END IF;
+
+                  -- Guard 2: articolo_padre_id deve coincidere con ac.prodotto_id
+                  IF NEW.articolo_padre_id IS DISTINCT FROM v_ac_prodotto_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_LISTINO_COMPONENTE_COERENZA_BOM',
+                          jsonb_build_object(
+                              'causa', 'articolo_padre_id non coincide con BoM.prodotto_id',
+                              'articolo_padre_id_ricevuto', NEW.articolo_padre_id,
+                              'prodotto_id_atteso',          v_ac_prodotto_id
+                          ),
+                          NULL::uuid,
+                          format('articolo_padre_id=%s atteso=%s',
+                                 NEW.articolo_padre_id, v_ac_prodotto_id)
+                      );
+                  END IF;
+
+                  -- Guard 3: articolo_figlio_id deve coincidere con ac.componente_id
+                  IF NEW.articolo_figlio_id IS DISTINCT FROM v_ac_componente_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_LISTINO_COMPONENTE_COERENZA_BOM',
+                          jsonb_build_object(
+                              'causa', 'articolo_figlio_id non coincide con BoM.componente_id',
+                              'articolo_figlio_id_ricevuto', NEW.articolo_figlio_id,
+                              'componente_id_atteso',         v_ac_componente_id
+                          ),
+                          NULL::uuid,
+                          format('articolo_figlio_id=%s atteso=%s',
+                                 NEW.articolo_figlio_id, v_ac_componente_id)
+                      );
+                  END IF;
+
+                  -- Guard 4: padre deve essere composito
+                  IF NOT COALESCE(v_padre_is_comp, FALSE) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_LISTINO_COMPONENTE_COERENZA_BOM',
+                          jsonb_build_object(
+                              'causa', 'articolo padre non e'' composito',
+                              'articolo_padre_id', NEW.articolo_padre_id
+                          ),
+                          NULL::uuid,
+                          format('articolo_padre_id=%s non e'' composito',
+                                 NEW.articolo_padre_id)
+                      );
+                  END IF;
+
+                  -- Guard 5: IVA figlio = IVA padre
+                  IF v_padre_iva_id IS DISTINCT FROM v_figlio_iva_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_LISTINO_COMPONENTE_COERENZA_BOM',
+                          jsonb_build_object(
+                              'causa', 'IVA padre != IVA figlio',
+                              'iva_padre', v_padre_iva_id,
+                              'iva_figlio', v_figlio_iva_id
+                          ),
+                          NULL::uuid,
+                          format('IVA padre=%s != figlio=%s',
+                                 v_padre_iva_id, v_figlio_iva_id)
+                      );
+                  END IF;
+
+                  -- Guard 6 RIMOSSO: temporal FK fk_listrighe_comp_articoli_comp_temporal.
+
+                  -- Guard 7: periodo riga ⊆ validita versione listino.
+                  -- v_lv_validita NULL se versione non esiste (LEFT JOIN) o validita NULL.
+                  IF v_lv_validita IS NULL OR NOT (v_lv_validita @> v_new_validita) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', TG_NAME, 'E_LISTINO_COMPONENTE_COERENZA_BOM',
+                          jsonb_build_object(
+                              'causa', 'validita riga listino comp non contenuta in validita versione listino',
+                              'validita_listino_comp', v_new_validita::text,
+                              'validita_versione',     v_lv_validita::text
+                          ),
+                          NULL::uuid,
+                          format('validita=%s non contenuta in versione=%s',
+                                 v_new_validita, v_lv_validita)
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_listini_righe_comp_guard_coerenza_bom() IS
+                  'Trigger BEFORE INS/UPD su listini_righe_componenti: guards 1-5 + 7 coerenza BoM. '
+                  'Unica query con LEFT JOIN listini_versioni (no round-trip extra). '
+                  '(1) ac esiste+attivo, (2) padre_id coerente, (3) figlio_id coerente, '
+                  '(4) padre composito, (5) IVA padre=figlio, '
+                  '(6) RIMOSSO: temporal FK fk_listrighe_comp_articoli_comp_temporal, '
+                  '(7) daterange(COALESCE(valido_dal,''-infinity''),COALESCE(valido_al,''infinity'')) ⊆ versione listino. '
+                  'Fix COALESCE simmetrico vs STORED listini_versioni.validita: evita mismatch '
+                  'upper_inf=true [d,) vs upper=infinity [d,infinity] in @> (rev 2026-05-15). '
+                  'Raise E_LISTINO_COMPONENTE_COERENZA_BOM (447). rev 2026-05-15.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS
+                  script.trgfn_listini_righe_comp_guard_coerenza_bom();
