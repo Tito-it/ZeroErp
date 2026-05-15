@@ -17,8 +17,9 @@ AS $function$
 --   LEFT JOIN per lv: preserva NOT FOUND di guard 1 (ac mancante), e gestisce
 --   lv mancante via v_lv_validita IS NULL in guard 7.
 --   Guard 6 rimosso: temporal FK fk_listrighe_comp_articoli_comp_temporal (20260514-12).
---   v_new_validita: daterange(NEW.valido_dal, NEW.valido_al, '[]') perche'
---   validita e' STORED generated, non disponibile nei BEFORE trigger (D-OPEN-1).
+--   v_new_validita: daterange(COALESCE(valido_dal,'-infinity'), COALESCE(valido_al,'infinity'), '[]')
+--   — match STORED expression su listini_versioni.validita per evitare mismatch
+--   canonico upper_inf=true vs upper='infinity'::date (rev 2026-05-15).
 DECLARE
     v_ac_prodotto_id   catalogo.articoli_componenti.prodotto_id%TYPE;
     v_ac_componente_id catalogo.articoli_componenti.componente_id%TYPE;
@@ -29,9 +30,15 @@ DECLARE
     v_lv_validita      vendite.listini_versioni.validita%TYPE;
     v_new_validita     vendite.listini_righe_componenti.validita%TYPE;
 BEGIN
-    -- Calcola periodo riga: non usare NEW.validita (STORED generated,
-    -- non disponibile in BEFORE trigger su PG 18)
-    v_new_validita := daterange(NEW.valido_dal, NEW.valido_al, '[]');
+    -- Calcola periodo riga con COALESCE simmetrico alla STORED di listini_versioni.validita.
+    -- COALESCE necessario: daterange(d, NULL, '[]') produce upper_inf=true ([d,)) che
+    -- PostgreSQL @> non considera contenuto in [d,infinity] (upper_inf=false), anche se
+    -- semanticamente equivalenti (D-OPEN-1, fix 2026-05-15).
+    v_new_validita := daterange(
+        COALESCE(NEW.valido_dal, '-infinity'::date),
+        COALESCE(NEW.valido_al,  'infinity'::date),
+        '[]'
+    );
 
     -- Lettura in unica query: BoM + articoli + versione listino
     SELECT ac.prodotto_id, ac.componente_id, ac.attivo,
@@ -144,7 +151,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_listini_righe_comp_guard_coerenza_bom()
-IS 'Trigger BEFORE INS/UPD su listini_righe_componenti: guards 1-5 + 7 coerenza BoM. Unica query con LEFT JOIN listini_versioni (no round-trip extra). (1) ac esiste+attivo, (2) padre_id coerente, (3) figlio_id coerente, (4) padre composito, (5) IVA padre=figlio, (6) RIMOSSO: temporal FK fk_listrighe_comp_articoli_comp_temporal, (7) daterange(valido_dal,valido_al) ⊆ versione listino. Raise E_LISTINO_COMPONENTE_COERENZA_BOM (447). rev 2026-05-14.';
+IS 'Trigger BEFORE INS/UPD su listini_righe_componenti: guards 1-5 + 7 coerenza BoM. Unica query con LEFT JOIN listini_versioni (no round-trip extra). (1) ac esiste+attivo, (2) padre_id coerente, (3) figlio_id coerente, (4) padre composito, (5) IVA padre=figlio, (6) RIMOSSO: temporal FK fk_listrighe_comp_articoli_comp_temporal, (7) daterange(COALESCE(valido_dal,''-infinity''),COALESCE(valido_al,''infinity'')) ⊆ versione listino. Fix COALESCE simmetrico vs STORED listini_versioni.validita: evita mismatch upper_inf=true [d,) vs upper=infinity [d,infinity] in @> (rev 2026-05-15). Raise E_LISTINO_COMPONENTE_COERENZA_BOM (447). rev 2026-05-15.';
 ```
 
 ---

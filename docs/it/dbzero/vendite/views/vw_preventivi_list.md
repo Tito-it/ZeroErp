@@ -7,7 +7,7 @@ SELECT p.id,
     p.uid,
     p.numero,
     p.rev,
-    p.is_revision_attiva,
+    p.is_attiva,
     p.data,
     p.stato_doc_preventivo_id,
     sdp.codice AS stato_codice,
@@ -38,7 +38,7 @@ SELECT p.id,
     p.fatturazione_immediata,
     p.storicizza,
     p.data_insert
-   FROM (((((((vendite.preventivi p
+   FROM (((((((vendite.vw_preventivi p
      JOIN config.stati_doc_preventivi sdp ON ((sdp.id = p.stato_doc_preventivo_id)))
      LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = p.istanza_utility_id)))
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
