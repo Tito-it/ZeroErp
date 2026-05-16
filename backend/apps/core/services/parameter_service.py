@@ -25,15 +25,20 @@ class ParameterService:
 
     # Scopo: Risolve un singolo parametro con override per l'utente.
     #        Lancia errore se il parametro non esiste o non ha valore.
+    #        `categoria_cliente_id` opzionale: se fornito attiva il livello
+    #        della cascata "categoria_cliente" (tra user e group), usato
+    #        per soglie commerciali che dipendono dalla categoria del cliente.
     def get_parameter(
         self,
         code: str,
         django_user_id: int | None = None,
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
+        categoria_cliente_id: int | None = None,
     ) -> str:
         value = self._repo.get_parameter(
             code, django_user_id, group_ids, emittente_fiscale_id,
+            categoria_cliente_id=categoria_cliente_id,
         )
         ErrorManager.require(
             value is not None,
@@ -51,9 +56,11 @@ class ParameterService:
         django_user_id: int | None = None,
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
+        categoria_cliente_id: int | None = None,
     ) -> int:
         value = self.get_parameter(
             code, django_user_id, group_ids, emittente_fiscale_id,
+            categoria_cliente_id=categoria_cliente_id,
         )
         try:
             return int(value)
@@ -77,9 +84,11 @@ class ParameterService:
         django_user_id: int | None = None,
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
+        categoria_cliente_id: int | None = None,
     ) -> Decimal:
         value = self.get_parameter(
             code, django_user_id, group_ids, emittente_fiscale_id,
+            categoria_cliente_id=categoria_cliente_id,
         )
         try:
             return Decimal(str(value))
@@ -100,9 +109,11 @@ class ParameterService:
         django_user_id: int | None = None,
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
+        categoria_cliente_id: int | None = None,
     ) -> dict[str, str]:
         return self._repo.get_parameters(
             codes, django_user_id, group_ids, emittente_fiscale_id,
+            categoria_cliente_id=categoria_cliente_id,
         )
 
     # Scopo: Restituisce la lista completa dei parametri con i valori a ogni

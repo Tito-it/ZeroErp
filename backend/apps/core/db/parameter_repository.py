@@ -12,9 +12,12 @@ from __future__ import annotations
 
 from django.db import connection
 
-# Nuova firma fn_get_parameter_full: p_emittente_fiscale_id (bigint) al posto di p_tenant_id.
-# Catena priorita': user -> group -> emittente -> session -> function -> default.
-_SQL_RESOLVE = "SELECT script.fn_get_parameter_full(%s, %s, %s, %s, %s, %s)"
+# Firma fn_get_parameter_full estesa (2026-05-15): aggiunto in coda
+# p_categoria_cliente_id (smallint) per gating soglie commerciali per
+# categoria cliente del BA destinatario.
+# Catena priorita':
+#   user -> categoria_cliente -> group -> emittente -> session -> function -> default
+_SQL_RESOLVE = "SELECT script.fn_get_parameter_full(%s, %s, %s, %s, %s, %s, %s)"
 
 # Limite massimo codici per singola richiesta (difesa contro abuse).
 MAX_CODES = 20
@@ -24,7 +27,8 @@ class ParameterRepository:
     """Accesso DB ai parametri di sistema con risoluzione override."""
 
     # Scopo: Risolve il valore di un singolo parametro applicando la catena di
-    #        override (user -> group -> emittente -> session -> function -> default).
+    #        override:
+    #          user -> categoria_cliente -> group -> emittente -> session -> function -> default
     def get_parameter(
         self,
         code: str,
@@ -33,11 +37,13 @@ class ParameterRepository:
         emittente_fiscale_id: int | None = None,
         session_key: str | None = None,
         function_name: str | None = None,
+        categoria_cliente_id: int | None = None,
     ) -> str | None:
         with connection.cursor() as cursor:
             cursor.execute(_SQL_RESOLVE, [
                 code, emittente_fiscale_id, django_user_id,
                 group_ids, session_key, function_name,
+                categoria_cliente_id,
             ])
             row = cursor.fetchone()
         if not row:
@@ -53,6 +59,7 @@ class ParameterRepository:
         django_user_id: int | None = None,
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
+        categoria_cliente_id: int | None = None,
     ) -> dict[str, str]:
         if not codes:
             return {}
@@ -63,6 +70,7 @@ class ParameterRepository:
                 cursor.execute(_SQL_RESOLVE, [
                     code, emittente_fiscale_id, django_user_id,
                     group_ids, None, None,
+                    categoria_cliente_id,
                 ])
                 row = cursor.fetchone()
                 if row and row[0] is not None:

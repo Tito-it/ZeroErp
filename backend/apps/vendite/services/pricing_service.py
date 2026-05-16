@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Service wrapper per il resolver prezzi v5 (pricing v5).
-#        Espone due API:
-#          - resolve_prezzo(): wrapper 1:1 su fn_resolve_prezzo_listino_v2
-#          - resolve_prezzo_composito(): wrapper su fn_resolve_prezzo_composito
+# Scopo: Service wrapper per il resolver prezzi v5 (pricing v5). Espone
+#        `resolve_prezzo()`, wrapper 1:1 su `fn_resolve_prezzo_listino_v2`
+#        (resolver bundle-aware 3 stadi).
 #
 #        Il resolver vive interamente nel DB (filosofia DB-first). Il service
 #        fa SOLO: validazione input tipizzata, derivazione
@@ -14,12 +13,19 @@
 #        traduzione dei P0001 applicativi in ServiceError con il codice
 #        originale del DB (MESSAGE-based parsing controllato).
 #
+#        Note: il legacy `resolve_prezzo_composito` (BoM ibrido A/B1/B2
+#        pre-modello-unificato) e' stato rimosso col cleanup 2026-05-14
+#        post-Fase H. La distinzione CASO A vs CASO B non ha piu' senso col
+#        modello unificato (padre = SUM(figli × coeff_qta)). Path standard
+#        preventivi/contratti: le fn DB
+#        `fn_<sorgente>_riga_componenti_init/preview` chiamano internamente
+#        `fn_resolve_prezzo_listino_v2(... p_articolo_padre_contesto)`.
+#
 #        Riferimento: sviluppo-listini-v5 §7 (resolver 3 stadi) + §8 (BoM).
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
-import warnings
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -172,88 +178,6 @@ class PricingService:
                     "utility_id": utility_id,
                     "data_riferimento": data_riferimento.isoformat(),
                     "articolo_padre_contesto": padre_str,
-                },
-            )
-            raise AssertionError("unreachable")  # pragma: no cover
-
-    # =================================================================
-    # F2-BE-10 — resolver composito (BoM)
-    # =================================================================
-
-    # Scopo: Risolve il prezzo per un articolo composito. Se l'articolo ha
-    #        componenti con `esposto_in_fattura=TRUE` (CASO A) ritorna N
-    #        righe (una per componente obbligatorio attivo). Altrimenti
-    #        ritorna 1 riga: prezzo del padre (CASO B1) o Sigma componenti
-    #        (CASO B2 fallback). Il DB decide il caso.
-    #
-    # DEPRECATED 2026-05-13 (modello unificato componenti BoM): la fn DB
-    # `fn_resolve_prezzo_composito` ha COMMENT DEPRECATED dal migration
-    # 20260513-24. La distinzione CASO A vs CASO B non ha piu' senso col
-    # modello unificato (padre = sempre SUM(figli × coeff_qta)). Questo
-    # wrapper resta come fallback per `BoMComponentExpander` quando il
-    # caller non ha snapshot loader (ordini/contratti/ddt fino a Fase G).
-    # Per il path standard preventivi/ordini/contratti/ddt usare le fn
-    # DB `fn_<sorgente>_riga_componenti_init/preview` (modello unificato).
-    def resolve_prezzo_composito(
-        self,
-        *,
-        prodotto_id: UUID | str,
-        uom_id: int,
-        data_riferimento: date,
-        ba_id: int,
-        utility_id: int,
-        emittente_soggetto_ruolo_id: int,
-        classe_utenza_id: int | None = None,
-    ) -> list[dict[str, Any]]:
-        # Deprecation runtime: ogni chiamata emette DeprecationWarning una
-        # tantum (Python filterwarnings 'default' suppress duplicati). Aiuta
-        # a vedere nei log di test/CI quale caller residuo usa ancora il
-        # path legacy `fn_resolve_prezzo_composito`. Rimuovere in Fase G
-        # insieme alla fn DB.
-        warnings.warn(
-            "resolve_prezzo_composito e' deprecato (modello unificato BoM "
-            "2026-05-13). Usare le fn DB `fn_<sorgente>_riga_componenti_init/preview` "
-            "che chiamano `fn_resolve_prezzo_listino_v2` bundle-aware. "
-            "Rimozione prevista in Fase G.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        prodotto_str = self._v.require_uuid({"prodotto_id": prodotto_id}, "prodotto_id")
-        self._v.guard_positive_int(uom_id, field="uom_id")
-        self._v.guard_positive_int(ba_id, field="ba_id")
-        self._v.guard_positive_int(utility_id, field="utility_id")
-        self._v.guard_positive_int(
-            emittente_soggetto_ruolo_id, field="emittente_soggetto_ruolo_id"
-        )
-        ErrorManager.require(
-            isinstance(data_riferimento, date),
-            code=E_VENDITE_VALIDATION,
-            message="data_riferimento deve essere un oggetto date.",
-            context={"data_riferimento": str(data_riferimento)},
-            log_to_db=True,
-        )
-        if classe_utenza_id is not None:
-            self._v.guard_positive_int(classe_utenza_id, field="classe_utenza_id")
-
-        try:
-            return self._repo.resolve_prezzo_composito(
-                prodotto_id=prodotto_str,
-                uom_id=uom_id,
-                data_riferimento=data_riferimento,
-                ba_id=ba_id,
-                utility_id=utility_id,
-                emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
-                classe_utenza_id=classe_utenza_id,
-            )
-        except DatabaseError as exc:
-            self._raise_pricing_error(
-                exc,
-                context={
-                    "prodotto_id": prodotto_str,
-                    "uom_id": uom_id,
-                    "ba_id": ba_id,
-                    "utility_id": utility_id,
-                    "data_riferimento": data_riferimento.isoformat(),
                 },
             )
             raise AssertionError("unreachable")  # pragma: no cover

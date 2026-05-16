@@ -4,6 +4,7 @@
 # Doc: Python
 # Scopo: Endpoint sessioni attive utente:
 #        GET  /api/v1/core/me/sessioni/           — lista altre sessioni attive
+#        POST /api/v1/core/me/sessioni/revoca-tutte/ — revoca tutte le altre sessioni
 #        POST /api/v1/core/me/sessioni/<jti>/revoca/ — revoca sessione specifica
 # ------------------------------------------------------------
 
@@ -106,3 +107,47 @@ class SessioneRevocaView(DomainAPIView):
             jti=sid,
         )
         return Response(status=204)
+
+
+class SessioniRevocaTutteView(DomainAPIView):
+    """Revoca tutte le sessioni remote dell'utente corrente."""
+
+    skip_area_check = True
+
+    @extend_schema(
+        summary="Revoca tutte le altre sessioni",
+        responses={200: inline_serializer(
+            name="SessioniRevocaTutteResponse",
+            fields={"revoked": serializers.IntegerField()},
+        )},
+    )
+    # Scopo: Revoca tutte le sessioni dell'utente tranne quella corrente.
+    #        Blacklista tutti gli OutstandingToken con sid remoto e registra
+    #        un evento REVOCA per ogni sid distinto revocato.
+    def post(self, request: Request) -> Response:
+        current_sid = _get_current_sid(request)
+        revoked_sids: set[str] = set()
+
+        for ot in OutstandingToken.objects.filter(user_id=request.user.id):
+            try:
+                payload = jwt.decode(
+                    ot.token, options={"verify_exp": False, "verify_signature": False}
+                )
+            except Exception:
+                continue
+
+            sid = str(payload.get("sid", "") or "")
+            if not sid or (current_sid and sid == current_sid):
+                continue
+
+            BlacklistedToken.objects.get_or_create(token=ot)
+            revoked_sids.add(sid)
+
+        for sid in revoked_sids:
+            session_audit_service.record_revoca(
+                user_id=request.user.id,
+                request=request._request,
+                jti=sid,
+            )
+
+        return success_response({"revoked": len(revoked_sids)})

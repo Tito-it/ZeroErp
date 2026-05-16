@@ -86,37 +86,79 @@ Per attivita **non‑utilities** o servizi eterogenei, i dati precontrattuali po
 
 ---
 
-### Pricing v5 — modalita' A / B / C (14-04-2026)
+### Pricing — modello unificato (dal 2026-05-15)
 
-Il contratto e' il **ponte commerciale** tra billing account e listino (STADIO 1 del resolver prezzi v5). Tre modalita' di pricing coesistono sulla stessa tabella:
+> **Refactor da modalità A/B/C a modello unificato** (migration 20260515-10,
+> `brief-db-refactor-contratti-completo.md` Fase 2 Step 2.1).
+> La distinzione A/B/C è eliminata: il contratto è **uno solo** con forma
+> derivata automaticamente dai campi compilati.
 
-| Modalita' | `listino_id` | `tipo_variazione_globale` | Righe `contratti_righe` | Esempio |
-| --- | --- | --- | --- | --- |
-| **A** — listino + variazione globale | NOT NULL | NOT NULL | vuoto o solo override mirati | "Listino gas 2026 −10%" |
-| **B** — listino con override | NOT NULL | NULL o NOT NULL | righe con `prezzo_unitario` per articoli specifici | "Listino gas 2026, art X a €50 fisso" |
-| **C** — interamente negoziato | NULL | NULL | tutte le righe attive con `prezzo_unitario` NOT NULL | Grande cliente con condizioni 100% su misura |
+Il contratto e' il **ponte commerciale** tra billing account e listino (STADIO 1
+del resolver prezzi). Due **forme derivate** (non scelta dell'operatore):
 
-Campi introdotti:
+| Forma derivata | Condizione | Note |
+| --- | --- | --- |
+| **Con listino** | `listino_id NOT NULL` | Corrisponde alle vecchie modalità A + B fuse |
+| **Senza listino** | `listino_id IS NULL` | Corrisponde alla vecchia modalità C; righe AGGIUNTA obbligatorie all'attivazione |
+
+Campi pricing sulla testata:
 
 | Colonna | Tipo | Nullable | Note |
 | --- | --- | --- | --- |
-| `listino_id` | bigint | YES | FK a `vendite.listini(id)`. NULL = modalita' C |
-| `tipo_variazione_globale` | varchar(16) | YES | `PERCENTUALE` \| `VALORE_FISSO` |
-| `valore_variazione_globale` | numeric(10,4) | YES | Coerente con `tipo_variazione_globale` |
-| `categoria_cliente_id_snapshot` | smallint | YES | FK a `anagrafiche.categorie_clienti`. Snapshot della categoria commerciale del BA. Auto-populate da BA su INSERT. Modificabile in stato DRAFT; congelato (immutabile) fuori da DRAFT. |
+| `listino_id` | bigint | YES | FK a `vendite.listini(id)`. NULL = contratto senza listino di riferimento |
+| `tipo_variazione_globale` | varchar(16) | YES | `PERCENTUALE` o `VALORE_FISSO`. Opzionale anche con listino. |
+| `valore_variazione_globale` | numeric | YES | Valore della variazione globale applicata al listino |
+| `listino_versione_id` | bigint | YES | FK a `vendite.listini_versioni(id)`. NULL in DRAFT; fissato all'attivazione (snapshot versione). Immutabile post-attivazione. |
+| `categoria_cliente_id_snapshot` | smallint | YES | FK a `anagrafiche.categorie_clienti`. Snapshot categoria BA. Auto-populate su INSERT. |
 
-Vincoli CHECK:
+**Snapshot versione listino** (`listino_versione_id`): in DRAFT il contratto segue
+la versione corrente del listino; all'attivazione (DRAFT→ATTIVO) il trigger
+`trg_contratti_a10_freeze_listino_versione_upd`
+(→ [`trgfn_contratti_freeze_listino_versione`](/dbzero/vendite/funzioni/trgfn_contratti_freeze_listino_versione))
+fissa la versione attiva al momento dell'attivazione — da quel punto il contratto legge sempre quella
+versione, anche se ne esce una successiva.
+
+**Righe come eccezioni del listino**: `vendite.contratti_righe` contiene solo le
+**eccezioni** rispetto al listino (non le righe del listino copiate). Ogni riga ha
+un campo `tipo_eccezione` (introdotto in Step 2.2):
+
+| `tipo_eccezione` | Significato | `prezzo_unitario` |
+| --- | --- | --- |
+| `OVERRIDE` | Prezzo personalizzato per articolo del listino | NOT NULL |
+| `ESCLUSIONE` | Articolo del listino non disponibile per questo cliente | NULL |
+| `AGGIUNTA` | Articolo non presente nel listino, aggiunto al contratto | NOT NULL |
+
+Vincoli CHECK attivi:
 
 * `chk_contratti_tipo_variazione_globale`: solo `PERCENTUALE`/`VALORE_FISSO` o NULL.
-* `chk_contratti_variazione_globale_coerente`: tipo e valore sono entrambi NULL o entrambi NOT NULL.
-* `chk_contratti_modalita_pricing`: se `listino_id IS NULL`, variazione globale = NULL (nessun punto di applicazione).
 
-Vincoli trigger (fail-fast all'attivazione):
+Vincoli CHECK rimossi (modello unificato):
 
-* `trg_contratti_a10_guard_modalita_c_activation_ins_upd` -> [`vendite.trgfn_contratti_guard_modalita_c_activation`](/dbzero/vendite/funzioni/trgfn_contratti_guard_modalita_c_activation): scatta sia nella transizione verso stato `codice_interno = 'ATTIVO'` con `listino_id NULL`, sia quando un contratto gia' ATTIVO passa a modalita' C (UPDATE `listino_id` da NOT NULL a NULL). In entrambi i casi blocca se non esiste almeno una riga attiva o se qualche riga attiva ha `prezzo_unitario NULL`.
-* `trg_contratti_righe_a10_guard_modalita_c_ins_upd` su `contratti_righe` -> [`vendite.trgfn_contratti_righe_guard_modalita_c`](/dbzero/vendite/funzioni/trgfn_contratti_righe_guard_modalita_c): su contratto gia' ATTIVO in modalita' C, la riga attiva deve avere `prezzo_unitario NOT NULL`.
+* ~~`chk_contratti_modalita_pricing`~~ — droppato in Step 2.1: qualsiasi combinazione listino/variazione è ora ammessa
+* ~~`chk_contratti_variazione_globale_coerente`~~ — droppato in Step 2.1: ora rilassato
 
-In stato `DRAFT` le righe incomplete sono ammesse: il contratto modalita' C non e' attivabile finche' le righe non sono complete.
+Trigger modalità C rimossi:
+
+* ~~`trg_contratti_a10_guard_modalita_c_activation_ins_upd`~~ — droppato in Step 2.1; sostituito dal trigger di freeze versione (Step 2.3)
+* ~~`trg_contratti_righe_a10_guard_modalita_c_ins_upd`~~ — droppato in Step 2.1; ora le righe hanno logica propria per `tipo_eccezione`
+
+**Comportamento attivazione** (dal Step 2.3) — trigger
+`trg_contratti_a10_freeze_listino_versione_upd`:
+
+* Transizione DRAFT→ATTIVO con `listino_id IS NULL`: richiede almeno una riga AGGIUNTA con `prezzo_unitario NOT NULL`. Errore: `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` (451).
+* Transizione DRAFT→ATTIVO con `listino_id IS NOT NULL`: fissa `listino_versione_id` sulla versione attiva a `CURRENT_DATE`. Se non trovata: attivazione consentita, `listino_versione_id` resta NULL (§4.4).
+
+**Lock post-attivazione** (dal Step 2.3):
+
+* **Testata** — trigger `trg_contratti_a10_lock_post_attivazione_upd`
+  (→ [`trgfn_contratti_lock_post_attivazione`](/dbzero/vendite/funzioni/trgfn_contratti_lock_post_attivazione)):
+  blocca UPDATE di `listino_id`, `listino_versione_id`, `tipo_variazione_globale`,
+  `valore_variazione_globale` su contratti ATTIVI.
+  Errore: `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (452).
+* **Righe** — trigger `trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt`
+  (→ [`trgfn_contratti_righe_lock_post_attivazione`](/dbzero/vendite/funzioni/trgfn_contratti_righe_lock_post_attivazione)):
+  blocca qualsiasi INSERT/UPDATE/DELETE su `contratti_righe` quando il contratto padre è ATTIVO.
+  Errore: `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (452).
 
 ---
 

@@ -26,6 +26,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
@@ -45,6 +46,15 @@ from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
 from apps.vendite.db.contratti_repository import ContrattiRepository
+from apps.vendite.services._componenti_service_helpers import (
+    normalize_componenti_overrides,
+    resolve_emittente_sr_id_for_testata,
+)
+from apps.vendite.services._pricing_gate_helpers import (
+    check_limite_variazione_globale,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # Codici errore (registrati in error_policies.py).
@@ -146,9 +156,14 @@ _FORBIDDEN_TESTATA_UPDATE: frozenset[str] = frozenset({
 })
 
 
-# Righe contratto: chiavi ammesse create/update.
+# Righe contratto: chiavi ammesse create/update. tipo_eccezione e' la
+# classificazione introdotta dal refactor 2026-05-15: distingue OVERRIDE,
+# ESCLUSIONE, AGGIUNTA. Obbligatoria in create (NOT NULL nello schema),
+# immutabile in update (per cambiare tipo serve DELETE + INSERT — meno
+# zone grigie di un cambio di semantica in-place).
 _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id",
+    "tipo_eccezione",
     "tipo_erogazione",
     "fonte_quantita_attesa",
     "periodicita",
@@ -162,6 +177,11 @@ _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "ordine",
     "attivo",
     "meta",
+    # Modello unificato BoM 2026-05-13: override prezzi componenti per
+    # auto-init post-create_riga su articoli compositi. Forma:
+    # {componente_id_uuid: prezzo_numeric}. Validato/normalizzato da
+    # `_normalize_componenti_overrides` prima dell'init.
+    "componenti_overrides",
 })
 
 _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
@@ -180,10 +200,16 @@ _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "meta",
 })
 
-# In create: contratto_id arriva dall'URL, non da payload. articolo_id e'
-# obbligatorio e accettato. In update: articolo_id diventa immutabile.
+# In create: contratto_id arriva dall'URL, non da payload. articolo_id e
+# tipo_eccezione sono obbligatori e accettati. In update: articolo_id e
+# tipo_eccezione diventano immutabili (cambio tipo = DELETE + INSERT).
 _FORBIDDEN_RIGA_CREATE: frozenset[str] = frozenset({"contratto_id"})
-_FORBIDDEN_RIGA_UPDATE: frozenset[str] = frozenset({"articolo_id", "contratto_id"})
+_FORBIDDEN_RIGA_UPDATE: frozenset[str] = frozenset({
+    "articolo_id", "contratto_id", "tipo_eccezione",
+})
+
+# Tipi eccezione ammessi su contratti_righe (refactor 2026-05-15).
+_TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA"})
 
 
 # Utility 1:1: chiavi ammesse in create/update. istanza_utility_id e
@@ -231,7 +257,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         E_VENDITE_DUPLICATO,
         "Numero contratto gia' esistente.",
     ),
-    "ex_contratti_no_overlap": (
+    "uq_contratti_no_overlap": (
         E_VENDITE_CONTRATTO_OVERLAP,
         "Esiste gia' un contratto sovrapposto per questa combinazione "
         "cliente/istanza/utility/ambito nel periodo indicato.",
@@ -276,17 +302,24 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 # stretto (tutti i marker della tupla devono comparire nel MESSAGE).
 # Coerente con pricing_service._KNOWN_DB_ERROR_MARKERS.
 _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # Refactor modalita 2026-05-15: i vecchi marker E_CONTRATTO_MODALITA_C_*
+    # sono stati droppati dal team DB con i trigger correlati. I nuovi
+    # marker coprono il modello unificato a 3 eccezioni + lock attivazione.
     (
-        "E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
-        ("modalita' C senza righe attive",),
+        "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE",
+        ("contratto senza listino", "almeno un'AGGIUNTA"),
     ),
     (
-        "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
-        ("modalita' C", "prive di prezzo_unitario"),
+        "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO",
+        ("AGGIUNTA", "gia' presente nel listino"),
     ),
     (
-        "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO",
-        ("modalita' C", "prezzo_unitario obbligatorio"),
+        "E_ARTICOLO_ESCLUSO_DA_CONTRATTO",
+        ("articolo escluso dal contratto",),
+    ),
+    (
+        "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE",
+        ("contratto ATTIVO", "campi bloccati"),
     ),
     (
         "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI",
@@ -418,7 +451,15 @@ class ContrattiService:
         )
         assert testata is not None
         testata["utility"] = self._repo.get_utility(contratto_id)
-        testata["righe"] = self._repo.list_righe(contratto_id)
+        righe = self._repo.list_righe(contratto_id)
+        testata["righe"] = righe
+        # Il badge FE "Gestisci righe" deve riflettere la lista effettiva
+        # mostrata dal sub-drawer: in A/B e' preview listino+override, in C
+        # sono le righe negoziate persistite in contratti_righe.
+        if testata.get("listino_id"):
+            testata["righe_count"] = len(self._repo.list_righe_preview(contratto_id))
+        else:
+            testata["righe_count"] = len(righe)
         capabilities = self._repo.get_capabilities(contratto_id)
         testata.update(capabilities)
         return testata
@@ -479,10 +520,16 @@ class ContrattiService:
     # =================================================================
 
     # Scopo: Aggiorna una testata contratto sui soli campi mutabili.
-    #        Validazione modalita' A/B/C pre-DB. Il cambio stato passa
-    #        da cambia_stato().
+    #        Validazione coerenza coppia variazione globale pre-DB.
+    #        `auth_user_id`: usato dal gate L2 sulla variazione globale
+    #        (refactor 2026-05-15 §3-bis-E) per risolvere la soglia con la
+    #        cascata user→categoria→group→emittente. None = gate L2 skip.
     def update_contratto(
-        self, contratto_id: int, payload: dict[str, Any]
+        self,
+        contratto_id: int,
+        payload: dict[str, Any],
+        *,
+        auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         self._v.reject_keys(
@@ -544,6 +591,55 @@ class ContrattiService:
             message="Nessun campo aggiornabile presente nel payload.",
             context={"allowed_keys": sorted(_UPDATE_KEYS_TESTATA)},
         )
+
+        # Refactor modalita 2026-05-15 §3-bis-E: se il PATCH tocca la
+        # variazione globale e il tipo e' PERCENTUALE, applichiamo il gate L2
+        # sulla soglia configurata per (utente, categoria cliente, ...).
+        # Per VALORE_FISSO il gate non e' applicabile (non e' una percentuale)
+        # e viene saltato — decisione operativa §3-bis-E "decisione brief DB".
+        self._check_limite_variazione_globale(
+            existing=existing,
+            data=data,
+            auth_user_id=auth_user_id,
+        )
+
+        # Refactor modalita 2026-05-15 §3-bis-F: se il PATCH rimuove il
+        # listino_id (NOT NULL -> NULL) e esistono eccezioni OVERRIDE o
+        # ESCLUSIONE attive, blocca con 422 — il significato di quelle
+        # eccezioni dipende dal listino e cancellarle silenziosamente sarebbe
+        # un cambio di semantica nascosto. AGGIUNTA non blocca (vale anche
+        # senza listino). L'operatore deve prima rimuovere/sostituire le
+        # eccezioni esplicitamente.
+        sta_rimuovendo_listino = (
+            "listino_id" in data
+            and data["listino_id"] is None
+            and existing.get("listino_id") is not None
+        )
+        if sta_rimuovendo_listino:
+            counts = self._repo.count_eccezioni_bloccanti(contratto_id)
+            n_override = counts.get("OVERRIDE", 0)
+            n_esclusione = counts.get("ESCLUSIONE", 0)
+            if n_override > 0 or n_esclusione > 0:
+                totale = n_override + n_esclusione
+                dettagli = []
+                if n_override:
+                    dettagli.append(f"{n_override} OVERRIDE")
+                if n_esclusione:
+                    dettagli.append(f"{n_esclusione} ESCLUSIONE")
+                ErrorManager.raise_error(
+                    code="E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI",
+                    message="Impossibile rimuovere il listino di riferimento dal contratto.",
+                    detail=(
+                        f"{totale} eccezioni ({', '.join(dettagli)}) sono ancora "
+                        f"associate. Rimuovi prima le eccezioni o sostituiscile "
+                        f"con AGGIUNTA per articoli fuori-listino."
+                    ),
+                    context={
+                        "contratto_id": contratto_id,
+                        "override_count": n_override,
+                        "esclusione_count": n_esclusione,
+                    },
+                )
 
         with self._db_errors({"contratto_id": contratto_id}):
             updated = self._repo.update_contratto(contratto_id, data)
@@ -725,6 +821,22 @@ class ContrattiService:
         )
 
     # =================================================================
+    # Contesto pricing (banner FE)
+    # =================================================================
+
+    # Scopo: Restituisce il contesto pricing applicato al contratto (forma,
+    #        listino + versione fissata/corrente, variazione globale,
+    #        categoria cliente). Mutuato dal pattern preventivi
+    #        `get_contesto_pricing` per la simmetria UI: l'header del drawer
+    #        contratto mostra un badge con questi dati per audit visivo del
+    #        path resolver applicato. Lettura puramente informativa.
+    def get_contesto_pricing(
+        self, contratto_id: int,
+    ) -> dict[str, Any] | None:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        return self._repo.resolve_contesto_pricing_contratto(contratto_id)
+
+    # =================================================================
     # Righe contratto - preview pricing applicato
     # =================================================================
 
@@ -753,26 +865,26 @@ class ContrattiService:
         )
         assert contratto is not None
 
-        # Modalita' derivata (non persistita): listino_id NULL -> C, altrimenti
-        # B se almeno un override in contratti_righe, A se nessun override.
-        # La query preview ritorna gia' le origini riga, sfruttiamole per
-        # evitare un round-trip extra di conteggio.
+        # Forma derivata (non persistita) post refactor modalita 2026-05-15:
+        #   "con_listino"  : contratto ha un listino_id (variazione globale +
+        #                    eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA sono campi
+        #                    opzionali liberi)
+        #   "senza_listino": contratto interamente negoziato (le righe in
+        #                    `contratti_righe` sono tutte AGGIUNTA)
+        # Le vecchie modalita' A/B/C sono state rimosse — non esistono piu'
+        # nel modello dati ne' nell'UX.
         listino_id = contratto.get("listino_id")
         preview_rows: list[dict[str, Any]] = (
             self._repo.list_righe_preview(contratto_id) if listino_id else []
         )
-        if listino_id is None:
-            modalita = "C"
-        else:
-            has_overrides = any(r.get("origine") == "OVERRIDE" for r in preview_rows)
-            modalita = "B" if has_overrides else "A"
+        forma = "con_listino" if listino_id is not None else "senza_listino"
 
         # Flag per il FE: distingue il caso "listino senza versione operativa
-        # oggi" da modalita' C (lista vuota by design) e dal caso B con
-        # override extra-listino (righe presenti ma origine='OVERRIDE',
-        # nessuna 'DA_LISTINO'). Il flag e' True se il contratto ha listino
-        # ma la query non ha prodotto nemmeno una riga 'DA_LISTINO'
-        # (cioe' nessuna versione operativa o nessuna riga attiva).
+        # oggi" dal caso "senza_listino" (lista vuota by design) e dal caso
+        # con listino ma solo eccezioni extra-listino (righe presenti ma
+        # origine OVERRIDE/AGGIUNTA, nessuna 'DA_LISTINO'). Il flag e' True
+        # se il contratto ha listino ma la query non ha prodotto nemmeno una
+        # riga 'DA_LISTINO' (nessuna versione operativa o nessuna riga attiva).
         listino_senza_versione_oggi = (
             listino_id is not None
             and not any(r.get("origine") == "DA_LISTINO" for r in preview_rows)
@@ -780,8 +892,9 @@ class ContrattiService:
 
         return {
             "contratto_id": contratto_id,
-            "modalita": modalita,
+            "forma": forma,
             "listino_id": listino_id,
+            "listino_versione_id": contratto.get("listino_versione_id"),
             "listino_codice": contratto.get("listino_codice"),
             "listino_descrizione": contratto.get("listino_descrizione"),
             "tipo_variazione_globale": contratto.get("tipo_variazione_globale"),
@@ -840,7 +953,10 @@ class ContrattiService:
     # Scopo: Aggiunge una riga al contratto. Il trigger guard modalita' C
     #        impone prezzo_unitario NOT NULL se contratto gia' ATTIVO in
     #        modalita' C — gestito con traduzione P0001.
-    def create_riga(self, contratto_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    def create_riga(
+        self, contratto_id: int, payload: dict[str, Any],
+        *, auth_user_id: int | None = None,
+    ) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         self._assert_contratto_draft(contratto_id, op_label="Aggiunta riga contratto")
         self._v.reject_keys(
@@ -850,19 +966,82 @@ class ContrattiService:
             detail_prefix="Campi rifiutati",
         )
         self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_RIGA, message=_MESSAGE_RIGA)
+        # `componenti_overrides` non e' campo di `contratti_righe`: estraiamo
+        # PRIMA di `_build_data_riga` cosi' non finisce nell'INSERT.
+        componenti_overrides_raw = payload.pop("componenti_overrides", None)
+        componenti_overrides = normalize_componenti_overrides(
+            componenti_overrides_raw,
+            function_name="contratti_service.create_riga",
+            error_code=E_VENDITE_VALIDATION,
+        )
+
         data = self._build_data_riga(payload, for_create=True)
 
-        with self._db_errors(
+        articolo_id = payload.get("articolo_id")
+
+        # Transazione atomica: create_riga + (se composito) auto-init
+        # componenti. Stesso pattern di preventivi_service. Senza atomic, una
+        # riga padre composito potrebbe restare senza componenti se la fn DB
+        # `fn_contratto_riga_componenti_init` solleva (es. BoM scaduta).
+        with transaction.atomic(), self._db_errors(
             {"contratto_id": contratto_id},
             fallback_message="Violazione vincolo DB su riga contratto.",
         ):
             new_id = self._repo.create_riga(contratto_id, data)
 
+            if articolo_id and self._repo.is_articolo_composito(str(articolo_id)):
+                testata = self._repo.get_contratto(contratto_id)
+                assert testata is not None
+                emittente_sr_id = self._resolve_emittente_sr_id_for_contratto(
+                    testata, auth_user_id,
+                )
+                valido_dal_raw = testata.get("valido_dal")
+                # Skip silenzioso ammesso solo se mancano emittente o
+                # valido_dal: l'admin potra' ri-eseguire l'init manualmente.
+                # Logghiamo warning per audit (gap visibile in produzione).
+                if emittente_sr_id is None or valido_dal_raw is None:
+                    logger.warning(
+                        "contratti.create_riga.auto_init_componenti_skipped "
+                        "contratto_id=%s riga_id=%s articolo_id=%s "
+                        "motivo=%s — la riga padre composita resta senza "
+                        "componenti; init manuale richiesto.",
+                        contratto_id, new_id, articolo_id,
+                        ("emittente_non_risolvibile" if emittente_sr_id is None
+                         else "valido_dal_null"),
+                    )
+                else:
+                    data_riferimento = (
+                        valido_dal_raw if isinstance(valido_dal_raw, date)
+                        else date.fromisoformat(str(valido_dal_raw))
+                    )
+                    self._repo.init_componenti_riga(
+                        riga_id=new_id,
+                        emittente_soggetto_ruolo_id=emittente_sr_id,
+                        data_riferimento=data_riferimento,
+                        componenti_overrides=componenti_overrides,
+                    )
+
         result = self._repo.get_riga(new_id)
         assert result is not None
         return result
 
-    # Scopo: Aggiorna una riga contratto. articolo_id immutabile.
+    # Scopo: Risolve emittente_soggetto_ruolo_id per le operazioni componenti
+    # del contratto. Thin wrapper su `resolve_emittente_sr_id_for_testata`
+    # (helper Fase H) per non duplicare la logica di lookup + fallback.
+    def _resolve_emittente_sr_id_for_contratto(
+        self,
+        testata: dict[str, Any],
+        auth_user_id: int | None,
+    ) -> int | None:
+        return resolve_emittente_sr_id_for_testata(
+            testata, auth_user_id,
+            repo_get_sr_id_by_fiscale_id=self._repo.get_emittente_sr_id_by_fiscale_id,
+        )
+
+    # Scopo: Aggiorna una riga contratto. articolo_id e tipo_eccezione
+    #        immutabili (refactor 2026-05-15: per cambiare tipo serve
+    #        DELETE + INSERT, meno zone grigie di un cambio di semantica
+    #        in-place).
     def update_riga(
         self, riga_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
@@ -871,7 +1050,7 @@ class ContrattiService:
         self._v.reject_keys(
             payload,
             forbidden=_FORBIDDEN_RIGA_UPDATE,
-            reason="articolo_id e contratto_id immutabili: per rimpiazzarli eliminare la riga e crearne una nuova.",
+            reason="articolo_id, contratto_id e tipo_eccezione immutabili: per rimpiazzarli eliminare la riga e crearne una nuova.",
             detail_prefix="Campi rifiutati",
         )
         self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_RIGA, message=_MESSAGE_RIGA)
@@ -883,6 +1062,46 @@ class ContrattiService:
             message="Nessun campo aggiornabile presente nel payload riga.",
             context={"allowed_keys": sorted(_UPDATE_KEYS_RIGA)},
         )
+
+        # Coerenza prezzo_unitario / tipo_eccezione (refactor 2026-05-15):
+        # se il PATCH tocca prezzo_unitario, valida contro il tipo_eccezione
+        # della riga esistente (immutabile). Pre-validation parlante invece
+        # del fallback E_DATABASE sul CHECK DB chk_contrighe_prezzo_per_tipo_eccezione.
+        if "prezzo_unitario" in data:
+            existing_riga = self._repo.get_riga(riga_id)
+            ErrorManager.require(
+                existing_riga is not None,
+                code=E_VENDITE_NOT_FOUND,
+                message="Riga contratto non trovata.",
+                context={"riga_id": riga_id},
+            )
+            assert existing_riga is not None
+            tipo_existing = existing_riga.get("tipo_eccezione")
+            nuovo_prezzo = data["prezzo_unitario"]
+            if tipo_existing == "ESCLUSIONE":
+                ErrorManager.require(
+                    nuovo_prezzo is None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        "ESCLUSIONE: prezzo_unitario deve essere NULL "
+                        "(l'articolo non e' disponibile per questo contratto). "
+                        "Per cambiare tipo, eliminare la riga e crearne una nuova."
+                    ),
+                    context={"riga_id": riga_id, "tipo_eccezione": tipo_existing},
+                )
+            elif tipo_existing in ("OVERRIDE", "AGGIUNTA"):
+                ErrorManager.require(
+                    nuovo_prezzo is not None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        f"{tipo_existing}: prezzo_unitario obbligatorio. "
+                        f"Per escludere l'articolo, eliminare la riga e "
+                        f"crearne una nuova come ESCLUSIONE."
+                    ),
+                    context={"riga_id": riga_id, "tipo_eccezione": tipo_existing},
+                )
 
         with self._db_errors(
             {"riga_id": riga_id},
@@ -916,6 +1135,253 @@ class ContrattiService:
             message="Riga contratto non trovata.",
             context={"riga_id": riga_id},
         )
+
+    # =================================================================
+    # Componenti BoM riga contratto (modello unificato 2026-05-13)
+    # =================================================================
+    # Specchio simmetrico del pattern preventivi. I componenti vivono in
+    # `vendite.contratti_righe_componenti`; l'init e' invocato automaticamente
+    # da `create_riga` quando l'articolo e' composito. Helper di
+    # normalizzazione overrides + resolve emittente in
+    # `_componenti_service_helpers.py` (Fase H BB).
+
+    # Scopo: Helper privato condiviso da update/delete componente. Esegue
+    # guard + scope check (riga_id URL + contratto_id) + stato contratto
+    # modificabile in UN'unica query JOIN componente→riga→contratto (Fix #2
+    # refactor-componenti.md). Solleva `E_VENDITE_NOT_FOUND` su componente
+    # inesistente o fuori scope, `E_CONTRATTO_NON_MODIFICABILE` se contratto
+    # post-DRAFT.
+    def _load_componente_for_modification(
+        self,
+        *,
+        contratto_id: int,
+        riga_id: int,
+        componente_id: int,
+        function_name: str,
+    ) -> None:
+        scope = self._repo.load_componente_with_scope(componente_id)
+        ErrorManager.require(
+            scope is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Componente contratto non trovato.",
+            detail=f"componente_id={componente_id}",
+            function_name=function_name,
+        )
+        assert scope is not None
+
+        # Anti-tampering URL: riga_id dalla rotta deve matchare riga reale.
+        riga_reale = int(scope["riga_contratto_id"])
+        ErrorManager.require(
+            riga_reale == riga_id,
+            code=E_VENDITE_NOT_FOUND,
+            message="Componente contratto non trovato.",
+            detail=(
+                f"componente_id={componente_id} non appartiene a "
+                f"riga_id={riga_id} (riga reale={riga_reale})"
+            ),
+            function_name=function_name,
+        )
+
+        # Scope contratto: defense-in-depth contro URL forgiati.
+        ErrorManager.require(
+            int(scope["contratto_id"]) == contratto_id,
+            code=E_VENDITE_NOT_FOUND,
+            message="Componente contratto non trovato.",
+            detail=(
+                f"componente_id={componente_id} fuori scope "
+                f"contratto_id={contratto_id}"
+            ),
+            function_name=function_name,
+        )
+
+        # Guard stato modificabile: contratti_righe_componenti seguono la
+        # stessa policy delle righe padre (solo DRAFT modificabile). Lo
+        # stato e' gia' nella tupla del JOIN — nessun round-trip extra.
+        stato = str(scope.get("stato_codice") or "")
+        if stato != "DRAFT":
+            ErrorManager.raise_error(
+                code="E_CONTRATTO_NON_MODIFICABILE",
+                message="Operazione non consentita nello stato corrente.",
+                detail=(
+                    "Modifica componente riga contratto ammessa solo su "
+                    f"contratti in stato DRAFT. Stato corrente: {stato}. "
+                    "Per modifiche su contratti post-DRAFT creare un nuovo contratto."
+                ),
+                context={
+                    "contratto_id": contratto_id,
+                    "stato_codice": stato,
+                    "op": "Modifica componente riga contratto",
+                },
+            )
+
+    # Scopo: Preview componenti BoM per drawer riga contratto (ComponentiDialog
+    # FE). Read-only: il FE invoca PRIMA del save di una riga composita per
+    # ottenere prezzi suggeriti dei componenti. Per ogni componente:
+    # `prezzo_suggerito` + `origine_prezzo`, oppure NULL +
+    # `resolver_error_reason` se il listino manca per quel componente.
+    # `auth_user_id`: utente loggato. L'emittente_soggetto_ruolo_id viene
+    # risolto internamente (precedenza emittente esplicito sulla testata >
+    # operatore loggato). Pattern simmetrico preventivi: la view non deve
+    # accedere a membri privati del service per risolvere l'emittente.
+    # Solleva `E_VENDITE_NOT_FOUND` se contratto inesistente, `E_VENDITE_VALIDATION`
+    # se data/utility/emittente non risolvibili.
+    def preview_componenti_riga(
+        self,
+        contratto_id: int,
+        *,
+        articolo_id: str,
+        uom_operativa_id: int | None,
+        quantita: Any,
+        auth_user_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        testata = self._repo.get_contratto(contratto_id)
+        ErrorManager.require(
+            testata is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Contratto non trovato.",
+            function_name="contratti_service.preview_componenti_riga",
+        )
+        assert testata is not None
+
+        # Risoluzione emittente incapsulata: nessun accesso a membri privati
+        # dal caller (view). Precedenza emittente esplicito sulla testata >
+        # operatore. Solleva E_VENDITE_VALIDATION se nessuna sorgente.
+        emittente_sr_id = self._resolve_emittente_sr_id_for_contratto(
+            testata, auth_user_id,
+        )
+        ErrorManager.require(
+            emittente_sr_id is not None,
+            code=E_VENDITE_VALIDATION,
+            message=(
+                "Impossibile risolvere l'emittente fiscale per la preview "
+                "componenti contratto."
+            ),
+            function_name="contratti_service.preview_componenti_riga",
+        )
+        assert emittente_sr_id is not None
+
+        # Data riferimento: usiamo `valido_dal` del contratto. Il resolver
+        # bundle-aware cerca prezzi validi a quella data; coerente col fatto
+        # che il contratto e' una promessa contrattuale valida per il range.
+        valido_dal_raw = testata.get("valido_dal")
+        ErrorManager.require(
+            valido_dal_raw is not None,
+            code=E_VENDITE_VALIDATION,
+            message="valido_dal contratto obbligatorio per preview componenti.",
+            function_name="contratti_service.preview_componenti_riga",
+        )
+        assert valido_dal_raw is not None
+        data_riferimento = (
+            valido_dal_raw if isinstance(valido_dal_raw, date)
+            else date.fromisoformat(str(valido_dal_raw))
+        )
+
+        utility_id_raw = testata.get("utility_id")
+        ErrorManager.require(
+            utility_id_raw is not None,
+            code=E_VENDITE_VALIDATION,
+            message="Utility contratto obbligatoria per preview componenti.",
+            function_name="contratti_service.preview_componenti_riga",
+        )
+        assert utility_id_raw is not None
+
+        return self._repo.preview_componenti_riga(
+            articolo_id=str(articolo_id),
+            uom_id=uom_operativa_id,
+            quantita_padre=quantita,
+            data_riferimento=data_riferimento,
+            ba_id=testata.get("billing_account_id"),
+            utility_id=int(utility_id_raw),
+            emittente_soggetto_ruolo_id=emittente_sr_id,
+        )
+
+    # Scopo: Lista componenti BoM di una riga padre composita contratto.
+    # Guard di esistenza: la riga deve appartenere al contratto richiesto.
+    # `solo_attivi=True` (default backcompat): solo componenti attivi.
+    # `solo_attivi=False` (EDIT panel): include opzionali disattivati.
+    def list_componenti_riga(
+        self,
+        contratto_id: int, riga_id: int,
+        *, solo_attivi: bool = True,
+    ) -> list[dict[str, Any]]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        self._v.guard_positive_int(riga_id, field="riga_id")
+        riga = self._repo.get_riga(riga_id)
+        ErrorManager.require(
+            riga is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Riga contratto non trovata.",
+            detail=f"riga_id={riga_id}",
+            function_name="contratti_service.list_componenti_riga",
+        )
+        assert riga is not None
+        ErrorManager.require(
+            int(riga.get("contratto_id") or 0) == contratto_id,
+            code=E_VENDITE_NOT_FOUND,
+            message="Riga contratto non trovata.",
+            detail=(
+                f"riga_id={riga_id} non appartiene a contratto_id={contratto_id}"
+            ),
+            function_name="contratti_service.list_componenti_riga",
+        )
+        return self._repo.list_componenti_riga(riga_id, solo_attivi=solo_attivi)
+
+    # Scopo: Modifica componente riga contratto esistente. Guard stato
+    # contratto modificabile + esistenza componente + match URL
+    # anti-tampering. Whitelist campi via repo.
+    def update_componente_riga(
+        self,
+        contratto_id: int, riga_id: int, componente_id: int,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        self._v.guard_positive_int(riga_id, field="riga_id")
+        self._v.guard_positive_int(componente_id, field="componente_id")
+        self._load_componente_for_modification(
+            contratto_id=contratto_id, riga_id=riga_id,
+            componente_id=componente_id,
+            function_name="contratti_service.update_componente_riga",
+        )
+        with self._db_errors(
+            {"componente_id": componente_id, "riga_id": riga_id},
+            fallback_message="Violazione vincolo DB su componente riga contratto.",
+        ):
+            updated = self._repo.update_componente(componente_id, **payload)
+        ErrorManager.require(
+            updated,
+            code=E_VENDITE_VALIDATION,
+            message="Nessun campo aggiornato sul componente.",
+            detail="Payload vuoto o senza campi nella whitelist.",
+            function_name="contratti_service.update_componente_riga",
+        )
+        return {"status": "ok", "componente_id": componente_id}
+
+    # Scopo: Soft delete componente riga contratto (`attivo=FALSE`). Guard
+    # stato + esistenza + match URL anti-tampering. Il trigger DB di
+    # ricalcolo padre esclude i componenti inattivi dalla SUM.
+    def delete_componente_riga(
+        self,
+        contratto_id: int, riga_id: int, componente_id: int,
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        self._v.guard_positive_int(riga_id, field="riga_id")
+        self._v.guard_positive_int(componente_id, field="componente_id")
+        self._load_componente_for_modification(
+            contratto_id=contratto_id, riga_id=riga_id,
+            componente_id=componente_id,
+            function_name="contratti_service.delete_componente_riga",
+        )
+        with self._db_errors(
+            {"componente_id": componente_id, "riga_id": riga_id},
+            fallback_message="Impossibile eliminare il componente (dipendenze).",
+        ):
+            deleted = self._repo.delete_componente(componente_id)
+        return {
+            "status": "ok",
+            "componente_id": componente_id,
+            "deleted": deleted,
+        }
 
     # =================================================================
     # Utility 1:1
@@ -1058,7 +1524,7 @@ class ContrattiService:
             payload, data, "listino_id", message=_MESSAGE,
         )
         self._apply_variazione_globale(payload, data)
-        self._validate_modalita_coerente(data, existing=None)
+        self._validate_variazione_globale_coppia_coerente(data, existing=None)
         # Snapshot categoria cliente: opzionale, nullable. Se fornito
         # congela il valore scelto dall'operatore; se omesso il trigger
         # DB lo popola dal BA.
@@ -1121,7 +1587,7 @@ class ContrattiService:
             or "tipo_variazione_globale" in data
             or "valore_variazione_globale" in data
         ):
-            self._validate_modalita_coerente(data, existing=existing)
+            self._validate_variazione_globale_coppia_coerente(data, existing=existing)
         # Categoria snapshot: ammessa in PATCH solo in DRAFT (guard gia' sopra).
         self._apply_optional_positive_int(
             payload, data, "categoria_cliente_id_snapshot", message=_MESSAGE,
@@ -1191,39 +1657,50 @@ class ContrattiService:
                 valore = self._coerce_decimal(raw, field="valore_variazione_globale")
                 data["valore_variazione_globale"] = valore
 
-    # Scopo: Verifica coerenza modalita' A/B/C pre-DB. Il CHECK DB enforcera'
-    #        lo stesso invariante ma il messaggio parlante e' piu' utile qui.
-    #
-    #        Regole (sviluppo-listini-v5 §5.1):
-    #          - se listino_id IS NULL (modalita' C) -> tipo/valore globali
-    #            DEVONO essere NULL.
-    #          - tipo/valore globali devono essere entrambi NULL o entrambi
-    #            NOT NULL (coppia coerente).
-    def _validate_modalita_coerente(
+    # Scopo: Gate L2 sulla variazione globale del contratto al PATCH testata
+    #        (refactor 2026-05-15 §3-bis-E). Wrapper sottile sul BB condiviso
+    #        `_pricing_gate_helpers.check_limite_variazione_globale` che
+    #        contiene la logica (cascata user→categoria→group→emittente,
+    #        superuser bypass, PERCENTUALE-only, raise retryable).
+    #        Qui ci limitiamo a estrarre i campi dal merge (data + existing)
+    #        prima di delegare.
+    def _check_limite_variazione_globale(
+        self,
+        *,
+        existing: dict[str, Any],
+        data: dict[str, Any],
+        auth_user_id: int | None,
+    ) -> None:
+        # Skip se il PATCH non tocca la variazione globale.
+        if "valore_variazione_globale" not in data:
+            return
+        tipo_post = data.get("tipo_variazione_globale") if "tipo_variazione_globale" in data else (
+            existing.get("tipo_variazione_globale")
+        )
+        check_limite_variazione_globale(
+            auth_user_id=auth_user_id,
+            tipo_variazione=tipo_post,
+            valore_variazione=data["valore_variazione_globale"],
+            function_name="contratti_service._check_limite_variazione_globale",
+            ba_id=existing.get("billing_account_id"),
+        )
+
+    # Scopo: Verifica coerenza della coppia variazione globale (tipo + valore).
+    #        Post refactor modalita' (2026-05-15): non c'e' piu' il vincolo
+    #        "listino_id NULL -> tipo/valore NULL" — il modello unificato
+    #        ammette qualunque combinazione di listino + variazione + eccezioni.
+    #        Resta solo il vincolo strutturale: tipo e valore devono essere
+    #        coppia (entrambi NULL o entrambi NOT NULL) per dare semantica a
+    #        `valore_variazione_globale`.
+    def _validate_variazione_globale_coppia_coerente(
         self, data: dict[str, Any], *, existing: dict[str, Any] | None
     ) -> None:
-        listino_id = data.get("listino_id") if "listino_id" in data else (
-            existing.get("listino_id") if existing else None
-        )
         tipo = data.get("tipo_variazione_globale") if "tipo_variazione_globale" in data else (
             existing.get("tipo_variazione_globale") if existing else None
         )
         valore = data.get("valore_variazione_globale") if "valore_variazione_globale" in data else (
             existing.get("valore_variazione_globale") if existing else None
         )
-        if listino_id is None:
-            ErrorManager.require(
-                tipo is None and valore is None,
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE,
-                detail="Contratto modalita' C (listino_id NULL): tipo/valore variazione globale devono essere NULL.",
-                context={
-                    "listino_id": listino_id,
-                    "tipo_variazione_globale": tipo,
-                    "valore_variazione_globale": str(valore) if valore is not None else None,
-                },
-            )
-        # Coppia coerente (tipo e valore entrambi NULL o entrambi NOT NULL).
         pair_complete = (tipo is None) == (valore is None)
         ErrorManager.require(
             pair_complete,
@@ -1240,15 +1717,76 @@ class ContrattiService:
     # Helpers privati — righe
     # =================================================================
 
-    # Scopo: Compone il dict CRUD per contratti_righe. articolo_id
-    #        obbligatorio in create; mutazione dei campi commerciali
-    #        solo sui campi presenti.
+    # Scopo: Compone il dict CRUD per contratti_righe. articolo_id e
+    #        tipo_eccezione sono obbligatori in create; mutazione dei campi
+    #        commerciali solo sui campi presenti. Il check di coerenza
+    #        (ESCLUSIONE -> prezzo NULL, OVERRIDE/AGGIUNTA -> prezzo NOT NULL)
+    #        e' enforced dal CHECK DB chk_contrighe_prezzo_per_tipo_eccezione,
+    #        pre-validato qui per messaggio parlante.
     def _build_data_riga(self, payload: dict[str, Any], *, for_create: bool) -> dict[str, Any]:
         data: dict[str, Any] = {}
         if for_create:
             data["articolo_id"] = self._v.require_uuid(
                 payload, "articolo_id", message=_MESSAGE_RIGA,
             )
+            # tipo_eccezione obbligatorio in create (NOT NULL nello schema).
+            tipo_eccezione_raw = payload.get("tipo_eccezione")
+            ErrorManager.require(
+                tipo_eccezione_raw is not None,
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE_RIGA,
+                detail=(
+                    "tipo_eccezione obbligatorio: uno tra "
+                    f"{', '.join(sorted(_TIPI_ECCEZIONE))}."
+                ),
+                context={"field": "tipo_eccezione"},
+            )
+            ErrorManager.require(
+                isinstance(tipo_eccezione_raw, str),
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE_RIGA,
+                detail="tipo_eccezione deve essere una stringa.",
+                context={"field": "tipo_eccezione"},
+            )
+            tipo_eccezione = tipo_eccezione_raw.strip().upper()
+            ErrorManager.require(
+                tipo_eccezione in _TIPI_ECCEZIONE,
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE_RIGA,
+                detail=(
+                    f"tipo_eccezione deve essere uno tra: "
+                    f"{', '.join(sorted(_TIPI_ECCEZIONE))}."
+                ),
+                context={"tipo_eccezione": tipo_eccezione},
+            )
+            data["tipo_eccezione"] = tipo_eccezione
+
+            # Coerenza prezzo_unitario / tipo_eccezione (pre-DB):
+            # - ESCLUSIONE -> prezzo NULL (l'articolo non e' disponibile)
+            # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
+            prezzo_raw = payload.get("prezzo_unitario")
+            if tipo_eccezione == "ESCLUSIONE":
+                ErrorManager.require(
+                    prezzo_raw is None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        "ESCLUSIONE: prezzo_unitario deve essere NULL "
+                        "(l'articolo non e' disponibile per questo contratto)."
+                    ),
+                    context={"tipo_eccezione": tipo_eccezione},
+                )
+            else:
+                # OVERRIDE / AGGIUNTA richiedono prezzo_unitario presente.
+                ErrorManager.require(
+                    prezzo_raw is not None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        f"{tipo_eccezione}: prezzo_unitario obbligatorio."
+                    ),
+                    context={"tipo_eccezione": tipo_eccezione},
+                )
         # Numeric opzionali.
         for field in ("prezzo_unitario", "quantita", "qta_operativa", "factor_to_base"):
             if field in payload:

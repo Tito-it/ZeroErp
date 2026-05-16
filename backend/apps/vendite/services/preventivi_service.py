@@ -24,8 +24,18 @@ from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityReposit
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.vendite.services._pricing_gate_helpers import (
+    check_limite_variazione_prezzo,
+    check_permesso_override_prezzo,
+)
 from apps.core.services.value_normalizer import empty_to_none
 from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.vendite.services._componenti_service_helpers import (
+    normalize_componenti_attivazioni,
+    normalize_componenti_overrides,
+    resolve_emittente_sr_id_safe,
+    resolve_emittente_sr_id_for_testata,
+)
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
@@ -71,7 +81,7 @@ def list_preventivi(
     data_da: date | None = None,
     data_al: date | None = None,
     search: str | None = None,
-    solo_revisione_attiva: bool = True,
+    solo_attiva: bool = True,
     auth_user_id: int | None = None,
     page: int = 1,
     page_size: int = 50,
@@ -91,7 +101,7 @@ def list_preventivi(
         data_da=data_da,
         data_al=data_al,
         search=search,
-        solo_revisione_attiva=solo_revisione_attiva,
+        solo_attiva=solo_attiva,
         auth_user_id=auth_user_id,
         limit=page_size,
         offset=offset,
@@ -749,8 +759,9 @@ def gestisci_riga(
     riga_id_created = result.get("id")
     data_riferimento_str = testata.get("data")
     if riga_id_created is not None and data_riferimento_str is not None:
-        emittente_sr_id = _resolve_emittente_sr_id_for_preventivo(
-            repo, testata, auth_user_id,
+        emittente_sr_id = resolve_emittente_sr_id_for_testata(
+            testata, auth_user_id,
+            repo_get_sr_id_by_fiscale_id=repo.get_emittente_sr_id_by_fiscale_id,
         )
         if emittente_sr_id is not None:
             # Form atomic (decisione di dominio 2026-05-12): il FE invia
@@ -760,18 +771,20 @@ def gestisci_riga(
             # _validate_componenti_overrides_authorization sopra. Senza
             # overrides equivale al comportamento strict (resolver mancante
             # -> raise E_DOC_COMPONENTE_LISTINO_MANCANTE).
-            componenti_overrides = _normalize_componenti_overrides(
+            componenti_overrides = normalize_componenti_overrides(
                 payload.get("componenti_overrides"),
                 function_name=f"{_FN}.gestisci_riga",
+                error_code="E_PREV_VALIDAZIONE",
             )
             # Mappa attivazioni opzionali (modello unificato 2026-05-13):
             # default DB inserisce obbligatori `attivo=TRUE` e opzionali
             # `attivo=FALSE`; l'operatore puo' sovrascrivere via
             # `componenti_attivazioni`. Disattivare obbligatori e' bloccato
             # dal trigger guard DB.
-            componenti_attivazioni = _normalize_componenti_attivazioni(
+            componenti_attivazioni = normalize_componenti_attivazioni(
                 payload.get("componenti_attivazioni"),
                 function_name=f"{_FN}.gestisci_riga",
+                error_code="E_PREV_VALIDAZIONE",
             )
             repo.init_componenti_riga(
                 riga_id=int(riga_id_created),
@@ -1266,7 +1279,7 @@ def _resolve_or_check_override_prezzo(
             }
 
     # Override: L1 richiesta azione processo prezzo_override_manuale.
-    _check_permesso_override_prezzo(auth_user_id, function_name=function_name)
+    check_permesso_override_prezzo(auth_user_id, function_name=function_name)
 
     # L2: limite percentuale sconto/maggiorazione (autorizzazioni prezzi Sprint D).
     # Se resolver non ha prezzo o e' 0 skip (non calcolabile); altrimenti
@@ -1275,12 +1288,18 @@ def _resolve_or_check_override_prezzo(
     # L3 (Sprint E): se chiamante chiede richiesta_approvazione, l'eventuale
     # violazione non solleva ma ritorna dict; il chiamante orchestrera'
     # la creazione pratica.
-    violazione_l2 = _check_limite_variazione_prezzo(
+    # Cascata estesa (2026-05-15): la categoria cliente del BA destinatario
+    # entra come livello tra user e group nella risoluzione della soglia. Il
+    # lookup BA -> categoria avviene DENTRO _check_limite_variazione_prezzo
+    # dopo gli early-return (superuser bypass / delta=0 / resolver nullo) per
+    # non sprecare round-trip DB quando L2 non si applica.
+    violazione_l2 = check_limite_variazione_prezzo(
         auth_user_id=auth_user_id,
         prezzo_resolver=prezzo_resolver,
         prezzo_manuale=payload_decimal,
         function_name=function_name,
         accept_for_approval=richiesta_approvazione,
+        ba_id=testata.get("billing_account_id"),
     )
 
     meta_patch: dict[str, Any] = {
@@ -1305,273 +1324,20 @@ def _resolve_or_check_override_prezzo(
     return payload_decimal, meta_patch
 
 
-# Scopo: Verifica che l'operatore abbia l'azione processo per override
-#        manuale del prezzo (livello L1 del sistema autorizzazioni prezzi).
-#        Bypass per superuser. Se auth_user_id None (chiamata non
-#        autenticata, es. script interni) -> blocca conservativamente.
-def _check_permesso_override_prezzo(
-    auth_user_id: int | None, *, function_name: str
-) -> None:
-    ErrorManager.require(
-        auth_user_id is not None,
-        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
-        message="Override prezzo non autorizzato.",
-        detail="Chiamata senza contesto utente — override bloccato conservativamente.",
-        function_name=function_name,
-    )
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
-        ErrorManager.raise_error(
-            code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
-            message="Override prezzo non autorizzato.",
-            detail="Utente non trovato.",
-            function_name=function_name,
-        )
-    if getattr(user, "is_superuser", False):
-        return
-    abilitato = PermissionResolver.check_azione(user, AZIONE_OVERRIDE_PREZZO)
-    ErrorManager.require(
-        abilitato,
-        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
-        message="Modifica manuale del prezzo non autorizzata.",
-        detail=(
-            "Usa il prezzo suggerito dal listino o richiedi l'autorizzazione "
-            "'prezzo_override_manuale' al tuo responsabile."
-        ),
-        function_name=function_name,
-    )
+# Gate autorizzazioni prezzi (L1+L2+L3) estratti come BB condiviso 2026-05-15
+# in `apps.vendite.services._pricing_gate_helpers`:
+#   - `check_permesso_override_prezzo` (era `_check_permesso_override_prezzo`)
+#   - `check_limite_variazione_prezzo` (era `_check_limite_variazione_prezzo`)
+#   - `check_limite_variazione_globale` (nuovo, per testata contratto)
+# Vedi catalogo BB sezione "Vendite — Gate autorizzazioni prezzi".
+# I caller di preventivi importano direttamente dal BB; nessun alias qui.
 
 
-# Scopo: Verifica che la variazione % fra prezzo manuale e prezzo risolto
-#        rientri nei limiti configurati per l'utente (L2 autorizzazioni
-#        prezzi). Se sconto (delta < 0) confronta con VENDITE_MAX_SCONTO_PCT;
-#        se maggiorazione (delta > 0) con VENDITE_MAX_MAGGIORAZIONE_PCT.
-#        Skip se prezzo_resolver e' None o 0 (non calcolabile / safe-fail).
-#        Superuser bypass. Parametri risolti via ParameterService con
-#        scope user -> group -> emittente -> default.
-#
-#        Restituisce:
-#          - None se variazione entro limite (caso normale L2 OK)
-#          - dict {tipo_violazione, variazione_abs_pct, limite_pct} se
-#            violazione + accept_for_approval=True (workflow L3 Sprint E)
-#
-#        Solleva ServiceError L2 (E_PREV_SCONTO_ECCESSIVO /
-#        E_PREV_MAGGIORAZIONE_ECCESSIVA) se violazione + accept_for_approval=False.
-def _check_limite_variazione_prezzo(
-    *,
-    auth_user_id: int | None,
-    prezzo_resolver,  # Decimal | None
-    prezzo_manuale,   # Decimal
-    function_name: str,
-    accept_for_approval: bool = False,
-) -> dict[str, Any] | None:
-    from decimal import Decimal
-
-    if prezzo_resolver is None or prezzo_resolver == 0:
-        return None  # Nessun riferimento per calcolare la percentuale.
-
-    if auth_user_id is None:
-        return None  # L1 ha gia' bloccato; unreachable difensivo.
-
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
-        return None  # L1 avrebbe gia' bloccato.
-    if getattr(user, "is_superuser", False):
-        return None
-
-    delta = prezzo_manuale - prezzo_resolver
-    if delta == 0:
-        return None  # Edge case: L1 avrebbe gia' fatto early-return.
-
-    delta_pct = (delta / prezzo_resolver) * Decimal("100")
-
-    # Sconto se delta negativo, maggiorazione se positivo. Per ogni caso
-    # risolviamo UNA sola chiave parametro dedicata e la confrontiamo con
-    # il valore assoluto del delta. get_parameter_decimal raise
-    # E_PARAMETER_VALIDATION se il parametro e' malformato: stato
-    # inconsistente che l'admin deve correggere (no silent fallback).
-    param_service = ParameterService()
-    is_sconto = delta_pct < 0
-    param_code = PARAM_MAX_SCONTO_PCT if is_sconto else PARAM_MAX_MAGGIORAZIONE_PCT
-    variazione_abs = -delta_pct if is_sconto else delta_pct
-    # Cascata user → group → emittente → default: senza derivazione EF
-    # gli override impostati per emittente non sarebbero mai applicati.
-    # Coerente con `PricingLimitiUtenteView` che alimenta l'hint FE.
-    emittente_fiscale_id = param_service.get_emittente_fiscale_id_for_user(
-        auth_user_id,
-    )
-    limite = param_service.get_parameter_decimal(
-        param_code,
-        django_user_id=auth_user_id,
-        emittente_fiscale_id=emittente_fiscale_id,
-    )
-
-    if variazione_abs <= limite:
-        return None
-
-    # Violazione L2. Se la chiamata e' nel contesto di richiesta approvazione
-    # L3, restituiamo i dettagli della violazione invece di sollevare:
-    # il chiamante orchestrera' la creazione della pratica.
-    kind_label = "Sconto" if is_sconto else "Maggiorazione"
-    if accept_for_approval:
-        return {
-            "tipo_violazione": "SCONTO" if is_sconto else "MAGGIORAZIONE",
-            "variazione_abs_pct": str(variazione_abs.quantize(Decimal("0.01"))),
-            "limite_pct": str(limite),
-            "kind_label": kind_label,
-        }
-
-    # Caso normale L2: solleva errore (FE banner attiva pulsante "richiedi
-    # approvazione" che ri-tentera' con accept_for_approval=True).
-    # Fase 5.B2: retryable=True esplicito → semantica "puoi riprovare con
-    # flag richiesta_approvazione=true" (workflow L3). L1
-    # E_PREV_OVERRIDE_NON_AUTORIZZATO resta retryable=False (default ServiceError):
-    # senza permesso prezzo_override_manuale non c'e' niente da ritentare.
-    error_code = "E_PREV_SCONTO_ECCESSIVO" if is_sconto else "E_PREV_MAGGIORAZIONE_ECCESSIVA"
-    ErrorManager.raise_error(
-        code=error_code,
-        message=f"{kind_label} oltre il limite consentito.",
-        detail=(
-            f"{kind_label} richiesto: {variazione_abs.quantize(Decimal('0.01'))}% — "
-            f"massimo ammesso: {limite}%."
-        ),
-        retryable=True,
-        function_name=function_name,
-    )
-
-
-# Scopo: Suggerisce il prezzo della riga preventivo delegando al resolver
-#        pricing v5. Non modifica nulla: solo lettura. L'operatore ottiene
-#        il prezzo "di default" dal listino/contratto/categoria del BA
-#        associato al preventivo, alla data del preventivo, per l'utility
-#        del preventivo. L'emittente_soggetto_ruolo_id e' derivato dal JWT
-#        operatore via PermissionResolver.
-#
-# Scopo: Variante non-raise di `_resolve_emittente_sr_id_or_raise`. Ritorna
-#        None per admin globale (no emittenti assegnati) o utente
-#        inesistente, invece di sollevare. Usata dal flusso init componenti
-#        CASO A in `gestisci_riga` dove l'init e' opzionale: se l'utente
-#        non ha emittente non c'e' modo di chiamare il resolver, ma cio'
-#        non deve bloccare la create di righe non-CASO-A.
-def _resolve_emittente_sr_id_safe(auth_user_id: int | None) -> int | None:
-    if auth_user_id is None:
-        return None
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
-        return None
-    emittenti_sr = PermissionResolver.get_emittenti_sr_ids(user) or []
-    if not emittenti_sr:
-        return None
-    return int(emittenti_sr[0])
-
-
-# Scopo: Risolve l'emittente_soggetto_ruolo_id per le operazioni che dipendono
-#        dal contesto preventivo (init componenti CASO A, preview componenti).
-#        Precedenza: emittente esplicito sulla testata > emittente operatore.
-#        Ritorna None se nessuna fonte: il caller decide se sollevare (preview,
-#        path strict) o procedere skip silenzioso (init in gestisci_riga, caso
-#        admin globale + preventivo senza emittente). Pattern estratto per
-#        evitare duplicazione fra gestisci_riga e preview_componenti_riga.
-def _resolve_emittente_sr_id_for_preventivo(
-    repo: PreventiviRepository,
-    testata: dict[str, Any],
-    auth_user_id: int | None,
-) -> int | None:
-    emittente_fiscale_id_prev = testata.get("emittente_fiscale_id")
-    if emittente_fiscale_id_prev is not None:
-        sr_id = repo.get_emittente_sr_id_by_fiscale_id(
-            int(emittente_fiscale_id_prev),
-        )
-        if sr_id is not None:
-            return sr_id
-    return _resolve_emittente_sr_id_safe(auth_user_id)
-
-
-# Scopo: Valida e normalizza `componenti_overrides` (form atomic 2026-05-12).
-#        Forma attesa: {componente_id_uuid: numero}. Decimal-safe: scarta a
-#        monte boolean/oggetti/stringhe non numeriche che fallirebbero al
-#        CAST::numeric lato fn DB con un errore poco parlante. Restituisce
-#        un dict normalizzato a {str: str(Decimal)} (None/{} -> None).
-#        Solleva E_PREV_VALIDAZIONE su valori invalidi.
-def _normalize_componenti_overrides(
-    overrides: Any,
-    *,
-    function_name: str,
-) -> dict[str, str] | None:
-    if overrides is None or overrides == {}:
-        return None
-    ErrorManager.require(
-        isinstance(overrides, dict),
-        code="E_PREV_VALIDAZIONE",
-        message="componenti_overrides deve essere un oggetto JSON.",
-        function_name=function_name,
-    )
-    assert isinstance(overrides, dict)
-    normalized: dict[str, str] = {}
-    for k, v in overrides.items():
-        ErrorManager.require(
-            v is not None and v != "",
-            code="E_PREV_VALIDAZIONE",
-            message=f"Prezzo override mancante per componente {k!r}.",
-            function_name=function_name,
-        )
-        try:
-            dec = Decimal(str(v))
-        except (InvalidOperation, TypeError, ValueError) as exc:
-            ErrorManager.require(
-                False,
-                code="E_PREV_VALIDAZIONE",
-                message=(
-                    f"Prezzo override non valido per componente {k!r}: {v!r}."
-                ),
-                function_name=function_name,
-            )
-            raise AssertionError("unreachable") from exc
-        normalized[str(k)] = format(dec, "f")
-    return normalized or None
-
-
-# Scopo: Valida e normalizza `componenti_attivazioni` (modello unificato
-#        2026-05-13). Forma attesa: {componente_id_uuid: bool}. Mappa
-#        l'operatore puo' usare per attivare componenti opzionali (default
-#        DB: opzionali inseriti con `attivo=FALSE`) o disattivare opzionali
-#        gia' attivati in re-init. Tentativi di disattivare obbligatori
-#        sono respinti dal trigger DB con `E_DOC_COMPONENTE_OBBLIGATORIO`.
-#        Restituisce un dict normalizzato a {str: bool} (None/{} -> None).
-#        Solleva E_PREV_VALIDAZIONE su valori non bool/null.
-def _normalize_componenti_attivazioni(
-    attivazioni: Any,
-    *,
-    function_name: str,
-) -> dict[str, bool] | None:
-    if attivazioni is None or attivazioni == {}:
-        return None
-    ErrorManager.require(
-        isinstance(attivazioni, dict),
-        code="E_PREV_VALIDAZIONE",
-        message="componenti_attivazioni deve essere un oggetto JSON.",
-        function_name=function_name,
-    )
-    assert isinstance(attivazioni, dict)
-    normalized: dict[str, bool] = {}
-    for k, v in attivazioni.items():
-        ErrorManager.require(
-            isinstance(v, bool),
-            code="E_PREV_VALIDAZIONE",
-            message=(
-                f"Valore attivazione non valido per componente {k!r}: "
-                "atteso bool."
-            ),
-            function_name=function_name,
-        )
-        normalized[str(k)] = bool(v)
-    return normalized or None
+# Helper componenti BoM estratti in `_componenti_service_helpers.py`
+# (refactor Fase H 2026-05-14): `normalize_componenti_overrides`,
+# `normalize_componenti_attivazioni`, `resolve_emittente_sr_id_safe`,
+# `resolve_emittente_sr_id_for_testata`. Importati al top del modulo.
+# I test importano direttamente dal modulo helpers (no piu' alias qui).
 
 
 # Scopo: Gating L1 sugli override prezzo componenti (form atomic 2026-05-12).
@@ -1742,7 +1508,12 @@ def suggerisci_prezzo_riga(
     return {k: _normalize(v) for k, v in result.items()}
 
 
-# Scopo: Elimina riga (soft delete) con guard su stato + ricalcolo totali.
+# Scopo: Elimina riga preventivo (HARD DELETE) con guard su stato +
+# ricalcolo totali. Pattern simmetrico a `contratti_service.delete_riga`:
+# la guard limita l'operazione a DRAFT, dove la riga non e' ancora pushed
+# in commessa. Eventuali componenti BoM su `preventivi_righe_componenti`
+# vengono puliti automaticamente dal DB via FK ON DELETE CASCADE (no
+# trigger UPDATE attivato).
 def elimina_riga(preventivo_id: int, riga_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = repo.get_preventivo(preventivo_id)
@@ -1818,8 +1589,9 @@ def preview_componenti_riga(
         message="Data preventivo obbligatoria per preview componenti.",
         function_name=f"{_FN}.preview_componenti_riga",
     )
-    emittente_sr_id = _resolve_emittente_sr_id_for_preventivo(
-        repo, testata, auth_user_id,
+    emittente_sr_id = resolve_emittente_sr_id_for_testata(
+        testata, auth_user_id,
+        repo_get_sr_id_by_fiscale_id=repo.get_emittente_sr_id_by_fiscale_id,
     )
     ErrorManager.require(
         emittente_sr_id is not None,
@@ -1882,12 +1654,15 @@ def list_componenti_riga(
     return repo.list_componenti_riga(riga_id, solo_attivi=solo_attivi)
 
 
-# Scopo: Helper privato condiviso da update/delete componente. Esegue le 3
-#        query di guard + scope check + stato preventivo e ritorna le 3
-#        entita' fetchate. Evita duplicazione del pattern in update_componente
-#        e delete_componente. Solleva ServiceError (404 / 422 a seconda).
-#        Scope check sia su `riga_id` URL (anti-tampering) che su
-#        `preventivo_id`: due livelli di defense-in-depth contro URL forgiati.
+# Scopo: Helper privato condiviso da update/delete componente. Esegue
+#        guard + scope check (riga_id URL + preventivo_id) + stato
+#        preventivo modificabile in UN'unica query JOIN
+#        componente→riga→preventivo (Fix #2 perf, refactor-componenti.md).
+#        Solleva `E_PREV_COMPONENTE_NOT_FOUND` su componente inesistente
+#        o fuori scope, `E_PREV_STATO_NON_MODIFICABILE` se preventivo non
+#        in `_STATI_RIGHE_MODIFICABILI`.
+#        Defense-in-depth: scope check sia su `riga_id` (anti-tampering
+#        URL) sia su `preventivo_id` via JOIN runtime.
 def _load_componente_for_modification(
     repo: PreventiviRepository,
     *,
@@ -1895,51 +1670,53 @@ def _load_componente_for_modification(
     riga_id: int,
     componente_id: int,
     function_name: str,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    componente = repo.get_componente(componente_id)
+) -> None:
+    scope = repo.load_componente_with_scope(componente_id)
     ErrorManager.require(
-        componente is not None,
+        scope is not None,
         code="E_PREV_COMPONENTE_NOT_FOUND",
         message="Componente non trovato.",
         detail=f"componente_id={componente_id}",
         function_name=function_name,
     )
-    assert componente is not None
+    assert scope is not None
 
     # Anti-tampering URL: il `riga_id` dalla rotta deve matchare la riga
-    # padre reale del componente. Altrimenti l'utente potrebbe forgiare
-    # una URL `/preventivi/1/righe/999/componenti/50/` con riga falsa.
+    # padre reale del componente.
+    riga_reale = int(scope["riga_preventivo_id"])
     ErrorManager.require(
-        int(componente["riga_preventivo_id"]) == riga_id,
+        riga_reale == riga_id,
         code="E_PREV_COMPONENTE_NOT_FOUND",
         message="Componente non trovato.",
         detail=(
             f"componente_id={componente_id} non appartiene a "
-            f"riga_id={riga_id} (riga reale={componente['riga_preventivo_id']})"
+            f"riga_id={riga_id} (riga reale={riga_reale})"
         ),
         function_name=function_name,
     )
 
-    riga_padre = repo.get_riga(int(componente["riga_preventivo_id"]))
+    # Scope preventivo: defense-in-depth contro URL forgiati.
     ErrorManager.require(
-        riga_padre is not None and riga_padre.get("preventivo_id") == preventivo_id,
+        int(scope["preventivo_id"]) == preventivo_id,
         code="E_PREV_COMPONENTE_NOT_FOUND",
         message="Componente non trovato.",
-        detail=f"componente_id={componente_id} fuori scope preventivo_id={preventivo_id}",
+        detail=(
+            f"componente_id={componente_id} fuori scope "
+            f"preventivo_id={preventivo_id}"
+        ),
         function_name=function_name,
     )
-    assert riga_padre is not None
 
-    testata = repo.get_preventivo(preventivo_id)
-    assert testata is not None  # garantito da get_riga ok sopra
+    # Guard stato modificabile: il JOIN porta gia' lo stato — niente
+    # round-trip extra a `get_preventivo`.
+    stato = str(scope.get("stato_codice_interno") or "")
     ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_RIGHE_MODIFICABILI,
+        stato in _STATI_RIGHE_MODIFICABILI,
         code="E_PREV_STATO_NON_MODIFICABILE",
         message="Componenti non modificabili nello stato corrente.",
-        detail=f"stato={testata['stato_codice_interno']}",
+        detail=f"stato={stato}",
         function_name=function_name,
     )
-    return componente, riga_padre, testata
 
 
 # Scopo: Modifica componente esistente. Guard stato preventivo modificabile

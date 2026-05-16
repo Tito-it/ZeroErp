@@ -75,13 +75,14 @@ class TestVenditeLookupsApi(JwtMockedApiTest):
         self.assertEqual(set(self._codes(resp)), {"COMMODITY", "COMMERCIO"})
 
     @patch(_AUTH, return_value=(Mock(), None))
-    def test_modalita_pricing_contratto_ok(self, _auth):
+    def test_modalita_pricing_contratto_removed(self, _auth):
+        # Refactor modalita 2026-05-15: l'endpoint modalita-pricing-contratto
+        # e' stato rimosso (la modalita non e' piu' una scelta utente).
         resp = self.client.get(
             "/api/v1/vendite/lookup/modalita-pricing-contratto/",
             HTTP_AUTHORIZATION="Bearer x",
         )
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(set(self._codes(resp)), {"A", "B", "C"})
+        self.assertEqual(resp.status_code, 404)
 
     def test_lookup_richiede_jwt(self):
         # Senza Authorization header -> 401 (DomainAPIView richiede JWT).

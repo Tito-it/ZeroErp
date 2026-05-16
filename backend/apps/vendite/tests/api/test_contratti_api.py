@@ -300,19 +300,22 @@ class TestCambiaStato(_BaseApiTest):
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)
-    def test_post_cambia_stato_modalita_c_tradotto(self, svc_cls, _auth):
+    def test_post_cambia_stato_negoziato_puro_tradotto(self, svc_cls, _auth):
+        # Refactor modalita 2026-05-15: il codice E_CONTRATTO_NEGOZIATO_PURO_
+        # SENZA_RIGHE sostituisce il vecchio E_CONTRATTO_MODALITA_C_SENZA_RIGHE.
         svc_cls.return_value.cambia_stato.side_effect = ServiceError(
-            code="E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
-            message="Contratto in modalita' C senza righe.",
+            code="E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE",
+            message="Contratto senza listino senza AGGIUNTA.",
         )
         resp = self.client.post(
             _BASE + "1/cambia-stato/",
             data=json.dumps({"codice_interno": "ATTIVO"}),
             content_type="application/json",
         )
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 422)
         self.assertEqual(
-            resp.json()["error"]["code"], "E_CONTRATTO_MODALITA_C_SENZA_RIGHE"
+            resp.json()["error"]["code"],
+            "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE",
         )
 
 

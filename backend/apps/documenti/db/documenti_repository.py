@@ -74,8 +74,8 @@ TEMPLATE_UPDATE_COLUMNS: tuple[str, ...] = (
 # Whitelist colonne ammesse in INSERT su template_documenti_versioni.
 # `versione` calcolata dal service (next_versione_num), `stato` sempre
 # 'BOZZA' su create (transizione PUBBLICATA passa solo dal comando dedicato
-# pubblica_versione). `validita` calcolata dal trigger DB
-# (script.trgfn_set_validita), non scrivere direttamente.
+# pubblica_versione). `validita` e' STORED generated column (PG 18) da
+# `valido_dal`/`valido_al`, non scrivibile.
 VERSIONE_CREATE_COLUMNS: tuple[str, ...] = (
     "template_documento_id",
     "versione",
@@ -207,8 +207,8 @@ _EVENTO_DOCUMENTO_COLUMN_TYPES: dict[str, str] = {
 
 
 # Whitelist colonne ammesse in INSERT su template_asset.
-# Audit (`data_*`/`user_*`) e `validita` (calcolata dal trigger
-# script.trgfn_set_validita) sono gestite dal DB. `tx_id`/`storicizza`
+# Audit (`data_*`/`user_*`) gestiti dal DB; `validita` e' STORED generated
+# column (PG 18) da `valido_dal`/`valido_al`, non scrivibile. `tx_id`/`storicizza`
 # lasciate ai default.
 ASSET_CREATE_COLUMNS: tuple[str, ...] = (
     "codice",
@@ -587,8 +587,8 @@ class DocumentiRepository:
             return int(row[0])
 
     # Scopo: INSERT versione template usando solo colonne whitelisted in
-    #        VERSIONE_CREATE_COLUMNS. Il trigger DB script.trgfn_set_validita
-    #        calcola `validita` (daterange) prima del commit. Eventuali
+    #        VERSIONE_CREATE_COLUMNS. `validita` (daterange) e' STORED generated
+    #        column (PG 18) calcolata da `valido_dal`/`valido_al`. Eventuali
     #        violazioni unique/check vengono propagate al service.
     def create_versione(self, data: dict[str, Any]) -> int:
         cols: list[str] = []
@@ -775,8 +775,8 @@ class DocumentiRepository:
         return results[0] if results else None
 
     # Scopo: INSERT asset usando solo colonne whitelisted in
-    #        ASSET_CREATE_COLUMNS. Il trigger DB script.trgfn_set_validita
-    #        calcola `validita` (daterange) prima del commit. Il vincolo
+    #        ASSET_CREATE_COLUMNS. `validita` (daterange) e' STORED generated
+    #        column (PG 18) calcolata da `valido_dal`/`valido_al`. Il vincolo
     #        unique (emittente_fiscale_id, sha256) garantisce dedup natural:
     #        re-upload dello stesso file -> IntegrityError mappato.
     def create_asset(self, data: dict[str, Any]) -> int:

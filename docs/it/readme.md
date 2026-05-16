@@ -191,10 +191,11 @@ Fotografia sintetica (4 maggio 2026):
   - Backend: render Jinja2 + WeasyPrint, storage parametrico, endpoint template/asset e endpoint preventivo `genera`/`anteprima`/`lista`/`download`
   - Frontend: Configurazione documenti, modelli, asset, pulsante "Genera PDF" nel drawer preventivo e lista documenti generati
   - Riferimenti: [sviluppo-documenti.md](./dev/work-in-progress/sviluppo-documenti.md), [sviluppo-documenti-test-ui.md](./dev/work-in-progress/sviluppo-documenti-test-ui.md)
-- Migrazione `daterange` nativo PostgreSQL: **completata**
-  - 18 tabelle migrate (Fase 0-3), infrastruttura `script.trgfn_set_validita()`, linee guida SQL §7b
+- Migrazione `daterange` + PG18 STORED generated: **completata**
+  - Fase 0-3 (apr 2026): 19 tabelle migrate a `daterange`, `script.trgfn_set_validita()`, linee guida SQL §7b
+  - Fase PG18 (mag 2026): `validita` → `GENERATED ALWAYS STORED` su 20 tabelle; 3 tabelle con temporal UNIQUE (`WITHOUT OVERLAPS`); temporal FK `listini_righe_componenti → articoli_componenti`; `trgfn_set_validita` droppata
   - Backend ottimizzato: `validita @>` al posto dei doppi confronti `valido_dal`/`valido_al`
-  - Analisi: [migrazione-daterange.md](./dev/work-in-progress/migrazione-daterange.md)
+  - Piano PG18: [piano-miglioramenti-db-pg18.md](./dev/work-in-progress/piano-miglioramenti-db-pg18.md)
 - Rettifiche prezzi (DB-L4): estratte in [work-in-progress/sviluppo-rettifiche.md](./dev/work-in-progress/sviluppo-rettifiche.md), **da implementare**
 - Integrazione AI v1: operativa, **11 tool** registrati
   - Pratiche (cerca, dettaglio, flussi)

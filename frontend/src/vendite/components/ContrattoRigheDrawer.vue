@@ -1,10 +1,14 @@
 <script setup>
-// Scopo: Sub-drawer gestione righe contratto — pattern master-detail inline.
-//        Lista paginata sopra (10 righe/pagina), form dettaglio sotto.
-//        Click riga = edit, pulsante Nuovo = create, Salva/Annulla sempre in basso.
-//        Modalita' C: prezzo_unitario obbligatorio su tutte le righe.
-//        Modalita' B: opzionale (solo se serve override).
-//        Modalita' A: di norma non necessarie (solo override puntuali).
+// Scopo: Sub-drawer gestione righe contratto (modello unificato 2026-05-15)
+//        — pattern master-detail inline. Lista paginata sopra (10 righe/pagina),
+//        form dettaglio sotto. Click riga = edit, pulsante Nuovo = create,
+//        Salva/Annulla sempre in basso.
+//
+// Refactor modalita 2026-05-15: le righe sono ECCEZIONI tipizzate del listino
+// (tipo_eccezione = OVERRIDE / ESCLUSIONE / AGGIUNTA), non piu' "righe di
+// modalita C". La forma del contratto e' "con_listino" o "senza_listino",
+// derivata dalla testata. Le azioni "Modifica prezzo" (OVERRIDE), "Escludi"
+// (ESCLUSIONE), "Aggiungi articolo" (AGGIUNTA) corrispondono ai 3 tipi.
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
@@ -12,13 +16,23 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
+import { formatCurrency, formatNumber } from '../../core/utils/format'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import {
+  previewRigaComponenti,
+  listRigaComponenti as listContrattoRigaComponenti,
+  updateRigaComponente as updateContrattoRigaComponente,
+  deleteRigaComponente as deleteContrattoRigaComponente,
+  getContrattoContestoPricing,
+} from '../api/contratti'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
+import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -40,7 +54,12 @@ const isReadonly = useInjectReadonly()
 const props = defineProps({
   visible: Boolean,
   contrattoId: { type: Number, required: true },
-  contrattoModalita: { type: String, default: 'B' },
+  // Refactor modalita 2026-05-15: niente piu' modalita A/B/C. La "forma"
+  // arriva dal parent (derivata dai campi testata) ed e' "con_listino" o
+  // "senza_listino". Default null: il drawer attende il dato dal parent
+  // o fallback a `previewMeta.forma` dopo loadPreview (recap §3.2 fix:
+  // niente piu' hardcoded 'B' default).
+  contrattoForma: { type: String, default: null },
   righeIniziali: { type: Array, default: () => [] },
   // Contesto contratto (per intestazione riepilogativa)
   contrattoNumero: { type: String, default: '' },
@@ -54,20 +73,28 @@ const emit = defineEmits(['update:visible', 'changed'])
 
 const righe = ref([])
 
-// === Preview righe applicate (modalita' A/B) ===
-// previewMeta: testata sintetica (modalita derivata, listino, variazione)
-// previewRighe: lista preview (origine='DA_LISTINO' o 'OVERRIDE')
+// === Preview righe applicate (refactor modalita 2026-05-15) ===
+// previewMeta: testata sintetica (forma, listino, listino_versione_id, variazione)
+// previewRighe: lista preview con origine = 'DA_LISTINO' | 'OVERRIDE' |
+//   'ESCLUSIONE' | 'AGGIUNTA' (post step 2.4 resolver BE)
 const previewMeta = ref(null)
 const previewRighe = ref([])
 const previewLoading = ref(false)
 
-// In modalita' A/B la lista visualizzata e' la preview (combinata override
-// + da_listino), in modalita' C resta la lista contratti_righe diretta.
-// La modalita' usata per le decisioni di rendering e` quella derivata dal
-// BE (previewMeta.modalita) se disponibile, altrimenti la prop
-// contrattoModalita di fallback.
-const modalitaEffettiva = computed(() => previewMeta.value?.modalita || props.contrattoModalita)
-const isModalitaC = computed(() => modalitaEffettiva.value === 'C')
+// === Contesto pricing contratto (FE 2.2) ===
+// Mutuato dal pattern preventivi `getContestoPricing`. Espone forma, listino
+// + versione fissata (post-attivazione) o corrente (DRAFT), variazione,
+// categoria cliente. Renderizzato come banner informativo nell'header drawer.
+const contestoPricing = ref(null)
+
+// Forma effettiva: priorita' al backend (previewMeta.forma o contestoPricing.forma),
+// fallback alla prop. None = drawer non ancora inizializzato.
+const formaEffettiva = computed(() =>
+  previewMeta.value?.forma
+  || contestoPricing.value?.forma
+  || props.contrattoForma,
+)
+const isSenzaListino = computed(() => formaEffettiva.value === 'senza_listino')
 
 // Filtro full-text articolo (codice + descrizione, case-insensitive).
 // Applicato client-side: la lista preview e' gia' paginata nel DataTable
@@ -89,7 +116,7 @@ const righeView = computed(() => {
     const desc = (r.articolo_descrizione || '').toLowerCase()
     return codice.includes(filtro) || desc.includes(filtro)
   }
-  if (isModalitaC.value) {
+  if (isSenzaListino.value) {
     return righe.value.filter(matchFiltro)
   }
   return (previewRighe.value || [])
@@ -130,8 +157,10 @@ function rowClass(data) {
 
 async function loadPreview() {
   if (!props.contrattoId) return
-  if (props.contrattoModalita === 'C') {
-    previewMeta.value = { modalita: 'C', righe: [] }
+  // Forma "senza_listino" (ex-modalita C): nessuna preview da caricare —
+  // le righe vivono direttamente in `contratti_righe` (tutte AGGIUNTA).
+  if (props.contrattoForma === 'senza_listino') {
+    previewMeta.value = { forma: 'senza_listino', righe: [] }
     previewRighe.value = []
     return
   }
@@ -148,12 +177,29 @@ async function loadPreview() {
   }
 }
 
+// Carica il contesto pricing per il banner header (FE 2.2). Mutuato dal
+// pattern preventivi: best-effort, un fail non blocca il drawer.
+async function loadContestoPricing() {
+  if (!props.contrattoId) {
+    contestoPricing.value = null
+    return
+  }
+  try {
+    const res = await getContrattoContestoPricing(props.contrattoId)
+    contestoPricing.value = res?.data?.data || null
+  } catch (err) {
+    contestoPricing.value = null
+    console.warn('contratto contesto pricing fetch failed',
+      err?.response?.data || err)
+  }
+}
+
 // Reload completo: in modalita' A/B ricarica la preview dal BE; in modalita'
 // C la lista contratti_righe viene rinfrescata dal parent (emit changed).
 // Usato sia dal pulsante Ricarica sia dallo shortcut F5 globale.
 async function reloadList() {
   if (!props.visible) return
-  if (isModalitaC.value) {
+  if (isSenzaListino.value) {
     emit('changed')
   } else {
     await loadPreview()
@@ -179,6 +225,64 @@ const formMode = ref(null)
 const rigaEditId = ref(null)
 const form = ref({})
 const selectedRow = ref(null)
+
+// Articolo selezionato corrente con flag `is_composito` (dal lookup
+// `ArticoloLookup` o ricostruito in `onRowSelect` per EDIT). Driver della
+// detection auto-apertura ComponentiDialog + visibilita' ComponentiPanel
+// (modello unificato BoM 2026-05-13).
+const articoloObj = ref(null)
+
+// === ComponentiDialog state (modello unificato BoM 2026-05-13) ===
+// Pattern speculare a `PreventiviRigaForm.vue`: in CREATE su articolo
+// composito, la Dialog si auto-apre al primo set di (articolo, uom, qta)
+// validi; in EDIT lo stato componenti viaggia via `ComponentiPanel` sotto
+// il form (lista persistita).
+const componentiDialogVisible = ref(false)
+const componentiPayload = ref(null)
+
+// Trigger di apertura Dialog: solo in CREATE su articolo composito con
+// UoM + qty valida. In EDIT il flusso e' diverso (panel sotto, no Dialog).
+const showComponentiDialog = computed(
+  () => formMode.value === 'create'
+    && articoloObj.value?.is_composito === true
+    && !!form.value.articolo_id
+    && !!form.value.uom_operativa_id
+    && (form.value.qta_operativa || 0) > 0,
+)
+
+// Watch su (articolo, UoM): cambia il CONTESTO di pricing → invalida i
+// prezzi suggeriti precedenti, reset del payload + auto-apertura Dialog
+// per nuova valorizzazione. La qty NON e' qui (non invalida i prezzi
+// unitari, solo il summary). EDIT non scatta mai.
+let _autoOpenedFor = null
+watch(
+  () => [form.value.articolo_id, form.value.uom_operativa_id],
+  ([articoloId, uomId]) => {
+    if (formMode.value !== 'create') return
+    componentiPayload.value = null
+    const tupleKey = `${articoloId}|${uomId}`
+    if (showComponentiDialog.value && _autoOpenedFor !== tupleKey) {
+      _autoOpenedFor = tupleKey
+      componentiDialogVisible.value = true
+    } else if (!showComponentiDialog.value) {
+      _autoOpenedFor = null
+      componentiDialogVisible.value = false
+    }
+  },
+)
+
+// Riapertura manuale (revisione) — bottone "Modifica componenti" sotto al
+// form in CREATE.
+function apriComponentiDialog() {
+  componentiDialogVisible.value = true
+}
+
+// Conferma Dialog: il payload e' { overrides, summary } (delta prezzi
+// diversi dal suggerito + summary live). Il drawer lo memorizza nel
+// payload del save riga (`componenti_overrides`).
+function onComponentiConfirm(payload) {
+  componentiPayload.value = payload
+}
 
 // === UoM operative dell'articolo selezionato ===
 // Composable centralizzato (Fase 4.F1). Autopick base se il form e' attivo
@@ -206,9 +310,14 @@ const tipoErogazioneOptions = computed(() => [
 ])
 
 function defaultForm() {
+  // Refactor modalita 2026-05-15: `tipo_eccezione` obbligatorio in create
+  // (BE _build_data_riga valida + DB CHECK). Default OVERRIDE (caso piu'
+  // frequente: cambio prezzo articolo del listino). Cambiabile via Select
+  // nel form (CREATE only — in EDIT e' immutabile).
   return {
     articolo_id: null,
     articolo_obj: null,
+    tipo_eccezione: 'OVERRIDE',
     tipo_erogazione: 'CANONE',
     prezzo_unitario: null,
     qta_operativa: 1,
@@ -217,12 +326,40 @@ function defaultForm() {
   }
 }
 
+// Options Select tipo_eccezione (3 valori). Mostra label i18n + codice.
+const tipoEccezioneOptions = computed(() => [
+  { value: 'OVERRIDE', label: t('contratti.tipo_eccezione_OVERRIDE') },
+  { value: 'ESCLUSIONE', label: t('contratti.tipo_eccezione_ESCLUSIONE') },
+  { value: 'AGGIUNTA', label: t('contratti.tipo_eccezione_AGGIUNTA') },
+])
+
+// Quando l'operatore cambia tipo_eccezione: ESCLUSIONE azzera prezzo
+// (vincolo BE: ESCLUSIONE -> prezzo NULL); OVERRIDE/AGGIUNTA lo lasciano
+// come e' (l'operatore lo compila).
+function onTipoEccezioneChange(nuovo) {
+  if (nuovo === 'ESCLUSIONE') {
+    form.value.prezzo_unitario = null
+  }
+}
+
+// Reset stato componenti BoM: chiamato da `closeForm` e da `onNew`.
+// Tiene insieme `articoloObj` + Dialog state per evitare drift.
+function resetComponentiState() {
+  articoloObj.value = null
+  componentiDialogVisible.value = false
+  componentiPayload.value = null
+  _autoOpenedFor = null
+}
+
 // === Lifecycle ===
 watch(() => props.visible, (v) => {
   if (v) {
     righe.value = [...(props.righeIniziali || [])]
     closeForm()
     loadPreview()
+    loadContestoPricing()
+  } else {
+    contestoPricing.value = null
   }
 })
 
@@ -237,6 +374,7 @@ function onNew() {
   rigaEditId.value = null
   selectedRow.value = null
   resetUomOptions()
+  resetComponentiState()
 }
 
 function onRowSelect(event) {
@@ -265,6 +403,10 @@ function onRowSelect(event) {
   form.value = {
     articolo_id: r.articolo_id,
     articolo_obj: { id: r.articolo_id, codice: r.articolo_codice, descrizione: r.articolo_descrizione, _display: `${r.articolo_codice} — ${r.articolo_descrizione}` },
+    // tipo_eccezione: immutabile in EDIT (refactor 2026-05-15). Mostrato
+    // come Tag readonly nel template form. Fallback OVERRIDE per righe
+    // legacy che non avevano ancora il campo (transitorio).
+    tipo_eccezione: r.tipo_eccezione || 'OVERRIDE',
     tipo_erogazione: r.tipo_erogazione || 'CANONE',
     prezzo_unitario: (r.prezzo_unitario ?? r.override_prezzo) != null
       ? Number(r.prezzo_unitario ?? r.override_prezzo)
@@ -273,6 +415,20 @@ function onRowSelect(event) {
     uom_operativa_id: r.uom_operativa_id ?? r.uom_id,
     ordine: r.ordine || 10,
   }
+  // Modello unificato BoM 2026-05-13: in EDIT articoloObj porta is_composito
+  // se disponibile dalla riga (proiezione BE denormalizzata; fallback false
+  // se non esposto). Driver visibilita' ComponentiPanel sotto il form.
+  articoloObj.value = {
+    id: r.articolo_id,
+    codice: r.articolo_codice,
+    descrizione: r.articolo_descrizione,
+    is_composito: r.is_composito === true,
+  }
+  // EDIT: chiudi ogni Dialog stantia, il pannello sotto e' l'entrypoint
+  // per modificare i componenti persistiti (no Dialog).
+  componentiDialogVisible.value = false
+  componentiPayload.value = null
+  _autoOpenedFor = null
   formMode.value = 'edit'
   rigaEditId.value = rigaId
   // Edit con UoM pre-popolata dalla riga: niente autopick, solo fetch.
@@ -282,6 +438,14 @@ function onRowSelect(event) {
 function onArticoloSelected(item) {
   form.value.articolo_id = item?.id || null
   form.value.uom_operativa_id = null
+  // Modello unificato BoM 2026-05-13: snapshot articolo (incluso flag
+  // `is_composito` esposto dal lookup) per detection ComponentiDialog
+  // post pickBase UoM nel watch sopra.
+  articoloObj.value = item || null
+  // Cambio articolo: reset payload Dialog precedente (era riferito al
+  // vecchio articolo) e key auto-open per consentire riapertura sul nuovo.
+  componentiPayload.value = null
+  _autoOpenedFor = null
   // Cambio articolo in form aperto: autopick base.
   caricaUomConPickBase(item?.id)
 }
@@ -292,6 +456,7 @@ function closeForm() {
   form.value = {}
   selectedRow.value = null
   resetUomOptions()
+  resetComponentiState()
 }
 
 // === Validazione ===
@@ -300,7 +465,23 @@ const canSave = computed(() => {
   if (!formMode.value) return false
   if (!form.value.articolo_id) return false
   if (!form.value.uom_operativa_id) return false
-  if (props.contrattoModalita === 'C' && (form.value.prezzo_unitario == null || form.value.prezzo_unitario === '')) return false
+  // Refactor modalita 2026-05-15: coerenza prezzo_unitario / tipo_eccezione
+  // (specchio del check BE _build_data_riga):
+  //   - ESCLUSIONE: prezzo NULL ammesso (l'articolo non e' disponibile)
+  //   - OVERRIDE / AGGIUNTA: prezzo obbligatorio (e' il prezzo finale),
+  //     EXCEPT articoli compositi dove il prezzo padre = SUM(componenti)
+  //     viene popolato dal trigger DB post-init.
+  const tipo = form.value.tipo_eccezione
+  const prezzoMancante = form.value.prezzo_unitario == null
+    || form.value.prezzo_unitario === ''
+  if (tipo !== 'ESCLUSIONE'
+      && !articoloObj.value?.is_composito
+      && prezzoMancante) return false
+  // Modello unificato BoM 2026-05-13: in CREATE su articolo composito,
+  // blocca il save finche' la ComponentiDialog non e' stata confermata
+  // almeno una volta (componentiPayload != null). Se l'operatore annulla
+  // resta bloccato — deve riaprire e confermare.
+  if (showComponentiDialog.value && componentiPayload.value == null) return false
   return true
 })
 
@@ -322,12 +503,25 @@ async function onSave() {
   }
   if (formMode.value === 'create') {
     payload.articolo_id = f.articolo_id
+    // Refactor modalita 2026-05-15: tipo_eccezione obbligatorio in create.
+    payload.tipo_eccezione = f.tipo_eccezione || 'OVERRIDE'
+    // ESCLUSIONE: BE rifiuta prezzo non-null. Forziamo null per safety.
+    if (payload.tipo_eccezione === 'ESCLUSIONE') {
+      payload.prezzo_unitario = null
+    }
+    // Modello unificato BoM 2026-05-13: includi `componenti_overrides`
+    // se l'articolo e' composito e la Dialog ha prodotto overrides delta.
+    // Il BE auto-init i componenti nella stessa transazione di `create_riga`.
+    if (articoloObj.value?.is_composito === true
+        && componentiPayload.value?.overrides) {
+      payload.componenti_overrides = componentiPayload.value.overrides
+    }
     const result = await execute(
       () => store.addRiga(props.contrattoId, payload),
       { successMessage: t('contratti.riga_creata') }
     )
     if (result !== null) {
-      if (!isModalitaC.value) await loadPreview()
+      if (!isSenzaListino.value) await loadPreview()
       emit('changed')
       closeForm()
     }
@@ -337,7 +531,7 @@ async function onSave() {
       { successMessage: t('contratti.riga_salvata') }
     )
     if (result !== null) {
-      if (!isModalitaC.value) await loadPreview()
+      if (!isSenzaListino.value) await loadPreview()
       emit('changed')
       closeForm()
     }
@@ -357,7 +551,7 @@ function onDelete(r) {
       // Se stavo editando questa riga, chiudi il form.
       if (rigaEditId.value === rigaId) closeForm()
       // In A/B la preview va ricaricata; in C il parent rilegge dalle righe.
-      if (!isModalitaC.value) await loadPreview()
+      if (!isSenzaListino.value) await loadPreview()
       emit('changed')
     }
   })
@@ -431,25 +625,41 @@ function origineSeverity(origine) {
         </div>
       </div>
 
-      <!-- Avviso modalita' C: tutte le righe sono custom, prezzo obbligatorio -->
-      <Message v-if="modalitaEffettiva === 'C'" severity="warn" :closable="false" size="small">
-        {{ t('contratti.righe_c_warn') }}
+      <!-- Banner contesto pricing (refactor modalita 2026-05-15, FE 2.2):
+           mostra forma derivata + listino + versione fissata (post-attivazione)
+           o corrente (DRAFT) + categoria cliente. Mutuato dal pattern preventivi. -->
+      <Message v-if="contestoPricing"
+        :severity="isSenzaListino ? 'warn' : 'info'"
+        :closable="false" size="small">
+        <div>
+          <strong>{{ t(`contratti.forma_${formaEffettiva}_descrizione`) }}</strong>
+        </div>
+        <div v-if="contestoPricing.listino_codice" class="text-sm">
+          {{ t('contratti.contesto_listino', {
+            codice: contestoPricing.listino_codice,
+            versione: contestoPricing.listino_versione_codice || '—',
+          }) }}
+          <Tag v-if="contestoPricing.listino_versione_fissata"
+               :value="t('contratti.contesto_versione_fissata')"
+               severity="success" class="ml-1" />
+        </div>
+        <div v-if="contestoPricing.tipo_variazione_globale" class="text-sm">
+          {{ t('contratti.contesto_variazione', {
+            tipo: contestoPricing.tipo_variazione_globale,
+            valore: contestoPricing.valore_variazione_globale,
+          }) }}
+        </div>
+        <div v-if="contestoPricing.categoria_cliente_codice" class="text-sm">
+          {{ t('contratti.contesto_categoria', {
+            codice: contestoPricing.categoria_cliente_codice,
+          }) }}
+        </div>
       </Message>
 
-      <!-- Banner contesto preview modalita' A/B: riassume listino + variazione -->
-      <Message v-else-if="previewMeta?.listino_codice"
-        severity="info" :closable="false" size="small">
-        <div>
-          <strong>{{ t('contratti.preview_modalita', { mod: previewMeta.modalita }) }}</strong>:
-          {{ t('contratti.preview_listino', { codice: previewMeta.listino_codice }) }}
-          <span v-if="previewMeta.tipo_variazione_globale">
-            — {{ t('contratti.preview_variazione', {
-              tipo: previewMeta.tipo_variazione_globale,
-              valore: previewMeta.valore_variazione_globale,
-            }) }}
-          </span>
-        </div>
-        <div class="text-sm">{{ t('contratti.preview_hint') }}</div>
+      <!-- Avviso "senza_listino": tutte le righe AGGIUNTA, prezzo obbligatorio. -->
+      <Message v-if="isSenzaListino && !contestoPricing"
+               severity="warn" :closable="false" size="small">
+        {{ t('contratti.righe_senza_listino_warn') }}
       </Message>
 
       <!-- Avviso: listino associato ma senza versione operativa oggi.
@@ -477,7 +687,7 @@ function origineSeverity(origine) {
         v-model:selection="selectedRow"
         :loading="previewLoading"
         selection-mode="single"
-        :data-key="isModalitaC ? 'id' : '_row_key'"
+        :data-key="isSenzaListino ? 'id' : '_row_key'"
         :row-class="rowClass"
         class="app-datatable"
         striped-rows
@@ -496,20 +706,30 @@ function origineSeverity(origine) {
           <template #body="{ data }">{{ data.uom_codice ?? '—' }}</template>
         </Column>
         <!-- Modalita' C: prezzo singolo. A/B: prezzo listino + prezzo finale + origine. -->
-        <template v-if="isModalitaC">
+        <template v-if="isSenzaListino">
           <Column field="prezzo_unitario" :header="t('contratti.col_prezzo')" style="width: 90px;">
-            <template #body="{ data }">{{ data.prezzo_unitario ?? '—' }}</template>
+            <template #body="{ data }">
+              {{ formatCurrency(data.prezzo_unitario, { placeholder: '—', maximumFractionDigits: 2 }) }}
+            </template>
           </Column>
-          <Column field="qta_operativa" :header="t('contratti.col_qta')" style="width: 70px;" />
+          <Column field="qta_operativa" :header="t('contratti.col_qta')" style="width: 70px;">
+            <template #body="{ data }">
+              {{ formatNumber(data.qta_operativa, { placeholder: '—', minimumFractionDigits: 0, maximumFractionDigits: 4 }) }}
+            </template>
+          </Column>
           <Column field="tipo_erogazione" :header="t('contratti.col_tipo_erogazione')" style="width: 100px;" />
         </template>
         <template v-else>
           <Column :header="t('contratti.col_prezzo_listino')" style="width: 110px;">
-            <template #body="{ data }">{{ data.prezzo_listino ?? '—' }}</template>
+            <template #body="{ data }">
+              {{ formatCurrency(data.prezzo_listino, { placeholder: '—', maximumFractionDigits: 2 }) }}
+            </template>
           </Column>
           <Column :header="t('contratti.col_prezzo_finale')" style="width: 110px;">
             <template #body="{ data }">
-              <span class="font-bold">{{ data.prezzo_finale ?? '—' }}</span>
+              <span class="font-bold">
+                {{ formatCurrency(data.prezzo_finale, { placeholder: '—', maximumFractionDigits: 2 }) }}
+              </span>
             </template>
           </Column>
           <Column :header="t('contratti.col_origine')" style="width: 110px;">
@@ -532,14 +752,32 @@ function origineSeverity(origine) {
           <h4>{{ formTitle }}</h4>
         </div>
 
-        <div class="form-field">
-          <label>{{ t('contratti.field_articolo') }} *</label>
-          <ArticoloLookup
-            v-model="form.articolo_obj"
-            @update:modelValue="onArticoloSelected"
-            :disabled="formMode === 'edit'"
-            :placeholder="t('contratti.select_articolo')"
-          />
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('contratti.field_articolo') }} *</label>
+            <ArticoloLookup
+              v-model="form.articolo_obj"
+              @update:modelValue="onArticoloSelected"
+              :disabled="formMode === 'edit'"
+              :placeholder="t('contratti.select_articolo')"
+            />
+          </div>
+          <div class="form-field">
+            <!-- Refactor modalita 2026-05-15: tipo_eccezione in create
+                 (immutabile in edit, mostrato come Tag readonly). -->
+            <label>{{ t('contratti.field_tipo_eccezione') }} *</label>
+            <Select
+              v-if="formMode === 'create'"
+              v-model="form.tipo_eccezione"
+              :options="tipoEccezioneOptions"
+              option-label="label"
+              option-value="value"
+              @change="onTipoEccezioneChange(form.tipo_eccezione)"
+              class="w-full" />
+            <Tag v-else
+              :value="t(`contratti.tipo_eccezione_${form.tipo_eccezione}`)"
+              severity="secondary" />
+          </div>
         </div>
 
         <div class="form-grid-2col">
@@ -565,9 +803,21 @@ function origineSeverity(origine) {
           <div class="form-field">
             <label>
               {{ t('contratti.field_prezzo_unitario') }}
-              <span v-if="contrattoModalita === 'C'">*</span>
+              <!-- Obbligatorio per OVERRIDE/AGGIUNTA (default tipo) non
+                   composito. ESCLUSIONE = prezzo NULL. -->
+              <span v-if="form.tipo_eccezione !== 'ESCLUSIONE' && !articoloObj?.is_composito">*</span>
+              <Tag v-if="form.tipo_eccezione === 'ESCLUSIONE'"
+                severity="warn"
+                :value="t('contratti.prezzo_esclusione_n_a')" />
+              <Tag v-else-if="articoloObj?.is_composito"
+                severity="info"
+                :value="t('vendite.componenti.panel.padre_calcolato')"
+                v-tooltip.top="t('vendite.componenti.panel.padre_calcolato_tooltip')"
+                class="contratti-componenti-padre-tag" />
             </label>
             <InputNumber v-model="form.prezzo_unitario" class="w-full"
+              :disabled="articoloObj?.is_composito === true
+                         || form.tipo_eccezione === 'ESCLUSIONE'"
               :min-fraction-digits="2" :max-fraction-digits="4" showButtons />
           </div>
           <div class="form-field">
@@ -582,6 +832,45 @@ function origineSeverity(origine) {
           <InputNumber v-model="form.ordine" class="w-full" :min="0" />
         </div>
 
+        <!-- Sezione componenti BoM (modello unificato 2026-05-13).
+             CREATE: il payload Dialog viaggia col save riga
+             (componenti_overrides). Mostra bottone "Modifica componenti"
+             + summary live. EDIT: ComponentiPanel carica i componenti
+             persistiti e li espone editabili. -->
+        <template v-if="articoloObj?.is_composito">
+          <div class="app-drawer-section">
+            <h4>{{ t('vendite.componenti.panel.section_title') }}</h4>
+          </div>
+          <div v-if="formMode === 'create'" class="contratti-componenti-create">
+            <Message severity="info" :closable="false" size="small">
+              {{ t('vendite.componenti.panel.create_hint') }}
+            </Message>
+            <Button
+              :label="t('vendite.componenti.panel.modifica_componenti')"
+              :icon="MANAGE_ICONS.BOM"
+              outlined
+              :disabled="!form.articolo_id || !form.uom_operativa_id
+                || !((form.qta_operativa || 0) > 0)"
+              @click="apriComponentiDialog" />
+            <small v-if="componentiPayload?.summary"
+              class="contratti-componenti-summary">
+              {{ t('vendite.componenti.panel.summary_create', {
+                n: componentiPayload.summary.n,
+              }) }}
+            </small>
+          </div>
+          <ComponentiPanel
+            v-else
+            :documento-id="props.contrattoId"
+            :riga-id="rigaEditId"
+            :readonly="isReadonly || formMode !== 'edit'"
+            :api-list="listContrattoRigaComponenti"
+            :api-update="updateContrattoRigaComponente"
+            :api-delete="deleteContrattoRigaComponente"
+            :tab-entity="TAB_ENTITIES.CONTRATTO"
+            @changed="emit('changed')" />
+        </template>
+
         <div class="app-drawer-footer">
           <Button :label="t('common.cancel')" severity="secondary" @click="closeForm" />
           <Button :label="t('common.save')" :disabled="!canSave || loading" :loading="loading" @click="onSave" />
@@ -590,5 +879,34 @@ function origineSeverity(origine) {
 
       <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
     </div>
+
+    <!-- ComponentiDialog modale: pre-popola i prezzi dei componenti BoM
+         prima del save di una riga padre composita. La conferma alimenta
+         `componentiPayload`; il save include `componenti_overrides`. -->
+    <ComponentiDialog
+      v-model:visible="componentiDialogVisible"
+      :articolo="articoloObj"
+      :documento-id="props.contrattoId"
+      :uom-operativa-id="form.uom_operativa_id"
+      :quantita="form.qta_operativa"
+      :api-preview="previewRigaComponenti"
+      :initial-payload="componentiPayload"
+      @confirm="onComponentiConfirm" />
   </Drawer>
 </template>
+
+<style scoped>
+.contratti-componenti-padre-tag {
+  font-size: 0.65rem;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.3rem;
+}
+.contratti-componenti-create {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.contratti-componenti-summary {
+  color: var(--app-text-muted);
+}
+</style>

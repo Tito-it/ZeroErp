@@ -1,0 +1,179 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# Step 2.3 (parte 2) — Lock post-attivazione: testata contratti + righe
+#
+# Due trigger:
+#
+# 1) trg_contratti_a10_lock_post_attivazione_upd
+#    BEFORE UPDATE OF listino_id, listino_versione_id,
+#                     tipo_variazione_globale, valore_variazione_globale
+#    su vendite.contratti.
+#    Se OLD stato = 'ATTIVO': raise E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE (452).
+#    Non scatta per UPDATE di altri campi (meta, note, valido_al, ecc.).
+#
+# 2) trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt
+#    BEFORE INSERT OR UPDATE OR DELETE su vendite.contratti_righe.
+#    Legge stato del contratto padre tramite JOIN.
+#    Se stato padre = 'ATTIVO': raise E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE (452).
+#    Enforcement DB-first: garantisce il blocco anche da psql diretto (§3-bis-A brief).
+#
+# Vedere: brief-db-refactor-contratti-completo.md §Fase 2 Step 2.3
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260515-14-create-trg-contratti-lock-post-attivazione-mctit.yaml
+
+  - changeSet:
+      id: 20260515-14-create-trg-contratti-lock-post-attivazione
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Step 2.3/2: lock post-attivazione pricing testata (contratti) e eccezioni (contratti_righe).
+        Errore: E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE (452).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti_righe
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- -------------------------------------------------------
+              -- 1. Lock pricing testata contratti
+              -- -------------------------------------------------------
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_lock_post_attivazione()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: impedisce la modifica dei campi pricing della testata su contratti ATTIVI.
+              -- Campi bloccati (UPDATE OF): listino_id, listino_versione_id,
+              --   tipo_variazione_globale, valore_variazione_globale.
+              -- Il trigger non scatta per update di altri campi (meta, note, valido_al).
+              -- Errore: E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE (452).
+              DECLARE
+                  v_codice_stato config.stati_doc_contratti.codice_interno%TYPE;
+              BEGIN
+                  SELECT codice_interno
+                    INTO v_codice_stato
+                    FROM config.stati_doc_contratti
+                   WHERE id = OLD.stato_doc_contratto_id;
+
+                  IF v_codice_stato = 'ATTIVO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME::text,
+                          'E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE',
+                          jsonb_build_object(
+                              'contratto_id', NEW.id,
+                              'numero',       NEW.numero,
+                              'stato',        v_codice_stato
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_lock_post_attivazione() IS
+                  'Lock pricing testata: blocca UPDATE di listino_id, listino_versione_id, '
+                  'tipo_variazione_globale, valore_variazione_globale su contratti ATTIVI. '
+                  'Non scatta per update di altri campi. '
+                  'Errore: E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE (452). Step 2.3.';
+
+              DROP TRIGGER IF EXISTS trg_contratti_a10_lock_post_attivazione_upd
+                ON vendite.contratti;
+
+              CREATE TRIGGER trg_contratti_a10_lock_post_attivazione_upd
+                  BEFORE UPDATE OF listino_id, listino_versione_id,
+                                   tipo_variazione_globale, valore_variazione_globale
+                  ON vendite.contratti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_contratti_lock_post_attivazione();
+
+              -- -------------------------------------------------------
+              -- 2. Lock eccezioni righe post-attivazione
+              -- -------------------------------------------------------
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: blocca INSERT, UPDATE e DELETE su contratti_righe quando il contratto
+              --   padre è ATTIVO. Le eccezioni sono immutabili post-attivazione (§3-bis-A).
+              -- Enforcement DB-first: garantisce il blocco anche da psql diretto o script.
+              -- Errore: E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE (452).
+              DECLARE
+                  v_contratto_id vendite.contratti_righe.contratto_id%TYPE;
+                  v_articolo_id  vendite.contratti_righe.articolo_id%TYPE;
+                  v_codice_stato config.stati_doc_contratti.codice_interno%TYPE;
+              BEGIN
+                  IF TG_OP = 'DELETE' THEN
+                      v_contratto_id := OLD.contratto_id;
+                      v_articolo_id  := OLD.articolo_id;
+                  ELSE
+                      v_contratto_id := NEW.contratto_id;
+                      v_articolo_id  := NEW.articolo_id;
+                  END IF;
+
+                  SELECT sdc.codice_interno
+                    INTO v_codice_stato
+                    FROM vendite.contratti c
+                    JOIN config.stati_doc_contratti sdc ON sdc.id = c.stato_doc_contratto_id
+                   WHERE c.id = v_contratto_id;
+
+                  IF v_codice_stato = 'ATTIVO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME::text,
+                          'E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE',
+                          jsonb_build_object(
+                              'contratto_id', v_contratto_id,
+                              'articolo_id',  v_articolo_id,
+                              'operazione',   TG_OP
+                          ),
+                          CASE WHEN TG_OP = 'DELETE' THEN OLD.tx_id ELSE NEW.tx_id END,
+                          v_contratto_id::text,
+                          TG_OP
+                      );
+                  END IF;
+
+                  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione() IS
+                  'Lock righe post-attivazione: blocca INSERT/UPDATE/DELETE su contratti_righe '
+                  'quando il contratto padre è ATTIVO. '
+                  'Errore: E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE (452). Step 2.3.';
+
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt
+                ON vendite.contratti_righe;
+
+              CREATE TRIGGER trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE
+                  ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt
+                ON vendite.contratti_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_contratti_righe_lock_post_attivazione();
+
+              DROP TRIGGER IF EXISTS trg_contratti_a10_lock_post_attivazione_upd
+                ON vendite.contratti;
+              DROP FUNCTION IF EXISTS vendite.trgfn_contratti_lock_post_attivazione();

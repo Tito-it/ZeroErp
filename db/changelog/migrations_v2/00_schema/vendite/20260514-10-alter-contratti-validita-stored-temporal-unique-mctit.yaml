@@ -1,0 +1,126 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260514-10-alter-contratti-validita-stored-temporal-unique-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 2a (piano-miglioramenti-db-pg18.md) — vendite.contratti:
+  # converte validita da colonna ordinaria (trigger-based) a STORED generated
+  # e sostituisce EXCLUDE USING gist con temporal UNIQUE (PG 18 SQL:2011).
+  #
+  # Tabella indipendente da uom_conversioni e articoli_componenti:
+  # nessuna dipendenza temporale con Step 2a precedenti.
+  #
+  # Sequenza:
+  #   1. DROP trigger trg_contratti_a20_set_validita_ins_upd
+  #   2. DROP COLUMN validita CASCADE
+  #      (CASCADE rimuove anche ex_contratti_no_overlap: EXCLUDE constraint + GiST)
+  #   3. ADD COLUMN validita DATERANGE GENERATED ALWAYS AS (...) STORED NOT NULL
+  #   4. ADD CONSTRAINT uq_contratti_no_overlap UNIQUE
+  #      (billing_account_id, istanza_utility_id, utility_id, ambito, validita WITHOUT OVERLAPS)
+  #   5. UPDATE dbops.automazione_overlap SET active=false
+  #
+  # Nota su ambito nullable: ambito ha DEFAULT 'COMMODITY' ma e' nullable.
+  # Con temporal UNIQUE, NULL in colonne chiave e' trattato come DISTINCT
+  # (non uguale a NULL), comportamento equivalente all'EXCLUDE con "WITH ="
+  # su valori NULL. Semantica invariata per i dati esistenti.
+  #
+  # Nessuna vista dipende da validita (verificato doc auto-gen 2026-05-14).
+  # Nessun guard trigger dei contratti usa NEW.validita (confermato §4.5 piano).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-10-alter-contratti-validita-stored-temporal-unique
+      author: mctit
+      comment: >
+        Step 2a PG18: converte validita da trigger-based a STORED generated column
+        e sostituisce EXCLUDE gist con temporal UNIQUE (WITHOUT OVERLAPS) su
+        vendite.contratti.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: contratti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND c.relname = 'contratti'
+                   AND a.attname = 'validita'
+                   AND a.attnum > 0
+                   AND NOT a.attisdropped
+                   AND a.attgenerated = ''
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rimuove il trigger set_validita: sostituito da STORED generated
+              DROP TRIGGER IF EXISTS trg_contratti_a20_set_validita_ins_upd
+                  ON vendite.contratti;
+
+              -- Rimuove la colonna ordinaria; CASCADE droppera' anche
+              -- ex_contratti_no_overlap (EXCLUDE constraint + indice GiST)
+              ALTER TABLE vendite.contratti
+                  DROP COLUMN validita CASCADE;
+
+              -- Aggiunge validita come STORED generated: sempre coerente,
+              -- non scrivibile dall'API, compatibile con temporal constraints
+              ALTER TABLE vendite.contratti
+                  ADD COLUMN validita DATERANGE
+                      GENERATED ALWAYS AS (
+                          daterange(
+                              COALESCE(valido_dal, '-infinity'::date),
+                              COALESCE(valido_al,  'infinity'::date),
+                              '[]'
+                          )
+                      ) STORED NOT NULL;
+
+              COMMENT ON COLUMN vendite.contratti.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. '
+                  'Non scrivibile direttamente. rev 2026-05-14.';
+
+              -- Aggiunge temporal UNIQUE PG 18 SQL:2011: sostituisce EXCLUDE USING gist.
+              -- L'indice GiST del constraint copre anche query WHERE validita @> data (D-OPEN-2).
+              ALTER TABLE vendite.contratti
+                  ADD CONSTRAINT uq_contratti_no_overlap
+                  UNIQUE (billing_account_id, istanza_utility_id, utility_id, ambito, validita WITHOUT OVERLAPS);
+
+              -- Segna come non attiva in automazione_overlap
+              UPDATE dbops.automazione_overlap
+                 SET active = false
+               WHERE target_schema = 'vendite'
+                 AND target_table  = 'contratti';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristina validita come colonna ordinaria + EXCLUDE
+              ALTER TABLE vendite.contratti
+                  DROP CONSTRAINT IF EXISTS uq_contratti_no_overlap;
+              ALTER TABLE vendite.contratti
+                  DROP COLUMN IF EXISTS validita;
+              ALTER TABLE vendite.contratti
+                  ADD COLUMN validita DATERANGE;
+              UPDATE vendite.contratti
+                 SET validita = daterange(
+                     COALESCE(valido_dal, '-infinity'::date),
+                     COALESCE(valido_al,  'infinity'::date), '[]');
+              ALTER TABLE vendite.contratti
+                  ALTER COLUMN validita SET NOT NULL;
+              ALTER TABLE vendite.contratti
+                  ADD CONSTRAINT ex_contratti_no_overlap
+                  EXCLUDE USING gist (
+                      billing_account_id WITH =,
+                      istanza_utility_id WITH =,
+                      utility_id         WITH =,
+                      ambito             WITH =,
+                      validita           WITH &&
+                  );
+              UPDATE dbops.automazione_overlap
+                 SET active = true
+               WHERE target_schema = 'vendite'
+                 AND target_table  = 'contratti';

@@ -220,6 +220,21 @@ class CatalogoRepository:
             )
             return row_to_dict(cursor)
 
+    # Scopo: Lookup lean del flag `is_composito` di un articolo. Single
+    # source of truth per i caller cross-dominio (preventivi/contratti/
+    # ordini/ddt) che devono decidere se invocare auto-init componenti
+    # post create_riga. Ritorna False se articolo non trovato (defensive).
+    # Estratto da `*Repository.is_articolo_composito` duplicato simmetrico
+    # (Fase H residue 2026-05-14): i repo sorgente ora delegano qui.
+    def is_articolo_composito(self, articolo_id: UUID | str) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT is_composito FROM catalogo.articoli WHERE id = %s",
+                [str(articolo_id)],
+            )
+            row = cursor.fetchone()
+            return bool(row[0]) if row else False
+
     # Scopo: Inserisce un articolo usando solo colonne esplicitamente ammesse.
     def create_articolo(self, data: dict[str, Any]) -> UUID:
         fields = [(key, value) for key, value in data.items() if key in ARTICOLI_CREATE_COLUMNS]

@@ -1,16 +1,21 @@
-// Scopo: Composable per caricare limiti L2 variazione prezzo dell'utente
-//        corrente (max_sconto_pct + max_maggiorazione_pct).
-//        Cache modulo-level: la prima view che lo invoca fa la fetch,
-//        le successive riusano stessa reference reattiva. Un invalidate()
-//        permette di ricaricare post-override admin.
+// Scopo: Composable per caricare limiti L2 variazione prezzo (cascata
+//        estesa 2026-05-15: max_sconto_pct + max_maggiorazione_pct risolti
+//        con user -> categoria_cliente -> group -> emittente -> default).
+//
+//        Cache modulo-level **per chiave BA** (oppure per default senza BA):
+//        la cascata BE include il livello categoria del BA destinatario,
+//        quindi clienti con categoria diversa hanno limiti diversi. La cache
+//        deve essere chiave dal BA per evitare di mostrare i limiti del
+//        cliente precedente a un cliente nuovo.
 //
 // Uso tipico (drawer riga preventivo):
 //   const { limiti, load } = useLimitiPricing()
-//   onMounted(load)
+//   watch(() => testata.billing_account_id, load, { immediate: true })
 //   // in template: sconto_max_pct = Number(limiti.value.max_sconto_pct)
 //
-// Rationale cache modulo: i limiti cambiano raramente (config server-side)
-// e servono in piu' drawer diversi — evitiamo N round-trip.
+// Rationale cache: i limiti cambiano raramente (config server-side) ma
+// dipendono dal BA destinatario. Evitiamo refetch quando l'operatore torna
+// sullo stesso BA, refresh forzato via invalidate() post-override admin.
 
 import { ref } from 'vue'
 import { getLimitiPricingUtente } from '../api/listini'
@@ -25,54 +30,73 @@ const L2_ERROR_CODES = Object.freeze([
   'E_PREV_MAGGIORAZIONE_ECCESSIVA',
 ])
 
-const _limiti = ref({ max_sconto_pct: '0', max_maggiorazione_pct: '0' })
-const _loaded = ref(false)
-const _loading = ref(false)
-let _inflight = null
+const _DEFAULT = { max_sconto_pct: '0', max_maggiorazione_pct: '0' }
 
-// Scopo: Carica i limiti se non ancora caricati (idempotente + dedup
-//        thundering herd: consumer simultanei condividono la Promise).
-async function load() {
-  if (_loaded.value) return
-  if (_inflight) return _inflight
+// `_limiti` espone i limiti CORRENTI (ultimo BA richiesto). I valori per BA
+// sono memoizzati in `_cache` mappato per chiave (BA id o '__user__' per
+// chiamata senza BA).
+const _limiti = ref({ ..._DEFAULT })
+const _loading = ref(false)
+const _cache = new Map() // key -> { max_sconto_pct, max_maggiorazione_pct }
+const _inflight = new Map() // key -> Promise (dedup thundering herd per key)
+
+function _cacheKey(baId) {
+  return baId != null && baId !== '' ? `ba:${baId}` : '__user__'
+}
+
+// Scopo: Carica i limiti per il BA fornito (cascata BE include categoria
+//        cliente). Idempotente per chiave: se gia' cached, restituisce
+//        subito dalla cache senza round-trip. Se senza BA, cascata "generica"
+//        utente. `baId` puo' essere null/undefined.
+async function load(baId = null) {
+  const key = _cacheKey(baId)
+  // Cache hit: imposta i limiti correnti e ritorna.
+  if (_cache.has(key)) {
+    _limiti.value = _cache.get(key)
+    return
+  }
+  // Dedup richieste concorrenti per la stessa chiave.
+  if (_inflight.has(key)) return _inflight.get(key)
   _loading.value = true
-  _inflight = getLimitiPricingUtente()
+  const promise = getLimitiPricingUtente(baId)
     .then(res => {
-      _limiti.value = res.data.data || _limiti.value
-      _loaded.value = true
+      const data = res.data?.data || { ..._DEFAULT }
+      _cache.set(key, data)
+      _limiti.value = data
     })
     .catch(() => {
-      // Errore silenzioso: in fallback usiamo i default '0' (safe,
-      // il BE blocchera' l'override se non ammesso).
+      // Errore silenzioso: fallback default '0' (safe — il BE blocchera'
+      // comunque l'override se non ammesso).
+      _cache.set(key, { ..._DEFAULT })
+      _limiti.value = { ..._DEFAULT }
     })
     .finally(() => {
       _loading.value = false
-      _inflight = null
+      _inflight.delete(key)
     })
-  return _inflight
+  _inflight.set(key, promise)
+  return promise
 }
 
-// Scopo: Forza il ricarico dei limiti (es. post-cambio override admin
-//        oppure logout/login). Reset cache + re-fetch opzionale.
+// Scopo: Forza il reset della cache (es. post-cambio override admin oppure
+//        logout/login). Resetta tutte le chiavi e i limiti correnti.
 function invalidate(reload = false) {
-  _loaded.value = false
-  _limiti.value = { max_sconto_pct: '0', max_maggiorazione_pct: '0' }
-  _inflight = null
+  _cache.clear()
+  _inflight.clear()
+  _limiti.value = { ..._DEFAULT }
   if (reload) return load()
 }
 
 // Cache module-level NON user-scoped per default: registriamo l'invalidate
 // nel resetter centrale Pinia cosi' al logout (resetAllUserScopedStores)
 // la cache viene azzerata. Senza questo, login successivo come altro
-// utente vedeva i limiti del precedente (es. admin → fara giada con
-// override EF: la fetch non riparte e mostra 0/0 stantio).
+// utente vedeva i limiti del precedente.
 registerUserScopedResetter(() => invalidate(false))
 
 export function useLimitiPricing() {
   return {
     limiti: _limiti,
     loading: _loading,
-    loaded: _loaded,
     load,
     invalidate,
     L2_ERROR_CODES,

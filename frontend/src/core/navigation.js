@@ -128,8 +128,8 @@ export const DOMAIN_MENUS = {
   ],
   'vendite': [
     { key: 'preventivi', icon: NAV_ICONS.FILE, to: '/vendite/preventivi' },
-    { key: 'listini', icon: NAV_ICONS.TAG, to: '/vendite/listini' },
     { key: 'contratti', icon: NAV_ICONS.FILE_EDIT, to: '/vendite/contratti' },
+    { key: 'listini', icon: NAV_ICONS.TAG, to: '/vendite/listini' },
     { key: 'promo-articoli', icon: NAV_ICONS.PERCENTAGE, to: '/vendite/promo-articoli' },
     { key: 'approvazioni-prezzo', icon: NAV_ICONS.CHECK_CIRCLE, to: '/vendite/approvazioni-prezzo' }
   ],

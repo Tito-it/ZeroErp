@@ -1,0 +1,54 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260514-33-drop-trgfn-set-validita-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 4 (piano-miglioramenti-db-pg18.md) — DROP script.trgfn_set_validita.
+  #
+  # Dopo Step 2a (migrations 07-10) e Step 2b (migrations 17-32), la funzione
+  # non e' piu' registrata su nessuna tabella. Tutte le 19 tabelle ora usano
+  # STORED generated column per validita.
+  #
+  # preCondition: verifica che non esistano piu' trigger che la referenziano
+  # prima di droppare. HALT se ancora in uso (qualche tabella non migrata).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-33-drop-trgfn-set-validita
+      author: mctit
+      comment: >
+        Step 4 PG18: elimina script.trgfn_set_validita. La funzione e' codice
+        morto: tutte le 19 tabelle usano ora STORED generated column per validita.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_trigger t
+                JOIN pg_proc p   ON p.oid = t.tgfoid
+                JOIN pg_namespace pn ON pn.oid = p.pronamespace
+               WHERE pn.nspname = 'script'
+                 AND p.proname  = 'trgfn_set_validita'
+      changes:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS script.trgfn_set_validita();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback: ricrea la funzione (le registrazioni trigger vanno
+              -- ripristinate manualmente o con rollback delle migration 17-32)
+              CREATE OR REPLACE FUNCTION script.trgfn_set_validita()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  NEW.validita := daterange(
+                      COALESCE(NEW.valido_dal, '-infinity'::date),
+                      COALESCE(NEW.valido_al,  'infinity'::date),
+                      '[]'
+                  );
+                  RETURN NEW;
+              END;
+              $function$;

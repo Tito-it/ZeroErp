@@ -1,0 +1,134 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260514-06-update-trgfn-listini-righe-comp-guard-immutabilita-v5-stored-validita-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Aggiorna vendite.trgfn_listini_righe_comp_guard_immutabilita_v5 per la nuova
+  # struttura di listini_righe_componenti dove validita e' STORED generated
+  # da valido_dal/valido_al (migration 20260514-04).
+  #
+  # Il check UPDATE campi core sostituisce:
+  #   OR NEW.validita IS DISTINCT FROM OLD.validita
+  # con:
+  #   OR NEW.valido_dal IS DISTINCT FROM OLD.valido_dal
+  #   OR NEW.valido_al  IS DISTINCT FROM OLD.valido_al
+  # perche' NEW.validita e' NULL nei BEFORE trigger (STORED generated, D-OPEN-1).
+  #
+  # Funzione originale: 20260513-20-create-trgfn-listini-righe-comp-guard-immutabilita-v5
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260514-06-update-trgfn-listini-righe-comp-guard-immutabilita-v5-stored-validita
+      author: mctit
+      runOnChange: true
+      comment: >
+        Aggiorna il check UPDATE di trgfn_listini_righe_comp_guard_immutabilita_v5:
+        sostituisce NEW.validita IS DISTINCT FROM OLD.validita con i check su
+        valido_dal/valido_al, perche' validita e' ora STORED generated.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: listini_righe_componenti
+          - columnExists:
+              schemaName: vendite
+              tableName: listini_righe_componenti
+              columnName: valido_dal
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'vendite'
+                   AND p.proname = 'trgfn_listini_righe_comp_guard_immutabilita_v5';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_righe_comp_guard_immutabilita_v5()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: BEFORE INS/UPD/DEL su listini_righe_componenti — immutabilita' v5.
+              --   Pattern listini: INSERT solo in versione BOZZA, UPDATE campi core
+              --   bloccato in versione non-BOZZA, DELETE sempre bloccato.
+              --   Il check periodo usa valido_dal/valido_al: validita e' STORED generated,
+              --   non disponibile nei BEFORE trigger (D-OPEN-1).
+              DECLARE
+                  v_stato   vendite.listini_versioni.stato%TYPE;
+                  v_riga_id vendite.listini_righe_componenti.id%TYPE;
+              BEGIN
+                  v_riga_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+
+                  -- DELETE bloccato: usare attivo=FALSE
+                  IF TG_OP = 'DELETE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME, 'E_RIGA_LISTINO_VERSIONE_CHIUSA',
+                          jsonb_build_object(
+                              'operazione', 'DELETE',
+                              'hint',       'Usare attivo=FALSE per disattivare la riga.',
+                              'riga_id',    v_riga_id
+                          ),
+                          NULL::uuid,
+                          'DELETE', v_riga_id::text, 'PROTETTA'
+                      );
+                  END IF;
+
+                  -- Legge stato versione
+                  SELECT lv.stato INTO v_stato
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = NEW.listino_versione_id;
+
+                  -- INSERT: solo in versione BOZZA
+                  IF TG_OP = 'INSERT' AND COALESCE(v_stato, 'BOZZA') <> 'BOZZA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME, 'E_RIGA_LISTINO_VERSIONE_CHIUSA',
+                          jsonb_build_object(
+                              'operazione',         'INSERT',
+                              'stato_versione',     v_stato,
+                              'listino_versione_id', NEW.listino_versione_id
+                          ),
+                          NULL::uuid,
+                          'INSERT', v_riga_id::text, v_stato
+                      );
+                  END IF;
+
+                  -- UPDATE campi core: bloccato se versione non BOZZA.
+                  -- Il periodo e' identificato da valido_dal/valido_al (non da validita,
+                  -- che e' STORED generated e non e' visibile nei BEFORE trigger).
+                  IF TG_OP = 'UPDATE' AND COALESCE(v_stato, 'BOZZA') <> 'BOZZA' THEN
+                      IF NEW.prezzo    IS DISTINCT FROM OLD.prezzo
+                         OR NEW.iva_id    IS DISTINCT FROM OLD.iva_id
+                         OR NEW.valido_dal IS DISTINCT FROM OLD.valido_dal
+                         OR NEW.valido_al  IS DISTINCT FROM OLD.valido_al
+                      THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', TG_NAME, 'E_RIGA_LISTINO_VERSIONE_CHIUSA',
+                              jsonb_build_object(
+                                  'operazione',         'UPDATE_CAMPI_CORE',
+                                  'stato_versione',     v_stato,
+                                  'listino_versione_id', NEW.listino_versione_id,
+                                  'riga_id',            NEW.id
+                              ),
+                              NULL::uuid,
+                              'UPDATE', NEW.id::text, v_stato
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_righe_comp_guard_immutabilita_v5() IS
+                  'Trigger BEFORE INS/UPD/DEL su listini_righe_componenti: immutabilita'' v5. '
+                  'DELETE sempre bloccato (usare attivo=FALSE). INSERT solo in BOZZA. '
+                  'UPDATE prezzo/iva_id/valido_dal/valido_al bloccato in non-BOZZA. '
+                  'Raise E_RIGA_LISTINO_VERSIONE_CHIUSA (362). rev 2026-05-14.';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS
+              vendite.trgfn_listini_righe_comp_guard_immutabilita_v5();

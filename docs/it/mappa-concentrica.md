@@ -86,7 +86,7 @@ Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinz
 | ------------- | ---------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `core`        | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job, audit sessioni, request log                                                  |
 | `dbops`       | Schema DB  | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log, sessioni_utente, request_log, **automazione daterange**, **chiusura parametrica per scadenza** |
-| `script`      | Schema DB  | Operativo | fn_log_and_raise_error, viste e funzioni riusabili, **trgfn_set_validita** (trigger generico daterange)                                                                                   |
+| `script`      | Schema DB  | Operativo | fn_log_and_raise_error, viste e funzioni riusabili, helpers generici trigger (guard coerenza BoM, immutabilita`)                                                                          |
 | `public`      | Schema DB  | Operativo | version_info                                                                                                                                                                              |
 | `maintenance` | Schema DB  | Operativo | Job schedulati pgAgent, job_run_log                                                                                                                                                       |
 
@@ -95,7 +95,7 @@ Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinz
 - Error handling centralizzato (`ServiceError`, `ErrorManager.require`)
 - Middleware API (exception handling, JWT audit, request context, request log)
 - Pattern uniformi: `handle_post_json`, paginazione, throttling, search validators
-- Automazioni DB: audit fields, tx_id, storicizzazione, lock colonne, protezione attivo, **daterange nativo** (`script.trgfn_set_validita`), chiusura parametrica per scadenza (`dbops.fn_apply_chiusura_scadenze`)
+- Automazioni DB: audit fields, tx_id, storicizzazione, lock colonne, protezione attivo, **`validita` STORED generated** (PG 18, nessun trigger), chiusura parametrica per scadenza (`dbops.fn_apply_chiusura_scadenze`)
 - **Tracciamento processi e job**: API per audit log, task registry multi-dominio, job run log (6 endpoint REST, 27 test)
 - **Audit sessioni**: login/refresh JWT tracciati in `dbops.sessioni_utente` con IP, user_agent, request_id (19 test)
 - **Request logging**: ogni request `/api/*` registrata in `dbops.request_log` con metodo, path, status, durata
@@ -569,7 +569,7 @@ Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-don
 ### Completato (8-12 aprile 2026)
 
 - ~~Migrazione `daterange` nativo PostgreSQL~~ — **FATTO** (12 aprile 2026)
-  - Infrastruttura: `dbops.automazione_overlap` + `script.trgfn_set_validita()` (trigger generico riusabile)
+  - Infrastruttura originale: `dbops.automazione_overlap` + `script.trgfn_set_validita()` (trigger generico, poi rimosso con PG18)
   - Fase 1: 5 tabelle con GIST migrate (listini_versioni, listini_associazioni, uom_conversioni, contratti, articoli_componenti) + `fn_resolve_prezzo_listino` aggiornata
   - Fase 2: 11 tabelle config/anagrafiche migrate + 5 funzioni permessi semplificate con `@>`
   - Fase 3: 2 tabelle pratiche con `tstzrange`

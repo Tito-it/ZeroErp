@@ -109,6 +109,21 @@ class ErrorPolicyRegistry:
             user_message="Esiste gia' una promo attiva per questo "
                          "(articolo, unita' di misura) nel periodo indicato.",
         ),
+        # Pattern simmetrico a `E_VENDITE_CONTRATTO_OVERLAP` / `E_VENDITE_PROMO_OVERLAP`:
+        # `ex_listini_versioni_no_overlap` (EXCLUDE GIST con WHERE attivo+stato=ATTIVA)
+        # blocca sovrapposizioni di versioni listino ATTIVE. La risoluzione richiede
+        # chiusura della versione precedente (valido_al = nuova_valido_dal - 1).
+        "E_VENDITE_LISTINO_VERSIONE_OVERLAP": ErrorPolicy(
+            code="E_VENDITE_LISTINO_VERSIONE_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Esiste gia' una versione ATTIVA sovrapposta per il listino. "
+                "Chiudi la vecchia (valido_al = nuova_valido_dal - 1) e poi "
+                "attiva la nuova: la nuova decorrenza deve essere almeno 1 "
+                "giorno dopo l'inizio della precedente."
+            ),
+        ),
         # Guard Profilo A promo data-driven (vendite.promo_articoli):
         # le date governano lo stato (FUTURA / INIZIATA / SCADUTA) e vincolano
         # i campi modificabili. Pattern simmetrico a Profilo A contratti
@@ -153,23 +168,55 @@ class ErrorPolicyRegistry:
             user_message="Esiste gia' un contratto sovrapposto per questo "
                          "cliente/istanza/utility/ambito nel periodo indicato.",
         ),
-        "E_CONTRATTO_MODALITA_C_SENZA_RIGHE": ErrorPolicy(
-            code="E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
-            http_status=400,
+        # ── Codici contratto refactor modalita 2026-05-15 ──
+        # Sostituiscono i vecchi guard di "modalita C" rimossi col modello
+        # unificato. Mappati dal team DB nel CSV `messaggi_errore` (450-454).
+        "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE": ErrorPolicy(
+            code="E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE",
+            http_status=422,
             ui_action="show_error_banner",
-            user_message="Contratto in modalita' C senza righe: aggiungere almeno una riga prima di attivare.",
+            user_message=(
+                "Contratto senza listino di riferimento: aggiungere almeno "
+                "un'AGGIUNTA con prezzo valorizzato prima di attivare."
+            ),
         ),
-        "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE": ErrorPolicy(
-            code="E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
-            http_status=400,
-            ui_action="show_error_banner",
-            user_message="Contratto in modalita' C: ogni riga deve avere un prezzo unitario prima di attivare.",
-        ),
-        "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO": ErrorPolicy(
-            code="E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO",
-            http_status=400,
+        "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": ErrorPolicy(
+            code="E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO",
+            http_status=422,
             ui_action="highlight_form_fields",
-            user_message="Su contratto attivo in modalita' C la riga deve avere prezzo unitario.",
+            user_message=(
+                "L'articolo e' gia' presente nel listino di riferimento: "
+                "usare OVERRIDE per modificarne il prezzo, non AGGIUNTA."
+            ),
+        ),
+        "E_ARTICOLO_ESCLUSO_DA_CONTRATTO": ErrorPolicy(
+            code="E_ARTICOLO_ESCLUSO_DA_CONTRATTO",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "L'articolo e' stato escluso dal contratto e non puo' essere "
+                "venduto a questo cliente."
+            ),
+        ),
+        "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE": ErrorPolicy(
+            code="E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il contratto e' ATTIVO: listino, versione listino, "
+                "variazione globale ed eccezioni sono congelati. Per "
+                "modifiche sostanziali creare un nuovo contratto."
+            ),
+        ),
+        "E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI": ErrorPolicy(
+            code="E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "Impossibile rimuovere il listino di riferimento dal "
+                "contratto: rimuovi prima le eccezioni OVERRIDE/ESCLUSIONE "
+                "associate o sostituiscile con AGGIUNTA."
+            ),
         ),
         "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI": ErrorPolicy(
             code="E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI",
@@ -271,6 +318,34 @@ class ErrorPolicyRegistry:
             user_message=(
                 "Prezzo bundle riferito a un componente non presente nella "
                 "distinta base del padre composito."
+            ),
+        ),
+        # Resolver pricing v5 (fn_resolve_prezzo_listino_v2, rev 2026-05-13
+        # bundle-prioritario): versione listino non trovata o non attiva
+        # alla data del documento. Indica un mismatch fra il listino eletto
+        # (contratto o categoria) e la disponibilita' di una versione
+        # operativa per quel periodo.
+        "E_LISTINO_VERSIONE_NON_ATTIVA": ErrorPolicy(
+            code="E_LISTINO_VERSIONE_NON_ATTIVA",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message=(
+                "Listino senza versione attiva alla data del documento. "
+                "Verificare le versioni del listino o la data di riferimento."
+            ),
+        ),
+        # Guard cessazione contratti (trgfn_contratti_guard_transizione_stato,
+        # rev 2026-05-14): la transizione manuale ATTIVO -> CESSATO non ammette
+        # valido_al retroattivo. Il job notturno pgAgent (`fn_apply_chiusura
+        # _scadenze` via GUC `app.cessazione_automatica`) e' invece autorizzato
+        # a cessare con valido_al passato.
+        "E_CONTRATTO_VALIDO_AL_RETROATTIVO": ErrorPolicy(
+            code="E_CONTRATTO_VALIDO_AL_RETROATTIVO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Cessazione contratto non ammessa con data retroattiva. La "
+                "data di fine validita' deve essere oggi o futura."
             ),
         ),
         # Guard Profilo A contratti: in stati post-DRAFT (ATTIVO/CESSATO)

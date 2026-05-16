@@ -19,9 +19,12 @@ Indice test eseguiti:
 8) SessioneRevocaViewTests.test_revoca_success
 9) SessioneRevocaViewTests.test_revoca_sessione_corrente
 10) SessioneRevocaViewTests.test_revoca_sessione_not_found
-11) SessionAuditRepositoryTests.test_list_sessioni_attive
+11) SessioniRevocaTutteViewTests.test_revoca_tutte_success
+12) SessioniRevocaTutteViewTests.test_revoca_tutte_senza_remote
+13) SessionAuditRepositoryTests.test_list_sessioni_attive
 """
 
+import json
 from datetime import datetime
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -281,6 +284,73 @@ class SessioneRevocaViewTests(TestCase):
             view.post(request, jti="nonexistent-sid")
 
         self.assertEqual(ctx.exception.code, "E_SESSIONE_NOT_FOUND")
+
+
+# --------------- SessioniRevocaTutteView ---------------
+
+class SessioniRevocaTutteViewTests(TestCase):
+
+    # Scopo: Verifica POST bulk → blacklista solo sid remoti distinti e registra REVOCA.
+    @patch(f"{_SESSIONI_VIEW}.session_audit_service")
+    @patch(f"{_SESSIONI_VIEW}.BlacklistedToken")
+    @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
+    @patch(f"{_SESSIONI_VIEW}.jwt")
+    def test_revoca_tutte_success(self, mock_jwt, MockOutstanding, MockBlacklisted, mock_audit):
+        from apps.core.api.sessioni_view import SessioniRevocaTutteView
+
+        current = MagicMock(token="jwt-current")
+        other_1 = MagicMock(token="jwt-other-1")
+        other_2 = MagicMock(token="jwt-other-2")
+        other_2_refresh = MagicMock(token="jwt-other-2-refresh")
+        MockOutstanding.objects.filter.return_value = [
+            current, other_1, other_2, other_2_refresh,
+        ]
+        mock_jwt.decode.side_effect = [
+            {"sid": "current-sid"},
+            {"sid": "other-sid-1"},
+            {"sid": "other-sid-2"},
+            {"sid": "other-sid-2"},
+        ]
+
+        request = _mock_request(auth={"sid": "current-sid"})
+
+        view = SessioniRevocaTutteView()
+        response = view.post(request)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content)
+        self.assertEqual(payload["data"]["revoked"], 2)
+        MockOutstanding.objects.filter.assert_called_once_with(user_id=1)
+        self.assertEqual(MockBlacklisted.objects.get_or_create.call_count, 3)
+        self.assertEqual(mock_audit.record_revoca.call_count, 2)
+        revoked_sids = {
+            call.kwargs["jti"]
+            for call in mock_audit.record_revoca.call_args_list
+        }
+        self.assertEqual(revoked_sids, {"other-sid-1", "other-sid-2"})
+
+    # Scopo: Verifica POST bulk senza sessioni remote → 200 con revoked=0.
+    @patch(f"{_SESSIONI_VIEW}.session_audit_service")
+    @patch(f"{_SESSIONI_VIEW}.BlacklistedToken")
+    @patch(f"{_SESSIONI_VIEW}.OutstandingToken")
+    @patch(f"{_SESSIONI_VIEW}.jwt")
+    def test_revoca_tutte_senza_remote(self, mock_jwt, MockOutstanding, MockBlacklisted, mock_audit):
+        from apps.core.api.sessioni_view import SessioniRevocaTutteView
+
+        current = MagicMock(token="jwt-current")
+        MockOutstanding.objects.filter.return_value = [current]
+        mock_jwt.decode.return_value = {"sid": "current-sid"}
+
+        request = _mock_request(auth={"sid": "current-sid"})
+
+        view = SessioniRevocaTutteView()
+        response = view.post(request)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content)
+        self.assertEqual(payload["data"]["revoked"], 0)
+        MockBlacklisted.objects.get_or_create.assert_not_called()
+        mock_audit.record_revoca.assert_not_called()
 
 
 # --------------- SessionAuditRepository ---------------

@@ -211,21 +211,42 @@ I trigger o constraint di sistema possono aggiornare `date_update/user_update` s
 
 ### 7b. Validita` temporale (`daterange` nativo)
 
-Le tabelle con validita` temporale usano il pattern **colonne input + colonna range calcolata**:
+Le tabelle con validita` temporale usano il pattern **colonne input + colonna range STORED generated**:
 
 | Colonna | Tipo | Scopo |
 | --- | --- | --- |
-| `valido_dal` | `DATE` | Data inizio validita` (input utente/API) |
-| `valido_al` | `DATE` | Data fine validita` (input utente/API, NULL = aperto) |
-| `validita` | `daterange NOT NULL` | Range calcolato dal trigger, usato per query e vincoli |
+| `valido_dal` | `DATE NOT NULL` | Data inizio validita` (input utente/API) |
+| `valido_al` | `DATE NULL` | Data fine validita` (input utente/API, NULL = aperto) |
+| `validita` | `daterange GENERATED ALWAYS STORED NOT NULL` | Range calcolato automaticamente da valido_dal/valido_al |
+
+**DDL standard** (PostgreSQL 18+):
+
+```sql
+valido_dal DATE NOT NULL,
+valido_al  DATE,
+validita   daterange GENERATED ALWAYS AS (
+               daterange(COALESCE(valido_dal, '-infinity'::date),
+                         COALESCE(valido_al,  'infinity'::date), '[]')
+           ) STORED NOT NULL,
+```
 
 **Regole**:
 
-* La colonna `validita` e` **sempre** calcolata dal trigger `script.trgfn_set_validita()` — mai scritta direttamente
-* Il trigger usa `COALESCE(valido_dal, '-infinity')` e `COALESCE(valido_al, 'infinity')` con bounds <code>[]</code>
-  (PG canonicalizza in `[)` per date). `validita` non e` **mai** NULL
-* Per tabelle con colonne sorgente diverse (es. `data_inizio`/`data_fine`): trigger specifico nello schema di dominio
-* Per `TIMESTAMPTZ` usare `tstzrange` con bounds `[)` e trigger specifico
+* `validita` e` **STORED generated**: calcolata automaticamente da PG ad ogni INSERT/UPDATE su `valido_dal`/`valido_al` — mai scrivibile direttamente
+* Non e` necessario nessun trigger per mantenerla aggiornata
+* Nei **BEFORE trigger** `NEW.validita` e` **NULL** (la generazione avviene dopo tutti i BEFORE trigger). Per calcolare il range del nuovo valore usare **con COALESCE simmetrico** all'espressione STORED:
+
+  ```sql
+  daterange(
+      COALESCE(NEW.valido_dal, '-infinity'::date),
+      COALESCE(NEW.valido_al,  'infinity'::date),
+      '[]'
+  )
+  ```
+
+  **Motivazione**: `daterange(d, NULL, '[]')` produce `upper_inf=true` (testo: `[d,)`), mentre la STORED con COALESCE produce `upper_inf=false, upper='infinity'::date` (testo: `[d,infinity]`). L'operatore `@>` confronta le rappresentazioni interne: `[d,infinity] @> [d,)` restituisce **false** anche se semanticamente equivalenti. Applicare COALESCE garantisce rappresentazioni identiche e `@>` corretto.
+* Per tabelle con colonne sorgente diverse (es. `data_inizio`/`data_fine`): colonna STORED con espressione adattata
+* Per `TIMESTAMPTZ` usare `tstzrange` con bounds `[)` e colonna STORED adattata
 
 **Naming**:
 
@@ -244,18 +265,36 @@ WHERE validita @> CURRENT_DATE
 WHERE validita && other_range
 ```
 
-**Vincoli anti-overlap**:
+**Vincoli anti-overlap** (due pathway, scegliere in base alla presenza di `WHERE`):
 
 ```sql
--- Su colonna nativa (preferito)
+-- Pathway 1: senza WHERE → temporal UNIQUE PG 18 (preferito, SQL:2011 standard)
+-- L'indice GiST generato dal constraint serve anche query WHERE validita @> data
 ALTER TABLE schema.tabella
-  ADD CONSTRAINT ex_tabella_no_overlap
-  EXCLUDE USING gist (key_col WITH =, validita WITH &&);
+    ADD CONSTRAINT uq_tabella_no_overlap
+    UNIQUE (key_col, validita WITHOUT OVERLAPS);
+
+-- Pathway 2: con WHERE → EXCLUDE USING gist (unico supportato per EXCLUDE parziale)
+-- Gestito da dbops.automazione_overlap (active=true per queste tabelle)
+CREATE INDEX ex_tabella_no_overlap
+    ON schema.tabella
+    USING gist (key_col, validita)
+    WHERE (attivo IS TRUE);
 ```
 
-Per l'automazione dei vincoli overlap vedi `dbops.automazione_overlap` e `dbops.fn_apply_automazione_overlap`.
+**Temporal FK** (PG 18, solo se padre ha temporal UNIQUE):
 
-> Riferimento: [migrazione-daterange.md](/dev/work-in-progress/migrazione-daterange) per analisi completa e decisioni architetturali.
+```sql
+-- Prerequisito: padre deve avere UNIQUE (id, validita WITHOUT OVERLAPS)
+ALTER TABLE schema.figlio
+    ADD CONSTRAINT fk_figlio_padre_temporal
+    FOREIGN KEY (padre_id, PERIOD validita)
+    REFERENCES schema.padre (id, PERIOD validita);
+```
+
+Per la gestione automatizzata degli EXCLUDE con WHERE: `dbops.automazione_overlap` e `dbops.fn_apply_automazione_overlap`.
+
+> Riferimento: [piano-miglioramenti-db-pg18.md](/dev/work-in-progress/piano-miglioramenti-db-pg18) per verifica empirica, decisioni architetturali e piano di migrazione completo.
 
 ---
 

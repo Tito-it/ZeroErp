@@ -118,7 +118,7 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
             "uid": testata.get("uid"),
             "numero": testata.get("numero"),
             "rev": testata.get("rev"),
-            "is_revision_attiva": testata.get("is_revision_attiva"),
+            "is_attiva": testata.get("is_attiva"),
             "has_next_revision": testata.get("has_next_revision"),
             "data": _format_date_it(testata.get("data")),
             "data_iso": _format_date_iso(testata.get("data")),

@@ -45,15 +45,10 @@ _AMBITI_CONTRATTO: tuple[tuple[str, str, int], ...] = (
     ("COMMERCIO", "Commercio (beni e servizi)", 2),
 )
 
-# Scopo: modalita' pricing contratto. Non e' una colonna DB ma un'astrazione
-#        derivata da listino_id + tipo_variazione_globale (vedi
-#        ContrattoDrawer.deriveModalita). Lookup la espone come single source
-#        of truth lato API per evitare di duplicare i tre codici nel FE.
-_MODALITA_PRICING_CONTRATTO: tuple[tuple[str, str, int], ...] = (
-    ("A", "Listino vincolante + variazione globale", 1),
-    ("B", "Listino + override righe", 2),
-    ("C", "Interamente negoziato", 3),
-)
+# Nota (refactor modalita 2026-05-15): la lookup `modalita-pricing-contratto`
+# (A/B/C) e' stata rimossa. Nel modello unificato la "modalita" non e' piu'
+# una scelta utente ma una forma derivata dai dati di testata
+# (`listino_id` valorizzato vs NULL). Nessun endpoint la espone.
 
 
 def _to_payload(rows: tuple[tuple[str, str, int], ...]) -> list[dict[str, object]]:
@@ -78,8 +73,3 @@ def fn_list_tipi_variazione_promo() -> list[dict[str, object]]:
 # Scopo: lista ambiti ammessi per contratti.
 def fn_list_ambiti_contratto() -> list[dict[str, object]]:
     return _to_payload(_AMBITI_CONTRATTO)
-
-
-# Scopo: lista modalita' pricing ammesse per contratti.
-def fn_list_modalita_pricing_contratto() -> list[dict[str, object]]:
-    return _to_payload(_MODALITA_PRICING_CONTRATTO)

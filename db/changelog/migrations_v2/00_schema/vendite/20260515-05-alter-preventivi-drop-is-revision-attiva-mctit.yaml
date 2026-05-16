@@ -1,0 +1,224 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260515-05-alter-preventivi-drop-is-revision-attiva-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Drop colonna vendite.preventivi.is_revision_attiva e indice parziale
+  # ux_preventivi_numero_attiva.
+  #
+  # Prerequisiti (tutti e tre devono essere applicati prima):
+  #   - 20260515-02: is_abortito su stati_doc_preventivi
+  #   - 20260515-03: vendite.vw_preventivi con is_attiva derivata
+  #   - 20260515-04: fn_crea_revisione_preventivo senza is_revision_attiva
+  #
+  # Divergenza is_revision_attiva vs derivazione in dev: attesa e accettabile.
+  # I preventivi a revisione singola creati con DEFAULT FALSE hanno
+  # is_revision_attiva=FALSE ma la derivazione li considera TRUE (nessuna rev
+  # superiore). La colonna viene droppata, quindi la divergenza storica e'
+  # irrilevante: la derivazione e' la nuova fonte di verita'.
+  #
+  # L'indice ux_preventivi_numero_attiva (UNIQUE parziale su numero WHERE
+  # is_revision_attiva = TRUE) va droppato prima del DROP COLUMN, altrimenti
+  # PostgreSQL rifiuta il DROP della colonna referenziata dall'indice.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260515-05-alter-preventivi-drop-is-revision-attiva
+      author: mctit
+      comment: >
+        Droppa colonna is_revision_attiva e indice parziale ux_preventivi_numero_attiva
+        da vendite.preventivi. L'attivazione della revisione e' ora derivata in
+        vendite.vw_preventivi tramite stati_doc_preventivi.is_abortito.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: preventivi
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'config'
+                   AND table_name   = 'stati_doc_preventivi'
+                   AND column_name  = 'is_abortito'
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM information_schema.views
+                 WHERE table_schema = 'vendite'
+                   AND table_name   = 'vw_preventivi'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Drop viste dipendenti (entrambe referenziano is_revision_attiva,
+              -- direttamente o tramite p.* — devono essere droppate prima del DROP COLUMN)
+              DROP VIEW IF EXISTS vendite.vw_preventivi_list;
+              DROP VIEW IF EXISTS vendite.vw_preventivi;
+
+              -- Drop indice parziale (referenzia is_revision_attiva)
+              DROP INDEX IF EXISTS vendite.ux_preventivi_numero_attiva;
+
+              -- Drop colonna
+              ALTER TABLE vendite.preventivi
+                DROP COLUMN is_revision_attiva;
+
+              -- Ricrea vw_preventivi: p.* ora non include is_revision_attiva
+              CREATE OR REPLACE VIEW vendite.vw_preventivi AS
+              SELECT
+                  p.*,
+                  NOT EXISTS (
+                      SELECT 1
+                        FROM vendite.preventivi p2
+                        JOIN config.stati_doc_preventivi s2
+                          ON s2.id = p2.stato_doc_preventivo_id
+                       WHERE p2.numero = p.numero
+                         AND p2.rev    > p.rev
+                         AND s2.is_abortito IS FALSE
+                  ) AS is_attiva
+                FROM vendite.preventivi p;
+
+              COMMENT ON VIEW vendite.vw_preventivi IS
+                  'Wrapper di vendite.preventivi con is_attiva derivata: TRUE se non '
+                  'esiste revisione superiore non-abortita per lo stesso numero. '
+                  'Sostituisce is_revision_attiva (flag persistito, soggetto a drift). '
+                  'Il BE usa questa vista per list/detail preventivi. rev 2026-05-15.';
+
+              -- Ricrea vw_preventivi_list: legge da vw_preventivi per esporre is_attiva
+              -- (sostituisce is_revision_attiva rimossa in questo changeset)
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_list AS
+              SELECT
+                p.id,
+                p.uid,
+                p.numero,
+                p.rev,
+                p.is_attiva,
+                p.data,
+                -- Stato
+                p.stato_doc_preventivo_id,
+                sdp.codice                                AS stato_codice,
+                sdp.codice_interno                        AS stato_codice_interno,
+                sdp.descrizione                           AS stato_descrizione,
+                -- Billing account (opzionale per prospect)
+                p.billing_account_id,
+                ba.codice                                 AS billing_account_codice,
+                ba.utility_id                             AS ba_utility_id,
+                -- Soggetto via istanza (sempre valorizzato: istanza_utility_id NOT NULL)
+                s.id                                      AS soggetto_id,
+                s.ragione_sociale_completa                AS cliente_denominazione,
+                s.id_fiscale_univoco_cf_piva              AS id_fiscale,
+                -- Emittente fiscale
+                p.emittente_fiscale_id,
+                -- Contesto utility + istanza
+                p.utility_id,
+                u.codice                                  AS utility_codice,
+                u.descrizione                             AS utility_descrizione,
+                p.istanza_utility_id,
+                iu.codice                                 AS istanza_utility_codice,
+                -- Importi
+                p.totale_imponibile,
+                p.totale_iva,
+                p.totale_documento,
+                -- Condizioni
+                p.valuta_id,
+                v.codice                                  AS valuta_codice,
+                p.termine_pagamento_id,
+                tp.descrizione                            AS termine_pagamento_descrizione,
+                -- Validita' e competenza
+                p.validita_dal,
+                p.validita_al,
+                p.competenza_mese,
+                -- Flag
+                p.fatturazione_immediata,
+                p.storicizza,
+                -- Audit
+                p.data_insert
+              FROM vendite.vw_preventivi p
+              JOIN config.stati_doc_preventivi sdp
+                ON sdp.id = p.stato_doc_preventivo_id
+              LEFT JOIN anagrafiche.istanze_utilities iu
+                ON iu.id = p.istanza_utility_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = iu.soggetto_id
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = p.billing_account_id
+              LEFT JOIN config.utilities u
+                ON u.id = p.utility_id
+              LEFT JOIN config.valute v
+                ON v.id = p.valuta_id
+              LEFT JOIN config.termini_pagamento tp
+                ON tp.id = p.termine_pagamento_id
+              ORDER BY p.data DESC, p.numero DESC, p.id;
+
+              COMMENT ON VIEW vendite.vw_preventivi_list IS
+                  'Lista preventivi vendita denormalizzata. rev4 (2026-05-15): '
+                  'is_revision_attiva sostituita da is_attiva (derivata in vw_preventivi). '
+                  'FROM cambiato da preventivi a vw_preventivi per ereditare is_attiva. '
+                  'rev3 (2026-05-02): soggetto/ragione_sociale/id_fiscale via istanze_utilities '
+                  '(1 join, sempre valorizzato), billing_account_codice opzionale '
+                  '(NULL per prospect), istanza_utility_codice e utility '
+                  'codice/descrizione esposti per UI, stato_codice_interno '
+                  'esposto per coerenza future-proof.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_preventivi_list;
+              DROP VIEW IF EXISTS vendite.vw_preventivi;
+
+              ALTER TABLE vendite.preventivi
+                ADD COLUMN is_revision_attiva BOOLEAN NOT NULL DEFAULT FALSE;
+
+              -- Ripristina i valori: TRUE per la rev attiva di ogni numero
+              UPDATE vendite.preventivi p
+                 SET is_revision_attiva = TRUE
+               WHERE NOT EXISTS (
+                   SELECT 1
+                     FROM vendite.preventivi p2
+                     JOIN config.stati_doc_preventivi s2
+                       ON s2.id = p2.stato_doc_preventivo_id
+                    WHERE p2.numero    = p.numero
+                      AND p2.rev       > p.rev
+                      AND s2.is_abortito IS FALSE
+               );
+
+              CREATE UNIQUE INDEX ux_preventivi_numero_attiva
+                  ON vendite.preventivi (numero)
+               WHERE is_revision_attiva = TRUE;
+
+              -- Ricrea vw_preventivi con is_revision_attiva inclusa in p.*
+              CREATE OR REPLACE VIEW vendite.vw_preventivi AS
+              SELECT p.*, NOT EXISTS (
+                  SELECT 1 FROM vendite.preventivi p2
+                  JOIN config.stati_doc_preventivi s2 ON s2.id = p2.stato_doc_preventivo_id
+                  WHERE p2.numero = p.numero AND p2.rev > p.rev AND s2.is_abortito IS FALSE
+              ) AS is_attiva FROM vendite.preventivi p;
+
+              -- Ricrea vw_preventivi_list con is_revision_attiva (versione precedente)
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_list AS
+              SELECT p.id, p.uid, p.numero, p.rev, p.is_revision_attiva, p.data,
+                p.stato_doc_preventivo_id,
+                sdp.codice AS stato_codice, sdp.codice_interno AS stato_codice_interno,
+                sdp.descrizione AS stato_descrizione,
+                p.billing_account_id, ba.codice AS billing_account_codice,
+                ba.utility_id AS ba_utility_id,
+                s.id AS soggetto_id, s.ragione_sociale_completa AS cliente_denominazione,
+                s.id_fiscale_univoco_cf_piva AS id_fiscale,
+                p.emittente_fiscale_id, p.utility_id,
+                u.codice AS utility_codice, u.descrizione AS utility_descrizione,
+                p.istanza_utility_id, iu.codice AS istanza_utility_codice,
+                p.totale_imponibile, p.totale_iva, p.totale_documento,
+                p.valuta_id, v.codice AS valuta_codice,
+                p.termine_pagamento_id, tp.descrizione AS termine_pagamento_descrizione,
+                p.validita_dal, p.validita_al, p.competenza_mese,
+                p.fatturazione_immediata, p.storicizza, p.data_insert
+              FROM vendite.preventivi p
+              JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+              LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+              LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+              LEFT JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
+              LEFT JOIN config.utilities u ON u.id = p.utility_id
+              LEFT JOIN config.valute v ON v.id = p.valuta_id
+              LEFT JOIN config.termini_pagamento tp ON tp.id = p.termine_pagamento_id
+              ORDER BY p.data DESC, p.numero DESC, p.id;

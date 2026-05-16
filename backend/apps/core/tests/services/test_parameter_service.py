@@ -56,6 +56,7 @@ class ParameterServiceTests(TestCase):
         self.assertEqual(result, "16")
         self._mock_repo.get_parameter.assert_called_once_with(
             "DEFAULT_IVA_ID", None, None, None,
+            categoria_cliente_id=None,
         )
 
     # Scopo: Verifica che get_parameter lanci ServiceError se il parametro non esiste.
@@ -116,6 +117,7 @@ class ParameterServiceTests(TestCase):
         self.svc.get_parameter("TEST_PARAM", django_user_id=5, group_ids=[1, 2])
         self._mock_repo.get_parameter.assert_called_once_with(
             "TEST_PARAM", 5, [1, 2], None,
+            categoria_cliente_id=None,
         )
 
     # Scopo: Verifica che emittente_fiscale_id venga propagato al repository.
@@ -129,6 +131,41 @@ class ParameterServiceTests(TestCase):
         )
         self._mock_repo.get_parameter.assert_called_once_with(
             "DEFAULT_IVA_ID", 5, [1], 3,
+            categoria_cliente_id=None,
+        )
+
+    # Scopo: Verifica che categoria_cliente_id venga propagato al repository
+    # (cascata estesa 2026-05-15: user -> categoria_cliente -> group -> ...).
+    def test_get_parameter_passes_categoria_cliente(self):
+        self._mock_repo.get_parameter.return_value = "5.0"
+        self.svc.get_parameter(
+            "VENDITE_MAX_SCONTO_PCT",
+            django_user_id=5,
+            emittente_fiscale_id=3,
+            categoria_cliente_id=12,
+        )
+        self._mock_repo.get_parameter.assert_called_once_with(
+            "VENDITE_MAX_SCONTO_PCT", 5, None, 3,
+            categoria_cliente_id=12,
+        )
+
+    # Scopo: Verifica che categoria_cliente_id venga propagato anche su batch
+    # get_defaults (PricingLimitiUtenteView resuita 2 chiavi in un colpo).
+    def test_get_defaults_passes_categoria_cliente(self):
+        self._mock_repo.get_parameters.return_value = {
+            "VENDITE_MAX_SCONTO_PCT": "5",
+            "VENDITE_MAX_MAGGIORAZIONE_PCT": "20",
+        }
+        self.svc.get_defaults(
+            ["VENDITE_MAX_SCONTO_PCT", "VENDITE_MAX_MAGGIORAZIONE_PCT"],
+            django_user_id=5,
+            emittente_fiscale_id=3,
+            categoria_cliente_id=12,
+        )
+        self._mock_repo.get_parameters.assert_called_once_with(
+            ["VENDITE_MAX_SCONTO_PCT", "VENDITE_MAX_MAGGIORAZIONE_PCT"],
+            5, None, 3,
+            categoria_cliente_id=12,
         )
 
     # Scopo: Verifica che list_parameters_for_user deleghi al repository.

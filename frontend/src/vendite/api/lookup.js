@@ -24,6 +24,6 @@ export function lookupAmbitiContratto() {
   return api.get(`${BASE}/ambiti-contratto/`)
 }
 
-export function lookupModalitaPricingContratto() {
-  return api.get(`${BASE}/modalita-pricing-contratto/`)
-}
+// Refactor modalita 2026-05-15: il lookup `modalita-pricing-contratto` (A/B/C)
+// e' stato rimosso. Nel modello unificato la "modalita" non e' piu' una scelta
+// utente ma una forma derivata dai dati. Nessun client la chiama piu'.

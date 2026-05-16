@@ -1,0 +1,152 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# Step 2.3 (parte 1) — Trigger freeze listino_versione_id all'attivazione
+#
+# Trigger BEFORE UPDATE OF stato_doc_contratto_id su vendite.contratti.
+# Scatta solo sulla transizione DRAFT → ATTIVO.
+#
+# Logica:
+#   A) listino_id IS NULL (negoziato puro):
+#      verifica che esista almeno una riga AGGIUNTA con prezzo_unitario NOT NULL.
+#      Se non esiste: raise E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (451).
+#   B) listino_id IS NOT NULL + listino_versione_id IS NULL:
+#      cerca versione attiva a CURRENT_DATE; se trovata, imposta
+#      NEW.listino_versione_id (snapshot immutabile). Se non trovata:
+#      consente attivazione con versione NULL (warning UI, §4.4 brief).
+#   C) listino_id IS NOT NULL + listino_versione_id già valorizzato: nessuna azione.
+#
+# Ordine lessicografico (BEFORE UPDATE OF stato_doc_contratto_id):
+#   trg_contratti_a10_freeze_listino_versione_upd  [questo]
+#   trg_contratti_a10_guard_transizione_stato_upd  [esistente]
+# freeze scatta prima di guard: se raise, guard non esegue.
+#
+# Vedere: brief-db-refactor-contratti-completo.md §Fase 2 Step 2.3
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260515-13-create-trg-contratti-freeze-listino-versione-mctit.yaml
+
+  - changeSet:
+      id: 20260515-13-create-trg-contratti-freeze-listino-versione
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Step 2.3/1: freeze listino_versione_id su DRAFT→ATTIVO + guard negoziato puro
+        senza righe AGGIUNTA. Errori: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (451).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: listino_versione_id
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti_righe
+                columnName: tipo_eccezione
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_freeze_listino_versione()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: al momento dell'attivazione (DRAFT→ATTIVO), fissa la versione
+              --   listino e verifica la coerenza del negoziato puro.
+              -- A) listino_id IS NULL: verifica almeno una AGGIUNTA con prezzo.
+              --    Errore: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (451).
+              -- B) listino_id NOT NULL + listino_versione_id IS NULL: fissa versione attiva
+              --    a CURRENT_DATE. Se non trovata: attivazione consentita, versione NULL.
+              -- C) listino_versione_id già valorizzato: nessuna azione.
+              -- Esce senza effetti su qualsiasi transizione diversa da DRAFT→ATTIVO.
+              DECLARE
+                  v_codice_da   config.stati_doc_contratti.codice_interno%TYPE;
+                  v_codice_a    config.stati_doc_contratti.codice_interno%TYPE;
+                  v_versione_id vendite.listini_versioni.id%TYPE;
+              BEGIN
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_contratto_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_contratto_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_contratti
+                   WHERE id IN (OLD.stato_doc_contratto_id, NEW.stato_doc_contratto_id);
+
+                  -- Attivo solo su DRAFT→ATTIVO
+                  IF v_codice_da <> 'DRAFT' OR v_codice_a <> 'ATTIVO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF NEW.listino_id IS NULL THEN
+                      -- Negoziato puro: almeno una AGGIUNTA con prezzo valorizzato
+                      IF NOT EXISTS (
+                          SELECT 1
+                            FROM vendite.contratti_righe cr
+                           WHERE cr.contratto_id = NEW.id
+                             AND cr.tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                             AND cr.prezzo_unitario IS NOT NULL
+                             AND cr.attivo = TRUE
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite',
+                              TG_NAME::text,
+                              'E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE',
+                              jsonb_build_object('contratto_id', NEW.id, 'numero', NEW.numero),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- Con listino: fissa versione snapshot se non già valorizzata
+                  IF NEW.listino_versione_id IS NULL THEN
+                      SELECT lv.id
+                        INTO v_versione_id
+                        FROM vendite.listini_versioni lv
+                       WHERE lv.listino_id = NEW.listino_id
+                         AND lv.validita @> CURRENT_DATE
+                         AND lv.attivo = TRUE
+                       LIMIT 1;
+
+                      -- Se trovata: fissa snapshot. Se non trovata (§4.4): attivazione
+                      -- consentita con listino_versione_id NULL (UI mostrerà warning).
+                      IF v_versione_id IS NOT NULL THEN
+                          NEW.listino_versione_id := v_versione_id;
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_freeze_listino_versione() IS
+                  'Freeze versione listino su DRAFT→ATTIVO. '
+                  'Negoziato puro (listino_id NULL): richiede almeno una AGGIUNTA con prezzo. '
+                  'Con listino: fissa versione attiva a CURRENT_DATE in listino_versione_id. '
+                  'Versione non trovata: attivazione consentita, listino_versione_id resta NULL. '
+                  'Errore negoziato puro senza righe: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (451). Step 2.3.';
+
+              DROP TRIGGER IF EXISTS trg_contratti_a10_freeze_listino_versione_upd
+                ON vendite.contratti;
+
+              CREATE TRIGGER trg_contratti_a10_freeze_listino_versione_upd
+                  BEFORE UPDATE OF stato_doc_contratto_id
+                  ON vendite.contratti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_contratti_freeze_listino_versione();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_a10_freeze_listino_versione_upd
+                ON vendite.contratti;
+              DROP FUNCTION IF EXISTS vendite.trgfn_contratti_freeze_listino_versione();

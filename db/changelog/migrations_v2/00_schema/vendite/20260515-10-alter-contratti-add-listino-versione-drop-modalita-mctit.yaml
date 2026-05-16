@@ -1,0 +1,94 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260515-10-alter-contratti-add-listino-versione-drop-modalita-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 2.1 — Refactor contratti: versione listino + cleanup modalità
+  #
+  # Modifica vendite.contratti:
+  #   - ADD COLUMN listino_versione_id bigint NULL
+  #     FK -> vendite.listini_versioni(id)
+  #     NULL in DRAFT (segue versione corrente), NOT NULL post-attivazione
+  #     (enforced dal trigger Step 2.3, non da CHECK declarativo)
+  #   - DROP CHECK chk_contratti_modalita_pricing
+  #     (enforzava le 3 modalità A/B/C — ora modello unificato)
+  #   - DROP CHECK chk_contratti_variazione_globale_coerente
+  #     (ora la coesistenza listino+variazione+override è permessa)
+  #   - DROP TRIGGER trg_contratti_a10_guard_modalita_c_activation_ins_upd
+  #     (guard attivazione modalità C — sostituito da trigger Step 2.3)
+  #   - DROP TRIGGER trg_contratti_righe_a10_guard_modalita_c_ins_upd
+  #     (guard righe modalità C — ora le righe sono eccezioni tipizzate)
+  #
+  # Prerequisito: Step 2.0 (TRUNCATE) già applicato.
+  # Vedere: brief-db-refactor-contratti-completo.md §Fase 2 Step 2.1
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260515-10-alter-contratti-add-listino-versione-drop-modalita
+      author: mctit
+      comment: >
+        Aggiunge listino_versione_id a vendite.contratti e rimuove i vincoli
+        CHECK/trigger legati alle modalità A/B/C (modello unificato).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti
+            - tableExists:
+                schemaName: vendite
+                tableName: listini_versioni
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Nuova colonna: versione listino fissata all'attivazione.
+              -- NULL in DRAFT (legge versione corrente), popolata dal trigger
+              -- trg_contratti_a10_freeze_listino_versione (Step 2.3).
+              ALTER TABLE vendite.contratti
+                ADD COLUMN listino_versione_id bigint NULL;
+
+              COMMENT ON COLUMN vendite.contratti.listino_versione_id IS
+                  'Versione listino fissata al momento dell''attivazione (DRAFT→ATTIVO). '
+                  'NULL in DRAFT: il contratto segue la versione corrente del listino. '
+                  'NOT NULL post-attivazione: enforced da trigger Step 2.3. '
+                  'Immutabile post-attivazione (lock trigger Step 2.3).';
+
+              ALTER TABLE vendite.contratti
+                ADD CONSTRAINT fk_contratti_listino_versione
+                FOREIGN KEY (listino_versione_id)
+                REFERENCES vendite.listini_versioni(id)
+                ON UPDATE CASCADE
+                ON DELETE NO ACTION;
+
+              CREATE INDEX ix_contratti_listino_versione
+                ON vendite.contratti (listino_versione_id);
+
+              -- Cleanup vincoli modalità A/B/C.
+              ALTER TABLE vendite.contratti
+                DROP CONSTRAINT IF EXISTS chk_contratti_modalita_pricing;
+
+              ALTER TABLE vendite.contratti
+                DROP CONSTRAINT IF EXISTS chk_contratti_variazione_globale_coerente;
+
+              -- Cleanup trigger modalità C.
+              -- Il trigger su contratti blocca attivazione senza righe:
+              -- la logica sostitutiva arriverà con Step 2.3.
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_modalita_c_activation_ins_upd
+                ON vendite.contratti;
+
+              -- Il trigger su contratti_righe enforza prezzo NOT NULL su modalità C:
+              -- ora le righe sono eccezioni tipizzate (OVERRIDE/ESCLUSIONE/AGGIUNTA,
+              -- Step 2.2) con regole diverse.
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_modalita_c_ins_upd
+                ON vendite.contratti_righe;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_contratti_listino_versione;
+
+              ALTER TABLE vendite.contratti
+                DROP CONSTRAINT IF EXISTS fk_contratti_listino_versione;
+
+              ALTER TABLE vendite.contratti
+                DROP COLUMN IF EXISTS listino_versione_id;

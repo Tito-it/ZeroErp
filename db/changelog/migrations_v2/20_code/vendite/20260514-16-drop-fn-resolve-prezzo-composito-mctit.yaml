@@ -1,0 +1,24 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20260514-16-drop-fn-resolve-prezzo-composito
+      author: mctit
+      logicalFilePath: vendite/funzioni/drop-fn-resolve-prezzo-composito.sql
+      labels: vendite,pricing,cleanup-legacy
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Cleanup legacy modello componenti BoM 2026-05-13.
+              -- Caller Python rimossi (pricing_repository + BoMComponentExpander) su dev/backend-tid.
+              -- Deprecazione COMMENT in migration 20260513-24.
+              DROP FUNCTION IF EXISTS vendite.fn_resolve_prezzo_composito(
+                uuid, bigint, date, bigint, integer, bigint, integer
+              );
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback non praticabile: richiede restore del body dalla migration
+              -- originale 20260414-21 + aggiornamenti 20260422-02 e 20260511-04.
+              -- Se necessario: rollback di tutti i migration modello unificato
+              -- (20260513-01..24) prima di ripristinare questa funzione.

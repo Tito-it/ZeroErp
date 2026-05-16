@@ -32,6 +32,9 @@ const { confirmAction } = useConfirmAction()
 
 const props = defineProps({
   preventivoId: { type: Number, required: true },
+  // Refactor cascata 2026-05-15: propaga al PreventiviRigaForm per la
+  // cascata soglie L2 con livello categoria_cliente del BA.
+  billingAccountId: { type: Number, default: null },
   isModificabile: { type: Boolean, default: true }
 })
 
@@ -320,6 +323,7 @@ defineExpose({ loadRighe })
       <h4>{{ formMode === 'edit' ? t('preventivi.modifica_riga') : t('preventivi.nuova_riga') }}</h4>
       <PreventiviRigaForm
         :preventivo-id="preventivoId"
+        :billing-account-id="billingAccountId"
         :riga="rigaSelezionata"
         @saved="onRigaSaved"
         @componenti-changed="onComponentiChanged"

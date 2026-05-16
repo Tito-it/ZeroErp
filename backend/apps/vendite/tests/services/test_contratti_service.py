@@ -17,7 +17,7 @@ Indice test eseguiti:
 8) create_contratto_modalita_C_con_variazione_fallisce
 9) create_contratto_variazione_coppia_incompleta_fallisce
 10) create_contratto_rifiuta_numero_in_payload
-11) create_contratto_overlap_exclude_mappato
+11) create_contratto_overlap_temporal_unique_mappato
 12) create_contratto_genera_numero_e_stato_draft
 13) update_contratto_rifiuta_identificativi_immutabili
 13b) update_contratto_rifiuta_categoria_snapshot_non_draft
@@ -36,6 +36,8 @@ Indice test eseguiti:
 26) update_utility_immutabili_rifiutati
 27) update_contratto_modalita_B_con_listino_esistente_patch_solo_variazione (regressione review)
 28) repository_create_contratto_usa_cast_jsonb_per_meta (regressione review)
+29) get_contratto_righe_count_usa_preview_per_modalita_ab
+30) get_contratto_righe_count_usa_righe_persistite_per_modalita_c
 """
 
 from datetime import date, timedelta
@@ -123,6 +125,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = {"id": 5}
         repo.list_righe.return_value = [{"id": 99}]
+        repo.list_righe_preview.return_value = [{"articolo_id": "a"}, {"articolo_id": "b"}]
         repo.get_capabilities.return_value = {}
 
         result = ContrattiService().get_contratto(1)
@@ -130,6 +133,7 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(result["id"], 1)
         self.assertEqual(result["utility"], {"id": 5})
         self.assertEqual(result["righe"], [{"id": 99}])
+        self.assertEqual(result["righe_count"], 2)
 
     # Scopo: Verifica che get_contratto includa nel detail il blob capabilities
     #        ritornato da script.fn_available_actions_contratto (Fase 1.B2).
@@ -141,6 +145,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
+        repo.list_righe_preview.return_value = []
         repo.get_capabilities.return_value = {
             "stato_codice": "ATTIVO",
             "available_actions": [{
@@ -167,6 +172,46 @@ class ContrattiServiceTests(TestCase):
         self.assertIn("billing_account_id", result["non_editable_fields"])
         repo.get_capabilities.assert_called_once_with(1)
 
+    # Scopo: in modalita' A/B il conteggio righe del detail usa la preview
+    #        effettivamente mostrata dal drawer (listino + override).
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_get_contratto_righe_count_usa_preview_per_modalita_ab(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+        repo.list_righe_preview.return_value = [
+            {"articolo_id": "a"},
+            {"articolo_id": "b"},
+            {"articolo_id": "c"},
+        ]
+        repo.get_capabilities.return_value = {}
+
+        result = ContrattiService().get_contratto(1)
+
+        self.assertEqual(result["righe_count"], 3)
+
+    # Scopo: in modalita' C il conteggio righe usa le righe persistite,
+    #        perche' non esiste preview da listino.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_get_contratto_righe_count_usa_righe_persistite_per_modalita_c(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        testata = _testata_default()
+        testata["listino_id"] = None
+        repo.get_contratto.return_value = testata
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = [{"id": 1}, {"id": 2}]
+        repo.get_capabilities.return_value = {}
+
+        result = ContrattiService().get_contratto(1)
+
+        self.assertEqual(result["righe_count"], 2)
+        repo.list_righe_preview.assert_not_called()
+
     # --- preview righe applicate -------------------------------------
 
     # Scopo: contratto inesistente -> E_VENDITE_NOT_FOUND.
@@ -180,10 +225,10 @@ class ContrattiServiceTests(TestCase):
             ContrattiService().list_righe_preview(7)
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
 
-    # Scopo: modalita' A (listino + variazione, nessun override) -> tutte
-    #        le righe da listino, modalita' derivata 'A'.
+    # Scopo: forma "con_listino" senza eccezioni (refactor 2026-05-15:
+    # ex-modalita' A) -> righe tutte da listino + forma derivata correttamente.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_list_righe_preview_modalita_A(self, repo_cls):
+    def test_list_righe_preview_con_listino_solo_da_listino(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -201,15 +246,16 @@ class ContrattiServiceTests(TestCase):
 
         result = ContrattiService().list_righe_preview(1)
 
-        self.assertEqual(result["modalita"], "A")
+        self.assertEqual(result["forma"], "con_listino")
         self.assertEqual(result["listino_id"], 100)
         self.assertEqual(len(result["righe"]), 1)
         self.assertEqual(result["righe"][0]["origine"], "DA_LISTINO")
 
-    # Scopo: modalita' B (listino + almeno un override) -> modalita'
-    #        derivata 'B' grazie al riconoscimento origine='OVERRIDE'.
+    # Scopo: forma "con_listino" con eccezione OVERRIDE (refactor 2026-05-15:
+    # ex-modalita' B). La forma resta "con_listino" — niente piu' A vs B come
+    # distinzione di modello.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_list_righe_preview_modalita_B(self, repo_cls):
+    def test_list_righe_preview_con_listino_con_override(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -235,28 +281,30 @@ class ContrattiServiceTests(TestCase):
 
         result = ContrattiService().list_righe_preview(1)
 
-        self.assertEqual(result["modalita"], "B")
+        self.assertEqual(result["forma"], "con_listino")
         self.assertEqual(len(result["righe"]), 2)
 
-    # Scopo: modalita' C (listino_id NULL) -> nessuna preview, lista vuota,
-    #        nessuna chiamata a list_righe_preview del repository.
+    # Scopo: forma "senza_listino" (refactor 2026-05-15: ex-modalita' C
+    # interamente negoziata) -> listino_id NULL, nessuna preview di righe
+    # listino, nessuna chiamata al repo.list_righe_preview.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_list_righe_preview_modalita_C(self, repo_cls):
+    def test_list_righe_preview_senza_listino(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        testata_c = _testata_default()
-        testata_c["listino_id"] = None
-        testata_c["tipo_variazione_globale"] = None
-        testata_c["valore_variazione_globale"] = None
-        repo.get_contratto.return_value = testata_c
+        testata = _testata_default()
+        testata["listino_id"] = None
+        testata["tipo_variazione_globale"] = None
+        testata["valore_variazione_globale"] = None
+        repo.get_contratto.return_value = testata
 
         result = ContrattiService().list_righe_preview(1)
 
-        self.assertEqual(result["modalita"], "C")
+        self.assertEqual(result["forma"], "senza_listino")
         self.assertEqual(result["listino_id"], None)
         self.assertEqual(result["righe"], [])
-        # Per design C non e` "senza versione": la lista vuota e' attesa.
+        # Per design forma "senza_listino" non e' "senza versione": la lista
+        # vuota e' attesa, non sintomo di errore.
         self.assertFalse(result["listino_senza_versione_oggi"])
         repo.list_righe_preview.assert_not_called()
 
@@ -278,14 +326,13 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(result["righe"], [])
         self.assertTrue(result["listino_senza_versione_oggi"])
 
-    # Scopo: contratto modalita' B con override per articoli NON presenti nel
-    #        listino (caso "extra-listino"). La query SQL prende le righe
-    #        con UNION ALL: la parte 2 cattura override senza match listino
-    #        e li espone come origine='OVERRIDE'. Modalita' resta 'B' (ha
-    #        almeno un override). Flag listino_senza_versione_oggi=True
-    #        perche' nessuna riga ha origine='DA_LISTINO'.
+    # Scopo: contratto "con_listino" con sole eccezioni per articoli NON
+    # presenti nel listino (caso "extra-listino", future AGGIUNTE). La query
+    # SQL ritorna l'eccezione con origine='OVERRIDE'. La forma resta
+    # "con_listino" (refactor 2026-05-15: niente piu' A vs B). Flag
+    # listino_senza_versione_oggi=True perche' nessuna riga DA_LISTINO.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_list_righe_preview_solo_override_extra_listino(self, repo_cls):
+    def test_list_righe_preview_solo_eccezioni_extra_listino(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -303,7 +350,7 @@ class ContrattiServiceTests(TestCase):
 
         result = ContrattiService().list_righe_preview(1)
 
-        self.assertEqual(result["modalita"], "B")
+        self.assertEqual(result["forma"], "con_listino")
         self.assertEqual(len(result["righe"]), 1)
         self.assertEqual(result["righe"][0]["origine"], "OVERRIDE")
         self.assertTrue(result["listino_senza_versione_oggi"])
@@ -363,7 +410,40 @@ class ContrattiServiceTests(TestCase):
         self.assertNotIn("tipo_variazione_globale", args)
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_contratto_modalita_C_con_variazione_fallisce(self, repo_cls):
+    def test_create_contratto_senza_listino_con_variazione_ok(self, repo_cls):
+        # Refactor modalita 2026-05-15: nel modello unificato un contratto
+        # "senza_listino" (ex-modalita C) puo' anche avere variazione globale.
+        # E' una combinazione di campi liberi — la variazione si applichera'
+        # solo sulle righe (ex-modalita B) ma non e' bloccata dal modello.
+        # Il vecchio test (E_VENDITE_VALIDATION) era il gating modalita
+        # rimosso in questo refactor.
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.generate_numero.return_value = "CNT0000003"
+        repo.get_stato_id_by_codice.return_value = 1
+        repo.create_contratto.return_value = 3
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+
+        ContrattiService().create_contratto({
+            "billing_account_id": 10,
+            "istanza_utility_id": 20,
+            "utility_id": 3,
+            "valido_dal": "2026-01-01",
+            "tipo_variazione_globale": "PERCENTUALE",
+            "valore_variazione_globale": "5",
+        })
+
+        args = repo.create_contratto.call_args.args[0]
+        self.assertEqual(args["tipo_variazione_globale"], "PERCENTUALE")
+        self.assertNotIn("listino_id", args)
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_contratto_variazione_coppia_incompleta_fallisce(self, repo_cls):
+        # Resta valido il vincolo strutturale: tipo+valore devono essere
+        # coppia coerente (entrambi NULL o entrambi NOT NULL).
         from apps.vendite.services.contratti_service import ContrattiService
 
         with self.assertRaises(ServiceError) as ctx:
@@ -372,12 +452,12 @@ class ContrattiServiceTests(TestCase):
                 "istanza_utility_id": 20,
                 "utility_id": 3,
                 "valido_dal": "2026-01-01",
-                # Nessun listino -> modalita' C. Variazione NON ammessa.
+                "listino_id": 100,
                 "tipo_variazione_globale": "PERCENTUALE",
-                "valore_variazione_globale": "5",
+                # valore_variazione_globale mancante -> coppia incompleta
             })
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertIn("modalita' C", ctx.exception.detail or "")
+        self.assertIn("entrambi presenti o entrambi NULL", ctx.exception.detail or "")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_contratto_variazione_coppia_incompleta_fallisce(self, repo_cls):
@@ -409,14 +489,17 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_contratto_overlap_exclude_mappato(self, repo_cls):
+    def test_create_contratto_overlap_temporal_unique_mappato(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
         repo.generate_numero.return_value = "CNT0000003"
         repo.get_stato_id_by_codice.return_value = 1
+        # Scopo: PG18 temporal UNIQUE (WITHOUT OVERLAPS) sulla colonna `validita`
+        #        STORED generated → messaggio standard "unique constraint",
+        #        nome `uq_contratti_no_overlap` (migration 20260514-10).
         repo.create_contratto.side_effect = IntegrityError(
-            "duplicate key value violates exclusion constraint \"ex_contratti_no_overlap\""
+            "duplicate key value violates unique constraint \"uq_contratti_no_overlap\""
         )
 
         with self.assertRaises(ServiceError) as ctx:
@@ -752,6 +835,158 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(args[1]["tipo_variazione_globale"], "VALORE_FISSO")
         self.assertEqual(args[1]["valore_variazione_globale"], Decimal("5"))
 
+    # Scopo: refactor 2026-05-15. update_riga non puo' settare prezzo NULL
+    # su riga OVERRIDE esistente (la coerenza tipo/prezzo va salvaguardata).
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_riga_override_prezzo_null_fallisce(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {
+            "id": 5, "contratto_id": 1, "tipo_eccezione": "OVERRIDE",
+            "prezzo_unitario": Decimal("10"),
+        }
+        repo.get_contratto.return_value = _testata_default()  # DRAFT
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_riga(5, {"prezzo_unitario": None})
+
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("prezzo_unitario obbligatorio", ctx.exception.detail or "")
+        repo.update_riga.assert_not_called()
+
+    # Scopo: refactor 2026-05-15. update_riga non puo' settare prezzo NOT NULL
+    # su riga ESCLUSIONE esistente.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_riga_esclusione_prezzo_non_null_fallisce(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {
+            "id": 7, "contratto_id": 1, "tipo_eccezione": "ESCLUSIONE",
+            "prezzo_unitario": None,
+        }
+        repo.get_contratto.return_value = _testata_default()  # DRAFT
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_riga(7, {"prezzo_unitario": "10"})
+
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("ESCLUSIONE", ctx.exception.detail or "")
+        repo.update_riga.assert_not_called()
+
+    # Scopo: BE 2.6. get_contesto_pricing delega al repository e ritorna
+    # l'envelope per il banner FE.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_get_contesto_pricing(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.resolve_contesto_pricing_contratto.return_value = {
+            "contratto_id": 1,
+            "forma": "con_listino",
+            "stato_codice": "ATTIVO",
+            "listino_id": 100,
+            "listino_codice": "LST-001",
+            "listino_versione_id": 5,
+            "listino_versione_codice": "V5",
+            "listino_versione_fissata": True,
+            "tipo_variazione_globale": "PERCENTUALE",
+            "valore_variazione_globale": Decimal("-5"),
+            "categoria_cliente_id": 7,
+            "categoria_cliente_codice": "PREMIUM",
+            "categoria_cliente_descrizione": "Cliente premium",
+        }
+
+        result = ContrattiService().get_contesto_pricing(1)
+
+        self.assertEqual(result["forma"], "con_listino")
+        self.assertEqual(result["listino_versione_id"], 5)
+        self.assertTrue(result["listino_versione_fissata"])
+        repo.resolve_contesto_pricing_contratto.assert_called_once_with(1)
+
+    # Scopo: refactor §3-bis-E. Gate L2 sulla variazione globale del contratto
+    # al PATCH testata. Sconto PERCENTUALE oltre soglia -> E_PREV_SCONTO_ECCESSIVO.
+    @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository")
+    @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
+    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_gate_l2_variazione_globale_sconto_eccessivo(
+        self, repo_cls, mock_get_user_model, mock_param_service, mock_ba_repo,
+    ):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+        # Mock user non-superuser
+        user_mock = MagicMock()
+        user_mock.is_superuser = False
+        mock_get_user_model.return_value.objects.get.return_value = user_mock
+        # Soglia max sconto 10%
+        mock_param_service.return_value.get_emittente_fiscale_id_for_user.return_value = 5
+        mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("10")
+        mock_ba_repo.return_value.get_categoria_cliente_id.return_value = 7
+
+        # PATCH variazione globale a -20% (oltre soglia 10%).
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_contratto(
+                1,
+                {
+                    "tipo_variazione_globale": "PERCENTUALE",
+                    "valore_variazione_globale": "-20",
+                },
+                auth_user_id=42,
+            )
+
+        self.assertEqual(ctx.exception.code, "E_PREV_SCONTO_ECCESSIVO")
+        self.assertTrue(ctx.exception.retryable)
+        repo.update_contratto.assert_not_called()
+
+    # Scopo: refactor §3-bis-F. Rimuovere il listino con eccezioni
+    # OVERRIDE/ESCLUSIONE attive deve sollevare 422 con codice dedicato e
+    # NON tentare l'UPDATE del contratto.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_rimuove_listino_con_eccezioni_bloccato(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()  # listino_id=100
+        repo.count_eccezioni_bloccanti.return_value = {
+            "OVERRIDE": 3, "ESCLUSIONE": 2,
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_contratto(1, {"listino_id": None})
+
+        self.assertEqual(
+            ctx.exception.code,
+            "E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI",
+        )
+        self.assertIn("3 OVERRIDE", ctx.exception.detail or "")
+        self.assertIn("2 ESCLUSIONE", ctx.exception.detail or "")
+        repo.update_contratto.assert_not_called()
+
+    # Scopo: rimuovere il listino con SOLE AGGIUNTE (no OVERRIDE/ESCLUSIONE)
+    # e' ammesso — le AGGIUNTE restano valide anche senza listino.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_rimuove_listino_solo_aggiunte_ok(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()  # listino_id=100
+        repo.count_eccezioni_bloccanti.return_value = {
+            "OVERRIDE": 0, "ESCLUSIONE": 0,
+        }
+        repo.update_contratto.return_value = True
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+
+        ContrattiService().update_contratto(1, {"listino_id": None})
+
+        repo.update_contratto.assert_called_once()
+        args = repo.update_contratto.call_args.args
+        self.assertIsNone(args[1]["listino_id"])
+
     # --- cambio stato --------------------------------------------------
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
@@ -765,18 +1000,24 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_modalita_C_senza_righe_tradotto(self, repo_cls):
+    def test_cambia_stato_negoziato_puro_senza_righe_tradotto(self, repo_cls):
+        # Refactor modalita 2026-05-15: il guard `modalita_c_activation`
+        # e' stato sostituito dal nuovo trigger DB che blocca attivazione di
+        # un contratto senza listino se non ci sono AGGIUNTA con prezzo.
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
         repo.get_stato_id_by_codice.return_value = 2
+        # Il messaggio simula il template emesso dal trigger DB: il marker
+        # del service esige "contratto senza listino" + "almeno un'AGGIUNTA".
         repo.update_stato.side_effect = DatabaseError(
-            "Contratto CNT0000001 modalita' C senza righe attive: non attivabile."
+            "contratto senza listino e nessuna riga AGGIUNTA con prezzo: "
+            "serve almeno un'AGGIUNTA prima di attivare."
         )
 
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().cambia_stato(1, codice_interno="ATTIVO")
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_MODALITA_C_SENZA_RIGHE")
+        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_cambia_stato_ok(self, repo_cls):
@@ -836,22 +1077,68 @@ class ContrattiServiceTests(TestCase):
 
     # --- righe ---------------------------------------------------------
 
+    # Refactor modalita 2026-05-15: il vecchio test
+    # `test_create_riga_modalita_C_senza_prezzo_tradotto` testava il trigger
+    # DB di modalita C (droppato in step 2.1). Sostituito da test sulla
+    # coerenza tipo_eccezione/prezzo (validazione service pre-DB).
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_riga_modalita_C_senza_prezzo_tradotto(self, repo_cls):
+    def test_create_riga_override_senza_prezzo_fallisce(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
         repo.get_contratto.return_value = _testata_default()  # DRAFT
-        repo.create_riga.side_effect = DatabaseError(
-            "Contratto CNT0001 riga 5 (articolo X): prezzo_unitario obbligatorio in modalita' C."
-        )
 
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().create_riga(
                 1,
-                {"articolo_id": "00000000-0000-0000-0000-000000000001"},
+                {
+                    "articolo_id": "00000000-0000-0000-0000-000000000001",
+                    "tipo_eccezione": "OVERRIDE",
+                },
             )
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("prezzo_unitario obbligatorio", ctx.exception.detail or "")
+        repo.create_riga.assert_not_called()
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_esclusione_con_prezzo_fallisce(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()  # DRAFT
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().create_riga(
+                1,
+                {
+                    "articolo_id": "00000000-0000-0000-0000-000000000001",
+                    "tipo_eccezione": "ESCLUSIONE",
+                    "prezzo_unitario": "10",  # vietato su ESCLUSIONE
+                },
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("prezzo_unitario deve essere NULL", ctx.exception.detail or "")
+        repo.create_riga.assert_not_called()
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_tipo_eccezione_obbligatorio(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()  # DRAFT
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().create_riga(
+                1,
+                {
+                    "articolo_id": "00000000-0000-0000-0000-000000000001",
+                    "prezzo_unitario": "10",
+                    # tipo_eccezione mancante
+                },
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("tipo_eccezione obbligatorio", ctx.exception.detail or "")
+        repo.create_riga.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_riga_ok(self, repo_cls):
@@ -866,6 +1153,7 @@ class ContrattiServiceTests(TestCase):
             1,
             {
                 "articolo_id": "00000000-0000-0000-0000-000000000001",
+                "tipo_eccezione": "OVERRIDE",
                 "prezzo_unitario": "25.50",
                 "ordine": 10,
             },
@@ -875,6 +1163,7 @@ class ContrattiServiceTests(TestCase):
         args = repo.create_riga.call_args.args
         self.assertEqual(args[0], 1)
         self.assertEqual(args[1]["prezzo_unitario"], Decimal("25.50"))
+        self.assertEqual(args[1]["tipo_eccezione"], "OVERRIDE")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_update_riga_rifiuta_articolo_id(self, repo_cls):
@@ -1060,3 +1349,300 @@ class ContrattiRepositoryNumberTests(TestCase):
         cursor.execute.assert_called_once_with(
             "SELECT script.fn_generate_codice(%s)", ["contratto"]
         )
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Componenti BoM riga contratto (modello unificato 2026-05-13)
+# ══════════════════════════════════════════════════════════════════════
+# Test specchio del pattern preventivi (test_preventivi_service §componenti):
+# preview, list, update, delete con guard scope contratto/riga/componente.
+
+
+class ContrattiServiceComponentiTests(TestCase):
+    """Suite componenti riga contratto (modello unificato BoM 2026-05-13).
+
+    Specchio simmetrico di `PreventiviServiceComponentiTests`. Tutto mockato
+    contro `ContrattiRepository` per non dipendere da DB reale.
+    """
+
+    def test_normalize_componenti_overrides_dict_invalid(self):
+        """Validator solleva su valori non-numero."""
+        from apps.vendite.services._componenti_service_helpers import (
+            normalize_componenti_overrides,
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            normalize_componenti_overrides(
+                {"abc-uuid": "non-numero"},
+                function_name="test",
+                error_code="E_VENDITE_VALIDATION",
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    def test_normalize_componenti_overrides_empty(self):
+        """{} → None (skip path init)."""
+        from apps.vendite.services._componenti_service_helpers import (
+            normalize_componenti_overrides,
+        )
+
+        self.assertIsNone(
+            normalize_componenti_overrides(
+                {}, function_name="test",
+                error_code="E_VENDITE_VALIDATION",
+            )
+        )
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_preview_componenti_riga_not_found(self, repo_cls):
+        """Contratto inesistente → E_VENDITE_NOT_FOUND."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_contratto.return_value = None
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().preview_componenti_riga(
+                999,
+                articolo_id="abc",
+                uom_operativa_id=1,
+                quantita=Decimal("1"),
+                auth_user_id=None,
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    @patch(
+        "apps.vendite.services.contratti_service.ContrattiService."
+        "_resolve_emittente_sr_id_for_contratto",
+        return_value=99,
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_preview_componenti_riga_ok(self, repo_cls, _mock_resolve):
+        """Preview chiama repo.preview_componenti_riga con args derivati dal contratto."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_contratto.return_value = {
+            **_testata_default(),
+            "valido_dal": date(2026, 5, 1),
+            "emittente_fiscale_id": 7,
+        }
+        repo.preview_componenti_riga.return_value = [
+            {"componente_id": "abc", "prezzo_suggerito": "10.00"},
+        ]
+        repo_cls.return_value = repo
+
+        result = ContrattiService().preview_componenti_riga(
+            1,
+            articolo_id="comp-uuid",
+            uom_operativa_id=2,
+            quantita=Decimal("3"),
+            auth_user_id=42,
+        )
+
+        self.assertEqual(len(result), 1)
+        repo.preview_componenti_riga.assert_called_once()
+        kwargs = repo.preview_componenti_riga.call_args.kwargs
+        self.assertEqual(kwargs["articolo_id"], "comp-uuid")
+        self.assertEqual(kwargs["uom_id"], 2)
+        self.assertEqual(kwargs["data_riferimento"], date(2026, 5, 1))
+        self.assertEqual(kwargs["ba_id"], 10)
+        self.assertEqual(kwargs["utility_id"], 3)
+        # Emittente risolto internamente dal service (mock → 99)
+        self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 99)
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_list_componenti_riga_riga_fuori_scope(self, repo_cls):
+        """Riga appartiene a contratto diverso → E_VENDITE_NOT_FOUND."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_riga.return_value = {"id": 5, "contratto_id": 99}
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().list_componenti_riga(1, 5)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_list_componenti_riga_ok(self, repo_cls):
+        """List delega al repo passando solo_attivi."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_riga.return_value = {"id": 5, "contratto_id": 1}
+        repo.list_componenti_riga.return_value = [{"id": 100}]
+        repo_cls.return_value = repo
+
+        result = ContrattiService().list_componenti_riga(1, 5, solo_attivi=False)
+        self.assertEqual(result, [{"id": 100}])
+        repo.list_componenti_riga.assert_called_once_with(5, solo_attivi=False)
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_componente_anti_tampering_riga(self, repo_cls):
+        """riga_id URL non matcha riga reale → E_VENDITE_NOT_FOUND."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        # 1-JOIN: componente esiste ma appartiene a riga 99, non 5
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 99,
+            "contratto_id": 1,
+            "stato_codice": "DRAFT",
+        }
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_componente_riga(
+                1, 5, 100, {"prezzo_unitario": "10"},
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch(
+        "apps.vendite.services.contratti_service.ContrattiService."
+        "_resolve_emittente_sr_id_for_contratto",
+        return_value=99,
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_articolo_composito_auto_init(
+        self, repo_cls, _mock_resolve, _mock_atomic,
+    ):
+        """Articolo composito → auto-init componenti in transazione atomica."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_contratto.return_value = _testata_default()
+        repo.create_riga.return_value = 500
+        repo.is_articolo_composito.return_value = True  # ← composito
+        repo.init_componenti_riga.return_value = 3  # 3 componenti inseriti
+        repo.get_riga.return_value = {"id": 500, "contratto_id": 1}
+        repo_cls.return_value = repo
+
+        result = ContrattiService().create_riga(
+            1,
+            {
+                "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
+                "tipo_eccezione": "AGGIUNTA",
+                "prezzo_unitario": "0",
+                "quantita": "1",
+                "componenti_overrides": {"figlio-1": "5.50"},
+            },
+            auth_user_id=42,
+        )
+
+        # Verifica chiamate: create_riga + init_componenti_riga in atomic.
+        repo.create_riga.assert_called_once()
+        repo.is_articolo_composito.assert_called_once_with("019d544c-7ef6-7993-9dcb-0cd1ad77d4aa")
+        repo.init_componenti_riga.assert_called_once()
+        init_kwargs = repo.init_componenti_riga.call_args.kwargs
+        self.assertEqual(init_kwargs["riga_id"], 500)
+        self.assertEqual(init_kwargs["emittente_soggetto_ruolo_id"], 99)
+        # componenti_overrides normalizzato (Decimal-safe).
+        self.assertEqual(init_kwargs["componenti_overrides"], {"figlio-1": "5.50"})
+        self.assertEqual(result["id"], 500)
+
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch(
+        "apps.vendite.services.contratti_service.ContrattiService."
+        "_resolve_emittente_sr_id_for_contratto",
+        return_value=None,  # ← admin globale, niente emittente
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_articolo_composito_skip_init_senza_emittente(
+        self, repo_cls, _mock_resolve, _mock_atomic,
+    ):
+        """Articolo composito + emittente non risolvibile → skip init con log warning."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_contratto.return_value = _testata_default()
+        repo.create_riga.return_value = 500
+        repo.is_articolo_composito.return_value = True
+        repo.get_riga.return_value = {"id": 500, "contratto_id": 1}
+        repo_cls.return_value = repo
+
+        with self.assertLogs(
+            "apps.vendite.services.contratti_service", level="WARNING",
+        ) as logs:
+            ContrattiService().create_riga(
+                1,
+                {
+                    "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
+                    "tipo_eccezione": "AGGIUNTA",
+                    "prezzo_unitario": "0",
+                    "quantita": "1",
+                },
+                auth_user_id=None,
+            )
+
+        # Init NON chiamato + warning emesso per audit.
+        repo.init_componenti_riga.assert_not_called()
+        self.assertTrue(
+            any("auto_init_componenti_skipped" in msg for msg in logs.output),
+            f"Atteso warning skip in: {logs.output}",
+        )
+
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_articolo_non_composito_no_init(
+        self, repo_cls, _mock_atomic,
+    ):
+        """Articolo non composito → NO auto-init (path semplice)."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_contratto.return_value = _testata_default()
+        repo.create_riga.return_value = 500
+        repo.is_articolo_composito.return_value = False  # ← NON composito
+        repo.get_riga.return_value = {"id": 500, "contratto_id": 1}
+        repo_cls.return_value = repo
+
+        ContrattiService().create_riga(
+            1,
+            {
+                "articolo_id": "019d53f6-58ca-7cb7-b77b-86d201ce9787",
+                "tipo_eccezione": "OVERRIDE",
+                "prezzo_unitario": "10",
+                "quantita": "1",
+            },
+            auth_user_id=42,
+        )
+
+        repo.init_componenti_riga.assert_not_called()
+
+    def test_normalize_componenti_overrides_infinity_rejected(self):
+        """Decimal('Infinity') rifiutato dal check is_finite()."""
+        from apps.vendite.services._componenti_service_helpers import (
+            normalize_componenti_overrides,
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            normalize_componenti_overrides(
+                {"abc-uuid": "Infinity"}, function_name="test",
+                error_code="E_VENDITE_VALIDATION",
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("non finito", str(ctx.exception.message))
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_delete_componente_ok(self, repo_cls):
+        """Soft delete con scope OK → ritorna {deleted: True}."""
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        # 1-JOIN restituisce scope completo + stato DRAFT in colpo unico
+        repo.load_componente_with_scope.return_value = {
+            "componente_id": 100,
+            "riga_contratto_id": 5,
+            "contratto_id": 1,
+            "stato_codice": "DRAFT",
+        }
+        repo.delete_componente.return_value = True
+        repo_cls.return_value = repo
+
+        result = ContrattiService().delete_componente_riga(1, 5, 100)
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(result["deleted"])
+        repo.delete_componente.assert_called_once_with(100)

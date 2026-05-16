@@ -15,7 +15,7 @@
 - **Emittente fiscale**: entita' giuridica che emette fatture. Ogni operatore e' associato a uno o piu' emittenti.
 - **Operatore**: utente del sistema con profilo, reparto e permessi per area funzionale.
 - **Commessa**: contenitore di attivita' fatturabili provenienti da fonti diverse, convogliate nella pipeline di fatturazione.
-- **Contratto**: accordo commerciale tra un cliente (billing_account) e un listino. E' il ponte tra cliente e pricing, con tre modalita' (A/B/C) e una categoria cliente congelata alla creazione.
+- **Contratto**: accordo commerciale tra un cliente (billing_account) e un listino di riferimento. Post refactor 2026-05-15 la forma e' derivata dai dati di testata: `con_listino` (variazione globale opzionale + eccezioni puntuali OVERRIDE/ESCLUSIONE/AGGIUNTA in `contratti_righe`) o `senza_listino` (interamente negoziato, tutte le righe sono AGGIUNTA con prezzo). All'attivazione la versione del listino viene snapshottata (`listino_versione_id`) per blindarlo da cambi futuri (Profilo A). Categoria cliente congelata come snapshot alla creazione. Vedi [modello-contratti.md](../backend/vendite/manual/modello-contratti.md).
 - **Categoria cliente**: classificazione commerciale del cliente (STANDARD, BASE, SILVER, GOLD, PLATINUM). Determina variazioni di prezzo via matrice categoria/listino in STADIO 2 del resolver pricing. Sul contratto viene congelata come snapshot (`categoria_cliente_id_snapshot`) per audit storico.
 - **Listino**: catalogo di prezzi per (utility, tipologia, emittente). Unico base, le variazioni vivono in categoria cliente o contratto.
 - **Promo**: overlay temporale di prezzo su (articolo, uom), applicata in STADIO 0 del resolver per i clienti la cui categoria partecipa alle promo.
@@ -95,7 +95,7 @@ Un soggetto PG "Acea Energia" puo' essere contemporaneamente cliente (ruolo 1) e
 
 Transizioni:
 
-- DRAFT → ATTIVO (attivazione: trigger DB blocca se modalita' C con righe senza prezzo_unitario)
+- DRAFT → ATTIVO (attivazione: trigger DB blocca con `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` se forma `senza_listino` senza righe AGGIUNTA con prezzo valorizzato; al passaggio fissa `listino_versione_id` Profilo A)
 - ATTIVO → SOSPESO
 - ATTIVO → CESSATO
 - SOSPESO → ATTIVO (riattivazione)

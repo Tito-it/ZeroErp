@@ -1,0 +1,72 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260515-07-create-trg-parameter-overrides-cat-clienti-req-attivo-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step 1.1 — Trigger guard: categoria cliente attiva su parameter_overrides
+  #
+  # Usa dbops.trgfn_child_requires_active_parent per impedire override
+  # su una categoria_cliente_id disattivata. Pattern identico al trigger
+  # analogo su emittente_fiscale_id.
+  #
+  # Nome abbreviato a 58 caratteri: il nome completo supererebbe il limite
+  # PostgreSQL di 63 caratteri (stesso motivo dell'hash nel trigger su
+  # emittenti_fiscali).
+  #
+  # Vedere: brief-db-refactor-contratti-completo.md §Fase 1 Step 1.1
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260515-07-create-trg-parameter-overrides-cat-clienti-req-attivo
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Trigger AFTER INSERT OR UPDATE su config.parameter_overrides:
+        blocca override su categoria_cliente_id non attiva.
+        Pattern trgfn_child_requires_active_parent, identico al trigger
+        su emittente_fiscale_id.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameter_overrides
+            - columnExists:
+                schemaName: config
+                tableName: parameter_overrides
+                columnName: categoria_cliente_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops'
+                     AND p.proname = 'trgfn_child_requires_active_parent';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameter_overrides_a10_cat_clienti_req_attivo_ins_upd
+                  ON config.parameter_overrides;
+
+              CREATE TRIGGER trg_parameter_overrides_a10_cat_clienti_req_attivo_ins_upd
+                  AFTER INSERT OR UPDATE OF categoria_cliente_id
+                  ON config.parameter_overrides
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(
+                      'anagrafiche', 'categorie_clienti', 'attivo',
+                      'categoria_cliente_id', 'id'
+                  );
+
+              COMMENT ON TRIGGER trg_parameter_overrides_a10_cat_clienti_req_attivo_ins_upd
+                  ON config.parameter_overrides
+                  IS 'Guard: impedisce override su categoria_cliente_id disattivata. '
+                     'Pattern dbops.trgfn_child_requires_active_parent, '
+                     'speculare al trigger su emittente_fiscale_id.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameter_overrides_a10_cat_clienti_req_attivo_ins_upd
+                  ON config.parameter_overrides;

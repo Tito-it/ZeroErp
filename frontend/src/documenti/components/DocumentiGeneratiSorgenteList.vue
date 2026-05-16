@@ -27,6 +27,8 @@ const props = defineProps({
   sorgenteId: { type: [Number, null], required: true },
   // Se true, fetch automatico al mount/cambio props.
   autoFetch: { type: Boolean, default: true },
+  // Se true, quando la lista e' vuota mostra solo il messaggio empty.
+  hideHeaderWhenEmpty: { type: Boolean, default: false },
 })
 
 const { t } = useI18n()
@@ -54,6 +56,7 @@ function statoSeverity(stato) {
 }
 
 const isEmpty = computed(() => !store.loading && (store.items?.length ?? 0) === 0)
+const showListChrome = computed(() => !isEmpty.value || !props.hideHeaderWhenEmpty)
 
 function buildRowActions(row) {
   return [
@@ -84,7 +87,7 @@ async function reload() {
 
 <template>
   <div class="documenti-sorgente-list">
-    <div class="section-header">
+    <div v-if="showListChrome" class="section-header">
       <h4>{{ t('documenti.lista.title') }}</h4>
       <Button
         :icon="MANAGE_ICONS.RELOAD"
@@ -97,6 +100,7 @@ async function reload() {
     </div>
 
     <DataTable
+      v-if="showListChrome"
       :value="store.items"
       :loading="store.loading"
       striped-rows

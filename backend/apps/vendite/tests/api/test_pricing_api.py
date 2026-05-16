@@ -220,3 +220,56 @@ class TestLimitiUtente(_BaseApiTest):
         body = resp.json()
         self.assertEqual(body["data"]["max_sconto_pct"], "15")
         self.assertEqual(body["data"]["max_maggiorazione_pct"], "5")
+
+    # Scopo: senza billing_account_id il livello categoria_cliente della
+    # cascata viene saltato (categoria_cliente_id=None).
+    @patch(_AUTH, return_value=(Mock(id=1), None))
+    @patch(_LIMITI_PS)
+    def test_limiti_utente_senza_ba_categoria_none(self, ps_cls, _auth):
+        ps_cls.return_value.get_defaults.return_value = {
+            "VENDITE_MAX_SCONTO_PCT": "10",
+            "VENDITE_MAX_MAGGIORAZIONE_PCT": "10",
+        }
+
+        resp = self.client.get(_LIMITI_BASE)
+
+        self.assertEqual(resp.status_code, 200)
+        _, kwargs = ps_cls.return_value.get_defaults.call_args
+        self.assertIsNone(kwargs.get("categoria_cliente_id"))
+
+    # Scopo: con billing_account_id la view recupera la categoria del BA
+    # via BillingAccountRepository e la propaga a ParameterService.
+    @patch("apps.vendite.api.views_pricing.BillingAccountRepository")
+    @patch(_AUTH, return_value=(Mock(id=1), None))
+    @patch(_LIMITI_PS)
+    def test_limiti_utente_con_ba_propaga_categoria(self, ps_cls, _auth, ba_cls):
+        ba_cls.return_value.get_categoria_cliente_id.return_value = 7
+        ps_cls.return_value.get_defaults.return_value = {
+            "VENDITE_MAX_SCONTO_PCT": "5",
+            "VENDITE_MAX_MAGGIORAZIONE_PCT": "5",
+        }
+
+        resp = self.client.get(_LIMITI_BASE + "?billing_account_id=99")
+
+        self.assertEqual(resp.status_code, 200)
+        ba_cls.return_value.get_categoria_cliente_id.assert_called_once_with(99)
+        _, kwargs = ps_cls.return_value.get_defaults.call_args
+        self.assertEqual(kwargs.get("categoria_cliente_id"), 7)
+
+    # Scopo: billing_account_id malformato (non numerico) viene ignorato
+    # silenziosamente, niente lookup BA, categoria_cliente_id=None.
+    @patch("apps.vendite.api.views_pricing.BillingAccountRepository")
+    @patch(_AUTH, return_value=(Mock(id=1), None))
+    @patch(_LIMITI_PS)
+    def test_limiti_utente_ba_malformato_ignorato(self, ps_cls, _auth, ba_cls):
+        ps_cls.return_value.get_defaults.return_value = {
+            "VENDITE_MAX_SCONTO_PCT": "10",
+            "VENDITE_MAX_MAGGIORAZIONE_PCT": "10",
+        }
+
+        resp = self.client.get(_LIMITI_BASE + "?billing_account_id=abc")
+
+        self.assertEqual(resp.status_code, 200)
+        ba_cls.return_value.get_categoria_cliente_id.assert_not_called()
+        _, kwargs = ps_cls.return_value.get_defaults.call_args
+        self.assertIsNone(kwargs.get("categoria_cliente_id"))

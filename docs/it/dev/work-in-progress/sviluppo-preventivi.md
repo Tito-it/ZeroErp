@@ -546,7 +546,6 @@ Modello allineato a `acquisti.ordini` per la parte fornitore e a `vendite.preven
 | `serie` | varchar NULL | Serie documento |
 | `numero` | varchar | Codice documento (trigger-generated) |
 | `rev` | integer, default 0 | Revisione (come vendite.preventivi) |
-| `is_revision_attiva` | boolean, default false | Una sola revisione attiva per numero |
 | `anno` | smallint | Anno documento |
 | `data` | date, default CURRENT_DATE | Data emissione |
 | `stato_doc_preventivo_acq_id` | bigint NOT NULL FK | FK a `config.stati_doc_preventivi_acq` |
@@ -569,6 +568,37 @@ Modello allineato a `acquisti.ordini` per la parte fornitore e a `vendite.preven
 | `tx_id` | uuid | |
 | `storicizza` | boolean, default true | |
 | audit columns | | |
+
+**Revisione attiva — pattern derivato (simmetrico a `vendite.preventivi` post-refactor 2026-05-15):**
+
+Nessuna colonna `is_revision_attiva` persistita sulla tabella. Il predicato "è la
+rev viva del numero" è derivato in `acquisti.vw_preventivi` (e `vw_preventivi_list`)
+come:
+
+```sql
+NOT EXISTS (
+    SELECT 1 FROM acquisti.preventivi p2
+      JOIN config.stati_doc_preventivi_acq s2 ON s2.id = p2.stato_doc_preventivo_acq_id
+     WHERE p2.numero = p.numero
+       AND p2.rev > p.rev
+       AND s2.is_abortito IS FALSE
+) AS is_attiva
+```
+
+Dipendenza: `config.stati_doc_preventivi_acq` deve esporre colonna
+`is_abortito BOOLEAN NOT NULL DEFAULT FALSE` (true solo per lo stato ANNULLATO).
+
+Razionale: vedi `docs/it/dev/work-done/brief-db-preventivi-revisione-attiva-derivata.md`
+per il modello e i pgTAP applicati su vendite. Un flag persistito mantenuto
+manualmente diverge dai dati strutturali appena uno stato terminale di una
+revisione viene applicato (rev annullata che non rifluisce al predecessore).
+Il predicato derivato chiude per costruzione tutti i casi senza trigger di
+sincronizzazione.
+
+`fn_crea_revisione_preventivo_acq` (futura): copia testata + righe + componenti
+BoM (se la sorgente acquisti adotterà il modello componenti) + indirizzi.
+NON tocca `is_revision_attiva` su preventivo precedente — la derivazione è
+automatica.
 
 **Differenze chiave rispetto a `vendite.preventivi`:**
 

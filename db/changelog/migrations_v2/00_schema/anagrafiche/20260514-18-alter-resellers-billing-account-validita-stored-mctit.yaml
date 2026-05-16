@@ -1,0 +1,46 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260514-18-alter-resellers-billing-account-validita-stored-mctit.yaml
+
+  - changeSet:
+      id: 20260514-18-alter-resellers-billing-account-validita-stored
+      author: mctit
+      comment: "Step 2b PG18: converte validita a STORED generated su anagrafiche.resellers_billing_account."
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: resellers_billing_account
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname='anagrafiche' AND c.relname='resellers_billing_account'
+                   AND a.attname='validita' AND a.attnum>0
+                   AND NOT a.attisdropped AND a.attgenerated=''
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_resellers_ba_a20_set_validita_ins_upd
+                  ON anagrafiche.resellers_billing_account;
+              ALTER TABLE anagrafiche.resellers_billing_account DROP COLUMN validita CASCADE;
+              ALTER TABLE anagrafiche.resellers_billing_account
+                  ADD COLUMN validita DATERANGE
+                      GENERATED ALWAYS AS (
+                          daterange(COALESCE(valido_dal,'-infinity'::date),
+                                    COALESCE(valido_al, 'infinity'::date),'[]')
+                      ) STORED NOT NULL;
+              COMMENT ON COLUMN anagrafiche.resellers_billing_account.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. rev 2026-05-14.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.resellers_billing_account DROP COLUMN IF EXISTS validita;
+              ALTER TABLE anagrafiche.resellers_billing_account ADD COLUMN validita DATERANGE;
+              UPDATE anagrafiche.resellers_billing_account SET validita=daterange(COALESCE(valido_dal,'-infinity'::date),COALESCE(valido_al,'infinity'::date),'[]');
+              ALTER TABLE anagrafiche.resellers_billing_account ALTER COLUMN validita SET NOT NULL;

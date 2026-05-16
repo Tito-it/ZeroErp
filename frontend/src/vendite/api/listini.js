@@ -119,10 +119,17 @@ export function diagnoseConfigurazionePricing(payload) {
 
 // --- L2 limiti variazione prezzo per utente corrente ---
 // Ritorna { max_sconto_pct, max_maggiorazione_pct } risolti con cascata
-// user -> group -> emittente -> default. Usato dal FE per mostrare hint
-// sotto il campo prezzo nel drawer riga preventivo.
-export function getLimitiPricingUtente() {
-  return api.get('/vendite/pricing/limiti-utente/')
+// estesa user -> categoria_cliente -> group -> emittente -> default
+// (refactor 2026-05-15). `billingAccountId` opzionale: se fornito alimenta
+// il livello categoria_cliente con la categoria del BA destinatario; senza,
+// il livello viene saltato. Usato dal FE per mostrare hint sotto il campo
+// prezzo nel drawer riga preventivo coerente con il cliente target.
+export function getLimitiPricingUtente(billingAccountId = null) {
+  const params = {}
+  if (billingAccountId != null && billingAccountId !== '') {
+    params.billing_account_id = billingAccountId
+  }
+  return api.get('/vendite/pricing/limiti-utente/', { params })
 }
 
 // --- Bundle componenti BoM (modello unificato 2026-05-13) ---
@@ -149,5 +156,14 @@ export function saveBundleComponenti(listinoId, verId, padreId, rows) {
   return api.post(
     `${BASE}/${listinoId}/versioni/${verId}/bundle/${padreId}/`,
     { rows },
+  )
+}
+
+// Elimina TUTTI i prezzi bundle del composito dalla versione. Tabula rasa
+// idempotente: soft-delete cascade su `listini_righe_componenti`. Solo
+// versione BOZZA. Idempotente: 0 disattivati senza errore se gia' vuoto.
+export function deleteBundleComponenti(listinoId, verId, padreId) {
+  return api.delete(
+    `${BASE}/${listinoId}/versioni/${verId}/bundle/${padreId}/`,
   )
 }

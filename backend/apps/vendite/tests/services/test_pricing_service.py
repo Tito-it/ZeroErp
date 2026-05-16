@@ -160,36 +160,9 @@ class TestResolvePrezzo(TestCase):
         self.assertIn("sconosciuto", ctx.exception.detail or "")
 
 
-def _composito_kwargs(**overrides):
-    kw = _base_kwargs()
-    kw.pop("articolo_id")
-    kw["prodotto_id"] = _UUID
-    kw.update(overrides)
-    return kw
-
-
-class TestResolveComposito(TestCase):
-    @patch(_REPO)
-    def test_composito_ok(self, mock_repo):
-        mock_repo.return_value.resolve_prezzo_composito.return_value = [
-            {"componente_id": _UUID, "prezzo_unitario": Decimal("5.0"), "esposto_in_fattura": True},
-            {"componente_id": _UUID, "prezzo_unitario": Decimal("2.5"), "esposto_in_fattura": False},
-        ]
-        result = PricingService().resolve_prezzo_composito(**_composito_kwargs())
-        self.assertEqual(len(result), 2)
-
-    @patch(_REPO)
-    def test_composito_uuid_invalido(self, mock_repo):
-        del mock_repo
-        with self.assertRaises(ServiceError) as ctx:
-            PricingService().resolve_prezzo_composito(**_composito_kwargs(prodotto_id="xxx"))
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-
-    @patch(_REPO)
-    def test_composito_db_error(self, mock_repo):
-        mock_repo.return_value.resolve_prezzo_composito.side_effect = DatabaseError(
-            "Riga listino non trovata per articolo X uom 1 nella versione attiva"
-        )
-        with self.assertRaises(ServiceError) as ctx:
-            PricingService().resolve_prezzo_composito(**_composito_kwargs())
-        self.assertEqual(ctx.exception.code, "E_PREZZO_LISTINO_RIGA_NON_TROVATA")
+# `TestResolveComposito` rimosso col cleanup legacy 2026-05-14: la fn DB
+# `fn_resolve_prezzo_composito` + `PricingService.resolve_prezzo_composito`
+# erano DEPRECATED dal modello unificato BoM 2026-05-13 e mai realmente
+# invocate in produzione (preventivi usa snapshot loader, ordini/ddt non
+# esistono). Per i test del nuovo path: `test_commesse_source_handlers.py`
+# `BoMComponentExpanderTests` (snapshot loader).

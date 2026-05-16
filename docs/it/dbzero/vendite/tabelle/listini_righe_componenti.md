@@ -11,7 +11,6 @@
 | articolo_figlio_id | uuid | NO |  |
 | prezzo | numeric | NO |  |
 | iva_id | bigint | YES |  |
-| validita | daterange | NO |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |
@@ -19,11 +18,15 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_update | text | YES |  |
 | data_update | timestamp with time zone | NO | now() |
+| valido_dal | date | NO |  |
+| valido_al | date | YES |  |
+| validita | daterange | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_listrighe_comp_prezzo_notnull |  |
+| FOREIGN KEY | fk_listrighe_comp_articoli_comp_temporal | articolo_componente_id, validita |
 | FOREIGN KEY | listini_righe_componenti_articolo_componente_id_fkey | articolo_componente_id |
 | FOREIGN KEY | listini_righe_componenti_articolo_figlio_id_fkey | articolo_figlio_id |
 | FOREIGN KEY | listini_righe_componenti_articolo_padre_id_fkey | articolo_padre_id |

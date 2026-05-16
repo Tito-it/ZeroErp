@@ -56,18 +56,22 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 // Readonly effettivo = prop esplicita OR readonly area iniettato dal parent
-// OR revisione superseded: esiste un'altra revisione con rev maggiore per
-// lo stesso numero. In quel caso questo documento va trattato come storico
-// immutabile (non si possono avere due revisioni "vive" sullo stesso numero
-// che possano essere accettate o annullate in parallelo).
+// OR revisione superseded: esiste un'altra revisione "viva" con rev maggiore
+// per lo stesso numero. In quel caso questo documento va trattato come
+// storico immutabile (non si possono avere due revisioni "vive" sullo stesso
+// numero che possano essere accettate o annullate in parallelo).
 //
-// NB: usiamo `detail.has_next_revision` (computed BE da subquery EXISTS) e
-// NON il flag `detail.is_revision_attiva` perche' il flag ha default DDL
-// `false`: i preventivi originali mai revisionati avrebbero il flag a false
-// e verrebbero erroneamente segnati come superseded.
+// Predicato: `!detail.is_attiva` (post-refactor 2026-05-15, predicato derivato
+// da `vendite.vw_preventivi.is_attiva`). Ignora le rev abortite (ANNULLATO):
+//   - rev 0 EMESSO + rev 1 DRAFT     → rev 0 is_attiva=F → superseded
+//   - rev 0 EMESSO + rev 1 ANNULLATO → rev 0 is_attiva=T → NON superseded
+// La seconda casistica chiude il flusso "ho sbagliato a revisionare, annullo
+// e torno a operare sul predecessore". Diverso dal flag `has_next_revision`
+// (esposto comunque dal BE per usi diagnostici), che resta TRUE anche se la
+// rev superiore e' abortita.
 const parentReadonly = useInjectReadonly()
 const isSuperseded = computed(
-  () => detail.value !== null && detail.value.has_next_revision === true,
+  () => detail.value !== null && detail.value.is_attiva === false,
 )
 const isReadonly = computed(
   () => props.readonly || parentReadonly.value || isSuperseded.value,
@@ -785,6 +789,7 @@ function onNuovaRevisione() {
         <Divider />
         <PreventiviRigheTable
           :preventivo-id="effectivePreventivoId"
+          :billing-account-id="form.billing_account_id"
           :is-modificabile="canEditRighe && !isReadonly"
           @changed="loadDetail()"
           @form-aperto="(v) => { formRigaAperto = v }" />

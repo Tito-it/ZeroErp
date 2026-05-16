@@ -137,14 +137,15 @@ BEGIN
     INSERT INTO vendite.listini_righe_componenti(
         listino_versione_id, articolo_componente_id,
         articolo_padre_id, articolo_figlio_id,
-        prezzo, iva_id, validita, attivo)
+        prezzo, iva_id, valido_dal, valido_al, attivo)
     SELECT v_versione_id,
            ctx.articolo_componente_id,
            ctx.padre_id,
            ctx.figlio_id,
            75.00,
            ctx.iva_id,
-           daterange(CURRENT_DATE, CURRENT_DATE + 1),
+           CURRENT_DATE,
+           CURRENT_DATE,
            TRUE
       FROM tmp_bundle_ctx ctx;
 END

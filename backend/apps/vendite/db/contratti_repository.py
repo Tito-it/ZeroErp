@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any
 
@@ -23,6 +24,7 @@ from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 
 
 # Mappa colonna -> tipo, usata per placeholder/cast jsonb e adattamento param.
@@ -76,6 +78,8 @@ _SELECT_COLS_CONTRATTO = """
     c.listino_id,
     l.codice AS listino_codice,
     l.descrizione AS listino_descrizione,
+    c.listino_versione_id,
+    lv.codice_versione AS listino_versione_codice,
     c.tipo_variazione_globale,
     c.valore_variazione_globale,
     c.categoria_cliente_id_snapshot,
@@ -96,6 +100,7 @@ _FROM_JOINS_CONTRATTO = """
     JOIN config.utilities u ON u.id = c.utility_id
     JOIN config.stati_doc_contratti sd ON sd.id = c.stato_doc_contratto_id
     LEFT JOIN vendite.listini l ON l.id = c.listino_id
+    LEFT JOIN vendite.listini_versioni lv ON lv.id = c.listino_versione_id
     LEFT JOIN anagrafiche.categorie_clienti cc_snap ON cc_snap.id = c.categoria_cliente_id_snapshot
 """
 
@@ -106,6 +111,7 @@ _SELECT_COLS_RIGA = """
     r.articolo_id,
     a.codice AS articolo_codice,
     a.descrizione AS articolo_descrizione,
+    a.is_composito AS is_composito,
     r.uom_operativa_id,
     um.codice AS uom_codice,
     um.descrizione AS uom_descrizione,
@@ -121,6 +127,7 @@ _SELECT_COLS_RIGA = """
     r.ordine,
     r.attivo,
     r.meta,
+    r.tipo_eccezione,
     r.data_insert,
     r.user_insert,
     r.data_update,
@@ -167,8 +174,19 @@ _FROM_JOINS_UTILITY = """
 """
 
 
-class ContrattiRepository:
-    """Accesso DB a `vendite.contratti` + righe + utility 1:1."""
+class ContrattiRepository(ComponentiRepositoryMixin):
+    """Accesso DB a `vendite.contratti` + righe + utility 1:1.
+
+    Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM
+    modello unificato (`contratti_righe_componenti`). I metodi specifici
+    `init_componenti_riga` (chiama `fn_contratto_riga_componenti_init`)
+    e `preview_componenti_riga` (chiama `fn_contratto_riga_componenti_preview`)
+    sono definiti localmente.
+    """
+
+    # Configurazione mixin componenti.
+    _componenti_table_name = "vendite.contratti_righe_componenti"
+    _componenti_fk_riga = "riga_contratto_id"
 
     # =================================================================
     # Lista e dettaglio testata
@@ -323,6 +341,102 @@ class ContrattiRepository:
     # Mutazioni testata
     # =================================================================
 
+    # Scopo: Restituisce il contesto pricing del contratto in forma compatta
+    #        per il banner FE (refactor 2026-05-15, mutuato dal pattern
+    #        preventivi `resolve_contesto_pricing`). Espone forma (con/senza
+    #        listino), riferimento listino + versione (FISSATA se ATTIVO,
+    #        CORRENTE se DRAFT), variazione globale, categoria cliente.
+    #        Pura lettura: nessun side-effect. Restituisce None se contratto
+    #        non esiste.
+    def resolve_contesto_pricing_contratto(
+        self, contratto_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            WITH cnt AS (
+                SELECT c.id,
+                       c.billing_account_id,
+                       c.listino_id,
+                       c.listino_versione_id,
+                       c.tipo_variazione_globale,
+                       c.valore_variazione_globale,
+                       c.categoria_cliente_id_snapshot,
+                       sd.codice_interno AS stato_codice
+                  FROM vendite.contratti c
+                  JOIN config.stati_doc_contratti sd
+                    ON sd.id = c.stato_doc_contratto_id
+                 WHERE c.id = %s
+            ),
+            -- Versione listino: fissata se ATTIVO, altrimenti corrente alla
+            -- data odierna (DRAFT). Coerente con la logica resolver/preview.
+            ver AS (
+                SELECT lv.id, lv.codice_versione, lv.listino_id
+                  FROM vendite.listini_versioni lv
+                  JOIN cnt ON cnt.listino_id = lv.listino_id
+                 WHERE lv.attivo = TRUE
+                   AND (
+                       (cnt.listino_versione_id IS NOT NULL AND lv.id = cnt.listino_versione_id)
+                       OR
+                       (cnt.listino_versione_id IS NULL AND lv.validita @> CURRENT_DATE)
+                   )
+                 LIMIT 1
+            )
+            SELECT
+                cnt.id AS contratto_id,
+                CASE WHEN cnt.listino_id IS NULL THEN 'senza_listino'
+                     ELSE 'con_listino' END AS forma,
+                cnt.stato_codice,
+                cnt.listino_id,
+                l.codice AS listino_codice,
+                l.descrizione AS listino_descrizione,
+                COALESCE(cnt.listino_versione_id, ver.id) AS listino_versione_id,
+                ver.codice_versione AS listino_versione_codice,
+                -- True se il contratto e' ATTIVO con versione fissata: i prezzi
+                -- non drifteranno con nuove versioni del listino.
+                (cnt.listino_versione_id IS NOT NULL) AS listino_versione_fissata,
+                cnt.tipo_variazione_globale,
+                cnt.valore_variazione_globale,
+                COALESCE(cnt.categoria_cliente_id_snapshot, ba.categoria_cliente_id)
+                    AS categoria_cliente_id,
+                cc.codice AS categoria_cliente_codice,
+                cc.descrizione AS categoria_cliente_descrizione
+              FROM cnt
+              LEFT JOIN anagrafiche.billing_account ba ON ba.id = cnt.billing_account_id
+              LEFT JOIN vendite.listini l ON l.id = cnt.listino_id
+              LEFT JOIN ver ON TRUE
+              LEFT JOIN anagrafiche.categorie_clienti cc
+                ON cc.id = COALESCE(
+                    cnt.categoria_cliente_id_snapshot, ba.categoria_cliente_id
+                )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [contratto_id])
+            return row_to_dict(cursor)
+
+    # Scopo: Conta le eccezioni "bloccanti" (OVERRIDE / ESCLUSIONE) attive
+    #        sul contratto. Usato dal service per impedire la rimozione del
+    #        listino dalla testata: senza listino di riferimento, OVERRIDE
+    #        e ESCLUSIONE perdono significato (refactor modalita 2026-05-15
+    #        §3-bis-F). AGGIUNTA non blocca (resta valida senza listino).
+    def count_eccezioni_bloccanti(
+        self, contratto_id: int,
+    ) -> dict[str, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT tipo_eccezione, COUNT(*)::int
+                  FROM vendite.contratti_righe
+                 WHERE contratto_id = %s
+                   AND attivo = TRUE
+                   AND tipo_eccezione IN ('OVERRIDE', 'ESCLUSIONE')
+                 GROUP BY tipo_eccezione
+                """,
+                [contratto_id],
+            )
+            counts = {"OVERRIDE": 0, "ESCLUSIONE": 0}
+            for tipo, n in cursor.fetchall():
+                counts[tipo] = int(n)
+            return counts
+
     # Scopo: Inserisce un contratto. `numero` gia' generato dal service.
     #        Colonne whitelisted. Trigger DB impostera' `validita` da
     #        valido_dal/al e validera' coerenza modalita' via CHECK.
@@ -457,16 +571,28 @@ class ContrattiRepository:
     #        lo stadio CONTRATTO_LISTINO (single-pass batch, no round-trip
     #        per riga). Tenere allineato in caso di estensioni della formula.
     def list_righe_preview(self, contratto_id: int) -> list[dict[str, Any]]:
+        # Refactor modalita 2026-05-15 — preview a 3 tipi eccezione:
+        #   - Parte 1: righe del listino di riferimento (lette dalla versione
+        #     FISSATA c.listino_versione_id se contratto ATTIVO, altrimenti
+        #     dalla versione operativa corrente per DRAFT). Per ogni articolo
+        #     del listino: se esiste eccezione OVERRIDE -> usa quel prezzo,
+        #     se esiste ESCLUSIONE -> origine='ESCLUSIONE' prezzo_finale NULL,
+        #     altrimenti -> origine='DA_LISTINO' prezzo listino + variazione
+        #     globale.
+        #   - Parte 2: eccezioni AGGIUNTA (articoli fuori-listino).
+        # Il guard trigger DB impedisce di creare AGGIUNTA per articoli che
+        # invece sono nel listino → safe-by-design.
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                -- Parte 1: righe del listino con eventuale override matched
-                -- per (articolo, uom). prezzo_finale = override se esiste,
-                -- altrimenti prezzo listino con variazione globale applicata.
+                -- Parte 1: righe del listino di riferimento del contratto.
+                -- Versione: fissata (c.listino_versione_id) se contratto
+                -- ATTIVO, altrimenti corrente alla data odierna (DRAFT).
                 SELECT
                     a.id AS articolo_id,
                     a.codice AS articolo_codice,
                     a.descrizione AS articolo_descrizione,
+                    a.is_composito AS is_composito,
                     lr.uom_id,
                     um.codice AS uom_codice,
                     um.descrizione AS uom_descrizione,
@@ -475,12 +601,15 @@ class ContrattiRepository:
                     c.valore_variazione_globale AS valore_variazione,
                     cr.id AS override_riga_id,
                     cr.prezzo_unitario AS override_prezzo,
+                    cr.tipo_eccezione AS tipo_eccezione,
                     CASE
-                        WHEN cr.id IS NOT NULL THEN 'OVERRIDE'
+                        WHEN cr.tipo_eccezione = 'OVERRIDE'   THEN 'OVERRIDE'
+                        WHEN cr.tipo_eccezione = 'ESCLUSIONE' THEN 'ESCLUSIONE'
                         ELSE 'DA_LISTINO'
                     END AS origine,
                     CASE
-                        WHEN cr.id IS NOT NULL THEN cr.prezzo_unitario
+                        WHEN cr.tipo_eccezione = 'OVERRIDE'   THEN cr.prezzo_unitario
+                        WHEN cr.tipo_eccezione = 'ESCLUSIONE' THEN NULL
                         WHEN c.tipo_variazione_globale = 'PERCENTUALE' THEN
                             lr.prezzo * (1 + c.valore_variazione_globale / 100.0)
                         WHEN c.tipo_variazione_globale = 'VALORE_FISSO' THEN
@@ -488,9 +617,14 @@ class ContrattiRepository:
                         ELSE lr.prezzo
                     END AS prezzo_finale
                   FROM vendite.contratti c
-                  JOIN vendite.listini_versioni lv ON lv.listino_id = c.listino_id
-                                                  AND lv.validita @> CURRENT_DATE
-                                                  AND lv.attivo = TRUE
+                  JOIN vendite.listini_versioni lv
+                    ON lv.listino_id = c.listino_id
+                   AND lv.attivo = TRUE
+                   AND (
+                       (c.listino_versione_id IS NOT NULL AND lv.id = c.listino_versione_id)
+                       OR
+                       (c.listino_versione_id IS NULL     AND lv.validita @> CURRENT_DATE)
+                   )
                   JOIN vendite.listini_righe lr ON lr.listino_versione_id = lv.id
                                                AND lr.attivo = TRUE
                   JOIN catalogo.articoli a ON a.id = lr.articolo_id
@@ -500,50 +634,38 @@ class ContrattiRepository:
                         AND cr.articolo_id = lr.articolo_id
                         AND cr.uom_operativa_id = lr.uom_id
                         AND cr.attivo = TRUE
+                        AND cr.tipo_eccezione IN ('OVERRIDE', 'ESCLUSIONE')
                  WHERE c.id = %s
                    AND c.listino_id IS NOT NULL
 
                 UNION ALL
 
-                -- Parte 2: override extra-listino. Righe contratto che non
-                -- hanno match (articolo, uom) nelle righe del listino
-                -- operativo oggi. Tipicamente prodotti negoziati a parte
-                -- non presenti nel listino base. prezzo_listino e
-                -- tipo/valore variazione sono NULL: l'origine e' OVERRIDE
-                -- e il prezzo_finale e' direttamente cr.prezzo_unitario.
+                -- Parte 2: eccezioni AGGIUNTA (articoli fuori-listino).
+                -- Il guard DB trgfn_contratti_righe_guard_aggiunta_fuori_listino
+                -- impedisce di crearne per articoli presenti nel listino,
+                -- quindi non serve qui un NOT EXISTS sul listino.
                 SELECT
                     a.id AS articolo_id,
                     a.codice AS articolo_codice,
                     a.descrizione AS articolo_descrizione,
+                    a.is_composito AS is_composito,
                     cr.uom_operativa_id AS uom_id,
                     um.codice AS uom_codice,
                     um.descrizione AS uom_descrizione,
                     NULL::numeric AS prezzo_listino,
-                    NULL::text AS tipo_variazione,
+                    NULL::varchar AS tipo_variazione,
                     NULL::numeric AS valore_variazione,
                     cr.id AS override_riga_id,
                     cr.prezzo_unitario AS override_prezzo,
-                    'OVERRIDE' AS origine,
+                    cr.tipo_eccezione AS tipo_eccezione,
+                    'AGGIUNTA' AS origine,
                     cr.prezzo_unitario AS prezzo_finale
                   FROM vendite.contratti_righe cr
                   JOIN catalogo.articoli a ON a.id = cr.articolo_id
                   LEFT JOIN catalogo.unita_misura um ON um.id = cr.uom_operativa_id
                  WHERE cr.contratto_id = %s
                    AND cr.attivo = TRUE
-                   AND NOT EXISTS (
-                       SELECT 1
-                         FROM vendite.contratti c2
-                         JOIN vendite.listini_versioni lv2
-                              ON lv2.listino_id = c2.listino_id
-                             AND lv2.validita @> CURRENT_DATE
-                             AND lv2.attivo = TRUE
-                         JOIN vendite.listini_righe lr2
-                              ON lr2.listino_versione_id = lv2.id
-                             AND lr2.articolo_id = cr.articolo_id
-                             AND lr2.uom_id = cr.uom_operativa_id
-                             AND lr2.attivo = TRUE
-                        WHERE c2.id = cr.contratto_id
-                   )
+                   AND cr.tipo_eccezione = 'AGGIUNTA'
 
                  ORDER BY articolo_codice ASC, uom_codice ASC
                 """,
@@ -564,11 +686,16 @@ class ContrattiRepository:
             )
             return row_to_dict(cursor)
 
-    # Scopo: Inserisce una riga contratto. Il trigger guard modalita' C
-    #        scatta se contratto e' ATTIVO e prezzo_unitario NULL.
+    # Scopo: Inserisce una riga contratto come eccezione tipizzata
+    #        (refactor modalita 2026-05-15). `tipo_eccezione` NOT NULL nello
+    #        schema; trigger DB chk_contrighe_prezzo_per_tipo_eccezione
+    #        valida la coerenza prezzo_unitario per tipo. Trigger
+    #        trgfn_contratti_righe_guard_aggiunta_fuori_listino blocca
+    #        AGGIUNTA su articoli presenti nel listino di riferimento.
     def create_riga(self, contratto_id: int, data: dict[str, Any]) -> int:
         write_cols = (
             "articolo_id",
+            "tipo_eccezione",
             "tipo_erogazione",
             "fonte_quantita_attesa",
             "periodicita",
@@ -649,6 +776,161 @@ class ContrattiRepository:
                 [riga_id],
             )
             return cursor.rowcount > 0
+
+    # Scopo: Lookup soggetto_ruolo_id dell'emittente fiscale. Thin delegate
+    # cross-dominio (Fase H residue 2026-05-14): implementazione in
+    # `apps.anagrafiche.db.emittenti_fiscali_repository.EmittentiFiscaliRepository.get_sr_id_by_fiscale_id`.
+    # I caller `contratti_service` continuano a usare `self._repo.X` (no
+    # churn lato caller + mock test backward-compat).
+    def get_emittente_sr_id_by_fiscale_id(self, fiscale_id: int) -> int | None:
+        from apps.anagrafiche.db.emittenti_fiscali_repository import (
+            EmittentiFiscaliRepository,
+        )
+        return EmittentiFiscaliRepository().get_sr_id_by_fiscale_id(fiscale_id)
+
+    # Scopo: Verifica se un articolo e' composito. Usato dal service per
+    # decidere se invocare auto-init componenti dopo `create_riga`. Thin
+    # delegate cross-dominio (Fase H residue 2026-05-14): implementazione
+    # in `apps.catalogo.db.catalogo_repository.CatalogoRepository.is_articolo_composito`.
+    def is_articolo_composito(self, articolo_id: str) -> bool:
+        from apps.catalogo.db.catalogo_repository import CatalogoRepository
+        return CatalogoRepository().is_articolo_composito(articolo_id)
+
+    # Scopo: Load atomico di un componente con guard scope completo
+    # (componente → riga → contratto) in UN'unica query JOIN. Sostituisce
+    # la sequenza 3-query (`get_componente` + `get_riga` + `get_contratto`)
+    # del service `_load_componente_for_modification` (Fix #2 perf,
+    # refactor-componenti.md §13). Ritorna `None` se il componente non
+    # esiste; altrimenti `{componente_id, riga_id, contratto_id,
+    # stato_codice}` con i 4 dati strettamente necessari ai check del
+    # service. Defense-in-depth: il caller verifica scope `riga_id` URL +
+    # `contratto_id` + stato modificabile sulla tupla ritornata.
+    def load_componente_with_scope(
+        self, componente_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT c.id          AS componente_id,
+                   c.riga_contratto_id,
+                   r.contratto_id,
+                   sd.codice_interno AS stato_codice
+              FROM vendite.contratti_righe_componenti c
+              JOIN vendite.contratti_righe r ON r.id = c.riga_contratto_id
+              JOIN vendite.contratti co      ON co.id = r.contratto_id
+              JOIN config.stati_doc_contratti sd
+                                             ON sd.id = co.stato_doc_contratto_id
+             WHERE c.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [componente_id])
+            return row_to_dict(cursor)
+
+    # =================================================================
+    # Componenti BoM riga contratto (modello unificato 2026-05-13)
+    # =================================================================
+    # Specchio simmetrico di `preventivi_righe_componenti`. La FK e' qui
+    # `riga_contratto_id` (vs `riga_preventivo_id`); le altre colonne sono
+    # identiche per design del modello unificato.
+    #
+    # Fn DB chiamate:
+    #   - vendite.fn_contratto_riga_componenti_init(riga_id, emittente_sr_id,
+    #       data_riferimento, componenti_overrides::jsonb) -> integer
+    #   - vendite.fn_contratto_riga_componenti_preview(articolo_id, uom_id,
+    #       quantita_padre, data_riferimento, ba_id, utility_id,
+    #       emittente_sr_id, classe_utenza_id) -> SETOF record
+    #
+    # Trigger DB attivi su `contratti_righe_componenti`:
+    #   - trg_contratti_righe_propaga_qta_componenti: ricalcolo quantita
+    #     componente al cambio quantita padre
+    #   - trgfn_contratti_righe_componenti_guard_pending: immutabilita' su
+    #     righe con `stato_approvazione_prezzo = PENDING`
+
+    # Scopo: Init componenti BoM per una riga padre composita. Wrapper
+    # `fn_contratto_riga_componenti_init`. La fn DB e' idempotente: no-op
+    # se componenti gia' presenti o articolo non composito. Modello unificato
+    # 2026-05-13: default `attivo=TRUE` per tutti i componenti (BoM contratto
+    # immutabile, vedi changelog-decisioni-componenti.md §9.3).
+    #
+    # `componenti_overrides`: mappa `{componente_id::text: prezzo_numeric}`
+    # per override prezzo manuale. Componenti senza override → resolver
+    # bundle-aware con `p_articolo_padre_contesto=padre`.
+    def init_componenti_riga(
+        self,
+        *,
+        riga_id: int,
+        emittente_soggetto_ruolo_id: int,
+        data_riferimento: date,
+        componenti_overrides: dict[str, Any] | None = None,
+    ) -> int:
+        # Cast esplicito a jsonb per disambiguare overload fn DB: None -> NULL.
+        # Il caller (service) valida la forma valori prima di passarli qui.
+        overrides_json: str | None
+        if componenti_overrides is None:
+            overrides_json = None
+        else:
+            overrides_json = json.dumps(
+                {str(k): str(v) for k, v in componenti_overrides.items()},
+            )
+        sql = (
+            "SELECT vendite.fn_contratto_riga_componenti_init("
+            "%s, %s, %s, %s::jsonb)"
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                riga_id, emittente_soggetto_ruolo_id, data_riferimento,
+                overrides_json,
+            ])
+            row = cursor.fetchone()
+            return int(row[0]) if row else 0
+
+    # Scopo: Preview componenti BoM per drawer riga contratto (modello
+    # unificato). Read-only STABLE. Per ogni componente attivo e valido alla
+    # data ritorna prezzo_suggerito (NULL se resolver fail) +
+    # resolver_error_reason. Consumato dal FE per pre-popolare ComponentiDialog
+    # PRIMA del save riga.
+    def preview_componenti_riga(
+        self,
+        *,
+        articolo_id: str,
+        uom_id: int | None,
+        quantita_padre,
+        data_riferimento: date,
+        ba_id: int | None,
+        utility_id: int,
+        emittente_soggetto_ruolo_id: int,
+        classe_utenza_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        # Proiezione allineata alla fn DB modello unificato. `iva_codice` NON
+        # esposto: l'aliquota componente coincide con quella del padre
+        # (vincolo IVA BoM trigger DB).
+        sql = """
+            SELECT articolo_componente_id,
+                   componente_id,
+                   componente_codice,
+                   componente_descrizione,
+                   coeff_qta_snapshot,
+                   quantita_componente,
+                   uom_id,
+                   uom_codice,
+                   iva_id,
+                   prezzo_suggerito,
+                   origine_prezzo,
+                   resolver_error_reason,
+                   obbligatorio,
+                   esposto_in_fattura
+              FROM vendite.fn_contratto_riga_componenti_preview(
+                  %s, %s, %s, %s, %s, %s, %s, %s
+              )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                articolo_id, uom_id, quantita_padre, data_riferimento,
+                ba_id, utility_id, emittente_soggetto_ruolo_id,
+                classe_utenza_id,
+            ])
+            return rows_to_list(cursor)
+
+    # CRUD componenti (list/get/update/delete/purge) ereditato da
+    # `ComponentiRepositoryMixin`. Vedi `_componenti_repo_mixin.py`.
 
     # =================================================================
     # Contratti_utilities (1:1 con contratto)

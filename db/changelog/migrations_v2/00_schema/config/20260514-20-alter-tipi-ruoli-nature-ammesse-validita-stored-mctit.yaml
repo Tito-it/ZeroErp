@@ -1,0 +1,46 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260514-20-alter-tipi-ruoli-nature-ammesse-validita-stored-mctit.yaml
+
+  - changeSet:
+      id: 20260514-20-alter-tipi-ruoli-nature-ammesse-validita-stored
+      author: mctit
+      comment: "Step 2b PG18: converte validita a STORED generated su config.tipi_ruoli_nature_ammesse."
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: tipi_ruoli_nature_ammesse
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_attribute a
+                  JOIN pg_class c ON c.oid = a.attrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname='config' AND c.relname='tipi_ruoli_nature_ammesse'
+                   AND a.attname='validita' AND a.attnum>0
+                   AND NOT a.attisdropped AND a.attgenerated=''
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_tipi_ruoli_nature_ammesse_a20_set_validita_ins_upd
+                  ON config.tipi_ruoli_nature_ammesse;
+              ALTER TABLE config.tipi_ruoli_nature_ammesse DROP COLUMN validita CASCADE;
+              ALTER TABLE config.tipi_ruoli_nature_ammesse
+                  ADD COLUMN validita DATERANGE
+                      GENERATED ALWAYS AS (
+                          daterange(COALESCE(valido_dal,'-infinity'::date),
+                                    COALESCE(valido_al, 'infinity'::date),'[]')
+                      ) STORED NOT NULL;
+              COMMENT ON COLUMN config.tipi_ruoli_nature_ammesse.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. rev 2026-05-14.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.tipi_ruoli_nature_ammesse DROP COLUMN IF EXISTS validita;
+              ALTER TABLE config.tipi_ruoli_nature_ammesse ADD COLUMN validita DATERANGE;
+              UPDATE config.tipi_ruoli_nature_ammesse SET validita=daterange(COALESCE(valido_dal,'-infinity'::date),COALESCE(valido_al,'infinity'::date),'[]');
+              ALTER TABLE config.tipi_ruoli_nature_ammesse ALTER COLUMN validita SET NOT NULL;
