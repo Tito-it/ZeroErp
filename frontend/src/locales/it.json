@@ -1641,16 +1641,13 @@
     "componenti": {
       "bundle": {
         "dialog_titolo": "Prezzi dei componenti nel composito {codice} — {descrizione}",
-        "dialog_hint": "Definisci i prezzi dei componenti quando inseriti nel composito. Componenti senza prezzo non sono gestiti nel composito: il resolver farà fallback al listino standalone.",
-        "dialog_conferma": "Salva prezzi nel composito",
+        "dialog_hint": "Per ogni componente puoi (opzionalmente) fissare un prezzo specifico valido solo dentro questo composito. I componenti senza prezzo dedicato useranno il loro prezzo normale di listino in questa versione.",
         "col_prezzo_finale": "Prezzo nel composito",
         "summary": "{n} componenti nel composito — totale {total}",
         "summary_zero": "Nessun prezzo nel composito ancora definito"
       },
       "dialog_titolo": "Componenti di {codice} — {descrizione}",
       "dialog_hint": "Verifica e inserisci i prezzi dei componenti, attiva gli opzionali da includere, poi conferma per tornare alla riga.",
-      "dialog_conferma": "Conferma componenti",
-      "dialog_annulla": "Annulla",
       "dialog_caricamento": "Caricamento componenti...",
       "col_codice": "Codice",
       "col_descrizione": "Descrizione",
