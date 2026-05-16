@@ -14,8 +14,7 @@ Indice test:
 1) test_tipi_variazione_contratto_coverage — codici lookup == _TIPI_VARIAZIONE
 2) test_tipi_variazione_promo_coverage     — codici lookup == promo._TIPI_VARIAZIONE
 3) test_ambiti_contratto_coverage          — codici lookup == _AMBITI_VALIDI
-4) test_modalita_pricing_codici            — modalita A/B/C presenti
-5) test_payload_shape                       — codice/descrizione/ordering presenti
+4) test_payload_shape                       — codice/descrizione/ordering presenti
 """
 
 from unittest import TestCase
@@ -26,7 +25,6 @@ from apps.vendite.services.promo_articoli_service import (
 )
 from apps.vendite.services.vendite_lookups_service import (
     fn_list_ambiti_contratto,
-    fn_list_modalita_pricing_contratto,
     fn_list_tipi_variazione_contratto,
     fn_list_tipi_variazione_promo,
 )
@@ -55,17 +53,12 @@ class TestVenditeLookupsService(TestCase):
     def test_ambiti_contratto_coverage(self):
         self.assertEqual(_codes(fn_list_ambiti_contratto()), _AMBITI_VALIDI)
 
-    # Scopo: modalita pricing copre A/B/C (astrazione UI, non DB).
-    def test_modalita_pricing_codici(self):
-        self.assertEqual(_codes(fn_list_modalita_pricing_contratto()), frozenset({"A", "B", "C"}))
-
     # Scopo: shape uniforme dei payload (codice + descrizione + ordering int).
     def test_payload_shape(self):
         for fn in (
             fn_list_tipi_variazione_contratto,
             fn_list_tipi_variazione_promo,
             fn_list_ambiti_contratto,
-            fn_list_modalita_pricing_contratto,
         ):
             for row in fn():
                 self.assertIn("codice", row)

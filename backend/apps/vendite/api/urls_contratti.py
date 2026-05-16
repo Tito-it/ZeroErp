@@ -16,6 +16,7 @@ from apps.vendite.api.contratti_documenti_views import (
 from apps.vendite.api.views_contratti import (
     ApiContrattiList,
     ApiContrattoCambiaStato,
+    ApiContrattoContestoPricing,
     ApiContrattoDetail,
     ApiContrattoRigaComponenteDetail,
     ApiContrattoRigaComponentiList,
@@ -52,6 +53,11 @@ urlpatterns = [
         "<int:contratto_id>/righe-preview/",
         ApiContrattoRighePreview.as_view(),
         name="vendite-contratto-righe-preview",
+    ),
+    path(
+        "<int:contratto_id>/contesto-pricing/",
+        ApiContrattoContestoPricing.as_view(),
+        name="vendite-contratto-contesto-pricing",
     ),
     path(
         "<int:contratto_id>/righe/<int:riga_id>/",

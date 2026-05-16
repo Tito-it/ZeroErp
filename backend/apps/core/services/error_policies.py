@@ -168,23 +168,55 @@ class ErrorPolicyRegistry:
             user_message="Esiste gia' un contratto sovrapposto per questo "
                          "cliente/istanza/utility/ambito nel periodo indicato.",
         ),
-        "E_CONTRATTO_MODALITA_C_SENZA_RIGHE": ErrorPolicy(
-            code="E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
-            http_status=400,
+        # ── Codici contratto refactor modalita 2026-05-15 ──
+        # Sostituiscono i vecchi guard di "modalita C" rimossi col modello
+        # unificato. Mappati dal team DB nel CSV `messaggi_errore` (450-454).
+        "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE": ErrorPolicy(
+            code="E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE",
+            http_status=422,
             ui_action="show_error_banner",
-            user_message="Contratto in modalita' C senza righe: aggiungere almeno una riga prima di attivare.",
+            user_message=(
+                "Contratto senza listino di riferimento: aggiungere almeno "
+                "un'AGGIUNTA con prezzo valorizzato prima di attivare."
+            ),
         ),
-        "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE": ErrorPolicy(
-            code="E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
-            http_status=400,
-            ui_action="show_error_banner",
-            user_message="Contratto in modalita' C: ogni riga deve avere un prezzo unitario prima di attivare.",
-        ),
-        "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO": ErrorPolicy(
-            code="E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO",
-            http_status=400,
+        "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": ErrorPolicy(
+            code="E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO",
+            http_status=422,
             ui_action="highlight_form_fields",
-            user_message="Su contratto attivo in modalita' C la riga deve avere prezzo unitario.",
+            user_message=(
+                "L'articolo e' gia' presente nel listino di riferimento: "
+                "usare OVERRIDE per modificarne il prezzo, non AGGIUNTA."
+            ),
+        ),
+        "E_ARTICOLO_ESCLUSO_DA_CONTRATTO": ErrorPolicy(
+            code="E_ARTICOLO_ESCLUSO_DA_CONTRATTO",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "L'articolo e' stato escluso dal contratto e non puo' essere "
+                "venduto a questo cliente."
+            ),
+        ),
+        "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE": ErrorPolicy(
+            code="E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il contratto e' ATTIVO: listino, versione listino, "
+                "variazione globale ed eccezioni sono congelati. Per "
+                "modifiche sostanziali creare un nuovo contratto."
+            ),
+        ),
+        "E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI": ErrorPolicy(
+            code="E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "Impossibile rimuovere il listino di riferimento dal "
+                "contratto: rimuovi prima le eccezioni OVERRIDE/ESCLUSIONE "
+                "associate o sostituiscile con AGGIUNTA."
+            ),
         ),
         "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI": ErrorPolicy(
             code="E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI",

@@ -8,7 +8,13 @@
 #
 #        Pattern modello: catalogo.api.views.ApiUomRoundingModesLookup.
 #        Single source of truth: vendite_lookups_service._TIPI_VARIAZIONE_*
-#        + _AMBITI_CONTRATTO + _MODALITA_PRICING_CONTRATTO.
+#        + _AMBITI_CONTRATTO.
+#
+#        Nota (refactor modalita 2026-05-15): la lookup
+#        `modalita-pricing-contratto` (A/B/C) e' stata rimossa. Nel modello
+#        unificato la "modalita" non e' piu' una scelta utente ma una forma
+#        derivata dai dati (`listino_id` valorizzato vs NULL). Il FE non deve
+#        presentare la scelta.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -22,7 +28,6 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.vendite_lookups_service import (
     fn_list_ambiti_contratto,
-    fn_list_modalita_pricing_contratto,
     fn_list_tipi_variazione_contratto,
     fn_list_tipi_variazione_promo,
 )
@@ -75,13 +80,3 @@ class ApiAmbitiContrattoLookup(DomainAPIView):
         return success_response(fn_list_ambiti_contratto())
 
 
-class ApiModalitaPricingContrattoLookup(DomainAPIView):
-    # Scopo: Lookup statico modalita pricing contratto (A/B/C). La modalita
-    #        non e' una colonna DB ma un'astrazione UI; il backend la
-    #        single-sources qui per evitare di duplicare i tre codici nel FE.
-    area_funzionale = "vendite"
-
-    @extend_schema(responses=_lookup_response_schema("VenditeModalitaPricingContrattoLookupResponse"))
-    def get(self, request: Request) -> JsonResponse:
-        del request
-        return success_response(fn_list_modalita_pricing_contratto())

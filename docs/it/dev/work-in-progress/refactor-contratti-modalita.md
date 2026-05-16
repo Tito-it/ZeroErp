@@ -623,15 +623,22 @@ resolver in preview interpreterà diversamente la combinazione finale.
 Trigger di avvio: chiusura step DB 1.2 (`fn_get_parameter_full` con
 `categoria_cliente_id`).
 
-| Step | Lavoro | Area | Prerequisito | File principali |
-| --- | --- | --- | --- | --- |
-| **BE 1.1** | Gate 2 chiama la nuova fn passando `categoria_cliente_id` recuperato dal BA del preventivo | service | DB 1.2 chiuso | `preventivi_service.py` (`_check_limite_variazione_prezzo`) |
-| **BE 1.2** | `PricingLimitiUtenteView` accetta `billing_account_id` opzionale per risolvere il limite corretto in funzione della categoria | api | DB 1.2 chiuso | `views_pricing.py`, `pricing_service.py` |
-| **BE 1.3** | Aggiornamento test L2 esistenti dei preventivi al nuovo signature | test | BE 1.1 + BE 1.2 | `tests/services/`, `tests/api/test_pricing_api.py` |
-| **FE 1.1** | Chiamata `PricingLimitiUtenteView` aggiornata con `billing_account_id`; banner mostra la soglia corretta in funzione della categoria | UI preventivi | BE 1.2 | `frontend/src/vendite/preventivi/` (componente banner L2) |
-| **DOC 1.1** | Aggiornare `api_preventivi.md` per la nuova cascata parametri (sezione L2) | doc | BE 1.1 + BE 1.2 | `docs/it/backend/vendite/manual/api_preventivi.md` |
+| Step | Stato | Lavoro | Area | Prerequisito | File principali |
+| --- | --- | --- | --- | --- | --- |
+| **BE 1.1** | ✅ | Gate L2 propaga `categoria_cliente_id` recuperato dal BA. Lookup spostato post-early-return (superuser bypass non spreca query) | service | DB 1.2 chiuso | `preventivi_service.py` (`_check_limite_variazione_prezzo`, `_resolve_or_check_override_prezzo`) |
+| **BE 1.2** | ✅ | `PricingLimitiUtenteView` accetta `billing_account_id` opzionale; deriva categoria via `BillingAccountRepository.get_categoria_cliente_id` (nuovo BB) | api | DB 1.2 chiuso | `views_pricing.py`, `parameter_service.py`, `parameter_repository.py`, `billing_account_repository.py` |
+| **BE 1.3** | ✅ | +6 test mirati: `test_get_parameter_passes_categoria_cliente`, `test_get_defaults_passes_categoria_cliente`, `test_limiti_utente_senza_ba_categoria_none`, `test_limiti_utente_con_ba_propaga_categoria`, `test_limiti_utente_ba_malformato_ignorato`, `test_gestisci_riga_L2_propaga_categoria_cliente` + assert "no lookup BA su superuser bypass". 2393/2393 verdi. | test | BE 1.1 + BE 1.2 | `tests/services/test_parameter_service.py`, `tests/api/test_pricing_api.py`, `tests/services/test_preventivi_service.py` |
+| **FE 1.1** | ⏳ | Chiamata `PricingLimitiUtenteView` aggiornata con `billing_account_id`; banner mostra la soglia corretta in funzione della categoria | UI preventivi | BE 1.2 | `frontend/src/vendite/preventivi/` (componente banner L2) |
+| **DOC 1.1** | ✅ | `api_preventivi.md` sezione L2 con cascata estesa + `api_pricing.md` query param `billing_account_id` + catalogo BB aggiornato (ParameterService + nuovo `get_categoria_cliente_id`) | doc | BE 1.1 + BE 1.2 | `docs/it/backend/vendite/manual/api_preventivi.md`, `api_pricing.md`, `docs/it/dev/backend/catalogo-building-block-backend.md` |
 
-Stima Fase 1 (BE+FE+DOC): 1-2 sessioni.
+**Note di completamento BE (2026-05-15)**:
+
+- Cascata estesa propagata: `parameter_repository.py` (`_SQL_RESOLVE` con 7 segnaposto), `parameter_service.py` (4 fn pubbliche), `preventivi_service.py` (`_check_limite_variazione_prezzo`)
+- Nuovo BB `BillingAccountRepository.get_categoria_cliente_id` simmetrico a `get_istanza_utility_id`
+- Optimization: lookup BA→categoria avviene dentro `_check_limite_variazione_prezzo` dopo gli early-return (superuser, delta=0, resolver nullo) per non sprecare round-trip DB su gate inattivi
+- `list_parameters_for_user` (admin UI overview parametri) **non esteso** in questa fase: la fn DB `script.fn_list_parameters_for_user` non riceve `categoria_cliente_id`. Estendere quando emergerà necessità admin di filtrare per categoria
+
+Stima Fase 1 (BE+FE+DOC): 1-2 sessioni. **BE+DOC chiusi**, resta FE.
 
 ### 5.2 FASE 2 — Workstream BE/FE contratti (refactor unificato)
 
@@ -713,6 +720,8 @@ avviati appena il loro prerequisito DB è chiuso.
 
 ## 6. Stato di questo documento
 
+- ✅ **REFACTOR COMPLETATO (2026-05-15)** — DB + BE + FE + DOC tutti chiusi. Vedi §7 per
+  riepilogo attività svolte.
 - ✅ **CHIUSE le decisioni di modello, UX e schema**: §3 e §3-bis contengono tutte le scelte
   definitive.
 - ⏳ **APERTI dettagli implementativi minori**:
@@ -735,5 +744,122 @@ avviati appena il loro prerequisito DB è chiuso.
     — brief DB completo Fase 1 + Fase 2 a step incrementali, per passaggio al team DB su
     `dev/db-tid`
   - ✅ §5 di questo doc — piano operativo BE/FE step-per-step con prerequisiti DB
+- Building block estratti per il refactor (oltre a quelli censiti nei file):
+  - ✅ `apps/vendite/services/_pricing_gate_helpers.py` — BB condiviso che centralizza
+    i 3 gate "autorizzazioni prezzi": `check_permesso_override_prezzo` (L1),
+    `check_limite_variazione_prezzo` (L2 riga, sconto/maggiorazione vs resolver),
+    `check_limite_variazione_globale` (L2 testata contratto, valore % gia' delta).
+    Cascata user→categoria_cliente→group→emittente→default, workflow L3
+    `accept_for_approval` per pratica APPROVAZIONE_PREZZO. Prima il codice era duplicato
+    ~80% fra `preventivi_service` e `contratti_service`; ora entrambi i service
+    importano dal BB. Censito in [catalogo BB](../backend/catalogo-building-block-backend.md)
+    sezione "Vendite — Gate autorizzazioni prezzi"
+- **Debito tecnico residuo aperto**: i 3 gate (L1 + L2 + L3) sulle righe contratto
+  (`contratti_service.create_riga` / `update_riga`) NON sono ancora invocati. Il BB
+  e' pronto e simmetrico al pattern preventivi, ma la chiamata nei caller contratti
+  va aggiunta in sessione dedicata "porting gate riga contratti" (richiede:
+  determinare il prezzo del resolver per AGGIUNTA fuori-listino vs OVERRIDE su listino;
+  workflow L3 simmetrico ai preventivi; test gate L1/L2/L3 per le righe contratto).
+  Oggi i prezzi delle righe contratto sono accettati come dichiarati dall'operatore
+  con il solo CHECK DB di coerenza prezzo/tipo_eccezione.
 - Da produrre durante l'esecuzione:
-  - **`modello-contratti.md`** (Step DOC 2.2) — reference del nuovo modello unificato
+  - ✅ **`modello-contratti.md`** prodotto in `docs/it/backend/vendite/manual/` — reference
+    del modello unificato + glossario (§9)
+
+---
+
+## 7. Attività svolte (2026-05-15)
+
+Refactor chiuso end-to-end. Le sessioni hanno seguito il piano operativo §5 con
+parallelizzazione massima sui prerequisiti DB.
+
+### 7.1 DB (team DB su `dev/db-tid`)
+
+- **Fase 1**: estensione cascata parametri con `categoria_cliente_id` (`config.parameter_overrides`
+  + `script.fn_get_parameter_full` 7 parametri; cascata
+  `user → categoria_cliente → group → emittente → session → function → default`)
+- **Fase 2**: schema `vendite.contratti` con `listino_versione_id`; enum `tipo_eccezione`
+  su `vendite.contratti_righe` (OVERRIDE/ESCLUSIONE/AGGIUNTA) + CHECK coerenza prezzo +
+  UNIQUE parziali; trigger freeze versione listino al passaggio DRAFT→ATTIVO;
+  trigger lock post-attivazione su testata e righe; trigger guard AGGIUNTA fuori-listino;
+  riscrittura `fn_resolve_prezzo_listino_v2` per 3 tipi eccezione + lettura versione fissata;
+  drop trigger/CHECK/parameter modalità legacy
+- pgTAP: 70+ test su tutti gli step, 100% verdi
+- Migrations: `20260515-06..16`
+
+### 7.2 BE (`dev/backend-tid`)
+
+- **`ParameterService` + repo** estesi con `categoria_cliente_id` (4 metodi pubblici)
+- **`BillingAccountRepository.get_categoria_cliente_id`** nuovo BB
+- **`preventivi_service`**: gate L2 propaga categoria; lookup BA post-early-return per
+  evitare round-trip su superuser/delta=0
+- **`PricingLimitiUtenteView`**: accetta query param `billing_account_id`
+- **`contratti_service`**: rimozione `_validate_modalita_coerente` (→ `_validate_variazione_globale_coppia_coerente`);
+  `list_righe_preview` ritorna `forma`; gestione 3 tipi eccezione con coerenza prezzo/tipo;
+  blocco rimozione listino con eccezioni OVERRIDE/ESCLUSIONE (422); gate L2 sulla
+  variazione globale al PATCH testata (PERCENTUALE only)
+- **`contratti_repository`**: query `list_righe_preview` riscritta per versione listino
+  fissata + 3 tipi eccezione; nuovo `resolve_contesto_pricing_contratto`; nuovo
+  `count_eccezioni_bloccanti`; schema SELECT con `listino_versione_id`/`tipo_eccezione`
+- **`views_contratti`**: nuovo endpoint `GET /api/v1/vendite/contratti/<id>/contesto-pricing/`
+  con schema OpenAPI completo; `tipo_eccezione` come `ChoiceField` nello schema riga
+- **`error_policies.py`**: 5 nuovi codici (`E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE`,
+  `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO`, `E_ARTICOLO_ESCLUSO_DA_CONTRATTO`,
+  `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`, `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`);
+  marker substring DB aggiornati; vecchi codici `MODALITA_C_*` rimossi
+- **Cleanup**: drop lookup `modalita-pricing-contratto` (endpoint + service + URL + test)
+- **BB estratto**: `apps/vendite/services/_pricing_gate_helpers.py` con 3 fn pubbliche
+  (`check_permesso_override_prezzo`, `check_limite_variazione_prezzo`,
+  `check_limite_variazione_globale`); preventivi+contratti importano dal BB; test mock
+  path aggiornati
+
+### 7.3 FE (`dev/backend-tid`)
+
+- **`ContrattoDrawer.vue`**: SelectButton modalità A/B/C rimosso; sezione "Pricing"
+  semplificata (Listino opzionale + Variazione globale opzionale); badge
+  `forma_<derivata>` readonly post-save; `lookupModalitaPricingContratto` droppato
+- **`ContrattoRigheDrawer.vue`**: prop `contrattoForma` (fix recap §3.2: default 'B'→null);
+  banner contesto pricing nell'header (forma + listino + versione fissata + categoria);
+  Select `tipo_eccezione` in CREATE + Tag readonly in EDIT (immutabile); coerenza
+  prezzo/tipo nel form e nel `canSave`; `previewMeta.modalita`→`previewMeta.forma`;
+  `isModalitaC`→`isSenzaListino`
+- **`getContrattoContestoPricing`** nuovo client API
+- **`useLimitiPricing`**: cache per-BA (no leak cross-BA); `getLimitiPricingUtente`
+  accetta `billing_account_id`; `PreventiviRigaForm` propaga BA del preventivo
+  (fix doppio fetch in review critica)
+- **i18n**: +14 key (`forma_*_descrizione`, `contesto_*`, `tipo_eccezione_*`,
+  `field_tipo_eccezione`, `prezzo_esclusione_n_a`, azioni); rimosse legacy
+  `modalita_*` e `field_modalita`
+- **Handling 5 nuovi codici errore**: gestito dal middleware `error_policies` →
+  toast automatici via `useApiHandler` (zero codice FE specifico)
+
+### 7.4 DOC
+
+- ✅ `api_contratti.md` reworked: modello unificato, snapshot versione, 3 tipi eccezione,
+  contesto-pricing, 5 nuovi codici, regole Profilo A + coerenza
+- ✅ `modello-contratti.md` nuovo: doc di riferimento del modello + cascata parametri +
+  glossario (§9)
+- ✅ `api_preventivi.md` (Fase 1): sezione L2 con cascata estesa categoria
+- ✅ `api_pricing.md` (Fase 1): query param `billing_account_id`
+- ✅ `ai-context.md`: voce "Contratto" aggiornata + transizione DRAFT→ATTIVO con nuovo guard
+- ✅ Catalogo BB backend: `ParameterService` cascata estesa + `BillingAccountRepository.get_categoria_cliente_id`
+  + nuova sezione "Vendite — Gate autorizzazioni prezzi" (3 fn BB); drop lookup modalità
+- ✅ Catalogo BB frontend: aggiunto `getContrattoContestoPricing`; drop `lookupModalitaPricingContratto`
+- ✅ Brief DB completo aggiornato a fine corsa con note BE+FE chiuse
+
+### 7.5 Risultati test
+
+- **BE**: 2400/2400 verdi (suite completa)
+- **FE**: build vite verde (1.14s, zero errori)
+- **DB**: pgTAP 70+ test verdi (tutti gli step DB)
+- **+9 nuovi test mirati** sui flussi contratto post-refactor
+
+### 7.6 Debito tecnico residuo aperto
+
+I 3 gate prezzo (L1 + L2 + L3) sulle **righe** contratto (`contratti_service.create_riga` /
+`update_riga`) non sono ancora invocati. Il BB `_pricing_gate_helpers` è pronto e
+simmetrico al pattern preventivi: serve solo wirearlo nei caller contratti + decidere il
+prezzo del resolver per AGGIUNTA fuori-listino vs OVERRIDE su listino. Sessione dedicata
+"porting gate riga contratti" da pianificare a parte. Oggi i prezzi delle righe contratto
+sono accettati come dichiarati dall'operatore con il solo CHECK DB di coerenza
+prezzo/tipo_eccezione.

@@ -176,10 +176,15 @@ class ApiContrattoDetail(DomainAPIView):
         )},
     )
     # Scopo: Aggiorna campi mutabili. Numero/identificativi/stato immutabili
-    #        in PATCH (cambio stato via endpoint dedicato).
+    #        in PATCH (cambio stato via endpoint dedicato). auth_user_id
+    #        propagato al gate L2 sulla variazione globale (§3-bis-E).
     def patch(self, request: Request, contratto_id: int) -> JsonResponse:
+        auth_user_id = request.user.id if request.user.is_authenticated else None
         return success_response(
-            ContrattiService().update_contratto(contratto_id, request.data)
+            ContrattiService().update_contratto(
+                contratto_id, request.data,
+                auth_user_id=auth_user_id,
+            )
         )
 
 
@@ -239,6 +244,13 @@ _RIGA_CREATE_REQUEST = inline_serializer(
     name="VenditeContrattoRigaCreateReq",
     fields={
         "articolo_id": serializers.UUIDField(),
+        # Refactor modalita 2026-05-15: tipo_eccezione obbligatorio.
+        # OVERRIDE = prezzo personalizzato per articolo del listino.
+        # ESCLUSIONE = articolo del listino non disponibile (prezzo NULL).
+        # AGGIUNTA = articolo fuori-listino aggiunto al contratto.
+        "tipo_eccezione": serializers.ChoiceField(
+            choices=["OVERRIDE", "ESCLUSIONE", "AGGIUNTA"],
+        ),
         "tipo_erogazione": serializers.CharField(required=False),
         "fonte_quantita_attesa": serializers.CharField(required=False),
         "periodicita": serializers.CharField(required=False),
@@ -311,6 +323,55 @@ class ApiContrattoRigheList(DomainAPIView):
                 auth_user_id=get_scope_user_id(request),
             )
         )
+
+
+class ApiContrattoContestoPricing(DomainAPIView):
+    """GET /api/v1/vendite/contratti/<id>/contesto-pricing/
+
+    Ritorna il contesto pricing applicato al contratto: forma (con/senza
+    listino), riferimento listino e versione (FISSATA se ATTIVO, CORRENTE se
+    DRAFT), variazione globale, categoria cliente. Mutuato dal pattern
+    preventivi (`/preventivi/<id>/contesto-pricing/`) per la simmetria UI:
+    il drawer contratto mostra un badge informativo nell'header.
+
+    Pura lettura, nessun side-effect. Area `vendite` livello LETTURA.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="VenditeContrattoContestoPricingResp",
+            fields={"data": inline_serializer(
+                name="VenditeContrattoContestoPricingData",
+                fields={
+                    "contratto_id": serializers.IntegerField(),
+                    "forma": serializers.CharField(
+                        help_text="'con_listino' | 'senza_listino'",
+                    ),
+                    "stato_codice": serializers.CharField(),
+                    "listino_id": serializers.IntegerField(allow_null=True),
+                    "listino_codice": serializers.CharField(allow_null=True),
+                    "listino_descrizione": serializers.CharField(allow_null=True),
+                    "listino_versione_id": serializers.IntegerField(allow_null=True),
+                    "listino_versione_codice": serializers.CharField(allow_null=True),
+                    "listino_versione_fissata": serializers.BooleanField(),
+                    "tipo_variazione_globale": serializers.CharField(allow_null=True),
+                    "valore_variazione_globale": serializers.DecimalField(
+                        max_digits=12, decimal_places=4, allow_null=True,
+                    ),
+                    "categoria_cliente_id": serializers.IntegerField(allow_null=True),
+                    "categoria_cliente_codice": serializers.CharField(allow_null=True),
+                    "categoria_cliente_descrizione": serializers.CharField(allow_null=True),
+                },
+            )},
+        )},
+    )
+    # Scopo: Restituisce via GET il contesto pricing del contratto.
+    def get(self, request: Request, contratto_id: int) -> JsonResponse:
+        del request
+        data = ContrattiService().get_contesto_pricing(contratto_id)
+        return success_response(data or {})
 
 
 class ApiContrattoRighePreview(DomainAPIView):

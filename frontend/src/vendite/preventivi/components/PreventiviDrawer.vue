@@ -789,6 +789,7 @@ function onNuovaRevisione() {
         <Divider />
         <PreventiviRigheTable
           :preventivo-id="effectivePreventivoId"
+          :billing-account-id="form.billing_account_id"
           :is-modificabile="canEditRighe && !isReadonly"
           @changed="loadDetail()"
           @form-aperto="(v) => { formRigaAperto = v }" />

@@ -37,11 +37,20 @@ export function addRigaContratto(contrattoId, payload) {
 }
 
 // Anteprima righe applicate (modalita' A/B). Restituisce envelope con
-// testata sintetica (modalita derivata, listino, variazione globale) +
-// righe con prezzo_finale gia' calcolato e origine ('DA_LISTINO' /
-// 'OVERRIDE'). Modalita' C ritorna righe vuote.
+// testata sintetica (forma derivata, listino + versione fissata, variazione
+// globale) + righe con prezzo_finale calcolato e origine ('DA_LISTINO' /
+// 'OVERRIDE' / 'ESCLUSIONE' / 'AGGIUNTA'). Forma "senza_listino" ritorna
+// righe vuote (le righe AGGIUNTA vivono in `contratti_righe` e si leggono
+// dall'endpoint /righe/).
 export function listRighePreviewContratto(contrattoId) {
   return api.get(`${BASE}/${contrattoId}/righe-preview/`)
+}
+
+// Contesto pricing contratto (FE 2.2): forma, listino + versione fissata
+// (post-attivazione) o corrente (DRAFT), variazione, categoria cliente.
+// Lettura informativa per il banner header drawer righe.
+export function getContrattoContestoPricing(contrattoId) {
+  return api.get(`${BASE}/${contrattoId}/contesto-pricing/`)
 }
 
 export function updateRigaContratto(contrattoId, rigaId, payload) {

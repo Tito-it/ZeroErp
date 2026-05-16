@@ -23,7 +23,6 @@ from apps.vendite.api.views_approvazioni_prezzo import (
 )
 from apps.vendite.api.views_lookups import (
     ApiAmbitiContrattoLookup,
-    ApiModalitaPricingContrattoLookup,
     ApiTipiVariazioneContrattoLookup,
     ApiTipiVariazionePromoLookup,
 )
@@ -147,10 +146,5 @@ urlpatterns = [
         "lookup/ambiti-contratto/",
         ApiAmbitiContrattoLookup.as_view(),
         name="vendite-lookup-ambiti-contratto",
-    ),
-    path(
-        "lookup/modalita-pricing-contratto/",
-        ApiModalitaPricingContrattoLookup.as_view(),
-        name="vendite-lookup-modalita-pricing-contratto",
     ),
 ]

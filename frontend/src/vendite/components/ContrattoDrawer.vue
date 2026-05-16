@@ -1,12 +1,16 @@
 <script setup>
-// Scopo: Drawer contratto v5 — testata + sezione Pricing modalita' A/B/C
-//        + sub-drawer righe (gestione override per articolo in modalita' B/C)
-//        + sub-drawer utility 1:1 (tipo/classe utenza).
+// Scopo: Drawer contratto v5 (modello unificato 2026-05-15) — testata +
+//        sezione Pricing semplificata + sub-drawer righe (eccezioni
+//        OVERRIDE/ESCLUSIONE/AGGIUNTA) + sub-drawer utility 1:1.
 //
-// Modalita' pricing v5:
-//  A = listino vincolante + variazione globale (PERCENTUALE opz. valore)
-//  B = listino + override righe (prezzo_unitario per articoli specifici)
-//  C = interamente negoziato (no listino, tutte le righe con prezzo_unitario)
+// Refactor modalita 2026-05-15: la "modalita A/B/C" sparisce come scelta
+// utente. La forma del contratto e' derivata dai dati di testata:
+//   - listino_id valorizzato (con/senza variazione globale) = "con_listino"
+//   - listino_id NULL (interamente negoziato) = "senza_listino"
+// Il badge `forma derivata` mostra all'operatore cosa ha creato post-save,
+// ma non e' piu' una scelta esplicita. Il SelectButton A/B/C e il lookup
+// `vendite.modalita_pricing_contratto` (entrambi rimossi) sono stati
+// sostituiti da campi opzionali (Listino + Variazione globale).
 import { ref, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
@@ -28,16 +32,13 @@ import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import ContrattoPdfButton from './ContrattoPdfButton.vue'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
-import { lookupModalitaPricingContratto } from '../api/lookup'
 import Drawer from 'primevue/drawer'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
-import SelectButton from 'primevue/selectbutton'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
@@ -98,31 +99,14 @@ const righeVisible = ref(false)
 // fgVersion: invalida fetch stantii su apertura/chiusura rapide.
 let fgVersion = 0
 
-// Modalita' pricing (FE-only, derivata dai campi testata).
-// Le 3 modalita' (A/B/C) arrivano dal lookup statico BE
-// (vendite_lookups_service._MODALITA_PRICING_CONTRATTO) tramite useGlobalLookup.
-// Il SelectButton mostra il `codice` come `option-label`; l'hint sotto resta
-// client-side (i18n esistente: contratti.modalita_<lower>_hint).
-const modalitaLookup = useGlobalLookup(
-  'vendite.modalita_pricing_contratto',
-  lookupModalitaPricingContratto,
-  { immediate: true, transform: (r) => r.data.data },
-)
-const modalitaOptions = computed(() =>
-  modalitaLookup.items.value.map((m) => ({
-    value: m.codice,
-    label: m.codice,
-    hint: t(`contratti.modalita_${m.codice.toLowerCase()}_hint`, m.descrizione),
-  })),
-)
-
 // Defaults non-BA da config.parameters (Fase 2 refactor frontend vendite).
 // Caricati on-open drawer prima di resetForm; cache modulo `useParameterDefaults`.
-// Niente magic string COMMODITY/A/PERCENTUALE qui: arrivano dal seed DB
+// Niente magic string COMMODITY/PERCENTUALE qui: arrivano dal seed DB
 // con fallback robusto in caso di parameter mancante.
+// Refactor modalita 2026-05-15: VENDITE_CONTRATTO_DEFAULT_MODALITA rimosso
+// (era il default del vecchio SelectButton A/B/C, ora obsoleto).
 const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefaults([
   'VENDITE_CONTRATTO_DEFAULT_AMBITO',
-  'VENDITE_CONTRATTO_DEFAULT_MODALITA',
   'VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE',
   'VENDITE_CONTRATTO_DEFAULT_DATA_LEAD_GG',
   'VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG',
@@ -149,8 +133,9 @@ function defaultForm() {
     meta_note: '',
     // Categoria cliente snapshot
     categoria_cliente_id_snapshot: null,
-    // Pricing
-    modalita: paramString(p.VENDITE_CONTRATTO_DEFAULT_MODALITA, 'A'),
+    // Pricing — refactor modalita 2026-05-15: niente piu' SelectButton A/B/C.
+    // Listino e variazione globale sono campi opzionali liberi; la "forma"
+    // (con/senza listino) e' derivata e mostrata come badge readonly post-save.
     listino_id: null,
     tipo_variazione_globale: null,
     valore_variazione_globale: null,
@@ -166,7 +151,6 @@ function resetForm() {
 }
 
 function populateFromDetail(d) {
-  const modalita = deriveModalita(d)
   form.value = {
     billing_account_id: d.billing_account_id,
     billing_account_obj: d.ba_ragione_sociale ? {
@@ -186,7 +170,6 @@ function populateFromDetail(d) {
     parent_contratto_id: d.parent_contratto_id,
     meta_note: d.meta?.note || '',
     categoria_cliente_id_snapshot: d.categoria_cliente_id_snapshot || null,
-    modalita,
     listino_id: d.listino_id,
     tipo_variazione_globale: d.tipo_variazione_globale,
     valore_variazione_globale: d.valore_variazione_globale,
@@ -195,31 +178,41 @@ function populateFromDetail(d) {
   }
 }
 
-function deriveModalita(d) {
-  if (!d.listino_id) return 'C'
-  if (d.tipo_variazione_globale) return 'A'
-  return 'B'
+// Forma derivata (refactor modalita 2026-05-15): "con_listino" se l'operatore
+// ha indicato un listino di riferimento, "senza_listino" altrimenti. Usata per
+// il badge informativo readonly nell'header drawer post-save. Non e' una scelta
+// dell'operatore — segue automaticamente i campi compilati.
+const formaDerivata = computed(() => {
+  return form.value.listino_id ? 'con_listino' : 'senza_listino'
+})
+
+// Quando l'operatore rimuove il listino_id, il payload deve coerentemente
+// azzerare variazione globale. Listino settato senza variazione resta valido
+// (forma "con_listino" con sola applicazione listino, ex-modalita B/A-puro).
+function onListinoChange(nuovoListinoId) {
+  if (!nuovoListinoId) {
+    form.value.tipo_variazione_globale = null
+    form.value.valore_variazione_globale = null
+  } else if (!form.value.tipo_variazione_globale) {
+    // Pre-fill tipo da parameter; valore resta vuoto = nessuna variazione.
+    form.value.tipo_variazione_globale = paramString(
+      paramDefaults.value.VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE,
+      'PERCENTUALE',
+    )
+  }
 }
 
-// Quando l'utente cambia modalita', normalizza i campi coerenti.
-function onModalitaChange(nuova) {
-  if (nuova === 'A') {
-    // Default tipo variazione da parameter (con fallback PERCENTUALE).
-    if (!form.value.tipo_variazione_globale) {
-      form.value.tipo_variazione_globale = paramString(
-        paramDefaults.value.VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE,
-        'PERCENTUALE',
-      )
-    }
-  } else if (nuova === 'B') {
-    // listino si', variazione NO
+// Quando l'operatore inserisce un tipo variazione ma non un valore (o
+// viceversa), la coppia e' incompleta — il BE rifiuterebbe. Auto-reset
+// del tipo se valore tornato a null, e mantenimento del tipo se valore valido.
+function onValoreVariazioneChange(nuovoValore) {
+  if (nuovoValore == null && !form.value.tipo_variazione_globale) {
     form.value.tipo_variazione_globale = null
-    form.value.valore_variazione_globale = null
-  } else if (nuova === 'C') {
-    // No listino, no variazione
-    form.value.listino_id = null
-    form.value.tipo_variazione_globale = null
-    form.value.valore_variazione_globale = null
+  } else if (nuovoValore != null && !form.value.tipo_variazione_globale) {
+    form.value.tipo_variazione_globale = paramString(
+      paramDefaults.value.VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE,
+      'PERCENTUALE',
+    )
   }
 }
 
@@ -282,7 +275,13 @@ function onBaSelected(item) {
   form.value.categoria_cliente_id_snapshot = item.categoria_cliente_id || null
 }
 
-// Validazione FE
+// Validazione FE (refactor modalita 2026-05-15: niente piu' check su modalita).
+// Vincolo strutturale unico sulla coppia variazione globale: tipo e valore
+// devono essere entrambi presenti o entrambi null (vincolo BE
+// _validate_variazione_globale_coppia_coerente). Listino e variazione sono
+// indipendenti: contratto senza listino e' valido (forma "senza_listino"),
+// contratto con listino senza variazione e' valido (forma "con_listino"
+// listino tal quale), contratto con listino + variazione e' valido.
 const canSave = computed(() => {
   if (isReadonly.value) return false
   if (isEdit.value) return true
@@ -290,9 +289,10 @@ const canSave = computed(() => {
   if (!f.billing_account_id) return false
   if (!f.valido_dal || !f.data) return false
   if (!f.ambito) return false
-  if (f.modalita === 'A' && !f.listino_id) return false
-  if (f.modalita === 'A' && !f.tipo_variazione_globale) return false
-  if (f.modalita === 'B' && !f.listino_id) return false
+  // Coppia variazione coerente: tipo presente <=> valore presente.
+  const hasTipo = !!f.tipo_variazione_globale
+  const hasValore = f.valore_variazione_globale != null && f.valore_variazione_globale !== ''
+  if (hasTipo !== hasValore) return false
   return true
 })
 
@@ -325,20 +325,17 @@ function buildPayload() {
     categoria_cliente_id_snapshot: f.categoria_cliente_id_snapshot || null,
   }
   if (f.meta_note) payload.meta = { note: f.meta_note }
-  // Modalita' pricing
-  if (f.modalita === 'A') {
-    payload.listino_id = f.listino_id
-    payload.tipo_variazione_globale = f.tipo_variazione_globale
-    payload.valore_variazione_globale = f.valore_variazione_globale != null ? String(f.valore_variazione_globale) : null
-  } else if (f.modalita === 'B') {
-    payload.listino_id = f.listino_id
-    payload.tipo_variazione_globale = null
-    payload.valore_variazione_globale = null
-  } else if (f.modalita === 'C') {
-    payload.listino_id = null
-    payload.tipo_variazione_globale = null
-    payload.valore_variazione_globale = null
-  }
+  // Pricing — refactor modalita 2026-05-15: niente piu' if-chain modalita.
+  // Il payload include sempre listino_id (puo' essere null = forma senza_listino).
+  // La coppia variazione globale (tipo+valore) e' opzionale; il vincolo di
+  // coppia coerente (entrambi NULL o entrambi NOT NULL) e' validato lato FE
+  // in canSave e lato BE in _validate_variazione_globale_coppia_coerente.
+  payload.listino_id = f.listino_id || null
+  payload.tipo_variazione_globale = f.tipo_variazione_globale || null
+  payload.valore_variazione_globale = (f.valore_variazione_globale != null
+    && f.valore_variazione_globale !== '')
+    ? String(f.valore_variazione_globale)
+    : null
   return payload
 }
 
@@ -603,65 +600,53 @@ const onClose = useDrawerClose(emit, 'cancelled')
         </div>
       </div>
 
-      <!-- === Pricing === -->
+      <!-- === Pricing (refactor modalita 2026-05-15) === -->
+      <!-- Niente piu' SelectButton A/B/C: l'operatore compila campi opzionali
+           (listino + variazione globale). La "forma" derivata e' un badge
+           informativo readonly mostrato sopra in detail (composable
+           `formaDerivata`). -->
       <h4 class="mt-3">{{ t('contratti.section_pricing') }}</h4>
+
+      <!-- Badge forma derivata: visibile in EDIT come audit visivo del path. -->
+      <Message
+        v-if="isEdit && detail"
+        :severity="formaDerivata === 'senza_listino' ? 'warn' : 'info'"
+        :closable="false" size="small"
+      >
+        {{ t(`contratti.forma_${formaDerivata}_descrizione`) }}
+      </Message>
+
       <div class="form-field">
-        <label>{{ t('contratti.field_modalita') }} *</label>
-        <SelectButton v-model="form.modalita" :options="modalitaOptions"
-          option-label="label" option-value="value"
-          @change="onModalitaChange($event.value)"
-          :allow-empty="false" />
-        <Message severity="info" :closable="false" class="mt-05" size="small">
-          {{ modalitaOptions.find(m => m.value === form.modalita)?.hint }}
-        </Message>
+        <label>{{ t('contratti.field_listino') }}</label>
+        <LookupSelect v-model="form.listino_id" rel="vendite.listini" class="w-full"
+          :placeholder="t('contratti.select_listino_opzionale')"
+          show-clear
+          @update:model-value="onListinoChange"
+          :disabled="isEdit && isLocked('listino_id')" />
+        <small class="text-color-secondary">
+          {{ t('contratti.hint_listino_opzionale') }}
+        </small>
       </div>
 
-      <!-- Modalità A: listino + variazione globale -->
-      <template v-if="form.modalita === 'A'">
+      <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('contratti.field_listino') }} *</label>
-          <LookupSelect v-model="form.listino_id" rel="vendite.listini" class="w-full"
-            :placeholder="t('contratti.select_listino')"
-            :disabled="isEdit && isLocked('listino_id')" />
+          <label>{{ t('contratti.field_tipo_variazione') }}</label>
+          <TipoVariazioneSelect v-model="form.tipo_variazione_globale"
+            scope="contratto"
+            show-clear
+            class="w-full"
+            :disabled="isEdit && isLocked('tipo_variazione_globale')" />
         </div>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('contratti.field_tipo_variazione') }} *</label>
-            <TipoVariazioneSelect v-model="form.tipo_variazione_globale"
-              scope="contratto"
-              class="w-full"
-              :disabled="isEdit && isLocked('tipo_variazione_globale')" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('contratti.field_valore_variazione') }}</label>
-            <InputNumber v-model="form.valore_variazione_globale" class="w-full"
-              :min-fraction-digits="0" :max-fraction-digits="4" showButtons
-              :disabled="isEdit && isLocked('valore_variazione_globale')"
-              :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''" />
-            <small class="text-color-secondary">{{ t('contratti.hint_valore_variazione') }}</small>
-          </div>
-        </div>
-      </template>
-
-      <!-- Modalità B: listino + override righe -->
-      <template v-else-if="form.modalita === 'B'">
         <div class="form-field">
-          <label>{{ t('contratti.field_listino') }} *</label>
-          <LookupSelect v-model="form.listino_id" rel="vendite.listini" class="w-full"
-            :placeholder="t('contratti.select_listino')"
-            :disabled="isEdit && isLocked('listino_id')" />
+          <label>{{ t('contratti.field_valore_variazione') }}</label>
+          <InputNumber v-model="form.valore_variazione_globale" class="w-full"
+            :min-fraction-digits="0" :max-fraction-digits="4" showButtons
+            @update:model-value="onValoreVariazioneChange"
+            :disabled="isEdit && isLocked('valore_variazione_globale')"
+            :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''" />
+          <small class="text-color-secondary">{{ t('contratti.hint_valore_variazione') }}</small>
         </div>
-        <Message severity="info" :closable="false" size="small">
-          {{ t('contratti.modalita_b_info') }}
-        </Message>
-      </template>
-
-      <!-- Modalità C: tutto negoziato -->
-      <template v-else>
-        <Message severity="warn" :closable="false" size="small">
-          {{ t('contratti.modalita_c_info') }}
-        </Message>
-      </template>
+      </div>
 
       <!-- === Tipo/Classe utenza (editabile in BOZZA, readonly dopo) === -->
       <h4 class="mt-3">{{ t('contratti.section_utenza') }}</h4>
@@ -719,7 +704,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
       :visible="righeVisible"
       @update:visible="v => righeVisible = v"
       :contratto-id="props.contrattoId"
-      :contratto-modalita="form.modalita"
+      :contratto-forma="formaDerivata"
       :righe-iniziali="detail.righe || []"
       :contratto-numero="detail.numero"
       :contratto-cliente="detail.ba_ragione_sociale"
