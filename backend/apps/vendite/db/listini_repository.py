@@ -1206,6 +1206,13 @@ class ListiniRepository:
                 a.codice                           AS componente_codice,
                 a.descrizione                      AS componente_descrizione,
                 ac.coeff_qta,
+                -- Alias `quantita_componente` per uniformita' col
+                -- `ComponentiDialog` FE (template colonna Q.ta + calcolo
+                -- summaryTotale). Nel contesto bundle qty_padre=1 quindi
+                -- coeff_qta e quantita_componente coincidono; nei
+                -- preventivi/contratti la fn DB ritorna `quantita_componente`
+                -- gia' scalato per la quantita padre del documento.
+                ac.coeff_qta                       AS quantita_componente,
                 ac.obbligatorio,
                 ac.esposto_in_fattura,
                 a.iva_id,
