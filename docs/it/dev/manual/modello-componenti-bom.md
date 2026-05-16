@@ -291,9 +291,28 @@ Pattern simmetrico **da implementare** come componenti riusabili:
 - `ComponentiDialog.vue` — Dialog modale 90vw, parametrizzato sul
   contesto (sorgente, articoloPadre, listinoVersione opzionale)
 - `ComponentiPanel.vue` (EDIT) — tabella read/edit dei componenti
-  esistenti, parametrizzato come Dialog
+  esistenti, parametrizzato come Dialog; usato anche in modalita'
+  `readonly=true` per preview contratti (righe bundle da listino)
 - i18n condiviso `componenti.*` (sub-namespace cross-dominio,
   separato da `preventivi.componenti_*`)
+
+### 12.4 Preview righe contratto — pattern uniforme con preventivi
+
+A partire da 2026-05-16 il preview righe contratto adotta lo stesso
+shape padre+figli dei preventivi:
+
+- **DB**: `vendite.fn_contratto_righe_preview(contratto_id)` — ritorna
+  tutte le righe (listino + AGGIUNTA) con `componenti jsonb` annidato.
+  Pattern: riga padre con `is_composito=TRUE` ha `componenti` non-NULL;
+  standalone ha `componenti=NULL`. `prezzo_finale` aggregato in DB.
+- **BE**: thin wrapper (`cursor.execute("SELECT * FROM
+  vendite.fn_contratto_righe_preview(%s)", [id])`) in
+  `contratti_repository.list_righe_preview`.
+- **FE**: `ContrattoRigheDrawer.vue` usa expander analogo a
+  `PreventiviRigheTable.vue`; riusa `ComponentiPanel.vue` con
+  `readonly=true` per la visualizzazione dei figli bundle.
+
+Riferimento: [fn_contratto_righe_preview](/dbzero/vendite/manual/fn_contratto_righe_preview).
 
 ## 13. Riferimenti
 

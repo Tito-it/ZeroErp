@@ -1,0 +1,364 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# Bug B — fn_contratto_righe_preview
+#
+# Nuova funzione che restituisce tutte le righe visibili nel drawer
+# ContrattoRigheDrawer: articoli dal listino (standalone + bundle)
+# con overlay eccezioni + AGGIUNTA standalone e bundle custom.
+#
+# Sostituisce lo SQL inline di contratti_repository.list_righe_preview.
+# Il BE diventa thin wrapper: cursor.execute("SELECT * FROM
+# vendite.fn_contratto_righe_preview(%s)", [contratto_id]).
+#
+# Logica in 4 parti:
+#   1a) Standalone dal listino (is_composito=FALSE) + overlay OVERRIDE/ESCLUSIONE
+#   1b) Bundle dal listino (padri compositi in listini_righe_componenti)
+#       + overlay OVERRIDE/ESCLUSIONE; componenti = jsonb_agg figli da listino
+#   2a) AGGIUNTA standalone (non in listino); componenti = NULL
+#   2b) AGGIUNTA bundle composito; componenti = jsonb_agg da contratti_righe_componenti
+#
+# prezzo_finale aggregato in DB (non delegato al FE):
+#   - DA_LISTINO standalone: prezzo_listino applicando variazione globale
+#   - DA_LISTINO bundle: SUM(lrc.prezzo * ac.coeff_qta) [senza variazione globale]
+#   - OVERRIDE: prezzo_unitario eccezione
+#   - ESCLUSIONE: NULL (articolo non fatturabile)
+#   - AGGIUNTA: prezzo_unitario eccezione
+#
+# Versione listino usata:
+#   - ATTIVO con snapshot (listino_versione_id IS NOT NULL): usa snapshot
+#   - DRAFT (listino_versione_id IS NULL): lookup operativo
+#     stato IN ('ATTIVA','CHIUSA') + ORDER BY (stato='ATTIVA') DESC [Bug A fix]
+#
+# JSONB shape componenti (uniforme per 1b e 2b):
+#   { componente_id, componente_codice, componente_descrizione,
+#     uom_id, uom_codice, coeff_qta, prezzo, obbligatorio, esposto_in_fattura }
+#
+# Vedere: brief-db listini_versioni bozza-non-operativa 2026-05-16 §2.3
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260516-04-create-fn-contratto-righe-preview-mctit.yaml
+
+  - changeSet:
+      id: 20260516-04-create-fn-contratto-righe-preview
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Bug B fix: fn_contratto_righe_preview — preview completa righe contratto
+        con bundle (listini_righe_componenti + contratti_righe_componenti).
+        Sostituisce SQL inline contratti_repository.list_righe_preview.
+        4 parti: 1a standalone-listino, 1b bundle-listino, 2a AGGIUNTA-standalone,
+        2b AGGIUNTA-bundle. componenti JSONB aggregato in DB.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti
+            - tableExists:
+                schemaName: vendite
+                tableName: listini_righe_componenti
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti_righe
+                columnName: tipo_eccezione
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_contratto_righe_preview(bigint);
+
+              CREATE FUNCTION vendite.fn_contratto_righe_preview(
+                  p_contratto_id vendite.contratti.id%TYPE
+              )
+              RETURNS TABLE (
+                  articolo_id          catalogo.articoli.id%TYPE,
+                  articolo_codice      catalogo.articoli.codice%TYPE,
+                  articolo_descrizione catalogo.articoli.descrizione%TYPE,
+                  is_composito         catalogo.articoli.is_composito%TYPE,
+                  uom_id               vendite.listini_righe.uom_id%TYPE,
+                  uom_codice           catalogo.unita_misura.codice%TYPE,
+                  prezzo_listino       vendite.listini_righe.prezzo%TYPE,
+                  tipo_variazione      vendite.contratti.tipo_variazione_globale%TYPE,
+                  valore_variazione    vendite.contratti.valore_variazione_globale%TYPE,
+                  override_riga_id     vendite.contratti_righe.id%TYPE,
+                  override_prezzo      vendite.contratti_righe.prezzo_unitario%TYPE,
+                  tipo_eccezione       vendite.tipo_eccezione_contratto,
+                  origine              varchar,
+                  prezzo_finale        vendite.listini_righe.prezzo%TYPE,
+                  componenti           jsonb
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: restituisce tutte le righe del drawer ContrattoRigheDrawer.
+              -- Parte 1 (con listino): standalone + bundle da listini_righe/_componenti.
+              -- Parte 2 (AGGIUNTA): standalone e bundle da contratti_righe/_componenti.
+              -- prezzo_finale aggregato in DB; componenti JSONB uniforme per bundle.
+              -- Versione operativa: usa snapshot se ATTIVO, altrimenti lookup
+              --   stato IN ('ATTIVA','CHIUSA') per escludere BOZZA (Bug A fix).
+              DECLARE
+                  v_listino_id          vendite.contratti.listino_id%TYPE;
+                  v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
+                  v_tipo_var            vendite.contratti.tipo_variazione_globale%TYPE;
+                  v_valore_var          vendite.contratti.valore_variazione_globale%TYPE;
+              BEGIN
+                  SELECT c.listino_id,
+                         c.listino_versione_id,
+                         c.tipo_variazione_globale,
+                         c.valore_variazione_globale
+                    INTO v_listino_id,
+                         v_listino_versione_id,
+                         v_tipo_var,
+                         v_valore_var
+                    FROM vendite.contratti c
+                   WHERE c.id = p_contratto_id;
+
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  -- Risolvi versione operativa per contratti DRAFT senza snapshot.
+                  -- stato IN ('ATTIVA','CHIUSA'): BOZZA esclusa (Bug A fix).
+                  IF v_listino_id IS NOT NULL AND v_listino_versione_id IS NULL THEN
+                      SELECT lv.id
+                        INTO v_listino_versione_id
+                        FROM vendite.listini_versioni lv
+                       WHERE lv.listino_id = v_listino_id
+                         AND lv.attivo     = TRUE
+                         AND lv.stato      IN ('ATTIVA', 'CHIUSA')
+                         AND lv.validita  @> CURRENT_DATE
+                       ORDER BY (lv.stato = 'ATTIVA') DESC
+                       LIMIT 1;
+                  END IF;
+
+                  -- PARTE 1: articoli dal listino (versione operativa trovata).
+                  IF v_listino_versione_id IS NOT NULL THEN
+
+                      -- 1a: standalone (is_composito=FALSE) + overlay eccezioni.
+                      RETURN QUERY
+                      SELECT
+                          a.id,
+                          a.codice,
+                          a.descrizione,
+                          FALSE,
+                          lr.uom_id,
+                          um.codice,
+                          lr.prezzo,
+                          v_tipo_var,
+                          v_valore_var,
+                          cr.id,
+                          cr.prezzo_unitario,
+                          cr.tipo_eccezione,
+                          CASE
+                              WHEN cr.tipo_eccezione = 'OVERRIDE'   THEN 'OVERRIDE'
+                              WHEN cr.tipo_eccezione = 'ESCLUSIONE' THEN 'ESCLUSIONE'
+                              ELSE                                       'DA_LISTINO'
+                          END::varchar,
+                          CASE
+                              WHEN cr.tipo_eccezione = 'OVERRIDE'   THEN cr.prezzo_unitario
+                              WHEN cr.tipo_eccezione = 'ESCLUSIONE' THEN NULL
+                              WHEN v_tipo_var = 'PERCENTUALE'        THEN lr.prezzo * (1 + v_valore_var / 100.0)
+                              WHEN v_tipo_var = 'VALORE_FISSO'       THEN lr.prezzo + v_valore_var
+                              ELSE                                        lr.prezzo
+                          END,
+                          NULL::jsonb
+                        FROM vendite.listini_righe lr
+                        JOIN catalogo.articoli a
+                          ON a.id           = lr.articolo_id
+                         AND a.is_composito = FALSE
+                         AND a.attivo       = TRUE
+                        JOIN catalogo.unita_misura um ON um.id = lr.uom_id
+                        LEFT JOIN vendite.contratti_righe cr
+                               ON cr.contratto_id           = p_contratto_id
+                              AND cr.articolo_id            = lr.articolo_id
+                              AND cr.tipo_eccezione         IN (
+                                      'OVERRIDE'::vendite.tipo_eccezione_contratto,
+                                      'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                                  )
+                              AND COALESCE(cr.attivo, TRUE) = TRUE
+                       WHERE lr.listino_versione_id = v_listino_versione_id
+                         AND lr.attivo              = TRUE;
+
+                      -- 1b: bundle (padri compositi in listini_righe_componenti)
+                      -- + overlay OVERRIDE/ESCLUSIONE sulla riga padre.
+                      -- componenti: jsonb_agg figli da listini_righe_componenti.
+                      -- prezzo_finale bundle (DA_LISTINO): SUM(lrc.prezzo * ac.coeff_qta).
+                      RETURN QUERY
+                      SELECT
+                          a.id,
+                          a.codice,
+                          a.descrizione,
+                          TRUE,
+                          a.uom_id,
+                          um.codice,
+                          NULL::numeric,
+                          v_tipo_var,
+                          v_valore_var,
+                          cr.id,
+                          cr.prezzo_unitario,
+                          cr.tipo_eccezione,
+                          CASE
+                              WHEN cr.tipo_eccezione = 'OVERRIDE'   THEN 'OVERRIDE'
+                              WHEN cr.tipo_eccezione = 'ESCLUSIONE' THEN 'ESCLUSIONE'
+                              ELSE                                       'DA_LISTINO'
+                          END::varchar,
+                          CASE
+                              WHEN cr.tipo_eccezione = 'OVERRIDE'   THEN cr.prezzo_unitario
+                              WHEN cr.tipo_eccezione = 'ESCLUSIONE' THEN NULL
+                              ELSE (
+                                  SELECT SUM(lrc2.prezzo * ac2.coeff_qta)
+                                    FROM vendite.listini_righe_componenti lrc2
+                                    JOIN catalogo.articoli_componenti ac2
+                                      ON ac2.id = lrc2.articolo_componente_id
+                                   WHERE lrc2.listino_versione_id = v_listino_versione_id
+                                     AND lrc2.articolo_padre_id   = a.id
+                                     AND lrc2.attivo              = TRUE
+                                     AND lrc2.validita           @> CURRENT_DATE
+                              )
+                          END,
+                          (
+                              SELECT jsonb_agg(jsonb_build_object(
+                                  'componente_id',          af.id,
+                                  'componente_codice',      af.codice,
+                                  'componente_descrizione', af.descrizione,
+                                  'uom_id',                 af.uom_id,
+                                  'uom_codice',             umf.codice,
+                                  'coeff_qta',              ac.coeff_qta,
+                                  'prezzo',                 lrc.prezzo,
+                                  'obbligatorio',           ac.obbligatorio,
+                                  'esposto_in_fattura',     ac.esposto_in_fattura
+                              ) ORDER BY lrc.id)
+                                FROM vendite.listini_righe_componenti lrc
+                                JOIN catalogo.articoli_componenti ac
+                                  ON ac.id = lrc.articolo_componente_id
+                                JOIN catalogo.articoli af
+                                  ON af.id = lrc.articolo_figlio_id
+                                JOIN catalogo.unita_misura umf
+                                  ON umf.id = af.uom_id
+                               WHERE lrc.listino_versione_id = v_listino_versione_id
+                                 AND lrc.articolo_padre_id   = a.id
+                                 AND lrc.attivo              = TRUE
+                                 AND lrc.validita           @> CURRENT_DATE
+                          )
+                        FROM (
+                            SELECT DISTINCT lrc_p.articolo_padre_id
+                              FROM vendite.listini_righe_componenti lrc_p
+                             WHERE lrc_p.listino_versione_id = v_listino_versione_id
+                               AND lrc_p.attivo              = TRUE
+                               AND lrc_p.validita           @> CURRENT_DATE
+                        ) padri
+                        JOIN catalogo.articoli a
+                          ON a.id           = padri.articolo_padre_id
+                         AND a.is_composito = TRUE
+                         AND a.attivo       = TRUE
+                        JOIN catalogo.unita_misura um ON um.id = a.uom_id
+                        LEFT JOIN vendite.contratti_righe cr
+                               ON cr.contratto_id           = p_contratto_id
+                              AND cr.articolo_id            = a.id
+                              AND cr.tipo_eccezione         IN (
+                                      'OVERRIDE'::vendite.tipo_eccezione_contratto,
+                                      'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                                  )
+                              AND COALESCE(cr.attivo, TRUE) = TRUE;
+
+                  END IF;
+
+                  -- PARTE 2a: AGGIUNTA standalone (is_composito=FALSE, non in listino).
+                  RETURN QUERY
+                  SELECT
+                      a.id,
+                      a.codice,
+                      a.descrizione,
+                      FALSE,
+                      a.uom_id,
+                      um.codice,
+                      NULL::numeric,
+                      NULL::varchar,
+                      NULL::numeric,
+                      cr.id,
+                      cr.prezzo_unitario,
+                      cr.tipo_eccezione,
+                      'AGGIUNTA'::varchar,
+                      cr.prezzo_unitario,
+                      NULL::jsonb
+                    FROM vendite.contratti_righe cr
+                    JOIN catalogo.articoli a
+                      ON a.id           = cr.articolo_id
+                     AND a.is_composito = FALSE
+                     AND a.attivo       = TRUE
+                    JOIN catalogo.unita_misura um ON um.id = a.uom_id
+                   WHERE cr.contratto_id          = p_contratto_id
+                     AND cr.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                     AND COALESCE(cr.attivo, TRUE) = TRUE;
+
+                  -- PARTE 2b: AGGIUNTA bundle (is_composito=TRUE, non in listino).
+                  -- componenti: jsonb_agg da contratti_righe_componenti (figli persistiti).
+                  -- prezzo_finale padre: prezzo_unitario aggiornato da trgfn_ricalcola_padre.
+                  RETURN QUERY
+                  SELECT
+                      a.id,
+                      a.codice,
+                      a.descrizione,
+                      TRUE,
+                      a.uom_id,
+                      um.codice,
+                      NULL::numeric,
+                      NULL::varchar,
+                      NULL::numeric,
+                      cr.id,
+                      cr.prezzo_unitario,
+                      cr.tipo_eccezione,
+                      'AGGIUNTA'::varchar,
+                      cr.prezzo_unitario,
+                      (
+                          SELECT jsonb_agg(jsonb_build_object(
+                              'componente_id',          af.id,
+                              'componente_codice',      af.codice,
+                              'componente_descrizione', af.descrizione,
+                              'uom_id',                 af.uom_id,
+                              'uom_codice',             umf.codice,
+                              'coeff_qta',              crc.coeff_qta_snapshot,
+                              'prezzo',                 crc.prezzo_unitario,
+                              'obbligatorio',           ac.obbligatorio,
+                              'esposto_in_fattura',     ac.esposto_in_fattura
+                          ) ORDER BY crc.ordine, crc.id)
+                            FROM vendite.contratti_righe_componenti crc
+                            JOIN catalogo.articoli af
+                              ON af.id = crc.componente_id
+                            JOIN catalogo.unita_misura umf
+                              ON umf.id = af.uom_id
+                            JOIN catalogo.articoli_componenti ac
+                              ON ac.id = crc.articolo_componente_id
+                           WHERE crc.riga_contratto_id = cr.id
+                             AND crc.attivo            = TRUE
+                      )
+                    FROM vendite.contratti_righe cr
+                    JOIN catalogo.articoli a
+                      ON a.id           = cr.articolo_id
+                     AND a.is_composito = TRUE
+                     AND a.attivo       = TRUE
+                    JOIN catalogo.unita_misura um ON um.id = a.uom_id
+                   WHERE cr.contratto_id          = p_contratto_id
+                     AND cr.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                     AND COALESCE(cr.attivo, TRUE) = TRUE;
+
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_contratto_righe_preview(bigint) IS
+                  'Preview righe drawer ContrattoRigheDrawer. '
+                  '4 parti: 1a standalone listino + overlay, 1b bundle listino + overlay, '
+                  '2a AGGIUNTA standalone, 2b AGGIUNTA bundle. '
+                  'Versione listino: snapshot (ATTIVO) o lookup operativo ATTIVA/CHIUSA (DRAFT, Bug A). '
+                  'prezzo_finale aggregato in DB. componenti JSONB uniforme per 1b e 2b.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_contratto_righe_preview(bigint);

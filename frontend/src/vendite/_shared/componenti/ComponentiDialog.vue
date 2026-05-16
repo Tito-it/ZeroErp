@@ -473,12 +473,12 @@ function handleCancel() {
 
     <template #footer>
       <Button
-        :label="t(localizedKey('dialog_annulla'))"
+        :label="t('common.cancel')"
         severity="secondary"
         @click="handleCancel"
       />
       <Button
-        :label="t(localizedKey('dialog_conferma'))"
+        :label="t('common.save')"
         :disabled="!canConfirm"
         @click="handleConfirm"
       />
