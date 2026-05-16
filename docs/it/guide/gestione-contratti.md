@@ -16,7 +16,6 @@
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2) — resolver pricing bundle-aware, STADIO 1
-> * [vendite.fn_contratto_righe_preview](/dbzero/vendite/manual/fn_contratto_righe_preview) — preview righe drawer (listino + bundle + AGGIUNTA)
 > * [vendite.trgfn_contratti_freeze_listino_versione](/dbzero/vendite/manual/trgfn_contratti_freeze_listino_versione) — snapshot versione listino a DRAFT→ATTIVO
 > * [vendite.trgfn_contratti_lock_post_attivazione](/dbzero/vendite/manual/trgfn_contratti_lock_post_attivazione) — blocco testata post-attivazione
 > * [vendite.trgfn_contratti_righe_lock_post_attivazione](/dbzero/vendite/manual/trgfn_contratti_righe_lock_post_attivazione) — blocco righe post-attivazione
