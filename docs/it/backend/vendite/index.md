@@ -6,7 +6,7 @@
 - [api_commessa_stato](manual/api_commessa_stato.md) — Esporre via HTTP lo stato e i contatori aggregati di una singola commessa, per dashboard e monitoraggio avanzamento.
 - [api_commesse_pricing](manual/api_commesse_pricing.md) — Esporre via HTTP le operazioni di gestione prezzo su attivita` di commessa: riallineamento da listino (N5), variazione eccezionale manuale (N7) e sblocco prezzo bloccato (N7-sblocco).
 - [api_commesse_push_log](manual/api_commesse_push_log.md) — Esporre via HTTP il dettaglio di un singolo push log commesse, per consultazione operativa e diagnostica delle esecuzioni push.
-- [api_contratti](manual/api_contratti.md) — CRUD operativo dei contratti commerciali cliente-listino, con sub-entita' **righe** (vendite.contratti_righe) e **utility 1:1** (vendite.contratti_utilities). E' il ponte tra il cliente (BA) e il listino, e veicola le t…
+- [api_contratti](manual/api_contratti.md) — CRUD operativo dei contratti commerciali cliente-listino, con sub-entita' **righe** (vendite.contratti_righe) e **utility 1:1** (vendite.contratti_utilities). E' il ponte tra il cliente (BA) e il listino di riferimento.
 - [api_listini](manual/api_listini.md) — Esporre via HTTP la gestione completa dei listini vendite: anagrafica listino, versioni temporali, righe prezzo, associazioni di contesto e test del resolver prezzo.
 - [api_lotti_list](manual/api_lotti_list.md) — Esporre via HTTP l'elenco paginato dei lotti di fatturazione con filtri opzionali e decodifica delle FK.
 - [api_lotto_fatture_list](manual/api_lotto_fatture_list.md) — Esporre via HTTP l'elenco paginato delle fatture appartenenti a un lotto, con decodifiche FK, filtri opzionali e ordinamento configurabile.
@@ -32,6 +32,7 @@
 - [fn_prepare_sdi_payload_lotto](manual/fn_prepare_sdi_payload_lotto.md) — Reperire dal database il dataset SDI di un lotto, aprendo/riusando i tentativi di invio e restituendo le righe da usare per la generazione file.
 - [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — Eseguire il reset tecnico di un lotto MASSIVO in DRAFT invocando la funzione DB.
 - [fn_reset_lotto_fattura_draft](manual/fn_reset_lotto_fattura_draft.md) — Eseguire il reset tecnico di una singola fattura in un lotto MASSIVO DRAFT.
+- [modello-contratti](manual/modello-contratti.md) — Un contratto e' un accordo cliente-fornitore che fissa **come si prezza** un articolo per un cliente specifico, su una specifica utility, per un periodo di validita'. E' il ponte tra:
 - [pr_run_lotto_pipeline](manual/pr_run_lotto_pipeline.md) — Orchestrare l'esecuzione della pipeline di fatturazione per un lotto, gestendo:
 - [pricing_service](manual/pricing_service.md) — Wrapper Python su due funzioni DB del pricing v5:
 - [template_contratto_iniziale](manual/template_contratto_iniziale.md) — Template HTML iniziale per la generazione PDF di un contratto commerciale tramite context builder CONTRATTO.
