@@ -118,6 +118,7 @@ nav:
                   - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
                   - Risorse Umane e Accessi al Software: it/guide/risorse-umane-e-accessi.md
                   - Architettura Permessi e Autorizzazioni: it/guide/architettura-permessi-e-autorizzazioni.md
+                  - Architettura multi face auth: it/guide/architettura-multi-face-auth.md
                   - Audit e tracciabilità: it/guide/audit-e-tracciabilita.md
                   - Gestione delle Istanze Utility: it/guide/gestione-delle-istanze-utility.md
                   - Generazione di un cliente: it/guide/generazione-cliente.md
@@ -127,6 +128,7 @@ nav:
                   - Gestione conti bancari: it/guide/gestione-conti-bancari.md
                   - Gestione listini: it/guide/gestione-listini.md
                   - Gestione preventivi: it/guide/gestione-preventivi.md
+                  - Gestione contratti: it/guide/gestione-contratti.md
                   - Fatturazione: it/guide/fatturazione.md
                   - Gestione dei pagamenti: it/guide/gestione-dei-pagamenti.md
                   - Integrazione Ai: it/guide/integrazione-ai.md
