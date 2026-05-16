@@ -175,9 +175,10 @@ fail-fast lato DB → `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` (422).
 
 Alla transizione `DRAFT → ATTIVO`, il trigger
 `trgfn_contratti_freeze_listino_versione` fissa
-`listino_versione_id = versione attiva alla data del contratto`. Da quel
-momento la versione e' immutabile e il pricing del contratto e' blindato
-da cambi del listino.
+`listino_versione_id = versione operativa` (stato `IN ('ATTIVA','CHIUSA')`)
+alla data del contratto. Versioni in stato `BOZZA` vengono ignorate anche
+se hanno date sovrapposte. Da quel momento la versione e' immutabile e
+il pricing del contratto e' blindato da cambi del listino.
 
 ### Righe `POST /api/v1/vendite/contratti/<id>/righe/`
 
@@ -335,6 +336,85 @@ Soft delete (`attivo=FALSE`). Il trigger DB di ricalcolo padre lo esclude
 dalla SUM. Idempotente: se gia' soft-deleted ritorna `{deleted: false}`
 senza errore. Stesso scope check anti-tampering di update.
 
+### Preview righe contratto `GET /api/v1/vendite/contratti/<id>/righe-preview/`
+
+Endpoint readonly che restituisce tutte le righe del drawer `ContrattoRigheDrawer`:
+articoli dal listino (con overlay eccezioni) + AGGIUNTA fuori-listino.
+Delega tutto a `vendite.fn_contratto_righe_preview` — il BE e' thin wrapper.
+
+**Shape risposta** (una riga per articolo padre; i bundle hanno `componenti` annidato):
+
+```json
+{
+  "data": [
+    {
+      "articolo_id": "uuid",
+      "articolo_codice": "GAS-STD",
+      "articolo_descrizione": "Gas Standard",
+      "is_composito": false,
+      "uom_id": 3,
+      "uom_codice": "MWh",
+      "prezzo_listino": "10.50",
+      "tipo_variazione": "PERCENTUALE",
+      "valore_variazione": "-5.00",
+      "override_riga_id": null,
+      "override_prezzo": null,
+      "tipo_eccezione": null,
+      "origine": "DA_LISTINO",
+      "prezzo_finale": "9.975",
+      "componenti": null
+    },
+    {
+      "articolo_id": "uuid-bundle",
+      "articolo_codice": "KIT-ATTIV",
+      "articolo_descrizione": "Kit attivazione",
+      "is_composito": true,
+      "uom_id": 1,
+      "uom_codice": "PZ",
+      "prezzo_listino": null,
+      "tipo_variazione": "PERCENTUALE",
+      "valore_variazione": "-5.00",
+      "override_riga_id": null,
+      "override_prezzo": null,
+      "tipo_eccezione": null,
+      "origine": "DA_LISTINO",
+      "prezzo_finale": "48.00",
+      "componenti": [
+        {
+          "componente_id": "uuid-figlio",
+          "componente_codice": "COMP-A",
+          "componente_descrizione": "Componente A",
+          "uom_id": 2,
+          "uom_codice": "H",
+          "coeff_qta": "2.0",
+          "prezzo": "15.00",
+          "obbligatorio": true,
+          "esposto_in_fattura": false
+        },
+        {
+          "componente_id": "uuid-figlio2",
+          "componente_codice": "COMP-B",
+          "componente_descrizione": "Componente B",
+          "uom_id": 1,
+          "uom_codice": "PZ",
+          "coeff_qta": "1.0",
+          "prezzo": "18.00",
+          "obbligatorio": false,
+          "esposto_in_fattura": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Valori `origine`**: `DA_LISTINO` | `OVERRIDE` | `ESCLUSIONE` | `AGGIUNTA`.  
+**Bundle** (`is_composito=true`): `prezzo_finale` = SUM aggregato in DB
+(`lrc.prezzo × ac.coeff_qta` da listino, o `prezzo_unitario` del padre AGGIUNTA).  
+**ESCLUSIONE**: `prezzo_finale = null`, articolo mostrato con badge "Escluso".  
+**Versione listino**: per contratti ATTIVI usa `listino_versione_id` snapshot;
+per DRAFT usa la versione operativa corrente (`stato IN ('ATTIVA','CHIUSA')`).
+
 ### Utility 1:1 `POST /api/v1/vendite/contratti/<id>/utility/`
 
 ```json
@@ -476,6 +556,7 @@ extra al catalogo.
 | `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` | 422 | DB P0001 (refactor modalita 2026-05-15) — attivazione di contratto senza listino senza righe AGGIUNTA con prezzo valorizzato | `trgfn_contratti_freeze_listino_versione` (guard interno) |
 | `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` | 422 | DB P0001 (refactor 2026-05-15) — INSERT/UPDATE riga `tipo_eccezione=AGGIUNTA` per articolo gia' presente nel listino di riferimento | `trgfn_contratti_righe_guard_aggiunta_fuori_listino` |
+| `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 422 | DB P0001 (§6.1 2026-05-16) — INSERT/UPDATE riga `tipo_eccezione=ESCLUSIONE` per articolo che e' `articolo_figlio_id` in un bundle del listino del contratto. L'ESCLUSIONE si applica al padre bundle, non al singolo componente | `trgfn_contratti_righe_guard_esclusione_figlio_bundle` |
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` | 422 | DB P0001 (resolver pricing) — tentativo di prezzare un articolo che ha eccezione ESCLUSIONE sul contratto attivo del cliente | `fn_resolve_prezzo_listino_v2` (STADIO 1 eccezioni) |
 | `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` | 409 | DB P0001 (refactor §3-bis-A) — UPDATE su `listino_id`/`listino_versione_id`/`tipo_variazione_globale`/`valore_variazione_globale` di contratto ATTIVO, oppure INSERT/UPDATE/DELETE eccezione su contratto ATTIVO | `trgfn_contratti_lock_post_attivazione` + `trgfn_contratti_righe_lock_post_attivazione` |
 | `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` | 422 | Service (refactor §3-bis-F) — PATCH testata che porta `listino_id` da NOT NULL a NULL con eccezioni OVERRIDE/ESCLUSIONE attive | — |

@@ -85,6 +85,7 @@
 - [fn_complete_lotto_task_run](manual/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 - [fn_contratto_riga_componenti_init](manual/fn_contratto_riga_componenti_init.md)
 - [fn_contratto_riga_componenti_preview](manual/fn_contratto_riga_componenti_preview.md)
+- [fn_contratto_righe_preview](manual/fn_contratto_righe_preview.md)
 - [fn_crea_revisione_preventivo](manual/fn_crea_revisione_preventivo.md) — (latest review 15-05-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive, componenti BoM e indirizzi. L'attivazione della revisione non e' piu' gestita qui: il flag `is_revision_attiva` e' stato rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendite.vw_preventivi`.
 - [fn_create_fatturazione_lotto](manual/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
 - [fn_ddt_riga_componenti_init](manual/fn_ddt_riga_componenti_init.md)

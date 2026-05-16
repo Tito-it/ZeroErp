@@ -56,11 +56,30 @@ Matrice transizioni ammesse:
 Violazione → `script.fn_log_and_raise_error` con codice
 `E_VERSIONE_STATO_TRANSIZIONE_INVALIDA` (id 391 in `config.messaggi_errore`).
 
-**Principio di applicabilita'** (linee-guida-sql §7c): la versione e'
-*operativamente applicabile* quando `validita @> data_riferimento`.
-Lo `stato` e' flag gestionale per UI/audit/reportistica; il resolver
-prezzi (`fn_resolve_prezzo_listino_v2`) **non** filtra per stato —
-le date comandano.
+**Principio di applicabilita'** (linee-guida-sql §7c aggiornato 2026-05-16):
+una versione e' **operativamente applicabile** quando e' nel range di date
+**e** il suo stato e' **operativo**. Stati operativi: `('ATTIVA','CHIUSA')`.
+
+Lo stato `BOZZA` e' uno stato di **preparazione**, non operativo: due versioni
+BOZZA e ATTIVA possono coesistere in overlap di date per design (workflow
+clone+publish). Per questo i lookup operativi devono filtrare:
+
+```sql
+WHERE lv.attivo = TRUE
+  AND lv.stato  IN ('ATTIVA', 'CHIUSA')
+  AND lv.validita @> data_riferimento
+ORDER BY (lv.stato = 'ATTIVA') DESC
+LIMIT 1;
+```
+
+Il `LIMIT 1` con `ORDER BY (stato='ATTIVA') DESC` garantisce determinismo:
+se per la stessa data coesistono una ATTIVA e una CHIUSA (transiente),
+viene preferita l'ATTIVA. Il no-overlap constraint (`ex_listini_versioni_no_overlap`)
+garantisce al piu' una ATTIVA per listino su ogni data.
+
+Funzioni che applicano questa regola: `fn_resolve_prezzo_listino_v2`,
+`trgfn_contratti_freeze_listino_versione`, `trgfn_contratti_righe_guard_aggiunta_fuori_listino`,
+`fn_contratto_righe_preview`.
 
 **INSERT non vincolato**: il guard scatta solo su UPDATE OF stato.
 Consente seed/import di versioni direttamente in ATTIVA o CHIUSA.

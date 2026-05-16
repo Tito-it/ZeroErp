@@ -56,6 +56,8 @@
 | trg_contratti_righe_a10_contratti_righe_componenti_block_d46424 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'contratti_righe_componenti', 'riga_contratto_id', 'id', 'attivo')` |
 | trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()` |
 | trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()` |
+| trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()` |
+| trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()` |
 | trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione()` |
 | trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione()` |
 | trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione()` |
