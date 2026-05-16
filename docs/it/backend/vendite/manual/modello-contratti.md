@@ -63,8 +63,10 @@ post-attivazione (Profilo A). La soluzione:
   si propagano (utile per costruzione: il banner FE segnala il drift).
 - alla **transizione DRAFT → ATTIVO**: il trigger
   `trgfn_contratti_freeze_listino_versione` fissa
-  `c.listino_versione_id = lv.id` della versione attiva alla data del
-  contratto. Da quel momento la versione e' **immutabile** (lock dal
+  `c.listino_versione_id = lv.id` della versione **operativa** (stato
+  `IN ('ATTIVA','CHIUSA')`) alla data del contratto. Una eventuale BOZZA
+  con date sovrapposte viene ignorata — non e' mai snapshot (fix Bug A
+  2026-05-16). Da quel momento la versione e' **immutabile** (lock dal
   trigger `trgfn_contratti_lock_post_attivazione`).
 - in **ATTIVO**: il pricing legge la versione fissata. Cambi futuri del
   listino non toccano il contratto.
@@ -209,9 +211,10 @@ Il livello categoria viene alimentato dai service di dominio passando
 | **Forma derivata** | Stato del contratto rispetto al listino: `con_listino` o `senza_listino`. Calcolata da `c.listino_id`. |
 | **Eccezione** | Riga in `contratti_righe` con `tipo_eccezione` esplicito. Sostituisce le "righe modalita' C" e gli "override modalita' B". |
 | **OVERRIDE** | Eccezione che cambia il prezzo di un articolo del listino. |
-| **ESCLUSIONE** | Eccezione che rende un articolo del listino non disponibile per il cliente. |
+| **ESCLUSIONE** | Eccezione che rende un articolo del listino non disponibile per il cliente. Ammessa su articoli standalone o su padri bundle. **Vietata su figli bundle** (trigger `trgfn_contratti_righe_guard_esclusione_figlio_bundle`, errore 455) — l'esclusione si applica al bundle padre, non al singolo componente. |
 | **AGGIUNTA** | Eccezione che aggiunge un articolo fuori-listino al contratto. |
-| **Versione fissata** | `c.listino_versione_id` valorizzato post-attivazione: il contratto e' blindato da cambi del listino. |
+| **Versione operativa** | Versione listino con `stato IN ('ATTIVA','CHIUSA')` e `validita @> data`. La BOZZA e' uno stato di preparazione, esclusa dai lookup operativi. |
+| **Versione fissata** | `c.listino_versione_id` valorizzato post-attivazione: snapshot della versione operativa al momento dell'attivazione. Il contratto e' blindato da cambi del listino. |
 | **Drift del listino** | Stato in DRAFT in cui esce una nuova versione del listino: il banner FE lo segnala all'operatore. |
 | **Gate L2 variazione globale** | Check sulla variazione globale (PERCENTUALE) al PATCH testata: se eccede la soglia → 403 retryable. Solo PERCENTUALE; VALORE_FISSO skip. |
 | **Contesto pricing** | Endpoint readonly che ritorna forma + listino + versione fissata + variazione + categoria cliente per il banner FE. Mutuato dal pattern preventivi. |

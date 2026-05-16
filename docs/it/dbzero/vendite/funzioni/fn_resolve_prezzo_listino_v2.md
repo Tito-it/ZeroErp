@@ -114,7 +114,7 @@ BEGIN
 
     -- STADIO 1: contratto attivo per (ba, utility, data).
     -- ORDER BY c.id DESC: deterministico su overlap multi-istanza/ambito.
-    -- Legge anche listino_versione_id (snapshot fissato all'attivazione, Step 2.3).
+    -- Legge anche listino_versione_id (snapshot fissato all'attivazione).
     SELECT c.id,
            c.listino_id,
            c.listino_versione_id,
@@ -149,7 +149,6 @@ BEGIN
         v_snapshot_classe := COALESCE(v_contr_classe_utenza, p_classe_utenza_id);
 
         -- Stadio 1a: cerca eccezione (OVERRIDE/ESCLUSIONE/AGGIUNTA) per l'articolo.
-        -- CONTRATTO_OVERRIDE vince sempre (anche sul bundle).
         SELECT cr.tipo_eccezione, cr.prezzo_unitario
           INTO v_contr_tipo_eccezione, v_contr_riga_prezzo
           FROM vendite.contratti_righe cr
@@ -161,7 +160,6 @@ BEGIN
         IF v_contr_tipo_eccezione IS NOT NULL THEN
             CASE v_contr_tipo_eccezione
                 WHEN 'ESCLUSIONE' THEN
-                    -- Articolo esplicitamente escluso: non fatturabile con questo contratto.
                     PERFORM script.fn_log_and_raise_error(
                         'vendite',
                         'fn_resolve_prezzo_listino_v2',
@@ -205,9 +203,10 @@ BEGIN
                 );
             END IF;
 
-            -- Step 1b-1: versione listino.
-            -- Se snapshot fissato all'attivazione (Step 2.3): usa quello.
-            -- Else: lookup versione corrente a p_data_riferimento (§4.4 fallback).
+            -- Step 1b-1: versione listino operativa.
+            -- Se snapshot fissato all'attivazione: usa quello (BOZZA mai snapshot).
+            -- Else: lookup versione operativa (ATTIVA o CHIUSA) a p_data_riferimento.
+            -- FIX Bug A: stato IN ('ATTIVA','CHIUSA') esclude BOZZA.
             IF v_contr_listino_versione_id IS NOT NULL THEN
                 v_listino_versione_id := v_contr_listino_versione_id;
             ELSE
@@ -215,8 +214,10 @@ BEGIN
                   INTO v_listino_versione_id
                   FROM vendite.listini_versioni lv
                  WHERE lv.listino_id = v_contr_listino_id
+                   AND lv.attivo     = TRUE
+                   AND lv.stato      IN ('ATTIVA', 'CHIUSA')
                    AND lv.validita  @> p_data_riferimento
-                   AND lv.attivo    = TRUE
+                 ORDER BY (lv.stato = 'ATTIVA') DESC
                  LIMIT 1;
 
                 IF v_listino_versione_id IS NULL THEN
@@ -366,13 +367,16 @@ BEGIN
             );
         END IF;
 
-        -- Step 2-1: versione listino.
+        -- Step 2-1: versione listino operativa.
+        -- FIX Bug A: stato IN ('ATTIVA','CHIUSA') esclude BOZZA.
         SELECT lv.id
           INTO v_listino_versione_id
           FROM vendite.listini_versioni lv
          WHERE lv.listino_id = v_matrice_listino_id
+           AND lv.attivo     = TRUE
+           AND lv.stato      IN ('ATTIVA', 'CHIUSA')
            AND lv.validita  @> p_data_riferimento
-           AND lv.attivo    = TRUE
+         ORDER BY (lv.stato = 'ATTIVA') DESC
          LIMIT 1;
 
         IF v_listino_versione_id IS NULL THEN
@@ -466,7 +470,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- STADIO PROMO OVERLAY (non applicato in contesto bundle, §7.3).
+    -- STADIO PROMO OVERLAY (non applicato in contesto bundle).
     IF v_partecipa_promo IS TRUE AND NOT v_bundle_used THEN
         SELECT pa.id, pa.tipo_variazione, pa.valore_variazione
           INTO v_promo_id, v_promo_tipo_var, v_promo_valore_var
@@ -510,7 +514,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino_v2(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer, p_articolo_padre_contesto uuid)
-IS 'Resolver prezzi pricing v5 — bundle-prioritario + Step 2.4 tipo_eccezione (rev 2026-05-15). 3 stadi: 1a CONTRATTO (eccezione: OVERRIDE->CONTRATTO_OVERRIDE, ESCLUSIONE->raise, AGGIUNTA->CONTRATTO_AGGIUNTA), 1b listino contratto (versione fissata snapshot o corrente §4.4) con bundle-prioritario su standalone, 2 categoria con bundle-prioritario. Promo non applicata in contesto bundle. OUTPUT aggiunto: tipo_eccezione.';
+IS 'Resolver prezzi pricing v5 — bundle-prioritario + Step 2.4 tipo_eccezione + Bug A 2026-05-16 BOZZA non operativa. Lookup listini_versioni filtra stato IN (ATTIVA,CHIUSA) ORDER BY stato=ATTIVA DESC. 3 stadi: 1a CONTRATTO eccezione, 1b listino contratto con bundle-prioritario, 2 categoria con bundle-prioritario. Promo overlay non in contesto bundle. RETURNS TABLE include tipo_eccezione.';
 ```
 
 ---

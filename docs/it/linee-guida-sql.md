@@ -302,10 +302,13 @@ Per la gestione automatizzata degli EXCLUDE con WHERE: `dbops.automazione_overla
 
 Quando una tabella ha **sia** una colonna `stato` (ciclo vita gestionale: es. `BOZZA` / `ATTIVA` / `CHIUSA`) **sia** un intervallo `valido_dal`/`valido_al` (o `validita` daterange), valgono queste regole.
 
-**Principio fail-safe: le date comandano, lo stato accompagna.**
+**Principio fail-safe: le date comandano, lo stato discrimina operativo da preparazione.**
 
-1. **Applicabilita' operativa = date**. Resolver, lookup di business, filtri di efficacia usano **solo** `validita @> data_riferimento` (o equivalente su `valido_dal`/`valido_al`). **Non** filtrare per `stato` nella logica operativa: se il job di sync salta o un bug lascia lo stato incoerente, la logica basata su data resta corretta.
-2. **`stato` = workflow gestionale**. Transizioni governate dall'utente e vincolate da un guard trigger (`trgfn_<tabella>_guard_transizione_stato`, fase `_a10_`, `BEFORE UPDATE OF <col_stato>`). Lo stato serve a UI, audit, reportistica, dashboard — **mai** a decidere se una riga si applica operativamente.
+1. **Applicabilita' operativa = date + whitelist stati operativi**. I lookup di business e i filtri di efficacia usano `attivo = TRUE AND stato IN (<lista_operativi>) AND validita @> data_riferimento`. La lista degli stati operativi e' dichiarata nella doc manuale della tabella. Questa regola vale per le tabelle che hanno stati di **preparazione** (es. `BOZZA`) che condividono volutamente date sovrapposte con stati operativi (es. workflow clone+publish per `listini_versioni`). Per tabelle senza stati di preparazione, lo stato e' solo gestionale e il filtro `stato` puo' essere omesso dai lookup operativi.
+
+   **Whitelist vs blacklist**: preferire `stato IN ('ATTIVA','CHIUSA')` a `stato != 'BOZZA'`; la whitelist esplicita non include automaticamente futuri stati intermedi.
+
+2. **`stato` = workflow gestionale**. Transizioni governate dall'utente e vincolate da un guard trigger (`trgfn_<tabella>_guard_transizione_stato`, fase `_a10_`, `BEFORE UPDATE OF <col_stato>`). Lo stato serve a UI, audit, reportistica, dashboard — e per distinguere stati di preparazione da stati operativi (punto 1).
 3. **Transizione verso lo stato terminale**: la regola del guard puo' includere una **precondizione temporale** (`valido_al IS NOT NULL AND valido_al < CURRENT_DATE`) per evitare incoerenze strutturali (stato "chiuso" con finestra ancora aperta). Stessa regola vale per l'utente (via API/service) e per il job di sync.
 4. **Sync stato -> data**: il framework parametrico **`dbops.fn_apply_chiusura_scadenze()`** + job pgAgent unico **`chiusura_scadenze_daily`** (00:05) esegue l'UPDATE massivo `stato = terminale` per le righe scadute (`valido_al < CURRENT_DATE`) su tutte le tabelle configurate. L'UPDATE attraversa il guard trigger e lo soddisfa per costruzione. Vedi sotto "Framework dbops.automazione_chiusura_scadenze".
 5. **Niente trigger di sync `valido_al` -> `stato`** e nessuna colonna generata: lo stato **non e'** derivato in tempo reale dalla data (es. l'utente puo' programmare `valido_al` futuro e lo stato resta ATTIVA finche' il job non scatta). La sincronizzazione e' asincrona e "cosmetica".

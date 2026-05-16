@@ -13,12 +13,13 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_li
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: blocca INSERT/UPDATE su contratti_righe con tipo_eccezione='AGGIUNTA'
---   se l'articolo è già presente nel listino del contratto.
+--   se l'articolo è già presente nel listino operativo del contratto.
 -- Branch 1: listino_id IS NULL -> nessun check, AGGIUNTA sempre valida.
 -- Branch 2: DRAFT (listino_versione_id IS NULL) -> verifica versione
---   attiva a CURRENT_DATE (listini_versioni WHERE validita @> CURRENT_DATE).
+--   operativa a CURRENT_DATE: stato IN ('ATTIVA','CHIUSA') + attivo=TRUE.
+--   FIX Bug A: BOZZA esclusa, non blocca su articoli non ancora operativi.
 -- Branch 3: ATTIVO (listino_versione_id IS NOT NULL) -> verifica versione
---   fissata all'attivazione.
+--   fissata all'attivazione (solo listini_righe, senza listini_versioni).
 -- Errore se articolo trovato: E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO (450).
 DECLARE
     v_listino_id          vendite.contratti.listino_id%TYPE;
@@ -36,20 +37,22 @@ BEGIN
     END IF;
 
     IF v_listino_versione_id IS NULL THEN
-        -- Branch 2: DRAFT -> versione attiva a CURRENT_DATE
+        -- Branch 2: DRAFT -> versione operativa a CURRENT_DATE
+        -- stato IN ('ATTIVA','CHIUSA'): BOZZA non è operativa, non blocca.
         SELECT EXISTS (
             SELECT 1
               FROM vendite.listini_versioni lv
               JOIN vendite.listini_righe lr
                 ON lr.listino_versione_id = lv.id
              WHERE lv.listino_id = v_listino_id
-               AND lv.validita @> CURRENT_DATE
-               AND lv.attivo = TRUE
+               AND lv.attivo      = TRUE
+               AND lv.stato       IN ('ATTIVA', 'CHIUSA')
+               AND lv.validita   @> CURRENT_DATE
                AND lr.articolo_id = NEW.articolo_id
-               AND lr.attivo = TRUE
+               AND lr.attivo      = TRUE
         ) INTO v_in_listino;
     ELSE
-        -- Branch 3: ATTIVO -> versione fissata
+        -- Branch 3: ATTIVO -> versione fissata (snapshot)
         SELECT EXISTS (
             SELECT 1
               FROM vendite.listini_righe lr
@@ -81,7 +84,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()
-IS 'Guard AGGIUNTA fuori listino: blocca contratti_righe.tipo_eccezione=AGGIUNTA se l''articolo è già presente nel listino del contratto. DRAFT: verifica versione attiva a CURRENT_DATE. ATTIVO: verifica versione fissata (listino_versione_id). Nessun check se listino_id IS NULL. Errore: E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO (450). Step 2.2.';
+IS 'Guard AGGIUNTA fuori listino: blocca contratti_righe.tipo_eccezione=AGGIUNTA se l''articolo è già presente nel listino operativo del contratto. DRAFT (Branch 2): verifica versione operativa a CURRENT_DATE (stato IN (''ATTIVA'',''CHIUSA''), BOZZA esclusa — Bug A fix 2026-05-16). ATTIVO (Branch 3): verifica versione fissata (listino_versione_id). Nessun check se listino_id IS NULL. Errore: E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO (450).';
 ```
 
 ---

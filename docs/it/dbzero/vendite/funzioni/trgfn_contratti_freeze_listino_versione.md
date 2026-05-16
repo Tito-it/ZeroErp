@@ -16,8 +16,10 @@ AS $function$
 --   listino e verifica la coerenza del negoziato puro.
 -- A) listino_id IS NULL: verifica almeno una AGGIUNTA con prezzo.
 --    Errore: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (451).
--- B) listino_id NOT NULL + listino_versione_id IS NULL: fissa versione attiva
---    a CURRENT_DATE. Se non trovata: attivazione consentita, versione NULL.
+-- B) listino_id NOT NULL + listino_versione_id IS NULL: fissa versione
+--    operativa (stato IN ('ATTIVA','CHIUSA')) a CURRENT_DATE.
+--    FIX Bug A: BOZZA esclusa dal lookup — non viene mai congelata.
+--    Se non trovata: attivazione consentita con versione NULL (warning UI, §4.4).
 -- C) listino_versione_id già valorizzato: nessuna azione.
 -- Esce senza effetti su qualsiasi transizione diversa da DRAFT→ATTIVO.
 DECLARE
@@ -59,14 +61,17 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- Con listino: fissa versione snapshot se non già valorizzata
+    -- Con listino: fissa versione operativa snapshot se non già valorizzata.
+    -- stato IN ('ATTIVA','CHIUSA'): BOZZA non è operativa, mai snapshot.
     IF NEW.listino_versione_id IS NULL THEN
         SELECT lv.id
           INTO v_versione_id
           FROM vendite.listini_versioni lv
          WHERE lv.listino_id = NEW.listino_id
-           AND lv.validita @> CURRENT_DATE
-           AND lv.attivo = TRUE
+           AND lv.attivo     = TRUE
+           AND lv.stato      IN ('ATTIVA', 'CHIUSA')
+           AND lv.validita  @> CURRENT_DATE
+         ORDER BY (lv.stato = 'ATTIVA') DESC
          LIMIT 1;
 
         -- Se trovata: fissa snapshot. Se non trovata (§4.4): attivazione
@@ -81,7 +86,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_freeze_listino_versione()
-IS 'Freeze versione listino su DRAFT→ATTIVO. Negoziato puro (listino_id NULL): richiede almeno una AGGIUNTA con prezzo. Con listino: fissa versione attiva a CURRENT_DATE in listino_versione_id. Versione non trovata: attivazione consentita, listino_versione_id resta NULL. Errore negoziato puro senza righe: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (451). Step 2.3.';
+IS 'Freeze versione listino su DRAFT→ATTIVO. Negoziato puro (listino_id NULL): richiede almeno una AGGIUNTA con prezzo. Con listino: fissa versione operativa (stato IN (''ATTIVA'',''CHIUSA'')) a CURRENT_DATE in listino_versione_id. BOZZA non viene mai congelata (Bug A fix 2026-05-16). Versione non trovata: attivazione consentita, listino_versione_id resta NULL. Errore negoziato puro senza righe: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (451).';
 ```
 
 ---
