@@ -19,7 +19,10 @@ Indice test:
 
 from unittest import TestCase
 
-from apps.vendite.services.contratti_service import _AMBITI_VALIDI, _TIPI_VARIAZIONE
+from apps.vendite.services.contratti_service import (
+    _AMBITI_VALIDI,
+    _TIPI_VARIAZIONE_GLOBALE_AMMESSI as _TIPI_VARIAZIONE,
+)
 from apps.vendite.services.promo_articoli_service import (
     _TIPI_VARIAZIONE as PROMO_TIPI_VARIAZIONE,
 )

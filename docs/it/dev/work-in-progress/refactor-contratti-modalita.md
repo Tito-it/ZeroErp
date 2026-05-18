@@ -243,10 +243,10 @@ dal momento zero. In DRAFT segue il listino corrente; all'attivazione si snapsho
 versione listino. Le righe in eccezione sono blindate contro variazioni del listino in
 ogni fase.
 
-### 3.4 Permessi sulle righe — un unico permesso "ritocca prezzi"
+### 3.4 Permessi sulle righe — un unico permesso "variare prezzi"
 
 L'operatore può modificare/escludere righe del listino **se e solo se** ha un permesso unico,
-nominalmente "ritocca prezzi" (nome esatto da decidere, allineato al naming già usato per i
+nominalmente "variare prezzi" (nome esatto da decidere, allineato al naming già usato per i
 preventivi — vedi §3.5). Lo stesso permesso governa **sia** la variazione globale **sia** gli
 override/esclusioni sulle righe.
 
@@ -258,7 +258,7 @@ toggle.
 | Testata: campo variazione globale **readonly**                                         | Testata: campo variazione globale **editabile**     |
 | Righe: tutte readonly (listino così com'è + AGGIUNTE già presenti ma non modificabili) | Righe: override/esclusioni/aggiunte tutte possibili |
 
-Nota: il permesso "ritocca prezzi" governa la **possibilità di toccare**. Quanto si possa
+Nota: il permesso "variare prezzi" governa la **possibilità di toccare**. Quanto si possa
 spingere oltre è materia delle soglie (§3.5).
 
 ### 3.5 Gate prezzo — stesso pattern dei preventivi, esteso a categoria cliente
@@ -266,7 +266,7 @@ spingere oltre è materia delle soglie (§3.5).
 Quando l'operatore tenta di mettere un prezzo override (manuale) diverso dal suggerito dal
 resolver, scattano i 3 gate identici al pattern preventivi:
 
-- **Gate 1 — Permesso**: l'utente ha l'azione di processo "ritocca prezzi"? Se no → 403
+- **Gate 1 — Permesso**: l'utente ha l'azione di processo "variare prezzi"? Se no → 403
   non retryable.
 - **Gate 2 — Soglia**: `delta_pct = (manuale - suggerito) / suggerito × 100`. Soglia letta
   via cascata parametri. Se entro soglia → riga salvata. Se eccede → 403 retryable con
@@ -291,11 +291,11 @@ Conseguenza diretta delle decisioni precedenti, lato `ContrattoDrawer.vue`:
 - **Parametro `VENDITE_CONTRATTO_DEFAULT_MODALITA`** → diventa obsoleto, da rimuovere
 - Sezione "Pricing" diventa:
   - Campo "Listino di partenza" (opzionale)
-  - Campo "Variazione globale" (opzionale, gated su permesso "ritocca prezzi")
+  - Campo "Variazione globale" (opzionale, gated su permesso "variare prezzi")
 - Computed `derivedModalita` produce un badge informativo readonly post-save:
   "Contratto con listino LST-001, sconto globale 5%" / "Contratto senza listino di
   riferimento" / etc. — informativo, non decisivo
-- Logica enable/disable dei campi: in base al permesso "ritocca prezzi" dell'utente, la
+- Logica enable/disable dei campi: in base al permesso "variare prezzi" dell'utente, la
   variazione globale è editabile o readonly
 
 Lato `ContrattoRigheDrawer.vue`:
@@ -305,7 +305,7 @@ Lato `ContrattoRigheDrawer.vue`:
 - Lista righe = preview combinata: righe listino (lette dalla versione fissata via resolver)
   + eccezioni in `contratti_righe` (OVERRIDE/ESCLUSIONE/AGGIUNTA)
 - Su ogni riga del listino: azioni "Modifica prezzo" (crea/aggiorna OVERRIDE), "Escludi"
-  (crea ESCLUSIONE) — entrambe gated sul permesso "ritocca prezzi"
+  (crea ESCLUSIONE) — entrambe gated sul permesso "variare prezzi"
 - Aggiunta articolo fuori-listino: crea AGGIUNTA, gated sullo stesso permesso
 - I 3 gate scattano al save della singola riga override (non al save del contratto intero)
 
@@ -525,7 +525,7 @@ contratto, non solo sugli override di singola riga.
 
 - Quando l'operatore salva la testata del contratto con `valore_variazione_globale`
   diverso da zero, i 3 gate vengono valutati prima del save
-- **Gate 1** (permesso): se l'utente non ha "ritocca prezzi", la variazione globale non è
+- **Gate 1** (permesso): se l'utente non ha "variare prezzi", la variazione globale non è
   nemmeno editabile (UI readonly, BE rifiuta in PATCH se valore presente)
 - **Gate 2** (soglia): la variazione globale è essa stessa un delta percentuale (se
   `tipo_variazione_globale = PERCENTUALE`). Il valore viene confrontato con:
@@ -541,6 +541,20 @@ il gate 2 non è applicabile per confronto soglia%. Da valutare in implementazio
 introdurre un secondo set di parametri (`VENDITE_MAX_SCONTO_ABS`, ecc.) o vietare
 `VALORE_FISSO` come variazione globale (lasciandolo solo per override su righe specifiche).
 Decisione operativa da prendere in fase brief DB.
+
+**Decisione chiusa (2026-05-18)**: ✅ `VALORE_FISSO` **vietato come variazione globale**
+sulla testata contratto. Resta ammesso unicamente per OVERRIDE su singola riga
+(semantica "prezzo fisso sostitutivo per quell'articolo"). Implementazione:
+
+- `_TIPI_VARIAZIONE_GLOBALE_AMMESSI` in `contratti_service.py` ridotto a
+  `frozenset({"PERCENTUALE"})` — validatore `_apply_variazione_globale`
+  solleva `E_VENDITE_VALIDATION` con messaggio parlante se l'operatore
+  invia `VALORE_FISSO`.
+- Lookup FE `tipi_variazione_contratto` (`vendite_lookups_service._TIPI_VARIAZIONE_CONTRATTO`)
+  ritorna solo `PERCENTUALE` → il SelectButton FE (FE 2.1 quando atterrerà)
+  non esporrà nemmeno l'opzione `VALORE_FISSO` sulla testata.
+- Test: `test_update_contratto_variazione_valore_fisso_rifiutata` +
+  aggiornamento `test_tipi_variazione_contratto_ok` API.
 
 ### 3-bis-F. Togliere `listino_id` con eccezioni esistenti — blocco esplicito
 
@@ -582,18 +596,39 @@ Risolta da §3.7 + §3-bis-B (con dipendenza da §3-bis-A).
 ### 4.3 Editabilità delle righe DA_LISTINO → Risolta
 
 Risolta da §3.3 + §3.4 + §3-bis-A-schema: le righe del listino sono readonly per default;
-chi ha il permesso "ritocca prezzi" può fare OVERRIDE, ESCLUSIONE o AGGIUNTA. Niente
+chi ha il permesso "variare prezzi" può fare OVERRIDE, ESCLUSIONE o AGGIUNTA. Niente
 importazione iniziale, modello delta con `tipo_eccezione` esplicito.
 
-### 4.4 Listino con zero righe → Da verificare in implementazione
+### 4.4 Listino senza versione attiva → Risolta (decisione 2026-05-18)
 
-Caso limite: contratto con `listino_id + listino_versione_id` ma versione listino senza
-righe attive alla data del contratto. Resolver ritorna 0 righe + flag
-`listino_senza_versione_oggi`. Con il modello unificato resta uno scenario possibile (il
-contratto mostra preview vuota e righe `contratti_righe` come unica fonte).
+**Decisione chiusa**: ✅ un listino **senza versione ATTIVA non è selezionabile**
+come riferimento contrattuale. Implementazione:
 
-Decisione operativa: non bloccare nulla a livello modello, gestire in UI con warning chiaro
-nel banner contesto del `ContrattoRigheDrawer`.
+- BE guard pre-save: `ContrattiService._guard_listino_ha_versione_attiva` invocato in
+  `_build_create_data_testata` e `_build_update_data_testata` quando `listino_id`
+  è valorizzato. Helper repo: `ListiniRepository.has_versione_attiva(listino_id)`
+  (single round-trip EXISTS su `vendite.listini_versioni` con `stato='ATTIVA'` +
+  `attivo IS TRUE`).
+- Nuovo codice errore `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (422) registrato
+  in `error_policies.py` con messaggio parlante per il banner FE.
+- Test: `test_create_contratto_listino_senza_versione_attiva_rifiutato`.
+
+**Conseguenza sul flag `listino_senza_versione_oggi`** del payload `list_righe_preview`:
+non più necessario come "warning UX", perché il caso non si crea più (il guard pre-save
+lo intercetta). Il flag resta nel payload come safety net per contratti pre-esistenti
+(prima della decisione 2026-05-18) che potrebbero avere `listino_id` con versione
+poi disattivata. Da rimuovere quando confermiamo che il DB non ha più contratti
+in tale stato.
+
+**FE downstream (FE 2.1)**: il lookup listini per il drawer contratto dovrebbe
+filtrare solo listini con versione attiva, per non mostrare opzioni che il save
+rifiuterebbe. Il lookup attualmente vive in `dbops.fn_get_lookup_codici`
+(whitelist DB-side `vendite.listini` senza JOIN su versioni). Soluzione richiede
+**brief DB**: estendere il lookup `vendite.listini` con filtro `WHERE EXISTS (SELECT
+1 FROM vendite.listini_versioni v WHERE v.listino_id = l.id AND v.stato='ATTIVA'
+AND v.attivo IS TRUE)`. Alternative: endpoint dedicato `/api/v1/vendite/contratti/lookup/listini-selezionabili/`
+(pattern API.md "lookup dedicato"). **Open task**, basso costo (1h DB + 30 min FE
+swap dell'endpoint).
 
 ### 4.5 Transizione modalità in editing → Non si pone più (con riserva §3-bis-F)
 
@@ -655,16 +690,16 @@ un sottoinsieme di workstream BE/FE (vedi tabella dipendenze in fondo al brief D
 
 Possono partire alla chiusura della Fase 1 DB, indipendenti dalla Fase 2 DB.
 
-| Step | Lavoro | Area | Prerequisito | File principali |
-| --- | --- | --- | --- | --- |
-| **BE 2.0** | Implementazione dei 3 gate prezzo (L1+L2+L3) per `contratti_service`, mutuati da `preventivi_service` — preparati ma non ancora invocati finché DB 2.x non chiude. Lo step può essere scritto e testato in isolamento. | service | DB 1.2 chiuso | `contratti_service.py` (nuove fn `_check_permesso_override_prezzo`, `_check_limite_variazione_prezzo`, `_resolve_or_check_override_prezzo`) |
+| Step | Stato | Lavoro | Area | Prerequisito | File principali |
+| --- | --- | --- | --- | --- | --- |
+| **BE 2.0** | ✅ | Orchestratore 3 gate (L1+L2+L3) per riga `contratti_service`, mutuati da `preventivi_service`. **Estratto BB condiviso** `resolve_or_check_override_prezzo` in `_pricing_gate_helpers.py` parametrizzato su `resolver_fn` + `error_code_validazione`. Aggiunti `contratti_suggerisci_prezzo_riga` (resolver wrapper) e `resolve_or_check_override_prezzo_riga_contratto` (thin wrapper sul BB). Preventivi refactor a thin wrapper (zero regressioni). 11 nuovi test mirati. **Non ancora cablato** in `create_riga`/`update_riga`: wiring in BE 2.2 quando arrivano le operazioni eccezione OVERRIDE/AGGIUNTA. | service | DB 1.2 chiuso | `_pricing_gate_helpers.py`, `preventivi_service.py`, `contratti_service.py`, `test_contratti_service.py` |
 
 #### 5.2.3 Dipendenti da DB step 2.1 (cleanup modalità su contratti)
 
-| Step | Lavoro | Area | Prerequisito | File principali |
-| --- | --- | --- | --- | --- |
-| **BE 2.1** | Rimozione logica gating modalità: `_validate_modalita_coerente` eliminato; `list_righe_preview` non deriva più A/B/C ma restituisce forma `con_listino` / `senza_listino` | service | DB 2.1 | `contratti_service.py` |
-| **FE 2.1** | Rimozione SelectButton A/B/C; sezione "Pricing" semplificata in "Listino opzionale" + "Variazione globale opzionale" (gated permesso); badge `derivedModalita` readonly post-save | UI contratti | BE 2.1 | `ContrattoDrawer.vue` |
+| Step | Stato | Lavoro | Area | Prerequisito | File principali |
+| --- | --- | --- | --- | --- | --- |
+| **BE 2.1** | ✅ | Rimozione logica gating modalità: `_validate_modalita_coerente` eliminato; `list_righe_preview` non deriva più A/B/C ma restituisce forma `con_listino` / `senza_listino`. Cleanup docstring obsolete + rimozione duplicazione `categoria_cliente_id_snapshot` (apply chiamato 2 volte in `_build_create_data_testata`). | service | DB 2.1 | `contratti_service.py` |
+| **FE 2.1** | ⏳ | Rimozione SelectButton A/B/C; sezione "Pricing" semplificata in "Listino opzionale" + "Variazione globale opzionale" (gated permesso); badge `derivedModalita` readonly post-save | UI contratti | BE 2.1 | `ContrattoDrawer.vue` |
 
 #### 5.2.4 Dipendenti da DB step 2.2 (tipo_eccezione su contratti_righe)
 
@@ -673,7 +708,7 @@ Possono partire alla chiusura della Fase 1 DB, indipendenti dalla Fase 2 DB.
 | **BE 2.2** | Service di gestione eccezioni: `aggiungi_eccezione`, `aggiorna_eccezione`, `rimuovi_eccezione` con dispatch sui 3 tipi OVERRIDE/ESCLUSIONE/AGGIUNTA; `list_righe_preview` JOIN listino + eccezioni | service | DB 2.2 | `contratti_service.py`, `contratti_repository.py` |
 | **BE 2.3** | Endpoint REST aggiornati per i 3 tipi eccezione (serializzatori, payload validation) | api | BE 2.2 | `views_contratti.py` |
 | **BE 2.4** | Blocco rimozione listino con eccezioni OVERRIDE/ESCLUSIONE (422 `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`) | service | DB 2.2 | `contratti_service.py` (in `aggiorna_contratto` / `patch_testata`) |
-| **FE 2.2** | Azioni di riga "Modifica prezzo", "Escludi", "Aggiungi articolo" su `ContrattoRigheDrawer.vue`, tutte gated sul permesso "ritocca prezzi" | UI contratti | BE 2.3 | `ContrattoRigheDrawer.vue` |
+| **FE 2.2** | Azioni di riga "Modifica prezzo", "Escludi", "Aggiungi articolo" su `ContrattoRigheDrawer.vue`, tutte gated sul permesso "variare prezzi" | UI contratti | BE 2.3 | `ContrattoRigheDrawer.vue` |
 
 #### 5.2.5 Dipendenti da DB step 2.3 (trigger attivazione + lock post-attivazione)
 
@@ -720,16 +755,17 @@ avviati appena il loro prerequisito DB è chiuso.
 
 ## 6. Stato di questo documento
 
-- ✅ **REFACTOR COMPLETATO (2026-05-15)** — DB + BE + FE + DOC tutti chiusi. Vedi §7 per
-  riepilogo attività svolte.
+- ✅ **REFACTOR COMPLETATO** — DB + BE + DOC chiusi. FE Fase 2 (drawer + UX
+  eccezioni + banner) resta da fare. Vedi §7 per riepilogo attività svolte.
 - ✅ **CHIUSE le decisioni di modello, UX e schema**: §3 e §3-bis contengono tutte le scelte
   definitive.
-- ⏳ **APERTI dettagli implementativi minori**:
-  - §3-bis-E: comportamento gate 2 quando `tipo_variazione_globale = VALORE_FISSO`
-    (parametri assoluti vs vietare il caso)
-  - §4.4: comportamento UI esatto per listino con versione senza righe
-  - Nome esatto del permesso "ritocca prezzi" (allineamento con naming già usato per
-    preventivi)
+- ✅ **CHIUSI dettagli implementativi minori (2026-05-18)**:
+  - §3-bis-E: `VALORE_FISSO` **vietato come variazione globale** (solo OVERRIDE riga).
+    Implementato + test.
+  - §4.4: listino **senza versione ATTIVA non selezionabile** — guard pre-save BE
+    e codice errore parlante. Filtro FE lookup ancora open (brief DB minore).
+  - Nome permesso: **"variare prezzi"** (label UX/doc). Il codename DB resta
+    `prezzo_override_manuale` per stabilità del binding.
 - Il recap [`recap-contratti-post-componenti.md`](recap-contratti-post-componenti.md) resta
   valido per i bug puntuali. Il fix #1 (BE derivazione modalità) può essere fatto prima per
   sbloccare il sintomo immediato, oppure assorbito direttamente nel refactor.
@@ -863,3 +899,44 @@ prezzo del resolver per AGGIUNTA fuori-listino vs OVERRIDE su listino. Sessione 
 "porting gate riga contratti" da pianificare a parte. Oggi i prezzi delle righe contratto
 sono accettati come dichiarati dall'operatore con il solo CHECK DB di coerenza
 prezzo/tipo_eccezione.
+
+### 7.7 Attività svolte (2026-05-18) — chiusura decisioni minori
+
+Dopo la chiusura del refactor maggiore (sezioni 7.1–7.6), 3 decisioni rimanenti
+sono state prese e implementate end-to-end nella stessa sessione (BE+test+doc):
+
+- **§3-bis-E — `VALORE_FISSO` vietato come variazione globale**:
+  - `_TIPI_VARIAZIONE_GLOBALE_AMMESSI = frozenset({"PERCENTUALE"})` in `contratti_service.py`
+  - `_apply_variazione_globale` rifiuta VALORE_FISSO con messaggio parlante
+    (cita il caso d'uso "OVERRIDE su riga" come alternativa)
+  - Lookup FE `tipi_variazione_contratto` aggiornato a solo PERCENTUALE
+  - Test BE: `test_update_contratto_variazione_valore_fisso_rifiutata` +
+    `test_update_contratto_ok_variazione` aggiornato a PERCENTUALE
+  - Test API: `test_tipi_variazione_contratto_ok` aggiornato
+
+- **§4.4 — listino senza versione ATTIVA non selezionabile**:
+  - `ListiniRepository.has_versione_attiva(listino_id) -> bool` (EXISTS single
+    round-trip su `vendite.listini_versioni` stato='ATTIVA' + attivo IS TRUE)
+  - `ContrattiService._guard_listino_ha_versione_attiva` invocato in
+    `_build_create_data_testata` e `_build_update_data_testata` quando
+    `listino_id` è valorizzato (skip in PATCH quando `listino_id` non è nel patch
+    per non invalidare contratti esistenti)
+  - Nuovo codice errore `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (422) registrato
+    in `error_policies.py` con messaggio parlante per banner FE
+  - Test: `test_create_contratto_listino_senza_versione_attiva_rifiutato`
+  - **Open task** (separato da questo refactor): filtro lookup FE
+    `vendite.listini` per mostrare solo listini con versione attiva. Richiede
+    brief DB (modifica whitelist `dbops.fn_get_lookup_codici` o nuovo endpoint
+    dedicato). Stima: 1h DB + 30 min FE swap dell'endpoint.
+
+- **Nome permesso "variare prezzi"**:
+  - Label UX e doc aggiornata in `refactor-contratti-modalita.md` +
+    `gestione-contratti.md`
+  - Codename DB del permesso resta `prezzo_override_manuale` (stabile, niente
+    rename DB invasivo). Il binding tecnico è invariato; solo la presentazione
+    cambia.
+
+**Test BE post-decisioni**: 711/711 verdi. Diff netto rispetto alla suite
+precedente: 1 nuovo test rifiuto VALORE_FISSO, 1 nuovo test rifiuto listino
+senza versione attiva, 1 duplicato di
+`test_create_contratto_variazione_coppia_incompleta_fallisce` rimosso.

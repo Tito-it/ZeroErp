@@ -498,7 +498,7 @@ function submitRiga(payload) {
 }
 
 // Scopo: Salva riga intercettando specificamente i codici L2
-//        (E_PREV_SCONTO_ECCESSIVO / E_PREV_MAGGIORAZIONE_ECCESSIVA) per
+//        (E_PRICING_SCONTO_ECCESSIVO / E_PRICING_MAGGIORAZIONE_ECCESSIVA) per
 //        mostrare un banner inline invece del toast standard. Tutti gli
 //        altri errori passano per il pattern standard useApiHandler.
 async function handleSave() {

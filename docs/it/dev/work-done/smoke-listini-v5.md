@@ -178,7 +178,7 @@ Setup: utente operatore con `prezzo_override_manuale` ON, `VENDITE_MAX_SCONTO_PC
 
 - [ ] Apri PreventiviRigaForm su riga BA GOLD, prezzo resolver = X
 - [ ] Imposta prezzo manuale con sconto 25% (oltre limite 10%) → submit normale
-  - [ ] Banner inline `E_PREV_SCONTO_ECCESSIVO` visibile con detail "Sconto richiesto: 25.00% — massimo ammesso: 10%."
+  - [ ] Banner inline `E_PRICING_SCONTO_ECCESSIVO` visibile con detail "Sconto richiesto: 25.00% — massimo ammesso: 10%."
   - [ ] Pulsante "Richiedi approvazione" ora **attivo** (non disabled come pre-Sprint E)
 - [ ] Click "Richiedi approvazione"
   - [ ] Toast success "Richiesta approvazione inviata"

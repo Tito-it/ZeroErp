@@ -35,8 +35,8 @@ Indice test eseguiti:
 20) test_gestisci_riga_override_non_autorizzato — L1 blocca override senza permesso
 21) test_gestisci_riga_override_superuser_ok — superuser bypassa L1, meta MANUALE
 22) test_gestisci_riga_L2_sconto_entro_limite_ok — L1 ok + sconto 10% <= limite 15%
-23) test_gestisci_riga_L2_sconto_oltre_limite_bloccato — sconto 20% > limite 15% -> E_PREV_SCONTO_ECCESSIVO
-24) test_gestisci_riga_L2_maggiorazione_oltre_limite_bloccato — +10% > limite 5% -> E_PREV_MAGGIORAZIONE_ECCESSIVA
+23) test_gestisci_riga_L2_sconto_oltre_limite_bloccato — sconto 20% > limite 15% -> E_PRICING_SCONTO_ECCESSIVO
+24) test_gestisci_riga_L2_maggiorazione_oltre_limite_bloccato — +10% > limite 5% -> E_PRICING_MAGGIORAZIONE_ECCESSIVA
 25) test_gestisci_riga_L2_superuser_bypass — superuser salta anche L2
 26) test_list_riepilogo_iva_delega_a_repo — facade lettura riepilogo IVA aggregato
 27) test_list_preventivi_default_solo_attiva_true — filtro lista default
@@ -48,7 +48,7 @@ Indice test eseguiti:
 33) test_gestisci_riga_init_componenti_skip_admin_globale — admin globale (no emittente) salta init
 33b) test_gestisci_riga_init_componenti_usa_emittente_preventivo — admin + emittente esplicito sul preventivo OK
 33c) test_gestisci_riga_init_componenti_overrides_passati — form atomic: componenti_overrides nel payload → init
-33d) test_gestisci_riga_componenti_overrides_unauthorized — gating L1 senza override → 403 E_PREV_OVERRIDE_NON_AUTORIZZATO
+33d) test_gestisci_riga_componenti_overrides_unauthorized — gating L1 senza override → 403 E_PRICING_OVERRIDE_NON_AUTORIZZATO
 33e) test_gestisci_riga_init_componenti_attivazioni_passate — modello unificato: componenti_attivazioni propagato a repo.init
 33f) test_gestisci_riga_init_componenti_bom_vuota_propaga — repo solleva E_DOC_COMPOSITO_BOM_VUOTA → service propaga
 33g) test_gestisci_riga_init_componenti_obbligatorio_disattivazione_bloccata — repo solleva E_DOC_COMPONENTE_OBBLIGATORIO → service propaga
@@ -749,7 +749,7 @@ class TestPreventiviService(unittest.TestCase):
         self.assertEqual(kwargs["componenti_overrides"], overrides)
 
     # Scopo: gating L1 — payload con componenti_overrides ma operatore
-    # senza `prezzo_override_manuale` solleva E_PREV_OVERRIDE_NON_AUTORIZZATO
+    # senza `prezzo_override_manuale` solleva E_PRICING_OVERRIDE_NON_AUTORIZZATO
     # (ServiceError 403) PRIMA di qualsiasi tocco DB.
     def test_gestisci_riga_componenti_overrides_unauthorized(self):
         from apps.vendite.services.preventivi_service import gestisci_riga
@@ -779,7 +779,7 @@ class TestPreventiviService(unittest.TestCase):
                         },
                         auth_user_id=100,
                     )
-                self.assertEqual(ctx.exception.code, "E_PREV_OVERRIDE_NON_AUTORIZZATO")
+                self.assertEqual(ctx.exception.code, "E_PRICING_OVERRIDE_NON_AUTORIZZATO")
         finally:
             # Ripristina patcher per i test successivi (il setUp sara' rieseguito
             # ma per non rompere questo test specifico ricominciamo il patch).
@@ -1486,7 +1486,7 @@ class TestPreventiviService(unittest.TestCase):
                 {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "45.00"},
                 auth_user_id=42,
             )
-        self.assertEqual(ctx.exception.code, "E_PREV_OVERRIDE_NON_AUTORIZZATO")
+        self.assertEqual(ctx.exception.code, "E_PRICING_OVERRIDE_NON_AUTORIZZATO")
         self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: L1 — override prezzo ammesso per superuser (bypass).
@@ -1559,7 +1559,7 @@ class TestPreventiviService(unittest.TestCase):
         self.assertEqual(str(call["prezzo_unitario"]), "45.00")
         self.assertEqual(call["meta"]["origine_prezzo"], "MANUALE")
 
-    # Scopo: L2 — sconto oltre il limite blocca con E_PREV_SCONTO_ECCESSIVO.
+    # Scopo: L2 — sconto oltre il limite blocca con E_PRICING_SCONTO_ECCESSIVO.
     #        Resolver 50, manuale 40 = -20% sconto, limite 15% -> bloccato.
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
     @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
@@ -1589,14 +1589,14 @@ class TestPreventiviService(unittest.TestCase):
                 {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "40.00"},
                 auth_user_id=42,
             )
-        self.assertEqual(ctx.exception.code, "E_PREV_SCONTO_ECCESSIVO")
+        self.assertEqual(ctx.exception.code, "E_PRICING_SCONTO_ECCESSIVO")
         # Fase 5.B2: errore L2 retryable=True (utente puo' ritentare con
         # flag richiesta_approvazione=true per attivare workflow L3).
         self.assertTrue(ctx.exception.retryable)
         self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: L2 — maggiorazione oltre il limite blocca con
-    #        E_PREV_MAGGIORAZIONE_ECCESSIVA. Resolver 50, manuale 55 = +10%,
+    #        E_PRICING_MAGGIORAZIONE_ECCESSIVA. Resolver 50, manuale 55 = +10%,
     #        limite 5% -> bloccato.
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
     @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
@@ -1627,7 +1627,7 @@ class TestPreventiviService(unittest.TestCase):
                 {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "55.00"},
                 auth_user_id=42,
             )
-        self.assertEqual(ctx.exception.code, "E_PREV_MAGGIORAZIONE_ECCESSIVA")
+        self.assertEqual(ctx.exception.code, "E_PRICING_MAGGIORAZIONE_ECCESSIVA")
         # Fase 5.B2: errore L2 retryable=True (vedi commento test sconto).
         self.assertTrue(ctx.exception.retryable)
         self.mock_repo.create_riga.assert_not_called()
@@ -1808,7 +1808,7 @@ class TestPreventiviService(unittest.TestCase):
                 auth_user_id=42,
             )
 
-        self.assertEqual(ctx.exception.code, "E_PREV_SCONTO_ECCESSIVO")
+        self.assertEqual(ctx.exception.code, "E_PRICING_SCONTO_ECCESSIVO")
         mock_crea_pratica.assert_not_called()
         self.mock_repo.create_riga.assert_not_called()
 

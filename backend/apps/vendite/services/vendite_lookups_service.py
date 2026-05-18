@@ -24,11 +24,14 @@ from __future__ import annotations
 # vendite.promo_articoli, ecc.). Aggiungerli/cambiarli qui senza propagare
 # al DB rompe il salvataggio: i lookup sono solo UI.
 
-# Scopo: tipo_variazione ammesso nei contratti (contratti.tipo_variazione_globale).
-#        Niente PREZZO_FISSO (specifico delle promo).
+# Scopo: tipo_variazione ammesso sulla variazione GLOBALE della testata
+#        contratto (contratti.tipo_variazione_globale).
+#        Decisione 2026-05-18 (§3-bis-E refactor-contratti-modalita): solo
+#        PERCENTUALE. VALORE_FISSO resta ammesso unicamente per OVERRIDE su
+#        singola riga (semantica "prezzo fisso sostitutivo per quell'articolo"),
+#        mai per la testata.
 _TIPI_VARIAZIONE_CONTRATTO: tuple[tuple[str, str, int], ...] = (
     ("PERCENTUALE", "Percentuale (es. -10%)", 1),
-    ("VALORE_FISSO", "Valore fisso (es. -2,50 €)", 2),
 )
 
 # Scopo: tipo_variazione ammesso nelle promo articoli. Aggiunge PREZZO_FISSO

@@ -11,7 +11,7 @@ Indice test:
 2) crea_richiesta_approvazione: contesto pratica mancante -> E_APPROVAZIONE_PREZZO_NON_AMMESSA
 3) approva: riga PENDING + permesso ok -> APPROVED + pratica CHIUSA + nota INTERNA
 4) approva: riga non PENDING -> E_APPROVAZIONE_PREZZO_NON_AMMESSA
-5) approva: senza permesso -> E_PREV_OVERRIDE_NON_AUTORIZZATO
+5) approva: senza permesso -> E_PRICING_OVERRIDE_NON_AUTORIZZATO
 6) approva: superuser bypass permesso
 7) rifiuta: riga PENDING -> REJECTED + nota motivazione
 8) rifiuta: senza motivazione -> nota generica
@@ -188,7 +188,7 @@ class ApprovaRifiutaTests(TestCase):
 
         with self.assertRaises(ServiceError) as ctx:
             svc.approva(riga_id=50, auth_user_id=42)
-        self.assertEqual(ctx.exception.code, "E_PREV_OVERRIDE_NON_AUTORIZZATO")
+        self.assertEqual(ctx.exception.code, "E_PRICING_OVERRIDE_NON_AUTORIZZATO")
 
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")

@@ -9,7 +9,7 @@
 
 """
 Indice test eseguiti:
- 1) test_tipi_variazione_contratto_ok — 200 con codici PERCENTUALE/VALORE_FISSO
+ 1) test_tipi_variazione_contratto_ok — 200 con codice PERCENTUALE (post 2026-05-18 §3-bis-E: VALORE_FISSO rimosso dalla testata)
  2) test_tipi_variazione_promo_ok     — 200, include PREZZO_FISSO
  3) test_ambiti_contratto_ok          — 200 con codici COMMODITY/COMMERCIO
  4) test_modalita_pricing_contratto_ok — 200 con codici A/B/C
@@ -52,8 +52,11 @@ class TestVenditeLookupsApi(JwtMockedApiTest):
         )
         self.assertEqual(resp.status_code, 200)
         codes = self._codes(resp)
+        # Refactor 2026-05-18 §3-bis-E: solo PERCENTUALE come variazione
+        # globale sulla testata. VALORE_FISSO resta ammesso unicamente per
+        # OVERRIDE su singola riga (semantica "prezzo fisso sostitutivo").
         self.assertIn("PERCENTUALE", codes)
-        self.assertIn("VALORE_FISSO", codes)
+        self.assertNotIn("VALORE_FISSO", codes)
         self.assertNotIn("PREZZO_FISSO", codes)
 
     @patch(_AUTH, return_value=(Mock(), None))

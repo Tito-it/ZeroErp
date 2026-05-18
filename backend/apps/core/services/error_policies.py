@@ -218,6 +218,36 @@ class ErrorPolicyRegistry:
                 "associate o sostituiscile con AGGIUNTA."
             ),
         ),
+        # Refactor 2026-05-18 (decisione §4.4 refactor-contratti-modalita):
+        # un listino senza versione ATTIVA non e' selezionabile come
+        # riferimento di un contratto. In assenza di una versione attiva non
+        # ci sono righe da applicare, quindi il contratto sarebbe formalmente
+        # "con listino" ma operativamente vuoto. Il vincolo si applica sia
+        # in CREATE che in UPDATE (PATCH `listino_id`): l'errore parlante
+        # arriva PRIMA del save evitando il flag `listino_senza_versione_oggi`
+        # come zona grigia.
+        "E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA": ErrorPolicy(
+            code="E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il listino selezionato non ha una versione ATTIVA. "
+                "Solo i listini con almeno una versione pubblicata e attiva "
+                "possono essere associati a un contratto. Attiva una "
+                "versione del listino in gestione listini prima di tornare "
+                "a selezionarlo qui."
+            ),
+        ),
+        "E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA": ErrorPolicy(
+            code="E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "L'articolo e' un componente di un bundle: l'esclusione "
+                "si applica al bundle padre, non al singolo componente. "
+                "Per un bundle parziale crea un nuovo bundle in catalogo."
+            ),
+        ),
         "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI": ErrorPolicy(
             code="E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI",
             http_status=400,
@@ -1327,8 +1357,8 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri preventivo non validi.",
         ),
-        "E_PREV_OVERRIDE_NON_AUTORIZZATO": ErrorPolicy(
-            code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+        "E_PRICING_OVERRIDE_NON_AUTORIZZATO": ErrorPolicy(
+            code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
             http_status=403,
             ui_action="show_error_banner",
             user_message=(
@@ -1336,8 +1366,8 @@ class ErrorPolicyRegistry:
                 "suggerito dal listino o richiedi l'autorizzazione al responsabile."
             ),
         ),
-        "E_PREV_SCONTO_ECCESSIVO": ErrorPolicy(
-            code="E_PREV_SCONTO_ECCESSIVO",
+        "E_PRICING_SCONTO_ECCESSIVO": ErrorPolicy(
+            code="E_PRICING_SCONTO_ECCESSIVO",
             http_status=403,
             ui_action="show_error_banner",
             user_message=(
@@ -1345,8 +1375,8 @@ class ErrorPolicyRegistry:
                 "Richiedi approvazione o rientra nel limite ammesso."
             ),
         ),
-        "E_PREV_MAGGIORAZIONE_ECCESSIVA": ErrorPolicy(
-            code="E_PREV_MAGGIORAZIONE_ECCESSIVA",
+        "E_PRICING_MAGGIORAZIONE_ECCESSIVA": ErrorPolicy(
+            code="E_PRICING_MAGGIORAZIONE_ECCESSIVA",
             http_status=403,
             ui_action="show_error_banner",
             user_message=(
