@@ -16,7 +16,7 @@ Espone in modo coerente:
 > **Vedi anche**
 >
 > - [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
-> - [refactor operatore-emittenti — Fase 1](/dev/work-in-progress/refactor-operatore-emittenti) — vincolo `UNIQUE(auth_user_id)` di partenza
+> - [refactor operatore-emittenti — Fase 1](/dev/work-done/refactor-operatore-emittenti) — vincolo `UNIQUE(auth_user_id)` di partenza
 > - [fn_check_ultimo_super_admin_attivo](/dbzero/script/funzioni/fn_check_ultimo_super_admin_attivo) — primitiva di `can_change_scope`
 > - [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — orchestrazione del cambio scope
 
@@ -60,7 +60,7 @@ avuto associazioni emittente: in quel caso `scope_mode='GLOBAL'`).
 |:---:|:---:|
 | `0` | `GLOBAL` |
 | `1` | `SINGLE` |
-| `>1` | **impossibile** — `UNIQUE(auth_user_id)` introdotto in Fase 1 ([refactor 2026-04-08](/dev/work-in-progress/refactor-operatore-emittenti)) |
+| `>1` | **impossibile** — `UNIQUE(auth_user_id)` introdotto in Fase 1 ([refactor 2026-04-08](/dev/work-done/refactor-operatore-emittenti)) |
 
 > **Perché non esporre `MULTI`** — il vincolo DB di Fase 1 garantisce
 > che la fn vede al massimo 1 riga. Esporre `MULTI` come valore
@@ -131,7 +131,7 @@ can_change_scope = NOT script.fn_check_ultimo_super_admin_attivo(p_auth_user_id)
 
 ## Riferimenti
 
-* WIP: [refactor operatore-emittenti](/dev/work-in-progress/refactor-operatore-emittenti) — Fase 2 capability scope
+* WIP: [refactor operatore-emittenti](/dev/work-done/refactor-operatore-emittenti) — Fase 2 capability scope
 * Migration: `db/changelog/migrations_v2/20_code/script/20260429-03-create-fn-get-user-emittenti-scope-mctit.yaml`
 
 ## Esempio

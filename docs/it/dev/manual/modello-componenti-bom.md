@@ -318,7 +318,7 @@ Riferimento: [fn_contratto_righe_preview](/dbzero/vendite/manual/fn_contratto_ri
 
 - Iterazioni storiche: [changelog-decisioni-componenti.md](changelog-decisioni-componenti.md)
 - Piano operativo corrente: [`work-in-progress/refactor-componenti.md`](../work-in-progress/refactor-componenti.md)
-- Brief DB attivo: [`work-in-progress/brief-db-componenti-modello-unificato.md`](../work-in-progress/brief-db-componenti-modello-unificato.md)
+- Brief DB: [`work-done/brief-db-componenti-modello-unificato.md`](../work-done/brief-db-componenti-modello-unificato.md)
 - Modello tabelle: `docs/it/dbzero/catalogo/manual/articoli_componenti.md`
 - Resolver pricing v5: `docs/it/dbzero/vendite/manual/fn_resolve_prezzo_listino_v2.md`
 - Guida BoM: `docs/it/guide/gestione-listini.md` §6

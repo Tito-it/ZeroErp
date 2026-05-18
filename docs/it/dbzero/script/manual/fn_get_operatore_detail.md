@@ -107,7 +107,7 @@ Tabella a riga singola (0 righe se `p_auth_user_id` non esiste o è `NULL`/≤0)
 * `LANGUAGE plpgsql` **STABLE** — *deferred parsing* obbligatorio per i
   riferimenti a `django.*` (in CI Liquibase precede `manage.py migrate`,
   vedi memoria
-  [feedback_django_refs_in_liquibase](/dev/work-in-progress/refactor-operatore-emittenti#7bis6)).
+  [feedback_django_refs_in_liquibase](/dev/work-done/refactor-operatore-emittenti#7bis6)).
   Wrapping minimo: `BEGIN ... RETURN QUERY ... END`.
 * **Read-only**, nessun side effect.
 * `LEFT JOIN` su `identita_digitali`: utenti senza identità OPERATORE
@@ -172,7 +172,7 @@ Tabella a riga singola (0 righe se `p_auth_user_id` non esiste o è `NULL`/≤0)
 
 ## Riferimenti
 
-* WIP: [refactor operatore-emittenti — Fase 1 capability operatore (P1)](/dev/work-in-progress/refactor-operatore-emittenti)
+* WIP: [refactor operatore-emittenti — Fase 1 capability operatore (P1)](/dev/work-done/refactor-operatore-emittenti)
 * Migration: `db/changelog/migrations_v2/20_code/script/20260429-02-create-fn-get-operatore-detail-mctit.yaml`
 * Helper capability: [fn_check_ultimo_super_admin_attivo](/dbzero/script/funzioni/fn_check_ultimo_super_admin_attivo)
 

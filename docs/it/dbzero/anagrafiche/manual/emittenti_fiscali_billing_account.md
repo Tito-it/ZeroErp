@@ -17,7 +17,7 @@ Il modello prevede un **emittente di default globale** che, dopo il refactor del
 **rete di sicurezza** per i casi residui (seed/bootstrap, scenari "0 emittenti"), mentre il caso normale
 prevede che ogni BA venga **auto‑collegato** all'emittente dell'operatore che lo crea, tramite il trigger
 [`trgfn_billing_account_link_ef`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) sulla tabella
-`billing_account`. Vedi [refactor operatore ↔ emittente](/dev/work-in-progress/refactor-operatore-emittenti).
+`billing_account`. Vedi [refactor operatore ↔ emittente](/dev/work-done/refactor-operatore-emittenti).
 
 ---
 

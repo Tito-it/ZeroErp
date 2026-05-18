@@ -2,7 +2,7 @@
 
 ### Scopo
 
-Trigger function `BEFORE DELETE` su `config.user_emittenti_fiscali` che impone la regola del refactor 2026‑04‑08 (decisione D3 del [WIP](/dev/work-in-progress/refactor-operatore-emittenti)): **l'associazione utente ↔ emittente può essere rimossa solo come parte della disattivazione dell'utente Django**.
+Trigger function `BEFORE DELETE` su `config.user_emittenti_fiscali` che impone la regola del refactor 2026‑04‑08 (decisione D3 del [WIP](/dev/work-done/refactor-operatore-emittenti)): **l'associazione utente ↔ emittente può essere rimossa solo come parte della disattivazione dell'utente Django**.
 
 Pattern: l'associazione operatore‑emittente è **immutabile**. Per "trasferire" un dipendente da un emittente A a un emittente B, l'admin disattiva l'utente esistente (cessazione tipica) e ne crea uno nuovo per l'altro emittente. Questo garantisce un audit trail naturale: ogni utente = una sola azienda, sempre.
 
@@ -62,4 +62,4 @@ L'override è **transazione‑locale** (`SET LOCAL`) e non viene mai propagato f
 
 * [`config.user_emittenti_fiscali`](/dbzero/config/tabelle/user_emittenti_fiscali) — tabella protetta
 * `script.trgfn_lock_columns` — trigger gemello che impedisce la **modifica** di `emittente_fiscale_id` (vedi `trg_user_emittenti_fiscali_a10_lock_emittente_upd`)
-* [Refactor operatore ↔ emittente §D3](/dev/work-in-progress/refactor-operatore-emittenti)
+* [Refactor operatore ↔ emittente §D3](/dev/work-done/refactor-operatore-emittenti)

@@ -2,7 +2,7 @@
 
 ### Scopo
 
-Trigger function `BEFORE INSERT` su `anagrafiche.billing_account` che applica la regola del refactor 2026‑04‑08 (decisione Q6 del [WIP](/dev/work-in-progress/refactor-operatore-emittenti)): **gli admin globali non possono creare billing account quando esistono emittenti fiscali nel sistema**.
+Trigger function `BEFORE INSERT` su `anagrafiche.billing_account` che applica la regola del refactor 2026‑04‑08 (decisione Q6 del [WIP](/dev/work-done/refactor-operatore-emittenti)): **gli admin globali non possono creare billing account quando esistono emittenti fiscali nel sistema**.
 
 Pattern: defense‑in‑depth a livello DB. Anche se il backend prevede un check applicativo, il guard DB garantisce l'invarianza in caso di bypass o bug.
 
@@ -54,4 +54,4 @@ Non previsto un override esplicito (es. GUC `allow_admin_globale_create_ba`). Pe
 ## Vedi anche
 
 * [`anagrafiche.trgfn_billing_account_link_ef`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) — gemello `AFTER INSERT` che esegue l'auto‑link.
-* [Refactor operatore ↔ emittente](/dev/work-in-progress/refactor-operatore-emittenti)
+* [Refactor operatore ↔ emittente](/dev/work-done/refactor-operatore-emittenti)

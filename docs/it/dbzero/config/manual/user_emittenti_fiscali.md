@@ -8,7 +8,7 @@ Architettura di riferimento:
 >
 WIP/refactor:
 >
-[Refactor operatore ↔ emittente](/dev/work-in-progress/refactor-operatore-emittenti)
+[Refactor operatore ↔ emittente](/dev/work-done/refactor-operatore-emittenti)
 >
 Tabelle correlate:
 >
@@ -65,7 +65,7 @@ La tabella **`config.user_emittenti_fiscali`** definisce l'**ambito operativo** 
 * **Nessuna eliminazione finché l'utente Django è attivo** (trigger `trg_user_emittenti_fiscali_a10_guard_delete_dlt`). La riga può essere cancellata solo se `django.auth_user.is_active = false` (cessazione utente). Errore: `E_USER_EMITTENTE_DELETE_VIETATO`.
 * Override di manutenzione (entrambi i trigger): `SET LOCAL zeroerp.allow_lock_columns_override = 'on'` / `SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on'`.
 
-**Motivazione**: audit trail naturale. Ogni utente = una sola azienda, sempre. Per "trasferire" un dipendente da un emittente A a un emittente B, l'admin **disattiva l'utente** e **crea un nuovo account** legato a B. Vedi [refactor-operatore-emittenti §D3](/dev/work-in-progress/refactor-operatore-emittenti).
+**Motivazione**: audit trail naturale. Ogni utente = una sola azienda, sempre. Per "trasferire" un dipendente da un emittente A a un emittente B, l'admin **disattiva l'utente** e **crea un nuovo account** legato a B. Vedi [refactor-operatore-emittenti §D3](/dev/work-done/refactor-operatore-emittenti).
 
 ---
 
