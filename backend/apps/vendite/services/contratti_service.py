@@ -5,19 +5,24 @@
 # Scopo: Service facade per vendite.contratti + contratti_righe +
 #        contratti_utilities (CRUD v5 — F2-BE-05).
 #
-#        Il contratto rappresenta l'accordo cliente-listino con tre
-#        modalita' pricing (sviluppo-listini-v5 §5.3):
-#          A: listino + variazione globale
-#          B: listino + override righe
-#          C: interamente negoziato (nessun listino, tutte le righe
-#             devono avere prezzo_unitario)
+#        Modello contratto post refactor 2026-05-15: un unico tipo di
+#        contratto con due forme derivate (non scelte dall'operatore):
+#          - "con_listino"  : `listino_id` valorizzato. Le righe del listino
+#                             sono lette via resolver (versione fissata
+#                             all'attivazione). Le eccezioni vivono in
+#                             `contratti_righe` come OVERRIDE / ESCLUSIONE /
+#                             AGGIUNTA. Variazione globale opzionale.
+#          - "senza_listino": `listino_id` NULL. Tutte le righe sono AGGIUNTA
+#                             con prezzo manuale, governate dal contratto
+#                             stesso.
 #
 #        Validazioni in ordine crescente di costo:
 #          1) struttura payload (chiavi ammesse, tipi)
-#          2) coerenza modalita' pre-DB (listino_id / variazione globale)
+#          2) coerenza coppia variazione globale (tipo+valore entrambi
+#             NULL o entrambi NOT NULL)
 #          3) affidamento ai trigger DB per gli invarianti piu' complessi
-#             (overlap cross-contratto, tipo/classe utenza dinamica,
-#             attivazione modalita' C con righe incomplete).
+#             (overlap cross-contratto, tipo/classe utenza dinamica, lock
+#             post-attivazione, validita' versione listino fissata).
 #
 #        Il numero contratto e' generato nel service via
 #        `script.fn_generate_codice('contratto')` — NON va mai
@@ -46,12 +51,15 @@ from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
 from apps.vendite.db.contratti_repository import ContrattiRepository
+from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_overrides,
     resolve_emittente_sr_id_for_testata,
 )
 from apps.vendite.services._pricing_gate_helpers import (
     check_limite_variazione_globale,
+    guard_uom_id_positive,
+    resolve_or_check_override_prezzo,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,7 +90,13 @@ _ORDER_BY_CONTRATTI: frozenset[str] = frozenset({
 
 
 _AMBITI_VALIDI: frozenset[str] = frozenset({"COMMODITY", "COMMERCIO"})
-_TIPI_VARIAZIONE: frozenset[str] = frozenset({"PERCENTUALE", "VALORE_FISSO"})
+# Tipi variazione ammessi sulla variazione GLOBALE della testata contratto.
+# Decisione 2026-05-18 (§3-bis-E refactor): solo PERCENTUALE. VALORE_FISSO
+# resta ammesso unicamente per OVERRIDE su singola riga (semantica "prezzo
+# fisso sostitutivo per quell'articolo") — non per la testata, dove non
+# avrebbe significato applicativo coerente coi gate L2 % e con la formula
+# di applicazione cross-articolo del listino.
+_TIPI_VARIAZIONE_GLOBALE_AMMESSI: frozenset[str] = frozenset({"PERCENTUALE"})
 
 
 # Chiavi ammesse nel payload create testata. `numero` escluso: generato dal
@@ -469,9 +483,9 @@ class ContrattiService:
     # =================================================================
 
     # Scopo: Crea un nuovo contratto. Genera numero via fn_generate_codice,
-    #        risolve stato iniziale DRAFT, valida modalita' A/B/C pre-DB,
-    #        opzionalmente crea la riga utility 1:1 nella stessa
-    #        transazione (trigger DB gestira' fail-fast su coerenze
+    #        risolve stato iniziale DRAFT, valida coerenza coppia variazione
+    #        globale pre-DB, opzionalmente crea la riga utility 1:1 nella
+    #        stessa transazione (trigger DB gestira' fail-fast su coerenze
     #        dinamiche).
     def create_contratto(self, payload: dict[str, Any]) -> dict[str, Any]:
         self._v.reject_keys(
@@ -544,9 +558,9 @@ class ContrattiService:
         )
         self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_TESTATA, message=_MESSAGE)
 
-        # Leggiamo la testata esistente PRIMA di validare la modalita': serve
-        # al validator per sapere il listino_id corrente quando il payload
-        # patch non lo include (es. patch solo su variazione globale).
+        # Leggiamo la testata esistente PRIMA di validare la coppia variazione
+        # globale: serve al validator per sapere il listino_id corrente quando
+        # il payload patch non lo include (es. patch solo su variazione globale).
         existing = self._repo.get_contratto(contratto_id)
         ErrorManager.require(
             existing is not None,
@@ -670,9 +684,11 @@ class ContrattiService:
     #            operativa, stato = flag informativo eventualmente stantio".
     #        Per le altre transizioni (DRAFT->ATTIVO, ecc.) e per cessazioni
     #        senza valido_al, il flusso e' lineare (UPDATE stato + opzionale
-    #        PATCH valido_al). L'attivazione in modalita' C senza righe/prezzi
-    #        e' bloccata dal trigger DB trgfn_contratti_guard_modalita_c_
-    #        activation → traduciamo il P0001 in ServiceError parlante.
+    #        PATCH valido_al). L'attivazione di un contratto "senza_listino"
+    #        privo di righe AGGIUNTA e' bloccata dai trigger DB del refactor
+    #        2026-05-15 (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE, lock
+    #        post-attivazione su listino_versione_id): traduciamo i P0001
+    #        in ServiceError parlanti via `_KNOWN_DB_ERROR_MARKERS`.
     def cambia_stato(
         self,
         contratto_id: int,
@@ -840,20 +856,20 @@ class ContrattiService:
     # Righe contratto - preview pricing applicato
     # =================================================================
 
-    # Scopo: Restituisce le righe operative del contratto per modalita' A/B,
-    #        cioe' la lista articoli con prezzo finale applicato (variazione
-    #        globale o override). Per modalita' C ritorna lista vuota: in C
-    #        le righe vivono in `contratti_righe` e sono lette da list_righe.
+    # Scopo: Restituisce le righe operative del contratto in forma "con_listino",
+    #        cioe' la lista articoli con prezzo finale applicato (righe del
+    #        listino + eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA). Per forma
+    #        "senza_listino" ritorna lista vuota: in quel caso le righe
+    #        vivono solo in `contratti_righe` e sono lette da list_righe.
     #
     #        Il calcolo e' delegato a `repository.list_righe_preview` (single
-    #        SQL pass) che applica la stessa formula della funzione resolver
-    #        DB nello stadio CONTRATTO_LISTINO. Per modalita' A tutte le
-    #        righe hanno origine='DA_LISTINO'; per B alcune avranno
-    #        origine='OVERRIDE' (override esistente in contratti_righe).
+    #        SQL pass) che applica la stessa formula del resolver pricing.
+    #        Origini possibili: 'DA_LISTINO' (riga del listino senza eccezione),
+    #        'OVERRIDE' / 'ESCLUSIONE' / 'AGGIUNTA' (eccezione contrattuale).
     #
-    #        L'envelope include la testata sintetica (modalita', listino,
-    #        variazione globale) per permettere al FE di renderizzare il
-    #        banner contesto senza ulteriori chiamate.
+    #        L'envelope include la testata sintetica (forma, listino, versione
+    #        listino fissata, variazione globale) per permettere al FE di
+    #        renderizzare il banner contesto senza ulteriori chiamate.
     def list_righe_preview(self, contratto_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         contratto = self._repo.get_contratto(contratto_id)
@@ -950,9 +966,11 @@ class ContrattiService:
     # Righe contratto
     # =================================================================
 
-    # Scopo: Aggiunge una riga al contratto. Il trigger guard modalita' C
-    #        impone prezzo_unitario NOT NULL se contratto gia' ATTIVO in
-    #        modalita' C — gestito con traduzione P0001.
+    # Scopo: Aggiunge una riga al contratto. I trigger DB del refactor
+    #        2026-05-15 governano la coerenza dell'eccezione
+    #        (tipo_eccezione vs prezzo_unitario, AGGIUNTA non duplicabile su
+    #        articoli del listino, lock post-attivazione): traduzione P0001
+    #        via `_KNOWN_DB_ERROR_MARKERS`.
     def create_riga(
         self, contratto_id: int, payload: dict[str, Any],
         *, auth_user_id: int | None = None,
@@ -1235,65 +1253,20 @@ class ContrattiService:
         auth_user_id: int | None = None,
     ) -> list[dict[str, Any]]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
-        testata = self._repo.get_contratto(contratto_id)
-        ErrorManager.require(
-            testata is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Contratto non trovato.",
+        ctx = _load_contratto_context_for_pricing(
+            contratto_id, auth_user_id,
             function_name="contratti_service.preview_componenti_riga",
+            repo=self._repo,
         )
-        assert testata is not None
-
-        # Risoluzione emittente incapsulata: nessun accesso a membri privati
-        # dal caller (view). Precedenza emittente esplicito sulla testata >
-        # operatore. Solleva E_VENDITE_VALIDATION se nessuna sorgente.
-        emittente_sr_id = self._resolve_emittente_sr_id_for_contratto(
-            testata, auth_user_id,
-        )
-        ErrorManager.require(
-            emittente_sr_id is not None,
-            code=E_VENDITE_VALIDATION,
-            message=(
-                "Impossibile risolvere l'emittente fiscale per la preview "
-                "componenti contratto."
-            ),
-            function_name="contratti_service.preview_componenti_riga",
-        )
-        assert emittente_sr_id is not None
-
-        # Data riferimento: usiamo `valido_dal` del contratto. Il resolver
-        # bundle-aware cerca prezzi validi a quella data; coerente col fatto
-        # che il contratto e' una promessa contrattuale valida per il range.
-        valido_dal_raw = testata.get("valido_dal")
-        ErrorManager.require(
-            valido_dal_raw is not None,
-            code=E_VENDITE_VALIDATION,
-            message="valido_dal contratto obbligatorio per preview componenti.",
-            function_name="contratti_service.preview_componenti_riga",
-        )
-        assert valido_dal_raw is not None
-        data_riferimento = (
-            valido_dal_raw if isinstance(valido_dal_raw, date)
-            else date.fromisoformat(str(valido_dal_raw))
-        )
-
-        utility_id_raw = testata.get("utility_id")
-        ErrorManager.require(
-            utility_id_raw is not None,
-            code=E_VENDITE_VALIDATION,
-            message="Utility contratto obbligatoria per preview componenti.",
-            function_name="contratti_service.preview_componenti_riga",
-        )
-        assert utility_id_raw is not None
 
         return self._repo.preview_componenti_riga(
             articolo_id=str(articolo_id),
             uom_id=uom_operativa_id,
             quantita_padre=quantita,
-            data_riferimento=data_riferimento,
-            ba_id=testata.get("billing_account_id"),
-            utility_id=int(utility_id_raw),
-            emittente_soggetto_ruolo_id=emittente_sr_id,
+            data_riferimento=ctx["data_riferimento"],
+            ba_id=ctx["ba_id"],
+            utility_id=ctx["utility_id"],
+            emittente_soggetto_ruolo_id=ctx["emittente_sr_id"],
         )
 
     # Scopo: Lista componenti BoM di una riga padre composita contratto.
@@ -1487,7 +1460,9 @@ class ContrattiService:
     # Helpers privati — payload testata
     # =================================================================
 
-    # Scopo: Compone il dict di create testata validando campi e modalita'.
+    # Scopo: Compone il dict di create testata validando campi e coerenza
+    #        della coppia variazione globale (tipo+valore entrambi NULL o
+    #        entrambi NOT NULL).
     def _build_create_data_testata(self, payload: dict[str, Any]) -> dict[str, Any]:
         data: dict[str, Any] = {
             "billing_account_id": self._v.require_positive_int(
@@ -1523,14 +1498,9 @@ class ContrattiService:
         self._apply_optional_positive_int(
             payload, data, "listino_id", message=_MESSAGE,
         )
+        self._guard_listino_ha_versione_attiva(data.get("listino_id"))
         self._apply_variazione_globale(payload, data)
         self._validate_variazione_globale_coppia_coerente(data, existing=None)
-        # Snapshot categoria cliente: opzionale, nullable. Se fornito
-        # congela il valore scelto dall'operatore; se omesso il trigger
-        # DB lo popola dal BA.
-        self._apply_optional_positive_int(
-            payload, data, "categoria_cliente_id_snapshot", message=_MESSAGE,
-        )
         # Snapshot categoria cliente: opzionale, nullable. Se fornito
         # congela il valore scelto dall'operatore; se omesso il trigger
         # DB lo popola dal BA.
@@ -1543,12 +1513,13 @@ class ContrattiService:
                 data["meta"] = meta
         return data
 
-    # Scopo: Compone il dict di update testata. Rivalida modalita' con
-    #        la foto attuale (listino_id puo' cambiare liberamente in
-    #        DRAFT; il trigger attivazione re-bilancia su transizione).
-    #        `existing` e' la riga corrente dal DB: serve per calcolare la
-    #        modalita' effettiva quando il patch tocca solo una dimensione
-    #        (es. variazione globale senza listino_id nel payload).
+    # Scopo: Compone il dict di update testata. Rivalida coerenza coppia
+    #        variazione globale con la foto attuale (listino_id puo' cambiare
+    #        liberamente in DRAFT; il trigger attivazione fissa
+    #        `listino_versione_id` su transizione DRAFT -> ATTIVO).
+    #        `existing` e' la riga corrente dal DB: serve per applicare il
+    #        validator alla coppia effettiva quando il patch tocca solo una
+    #        dimensione (es. variazione globale senza listino_id nel payload).
     def _build_update_data_testata(
         self, payload: dict[str, Any], *, existing: dict[str, Any]
     ) -> dict[str, Any]:
@@ -1578,10 +1549,18 @@ class ContrattiService:
         self._apply_optional_positive_int(
             payload, data, "listino_id", message=_MESSAGE,
         )
+        # Gate listino selezionabile (decisione 2026-05-18 §4.4): se il PATCH
+        # cambia il listino_id (NULL o nuovo id), il listino deve avere almeno
+        # una versione ATTIVA. Skip se `listino_id` non e' nel patch (non
+        # vogliamo invalidare contratti gia' creati su listini che potrebbero
+        # essere stati chiusi in seguito — quello e' lock post-attivazione DB).
+        if "listino_id" in data:
+            self._guard_listino_ha_versione_attiva(data["listino_id"])
         self._apply_variazione_globale(payload, data)
-        # Valida modalita' sulla foto post-update merge (delta data + existing).
-        # Se il patch tocca una delle 3 dimensioni (listino o variazione),
-        # rivalida la coerenza combinando i campi presenti con lo stato corrente.
+        # Valida coerenza coppia variazione globale sulla foto post-update merge
+        # (delta data + existing). Se il patch tocca listino_id o una delle 2
+        # componenti della variazione, rivalida combinando i campi presenti
+        # con lo stato corrente.
         if (
             "listino_id" in data
             or "tipo_variazione_globale" in data
@@ -1619,8 +1598,9 @@ class ContrattiService:
         )
         return value
 
-    # Scopo: Estrae e applica la coppia (tipo/valore) variazione globale
-    #        nel data dict. Coerenza coppia validata in contesto modalita'.
+    # Scopo: Estrae e applica la coppia (tipo/valore) variazione globale nel
+    #        data dict. Coerenza coppia validata da
+    #        `_validate_variazione_globale_coppia_coerente`.
     def _apply_variazione_globale(
         self, payload: dict[str, Any], data: dict[str, Any]
     ) -> None:
@@ -1642,10 +1622,16 @@ class ContrattiService:
                 )
                 tipo = raw.strip().upper()
                 ErrorManager.require(
-                    tipo in _TIPI_VARIAZIONE,
+                    tipo in _TIPI_VARIAZIONE_GLOBALE_AMMESSI,
                     code=E_VENDITE_VALIDATION,
                     message=_MESSAGE,
-                    detail=f"tipo_variazione_globale deve essere uno tra: {', '.join(sorted(_TIPI_VARIAZIONE))}.",
+                    detail=(
+                        f"tipo_variazione_globale deve essere uno tra: "
+                        f"{', '.join(sorted(_TIPI_VARIAZIONE_GLOBALE_AMMESSI))}. "
+                        "VALORE_FISSO non e' ammesso sulla testata contratto: "
+                        "per prezzi fissi su singolo articolo usa una riga "
+                        "OVERRIDE."
+                    ),
                     context={"tipo_variazione_globale": tipo},
                 )
                 data["tipo_variazione_globale"] = tipo
@@ -1683,6 +1669,30 @@ class ContrattiService:
             valore_variazione=data["valore_variazione_globale"],
             function_name="contratti_service._check_limite_variazione_globale",
             ba_id=existing.get("billing_account_id"),
+        )
+
+    # Scopo: Gate selezionabilita' listino come riferimento contratto
+    #        (decisione 2026-05-18 §4.4 refactor-contratti-modalita).
+    #        Un listino senza versione ATTIVA non e' selezionabile: non
+    #        avrebbe righe da applicare e il contratto sarebbe formalmente
+    #        "con listino" ma operativamente vuoto. Skip se listino_id=None
+    #        (forma `senza_listino` legittima).
+    def _guard_listino_ha_versione_attiva(self, listino_id: int | None) -> None:
+        if listino_id is None:
+            return
+        ha_versione = ListiniRepository().has_versione_attiva(int(listino_id))
+        ErrorManager.require(
+            ha_versione,
+            code="E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA",
+            message=(
+                "Listino non selezionabile: nessuna versione ATTIVA."
+            ),
+            detail=(
+                f"Il listino_id={listino_id} non ha versioni in stato ATTIVA. "
+                "Solo listini con una versione pubblicata e attiva possono "
+                "essere associati a un contratto."
+            ),
+            context={"listino_id": listino_id},
         )
 
     # Scopo: Verifica coerenza della coppia variazione globale (tipo + valore).
@@ -1968,3 +1978,196 @@ class ContrattiService:
             function_name="contratti_service.db_error",
         )
         raise AssertionError("unreachable")  # pragma: no cover
+
+
+# ────────────────────────────────────────────────────────────────────────
+# Pricing per riga contratto — entry point + gate 3-livelli (BE 2.0)
+# ────────────────────────────────────────────────────────────────────────
+#
+# Simmetrico al pattern preventivi (`suggerisci_prezzo_riga` +
+# `_resolve_or_check_override_prezzo`). Le funzioni qui sotto NON sono
+# ancora cablate nei flussi `create_riga`/`update_riga` di
+# `ContrattiService`: il wiring avviene in BE 2.2 (introduzione delle
+# operazioni eccezione OVERRIDE/AGGIUNTA dove il prezzo manuale ha senso).
+# Esposte ora come BB testabile in isolamento.
+
+
+# Scopo: Suggerisce il prezzo unitario per una riga contratto, dato
+#        l'articolo, l'UoM e il contesto del contratto (BA, utility, data,
+#        emittente). Simmetrica a `preventivi_service.suggerisci_prezzo_riga`.
+#
+#        Differenze rispetto ai preventivi:
+#          - Data di riferimento: `valido_dal` del contratto (non `data`
+#            documento). Coerente con `preview_componenti_riga` e con la
+#            semantica "il contratto e' una promessa valida per il range
+#            valido_dal/valido_al".
+#          - Emittente: delegato a `resolve_emittente_sr_id_for_testata`
+#            (helper Fase H) che gestisce precedenza emittente esplicito
+#            sulla testata vs derivato da auth_user_id.
+#
+#        Solleva `E_VENDITE_VALIDATION` su input mancanti o non risolubili,
+#        `E_VENDITE_NOT_FOUND` su contratto inesistente, e propaga errori
+#        ServiceError dal `PricingService.resolve_prezzo` (es.
+#        `E_PREZZO_LISTINO_NON_TROVATO`).
+# Scopo: Helper module-level. Risolve il contesto di pricing per un
+#        contratto: lookup testata + emittente + validazione BA/utility/data,
+#        parsing `valido_dal` a `date`. Riusato da
+#        `contratti_suggerisci_prezzo_riga` (pricing singola riga) e da
+#        `ContrattiService.preview_componenti_riga` (pricing BoM components).
+#        Centralizza il pattern condiviso ed evita drift fra i due caller.
+#
+#        Ritorna dict con: `testata`, `ba_id`, `utility_id`,
+#        `emittente_sr_id`, `data_riferimento`.
+#
+#        Errori:
+#          - `E_VENDITE_NOT_FOUND` se contratto inesistente
+#          - `E_VENDITE_VALIDATION` se manca BA/utility/valido_dal o
+#            emittente non risolvibile
+def _load_contratto_context_for_pricing(
+    contratto_id: int,
+    auth_user_id: int | None,
+    *,
+    function_name: str,
+    repo: ContrattiRepository | None = None,
+) -> dict[str, Any]:
+    if repo is None:
+        repo = ContrattiRepository()
+    testata = repo.get_contratto(contratto_id)
+    ErrorManager.require(
+        testata is not None,
+        code=E_VENDITE_NOT_FOUND,
+        message="Contratto non trovato.",
+        function_name=function_name,
+    )
+    assert testata is not None
+
+    ba_id_raw = testata.get("billing_account_id")
+    ErrorManager.require(
+        ba_id_raw is not None,
+        code=E_VENDITE_VALIDATION,
+        message="Contratto senza billing_account: impossibile risolvere il prezzo.",
+        function_name=function_name,
+    )
+    utility_id_raw = testata.get("utility_id")
+    ErrorManager.require(
+        utility_id_raw is not None,
+        code=E_VENDITE_VALIDATION,
+        message="Contratto senza utility: impossibile risolvere il prezzo.",
+        function_name=function_name,
+    )
+    # Data di riferimento: `valido_dal` del contratto. Il resolver bundle-aware
+    # cerca prezzi/promo/categoria validi a quella data; coerente col fatto che
+    # il contratto e' una promessa contrattuale valida per il range.
+    valido_dal_raw = testata.get("valido_dal")
+    ErrorManager.require(
+        valido_dal_raw is not None,
+        code=E_VENDITE_VALIDATION,
+        message="Contratto senza valido_dal: impossibile risolvere il prezzo.",
+        function_name=function_name,
+    )
+    assert valido_dal_raw is not None
+    data_riferimento = (
+        valido_dal_raw if isinstance(valido_dal_raw, date)
+        else date.fromisoformat(str(valido_dal_raw))
+    )
+
+    # Emittente: precedenza emittente esplicito sulla testata > derivato
+    # dall'operatore (modello operatore-emittenti 1-a-1). Helper Fase H.
+    emittente_sr_id = resolve_emittente_sr_id_for_testata(
+        testata, auth_user_id,
+        repo_get_sr_id_by_fiscale_id=repo.get_emittente_sr_id_by_fiscale_id,
+    )
+    ErrorManager.require(
+        emittente_sr_id is not None,
+        code=E_VENDITE_VALIDATION,
+        message="Impossibile risolvere l'emittente fiscale per il pricing.",
+        function_name=function_name,
+    )
+    assert emittente_sr_id is not None
+
+    return {
+        "testata": testata,
+        "ba_id": int(ba_id_raw),
+        "utility_id": int(utility_id_raw),
+        "emittente_sr_id": emittente_sr_id,
+        "data_riferimento": data_riferimento,
+    }
+
+
+def contratti_suggerisci_prezzo_riga(
+    contratto_id: int,
+    *,
+    articolo_id: str,
+    uom_id: int,
+    auth_user_id: int | None,
+) -> dict[str, Any]:
+    from apps.vendite.services.pricing_service import PricingService
+
+    function_name = "contratti_service.contratti_suggerisci_prezzo_riga"
+
+    ErrorManager.require(
+        articolo_id is not None and str(articolo_id).strip() != "",
+        code=E_VENDITE_VALIDATION,
+        message="articolo_id obbligatorio.",
+        function_name=function_name,
+    )
+    guard_uom_id_positive(
+        uom_id, error_code=E_VENDITE_VALIDATION, function_name=function_name,
+    )
+
+    ctx = _load_contratto_context_for_pricing(
+        contratto_id, auth_user_id, function_name=function_name,
+    )
+
+    result = PricingService().resolve_prezzo(
+        articolo_id=str(articolo_id),
+        uom_id=int(uom_id),
+        data_riferimento=ctx["data_riferimento"],
+        ba_id=ctx["ba_id"],
+        utility_id=ctx["utility_id"],
+        emittente_soggetto_ruolo_id=ctx["emittente_sr_id"],
+    )
+
+    # Normalizzazione Decimal/date → string per stabilita' JSON (coerente
+    # con preventivi_service.suggerisci_prezzo_riga).
+    def _normalize(v: Any) -> Any:
+        if isinstance(v, Decimal):
+            return str(v)
+        if isinstance(v, date):
+            return v.isoformat()
+        return v
+
+    return {k: _normalize(v) for k, v in result.items()}
+
+
+# Scopo: Orchestratore 3 gate prezzo (L1+L2+L3) per riga contratto.
+#        Thin wrapper sul BB `_pricing_gate_helpers.resolve_or_check_override_prezzo`,
+#        simmetrico al wrapper omonimo di `preventivi_service`. Cabla
+#        direttamente `contratti_suggerisci_prezzo_riga` come resolver_fn
+#        (la signature e' gia' quella attesa dal BB) + il codice errore di
+#        validazione del dominio (`E_VENDITE_VALIDATION`).
+#
+#        NON ancora cablata in `create_riga`/`update_riga`: il wiring
+#        avviene in BE 2.2 quando vengono introdotte le operazioni eccezione
+#        OVERRIDE/AGGIUNTA dove il prezzo manuale e' rilevante.
+def resolve_or_check_override_prezzo_riga_contratto(
+    *,
+    testata: dict[str, Any],
+    articolo_id: Any,
+    uom_id: Any,
+    payload_prezzo: Any,
+    auth_user_id: int | None,
+    function_name: str,
+    richiesta_approvazione: bool = False,
+) -> tuple[Any, dict[str, Any] | None]:
+    return resolve_or_check_override_prezzo(
+        testata=testata,
+        articolo_id=articolo_id,
+        uom_id=uom_id,
+        payload_prezzo=payload_prezzo,
+        auth_user_id=auth_user_id,
+        function_name=function_name,
+        resolver_fn=contratti_suggerisci_prezzo_riga,
+        error_code_validazione=E_VENDITE_VALIDATION,
+        richiesta_approvazione=richiesta_approvazione,
+    )

@@ -99,7 +99,7 @@ Eseguire come Admin (Scenario 1 prerequisito).
    - Junior → bind a `OPERATORE_PRICING_JUNIOR`
    - Senior → bind a `OPERATORE_PRICING_SENIOR`
 5. **Verifica**: login come Junior → la sidebar non mostra "Approvazioni prezzo"
-   (azione 10 OFF); modifica prezzo riga preventivo → 403 `E_PREV_OVERRIDE_NON_AUTORIZZATO`.
+   (azione 10 OFF); modifica prezzo riga preventivo → 403 `E_PRICING_OVERRIDE_NON_AUTORIZZATO`.
    Login come Senior → "Approvazioni prezzo" visibile e modifica prezzo riga OK.
 
 ### Scorciatoie ammesse
@@ -195,14 +195,14 @@ Eseguire come Admin (Scenario 1 prerequisito).
 
 - [X] Login Senior (ha `prezzo_override_manuale`) → modifica prezzo riga
 - [X] Verifica `meta.origine_prezzo='MANUALE'` + audit completo (FE non visibile, da DB)
-- [X] Login operatore SENZA `prezzo_override_manuale` → tentativo override → errore 403 `E_PREV_OVERRIDE_NON_AUTORIZZATO`
+- [X] Login operatore SENZA `prezzo_override_manuale` → tentativo override → errore 403 `E_PRICING_OVERRIDE_NON_AUTORIZZATO`
 
 ### 2.3 L2 limiti hint
 
 - [X] Riapri drawer riga: hint "Variazione prezzo ammessa: sconto fino al 10%, maggiorazione fino al 5%" sotto il campo prezzo
 - [X] Hint visibile in IT e in EN (switch lingua)
 - [X] Imposta sconto 8% (entro limite) → save OK
-- [X] Imposta sconto 25% (oltre limite) → banner inline `E_PREV_SCONTO_ECCESSIVO`
+- [X] Imposta sconto 25% (oltre limite) → banner inline `E_PRICING_SCONTO_ECCESSIVO`
   - [X] Detail mostra "Sconto richiesto: 25.00% — massimo ammesso: 10%."
   - [X] Pulsante "Richiedi approvazione" attivo
 
@@ -395,7 +395,7 @@ Funziona quindi senza translator dedicato lato service.
 - [ ] EMETTI → ACCETTA → push commessa: **3 righe** in `commesse_attivita`
 - [ ] Test gating L1 (operatore Junior senza `prezzo_override_manuale`):
   - Tenta override prezzo componente nel Dialog → 403
-    `E_PREV_OVERRIDE_NON_AUTORIZZATO`
+    `E_PRICING_OVERRIDE_NON_AUTORIZZATO`
 - [ ] Test guard prezzo 0 obbligatorio: in EDIT panel, modifica
   `ART-CTR-OBB1` a €0 + bottone Save → bottone disabled FE +
   defense-in-depth BE/DB solleva `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO`
@@ -505,7 +505,7 @@ Funziona quindi senza translator dedicato lato service.
 
 - [ ] Login Junior (NO `approva_prezzo_override`)
 - [ ] Apri preventivo in BOZZA, aggiungi riga con prezzo a sconto 25% (oltre limite L2 10%)
-- [ ] Save normale → banner inline `E_PREV_SCONTO_ECCESSIVO`, pulsante "Richiedi approvazione" attivo
+- [ ] Save normale → banner inline `E_PRICING_SCONTO_ECCESSIVO`, pulsante "Richiedi approvazione" attivo
 - [ ] Click "Richiedi approvazione" → toast success "Richiesta approvazione inviata"
 - [ ] Drawer si chiude, lista righe mostra **Tag warn "In approvazione"** sotto il prezzo
 - [ ] Tooltip badge: "Riga in attesa di approvazione (pratica #N)"
@@ -580,7 +580,7 @@ Setup: utente con livello area `vendite` LETTURA, `amministrazione` = BLOCCATO.
 - [ ] Drawer riga: tutti i campi grigi (prop `readonly` + `useInjectReadonly`), DrawerFooter con solo "Chiudi"/"X"
 - [ ] Sub-drawer BoM: nessun pulsante "Aggiungi", "Chiudi riga", "Duplica" visibile
 - [ ] Banner info BoM immutabile NON visibile (è UX per editor)
-- [ ] `/vendite/approvazioni-prezzo/` lista visibile (LETTURA), ma click Approva → 403 `E_PREV_OVERRIDE_NON_AUTORIZZATO` (manca `approva_prezzo_override`)
+- [ ] `/vendite/approvazioni-prezzo/` lista visibile (LETTURA), ma click Approva → 403 `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (manca `approva_prezzo_override`)
 
 ### 6.2 Area Amm. Software bloccata (route guard)
 

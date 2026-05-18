@@ -81,6 +81,11 @@ const previewMeta = ref(null)
 const previewRighe = ref([])
 const previewLoading = ref(false)
 
+// Righe espanse nel DataTable (bundle padre → figli annidati). Pattern
+// uniforme con preventivi (PreventiviRigheTable.vue). PrimeVue v-model
+// espone l'oggetto indicizzato per data-key. Stato locale, non persistito.
+const expandedRows = ref({})
+
 // === Contesto pricing contratto (FE 2.2) ===
 // Mutuato dal pattern preventivi `getContestoPricing`. Espone forma, listino
 // + versione fissata (post-attivazione) o corrente (DRAFT), variazione,
@@ -144,6 +149,38 @@ const pageActions = computed(() => [
     command: onNew,
   },
 ])
+
+// Scopo: vero se la riga è un bundle composito con almeno un componente
+// figlio. Discrimina il chevron expander: visibile solo sui bundle.
+// `componenti` è il jsonb_agg dei figli ritornato dalla funzione DB
+// `vendite.fn_contratto_righe_preview` (migration 20260516-04).
+function hasBundleComponenti(row) {
+  return row?.is_composito === true
+    && Array.isArray(row?.componenti)
+    && row.componenti.length > 0
+}
+
+// Scopo: stato espansione corrente della riga. v-model:expandedRows
+// PrimeVue indicizza per data-key value.
+function isExpanded(row) {
+  const key = row?._row_key
+  if (key == null) return false
+  return Object.prototype.hasOwnProperty.call(expandedRows.value, key)
+}
+
+// Scopo: toggle espansione di una singola riga. Pattern uniforme con
+// PreventiviRigheTable (set/delete chiave nell'oggetto).
+function toggleExpansion(row) {
+  const key = row?._row_key
+  if (key == null) return
+  const next = { ...expandedRows.value }
+  if (Object.prototype.hasOwnProperty.call(next, key)) {
+    delete next[key]
+  } else {
+    next[key] = true
+  }
+  expandedRows.value = next
+}
 
 // Scopo: classe CSS sulla riga DataTable. In readonly (permessi LETTURA o
 // contratto post-DRAFT) tutte le righe sono visualmente readonly. In edit
@@ -685,6 +722,7 @@ function origineSeverity(origine) {
       <DataTable
         :value="righeView"
         v-model:selection="selectedRow"
+        v-model:expanded-rows="expandedRows"
         :loading="previewLoading"
         selection-mode="single"
         :data-key="isSenzaListino ? 'id' : '_row_key'"
@@ -700,6 +738,18 @@ function origineSeverity(origine) {
         removable-sort
         @row-select="onRowSelect"
       >
+        <!-- Expander custom per bundle BoM: chevron visibile solo dove la
+             riga è padre composito con figli (componenti JSONB non vuoto).
+             @click.stop evita che il click apra anche il form di edit. -->
+        <Column v-if="!isSenzaListino" style="width: 2.5rem;" :exportable="false">
+          <template #body="{ data }">
+            <Button v-if="hasBundleComponenti(data)"
+              :icon="isExpanded(data) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
+              text rounded size="small"
+              v-tooltip.top="t('contratti.componenti_bundle_tooltip')"
+              @click.stop="toggleExpansion(data)" />
+          </template>
+        </Column>
         <Column field="articolo_codice" :header="t('contratti.col_articolo')" sortable style="width: 150px;" />
         <Column field="articolo_descrizione" :header="t('contratti.col_descrizione')" sortable />
         <Column :header="t('contratti.col_uom')" style="width: 80px;">
@@ -744,6 +794,27 @@ function origineSeverity(origine) {
             <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
           </template>
         </Column>
+        <!-- Sub-tabella componenti BoM: padre + figli annidati (pattern
+             uniforme con PreventiviRigheTable). I figli arrivano già
+             aggregati nel JSONB `componenti` dalla funzione DB
+             `vendite.fn_contratto_righe_preview` — niente API extra. -->
+        <template #expansion="{ data }">
+          <div style="padding: 0.25rem 0 0.5rem 2rem; background: var(--app-table-stripe-bg);">
+            <DataTable :value="data.componenti" class="app-datatable" striped-rows>
+              <Column field="componente_codice" :header="t('contratti.componente_codice')" style="width: 140px;" />
+              <Column field="componente_descrizione" :header="t('contratti.componente_descrizione')" />
+              <Column :header="t('contratti.componente_uom')" style="width: 80px;">
+                <template #body="{ data: c }">{{ c.uom_codice ?? '—' }}</template>
+              </Column>
+              <Column :header="t('contratti.componente_coeff_qta')" style="width: 100px;">
+                <template #body="{ data: c }">{{ formatNumber(c.coeff_qta, { placeholder: '—', maximumFractionDigits: 4 }) }}</template>
+              </Column>
+              <Column :header="t('contratti.componente_prezzo')" style="width: 120px;">
+                <template #body="{ data: c }">{{ formatCurrency(c.prezzo, { placeholder: '—', maximumFractionDigits: 6 }) }}</template>
+              </Column>
+            </DataTable>
+          </div>
+        </template>
       </DataTable>
 
       <!-- === DETAIL: form inserimento/modifica === -->

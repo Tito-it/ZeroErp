@@ -61,7 +61,7 @@ Il workflow è composto da:
   - Transizione pratica APERTA → CHIUSA via `pratiche_service.cambia_stato_pratica`
   - INSERT nota INTERNA: `"Approvato override prezzo. {nota}"` (oppure default)
 - Errori:
-  - `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403) — utente senza azione `approva_prezzo_override`. **Defense-in-depth**: check eseguito PRIMA del lookup riga (no leak su esistenza)
+  - `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403) — utente senza azione `approva_prezzo_override`. **Defense-in-depth**: check eseguito PRIMA del lookup riga (no leak su esistenza)
   - `E_PREV_RIGA_NOT_FOUND` (404) — riga inesistente
   - `E_APPROVAZIONE_PREZZO_NON_AMMESSA` (409) — riga non in stato `PENDING` o senza pratica collegata (stato inconsistente)
 
@@ -153,7 +153,7 @@ Il workflow è composto da:
 | `RIGA_NON_LINKATA` | `meta.riga_preventivo_id` assente (pratica legacy o crash post-create_riga) | Bottoni disabilitati + tooltip i18n `approvazioni_prezzo.reason_riga_non_linkata` |
 
 - Errori:
-  - `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403) — utente non autenticato
+  - `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403) — utente non autenticato
   - `E_APPROVAZIONE_PREZZO_NON_AMMESSA` (409) — admin globale senza emittente assegnato (la coda è multi-tenant per emittente; admin globale deve usare `cerca_pratiche` generico per cross-tenant)
 
 ---
@@ -165,7 +165,7 @@ Il workflow è composto da:
 | `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` | 409 | Trigger DB su transizione preventivo → ACCETTATO con righe PENDING |
 | `E_RIGA_PREZZO_PENDENTE` | 409 | Trigger DB su modifica struttura riga PENDING |
 | `E_APPROVAZIONE_PREZZO_NON_AMMESSA` | 409 | Service: riga non PENDING, senza pratica, oppure approver senza emittente |
-| `E_PREV_OVERRIDE_NON_AUTORIZZATO` | 403 | Auth: utente non autenticato o senza `approva_prezzo_override` |
+| `E_PRICING_OVERRIDE_NON_AUTORIZZATO` | 403 | Auth: utente non autenticato o senza `approva_prezzo_override` |
 
 ## Riferimenti
 

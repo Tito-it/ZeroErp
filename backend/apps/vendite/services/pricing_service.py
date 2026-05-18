@@ -55,8 +55,8 @@ PARAM_MAX_MAGGIORAZIONE_PCT = "VENDITE_MAX_MAGGIORAZIONE_PCT"
 
 # Codici errore L2 che il FE intercetta per banner inline (vs toast standard).
 L2_ERROR_CODES = (
-    "E_PREV_SCONTO_ECCESSIVO",
-    "E_PREV_MAGGIORAZIONE_ECCESSIVA",
+    "E_PRICING_SCONTO_ECCESSIVO",
+    "E_PRICING_MAGGIORAZIONE_ECCESSIVA",
 )
 # Codice generico per errori di dominio sollevati dal resolver DB.
 # Il chiamante trova il codice DB originale in `detail` (es.

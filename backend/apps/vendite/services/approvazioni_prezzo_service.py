@@ -329,7 +329,7 @@ def lista_coda(
 ) -> dict[str, Any]:
     ErrorManager.require(
         auth_user_id is not None,
-        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+        code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
         message="Lista coda approvazioni richiede utente autenticato.",
         function_name=f"{_FN}.lista_coda",
     )
@@ -477,7 +477,7 @@ def _check_permesso_approva_prezzo(
 ) -> None:
     ErrorManager.require(
         auth_user_id is not None,
-        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+        code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
         message="Operazione approvazione richiede utente autenticato.",
         function_name=function_name,
     )
@@ -488,7 +488,7 @@ def _check_permesso_approva_prezzo(
     abilitato = PermissionResolver.check_azione(user, AZIONE_PROCESSO)
     ErrorManager.require(
         abilitato,
-        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+        code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
         message=f"Permesso '{AZIONE_PROCESSO}' richiesto.",
         detail=f"Chiedi all'amministratore di abilitare l'azione '{AZIONE_PROCESSO}'.",
         function_name=function_name,
@@ -602,7 +602,7 @@ def _get_user(auth_user_id: int):
         return user_model.objects.get(pk=auth_user_id)
     except user_model.DoesNotExist:
         ErrorManager.raise_error(
-            code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+            code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
             message="Utente non trovato.",
             detail=f"auth_user_id={auth_user_id}",
             function_name=f"{_FN}._get_user",

@@ -26,8 +26,8 @@ import { registerUserScopedResetter } from '../../core/pinia-plugins/auto-reset'
 // standard). Allineati con apps/vendite/services/pricing_service.L2_ERROR_CODES.
 // Freeze per prevenire mutazioni accidentali.
 const L2_ERROR_CODES = Object.freeze([
-  'E_PREV_SCONTO_ECCESSIVO',
-  'E_PREV_MAGGIORAZIONE_ECCESSIVA',
+  'E_PRICING_SCONTO_ECCESSIVO',
+  'E_PRICING_MAGGIORAZIONE_ECCESSIVA',
 ])
 
 const _DEFAULT = { max_sconto_pct: '0', max_maggiorazione_pct: '0' }

@@ -266,6 +266,29 @@ class ListiniRepository:
             )
             return row_to_dict(cursor)
 
+    # Scopo: Verifica se un listino ha almeno una versione in stato ATTIVA
+    #        attualmente. Usato dal `contratti_service` come gate pre-save
+    #        per impedire l'associazione di un contratto a un listino che
+    #        non ha versioni operative (decisione 2026-05-18: solo listini
+    #        con versione ATTIVA sono selezionabili come riferimento
+    #        contrattuale). Single round-trip via EXISTS.
+    def has_versione_attiva(self, listino_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                      FROM vendite.listini_versioni v
+                     WHERE v.listino_id = %s
+                       AND v.stato = 'ATTIVA'
+                       AND v.attivo IS TRUE
+                ) AS has_active
+                """,
+                [listino_id],
+            )
+            row = cursor.fetchone()
+            return bool(row[0]) if row else False
+
     # Scopo: Inserisce il listino usando solo colonne write ammesse.
     def create_listino(self, data: dict[str, Any]) -> int:
         insert_parts = _prepare_insert_parts(
@@ -597,9 +620,10 @@ class ListiniRepository:
     #        listino con `attivo = TRUE`, `valido_dal < nuova.valido_dal`, e la
     #        cui `validita` (daterange) si sovrappone al nuovo intervallo. La
     #        versione che si sta per attivare viene esclusa per id. Il filtro
-    #        si basa sulla validita` (data-driven), mai sullo stato persistito:
-    #        lo stato e` un flag informativo che potrebbe essere stantio, la
-    #        data e` la fonte di verita` operativa (principio fail-safe).
+    #        si basa sulla validita` E sullo stato 'ATTIVA' (regola §6 brief
+    #        2026-05-16): l'autoclose tocca solo versioni operative. Le BOZZA
+    #        in cantiere si cancellano manualmente, non si chiudono per
+    #        scadenza (sono preparazione, non versione operativa).
     def find_versioni_per_autoclose(
         self,
         listino_id: int,
@@ -618,6 +642,7 @@ class ListiniRepository:
                  WHERE listino_id = %s
                    AND id <> %s
                    AND attivo IS TRUE
+                   AND stato = 'ATTIVA'
                    AND valido_dal < %s
                    AND validita && daterange(%s, NULL, '[)')
                  ORDER BY valido_dal
@@ -989,13 +1014,12 @@ class ListiniRepository:
             "AND upper(v.validita) <= CURRENT_DATE + %(giorni)s * INTERVAL '1 day'"
         )
 
-    # Scopo: Lista versioni operativamente attive oggi che scadono entro `giorni`
+    # Scopo: Lista versioni operativamente ATTIVE oggi che scadono entro `giorni`
     #        e non hanno una versione successiva (BOZZA o operativa) che subentra.
-    #        Filtri data-driven: "operativamente attiva oggi" = `validita @> CURRENT_DATE`.
-    #        Lo stato persistito non viene usato come discriminante (principio
-    #        fail-safe: data = fonte di verita`, stato = solo flag informativo
-    #        eventualmente stantio). BOZZA e` l'unico stato ammesso come "successore
-    #        che subentrera`" perche` monotono e non soggetto a drift.
+    #        Filtro operativo: stato='ATTIVA' + `validita @> CURRENT_DATE` (regola
+    #        §6 brief 2026-05-16: la BOZZA e' preparazione, non versione operativa,
+    #        quindi non genera alert di scadenza). Per il "successore che
+    #        subentrera`" sono ammesse sia BOZZA sia operative future.
     def listini_in_scadenza(self, giorni: int) -> list[dict[str, Any]]:
         filtro_scadenza = self._filter_versioni_in_scadenza()
         with connection.cursor() as cursor:
@@ -1017,6 +1041,7 @@ class ListiniRepository:
                   LEFT JOIN config.utilities u ON u.id = l.utility_id
                  WHERE v.validita @> CURRENT_DATE
                    AND v.attivo IS TRUE
+                   AND v.stato = 'ATTIVA'
                    AND l.attivo IS TRUE
                    AND {filtro_scadenza}
                    AND NOT EXISTS (

@@ -318,7 +318,7 @@ Lo stesso meccanismo dei preventivi si applica agli override/variazioni del
 contratto. Un operatore che tenta di inserire un prezzo OVERRIDE (o una
 variazione globale) passa per tre gate:
 
-- **L1 — Permesso "ritocca prezzi"**: se l'utente non ha questo permesso,
+- **L1 — Permesso "variare prezzi"**: se l'utente non ha questo permesso,
   il campo variazione e le azioni di override/esclusione/aggiunta sono
   disabilitati in UI e il BE rifiuta in PATCH.
 - **L2 — Soglia**: il delta rispetto al prezzo suggerito dal resolver non può
