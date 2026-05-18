@@ -5,7 +5,7 @@
 > attuale del modello, non lo storico delle decisioni.
 >
 > Per il razionale del refactor e le decisioni di modello vedi
-> [`refactor-contratti-modalita.md`](/dev/work-in-progress/refactor-contratti-modalita).
+> [`refactor-contratti-modalita.md`](/dev/work-done/refactor-contratti-modalita).
 > Per il contratto HTTP delle API vedi [`api_contratti.md`](api_contratti.md).
 
 ## 1. Cos'e' un contratto
@@ -228,5 +228,5 @@ Il livello categoria viene alimentato dai service di dominio passando
 - [api_contratti.md](api_contratti.md) — contratto HTTP completo
 - [api_preventivi.md](api_preventivi.md) — pattern simmetrico (snapshot riga)
 - [fn_resolve_prezzo_listino_v2](../../../dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2) — resolver DB
-- [refactor-contratti-modalita](/dev/work-in-progress/refactor-contratti-modalita) — decisioni di modello
+- [refactor-contratti-modalita](/dev/work-done/refactor-contratti-modalita) — decisioni di modello
 - [catalogo-building-block-backend](../../../dev/backend/catalogo-building-block-backend) — sezione "Vendite — Gate autorizzazioni prezzi" per il BB `_pricing_gate_helpers`

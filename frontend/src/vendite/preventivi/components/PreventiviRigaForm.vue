@@ -559,6 +559,7 @@ async function handleRichiediApprovazione() {
     <div class="form-field">
       <label>{{ t('preventivi.riga_articolo') }} <span v-if="!isEdit">*</span></label>
       <ArticoloLookup :model-value="articoloObj" :disabled="isEdit"
+        :filtri="{ soloComponenti: 'escludi' }"
         :placeholder="t('preventivi.riga_cerca_articolo')" @select="onArticoloSelect" />
     </div>
 

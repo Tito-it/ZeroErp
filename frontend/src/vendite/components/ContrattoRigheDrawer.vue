@@ -13,11 +13,14 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useNotify } from '../../core/composables/useNotify'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
+import { useLimitiPricing } from '../composables/useLimitiPricing'
 import { PRICING_ACTIONS } from '../constants'
+import { extractApiError, extractApiErrorCode } from '../../core/utils/apiError'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency, formatNumber } from '../../core/utils/format'
@@ -50,8 +53,16 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 const { t } = useI18n()
 const store = useContrattiStore()
 const { execute, loading } = useApiHandler()
+const notify = useNotify()
 const { confirmDelete, confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
+
+// L2 autorizzazioni prezzi: codici BE che il drawer intercetta per mostrare
+// un banner inline invece del toast standard, con CTA "Richiedi approvazione"
+// (workflow L3 cablato 2026-05-19 BE porting gate riga contratti). Riusato
+// elenco da `useLimitiPricing` per coerenza col pattern preventivi.
+const { L2_ERROR_CODES } = useLimitiPricing()
+const l2Error = ref(null)
 
 // Gate L1 azioni di riga "variare prezzi" (label UX): decisione 2026-05-18.
 // Codename DB stabile `prezzo_override_manuale`. La gate vale per le azioni
@@ -325,6 +336,13 @@ watch(
       componentiDialogVisible.value = false
     }
   },
+)
+
+// Reset banner L2 se l'utente modifica prezzo o articolo: segnale di retry
+// con contesto potenzialmente diverso. Pattern identico a PreventiviRigaForm.
+watch(
+  () => [form.value.prezzo_unitario, form.value.articolo_id],
+  () => { if (l2Error.value) l2Error.value = null },
 )
 
 // Riapertura manuale (revisione) — bottone "Modifica componenti" sotto al
@@ -609,7 +627,12 @@ const formTitle = computed(() => {
 })
 
 // === Salvataggio ===
-async function onSave() {
+
+// Scopo: centralizza la costruzione del payload usato da onSave e da
+//        onRichiediApprovazione. `extra` permette di iniettare il flag
+//        opt-in `richiesta_approvazione: true` per il retry workflow L3
+//        senza duplicare la build.
+function buildRigaPayload(extra = {}) {
   const f = form.value
   const payload = {
     tipo_erogazione: f.tipo_erogazione || null,
@@ -617,10 +640,10 @@ async function onSave() {
     qta_operativa: f.qta_operativa != null ? String(f.qta_operativa) : '1',
     uom_operativa_id: f.uom_operativa_id || null,
     ordine: f.ordine != null ? Number(f.ordine) : null,
+    ...extra,
   }
   if (formMode.value === 'create') {
     payload.articolo_id = f.articolo_id
-    // Refactor modalita 2026-05-15: tipo_eccezione obbligatorio in create.
     payload.tipo_eccezione = f.tipo_eccezione || 'OVERRIDE'
     // ESCLUSIONE: BE rifiuta prezzo non-null. Forziamo null per safety.
     if (payload.tipo_eccezione === 'ESCLUSIONE') {
@@ -628,30 +651,69 @@ async function onSave() {
     }
     // Modello unificato BoM 2026-05-13: includi `componenti_overrides`
     // se l'articolo e' composito e la Dialog ha prodotto overrides delta.
-    // Il BE auto-init i componenti nella stessa transazione di `create_riga`.
     if (articoloObj.value?.is_composito === true
         && componentiPayload.value?.overrides) {
       payload.componenti_overrides = componentiPayload.value.overrides
     }
-    const result = await execute(
-      () => store.addRiga(props.contrattoId, payload),
-      { successMessage: t('contratti.riga_creata') }
-    )
-    if (result !== null) {
-      if (!isSenzaListino.value) await loadPreview()
-      emit('changed')
-      closeForm()
+  }
+  return payload
+}
+
+function submitRiga(payload) {
+  return formMode.value === 'create'
+    ? store.addRiga(props.contrattoId, payload)
+    : store.updateRiga(props.contrattoId, rigaEditId.value, payload)
+}
+
+// Scopo: salva riga intercettando specificamente i codici L2
+//        (E_PRICING_SCONTO_ECCESSIVO / E_PRICING_MAGGIORAZIONE_ECCESSIVA)
+//        per mostrare un banner inline con CTA "Richiedi approvazione"
+//        (workflow L3 cablato 2026-05-19) invece del toast standard.
+//        Tutti gli altri errori passano per il pattern standard.
+async function onSave() {
+  l2Error.value = null
+  const successMessage = formMode.value === 'create'
+    ? t('contratti.riga_creata') : t('contratti.riga_salvata')
+
+  loading.value = true
+  try {
+    await submitRiga(buildRigaPayload())
+    notify.success(successMessage)
+    if (!isSenzaListino.value) await loadPreview()
+    emit('changed')
+    closeForm()
+  } catch (err) {
+    const code = extractApiErrorCode(err)
+    if (L2_ERROR_CODES.includes(code)) {
+      l2Error.value = {
+        code,
+        message: extractApiError(err, t('contratti.errore_generico')),
+        detail: err?.response?.data?.error?.detail || '',
+      }
+    } else {
+      notify.error(extractApiError(err, t('contratti.errore_generico')))
     }
-  } else {
-    const result = await execute(
-      () => store.updateRiga(props.contrattoId, rigaEditId.value, payload),
-      { successMessage: t('contratti.riga_salvata') }
-    )
-    if (result !== null) {
-      if (!isSenzaListino.value) await loadPreview()
-      emit('changed')
-      closeForm()
-    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// Scopo: ri-tenta il save aggiungendo flag richiesta_approvazione=true
+//        (workflow L3). Il BE crea pratica APPROVAZIONE_PREZZO e salva la
+//        riga in PENDING invece di sollevare. Toast esplicito.
+async function onRichiediApprovazione() {
+  l2Error.value = null
+  loading.value = true
+  try {
+    await submitRiga(buildRigaPayload({ richiesta_approvazione: true }))
+    notify.success(t('contratti.richiesta_approvazione_inviata'))
+    if (!isSenzaListino.value) await loadPreview()
+    emit('changed')
+    closeForm()
+  } catch (err) {
+    notify.error(extractApiError(err, t('contratti.errore_generico')))
+  } finally {
+    loading.value = false
   }
 }
 
@@ -950,6 +1012,7 @@ function origineSeverity(origine) {
               v-model="form.articolo_obj"
               @update:modelValue="onArticoloSelected"
               :disabled="formMode === 'edit' || form.tipo_eccezione !== 'AGGIUNTA'"
+              :filtri="{ soloComponenti: 'escludi' }"
               :placeholder="t('contratti.select_articolo')"
             />
           </div>
@@ -1058,6 +1121,31 @@ function origineSeverity(origine) {
             :tab-entity="TAB_ENTITIES.CONTRATTO"
             @changed="emit('changed')" />
         </template>
+
+        <!-- Banner inline L2: visibile quando il save ha sollevato un codice
+             E_PRICING_SCONTO_ECCESSIVO / E_PRICING_MAGGIORAZIONE_ECCESSIVA.
+             Mostra il messaggio BE + CTA "Richiedi approvazione" che retry
+             il save con `richiesta_approvazione=true` (workflow L3 cablato
+             2026-05-19). Pattern identico a PreventiviRigaForm. -->
+        <Message v-if="l2Error" severity="warn" :closable="false">
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <strong>{{ l2Error.message }}</strong>
+            <small v-if="l2Error.detail">{{ l2Error.detail }}</small>
+            <div>
+              <Button
+                :label="loading
+                  ? t('contratti.richiedi_approvazione_in_corso')
+                  : t('contratti.richiedi_approvazione')"
+                icon="pi pi-send"
+                size="small"
+                severity="secondary"
+                :loading="loading"
+                v-tooltip.bottom="t('contratti.richiedi_approvazione_tooltip')"
+                @click="onRichiediApprovazione"
+              />
+            </div>
+          </div>
+        </Message>
 
         <div class="app-drawer-footer">
           <Button :label="t('common.cancel')" severity="secondary" @click="closeForm" />

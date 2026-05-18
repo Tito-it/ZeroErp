@@ -4,7 +4,7 @@
 >
 > **Scope**: rivedere il modello UX/dominio della scelta "modalità A/B/C" sui
 > contratti. Non riguarda i bug puntuali — quelli stanno in
-> [`recap-contratti-post-componenti.md`](recap-contratti-post-componenti.md)
+> [`recap-contratti-post-componenti.md`](../work-in-progress/recap-contratti-post-componenti.md)
 > e possono essere fixati prima di o dopo questo refactor.
 >
 > **Premessa**: l'osservazione di Tid (2026-05-15) — "scegliere la modalità è
@@ -663,7 +663,7 @@ Trigger di avvio: chiusura step DB 1.2 (`fn_get_parameter_full` con
 | **BE 1.1** | ✅ | Gate L2 propaga `categoria_cliente_id` recuperato dal BA. Lookup spostato post-early-return (superuser bypass non spreca query) | service | DB 1.2 chiuso | `preventivi_service.py` (`_check_limite_variazione_prezzo`, `_resolve_or_check_override_prezzo`) |
 | **BE 1.2** | ✅ | `PricingLimitiUtenteView` accetta `billing_account_id` opzionale; deriva categoria via `BillingAccountRepository.get_categoria_cliente_id` (nuovo BB) | api | DB 1.2 chiuso | `views_pricing.py`, `parameter_service.py`, `parameter_repository.py`, `billing_account_repository.py` |
 | **BE 1.3** | ✅ | +6 test mirati: `test_get_parameter_passes_categoria_cliente`, `test_get_defaults_passes_categoria_cliente`, `test_limiti_utente_senza_ba_categoria_none`, `test_limiti_utente_con_ba_propaga_categoria`, `test_limiti_utente_ba_malformato_ignorato`, `test_gestisci_riga_L2_propaga_categoria_cliente` + assert "no lookup BA su superuser bypass". 2393/2393 verdi. | test | BE 1.1 + BE 1.2 | `tests/services/test_parameter_service.py`, `tests/api/test_pricing_api.py`, `tests/services/test_preventivi_service.py` |
-| **FE 1.1** | ⏳ | Chiamata `PricingLimitiUtenteView` aggiornata con `billing_account_id`; banner mostra la soglia corretta in funzione della categoria | UI preventivi | BE 1.2 | `frontend/src/vendite/preventivi/` (componente banner L2) |
+| **FE 1.1** | ✅ | Chiamata `PricingLimitiUtenteView` con `billing_account_id` (composable `useLimitiPricing` cache per-BA) + banner soglia con copy condizionale "su questo cliente" se BA presente (2026-05-18) | UI preventivi | BE 1.2 | `useLimitiPricing.js`, `PreventiviRigaForm.vue` |
 | **DOC 1.1** | ✅ | `api_preventivi.md` sezione L2 con cascata estesa + `api_pricing.md` query param `billing_account_id` + catalogo BB aggiornato (ParameterService + nuovo `get_categoria_cliente_id`) | doc | BE 1.1 + BE 1.2 | `docs/it/backend/vendite/manual/api_preventivi.md`, `api_pricing.md`, `docs/it/dev/backend/catalogo-building-block-backend.md` |
 
 **Note di completamento BE (2026-05-15)**:
@@ -673,7 +673,8 @@ Trigger di avvio: chiusura step DB 1.2 (`fn_get_parameter_full` con
 - Optimization: lookup BA→categoria avviene dentro `_check_limite_variazione_prezzo` dopo gli early-return (superuser, delta=0, resolver nullo) per non sprecare round-trip DB su gate inattivi
 - `list_parameters_for_user` (admin UI overview parametri) **non esteso** in questa fase: la fn DB `script.fn_list_parameters_for_user` non riceve `categoria_cliente_id`. Estendere quando emergerà necessità admin di filtrare per categoria
 
-Stima Fase 1 (BE+FE+DOC): 1-2 sessioni. **BE+DOC chiusi**, resta FE.
+Stima Fase 1 (BE+FE+DOC): 1-2 sessioni. **Tutto chiuso 2026-05-18** (FE 1.1
+implementato + raffinamento copy condizionale BA).
 
 ### 5.2 FASE 2 — Workstream BE/FE contratti (refactor unificato)
 
@@ -699,7 +700,7 @@ Possono partire alla chiusura della Fase 1 DB, indipendenti dalla Fase 2 DB.
 | Step | Stato | Lavoro | Area | Prerequisito | File principali |
 | --- | --- | --- | --- | --- | --- |
 | **BE 2.1** | ✅ | Rimozione logica gating modalità: `_validate_modalita_coerente` eliminato; `list_righe_preview` non deriva più A/B/C ma restituisce forma `con_listino` / `senza_listino`. Cleanup docstring obsolete + rimozione duplicazione `categoria_cliente_id_snapshot` (apply chiamato 2 volte in `_build_create_data_testata`). | service | DB 2.1 | `contratti_service.py` |
-| **FE 2.1** | ⏳ | Rimozione SelectButton A/B/C; sezione "Pricing" semplificata in "Listino opzionale" + "Variazione globale opzionale" (gated permesso); badge `derivedModalita` readonly post-save | UI contratti | BE 2.1 | `ContrattoDrawer.vue` |
+| **FE 2.1** | ✅ | SelectButton A/B/C rimosso; sezione "Pricing" semplificata (Listino opzionale + Variazione globale solo PERCENTUALE post 2026-05-18 §3-bis-E); badge `forma_derivata` readonly post-save; lookup Listino sostituito da endpoint dedicato filtrato su versione ATTIVA | UI contratti | BE 2.1 | `ContrattoDrawer.vue` |
 
 #### 5.2.4 Dipendenti da DB step 2.2 (tipo_eccezione su contratti_righe)
 
@@ -751,30 +752,46 @@ Possono partire alla chiusura della Fase 1 DB, indipendenti dalla Fase 2 DB.
 massimizzare la parallelizzazione: i workstream non in catena di dipendenza vengono
 avviati appena il loro prerequisito DB è chiuso.
 
+**Consuntivo (2026-05-19): chiuso end-to-end in 5 sessioni** (15-16, 17, 18, 19 maggio,
++1 sessione DB simmetria L3). Tutti gli step BE/FE/DOC ✅ — vedi §7.1–§7.9 per il
+dettaglio cronologico.
+
 ---
 
 ## 6. Stato di questo documento
 
-- ✅ **REFACTOR COMPLETATO** — DB + BE + DOC chiusi. FE Fase 2 (drawer + UX
-  eccezioni + banner) resta da fare. Vedi §7 per riepilogo attività svolte.
+- ✅ **REFACTOR COMPLETATO end-to-end (2026-05-19)** — DB + BE + FE + DOC tutti
+  chiusi. Vedi §7.1–§7.8 per il riepilogo cronologico delle attività svolte.
 - ✅ **CHIUSE le decisioni di modello, UX e schema**: §3 e §3-bis contengono tutte le scelte
   definitive.
 - ✅ **CHIUSI dettagli implementativi minori (2026-05-18)**:
   - §3-bis-E: `VALORE_FISSO` **vietato come variazione globale** (solo OVERRIDE riga).
     Implementato + test.
   - §4.4: listino **senza versione ATTIVA non selezionabile** — guard pre-save BE
-    e codice errore parlante. Filtro FE lookup ancora open (brief DB minore).
+    e codice errore parlante. Filtro FE lookup chiuso 2026-05-18 con endpoint dedicato
+    `GET /api/v1/vendite/lookup/listini-selezionabili-contratto/` (no brief DB
+    necessario: la logica e' BE+FE pura sopra `EXISTS listini_versioni`).
   - Nome permesso: **"variare prezzi"** (label UX/doc). Il codename DB resta
     `prezzo_override_manuale` per stabilità del binding.
-- Il recap [`recap-contratti-post-componenti.md`](recap-contratti-post-componenti.md) resta
-  valido per i bug puntuali. Il fix #1 (BE derivazione modalità) può essere fatto prima per
-  sbloccare il sintomo immediato, oppure assorbito direttamente nel refactor.
+- ✅ **CHIUSO debito tecnico §7.6 (2026-05-19)**: porting gate L1+L2+L3 sulle
+  righe contratto in `create_riga`/`update_riga` + workflow L3 (richiesta
+  approvazione, pratica APPROVAZIONE_PREZZO, endpoint approva/rifiuta dedicati
+  righe contratto, CTA FE "Richiedi approvazione" su ContrattoRigheDrawer).
+  Service `approvazioni_prezzo_service` reso sorgente-agnostico via
+  `_SORGENTE_CONFIG`. Vedi §7.8 + §7.9.
+- Il recap [`recap-contratti-post-componenti.md`](../work-in-progress/recap-contratti-post-componenti.md)
+  e' **obsoleto post-refactor**: le 3 modalità A/B/C non esistono piu' come
+  scelta utente (sostituite da forma derivata `con_listino`/`senza_listino`).
+  I bug logici §3.1–§3.4 del recap sono stati assorbiti dal refactor (BE
+  derivazione naturale via `c.listino_id`, FE row actions non piu' bloccate
+  su DA_LISTINO grazie a Opzione C, default prop rimosso). Le decisioni di
+  dominio §4 del recap sono state chiuse in §3-bis di questo doc.
 - **Out-of-scope di questo refactor**: relazione preventivo↔contratto e dominio offerta
   commerciale. Il flusso `push_a_commessa` per i preventivi resta intatto; il contratto
   continua a nascere direttamente dall'operatore. Il modello §3-bis-A (snapshot della
   versione listino) è preparato per ricevere in futuro un push da un'eventuale entità
   `offerta_commerciale`, ma non la richiede oggi. Per il ragionamento di dominio e le
-  opzioni considerate vedi [`Analisi-iniziale-offerta-commerciale.md`](Analisi-iniziale-offerta-commerciale.md).
+  opzioni considerate vedi [`Analisi-iniziale-offerta-commerciale.md`](../work-in-progress/Analisi-iniziale-offerta-commerciale.md).
 - Documenti prodotti:
   - ✅ [`brief-db-refactor-contratti-completo.md`](brief-db-refactor-contratti-completo.md)
     — brief DB completo Fase 1 + Fase 2 a step incrementali, per passaggio al team DB su
@@ -790,14 +807,14 @@ avviati appena il loro prerequisito DB è chiuso.
     ~80% fra `preventivi_service` e `contratti_service`; ora entrambi i service
     importano dal BB. Censito in [catalogo BB](../backend/catalogo-building-block-backend.md)
     sezione "Vendite — Gate autorizzazioni prezzi"
-- **Debito tecnico residuo aperto**: i 3 gate (L1 + L2 + L3) sulle righe contratto
-  (`contratti_service.create_riga` / `update_riga`) NON sono ancora invocati. Il BB
-  e' pronto e simmetrico al pattern preventivi, ma la chiamata nei caller contratti
-  va aggiunta in sessione dedicata "porting gate riga contratti" (richiede:
-  determinare il prezzo del resolver per AGGIUNTA fuori-listino vs OVERRIDE su listino;
-  workflow L3 simmetrico ai preventivi; test gate L1/L2/L3 per le righe contratto).
-  Oggi i prezzi delle righe contratto sono accettati come dichiarati dall'operatore
-  con il solo CHECK DB di coerenza prezzo/tipo_eccezione.
+- ✅ **Debito tecnico §7.6 CHIUSO (2026-05-19)**: i 3 gate (L1 + L2 + L3) sulle
+  righe contratto sono invocati in `contratti_service.create_riga` /
+  `update_riga` via helper `_apply_pricing_gate_riga` (refactor + estrazione
+  duplicazione). Decisione di dominio applicata: **Alternativa B**
+  (OVERRIDE → L1+L2+L3 sempre; AGGIUNTA → L1 sempre, L2/L3 condizionali al
+  resolver; ESCLUSIONE → skip totale). Workflow L3 simmetrico ai preventivi
+  via `approvazioni_prezzo_service` sorgente-agnostico (`_SORGENTE_CONFIG`).
+  Endpoint approva/rifiuta dedicati `/righe-contratto/<id>/...`. Dettagli §7.8.
 - Da produrre durante l'esecuzione:
   - ✅ **`modello-contratti.md`** prodotto in `docs/it/backend/vendite/manual/` — reference
     del modello unificato + glossario (§9)
@@ -1010,3 +1027,35 @@ AGGIUNTA → L1 sempre, L2/L3 condizionali al resolver; ESCLUSIONE → skip).
   con matrice tipo_eccezione → gate + endpoint approva/rifiuta contratto;
   `catalogo-building-block-backend.md` con nuove fn sorgente-agnostiche +
   `_SORGENTE_CONFIG` / `_update_riga_workflow`.
+
+### 7.9 Attività svolte (2026-05-19) — chiusura FE 2.3 CTA Richiedi approvazione
+
+Chiusura UX simmetrica al pattern preventivi (`PreventiviRigaForm.vue`).
+Lo schema FE è ora completo end-to-end: un OVERRIDE/AGGIUNTA che viola L2
+mostra banner inline con bottone "Richiedi approvazione" che retry il save
+con `richiesta_approvazione=true` (BE crea pratica + riga PENDING).
+
+- **`ContrattoRigheDrawer.vue`**:
+  - `buildRigaPayload({extra}={})` centralizza la build del payload (usata
+    da onSave e da onRichiediApprovazione)
+  - `onSave` intercetta i codici L2 (`E_PRICING_SCONTO_ECCESSIVO`,
+    `E_PRICING_MAGGIORAZIONE_ECCESSIVA`) via `extractApiErrorCode` e
+    setta `l2Error.value` invece del toast standard (gli altri errori
+    restano sul toast generico)
+  - `onRichiediApprovazione` rilancia il save con `richiesta_approvazione=true`
+    e mostra toast esplicito sulla riuscita
+  - Watch reset di `l2Error` su cambio prezzo/articolo
+  - Template: `<Message v-if="l2Error">` con CTA `<Button>` "Richiedi
+    approvazione" + spinner durante il retry
+  - Import nuovi: `useNotify`, `useLimitiPricing` (riusa `L2_ERROR_CODES`),
+    `extractApiError`/`extractApiErrorCode`
+
+- **i18n** (it + en): 5 chiavi `contratti.*` mutuate da `preventivi.*`:
+  `richiedi_approvazione`, `richiedi_approvazione_in_corso`,
+  `richiedi_approvazione_tooltip`, `richiesta_approvazione_inviata`,
+  `errore_generico`.
+
+Test/Build: BE 2423/2423 verdi, build vite verde 1.03s. Refactor di
+deduplicazione fra preventivi e contratti possibile in futuro (oggi
+i due Vue replicano lo stesso pattern; quando emergera' un terzo
+caller, valutare l'estrazione in composable `useL2RetryWorkflow`).

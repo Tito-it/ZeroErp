@@ -32,7 +32,7 @@ da quel momento la versione e' **immutabile** (Profilo A), e cambi del
 listino non si propagano al contratto. Le eccezioni sono blindate in
 ogni fase.
 
-Riferimento: [refactor-contratti-modalita.md](/dev/work-in-progress/refactor-contratti-modalita) §3-bis-A/A-schema.
+Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-modalita) §3-bis-A/A-schema.
 
 ## Contesto
 
@@ -271,6 +271,29 @@ per routing FE corretto degli endpoint approva/rifiuta. La coda
 sorgenti (preventivi + contratti); ogni item include `sorgente` per
 permettere alla UI ApprovazioniPrezzoListView di dispatchare al path
 corretto.
+
+**Integrazione FE** (`ContrattoRigheDrawer.vue`, simmetrico a
+`PreventiviRigaForm.vue`):
+
+- Il save normale (`onSave`) intercetta specificamente i codici
+  `E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA` e
+  mostra un banner inline (no toast) con la CTA "Richiedi approvazione".
+- Il click sulla CTA invoca `onRichiediApprovazione` che ri-tenta il save
+  aggiungendo `richiesta_approvazione: true` al payload. In caso di
+  riuscita la riga e' salvata in `PENDING` e l'operatore riceve un toast
+  esplicito. Eventuali errori del retry tornano sul toast standard.
+- Per le righe gia' in `PENDING` il trigger DB `_a10_guard_pending_upd`
+  blocca ogni modifica struttura: la UI mostra la pratica nella coda
+  approvazioni dell'admin (vedi sopra) — l'operatore deve attendere
+  l'esito o chiedere all'approver di rifiutare per riprovare.
+
+Per i 3 tipi `tipo_eccezione`:
+
+- `OVERRIDE` su articolo del listino → workflow completo (L1+L2+L3)
+- `AGGIUNTA` fuori-listino → workflow attivo solo se il resolver trova
+  comunque una base prezzo (matrice categoria_cliente_listino o promo).
+  Senza base, il prezzo manuale e' accettato sotto L1 senza confronto.
+- `ESCLUSIONE` → workflow non applicabile (prezzo NULL per design).
 
 ### Contesto pricing `GET /api/v1/vendite/contratti/<id>/contesto-pricing/`
 

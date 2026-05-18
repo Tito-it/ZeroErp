@@ -556,4 +556,4 @@ che segue.
 *Per il dettaglio tecnico delle API REST, formati payload e codici errore vedi
 [API Contratti](/backend/vendite/manual/api_contratti). Per le decisioni di modello
 del refactor vedi
-[refactor-contratti-modalita](/dev/work-in-progress/refactor-contratti-modalita).*
+[refactor-contratti-modalita](/dev/work-done/refactor-contratti-modalita).*

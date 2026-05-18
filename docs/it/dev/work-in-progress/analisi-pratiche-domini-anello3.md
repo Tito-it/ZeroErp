@@ -294,17 +294,22 @@ Esempio: l'handler `PushPreventivoOrdineHandler` crea l'ordine e deve
 lasciare nel giornale un evento `DOMINIO_ORDINE_CREATO` con
 `meta = {"ordine_id": ..., "preventivo_id": ..., "anno_serie_numero": ...}`.
 
-Due opzioni di design (da validare nel primo caso d'uso reale):
+Due opzioni di design considerate:
 
 | Opzione | Come | Pro | Contro |
 | --- | --- | --- | --- |
 | Estendere tipi evento giornale | Aggiungere voci a `config.tipi_eventi_giornale` (se esiste) o enum equivalente | Tutto in `pratiche.giornale`, una sola query temporale | I tipi crescono per dominio (proliferazione) |
 | Helper service `pratiche_service.log_evento_dominio()` | Wrapper applicativo che fa INSERT in giornale con tipo `DOMINIO_<EVENTO>` libero e meta strutturato | Nessun seed nuovo per ogni evento | I tipi non sono whitelist, validazione solo applicativa |
 
-**Decisione differita**: questa scelta esce dal disegno generico, va presa
-durante l'integrazione vendite quando si scrive il primo handler che produce
-eventi di dominio. Il vincolo: la decisione si prende **dopo** aver visto i
-primi 3-4 eventi reali, non prima.
+**Decisione presa** (2026-05-18, default conservativo): il primo brief
+operativo (Fase B) userà l'**helper applicativo libero**
+`pratiche_service.log_evento_dominio(pratica_id, flusso_id, tipo_evento,
+meta)`, con tipo evento testuale convenzionato (`DOMINIO_ORDINE_CREATO`,
+`DOMINIO_PREVENTIVO_ACCETTATO`, ...). Nessuna whitelist DB iniziale. Se dopo
+i primi 3-4 eventi reali emerge il bisogno di vincoli a schema (raise su
+tipo sconosciuto, dropdown filtri, ecc.) si promuove a tabella di
+configurazione `config.tipi_eventi_giornale` come secondo passo non
+breaking.
 
 ### 3.3 Eventi cross-dominio: convenzione di scrittura
 
@@ -535,8 +540,31 @@ integrazione:
   che non esiste).
 - Il motore pratiche v2 non subisce modifiche infrastrutturali. Le aggiunte
   sono solo dati (seed `tipi_prestazione`, `template_flussi`,
-  `handler_flussi`, `regole_generazione`) + handler Python in `apps/vendite/`
-  + funzioni DB nuove in `vendite.*`.
+  `handler_flussi`, `regole_generazione`), handler Python in `apps/vendite/`
+  e funzioni DB nuove in `vendite.*`.
+
+### 5.7 Lifecycle congiunto pratica ↔ preventivo (decisione 2026-05-18)
+
+**Default conservativo**: nessuna propagazione automatica fra stati di
+pratica e stati di preventivo/ordine.
+
+Concretamente:
+
+- Se la pratica VENDITA viene annullata mentre il preventivo è EMESSO o
+  ACCETTATO, il preventivo **non viene annullato in cascata**. La pratica
+  va in ANNULLATA, il preventivo conserva il suo stato. Il legame in
+  `pratiche_sorgenti` resta come storico (giornale visibile da entrambi i
+  lati).
+- Se il preventivo viene annullato dal PreventivoDrawer mentre la pratica è
+  ancora APERTA, il flusso `PREVENTIVAZIONE` non si chiude in automatico:
+  l'operatore vede in dashboard il flusso aperto con il preventivo
+  ANNULLATO e decide come procedere (es. nuova rev, oppure annullamento
+  pratica manuale).
+
+Eventuali propagazioni esplicite (es. dialog "annullando la pratica vuoi
+annullare anche il preventivo?") sono **passi UX** del frontend, non trigger
+DB. Si valutano caso per caso quando emergono. Il principio: il DB protegge
+l'integrità, l'operatore decide la propagazione di processo.
 
 ---
 
@@ -580,7 +608,33 @@ Convenzione: `pratiche.ext_<concetto>`. Esempio: `ext_appuntamento`,
 `ext_sopralluogo`. Mai `ext_<entita_di_dominio>` (es. `ext_preventivo` è
 sconsigliato — il preventivo è già `vendite.preventivi`, non duplicarlo).
 
-### 6.6 Codici errore `E_*`
+**Criterio quantitativo di promozione da `meta JSONB` a `ext_*`** (decisione
+2026-05-18):
+
+| Dati propri della pratica nel contesto del legame | Soluzione |
+| --- | --- |
+| 0-1 colonne | `pratiche_sorgenti.meta` o `flussi.meta` JSONB |
+| 2-3 colonne occasionali | Ancora `meta`, ma con commento esplicito sulla struttura attesa |
+| 4+ colonne con vincoli a schema (UNIQUE, CHECK, FK, indici di ricerca) | Promozione a `pratiche.ext_<concetto>` (tabella nuova) |
+
+La promozione richiede sempre un secondo caso d'uso identico (manifesto §7).
+Per il caso vendite (preventivi+ordini) **non si introduce alcun `ext_*`**:
+i dati specifici stanno in `meta` finché un secondo dominio non chiede la
+stessa struttura.
+
+### 6.6 Granularità competenze flussi (decisione 2026-05-18)
+
+`pratiche.competenze_flussi` (matrice operatore × template_flusso × reparto,
+già operativa nella dashboard v2) si **seeda manualmente** dall'admin via
+endpoint CRUD esistente. Niente derivazione automatica da ruolo operatore
+nella prima integrazione.
+
+Motivazione: il modello "competenza derivata da ruolo" introduce un secondo
+livello di astrazione (ruolo → set di template) che oggi non ha un secondo
+caso d'uso identico oltre vendite. Si valuta dopo aver visto il secondo
+consumatore di pratiche, in coerenza con manifesto §7.
+
+### 6.7 Codici errore `E_*`
 
 Convenzione: `E_<DOMINIO>_<CONDIZIONE>`. Esempi:
 
@@ -592,7 +646,7 @@ I codici si registrano in `config.messaggi_errore.csv` come da convenzione
 esistente. Errori del motore pratiche stanno con prefisso `E_PRATICHE_*` o
 `E_FLUSSI_*`, errori del dominio chiamante con prefisso del dominio.
 
-### 6.7 Convenzione `meta` JSONB cross-record
+### 6.8 Convenzione `meta` JSONB cross-record
 
 Quando lo stesso concetto compare in `meta` JSONB di tabelle diverse, usare
 la stessa chiave:
@@ -613,72 +667,26 @@ WHERE meta->>'ordine_id' = '...'`.
 
 ---
 
-## 7. Domande aperte (decisioni di modello — da chiudere per primo brief DB)
+## 7. Decisioni prese (sintesi 2026-05-18)
 
-### 7.1 Lifecycle congiunto pratica ↔ preventivo
+Tutte le decisioni di modello sono chiuse a default conservativo, ognuna
+documentata nella sezione operativa di pertinenza. Tabella riassuntiva per
+navigazione veloce:
 
-Caso tipico: pratica VENDITA in CONFERMA_VENDITA, preventivo in ACCETTATO.
-Domanda: se l'operatore annulla la pratica, cosa succede al preventivo
-agganciato?
+| Tema | Decisione | Rif. |
+| --- | --- | --- |
+| Push commessa | Sorgente più a valle: da ordine se esiste, altrimenti da preventivo. `fn_list_preventivi_da_pushare` esclude i preventivi con ordine collegato | §5.4 |
+| Scope pratica | Tutto il processo avviene nella pratica (`RICHIESTA_CLIENTE` prima del preventivo + `CONFERMA_VENDITA` come bivio) | §5.2 |
+| Conversione preventivo→ordine | Azione configurabile via `handler_params` del template `CONFERMA_VENDITA` | §5.3 |
+| Lifecycle congiunto pratica↔preventivo | Nessuna propagazione automatica di stati. Propagazioni esplicite restano in UX, non in trigger DB | §5.7 |
+| Soglia `ext_*` | `meta JSONB` per 0-3 colonne; promozione a `pratiche.ext_<concetto>` solo a 4+ colonne con vincoli a schema e secondo caso d'uso identico | §6.5 |
+| Competenze flussi | Seed manuale via admin/CRUD. Derivazione automatica da ruolo non in v1, valutata al secondo consumatore | §6.6 |
+| Eventi di dominio nel giornale | Helper applicativo `pratiche_service.log_evento_dominio(...)` con tipo testuale convenzionato. Promozione a whitelist `config.tipi_eventi_giornale` solo dopo 3-4 eventi reali | §3.2 |
+| Aggancio pratica↔preventivo | `pratiche_sorgenti` (M:N esistente), non `ext_preventivo` | §2.4 |
+| Secondo consumatore validante motore | Da scegliere tra assistenza, acquisti, CRM in base alle priorità di business. Non bloccante per Fase B | §8.6 |
 
-- Opzione (a): nessuna propagazione. La pratica si annulla, il preventivo
-  resta accettato/evaso. Il legame in `pratiche_sorgenti` resta come storico.
-- Opzione (b): propagazione configurata. Se il preventivo era EMESSO non
-  ancora accettato, l'annullo pratica può proporre "annullare anche il
-  preventivo?". Decisione operatore, non automatica.
-
-Default proposto: (a). La propagazione esplicita è uno step in più nel
-flusso, non un trigger.
-
-### 7.2 Quando emerge `ext_preventivo`
-
-Oggi non ne abbiamo bisogno per il caso vendite (§2.4). Ma se, scrivendo il
-brief operativo, emerge che servono almeno 3 colonne strutturate proprie
-della pratica nel contesto preventivo (oltre al puntatore in
-`pratiche_sorgenti`), si valuta l'introduzione.
-
-Criterio quantitativo:
-
-| Dati propri della pratica-preventivo | Soluzione |
-| --- | --- |
-| 0-1 | `pratiche_sorgenti.meta` JSONB |
-| 2-3 | Ancora `meta`, ma con commento esplicito sulla struttura attesa |
-| 4+ con vincoli a schema (UNIQUE, CHECK, FK) | `ext_preventivo` (nuova tabella) |
-
-### 7.3 Promozione del motore a "contratto stabile"
-
-Manifesto §7 + caso di studio mappa: pratiche diventa contratto stabile solo
-dopo **due consumatori reali**. La domanda concreta: chi è il secondo?
-
-Candidati noti (mappa, WIP):
-
-- **Assistenza/ticketing**: pianificato in `crm-ticketing-pratiche.md`,
-  pattern già descritto, ma sviluppo non avviato. Potrebbe diventare il
-  secondo consumatore "naturale".
-- **Acquisti**: stub backend, dominio sostanzialmente vergine.
-- **CRM**: futuro indipendente, citato in `crm-ticketing-pratiche.md` §CRM.
-
-La scelta è di priorità di business, non tecnica. Tecnicamente, qualunque dei
-tre serve allo scopo.
-
-### 7.4 Eventi di dominio nel giornale: opzione tecnica
-
-Decisione di §3.2 (estendere tipi evento vs helper applicativo). Da prendere
-in sede di brief operativo, dopo aver visto i primi 3-4 eventi reali
-emergenti da vendite.
-
-### 7.5 Granularità competenze e dashboard
-
-La dashboard pratiche v2 (`PraticheDashboard.vue` + `competenze_flussi`)
-mostra coda lavoro 3 livelli. Aggancio vendite: l'operatore commerciale vede
-in coda i flussi `RICHIESTA_CLIENTE`/`PREVENTIVAZIONE`/`CONFERMA_VENDITA` per
-cui ha competenza. Le competenze si seedano in `pratiche.competenze_flussi`.
-
-Domanda aperta: serve un meccanismo di **competenza derivata da ruolo
-operatore** (es. tutti gli operatori del reparto commerciale → competenza
-automatica) o si gestisce a mano? Decisione differita al brief operativo;
-default proposto = manuale (admin seeda le competenze) finché un secondo
-caso non lo chiede.
+Tutte le decisioni sono **revedibili** alla fase di validazione (Fase E,
+§8.5) se l'uso reale mostra divergenza dai default.
 
 ---
 
@@ -788,12 +796,12 @@ fase F il motore si può promuovere a contratto stabile.
 | --- | --- | --- |
 | §1 Inquadramento | Stabile | — |
 | §2 Tre pattern | Stabile (pattern A e B operativi, C in attesa di caso reale) | — |
-| §3 Giornale backbone | In parte stabile, §3.2 da chiudere su caso reale | Differita a Fase B |
+| §3 Giornale backbone | Chiusa a default (helper applicativo) | Validazione Fase E |
 | §4 Configurabilità | Stabile | — |
-| §5 Caso vendite | Proposta, da validare con Tid | Review → Fase B |
-| §6 Convenzioni | Proposta | Si consolida dopo §8.5 |
-| §7 Domande aperte | Aperto | Chiusura prima di Fase B |
-| §8 Roadmap | Proposta | Conferma Tid |
+| §5 Caso vendite | Decisioni 2026-05-18 chiuse a default | Fase B brief DB |
+| §6 Convenzioni | Decisioni 2026-05-18 chiuse a default | Si consolida dopo §8.5 |
+| §7 Decisioni prese | Sintesi 2026-05-18 | Revisione a Fase E |
+| §8 Roadmap | Approvata | Avvio Fase B su OK Tid |
 
 ---
 

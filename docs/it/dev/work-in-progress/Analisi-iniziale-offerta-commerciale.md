@@ -7,7 +7,7 @@
 > (proposta di transazione puntuale).
 >
 > **Origine**: sessione 2026-05-15 nel contesto del refactor contratti
-> ([`refactor-contratti-modalita.md`](refactor-contratti-modalita.md)). Discutendo il
+> ([`refactor-contratti-modalita.md`](../work-done/refactor-contratti-modalita.md)). Discutendo il
 > modello prezzi dei preventivi (snapshot riga-per-riga) vs contratti (snapshot della
 > versione listino, decisione §3-bis-A) è emersa la domanda: "ma forse il preventivo più
 > che in un contratto dovrebbe andare in un'offerta commerciale o sbaglio?". Questo doc
@@ -247,7 +247,7 @@ Queste sono le domande aperte che (c) richiede di chiudere:
 
 ## 8. Riferimenti incrociati
 
-- [`refactor-contratti-modalita.md`](refactor-contratti-modalita.md) — refactor contratti
+- [`refactor-contratti-modalita.md`](../work-done/refactor-contratti-modalita.md) — refactor contratti
   corrente; questa analisi è uscita dalla sua §3-bis-A
 - [`recap-contratti-post-componenti.md`](recap-contratti-post-componenti.md) — recap bug
   contratti post-componenti, contesto operativo
