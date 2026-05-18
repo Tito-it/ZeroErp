@@ -27,7 +27,7 @@
 >   RoundingModeSelect, RowActionsMenu, useReadonlyMode, useGlobalLookup).
 > - `docs/it/dev/work-done/frontend/guida-sviluppo-frontend.md` - convenzioni
 >   Vue, store, API client.
-> - `docs/it/dev/work-in-progress/refactor-operatore-emittenti.md` - evoluzione
+> - `docs/it/dev/work-done/refactor-operatore-emittenti.md` - evoluzione
 >   rapporto operatore/emittente e multi-face auth.
 > - `docs/it/dev/work-in-progress/permessi-e-autorizzazioni-v3.md` - modello
 >   autorizzativo.

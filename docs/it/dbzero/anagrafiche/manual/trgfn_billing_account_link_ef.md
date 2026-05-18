@@ -4,7 +4,7 @@
 
 Trigger function `AFTER INSERT` su `anagrafiche.billing_account` che, dopo la creazione di un BA, **collega automaticamente** il BA all'emittente fiscale dell'operatore corrente, popolando `anagrafiche.emittenti_fiscali_billing_account` con un mapping specifico.
 
-Introdotto dal refactor del 2026‑04‑08 (sezione 2.4 del [WIP](/dev/work-in-progress/refactor-operatore-emittenti)) per rendere deterministico e immediato il legame BA → emittente, eliminando la dipendenza dal "default globale" come meccanismo principale (che resta come **rete di sicurezza**).
+Introdotto dal refactor del 2026‑04‑08 (sezione 2.4 del [WIP](/dev/work-done/refactor-operatore-emittenti)) per rendere deterministico e immediato il legame BA → emittente, eliminando la dipendenza dal "default globale" come meccanismo principale (che resta come **rete di sicurezza**).
 
 ## Schema
 
@@ -59,4 +59,4 @@ EXECUTE FUNCTION anagrafiche.trgfn_billing_account_link_ef();
 
 * [`anagrafiche.trgfn_billing_account_guard_admin_globale`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_admin_globale) — gemello `BEFORE INSERT`
 * [`anagrafiche.emittenti_fiscali_billing_account`](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — tabella di mapping
-* [Refactor operatore ↔ emittente](/dev/work-in-progress/refactor-operatore-emittenti)
+* [Refactor operatore ↔ emittente](/dev/work-done/refactor-operatore-emittenti)

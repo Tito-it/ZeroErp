@@ -15,7 +15,7 @@ interno; il BE traduce gli errori SQL nelle policy HTTP standard
 > **Vedi anche**
 >
 > - [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
-> - [refactor operatore-emittenti — Fase 1](/dev/work-in-progress/refactor-operatore-emittenti) — vincolo `UNIQUE(auth_user_id)` su `user_emittenti_fiscali`
+> - [refactor operatore-emittenti — Fase 1](/dev/work-done/refactor-operatore-emittenti) — vincolo `UNIQUE(auth_user_id)` su `user_emittenti_fiscali`
 > - [fn_get_user_emittenti_scope](/dbzero/script/funzioni/fn_get_user_emittenti_scope) — vista dichiarativa dello stato corrente
 > - [fn_check_ultimo_super_admin_attivo](/dbzero/script/funzioni/fn_check_ultimo_super_admin_attivo) — guard ultimo SA
 > - [trgfn_user_emittenti_fiscali_guard_delete](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete) — guard DELETE bypassato qui via GUC
@@ -181,7 +181,7 @@ SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 ## Riferimenti
 
-* WIP: [refactor operatore-emittenti — Fase 2 capability scope](/dev/work-in-progress/refactor-operatore-emittenti)
+* WIP: [refactor operatore-emittenti — Fase 2 capability scope](/dev/work-done/refactor-operatore-emittenti)
 * Migration: `db/changelog/migrations_v2/20_code/script/20260429-04-create-fn-change-user-emittenti-scope-mctit.yaml`
 * Migration update Fase 5: `db/changelog/migrations_v2/20_code/script/20260429-09-update-fn-change-user-emittenti-scope-use-log-and-raise-mctit.yaml` (refactor guard parametri → `fn_log_and_raise_error`)
 * Codici errore: `E_OPERATORE_SCOPE_MULTI_NON_AMMESSO` id 405, `E_OPERATORE_SCOPE_PARAM_NON_VALIDO` id 409
