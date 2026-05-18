@@ -2,7 +2,7 @@ bracex==2.6
 certifi==2026.4.22
 cfgv==3.5.0
 charset-normalizer==3.4.7
-click==8.3.3
+click==8.4.0
 colorama==0.4.6
 deepmerge==2.0
 distlib==0.4.0
