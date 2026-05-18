@@ -31,6 +31,21 @@ AZIONE_APPROVA_PREZZO = "approva_prezzo_override"
 # `ApprovazioniPrezzoListView.META_KEY_RIGA_PREVENTIVO_ID`.
 META_KEY_RIGA_PREVENTIVO_ID = "riga_preventivo_id"
 
+# Refactor 2026-05-19 (BE porting gate riga contratti): pratiche
+# APPROVAZIONE_PREZZO possono avere come sorgente preventivi O contratti
+# (DB simmetrizzato col brief `brief-db-contratti-righe-approvazione-prezzo-simmetria-l3.md`).
+# Il discriminator vive nel meta della pratica:
+#   - `sorgente` = "preventivo" | "contratto"
+#   - chiave `riga_*_id` corrispondente
+# Per le pratiche legacy (senza `sorgente` nel meta) il fallback e' preventivo
+# coerente con la prima implementazione Sprint E. Il FE legge `sorgente` per
+# routing verso /righe/<id>/approva-prezzo/ (preventivi) o
+# /righe-contratto/<id>/approva-prezzo/ (contratti).
+META_KEY_RIGA_CONTRATTO_ID = "riga_contratto_id"
+META_KEY_SORGENTE = "sorgente"
+SORGENTE_PREVENTIVO = "preventivo"
+SORGENTE_CONTRATTO = "contratto"
+
 # Stato preventivo "bozza" (codice_interno in `config.stati_doc_preventivi`).
 # La descrizione mostrata all'utente e' "Bozza" ma il codice tecnico e' DRAFT.
 STATO_PREVENTIVO_DRAFT = "DRAFT"

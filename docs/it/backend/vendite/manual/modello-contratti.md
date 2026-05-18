@@ -203,21 +203,25 @@ Il livello categoria viene alimentato dai service di dominio passando
 `apps.vendite.services._pricing_gate_helpers` (vedi catalogo BB
 "Vendite — Gate autorizzazioni prezzi").
 
-## 9. Glossario refactor 2026-05-15
+## 9. Glossario refactor 2026-05-15 (aggiornato 2026-05-18)
 
 | Termine | Definizione |
 | --- | --- |
 | **Modalita' A/B/C** (deprecato) | Vecchia classificazione del contratto come scelta utente. Rimossa: ora la forma e' derivata dai dati. |
 | **Forma derivata** | Stato del contratto rispetto al listino: `con_listino` o `senza_listino`. Calcolata da `c.listino_id`. |
 | **Eccezione** | Riga in `contratti_righe` con `tipo_eccezione` esplicito. Sostituisce le "righe modalita' C" e gli "override modalita' B". |
-| **OVERRIDE** | Eccezione che cambia il prezzo di un articolo del listino. |
-| **ESCLUSIONE** | Eccezione che rende un articolo del listino non disponibile per il cliente. Ammessa su articoli standalone o su padri bundle. **Vietata su figli bundle** (trigger `trgfn_contratti_righe_guard_esclusione_figlio_bundle`, errore 455) — l'esclusione si applica al bundle padre, non al singolo componente. |
-| **AGGIUNTA** | Eccezione che aggiunge un articolo fuori-listino al contratto. |
+| **OVERRIDE** | Eccezione che cambia il prezzo di un articolo del listino. Soggetto a L1 (permesso `prezzo_override_manuale`) + L2 (soglia % vs prezzo resolver) + L3 (richiesta approvazione, vedi sotto). |
+| **ESCLUSIONE** | Eccezione che rende un articolo del listino non disponibile per il cliente. `prezzo_unitario` deve essere NULL. Ammessa su articoli standalone o su padri bundle. **Vietata su figli bundle** (trigger `trgfn_contratti_righe_guard_esclusione_figlio_bundle`, errore 455) — l'esclusione si applica al bundle padre, non al singolo componente. Nessun gate (no prezzo = no L1/L2/L3). |
+| **AGGIUNTA** | Eccezione che aggiunge un articolo fuori-listino al contratto. L1 sempre (permesso override richiesto). L2/L3 condizionali: si applicano solo se il resolver bundle-aware trova comunque un prezzo di riferimento (matrice categoria_cliente_listino stadio 3 o promo stadio 0). Senza base, prezzo manuale puro (Alternativa B confermata 2026-05-18). |
 | **Versione operativa** | Versione listino con `stato IN ('ATTIVA','CHIUSA')` e `validita @> data`. La BOZZA e' uno stato di preparazione, esclusa dai lookup operativi. |
 | **Versione fissata** | `c.listino_versione_id` valorizzato post-attivazione: snapshot della versione operativa al momento dell'attivazione. Il contratto e' blindato da cambi del listino. |
-| **Drift del listino** | Stato in DRAFT in cui esce una nuova versione del listino: il banner FE lo segnala all'operatore. |
-| **Gate L2 variazione globale** | Check sulla variazione globale (PERCENTUALE) al PATCH testata: se eccede la soglia → 403 retryable. Solo PERCENTUALE; VALORE_FISSO skip. |
-| **Contesto pricing** | Endpoint readonly che ritorna forma + listino + versione fissata + variazione + categoria cliente per il banner FE. Mutuato dal pattern preventivi. |
+| **Drift del listino** | Disallineamento fra la `listino_versione_id` fissata sul contratto e la versione ATTIVA corrente del listino. Si verifica quando il listino pubblica una nuova versione operativa dopo l'attivazione del contratto: il contratto resta sulla fissata (i prezzi non cambiano), ma l'operatore vede nel banner contesto pricing un Tag drift con la versione corrente. Informativo, non bloccante. Esposto dal payload `/contesto-pricing/` come `drift_versione_listino: bool` + `listino_versione_corrente_codice`. |
+| **Gate L2 variazione globale** | Check sulla variazione globale al PATCH testata: se eccede la soglia → 403 retryable. **Solo PERCENTUALE** ammesso lato testata (decisione 2026-05-18 §3-bis-E): VALORE_FISSO globale vietato perche' opacizza la natura della variazione (sconto secco € insensibile alla magnitudine del listino). VALORE_FISSO resta ammesso per OVERRIDE su singola riga. |
+| **VALORE_FISSO globale (vietato)** | Tipo variazione testata non ammesso dal 2026-05-18. Whitelist `_TIPI_VARIAZIONE_GLOBALE_AMMESSI = frozenset({"PERCENTUALE"})` in `contratti_service`; lookup FE `tipi-variazione-contratto` ritorna solo PERCENTUALE. |
+| **Contesto pricing** | Endpoint readonly `/contratti/<id>/contesto-pricing/` che ritorna forma + listino + versione fissata + versione corrente (drift detection) + variazione globale + categoria cliente. Alimenta il banner header del drawer righe. Mutuato dal pattern preventivi. |
+| **Permesso "variare prezzi"** | Label UX della azione di processo. Codename DB stabile: `prezzo_override_manuale` (decisione 2026-05-18: rename solo della label, codename invariato per non rompere il binding). Richiesto da L1 per qualunque OVERRIDE/AGGIUNTA su riga contratto, dalla creazione preventivi con prezzo manuale, e dalle azioni componenti BoM con override prezzo. |
+| **Listino selezionabile (versione ATTIVA)** | Decisione 2026-05-18 §4.4: un listino senza alcuna versione ATTIVA non e' selezionabile come riferimento contrattuale. Guard service `_guard_listino_ha_versione_attiva` solleva `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (422) in CREATE e in UPDATE quando `listino_id` e' nel patch. Senza versione attiva il contratto sarebbe formalmente "con listino" ma operativamente vuoto. Filtro lookup FE: open task minore (brief DB). |
+| **Richiesta approvazione (L3)** | Workflow di escalation Sprint E quando un OVERRIDE/AGGIUNTA viola L2: il payload riga puo' includere `richiesta_approvazione=true` e il service crea una pratica APPROVAZIONE_PREZZO + salva la riga con `stato_approvazione_prezzo='PENDING'` + FK alla pratica. Trigger DB blocca modifiche struttura sulle righe PENDING (allowlist: workflow + meta + audit). **Cablato sia su preventivi che su contratti dal 2026-05-19** (migrations DB `20260518-01/02` per simmetria contratti_righe + cablaggio BE in `ContrattiService.create_riga`/`update_riga` + endpoint `/righe-contratto/<id>/approva-prezzo/` e `/rifiuta-prezzo/`). Il service di esito (`approvazioni_prezzo_service.approva/rifiuta`) e' sorgente-agnostico con parametro `sorgente='preventivo'` o `'contratto'` che fa dispatch su tabella e repository corretti via `_SORGENTE_CONFIG`. |
 
 ## Riferimenti
 

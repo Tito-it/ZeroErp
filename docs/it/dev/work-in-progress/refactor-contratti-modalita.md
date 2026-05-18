@@ -890,15 +890,14 @@ parallelizzazione massima sui prerequisiti DB.
 - **DB**: pgTAP 70+ test verdi (tutti gli step DB)
 - **+9 nuovi test mirati** sui flussi contratto post-refactor
 
-### 7.6 Debito tecnico residuo aperto
+### 7.6 Debito tecnico residuo — CHIUSO 2026-05-19
 
-I 3 gate prezzo (L1 + L2 + L3) sulle **righe** contratto (`contratti_service.create_riga` /
-`update_riga`) non sono ancora invocati. Il BB `_pricing_gate_helpers` è pronto e
-simmetrico al pattern preventivi: serve solo wirearlo nei caller contratti + decidere il
-prezzo del resolver per AGGIUNTA fuori-listino vs OVERRIDE su listino. Sessione dedicata
-"porting gate riga contratti" da pianificare a parte. Oggi i prezzi delle righe contratto
-sono accettati come dichiarati dall'operatore con il solo CHECK DB di coerenza
-prezzo/tipo_eccezione.
+> **Stato: chiuso 2026-05-19.** Wiring gate riga contratti completato dopo
+> consegna DB simmetria L3 (migrations `20260518-01` schema +
+> `20260518-02` trigger guard_pending). Vedi §7.8 sotto.
+
+I 3 gate prezzo (L1 + L2 + L3) sulle **righe** contratto sono ora invocati
+in `contratti_service.create_riga` e `contratti_service.update_riga`.
 
 ### 7.7 Attività svolte (2026-05-18) — chiusura decisioni minori
 
@@ -940,3 +939,74 @@ sono state prese e implementate end-to-end nella stessa sessione (BE+test+doc):
 precedente: 1 nuovo test rifiuto VALORE_FISSO, 1 nuovo test rifiuto listino
 senza versione attiva, 1 duplicato di
 `test_create_contratto_variazione_coppia_incompleta_fallisce` rimosso.
+
+### 7.8 Attività svolte (2026-05-19) — chiusura debito tecnico §7.6
+
+Dopo la consegna del DB con la simmetria L3 su `vendite.contratti_righe`
+(brief `brief-db-contratti-righe-approvazione-prezzo-simmetria-l3.md`,
+migrations `20260518-01` schema + `20260518-02` trigger guard_pending),
+il backend ha chiuso il debito tecnico cablando i 3 gate prezzo (L1+L2+L3)
+in `ContrattiService.create_riga` e `update_riga`. Decisione di dominio
+applicata: **Alternativa B** confermata 2026-05-18 (OVERRIDE → gate sempre;
+AGGIUNTA → L1 sempre, L2/L3 condizionali al resolver; ESCLUSIONE → skip).
+
+- **BE — refactor sorgente-agnostico** `approvazioni_prezzo_service`:
+  - Costanti: `META_KEY_RIGA_CONTRATTO_ID`, `META_KEY_SORGENTE`,
+    `SORGENTE_PREVENTIVO`, `SORGENTE_CONTRATTO` in `_approvazioni_prezzo_constants.py`
+  - `_SORGENTE_CONFIG` whitelist `{preventivo, contratto}` con `table`,
+    `doc_fk_column`, `meta_key_riga/doc`, error codes; `_require_sorgente`
+    validate + `_update_riga_workflow` dispatch fra firme repo diverse
+    (`PreventiviRepository.update_riga(**kwargs)` vs
+    `ContrattiRepository.update_riga(dict)`)
+  - `_crea_richiesta_approvazione_impl` privato parametrizzato; wrapper
+    pubblici `crea_richiesta_approvazione` (preventivi, back-compat firma
+    Sprint E) + `crea_richiesta_approvazione_contratto` (nuovo)
+  - `approva`/`rifiuta`/`_get_riga_pending`/`link_riga_a_pratica` con
+    parametro keyword `sorgente` (default preventivo per back-compat)
+  - `_capabilities_per_pratica` legge `META_KEY_SORGENTE` dal meta della
+    pratica; espone `sorgente` nel payload coda per routing FE endpoint
+
+- **BE — `ContrattiService`**:
+  - `create_riga` invoca `resolve_or_check_override_prezzo_riga_contratto`
+    PRIMA della transazione DB per tipi OVERRIDE/AGGIUNTA. Skip totale
+    per ESCLUSIONE. Workflow L3: se `richiesta_approvazione=true` nel
+    payload e gate L2 viola, crea pratica via
+    `_orchestrate_l3_request_contratto`, popola
+    `stato_approvazione_prezzo='PENDING'` + `pratica_approvazione_prezzo_id`
+    nel data riga, salva, e fa `link_riga_a_pratica` post-INSERT
+  - `update_riga` con parametro `auth_user_id`: gate scatta solo se PATCH
+    tocca `prezzo_unitario` su riga OVERRIDE/AGGIUNTA. `existing_riga`
+    riusato fra coerenza prezzo/tipo e gate (no double-fetch)
+  - `_orchestrate_l3_request_contratto` module-level simmetrico al pattern
+    `preventivi_service._orchestrate_l3_request`
+
+- **BE — `ContrattiRepository`**: whitelist `create_riga`/`update_riga`
+  esposta a `stato_approvazione_prezzo`+`pratica_approvazione_prezzo_id`;
+  `_SELECT_COLS_RIGA` proietta le 2 colonne; nuovo
+  `resolve_contesto_pratica` simmetrico al pattern preventivi
+
+- **API — nuovi endpoint dedicati righe contratto**:
+  - `POST /api/v1/vendite/righe-contratto/<riga_id>/approva-prezzo/`
+  - `POST /api/v1/vendite/righe-contratto/<riga_id>/rifiuta-prezzo/`
+  - View `ApprovaPrezzoContrattoView` / `RifiutaPrezzoContrattoView` thin
+    wrapper sul service con `sorgente=SORGENTE_CONTRATTO`. Path distinti
+    per evitare ambiguita' su riga_id (preventivi e contratti hanno
+    sequence indipendenti)
+  - `PATCH /api/v1/vendite/contratti/<id>/righe/<riga_id>/` ora passa
+    `auth_user_id` al service per il gate L1
+
+- **Test**: 721/721 vendite verdi (+8 nuovi mirati). Suite globale BE
+  2423/2423 verdi.
+  - `test_create_riga_override_invoca_gate`
+  - `test_create_riga_esclusione_skip_gate`
+  - `test_create_riga_l3_richiesta_approvazione_pending`
+  - `test_create_riga_aggiunta_senza_base_resolver_skip_l2`
+  - `test_update_riga_override_invoca_gate`
+  - `test_update_riga_skip_gate_se_prezzo_non_in_patch`
+  - `test_approva_riga_contratto_dispatch_contratti_repo`
+  - `test_rifiuta_riga_contratto_dispatch_meta_motivazione`
+
+- **Doc**: `api_contratti.md` §"Workflow autorizzazioni prezzo L1+L2+L3"
+  con matrice tipo_eccezione → gate + endpoint approva/rifiuta contratto;
+  `catalogo-building-block-backend.md` con nuove fn sorgente-agnostiche +
+  `_SORGENTE_CONFIG` / `_update_riga_workflow`.

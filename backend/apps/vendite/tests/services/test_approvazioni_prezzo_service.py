@@ -120,13 +120,20 @@ class ApprovaRifiutaTests(TestCase):
         self.addCleanup(svc.invalidate_lookup_cache)
 
     def _mock_cursor_riga_pending(self, mock_conn, riga_id=50, pratica_id=12345,
-                                   stato="PENDING"):
+                                   stato="PENDING", meta=None):
+        # Refactor 2026-05-19 sorgente-agnostico: la query include ora la
+        # colonna `meta` (serve a `rifiuta` che proietta motivazione nel meta
+        # riga) e il nome FK e' aliasato `AS documento_id`. Il test mock
+        # riflette la nuova firma.
         mock_cursor = MagicMock()
         mock_cursor.description = [
-            ("id",), ("preventivo_id",),
+            ("id",), ("documento_id",),
             ("stato_approvazione_prezzo",), ("pratica_approvazione_prezzo_id",),
+            ("meta",),
         ]
-        mock_cursor.fetchone.return_value = (riga_id, 1, stato, pratica_id)
+        mock_cursor.fetchone.return_value = (
+            riga_id, 1, stato, pratica_id, meta or {},
+        )
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         return mock_cursor
 
@@ -266,6 +273,85 @@ class ApprovaRifiutaTests(TestCase):
 
         nota_args = mock_nota.call_args[0]
         self.assertEqual(nota_args[2], "Rifiutato override prezzo.")
+
+    # =========================================================================
+    # Dispatch sorgente=contratto (refactor 2026-05-19 BE porting gate riga
+    # contratti). Verifica che approva/rifiuta su sorgente='contratto'
+    # usino ContrattiRepository invece di PreventiviRepository.
+    # =========================================================================
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
+    @patch(
+        "apps.vendite.db.contratti_repository.ContrattiRepository"
+    )
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_approva_riga_contratto_dispatch_contratti_repo(
+        self, mock_conn, mock_get_user, mock_perm,
+        mock_prev_repo_cls, mock_contr_repo_cls,
+        mock_cambia, mock_nota,
+    ):
+        # Scopo: sorgente='contratto' deve passare per ContrattiRepository,
+        # non PreventiviRepository. Verifica anche che la query _get_riga_pending
+        # legga da `vendite.contratti_righe` (via mock cursor inspect).
+        self._mock_cursor_riga_pending(mock_conn)
+        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_get_user.return_value = mock_user
+        mock_perm.check_azione.return_value = True
+        contr_repo = MagicMock(); mock_contr_repo_cls.return_value = contr_repo
+
+        result = svc.approva(
+            riga_id=50, auth_user_id=42, sorgente="contratto",
+        )
+
+        self.assertEqual(result["stato"], "APPROVED")
+        # ContrattiRepository.update_riga chiamato con (riga_id, dict).
+        contr_repo.update_riga.assert_called_once_with(
+            50, {"stato_approvazione_prezzo": "APPROVED"},
+        )
+        # PreventiviRepository.update_riga NON chiamato.
+        mock_prev_repo_cls.return_value.update_riga.assert_not_called()
+        # Query SQL: il primo arg execute include `vendite.contratti_righe`.
+        execute_call = mock_conn.cursor.return_value.__enter__.return_value.execute
+        sql_text = execute_call.call_args.args[0]
+        self.assertIn("vendite.contratti_righe", sql_text)
+        self.assertIn("contratto_id", sql_text)
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
+    @patch(
+        "apps.vendite.db.contratti_repository.ContrattiRepository"
+    )
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_rifiuta_riga_contratto_dispatch_meta_motivazione(
+        self, mock_conn, mock_get_user, mock_perm,
+        mock_contr_repo_cls, mock_cambia, mock_nota,
+    ):
+        # Scopo: rifiuta contratto popola meta motivazione su contratti_righe.
+        self._mock_cursor_riga_pending(mock_conn, meta={})
+        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_get_user.return_value = mock_user
+        mock_perm.check_azione.return_value = True
+        contr_repo = MagicMock(); mock_contr_repo_cls.return_value = contr_repo
+
+        svc.rifiuta(
+            riga_id=50, auth_user_id=42,
+            motivazione="Sconto fuori policy",
+            sorgente="contratto",
+        )
+
+        # ContrattiRepository.update_riga chiamato con dict positional.
+        args = contr_repo.update_riga.call_args.args
+        self.assertEqual(args[0], 50)
+        self.assertEqual(args[1]["stato_approvazione_prezzo"], "REJECTED")
+        rif = args[1]["meta"]["approvazione_rifiuto"]
+        self.assertEqual(rif["motivazione"], "Sconto fuori policy")
+        self.assertEqual(rif["approver_user_id"], 42)
 
 
 class ListaCodaTests(TestCase):

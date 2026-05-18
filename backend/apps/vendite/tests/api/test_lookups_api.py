@@ -12,8 +12,9 @@ Indice test eseguiti:
  1) test_tipi_variazione_contratto_ok — 200 con codice PERCENTUALE (post 2026-05-18 §3-bis-E: VALORE_FISSO rimosso dalla testata)
  2) test_tipi_variazione_promo_ok     — 200, include PREZZO_FISSO
  3) test_ambiti_contratto_ok          — 200 con codici COMMODITY/COMMERCIO
- 4) test_modalita_pricing_contratto_ok — 200 con codici A/B/C
- 5) test_lookup_richiede_jwt           — 401 senza autenticazione
+ 4) test_modalita_pricing_contratto_removed — 404 (endpoint rimosso post refactor 2026-05-15)
+ 5) test_listini_selezionabili_contratto_ok — 200, payload uniforme {id, codice, descrizione}, delega al service
+ 6) test_lookup_richiede_jwt           — 401 senza autenticazione
 """
 
 from unittest.mock import Mock, patch
@@ -86,6 +87,32 @@ class TestVenditeLookupsApi(JwtMockedApiTest):
             HTTP_AUTHORIZATION="Bearer x",
         )
         self.assertEqual(resp.status_code, 404)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(
+        "apps.vendite.api.views_lookups.fn_list_listini_selezionabili_contratti",
+        return_value=[
+            {"id": 7, "codice": "LST-A", "descrizione": "Listino A"},
+            {"id": 9, "codice": "LST-B", "descrizione": "Listino B"},
+        ],
+    )
+    def test_listini_selezionabili_contratto_ok(self, _service, _auth):
+        # Endpoint nuovo (refactor 2026-05-18 §4.4): la view delega al service
+        # senza altra logica. Mock del service per evitare round-trip DB
+        # (compat CI senza DB, vedi regola .codex/AGENTS.md "Regole test
+        # Django per compatibilita' CI").
+        resp = self.client.get(
+            "/api/v1/vendite/lookup/listini-selezionabili-contratto/",
+            HTTP_AUTHORIZATION="Bearer x",
+        )
+        self.assertEqual(resp.status_code, 200)
+        rows = resp.json()["data"]
+        self.assertEqual(len(rows), 2)
+        # Forma payload uniforme con i lookup generici (id/codice/descrizione):
+        # swap trasparente FE con LookupSelect.
+        self.assertEqual(set(rows[0].keys()), {"id", "codice", "descrizione"})
+        self.assertEqual(self._codes(resp), ["LST-A", "LST-B"])
+        _service.assert_called_once_with()
 
     def test_lookup_richiede_jwt(self):
         # Senza Authorization header -> 401 (DomainAPIView richiede JWT).

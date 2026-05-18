@@ -56,6 +56,10 @@ from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_overrides,
     resolve_emittente_sr_id_for_testata,
 )
+from apps.vendite.services._approvazioni_prezzo_constants import (
+    SORGENTE_CONTRATTO,
+    STATO_APPROVAZIONE_PENDING,
+)
 from apps.vendite.services._pricing_gate_helpers import (
     check_limite_variazione_globale,
     guard_uom_id_positive,
@@ -196,6 +200,11 @@ _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     # {componente_id_uuid: prezzo_numeric}. Validato/normalizzato da
     # `_normalize_componenti_overrides` prima dell'init.
     "componenti_overrides",
+    # Workflow L3 (refactor 2026-05-19 BE porting gate riga contratti): flag
+    # opt-in con cui il client conferma di voler aprire una pratica di
+    # approvazione quando il prezzo viola L2. Estratto e consumato da
+    # create_riga prima di `_build_data_riga` (non finisce nella tabella).
+    "richiesta_approvazione",
 })
 
 _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
@@ -212,6 +221,9 @@ _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "ordine",
     "attivo",
     "meta",
+    # Workflow L3: vedi commento _CREATE_KEYS_RIGA. update_riga lo gestisce
+    # alla stessa stregua per `prezzo_unitario` modificato che viola L2.
+    "richiesta_approvazione",
 })
 
 # In create: contratto_id arriva dall'URL, non da payload. articolo_id e
@@ -224,6 +236,12 @@ _FORBIDDEN_RIGA_UPDATE: frozenset[str] = frozenset({
 
 # Tipi eccezione ammessi su contratti_righe (refactor 2026-05-15).
 _TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA"})
+# Sottoinsieme che richiede il passaggio per il gate L1+L2+L3 (refactor
+# 2026-05-19 BE porting gate riga contratti). ESCLUSIONE ha prezzo NULL per
+# design e salta i gate; OVERRIDE/AGGIUNTA passano al BB
+# `resolve_or_check_override_prezzo_riga_contratto` con la matrice
+# Alternativa B (L1 sempre, L2/L3 condizionali al resolver).
+_TIPI_ECCEZIONE_CON_GATE: frozenset[str] = frozenset({"OVERRIDE", "AGGIUNTA"})
 
 
 # Utility 1:1: chiavi ammesse in create/update. istanza_utility_id e
@@ -992,10 +1010,31 @@ class ContrattiService:
             function_name="contratti_service.create_riga",
             error_code=E_VENDITE_VALIDATION,
         )
+        # Flag opt-in workflow L3 (richiesta approvazione). Estratto qui per
+        # non finire nel data_riga.
+        richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
 
         data = self._build_data_riga(payload, for_create=True)
 
         articolo_id = payload.get("articolo_id")
+        tipo_eccezione = data.get("tipo_eccezione")
+
+        # Gate L1+L2+L3: solo OVERRIDE/AGGIUNTA. Helper riusato da update_riga.
+        # `testata_gate` riusato sotto per il ramo composito (1 round-trip
+        # DB risparmiato).
+        pratica_id_l3: int | None = None
+        testata_gate: dict[str, Any] | None = None
+        if tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE:
+            pratica_id_l3, testata_gate = self._apply_pricing_gate_riga(
+                contratto_id=contratto_id,
+                articolo_id=articolo_id,
+                uom_id=data.get("uom_operativa_id"),
+                data=data,
+                auth_user_id=auth_user_id,
+                richiesta_approvazione=richiesta_approvazione,
+                riga_id_for_link=None,  # riga_id non noto qui
+                function_name="contratti_service.create_riga",
+            )
 
         # Transazione atomica: create_riga + (se composito) auto-init
         # componenti. Stesso pattern di preventivi_service. Senza atomic, una
@@ -1007,8 +1046,24 @@ class ContrattiService:
         ):
             new_id = self._repo.create_riga(contratto_id, data)
 
+            # Link riga<->pratica L3: post-create_riga, riga_id ora noto.
+            # link_riga_a_pratica aggiunge `riga_contratto_id` al meta della
+            # pratica per permettere all'approver di risalire dalla coda
+            # (UI ApprovazioniPrezzoListView routing su /righe-contratto/...).
+            if pratica_id_l3 is not None:
+                from apps.vendite.services.approvazioni_prezzo_service import (
+                    link_riga_a_pratica,
+                )
+                link_riga_a_pratica(
+                    pratica_id=pratica_id_l3,
+                    riga_id=new_id,
+                    sorgente=SORGENTE_CONTRATTO,
+                )
+
             if articolo_id and self._repo.is_articolo_composito(str(articolo_id)):
-                testata = self._repo.get_contratto(contratto_id)
+                # Riusa la testata letta dal gate (sopra) se disponibile;
+                # altrimenti (gate skip per ESCLUSIONE) la carica adesso.
+                testata = testata_gate or self._repo.get_contratto(contratto_id)
                 assert testata is not None
                 emittente_sr_id = self._resolve_emittente_sr_id_for_contratto(
                     testata, auth_user_id,
@@ -1056,12 +1111,83 @@ class ContrattiService:
             repo_get_sr_id_by_fiscale_id=self._repo.get_emittente_sr_id_by_fiscale_id,
         )
 
+    # Scopo: Helper unificato per il gate L1+L2+L3 su righe contratto.
+    #        Riusato da create_riga e update_riga (refactor 2026-05-19,
+    #        rimuove ~30 righe duplicate). Pipeline:
+    #          1) get_contratto + invoca BB `resolve_or_check_override_prezzo_riga_contratto`
+    #          2) normalizza `data["prezzo_unitario"]` col valore ritornato
+    #          3) merge `data["meta"]` con `prezzo_meta` (con fallback opzionale
+    #             al meta della riga esistente — case update_riga)
+    #          4) se workflow L3 (`richiesta_approvazione_pending`): orchestra
+    #             pratica + popola `data["stato_approvazione_prezzo"]` +
+    #             `data["pratica_approvazione_prezzo_id"]`. Per create il
+    #             `riga_id_for_link=None` (link post-INSERT); per update il
+    #             riga_id e' gia' noto.
+    #        Ritorna `(pratica_id_l3 | None, testata_gate)`: la testata viene
+    #        restituita perche' il caller create_riga la riusa nel ramo
+    #        composito evitando un double-fetch.
+    def _apply_pricing_gate_riga(
+        self,
+        *,
+        contratto_id: int,
+        articolo_id: Any,
+        uom_id: Any,
+        data: dict[str, Any],
+        auth_user_id: int | None,
+        richiesta_approvazione: bool,
+        riga_id_for_link: int | None,
+        function_name: str,
+        fallback_meta: dict[str, Any] | None = None,
+    ) -> tuple[int | None, dict[str, Any]]:
+        testata_gate = self._repo.get_contratto(contratto_id)
+        assert testata_gate is not None
+        prezzo_finale, prezzo_meta = resolve_or_check_override_prezzo_riga_contratto(
+            testata=testata_gate,
+            articolo_id=articolo_id,
+            uom_id=uom_id,
+            payload_prezzo=data.get("prezzo_unitario"),
+            auth_user_id=auth_user_id,
+            function_name=function_name,
+            richiesta_approvazione=richiesta_approvazione,
+        )
+        # Override prezzo col valore normalizzato dal BB (auto-fill se
+        # payload era None + resolver ha prezzo, oppure prezzo manuale
+        # confermato dall'L1).
+        if prezzo_finale is not None:
+            data["prezzo_unitario"] = prezzo_finale
+        # Merge meta riga: il BB ritorna `prezzo_meta` con audit pricing.
+        # Va mergiato sul `meta` corrente del data_riga (priorita': payload
+        # > fallback existing meta) senza sovrascrivere chiavi gia' presenti.
+        if prezzo_meta:
+            merged_meta = dict(data.get("meta") or fallback_meta or {})
+            merged_meta.update(prezzo_meta)
+            data["meta"] = merged_meta
+        # Workflow L3: il BB ha segnalato violazione + richiesta. Crea pratica
+        # PRIMA dell'INSERT/UPDATE riga per ottenere la FK; il link riga<->pratica
+        # avviene nel caller (post-INSERT per create, inline per update).
+        pratica_id_l3: int | None = None
+        if prezzo_meta and prezzo_meta.get("richiesta_approvazione_pending"):
+            pratica_id_l3 = _orchestrate_l3_request_contratto(
+                contratto_id=contratto_id,
+                articolo_id=articolo_id,
+                prezzo_finale=prezzo_finale,
+                prezzo_meta=prezzo_meta,
+                auth_user_id=auth_user_id,
+                riga_id_for_link=riga_id_for_link,
+            )
+            data["stato_approvazione_prezzo"] = STATO_APPROVAZIONE_PENDING
+            data["pratica_approvazione_prezzo_id"] = pratica_id_l3
+        return pratica_id_l3, testata_gate
+
     # Scopo: Aggiorna una riga contratto. articolo_id e tipo_eccezione
     #        immutabili (refactor 2026-05-15: per cambiare tipo serve
     #        DELETE + INSERT, meno zone grigie di un cambio di semantica
-    #        in-place).
+    #        in-place). Gate L1+L2+L3 attivo quando il PATCH tocca
+    #        `prezzo_unitario` su una riga OVERRIDE/AGGIUNTA (refactor
+    #        2026-05-19 BE porting gate riga contratti).
     def update_riga(
-        self, riga_id: int, payload: dict[str, Any]
+        self, riga_id: int, payload: dict[str, Any],
+        *, auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(riga_id, field="riga_id")
         self._assert_contratto_draft_from_riga(riga_id, op_label="Modifica riga contratto")
@@ -1072,6 +1198,8 @@ class ContrattiService:
             detail_prefix="Campi rifiutati",
         )
         self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_RIGA, message=_MESSAGE_RIGA)
+        # Flag opt-in L3 estratto pre-build_data (non e' una colonna riga).
+        richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
         data = self._build_data_riga(payload, for_create=False)
 
         ErrorManager.require(
@@ -1085,6 +1213,10 @@ class ContrattiService:
         # se il PATCH tocca prezzo_unitario, valida contro il tipo_eccezione
         # della riga esistente (immutabile). Pre-validation parlante invece
         # del fallback E_DATABASE sul CHECK DB chk_contrighe_prezzo_per_tipo_eccezione.
+        # Refactor 2026-05-19: il caricamento di `existing_riga` serve anche
+        # al gate L1+L2+L3 sotto — fatto qui per evitare double-fetch.
+        existing_riga: dict[str, Any] | None = None
+        tipo_existing: str | None = None
         if "prezzo_unitario" in data:
             existing_riga = self._repo.get_riga(riga_id)
             ErrorManager.require(
@@ -1120,6 +1252,32 @@ class ContrattiService:
                     ),
                     context={"riga_id": riga_id, "tipo_eccezione": tipo_existing},
                 )
+
+        # Gate L1+L2+L3 (refactor 2026-05-19): scatta solo se il PATCH tocca
+        # `prezzo_unitario` su una riga OVERRIDE o AGGIUNTA. Per ESCLUSIONE
+        # la coerenza prezzo NULL e' gia' garantita dal check sopra; nessun
+        # gate ulteriore. Riusiamo `existing_riga` per evitare double-fetch.
+        # riga_id noto subito: link inline alla pratica (no post-INSERT).
+        if (
+            "prezzo_unitario" in data
+            and tipo_existing in _TIPI_ECCEZIONE_CON_GATE
+        ):
+            assert existing_riga is not None
+            self._apply_pricing_gate_riga(
+                contratto_id=int(existing_riga["contratto_id"]),
+                articolo_id=existing_riga.get("articolo_id"),
+                uom_id=(
+                    data.get("uom_operativa_id")
+                    if "uom_operativa_id" in data
+                    else existing_riga.get("uom_operativa_id")
+                ),
+                data=data,
+                auth_user_id=auth_user_id,
+                richiesta_approvazione=richiesta_approvazione,
+                riga_id_for_link=riga_id,
+                function_name="contratti_service.update_riga",
+                fallback_meta=existing_riga.get("meta"),
+            )
 
         with self._db_errors(
             {"riga_id": riga_id},
@@ -2147,9 +2305,11 @@ def contratti_suggerisci_prezzo_riga(
 #        (la signature e' gia' quella attesa dal BB) + il codice errore di
 #        validazione del dominio (`E_VENDITE_VALIDATION`).
 #
-#        NON ancora cablata in `create_riga`/`update_riga`: il wiring
-#        avviene in BE 2.2 quando vengono introdotte le operazioni eccezione
-#        OVERRIDE/AGGIUNTA dove il prezzo manuale e' rilevante.
+#        Normalizzazione testata: il BB usa `testata["data"]` nel guard
+#        skip-context (riga ~401 di _pricing_gate_helpers). La testata
+#        contratto espone invece `valido_dal`. Aliasiamo qui per
+#        incapsulare la differenza nel wrapper di dominio invece di
+#        contaminare il BB con conoscenza per-sorgente.
 def resolve_or_check_override_prezzo_riga_contratto(
     *,
     testata: dict[str, Any],
@@ -2160,8 +2320,12 @@ def resolve_or_check_override_prezzo_riga_contratto(
     function_name: str,
     richiesta_approvazione: bool = False,
 ) -> tuple[Any, dict[str, Any] | None]:
+    testata_normalized = (
+        testata if testata.get("data") is not None
+        else {**testata, "data": testata.get("valido_dal")}
+    )
     return resolve_or_check_override_prezzo(
-        testata=testata,
+        testata=testata_normalized,
         articolo_id=articolo_id,
         uom_id=uom_id,
         payload_prezzo=payload_prezzo,
@@ -2171,3 +2335,43 @@ def resolve_or_check_override_prezzo_riga_contratto(
         error_code_validazione=E_VENDITE_VALIDATION,
         richiesta_approvazione=richiesta_approvazione,
     )
+
+
+# Scopo: orchestratore L3 simmetrico a `preventivi_service._orchestrate_l3_request`
+#        per le righe contratto (refactor 2026-05-19 BE porting gate riga
+#        contratti). Crea la pratica APPROVAZIONE_PREZZO via
+#        `approvazioni_prezzo_service.crea_richiesta_approvazione_contratto`,
+#        opzionalmente collega riga_id (per update_riga il riga_id e' gia'
+#        noto; per create_riga il link avviene post-INSERT). Ritorna pratica_id.
+def _orchestrate_l3_request_contratto(
+    *,
+    contratto_id: int,
+    articolo_id: Any,
+    prezzo_finale: Any,
+    prezzo_meta: dict[str, Any],
+    auth_user_id: int | None,
+    riga_id_for_link: int | None = None,
+) -> int:
+    # Import lazy: il service approvazioni importa contratti_service per
+    # `ContrattiRepository.update_riga` nel dispatch sorgente-agnostico.
+    from apps.vendite.services.approvazioni_prezzo_service import (
+        crea_richiesta_approvazione_contratto,
+        link_riga_a_pratica,
+    )
+    pratica_id = crea_richiesta_approvazione_contratto(
+        contratto_id=contratto_id,
+        riga_id=riga_id_for_link,
+        articolo_id=str(articolo_id) if articolo_id is not None else "",
+        prezzo_resolver=Decimal(prezzo_meta["prezzo_base_resolver"])
+        if prezzo_meta.get("prezzo_base_resolver") else None,
+        prezzo_manuale=Decimal(str(prezzo_finale)),
+        violazione=prezzo_meta["violazione_l2"],
+        auth_user_id=auth_user_id,
+    )
+    if riga_id_for_link is not None:
+        link_riga_a_pratica(
+            pratica_id=pratica_id,
+            riga_id=riga_id_for_link,
+            sorgente=SORGENTE_CONTRATTO,
+        )
+    return pratica_id

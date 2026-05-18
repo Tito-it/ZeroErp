@@ -289,6 +289,39 @@ class ListiniRepository:
             row = cursor.fetchone()
             return bool(row[0]) if row else False
 
+    # Scopo: Lista lookup dei listini "selezionabili come riferimento
+    #        contrattuale": listino attivo + esiste almeno una versione
+    #        ATTIVA (oggi). Stesso filtro semantico del guard pre-save
+    #        `_guard_listino_ha_versione_attiva` (decisione 2026-05-18
+    #        §4.4 refactor-contratti-modalita), in versione bulk per il
+    #        lookup FE del drawer contratto. Forma payload uniforme
+    #        `{id, codice, descrizione}` compatibile col pattern lookup
+    #        generico (zero adattamenti FE rispetto al precedente
+    #        `LookupSelect rel="vendite.listini"`). Single round-trip via
+    #        EXISTS subquery, ordinamento alfabetico su descrizione +
+    #        tiebreaker id.
+    def list_lookup_selezionabili_contratti(self) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT l.id, l.codice, l.descrizione
+                  FROM vendite.listini l
+                 WHERE l.attivo IS TRUE
+                   AND EXISTS (
+                       SELECT 1
+                         FROM vendite.listini_versioni v
+                        WHERE v.listino_id = l.id
+                          AND v.stato = 'ATTIVA'
+                          AND v.attivo IS TRUE
+                   )
+                 ORDER BY l.descrizione, l.id
+                """
+            )
+            return [
+                {"id": int(row[0]), "codice": row[1], "descrizione": row[2]}
+                for row in cursor.fetchall()
+            ]
+
     # Scopo: Inserisce il listino usando solo colonne write ammesse.
     def create_listino(self, data: dict[str, Any]) -> int:
         insert_parts = _prepare_insert_parts(

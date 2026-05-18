@@ -76,3 +76,15 @@ def fn_list_tipi_variazione_promo() -> list[dict[str, object]]:
 # Scopo: lista ambiti ammessi per contratti.
 def fn_list_ambiti_contratto() -> list[dict[str, object]]:
     return _to_payload(_AMBITI_CONTRATTO)
+
+
+# Scopo: lista listini "selezionabili come riferimento contrattuale".
+#        Solo listini attivi con almeno una versione ATTIVA oggi
+#        (decisione 2026-05-18 §4.4 refactor-contratti-modalita).
+#        Forma payload uniforme `{id, codice, descrizione}` compatibile col
+#        pattern lookup generico (LookupSelect / lookupCodici): swap
+#        trasparente con `rel='vendite.listini'`. Delega al repository.
+def fn_list_listini_selezionabili_contratti() -> list[dict[str, object]]:
+    from apps.vendite.db.listini_repository import ListiniRepository
+
+    return ListiniRepository().list_lookup_selezionabili_contratti()

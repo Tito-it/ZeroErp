@@ -229,6 +229,49 @@ mutabili; `articolo_id` e `tipo_eccezione` immutabili. Cambio di
 `DELETE /api/v1/vendite/contratti/<id>/righe/<riga_id>/` hard-delete
 (bloccato dal trigger se note collegate o contratto ATTIVO).
 
+#### Workflow autorizzazioni prezzo L1+L2+L3 (refactor 2026-05-19)
+
+CREATE e UPDATE riga sono cablati al BB orchestratore
+`_pricing_gate_helpers.resolve_or_check_override_prezzo`. Matrice
+gate per `tipo_eccezione` (decisione Alternativa B 2026-05-18):
+
+| `tipo_eccezione` | L1 permesso `prezzo_override_manuale` | L2 soglia % | L3 richiesta_approvazione |
+| --- | --- | --- | --- |
+| `OVERRIDE` | sempre | sempre (vs prezzo resolver) | opt-in via payload |
+| `AGGIUNTA` | sempre | condizionale: solo se resolver trova base (stadio 3 categoria_cliente o stadio 0 promo) | condizionale, simmetrico a L2 |
+| `ESCLUSIONE` | skip (prezzo NULL, niente gate) | skip | skip |
+
+**L1 — permesso override**. Senza azione di processo `prezzo_override_manuale`
+sull'utente, il prezzo non puo' essere salvato manualmente. Codice errore:
+`E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403, `retryable=false`: senza permesso
+non c'e' nulla da ritentare).
+
+**L2 — soglia variazione %**. Il prezzo manuale viene confrontato con il
+prezzo del resolver (`contratti_suggerisci_prezzo_riga`). Il delta % deve
+restare entro la soglia configurata via parameter
+`VENDITE_MAX_SCONTO_PCT` / `VENDITE_MAX_MAGGIORAZIONE_PCT` con cascata
+estesa user → categoria_cliente → group → emittente → default (refactor
+2026-05-15 cascata BA-aware). Se viola: `E_PRICING_SCONTO_ECCESSIVO` o
+`E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403, `retryable=true`: il FE puo'
+offrire la CTA "Richiedi approvazione").
+
+**L3 — workflow approvazione**. Quando il payload include
+`richiesta_approvazione=true`, una violazione L2 non solleva ma apre una
+pratica `APPROVAZIONE_PREZZO` e salva la riga con
+`stato_approvazione_prezzo='PENDING'` + `pratica_approvazione_prezzo_id`
+valorizzato. Il trigger DB `trg_contratti_righe_a10_guard_pending_upd`
+blocca modifiche struttura sulla riga finche' l'admin non chiude la
+pratica via `POST /api/v1/vendite/righe-contratto/<riga_id>/approva-prezzo/`
+o `POST /api/v1/vendite/righe-contratto/<riga_id>/rifiuta-prezzo/`
+(simmetrici agli endpoint preventivi `/righe/<id>/...`).
+
+Il meta della pratica include `sorgente='contratto'` + `riga_contratto_id`
+per routing FE corretto degli endpoint approva/rifiuta. La coda
+`GET /api/v1/vendite/approvazioni-prezzo/` espone item da entrambe le
+sorgenti (preventivi + contratti); ogni item include `sorgente` per
+permettere alla UI ApprovazioniPrezzoListView di dispatchare al path
+corretto.
+
 ### Contesto pricing `GET /api/v1/vendite/contratti/<id>/contesto-pricing/`
 
 Endpoint readonly mutuato dal pattern preventivi (`/preventivi/<id>/contesto-pricing/`).
