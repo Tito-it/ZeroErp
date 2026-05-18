@@ -1,0 +1,102 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260518-01-alter-contratti-righe-add-approvazione-prezzo-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Simmetria L3 approvazione prezzo — contratti_righe (2026-05-18)
+  #
+  # Replica di 20260422-04 (preventivi_righe) adattata a contratti_righe.
+  # Aggiunge 2 colonne nullable + FK + indice parziale a vendite.contratti_righe
+  # per abilitare il workflow L3 approvazione prezzo su righe OVERRIDE/AGGIUNTA.
+  #
+  # Pre-esistente su contratti_righe_componenti (migration 20260511-34):
+  #   stato_approvazione_prezzo + pratica_approvazione_prezzo_id gia' presenti.
+  # Questo migration chiude la simmetria sul padre (riga standalone).
+  #
+  # 2 changeSet (sub-progressivi -01, -02):
+  #   01-01  ADD COLUMN stato_approvazione_prezzo + pratica_approvazione_prezzo_id + FK
+  #   01-02  CREATE INDEX parziale ix_vendite_contratti_righe_stato_approvazione
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260518-01-01-add-columns-contratti-righe-approvazione-prezzo
+      author: mctit
+      comment: >
+        Simmetria L3: aggiunge 2 colonne a vendite.contratti_righe:
+        stato_approvazione_prezzo (ENUM, NULL = non in workflow) e
+        pratica_approvazione_prezzo_id (FK pratiche.pratiche, NULL).
+        Pattern identico a preventivi_righe (20260422-04-01).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: contratti_righe
+          - tableExists:
+              schemaName: pratiche
+              tableName: pratiche
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_type t
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config'
+                   AND t.typname = 'stato_approvazione_prezzo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  ADD COLUMN stato_approvazione_prezzo      config.stato_approvazione_prezzo,
+                  ADD COLUMN pratica_approvazione_prezzo_id bigint;
+
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT fk_contrighe_pratica_approvazione_prezzo
+                  FOREIGN KEY (pratica_approvazione_prezzo_id)
+                  REFERENCES pratiche.pratiche(id);
+
+              COMMENT ON COLUMN vendite.contratti_righe.stato_approvazione_prezzo IS
+                  'Stato del workflow L3 approvazione prezzo out-of-policy. '
+                  'NULL = riga non soggetta a workflow (caso piu'' comune). Valori '
+                  'non-NULL: PENDING (richiesta creata, in attesa), APPROVED (L3 '
+                  'autorizzato), REJECTED (L3 rifiutato, prezzo da rivedere). '
+                  'Simmetrico a preventivi_righe.stato_approvazione_prezzo.';
+
+              COMMENT ON COLUMN vendite.contratti_righe.pratica_approvazione_prezzo_id IS
+                  'FK alla pratiche.pratiche che traccia la richiesta di approvazione '
+                  'per questa riga. NULL se la riga non e'' in workflow L3. '
+                  'Popolato da pratiche_service.crea_pratica quando l''utente richiede '
+                  'override out-of-policy. Simmetrico a preventivi_righe.';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS fk_contrighe_pratica_approvazione_prezzo;
+              ALTER TABLE vendite.contratti_righe
+                  DROP COLUMN IF EXISTS stato_approvazione_prezzo,
+                  DROP COLUMN IF EXISTS pratica_approvazione_prezzo_id;
+
+  - changeSet:
+      id: 20260518-01-02-create-ix-contratti-righe-stato-approvazione
+      author: mctit
+      comment: >
+        Indice parziale su stato_approvazione_prezzo (solo righe IS NOT NULL).
+        Accelera dashboard BE "righe contratto in approvazione". Naming
+        coerente con ix_vendite_preventivi_righe_stato_approvazione.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: contratti_righe
+            columnName: stato_approvazione_prezzo
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX ix_vendite_contratti_righe_stato_approvazione
+                  ON vendite.contratti_righe (stato_approvazione_prezzo)
+                  WHERE stato_approvazione_prezzo IS NOT NULL;
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS vendite.ix_vendite_contratti_righe_stato_approvazione;

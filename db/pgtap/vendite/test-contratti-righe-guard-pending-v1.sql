@@ -1,0 +1,209 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Test: Simmetria L3 guard_pending su vendite.contratti_righe
+--       Migrations: 20260518-01, 20260518-02
+--
+-- Indice test (1..8):
+--   Struttura:
+--   1)  Colonne stato_approvazione_prezzo e pratica_approvazione_prezzo_id
+--       presenti su contratti_righe
+--   2)  Funzione trgfn_contratti_righe_guard_pending presente
+--   3)  Trigger trg_contratti_righe_a10_guard_pending_upd presente
+--
+--   Comportamento guard (COND: skip se fixture non creata):
+--   4)  Riga stato=NULL → UPDATE prezzo_unitario OK (guard non attivo)
+--   5)  Riga PENDING → UPDATE prezzo_unitario → raise E_RIGA_PREZZO_PENDENTE
+--   6)  Riga PENDING → UPDATE stato_approvazione_prezzo PENDING→APPROVED → OK
+--   7)  Riga PENDING → UPDATE pratica_approvazione_prezzo_id → OK
+--   8)  Riga PENDING → UPDATE meta → OK
+--
+-- Nota: i test 4-8 saltano automaticamente se il contratto PGTAP_PND_CNT
+--       non viene creato (mancanza dati prerequisito).
+-- ------------------------------------------------------------
+
+BEGIN;
+
+-- ============================================================
+-- Setup fixture
+-- ============================================================
+
+CREATE TEMP TABLE tmp_pnd_ctx AS
+SELECT
+    ba.id                   AS ba_id,
+    ba.istanza_utility_id,
+    ba.utility_id,
+    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT' LIMIT 1) AS id_draft,
+    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE LIMIT 1) AS uom_id
+  FROM anagrafiche.billing_account ba
+ ORDER BY ba.id
+ LIMIT 1;
+
+-- Contratto DRAFT per i test (date 2074 per non collidere con altri pgTAP)
+INSERT INTO vendite.contratti(
+    numero, billing_account_id, istanza_utility_id, utility_id,
+    stato_doc_contratto_id, valido_dal, valido_al)
+SELECT 'PGTAP_PND_CNT', c.ba_id, c.istanza_utility_id, c.utility_id,
+       c.id_draft, '2074-01-01'::date, '2074-12-31'::date
+  FROM tmp_pnd_ctx c;
+
+-- Articolo standalone (tipo_eccezione AGGIUNTA — non richiede listino)
+CREATE TEMP TABLE tmp_pnd_art AS
+SELECT a.id
+  FROM catalogo.articoli a
+ WHERE a.attivo = TRUE AND a.is_composito = FALSE
+ ORDER BY a.id
+ LIMIT 1;
+
+-- Riga contratto AGGIUNTA (prezzo valorizzato, qta_operativa richiesta
+-- da trgfn_qta_from_operativa, tipo_eccezione richiesto NOT NULL dal refactor)
+INSERT INTO vendite.contratti_righe(
+    contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
+SELECT c.id, a.id, 'AGGIUNTA', 100.00, 1.00
+  FROM vendite.contratti c, tmp_pnd_art a
+ WHERE c.numero = 'PGTAP_PND_CNT';
+
+-- ============================================================
+SELECT plan(8);
+-- ============================================================
+
+-- ============================================================
+-- 1) Colonne stato_approvazione_prezzo e pratica_approvazione_prezzo_id presenti
+-- ============================================================
+SELECT ok(
+    (SELECT COUNT(*) = 2
+       FROM information_schema.columns
+      WHERE table_schema = 'vendite'
+        AND table_name   = 'contratti_righe'
+        AND column_name  IN ('stato_approvazione_prezzo', 'pratica_approvazione_prezzo_id')),
+    '1) Colonne stato_approvazione_prezzo e pratica_approvazione_prezzo_id presenti'
+);
+
+-- ============================================================
+-- 2) Funzione trgfn_contratti_righe_guard_pending presente
+-- ============================================================
+SELECT ok(
+    EXISTS (
+        SELECT 1 FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE n.nspname = 'vendite'
+           AND p.proname = 'trgfn_contratti_righe_guard_pending'
+    ),
+    '2) Funzione trgfn_contratti_righe_guard_pending presente'
+);
+
+-- ============================================================
+-- 3) Trigger trg_contratti_righe_a10_guard_pending_upd presente
+-- ============================================================
+SELECT ok(
+    EXISTS (
+        SELECT 1
+          FROM pg_trigger t
+          JOIN pg_class c ON c.oid = t.tgrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'vendite'
+           AND c.relname = 'contratti_righe'
+           AND t.tgname  = 'trg_contratti_righe_a10_guard_pending_upd'
+           AND NOT t.tgisinternal
+    ),
+    '3) Trigger trg_contratti_righe_a10_guard_pending_upd presente'
+);
+
+-- ============================================================
+-- 4) Riga stato=NULL → UPDATE prezzo_unitario OK
+-- ============================================================
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT')
+    THEN skip('Fixture PGTAP_PND_CNT non creata - skip', 1)
+    ELSE lives_ok(
+        $$UPDATE vendite.contratti_righe
+             SET prezzo_unitario = 200.00
+           WHERE contratto_id = (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT')
+             AND stato_approvazione_prezzo IS NULL$$,
+        '4) Riga stato=NULL → UPDATE prezzo_unitario OK (guard non attivo)'
+    )
+END;
+
+-- ============================================================
+-- 5) Riga PENDING → UPDATE prezzo_unitario → raise P0001
+--    Setup: porta riga in PENDING via DO block (DML non ammesso in espressione SELECT)
+-- ============================================================
+DO $$
+BEGIN
+    UPDATE vendite.contratti_righe
+       SET stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
+     WHERE contratto_id = (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT');
+END;
+$$;
+
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT')
+    THEN skip('Fixture PGTAP_PND_CNT non creata - skip', 1)
+    ELSE throws_ok(
+        $$UPDATE vendite.contratti_righe
+             SET prezzo_unitario = 999.00
+           WHERE contratto_id = (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT')
+             AND stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo$$,
+        'P0001',
+        NULL,
+        '5) Riga PENDING → UPDATE prezzo_unitario → raise E_RIGA_PREZZO_PENDENTE'
+    )
+END;
+
+-- ============================================================
+-- 6) Riga PENDING → UPDATE stato PENDING→APPROVED → OK (transizione workflow)
+-- ============================================================
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT')
+    THEN skip('Fixture PGTAP_PND_CNT non creata - skip', 1)
+    ELSE lives_ok(
+        $$UPDATE vendite.contratti_righe
+             SET stato_approvazione_prezzo = 'APPROVED'::config.stato_approvazione_prezzo
+           WHERE contratto_id = (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT')
+             AND stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo$$,
+        '6) Riga PENDING → UPDATE stato→APPROVED OK (transizione workflow)'
+    )
+END;
+
+-- ============================================================
+-- 7) Riga PENDING → UPDATE pratica_approvazione_prezzo_id → OK
+--    Dopo test 6 la riga è APPROVED: riporta in PENDING via DO block
+-- ============================================================
+DO $$
+BEGIN
+    UPDATE vendite.contratti_righe
+       SET stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
+     WHERE contratto_id = (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT');
+END;
+$$;
+
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT')
+    THEN skip('Fixture PGTAP_PND_CNT non creata - skip', 1)
+    ELSE lives_ok(
+        $$UPDATE vendite.contratti_righe
+             SET pratica_approvazione_prezzo_id = NULL
+           WHERE contratto_id = (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT')
+             AND stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo$$,
+        '7) Riga PENDING → UPDATE pratica_id OK (allowlist)'
+    )
+END;
+
+-- ============================================================
+-- 8) Riga PENDING → UPDATE meta → OK
+-- ============================================================
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT')
+    THEN skip('Fixture PGTAP_PND_CNT non creata - skip', 1)
+    ELSE lives_ok(
+        $$UPDATE vendite.contratti_righe
+             SET meta = '{"note": "test pgtap"}'::jsonb
+           WHERE contratto_id = (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_PND_CNT')
+             AND stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo$$,
+        '8) Riga PENDING → UPDATE meta OK (allowlist)'
+    )
+END;
+
+SELECT * FROM finish();
+ROLLBACK;

@@ -26,6 +26,8 @@
 | factor_to_base | numeric | NO | 1 |
 | tx_id | uuid | YES |  |
 | tipo_eccezione | USER-DEFINED | NO |  |
+| stato_approvazione_prezzo | USER-DEFINED | YES |  |
+| pratica_approvazione_prezzo_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -37,6 +39,7 @@
 | FOREIGN KEY | fk_contratti_righe_uom_operativa_id | uom_operativa_id |
 | FOREIGN KEY | fk_contrighe_articoli | articolo_id |
 | FOREIGN KEY | fk_contrighe_contratti | contratto_id |
+| FOREIGN KEY | fk_contrighe_pratica_approvazione_prezzo | pratica_approvazione_prezzo_id |
 | PRIMARY KEY | pk_contratti_righe | id |
 
 ## 📑 Indici
@@ -44,6 +47,7 @@
 |------|-------------|
 | ix_vendite_contratti_righe_articolo_id | `CREATE INDEX ix_vendite_contratti_righe_articolo_id ON vendite.contratti_righe USING btree (articolo_id)` |
 | ix_vendite_contratti_righe_contratto_id | `CREATE INDEX ix_vendite_contratti_righe_contratto_id ON vendite.contratti_righe USING btree (contratto_id)` |
+| ix_vendite_contratti_righe_stato_approvazione | `CREATE INDEX ix_vendite_contratti_righe_stato_approvazione ON vendite.contratti_righe USING btree (stato_approvazione_prezzo) WHERE (stato_approvazione_prezzo IS NOT NULL)` |
 | pk_contratti_righe | `CREATE UNIQUE INDEX pk_contratti_righe ON vendite.contratti_righe USING btree (id)` |
 | uq_contrighe_one_aggiunta_per_articolo | `CREATE UNIQUE INDEX uq_contrighe_one_aggiunta_per_articolo ON vendite.contratti_righe USING btree (contratto_id, articolo_id) WHERE (tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto)` |
 | uq_contrighe_one_eccezione_per_articolo | `CREATE UNIQUE INDEX uq_contrighe_one_eccezione_per_articolo ON vendite.contratti_righe USING btree (contratto_id, articolo_id) WHERE (tipo_eccezione = ANY (ARRAY['OVERRIDE'::vendite.tipo_eccezione_contratto, 'ESCLUSIONE'::vendite.tipo_eccezione_contratto]))` |
@@ -58,6 +62,7 @@
 | trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()` |
 | trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()` |
 | trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()` |
+| trg_contratti_righe_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_pending()` |
 | trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione()` |
 | trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione()` |
 | trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione()` |
