@@ -351,6 +351,7 @@ function close() {
           <ArticoloLookup
             v-model="form.articolo_obj"
             :disabled="isReadOnlyEffective || isLocked('articolo_id')"
+            :filtri="{ soloComponenti: 'escludi' }"
             :placeholder="t('vendite.promo_articoli.field_articolo_placeholder')"
           />
         </div>

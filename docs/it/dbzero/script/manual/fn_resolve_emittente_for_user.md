@@ -57,7 +57,7 @@ Convenzione: ritorna `anagrafiche.emittenti_fiscali.id` (PK numerica reale), **n
 ## Chi la chiama
 
 * `anagrafiche.trgfn_billing_account_link_ef` — auto‑link BA → emittente alla creazione
-* Backend Python: wrapper `PermissionResolver.get_emittente_for_user(user)` (vedi [refactor WIP §5.2](/dev/work-in-progress/refactor-operatore-emittenti))
+* Backend Python: wrapper `PermissionResolver.get_emittente_for_user(user)` (vedi [refactor WIP §5.2](/dev/work-done/refactor-operatore-emittenti))
 
 ## Esempio
 

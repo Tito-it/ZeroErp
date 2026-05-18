@@ -28,6 +28,7 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.vendite_lookups_service import (
     fn_list_ambiti_contratto,
+    fn_list_listini_selezionabili_contratti,
     fn_list_tipi_variazione_contratto,
     fn_list_tipi_variazione_promo,
 )
@@ -78,5 +79,26 @@ class ApiAmbitiContrattoLookup(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         del request
         return success_response(fn_list_ambiti_contratto())
+
+
+class ApiListiniSelezionabiliContrattoLookup(DomainAPIView):
+    # Scopo: Lookup dinamico dei listini selezionabili come riferimento di un
+    #        contratto. Filtra `vendite.listini` per `attivo=TRUE` + esistenza
+    #        di almeno una `listini_versioni` con `stato='ATTIVA' AND attivo`
+    #        (decisione 2026-05-18 §4.4 refactor-contratti-modalita). Sostituisce
+    #        `LookupSelect rel='vendite.listini'` nel ContrattoDrawer: senza
+    #        questo filtro l'operatore vedrebbe anche i listini senza versione
+    #        operativa, il cui salvataggio viene rifiutato dal guard service
+    #        `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (UX a doppio passo).
+    #        Forma payload uniforme `{id, codice, descrizione}` (no paginazione).
+    area_funzionale = "vendite"
+
+    @extend_schema(responses=_lookup_response_schema(
+        "VenditeListiniSelezionabiliContrattoLookupResponse",
+    ))
+    # Scopo: Restituisce la lista listini selezionabili per i contratti.
+    def get(self, request: Request) -> JsonResponse:
+        del request
+        return success_response(fn_list_listini_selezionabili_contratti())
 
 

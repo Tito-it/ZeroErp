@@ -90,9 +90,16 @@ const limitiPricingText = computed(() => {
   //     principio ma 0% di variazione ammessa. Suggerisce di chiedere
   //     un limite concreto invece di "non sei autorizzato".
   //  3) Caso normale: mostra i limiti effettivi (sconto/maggiorazione).
+  //     Variante "_con_cliente" usata quando il preventivo ha un BA: il
+  //     limite e' gia' adattato alla categoria cliente (cascata 2026-05-15)
+  //     e il testo lo dichiara esplicitamente per trasparenza UX. Senza BA
+  //     (cascata "generica utente") usa il copy base senza riferimento.
   if (!canOverride.value) return t('preventivi.limiti_prezzo_non_autorizzato')
   if (s === 0 && m === 0) return t('preventivi.limiti_prezzo_zero_autorizzato')
-  return t('preventivi.limiti_prezzo_hint', { sconto: s, maggiorazione: m })
+  const key = props.billingAccountId
+    ? 'preventivi.limiti_prezzo_hint_con_cliente'
+    : 'preventivi.limiti_prezzo_hint'
+  return t(key, { sconto: s, maggiorazione: m })
 })
 
 // Prezzo "originale del listino" sempre visibile accanto al campo prezzo
@@ -552,6 +559,7 @@ async function handleRichiediApprovazione() {
     <div class="form-field">
       <label>{{ t('preventivi.riga_articolo') }} <span v-if="!isEdit">*</span></label>
       <ArticoloLookup :model-value="articoloObj" :disabled="isEdit"
+        :filtri="{ soloComponenti: 'escludi' }"
         :placeholder="t('preventivi.riga_cerca_articolo')" @select="onArticoloSelect" />
     </div>
 

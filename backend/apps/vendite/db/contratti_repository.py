@@ -128,6 +128,8 @@ _SELECT_COLS_RIGA = """
     r.attivo,
     r.meta,
     r.tipo_eccezione,
+    r.stato_approvazione_prezzo,
+    r.pratica_approvazione_prezzo_id,
     r.data_insert,
     r.user_insert,
     r.data_update,
@@ -387,6 +389,23 @@ class ContrattiRepository(ComponentiRepositoryMixin):
                    )
                  ORDER BY (lv.stato = 'ATTIVA') DESC
                  LIMIT 1
+            ),
+            -- Versione operativa CORRENTE del listino oggi (drift detection
+            -- FE 2.4 refactor-contratti-modalita): la versione ATTIVA del
+            -- listino con validita' che include oggi. Serve per confrontare
+            -- contro la versione FISSATA dal contratto e segnalare al banner
+            -- se il listino ha evoluto post-attivazione contratto (il
+            -- contratto resta sulla fissata, ma l'operatore vede che ne
+            -- esiste una piu' recente). Per contratti DRAFT (no fissaggio)
+            -- ver_corrente coincide con ver, quindi mai drift.
+            ver_corrente AS (
+                SELECT lv.id, lv.codice_versione
+                  FROM vendite.listini_versioni lv
+                  JOIN cnt ON cnt.listino_id = lv.listino_id
+                 WHERE lv.attivo = TRUE
+                   AND lv.stato = 'ATTIVA'
+                   AND lv.validita @> CURRENT_DATE
+                 LIMIT 1
             )
             SELECT
                 cnt.id AS contratto_id,
@@ -401,6 +420,19 @@ class ContrattiRepository(ComponentiRepositoryMixin):
                 -- True se il contratto e' ATTIVO con versione fissata: i prezzi
                 -- non drifteranno con nuove versioni del listino.
                 (cnt.listino_versione_id IS NOT NULL) AS listino_versione_fissata,
+                -- Versione operativa CORRENTE del listino (drift detection):
+                -- diversa dalla fissata se il listino e' stato aggiornato
+                -- dopo l'attivazione del contratto. NULL se il listino non
+                -- ha nessuna versione ATTIVA oggi (caso limite: listino
+                -- senza versioni operative correnti). FE mostra Tag drift
+                -- quando il contratto e' fissato e id differiscono.
+                ver_corrente.id AS listino_versione_corrente_id,
+                ver_corrente.codice_versione AS listino_versione_corrente_codice,
+                (
+                    cnt.listino_versione_id IS NOT NULL
+                    AND ver_corrente.id IS NOT NULL
+                    AND ver_corrente.id <> cnt.listino_versione_id
+                ) AS drift_versione_listino,
                 cnt.tipo_variazione_globale,
                 cnt.valore_variazione_globale,
                 COALESCE(cnt.categoria_cliente_id_snapshot, ba.categoria_cliente_id)
@@ -411,6 +443,7 @@ class ContrattiRepository(ComponentiRepositoryMixin):
               LEFT JOIN anagrafiche.billing_account ba ON ba.id = cnt.billing_account_id
               LEFT JOIN vendite.listini l ON l.id = cnt.listino_id
               LEFT JOIN ver ON TRUE
+              LEFT JOIN ver_corrente ON TRUE
               LEFT JOIN anagrafiche.categorie_clienti cc
                 ON cc.id = COALESCE(
                     cnt.categoria_cliente_id_snapshot, ba.categoria_cliente_id
@@ -612,6 +645,12 @@ class ContrattiRepository(ComponentiRepositoryMixin):
             "ordine",
             "attivo",
             "meta",
+            # Workflow L3 approvazione prezzo (simmetria preventivi_righe,
+            # migrations DB 20260518-01/02). Popolati solo dal flusso L3
+            # (gestisci_riga con richiesta_approvazione=True che viola L2):
+            # nei flussi normali restano NULL.
+            "stato_approvazione_prezzo",
+            "pratica_approvazione_prezzo_id",
         )
         cols = ["contratto_id"]
         vals: list[Any] = [contratto_id]
@@ -649,6 +688,12 @@ class ContrattiRepository(ComponentiRepositoryMixin):
             "ordine",
             "attivo",
             "meta",
+            # Workflow L3: la transizione PENDING -> APPROVED/REJECTED e
+            # l'aggancio della pratica passano da qui (allowlist trigger
+            # `trgfn_contratti_righe_guard_pending` ammette workflow + meta
+            # + audit, blocca ogni altra modifica struttura su righe PENDING).
+            "stato_approvazione_prezzo",
+            "pratica_approvazione_prezzo_id",
         )
         set_parts: list[str] = []
         vals: list[Any] = []
@@ -690,6 +735,27 @@ class ContrattiRepository(ComponentiRepositoryMixin):
             EmittentiFiscaliRepository,
         )
         return EmittentiFiscaliRepository().get_sr_id_by_fiscale_id(fiscale_id)
+
+    # Scopo: Deriva i campi di contesto pratica (emittente_fiscale_id +
+    #        soggetto_id + soggetto_ruolo_id) dal billing_account del
+    #        contratto. Speculare a `PreventiviRepository.resolve_contesto_pratica`,
+    #        usato dal workflow L3 (`approvazioni_prezzo_service.crea_richiesta_approvazione_contratto`)
+    #        per creare la pratica APPROVAZIONE_PREZZO con scope corretto.
+    def resolve_contesto_pratica(self, contratto_id: int) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id)
+                    AS emittente_fiscale_id,
+                sr.soggetto_id::text AS soggetto_id,
+                ba.soggetto_ruolo_id
+            FROM vendite.contratti c
+            JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+            JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+            WHERE c.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [contratto_id])
+            return row_to_dict(cursor)
 
     # Scopo: Verifica se un articolo e' composito. Usato dal service per
     # decidere se invocare auto-init componenti dopo `create_riga`. Thin

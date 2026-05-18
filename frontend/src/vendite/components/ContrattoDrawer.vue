@@ -26,6 +26,8 @@ import { statoContrattoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { lookupListiniSelezionabiliContratto } from '../api/lookup'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import DocumentiGeneratiSorgenteList from '../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
@@ -39,6 +41,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
+import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
@@ -92,6 +95,26 @@ provide(READONLY_KEY, isReadonly)
 // Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer.
 const contentReady = ref(false)
 function onAfterShow() { contentReady.value = true }
+
+// Lookup dinamico listini "selezionabili come riferimento contrattuale"
+// (refactor 2026-05-18 §4.4): filtra `vendite.listini` per esistenza di una
+// versione ATTIVA. Cache modulo-level via useGlobalLookup (chiave stabile
+// `vendite.listini_selezionabili_contratto`): primo consumer fa la fetch,
+// successivi riusano. Single source of truth lato BE: endpoint dedicato
+// `/vendite/lookup/listini-selezionabili-contratto/`. Sostituisce il
+// generico `LookupSelect rel="vendite.listini"` che mostrava anche listini
+// senza versione operativa, il cui salvataggio sarebbe rifiutato dal guard
+// service `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (UX a doppio passo).
+const listiniLookup = useGlobalLookup(
+  'vendite.listini_selezionabili_contratto',
+  lookupListiniSelezionabiliContratto,
+  { immediate: true, transform: (r) => r.data.data },
+)
+// Label dropdown: "descrizione (codice)" come `LookupSelect show-code`.
+function formatListinoOption(item) {
+  if (!item) return ''
+  return item.codice ? `${item.descrizione} (${item.codice})` : item.descrizione
+}
 
 // Sub-drawer
 const righeVisible = ref(false)
@@ -618,9 +641,19 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
       <div class="form-field">
         <label>{{ t('contratti.field_listino') }}</label>
-        <LookupSelect v-model="form.listino_id" rel="vendite.listini" class="w-full"
+        <!-- Refactor 2026-05-18 §4.4: lookup dedicato che esclude i listini
+             senza versione ATTIVA. Pattern useGlobalLookup + Select, cache
+             modulo-level. Niente piu' LookupSelect generico per non far
+             apparire scelte che il save rifiuterebbe. -->
+        <Select v-model="form.listino_id"
+          :options="listiniLookup.items.value"
+          :option-label="formatListinoOption"
+          option-value="id"
+          :loading="listiniLookup.loading.value"
+          class="w-full"
           :placeholder="t('contratti.select_listino_opzionale')"
           show-clear
+          filter
           @update:model-value="onListinoChange"
           :disabled="isEdit && isLocked('listino_id')" />
         <small class="text-color-secondary">

@@ -58,7 +58,7 @@ Esempio output:
 
 ## Chi la chiama
 
-* Frontend admin (composable `useSetupStatus()` previsto da [refactor WIP §9.5](/dev/work-in-progress/refactor-operatore-emittenti)) tramite endpoint `GET /api/v1/amm-software/setup-status/`.
+* Frontend admin (composable `useSetupStatus()` previsto da [refactor WIP §9.5](/dev/work-done/refactor-operatore-emittenti)) tramite endpoint `GET /api/v1/amm-software/setup-status/`.
 * Eventuali job di reportistica diagnostica.
 
 ## Esempio
