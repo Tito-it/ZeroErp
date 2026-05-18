@@ -480,7 +480,7 @@ DB (CHECK + trigger su `preventivi_righe`).
 
 Evitare di usare quei limiti come unica guard di salvataggio: il backend
 deve sempre rifiutare i payload non autorizzati con codice errore strutturato
-(`E_PREV_OVERRIDE_NON_AUTORIZZATO`) e il FE intercetta il codice per offrire
+(`E_PRICING_OVERRIDE_NON_AUTORIZZATO`) e il FE intercetta il codice per offrire
 la CTA "Richiedi approvazione" (vedi C4).
 
 ### B6. Approvazioni prezzo: command UI semplice
@@ -564,7 +564,7 @@ evitare due derive:
 
 Pattern consigliato:
 
-- se backend ritorna `E_PREV_OVERRIDE_NON_AUTORIZZATO`, il form riga mostra
+- se backend ritorna `E_PRICING_OVERRIDE_NON_AUTORIZZATO`, il form riga mostra
   CTA "Richiedi approvazione";
 - il payload invia `richiesta_approvazione=true`;
 - dopo salvataggio la riga mostra badge `PENDING`, gia' presente nella tabella.
@@ -698,7 +698,7 @@ Obiettivo: chiudere il debito stile sul sottodominio piu' acerbo.
 | 3.F1 | `PreventiviForm.vue` — `BillingAccountLookup` al posto di `InputNumber` | A10. BB gia' esistente, prop `utility-id`, restore via `getBillingAccountLookupById` |
 | 3.F2 | `PreventiviRigheTable.vue` — sostituire bottoni inline con `RowActionsMenu` (kebab + popup) e azioni `visible` da capability di riga | C1 + frontend-standards §"Colonna azioni di riga" |
 | 3.F3 | `PreventiviRigheTable.vue` — valutare master-detail inline al posto di Dialog interno (modello `VersioneDrawer`/`ContrattoRigheDrawer`) | Coerenza con il resto vendite |
-| 3.F4 | CTA "Richiedi approvazione" in `PreventiviRigaForm.vue` quando l'errore backend e' `E_PREV_OVERRIDE_NON_AUTORIZZATO` | C4 — payload riga aggiunge `richiesta_approvazione=true` |
+| 3.F4 | CTA "Richiedi approvazione" in `PreventiviRigaForm.vue` quando l'errore backend e' `E_PRICING_OVERRIDE_NON_AUTORIZZATO` | C4 — payload riga aggiunge `richiesta_approvazione=true` |
 | 3.F5 | Rimuovere `scrollHeight="250px"` cablato; allinearsi a `app-datatable` standard | Tipografia/scroll consistenti |
 | 3.F6 | Decisione C2: detail = testata + summary, righe via endpoint autonomo (oppure detail include righe e i figli leggono props). Applicare uniformemente | Una sola scelta, documentata |
 
@@ -730,7 +730,7 @@ Obiettivo: chiudere C3/C4 in modo strutturato.
 | # | Azione |
 | --- | --- |
 | 5.B1 | Lista coda approvazioni espone per ogni item: `can_approve`, `can_reject`, `action_reason` (oggi: derivati da `lista_coda` ma non esposti). |
-| 5.B2 | Errore `E_PREV_OVERRIDE_NON_AUTORIZZATO` mantiene `retryable=true` quando l'utente puo' chiedere approvazione, `retryable=false` quando il limite e' invalicabile per ruolo |
+| 5.B2 | Errore `E_PRICING_OVERRIDE_NON_AUTORIZZATO` mantiene `retryable=true` quando l'utente puo' chiedere approvazione, `retryable=false` quando il limite e' invalicabile per ruolo |
 
 **Frontend**
 

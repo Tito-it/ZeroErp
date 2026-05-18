@@ -26,10 +26,11 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
-from typing import Any
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import Any, Callable
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.core.services.error_manager import ErrorManager
@@ -48,6 +49,22 @@ from apps.vendite.services.pricing_service import (
 AZIONE_OVERRIDE_PREZZO = "prezzo_override_manuale"
 
 
+# Scopo: Guard generico su uom_id intero positivo, riusato dagli entry point
+#        pricing module-level (`suggerisci_prezzo_riga` preventivi,
+#        `contratti_suggerisci_prezzo_riga` contratti). Solleva ServiceError
+#        col codice di dominio fornito dal caller — il messaggio e' fisso
+#        ("uom_id obbligatorio (intero positivo).") per coerenza UX.
+def guard_uom_id_positive(
+    uom_id: Any, *, error_code: str, function_name: str,
+) -> None:
+    ErrorManager.require(
+        uom_id is not None and isinstance(uom_id, int) and uom_id > 0,
+        code=error_code,
+        message="uom_id obbligatorio (intero positivo).",
+        function_name=function_name,
+    )
+
+
 # Scopo: Gate L1 — verifica che l'operatore abbia l'azione di processo per
 #        override manuale del prezzo. Bypass per superuser. Se auth_user_id
 #        None (chiamata non autenticata, es. script interni) -> blocca
@@ -57,7 +74,7 @@ def check_permesso_override_prezzo(
 ) -> None:
     ErrorManager.require(
         auth_user_id is not None,
-        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+        code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
         message="Override prezzo non autorizzato.",
         detail="Chiamata senza contesto utente — override bloccato conservativamente.",
         function_name=function_name,
@@ -67,7 +84,7 @@ def check_permesso_override_prezzo(
         user = user_model.objects.get(pk=auth_user_id)
     except user_model.DoesNotExist:
         ErrorManager.raise_error(
-            code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+            code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
             message="Override prezzo non autorizzato.",
             detail="Utente non trovato.",
             function_name=function_name,
@@ -77,7 +94,7 @@ def check_permesso_override_prezzo(
     abilitato = PermissionResolver.check_azione(user, AZIONE_OVERRIDE_PREZZO)
     ErrorManager.require(
         abilitato,
-        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+        code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
         message="Modifica manuale del prezzo non autorizzata.",
         detail=(
             "Usa il prezzo suggerito dal listino o richiedi l'autorizzazione "
@@ -149,8 +166,8 @@ def _get_user_or_none(auth_user_id: int):
 #          - dict {tipo_violazione, variazione_abs_pct, limite_pct, kind_label}
 #            se violazione + accept_for_approval=True
 #
-#        Solleva ServiceError L2 (E_PREV_SCONTO_ECCESSIVO /
-#        E_PREV_MAGGIORAZIONE_ECCESSIVA, retryable=True) se violazione +
+#        Solleva ServiceError L2 (E_PRICING_SCONTO_ECCESSIVO /
+#        E_PRICING_MAGGIORAZIONE_ECCESSIVA, retryable=True) se violazione +
 #        accept_for_approval=False.
 def check_limite_variazione_prezzo(
     *,
@@ -283,8 +300,8 @@ def _raise_or_return_violazione_l2(
     # Fase 5.B2: retryable=True esplicito → semantica "puoi riprovare con
     # flag richiesta_approvazione=true" (workflow L3).
     error_code = (
-        "E_PREV_SCONTO_ECCESSIVO" if is_sconto
-        else "E_PREV_MAGGIORAZIONE_ECCESSIVA"
+        "E_PRICING_SCONTO_ECCESSIVO" if is_sconto
+        else "E_PRICING_MAGGIORAZIONE_ECCESSIVA"
     )
     ErrorManager.raise_error(
         code=error_code,
@@ -297,3 +314,202 @@ def _raise_or_return_violazione_l2(
         function_name=function_name,
     )
     raise AssertionError("unreachable")  # pragma: no cover
+
+
+# Tolleranza confronto prezzi: il resolver ritorna Decimal a 10 decimali
+# (max_digits=22, decimal_places=10), ma il round-trip BE -> JSON -> JS Number
+# (53-bit float, ~15-17 cifre significative) -> InputNumber mode="currency"
+# -> JSON -> BE perde precisione sull'ultima cifra. Quantizziamo entrambi a 4
+# decimali (precisione abbondante per prezzi commerciali EUR) per il
+# confronto: se uguali, salviamo il prezzo resolver originale (full
+# precision) — il valore "che l'utente vede" era gia' un'approssimazione
+# del valore canonico DB.
+_PRICE_COMPARE_QUANTIZE = Decimal("0.0001")
+
+
+# Scopo: Orchestratore dei 3 gate prezzo (L1 permesso + L2 soglia + L3
+#        escalation) per la modifica manuale del prezzo unitario su righe
+#        documento (preventivi, contratti, in futuro ordini/ddt).
+#
+#        Pattern simmetrico per tutte le sorgenti che ammettono override
+#        prezzo: il caller passa la propria funzione di resolver
+#        (`resolver_fn`) che sa come derivare il prezzo suggerito dato il
+#        contesto documento, e il codice errore di validazione applicabile
+#        al dominio (`error_code_validazione`).
+#
+#        Comportamento:
+#          1. Se mancano dati per il resolver (BA / utility / data /
+#             articolo_id / uom_id) → ritorna payload_prezzo + None
+#             (skip wiring, accept manuale).
+#          2. Chiama `resolver_fn(documento_id, articolo_id=, uom_id=,
+#             auth_user_id=)` dentro savepoint (best-effort: se fallisce,
+#             accetta payload manuale senza meta).
+#          3. Auto-fill: se payload_prezzo None → ritorna resolver con meta.
+#          4. Confronto payload vs resolver con tolleranza 4 decimali:
+#             se uguali → no override, meta = resolver.
+#          5. Override (payload != resolver):
+#             - Gate L1: `check_permesso_override_prezzo` (azione
+#               `prezzo_override_manuale`)
+#             - Gate L2: `check_limite_variazione_prezzo` (soglia % via
+#               cascata user → categoria → group → emittente → default)
+#             - Gate L3: se `richiesta_approvazione=True`, eventuale
+#               violazione L2 viene ritornata in meta come
+#               `richiesta_approvazione_pending=True` invece di sollevare;
+#               il caller orchestrera' la creazione della pratica.
+#
+#        Ritorna (prezzo_finale: Decimal | Any, meta_patch: dict | None):
+#          - meta_patch include `origine_prezzo`, `prezzo_resolver_context`,
+#            e per override anche `prezzo_applicato`, `override_user_id`,
+#            `prezzo_base_resolver`, `delta_override`, `delta_override_pct`,
+#            opzionalmente `richiesta_approvazione_pending` + `violazione_l2`.
+#
+#        Parametri:
+#          - `testata`: dict con almeno `id`, `billing_account_id`,
+#            `utility_id`, `data`. Usato per skip-context e per propagare
+#            `billing_account_id` come BA per la cascata L2.
+#          - `resolver_fn`: callable con signature
+#            `(documento_id: int, *, articolo_id: str, uom_id: int,
+#             auth_user_id: int | None) -> dict[str, Any]`.
+#            Deve ritornare un dict con almeno `prezzo_finale` (None se non
+#            risolto); opzionalmente `origine`, `listino_id`, `contratto_id`,
+#            `promo_id`, `tipo_variazione_applicata`,
+#            `valore_variazione_applicata` per il resolver_context.
+#          - `error_code_validazione`: codice ServiceError di dominio
+#            (es. `E_PREV_VALIDAZIONE` per preventivi,
+#            `E_VENDITE_VALIDATION` per contratti). Usato solo se il payload
+#            di prezzo non e' numerico.
+#          - `richiesta_approvazione`: flag L3 escalation (Sprint E).
+def resolve_or_check_override_prezzo(
+    *,
+    testata: dict[str, Any],
+    articolo_id: Any,
+    uom_id: Any,
+    payload_prezzo: Any,
+    auth_user_id: int | None,
+    function_name: str,
+    resolver_fn: Callable[..., dict[str, Any]],
+    error_code_validazione: str,
+    richiesta_approvazione: bool = False,
+) -> tuple[Any, dict[str, Any] | None]:
+    # Requisiti minimi per invocare il resolver. Se mancano, skippiamo il
+    # wiring e ritorniamo il prezzo del payload senza meta audit.
+    missing_resolver_ctx = (
+        not articolo_id
+        or not uom_id
+        or testata.get("billing_account_id") is None
+        or testata.get("utility_id") is None
+        or testata.get("data") is None
+    )
+    if missing_resolver_ctx:
+        return payload_prezzo, None
+
+    # Resolver best-effort: se qualunque errore applicativo (es.
+    # E_CATEGORIA_LISTINO_NON_MAPPATA) accettiamo il prezzo manuale.
+    # Savepoint annidato: le RAISE EXCEPTION dentro il resolver DB marcano
+    # la tx PostgreSQL come aborted; senza savepoint l'INSERT successivo
+    # fallirebbe con InFailedSqlTransaction → mascherato in E_DATABASE
+    # generico. Il savepoint isola l'errore e mantiene integra la tx esterna.
+    prezzo_resolver: Decimal | None = None
+    resolver_context: dict[str, Any] | None = None
+    try:
+        with transaction.atomic():
+            resolver_result = resolver_fn(
+                int(testata["id"]),
+                articolo_id=str(articolo_id),
+                uom_id=int(uom_id),
+                auth_user_id=auth_user_id,
+            )
+            if resolver_result.get("prezzo_finale") is not None:
+                prezzo_resolver = Decimal(str(resolver_result["prezzo_finale"]))
+                resolver_context = {
+                    "origine": resolver_result.get("origine"),
+                    "listino_id": resolver_result.get("listino_id"),
+                    "contratto_id": resolver_result.get("contratto_id"),
+                    "promo_id": resolver_result.get("promo_id"),
+                    "tipo_variazione": resolver_result.get("tipo_variazione_applicata"),
+                    "valore_variazione": resolver_result.get("valore_variazione_applicata"),
+                }
+    except Exception:
+        # Best-effort: se il resolver non trova prezzo, accettiamo il
+        # payload manuale (se presente). Se payload_prezzo e' None in
+        # questo ramo, il DB dara' NOT NULL sulla colonna oppure il
+        # default del trigger — non e' responsabilita' di questo helper.
+        return payload_prezzo, None
+
+    # Auto-fill: payload senza prezzo -> uso il resolver.
+    if payload_prezzo is None:
+        return prezzo_resolver, {
+            "origine_prezzo": resolver_context.get("origine") if resolver_context else None,
+            "prezzo_resolver_context": resolver_context,
+        }
+
+    # Confronto: payload numerico atteso. Se non convertibile, errore di
+    # validazione del dominio (codice parametrizzato).
+    try:
+        payload_decimal = Decimal(str(payload_prezzo))
+    except (InvalidOperation, ValueError, TypeError):
+        ErrorManager.raise_error(
+            code=error_code_validazione,
+            message="Prezzo unitario non numerico.",
+            detail=f"prezzo_unitario={payload_prezzo!r}",
+            function_name=function_name,
+        )
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    # Confronto con tolleranza 4 decimali (vedi _PRICE_COMPARE_QUANTIZE).
+    if prezzo_resolver is not None:
+        payload_q = payload_decimal.quantize(
+            _PRICE_COMPARE_QUANTIZE, rounding=ROUND_HALF_UP,
+        )
+        resolver_q = prezzo_resolver.quantize(
+            _PRICE_COMPARE_QUANTIZE, rounding=ROUND_HALF_UP,
+        )
+        if payload_q == resolver_q:
+            return prezzo_resolver, {
+                "origine_prezzo": resolver_context.get("origine") if resolver_context else None,
+                "prezzo_resolver_context": resolver_context,
+            }
+
+    # Override: L1 richiesta azione processo prezzo_override_manuale.
+    check_permesso_override_prezzo(auth_user_id, function_name=function_name)
+
+    # L2: limite percentuale sconto/maggiorazione (Sprint D).
+    # Se resolver non ha prezzo o e' 0 skip (non calcolabile); altrimenti
+    # confronta delta_pct firmato con il parametro appropriato risolto per
+    # l'utente. Cascata estesa (2026-05-15): la categoria cliente del BA
+    # destinatario entra come livello fra user e group. Il lookup BA →
+    # categoria avviene DENTRO `check_limite_variazione_prezzo` dopo gli
+    # early-return (superuser bypass / delta=0 / resolver nullo) per non
+    # sprecare round-trip DB quando L2 non si applica.
+    # L3 (Sprint E): se chiamante chiede `richiesta_approvazione`, l'eventuale
+    # violazione non solleva ma ritorna dict; il chiamante orchestrera' la
+    # creazione pratica.
+    violazione_l2 = check_limite_variazione_prezzo(
+        auth_user_id=auth_user_id,
+        prezzo_resolver=prezzo_resolver,
+        prezzo_manuale=payload_decimal,
+        function_name=function_name,
+        accept_for_approval=richiesta_approvazione,
+        ba_id=testata.get("billing_account_id"),
+    )
+
+    meta_patch: dict[str, Any] = {
+        "origine_prezzo": "MANUALE",
+        "prezzo_resolver_context": resolver_context,
+        "prezzo_applicato": str(payload_decimal),
+        "override_user_id": auth_user_id,
+    }
+    if prezzo_resolver is not None:
+        delta = payload_decimal - prezzo_resolver
+        meta_patch["prezzo_base_resolver"] = str(prezzo_resolver)
+        meta_patch["delta_override"] = str(delta)
+        if prezzo_resolver != 0:
+            meta_patch["delta_override_pct"] = str((delta / prezzo_resolver) * Decimal("100"))
+
+    # Hook L3: violazione L2 in modalita' "richiesta approvazione" → segnala
+    # al chiamante per orchestrazione pratica + salvataggio riga PENDING.
+    if violazione_l2 is not None:
+        meta_patch["richiesta_approvazione_pending"] = True
+        meta_patch["violazione_l2"] = violazione_l2
+
+    return payload_decimal, meta_patch

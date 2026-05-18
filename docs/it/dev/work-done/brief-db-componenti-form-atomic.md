@@ -221,7 +221,7 @@ originale), con `prezzo_unitario NOT NULL` + `CHECK <> 0`.
    esistente per `prezzo_override_manuale` su prezzo riga padre):
    - Se `payload.componenti_overrides` non vuoto e l'operatore NON ha
      l'azione `prezzo_override_manuale` → raise
-     `E_PREV_OVERRIDE_NON_AUTORIZZATO` (esistente). Niente bypass via curl.
+     `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (esistente). Niente bypass via curl.
    - L'autorizzazione resta responsabilita' BE: la fn DB non conosce
      azioni di processo, accetta gli overrides senza ulteriori check.
 5. Service: nuovo endpoint `preview_componenti_riga(preventivo_id, articolo_id, ...)`

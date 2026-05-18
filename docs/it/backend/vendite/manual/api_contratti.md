@@ -159,7 +159,7 @@ rimuovere/sostituire prima le eccezioni.
 `valore_variazione_globale` con `tipo_variazione_globale = PERCENTUALE`,
 si applica il gate L2 (cascata user → categoria_cliente → group → emittente).
 Sconto/maggiorazione oltre soglia → 403 retryable con
-`E_PREV_SCONTO_ECCESSIVO`/`E_PREV_MAGGIORAZIONE_ECCESSIVA`. VALORE_FISSO
+`E_PRICING_SCONTO_ECCESSIVO`/`E_PRICING_MAGGIORAZIONE_ECCESSIVA`. VALORE_FISSO
 skip (non e' percentuale, gate non applicabile). Superuser bypass.
 
 ### Cambio stato `POST /api/v1/vendite/contratti/<id>/cambia-stato/`
@@ -560,7 +560,7 @@ extra al catalogo.
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` | 422 | DB P0001 (resolver pricing) — tentativo di prezzare un articolo che ha eccezione ESCLUSIONE sul contratto attivo del cliente | `fn_resolve_prezzo_listino_v2` (STADIO 1 eccezioni) |
 | `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` | 409 | DB P0001 (refactor §3-bis-A) — UPDATE su `listino_id`/`listino_versione_id`/`tipo_variazione_globale`/`valore_variazione_globale` di contratto ATTIVO, oppure INSERT/UPDATE/DELETE eccezione su contratto ATTIVO | `trgfn_contratti_lock_post_attivazione` + `trgfn_contratti_righe_lock_post_attivazione` |
 | `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` | 422 | Service (refactor §3-bis-F) — PATCH testata che porta `listino_id` da NOT NULL a NULL con eccezioni OVERRIDE/ESCLUSIONE attive | — |
-| `E_PREV_SCONTO_ECCESSIVO` / `E_PREV_MAGGIORAZIONE_ECCESSIVA` | 403 (retryable=True) | Service (refactor §3-bis-E) — gate L2 sulla variazione globale del contratto al PATCH testata. Cascata user → categoria → group → emittente. VALORE_FISSO non applicabile (skip) | — |
+| `E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 403 (retryable=True) | Service (refactor §3-bis-E) — gate L2 sulla variazione globale del contratto al PATCH testata. Cascata user → categoria → group → emittente. VALORE_FISSO non applicabile (skip) | — |
 | `E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |
 | `E_CONTRATTO_CLASSE_TIPO_INCOERENTE` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |
 | `E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |

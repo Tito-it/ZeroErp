@@ -459,8 +459,8 @@ Codici lanciati dal dominio preventivi (registrati in `error_policies`):
 |---|---|---|
 | `E_PREV_VALIDAZIONE` | 400 | Payload incoerente (modalità, riferimenti) |
 | `E_PREV_NOT_FOUND` | 404 | Preventivo / riga / componente inesistente |
-| `E_PREV_SCONTO_ECCESSIVO` | 400 | L2: sconto oltre limite, no richiesta approvazione |
-| `E_PREV_MAGGIORAZIONE_ECCESSIVA` | 400 | L2: maggiorazione oltre limite |
+| `E_PRICING_SCONTO_ECCESSIVO` | 400 | L2: sconto oltre limite, no richiesta approvazione |
+| `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 400 | L2: maggiorazione oltre limite |
 | `E_PRV_REVISIONE_STATO_NON_AMMESSO` | 400 | Crea revisione da stato diverso da EMESSO |
 | `E_PRV_REVISIONE_BOZZA_ESISTENTE` | 400 | Esiste già una DRAFT per quel numero |
 | `E_DOC_COMPOSITO_BOM_VUOTA` | 400 | Composito senza figli BoM validi alla data |
