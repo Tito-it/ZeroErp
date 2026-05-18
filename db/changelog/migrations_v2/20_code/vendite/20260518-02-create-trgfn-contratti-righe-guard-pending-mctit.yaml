@@ -1,0 +1,177 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260518-02-create-trgfn-contratti-righe-guard-pending-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Simmetria L3 approvazione prezzo — guard_pending su contratti_righe
+  #
+  # Replica di 20260422-07 (preventivi_righe) adattata a contratti_righe.
+  # Quando una riga ha stato_approvazione_prezzo = PENDING, blocca modifiche
+  # ai campi struttura (denylist enumerata). Ammette solo campi workflow/audit.
+  #
+  # Allowlist campi modificabili in PENDING:
+  #   - stato_approvazione_prezzo       (transizione workflow)
+  #   - pratica_approvazione_prezzo_id  (aggancio/disaggancio pratica)
+  #   - meta                            (payload jsonb)
+  #   - data_update, user_update        (audit, gestiti da framework)
+  #
+  # Denylist (tutti gli altri campi struttura di contratti_righe):
+  #   contratto_id, articolo_id, tipo_erogazione, fonte_quantita_attesa,
+  #   periodicita, generazione_canone, competenza_canone, prezzo_unitario,
+  #   quantita, ordine, attivo, qta_operativa, uom_operativa_id,
+  #   factor_to_base, tipo_eccezione
+  #
+  # Convivenza con altri trigger _a10_ su contratti_righe (ordine lessicografico):
+  #   1. guard_aggiunta_fuori_listino    → BEFORE INSERT/UPDATE WHEN AGGIUNTA
+  #   2. guard_esclusione_figlio_bundle  → BEFORE INSERT/UPDATE WHEN ESCLUSIONE
+  #   3. guard_pending (questo)          → BEFORE UPDATE (solo se OLD=PENDING)
+  #   4. lock_post_attivazione           → BEFORE INSERT/UPDATE/DELETE (contratto ATTIVO)
+  #
+  # Scenario canonico: riga PENDING esiste SOLO su contratto DRAFT
+  #   (workflow L3 chiuso prima dell'attivazione). guard_pending (3) è il
+  #   gate specifico; lock_post_attivazione (4) è defense-in-depth ortogonale.
+  # Scenario difensivo: riga PENDING su contratto ATTIVO (non dovrebbe accadere).
+  #   guard_pending scatta per primo → E_RIGA_PREZZO_PENDENTE (errore più
+  #   informativo); lock_post_attivazione scatterebbe dopo se guard passa.
+  #
+  # Raise: E_RIGA_PREZZO_PENDENTE (id 390). Stessa funzione usata dal trigger
+  #   preventivi simmetrico. Il messaggio cita "Riga preventivo" — limite noto,
+  #   accettato: il service layer BE remappa il codice in error_policies.py
+  #   prima di raggiungere il FE.
+  #
+  # unico changeSet: funzione + trigger in un blocco coerente (runOnChange: true
+  # re-applica entrambi se il file cambia).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260518-02-create-trgfn-contratti-righe-guard-pending
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Simmetria L3: trgfn_contratti_righe_guard_pending + trigger
+        trg_contratti_righe_a10_guard_pending_upd. Pattern identico a
+        preventivi_righe (20260422-07). Raise E_RIGA_PREZZO_PENDENTE (390).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: contratti_righe
+          - columnExists:
+              schemaName: vendite
+              tableName: contratti_righe
+              columnName: stato_approvazione_prezzo
+          - columnExists:
+              schemaName: vendite
+              tableName: contratti_righe
+              columnName: pratica_approvazione_prezzo_id
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_type t
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config'
+                   AND t.typname = 'stato_approvazione_prezzo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_guard_pending()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Quando una riga contratto ha stato_approvazione_prezzo =
+                  --   'PENDING' (richiesta L3 out-of-policy in attesa di
+                  --   esito), bloccare modifiche ai campi struttura.
+                  --   L'approvatore L3 deve decidere sulla riga esatta
+                  --   proposta: cambi di prezzo/qta/articolo/tipo tra
+                  --   richiesta ed esito violerebbero la catena decisionale.
+                  --
+                  -- Allowlist (modificabili in PENDING):
+                  --   stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
+                  --   meta, data_update, user_update (audit framework).
+                  --
+                  -- Denylist (tutti gli altri campi struttura):
+                  --   contratto_id, articolo_id, tipo_erogazione,
+                  --   fonte_quantita_attesa, periodicita, generazione_canone,
+                  --   competenza_canone, prezzo_unitario, quantita, ordine,
+                  --   attivo, qta_operativa, uom_operativa_id, factor_to_base,
+                  --   tipo_eccezione.
+                  --   tx_id escluso: gestione framework, non applicativo.
+                  --
+                  -- Convivenza trigger _a10_: guard_pending (lessicograficamente
+                  --   3°) scatta prima di lock_post_attivazione (4°). Scenario
+                  --   canonico: riga PENDING solo in contratto DRAFT. Scenario
+                  --   difensivo: guard_pending fornisce E_RIGA_PREZZO_PENDENTE
+                  --   più specifico di E_CONTRATTO_CAMPI_BLOCCATI (lock).
+                  -- =========================================================
+
+                  -- Guard scope: attivo solo se la riga era PENDING.
+                  IF OLD.stato_approvazione_prezzo IS DISTINCT FROM
+                     'PENDING'::config.stato_approvazione_prezzo THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- OLD = PENDING. Qualsiasi modifica alla denylist -> raise.
+                  IF NEW.contratto_id             IS DISTINCT FROM OLD.contratto_id
+                     OR NEW.articolo_id           IS DISTINCT FROM OLD.articolo_id
+                     OR NEW.tipo_erogazione       IS DISTINCT FROM OLD.tipo_erogazione
+                     OR NEW.fonte_quantita_attesa IS DISTINCT FROM OLD.fonte_quantita_attesa
+                     OR NEW.periodicita           IS DISTINCT FROM OLD.periodicita
+                     OR NEW.generazione_canone    IS DISTINCT FROM OLD.generazione_canone
+                     OR NEW.competenza_canone     IS DISTINCT FROM OLD.competenza_canone
+                     OR NEW.prezzo_unitario       IS DISTINCT FROM OLD.prezzo_unitario
+                     OR NEW.quantita              IS DISTINCT FROM OLD.quantita
+                     OR NEW.ordine                IS DISTINCT FROM OLD.ordine
+                     OR NEW.attivo                IS DISTINCT FROM OLD.attivo
+                     OR NEW.qta_operativa         IS DISTINCT FROM OLD.qta_operativa
+                     OR NEW.uom_operativa_id      IS DISTINCT FROM OLD.uom_operativa_id
+                     OR NEW.factor_to_base        IS DISTINCT FROM OLD.factor_to_base
+                     OR NEW.tipo_eccezione        IS DISTINCT FROM OLD.tipo_eccezione
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          TG_NAME,
+                          'E_RIGA_PREZZO_PENDENTE',
+                          jsonb_build_object(
+                              'riga_id',       OLD.id,
+                              'contratto_id',  OLD.contratto_id,
+                              'hint', 'Attendere esito approvazione (APPROVED/REJECTED) o rifiutare la richiesta prima di modificare la riga.'
+                          ),
+                          NULL::uuid,
+                          OLD.id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_righe_guard_pending() IS
+                  'Trigger function: blocca modifiche ai campi struttura di '
+                  'contratti_righe quando la riga e'' in stato_approvazione_prezzo '
+                  '= PENDING. Allowlist: stato_approvazione_prezzo, '
+                  'pratica_approvazione_prezzo_id, meta, audit. '
+                  'Raise E_RIGA_PREZZO_PENDENTE (390). '
+                  'Simmetrico a trgfn_preventivi_righe_guard_pending. 2026-05-18.';
+
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_pending_upd
+                  ON vendite.contratti_righe;
+
+              CREATE TRIGGER trg_contratti_righe_a10_guard_pending_upd
+                  BEFORE UPDATE
+                  ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_pending();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_pending_upd
+                  ON vendite.contratti_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_contratti_righe_guard_pending();
