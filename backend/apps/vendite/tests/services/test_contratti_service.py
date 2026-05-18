@@ -1247,6 +1247,234 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(args[0], 77)
         self.assertEqual(args[1]["prezzo_unitario"], Decimal("30"))
 
+    # =========================================================================
+    # Cablaggio gate L1+L2+L3 in create_riga / update_riga (refactor 2026-05-19
+    # BE porting gate riga contratti, debito tecnico §7.6 chiuso).
+    # =========================================================================
+
+    @patch(
+        "apps.vendite.services.contratti_service."
+        "resolve_or_check_override_prezzo_riga_contratto"
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_override_invoca_gate(self, repo_cls, mock_gate):
+        # Scopo: OVERRIDE invoca il BB orchestratore L1+L2+L3 (zero gate L2
+        # violazione qui — verifichiamo solo che venga chiamato e che il
+        # prezzo normalizzato finisca nei data di INSERT).
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+        repo.create_riga.return_value = 77
+        repo.get_riga.return_value = {"id": 77, "prezzo_unitario": Decimal("25.50")}
+        repo.is_articolo_composito.return_value = False
+        mock_gate.return_value = (
+            Decimal("25.50"),
+            {"origine_prezzo": "MANUALE", "override_user_id": 42},
+        )
+
+        ContrattiService().create_riga(
+            1,
+            {
+                "articolo_id": "00000000-0000-0000-0000-000000000001",
+                "tipo_eccezione": "OVERRIDE",
+                "prezzo_unitario": "25.50",
+            },
+            auth_user_id=42,
+        )
+
+        mock_gate.assert_called_once()
+        kwargs = mock_gate.call_args.kwargs
+        self.assertEqual(kwargs["auth_user_id"], 42)
+        self.assertFalse(kwargs["richiesta_approvazione"])
+        # Meta audit del gate mergiato nei data riga.
+        data = repo.create_riga.call_args.args[1]
+        self.assertEqual(data["meta"]["origine_prezzo"], "MANUALE")
+        self.assertEqual(data["prezzo_unitario"], Decimal("25.50"))
+
+    @patch(
+        "apps.vendite.services.contratti_service."
+        "resolve_or_check_override_prezzo_riga_contratto"
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_esclusione_skip_gate(self, repo_cls, mock_gate):
+        # Scopo: ESCLUSIONE non passa per il gate (prezzo NULL per design,
+        # nessun resolver da invocare). Decisione Alternativa B 2026-05-18.
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+        repo.create_riga.return_value = 77
+        repo.get_riga.return_value = {"id": 77, "prezzo_unitario": None}
+        repo.is_articolo_composito.return_value = False
+
+        ContrattiService().create_riga(
+            1,
+            {
+                "articolo_id": "00000000-0000-0000-0000-000000000001",
+                "tipo_eccezione": "ESCLUSIONE",
+                "prezzo_unitario": None,
+            },
+            auth_user_id=42,
+        )
+
+        mock_gate.assert_not_called()
+
+    @patch(
+        "apps.vendite.services.contratti_service._orchestrate_l3_request_contratto"
+    )
+    @patch(
+        "apps.vendite.services.contratti_service."
+        "resolve_or_check_override_prezzo_riga_contratto"
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_l3_richiesta_approvazione_pending(
+        self, repo_cls, mock_gate, mock_orchestrate,
+    ):
+        # Scopo: gate L2 viola + richiesta_approvazione=True → riga salvata
+        # con stato_approvazione_prezzo=PENDING + FK pratica + link riga<->pratica.
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+        repo.create_riga.return_value = 99
+        repo.get_riga.return_value = {"id": 99, "prezzo_unitario": Decimal("15")}
+        repo.is_articolo_composito.return_value = False
+        # gate ritorna meta `richiesta_approvazione_pending` (workflow L3).
+        mock_gate.return_value = (
+            Decimal("15"),
+            {
+                "origine_prezzo": "MANUALE",
+                "richiesta_approvazione_pending": True,
+                "violazione_l2": {
+                    "tipo_violazione": "SCONTO",
+                    "variazione_abs_pct": "50.00",
+                    "limite_pct": "20",
+                },
+                "prezzo_base_resolver": "30",
+            },
+        )
+        mock_orchestrate.return_value = 555  # pratica_id
+
+        with patch(
+            "apps.vendite.services.approvazioni_prezzo_service.link_riga_a_pratica"
+        ) as mock_link:
+            ContrattiService().create_riga(
+                1,
+                {
+                    "articolo_id": "00000000-0000-0000-0000-000000000001",
+                    "tipo_eccezione": "OVERRIDE",
+                    "prezzo_unitario": "15",
+                    "richiesta_approvazione": True,
+                },
+                auth_user_id=42,
+            )
+
+        # Orchestrate L3 chiamato con riga_id_for_link=None (pratica creata
+        # PRIMA dell'INSERT riga).
+        mock_orchestrate.assert_called_once()
+        self.assertIsNone(mock_orchestrate.call_args.kwargs["riga_id_for_link"])
+        # Data riga PENDING + FK pratica popolata.
+        data = repo.create_riga.call_args.args[1]
+        self.assertEqual(data["stato_approvazione_prezzo"], "PENDING")
+        self.assertEqual(data["pratica_approvazione_prezzo_id"], 555)
+        # Link riga -> pratica post-INSERT con sorgente=contratto.
+        mock_link.assert_called_once_with(
+            pratica_id=555, riga_id=99, sorgente="contratto",
+        )
+
+    @patch(
+        "apps.vendite.services.contratti_service."
+        "resolve_or_check_override_prezzo_riga_contratto"
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_aggiunta_senza_base_resolver_skip_l2(
+        self, repo_cls, mock_gate,
+    ):
+        # Scopo: AGGIUNTA su articolo che il resolver non trova in matrice
+        # categoria/promo → meta None, prezzo manuale puro accettato (L1
+        # passed implicitamente nel mock, L2/L3 skip). Alternativa B 2026-05-18.
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+        repo.create_riga.return_value = 88
+        repo.get_riga.return_value = {"id": 88, "prezzo_unitario": Decimal("100")}
+        repo.is_articolo_composito.return_value = False
+        mock_gate.return_value = (Decimal("100"), None)  # nessuna base resolver
+
+        ContrattiService().create_riga(
+            1,
+            {
+                "articolo_id": "00000000-0000-0000-0000-000000000002",
+                "tipo_eccezione": "AGGIUNTA",
+                "prezzo_unitario": "100",
+            },
+            auth_user_id=42,
+        )
+
+        mock_gate.assert_called_once()
+        data = repo.create_riga.call_args.args[1]
+        # Nessun meta_patch -> data["meta"] non valorizzato dal gate.
+        self.assertNotIn("stato_approvazione_prezzo", data)
+        self.assertEqual(data["prezzo_unitario"], Decimal("100"))
+
+    @patch(
+        "apps.vendite.services.contratti_service."
+        "resolve_or_check_override_prezzo_riga_contratto"
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_riga_override_invoca_gate(self, repo_cls, mock_gate):
+        # Scopo: update_riga su OVERRIDE con prezzo_unitario nel PATCH →
+        # gate invocato. Verifica passaggio di articolo_id/uom_id da
+        # existing_riga.
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_riga.return_value = {
+            "id": 77, "contratto_id": 1,
+            "articolo_id": "00000000-0000-0000-0000-000000000001",
+            "tipo_eccezione": "OVERRIDE",
+            "uom_operativa_id": 5,
+            "prezzo_unitario": Decimal("30"),
+            "meta": {},
+        }
+        repo.update_riga.return_value = True
+        mock_gate.return_value = (Decimal("28"), {"origine_prezzo": "MANUALE"})
+
+        ContrattiService().update_riga(
+            77, {"prezzo_unitario": "28"}, auth_user_id=42,
+        )
+
+        mock_gate.assert_called_once()
+        kwargs = mock_gate.call_args.kwargs
+        self.assertEqual(kwargs["articolo_id"], "00000000-0000-0000-0000-000000000001")
+        self.assertEqual(kwargs["uom_id"], 5)
+        self.assertEqual(kwargs["payload_prezzo"], Decimal("28"))
+
+    @patch(
+        "apps.vendite.services.contratti_service."
+        "resolve_or_check_override_prezzo_riga_contratto"
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_riga_skip_gate_se_prezzo_non_in_patch(
+        self, repo_cls, mock_gate,
+    ):
+        # Scopo: PATCH che NON tocca prezzo_unitario non invoca il gate
+        # (ottimizzazione: niente lookup testata/get_riga inutile per puro
+        # cambio di ordine/qta).
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 77, "contratto_id": 1}
+        repo.get_contratto.return_value = _testata_default()
+        repo.update_riga.return_value = True
+
+        ContrattiService().update_riga(77, {"ordine": 50}, auth_user_id=42)
+
+        mock_gate.assert_not_called()
+
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_delete_riga_not_found(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService

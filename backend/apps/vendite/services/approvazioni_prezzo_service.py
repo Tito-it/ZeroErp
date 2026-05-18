@@ -44,7 +44,11 @@ from apps.pratiche.services.pratiche_service import (
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.vendite.services._approvazioni_prezzo_constants import (
     AZIONE_APPROVA_PREZZO,
+    META_KEY_RIGA_CONTRATTO_ID,
     META_KEY_RIGA_PREVENTIVO_ID,
+    META_KEY_SORGENTE,
+    SORGENTE_CONTRATTO,
+    SORGENTE_PREVENTIVO,
     STATO_APPROVAZIONE_APPROVED,
     STATO_APPROVAZIONE_PENDING,
     STATO_APPROVAZIONE_REJECTED,
@@ -82,6 +86,88 @@ _NOTA_TIPO_INTERNA = "INTERNA"
 # codici a chiavi i18n. Aggiungerne uno nuovo richiede di propagare a entrambi.
 ACTION_REASON_PERMESSO_MANCANTE = "PERMESSO_MANCANTE"
 ACTION_REASON_RIGA_NON_LINKATA = "RIGA_NON_LINKATA"
+
+
+# ============================================================
+# Sorgente-agnosticita' (refactor 2026-05-19 BE porting gate riga contratti)
+# ============================================================
+# Le pratiche APPROVAZIONE_PREZZO possono originare da preventivi o da
+# contratti (DB simmetrizzato con migrations 20260518-01/02). Il dispatch
+# verso la tabella/repository corretto avviene tramite questo dict.
+# Ogni entry e' single source of truth per la sorgente: aggiungere ordini/
+# DDT in futuro = aggiungere una entry, niente if-chain sparse nel service.
+
+# Adapter `update_riga` per ogni sorgente: i 2 repo (PreventiviRepository,
+# ContrattiRepository) hanno firme di update_riga diverse (preventivi accetta
+# **kwargs; contratti accetta dict positional). Incapsuliamo la differenza
+# qui via callable iniettato nel `_SORGENTE_CONFIG` invece che con if-chain
+# nel dispatcher: aggiungere una sorgente futura (ordini/DDT) = aggiungere
+# una entry, niente modifiche al dispatcher.
+def _update_riga_preventivo(riga_id: int, fields: dict[str, Any]) -> None:
+    PreventiviRepository().update_riga(riga_id, **fields)
+
+
+def _update_riga_contratto(riga_id: int, fields: dict[str, Any]) -> None:
+    from apps.vendite.db.contratti_repository import ContrattiRepository
+    ContrattiRepository().update_riga(riga_id, fields)
+
+
+_SORGENTE_CONFIG: dict[str, dict[str, Any]] = {
+    SORGENTE_PREVENTIVO: {
+        "table": "vendite.preventivi_righe",
+        "doc_fk_column": "preventivo_id",
+        "meta_key_riga": META_KEY_RIGA_PREVENTIVO_ID,
+        "meta_key_doc": "preventivo_id",
+        "error_code_not_found": "E_PREV_RIGA_NOT_FOUND",
+        "error_message_not_found": "Riga preventivo non trovata.",
+        "label_doc": "preventivo",
+        "update_riga": _update_riga_preventivo,
+    },
+    SORGENTE_CONTRATTO: {
+        "table": "vendite.contratti_righe",
+        "doc_fk_column": "contratto_id",
+        "meta_key_riga": META_KEY_RIGA_CONTRATTO_ID,
+        "meta_key_doc": "contratto_id",
+        "error_code_not_found": "E_VENDITE_NOT_FOUND",
+        "error_message_not_found": "Riga contratto non trovata.",
+        "label_doc": "contratto",
+        "update_riga": _update_riga_contratto,
+    },
+}
+
+
+def _require_sorgente(sorgente: str) -> dict[str, Any]:
+    # Scopo: validate + ritorna config sorgente. Codice errore developer-only:
+    # i call site interni non dovrebbero mai passare un valore fuori-whitelist.
+    cfg = _SORGENTE_CONFIG.get(sorgente)
+    ErrorManager.require(
+        cfg is not None,
+        code="E_APPROVAZIONE_PREZZO_NON_AMMESSA",
+        message=f"Sorgente '{sorgente}' non gestita dal workflow L3.",
+        function_name=f"{_FN}._require_sorgente",
+    )
+    assert cfg is not None
+    return cfg
+
+
+def _update_riga_workflow(
+    *,
+    sorgente: str,
+    riga_id: int,
+    fields: dict[str, Any],
+) -> None:
+    # Scopo: UPDATE workflow su riga (stato_approvazione_prezzo / pratica_id /
+    #        meta). Dispatch via callable iniettato in `_SORGENTE_CONFIG`.
+    cfg = _require_sorgente(sorgente)
+    cfg["update_riga"](riga_id, fields)
+
+
+def _coerce_meta_to_dict_safe(value: Any) -> dict[str, Any]:
+    # Scopo: wrapper su preventivi_service._coerce_meta_to_dict (import lazy
+    #        per evitare ciclo). Il modulo restera' qui finche' non viene
+    #        promosso in core. Riusato da approva/rifiuta/_capabilities.
+    from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+    return _coerce_meta_to_dict(value)
 
 
 # ============================================================
@@ -155,14 +241,85 @@ def _get_priorita_default_id() -> int:
 # ============================================================
 
 
-# Scopo: orchestra creazione richiesta approvazione L3 quando l'utente
-#        preventiva oltre il limite L2 con flag richiesta_approvazione=true.
-#        Pattern: crea pratica APERTA + nota interna con contesto + invia
-#        email al ruolo approver (best-effort: se SMTP fallisce, pratica
-#        resta valida e visibile in coda).
-#
-#        Restituisce pratica_id, da inserire poi nella riga preventivo
-#        come pratica_approvazione_prezzo_id.
+# Scopo: orchestratore sorgente-agnostico della richiesta L3. Crea la
+#        pratica APPROVAZIONE_PREZZO (BOZZA -> APERTA), invia email
+#        best-effort all'approver, ritorna pratica_id. Per preventivi/contratti
+#        i caller pubblici `crea_richiesta_approvazione` e
+#        `crea_richiesta_approvazione_contratto` arrivano qui con il proprio
+#        `contesto` (emittente + soggetto + istanza_utility), il numero
+#        documento per la descrizione, e `riga_id` per il meta.
+#        Riga_id puo' essere None per preventivi (in create_riga il riga
+#        non e' ancora noto; link_riga_a_pratica completa poi); per contratti
+#        update_riga ha gia' il riga_id e lo passa subito.
+@transaction.atomic
+def _crea_richiesta_approvazione_impl(
+    *,
+    sorgente: str,
+    documento_id: int,
+    riga_id: int | None,
+    numero_documento: str | None,
+    articolo_id: str,
+    contesto: dict[str, Any],
+    istanza_utility_id: int | None,
+    prezzo_resolver: Decimal | None,
+    prezzo_manuale: Decimal,
+    violazione: dict[str, Any],
+    auth_user_id: int | None,
+) -> int:
+    cfg = _require_sorgente(sorgente)
+    descrizione = (
+        f"Richiesta approvazione prezzo riga {cfg['label_doc']} "
+        f"{numero_documento or documento_id} - "
+        f"violazione L2 {violazione.get('tipo_violazione')}: "
+        f"{violazione.get('variazione_abs_pct')}% (max {violazione.get('limite_pct')}%)."
+    )
+    meta: dict[str, Any] = {
+        # Nuove chiavi sorgente-agnostiche (refactor 2026-05-19).
+        META_KEY_SORGENTE: sorgente,
+        cfg["meta_key_doc"]: documento_id,
+        # Chiave sorgente-specifica della riga (riga_preventivo_id /
+        # riga_contratto_id). Puo' essere None alla creazione della pratica
+        # e popolata dopo via `link_riga_a_pratica`.
+        cfg["meta_key_riga"]: riga_id,
+        "articolo_id": str(articolo_id),
+        "prezzo_resolver": str(prezzo_resolver) if prezzo_resolver is not None else None,
+        "prezzo_manuale": str(prezzo_manuale),
+        "violazione": violazione,
+        "richiedente_auth_user_id": auth_user_id,
+    }
+
+    pratica_id = crea_pratica(
+        emittente_fiscale_id=contesto["emittente_fiscale_id"],
+        tipo_prestazione_id=_get_tipo_prestazione_id(),
+        soggetto_id=contesto["soggetto_id"],
+        soggetto_ruolo_id=contesto["soggetto_ruolo_id"],
+        istanza_utility_id=istanza_utility_id,
+        priorita_id=_get_priorita_default_id(),
+        descrizione=descrizione,
+        meta=meta,
+    )
+
+    # Transito immediato BOZZA -> APERTA per renderla visibile nella coda
+    # approver. Se la transizione e' bloccata da un trigger di workflow,
+    # solleva: meglio fail-fast che lasciare pratica in BOZZA invisibile.
+    cambia_stato_pratica(pratica_id, _STATO_PRATICA_INIZIALE)
+
+    # Email best-effort. Se template/recipient assenti -> log warning, no raise:
+    # la pratica resta valida e visibile in coda anche senza email.
+    _invia_email_richiesta_approvazione(
+        pratica_id=pratica_id,
+        emittente_fiscale_id=contesto["emittente_fiscale_id"],
+        descrizione=descrizione,
+        meta=meta,
+    )
+
+    return pratica_id
+
+
+# Scopo: wrapper preventivi del workflow L3. Mantiene la firma originaria
+#        Sprint E per back-compat con `preventivi_service._orchestrate_l3_request`
+#        e i suoi test. Il riga_id non e' noto a questo punto (create_riga
+#        avviene dopo): viene popolato post-create via `link_riga_a_pratica`.
 @transaction.atomic
 def crea_richiesta_approvazione(
     *,
@@ -195,68 +352,110 @@ def crea_richiesta_approvazione(
     )
     assert contesto is not None
 
-    descrizione = (
-        f"Richiesta approvazione prezzo riga preventivo {testata.get('numero_documento') or preventivo_id} - "
-        f"violazione L2 {violazione.get('tipo_violazione')}: "
-        f"{violazione.get('variazione_abs_pct')}% (max {violazione.get('limite_pct')}%)."
-    )
-    meta = {
-        "preventivo_id": preventivo_id,
-        "articolo_id": str(articolo_id),
-        "prezzo_resolver": str(prezzo_resolver) if prezzo_resolver is not None else None,
-        "prezzo_manuale": str(prezzo_manuale),
-        "violazione": violazione,
-        "richiedente_auth_user_id": auth_user_id,
-    }
-
-    pratica_id = crea_pratica(
-        emittente_fiscale_id=contesto["emittente_fiscale_id"],
-        tipo_prestazione_id=_get_tipo_prestazione_id(),
-        soggetto_id=contesto["soggetto_id"],
-        soggetto_ruolo_id=contesto["soggetto_ruolo_id"],
+    return _crea_richiesta_approvazione_impl(
+        sorgente=SORGENTE_PREVENTIVO,
+        documento_id=preventivo_id,
+        riga_id=None,  # popolato dopo da link_riga_a_pratica
+        numero_documento=testata.get("numero_documento"),
+        articolo_id=articolo_id,
+        contesto=contesto,
         istanza_utility_id=testata.get("istanza_utility_id"),
-        priorita_id=_get_priorita_default_id(),
-        descrizione=descrizione,
-        meta=meta,
+        prezzo_resolver=prezzo_resolver,
+        prezzo_manuale=prezzo_manuale,
+        violazione=violazione,
+        auth_user_id=auth_user_id,
     )
 
-    # Transito immediato BOZZA -> APERTA per renderla visibile nella coda
-    # approver. Se la transizione e' bloccata da un trigger di workflow,
-    # solleva: meglio fail-fast che lasciare pratica in BOZZA invisibile.
-    cambia_stato_pratica(pratica_id, _STATO_PRATICA_INIZIALE)
 
-    # Email best-effort. Email ID risolto via template + recipient gestito
-    # dal template stesso (placeholder: se template non esiste, log warning
-    # e pratica resta valida — l'approver puo' visualizzarla in coda).
-    _invia_email_richiesta_approvazione(
-        pratica_id=pratica_id,
-        emittente_fiscale_id=contesto["emittente_fiscale_id"],
-        descrizione=descrizione,
-        meta=meta,
+# Scopo: wrapper contratti del workflow L3 (refactor 2026-05-19 BE porting
+#        gate riga contratti). Speculare a `crea_richiesta_approvazione`
+#        preventivi. Per create_riga: riga_id=None (link post-create);
+#        per update_riga: riga_id noto subito, passa direttamente.
+@transaction.atomic
+def crea_richiesta_approvazione_contratto(
+    *,
+    contratto_id: int,
+    riga_id: int | None,
+    articolo_id: str,
+    prezzo_resolver: Decimal | None,
+    prezzo_manuale: Decimal,
+    violazione: dict[str, Any],
+    auth_user_id: int | None,
+) -> int:
+    from apps.vendite.db.contratti_repository import ContrattiRepository
+    repo = ContrattiRepository()
+    testata = repo.get_contratto(contratto_id)
+    ErrorManager.require(
+        testata is not None,
+        code="E_VENDITE_NOT_FOUND",
+        message="Contratto non trovato.",
+        function_name=f"{_FN}.crea_richiesta_approvazione_contratto",
     )
+    assert testata is not None
 
-    return pratica_id
+    contesto = repo.resolve_contesto_pratica(contratto_id)
+    ErrorManager.require(
+        contesto is not None,
+        code="E_APPROVAZIONE_PREZZO_NON_AMMESSA",
+        message=(
+            "Impossibile derivare contesto pratica dal contratto: serve un "
+            "billing account valido con emittente fiscale."
+        ),
+        function_name=f"{_FN}.crea_richiesta_approvazione_contratto",
+    )
+    assert contesto is not None
+
+    return _crea_richiesta_approvazione_impl(
+        sorgente=SORGENTE_CONTRATTO,
+        documento_id=contratto_id,
+        riga_id=riga_id,
+        numero_documento=testata.get("numero"),
+        articolo_id=articolo_id,
+        contesto=contesto,
+        # Contratti hanno istanza_utility_id NOT NULL sul header (a differenza
+        # dei preventivi). Coerente con la pratica APPROVAZIONE_PREZZO che
+        # eredita il riferimento operativo.
+        istanza_utility_id=testata.get("istanza_utility_id"),
+        prezzo_resolver=prezzo_resolver,
+        prezzo_manuale=prezzo_manuale,
+        violazione=violazione,
+        auth_user_id=auth_user_id,
+    )
 
 
 # Scopo: approva la richiesta su una riga PENDING. Verifica permesso azione
 #        approva_prezzo, UPDATE riga -> APPROVED, chiude pratica con nota
 #        interna OK. Transazione atomica.
+#
+#        Parametro `sorgente` (refactor 2026-05-19 sorgente-agnostico):
+#        determina la tabella riga (vendite.preventivi_righe o
+#        vendite.contratti_righe). Default `preventivo` per back-compat
+#        con i call site Sprint E. L'endpoint contratti
+#        (/righe-contratto/<id>/approva-prezzo/) passa SORGENTE_CONTRATTO.
 @transaction.atomic
 def approva(
     *,
     riga_id: int,
     auth_user_id: int | None,
     nota: str | None = None,
+    sorgente: str = SORGENTE_PREVENTIVO,
 ) -> dict[str, Any]:
+    _require_sorgente(sorgente)
+
     # Permesso PRIMA del lookup riga: evita di leakare informazioni
     # sull'esistenza/stato di una riga a chi non ha autorizzazione.
     _check_permesso_approva_prezzo(auth_user_id, function_name=f"{_FN}.approva")
 
-    riga = _get_riga_pending(riga_id, function_name=f"{_FN}.approva")
+    riga = _get_riga_pending(
+        riga_id, sorgente=sorgente, function_name=f"{_FN}.approva",
+    )
     pratica_id = int(riga["pratica_approvazione_prezzo_id"])
 
-    repo = PreventiviRepository()
-    repo.update_riga(riga_id, stato_approvazione_prezzo=_STATO_RIGA_APPROVED)
+    _update_riga_workflow(
+        sorgente=sorgente,
+        riga_id=riga_id,
+        fields={"stato_approvazione_prezzo": _STATO_RIGA_APPROVED},
+    )
 
     cambia_stato_pratica(pratica_id, _STATO_PRATICA_CHIUSURA)
     contenuto_nota = (
@@ -272,25 +471,33 @@ def approva(
 #        riga -> REJECTED, chiude pratica con nota KO + motivazione (se data).
 #        Il prezzo della riga NON viene riportato al resolver: spetta
 #        all'utente decidere come correggere (ridurre sconto, annullare riga).
+#
+#        Parametro `sorgente`: come `approva`. La proiezione motivazione nel
+#        meta della riga avviene su entrambe le tabelle (preventivi_righe.meta
+#        e contratti_righe.meta sono entrambi jsonb).
 @transaction.atomic
 def rifiuta(
     *,
     riga_id: int,
     auth_user_id: int | None,
     motivazione: str | None = None,
+    sorgente: str = SORGENTE_PREVENTIVO,
 ) -> dict[str, Any]:
+    _require_sorgente(sorgente)
+
     # Permesso PRIMA del lookup riga (vedi approva: defense-in-depth).
     _check_permesso_approva_prezzo(auth_user_id, function_name=f"{_FN}.rifiuta")
 
-    riga = _get_riga_pending(riga_id, function_name=f"{_FN}.rifiuta")
+    riga = _get_riga_pending(
+        riga_id, sorgente=sorgente, function_name=f"{_FN}.rifiuta",
+    )
     pratica_id = int(riga["pratica_approvazione_prezzo_id"])
 
     # Denormalizzo motivazione + autore + data nel meta della riga (caso d'uso
-    # UX: il drawer riga preventivo mostra il motivo del rifiuto come tooltip
-    # all'operatore senza dover navigare alla pratica). La nota interna della
-    # pratica resta source-of-truth audit; questa e' una proiezione operativa.
-    from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
-    meta_riga = _coerce_meta_to_dict(riga.get("meta"))
+    # UX: il drawer riga preventivo/contratto mostra il motivo del rifiuto come
+    # tooltip all'operatore senza dover navigare alla pratica). La nota interna
+    # della pratica resta source-of-truth audit; questa e' una proiezione operativa.
+    meta_riga = _coerce_meta_to_dict_safe(riga.get("meta"))
     meta_riga["approvazione_rifiuto"] = {
         "motivazione": (motivazione.strip() if motivazione and motivazione.strip() else None),
         "approver_user_id": auth_user_id,
@@ -298,11 +505,13 @@ def rifiuta(
         "pratica_id": pratica_id,
     }
 
-    repo = PreventiviRepository()
-    repo.update_riga(
-        riga_id,
-        stato_approvazione_prezzo=_STATO_RIGA_REJECTED,
-        meta=meta_riga,
+    _update_riga_workflow(
+        sorgente=sorgente,
+        riga_id=riga_id,
+        fields={
+            "stato_approvazione_prezzo": _STATO_RIGA_REJECTED,
+            "meta": meta_riga,
+        },
     )
 
     cambia_stato_pratica(pratica_id, _STATO_PRATICA_CHIUSURA)
@@ -382,25 +591,44 @@ def _user_can_approve_or_reject(user) -> bool:
 #            (pratica legacy o crash post-create_riga)
 #          - None               → can_approve/can_reject = True
 def _capabilities_per_pratica(pratica: dict[str, Any], *, user_can_act: bool) -> dict[str, Any]:
+    # Sorgente derivata dal meta (fallback preventivo per pratiche legacy
+    # Sprint E iniziale senza `sorgente`). Esposta in TUTTI i branch (anche
+    # denied) per coerenza FE: il router endpoint approva/rifiuta usa sempre
+    # `sorgente` per scegliere /righe/<id>/.. vs /righe-contratto/<id>/..
+    meta = _coerce_meta_to_dict_safe(pratica.get("meta"))
+    sorgente_raw = meta.get(META_KEY_SORGENTE) or SORGENTE_PREVENTIVO
+    cfg = _SORGENTE_CONFIG.get(sorgente_raw)
+    # Sorgente sconosciuta: trattata come `RIGA_NON_LINKATA` (UI bottoni
+    # disabilitati). Esponiamo comunque la chiave `sorgente_raw` cosi' il
+    # FE puo' loggare/segnalare anche il valore corrotto. Nessuna sorgente
+    # nei branch denied dove user_can_act=False (la coda mostra l'item;
+    # l'UI usa sorgente solo per i bottoni attivi).
+    if cfg is None:
+        logger.warning(
+            "approvazioni_prezzo.sorgente_sconosciuta pratica_id=%s sorgente=%r — "
+            "bottoni UI disabilitati.",
+            pratica.get("id"), sorgente_raw,
+        )
+        return {
+            "can_approve": False,
+            "can_reject": False,
+            "action_reason": ACTION_REASON_RIGA_NON_LINKATA,
+            "sorgente": sorgente_raw,
+        }
     if not user_can_act:
         return {
             "can_approve": False,
             "can_reject": False,
             "action_reason": ACTION_REASON_PERMESSO_MANCANTE,
+            "sorgente": sorgente_raw,
         }
-    # `meta` puo' essere None (pratica creata fuori dal flow normale),
-    # dict (caso normale), o stringa JSON (regressione adapter psycopg).
-    # _coerce_meta_to_dict normalizza tutti e 3 — senza, `meta.get()`
-    # esplode con AttributeError 'str object has no attribute get'.
-    # Import lazy per evitare dipendenza circolare al boot.
-    from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
-    meta = _coerce_meta_to_dict(pratica.get("meta"))
+    riga_key = cfg["meta_key_riga"]
     # dict.get + fallback legacy `riga_id` con check is not None esplicito:
     # 0 e' un id invalido in PG (sequence parte da 1), ma volere "any not None"
     # e' piu' corretto del falsy `or` (B3).
-    riga_id = meta.get(META_KEY_RIGA_PREVENTIVO_ID)
+    riga_id = meta.get(riga_key)
     if riga_id is None:
-        riga_id = meta.get("riga_id")  # legacy compat
+        riga_id = meta.get("riga_id")  # legacy compat sprint E iniziale
     if riga_id is None:
         # Pratica APPROVAZIONE_PREZZO senza riga linkata: e' una pratica
         # creata male (bug applicativo o crash post-create_riga prima del
@@ -408,19 +636,23 @@ def _capabilities_per_pratica(pratica: dict[str, Any], *, user_can_act: bool) ->
         # UI il bottone resta disabilitato col tooltip i18n, ma senza log
         # l'admin non saprebbe che esiste un dato corrotto da pulire.
         logger.warning(
-            "approvazioni_prezzo.riga_non_linkata pratica_id=%s — "
+            "approvazioni_prezzo.riga_non_linkata pratica_id=%s sorgente=%s — "
             "meta privo di '%s' e fallback 'riga_id'. UI bottoni disabilitati.",
-            pratica.get("id"), META_KEY_RIGA_PREVENTIVO_ID,
+            pratica.get("id"), sorgente_raw, riga_key,
         )
         return {
             "can_approve": False,
             "can_reject": False,
             "action_reason": ACTION_REASON_RIGA_NON_LINKATA,
+            "sorgente": sorgente_raw,
         }
     return {
         "can_approve": True,
         "can_reject": True,
         "action_reason": None,
+        # Esposto al FE per il routing endpoint approva/rifiuta corretto
+        # (/righe/<id>/.. preventivi vs /righe-contratto/<id>/.. contratti).
+        "sorgente": sorgente_raw,
     }
 
 
@@ -429,25 +661,33 @@ def _capabilities_per_pratica(pratica: dict[str, Any], *, user_can_act: bool) ->
 # ============================================================
 
 
-# Scopo: carica e valida una riga preventivo che deve essere PENDING.
+# Scopo: carica e valida una riga preventivo/contratto che deve essere PENDING.
 #        Errore esplicito se riga non trovata, non PENDING o senza pratica.
-def _get_riga_pending(riga_id: int, *, function_name: str) -> dict[str, Any]:
+#        Refactor 2026-05-19: parametro `sorgente` per dispatch tabella +
+#        FK column. La query include anche `meta` (serve a rifiuta che
+#        denormalizza la motivazione nel meta della riga).
+def _get_riga_pending(
+    riga_id: int, *, sorgente: str, function_name: str,
+) -> dict[str, Any]:
+    cfg = _require_sorgente(sorgente)
+    # SQL dinamico controllato: tabella e colonna FK sono valori di whitelist
+    # interna (`_SORGENTE_CONFIG`), nessun input utente raggiunge il rendering.
+    sql = f"""
+        SELECT id, {cfg["doc_fk_column"]} AS documento_id,
+               stato_approvazione_prezzo,
+               pratica_approvazione_prezzo_id,
+               meta
+          FROM {cfg["table"]}
+         WHERE id = %s
+    """  # noqa: S608 - whitelist interna
     with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, preventivo_id, stato_approvazione_prezzo,
-                   pratica_approvazione_prezzo_id
-              FROM vendite.preventivi_righe
-             WHERE id = %s
-            """,
-            [riga_id],
-        )
+        cursor.execute(sql, [riga_id])
         cols = [c[0] for c in cursor.description]
         row = cursor.fetchone()
     ErrorManager.require(
         row is not None,
-        code="E_PREV_RIGA_NOT_FOUND",
-        message="Riga preventivo non trovata.",
+        code=cfg["error_code_not_found"],
+        message=cfg["error_message_not_found"],
         detail=f"riga_id={riga_id}",
         function_name=function_name,
     )
@@ -571,15 +811,17 @@ def _risolvi_email_approver(emittente_fiscale_id: int) -> str | None:
     return None
 
 
-# Scopo: arricchisce il meta della pratica con riga_preventivo_id dopo che
+# Scopo: arricchisce il meta della pratica con la chiave riga_*_id dopo che
 #        la riga e' stata creata. La pratica viene creata PRIMA della riga
 #        (per ottenere FK), quindi al momento della creazione il riga_id
 #        non e' noto. Questo update permette all'approver di risalire alla
 #        riga dalla coda (UI ApprovazioniPrezzoListView).
-def link_riga_a_pratica(*, pratica_id: int, riga_id: int) -> None:
-    # Import lazy per evitare dipendenza circolare al boot del modulo
-    # (preventivi_service importa approvazioni_prezzo_service).
-    from apps.vendite.services.preventivi_service import _coerce_meta_to_dict
+#        Refactor 2026-05-19: parametro `sorgente` per la chiave meta corretta
+#        (`riga_preventivo_id` vs `riga_contratto_id`).
+def link_riga_a_pratica(
+    *, pratica_id: int, riga_id: int, sorgente: str = SORGENTE_PREVENTIVO,
+) -> None:
+    cfg = _require_sorgente(sorgente)
 
     repo = PraticheRepository()
     pratica = repo.get_pratica(pratica_id)
@@ -588,8 +830,12 @@ def link_riga_a_pratica(*, pratica_id: int, riga_id: int) -> None:
     # `meta` puo' arrivare come dict o stringa JSON (psycopg/repo dependent).
     # Senza normalize, `dict(<stringa>)` solleva ValueError generico che il
     # middleware traduce in E_VALIDATION_INPUT mascherando il vero contesto.
-    meta = _coerce_meta_to_dict(pratica.get("meta"))
-    meta[META_KEY_RIGA_PREVENTIVO_ID] = riga_id
+    meta = _coerce_meta_to_dict_safe(pratica.get("meta"))
+    meta[cfg["meta_key_riga"]] = riga_id
+    # Garantisce presenza di `sorgente` anche per pratiche legacy che fossero
+    # arrivate qui senza (defensive: oggi `_crea_richiesta_approvazione_impl`
+    # lo popola sempre).
+    meta.setdefault(META_KEY_SORGENTE, sorgente)
     aggiorna_pratica(pratica_id, {"meta": meta})
 
 

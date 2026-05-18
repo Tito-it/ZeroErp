@@ -621,6 +621,7 @@ function buildRigaActions(row) {
                   :model-value="componenteObj"
                   :placeholder="t('catalogo.search_componente')"
                   :disabled="isFormReadonly"
+                  :filtri="{ compositi: 'escludi' }"
                   @select="onComponenteSelect"
                 />
               </div>

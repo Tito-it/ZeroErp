@@ -234,10 +234,18 @@ La variazione globale (`tipo_variazione_globale` + `valore_variazione_globale`) 
 applica **solo alle righe che non hanno un OVERRIDE puntuale**. Un articolo con
 OVERRIDE riceve esattamente il prezzo negoziato, senza variazione globale.
 
-| `tipo_variazione_globale` | Formula |
-|---|---|
-| `PERCENTUALE` | `prezzo_listino * (1 + valore / 100)` — valore negativo = sconto |
-| `VALORE_FISSO` | `prezzo_listino + valore` — valore negativo = sconto |
+| `tipo_variazione_globale` | Formula                                                          |
+|---------------------------|------------------------------------------------------------------|
+| `PERCENTUALE`             | `prezzo_listino * (1 + valore / 100)` — valore negativo = sconto |
+
+> Decisione 2026-05-18 (§3-bis-E refactor contratti modalita'): a livello testata
+> è ammessa **solo** la variazione PERCENTUALE. `VALORE_FISSO` globale è vietato
+> perché un delta in euro insensibile alla magnitudine del listino opacizza la
+> natura della variazione e la rende fragile a evoluzioni del catalogo. Resta
+> ammesso `VALORE_FISSO` come **OVERRIDE** su singola riga (semantica esplicita
+> di "prezzo fisso sostitutivo per quell'articolo"). Il lookup FE espone solo
+> PERCENTUALE; il service rifiuta con messaggio parlante eventuali tentativi
+> via curl/API esterna.
 
 ---
 
@@ -548,4 +556,4 @@ che segue.
 *Per il dettaglio tecnico delle API REST, formati payload e codici errore vedi
 [API Contratti](/backend/vendite/manual/api_contratti). Per le decisioni di modello
 del refactor vedi
-[refactor-contratti-modalita](/dev/work-in-progress/refactor-contratti-modalita).*
+[refactor-contratti-modalita](/dev/work-done/refactor-contratti-modalita).*

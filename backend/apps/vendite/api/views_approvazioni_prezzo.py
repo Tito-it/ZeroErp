@@ -25,6 +25,9 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import qp_int
 from apps.core.api.success_responses import success_response
 from apps.vendite.services import approvazioni_prezzo_service
+from apps.vendite.services._approvazioni_prezzo_constants import (
+    SORGENTE_CONTRATTO,
+)
 
 
 _APPROVA_REQUEST = inline_serializer(
@@ -115,6 +118,70 @@ class RifiutaPrezzoView(DomainAPIView):
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
                 motivazione=motivazione if isinstance(motivazione, str) else None,
+            )
+
+        return handle_post_json(request, handler=_handler)
+
+
+class ApprovaPrezzoContrattoView(DomainAPIView):
+    """POST /api/v1/vendite/righe-contratto/<riga_id>/approva-prezzo/
+
+    Approva l'override prezzo su una riga **contratto** PENDING (refactor
+    2026-05-19 BE porting gate riga contratti). Speculare a
+    `ApprovaPrezzoView` per i preventivi. Stesso permission `approva_prezzo_override`,
+    stesso shape risposta. La sorgente=`contratto` viene passata al service
+    che fa dispatch su `vendite.contratti_righe`.
+    """
+
+    area_funzionale = "vendite"
+    post_permission = "approva_prezzo_override"
+
+    @extend_schema(
+        request=_APPROVA_REQUEST,
+        responses={200: _APPROVAZIONE_RESULT},
+        tags=["vendite"],
+        summary="Approva richiesta override prezzo su riga contratto (L3)",
+    )
+    def post(self, request: Request, riga_id: int):
+        auth_user_id = request.user.id if request.user.is_authenticated else None
+
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return approvazioni_prezzo_service.approva(
+                riga_id=riga_id,
+                auth_user_id=auth_user_id,
+                nota=payload.get("nota") if isinstance(payload.get("nota"), str) else None,
+                sorgente=SORGENTE_CONTRATTO,
+            )
+
+        return handle_post_json(request, handler=_handler)
+
+
+class RifiutaPrezzoContrattoView(DomainAPIView):
+    """POST /api/v1/vendite/righe-contratto/<riga_id>/rifiuta-prezzo/
+
+    Rifiuta l'override prezzo su una riga **contratto** PENDING. Speculare
+    a `RifiutaPrezzoView` per i preventivi.
+    """
+
+    area_funzionale = "vendite"
+    post_permission = "approva_prezzo_override"
+
+    @extend_schema(
+        request=_RIFIUTA_REQUEST,
+        responses={200: _APPROVAZIONE_RESULT},
+        tags=["vendite"],
+        summary="Rifiuta richiesta override prezzo su riga contratto (L3)",
+    )
+    def post(self, request: Request, riga_id: int):
+        auth_user_id = request.user.id if request.user.is_authenticated else None
+
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            motivazione = payload.get("motivazione")
+            return approvazioni_prezzo_service.rifiuta(
+                riga_id=riga_id,
+                auth_user_id=auth_user_id,
+                motivazione=motivazione if isinstance(motivazione, str) else None,
+                sorgente=SORGENTE_CONTRATTO,
             )
 
         return handle_post_json(request, handler=_handler)

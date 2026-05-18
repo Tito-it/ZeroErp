@@ -13,9 +13,14 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useNotify } from '../../core/composables/useNotify'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useAuthStore } from '../../stores/auth'
+import { useLimitiPricing } from '../composables/useLimitiPricing'
+import { PRICING_ACTIONS } from '../constants'
+import { extractApiError, extractApiErrorCode } from '../../core/utils/apiError'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency, formatNumber } from '../../core/utils/format'
@@ -48,8 +53,26 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 const { t } = useI18n()
 const store = useContrattiStore()
 const { execute, loading } = useApiHandler()
-const { confirmDelete } = useConfirmAction()
+const notify = useNotify()
+const { confirmDelete, confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
+
+// L2 autorizzazioni prezzi: codici BE che il drawer intercetta per mostrare
+// un banner inline invece del toast standard, con CTA "Richiedi approvazione"
+// (workflow L3 cablato 2026-05-19 BE porting gate riga contratti). Riusato
+// elenco da `useLimitiPricing` per coerenza col pattern preventivi.
+const { L2_ERROR_CODES } = useLimitiPricing()
+const l2Error = ref(null)
+
+// Gate L1 azioni di riga "variare prezzi" (label UX): decisione 2026-05-18.
+// Codename DB stabile `prezzo_override_manuale`. La gate vale per le azioni
+// che mutano il prezzo (Modifica prezzo, Aggiungi articolo). Anche "Escludi"
+// e' negoziazione contrattuale e richiede lo stesso permesso: l'esclusione
+// modifica il rapporto commerciale col cliente, non e' meno sensibile.
+// Senza permesso le azioni sono `visible:false` (UX pulita) e il BE
+// re-blocca con 403 retryable (defense-in-depth).
+const auth = useAuthStore()
+const canVariarePrezzi = computed(() => auth.isActionAllowed(PRICING_ACTIONS.OVERRIDE))
 
 const props = defineProps({
   visible: Boolean,
@@ -139,14 +162,21 @@ const pageActions = computed(() => [
     icon: MANAGE_ICONS.RELOAD,
     command: reloadList,
   },
+  // Refactor 2026-05-18 (FE 2.2 Opzione C): l'unica azione globale di create
+  // diretta dalla toolbar e' "Aggiungi articolo" (tipo_eccezione=AGGIUNTA:
+  // articolo fuori-listino). Le azioni OVERRIDE/ESCLUSIONE si fanno
+  // contestualmente sulle righe DA_LISTINO via kebab. Gate L1 visibile per
+  // simmetria con le azioni di riga: senza permesso `prezzo_override_manuale`
+  // non puoi nemmeno aggiungere articoli.
   {
-    key: 'new',
+    key: 'aggiungi-articolo',
     kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('contratti.aggiungi_riga'),
+    label: t('contratti.aggiungi_articolo'),
+    tooltip: t('contratti.aggiungi_articolo_tooltip'),
     icon: MANAGE_ICONS.ADD,
+    visible: canVariarePrezzi.value,
     disabled: formMode.value === 'create' || isReadonly.value,
-    command: onNew,
+    command: onAggiungiArticolo,
   },
 ])
 
@@ -308,6 +338,13 @@ watch(
   },
 )
 
+// Reset banner L2 se l'utente modifica prezzo o articolo: segnale di retry
+// con contesto potenzialmente diverso. Pattern identico a PreventiviRigaForm.
+watch(
+  () => [form.value.prezzo_unitario, form.value.articolo_id],
+  () => { if (l2Error.value) l2Error.value = null },
+)
+
 // Riapertura manuale (revisione) — bottone "Modifica componenti" sotto al
 // form in CREATE.
 function apriComponentiDialog() {
@@ -346,40 +383,31 @@ const tipoErogazioneOptions = computed(() => [
   { value: 'UNA_TANTUM', label: t('contratti.tipo_erogazione_una_tantum') },
 ])
 
-function defaultForm() {
-  // Refactor modalita 2026-05-15: `tipo_eccezione` obbligatorio in create
-  // (BE _build_data_riga valida + DB CHECK). Default OVERRIDE (caso piu'
-  // frequente: cambio prezzo articolo del listino). Cambiabile via Select
-  // nel form (CREATE only — in EDIT e' immutabile).
+// Refactor 2026-05-18 (FE 2.2 Opzione C): il tipo_eccezione non e' piu' una
+// scelta dell'operatore via Select, ma e' DERIVATO dall'azione che ha aperto
+// il form:
+//   - toolbar "Aggiungi articolo"     -> AGGIUNTA (articolo libero)
+//   - kebab riga DA_LISTINO "Mod.prezzo" -> OVERRIDE (articolo precompilato)
+//   - kebab riga DA_LISTINO "Escludi"  -> ESCLUSIONE (one-click, salvataggio diretto)
+// Il form mostra il tipo come Tag readonly (sia CREATE che EDIT), niente
+// piu' ambiguita' "che tipo voglio creare?". Default AGGIUNTA: l'azione
+// toolbar e' il punto di ingresso piu' generico.
+function defaultForm(overrides = {}) {
   return {
     articolo_id: null,
     articolo_obj: null,
-    tipo_eccezione: 'OVERRIDE',
+    tipo_eccezione: 'AGGIUNTA',
     tipo_erogazione: 'CANONE',
     prezzo_unitario: null,
     qta_operativa: 1,
     uom_operativa_id: null,
     ordine: 10,
+    ...overrides,
   }
 }
 
-// Options Select tipo_eccezione (3 valori). Mostra label i18n + codice.
-const tipoEccezioneOptions = computed(() => [
-  { value: 'OVERRIDE', label: t('contratti.tipo_eccezione_OVERRIDE') },
-  { value: 'ESCLUSIONE', label: t('contratti.tipo_eccezione_ESCLUSIONE') },
-  { value: 'AGGIUNTA', label: t('contratti.tipo_eccezione_AGGIUNTA') },
-])
-
-// Quando l'operatore cambia tipo_eccezione: ESCLUSIONE azzera prezzo
-// (vincolo BE: ESCLUSIONE -> prezzo NULL); OVERRIDE/AGGIUNTA lo lasciano
-// come e' (l'operatore lo compila).
-function onTipoEccezioneChange(nuovo) {
-  if (nuovo === 'ESCLUSIONE') {
-    form.value.prezzo_unitario = null
-  }
-}
-
-// Reset stato componenti BoM: chiamato da `closeForm` e da `onNew`.
+// Reset stato componenti BoM: chiamato da `closeForm` e dagli ingressi
+// CREATE (`onAggiungiArticolo`, `onModificaPrezzo`).
 // Tiene insieme `articoloObj` + Dialog state per evitare drift.
 function resetComponentiState() {
   articoloObj.value = null
@@ -405,13 +433,83 @@ watch(() => props.righeIniziali, (v) => {
 }, { deep: true })
 
 // === Azioni ===
-function onNew() {
-  form.value = defaultForm()
+
+// Scopo: ingresso CREATE "Aggiungi articolo" (azione toolbar). Articolo
+//        libero (autocomplete), tipo_eccezione=AGGIUNTA (articolo fuori-listino).
+function onAggiungiArticolo() {
+  form.value = defaultForm({ tipo_eccezione: 'AGGIUNTA' })
   formMode.value = 'create'
   rigaEditId.value = null
   selectedRow.value = null
   resetUomOptions()
   resetComponentiState()
+}
+
+// Scopo: ingresso CREATE "Modifica prezzo" da kebab di una riga DA_LISTINO
+//        della preview. Pre-compila articolo (immutabile), UoM e prezzo dal
+//        listino: l'operatore deve solo cambiare il prezzo. tipo_eccezione
+//        derivato = OVERRIDE.
+function onModificaPrezzo(row) {
+  form.value = defaultForm({
+    tipo_eccezione: 'OVERRIDE',
+    articolo_id: row.articolo_id,
+    articolo_obj: {
+      id: row.articolo_id,
+      codice: row.articolo_codice,
+      descrizione: row.articolo_descrizione,
+      is_composito: row.is_composito === true,
+      _display: `${row.articolo_codice} — ${row.articolo_descrizione}`,
+    },
+    // Prezzo iniziale = prezzo listino corrente. L'operatore lo modifica.
+    // Number() per InputNumber (Decimal raw potrebbe arrivare come stringa).
+    prezzo_unitario: row.prezzo_listino != null ? Number(row.prezzo_listino) : null,
+    uom_operativa_id: row.uom_id ?? null,
+    qta_operativa: row.qta_operativa != null ? Number(row.qta_operativa) : 1,
+  })
+  // articoloObj fuori dal form per i computed `isCompositoCorrente` & co.
+  articoloObj.value = form.value.articolo_obj
+  formMode.value = 'create'
+  rigaEditId.value = null
+  selectedRow.value = null
+  // Carica le UoM operative dell'articolo per popolare uomOptions: senza
+  // fetch il Select UoM mostrerebbe vuoto anche con uom_operativa_id
+  // pre-selezionato (PrimeVue richiede che il valore sia nelle options).
+  // Pattern identico a `onRowSelect` per righe OVERRIDE gia' esistenti.
+  resetComponentiState()
+  loadUomPerArticolo(row.articolo_id)
+}
+
+// Scopo: azione one-click "Escludi" da kebab di una riga DA_LISTINO. Dialog
+//        di conferma + salvataggio diretto come ESCLUSIONE (prezzo NULL,
+//        UoM dal listino). Niente form: la sola scelta dell'operatore e' SI/NO.
+function onEscludi(row) {
+  const label = row.articolo_codice
+    ? `${row.articolo_codice} — ${row.articolo_descrizione}`
+    : row.articolo_descrizione
+  confirmAction({
+    header: t('contratti.escludi_dialog_titolo'),
+    message: t('contratti.escludi_dialog_messaggio', { articolo: label }),
+    acceptLabel: t('contratti.escludi_dialog_conferma'),
+    danger: true,
+    onAccept: async () => {
+      const payload = {
+        articolo_id: row.articolo_id,
+        tipo_eccezione: 'ESCLUSIONE',
+        prezzo_unitario: null,  // vincolo BE
+        uom_operativa_id: row.uom_id ?? null,
+        qta_operativa: '1',
+        tipo_erogazione: null,
+      }
+      const result = await execute(
+        () => store.addRiga(props.contrattoId, payload),
+        { successMessage: t('contratti.articolo_escluso') },
+      )
+      if (result !== null) {
+        if (!isSenzaListino.value) await loadPreview()
+        emit('changed')
+      }
+    },
+  })
 }
 
 function onRowSelect(event) {
@@ -529,7 +627,12 @@ const formTitle = computed(() => {
 })
 
 // === Salvataggio ===
-async function onSave() {
+
+// Scopo: centralizza la costruzione del payload usato da onSave e da
+//        onRichiediApprovazione. `extra` permette di iniettare il flag
+//        opt-in `richiesta_approvazione: true` per il retry workflow L3
+//        senza duplicare la build.
+function buildRigaPayload(extra = {}) {
   const f = form.value
   const payload = {
     tipo_erogazione: f.tipo_erogazione || null,
@@ -537,10 +640,10 @@ async function onSave() {
     qta_operativa: f.qta_operativa != null ? String(f.qta_operativa) : '1',
     uom_operativa_id: f.uom_operativa_id || null,
     ordine: f.ordine != null ? Number(f.ordine) : null,
+    ...extra,
   }
   if (formMode.value === 'create') {
     payload.articolo_id = f.articolo_id
-    // Refactor modalita 2026-05-15: tipo_eccezione obbligatorio in create.
     payload.tipo_eccezione = f.tipo_eccezione || 'OVERRIDE'
     // ESCLUSIONE: BE rifiuta prezzo non-null. Forziamo null per safety.
     if (payload.tipo_eccezione === 'ESCLUSIONE') {
@@ -548,30 +651,69 @@ async function onSave() {
     }
     // Modello unificato BoM 2026-05-13: includi `componenti_overrides`
     // se l'articolo e' composito e la Dialog ha prodotto overrides delta.
-    // Il BE auto-init i componenti nella stessa transazione di `create_riga`.
     if (articoloObj.value?.is_composito === true
         && componentiPayload.value?.overrides) {
       payload.componenti_overrides = componentiPayload.value.overrides
     }
-    const result = await execute(
-      () => store.addRiga(props.contrattoId, payload),
-      { successMessage: t('contratti.riga_creata') }
-    )
-    if (result !== null) {
-      if (!isSenzaListino.value) await loadPreview()
-      emit('changed')
-      closeForm()
+  }
+  return payload
+}
+
+function submitRiga(payload) {
+  return formMode.value === 'create'
+    ? store.addRiga(props.contrattoId, payload)
+    : store.updateRiga(props.contrattoId, rigaEditId.value, payload)
+}
+
+// Scopo: salva riga intercettando specificamente i codici L2
+//        (E_PRICING_SCONTO_ECCESSIVO / E_PRICING_MAGGIORAZIONE_ECCESSIVA)
+//        per mostrare un banner inline con CTA "Richiedi approvazione"
+//        (workflow L3 cablato 2026-05-19) invece del toast standard.
+//        Tutti gli altri errori passano per il pattern standard.
+async function onSave() {
+  l2Error.value = null
+  const successMessage = formMode.value === 'create'
+    ? t('contratti.riga_creata') : t('contratti.riga_salvata')
+
+  loading.value = true
+  try {
+    await submitRiga(buildRigaPayload())
+    notify.success(successMessage)
+    if (!isSenzaListino.value) await loadPreview()
+    emit('changed')
+    closeForm()
+  } catch (err) {
+    const code = extractApiErrorCode(err)
+    if (L2_ERROR_CODES.includes(code)) {
+      l2Error.value = {
+        code,
+        message: extractApiError(err, t('contratti.errore_generico')),
+        detail: err?.response?.data?.error?.detail || '',
+      }
+    } else {
+      notify.error(extractApiError(err, t('contratti.errore_generico')))
     }
-  } else {
-    const result = await execute(
-      () => store.updateRiga(props.contrattoId, rigaEditId.value, payload),
-      { successMessage: t('contratti.riga_salvata') }
-    )
-    if (result !== null) {
-      if (!isSenzaListino.value) await loadPreview()
-      emit('changed')
-      closeForm()
-    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// Scopo: ri-tenta il save aggiungendo flag richiesta_approvazione=true
+//        (workflow L3). Il BE crea pratica APPROVAZIONE_PREZZO e salva la
+//        riga in PENDING invece di sollevare. Toast esplicito.
+async function onRichiediApprovazione() {
+  l2Error.value = null
+  loading.value = true
+  try {
+    await submitRiga(buildRigaPayload({ richiesta_approvazione: true }))
+    notify.success(t('contratti.richiesta_approvazione_inviata'))
+    if (!isSenzaListino.value) await loadPreview()
+    emit('changed')
+    closeForm()
+  } catch (err) {
+    notify.error(extractApiError(err, t('contratti.errore_generico')))
+  } finally {
+    loading.value = false
   }
 }
 
@@ -596,12 +738,34 @@ function onDelete(r) {
 
 const onClose = useDrawerClose(emit)
 
-// Scopo: azioni di riga per il master-detail righe contratto.
-//        Le righe con origine='DA_LISTINO' (preview puro, no contratti_righe)
-//        non hanno azioni: sono readonly. Le OVERRIDE (B) e le righe puro
-//        contratto (C) ammettono delete in non-readonly.
+// Scopo: azioni di riga del master-detail. Differenziate per origine:
+//   - DA_LISTINO (preview puro, no contratti_righe): "Modifica prezzo"
+//     (apre form CREATE pre-compilato come OVERRIDE) e "Escludi" (one-click
+//     ESCLUSIONE con conferma). Gated su `canVariarePrezzi`. Refactor FE 2.2
+//     Opzione C (2026-05-18): UX azioni esplicite al posto del vecchio
+//     Select tipo_eccezione nel form.
+//   - eccezioni gia' esistenti (OVERRIDE/ESCLUSIONE/AGGIUNTA): "Elimina"
+//     come prima.
 function buildRigaActions(data) {
-  if (data.origine === 'DA_LISTINO') return []
+  if (data.origine === 'DA_LISTINO') {
+    return [
+      {
+        key: 'modifica-prezzo',
+        label: t('contratti.azione_modifica_prezzo'),
+        icon: MANAGE_ICONS.EDIT,
+        visible: !isReadonly.value && canVariarePrezzi.value,
+        command: () => onModificaPrezzo(data),
+      },
+      {
+        key: 'escludi',
+        label: t('contratti.azione_escludi'),
+        icon: 'pi pi-ban',
+        severity: 'warn',
+        visible: !isReadonly.value && canVariarePrezzi.value,
+        command: () => onEscludi(data),
+      },
+    ]
+  }
   return [
     {
       key: 'elimina-riga',
@@ -679,6 +843,19 @@ function origineSeverity(origine) {
           <Tag v-if="contestoPricing.listino_versione_fissata"
                :value="t('contratti.contesto_versione_fissata')"
                severity="success" class="ml-1" />
+          <!-- Drift warning: il contratto e' fissato a una versione listino
+               diversa da quella attualmente ATTIVA sul listino. Tag
+               informativo, no blocco: i prezzi restano calcolati sulla
+               fissata per design (snapshot post-attivazione). -->
+          <Tag v-if="contestoPricing.drift_versione_listino"
+               :value="t('contratti.contesto_drift_versione', {
+                 versione_corrente: contestoPricing.listino_versione_corrente_codice,
+               })"
+               severity="warn" class="ml-1"
+               v-tooltip.top="t('contratti.contesto_drift_versione_tooltip', {
+                 versione_corrente: contestoPricing.listino_versione_corrente_codice,
+                 versione_fissata: contestoPricing.listino_versione_codice,
+               })" />
         </div>
         <div v-if="contestoPricing.tipo_variazione_globale" class="text-sm">
           {{ t('contratti.contesto_variazione', {
@@ -826,28 +1003,31 @@ function origineSeverity(origine) {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('contratti.field_articolo') }} *</label>
+            <!-- Refactor FE 2.2 Opzione C (2026-05-18): l'articolo e' libero
+                 SOLO per "Aggiungi articolo" (AGGIUNTA fuori-listino). Per
+                 "Modifica prezzo" (OVERRIDE) e in EDIT e' precompilato e
+                 immutabile — il flusso ha gia' identificato l'articolo via
+                 click sulla riga DA_LISTINO. -->
             <ArticoloLookup
               v-model="form.articolo_obj"
               @update:modelValue="onArticoloSelected"
-              :disabled="formMode === 'edit'"
+              :disabled="formMode === 'edit' || form.tipo_eccezione !== 'AGGIUNTA'"
+              :filtri="{ soloComponenti: 'escludi' }"
               :placeholder="t('contratti.select_articolo')"
             />
           </div>
           <div class="form-field">
-            <!-- Refactor modalita 2026-05-15: tipo_eccezione in create
-                 (immutabile in edit, mostrato come Tag readonly). -->
-            <label>{{ t('contratti.field_tipo_eccezione') }} *</label>
-            <Select
-              v-if="formMode === 'create'"
-              v-model="form.tipo_eccezione"
-              :options="tipoEccezioneOptions"
-              option-label="label"
-              option-value="value"
-              @change="onTipoEccezioneChange(form.tipo_eccezione)"
-              class="w-full" />
-            <Tag v-else
-              :value="t(`contratti.tipo_eccezione_${form.tipo_eccezione}`)"
-              severity="secondary" />
+            <!-- Refactor FE 2.2 Opzione C (2026-05-18): tipo_eccezione non
+                 e' piu' una scelta utente. Deriva dall'azione che ha aperto
+                 il form: toolbar->AGGIUNTA, kebab "Modifica prezzo"->OVERRIDE.
+                 ESCLUSIONE non passa dal form (one-click via kebab+conferma).
+                 Mostrato come Tag readonly sia CREATE che EDIT per
+                 trasparenza UX. -->
+            <label>{{ t('contratti.field_tipo_eccezione') }}</label>
+            <div>
+              <Tag :value="t(`contratti.tipo_eccezione_${form.tipo_eccezione}`)"
+                severity="secondary" />
+            </div>
           </div>
         </div>
 
@@ -941,6 +1121,31 @@ function origineSeverity(origine) {
             :tab-entity="TAB_ENTITIES.CONTRATTO"
             @changed="emit('changed')" />
         </template>
+
+        <!-- Banner inline L2: visibile quando il save ha sollevato un codice
+             E_PRICING_SCONTO_ECCESSIVO / E_PRICING_MAGGIORAZIONE_ECCESSIVA.
+             Mostra il messaggio BE + CTA "Richiedi approvazione" che retry
+             il save con `richiesta_approvazione=true` (workflow L3 cablato
+             2026-05-19). Pattern identico a PreventiviRigaForm. -->
+        <Message v-if="l2Error" severity="warn" :closable="false">
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <strong>{{ l2Error.message }}</strong>
+            <small v-if="l2Error.detail">{{ l2Error.detail }}</small>
+            <div>
+              <Button
+                :label="loading
+                  ? t('contratti.richiedi_approvazione_in_corso')
+                  : t('contratti.richiedi_approvazione')"
+                icon="pi pi-send"
+                size="small"
+                severity="secondary"
+                :loading="loading"
+                v-tooltip.bottom="t('contratti.richiedi_approvazione_tooltip')"
+                @click="onRichiediApprovazione"
+              />
+            </div>
+          </div>
+        </Message>
 
         <div class="app-drawer-footer">
           <Button :label="t('common.cancel')" severity="secondary" @click="closeForm" />

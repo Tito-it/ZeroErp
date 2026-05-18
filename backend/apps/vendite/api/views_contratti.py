@@ -356,6 +356,9 @@ class ApiContrattoContestoPricing(DomainAPIView):
                     "listino_versione_id": serializers.IntegerField(allow_null=True),
                     "listino_versione_codice": serializers.CharField(allow_null=True),
                     "listino_versione_fissata": serializers.BooleanField(),
+                    "listino_versione_corrente_id": serializers.IntegerField(allow_null=True),
+                    "listino_versione_corrente_codice": serializers.CharField(allow_null=True),
+                    "drift_versione_listino": serializers.BooleanField(),
                     "tipo_variazione_globale": serializers.CharField(allow_null=True),
                     "valore_variazione_globale": serializers.DecimalField(
                         max_digits=12, decimal_places=4, allow_null=True,
@@ -417,10 +420,16 @@ class ApiContrattoRigaDetail(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Aggiorna una riga (articolo_id immutabile).
+    # Scopo: Aggiorna una riga (articolo_id immutabile). `auth_user_id`
+    # serve al workflow L3 (gate L1+L2+L3 quando PATCH tocca prezzo_unitario).
     def patch(self, request: Request, contratto_id: int, riga_id: int) -> JsonResponse:
         del contratto_id  # riga_id e' identificatore globale; contratto_id solo per coerenza URL.
-        return success_response(ContrattiService().update_riga(riga_id, request.data))
+        auth_user_id = request.user.id if request.user.is_authenticated else None
+        return success_response(
+            ContrattiService().update_riga(
+                riga_id, request.data, auth_user_id=auth_user_id,
+            )
+        )
 
     @extend_schema(
         responses={200: inline_serializer(

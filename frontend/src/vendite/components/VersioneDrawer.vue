@@ -207,20 +207,10 @@ function onRowSelect(event) {
 }
 
 function onArticoloSelected(item) {
-  // Auto-rilevamento composito (modello unificato 2026-05-13): per i
-  // padri compositi `listini_righe` e' vietato (trigger DB
-  // `E_LISTINO_RIGA_COMPOSITO_VIETATO`). Invece di lasciare l'admin
-  // arrivare al save e ricevere errore, intercettiamo la selezione e
-  // apriamo il `ComponentiDialog` (il composito non crea righe in
-  // `listini_righe`, i prezzi vivono in `listini_righe_componenti`).
-  if (item?.is_composito === true) {
-    openBundleDialog(item)
-    // Chiusura completa del form: il flusso composito non termina con
-    // un save sulla testata riga (lookup+UoM+prezzo); il form aperto
-    // vuoto con Save disabilitato e' fuorviante per l'admin.
-    closeForm()
-    return
-  }
+  // I padri compositi sono pre-filtrati dal lookup (filtri.compositi='escludi'):
+  // `listini_righe` non li ammette (trigger DB `E_LISTINO_RIGA_COMPOSITO_VIETATO`).
+  // I bundle prezzi si gestiscono dalla sezione "Prezzi compositi" in cima
+  // alla lista, non da questo form.
   form.value.articolo_id = item?.id || null
   form.value.uom_id = null
   // Create: autopick base.
@@ -557,6 +547,7 @@ const onClose = useDrawerClose(emit)
             v-model="form.articolo_obj"
             @update:modelValue="onArticoloSelected"
             :disabled="formMode === 'edit'"
+            :filtri="{ soloComponenti: 'escludi', compositi: 'escludi' }"
           />
         </div>
 

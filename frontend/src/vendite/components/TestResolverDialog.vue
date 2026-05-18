@@ -237,7 +237,10 @@ function close() {
       </div>
       <div class="form-field" style="grid-column: 1 / -1;">
         <label>{{ t('listini.field_articolo_padre_contesto') }}</label>
-        <ArticoloLookup v-model="form.articolo_padre_obj" />
+        <ArticoloLookup
+          v-model="form.articolo_padre_obj"
+          :filtri="{ compositi: 'solo' }"
+        />
         <small class="text-color-secondary">
           {{ t('listini.field_articolo_padre_contesto_hint') }}
         </small>

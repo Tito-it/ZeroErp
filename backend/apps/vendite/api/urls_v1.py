@@ -17,12 +17,15 @@ from apps.vendite.api.views import (
     ApiRunLottoPipeline,
 )
 from apps.vendite.api.views_approvazioni_prezzo import (
+    ApprovaPrezzoContrattoView,
     ApprovaPrezzoView,
     ApprovazioniPrezzoCodaView,
+    RifiutaPrezzoContrattoView,
     RifiutaPrezzoView,
 )
 from apps.vendite.api.views_lookups import (
     ApiAmbitiContrattoLookup,
+    ApiListiniSelezionabiliContrattoLookup,
     ApiTipiVariazioneContrattoLookup,
     ApiTipiVariazionePromoLookup,
 )
@@ -57,6 +60,21 @@ urlpatterns = [
         "righe/<int:riga_id>/rifiuta-prezzo/",
         RifiutaPrezzoView.as_view(),
         name="vendite-rifiuta-prezzo",
+    ),
+    # L3 workflow approvazione prezzo su riga **contratto** (refactor
+    # 2026-05-19 BE porting gate riga contratti). Endpoint distinto da
+    # `righe/` per evitare ambiguita' su `riga_id` (preventivi e contratti
+    # hanno tabelle/sequence indipendenti). Servizio service-side fa
+    # dispatch via parametro sorgente='contratto'.
+    path(
+        "righe-contratto/<int:riga_id>/approva-prezzo/",
+        ApprovaPrezzoContrattoView.as_view(),
+        name="vendite-approva-prezzo-contratto",
+    ),
+    path(
+        "righe-contratto/<int:riga_id>/rifiuta-prezzo/",
+        RifiutaPrezzoContrattoView.as_view(),
+        name="vendite-rifiuta-prezzo-contratto",
     ),
     path(
         "approvazioni-prezzo/",
@@ -146,5 +164,14 @@ urlpatterns = [
         "lookup/ambiti-contratto/",
         ApiAmbitiContrattoLookup.as_view(),
         name="vendite-lookup-ambiti-contratto",
+    ),
+    # Lookup dinamico listini selezionabili come riferimento contrattuale
+    # (filtra per esistenza di una versione ATTIVA — decisione 2026-05-18
+    # §4.4 refactor-contratti-modalita). Sostituisce LookupSelect generico
+    # `rel=vendite.listini` nel ContrattoDrawer.
+    path(
+        "lookup/listini-selezionabili-contratto/",
+        ApiListiniSelezionabiliContrattoLookup.as_view(),
+        name="vendite-lookup-listini-selezionabili-contratto",
     ),
 ]
