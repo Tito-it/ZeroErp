@@ -28,6 +28,10 @@
 --
 --   Comportamento normalize trigger — UPDATE tipo (skip se < 4 articoli):
 --   15) UPDATE tipo CANONE→CONSUMO, fonte=FISSA → trigger resetta fonte a LETTURE
+--
+--   TG_ARGV[3] fonte_nullability_col — trgfn_qta_from_operativa (migration 20260519-08/09):
+--   16) INSERT AGGIUNTA CONSUMO+LETTURE, qta_operativa NULL → no raise (fonte governa)
+--   17) INSERT AGGIUNTA CANONE+FISSA,   qta_operativa NULL → E_QTA_MISSING (comportamento invariato)
 -- ------------------------------------------------------------
 --
 -- Nota sui test CHECK (5-11):
@@ -139,7 +143,19 @@ upd AS (
 INSERT INTO tmp_norm_fonte SELECT 15, fonte_quantita_attesa FROM upd;
 
 -- ============================================================
-SELECT plan(15);
+-- Articoli aggiuntivi per test 16/17 (non inclusi in tmp_norm_arts)
+-- Servono per INSERT separati: unica AGGIUNTA per (contratto, articolo).
+CREATE TEMP TABLE tmp_fonte_arts_ext AS
+SELECT a.id AS articolo_id, ROW_NUMBER() OVER (ORDER BY a.id) AS seq
+  FROM catalogo.articoli a
+ WHERE a.attivo = TRUE AND a.is_composito = FALSE
+   AND a.id NOT IN (SELECT articolo_id FROM tmp_norm_arts)
+ ORDER BY a.id
+ LIMIT 2;
+-- ============================================================
+
+-- ============================================================
+SELECT plan(17);
 -- ============================================================
 
 -- ============================================================
@@ -361,6 +377,51 @@ SELECT CASE
         (SELECT fonte_value FROM tmp_norm_fonte WHERE test_num = 15),
         'LETTURE',
         '15) normalize UPDATE: tipo CANONE→CONSUMO, fonte FISSA → trigger resetta LETTURE'
+    )
+END;
+
+-- ============================================================
+-- 16) TG_ARGV[3] fonte_nullability_col: CONSUMO+LETTURE, qta_operativa NULL → no raise
+--     Il trigger trgfn_qta_from_operativa con arg[3]='fonte_quantita_attesa' legge
+--     la colonna fonte. 'LETTURE' != 'FISSA' → RETURN NEW senza raise.
+-- ============================================================
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT')
+      OR NOT EXISTS (SELECT 1 FROM tmp_fonte_arts_ext WHERE seq = 1)
+    THEN skip('16) fixture non disponibile — skip qta NULL + LETTURE no raise')
+    ELSE lives_ok(
+        format(
+            $$INSERT INTO vendite.contratti_righe
+                (contratto_id, articolo_id, tipo_eccezione,
+                 tipo_erogazione, fonte_quantita_attesa, prezzo_unitario)
+              VALUES (%s, %L::uuid, 'AGGIUNTA', 'CONSUMO', 'LETTURE', 50)$$,
+            (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
+            (SELECT articolo_id FROM tmp_fonte_arts_ext WHERE seq = 1)
+        ),
+        '16) AGGIUNTA CONSUMO+LETTURE, qta_operativa NULL → no raise (TG_ARGV[3] fonte governa)'
+    )
+END;
+
+-- ============================================================
+-- 17) TG_ARGV[3] fonte_nullability_col: CANONE+FISSA, qta_operativa NULL → E_QTA_MISSING
+--     'FISSA' = 'FISSA' → la fonte non autorizza NULL → cade nel raise.
+--     Verifica che il comportamento preesistente su FISSA sia invariato.
+-- ============================================================
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT')
+      OR NOT EXISTS (SELECT 1 FROM tmp_fonte_arts_ext WHERE seq = 2)
+    THEN skip('17) fixture non disponibile — skip qta NULL + FISSA raise')
+    ELSE throws_ok(
+        format(
+            $$INSERT INTO vendite.contratti_righe
+                (contratto_id, articolo_id, tipo_eccezione,
+                 tipo_erogazione, fonte_quantita_attesa, prezzo_unitario)
+              VALUES (%s, %L::uuid, 'AGGIUNTA', 'CANONE', 'FISSA', 100)$$,
+            (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
+            (SELECT articolo_id FROM tmp_fonte_arts_ext WHERE seq = 2)
+        ),
+        NULL, NULL,
+        '17) AGGIUNTA CANONE+FISSA, qta_operativa NULL → raise E_QTA_MISSING (invariato)'
     )
 END;
 

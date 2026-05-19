@@ -139,7 +139,7 @@
 - [fn_resolve_lotto_utility_emittente](manual/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
 - [fn_resolve_prezzo_composito](manual/fn_resolve_prezzo_composito.md) — (latest review 22-04-2026)
 - [fn_resolve_prezzo_listino](manual/fn_resolve_prezzo_listino.md) — Risolve in modo deterministico il prezzo applicabile per una coppia `(articolo, uom)` in una data, dato un billing account. Unica funzione usata da preventivi, commesse e fatturazione: zero logica duplicata applicativa.
-- [fn_resolve_prezzo_listino_v2](manual/fn_resolve_prezzo_listino_v2.md) — (rev 2026-05-15 — Step 2.4: tipo_eccezione + versione fissata)
+- [fn_resolve_prezzo_listino_v2](manual/fn_resolve_prezzo_listino_v2.md) — (rev 2026-05-20 — 9° param p_listino_versione_id_preferito: fast path diretto)
 - [fn_resolve_stato_esecuzione](manual/fn_resolve_stato_esecuzione.md) — (latest review 22-02-2026) Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` nei flussi `fatturazione_lotti` e `attivita_fatturabili`.
 - [fn_ricalcola_fattura](manual/fn_ricalcola_fattura.md) — La funzione **`vendite.fn_ricalcola_fattura()`** e` un wrapper che esegue, **in sequenza**:
 - [fn_ricalcola_riepiloghi_iva_lotto](manual/fn_ricalcola_riepiloghi_iva_lotto.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_ricalcola_riepiloghi_iva_lotto()`** ricalcola i riepiloghi IVA per tutte le fatture collegate a un lotto, usando un’elaborazione a batch e delegando il ricalcolo alla funzione per singola fattura.   Al termine di ciascun ricalcolo aggiorna anche i **totali testata**.

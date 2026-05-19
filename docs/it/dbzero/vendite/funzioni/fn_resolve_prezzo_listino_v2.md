@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_resolve_prezzo_listino_v2`
 
 ```sql
-CREATE FUNCTION fn_resolve_prezzo_listino_v2(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer, p_articolo_padre_contesto uuid)
+CREATE FUNCTION fn_resolve_prezzo_listino_v2(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer, p_articolo_padre_contesto uuid, p_listino_versione_id_preferito bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_resolve_prezzo_listino_v2(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer DEFAULT NULL::integer, p_articolo_padre_contesto uuid DEFAULT NULL::uuid)
+CREATE OR REPLACE FUNCTION vendite.fn_resolve_prezzo_listino_v2(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer DEFAULT NULL::integer, p_articolo_padre_contesto uuid DEFAULT NULL::uuid, p_listino_versione_id_preferito bigint DEFAULT NULL::bigint)
  RETURNS TABLE(prezzo_finale numeric, prezzo_base_snapshot numeric, tipo_variazione_applicata character varying, valore_variazione_applicata numeric, origine character varying, listino_id bigint, listino_versione_id bigint, listino_riga_id bigint, contratto_id bigint, promo_id bigint, categoria_cliente_listino_id bigint, categoria_cliente_id_snapshot smallint, classe_utenza_id_snapshot integer, tipo_eccezione vendite.tipo_eccezione_contratto)
  LANGUAGE plpgsql
  STABLE
@@ -61,13 +61,16 @@ DECLARE
     v_bundle_used              boolean := FALSE;
 BEGIN
     -- Guard input: ID > 0 obbligatori, data NOT NULL.
+    -- p_listino_versione_id_preferito: se fornito deve essere > 0.
     IF p_articolo_id IS NULL
        OR p_uom_id IS NULL OR p_uom_id <= 0
        OR p_data_riferimento IS NULL
        OR p_ba_id IS NULL OR p_ba_id <= 0
        OR p_utility_id IS NULL OR p_utility_id <= 0
        OR p_emittente_soggetto_ruolo_id IS NULL
-       OR p_emittente_soggetto_ruolo_id <= 0 THEN
+       OR p_emittente_soggetto_ruolo_id <= 0
+       OR (p_listino_versione_id_preferito IS NOT NULL
+           AND p_listino_versione_id_preferito <= 0) THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite',
             'fn_resolve_prezzo_listino_v2',
@@ -79,14 +82,15 @@ BEGIN
                 'ba_id', p_ba_id,
                 'utility_id', p_utility_id,
                 'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id,
-                'classe_utenza_id', p_classe_utenza_id
+                'classe_utenza_id', p_classe_utenza_id,
+                'listino_versione_id_preferito', p_listino_versione_id_preferito
             ),
             NULL::uuid,
             'parametri resolver pricing v2 non validi'
         );
     END IF;
 
-    -- Dimensioni BA.
+    -- Dimensioni BA: sempre necessarie (snapshot, promo).
     SELECT ba.categoria_cliente_id,
            cc.partecipa_promo,
            TRUE
@@ -112,208 +116,283 @@ BEGIN
     -- Default snapshot classe: input del caller.
     v_snapshot_classe := p_classe_utenza_id;
 
-    -- STADIO 1: contratto attivo per (ba, utility, data).
-    -- ORDER BY c.id DESC: deterministico su overlap multi-istanza/ambito.
-    -- Legge anche listino_versione_id (snapshot fissato all'attivazione).
-    SELECT c.id,
-           c.listino_id,
-           c.listino_versione_id,
-           c.tipo_variazione_globale,
-           c.valore_variazione_globale,
-           c.categoria_cliente_id_snapshot
-      INTO v_contratto_id,
-           v_contr_listino_id,
-           v_contr_listino_versione_id,
-           v_contr_tipo_var,
-           v_contr_valore_var,
-           v_contr_cat_snapshot
-      FROM vendite.contratti c
-      JOIN config.stati_doc_contratti s
-        ON s.id = c.stato_doc_contratto_id
-     WHERE c.billing_account_id = p_ba_id
-       AND c.utility_id         = p_utility_id
-       AND c.validita          @> p_data_riferimento
-       AND s.codice_interno     = 'ATTIVO'
-     ORDER BY c.id DESC
-     LIMIT 1;
+    -- ============================================================
+    -- FAST PATH: versione listino fornita direttamente dal caller.
+    -- Salta il lookup contratto-via-BA (STADIO 1 non eseguito).
+    -- v_contratto_id resta NULL; tipo_eccezione e override ignorati.
+    -- Se articolo non trovato nella versione preferita:
+    --   reset + fallback silenzioso a STADIO 2 (v_origine resta NULL).
+    -- ============================================================
+    IF p_listino_versione_id_preferito IS NOT NULL THEN
 
-    IF v_contratto_id IS NOT NULL THEN
-        v_snapshot_categoria := COALESCE(v_contr_cat_snapshot, v_categoria_cliente_id);
+        v_snapshot_categoria  := v_categoria_cliente_id;
+        v_listino_versione_id := p_listino_versione_id_preferito;
 
-        SELECT cu.classe_utenza_id
-          INTO v_contr_classe_utenza
-          FROM vendite.contratti_utilities cu
-         WHERE cu.contratto_id = v_contratto_id
-         LIMIT 1;
+        -- Recupera listino_id dalla versione fornita.
+        SELECT lv.listino_id
+          INTO v_listino_id
+          FROM vendite.listini_versioni lv
+         WHERE lv.id = p_listino_versione_id_preferito;
 
-        v_snapshot_classe := COALESCE(v_contr_classe_utenza, p_classe_utenza_id);
-
-        -- Stadio 1a: cerca eccezione (OVERRIDE/ESCLUSIONE/AGGIUNTA) per l'articolo.
-        SELECT cr.tipo_eccezione, cr.prezzo_unitario
-          INTO v_contr_tipo_eccezione, v_contr_riga_prezzo
-          FROM vendite.contratti_righe cr
-         WHERE cr.contratto_id          = v_contratto_id
-           AND cr.articolo_id           = p_articolo_id
-           AND COALESCE(cr.attivo, TRUE) = TRUE
-         LIMIT 1;
-
-        IF v_contr_tipo_eccezione IS NOT NULL THEN
-            CASE v_contr_tipo_eccezione
-                WHEN 'ESCLUSIONE' THEN
-                    PERFORM script.fn_log_and_raise_error(
-                        'vendite',
-                        'fn_resolve_prezzo_listino_v2',
-                        'E_ARTICOLO_ESCLUSO_DA_CONTRATTO',
-                        jsonb_build_object(
-                            'contratto_id', v_contratto_id,
-                            'articolo_id',  p_articolo_id
-                        ),
-                        NULL::uuid,
-                        p_articolo_id::text,
-                        v_contratto_id::text
-                    );
-                ELSE
-                    -- OVERRIDE o AGGIUNTA: prezzo diretto dall'eccezione.
-                    v_prezzo_base   := v_contr_riga_prezzo;
-                    v_prezzo_finale := v_contr_riga_prezzo;
-                    v_tipo_var      := 'NESSUNA';
-                    v_valore_var    := NULL;
-                    v_origine       := CASE v_contr_tipo_eccezione
-                                           WHEN 'OVERRIDE' THEN 'CONTRATTO_OVERRIDE'
-                                           WHEN 'AGGIUNTA' THEN 'CONTRATTO_AGGIUNTA'
-                                       END;
-            END CASE;
-
-        ELSE
-            -- Stadio 1b: nessuna eccezione -> listino del contratto.
-            IF v_contr_listino_id IS NULL THEN
-                PERFORM script.fn_log_and_raise_error(
-                    'vendite',
-                    'fn_resolve_prezzo_listino_v2',
-                    'E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C',
-                    jsonb_build_object(
-                        'contratto_id', v_contratto_id,
-                        'articolo_id',  p_articolo_id,
-                        'uom_id',       p_uom_id
-                    ),
-                    NULL::uuid,
-                    v_contratto_id::text,
-                    p_articolo_id::text,
-                    p_uom_id::text
-                );
+        -- Bundle PRIORITARIO (se padre_contesto fornito).
+        IF p_articolo_padre_contesto IS NOT NULL THEN
+            SELECT lrc.id, lrc.prezzo
+              INTO v_bundle_riga_id, v_bundle_prezzo
+              FROM vendite.listini_righe_componenti lrc
+             WHERE lrc.listino_versione_id = v_listino_versione_id
+               AND lrc.articolo_padre_id   = p_articolo_padre_contesto
+               AND lrc.articolo_figlio_id  = p_articolo_id
+               AND lrc.validita           @> p_data_riferimento
+               AND lrc.attivo              = TRUE
+             LIMIT 1;
+            IF FOUND THEN
+                v_prezzo_base   := v_bundle_prezzo;
+                v_prezzo_finale := v_bundle_prezzo;
+                v_tipo_var      := 'NESSUNA';
+                v_valore_var    := NULL;
+                v_origine       := 'LISTINO_BUNDLE';
+                v_bundle_used   := TRUE;
             END IF;
+        END IF;
 
-            -- Step 1b-1: versione listino operativa.
-            -- Se snapshot fissato all'attivazione: usa quello (BOZZA mai snapshot).
-            -- Else: lookup versione operativa (ATTIVA o CHIUSA) a p_data_riferimento.
-            -- FIX Bug A: stato IN ('ATTIVA','CHIUSA') esclude BOZZA.
-            IF v_contr_listino_versione_id IS NOT NULL THEN
-                v_listino_versione_id := v_contr_listino_versione_id;
+        -- Standalone (se bundle non usato).
+        IF NOT v_bundle_used THEN
+            SELECT lr.id, lr.prezzo
+              INTO v_listino_riga_id, v_prezzo_base
+              FROM vendite.listini_righe lr
+             WHERE lr.listino_versione_id = v_listino_versione_id
+               AND lr.articolo_id         = p_articolo_id
+               AND lr.uom_id              = p_uom_id
+               AND lr.attivo              = TRUE
+             LIMIT 1;
+
+            IF v_listino_riga_id IS NOT NULL THEN
+                -- Articolo trovato: prezzo senza variazione contratto
+                -- (nessun contratto lookuppato nel fast path).
+                v_prezzo_finale := v_prezzo_base;
+                v_tipo_var      := 'NESSUNA';
+                v_valore_var    := NULL;
+                v_origine       := 'CONTRATTO_LISTINO';
             ELSE
-                SELECT lv.id
-                  INTO v_listino_versione_id
-                  FROM vendite.listini_versioni lv
-                 WHERE lv.listino_id = v_contr_listino_id
-                   AND lv.attivo     = TRUE
-                   AND lv.stato      IN ('ATTIVA', 'CHIUSA')
-                   AND lv.validita  @> p_data_riferimento
-                 ORDER BY (lv.stato = 'ATTIVA') DESC
-                 LIMIT 1;
-
-                IF v_listino_versione_id IS NULL THEN
-                    PERFORM script.fn_log_and_raise_error(
-                        'vendite',
-                        'fn_resolve_prezzo_listino_v2',
-                        'E_LISTINO_VERSIONE_NON_ATTIVA',
-                        jsonb_build_object(
-                            'origine_stadio', 'CONTRATTO_LISTINO',
-                            'listino_id',     v_contr_listino_id,
-                            'data_riferimento', p_data_riferimento
-                        ),
-                        NULL::uuid,
-                        v_contr_listino_id::text,
-                        p_data_riferimento::text
-                    );
-                END IF;
-            END IF;
-
-            v_listino_id := v_contr_listino_id;
-
-            -- Step 1b-2: bundle PRIORITARIO (se padre_contesto fornito).
-            IF p_articolo_padre_contesto IS NOT NULL THEN
-                SELECT lrc.id, lrc.prezzo
-                  INTO v_bundle_riga_id, v_bundle_prezzo
-                  FROM vendite.listini_righe_componenti lrc
-                 WHERE lrc.listino_versione_id = v_listino_versione_id
-                   AND lrc.articolo_padre_id   = p_articolo_padre_contesto
-                   AND lrc.articolo_figlio_id  = p_articolo_id
-                   AND lrc.validita           @> p_data_riferimento
-                   AND lrc.attivo              = TRUE
-                 LIMIT 1;
-                IF FOUND THEN
-                    v_prezzo_base   := v_bundle_prezzo;
-                    v_prezzo_finale := v_bundle_prezzo;
-                    v_tipo_var      := 'NESSUNA';
-                    v_valore_var    := NULL;
-                    v_origine       := 'LISTINO_BUNDLE';
-                    v_bundle_used   := TRUE;
-                END IF;
-            END IF;
-
-            -- Step 1b-3: fallback standalone (se bundle non usato).
-            IF NOT v_bundle_used THEN
-                SELECT lr.id, lr.prezzo
-                  INTO v_listino_riga_id, v_prezzo_base
-                  FROM vendite.listini_righe lr
-                 WHERE lr.listino_versione_id = v_listino_versione_id
-                   AND lr.articolo_id         = p_articolo_id
-                   AND lr.uom_id              = p_uom_id
-                   AND lr.attivo              = TRUE
-                 LIMIT 1;
-
-                IF v_listino_riga_id IS NULL THEN
-                    PERFORM script.fn_log_and_raise_error(
-                        'vendite',
-                        'fn_resolve_prezzo_listino_v2',
-                        'E_PREZZO_LISTINO_RIGA_NON_TROVATA',
-                        jsonb_build_object(
-                            'origine_stadio',         'CONTRATTO_LISTINO',
-                            'bundle_tentato',         p_articolo_padre_contesto IS NOT NULL,
-                            'articolo_padre_contesto', p_articolo_padre_contesto,
-                            'contratto_id',           v_contratto_id,
-                            'listino_id',             v_contr_listino_id,
-                            'listino_versione_id',    v_listino_versione_id,
-                            'articolo_id',            p_articolo_id,
-                            'uom_id',                 p_uom_id,
-                            'data_riferimento',       p_data_riferimento
-                        ),
-                        NULL::uuid,
-                        p_articolo_id::text,
-                        p_uom_id::text,
-                        v_contr_listino_id::text,
-                        p_data_riferimento::text
-                    );
-                END IF;
-
-                IF v_contr_tipo_var IS NOT NULL THEN
-                    v_prezzo_finale := CASE v_contr_tipo_var
-                        WHEN 'PERCENTUALE'  THEN v_prezzo_base * (1 + v_contr_valore_var / 100.0)
-                        WHEN 'VALORE_FISSO' THEN v_prezzo_base + v_contr_valore_var
-                    END;
-                    v_tipo_var   := v_contr_tipo_var;
-                    v_valore_var := v_contr_valore_var;
-                ELSE
-                    v_prezzo_finale := v_prezzo_base;
-                    v_tipo_var      := 'NESSUNA';
-                    v_valore_var    := NULL;
-                END IF;
-
-                v_origine := 'CONTRATTO_LISTINO';
+                -- Articolo non in questa versione: reset e fallback
+                -- silenzioso a STADIO 2 (v_origine resta NULL).
+                v_listino_id          := NULL;
+                v_listino_versione_id := NULL;
+                v_listino_riga_id     := NULL;
             END IF;
         END IF;
 
     ELSE
-        -- STADIO 2: CATEGORIA. Snapshot dal BA; classe resta input.
+        -- ============================================================
+        -- STADIO 1: contratto attivo per (ba, utility, data).
+        -- ORDER BY c.id DESC: deterministico su overlap multi-istanza.
+        -- Legge anche listino_versione_id (snapshot fissato all'attivazione).
+        -- ============================================================
+        SELECT c.id,
+               c.listino_id,
+               c.listino_versione_id,
+               c.tipo_variazione_globale,
+               c.valore_variazione_globale,
+               c.categoria_cliente_id_snapshot
+          INTO v_contratto_id,
+               v_contr_listino_id,
+               v_contr_listino_versione_id,
+               v_contr_tipo_var,
+               v_contr_valore_var,
+               v_contr_cat_snapshot
+          FROM vendite.contratti c
+          JOIN config.stati_doc_contratti s
+            ON s.id = c.stato_doc_contratto_id
+         WHERE c.billing_account_id = p_ba_id
+           AND c.utility_id         = p_utility_id
+           AND c.validita          @> p_data_riferimento
+           AND s.codice_interno     = 'ATTIVO'
+         ORDER BY c.id DESC
+         LIMIT 1;
+
+        IF v_contratto_id IS NOT NULL THEN
+            v_snapshot_categoria := COALESCE(v_contr_cat_snapshot, v_categoria_cliente_id);
+
+            SELECT cu.classe_utenza_id
+              INTO v_contr_classe_utenza
+              FROM vendite.contratti_utilities cu
+             WHERE cu.contratto_id = v_contratto_id
+             LIMIT 1;
+
+            v_snapshot_classe := COALESCE(v_contr_classe_utenza, p_classe_utenza_id);
+
+            -- Stadio 1a: eccezione (OVERRIDE/ESCLUSIONE/AGGIUNTA).
+            SELECT cr.tipo_eccezione, cr.prezzo_unitario
+              INTO v_contr_tipo_eccezione, v_contr_riga_prezzo
+              FROM vendite.contratti_righe cr
+             WHERE cr.contratto_id          = v_contratto_id
+               AND cr.articolo_id           = p_articolo_id
+               AND COALESCE(cr.attivo, TRUE) = TRUE
+             LIMIT 1;
+
+            IF v_contr_tipo_eccezione IS NOT NULL THEN
+                CASE v_contr_tipo_eccezione
+                    WHEN 'ESCLUSIONE' THEN
+                        PERFORM script.fn_log_and_raise_error(
+                            'vendite',
+                            'fn_resolve_prezzo_listino_v2',
+                            'E_ARTICOLO_ESCLUSO_DA_CONTRATTO',
+                            jsonb_build_object(
+                                'contratto_id', v_contratto_id,
+                                'articolo_id',  p_articolo_id
+                            ),
+                            NULL::uuid,
+                            p_articolo_id::text,
+                            v_contratto_id::text
+                        );
+                    ELSE
+                        -- OVERRIDE o AGGIUNTA: prezzo diretto dall'eccezione.
+                        v_prezzo_base   := v_contr_riga_prezzo;
+                        v_prezzo_finale := v_contr_riga_prezzo;
+                        v_tipo_var      := 'NESSUNA';
+                        v_valore_var    := NULL;
+                        v_origine       := CASE v_contr_tipo_eccezione
+                                               WHEN 'OVERRIDE' THEN 'CONTRATTO_OVERRIDE'
+                                               WHEN 'AGGIUNTA' THEN 'CONTRATTO_AGGIUNTA'
+                                           END;
+                END CASE;
+
+            ELSE
+                -- Stadio 1b: nessuna eccezione -> listino del contratto.
+                IF v_contr_listino_id IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                        'vendite',
+                        'fn_resolve_prezzo_listino_v2',
+                        'E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C',
+                        jsonb_build_object(
+                            'contratto_id', v_contratto_id,
+                            'articolo_id',  p_articolo_id,
+                            'uom_id',       p_uom_id
+                        ),
+                        NULL::uuid,
+                        v_contratto_id::text,
+                        p_articolo_id::text,
+                        p_uom_id::text
+                    );
+                END IF;
+
+                -- Step 1b-1: versione listino operativa.
+                -- Snapshot fissato all'attivazione o lookup operativo.
+                -- Bug A fix: stato IN ('ATTIVA','CHIUSA') esclude BOZZA.
+                IF v_contr_listino_versione_id IS NOT NULL THEN
+                    v_listino_versione_id := v_contr_listino_versione_id;
+                ELSE
+                    SELECT lv.id
+                      INTO v_listino_versione_id
+                      FROM vendite.listini_versioni lv
+                     WHERE lv.listino_id = v_contr_listino_id
+                       AND lv.attivo     = TRUE
+                       AND lv.stato      IN ('ATTIVA', 'CHIUSA')
+                       AND lv.validita  @> p_data_riferimento
+                     ORDER BY (lv.stato = 'ATTIVA') DESC
+                     LIMIT 1;
+
+                    IF v_listino_versione_id IS NULL THEN
+                        PERFORM script.fn_log_and_raise_error(
+                            'vendite',
+                            'fn_resolve_prezzo_listino_v2',
+                            'E_LISTINO_VERSIONE_NON_ATTIVA',
+                            jsonb_build_object(
+                                'origine_stadio', 'CONTRATTO_LISTINO',
+                                'listino_id',     v_contr_listino_id,
+                                'data_riferimento', p_data_riferimento
+                            ),
+                            NULL::uuid,
+                            v_contr_listino_id::text,
+                            p_data_riferimento::text
+                        );
+                    END IF;
+                END IF;
+
+                v_listino_id := v_contr_listino_id;
+
+                -- Step 1b-2: bundle PRIORITARIO (se padre_contesto fornito).
+                IF p_articolo_padre_contesto IS NOT NULL THEN
+                    SELECT lrc.id, lrc.prezzo
+                      INTO v_bundle_riga_id, v_bundle_prezzo
+                      FROM vendite.listini_righe_componenti lrc
+                     WHERE lrc.listino_versione_id = v_listino_versione_id
+                       AND lrc.articolo_padre_id   = p_articolo_padre_contesto
+                       AND lrc.articolo_figlio_id  = p_articolo_id
+                       AND lrc.validita           @> p_data_riferimento
+                       AND lrc.attivo              = TRUE
+                     LIMIT 1;
+                    IF FOUND THEN
+                        v_prezzo_base   := v_bundle_prezzo;
+                        v_prezzo_finale := v_bundle_prezzo;
+                        v_tipo_var      := 'NESSUNA';
+                        v_valore_var    := NULL;
+                        v_origine       := 'LISTINO_BUNDLE';
+                        v_bundle_used   := TRUE;
+                    END IF;
+                END IF;
+
+                -- Step 1b-3: fallback standalone (se bundle non usato).
+                IF NOT v_bundle_used THEN
+                    SELECT lr.id, lr.prezzo
+                      INTO v_listino_riga_id, v_prezzo_base
+                      FROM vendite.listini_righe lr
+                     WHERE lr.listino_versione_id = v_listino_versione_id
+                       AND lr.articolo_id         = p_articolo_id
+                       AND lr.uom_id              = p_uom_id
+                       AND lr.attivo              = TRUE
+                     LIMIT 1;
+
+                    IF v_listino_riga_id IS NULL THEN
+                        PERFORM script.fn_log_and_raise_error(
+                            'vendite',
+                            'fn_resolve_prezzo_listino_v2',
+                            'E_PREZZO_LISTINO_RIGA_NON_TROVATA',
+                            jsonb_build_object(
+                                'origine_stadio',         'CONTRATTO_LISTINO',
+                                'bundle_tentato',         p_articolo_padre_contesto IS NOT NULL,
+                                'articolo_padre_contesto', p_articolo_padre_contesto,
+                                'contratto_id',           v_contratto_id,
+                                'listino_id',             v_contr_listino_id,
+                                'listino_versione_id',    v_listino_versione_id,
+                                'articolo_id',            p_articolo_id,
+                                'uom_id',                 p_uom_id,
+                                'data_riferimento',       p_data_riferimento
+                            ),
+                            NULL::uuid,
+                            p_articolo_id::text,
+                            p_uom_id::text,
+                            v_contr_listino_id::text,
+                            p_data_riferimento::text
+                        );
+                    END IF;
+
+                    IF v_contr_tipo_var IS NOT NULL THEN
+                        v_prezzo_finale := CASE v_contr_tipo_var
+                            WHEN 'PERCENTUALE'  THEN v_prezzo_base * (1 + v_contr_valore_var / 100.0)
+                            WHEN 'VALORE_FISSO' THEN v_prezzo_base + v_contr_valore_var
+                        END;
+                        v_tipo_var   := v_contr_tipo_var;
+                        v_valore_var := v_contr_valore_var;
+                    ELSE
+                        v_prezzo_finale := v_prezzo_base;
+                        v_tipo_var      := 'NESSUNA';
+                        v_valore_var    := NULL;
+                    END IF;
+
+                    v_origine := 'CONTRATTO_LISTINO';
+                END IF;
+            END IF;
+        END IF;
+    END IF;
+
+    -- ============================================================
+    -- STADIO 2: CATEGORIA.
+    -- Esegue quando v_origine IS NULL, ossia:
+    --   a) nessun contratto attivo per (ba, utility, data) — percorso normale
+    --   b) fast path: articolo non trovato nella versione preferita — fallback
+    -- ============================================================
+    IF v_origine IS NULL THEN
         v_snapshot_categoria := v_categoria_cliente_id;
 
         IF v_categoria_cliente_id IS NULL THEN
@@ -368,7 +447,7 @@ BEGIN
         END IF;
 
         -- Step 2-1: versione listino operativa.
-        -- FIX Bug A: stato IN ('ATTIVA','CHIUSA') esclude BOZZA.
+        -- Bug A fix: stato IN ('ATTIVA','CHIUSA') esclude BOZZA.
         SELECT lv.id
           INTO v_listino_versione_id
           FROM vendite.listini_versioni lv
@@ -513,8 +592,8 @@ BEGIN
 END
 $function$
 
-COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino_v2(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer, p_articolo_padre_contesto uuid)
-IS 'Resolver prezzi pricing v5 — bundle-prioritario + Step 2.4 tipo_eccezione + Bug A 2026-05-16 BOZZA non operativa. Lookup listini_versioni filtra stato IN (ATTIVA,CHIUSA) ORDER BY stato=ATTIVA DESC. 3 stadi: 1a CONTRATTO eccezione, 1b listino contratto con bundle-prioritario, 2 categoria con bundle-prioritario. Promo overlay non in contesto bundle. RETURNS TABLE include tipo_eccezione.';
+COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino_v2(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer, p_articolo_padre_contesto uuid, p_listino_versione_id_preferito bigint)
+IS 'Resolver prezzi pricing v5 — 9 param. Base: 20260516-01 (Bug A BOZZA). p_listino_versione_id_preferito (DEFAULT NULL): fast path che salta il lookup contratto-via-BA e usa la versione fornita direttamente. Fallback silenzioso a STADIO 2 se articolo non in quella versione. NULL = comportamento precedente (retro-compat 3/4/8-arg). STADIO 2 unificato: esegue quando v_origine IS NULL (nessun contratto o fast path fallback).';
 ```
 
 ---

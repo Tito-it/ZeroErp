@@ -17,6 +17,8 @@ DECLARE
   v_fill_factor_to_base boolean := false;
   v_fill_uom_id_base    boolean := false;
   v_target_col          text    := 'quantita';
+  v_fonte_col           text    := NULL;
+  v_fonte_val           text    := NULL;
 
   -- Mapping/policy
   v_factor_map   numeric;
@@ -27,7 +29,6 @@ DECLARE
   -- Fattore effettivo usato per i calcoli (rispetta snapshot se presente)
   v_factor_used  numeric := 1;
 
-  
   BEGIN
 
   -- ------------------------------------------------------------
@@ -41,18 +42,22 @@ DECLARE
   --       Se TRUE e NEW.factor_to_base è NULL, salva lo snapshot del fattore usato.
   --   [1] fill_uom_id_base    :: boolean  (default FALSE)
   --       Se TRUE, copia NEW.uom_operativa_id in NEW.uom_id (usare solo dove la colonna esiste).
-  --   [2] target_col         :: text     (default 'quantita')
-  --       Nome colonna target per la quantita` base calcolata.
-  --       Es. 'quantita_fissa' per contratti_righe.
+  --   [2] target_col          :: text     (default 'quantita')
+  --       Nome colonna target per la quantita' base calcolata.
+  --   [3] fonte_nullability_col :: text   (default NULL)
+  --       Nome colonna che governa la nullabilita' di qta_operativa.
+  --       Se valorizzato e qta_operativa IS NULL: legge il valore di quella colonna
+  --       via to_jsonb(NEW). Se != 'FISSA' (e non NULL) -> RETURN NEW senza raise.
+  --       Usare per tabelle con fonte_quantita_attesa (es. contratti_righe).
+  --       Tabelle senza questa colonna: omettere l'argomento (comportamento invariato).
   -- ------------------------------------------------------------
 
   --------------------------------------------------------------------
-  -- 3) Se entrambe le variabili operative CI SONO, NON ricalcolo nulla
+  -- short-circuit: entrambe le variabili operative valorizzate -> NON ricalcola
   --------------------------------------------------------------------
-  IF NEW.qta_operativa IS NOT NULL  AND NEW.uom_operativa_id IS NOT NULL THEN
+  IF NEW.qta_operativa IS NOT NULL AND NEW.uom_operativa_id IS NOT NULL THEN
     RETURN NEW;
   END IF;
-
 
   -- 0) Parametri
   IF TG_NARGS >= 1 THEN
@@ -64,10 +69,18 @@ DECLARE
   IF TG_NARGS >= 3 AND TG_ARGV[2] IS NOT NULL AND TG_ARGV[2] <> '' THEN
     v_target_col := TG_ARGV[2];
   END IF;
+  IF TG_NARGS >= 4 AND TG_ARGV[3] IS NOT NULL AND TG_ARGV[3] <> '' THEN
+    v_fonte_col := TG_ARGV[3];
+  END IF;
 
-  -- Errore solo se null
-  -- Errore solo se qta_operativa è NULL
+  -- Verifica qta_operativa: NULL consentito se la fonte non e' 'FISSA'
   IF NEW.qta_operativa IS NULL THEN
+    IF v_fonte_col IS NOT NULL THEN
+      v_fonte_val := to_jsonb(NEW) ->> v_fonte_col;
+      IF v_fonte_val IS NOT NULL AND v_fonte_val <> 'FISSA' THEN
+        RETURN NEW;
+      END IF;
+    END IF;
     PERFORM script.fn_log_and_raise_error(
       'application',
       'script.trgfn_qta_from_operativa',
@@ -84,7 +97,6 @@ DECLARE
       'column', 'qta_operativa'
     );
   END IF;
-
 
   --------------------------------------------------------------------
   -- 1) UoM operativa: se manca, fallback a UoM base articolo
@@ -113,71 +125,68 @@ DECLARE
   END IF;
 
   --------------------------------------------------------------------
-  -- 2) Decidere se serve leggere il mapping
-  --    Serve se: dobbiamo fare snapshot factor OR dobbiamo calcolare (ricostruzione/computo)
+  -- 2) Mapping factor/policy
   --------------------------------------------------------------------
- 
-    SELECT aum.factor_to_base,
-          aum.qty_step,
-          COALESCE(aum.max_decimals,6),
-          aum.forbid_fraction
-      INTO v_factor_map, v_qty_step, v_max_dec, v_forbid_frac
-    FROM catalogo.articoli_uom_operativa aum
-    WHERE aum.articolo_id = NEW.articolo_id
-      AND aum.uom_id      = NEW.uom_operativa_id
-      AND aum.attivo      = TRUE
-      AND (aum.valido_dal IS NULL OR aum.valido_dal <= CURRENT_DATE)
-      AND (aum.valido_al  IS NULL OR aum.valido_al  >= CURRENT_DATE)
-    LIMIT 1;
+  SELECT aum.factor_to_base,
+        aum.qty_step,
+        COALESCE(aum.max_decimals,6),
+        aum.forbid_fraction
+    INTO v_factor_map, v_qty_step, v_max_dec, v_forbid_frac
+  FROM catalogo.articoli_uom_operativa aum
+  WHERE aum.articolo_id = NEW.articolo_id
+    AND aum.uom_id      = NEW.uom_operativa_id
+    AND aum.attivo      = TRUE
+    AND (aum.valido_dal IS NULL OR aum.valido_dal <= CURRENT_DATE)
+    AND (aum.valido_al  IS NULL OR aum.valido_al  >= CURRENT_DATE)
+  LIMIT 1;
 
-    v_factor_map := COALESCE(v_factor_map, 1);
-  
-    -- Fattore effettivo: rispetta snapshot se già presente
-    v_factor_used := COALESCE(NEW.factor_to_base, v_factor_map, 1);
+  v_factor_map := COALESCE(v_factor_map, 1);
 
-    -- Snapshot opzionale (solo se richiesto e assente)
-    IF v_fill_factor_to_base THEN
-      IF NEW.factor_to_base IS NULL THEN
-        NEW.factor_to_base := v_factor_used;
-      END IF;
+  -- Fattore effettivo: rispetta snapshot se già presente
+  v_factor_used := COALESCE(NEW.factor_to_base, v_factor_map, 1);
+
+  -- Snapshot opzionale (solo se richiesto e assente)
+  IF v_fill_factor_to_base THEN
+    IF NEW.factor_to_base IS NULL THEN
+      NEW.factor_to_base := v_factor_used;
     END IF;
-
+  END IF;
 
   --------------------------------------------------------------------
-  -- 3) Policy su quantità operativa (solo se valorizzata/coinvolta)
+  -- 3) Policy su quantità operativa
   --------------------------------------------------------------------
-    IF v_forbid_frac IS TRUE AND NEW.qta_operativa <> TRUNC(NEW.qta_operativa) THEN
+  IF v_forbid_frac IS TRUE AND NEW.qta_operativa <> TRUNC(NEW.qta_operativa) THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database','script.trgfn_qta_from_operativa',
+      'E_QTA_OPERATIVA_NON_INTERA',
+      jsonb_build_object(
+        'articolo_id', NEW.articolo_id,
+        'uom_operativa_id', NEW.uom_operativa_id,
+        'qta_operativa', NEW.qta_operativa
+      ),
+      NULL::uuid,
+      'articolo_id', NEW.articolo_id::text,
+      'uom_operativa_id', NEW.uom_operativa_id::text
+    );
+  END IF;
+
+  IF v_qty_step IS NOT NULL AND v_qty_step > 0 THEN
+    IF abs(NEW.qta_operativa / v_qty_step - ROUND(NEW.qta_operativa / v_qty_step)) > 1e-9 THEN
       PERFORM script.fn_log_and_raise_error(
         'database','script.trgfn_qta_from_operativa',
-        'E_QTA_OPERATIVA_NON_INTERA',
+        'E_QTA_OPER_STEP_INVALIDO',
         jsonb_build_object(
           'articolo_id', NEW.articolo_id,
           'uom_operativa_id', NEW.uom_operativa_id,
-          'qta_operativa', NEW.qta_operativa
+          'qta_operativa', NEW.qta_operativa,
+          'qty_step', v_qty_step
         ),
         NULL::uuid,
-        'articolo_id', NEW.articolo_id::text,
-        'uom_operativa_id', NEW.uom_operativa_id::text
+        'articolo_id',NEW.articolo_id::text,
+        'uom_operativa_id',NEW.uom_operativa_id::text
       );
     END IF;
-
-    IF v_qty_step IS NOT NULL AND v_qty_step > 0 THEN
-      IF abs(NEW.qta_operativa / v_qty_step - ROUND(NEW.qta_operativa / v_qty_step)) > 1e-9 THEN
-        PERFORM script.fn_log_and_raise_error(
-          'database','script.trgfn_qta_from_operativa',
-          'E_QTA_OPER_STEP_INVALIDO',
-          jsonb_build_object(
-            'articolo_id', NEW.articolo_id,
-            'uom_operativa_id', NEW.uom_operativa_id,
-            'qta_operativa', NEW.qta_operativa,
-            'qty_step', v_qty_step
-          ),
-          NULL::uuid,
-          'articolo_id',NEW.articolo_id::text,
-          'uom_operativa_id',NEW.uom_operativa_id::text
-        );
-      END IF;
-    END IF;
+  END IF;
 
   --------------------------------------------------------------------
   -- 4) Calcolo finale della base (colonna target parametrica)
@@ -191,6 +200,9 @@ DECLARE
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION script.trgfn_qta_from_operativa()
+IS 'Calcola quantita (base) da qta_operativa * factor. TG_ARGV[0]=fill_factor_to_base, [1]=fill_uom_id_base, [2]=target_col (default quantita). TG_ARGV[3]=fonte_nullability_col: se valorizzato e qta_operativa IS NULL, legge il valore di quella colonna; se != FISSA -> RETURN NEW senza raise (per LETTURE/MANUALE/TIMESHEET/DERIVATA_COMPONENTI su contratti_righe). Tabelle senza [3] (preventivi/ordini/ddt): comportamento invariato.';
 ```
 
 ---
