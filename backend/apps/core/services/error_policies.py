@@ -77,6 +77,52 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri non validi.",
         ),
+        # ── Building block note partizionate (apps/core/services/partitioned_note_service.py) ──
+        # Codici cross-area: il service in apps/core/ scrive su qualunque partizione
+        # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE/DDT/FATTURA/ATTIVITAFT) e in
+        # prospettiva su tabelle note di altri schemi che adotteranno lo stesso pattern.
+        "E_NOTA_VALIDATION": ErrorPolicy(
+            code="E_NOTA_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Dati nota non validi.",
+        ),
+        "E_NOTA_NOT_FOUND": ErrorPolicy(
+            code="E_NOTA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Nota non trovata.",
+        ),
+        "E_NOTA_PARENT_NOT_FOUND": ErrorPolicy(
+            code="E_NOTA_PARENT_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Documento di riferimento non trovato.",
+        ),
+        "E_NOTA_RIGA_INCOERENTE": ErrorPolicy(
+            code="E_NOTA_RIGA_INCOERENTE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="La riga indicata non appartiene al documento.",
+        ),
+        "E_NOTA_FK": ErrorPolicy(
+            code="E_NOTA_FK",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Riferimento non valido: stile, lingua o riga non esistenti.",
+        ),
+        "E_NOTA_DUPLICATO": ErrorPolicy(
+            code="E_NOTA_DUPLICATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Nota gia' esistente (violato vincolo di univocita').",
+        ),
+        "E_NOTA_CHECK_VIOLATION": ErrorPolicy(
+            code="E_NOTA_CHECK_VIOLATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Valore non ammesso per anchor_tipo, posizione, seq o testo.",
+        ),
         "E_VENDITE_VALIDATION": ErrorPolicy(
             code="E_VENDITE_VALIDATION",
             http_status=400,

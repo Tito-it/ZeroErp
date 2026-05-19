@@ -1,18 +1,28 @@
 // Scopo: Utility condivisa per determinare il livello di provenienza
 // di un parametro risolto e il suo severity badge.
 // Riusata da ParameterFallback e ImpostazioniSearchTable.
+//
+// Cascata di risoluzione (post brief DB 2026-05-19, migration 20260519-01):
+//   user > categoria_cliente > group > emittente > default
+// Livello "categoria_cliente" attivo solo se il chiamante ha passato
+// `categoria_cliente_id` (o `billing_account_id`) all'API /settings/.
 
 const SEVERITY_MAP = {
   user: 'info',
+  categoria_cliente: 'warn',
   group: 'warn',
   emittente: 'success',
   default: 'secondary'
 }
 
+// Ordine di precedenza esplicito: la prima chiave non-null vince.
+// Single source of truth per la cascata visualizzata in UI.
+const LEVEL_ORDER = ['user', 'categoria_cliente', 'group', 'emittente']
+
 export function resolveParameterLevel(parameter) {
-  if (parameter.user_value != null) return 'user'
-  if (parameter.group_value != null) return 'group'
-  if (parameter.emittente_value != null) return 'emittente'
+  for (const level of LEVEL_ORDER) {
+    if (parameter[`${level}_value`] != null) return level
+  }
   return 'default'
 }
 

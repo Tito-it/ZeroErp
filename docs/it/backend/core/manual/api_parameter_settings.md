@@ -56,6 +56,9 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 - Metodo: `GET`
 - Path: `/api/v1/core/parameters/settings/`
 - Auth: JWT, `skip_area_check = True`
+- Query params (tutti opzionali):
+  - `categoria_cliente_id` (smallint) — attiva il livello `categoria_cliente` nella cascata visualizzata (fra `user` e `group`). Valorizza `categoria_cliente_value` e `categoria_cliente_override_id` nelle righe risposta.
+  - `billing_account_id` (int) — alternativa al precedente: il BE deriva la categoria dal BA via `BillingAccountRepository.get_categoria_cliente_id`. Ignorato se `categoria_cliente_id` esplicito è presente (priorità all'esplicito).
 - Output `200`:
 ```json
 {
@@ -66,19 +69,23 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
       "default_value": "22",
       "emittente_value": "10",
       "group_value": null,
+      "categoria_cliente_value": null,
+      "categoria_cliente_override_id": null,
       "user_value": "5",
       "user_override_id": 42,
       "resolved_value": "5"
     },
     {
-      "code": "UI_THEME",
-      "description": "Tema interfaccia utente",
-      "default_value": "light",
-      "emittente_value": null,
-      "group_value": null,
+      "code": "VENDITE_MAX_SCONTO_PCT",
+      "description": "Sconto massimo percentuale ammesso senza approvazione",
+      "default_value": "10",
+      "emittente_value": "12",
+      "group_value": "20",
+      "categoria_cliente_value": "5",
+      "categoria_cliente_override_id": 314,
       "user_value": null,
       "user_override_id": null,
-      "resolved_value": "light"
+      "resolved_value": "5"
     }
   ],
   "meta": { "request_id": "..." }
@@ -87,13 +94,15 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 - Regole:
   - Restituisce **tutti** i parametri di `config.parameters`
   - Per ogni parametro: valore a ciascun livello di scope + valore risolto finale
-  - `user_override_id`: ID dell'override personale dell'utente (null se non esiste), usato per DELETE
+  - Cascata di risoluzione (post brief DB 2026-05-19, migration `20260519-01-recreate-fn-list-parameters-for-user-categoria-cliente-mctit`): `user > categoria_cliente > group > emittente > default`
+  - `user_override_id` / `categoria_cliente_override_id`: ID dei rispettivi override (null se assente). `categoria_cliente_override_id` è **bigint** (non integer) per coerenza con `config.parameter_overrides.id` (derivato via `%TYPE`).
   - `emittente_fiscale_id` risolto automaticamente dal bridge HR dell'utente
-  - Delega a `script.fn_list_parameters_for_user()`
+  - `categoria_cliente_value` / `categoria_cliente_override_id` sono SEMPRE presenti come chiavi nello shape della risposta; restano `null` se la richiesta non ha passato né `categoria_cliente_id` né `billing_account_id`
+  - Delega a `script.fn_list_parameters_for_user(p_django_user_id, p_group_ids, p_emittente_fiscale_id, p_categoria_cliente_id)` (firma 4-arg)
 
 ---
 
-### 3. Crea o aggiorna override personale
+### 3. Crea o aggiorna override
 
 - Metodo: `POST`
 - Path: `/api/v1/core/parameters/settings/override/`
@@ -101,47 +110,62 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 - Body JSON:
   - `parameter_code` (string, **obbligatorio**) — codice parametro da sovrascrivere
   - `value` (string, **obbligatorio**) — nuovo valore dell'override
+  - `scope` (string, opzionale, default `"user"`) — uno fra:
+    - `"user"` — override personale (default, qualunque utente)
+    - `"emittente"` — override per emittente fiscale (admin-only; EF derivato dal profilo utente)
+    - `"categoria_cliente"` — override per categoria cliente (admin-only; richiede `categoria_cliente_id` esplicito, Phase B 2026-05-19)
+  - `categoria_cliente_id` (int, **obbligatorio se `scope="categoria_cliente"`**) — ID smallint della categoria; il BE rifiuta valori non-positivi
 - Output `200`:
 ```json
 {
   "data": {
-    "override_id": 42
+    "override_id": 42,
+    "scope": "categoria_cliente"
   },
   "meta": { "request_id": "..." }
 }
 ```
 - Regole:
-  - Esegue UPSERT su `config.parameter_overrides` con `django_user_id = utente corrente`
-  - Tutti gli altri scope (emittente, group, session, function) sono NULL — solo override personale
-  - Se l'override esiste gia', aggiorna il valore e `data_update`
+  - Esegue UPSERT su `config.parameter_overrides` con il filtro scope corretto:
+    - `user` → `django_user_id = utente corrente`, tutti gli altri scope NULL
+    - `emittente` → `emittente_fiscale_id = EF utente`, tutti gli altri scope NULL
+    - `categoria_cliente` → `categoria_cliente_id = <id>`, tutti gli altri scope NULL
+  - Se l'override esiste gia' (stessa tupla `(parameter_id, scope-key)`), aggiorna il valore e `data_update`
   - Se il `parameter_code` non esiste in `config.parameters`, il DB lancia errore (NOT NULL su parameter_id)
 - Errori:
-  - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto o utente non valido
+  - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto, `categoria_cliente_id` mancante/non-positivo per scope categoria
+  - `E_PERMISSION_DENIED` (403) — scope `emittente` o `categoria_cliente` da non-admin
 
 ---
 
-### 4. Rimuovi override personale
+### 4. Rimuovi override
 
 - Metodo: `DELETE`
 - Path: `/api/v1/core/parameters/settings/override/<override_id>/`
 - Auth: JWT, `skip_area_check = True`
 - Path param:
-  - `override_id` (int, **obbligatorio**) — ID dell'override da rimuovere (ottenuto da endpoint 2)
+  - `override_id` (int, **obbligatorio**) — ID dell'override da rimuovere (ottenuto da endpoint 2: `user_override_id` / `categoria_cliente_override_id` / equivalente per emittente)
+- Query param:
+  - `scope` (string, opzionale, default `"user"`) — coerente col POST: `user` / `emittente` / `categoria_cliente`
+  - `categoria_cliente_id` (int, **obbligatorio se `scope="categoria_cliente"`**)
 - Output `200`:
 ```json
 {
   "data": {
-    "deleted": true
+    "deleted": true,
+    "scope": "categoria_cliente"
   },
   "meta": { "request_id": "..." }
 }
 ```
 - Regole:
-  - Verifica che l'override appartenga all'utente corrente (`django_user_id = self`)
-  - Non e' possibile eliminare override di altri utenti
+  - `user` → verifica `django_user_id = self`
+  - `emittente` → verifica `emittente_fiscale_id = EF utente` (admin-only)
+  - `categoria_cliente` → verifica `categoria_cliente_id = <id query param>` + tutti gli altri scope NULL (admin-only). Difesa anti-tampering: niente cancellazione cross-categoria.
 - Errori:
-  - `E_PARAMETER_NOT_FOUND` (404) — override non trovato o non appartenente all'utente
-  - `E_PARAMETER_VALIDATION` (400) — ID override non valido
+  - `E_PARAMETER_NOT_FOUND` (404) — override non trovato o non appartenente allo scope
+  - `E_PARAMETER_VALIDATION` (400) — ID override non valido o `categoria_cliente_id` mancante/non-positivo
+  - `E_PERMISSION_DENIED` (403) — scope `emittente` o `categoria_cliente` da non-admin
 
 ---
 

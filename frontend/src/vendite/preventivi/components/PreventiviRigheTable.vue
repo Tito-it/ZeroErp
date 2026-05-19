@@ -244,7 +244,7 @@ defineExpose({ loadRighe })
       <PageActionsBar :actions="pageActions" />
     </div>
 
-    <DataTable :value="righe" striped-rows size="small" class="app-datatable"
+    <DataTable :value="righe" striped-rows size="small" class="app-datatable app-datatable--inner"
       data-key="id"
       :loading="loadingRighe"
       :row-hover="isModificabile"
@@ -255,6 +255,8 @@ defineExpose({ loadRighe })
       :rows="10"
       :rows-per-page-options="[10, 25, 50]"
       paginator-position="top"
+      sort-field="descrizione"
+      :sort-order="1"
       removable-sort
       @row-click="onRowClick">
       <!-- Expander custom per componenti BoM CASO A: chevron visibile solo
@@ -269,8 +271,8 @@ defineExpose({ loadRighe })
             @click.stop="toggleExpansion(data)" />
         </template>
       </Column>
-      <Column field="articolo_codice" :header="t('preventivi.riga_articolo')" sortable style="min-width: 140px;" />
-      <Column field="descrizione" :header="t('preventivi.riga_descrizione')" sortable style="min-width: 180px;" />
+      <Column field="articolo_codice" :header="t('preventivi.riga_articolo')" sortable style="width: 120px;" />
+      <Column field="descrizione" :header="t('preventivi.riga_descrizione')" sortable />
       <Column field="quantita" :header="t('preventivi.riga_quantita')" sortable style="width: 90px;">
         <template #body="{ data }">{{ formatNumber(data.quantita) }}</template>
       </Column>

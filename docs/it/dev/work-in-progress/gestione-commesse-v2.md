@@ -2158,3 +2158,42 @@ che mostri in sola lettura i campi snapshot pricing v5:
 ### 28.4 Riferimento originale
 
 Step: `sviluppo-listini-v5.md` → FASE 3 — Frontend → §3.4 → F3-FE-08
+
+---
+
+## 29) Promemoria — `HandlerContratti` e gestione `fonte_quantita_attesa` (TODO)
+
+**Data**: 2026-05-19
+**Stato**: aperto, da affrontare in coordinamento con il refactor opzione B su `vendite.contratti_righe` (esporre `fonte_quantita_attesa` in UI).
+
+### 29.1 Stato attuale
+
+`apps/vendite/services/commesse_source_handlers.py::HandlerContratti` e' uno **scheletro vuoto**: eredita da `BaseSourceHandler` e dichiara solo `sorgente_codice = "CONTRATTO"`. Non ha override comportamentali. Tutta la logica di push contratto → commessa transita per il flusso generico `_process_rows()` ereditato.
+
+Conseguenza: la `quantita` snapshottata in `commesse_attivita` viene presa **as-is** dalla riga contratto, senza distinguere se quella quantita ha senso operativo o no in base a `fonte_quantita_attesa`.
+
+### 29.2 Cosa cambia con l'opzione B su `contratti_righe`
+
+Quando esporremo `fonte_quantita_attesa` in UI (5 valori: `FISSA`, `MANUALE`, `TIMESHEET`, `LETTURE`, `DERIVATA_COMPONENTI`), il push contratto deve diventare consapevole della semantica:
+
+| `fonte_quantita_attesa` | Comportamento atteso del push |
+|---|---|
+| `FISSA` | Snapshot `quantita` × `prezzo_unitario` come oggi → totale segmento mensile. |
+| `MANUALE` | Quantita NULL in commessa, marca `quantita_da_risolvere = TRUE` (o flag equivalente); l'operatore la imposta sul documento downstream. |
+| `TIMESHEET` | Quantita NULL, pull da modulo rendicontazione ore (futuro). |
+| `LETTURE` | Quantita NULL, pull da `attivita_consumi` (modulo letture utility). |
+| `DERIVATA_COMPONENTI` | Padre senza quantita propria; fan-out 1→N sui figli come gia' fa `HandlerConsumi._expand_rows()` (modello da replicare). |
+
+### 29.3 Lavoro da fare
+
+1. Estendere `HandlerContratti` con override `_process_rows()` (o `_expand_rows()` per il caso composito) che legga `fonte_quantita_attesa` dalla riga sorgente.
+2. Coordinarsi con la `fn_list_contratti_da_pushare` per esporre `fonte_quantita_attesa` nel meta del payload (oggi espone `periodicita`, `generazione_canone`, `tipo_erogazione` — manca questo).
+3. Decidere se serve un nuovo flag su `commesse_attivita` (es. `quantita_pending_source`) per tracciare le righe in attesa di risoluzione downstream.
+4. Test handler: matrice dei 5 valori × scenari (`FISSA` snapshot, le altre 4 senza snapshot o con fan-out).
+
+### 29.4 Riferimenti
+
+- Doc DB: [`fn_list_contratti_da_pushare`](/dbzero/vendite/manual/fn_list_contratti_da_pushare) — sezione "meta tecnico per il push".
+- Modello tabella: [`contratti_righe`](/dbzero/vendite/manual/contratti_righe) — campi `tipo_erogazione`, `fonte_quantita_attesa` (CHECK con i 5 valori in `chk_contrighe_fonte_qta`).
+- Pattern fan-out: [`HandlerConsumi._expand_rows()`](../../../../backend/apps/vendite/services/commesse_source_handlers.py) — replicabile per `DERIVATA_COMPONENTI`.
+- Trigger del refactor UI: `docs/it/dev/work-in-progress/sviluppo-fatturazione.md` (preview fatturazione contratto) + futura analisi opzione B su `contratti_righe`.

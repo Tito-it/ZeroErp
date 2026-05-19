@@ -122,6 +122,16 @@ onMounted(() => store.fetchList())
           <span v-else class="text-muted">—</span>
         </template>
       </Column>
+      <!-- Cascata: il livello categoria_cliente sta fra group e user
+           (post brief DB 2026-05-19, migration 20260519-01). Compare con
+           valore solo se la chiamata /settings/ ha passato categoria_cliente_id
+           o billing_account_id; altrimenti '—'. -->
+      <Column field="categoria_cliente_value" :header="t('impostazioni.col_categoria_cliente')" style="width: 130px;">
+        <template #body="{ data }">
+          <span v-if="data.categoria_cliente_value != null" class="font-mono">{{ data.categoria_cliente_value }}</span>
+          <span v-else class="text-muted">—</span>
+        </template>
+      </Column>
       <Column field="user_value" :header="t('impostazioni.col_user')" style="width: 130px;">
         <template #body="{ data }">
           <span v-if="data.user_value != null" class="font-mono">{{ data.user_value }}</span>

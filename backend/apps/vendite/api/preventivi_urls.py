@@ -7,6 +7,10 @@
 
 from django.urls import path
 
+from apps.vendite.api.note_views import (
+    ApiPreventivoNoteDetail,
+    ApiPreventivoNoteList,
+)
 from apps.vendite.api.preventivi_documenti_views import (
     ApiPreventivoDocumentiList,
     ApiPreventivoDocumentoAnteprima,
@@ -160,5 +164,18 @@ urlpatterns = [
         "<int:preventivo_id>/documenti/<int:documento_id>/file/",
         ApiPreventivoDocumentoFile.as_view(),
         name="vendite-preventivi-documenti-file",
+    ),
+    # Note partizionate (vendite.note_preventivo) — testata o riga.
+    # GET ?target_riga_id=<rid> per filtrare le note della singola riga.
+    # POST body con target_riga_id per nota di riga.
+    path(
+        "<int:preventivo_id>/note/",
+        ApiPreventivoNoteList.as_view(),
+        name="vendite-preventivi-note-list",
+    ),
+    path(
+        "<int:preventivo_id>/note/<int:note_id>/",
+        ApiPreventivoNoteDetail.as_view(),
+        name="vendite-preventivi-note-detail",
     ),
 ]

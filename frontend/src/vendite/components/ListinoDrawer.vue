@@ -10,6 +10,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useAuthStore } from '../../stores/auth'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
@@ -170,7 +171,11 @@ function close() {
     position="right" :style="{ width: DRAWER_WIDTH.STANDARD }" :dismissable="true"
     @after-show="onAfterShow">
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('listini.listino')" />
+      <DrawerTitle
+        :action="isEdit ? t('common.edit') : t('common.new')"
+        :title="t('listini.listino')"
+        :icon="NAV_ICONS.LISTINI"
+      />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

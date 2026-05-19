@@ -448,7 +448,7 @@ const onClose = useDrawerClose(emit)
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
     position="right" :style="{ width: DRAWER_WIDTH.WIDE }" :dismissable="!hasChildOpen">
     <template #header>
-      <DrawerTitle :title="t('listini.tab_righe')" icon="pi pi-list" />
+      <DrawerTitle :title="t('listini.tab_righe')" :icon="MANAGE_ICONS.RIGHE" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

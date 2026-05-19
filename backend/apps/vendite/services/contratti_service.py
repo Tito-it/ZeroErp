@@ -1069,30 +1069,50 @@ class ContrattiService:
                     testata, auth_user_id,
                 )
                 valido_dal_raw = testata.get("valido_dal")
-                # Skip silenzioso ammesso solo se mancano emittente o
-                # valido_dal: l'admin potra' ri-eseguire l'init manualmente.
-                # Logghiamo warning per audit (gap visibile in produzione).
-                if emittente_sr_id is None or valido_dal_raw is None:
-                    logger.warning(
-                        "contratti.create_riga.auto_init_componenti_skipped "
-                        "contratto_id=%s riga_id=%s articolo_id=%s "
-                        "motivo=%s — la riga padre composita resta senza "
-                        "componenti; init manuale richiesto.",
-                        contratto_id, new_id, articolo_id,
-                        ("emittente_non_risolvibile" if emittente_sr_id is None
-                         else "valido_dal_null"),
-                    )
-                else:
-                    data_riferimento = (
-                        valido_dal_raw if isinstance(valido_dal_raw, date)
-                        else date.fromisoformat(str(valido_dal_raw))
-                    )
-                    self._repo.init_componenti_riga(
-                        riga_id=new_id,
-                        emittente_soggetto_ruolo_id=emittente_sr_id,
-                        data_riferimento=data_riferimento,
-                        componenti_overrides=componenti_overrides,
-                    )
+                # Refactor 2026-05-19: stop allo skip silente. Se mancano
+                # emittente o valido_dal, sollevare errore parlante invece
+                # di lasciare un padre composito orfano in DB (la
+                # transaction.atomic sopra ne fa il rollback). L'utente vede
+                # il vero motivo e sa come rimediare. Pattern simmetrico
+                # alla logica preventivi composito (gestisci_riga).
+                ErrorManager.require(
+                    emittente_sr_id is not None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        "Inserimento articolo composito non possibile: "
+                        "emittente fiscale non risolvibile per il contratto."
+                    ),
+                    context={
+                        "contratto_id": contratto_id,
+                        "articolo_id": articolo_id,
+                        "motivo": "emittente_non_risolvibile",
+                    },
+                )
+                ErrorManager.require(
+                    valido_dal_raw is not None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        "Inserimento articolo composito non possibile: "
+                        "valorizza prima `valido_dal` sulla testata del contratto."
+                    ),
+                    context={
+                        "contratto_id": contratto_id,
+                        "articolo_id": articolo_id,
+                        "motivo": "valido_dal_null",
+                    },
+                )
+                data_riferimento = (
+                    valido_dal_raw if isinstance(valido_dal_raw, date)
+                    else date.fromisoformat(str(valido_dal_raw))
+                )
+                self._repo.init_componenti_riga(
+                    riga_id=new_id,
+                    emittente_soggetto_ruolo_id=emittente_sr_id,
+                    data_riferimento=data_riferimento,
+                    componenti_overrides=componenti_overrides,
+                )
 
         result = self._repo.get_riga(new_id)
         assert result is not None
@@ -1932,6 +1952,16 @@ class ContrattiService:
             # Coerenza prezzo_unitario / tipo_eccezione (pre-DB):
             # - ESCLUSIONE -> prezzo NULL (l'articolo non e' disponibile)
             # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
+            # Eccezione: articolo composito (modello unificato BoM 2026-05-13).
+            # Il FE puo' omettere `prezzo_unitario` per padri compositi perche'
+            # il prezzo padre = SUM(figli × coeff_qta) calcolato dal trigger
+            # DB `_z90_ricalcola_padre` post-init componenti BoM nello stesso
+            # `@transaction.atomic`. Setto un placeholder Decimal(0) per
+            # superare il CHECK `chk_contrighe_prezzo_per_tipo_eccezione`
+            # (`prezzo_unitario IS NOT NULL` per OVERRIDE/AGGIUNTA) — il
+            # trigger lo sovrascrive sincrono dopo INSERT padre + INSERT figli.
+            # Pattern simmetrico al preventivo (cfr. preventivi_service.py
+            # `gestisci_riga` ~ linea 670, "Padre composito").
             prezzo_raw = payload.get("prezzo_unitario")
             if tipo_eccezione == "ESCLUSIONE":
                 ErrorManager.require(
@@ -1944,17 +1974,25 @@ class ContrattiService:
                     ),
                     context={"tipo_eccezione": tipo_eccezione},
                 )
-            else:
-                # OVERRIDE / AGGIUNTA richiedono prezzo_unitario presente.
+            elif prezzo_raw is None:
+                # OVERRIDE / AGGIUNTA: prezzo None ammesso solo se composito.
+                articolo_id_val = data.get("articolo_id")
+                is_composito = bool(
+                    articolo_id_val
+                    and self._repo.is_articolo_composito(str(articolo_id_val))
+                )
                 ErrorManager.require(
-                    prezzo_raw is not None,
+                    is_composito,
                     code=E_VENDITE_VALIDATION,
                     message=_MESSAGE_RIGA,
                     detail=(
-                        f"{tipo_eccezione}: prezzo_unitario obbligatorio."
+                        f"{tipo_eccezione}: prezzo_unitario obbligatorio "
+                        "per articoli non compositi."
                     ),
                     context={"tipo_eccezione": tipo_eccezione},
                 )
+                # Placeholder: il trigger DB lo sovrascrive a SUM componenti.
+                payload = {**payload, "prezzo_unitario": Decimal("0")}
         # Numeric opzionali.
         for field in ("prezzo_unitario", "quantita", "qta_operativa", "factor_to_base"):
             if field in payload:
@@ -1965,6 +2003,18 @@ class ContrattiService:
                     data[field] = self._coerce_decimal(
                         raw, field=field, message=_MESSAGE_RIGA,
                     )
+        # Deriva `quantita` da `qta_operativa` quando il FE non la invia
+        # (simmetria con preventivi_service._derive_qta_operativa).
+        # Necessario per articoli compositi: la fn DB
+        # `fn_contratto_riga_componenti_init` skippa silenzioso se
+        # `contratti_righe.quantita IS NULL` ("riga a consumo"). Senza questa
+        # derivazione, AGGIUNTA bundle composito creerebbe il padre orfano
+        # con prezzo placeholder 0 e zero figli BoM.
+        # Approssimazione factor=1 (UoM base, caso comune del contratto):
+        # per UoM non-base servirebbe `repo.get_articolo_uom_factor`; se
+        # emergera' come bug reale, estendere via mixin componenti shared.
+        if for_create and "quantita" not in data and data.get("qta_operativa") is not None:
+            data["quantita"] = data["qta_operativa"]
         self._apply_optional_positive_int(
             payload, data, "uom_operativa_id", message=_MESSAGE_RIGA,
         )

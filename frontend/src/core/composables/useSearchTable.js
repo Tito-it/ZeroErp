@@ -18,7 +18,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useContextStore } from '../../stores/context'
-import { PAGINATION } from '../constants'
+import { BREAKPOINTS, PAGINATION } from '../constants'
 
 export function useSearchTable(store, options = {}) {
   const {
@@ -30,6 +30,12 @@ export function useSearchTable(store, options = {}) {
 
   const route = useRoute()
   const ctx = useContextStore()
+  const initialLimit = store.filters.limit
+  const useResponsiveDefaultRows = initialLimit === PAGINATION.DEFAULT_ROWS
+  const compactRowsQuery = typeof window !== 'undefined'
+    ? window.matchMedia(`(max-width: ${BREAKPOINTS.TABLET - 1}px)`)
+    : null
+  let userChangedRows = false
 
   // Inizializza sort default nello store se non gia' impostato
   if (defaultSortField && !store.filters.order_by) {
@@ -79,6 +85,21 @@ export function useSearchTable(store, options = {}) {
     store.fetchList()
   }
 
+  function defaultRowsForViewport() {
+    return compactRowsQuery?.matches ? PAGINATION.COMPACT_ROWS : PAGINATION.DEFAULT_ROWS
+  }
+
+  // Scopo: applica il default responsive solo alle liste standard che nascono
+  // a 25 righe. Le rare liste che nascono a 10 restano eccezioni esplicite.
+  function applyResponsiveDefaultRows({ fetch = false } = {}) {
+    if (!useResponsiveDefaultRows || userChangedRows) return
+    const nextLimit = defaultRowsForViewport()
+    if (store.filters.limit === nextLimit) return
+    store.filters.limit = nextLimit
+    store.filters.offset = 0
+    if (fetch && store.hasSearched) store.fetchList()
+  }
+
   // Scopo: intercetta F5 per ricaricare la lista senza reload browser
   function onKeydown(e) {
     if (e.key === 'F5') {
@@ -86,12 +107,22 @@ export function useSearchTable(store, options = {}) {
       reload()
     }
   }
-  onMounted(() => { window.addEventListener('keydown', onKeydown) })
+  function onRowsMediaChange() {
+    applyResponsiveDefaultRows({ fetch: true })
+  }
+
+  applyResponsiveDefaultRows()
+
+  onMounted(() => {
+    window.addEventListener('keydown', onKeydown)
+    compactRowsQuery?.addEventListener('change', onRowsMediaChange)
+  })
 
   // Cleanup timeout e listener on unmount
   onUnmounted(() => {
     clearTimeout(searchTimeout)
     window.removeEventListener('keydown', onKeydown)
+    compactRowsQuery?.removeEventListener('change', onRowsMediaChange)
   })
 
   // Handler @page DataTable — guard contro loop infinito e click rapidi.
@@ -100,6 +131,7 @@ export function useSearchTable(store, options = {}) {
   function onPage(event) {
     if (event.first === store.filters.offset && event.rows === store.filters.limit) return
     if (store.loading) return
+    if (event.rows !== store.filters.limit) userChangedRows = true
     store.filters.offset = event.first
     store.filters.limit = event.rows
     store.fetchList()

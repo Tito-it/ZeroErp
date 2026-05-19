@@ -20,6 +20,7 @@ import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
+import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { TIPO_RUOLO, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 
@@ -96,11 +97,19 @@ function onRowClick(event) { emit('row-click', event.data) }
 
 const pdfDialogVisible = ref(false)
 const pdfDialogContratto = ref(null)
+const noteDrawerVisible = ref(false)
+const noteDrawerContratto = ref(null)
 
 function onPdfClick(row) {
   if (!row || row.stato_codice === 'DRAFT') return
   pdfDialogContratto.value = row
   pdfDialogVisible.value = true
+}
+
+function onNoteClick(row) {
+  if (!row?.id) return
+  noteDrawerContratto.value = row
+  noteDrawerVisible.value = true
 }
 
 // Scopo: costruisce le azioni contestuali di riga per il menu kebab.
@@ -121,8 +130,14 @@ function buildRowActions(data) {
     {
       key: 'gestisci-righe',
       label: t('contratti.gestisci_righe'),
-      icon: MANAGE_ICONS.CONTRATTI,
+      icon: MANAGE_ICONS.RIGHE,
       command: () => emit('open-righe', data),
+    },
+    {
+      key: 'gestisci-note',
+      label: t('contratti.gestisci_note'),
+      icon: MANAGE_ICONS.NOTE,
+      command: () => onNoteClick(data),
     },
   ]
 }
@@ -242,6 +257,12 @@ onMounted(() => {
             numero: pdfDialogContratto.numero,
           })
         : ''"
+    />
+
+    <ContrattoNoteDrawer
+      v-if="noteDrawerContratto?.id"
+      v-model:visible="noteDrawerVisible"
+      :contratto-id="noteDrawerContratto.id"
     />
     </template>
   </div>

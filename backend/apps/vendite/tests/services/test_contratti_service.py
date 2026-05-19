@@ -1142,6 +1142,10 @@ class ContrattiServiceTests(TestCase):
 
         repo = repo_cls.return_value
         repo.get_contratto.return_value = _testata_default()  # DRAFT
+        # Articolo non composito: il bypass del modello unificato BoM
+        # (Decimal('0') placeholder per padri compositi) non scatta;
+        # OVERRIDE/AGGIUNTA con prezzo None deve fallire.
+        repo.is_articolo_composito.return_value = False
 
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().create_riga(
@@ -1201,6 +1205,10 @@ class ContrattiServiceTests(TestCase):
 
         repo = repo_cls.return_value
         repo.get_contratto.return_value = _testata_default()  # DRAFT
+        # Articolo NON composito: evita il branch auto-init componenti BoM
+        # (modello unificato 2026-05-13). Il branch composito viene testato
+        # nei test ContrattiServiceComponentiTests.
+        repo.is_articolo_composito.return_value = False
         repo.create_riga.return_value = 77
         repo.get_riga.return_value = {"id": 77, "prezzo_unitario": Decimal("25.50")}
 
@@ -1839,10 +1847,13 @@ class ContrattiServiceComponentiTests(TestCase):
         return_value=None,  # ← admin globale, niente emittente
     )
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_riga_articolo_composito_skip_init_senza_emittente(
+    def test_create_riga_articolo_composito_senza_emittente_solleva(
         self, repo_cls, _mock_resolve, _mock_atomic,
     ):
-        """Articolo composito + emittente non risolvibile → skip init con log warning."""
+        """Articolo composito + emittente non risolvibile → errore parlante
+        (refactor 2026-05-19: niente piu' skip silente; il padre orfano e'
+        peggio di un errore visibile, l'atomic rollbacka il padre).
+        """
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = MagicMock()
@@ -1852,9 +1863,7 @@ class ContrattiServiceComponentiTests(TestCase):
         repo.get_riga.return_value = {"id": 500, "contratto_id": 1}
         repo_cls.return_value = repo
 
-        with self.assertLogs(
-            "apps.vendite.services.contratti_service", level="WARNING",
-        ) as logs:
+        with self.assertRaises(ServiceError) as ctx:
             ContrattiService().create_riga(
                 1,
                 {
@@ -1865,13 +1874,51 @@ class ContrattiServiceComponentiTests(TestCase):
                 },
                 auth_user_id=None,
             )
-
-        # Init NON chiamato + warning emesso per audit.
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("emittente", (ctx.exception.detail or "").lower())
+        # Init NON chiamato: l'errore scatta prima.
         repo.init_componenti_riga.assert_not_called()
-        self.assertTrue(
-            any("auto_init_componenti_skipped" in msg for msg in logs.output),
-            f"Atteso warning skip in: {logs.output}",
-        )
+
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch(
+        "apps.vendite.services.contratti_service.ContrattiService."
+        "_resolve_emittente_sr_id_for_contratto",
+        return_value=99,  # EF risolto, ma valido_dal mancante in testata
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_articolo_composito_senza_valido_dal_solleva(
+        self, repo_cls, _mock_resolve, _mock_atomic,
+    ):
+        """Articolo composito + valido_dal NULL in testata → errore parlante
+        (refactor 2026-05-19: pari al caso emittente, niente skip silente).
+        """
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        # Testata senza valido_dal (DRAFT con campo non ancora valorizzato).
+        testata = _testata_default()
+        testata["valido_dal"] = None
+        repo.get_contratto.return_value = testata
+        repo.create_riga.return_value = 500
+        repo.is_articolo_composito.return_value = True
+        repo.get_riga.return_value = {"id": 500, "contratto_id": 1}
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().create_riga(
+                1,
+                {
+                    "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
+                    "tipo_eccezione": "AGGIUNTA",
+                    "prezzo_unitario": "0",
+                    "quantita": "1",
+                },
+                auth_user_id=42,
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("valido_dal", (ctx.exception.detail or "").lower())
+        # Init NON chiamato: la guard scatta prima.
+        repo.init_componenti_riga.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.transaction.atomic")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")

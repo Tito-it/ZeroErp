@@ -5,15 +5,26 @@
 //        2026-05-14) per supportare le 4 sorgenti documento (preventivi,
 //        contratti, ordini, ddt) senza duplicazione.
 //
-//        Usato in due contesti:
-//        - Expander DataTable (readonly=true): tabella read-only.
-//        - Sezione "Componenti" nel drawer riga (readonly=false): prezzo
-//          inline editabile + salvataggio per componente.
+//        Usato in tre modalita':
+//        - Fetch-driven readonly (expander DataTable): chiama apiList per
+//          le righe persistite (es. AGGIUNTA bundle salvata).
+//        - Fetch-driven editabile (drawer riga, readonly=false): apiList
+//          + apiUpdate per editing prezzo inline.
+//        - Data-driven readonly (initialData != null): salta la fetch e
+//          rende direttamente l'array passato. Usato per anteprime con
+//          shape JSONB aggregato in DB (es. fn_contratto_righe_preview),
+//          dove i componenti vivono solo in `listini_righe_componenti`
+//          senza istanza in `*_righe_componenti`.
 //
 //        La variabilita' tra sorgenti vive nelle 3 prop API
 //        (apiList/apiUpdate/apiDelete) e nella `tabEntity` per emit
 //        cross-tab; tutto il resto (UX, severity, validazione, badge,
 //        layout) e' identico per design del modello unificato.
+//
+//        Auto-hide colonne metadata (origine, approvazione, IVA, esposto):
+//        ogni colonna scompare quando nessuna riga visibile ha il campo
+//        valorizzato (modalita' preview espone solo i dati base, quelle
+//        avanzate solo per righe persistite).
 //
 //        i18n: chiavi sotto `vendite.componenti.panel.*` (default).
 //        Caller puo' override `i18nPrefix` per varianti contestuali
@@ -30,6 +41,7 @@ import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useRigaComponenti } from '../../../core/composables/useRigaComponenti'
 import { extractApiError } from '../../../core/utils/apiError'
+import { coerceJsonbToArray } from '../../../core/utils/meta'
 import {
   pricingOrigineLabelKey,
   pricingOrigineSeverity,
@@ -54,11 +66,22 @@ const auth = useAuthStore()
 
 const props = defineProps({
   // ID del documento padre (preventivo/contratto/ordine/ddt).
-  documentoId: { type: Number, required: true },
+  // Non required: in modalita' data-driven non serve.
+  documentoId: { type: Number, default: 0 },
   // ID della riga padre composita.
-  rigaId: { type: Number, required: true },
+  // Non required: in modalita' data-driven non serve.
+  rigaId: { type: Number, default: 0 },
   // Read-only consultazione (expander) vs editabile (form drawer).
+  // Forzato readonly in modalita' data-driven (initialData != null).
   readonly: { type: Boolean, default: true },
+  // Modalita' data-driven: se passato (Array o stringa JSON aggregata
+  // da DB), salta la fetch e rende direttamente. Shape attesa allineata
+  // al jsonb_agg standard delle fn preview: componente_id,
+  // componente_codice, componente_descrizione, uom_id, uom_codice,
+  // coeff_qta, prezzo, obbligatorio, esposto_in_fattura.
+  // Il normalizer mappa coeff_qta->quantita e prezzo->prezzo_unitario
+  // per usare le stesse celle del rendering fetch-driven.
+  initialData: { type: [Array, String], default: null },
   // Callback API sorgente-specific. Firme:
   //   apiList(documentoId, rigaId, { soloAttivi }) -> axios response
   //   apiUpdate(documentoId, rigaId, componenteId, payload) -> axios response
@@ -66,9 +89,10 @@ const props = defineProps({
   // Per preventivi: passare listRigaComponenti / updateRigaComponente /
   //   deleteRigaComponente di `preventivi/api/preventiviApi.js`.
   // Per contratti/ordini/ddt: omologa di quella sorgente.
-  apiList: { type: Function, required: true },
-  apiUpdate: { type: Function, required: true },
-  apiDelete: { type: Function, required: true },
+  // Non required in modalita' data-driven (saltate completamente).
+  apiList: { type: Function, default: null },
+  apiUpdate: { type: Function, default: null },
+  apiDelete: { type: Function, default: null },
   // Chiave TAB_ENTITIES per emit cross-tab post-write (refresh in altre
   // tab che guardano lo stesso documento). Es. TAB_ENTITIES.PREVENTIVO,
   // TAB_ENTITIES.CONTRATTO.
@@ -80,6 +104,26 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['changed'])
+
+// Modalita' data-driven decisa al setup. La prop `initialData` non e'
+// pensata per cambiare runtime (caso non realistico: una stessa istanza
+// di pannello non oscilla tra anteprima e fetch).
+const isDataDriven = computed(() => props.initialData != null)
+const effectiveReadonly = computed(() => isDataDriven.value || props.readonly)
+
+// Guard runtime: in modalita' fetch-driven le 3 api callback sono
+// obbligatorie. In data-driven sono ignorate.
+if (!isDataDriven.value) {
+  if (typeof props.apiList !== 'function'
+      || typeof props.apiUpdate !== 'function'
+      || typeof props.apiDelete !== 'function') {
+    throw new Error(
+      'ComponentiPanel: in modalita\' fetch-driven '
+      + 'apiList/apiUpdate/apiDelete sono obbligatorie. '
+      + 'Per la modalita\' data-driven passare invece initialData.',
+    )
+  }
+}
 
 // Helper risoluzione i18n con fallback al namespace base. Permette al
 // caller di sovrascrivere solo le chiavi differenti.
@@ -95,22 +139,91 @@ function localizedKey(key) {
 // `documentoId` passato come getter `() => props.documentoId` per garantire
 // la reattivita' su drawer PrimeVue riusato (le props cambiano senza
 // rimount; scalar verrebbe catturato a setup).
-const { componenti, loading, load, update } = useRigaComponenti(
-  () => props.documentoId,
-  {
-    apiList: props.apiList,
-    apiUpdate: props.apiUpdate,
-    apiDelete: props.apiDelete,
-    soloAttivi: props.readonly,
-    tabEntity: props.tabEntity,
-  },
-)
+//
+// In modalita' data-driven `useRigaComponenti` viene saltato (le api
+// callback non sono obbligatorie e l'array arriva da `initialData`).
+const fetcher = isDataDriven.value
+  ? null
+  : useRigaComponenti(
+      () => props.documentoId,
+      {
+        apiList: props.apiList,
+        apiUpdate: props.apiUpdate,
+        apiDelete: props.apiDelete,
+        soloAttivi: props.readonly,
+        tabEntity: props.tabEntity,
+      },
+    )
+
+// Normalizer shape preview JSONB -> shape pannello. Mappa i nomi diversi
+// e fornisce un id stabile usabile come data-key DataTable anche quando
+// la riga non e' persistita (preview Parte 1b da listini_righe_componenti).
+//
+// Marker `_qta_is_snapshot` distingue le due semantiche:
+//   - true:  `quantita` reale (snapshot riga padre x coeff_qta), persistito
+//   - false: solo `coeff_qta` (rapporto BoM), preview senza istanza
+// Usato per scegliere la label di colonna "Q.tà" vs "Coeff." nella
+// modalita' data-driven.
+function normalizeRow(c) {
+  const hasSnapshotQta = c.quantita != null
+  const qtaValue = hasSnapshotQta
+    ? c.quantita
+    : (c.coeff_qta_snapshot ?? c.coeff_qta)
+  return {
+    id: c.id ?? `prv-${c.componente_id ?? ''}-${c.componente_codice ?? ''}`,
+    componente_id: c.componente_id ?? null,
+    componente_codice: c.componente_codice ?? null,
+    componente_descrizione: c.componente_descrizione ?? null,
+    quantita: qtaValue,
+    _qta_is_snapshot: hasSnapshotQta,
+    uom_codice: c.uom_codice ?? null,
+    prezzo_unitario: c.prezzo_unitario ?? c.prezzo ?? null,
+    origine_prezzo: c.origine_prezzo ?? null,
+    stato_approvazione_prezzo: c.stato_approvazione_prezzo ?? null,
+    iva_codice: c.iva_codice ?? null,
+    obbligatorio: c.obbligatorio === true,
+    esposto_in_fattura: c.esposto_in_fattura === true,
+  }
+}
+
+// Sorgente dati unificata: array reactive normalizzato. Le due modalita'
+// convergono qui per non frammentare il rendering.
+const componenti = computed(() => {
+  const raw = isDataDriven.value
+    ? coerceJsonbToArray(props.initialData)
+    : fetcher.componenti.value
+  return raw.map(normalizeRow)
+})
+
+const loading = computed(() => (isDataDriven.value ? false : fetcher.loading.value))
 
 // L1: l'edit prezzo richiede l'azione `prezzo_override_manuale`. Stessa
 // logica gia' applicata nella riga padre, qui replicata sui componenti
 // (decisione di dominio: L1/L2/L3 sui componenti usano stessi parametri
 // della riga padre).
 const canOverride = computed(() => auth.isActionAllowed(PRICING_ACTIONS.OVERRIDE))
+
+// Auto-hide colonne metadata: in modalita' preview lo shape JSONB porta
+// solo i dati base. Mostrare le colonne origine/approvazione/IVA vuote
+// confonderebbe l'utente; il pannello le rimuove se nessuna riga visibile
+// le ha valorizzate.
+const hasOrigineData = computed(
+  () => componenti.value.some((c) => c.origine_prezzo != null),
+)
+const hasApprovazioneData = computed(
+  () => componenti.value.some((c) => c.stato_approvazione_prezzo != null),
+)
+const hasIvaData = computed(
+  () => componenti.value.some((c) => c.iva_codice != null),
+)
+const qtaIsSnapshot = computed(
+  () => componenti.value.some((c) => c._qta_is_snapshot),
+)
+// Label colonna q.ta' dinamica: "Q.tà" per snapshot persistito,
+// "Coeff." per preview da listino (rapporto BoM puro).
+const qtaColumnLabel = computed(
+  () => t(localizedKey(qtaIsSnapshot.value ? 'col_qta' : 'col_coeff_qta')),
+)
 
 // Stato locale: prezzo in edit per ogni componente.
 // Permette di editare PIU' componenti prima di salvarli uno alla volta —
@@ -120,16 +233,20 @@ const prezzoEditato = ref({})
 
 // Reload sul cambio riga + cleanup mappa edit. Cambio rigaId invalida
 // sempre gli edit pendenti (dato di un'altra riga) e ricarica.
+// Watcher attivo SOLO in modalita' fetch-driven: in data-driven la
+// sorgente e' la prop `initialData`, il rigaId e' un placeholder.
 async function onRigaIdChange(id) {
   prezzoEditato.value = {}
-  if (id == null) return
+  if (id == null || !fetcher) return
   try {
-    await load(id)
+    await fetcher.load(id)
   } catch (err) {
     notify.error(extractApiError(err, t(localizedKey('errore_caricamento'))))
   }
 }
-watch(() => props.rigaId, onRigaIdChange, { immediate: true })
+if (!isDataDriven.value) {
+  watch(() => props.rigaId, onRigaIdChange, { immediate: true })
+}
 
 function origineLabel(code) {
   const key = pricingOrigineLabelKey(code)
@@ -177,7 +294,7 @@ function isPrezzoEditatoValido(comp) {
 }
 
 function getPrezzoVisualizzato(comp) {
-  if (props.readonly) return Number(comp.prezzo_unitario)
+  if (effectiveReadonly.value) return Number(comp.prezzo_unitario)
   const local = prezzoEditato.value[comp.id]
   return local != null ? Number(local) : Number(comp.prezzo_unitario)
 }
@@ -188,7 +305,9 @@ function setPrezzoEditato(componenteId, val) {
 
 // Scopo: PATCH del solo prezzo del componente con origine MANUALE. Il BE
 // applica L1/L2/L3 (stessi parametri della riga padre).
+// Disponibile solo in modalita' fetch-driven (data-driven e' readonly).
 async function onSalvaPrezzo(comp) {
+  if (!fetcher) return
   const nuovoPrezzo = prezzoEditato.value[comp.id]
   if (nuovoPrezzo == null) return
   if (!isPrezzoEditatoValido(comp)) {
@@ -198,7 +317,7 @@ async function onSalvaPrezzo(comp) {
     return
   }
   try {
-    await update(props.rigaId, comp.id, {
+    await fetcher.update(props.rigaId, comp.id, {
       prezzo_unitario: nuovoPrezzo,
       origine_prezzo: ORIGINE_PREZZO.MANUALE,
     })
@@ -221,7 +340,7 @@ async function onSalvaPrezzo(comp) {
     <div v-else-if="componenti.length === 0" class="componenti-panel-empty">
       {{ t(localizedKey('vuoto')) }}
     </div>
-    <DataTable v-else :value="componenti" size="small" class="app-datatable" data-key="id">
+    <DataTable v-else :value="componenti" size="small" class="app-datatable app-datatable--inner" data-key="id">
       <Column :header="t(localizedKey('col_codice'))" style="width: 130px;">
         <template #body="{ data }">
           <div class="componenti-panel-codice-cell">
@@ -243,13 +362,13 @@ async function onSalvaPrezzo(comp) {
         </template>
       </Column>
       <Column field="componente_descrizione" :header="t(localizedKey('col_descrizione'))" style="min-width: 140px;" />
-      <Column :header="t(localizedKey('col_qta'))" style="width: 90px;">
+      <Column :header="qtaColumnLabel" style="width: 90px;">
         <template #body="{ data }">{{ formatNumber(data.quantita) }}</template>
       </Column>
       <Column field="uom_codice" :header="t(localizedKey('col_uom'))" style="width: 70px;" />
       <Column :header="t(localizedKey('col_prezzo'))" style="width: 180px; min-width: 180px;">
         <template #body="{ data }">
-          <template v-if="readonly">
+          <template v-if="effectiveReadonly">
             <span>{{ formatCurrency(data.prezzo_unitario, { minimumFractionDigits: 2, maximumFractionDigits: 6 }) }}</span>
           </template>
           <template v-else>
@@ -280,7 +399,9 @@ async function onSalvaPrezzo(comp) {
           </template>
         </template>
       </Column>
-      <Column :header="t(localizedKey('col_origine'))" style="width: 100px;">
+      <Column
+        v-if="hasOrigineData || hasApprovazioneData"
+        :header="t(localizedKey('col_origine'))" style="width: 100px;">
         <template #body="{ data }">
           <div class="componenti-panel-tag-stack">
             <Tag
@@ -297,7 +418,9 @@ async function onSalvaPrezzo(comp) {
           </div>
         </template>
       </Column>
-      <Column field="iva_codice" :header="t(localizedKey('col_iva'))" style="width: 50px;" />
+      <Column
+        v-if="hasIvaData"
+        field="iva_codice" :header="t(localizedKey('col_iva'))" style="width: 50px;" />
       <Column :header="t('vendite.componenti.col_esposto')" style="width: 70px;">
         <template #body="{ data }">
           <Tag
@@ -315,10 +438,10 @@ async function onSalvaPrezzo(comp) {
         </template>
       </Column>
     </DataTable>
-    <small v-if="!readonly && componenti.length > 0" class="componenti-panel-hint">
+    <small v-if="!effectiveReadonly && componenti.length > 0" class="componenti-panel-hint">
       {{ t(localizedKey('section_hint')) }}
     </small>
-    <small v-if="!readonly && !canOverride && componenti.length > 0" class="componenti-panel-hint componenti-panel-hint-lock">
+    <small v-if="!effectiveReadonly && !canOverride && componenti.length > 0" class="componenti-panel-hint componenti-panel-hint-lock">
       <i class="pi pi-lock" /> {{ t(localizedKey('l1_richiede_autorizzazione')) }}
     </small>
   </div>

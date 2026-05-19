@@ -20,7 +20,8 @@ import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReado
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
-import { addDaysToToday, toDateString, parseIsoDate } from '../../core/utils/date'
+import { NAV_ICONS } from '../../core/navigation'
+import { addDaysToToday, toDateString, parseIsoDate, displayDate } from '../../core/utils/date'
 import { paramInt, paramString } from '../../core/utils/parameterCast'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -30,6 +31,7 @@ import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupListiniSelezionabiliContratto } from '../api/lookup'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import DocumentiGeneratiSorgenteList from '../../documenti/components/DocumentiGeneratiSorgenteList.vue'
+import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import ContrattoPdfButton from './ContrattoPdfButton.vue'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
@@ -118,6 +120,7 @@ function formatListinoOption(item) {
 
 // Sub-drawer
 const righeVisible = ref(false)
+const noteDrawerVisible = ref(false)
 
 // fgVersion: invalida fetch stantii su apertura/chiusura rapide.
 let fgVersion = 0
@@ -153,7 +156,6 @@ function defaultForm() {
     valido_al: null,
     data: toDateString(addDaysToToday(dataLeadGg)),
     parent_contratto_id: null,
-    meta_note: '',
     // Categoria cliente snapshot
     categoria_cliente_id_snapshot: null,
     // Pricing — refactor modalita 2026-05-15: niente piu' SelectButton A/B/C.
@@ -191,7 +193,6 @@ function populateFromDetail(d) {
     valido_al: d.valido_al,
     data: d.data,
     parent_contratto_id: d.parent_contratto_id,
-    meta_note: d.meta?.note || '',
     categoria_cliente_id_snapshot: d.categoria_cliente_id_snapshot || null,
     listino_id: d.listino_id,
     tipo_variazione_globale: d.tipo_variazione_globale,
@@ -347,7 +348,6 @@ function buildPayload() {
     parent_contratto_id: f.parent_contratto_id || null,
     categoria_cliente_id_snapshot: f.categoria_cliente_id_snapshot || null,
   }
-  if (f.meta_note) payload.meta = { note: f.meta_note }
   // Pricing — refactor modalita 2026-05-15: niente piu' if-chain modalita.
   // Il payload include sempre listino_id (puo' essere null = forma senza_listino).
   // La coppia variazione globale (tipo+valore) e' opzionale; il vincolo di
@@ -494,38 +494,62 @@ const onClose = useDrawerClose(emit, 'cancelled')
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('contratti.contratto')"
-        icon="pi pi-file-edit"
+        :icon="NAV_ICONS.CONTRATTI"
       />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <template v-if="contentReady">
 
-      <!-- === Intestazione edit: numero + stato + azione affiancata === -->
+      <!-- === Intestazione edit: numero/stato + azioni testata omogenee ai preventivi === -->
       <template v-if="isEdit && detail">
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('contratti.field_numero') }}</label>
-            <InputText :model-value="detail.numero" disabled class="w-full" />
+        <div class="contratto-drawer-header-row">
+          <div class="contratto-drawer-header-info">
+            <Tag :value="detail.numero" severity="secondary" />
+            <span v-if="detail.data" class="contratto-drawer-header-muted">
+              {{ displayDate(detail.data) }}
+            </span>
+            <Tag
+              :value="t(`contratti.forma_${formaDerivata}`)"
+              :severity="formaDerivata === 'senza_listino' ? 'warn' : 'info'"
+            />
           </div>
-          <div class="form-field">
-            <label>{{ t('contratti.field_stato') }}</label>
-            <div class="flex align-items-center gap-2">
-              <Tag :value="detail.stato_descrizione" :severity="statoContrattoSeverity(detail.stato_codice)" />
-              <Button v-for="action in availableActions" :key="action.key"
-                :label="t(action.label_key)"
-                :icon="action.icon"
-                :severity="action.severity"
-                size="small" outlined
-                class="app-escape"
-                @click="onCambiaStato(action)" />
-              <ContrattoPdfButton
-                :contratto-id="props.contrattoId"
-                :stato-codice="detail.stato_codice"
-                :numero="detail.numero"
-              />
-            </div>
-          </div>
+          <Tag
+            :value="detail.stato_descrizione"
+            :severity="statoContrattoSeverity(detail.stato_codice)"
+            class="contratto-drawer-status"
+          />
+        </div>
+
+        <div class="contratto-drawer-actions">
+          <Button v-for="action in availableActions" :key="action.key"
+            :label="t(action.label_key)"
+            :icon="action.icon"
+            :severity="action.severity"
+            size="small"
+            class="app-escape"
+            @click="onCambiaStato(action)" />
+          <ContrattoPdfButton
+            :contratto-id="props.contrattoId"
+            :stato-codice="detail.stato_codice"
+            :numero="detail.numero"
+          />
+          <span class="contratto-drawer-righe-action">
+            <Button :icon="MANAGE_ICONS.RIGHE" :label="t('contratti.gestisci_righe')"
+              size="small"
+              outlined
+              class="app-manage-btn app-escape"
+              @click="righeVisible = true" />
+            <span class="contratto-drawer-righe-count">{{ righeCount }}</span>
+          </span>
+          <Button
+            :icon="MANAGE_ICONS.NOTE"
+            :label="t('contratti.gestisci_note')"
+            size="small"
+            outlined
+            class="app-manage-btn app-escape"
+            @click="noteDrawerVisible = true"
+          />
         </div>
 
         <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo
@@ -698,24 +722,6 @@ const onClose = useDrawerClose(emit, 'cancelled')
         </div>
       </div>
 
-      <!-- === Note === -->
-      <h4 class="mt-3">{{ t('contratti.section_note') }}</h4>
-      <div class="form-field">
-        <Textarea v-model="form.meta_note" rows="2" autoResize class="w-full"
-          :disabled="isEdit && isLocked('meta')" />
-      </div>
-
-      <!-- === Gestione righe (solo edit) === -->
-      <template v-if="isEdit && detail">
-        <h4 class="mt-3">{{ t('contratti.section_gestione') }}</h4>
-        <div class="form-row-inline">
-          <Button :icon="MANAGE_ICONS.LIST" :label="t('contratti.gestisci_righe')"
-            outlined class="app-manage-btn"
-            @click="righeVisible = true" />
-          <span class="text-color-secondary">{{ righeCount }} {{ t('contratti.righe_count_label') }}</span>
-        </div>
-      </template>
-
       <template v-if="isEdit && detail && detail.stato_codice !== 'DRAFT'">
         <h4 class="mt-3">{{ t('contratti.pdf.section_documenti') }}</h4>
         <div class="app-escape">
@@ -746,6 +752,15 @@ const onClose = useDrawerClose(emit, 'cancelled')
       :contratto-stato-codice="detail.stato_codice"
       :contratto-stato-descrizione="detail.stato_descrizione"
       @changed="refreshDetail"
+    />
+
+    <!-- Sub-drawer note partizionate. Le righe sono passate per popolare il
+         dropdown RIGA del form: detail.righe e' gia' caricato dal padre. -->
+    <ContrattoNoteDrawer
+      v-if="isEdit && detail"
+      v-model:visible="noteDrawerVisible"
+      :contratto-id="props.contrattoId"
+      :righe="detail.righe || []"
     />
 
     <!-- Dialog cessazione contratto: chiede la data di cessazione (default
@@ -784,3 +799,63 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
   </Drawer>
 </template>
+
+<style scoped>
+.contratto-drawer-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.contratto-drawer-header-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.contratto-drawer-header-muted {
+  color: var(--app-text-muted);
+  font-size: 0.85rem;
+}
+
+.contratto-drawer-status {
+  margin-left: auto;
+}
+
+.contratto-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.contratto-drawer-righe-action {
+  position: relative;
+  display: inline-flex;
+}
+
+.contratto-drawer-righe-count {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--p-primary-contrast-color);
+  background: var(--p-primary-color);
+  box-shadow: 0 0 0 2px var(--app-content-bg);
+  pointer-events: none;
+}
+</style>

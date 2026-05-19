@@ -171,7 +171,7 @@ const pageActions = computed(() => [
   {
     key: 'aggiungi-articolo',
     kind: 'primary',
-    label: t('contratti.aggiungi_articolo'),
+    label: t('common.new'),
     tooltip: t('contratti.aggiungi_articolo_tooltip'),
     icon: MANAGE_ICONS.ADD,
     visible: canVariarePrezzi.value,
@@ -294,7 +294,7 @@ const form = ref({})
 const selectedRow = ref(null)
 
 // Articolo selezionato corrente con flag `is_composito` (dal lookup
-// `ArticoloLookup` o ricostruito in `onRowSelect` per EDIT). Driver della
+// `ArticoloLookup` o ricostruito in `_onEditRigaPersistita` per EDIT). Driver della
 // detection auto-apertura ComponentiDialog + visibilita' ComponentiPanel
 // (modello unificato BoM 2026-05-13).
 const articoloObj = ref(null)
@@ -474,7 +474,7 @@ function onModificaPrezzo(row) {
   // Carica le UoM operative dell'articolo per popolare uomOptions: senza
   // fetch il Select UoM mostrerebbe vuoto anche con uom_operativa_id
   // pre-selezionato (PrimeVue richiede che il valore sia nelle options).
-  // Pattern identico a `onRowSelect` per righe OVERRIDE gia' esistenti.
+  // Pattern identico a `_onEditRigaPersistita` per righe OVERRIDE gia' esistenti.
   resetComponentiState()
   loadUomPerArticolo(row.articolo_id)
 }
@@ -512,26 +512,35 @@ function onEscludi(row) {
   })
 }
 
-function onRowSelect(event) {
+// Scopo: handler unificato click di riga (allineamento UX standard del progetto
+//        — frontend-standards §"Pattern lista": modifica = click riga, kebab
+//        riservato ad azioni secondarie).
+//        - readonly: no-op
+//        - riga DA_LISTINO (preview): apre il form pre-compilato come OVERRIDE
+//          (delega a onModificaPrezzo, ex-azione "matita" rimossa dal kebab)
+//        - riga persistita (OVERRIDE/AGGIUNTA/ESCLUSIONE): apre edit normale
+//        Inoltre auto-espande la riga corrente se composita, cosi' l'operatore
+//        vede subito la composizione BoM inline durante l'edit (simmetria con
+//        PreventiviRigheTable).
+function onRowClick(event) {
   const r = event.data
-  // In readonly (permessi area LETTURA o contratto post-DRAFT) il click su
-  // una riga NON apre il form di modifica. La selezione resta consultabile
-  // visivamente solo per evidenziare la riga letta. Coerente con il guard
-  // BE Profilo A che rifiuta update_riga su contratti non-DRAFT.
-  if (isReadonly.value) {
-    selectedRow.value = null
-    return
+  if (isReadonly.value) return
+  // Auto-expand inline se la riga e' un bundle composito: nessun click extra
+  // sul chevron, il dettaglio componenti diventa subito visibile.
+  if (hasBundleComponenti(r) && !isExpanded(r)) {
+    toggleExpansion(r)
   }
-  // In modalita' A/B la lista mostra la preview combinata: le righe con
-  // origine='DA_LISTINO' sono readonly (preview puro) e non aprono il form.
-  // Solo le righe 'OVERRIDE' (con id contratti_righe) sono editabili.
+  // DA_LISTINO: pre-compila il form come OVERRIDE (era il vecchio "Modifica prezzo").
   if (r.origine === 'DA_LISTINO') {
-    // Reset selezione e form: evita evidenziamento residuo PrimeVue e
-    // disallinea form-mode aperto su altra riga.
-    selectedRow.value = null
-    if (formMode.value) closeForm()
+    onModificaPrezzo(r)
     return
   }
+  _onEditRigaPersistita(r)
+}
+
+// Scopo: apertura form EDIT per righe persistite (override/aggiunta/esclusione).
+//        Estratto da onRowClick per non duplicare la logica di restore form.
+function _onEditRigaPersistita(r) {
   // ID dipende dalla modalita': in A/B usa override_riga_id (preview),
   // in C usa r.id (riga contratto persistita).
   const rigaId = r.id ?? r.override_riga_id
@@ -738,24 +747,16 @@ function onDelete(r) {
 
 const onClose = useDrawerClose(emit)
 
-// Scopo: azioni di riga del master-detail. Differenziate per origine:
-//   - DA_LISTINO (preview puro, no contratti_righe): "Modifica prezzo"
-//     (apre form CREATE pre-compilato come OVERRIDE) e "Escludi" (one-click
-//     ESCLUSIONE con conferma). Gated su `canVariarePrezzi`. Refactor FE 2.2
-//     Opzione C (2026-05-18): UX azioni esplicite al posto del vecchio
-//     Select tipo_eccezione nel form.
-//   - eccezioni gia' esistenti (OVERRIDE/ESCLUSIONE/AGGIUNTA): "Elimina"
-//     come prima.
+// Scopo: azioni di riga del master-detail. Differenziate per origine.
+//        Allineamento UX standard del progetto (frontend-standards §"Pattern
+//        lista"): la modifica avviene per click di riga, il kebab espone
+//        solo azioni SECONDARIE distinte dall'edit.
+//   - DA_LISTINO (preview puro): "Escludi" (one-click ESCLUSIONE con conferma).
+//     La modifica prezzo arriva da onRowClick → onModificaPrezzo, niente matita.
+//   - eccezioni persistite (OVERRIDE/ESCLUSIONE/AGGIUNTA): "Elimina".
 function buildRigaActions(data) {
   if (data.origine === 'DA_LISTINO') {
     return [
-      {
-        key: 'modifica-prezzo',
-        label: t('contratti.azione_modifica_prezzo'),
-        icon: MANAGE_ICONS.EDIT,
-        visible: !isReadonly.value && canVariarePrezzi.value,
-        command: () => onModificaPrezzo(data),
-      },
       {
         key: 'escludi',
         label: t('contratti.azione_escludi'),
@@ -795,35 +796,35 @@ function origineSeverity(origine) {
     :dismissable="true"
   >
     <template #header>
-      <DrawerTitle :title="t('contratti.drawer_righe_titolo')" icon="pi pi-list" />
+      <DrawerTitle :title="t('contratti.drawer_righe_titolo')" :icon="MANAGE_ICONS.RIGHE" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
       <!-- === Intestazione contesto contratto === -->
-      <div v-if="contrattoStatoCodice" style="text-align: right;" class="mb-2">
-        <Tag :value="contrattoStatoDescrizione"
-          :severity="statoContrattoSeverity(contrattoStatoCodice)" />
-      </div>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('contratti.field_numero') }}</label>
-          <span class="font-bold">{{ contrattoNumero }}</span>
+      <div class="contratto-righe-context">
+        <div class="contratto-righe-context-grid">
+          <div class="contratto-righe-context-item">
+            <span class="contratto-righe-context-label">{{ t('contratti.field_numero') }}</span>
+            <span class="font-bold">{{ contrattoNumero }}</span>
+          </div>
+          <div class="contratto-righe-context-item">
+            <span class="contratto-righe-context-label">{{ t('contratti.col_ba') }}</span>
+            <span>{{ contrattoCliente }}</span>
+          </div>
+          <div class="contratto-righe-context-item">
+            <span class="contratto-righe-context-label">{{ t('contratti.col_valido_dal') }}</span>
+            <span>{{ displayDate(contrattoValidoDal) }}</span>
+          </div>
+          <div class="contratto-righe-context-item">
+            <span class="contratto-righe-context-label">{{ t('contratti.col_valido_al') }}</span>
+            <span>{{ contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' }}</span>
+          </div>
         </div>
-        <div class="form-field">
-          <label>{{ t('contratti.col_ba') }}</label>
-          <span>{{ contrattoCliente }}</span>
-        </div>
-      </div>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('contratti.col_valido_dal') }}</label>
-          <span>{{ displayDate(contrattoValidoDal) }}</span>
-        </div>
-        <div class="form-field">
-          <label>{{ t('contratti.col_valido_al') }}</label>
-          <span>{{ contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' }}</span>
-        </div>
+        <Tag v-if="contrattoStatoCodice"
+          :value="contrattoStatoDescrizione"
+          :severity="statoContrattoSeverity(contrattoStatoCodice)"
+          class="contratto-righe-context-status" />
       </div>
 
       <!-- Banner contesto pricing (refactor modalita 2026-05-15, FE 2.2):
@@ -904,7 +905,7 @@ function origineSeverity(origine) {
         selection-mode="single"
         :data-key="isSenzaListino ? 'id' : '_row_key'"
         :row-class="rowClass"
-        class="app-datatable"
+        class="app-datatable app-datatable--inner"
         striped-rows
         paginator
         :rows="10"
@@ -913,7 +914,7 @@ function origineSeverity(origine) {
         sort-field="articolo_descrizione"
         :sort-order="1"
         removable-sort
-        @row-select="onRowSelect"
+        @row-click="onRowClick"
       >
         <!-- Expander custom per bundle BoM: chevron visibile solo dove la
              riga è padre composito con figli (componenti JSONB non vuoto).
@@ -971,25 +972,20 @@ function origineSeverity(origine) {
             <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
           </template>
         </Column>
-        <!-- Sub-tabella componenti BoM: padre + figli annidati (pattern
-             uniforme con PreventiviRigheTable). I figli arrivano già
-             aggregati nel JSONB `componenti` dalla funzione DB
-             `vendite.fn_contratto_righe_preview` — niente API extra. -->
+        <!-- Sub-tabella componenti BoM: padre + figli annidati.
+             `ComponentiPanel` in modalita' data-driven (prop `initialData`):
+             salta la fetch, normalizza shape JSONB (`prezzo`/`coeff_qta`
+             dalla fn DB) sullo shape persistito e auto-nasconde le colonne
+             metadata (origine/approvazione/IVA) assenti nel preview.
+             I figli arrivano gia' aggregati nel JSONB `componenti` da
+             `fn_contratto_righe_preview` tanto per righe DA_LISTINO bundle
+             (figli in `listini_righe_componenti`) quanto per AGGIUNTA-bundle
+             persistite. Il coerce JSONB->Array e' interno al pannello. -->
         <template #expansion="{ data }">
           <div style="padding: 0.25rem 0 0.5rem 2rem; background: var(--app-table-stripe-bg);">
-            <DataTable :value="data.componenti" class="app-datatable" striped-rows>
-              <Column field="componente_codice" :header="t('contratti.componente_codice')" style="width: 140px;" />
-              <Column field="componente_descrizione" :header="t('contratti.componente_descrizione')" />
-              <Column :header="t('contratti.componente_uom')" style="width: 80px;">
-                <template #body="{ data: c }">{{ c.uom_codice ?? '—' }}</template>
-              </Column>
-              <Column :header="t('contratti.componente_coeff_qta')" style="width: 100px;">
-                <template #body="{ data: c }">{{ formatNumber(c.coeff_qta, { placeholder: '—', maximumFractionDigits: 4 }) }}</template>
-              </Column>
-              <Column :header="t('contratti.componente_prezzo')" style="width: 120px;">
-                <template #body="{ data: c }">{{ formatCurrency(c.prezzo, { placeholder: '—', maximumFractionDigits: 6 }) }}</template>
-              </Column>
-            </DataTable>
+            <ComponentiPanel
+              :initial-data="data.componenti"
+              i18n-prefix="vendite.componenti.panel" />
           </div>
         </template>
       </DataTable>
@@ -1172,6 +1168,48 @@ function origineSeverity(origine) {
 </template>
 
 <style scoped>
+.contratto-righe-context {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.contratto-righe-context-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.35rem 1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.contratto-righe-context-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.contratto-righe-context-label {
+  color: var(--app-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.contratto-righe-context-item > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contratto-righe-context-status {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
 .contratti-componenti-padre-tag {
   font-size: 0.65rem;
   margin-left: 0.4rem;
@@ -1184,5 +1222,16 @@ function origineSeverity(origine) {
 }
 .contratti-componenti-summary {
   color: var(--app-text-muted);
+}
+
+@media (max-width: 768px) {
+  .contratto-righe-context {
+    flex-direction: column;
+  }
+
+  .contratto-righe-context-grid {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
 }
 </style>

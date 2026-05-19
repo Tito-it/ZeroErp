@@ -177,6 +177,8 @@ class ParameterServiceTests(TestCase):
                 "default_value": "22",
                 "emittente_value": "10",
                 "group_value": None,
+                "categoria_cliente_value": None,
+                "categoria_cliente_override_id": None,
                 "user_value": "5",
                 "user_override_id": 42,
                 "resolved_value": "5",
@@ -187,7 +189,21 @@ class ParameterServiceTests(TestCase):
             django_user_id=1, group_ids=[2], emittente_fiscale_id=3,
         )
         self.assertEqual(result, mock_data)
-        self._mock_repo.list_for_user.assert_called_once_with(1, [2], 3)
+        self._mock_repo.list_for_user.assert_called_once_with(
+            1, [2], 3, categoria_cliente_id=None,
+        )
+
+    # Scopo: Verifica che list_parameters_for_user propaghi categoria_cliente_id
+    #        al repository (post brief DB 2026-05-19, migration 20260519-01).
+    def test_list_parameters_for_user_propaga_categoria(self):
+        self._mock_repo.list_for_user.return_value = []
+        self.svc.list_parameters_for_user(
+            django_user_id=1, group_ids=[2], emittente_fiscale_id=3,
+            categoria_cliente_id=12,
+        )
+        self._mock_repo.list_for_user.assert_called_once_with(
+            1, [2], 3, categoria_cliente_id=12,
+        )
 
     # Scopo: Verifica che upsert_user_override chiami il repository e restituisca l'ID.
     def test_upsert_user_override(self):
@@ -224,3 +240,45 @@ class ParameterServiceTests(TestCase):
         result = self.svc.get_emittente_fiscale_id_for_user(1)
         self.assertEqual(result, 7)
         self._mock_repo.get_emittente_fiscale_id_for_user.assert_called_once_with(1)
+
+    # === Phase B 2026-05-19: CRUD scope categoria_cliente ===
+
+    # Scopo: Verifica che upsert_categoria_cliente_override chiami il repository.
+    def test_upsert_categoria_cliente_override(self):
+        self._mock_repo.upsert_categoria_cliente_override.return_value = 314
+        result = self.svc.upsert_categoria_cliente_override(
+            "VENDITE_MAX_SCONTO_PCT", 12, "5",
+        )
+        self.assertEqual(result, 314)
+        self._mock_repo.upsert_categoria_cliente_override.assert_called_once_with(
+            "VENDITE_MAX_SCONTO_PCT", 12, "5",
+        )
+
+    # Scopo: Verifica validazione categoria_cliente_id <= 0.
+    def test_upsert_categoria_cliente_override_id_invalido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            self.svc.upsert_categoria_cliente_override("CODE", 0, "v")
+        self.assertEqual(ctx.exception.code, "E_PARAMETER_VALIDATION")
+        self._mock_repo.upsert_categoria_cliente_override.assert_not_called()
+
+    # Scopo: Verifica validazione parameter_code vuoto.
+    def test_upsert_categoria_cliente_override_code_vuoto(self):
+        with self.assertRaises(ServiceError) as ctx:
+            self.svc.upsert_categoria_cliente_override("", 12, "v")
+        self.assertEqual(ctx.exception.code, "E_PARAMETER_VALIDATION")
+
+    # Scopo: Verifica che delete_categoria_cliente_override chiami il repository.
+    def test_delete_categoria_cliente_override(self):
+        self._mock_repo.delete_categoria_cliente_override.return_value = True
+        result = self.svc.delete_categoria_cliente_override(314, 12)
+        self.assertTrue(result)
+        self._mock_repo.delete_categoria_cliente_override.assert_called_once_with(
+            314, 12,
+        )
+
+    # Scopo: Verifica che delete_categoria_cliente_override lanci 404.
+    def test_delete_categoria_cliente_override_not_found_raises(self):
+        self._mock_repo.delete_categoria_cliente_override.return_value = False
+        with self.assertRaises(ServiceError) as ctx:
+            self.svc.delete_categoria_cliente_override(314, 12)
+        self.assertEqual(ctx.exception.code, "E_PARAMETER_NOT_FOUND")

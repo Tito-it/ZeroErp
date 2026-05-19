@@ -78,17 +78,26 @@ class ParameterRepository:
         return results
 
     # Scopo: Restituisce la lista completa dei parametri con i valori risolti
-    #        a ogni livello di scope (emittente, gruppo, utente) e il valore finale.
-    #        Delega a script.fn_list_parameters_for_user.
+    #        a ogni livello di scope (emittente, gruppo, utente, categoria_cliente)
+    #        e il valore finale.
+    #        Delega a script.fn_list_parameters_for_user (migration 20260519-01,
+    #        firma 4-arg).
+    #        Output include `categoria_cliente_value` (text) e
+    #        `categoria_cliente_override_id` (bigint, deriva da
+    #        config.parameter_overrides.id%TYPE).
     def list_for_user(
         self,
         django_user_id: int,
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
+        categoria_cliente_id: int | None = None,
     ) -> list[dict]:
-        sql = "SELECT * FROM script.fn_list_parameters_for_user(%s, %s, %s)"
+        sql = "SELECT * FROM script.fn_list_parameters_for_user(%s, %s, %s, %s)"
         with connection.cursor() as cursor:
-            cursor.execute(sql, [django_user_id, group_ids, emittente_fiscale_id])
+            cursor.execute(
+                sql,
+                [django_user_id, group_ids, emittente_fiscale_id, categoria_cliente_id],
+            )
             columns = [col.name for col in cursor.description]
             rows = cursor.fetchall()
         return [dict(zip(columns, row)) for row in rows]
@@ -223,6 +232,78 @@ class ParameterRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [override_id, emittente_fiscale_id])
+            return cursor.rowcount > 0
+
+    # Scopo: Crea o aggiorna un override a livello categoria_cliente per un
+    #        parametro. Pattern CTE-upsert simmetrico a upsert_emittente_override
+    #        ma su `categoria_cliente_id` (colonna aggiunta in 20260515-06,
+    #        cascata visualizzata in 20260519-01).
+    #        L'override vale per TUTTI gli utenti che operano su BA di quella
+    #        categoria, salvo override di gruppo o personali (cascata
+    #        user > categoria_cliente > group > emittente > default).
+    def upsert_categoria_cliente_override(
+        self,
+        parameter_code: str,
+        categoria_cliente_id: int,
+        value: str,
+    ) -> int:
+        sql = """
+            WITH target AS (
+                SELECT id FROM config.parameter_overrides
+                 WHERE parameter_id = (SELECT id FROM config.parameters WHERE code = %s)
+                   AND categoria_cliente_id = %s
+                   AND django_user_id       IS NULL
+                   AND django_group_id      IS NULL
+                   AND emittente_fiscale_id IS NULL
+                   AND session_key          IS NULL
+                   AND function_name        IS NULL
+            ),
+            updated AS (
+                UPDATE config.parameter_overrides po
+                   SET overridden_value = %s, data_update = now()
+                  FROM target t
+                 WHERE po.id = t.id
+                RETURNING po.id
+            ),
+            inserted AS (
+                INSERT INTO config.parameter_overrides
+                       (parameter_id, categoria_cliente_id, overridden_value)
+                SELECT (SELECT id FROM config.parameters WHERE code = %s),
+                       %s, %s
+                 WHERE NOT EXISTS (SELECT 1 FROM target)
+                RETURNING id
+            )
+            SELECT id FROM updated
+            UNION ALL
+            SELECT id FROM inserted
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                parameter_code, categoria_cliente_id, value,
+                parameter_code, categoria_cliente_id, value,
+            ])
+            row = cursor.fetchone()
+            assert row is not None
+            return row[0]
+
+    # Scopo: Rimuove un override a livello categoria_cliente.
+    #        Filtra `IS NULL` su user/group/emittente per evitare di
+    #        cancellare override "ibridi" (cf. delete_emittente_override).
+    def delete_categoria_cliente_override(
+        self,
+        override_id: int,
+        categoria_cliente_id: int,
+    ) -> bool:
+        sql = """
+            DELETE FROM config.parameter_overrides
+             WHERE id = %s
+               AND categoria_cliente_id = %s
+               AND django_user_id       IS NULL
+               AND django_group_id      IS NULL
+               AND emittente_fiscale_id IS NULL
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [override_id, categoria_cliente_id])
             return cursor.rowcount > 0
 
     # Scopo: Risolve l'emittente_fiscale_id "corrente" per l'utente.
