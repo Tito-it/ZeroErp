@@ -1,0 +1,104 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260519-05-alter-contratti-righe-fonte-qta-backfill-not-null-check-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Allineamento modello DB per fonte_quantita_attesa su contratti_righe:
+  #
+  # 1. BACKFILL: imposta il default per tipo_erogazione su tutte le righe
+  #    che hanno fonte_quantita_attesa = NULL (tutti i contratti esistenti).
+  #    Matrice default:
+  #      CANONE / UNA_TANTUM → FISSA
+  #      ORARIO              → MANUALE  (TIMESHEET quando il modulo esisterà)
+  #      CONSUMO             → LETTURE
+  #      tipo NULL / altro   → FISSA    (fallback difensivo)
+  #
+  # 2. NOT NULL: rende fonte_quantita_attesa obbligatoria.
+  #    Il trigger 20260519-06 (trgfn_contratti_righe_default_fonte_qta) garantisce
+  #    che ogni INSERT senza fonte riceva il default — il NOT NULL è il backstop.
+  #
+  # 3. CHECK chk_contrighe_coerenza_fonte_erogazione: vieta le 7 combinazioni
+  #    semanticamente inconsistenti dalla matrice tipo_erogazione × fonte:
+  #      CANONE  + TIMESHEET  ❌
+  #      CANONE  + LETTURE    ❌
+  #      UNA_TANTUM + TIMESHEET ❌
+  #      UNA_TANTUM + LETTURE   ❌
+  #      ORARIO  + LETTURE    ❌
+  #      CONSUMO + FISSA      ❌
+  #      CONSUMO + TIMESHEET  ❌
+  #    Le combinazioni ✅ default e 🟢 valide secondarie non sono negate.
+  #    Le 🟡 rare/edge (es. CANONE+MANUALE) sono ammesse con tooltip UI.
+  #
+  # Prerequisiti: nessuno (colonna già esistente dal bootstrap, valori CHECK già
+  # definiti da chk_contrighe_fonte_qta per i 5 valori ammessi).
+  # Compatibilità: no dati produzione. Backfill sicuro in dev.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260519-05-alter-contratti-righe-fonte-qta-backfill-not-null-check
+      author: mctit
+      comment: >
+        Backfill fonte_quantita_attesa NULL → default per tipo_erogazione.
+        Aggiunge NOT NULL e CHECK chk_contrighe_coerenza_fonte_erogazione (7 combinazioni vietate).
+        Il trigger 20260519-06 garantisce il default su futuri INSERT con fonte NULL.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti_righe
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti_righe
+                columnName: fonte_quantita_attesa
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti_righe
+                columnName: tipo_erogazione
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Step 1: backfill righe con fonte_quantita_attesa NULL.
+              -- Applica la matrice default tipo_erogazione → fonte.
+              -- Righe con tipo_erogazione NULL ricevono 'FISSA' come fallback difensivo.
+              UPDATE vendite.contratti_righe
+                 SET fonte_quantita_attesa = CASE tipo_erogazione
+                         WHEN 'CANONE'     THEN 'FISSA'
+                         WHEN 'UNA_TANTUM' THEN 'FISSA'
+                         WHEN 'ORARIO'     THEN 'MANUALE'
+                         WHEN 'CONSUMO'    THEN 'LETTURE'
+                         ELSE                   'FISSA'
+                     END
+               WHERE fonte_quantita_attesa IS NULL;
+
+              -- Step 2: rende fonte_quantita_attesa NOT NULL.
+              -- Il trigger 20260519-06 normalizza i NULL su INSERT futuri.
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN fonte_quantita_attesa SET NOT NULL;
+
+              -- Step 3: vincolo di coerenza tipo_erogazione × fonte_quantita_attesa.
+              -- Vieta le 7 combinazioni semanticamente inconsistenti (matrice 2026-05-19).
+              -- Con NOT NULL su entrambe le colonne, i NULL non producono false-negatives.
+              -- tipo_erogazione rimane nullable: righe senza tipo non subiscono il vincolo
+              -- (NULL in espressione booleana → CHECK restituisce NULL → ammesso).
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT chk_contrighe_coerenza_fonte_erogazione
+                  CHECK (
+                      NOT (
+                              (tipo_erogazione = 'CANONE'     AND fonte_quantita_attesa IN ('TIMESHEET', 'LETTURE'))
+                          OR  (tipo_erogazione = 'UNA_TANTUM' AND fonte_quantita_attesa IN ('TIMESHEET', 'LETTURE'))
+                          OR  (tipo_erogazione = 'ORARIO'     AND fonte_quantita_attesa = 'LETTURE')
+                          OR  (tipo_erogazione = 'CONSUMO'    AND fonte_quantita_attesa IN ('FISSA', 'TIMESHEET'))
+                      )
+                  );
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_coerenza_fonte_erogazione;
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN fonte_quantita_attesa DROP NOT NULL;
+              -- Il backfill non viene invertito: i valori impostati sono semanticamente corretti.
