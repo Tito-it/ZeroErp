@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Seed parametro NOTE_DEFAULT_STILE in config.parameters.
+#
+# Contesto: parametro cross-schema per il PartitionedNoteService (backend).
+# Fornisce lo stile di default per le note documenti quando l'operatore
+# non specifica uno stile esplicito nel drawer.
+#
+# Design FK-surrogata (linee-guida-sql §6b):
+#   - default_value = 'DEFAULT' (codice_interno di config.note_stili, chiave naturale stabile)
+#   - NON viene salvato l'id numerico (instabile tra ambienti)
+#   - Il trigger config.trgfn_parameters_fk_surrogate_dispatch (dispatch su FK-surrogata)
+#     valida che 'DEFAULT' esista in config.note_stili.codice_interno
+#   - Il backend risolve: SELECT id FROM config.note_stili WHERE codice_interno = <valore_risolto>
+#
+# Prerequisiti (garantiti dall'ordine filename in includeAll):
+#   20260519-02 — riga DEFAULT in config.note_stili
+#   20260519-03 — riga NOTE_DEFAULT_STILE in config.parameter_fk_surrogate
+#
+# CSV DEDICATO (parameters_note_defaults.csv, solo id=51):
+#   NON viene usato parameters.csv perché contiene righe con default_value
+#   validato dal FK-surrogata (es. DEFAULT_UTILITY id=12, default_value='')
+#   che fallirebbero se il trigger è già attivo al momento del loadUpdateData.
+#   Un CSV isolato garantisce che solo la nuova riga venga toccata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260519-04-upsert-parameter-note-default-stile-mctit.yaml
+
+  - changeSet:
+      id: 20260519-04-upsert-parameter-note-default-stile
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Aggiunge parametro id=51, code='NOTE_DEFAULT_STILE', default_value='DEFAULT'
+        a config.parameters. Stile cross-schema per note documenti.
+        default_value='DEFAULT' e' il codice_interno di config.note_stili:
+        il trigger FK-surrogata valida l'esistenza (20260519-03 registra il pattern).
+        Il backend risolve codice_interno -> id a runtime.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+            - tableExists:
+                schemaName: config
+                tableName: parameter_fk_surrogate
+            - tableExists:
+                schemaName: config
+                tableName: note_stili
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/parameters_note_defaults.csv
+            tableName: parameters
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id,           type: NUMERIC }
+              - column: { name: code,          type: STRING }
+              - column: { name: default_value, type: STRING }
+              - column: { name: description,   type: STRING }
+              - column: { name: data_insert,   type: STRING }
+              - column: { name: user_insert,   type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update,   type: STRING }
+              - column: { name: tx_id,         type: uuid }
+              - column: { name: storicizza,    type: BOOLEAN }

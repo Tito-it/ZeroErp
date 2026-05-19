@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Seed riga DEFAULT in config.note_stili.
+#
+# Contesto: prerequisito per NOTE_DEFAULT_STILE (20260519-04).
+# Il codice_interno 'DEFAULT' è la chiave naturale stabile usata
+# dal parametro come valore di default cross-schema per le note
+# di preventivi, contratti, ordini, DDT, fatture, attività fatturabili.
+#
+# Il CSV include anche le 4 righe già esistenti (dal bootstrap 20251021-15):
+# loadUpdateData con primaryKey=id le aggiorna idempotentemente.
+# Nessun trigger data viene attivato per le 4 righe invariate.
+# Il codice_interno 'DEFAULT' è lockato da trg_note_stili_a10_lock_columns_upd
+# dopo il primo INSERT: non modificabile in update.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260519-02-seed-note-stili-default-mctit.yaml
+
+  - changeSet:
+      id: 20260519-02-seed-note-stili-default
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Aggiunge riga DEFAULT (id=5, codice_interno='DEFAULT') a config.note_stili.
+        Stile predefinito per note documenti cross-schema (preventivi/contratti/ordini/DDT/fatture/attivita_fatturabili).
+        Le 4 righe preesistenti (NORMALE/GRASSETTO/AVVISO/PICCOLO) vengono upsertate idempotentemente.
+        Prerequisito per migration 20260519-04 (parametro NOTE_DEFAULT_STILE).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: note_stili
+            - columnExists:
+                schemaName: config
+                tableName: note_stili
+                columnName: codice_interno
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/note_stili.csv
+            tableName: note_stili
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id,           type: NUMERIC }
+              - column: { name: codice,        type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: descrizione,   type: STRING }
+              - column: { name: attivo,        type: BOOLEAN }
+              - column: { name: note,          type: STRING }
+              - column: { name: data_insert,   type: STRING }
+              - column: { name: user_insert,   type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update,   type: STRING }
+              - column: { name: storicizza,    type: BOOLEAN }
