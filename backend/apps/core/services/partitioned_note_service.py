@@ -58,6 +58,14 @@ _PAYLOAD_KEYS: frozenset[str] = frozenset({
 # `config.note_stili.codice_interno` (vedi `_lookup_stile_id_by_codice`).
 PARAM_DEFAULT_STILE = "NOTE_DEFAULT_STILE"
 
+# Parametro chiave naturale codice_iso per id_lingua di default.
+# Stesso meccanismo FK-surrogate dello stile: il parameter contiene il
+# `codice_iso` (es. "it") di `config.lingue`, validato dichiarativamente
+# via `config.parameter_fk_surrogate` (riga id=4 EXACT config.lingue.codice_iso,
+# migration 20260520-02/03). Risoluzione runtime: get_parameter -> codice_iso
+# -> lookup id su config.lingue.codice_iso (vedi `_lookup_lingua_id_by_codice_iso`).
+PARAM_DEFAULT_LINGUA = "NOTE_DEFAULT_LINGUA"
+
 # Mappa vincoli DB -> codici errore applicativi per IntegrityError.
 # Cross-partizione: i nomi `chk_note_*` sono ereditati dalla parent table,
 # i nomi `chk_prevnote_*`/`chk_contnote_*` sono locali alla singola partizione.
@@ -149,21 +157,26 @@ class PartitionedNoteService:
         svc.crea_nota(target_id=42, payload={"testo_md": "..."})
     """
 
-    # Scopo: Inizializza il service. `parameter_service` e `stile_lookup_fn`
-    #        iniettabili per i test (evita patching globale di connection.cursor).
-    #        `stile_lookup_fn(codice_interno) -> id | None` cerca l'id su
-    #        config.note_stili; default fa query diretta.
+    # Scopo: Inizializza il service. `parameter_service`, `stile_lookup_fn` e
+    #        `lingua_lookup_fn` iniettabili per i test (evita patching globale
+    #        di connection.cursor).
+    #        - `stile_lookup_fn(codice_interno) -> id | None`: lookup su
+    #          config.note_stili; default fa query diretta.
+    #        - `lingua_lookup_fn(codice_iso) -> id | None`: lookup su
+    #          config.lingue per codice_iso (chiave naturale ISO).
     def __init__(
         self,
         *,
         repo: PartitionedNoteRepository,
         parameter_service: ParameterService | None = None,
         stile_lookup_fn: Callable[[str], int | None] | None = None,
+        lingua_lookup_fn: Callable[[str], int | None] | None = None,
     ) -> None:
         self._repo = repo
         self._parameters = parameter_service or ParameterService()
         self._validator = PayloadValidator(validation_code="E_NOTA_VALIDATION")
         self._stile_lookup_fn = stile_lookup_fn or _default_stile_lookup
+        self._lingua_lookup_fn = lingua_lookup_fn or _default_lingua_lookup
 
     # Scopo: Verifica esistenza padre, solleva E_NOTA_PARENT_NOT_FOUND se mancante.
     def _ensure_parent_exists(self, target_id: int) -> None:
@@ -450,8 +463,13 @@ class PartitionedNoteService:
         if id_stile is not None:
             normalized["id_stile"] = id_stile
 
-        # id_lingua: nullable in DB; passa solo se valorizzato.
+        # id_lingua: nullable in DB ma in CREATE applichiamo fallback al
+        # parametro di sistema (simmetrico a id_stile). Se l'utente non
+        # sceglie esplicitamente, viene applicato il default `NOTE_DEFAULT_LINGUA`
+        # (codice_iso). Pattern coerente con `_resolve_default_stile_id`.
         id_lingua = self._validator.optional_positive_int(payload, "id_lingua")
+        if id_lingua is None and is_create:
+            id_lingua = self._resolve_default_lingua_id(auth_user_id)
         if id_lingua is not None:
             normalized["id_lingua"] = id_lingua
 
@@ -504,6 +522,38 @@ class PartitionedNoteService:
         assert stile_id is not None
         return stile_id
 
+    # Scopo: Risolve l'id lingua di default in 2 step (simmetrico allo stile):
+    #        codice_iso dal parametro NOTE_DEFAULT_LINGUA -> id su config.lingue.
+    #        Differenza con stile: la lingua e' nullable in DB, quindi se il
+    #        parametro non e' configurato ritorniamo None senza sollevare (la
+    #        nota verra' salvata con id_lingua NULL). L'errore parlante scatta
+    #        solo se il parametro c'e' ma punta a un codice_iso inesistente.
+    def _resolve_default_lingua_id(self, auth_user_id: int | None) -> int | None:
+        try:
+            codice = self._parameters.get_parameter(
+                PARAM_DEFAULT_LINGUA,
+                django_user_id=auth_user_id,
+            )
+        except ServiceError as exc:
+            if exc.code != "E_PARAMETER_NOT_FOUND":
+                raise
+            codice = None
+        if codice is None or codice.strip() == "":
+            return None  # nessun default configurato -> id_lingua resta NULL
+        lingua_id = self._lingua_lookup_fn(codice.strip())
+        ErrorManager.require(
+            lingua_id is not None,
+            code="E_NOTA_VALIDATION",
+            message="Lingua nota di default non risolvibile.",
+            hint=(
+                f"Parametro {PARAM_DEFAULT_LINGUA}='{codice}' ma nessun "
+                "record attivo in config.lingue con questo codice_iso."
+            ),
+            context={"codice_iso": codice},
+        )
+        assert lingua_id is not None
+        return lingua_id
+
 
 # Scopo: Default lookup id_stile da codice_interno su config.note_stili.
 #        Filtra `attivo=TRUE` per evitare di risolvere a stili disattivati.
@@ -515,6 +565,20 @@ def _default_stile_lookup(codice_interno: str) -> int | None:
             "SELECT id FROM config.note_stili "
             "WHERE codice_interno = %s AND attivo = TRUE LIMIT 1",
             [codice_interno],
+        )
+        row = cursor.fetchone()
+    return int(row[0]) if row else None
+
+
+# Scopo: Default lookup id_lingua da codice_iso su config.lingue.
+#        Pattern simmetrico a `_default_stile_lookup`; chiave naturale
+#        ISO standard (stabile per costruzione, no lock_columns necessario).
+def _default_lingua_lookup(codice_iso: str) -> int | None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT id FROM config.lingue "
+            "WHERE codice_iso = %s AND attivo = TRUE LIMIT 1",
+            [codice_iso],
         )
         row = cursor.fetchone()
     return int(row[0]) if row else None

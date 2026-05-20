@@ -156,7 +156,32 @@ _CONTRATTO_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
     "DRAFT": _UPDATE_KEYS_TESTATA,
     "ATTIVO": frozenset({"valido_al", "meta"}),
     "CESSATO": frozenset(),
+    # ANNULLATO (refactor 2026-05-20): stato terminale "soft-delete", coerente
+    # con preventivi (is_abortito=true). Nessun campo modificabile —
+    # transizione consentita SOLO da DRAFT. Per contratti ATTIVO la chiusura
+    # avviene via CESSATO con data di fine validita'.
+    "ANNULLATO": frozenset(),
 }
+
+# Refactor 2026-05-20 — Lock cambio `listino_id` in presenza di righe.
+# Razionale: il `listino_id` definisce il contesto di pricing contro cui le
+# righe (OVERRIDE/ESCLUSIONE/AGGIUNTA) sono state caricate. Cambiarlo causa
+# drift semantico vero:
+#   - rimozione (valore → NULL): gia' coperta dal check piu' specifico
+#     `count_eccezioni_bloccanti` (blocca OVERRIDE/ESCLUSIONE; AGGIUNTE OK
+#     perche' restano valide senza listino).
+#   - aggiunta (NULL → valore): AGGIUNTE per articoli ora nel nuovo listino
+#     diventano illegali (trigger DB `trgfn_contratti_righe_guard_aggiunta_fuori_listino`).
+#   - sostituzione (valore → altro valore): OVERRIDE/ESCLUSIONE puntano a
+#     articoli del listino vecchio, potrebbero non esistere nel nuovo.
+# Il check inline copre aggiunta + sostituzione (qualsiasi righe attiva blocca).
+#
+# `tipo_variazione_globale` / `valore_variazione_globale` NON sono bloccati:
+# la variazione si applica solo alle righe DA_LISTINO della preview (le
+# persistite OVERRIDE/AGGIUNTA mantengono prezzo proprio, ESCLUSIONE ha
+# prezzo NULL). Cambiarli con righe presenti cambia la visualizzazione preview
+# ma non rompe coerenza dati. Se serve un blocco UX preventivo si aggiunge
+# come gating FE / warning, non come hard guard BE.
 
 # In create: numero e stato_doc_contratto_id sono impostati dal service,
 # mai in payload. In update: oltre a questi, anche gli identificativi
@@ -404,6 +429,17 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI",
         ("senza dimensione tipo/classe", "devono essere NULL"),
+    ),
+    # Refactor 2026-05-20: defense-in-depth. La transizione ATTIVO → ANNULLATO
+    # NON e' ammessa lato UI (bottone "Annulla" visibile solo per DRAFT) ma
+    # il trigger DB esiste come safety net e blocca chiunque tenti la
+    # transizione via SQL diretto / tool esterno con E_CONTRATTO_ANNULLATO_CON_FATTURE
+    # se ci sono attivita_fatturabili gia' fatturate. Marker ipotizzati;
+    # se al primo trigger reale il match non scatta, aggiornare le
+    # sottostringhe in base al log.
+    (
+        "E_CONTRATTO_ANNULLATO_CON_FATTURE",
+        ("ANNULLATO", "fatture"),
     ),
 )
 
@@ -654,6 +690,41 @@ class ContrattiService:
                     "campi_ammessi": sorted(allowed_for_state),
                 },
             )
+
+        # Refactor 2026-05-20: lock cambio `listino_id` (aggiunta o sostituzione,
+        # NON rimozione) quando ci sono righe persistite. Vedi commento su
+        # _CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE per il razionale.
+        # La rimozione (valore→NULL) e' gia' coperta dal check piu' specifico
+        # `_check_listino_id_rimozione` qui sotto (blocca solo se OVERRIDE/
+        # ESCLUSIONE attivi, AGGIUNTE compatibili). Questo nuovo check copre
+        # i 2 casi mancanti: introduzione (NULL→valore) e sostituzione (cambio).
+        sta_cambiando_listino_non_rimozione = (
+            "listino_id" in payload
+            and payload["listino_id"] is not None
+            and payload["listino_id"] != existing.get("listino_id")
+        )
+        if sta_cambiando_listino_non_rimozione:
+            n_righe = self._repo.count_righe_attive(contratto_id)
+            if n_righe > 0:
+                ErrorManager.raise_error(
+                    code="E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE",
+                    message="Modifica del listino bloccata: ci sono righe gia' caricate.",
+                    detail=(
+                        f"Il `listino_id` definisce il contesto di pricing contro cui "
+                        f"le {n_righe} righe attive sono state caricate. Cambiare il "
+                        f"listino senza eliminarle prima causerebbe drift semantico "
+                        f"silente (OVERRIDE/ESCLUSIONE punterebbero ad articoli del "
+                        f"listino vecchio, AGGIUNTE potrebbero conflittare col nuovo). "
+                        f"Elimina prima le righe oppure annulla il contratto e creane "
+                        f"uno nuovo."
+                    ),
+                    context={
+                        "contratto_id": contratto_id,
+                        "listino_id_corrente": existing.get("listino_id"),
+                        "listino_id_richiesto": payload["listino_id"],
+                        "righe_count": n_righe,
+                    },
+                )
 
         data = self._build_update_data_testata(payload, existing=existing)
 
@@ -2522,6 +2593,20 @@ def resolve_or_check_override_prezzo_riga_contratto(
     function_name: str,
     richiesta_approvazione: bool = False,
 ) -> tuple[Any, dict[str, Any] | None]:
+    # Refactor 2026-05-20: skip TUTTI i gate (L1+L2+L3) per contratti senza
+    # listino. Semantica del modello "senza_listino": tutte le righe sono
+    # AGGIUNTA negoziate, il prezzo e' governato dal contratto stesso —
+    # nessun benchmark esterno comparabile. La cascata pricing v5 cadrebbe
+    # comunque su stadio CATEGORIA o PROMO (gli unici disponibili senza
+    # listino del contratto), generando confronti L2 contro riferimenti
+    # semanticamente non pertinenti (stesso pattern del bug fixato per
+    # contratti CON listino via fast path `listino_versione_id_preferito`).
+    # NB: il payload_prezzo viene ritornato as-is senza meta audit; il
+    # CHECK chk_contrighe_prezzo_per_tipo_eccezione del DB resta come
+    # safety net (prezzo NOT NULL per OVERRIDE/AGGIUNTA non-compositi).
+    if testata.get("listino_id") is None:
+        return payload_prezzo, None
+
     testata_normalized = (
         testata if testata.get("data") is not None
         else {**testata, "data": testata.get("valido_dal")}

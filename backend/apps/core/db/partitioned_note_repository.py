@@ -75,7 +75,9 @@ POSIZIONI_AMMESSE: frozenset[str] = frozenset({
     "HEADER", "SEZIONE", "FOOTER", "BEFORE", "AFTER",
 })
 
-# Colonne lette in SELECT base (decode stile via LEFT JOIN config.note_stili).
+# Colonne lette in SELECT base. Decode via LEFT JOIN: stile da
+# config.note_stili (codice + codice_interno + descrizione), lingua da
+# config.lingue (codice_iso + descrizione, NULL se id_lingua NULL).
 _SELECT_COLUMNS = """
     n.id,
     n.target_tipo,
@@ -94,6 +96,8 @@ _SELECT_COLUMNS = """
     s.codice_interno  AS stile_codice_interno,
     s.descrizione     AS stile_descrizione,
     n.id_lingua,
+    l.codice_iso      AS lingua_codice_iso,
+    l.descrizione     AS lingua_descrizione,
     n.data_insert,
     n.user_insert,
     n.data_update,
@@ -225,6 +229,7 @@ class PartitionedNoteRepository:
             f"SELECT {_SELECT_COLUMNS} "  # noqa: S608
             f"FROM {self._partition_table} n "
             f"LEFT JOIN config.note_stili s ON s.id = n.id_stile "
+            f"LEFT JOIN config.lingue l ON l.id = n.id_lingua "
             f"WHERE {where_sql} "
             f"ORDER BY "
             f"  (n.target_riga_id IS NOT NULL), "
@@ -250,6 +255,7 @@ class PartitionedNoteRepository:
             f"SELECT {_SELECT_COLUMNS} "  # noqa: S608
             f"FROM {self._partition_table} n "
             f"LEFT JOIN config.note_stili s ON s.id = n.id_stile "
+            f"LEFT JOIN config.lingue l ON l.id = n.id_lingua "
             f"WHERE n.target_tipo = %s AND n.id = %s AND n.target_id = %s"
         )
         with connection.cursor() as cursor:

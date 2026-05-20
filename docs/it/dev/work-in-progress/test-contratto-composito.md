@@ -68,7 +68,7 @@ WHERE contratto_id = <ID> AND prezzo_unitario = 0
 ---
 
 ## Caso 3 — Composito senza `valido_dal`
-
+--- FATTO ----
 **Già coperto dal test BE**: [test_create_riga_articolo_composito_senza_valido_dal_solleva](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1889).
 
 In browser:
@@ -81,8 +81,8 @@ In browser:
 
 ---
 
-## Caso 4 — Note partizionate (Stream 1)
-
+## Caso 4 — Note partizionate (Stream 1)##
+Tutto testato 
 1. Apri preventivo esistente → bottone "Gestisci note" nel drawer testata → si apre `PreventivoNoteDrawer`.
 2. Crea una nota testata (target_riga_id=null): salva, verifica visibile in lista.
 3. Apri il drawer righe → seleziona una riga → "Gestisci note" → crea nota di riga.
@@ -127,13 +127,13 @@ WHERE codice_interno = '<CODICE>'
 
 ## Stato test BE coperti
 
-| Caso | Test BE | File |
-| --- | --- | --- |
-| 1 | `test_create_riga_articolo_composito_auto_init` | [test_contratti_service.py:1806](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1806) |
-| 2 | `test_create_riga_articolo_composito_senza_emittente_solleva` | [test_contratti_service.py:1850](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1850) |
-| 3 | `test_create_riga_articolo_composito_senza_valido_dal_solleva` (nuovo 2026-05-19) | [test_contratti_service.py:1889](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1889) |
-| 4 | `test_partitioned_note_service.py` (26 test) | [test_partitioned_note_service.py](../../../../backend/apps/core/tests/services/test_partitioned_note_service.py) |
-| 5 | `test_parameter_service.py` (5 test categoria_cliente) + `test_parameters_api.py` (6 test) | [test_parameter_service.py](../../../../backend/apps/core/tests/services/test_parameter_service.py) |
+| Caso | Test BE                                                                                    | File                                                                                                              |
+| ---- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| 1    | `test_create_riga_articolo_composito_auto_init`                                            | [test_contratti_service.py:1806](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1806) |
+| 2    | `test_create_riga_articolo_composito_senza_emittente_solleva`                              | [test_contratti_service.py:1850](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1850) |
+| 3    | `test_create_riga_articolo_composito_senza_valido_dal_solleva` (nuovo 2026-05-19)          | [test_contratti_service.py:1889](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1889) |
+| 4    | `test_partitioned_note_service.py` (26 test)                                               | [test_partitioned_note_service.py](../../../../backend/apps/core/tests/services/test_partitioned_note_service.py) |
+| 5    | `test_parameter_service.py` (5 test categoria_cliente) + `test_parameters_api.py` (6 test) | [test_parameter_service.py](../../../../backend/apps/core/tests/services/test_parameter_service.py)               |
 
 **Caso 1 refactor expansion `ComponentiPanel` data-driven**: validabile **solo in browser** (è puro FE — il backend non è cambiato).
 

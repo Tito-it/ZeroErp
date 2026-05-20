@@ -1265,11 +1265,10 @@ function origineSeverity(origine) {
               :value="t(`contratti.fonte_quantita_tag_${form.fonte_quantita_attesa.toLowerCase()}`)"
               v-tooltip.top="t('contratti.fonte_quantita_tag_tooltip')" />
           </div>
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('contratti.field_ordine') }}</label>
-          <InputNumber v-model="form.ordine" class="w-full" :min="0" />
+          <div class="form-field">
+            <label>{{ t('contratti.field_ordine') }}</label>
+            <InputNumber v-model="form.ordine" class="w-full" :min="0" />
+          </div>
         </div>
 
         <!-- Sezione componenti BoM (modello unificato 2026-05-13).

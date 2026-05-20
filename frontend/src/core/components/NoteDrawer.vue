@@ -22,6 +22,7 @@ import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import InputSwitch from 'primevue/inputswitch'
 
+import { fetchParameterDefaults, lookupCodici } from '../apiCore'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useDrawerClose } from '../composables/useDrawerClose'
@@ -84,9 +85,35 @@ function defaultForm() {
   return {
     testo_md: '',
     id_stile: null,
+    id_lingua: null,
     target_riga_id: null,
     visibile: true,
     solo_stampa: false,
+  }
+}
+
+// Cache del default `id_lingua` risolto da parametro sistema.
+// Pre-fill UX: in CREATE l'utente vede gia' selezionata la lingua di default
+// (es. "it"). Resta modificabile. In edit usa il valore della nota.
+// Pattern 2 chiamate: parametro NOTE_DEFAULT_LINGUA (codice_iso) -> lookup
+// config.lingue per ottenere l'id. lookupCodici sfrutta la cache globale
+// del LookupSelect, quindi spesso 0 round-trip extra.
+let _defaultLinguaIdCache = null
+
+async function resolveDefaultLinguaId() {
+  if (_defaultLinguaIdCache !== null) return _defaultLinguaIdCache
+  try {
+    const r = await fetchParameterDefaults(['NOTE_DEFAULT_LINGUA'])
+    const codiceIso = r.data?.data?.NOTE_DEFAULT_LINGUA
+    if (!codiceIso) return null
+    const res = await lookupCodici('config.lingue', { search: codiceIso })
+    const match = (res.data?.data?.results || []).find(
+      l => l.codice === codiceIso || l.codice_interno === codiceIso,
+    )
+    _defaultLinguaIdCache = match?.id ?? null
+    return _defaultLinguaIdCache
+  } catch {
+    return null
   }
 }
 
@@ -105,10 +132,17 @@ watch(
   { immediate: true },
 )
 
-function onStartNew() {
+async function onStartNew() {
   formMode.value = 'new'
   editId.value = null
   form.value = defaultForm()
+  // Pre-fill lingua dal parametro sistema (best-effort, errori silenti).
+  // L'utente puo' cambiare la selezione; il BE applica comunque il
+  // fallback in save se id_lingua e' null.
+  const linguaId = await resolveDefaultLinguaId()
+  if (linguaId != null && formMode.value === 'new') {
+    form.value.id_lingua = linguaId
+  }
 }
 
 function onStartEdit(n) {
@@ -117,6 +151,7 @@ function onStartEdit(n) {
   form.value = {
     testo_md: n.testo_md || n.testo || '',
     id_stile: n.id_stile ?? null,
+    id_lingua: n.id_lingua ?? null,
     target_riga_id: n.target_riga_id ?? null,
     visibile: n.visibile !== false,
     solo_stampa: n.solo_stampa === true,
@@ -149,6 +184,11 @@ async function onSaveForm() {
     id_stile: form.value.id_stile,
     visibile: form.value.visibile,
     solo_stampa: form.value.solo_stampa,
+  }
+  // id_lingua e' opzionale: invio solo se valorizzato. Se NULL in create,
+  // il BE applica il fallback `NOTE_DEFAULT_LINGUA` (codice_iso='it' default).
+  if (form.value.id_lingua != null) {
+    payload.id_lingua = form.value.id_lingua
   }
   // target_riga_id solo in create (BE lo rifiuta in PATCH).
   if (formMode.value === 'new' && form.value.target_riga_id != null) {
@@ -245,6 +285,11 @@ function rigaLabel(n) {
           </template>
         </Column>
         <Column field="stile_descrizione" :header="t('note.col_stile')" :style="{ width: '160px' }" />
+        <Column :header="t('note.col_lingua')" :style="{ width: '90px' }">
+          <template #body="{ data }">
+            <span :title="data.lingua_descrizione || ''">{{ data.lingua_codice_iso || '—' }}</span>
+          </template>
+        </Column>
         <Column :header="t('common.col_azioni')" :style="{ width: '60px' }" :exportable="false">
           <template #body="{ data }">
             <div class="app-row-actions-inline" v-if="!isReadonly && !formMode">
@@ -283,6 +328,18 @@ function rigaLabel(n) {
                 v-model="form.id_stile"
                 rel="config.note_stili"
                 :placeholder="t('note.placeholder_stile')"
+              />
+            </div>
+          </div>
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('note.field_lingua') }}</label>
+              <LookupSelect
+                v-model="form.id_lingua"
+                rel="config.lingue"
+                :placeholder="t('note.placeholder_lingua')"
+                show-code
+                show-clear
               />
             </div>
           </div>

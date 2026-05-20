@@ -823,6 +823,8 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
+        # Lock listino_id richiede 0 righe attive (refactor 2026-05-20).
+        repo.count_righe_attive.return_value = 0
         listini_cls.return_value.has_versione_attiva.return_value = True
 
         ContrattiService().update_contratto(1, {
@@ -1019,6 +1021,43 @@ class ContrattiServiceTests(TestCase):
         )
         self.assertIn("3 OVERRIDE", ctx.exception.detail or "")
         self.assertIn("2 ESCLUSIONE", ctx.exception.detail or "")
+        repo.update_contratto.assert_not_called()
+
+    # Scopo: aggiungere o sostituire il `listino_id` con righe attive blocca
+    # (refactor 2026-05-20). Caso: contratto DRAFT senza listino, AGGIUNTE
+    # caricate, l'utente prova a settare un listino → blocco semantico.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_aggiunge_listino_con_righe_bloccato(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        # Contratto attualmente senza listino (negoziato puro).
+        testata = _testata_default()
+        testata["listino_id"] = None
+        repo.get_contratto.return_value = testata
+        repo.count_righe_attive.return_value = 2  # 2 AGGIUNTE persistite
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_contratto(1, {"listino_id": 500})
+
+        self.assertEqual(ctx.exception.code, "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE")
+        self.assertIn("listino", (ctx.exception.detail or "").lower())
+        repo.update_contratto.assert_not_called()
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_sostituisce_listino_con_righe_bloccato(self, repo_cls):
+        # Sostituzione listino_id (100 → 200) con righe attive: blocco
+        # anche se ci sono solo AGGIUNTE (potrebbero conflittare col nuovo listino).
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()  # listino_id=100
+        repo.count_righe_attive.return_value = 1
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_contratto(1, {"listino_id": 200})
+
+        self.assertEqual(ctx.exception.code, "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE")
         repo.update_contratto.assert_not_called()
 
     # Scopo: rimuovere il listino con SOLE AGGIUNTE (no OVERRIDE/ESCLUSIONE)
@@ -2326,7 +2365,7 @@ class ContrattiServicePricingGateTests(TestCase):
         )
 
         testata = {"id": 1, "billing_account_id": None, "utility_id": 3,
-                   "data": "2026-05-15"}
+                   "listino_id": 100, "data": "2026-05-15"}
         prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
             testata=testata,
             articolo_id="abc",
@@ -2336,6 +2375,30 @@ class ContrattiServicePricingGateTests(TestCase):
             function_name="test",
         )
         self.assertEqual(prezzo, Decimal("10.00"))
+        self.assertIsNone(meta)
+
+    def test_resolve_or_check_override_skip_per_contratto_senza_listino(self):
+        """Refactor 2026-05-20: contratti con listino_id IS NULL saltano
+        TUTTI i gate (L1+L2+L3). Semantica del modello "senza_listino":
+        prezzo negoziato puro, nessun benchmark esterno comparabile.
+        Evita falsi L2 vs cascata CATEGORIA/PROMO non pertinente.
+        """
+        from apps.vendite.services.contratti_service import (
+            resolve_or_check_override_prezzo_riga_contratto,
+        )
+
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3,
+                   "listino_id": None, "data": "2026-05-15"}
+        prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
+            testata=testata,
+            articolo_id="abc",
+            uom_id=5,
+            payload_prezzo=Decimal("99.99"),
+            auth_user_id=None,  # gate L1 normalmente solleverebbe
+            function_name="test",
+        )
+        # Skip totale: payload as-is, meta None, nessun gate invocato.
+        self.assertEqual(prezzo, Decimal("99.99"))
         self.assertIsNone(meta)
 
     @patch(
@@ -2353,7 +2416,7 @@ class ContrattiServicePricingGateTests(TestCase):
             "origine": "CONTRATTO_LISTINO",
             "listino_id": 100,
         }
-        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3,
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
                    "data": "2026-05-15"}
 
         prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
@@ -2382,7 +2445,7 @@ class ContrattiServicePricingGateTests(TestCase):
             "prezzo_finale": "30.00",
             "origine": "CONTRATTO_LISTINO",
         }
-        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3,
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
                    "data": "2026-05-15"}
 
         prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
@@ -2423,7 +2486,7 @@ class ContrattiServicePricingGateTests(TestCase):
             code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
             message="L1 blocco.",
         )
-        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3,
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
                    "data": "2026-05-15"}
 
         with self.assertRaises(ServiceError) as ctx:
@@ -2467,7 +2530,7 @@ class ContrattiServicePricingGateTests(TestCase):
             "limite_pct": "15",
             "kind_label": "Sconto",
         }
-        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3,
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
                    "data": "2026-05-15"}
 
         prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(

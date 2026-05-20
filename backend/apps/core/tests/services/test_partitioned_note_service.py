@@ -53,18 +53,35 @@ def _make_repo_mock(
     return repo
 
 
-def _make_params_mock(*, default_codice: str | None = "DEFAULT") -> MagicMock:
-    # Post-correzione brief 2026-05-19: il parametro NOTE_DEFAULT_STILE
-    # contiene la chiave naturale (codice_interno), non l'id intero.
-    # Il service fa: get_parameter -> codice -> lookup id.
+def _make_params_mock(
+    *,
+    default_codice: str | None = "DEFAULT",
+    default_lingua_codice: str | None = "it",
+) -> MagicMock:
+    # Post-correzione brief 2026-05-19/20: i parametri NOTE_DEFAULT_STILE e
+    # NOTE_DEFAULT_LINGUA contengono chiavi naturali (codice_interno per
+    # stile, codice_iso per lingua), non id interi. Il service fa:
+    # get_parameter -> codice -> lookup id.
     params = MagicMock()
-    if default_codice is None:
-        params.get_parameter.side_effect = ServiceError(
-            code="E_PARAMETER_NOT_FOUND",
-            message="parametro non trovato",
-        )
-    else:
-        params.get_parameter.return_value = default_codice
+
+    def side_effect(code, **_kwargs):
+        if code == "NOTE_DEFAULT_STILE":
+            if default_codice is None:
+                raise ServiceError(
+                    code="E_PARAMETER_NOT_FOUND",
+                    message="parametro non trovato",
+                )
+            return default_codice
+        if code == "NOTE_DEFAULT_LINGUA":
+            if default_lingua_codice is None:
+                raise ServiceError(
+                    code="E_PARAMETER_NOT_FOUND",
+                    message="parametro non trovato",
+                )
+            return default_lingua_codice
+        return None
+
+    params.get_parameter.side_effect = side_effect
     return params
 
 
@@ -77,16 +94,23 @@ def _make_service(
     params,
     *,
     stile_id_by_codice: dict[str, int] | None = None,
+    lingua_id_by_codice_iso: dict[str, int] | None = None,
 ) -> PartitionedNoteService:
     lookup = stile_id_by_codice if stile_id_by_codice is not None else {"DEFAULT": 99}
     stile_lookup = MagicMock(side_effect=lambda c: lookup.get(c))
+    lingua_lookup_map = (
+        lingua_id_by_codice_iso if lingua_id_by_codice_iso is not None else {"it": 88}
+    )
+    lingua_lookup = MagicMock(side_effect=lambda c: lingua_lookup_map.get(c))
     svc = PartitionedNoteService(
         repo=repo,
         parameter_service=params,
         stile_lookup_fn=stile_lookup,
+        lingua_lookup_fn=lingua_lookup,
     )
-    # Espone il mock sul service per inspection nei test (assert_not_called, ecc.)
+    # Espone i mock sul service per inspection nei test (assert_not_called, ecc.)
     svc._test_stile_lookup = stile_lookup  # type: ignore[attr-defined]
+    svc._test_lingua_lookup = lingua_lookup  # type: ignore[attr-defined]
     return svc
 
 
@@ -249,6 +273,9 @@ class CreaNotaTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_NOTA_VALIDATION")
 
     def test_id_stile_esplicito_no_lookup_parametro(self) -> None:
+        # Quando id_stile e' esplicito nel payload, il parameter NOTE_DEFAULT_STILE
+        # non viene consultato (verifica per-codice — il parameter NOTE_DEFAULT_LINGUA
+        # puo' invece essere chiamato perche' la lingua non e' nel payload).
         repo = _make_repo_mock()
         repo.get.return_value = {"id": 1}
         params = _make_params_mock()
@@ -256,7 +283,8 @@ class CreaNotaTests(unittest.TestCase):
         svc.crea_nota(target_id=1, payload={"testo_md": "x", "id_stile": 5})
         normalized = repo.create.call_args[0][1]
         self.assertEqual(normalized["id_stile"], 5)
-        params.get_parameter.assert_not_called()
+        codici_chiamati = [c.args[0] for c in params.get_parameter.call_args_list]
+        self.assertNotIn("NOTE_DEFAULT_STILE", codici_chiamati)
         svc._test_stile_lookup.assert_not_called()  # type: ignore[attr-defined]
 
     def test_id_stile_fallback_parametro_assente(self) -> None:
@@ -293,6 +321,64 @@ class CreaNotaTests(unittest.TestCase):
         svc.crea_nota(target_id=1, payload={"testo_md": "x"})
         normalized = repo.create.call_args[0][1]
         self.assertEqual(normalized["id_stile"], 77)
+
+    # --- id_lingua fallback (refactor 2026-05-20) ------------------------
+
+    def test_id_lingua_fallback_codice_iso_risolto(self) -> None:
+        # Parameter NOTE_DEFAULT_LINGUA='it' + lookup attivo -> id_lingua
+        # auto-popolato in create senza che l'utente lo specifichi.
+        repo = _make_repo_mock()
+        repo.get.return_value = {"id": 1}
+        svc = _make_service(
+            repo, _make_params_mock(default_lingua_codice="it"),
+            lingua_id_by_codice_iso={"it": 88},
+        )
+        svc.crea_nota(target_id=1, payload={"testo_md": "x"})
+        normalized = repo.create.call_args[0][1]
+        self.assertEqual(normalized["id_lingua"], 88)
+
+    def test_id_lingua_fallback_parametro_assente_resta_null(self) -> None:
+        # id_lingua e' NULLABLE in DB: se NOTE_DEFAULT_LINGUA non configurato,
+        # la nota viene creata SENZA id_lingua nel payload normalizzato
+        # (default_value NULL passato al DB). NO raise (differenza con stile).
+        repo = _make_repo_mock()
+        repo.get.return_value = {"id": 1}
+        svc = _make_service(
+            repo, _make_params_mock(default_lingua_codice=None),
+        )
+        svc.crea_nota(target_id=1, payload={"testo_md": "x"})
+        normalized = repo.create.call_args[0][1]
+        self.assertNotIn("id_lingua", normalized)
+
+    def test_id_lingua_fallback_codice_iso_non_risolvibile(self) -> None:
+        # Parametro presente ma codice_iso non in config.lingue (o disattivato):
+        # errore parlante con il codice incriminato nel hint.
+        repo = _make_repo_mock()
+        svc = _make_service(
+            repo, _make_params_mock(default_lingua_codice="xx"),
+            lingua_id_by_codice_iso={},  # nessun match
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            svc.crea_nota(target_id=1, payload={"testo_md": "x"})
+        self.assertEqual(ctx.exception.code, "E_NOTA_VALIDATION")
+        self.assertIn("xx", str(ctx.exception.hint or ""))
+
+    def test_id_lingua_esplicito_no_lookup_parametro(self) -> None:
+        # Se l'utente passa id_lingua esplicito, il parameter NOTE_DEFAULT_LINGUA
+        # non viene consultato.
+        repo = _make_repo_mock()
+        repo.get.return_value = {"id": 1}
+        params = _make_params_mock()
+        svc = _make_service(repo, params)
+        svc.crea_nota(
+            target_id=1,
+            payload={"testo_md": "x", "id_stile": 5, "id_lingua": 7},
+        )
+        normalized = repo.create.call_args[0][1]
+        self.assertEqual(normalized["id_lingua"], 7)
+        codici_chiamati = [c.args[0] for c in params.get_parameter.call_args_list]
+        self.assertNotIn("NOTE_DEFAULT_LINGUA", codici_chiamati)
+        svc._test_lingua_lookup.assert_not_called()  # type: ignore[attr-defined]
 
     def test_parent_inesistente_404(self) -> None:
         repo = _make_repo_mock()

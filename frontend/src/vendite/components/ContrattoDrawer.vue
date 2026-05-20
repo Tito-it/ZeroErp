@@ -478,6 +478,20 @@ async function eseguiCambioStato(targetState) {
   if (result !== null) await refreshDetail()
 }
 
+// Refactor 2026-05-20: annullamento contratto (transizione DRAFT → ANNULLATO).
+// Bottone temporaneo finche' `fn_available_actions_contratto` non espone
+// l'azione lato BE. Solo DRAFT: ATTIVO → ANNULLATO non e' transizione
+// ammessa (per contratti attivi si usa CESSATO con data di fine validita').
+function onAnnullaContratto() {
+  confirmAction({
+    header: t('contratti.annulla_dialog_titolo'),
+    message: t('contratti.annulla_dialog_messaggio', { numero: detail.value?.numero }),
+    acceptLabel: t('contratti.annulla_dialog_conferma'),
+    danger: true,
+    onAccept: () => eseguiCambioStato('ANNULLATO'),
+  })
+}
+
 const onClose = useDrawerClose(emit, 'cancelled')
 </script>
 
@@ -529,6 +543,21 @@ const onClose = useDrawerClose(emit, 'cancelled')
             size="small"
             class="app-escape"
             @click="onCambiaStato(action)" />
+          <!-- Refactor 2026-05-20: bottone "Annulla contratto" hardcoded come
+               fallback finche' `script.fn_available_actions_contratto` non
+               espone l'azione ANNULLATO. Quando aggiornata lato DB, il
+               bottone viene sostituito automaticamente dal loop sopra
+               (azione data-driven) e questo blocco va rimosso.
+               Visibile solo per DRAFT: ATTIVO → ANNULLATO non e' transizione
+               ammessa, per chiudere un contratto attivo si usa CESSATO. -->
+          <Button v-if="detail && detail.stato_codice === 'DRAFT'"
+            :label="t('contratti.azione_annulla')"
+            icon="pi pi-ban"
+            severity="danger"
+            size="small"
+            outlined
+            class="app-escape"
+            @click="onAnnullaContratto" />
           <ContrattoPdfButton
             :contratto-id="props.contrattoId"
             :stato-codice="detail.stato_codice"
@@ -679,8 +708,13 @@ const onClose = useDrawerClose(emit, 'cancelled')
           show-clear
           filter
           @update:model-value="onListinoChange"
-          :disabled="isEdit && isLocked('listino_id')" />
-        <small class="text-color-secondary">
+          :disabled="isEdit && (isLocked('listino_id') || righeCount > 0)" />
+        <small v-if="isEdit && righeCount > 0 && !isLocked('listino_id')"
+          style="color: var(--p-yellow-700, #b45309);">
+          <i class="pi pi-exclamation-triangle" />
+          {{ t('contratti.hint_listino_lock_righe', { n: righeCount }) }}
+        </small>
+        <small v-else class="text-color-secondary">
           {{ t('contratti.hint_listino_opzionale') }}
         </small>
       </div>

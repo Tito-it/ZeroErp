@@ -264,6 +264,38 @@ class ErrorPolicyRegistry:
                 "associate o sostituiscile con AGGIUNTA."
             ),
         ),
+        # Refactor 2026-05-20: lock cambio `listino_id` (aggiunta o
+        # sostituzione) su contratto DRAFT con righe persistite. Il listino
+        # definisce il contesto pricing — cambiarlo con righe gia' caricate
+        # causa drift semantico silente. La rimozione resta gestita dal
+        # check piu' fine `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`.
+        "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE": ErrorPolicy(
+            code="E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "Modifica del listino bloccata: ci sono righe gia' caricate "
+                "contro questo contesto pricing. Elimina prima le righe "
+                "oppure annulla il contratto e creane uno nuovo."
+            ),
+        ),
+        # Refactor 2026-05-20: annullamento logico contratto (soft-delete via
+        # stato ANNULLATO). Transizione DRAFT → ANNULLATO sempre ammessa;
+        # ATTIVO → ANNULLATO bloccata se esistono attivita_fatturabili gia'
+        # fatturate (fattura_riga_id IS NOT NULL) — la traccia contabile e'
+        # immutabile, in quel caso l'unica via e' CESSATO con valido_al
+        # opportuna. Sollevato dal trigger DB (id errore DB 457) e
+        # intercettato lato BE via marker in `_KNOWN_DB_ERROR_MARKERS`.
+        "E_CONTRATTO_ANNULLATO_CON_FATTURE": ErrorPolicy(
+            code="E_CONTRATTO_ANNULLATO_CON_FATTURE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Impossibile annullare il contratto: esistono attivita' gia' "
+                "fatturate. Per chiudere il contratto usa la cessazione "
+                "(stato CESSATO con data di fine validita')."
+            ),
+        ),
         # Refactor 2026-05-18 (decisione §4.4 refactor-contratti-modalita):
         # un listino senza versione ATTIVA non e' selezionabile come
         # riferimento di un contratto. In assenza di una versione attiva non
