@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# Aggiorna trigger trg_contratti_righe_a10_qta_from_operativa_ins_upd
+#
+# Aggiunge TG_ARGV[3] = 'fonte_quantita_attesa':
+#   trgfn_qta_from_operativa legge il valore di quella colonna quando
+#   qta_operativa IS NULL. Se != 'FISSA' → RETURN NEW senza raise.
+#
+# Dipendenza: migration 20260519-08 (trgfn aggiornata con TG_ARGV[3]).
+#
+# Passaggio da:
+#   trgfn_qta_from_operativa('true', 'false', 'quantita')
+# A:
+#   trgfn_qta_from_operativa('true', 'false', 'quantita', 'fonte_quantita_attesa')
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260519-09-alter-trg-contratti-righe-qta-from-operativa-fonte-col-mctit.yaml
+
+  - changeSet:
+      id: 20260519-09-alter-trg-contratti-righe-qta-from-operativa-fonte-col
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Aggiunge TG_ARGV[3]='fonte_quantita_attesa' al trigger qta_from_operativa
+        su contratti_righe. Consente qta_operativa NULL per fonte non-FISSA
+        (LETTURE/MANUALE/TIMESHEET/DERIVATA_COMPONENTI). Dipende da migration 08.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti_righe
+                columnName: fonte_quantita_attesa
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti_righe
+                columnName: quantita
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                  ON vendite.contratti_righe;
+
+              CREATE TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita', 'fonte_quantita_attesa');
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                  ON vendite.contratti_righe;
+
+              CREATE TRIGGER trg_contratti_righe_a10_qta_from_operativa_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita');

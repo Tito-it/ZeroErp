@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# ------------------------------------------------------------
+# Aggiunge is_abortito BOOLEAN a config.stati_doc_contratti.
+#
+# Allineamento con config.stati_doc_preventivi (migration 20260515-02).
+#
+# Semantica: TRUE = lo stato segnala che il contratto e' stato annullato
+# volontariamente dall'operatore (es. ANNULLATO). Diverso da terminale:
+# CESSATO e' terminale ma non abortito (chiusura regolare per scadenza).
+# Solo ANNULLATO e' abortito.
+#
+# Usato dalla logica BE e dalle viste per distinguere contratti
+# terminati per scadenza da contratti cancellati per decisione commerciale.
+#
+# Seed: riga ANNULLATO con is_abortito=TRUE aggiunta in migration 20260520-08.
+# Tutte le righe esistenti (DRAFT, ATTIVO, CESSATO): DEFAULT FALSE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260520-07-alter-stati-doc-contratti-add-is-abortito-mctit.yaml
+
+  - changeSet:
+      id: 20260520-07-alter-stati-doc-contratti-add-is-abortito
+      author: mctit
+      comment: >
+        Aggiunge is_abortito BOOLEAN NOT NULL DEFAULT FALSE a config.stati_doc_contratti.
+        Allineamento con stati_doc_preventivi (20260515-02). Riga ANNULLATO (is_abortito=TRUE)
+        aggiunta in migration 20260520-08 (seed CSV).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_contratti
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_contratti
+                ADD COLUMN is_abortito BOOLEAN NOT NULL DEFAULT FALSE;
+
+              COMMENT ON COLUMN config.stati_doc_contratti.is_abortito IS
+                  'TRUE = il contratto con questo stato e'' stato annullato volontariamente '
+                  '(es. ANNULLATO). Diverso da terminale: CESSATO e'' terminale ma non abortito '
+                  '(chiusura per scadenza contrattuale). '
+                  'Allineato a config.stati_doc_preventivi.is_abortito (20260515-02).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_contratti
+                DROP COLUMN IF EXISTS is_abortito;

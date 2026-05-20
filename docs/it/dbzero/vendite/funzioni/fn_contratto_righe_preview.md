@@ -9,7 +9,7 @@ CREATE FUNCTION fn_contratto_righe_preview(p_contratto_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_contratto_righe_preview(p_contratto_id bigint)
- RETURNS TABLE(articolo_id uuid, articolo_codice character varying, articolo_descrizione character varying, is_composito boolean, uom_id bigint, uom_codice character varying, prezzo_listino numeric, tipo_variazione character varying, valore_variazione numeric, override_riga_id bigint, override_prezzo numeric, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, prezzo_finale numeric, componenti jsonb)
+ RETURNS TABLE(articolo_id uuid, articolo_codice character varying, articolo_descrizione character varying, is_composito boolean, uom_id bigint, uom_codice character varying, prezzo_listino numeric, tipo_variazione character varying, valore_variazione numeric, override_riga_id bigint, override_prezzo numeric, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, prezzo_finale numeric, componenti jsonb, quantita numeric, qta_operativa numeric, tipo_erogazione character varying, fonte_quantita_attesa character varying)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -19,6 +19,8 @@ AS $function$
 -- prezzo_finale aggregato in DB; componenti JSONB uniforme per bundle.
 -- Versione operativa: usa snapshot se ATTIVO, altrimenti lookup
 --   stato IN ('ATTIVA','CHIUSA') per escludere BOZZA (Bug A fix).
+-- quantita/qta_operativa/tipo_erogazione/fonte_quantita_attesa:
+--   da cr.* via LEFT JOIN (NULL per DA_LISTINO) o JOIN diretto (Parte 2).
 DECLARE
     v_listino_id          vendite.contratti.listino_id%TYPE;
     v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
@@ -58,6 +60,7 @@ BEGIN
     IF v_listino_versione_id IS NOT NULL THEN
 
         -- 1a: standalone (is_composito=FALSE) + overlay eccezioni.
+        -- cr.* via LEFT JOIN: NULL per DA_LISTINO, valorizzato per OVERRIDE/ESCLUSIONE.
         RETURN QUERY
         SELECT
             a.id,
@@ -84,7 +87,11 @@ BEGIN
                 WHEN v_tipo_var = 'VALORE_FISSO'       THEN lr.prezzo + v_valore_var
                 ELSE                                        lr.prezzo
             END,
-            NULL::jsonb
+            NULL::jsonb,
+            cr.quantita,
+            cr.qta_operativa,
+            cr.tipo_erogazione,
+            cr.fonte_quantita_attesa
           FROM vendite.listini_righe lr
           JOIN catalogo.articoli a
             ON a.id           = lr.articolo_id
@@ -106,6 +113,7 @@ BEGIN
         -- + overlay OVERRIDE/ESCLUSIONE sulla riga padre.
         -- componenti: jsonb_agg figli da listini_righe_componenti.
         -- prezzo_finale bundle (DA_LISTINO): SUM(lrc.prezzo * ac.coeff_qta).
+        -- cr.* via LEFT JOIN: NULL per DA_LISTINO, valorizzato per OVERRIDE/ESCLUSIONE.
         RETURN QUERY
         SELECT
             a.id,
@@ -162,7 +170,11 @@ BEGIN
                    AND lrc.articolo_padre_id   = a.id
                    AND lrc.attivo              = TRUE
                    AND lrc.validita           @> CURRENT_DATE
-            )
+            ),
+            cr.quantita,
+            cr.qta_operativa,
+            cr.tipo_erogazione,
+            cr.fonte_quantita_attesa
           FROM (
               SELECT DISTINCT lrc_p.articolo_padre_id
                 FROM vendite.listini_righe_componenti lrc_p
@@ -187,6 +199,7 @@ BEGIN
     END IF;
 
     -- PARTE 2a: AGGIUNTA standalone (is_composito=FALSE, non in listino).
+    -- cr.* sempre valorizzati (JOIN diretto).
     RETURN QUERY
     SELECT
         a.id,
@@ -203,7 +216,11 @@ BEGIN
         cr.tipo_eccezione,
         'AGGIUNTA'::varchar,
         cr.prezzo_unitario,
-        NULL::jsonb
+        NULL::jsonb,
+        cr.quantita,
+        cr.qta_operativa,
+        cr.tipo_erogazione,
+        cr.fonte_quantita_attesa
       FROM vendite.contratti_righe cr
       JOIN catalogo.articoli a
         ON a.id           = cr.articolo_id
@@ -217,6 +234,7 @@ BEGIN
     -- PARTE 2b: AGGIUNTA bundle (is_composito=TRUE, non in listino).
     -- componenti: jsonb_agg da contratti_righe_componenti (figli persistiti).
     -- prezzo_finale padre: prezzo_unitario aggiornato da trgfn_ricalcola_padre.
+    -- cr.* sempre valorizzati (JOIN diretto).
     RETURN QUERY
     SELECT
         a.id,
@@ -254,7 +272,11 @@ BEGIN
                 ON ac.id = crc.articolo_componente_id
              WHERE crc.riga_contratto_id = cr.id
                AND crc.attivo            = TRUE
-        )
+        ),
+        cr.quantita,
+        cr.qta_operativa,
+        cr.tipo_erogazione,
+        cr.fonte_quantita_attesa
       FROM vendite.contratti_righe cr
       JOIN catalogo.articoli a
         ON a.id           = cr.articolo_id
@@ -269,7 +291,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_contratto_righe_preview(p_contratto_id bigint)
-IS 'Preview righe drawer ContrattoRigheDrawer. 4 parti: 1a standalone listino + overlay, 1b bundle listino + overlay, 2a AGGIUNTA standalone, 2b AGGIUNTA bundle. Versione listino: snapshot (ATTIVO) o lookup operativo ATTIVA/CHIUSA (DRAFT, Bug A). prezzo_finale aggregato in DB. componenti JSONB uniforme per 1b e 2b.';
+IS 'Preview righe drawer ContrattoRigheDrawer. 4 parti: 1a standalone listino + overlay, 1b bundle listino + overlay, 2a AGGIUNTA standalone, 2b AGGIUNTA bundle. Versione listino: snapshot (ATTIVO) o lookup operativo ATTIVA/CHIUSA (DRAFT, Bug A). prezzo_finale aggregato in DB. componenti JSONB uniforme per 1b e 2b. quantita/qta_operativa/tipo_erogazione/fonte_quantita_attesa: da cr.* (NULL per DA_LISTINO via LEFT JOIN; valorizzati per eccezioni e AGGIUNTA).';
 ```
 
 ---

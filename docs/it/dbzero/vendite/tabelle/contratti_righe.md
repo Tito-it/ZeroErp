@@ -8,7 +8,7 @@
 | contratto_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
 | tipo_erogazione | character varying | YES |  |
-| fonte_quantita_attesa | character varying | YES |  |
+| fonte_quantita_attesa | character varying | NO |  |
 | periodicita | character varying | YES |  |
 | generazione_canone | character varying | YES |  |
 | competenza_canone | character varying | YES |  |
@@ -33,6 +33,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_contrighe_coerenza_canone |  |
+| CHECK | chk_contrighe_coerenza_fonte_erogazione |  |
 | CHECK | chk_contrighe_fonte_qta |  |
 | CHECK | chk_contrighe_prezzo_per_tipo_eccezione |  |
 | CHECK | chk_contrighe_tipo_erog |  |
@@ -58,17 +59,19 @@
 | trg_contratti_righe_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_contratti_righe_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_contratti_righe_a10_contratti_righe_componenti_block_d46424 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'contratti_righe_componenti', 'riga_contratto_id', 'id', 'attivo')` |
-| trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()` |
+| trg_contratti_righe_a10_default_fonte_qta_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_default_fonte_qta()` |
+| trg_contratti_righe_a10_default_fonte_qta_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_default_fonte_qta()` |
 | trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()` |
-| trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()` |
+| trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino()` |
 | trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()` |
+| trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()` |
 | trg_contratti_righe_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_pending()` |
 | trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione()` |
 | trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione()` |
 | trg_contratti_righe_a10_lock_post_attivazione_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_righe_lock_post_attivazione()` |
 | trg_contratti_righe_a10_note_contratto_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'note_contratto', 'target_riga_id', 'id', 'attivo')` |
-| trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita')` |
-| trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita')` |
+| trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita', 'fonte_quantita_attesa')` |
+| trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita', 'fonte_quantita_attesa')` |
 | trg_contratti_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_contratti_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_contratti_righe_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

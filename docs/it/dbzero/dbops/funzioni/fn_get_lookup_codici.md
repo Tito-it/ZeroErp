@@ -13,16 +13,21 @@ CREATE OR REPLACE FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_co
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_order_col text := lower(btrim(COALESCE(p_order_col, 'descrizione')));
-  v_order_dir text := upper(btrim(COALESCE(p_order_dir, 'ASC')));
-  v_offset integer := COALESCE(p_offset, 0);
-  v_id_type text;
-  v_has_codice boolean;
-  v_has_codice_interno boolean;
-  v_has_descrizione boolean;
-  v_has_attivo boolean;
-  v_attivo_is_boolean boolean;
-  v_sql text;
+  v_order_col   text    := lower(btrim(COALESCE(p_order_col, 'descrizione')));
+  v_order_dir   text    := upper(btrim(COALESCE(p_order_dir, 'ASC')));
+  v_offset      integer := COALESCE(p_offset, 0);
+  v_id_type     text;
+  v_has_codice          boolean;
+  v_has_codice_interno  boolean;
+  v_has_descrizione     boolean;
+  v_has_attivo          boolean;
+  v_attivo_is_boolean   boolean;
+  v_sql         text;
+  -- Override dichiarativi da automation_overrides_cols.
+  v_rel_schema              text;
+  v_rel_table               text;
+  v_codice_col_override         text;
+  v_codice_interno_col_override text;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -34,18 +39,19 @@ BEGIN
   --   - ordinamento ammesso solo su codice|descrizione e ASC|DESC
   --   - se la tabella ha colonna attivo e p_attivo_only=true,
   --     applica WHERE attivo IS TRUE
-  --   - codice: se la colonna esiste la restituisce,
-  --     altrimenti COALESCE(codice_interno, id::text)
-  --   - codice_interno: se la colonna esiste la restituisce,
-  --     altrimenti NULL::text
-  --   - attivo: se la colonna esiste (boolean) la restituisce,
-  --     altrimenti NULL::boolean
+  --   - codice: colonna 'codice' o override CODICE_COL,
+  --     altrimenti COALESCE(codice_interno/override, id::text)
+  --   - codice_interno: colonna 'codice_interno' o override
+  --     CODICE_INTERNO_COL, altrimenti NULL::text
+  --   - Override dichiarativi in automation_overrides_cols
+  --     (col_role CODICE_COL / CODICE_INTERNO_COL) hanno
+  --     precedenza sull'introspezione pg_attribute
   -- =========================================================
 
   IF p_rel IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
-      jsonb_build_object('detail','p_rel obbligatorio'),
+      'dbops', 'fn_get_lookup_codici', 'E_PARAMETRO_INVALIDO',
+      jsonb_build_object('detail', 'p_rel obbligatorio'),
       NULL::uuid,
       'p_rel non puo'' essere NULL'
     );
@@ -53,37 +59,37 @@ BEGIN
 
   IF v_order_col NOT IN ('descrizione', 'codice') THEN
     PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codicfn_crea_soggetto_pfi', 'E_GENERICO',
-      jsonb_build_object('detail','p_order_col non valido', 'p_order_col', p_order_col),
+      'dbops', 'fn_get_lookup_codici', 'E_PARAMETRO_INVALIDO',
+      jsonb_build_object('detail', 'p_order_col non valido', 'p_order_col', p_order_col),
       NULL::uuid,
-      'p_order_col ammesso solo: descrizione, codice'
+      format('p_order_col=%s non ammesso (solo: descrizione, codice)', p_order_col)
     );
   END IF;
 
   IF v_order_dir NOT IN ('ASC', 'DESC') THEN
     PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
-      jsonb_build_object('detail','p_order_dir non valido', 'p_order_dir', p_order_dir),
+      'dbops', 'fn_get_lookup_codici', 'E_PARAMETRO_INVALIDO',
+      jsonb_build_object('detail', 'p_order_dir non valido', 'p_order_dir', p_order_dir),
       NULL::uuid,
-      'p_order_dir ammesso solo: ASC, DESC'
+      format('p_order_dir=%s non ammesso (solo: ASC, DESC)', p_order_dir)
     );
   END IF;
 
   IF p_limit IS NOT NULL AND p_limit <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
-      jsonb_build_object('detail','p_limit non valido', 'p_limit', p_limit),
+      'dbops', 'fn_get_lookup_codici', 'E_PARAMETRO_INVALIDO',
+      jsonb_build_object('detail', 'p_limit non valido', 'p_limit', p_limit),
       NULL::uuid,
-      'p_limit deve essere > 0 quando valorizzato'
+      format('p_limit deve essere > 0 (ricevuto %s)', p_limit)
     );
   END IF;
 
   IF v_offset < 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
-      jsonb_build_object('detail','p_offset non valido', 'p_offset', p_offset),
+      'dbops', 'fn_get_lookup_codici', 'E_PARAMETRO_INVALIDO',
+      jsonb_build_object('detail', 'p_offset non valido', 'p_offset', p_offset),
       NULL::uuid,
-      'p_offset deve essere >= 0'
+      format('p_offset deve essere >= 0 (ricevuto %s)', v_offset)
     );
   END IF;
 
@@ -91,8 +97,7 @@ BEGIN
   SELECT t.typname
     INTO v_id_type
     FROM pg_attribute a
-    JOIN pg_type t
-      ON t.oid = a.atttypid
+    JOIN pg_type t ON t.oid = a.atttypid
    WHERE a.attrelid = p_rel
      AND a.attname = 'id'
      AND a.attnum > 0
@@ -100,136 +105,144 @@ BEGIN
 
   IF v_id_type IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
-      jsonb_build_object('detail','colonna id mancante', 'tabella', p_rel::text),
+      'dbops', 'fn_get_lookup_codici', 'E_LOOKUP_STRUTTURA_TABELLA_INVALIDA',
+      jsonb_build_object('detail', 'colonna id mancante', 'tabella', p_rel::text),
       NULL::uuid,
-      concat('Colonna id mancante in ', p_rel::text)
+      p_rel::text, 'colonna id mancante'
     );
   END IF;
 
   IF v_id_type = 'uuid' THEN
     PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
-      jsonb_build_object('detail','id uuid non ammesso', 'tabella', p_rel::text),
+      'dbops', 'fn_get_lookup_codici', 'E_LOOKUP_STRUTTURA_TABELLA_INVALIDA',
+      jsonb_build_object('detail', 'id uuid non ammesso', 'tabella', p_rel::text),
       NULL::uuid,
-      concat('Tabella ', p_rel::text, ': id uuid non ammesso')
+      p_rel::text, 'id uuid non ammesso (serve integer/bigint)'
     );
   END IF;
 
   IF v_id_type NOT IN ('int2', 'int4', 'int8') THEN
     PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
-      jsonb_build_object(
-        'detail','tipo colonna id non supportato',
-        'tabella', p_rel::text,
-        'id_type', v_id_type
-      ),
+      'dbops', 'fn_get_lookup_codici', 'E_LOOKUP_STRUTTURA_TABELLA_INVALIDA',
+      jsonb_build_object('detail', 'tipo id non supportato', 'tabella', p_rel::text, 'id_type', v_id_type),
       NULL::uuid,
-      concat('Tabella ', p_rel::text, ': id deve essere integer/bigint')
+      p_rel::text, format('tipo colonna id non supportato: %s (serve integer/bigint)', v_id_type)
     );
   END IF;
 
-  -- Check colonna codice (opzionale — fallback a codice_interno o id)
-  SELECT EXISTS (
-    SELECT 1
-      FROM pg_attribute a
-     WHERE a.attrelid = p_rel
-       AND a.attname = 'codice'
-       AND a.attnum > 0
-       AND NOT a.attisdropped
-  )
-    INTO v_has_codice;
+  -- Legge schema e table name dall'OID (piu' robusto di split_part su text).
+  SELECT ns.nspname, c.relname
+    INTO v_rel_schema, v_rel_table
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE c.oid = p_rel;
 
-  -- Check colonna codice_interno (opzionale)
-  SELECT EXISTS (
-    SELECT 1
-      FROM pg_attribute a
-     WHERE a.attrelid = p_rel
-       AND a.attname = 'codice_interno'
-       AND a.attnum > 0
-       AND NOT a.attisdropped
-  )
-    INTO v_has_codice_interno;
+  -- Override dichiarativi per colonne codice/codice_interno non-standard.
+  SELECT col_name INTO v_codice_col_override
+    FROM dbops.automation_overrides_cols
+   WHERE schema_name = v_rel_schema
+     AND table_name  = v_rel_table
+     AND col_role    = 'CODICE_COL';
 
-  -- Almeno una tra codice e codice_interno deve esistere
+  SELECT col_name INTO v_codice_interno_col_override
+    FROM dbops.automation_overrides_cols
+   WHERE schema_name = v_rel_schema
+     AND table_name  = v_rel_table
+     AND col_role    = 'CODICE_INTERNO_COL';
+
+  -- Check colonna codice (pg_attribute, poi override)
+  SELECT EXISTS (
+    SELECT 1 FROM pg_attribute a
+     WHERE a.attrelid = p_rel AND a.attname = 'codice'
+       AND a.attnum > 0 AND NOT a.attisdropped
+  ) INTO v_has_codice;
+
+  -- Check colonna codice_interno (pg_attribute, poi override)
+  SELECT EXISTS (
+    SELECT 1 FROM pg_attribute a
+     WHERE a.attrelid = p_rel AND a.attname = 'codice_interno'
+       AND a.attnum > 0 AND NOT a.attisdropped
+  ) INTO v_has_codice_interno;
+
+  -- Applica override: se presente segnala la colonna come disponibile.
+  IF v_codice_col_override IS NOT NULL THEN
+    v_has_codice := TRUE;
+  END IF;
+  IF v_codice_interno_col_override IS NOT NULL THEN
+    v_has_codice_interno := TRUE;
+  END IF;
+
+  -- Almeno una tra codice e codice_interno (reale o via override) deve esistere.
   IF NOT v_has_codice AND NOT v_has_codice_interno THEN
     PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
-      jsonb_build_object('detail','ne codice ne codice_interno presenti', 'tabella', p_rel::text),
+      'dbops', 'fn_get_lookup_codici', 'E_LOOKUP_STRUTTURA_TABELLA_INVALIDA',
+      jsonb_build_object('detail', 'ne codice ne codice_interno presenti', 'tabella', p_rel::text),
       NULL::uuid,
-      concat('Tabella ', p_rel::text, ': serve almeno codice o codice_interno')
+      p_rel::text, 'serve colonna codice, codice_interno o override CODICE_COL/CODICE_INTERNO_COL'
     );
   END IF;
 
   -- Check colonna descrizione (obbligatoria)
   SELECT EXISTS (
-    SELECT 1
-      FROM pg_attribute a
-     WHERE a.attrelid = p_rel
-       AND a.attname = 'descrizione'
-       AND a.attnum > 0
-       AND NOT a.attisdropped
-  )
-    INTO v_has_descrizione;
+    SELECT 1 FROM pg_attribute a
+     WHERE a.attrelid = p_rel AND a.attname = 'descrizione'
+       AND a.attnum > 0 AND NOT a.attisdropped
+  ) INTO v_has_descrizione;
 
   IF NOT v_has_descrizione THEN
     PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
-      jsonb_build_object('detail','colonna descrizione mancante', 'tabella', p_rel::text),
+      'dbops', 'fn_get_lookup_codici', 'E_LOOKUP_STRUTTURA_TABELLA_INVALIDA',
+      jsonb_build_object('detail', 'colonna descrizione mancante', 'tabella', p_rel::text),
       NULL::uuid,
-      concat('Colonna descrizione mancante in ', p_rel::text)
+      p_rel::text, 'colonna descrizione mancante'
     );
   END IF;
 
   -- Check colonna attivo (opzionale, deve essere boolean)
   SELECT EXISTS (
-    SELECT 1
-      FROM pg_attribute a
-     WHERE a.attrelid = p_rel
-       AND a.attname = 'attivo'
-       AND a.attnum > 0
-       AND NOT a.attisdropped
-  )
-    INTO v_has_attivo;
+    SELECT 1 FROM pg_attribute a
+     WHERE a.attrelid = p_rel AND a.attname = 'attivo'
+       AND a.attnum > 0 AND NOT a.attisdropped
+  ) INTO v_has_attivo;
 
   IF v_has_attivo THEN
     SELECT EXISTS (
-      SELECT 1
-        FROM pg_attribute a
-        JOIN pg_type t
-          ON t.oid = a.atttypid
-       WHERE a.attrelid = p_rel
-         AND a.attname = 'attivo'
-         AND a.attnum > 0
-         AND NOT a.attisdropped
-         AND t.typname = 'bool'
-    )
-      INTO v_attivo_is_boolean;
+      SELECT 1 FROM pg_attribute a
+      JOIN pg_type t ON t.oid = a.atttypid
+      WHERE a.attrelid = p_rel AND a.attname = 'attivo'
+        AND a.attnum > 0 AND NOT a.attisdropped AND t.typname = 'bool'
+    ) INTO v_attivo_is_boolean;
 
     IF NOT v_attivo_is_boolean THEN
       PERFORM script.fn_log_and_raise_error(
-        'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
-        jsonb_build_object('detail','colonna attivo non booleana', 'tabella', p_rel::text),
+        'dbops', 'fn_get_lookup_codici', 'E_LOOKUP_STRUTTURA_TABELLA_INVALIDA',
+        jsonb_build_object('detail', 'colonna attivo non booleana', 'tabella', p_rel::text),
         NULL::uuid,
-        concat('Colonna attivo deve essere boolean in ', p_rel::text)
+        p_rel::text, 'colonna attivo presente ma non di tipo boolean'
       );
     END IF;
   END IF;
 
-  -- Fallback order_col: se codice non esiste, ordina per descrizione
-  IF v_order_col = 'codice' AND NOT v_has_codice THEN
-    v_order_col := 'descrizione';
+  -- Risolvi colonna effettiva per ORDER BY 'codice'.
+  -- Se override CODICE_COL: usa il nome reale (es. 'codice_iso').
+  -- Se codice non esiste (neanche override): fallback a 'descrizione'.
+  IF v_order_col = 'codice' THEN
+    IF v_codice_col_override IS NOT NULL THEN
+      v_order_col := v_codice_col_override;
+    ELSIF NOT v_has_codice THEN
+      v_order_col := 'descrizione';
+    END IF;
   END IF;
 
-  -- Costruzione SQL dinamico
+  -- Costruzione SQL dinamico con override colonne.
   v_sql := format(
     'SELECT t.id::bigint, %s, %s, t.descrizione::text, %s FROM %s t',
     CASE WHEN v_has_codice
-         THEN 't.codice::text'
-         ELSE 'COALESCE(t.codice_interno, t.id::text)::text'
+         THEN format('t.%I::text', COALESCE(v_codice_col_override, 'codice'))
+         ELSE format('COALESCE(t.%I::text, t.id::text)', COALESCE(v_codice_interno_col_override, 'codice_interno'))
     END,
     CASE WHEN v_has_codice_interno
-         THEN 't.codice_interno::text'
+         THEN format('t.%I::text', COALESCE(v_codice_interno_col_override, 'codice_interno'))
          ELSE 'NULL::text AS codice_interno'
     END,
     CASE WHEN v_has_attivo
@@ -258,7 +271,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_dir text, p_attivo_only boolean, p_limit integer, p_offset integer)
-IS 'Lookup generico id/codice/codice_interno/descrizione/attivo con ordinamento validato e filtro attivo opzionale. codice e codice_interno e attivo restituiti se le colonne esistono, altrimenti fallback o NULL.';
+IS 'Lookup generico id/codice/codice_interno/descrizione/attivo. Consulta automation_overrides_cols (CODICE_COL/CODICE_INTERNO_COL) prima di pg_attribute: tabelle con chiavi non-standard (es. codice_iso, iso_code) funzionano senza modifiche. codice/attivo opzionali con fallback. Base: 20260327-01.';
 ```
 
 ---

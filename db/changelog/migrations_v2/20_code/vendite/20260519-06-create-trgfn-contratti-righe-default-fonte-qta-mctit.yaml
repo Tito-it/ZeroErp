@@ -1,0 +1,138 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260519-06-create-trgfn-contratti-righe-default-fonte-qta-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Trigger normalize fonte_quantita_attesa su contratti_righe.
+  #
+  # Scopo: garantisce che fonte_quantita_attesa abbia sempre un valore coerente
+  # con tipo_erogazione, evitando violazioni del NOT NULL (20260519-05) e del
+  # CHECK chk_contrighe_coerenza_fonte_erogazione (20260519-05).
+  #
+  # Comportamento:
+  #   - INSERT: se fonte_quantita_attesa IS NULL → imposta il default della matrice
+  #   - UPDATE OF tipo_erogazione, fonte_quantita_attesa:
+  #       • se fonte IS NULL → imposta il default (difensivo, NOT NULL è il backstop)
+  #       • se tipo cambia E la nuova combinazione tipo+fonte è ❌ (vietata dal CHECK)
+  #         → resetta fonte al default per il nuovo tipo
+  #       • se la combinazione è 🟡 rara ma non ❌ → fonte NON viene alterata
+  #         (preserva scelte esplicite dell'utente)
+  #
+  # Matrice default:
+  #   CANONE / UNA_TANTUM → FISSA
+  #   ORARIO              → MANUALE  (TIMESHEET quando il modulo esisterà)
+  #   CONSUMO             → LETTURE
+  #   NULL / altro        → FISSA    (fallback difensivo)
+  #
+  # Interazione con guard_pending (trg_contratti_righe_a10_guard_pending_upd):
+  #   Il trigger normalize ha nome alfabeticamente precedente al guard_pending
+  #   ('d' < 'g') → esegue per primo nella fase a10.
+  #   Su righe in PENDING: il guard blocca comunque qualsiasi cambio a
+  #   tipo_erogazione o fonte_quantita_attesa → la normalizzazione è irrilevante
+  #   perché l'intera operazione viene rollbacked dal guard.
+  #
+  # Interazione con trgfn_componenti (DERIVATA_COMPONENTI):
+  #   Il trigger z90_propaga_qta_componenti scrive la colonna `quantita` (non
+  #   fonte_quantita_attesa) → nessuna interferenza. La funzione
+  #   trgfn_componenti_calcola_quantita legge `quantita` dalla riga padre —
+  #   compatibile con il rename quantita_fissa→quantita (20260511-31/32).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260519-06-create-trgfn-contratti-righe-default-fonte-qta
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vendite.trgfn_contratti_righe_default_fonte_qta e il trigger
+        trg_contratti_righe_a10_default_fonte_qta_ins_upd.
+        Normalizza fonte_quantita_attesa al default per tipo_erogazione su INSERT
+        e su UPDATE se il cambio di tipo rende la combinazione vietata (❌).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti_righe
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti_righe
+                columnName: fonte_quantita_attesa
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_default_fonte_qta()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Scopo: normalizza fonte_quantita_attesa al default coerente con tipo_erogazione.
+                  -- Casistica INSERT: fonte NULL → imposta default dalla matrice.
+                  -- Casistica UPDATE: se tipo cambia e la nuova combinazione è vietata (❌) → resetta.
+                  -- Le combinazioni 🟡 rare ma non vietate non vengono alterate.
+
+                  IF NEW.fonte_quantita_attesa IS NULL THEN
+                      -- INSERT senza fonte o UPDATE che azzera fonte (difensivo, NOT NULL è il backstop).
+                      NEW.fonte_quantita_attesa := CASE NEW.tipo_erogazione
+                          WHEN 'CANONE'     THEN 'FISSA'
+                          WHEN 'UNA_TANTUM' THEN 'FISSA'
+                          WHEN 'ORARIO'     THEN 'MANUALE'
+                          WHEN 'CONSUMO'    THEN 'LETTURE'
+                          ELSE                   'FISSA'
+                      END;
+
+                  ELSIF TG_OP = 'UPDATE'
+                        AND NEW.tipo_erogazione IS DISTINCT FROM OLD.tipo_erogazione
+                        AND (
+                                (NEW.tipo_erogazione = 'CONSUMO'
+                                     AND NEW.fonte_quantita_attesa IN ('FISSA', 'TIMESHEET'))
+                            OR  (NEW.tipo_erogazione IN ('CANONE', 'UNA_TANTUM')
+                                     AND NEW.fonte_quantita_attesa IN ('TIMESHEET', 'LETTURE'))
+                            OR  (NEW.tipo_erogazione = 'ORARIO'
+                                     AND NEW.fonte_quantita_attesa = 'LETTURE')
+                        )
+                  THEN
+                      -- Tipo cambiato e la combinazione attuale diventa vietata → reset al default.
+                      NEW.fonte_quantita_attesa := CASE NEW.tipo_erogazione
+                          WHEN 'CANONE'     THEN 'FISSA'
+                          WHEN 'UNA_TANTUM' THEN 'FISSA'
+                          WHEN 'ORARIO'     THEN 'MANUALE'
+                          WHEN 'CONSUMO'    THEN 'LETTURE'
+                          ELSE                   'FISSA'
+                      END;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_righe_default_fonte_qta()
+              IS 'Normalizza fonte_quantita_attesa al default per tipo_erogazione. '
+                 'INSERT: imposta default se NULL. '
+                 'UPDATE OF tipo_erogazione: resetta solo se la nuova combinazione tipo+fonte è ❌ '
+                 '(matrice 20260519). Le combinazioni 🟡 rare non vengono alterate. '
+                 'Compatibile con guard_pending (nome alfabeticamente precedente: esegue prima).';
+
+              -- Trigger a10 (guard/normalize phase): esegue prima dei guard esistenti
+              -- grazie all''ordinamento lessicografico (_a10_d < _a10_g).
+              -- BEFORE INSERT: normalizza fonte NULL su ogni nuovo inserimento.
+              -- BEFORE UPDATE OF tipo_erogazione, fonte_quantita_attesa: intercetta
+              --   cambio tipo (reset se combo diventa vietata) e azzeramento fonte.
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_default_fonte_qta_ins_upd
+                  ON vendite.contratti_righe;
+
+              CREATE TRIGGER trg_contratti_righe_a10_default_fonte_qta_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione, fonte_quantita_attesa
+                  ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_contratti_righe_default_fonte_qta();
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_default_fonte_qta_ins_upd
+                  ON vendite.contratti_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_contratti_righe_default_fonte_qta();

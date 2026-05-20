@@ -23,21 +23,25 @@ vendite.fn_contratto_righe_preview(
     p_contratto_id   vendite.contratti.id%TYPE
 )
 RETURNS TABLE (
-    articolo_id          catalogo.articoli.id%TYPE,
-    articolo_codice      catalogo.articoli.codice%TYPE,
-    articolo_descrizione catalogo.articoli.descrizione%TYPE,
-    is_composito         catalogo.articoli.is_composito%TYPE,
-    uom_id               vendite.listini_righe.uom_id%TYPE,
-    uom_codice           catalogo.unita_misura.codice%TYPE,
-    prezzo_listino       vendite.listini_righe.prezzo%TYPE,
-    tipo_variazione      vendite.contratti.tipo_variazione_globale%TYPE,
-    valore_variazione    vendite.contratti.valore_variazione_globale%TYPE,
-    override_riga_id     vendite.contratti_righe.id%TYPE,
-    override_prezzo      vendite.contratti_righe.prezzo_unitario%TYPE,
-    tipo_eccezione       vendite.tipo_eccezione_contratto,
-    origine              varchar,
-    prezzo_finale        vendite.listini_righe.prezzo%TYPE,
-    componenti           jsonb
+    articolo_id           catalogo.articoli.id%TYPE,
+    articolo_codice       catalogo.articoli.codice%TYPE,
+    articolo_descrizione  catalogo.articoli.descrizione%TYPE,
+    is_composito          catalogo.articoli.is_composito%TYPE,
+    uom_id                vendite.listini_righe.uom_id%TYPE,
+    uom_codice            catalogo.unita_misura.codice%TYPE,
+    prezzo_listino        vendite.listini_righe.prezzo%TYPE,
+    tipo_variazione       vendite.contratti.tipo_variazione_globale%TYPE,
+    valore_variazione     vendite.contratti.valore_variazione_globale%TYPE,
+    override_riga_id      vendite.contratti_righe.id%TYPE,
+    override_prezzo       vendite.contratti_righe.prezzo_unitario%TYPE,
+    tipo_eccezione        vendite.tipo_eccezione_contratto,
+    origine               varchar,
+    prezzo_finale         vendite.listini_righe.prezzo%TYPE,
+    componenti            jsonb,
+    quantita              vendite.contratti_righe.quantita%TYPE,
+    qta_operativa         vendite.contratti_righe.qta_operativa%TYPE,
+    tipo_erogazione       vendite.contratti_righe.tipo_erogazione%TYPE,
+    fonte_quantita_attesa vendite.contratti_righe.fonte_quantita_attesa%TYPE
 )
 LANGUAGE plpgsql STABLE
 ```
@@ -126,9 +130,14 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 | `origine` | `DA_LISTINO` / `OVERRIDE` / `ESCLUSIONE` / `AGGIUNTA` |
 | `prezzo_finale` | Prezzo effettivo da mostrare in UI (aggregato in DB, non delegato al FE) |
 | `componenti` | JSONB array figli (bundle); NULL per standalone |
+| `quantita` | Snapshot quantita della riga persistita; valorizzata solo per righe con eccezione (OVERRIDE/ESCLUSIONE/AGGIUNTA), NULL per DA_LISTINO puro |
+| `qta_operativa` | Quantita in UoM operativa; valorizzata solo per righe con eccezione, NULL per DA_LISTINO puro |
+| `tipo_erogazione` | `CANONE` / `UNA_TANTUM` / `ORARIO` / `CONSUMO`; valorizzato solo per righe con eccezione, NULL per DA_LISTINO puro |
+| `fonte_quantita_attesa` | `FISSA` / `MANUALE` / `TIMESHEET` / `LETTURE` / `DERIVATA_COMPONENTI`; valorizzata solo per righe con eccezione, NULL per DA_LISTINO puro |
 
 ## Note operative
 
+- **Colonne qta/tipo/fonte NULL per DA_LISTINO**: nelle parti 1a/1b, `quantita`, `qta_operativa`, `tipo_erogazione` e `fonte_quantita_attesa` vengono da `cr.*` via LEFT JOIN. Quando non c'è eccezione (DA_LISTINO puro) il JOIN non trova righe e i campi sono NULL. Per OVERRIDE/ESCLUSIONE il JOIN trova la riga eccezione e i campi sono valorizzati. Per AGGIUNTA (parti 2a/2b) il JOIN è diretto e i campi sono sempre valorizzati. Il consumer FE deve gestire NULL come "usa il default listino".
 - **`STABLE`**: nessun side effect, ottimizzabile dal planner per chiamate multiple nella stessa transazione.
 - **Duplicazioni**: mutualmente esclusivi per costruzione. 1a usa `is_composito=FALSE` da listino, 1b usa padri compositi da `listini_righe_componenti`, 2a/2b filtrano su `tipo_eccezione=AGGIUNTA` con rispettivo `is_composito`. Non ci sono doppioni tra le parti.
 - **AGGIUNTA su articolo già in listino**: la guard `trgfn_contratti_righe_guard_aggiunta_fuori_listino` lo previene in fase di INSERT. La fn non duplica questo check.
