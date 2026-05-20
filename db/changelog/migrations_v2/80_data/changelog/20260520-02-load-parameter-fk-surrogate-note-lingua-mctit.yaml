@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge riga NOTE_DEFAULT_LINGUA al registry config.parameter_fk_surrogate.
+#
+# Contesto: il framework FK-surrogata (dispatcher config.trgfn_parameters_fk_surrogate_dispatch)
+# valida il default_value di config.parameters confrontandolo con la chiave naturale
+# stabile della tabella target.
+# Questa riga collega il parametro NOTE_DEFAULT_LINGUA (code EXACT) a
+# config.lingue.codice_iso: ogni INSERT/UPDATE su parameters con
+# code='NOTE_DEFAULT_LINGUA' verificherà che default_value sia un codice_iso
+# valido in config.lingue.
+#
+# codice_iso e' chiave naturale ISO standard (stabile per costruzione,
+# linee-guida-sql §6b regola 2). Non serve lock_columns.
+#
+# Deve precedere 20260520-03 (insert del parametro NOTE_DEFAULT_LINGUA).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260520-02-load-parameter-fk-surrogate-note-lingua-mctit.yaml
+
+  - changeSet:
+      id: 20260520-02-load-parameter-fk-surrogate-note-lingua
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Aggiunge riga id=4 (NOTE_DEFAULT_LINGUA, EXACT, config.lingue.codice_iso)
+        al registry config.parameter_fk_surrogate.
+        Abilita la validazione FK-surrogata per il parametro NOTE_DEFAULT_LINGUA:
+        default_value deve essere un codice_iso valido di config.lingue (es. 'it').
+        Le righe preesistenti (id=1,2,3) vengono upsertate idempotentemente.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameter_fk_surrogate
+            - tableExists:
+                schemaName: config
+                tableName: lingue
+            - columnExists:
+                schemaName: config
+                tableName: lingue
+                columnName: codice_iso
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/parameter_fk_surrogate.csv
+            tableName: parameter_fk_surrogate
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id,            type: NUMERIC }
+              - column: { name: code_pattern,  type: STRING }
+              - column: { name: match_mode,    type: STRING }
+              - column: { name: target_schema, type: STRING }
+              - column: { name: target_table,  type: STRING }
+              - column: { name: target_column, type: STRING }
+              - column: { name: enabled,       type: BOOLEAN }
+              - column: { name: note,          type: STRING }
+              - column: { name: data_insert,   type: STRING }
+              - column: { name: user_insert,   type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update,   type: STRING }

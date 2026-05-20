@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge override dichiarativi per config.lingue in
+# dbops.automation_overrides_cols.
+#
+# Nuovi col_role (definiti da 20260520-04):
+#   CODICE_COL         → colonna usata come alias 'codice' nel lookup
+#   CODICE_INTERNO_COL → colonna usata come alias 'codice_interno' nel lookup
+#
+# config.lingue non ha colonne 'codice' o 'codice_interno':
+#   CODICE_COL          = codice_iso (chiave naturale ISO stabile)
+#   CODICE_INTERNO_COL  = codice_iso (idem — stessa colonna)
+#
+# Con questi override, fn_get_lookup_codici('config.lingue'::regclass)
+# non solleva piu' "ne codice ne codice_interno presenti" e restituisce
+# codice_iso sia come 'codice' che come 'codice_interno'.
+#
+# Prerequisito: 20260520-04 (fn_get_lookup_codici con override support).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260520-05-load-automation-overrides-cols-lingue-mctit.yaml
+
+  - changeSet:
+      id: 20260520-05-load-automation-overrides-cols-lingue
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Aggiunge CODICE_COL e CODICE_INTERNO_COL per config.lingue in
+        automation_overrides_cols. codice_iso usata come alias per entrambi.
+        Prerequisito: fn_get_lookup_codici con override support (20260520-04).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: automation_overrides_cols
+            - tableExists:
+                schemaName: config
+                tableName: lingue
+            - columnExists:
+                schemaName: config
+                tableName: lingue
+                columnName: codice_iso
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/automation_overrides_cols.csv
+            tableName: automation_overrides_cols
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "schema_name,table_name,col_role"
+            columns:
+              - column: { name: schema_name, type: STRING }
+              - column: { name: table_name,  type: STRING }
+              - column: { name: col_role,    type: STRING }
+              - column: { name: col_name,    type: STRING }

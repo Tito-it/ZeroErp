@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge ANNULLATO a config.stati_doc_contratti e upserta is_abortito.
+#
+# Prerequisito: migration 20260520-07 (colonna is_abortito aggiunta).
+#
+# Nuovo seed: id=8, codice_interno=ANNULLATO, is_abortito=TRUE.
+# Righe esistenti: is_abortito=FALSE (già il default, upsert idempotente).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260520-08-upsert-stati-doc-contratti-annullato-mctit.yaml
+
+  - changeSet:
+      id: 20260520-08-upsert-stati-doc-contratti-annullato
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Aggiunge ANNULLATO (id=8, ordine=70, is_abortito=TRUE) a config.stati_doc_contratti.
+        Upserta is_abortito su tutte le righe esistenti (FALSE per DRAFT/ATTIVO/CESSATO).
+        Prerequisito: 20260520-07 (ADD COLUMN is_abortito).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_contratti
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_contratti
+                columnName: is_abortito
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/stati_doc_contratti.csv
+            tableName: stati_doc_contratti
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,             type: STRING }
+              - column: { name: codice_interno,  type: STRING }
+              - column: { name: codice,          type: STRING }
+              - column: { name: descrizione,     type: STRING }
+              - column: { name: attivo,          type: BOOLEAN }
+              - column: { name: ordine,          type: STRING }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert,     type: STRING }
+              - column: { name: user_insert,     type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update,     type: STRING }
+              - column: { name: is_abortito,     type: BOOLEAN }

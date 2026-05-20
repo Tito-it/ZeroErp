@@ -38,6 +38,8 @@ L’helper `fn_get_override_col(schema, table, key, default)` incapsula questa l
   *Default*: `user_update` (sovrascrivibile anche via params della regola `AUDIT_UPDATE`).
 * **`STORICO_FK`** → FK verso la tabella base nella tabella `storico.<table>_storico`.
   *Default*: `<table>_id`.
+* **`CODICE_COL`** → colonna da esporre come alias `codice` in `dbops.fn_get_lookup_codici`. Usare per tabelle che non hanno la colonna `codice` standard ma hanno una chiave naturale stabile con nome diverso (es. `codice_iso` su `config.lingue`). *Nessun default* — se assente, la funzione usa l'introspezione pg_attribute.
+* **`CODICE_INTERNO_COL`** → colonna da esporre come alias `codice_interno` in `dbops.fn_get_lookup_codici`. Usare per tabelle che non hanno `codice_interno` ma hanno una chiave naturale ISO o simile (es. `codice_iso`, `iso_code`). *Nessun default* — se assente, la funzione restituisce `NULL::text` per `codice_interno`.
 
 > Se in futuro serviranno altre chiavi (es. `TX_ID_COL`), basterà inserirle nella stessa tabella e aggiornare gli automatismi che le usano.
 
