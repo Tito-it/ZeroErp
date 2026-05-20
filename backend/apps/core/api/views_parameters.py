@@ -19,18 +19,32 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
+import re
+
+from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.payload_validators import qp_int_strict, qp_str
 from apps.core.api.permissions import IsAdminZeroERP
 from apps.core.api.success_responses import success_response
 from apps.core.db.parameter_repository import MAX_CODES
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 
+# Regex per int firmato stretto: rifiuta degenerazioni come "--5", "++1", "1.0".
+# Coerente con _SIGNED_INT_RE di payload_helpers.py.
+_INT_RE = re.compile(r"^-?\d+$")
+
 # Scope override consentiti dal payload del POST.
+# - user:               override personale (qualunque utente, default)
+# - emittente:          override per emittente (admin-only, EF derivato dal profilo)
+# - categoria_cliente:  override per categoria cliente (admin-only, id esplicito
+#                       nel payload/query param). Phase B 2026-05-19 cascata
+#                       parametri (cf. migration 20260519-01).
 SCOPE_USER = "user"
 SCOPE_EMITTENTE = "emittente"
-ALLOWED_SCOPES = (SCOPE_USER, SCOPE_EMITTENTE)
+SCOPE_CATEGORIA_CLIENTE = "categoria_cliente"
+ALLOWED_SCOPES = (SCOPE_USER, SCOPE_EMITTENTE, SCOPE_CATEGORIA_CLIENTE)
 
 
 # Scopo: Verifica che l'utente corrente sia ADMIN o superuser.
@@ -58,6 +72,37 @@ def _require_admin_emittente_id(request: Request, svc: ParameterService) -> int:
         message="Emittente fiscale non risolvibile per l'utente corrente.",
     )
     return emittente_fiscale_id  # type: ignore[return-value]
+
+
+# Scopo: Verifica che l'operazione su scope='categoria_cliente' sia consentita
+#        e ritorna l'id categoria estratto dal payload (POST) o dal query
+#        param (DELETE). Solleva E_PERMISSION_DENIED se non admin,
+#        E_PARAMETER_VALIDATION se id assente o non positivo.
+def _require_admin_categoria_cliente_id(
+    request: Request, *, raw_id: int | str | None,
+) -> int:
+    ErrorManager.require(
+        _is_admin(request),
+        code="E_PERMISSION_DENIED",
+        message=(
+            "Solo gli amministratori possono operare sugli override "
+            "a livello categoria cliente."
+        ),
+    )
+    cat_id: int | None = None
+    if isinstance(raw_id, int) and not isinstance(raw_id, bool):
+        cat_id = raw_id
+    elif isinstance(raw_id, str) and _INT_RE.match(raw_id.strip()):
+        # Regex stretto: rifiuta "--5", "++1", "1.0". Solo int firmato valido.
+        cat_id = int(raw_id.strip())
+    ErrorManager.require(
+        cat_id is not None and cat_id > 0,
+        code="E_PARAMETER_VALIDATION",
+        message="categoria_cliente_id deve essere un intero positivo.",
+        context={"categoria_cliente_id": raw_id},
+    )
+    assert cat_id is not None
+    return cat_id
 
 
 # Scopo: Normalizza e valida lo scope ricevuto da payload o query string.
@@ -142,8 +187,31 @@ class ParameterSettingsView(DomainAPIView):
         summary="Lista parametri con livelli override",
         description=(
             "Restituisce tutti i parametri di sistema con i valori a ogni livello "
-            "(default, emittente, gruppo, utente) e il valore risolto finale."
+            "(default, emittente, gruppo, categoria_cliente, utente) e il valore "
+            "risolto finale. Cascata: user > categoria_cliente > group > emittente > default."
         ),
+        parameters=[
+            OpenApiParameter(
+                name="categoria_cliente_id", type=int,
+                location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "Smallint opzionale: se valorizzato attiva il livello "
+                    "categoria_cliente fra user e group, valorizzando "
+                    "`categoria_cliente_value` e `categoria_cliente_override_id` "
+                    "nelle righe risultato."
+                ),
+            ),
+            OpenApiParameter(
+                name="billing_account_id", type=int,
+                location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "Alternativa a categoria_cliente_id: deriva la categoria dal "
+                    "BA indicato via anagrafiche.billing_account.categoria_cliente_id. "
+                    "Ignorato se categoria_cliente_id e' valorizzato (priorita' al "
+                    "valore esplicito)."
+                ),
+            ),
+        ],
         responses={
             200: inline_serializer(
                 name="ParameterSettingsResponse",
@@ -162,29 +230,68 @@ class ParameterSettingsView(DomainAPIView):
     #        emittente_fiscale_id anche per superuser, altrimenti il LEFT JOIN
     #        su emittente_fiscale_id = NULL non matcha mai (NULL = NULL e' false
     #        in SQL) e gli override emittente non vengono mostrati.
+    #        Post brief DB 2026-05-19 (migration 20260519-01): accetta
+    #        `categoria_cliente_id` come query param (esplicito) oppure
+    #        `billing_account_id` (deriva la categoria dal BA via repository).
+    #        Priorita': esplicito > derivato. Se nessuno dei due, il livello
+    #        categoria resta NULL nelle righe (`categoria_cliente_value` NULL).
     def get(self, request: Request) -> JsonResponse:
         svc = ParameterService()
         ctx = get_user_context(request, svc)
+        qp = request.query_params
 
         # Fallback per superuser: risolve sempre user e emittente reali.
         django_user_id = ctx["django_user_id"] or request.user.id
         emittente_fiscale_id = ctx["emittente_fiscale_id"] or svc.get_emittente_fiscale_id_for_user(request.user.id)
 
+        # Risoluzione categoria_cliente_id: esplicito > derivato da BA.
+        # Guard `> 0`: rifiuta 0/negativi con E_PARAMETER_VALIDATION (400)
+        # invece di passare silenziosamente al DB (LEFT JOIN no-match,
+        # l'utente non capirebbe perche' categoria_cliente_value resta null).
+        # `qp_int_strict` solleva ValueError su non-int → middleware → 400.
+        raw_cat = qp_str(qp.get("categoria_cliente_id"))
+        categoria_cliente_id: int | None = None
+        if raw_cat is not None:
+            cat_val = qp_int_strict(raw_cat, "categoria_cliente_id", default=0)
+            ErrorManager.require(
+                cat_val > 0,
+                code="E_PARAMETER_VALIDATION",
+                message="categoria_cliente_id deve essere un intero positivo.",
+                context={"categoria_cliente_id": cat_val},
+            )
+            categoria_cliente_id = cat_val
+        else:
+            raw_ba = qp_str(qp.get("billing_account_id"))
+            if raw_ba is not None:
+                ba_id = qp_int_strict(raw_ba, "billing_account_id", default=0)
+                ErrorManager.require(
+                    ba_id > 0,
+                    code="E_PARAMETER_VALIDATION",
+                    message="billing_account_id deve essere un intero positivo.",
+                    context={"billing_account_id": ba_id},
+                )
+                categoria_cliente_id = BillingAccountRepository().get_categoria_cliente_id(ba_id)
+
         parameters = svc.list_parameters_for_user(
             django_user_id=django_user_id,
             group_ids=ctx["group_ids"],
             emittente_fiscale_id=emittente_fiscale_id,
+            categoria_cliente_id=categoria_cliente_id,
         )
         return success_response(parameters)
 
 
 class ParameterOverrideView(DomainAPIView):
-    """Crea/aggiorna un override per un parametro a scope personale o emittente.
+    """Crea/aggiorna un override per un parametro a scope personale, emittente
+    o categoria_cliente.
 
     Scope ammessi:
-    - "user"      → override personale (default per qualunque utente)
-    - "emittente" → override valido per tutti gli utenti dell'emittente corrente
-                    (riservato agli admin)
+    - "user"               → override personale (default per qualunque utente)
+    - "emittente"          → override valido per tutti gli utenti dell'emittente
+                             corrente (riservato agli admin)
+    - "categoria_cliente"  → override valido per tutti gli utenti che operano
+                             su BA della categoria indicata (riservato agli admin,
+                             id passato nel payload). Phase B 2026-05-19.
     """
 
     skip_area_check = True
@@ -203,7 +310,14 @@ class ParameterOverrideView(DomainAPIView):
                 "scope": serializers.ChoiceField(
                     choices=list(ALLOWED_SCOPES),
                     required=False,
-                    help_text="Scope: 'user' (default) o 'emittente' (solo admin)",
+                    help_text=(
+                        "Scope: 'user' (default), 'emittente' (admin), "
+                        "'categoria_cliente' (admin, richiede categoria_cliente_id)."
+                    ),
+                ),
+                "categoria_cliente_id": serializers.IntegerField(
+                    required=False,
+                    help_text="Obbligatorio se scope='categoria_cliente'",
                 ),
             },
         ),
@@ -219,7 +333,7 @@ class ParameterOverrideView(DomainAPIView):
         },
     )
     # Scopo: Crea o aggiorna un override per il parametro indicato.
-    #        Lo scope determina la fascia di applicazione (user/emittente).
+    #        Lo scope determina la fascia di applicazione.
     def post(self, request: Request) -> JsonResponse:
         svc = ParameterService()
 
@@ -236,6 +350,15 @@ class ParameterOverrideView(DomainAPIView):
                     emittente_fiscale_id=emittente_fiscale_id,
                     value=value,
                 )
+            elif scope == SCOPE_CATEGORIA_CLIENTE:
+                categoria_cliente_id = _require_admin_categoria_cliente_id(
+                    request, raw_id=payload.get("categoria_cliente_id"),
+                )
+                override_id = svc.upsert_categoria_cliente_override(
+                    parameter_code=parameter_code,
+                    categoria_cliente_id=categoria_cliente_id,
+                    value=value,
+                )
             else:
                 override_id = svc.upsert_user_override(
                     parameter_code=parameter_code,
@@ -249,10 +372,11 @@ class ParameterOverrideView(DomainAPIView):
 
 
 class ParameterOverrideDeleteView(DomainAPIView):
-    """Rimuove un override (personale o emittente) per un parametro.
+    """Rimuove un override (personale, emittente o categoria_cliente).
 
-    Lo scope viene passato come query string ?scope=user|emittente
-    (default 'user'). Lo scope 'emittente' richiede ruolo admin.
+    Lo scope viene passato come query string ?scope=user|emittente|categoria_cliente
+    (default 'user'). Gli scope 'emittente' e 'categoria_cliente' richiedono ruolo admin.
+    Per scope='categoria_cliente' serve anche `?categoria_cliente_id=<id>`.
     """
 
     skip_area_check = True
@@ -264,7 +388,17 @@ class ParameterOverrideDeleteView(DomainAPIView):
                 name="scope",
                 type=str,
                 location=OpenApiParameter.QUERY,
-                description="Scope dell'override: 'user' (default) o 'emittente'.",
+                description=(
+                    "Scope dell'override: 'user' (default), 'emittente', "
+                    "'categoria_cliente'."
+                ),
+                required=False,
+            ),
+            OpenApiParameter(
+                name="categoria_cliente_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                description="Obbligatorio se scope='categoria_cliente'.",
                 required=False,
             ),
         ],
@@ -289,6 +423,14 @@ class ParameterOverrideDeleteView(DomainAPIView):
             svc.delete_emittente_override(
                 override_id=override_id,
                 emittente_fiscale_id=emittente_fiscale_id,
+            )
+        elif scope == SCOPE_CATEGORIA_CLIENTE:
+            categoria_cliente_id = _require_admin_categoria_cliente_id(
+                request, raw_id=request.query_params.get("categoria_cliente_id"),
+            )
+            svc.delete_categoria_cliente_override(
+                override_id=override_id,
+                categoria_cliente_id=categoria_cliente_id,
             )
         else:
             svc.delete_user_override(

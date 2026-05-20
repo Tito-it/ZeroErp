@@ -168,6 +168,7 @@ class ParameterSettingsViewTests(TestCase):
             django_user_id=1,
             group_ids=[10, 20],
             emittente_fiscale_id=3,
+            categoria_cliente_id=None,
         )
 
     # Scopo: Verifica che un superuser riceva l'identita' reale (user_id,
@@ -194,6 +195,108 @@ class ParameterSettingsViewTests(TestCase):
             django_user_id=1,
             group_ids=[10, 20],
             emittente_fiscale_id=7,
+            categoria_cliente_id=None,
+        )
+
+    # Scopo: Verifica che il query param `categoria_cliente_id` venga propagato
+    #        al service. Post brief DB 2026-05-19, migration 20260519-01.
+    @patch(SVC_PATH)
+    def test_list_settings_propaga_categoria_cliente_id_esplicito(self, mock_svc_cls):
+        from apps.core.api.views_parameters import ParameterSettingsView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+        mock_svc.list_parameters_for_user.return_value = []
+
+        view = ParameterSettingsView()
+        request = _make_request(user_id=1, query_params={"categoria_cliente_id": "12"})
+        response = view.get(request)
+
+        self.assertEqual(response.status_code, 200)
+        mock_svc.list_parameters_for_user.assert_called_once_with(
+            django_user_id=1,
+            group_ids=[10, 20],
+            emittente_fiscale_id=3,
+            categoria_cliente_id=12,
+        )
+
+    # Scopo: Verifica derivazione automatica `categoria_cliente_id` da BA via
+    #        BillingAccountRepository.get_categoria_cliente_id quando il query
+    #        param esplicito non e' valorizzato.
+    @patch("apps.core.api.views_parameters.BillingAccountRepository")
+    @patch(SVC_PATH)
+    def test_list_settings_deriva_categoria_da_ba(self, mock_svc_cls, mock_ba_repo_cls):
+        from apps.core.api.views_parameters import ParameterSettingsView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+        mock_svc.list_parameters_for_user.return_value = []
+        mock_ba_repo = MagicMock()
+        mock_ba_repo_cls.return_value = mock_ba_repo
+        mock_ba_repo.get_categoria_cliente_id.return_value = 42
+
+        view = ParameterSettingsView()
+        request = _make_request(user_id=1, query_params={"billing_account_id": "777"})
+        response = view.get(request)
+
+        self.assertEqual(response.status_code, 200)
+        mock_ba_repo.get_categoria_cliente_id.assert_called_once_with(777)
+        mock_svc.list_parameters_for_user.assert_called_once_with(
+            django_user_id=1,
+            group_ids=[10, 20],
+            emittente_fiscale_id=3,
+            categoria_cliente_id=42,
+        )
+
+    # Scopo: Fail-fast su categoria_cliente_id <= 0. Evita di passare valori
+    #        non-positivi silenziosamente al DB (LEFT JOIN no-match, UX rumorosa).
+    @patch(SVC_PATH)
+    def test_list_settings_categoria_zero_solleva_validation(self, mock_svc_cls):
+        from apps.core.api.views_parameters import ParameterSettingsView
+        from apps.core.services.service_errors import ServiceError
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+
+        view = ParameterSettingsView()
+        request = _make_request(user_id=1, query_params={"categoria_cliente_id": "0"})
+        with self.assertRaises(ServiceError) as ctx:
+            view.get(request)
+        self.assertEqual(ctx.exception.code, "E_PARAMETER_VALIDATION")
+        mock_svc.list_parameters_for_user.assert_not_called()
+
+    # Scopo: Priorita' esplicito > derivato quando entrambi presenti.
+    @patch("apps.core.api.views_parameters.BillingAccountRepository")
+    @patch(SVC_PATH)
+    def test_list_settings_categoria_esplicito_batte_ba(
+        self, mock_svc_cls, mock_ba_repo_cls,
+    ):
+        from apps.core.api.views_parameters import ParameterSettingsView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+        mock_svc.list_parameters_for_user.return_value = []
+        mock_ba_repo = MagicMock()
+        mock_ba_repo_cls.return_value = mock_ba_repo
+
+        view = ParameterSettingsView()
+        request = _make_request(user_id=1, query_params={
+            "categoria_cliente_id": "12",
+            "billing_account_id": "777",
+        })
+        view.get(request)
+
+        # BA NON viene interrogato perche' categoria esplicita ha priorita'.
+        mock_ba_repo.get_categoria_cliente_id.assert_not_called()
+        mock_svc.list_parameters_for_user.assert_called_once_with(
+            django_user_id=1,
+            group_ids=[10, 20],
+            emittente_fiscale_id=3,
+            categoria_cliente_id=12,
         )
 
 
@@ -264,3 +367,152 @@ class ParameterOverrideDeleteViewTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             view.delete(request, override_id=999)
         self.assertEqual(ctx.exception.code, "E_PARAMETER_NOT_FOUND")
+
+
+class ParameterOverrideCategoriaClienteTests(TestCase):
+    """Phase B 2026-05-19: CRUD override scope categoria_cliente (admin-only)."""
+
+    # Scopo: POST override scope=categoria_cliente crea override per la categoria.
+    @patch("apps.core.api.views_parameters._is_admin", return_value=True)
+    @patch(SVC_PATH)
+    def test_upsert_categoria_cliente_admin_ok(self, mock_svc_cls, _is_admin):
+        from apps.core.api.views_parameters import ParameterOverrideView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.upsert_categoria_cliente_override.return_value = 314
+
+        view = ParameterOverrideView()
+        request = _make_request(
+            user_id=5,
+            data={
+                "parameter_code": "VENDITE_MAX_SCONTO_PCT",
+                "value": "5",
+                "scope": "categoria_cliente",
+                "categoria_cliente_id": 12,
+            },
+        )
+        response = view.post(request)
+        self.assertEqual(response.status_code, 200)
+        import json
+        body = json.loads(response.content)
+        self.assertEqual(body["data"]["override_id"], 314)
+        self.assertEqual(body["data"]["scope"], "categoria_cliente")
+        mock_svc.upsert_categoria_cliente_override.assert_called_once_with(
+            parameter_code="VENDITE_MAX_SCONTO_PCT",
+            categoria_cliente_id=12,
+            value="5",
+        )
+
+    # Scopo: POST scope=categoria_cliente da non-admin → 403.
+    #        Nota: i POST passano da handle_post_json che cattura ServiceError
+    #        e le converte in JsonResponse error envelope; quindi qui si
+    #        assercia sul body, non con assertRaises.
+    @patch("apps.core.api.views_parameters._is_admin", return_value=False)
+    @patch(SVC_PATH)
+    def test_upsert_categoria_cliente_non_admin_denied(
+        self, mock_svc_cls, _is_admin,
+    ):
+        from apps.core.api.views_parameters import ParameterOverrideView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+
+        view = ParameterOverrideView()
+        request = _make_request(
+            user_id=5,
+            data={
+                "parameter_code": "X", "value": "y",
+                "scope": "categoria_cliente", "categoria_cliente_id": 12,
+            },
+        )
+        response = view.post(request)
+        import json
+        body = json.loads(response.content)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(body["error"]["code"], "E_PERMISSION_DENIED")
+        mock_svc.upsert_categoria_cliente_override.assert_not_called()
+
+    # Scopo: POST scope=categoria_cliente senza id → 400 parlante (no silent).
+    @patch("apps.core.api.views_parameters._is_admin", return_value=True)
+    @patch(SVC_PATH)
+    def test_upsert_categoria_cliente_id_mancante(self, mock_svc_cls, _is_admin):
+        from apps.core.api.views_parameters import ParameterOverrideView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+
+        view = ParameterOverrideView()
+        request = _make_request(
+            user_id=5,
+            data={"parameter_code": "X", "value": "y", "scope": "categoria_cliente"},
+        )
+        response = view.post(request)
+        import json
+        body = json.loads(response.content)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(body["error"]["code"], "E_PARAMETER_VALIDATION")
+        mock_svc.upsert_categoria_cliente_override.assert_not_called()
+
+    # Scopo: DELETE scope=categoria_cliente con id query param OK.
+    @patch("apps.core.api.views_parameters._is_admin", return_value=True)
+    @patch(SVC_PATH)
+    def test_delete_categoria_cliente_admin_ok(self, mock_svc_cls, _is_admin):
+        from apps.core.api.views_parameters import ParameterOverrideDeleteView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.delete_categoria_cliente_override.return_value = True
+
+        view = ParameterOverrideDeleteView()
+        request = _make_request(
+            user_id=5,
+            query_params={"scope": "categoria_cliente", "categoria_cliente_id": "12"},
+        )
+        response = view.delete(request, override_id=314)
+        self.assertEqual(response.status_code, 200)
+        mock_svc.delete_categoria_cliente_override.assert_called_once_with(
+            override_id=314,
+            categoria_cliente_id=12,
+        )
+
+    # Scopo: DELETE scope=categoria_cliente senza id → 400 parlante.
+    @patch("apps.core.api.views_parameters._is_admin", return_value=True)
+    @patch(SVC_PATH)
+    def test_delete_categoria_cliente_id_mancante(
+        self, mock_svc_cls, _is_admin,
+    ):
+        from apps.core.api.views_parameters import ParameterOverrideDeleteView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+
+        view = ParameterOverrideDeleteView()
+        request = _make_request(
+            user_id=5,
+            query_params={"scope": "categoria_cliente"},
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            view.delete(request, override_id=314)
+        self.assertEqual(ctx.exception.code, "E_PARAMETER_VALIDATION")
+
+    # Scopo: DELETE scope=categoria_cliente con id malformato ('--5') → 400.
+    #        Regression test post-fix regex stretto (no ValueError → 500).
+    @patch("apps.core.api.views_parameters._is_admin", return_value=True)
+    @patch(SVC_PATH)
+    def test_delete_categoria_cliente_id_malformato(
+        self, mock_svc_cls, _is_admin,
+    ):
+        from apps.core.api.views_parameters import ParameterOverrideDeleteView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+
+        view = ParameterOverrideDeleteView()
+        request = _make_request(
+            user_id=5,
+            query_params={"scope": "categoria_cliente", "categoria_cliente_id": "--5"},
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            view.delete(request, override_id=314)
+        self.assertEqual(ctx.exception.code, "E_PARAMETER_VALIDATION")

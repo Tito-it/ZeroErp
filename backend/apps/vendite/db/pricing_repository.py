@@ -36,6 +36,13 @@ class PricingRepository:
     # nella versione listino determinata, poi fallback su `listini_righe`
     # standalone del componente. Quando NULL, comportamento standalone
     # tradizionale (resolver 3 stadi promo/contratto/categoria).
+    # `listino_versione_id_preferito`: bigint opzionale (refactor 2026-05-20).
+    # Se NOT NULL, il fast path "CONTRATTO_LISTINO" usa direttamente quella
+    # versione listino come fonte (skip lookup contratto-via-BA). Usato dal
+    # pricing gate L2 contratti per evitare drift cascata CATEGORIA quando si
+    # lavora dentro un contratto specifico. Output quando fast path attivo:
+    # `contratto_id`/`tipo_eccezione` = NULL (nessun contratto lookuppato),
+    # `tipo_variazione_applicata` = 'NESSUNA'. NULL = comportamento legacy.
     def resolve_prezzo_listino_v2(
         self,
         *,
@@ -47,6 +54,7 @@ class PricingRepository:
         emittente_soggetto_ruolo_id: int,
         classe_utenza_id: int | None = None,
         articolo_padre_contesto: UUID | str | None = None,
+        listino_versione_id_preferito: int | None = None,
     ) -> dict[str, Any]:
         # Wrapper LEFT JOIN sulle 4 entita' referenziate dal return della
         # funzione (listino, listino_versione, contratto, promo, categoria
@@ -80,7 +88,7 @@ class PricingRepository:
                     r.classe_utenza_id_snapshot,
                     clu.descrizione         AS classe_utenza_descrizione
                   FROM vendite.fn_resolve_prezzo_listino_v2(
-                           %s::uuid, %s, %s, %s, %s, %s, %s, %s::uuid
+                           %s::uuid, %s, %s, %s, %s, %s, %s, %s::uuid, %s::bigint
                        ) r
                   LEFT JOIN vendite.listini l
                     ON l.id = r.listino_id
@@ -104,6 +112,7 @@ class PricingRepository:
                     emittente_soggetto_ruolo_id,
                     classe_utenza_id,
                     str(articolo_padre_contesto) if articolo_padre_contesto else None,
+                    listino_versione_id_preferito,
                 ],
             )
             result = row_to_dict(cursor)

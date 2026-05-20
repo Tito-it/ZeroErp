@@ -165,18 +165,21 @@ export const useParametersStore = defineStore('parameters', () => {
   }
 
   // Scopo: upsert override + invalidate del code. La cache verra'
-  // ripopolata al prossimo `ensure`. Lo scope ('user' | 'emittente') segue
-  // la convenzione BE (apps/core/api/views_parameters.py).
-  async function setOverride(parameterCode, value, scope = 'user') {
-    const res = await upsertParameterOverride(parameterCode, value, scope)
+  // ripopolata al prossimo `ensure`. Lo scope segue la convenzione BE
+  // (apps/core/api/views_parameters.py): 'user' | 'emittente' | 'categoria_cliente'.
+  // `options.categoriaClienteId` obbligatorio quando scope='categoria_cliente'
+  // (validato lato BE con E_PARAMETER_VALIDATION 400 se assente/non positivo).
+  async function setOverride(parameterCode, value, scope = 'user', options = {}) {
+    const res = await upsertParameterOverride(parameterCode, value, scope, options)
     invalidate([parameterCode])
     return res.data?.data
   }
 
   // Scopo: delete override + invalidate. Il caller passa anche `code`
   // per invalidare la cache (l'API delete prende solo l'id override).
-  async function removeOverride(overrideId, parameterCode, scope = 'user') {
-    const res = await deleteParameterOverride(overrideId, scope)
+  // Per scope='categoria_cliente' passare `options.categoriaClienteId`.
+  async function removeOverride(overrideId, parameterCode, scope = 'user', options = {}) {
+    const res = await deleteParameterOverride(overrideId, scope, options)
     if (parameterCode) invalidate([parameterCode])
     return res.data?.data
   }

@@ -823,6 +823,8 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
+        # Lock listino_id richiede 0 righe attive (refactor 2026-05-20).
+        repo.count_righe_attive.return_value = 0
         listini_cls.return_value.has_versione_attiva.return_value = True
 
         ContrattiService().update_contratto(1, {
@@ -1021,6 +1023,43 @@ class ContrattiServiceTests(TestCase):
         self.assertIn("2 ESCLUSIONE", ctx.exception.detail or "")
         repo.update_contratto.assert_not_called()
 
+    # Scopo: aggiungere o sostituire il `listino_id` con righe attive blocca
+    # (refactor 2026-05-20). Caso: contratto DRAFT senza listino, AGGIUNTE
+    # caricate, l'utente prova a settare un listino → blocco semantico.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_aggiunge_listino_con_righe_bloccato(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        # Contratto attualmente senza listino (negoziato puro).
+        testata = _testata_default()
+        testata["listino_id"] = None
+        repo.get_contratto.return_value = testata
+        repo.count_righe_attive.return_value = 2  # 2 AGGIUNTE persistite
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_contratto(1, {"listino_id": 500})
+
+        self.assertEqual(ctx.exception.code, "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE")
+        self.assertIn("listino", (ctx.exception.detail or "").lower())
+        repo.update_contratto.assert_not_called()
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_sostituisce_listino_con_righe_bloccato(self, repo_cls):
+        # Sostituzione listino_id (100 → 200) con righe attive: blocco
+        # anche se ci sono solo AGGIUNTE (potrebbero conflittare col nuovo listino).
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()  # listino_id=100
+        repo.count_righe_attive.return_value = 1
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_contratto(1, {"listino_id": 200})
+
+        self.assertEqual(ctx.exception.code, "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE")
+        repo.update_contratto.assert_not_called()
+
     # Scopo: rimuovere il listino con SOLE AGGIUNTE (no OVERRIDE/ESCLUSIONE)
     # e' ammesso — le AGGIUNTE restano valide anche senza listino.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
@@ -1142,6 +1181,10 @@ class ContrattiServiceTests(TestCase):
 
         repo = repo_cls.return_value
         repo.get_contratto.return_value = _testata_default()  # DRAFT
+        # Articolo non composito: il bypass del modello unificato BoM
+        # (Decimal('0') placeholder per padri compositi) non scatta;
+        # OVERRIDE/AGGIUNTA con prezzo None deve fallire.
+        repo.is_articolo_composito.return_value = False
 
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().create_riga(
@@ -1201,6 +1244,10 @@ class ContrattiServiceTests(TestCase):
 
         repo = repo_cls.return_value
         repo.get_contratto.return_value = _testata_default()  # DRAFT
+        # Articolo NON composito: evita il branch auto-init componenti BoM
+        # (modello unificato 2026-05-13). Il branch composito viene testato
+        # nei test ContrattiServiceComponentiTests.
+        repo.is_articolo_composito.return_value = False
         repo.create_riga.return_value = 77
         repo.get_riga.return_value = {"id": 77, "prezzo_unitario": Decimal("25.50")}
 
@@ -1839,10 +1886,13 @@ class ContrattiServiceComponentiTests(TestCase):
         return_value=None,  # ← admin globale, niente emittente
     )
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_riga_articolo_composito_skip_init_senza_emittente(
+    def test_create_riga_articolo_composito_senza_emittente_solleva(
         self, repo_cls, _mock_resolve, _mock_atomic,
     ):
-        """Articolo composito + emittente non risolvibile → skip init con log warning."""
+        """Articolo composito + emittente non risolvibile → errore parlante
+        (refactor 2026-05-19: niente piu' skip silente; il padre orfano e'
+        peggio di un errore visibile, l'atomic rollbacka il padre).
+        """
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = MagicMock()
@@ -1852,9 +1902,7 @@ class ContrattiServiceComponentiTests(TestCase):
         repo.get_riga.return_value = {"id": 500, "contratto_id": 1}
         repo_cls.return_value = repo
 
-        with self.assertLogs(
-            "apps.vendite.services.contratti_service", level="WARNING",
-        ) as logs:
+        with self.assertRaises(ServiceError) as ctx:
             ContrattiService().create_riga(
                 1,
                 {
@@ -1865,13 +1913,51 @@ class ContrattiServiceComponentiTests(TestCase):
                 },
                 auth_user_id=None,
             )
-
-        # Init NON chiamato + warning emesso per audit.
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("emittente", (ctx.exception.detail or "").lower())
+        # Init NON chiamato: l'errore scatta prima.
         repo.init_componenti_riga.assert_not_called()
-        self.assertTrue(
-            any("auto_init_componenti_skipped" in msg for msg in logs.output),
-            f"Atteso warning skip in: {logs.output}",
-        )
+
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch(
+        "apps.vendite.services.contratti_service.ContrattiService."
+        "_resolve_emittente_sr_id_for_contratto",
+        return_value=99,  # EF risolto, ma valido_dal mancante in testata
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_articolo_composito_senza_valido_dal_solleva(
+        self, repo_cls, _mock_resolve, _mock_atomic,
+    ):
+        """Articolo composito + valido_dal NULL in testata → errore parlante
+        (refactor 2026-05-19: pari al caso emittente, niente skip silente).
+        """
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        # Testata senza valido_dal (DRAFT con campo non ancora valorizzato).
+        testata = _testata_default()
+        testata["valido_dal"] = None
+        repo.get_contratto.return_value = testata
+        repo.create_riga.return_value = 500
+        repo.is_articolo_composito.return_value = True
+        repo.get_riga.return_value = {"id": 500, "contratto_id": 1}
+        repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().create_riga(
+                1,
+                {
+                    "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
+                    "tipo_eccezione": "AGGIUNTA",
+                    "prezzo_unitario": "0",
+                    "quantita": "1",
+                },
+                auth_user_id=42,
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("valido_dal", (ctx.exception.detail or "").lower())
+        # Init NON chiamato: la guard scatta prima.
+        repo.init_componenti_riga.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.transaction.atomic")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
@@ -1953,6 +2039,175 @@ class ContrattiServiceComponentiTests(TestCase):
 # 9) test_resolve_or_check_override_payload_uguale_resolver — no override
 # 10) test_resolve_or_check_override_payload_diverso_no_permesso_blocca_L1
 # 11) test_resolve_or_check_override_richiesta_approvazione_ritorna_violazione_l2
+
+
+class ContrattiServiceFonteQuantitaTests(TestCase):
+    """Suite refactor 2026-05-19: coerenza (tipo_erogazione, fonte_quantita_attesa)
+    e normalizzazione `quantita` in `_apply_fonte_quantita_logic`.
+
+    Defense-in-depth lato BE: il DB applica CHECK chk_contrighe_coerenza_fonte_erogazione
+    + trigger trg_contratti_righe_a10_default_fonte_qta_ins_upd (migrations
+    20260519-05/06). Qui verifichiamo che il service applichi la stessa logica
+    PRIMA del round-trip DB, con errore parlante.
+
+    Riferimento: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §2.
+
+    Indice test:
+    1) test_apply_default_fonte_per_tipo_in_create — 4 sub-test
+    2) test_apply_no_default_fonte_in_update — i default sono solo create
+    3) test_combinazione_vietata_solleva — 7 sub-test (matrice CHECK DB)
+    4) test_combinazione_ammessa_passa — sub-test sulle combo default/valide
+    5) test_fonte_fissa_richiede_quantita_positiva
+    6) test_fonte_downstream_forza_quantita_null — 3 sub-test (MANUALE/TIMESHEET/LETTURE)
+    7) test_fonte_downstream_forza_qta_operativa_anche_se_assente_dal_payload
+       (regressione bug 2026-05-19 asimmetria normalizzazione)
+    8) test_fonte_derivata_componenti_non_normalizza_quantita
+    """
+
+    def _service(self):
+        # Service stateless rispetto a _apply_fonte_quantita_logic. Niente mock.
+        from apps.vendite.services.contratti_service import ContrattiService
+        return ContrattiService()
+
+    # -- Default --------------------------------------------------------
+
+    def test_apply_default_fonte_per_tipo_in_create(self):
+        svc = self._service()
+        attesi = {
+            "CANONE": "FISSA",
+            "UNA_TANTUM": "FISSA",
+            "ORARIO": "MANUALE",
+            "CONSUMO": "LETTURE",
+        }
+        for tipo, fonte_attesa in attesi.items():
+            with self.subTest(tipo=tipo):
+                data = {"tipo_erogazione": tipo, "quantita": Decimal("1")}
+                svc._apply_fonte_quantita_logic(data, for_create=True)
+                self.assertEqual(data.get("fonte_quantita_attesa"), fonte_attesa)
+
+    def test_apply_no_default_fonte_in_update(self):
+        # In update non auto-applichiamo default: la decisione del trigger DB
+        # (reset solo se la combo diventa vietata) e' speculare lato BE.
+        svc = self._service()
+        data = {"tipo_erogazione": "CANONE"}
+        svc._apply_fonte_quantita_logic(data, for_create=False)
+        self.assertNotIn("fonte_quantita_attesa", data)
+
+    # -- Guard combinazioni vietate --------------------------------------
+
+    def test_combinazione_vietata_solleva(self):
+        svc = self._service()
+        vietate = [
+            ("CANONE", "TIMESHEET"),
+            ("CANONE", "LETTURE"),
+            ("UNA_TANTUM", "TIMESHEET"),
+            ("UNA_TANTUM", "LETTURE"),
+            ("ORARIO", "LETTURE"),
+            ("CONSUMO", "FISSA"),
+            ("CONSUMO", "TIMESHEET"),
+        ]
+        for tipo, fonte in vietate:
+            with self.subTest(tipo=tipo, fonte=fonte):
+                data = {
+                    "tipo_erogazione": tipo,
+                    "fonte_quantita_attesa": fonte,
+                    "quantita": Decimal("1"),
+                }
+                with self.assertRaises(ServiceError) as ctx:
+                    svc._apply_fonte_quantita_logic(data, for_create=True)
+                self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+                self.assertIn("Combinazione vietata", ctx.exception.detail or "")
+
+    def test_combinazione_ammessa_passa(self):
+        svc = self._service()
+        ammesse = [
+            ("CANONE", "FISSA"),
+            ("CANONE", "MANUALE"),
+            ("CANONE", "DERIVATA_COMPONENTI"),
+            ("UNA_TANTUM", "FISSA"),
+            ("ORARIO", "MANUALE"),
+            ("ORARIO", "TIMESHEET"),
+            ("CONSUMO", "MANUALE"),
+            ("CONSUMO", "LETTURE"),
+            ("CONSUMO", "DERIVATA_COMPONENTI"),
+        ]
+        for tipo, fonte in ammesse:
+            with self.subTest(tipo=tipo, fonte=fonte):
+                # Per FISSA serve qta positiva (guard 2.3); usiamo DERIVATA o
+                # qta_operativa per le altre per non rompere la guard FISSA.
+                data = {
+                    "tipo_erogazione": tipo,
+                    "fonte_quantita_attesa": fonte,
+                    "qta_operativa": Decimal("1") if fonte == "FISSA" else None,
+                }
+                # Non deve sollevare.
+                svc._apply_fonte_quantita_logic(data, for_create=True)
+
+    # -- Normalizzazione quantita ---------------------------------------
+
+    def test_fonte_fissa_richiede_quantita_positiva(self):
+        svc = self._service()
+        data = {
+            "tipo_erogazione": "CANONE",
+            "fonte_quantita_attesa": "FISSA",
+            # nessuna quantita ne' qta_operativa
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            svc._apply_fonte_quantita_logic(data, for_create=True)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("quantita > 0", ctx.exception.detail or "")
+
+    def test_fonte_downstream_forza_quantita_null(self):
+        svc = self._service()
+        fonti_downstream = [
+            ("CANONE", "MANUALE"),    # rara ma ammessa
+            ("ORARIO", "TIMESHEET"),  # naturale
+            ("CONSUMO", "LETTURE"),   # naturale
+        ]
+        for tipo, fonte in fonti_downstream:
+            with self.subTest(tipo=tipo, fonte=fonte):
+                data = {
+                    "tipo_erogazione": tipo,
+                    "fonte_quantita_attesa": fonte,
+                    "quantita": Decimal("5"),  # ignorata
+                    "qta_operativa": Decimal("3"),  # ignorata
+                }
+                svc._apply_fonte_quantita_logic(data, for_create=True)
+                self.assertIsNone(data["quantita"])
+                self.assertIsNone(data["qta_operativa"])
+
+    def test_fonte_downstream_forza_qta_operativa_anche_se_assente_dal_payload(self):
+        # Regressione bug 2026-05-19: in update parziale `{fonte_quantita_attesa:
+        # 'MANUALE'}` (l'utente cambia solo la fonte da FISSA a MANUALE), il
+        # service deve forzare a NULL ENTRAMBI `quantita` e `qta_operativa` nel
+        # `data`, anche se il payload non contiene `qta_operativa`. Altrimenti
+        # il trigger DB `trgfn_qta_from_operativa` riscrive `quantita` =
+        # `qta_operativa` post-UPDATE, vanificando il NULL.
+        svc = self._service()
+        data = {
+            "tipo_erogazione": "CANONE",
+            "fonte_quantita_attesa": "MANUALE",
+            # nessuna quantita/qta_operativa nel data
+        }
+        # Payload vuoto (simula update parziale senza qta).
+        svc._apply_fonte_quantita_logic(data, for_create=False)
+        self.assertIsNone(data.get("quantita"))
+        self.assertIsNone(data.get("qta_operativa"))
+
+    def test_fonte_derivata_componenti_non_normalizza_quantita(self):
+        # DERIVATA_COMPONENTI: il trigger DB z90_propaga_qta_componenti scrive
+        # `quantita` post-INSERT figli. Il service NON deve toccarla
+        # (ne' forzare NULL, ne' validare > 0). Lascia passare il valore del
+        # payload o NULL se assente.
+        svc = self._service()
+        data = {
+            "tipo_erogazione": "CANONE",
+            "fonte_quantita_attesa": "DERIVATA_COMPONENTI",
+            # nessuna quantita: il trigger DB la calcola
+        }
+        # Non deve sollevare ne' settare quantita.
+        svc._apply_fonte_quantita_logic(data, for_create=True)
+        self.assertNotIn("quantita", data)
 
 
 class ContrattiServicePricingGateTests(TestCase):
@@ -2110,7 +2365,7 @@ class ContrattiServicePricingGateTests(TestCase):
         )
 
         testata = {"id": 1, "billing_account_id": None, "utility_id": 3,
-                   "data": "2026-05-15"}
+                   "listino_id": 100, "data": "2026-05-15"}
         prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
             testata=testata,
             articolo_id="abc",
@@ -2120,6 +2375,30 @@ class ContrattiServicePricingGateTests(TestCase):
             function_name="test",
         )
         self.assertEqual(prezzo, Decimal("10.00"))
+        self.assertIsNone(meta)
+
+    def test_resolve_or_check_override_skip_per_contratto_senza_listino(self):
+        """Refactor 2026-05-20: contratti con listino_id IS NULL saltano
+        TUTTI i gate (L1+L2+L3). Semantica del modello "senza_listino":
+        prezzo negoziato puro, nessun benchmark esterno comparabile.
+        Evita falsi L2 vs cascata CATEGORIA/PROMO non pertinente.
+        """
+        from apps.vendite.services.contratti_service import (
+            resolve_or_check_override_prezzo_riga_contratto,
+        )
+
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3,
+                   "listino_id": None, "data": "2026-05-15"}
+        prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
+            testata=testata,
+            articolo_id="abc",
+            uom_id=5,
+            payload_prezzo=Decimal("99.99"),
+            auth_user_id=None,  # gate L1 normalmente solleverebbe
+            function_name="test",
+        )
+        # Skip totale: payload as-is, meta None, nessun gate invocato.
+        self.assertEqual(prezzo, Decimal("99.99"))
         self.assertIsNone(meta)
 
     @patch(
@@ -2137,7 +2416,7 @@ class ContrattiServicePricingGateTests(TestCase):
             "origine": "CONTRATTO_LISTINO",
             "listino_id": 100,
         }
-        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3,
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
                    "data": "2026-05-15"}
 
         prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
@@ -2166,7 +2445,7 @@ class ContrattiServicePricingGateTests(TestCase):
             "prezzo_finale": "30.00",
             "origine": "CONTRATTO_LISTINO",
         }
-        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3,
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
                    "data": "2026-05-15"}
 
         prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
@@ -2207,7 +2486,7 @@ class ContrattiServicePricingGateTests(TestCase):
             code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
             message="L1 blocco.",
         )
-        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3,
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
                    "data": "2026-05-15"}
 
         with self.assertRaises(ServiceError) as ctx:
@@ -2251,7 +2530,7 @@ class ContrattiServicePricingGateTests(TestCase):
             "limite_pct": "15",
             "kind_label": "Sconto",
         }
-        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3,
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
                    "data": "2026-05-15"}
 
         prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(

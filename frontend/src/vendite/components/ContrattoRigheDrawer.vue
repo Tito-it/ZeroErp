@@ -19,7 +19,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 import { useLimitiPricing } from '../composables/useLimitiPricing'
-import { PRICING_ACTIONS } from '../constants'
+import { FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE } from '../constants'
 import { extractApiError, extractApiErrorCode } from '../../core/utils/apiError'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
@@ -171,7 +171,7 @@ const pageActions = computed(() => [
   {
     key: 'aggiungi-articolo',
     kind: 'primary',
-    label: t('contratti.aggiungi_articolo'),
+    label: t('common.new'),
     tooltip: t('contratti.aggiungi_articolo_tooltip'),
     icon: MANAGE_ICONS.ADD,
     visible: canVariarePrezzi.value,
@@ -294,7 +294,7 @@ const form = ref({})
 const selectedRow = ref(null)
 
 // Articolo selezionato corrente con flag `is_composito` (dal lookup
-// `ArticoloLookup` o ricostruito in `onRowSelect` per EDIT). Driver della
+// `ArticoloLookup` o ricostruito in `_onEditRigaPersistita` per EDIT). Driver della
 // detection auto-apertura ComponentiDialog + visibilita' ComponentiPanel
 // (modello unificato BoM 2026-05-13).
 const articoloObj = ref(null)
@@ -383,6 +383,58 @@ const tipoErogazioneOptions = computed(() => [
   { value: 'UNA_TANTUM', label: t('contratti.tipo_erogazione_una_tantum') },
 ])
 
+// Refactor 2026-05-19: matrice (tipo_erogazione × fonte_quantita_attesa).
+// Le fonti vietate (CHECK chk_contrighe_coerenza_fonte_erogazione, migration
+// 20260519-05) NON appaiono nelle liste — il Select e' filtrato per tipo.
+// severity: 'warn' = uso atipico (🟡 nella matrice), undefined = valida.
+// default: true = scelta predefinita pre-compilata in CREATE.
+// TIMESHEET commentato finche' il modulo rendicontazione ore non esistera'.
+// Riferimento: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §3.
+const FONTI_PER_TIPO_EROGAZIONE = {
+  CANONE: [
+    { value: FONTE_QUANTITA_ATTESA.FISSA, default: true },
+    { value: FONTE_QUANTITA_ATTESA.MANUALE, severity: 'warn' },
+    { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
+  ],
+  UNA_TANTUM: [
+    { value: FONTE_QUANTITA_ATTESA.FISSA, default: true },
+    { value: FONTE_QUANTITA_ATTESA.MANUALE },
+    { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
+  ],
+  ORARIO: [
+    { value: FONTE_QUANTITA_ATTESA.FISSA, severity: 'warn' },
+    { value: FONTE_QUANTITA_ATTESA.MANUALE, default: true },
+    // { value: FONTE_QUANTITA_ATTESA.TIMESHEET },  // attivare quando il modulo timesheet esistera'
+    { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI, severity: 'warn' },
+  ],
+  CONSUMO: [
+    { value: FONTE_QUANTITA_ATTESA.MANUALE },
+    { value: FONTE_QUANTITA_ATTESA.LETTURE, default: true },
+    { value: FONTE_QUANTITA_ATTESA.DERIVATA_COMPONENTI },
+  ],
+}
+
+function _fontiPerTipo(tipo) {
+  return FONTI_PER_TIPO_EROGAZIONE[tipo] || []
+}
+
+function _defaultFontePerTipo(tipo) {
+  return _fontiPerTipo(tipo).find(f => f.default)?.value ?? null
+}
+
+const fonteQuantitaOptions = computed(() => _fontiPerTipo(form.value?.tipo_erogazione).map(f => ({
+  value: f.value,
+  label: t(`contratti.fonte_quantita_value_${f.value.toLowerCase()}`),
+  severity: f.severity,
+})))
+
+const fonteCorrente = computed(() => fonteQuantitaOptions.value.find(f => f.value === form.value?.fonte_quantita_attesa) || null)
+
+// Q.ta operativa visibile/obbligatoria solo per fonte FISSA. Per le altre
+// 4 fonti il valore vero nasce downstream (manuale sul documento / timesheet
+// / letture / derivato dai componenti via trigger DB z90_propaga_qta_componenti).
+const showQtaOperativa = computed(() => form.value?.fonte_quantita_attesa === FONTE_QUANTITA_ATTESA.FISSA)
+
 // Refactor 2026-05-18 (FE 2.2 Opzione C): il tipo_eccezione non e' piu' una
 // scelta dell'operatore via Select, ma e' DERIVATO dall'azione che ha aperto
 // il form:
@@ -393,11 +445,17 @@ const tipoErogazioneOptions = computed(() => [
 // piu' ambiguita' "che tipo voglio creare?". Default AGGIUNTA: l'azione
 // toolbar e' il punto di ingresso piu' generico.
 function defaultForm(overrides = {}) {
+  const tipo = overrides.tipo_erogazione || 'CANONE'
   return {
     articolo_id: null,
     articolo_obj: null,
     tipo_eccezione: 'AGGIUNTA',
-    tipo_erogazione: 'CANONE',
+    tipo_erogazione: tipo,
+    // Refactor 2026-05-19: fonte derivata dalla matrice in base al tipo
+    // (default = FISSA per CANONE/UNA_TANTUM). Il BE applica lo stesso
+    // default se assente (defense-in-depth), ma pre-compilare in UI
+    // rende esplicita la scelta predefinita all'utente.
+    fonte_quantita_attesa: _defaultFontePerTipo(tipo),
     prezzo_unitario: null,
     qta_operativa: 1,
     uom_operativa_id: null,
@@ -431,6 +489,20 @@ watch(() => props.visible, (v) => {
 watch(() => props.righeIniziali, (v) => {
   righe.value = [...(v || [])]
 }, { deep: true })
+
+// Refactor 2026-05-19: reset di `fonte_quantita_attesa` al cambio
+// `tipo_erogazione` SOLO se la combo nuova diventa vietata
+// (decisione 3 della sessione 2026-05-19, speculare al trigger DB
+// trg_contratti_righe_a10_default_fonte_qta_ins_upd).
+// Preserva la scelta utente quando possibile, applica il default
+// del nuovo tipo solo quando necessario.
+watch(() => form.value?.tipo_erogazione, (nuovoTipo, vecchioTipo) => {
+  if (!nuovoTipo || nuovoTipo === vecchioTipo) return
+  const fontiValide = _fontiPerTipo(nuovoTipo).map(f => f.value)
+  if (!fontiValide.includes(form.value.fonte_quantita_attesa)) {
+    form.value.fonte_quantita_attesa = _defaultFontePerTipo(nuovoTipo)
+  }
+})
 
 // === Azioni ===
 
@@ -474,7 +546,7 @@ function onModificaPrezzo(row) {
   // Carica le UoM operative dell'articolo per popolare uomOptions: senza
   // fetch il Select UoM mostrerebbe vuoto anche con uom_operativa_id
   // pre-selezionato (PrimeVue richiede che il valore sia nelle options).
-  // Pattern identico a `onRowSelect` per righe OVERRIDE gia' esistenti.
+  // Pattern identico a `_onEditRigaPersistita` per righe OVERRIDE gia' esistenti.
   resetComponentiState()
   loadUomPerArticolo(row.articolo_id)
 }
@@ -512,26 +584,35 @@ function onEscludi(row) {
   })
 }
 
-function onRowSelect(event) {
+// Scopo: handler unificato click di riga (allineamento UX standard del progetto
+//        — frontend-standards §"Pattern lista": modifica = click riga, kebab
+//        riservato ad azioni secondarie).
+//        - readonly: no-op
+//        - riga DA_LISTINO (preview): apre il form pre-compilato come OVERRIDE
+//          (delega a onModificaPrezzo, ex-azione "matita" rimossa dal kebab)
+//        - riga persistita (OVERRIDE/AGGIUNTA/ESCLUSIONE): apre edit normale
+//        Inoltre auto-espande la riga corrente se composita, cosi' l'operatore
+//        vede subito la composizione BoM inline durante l'edit (simmetria con
+//        PreventiviRigheTable).
+function onRowClick(event) {
   const r = event.data
-  // In readonly (permessi area LETTURA o contratto post-DRAFT) il click su
-  // una riga NON apre il form di modifica. La selezione resta consultabile
-  // visivamente solo per evidenziare la riga letta. Coerente con il guard
-  // BE Profilo A che rifiuta update_riga su contratti non-DRAFT.
-  if (isReadonly.value) {
-    selectedRow.value = null
-    return
+  if (isReadonly.value) return
+  // Auto-expand inline se la riga e' un bundle composito: nessun click extra
+  // sul chevron, il dettaglio componenti diventa subito visibile.
+  if (hasBundleComponenti(r) && !isExpanded(r)) {
+    toggleExpansion(r)
   }
-  // In modalita' A/B la lista mostra la preview combinata: le righe con
-  // origine='DA_LISTINO' sono readonly (preview puro) e non aprono il form.
-  // Solo le righe 'OVERRIDE' (con id contratti_righe) sono editabili.
+  // DA_LISTINO: pre-compila il form come OVERRIDE (era il vecchio "Modifica prezzo").
   if (r.origine === 'DA_LISTINO') {
-    // Reset selezione e form: evita evidenziamento residuo PrimeVue e
-    // disallinea form-mode aperto su altra riga.
-    selectedRow.value = null
-    if (formMode.value) closeForm()
+    onModificaPrezzo(r)
     return
   }
+  _onEditRigaPersistita(r)
+}
+
+// Scopo: apertura form EDIT per righe persistite (override/aggiunta/esclusione).
+//        Estratto da onRowClick per non duplicare la logica di restore form.
+function _onEditRigaPersistita(r) {
   // ID dipende dalla modalita': in A/B usa override_riga_id (preview),
   // in C usa r.id (riga contratto persistita).
   const rigaId = r.id ?? r.override_riga_id
@@ -543,6 +624,11 @@ function onRowSelect(event) {
     // legacy che non avevano ancora il campo (transitorio).
     tipo_eccezione: r.tipo_eccezione || 'OVERRIDE',
     tipo_erogazione: r.tipo_erogazione || 'CANONE',
+    // Refactor 2026-05-19: fonte_quantita_attesa NOT NULL post-migration
+    // 20260519-05. Fallback dal default della matrice solo per righe legacy
+    // che non avessero ancora il campo (transitorio, non dovrebbe accadere).
+    fonte_quantita_attesa: r.fonte_quantita_attesa
+      || _defaultFontePerTipo(r.tipo_erogazione || 'CANONE'),
     prezzo_unitario: (r.prezzo_unitario ?? r.override_prezzo) != null
       ? Number(r.prezzo_unitario ?? r.override_prezzo)
       : null,
@@ -600,6 +686,15 @@ const canSave = computed(() => {
   if (!formMode.value) return false
   if (!form.value.articolo_id) return false
   if (!form.value.uom_operativa_id) return false
+  // Refactor 2026-05-19: fonte_quantita_attesa NOT NULL (CHECK DB).
+  // Per FISSA serve anche qta_operativa > 0; per le altre 4 fonti la
+  // quantita verra' impostata downstream (manuale/timesheet/letture)
+  // o dal trigger DB (derivata_componenti).
+  if (!form.value.fonte_quantita_attesa) return false
+  if (form.value.fonte_quantita_attesa === FONTE_QUANTITA_ATTESA.FISSA
+      && (form.value.qta_operativa == null || Number(form.value.qta_operativa) <= 0)) {
+    return false
+  }
   // Refactor modalita 2026-05-15: coerenza prezzo_unitario / tipo_eccezione
   // (specchio del check BE _build_data_riga):
   //   - ESCLUSIONE: prezzo NULL ammesso (l'articolo non e' disponibile)
@@ -634,10 +729,16 @@ const formTitle = computed(() => {
 //        senza duplicare la build.
 function buildRigaPayload(extra = {}) {
   const f = form.value
+  // Refactor 2026-05-19: `qta_operativa` inviata solo per fonte FISSA.
+  // Per le altre fonti (downstream o derivata) il BE forza NULL via
+  // `_apply_fonte_quantita_logic`; inviare un valore qui sarebbe
+  // semanticamente fuorviante (la fonte e' il driver).
+  const isFissa = f.fonte_quantita_attesa === FONTE_QUANTITA_ATTESA.FISSA
   const payload = {
     tipo_erogazione: f.tipo_erogazione || null,
+    fonte_quantita_attesa: f.fonte_quantita_attesa || null,
     prezzo_unitario: f.prezzo_unitario != null ? String(f.prezzo_unitario) : null,
-    qta_operativa: f.qta_operativa != null ? String(f.qta_operativa) : '1',
+    qta_operativa: (isFissa && f.qta_operativa != null) ? String(f.qta_operativa) : null,
     uom_operativa_id: f.uom_operativa_id || null,
     ordine: f.ordine != null ? Number(f.ordine) : null,
     ...extra,
@@ -736,26 +837,57 @@ function onDelete(r) {
   })
 }
 
+// Scopo: ripristino eccezione (refactor UX 2026-05-19). Stessa azione DB di
+//        onDelete (cancella la riga `contratti_righe`), ma con messaggio
+//        parlante che spieghi il vero effetto: l'articolo non viene rimosso
+//        dal contratto, torna al comportamento del listino. Riusato sia per
+//        OVERRIDE ("Ripristina prezzo di listino") sia per ESCLUSIONE
+//        ("Ripristina articolo nel contratto"): il backend e' identico, la
+//        differenza e' solo il testo del confirm.
+function onRipristina(r, origine) {
+  const rigaId = r.id ?? r.override_riga_id
+  const articoloLabel = r.articolo_codice
+    ? `${r.articolo_codice} — ${r.articolo_descrizione}`
+    : r.articolo_descrizione
+  const prefix = origine === TIPO_ECCEZIONE.OVERRIDE
+    ? 'ripristina_listino'
+    : 'ripristina_articolo'
+  confirmAction({
+    header: t(`contratti.${prefix}_dialog_titolo`),
+    message: t(`contratti.${prefix}_dialog_messaggio`, { articolo: articoloLabel }),
+    acceptLabel: t(`contratti.${prefix}_dialog_conferma`),
+    danger: false,
+    onAccept: async () => {
+      const result = await execute(
+        () => store.deleteRiga(props.contrattoId, rigaId),
+        { successMessage: t('contratti.riga_ripristinata') }
+      )
+      if (result !== null) {
+        if (rigaEditId.value === rigaId) closeForm()
+        if (!isSenzaListino.value) await loadPreview()
+        emit('changed')
+      }
+    },
+  })
+}
+
 const onClose = useDrawerClose(emit)
 
-// Scopo: azioni di riga del master-detail. Differenziate per origine:
-//   - DA_LISTINO (preview puro, no contratti_righe): "Modifica prezzo"
-//     (apre form CREATE pre-compilato come OVERRIDE) e "Escludi" (one-click
-//     ESCLUSIONE con conferma). Gated su `canVariarePrezzi`. Refactor FE 2.2
-//     Opzione C (2026-05-18): UX azioni esplicite al posto del vecchio
-//     Select tipo_eccezione nel form.
-//   - eccezioni gia' esistenti (OVERRIDE/ESCLUSIONE/AGGIUNTA): "Elimina"
-//     come prima.
+// Scopo: azioni di riga del master-detail. Differenziate per origine.
+//        Allineamento UX standard del progetto (frontend-standards §"Pattern
+//        lista"): la modifica avviene per click di riga, il kebab espone
+//        solo azioni SECONDARIE distinte dall'edit.
+//   - DA_LISTINO (preview puro): "Escludi" (one-click ESCLUSIONE con conferma).
+//     La modifica prezzo arriva da onRowClick → onModificaPrezzo, niente matita.
+//   - OVERRIDE: "Ripristina prezzo di listino" (DELETE → l'articolo torna
+//     DA_LISTINO al prezzo originale). Refactor UX 2026-05-19.
+//   - ESCLUSIONE: "Ripristina articolo nel contratto" (DELETE → l'articolo
+//     torna disponibile al prezzo di listino). Refactor UX 2026-05-19.
+//   - AGGIUNTA: "Rimuovi dal contratto" (DELETE → l'articolo sparisce; non
+//     era nel listino, "elimina" semanticamente corretto).
 function buildRigaActions(data) {
   if (data.origine === 'DA_LISTINO') {
     return [
-      {
-        key: 'modifica-prezzo',
-        label: t('contratti.azione_modifica_prezzo'),
-        icon: MANAGE_ICONS.EDIT,
-        visible: !isReadonly.value && canVariarePrezzi.value,
-        command: () => onModificaPrezzo(data),
-      },
       {
         key: 'escludi',
         label: t('contratti.azione_escludi'),
@@ -766,10 +898,36 @@ function buildRigaActions(data) {
       },
     ]
   }
+  if (data.origine === TIPO_ECCEZIONE.OVERRIDE) {
+    return [
+      {
+        key: 'ripristina-listino',
+        label: t('contratti.azione_ripristina_listino'),
+        icon: 'pi pi-replay',
+        severity: 'secondary',
+        visible: !isReadonly.value,
+        command: () => onRipristina(data, TIPO_ECCEZIONE.OVERRIDE),
+      },
+    ]
+  }
+  if (data.origine === TIPO_ECCEZIONE.ESCLUSIONE) {
+    return [
+      {
+        key: 'ripristina-articolo',
+        label: t('contratti.azione_ripristina_articolo'),
+        icon: 'pi pi-replay',
+        severity: 'secondary',
+        visible: !isReadonly.value,
+        command: () => onRipristina(data, TIPO_ECCEZIONE.ESCLUSIONE),
+      },
+    ]
+  }
+  // AGGIUNTA: "Elimina" semanticamente corretto — l'articolo non e' nel
+  // listino, sparisce davvero dal contratto.
   return [
     {
-      key: 'elimina-riga',
-      label: t('common.delete'),
+      key: 'rimuovi-aggiunta',
+      label: t('contratti.azione_rimuovi_aggiunta'),
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: !isReadonly.value,
@@ -778,10 +936,15 @@ function buildRigaActions(data) {
   ]
 }
 
-// Scopo: severity Tag per origine riga (DA_LISTINO=neutra, OVERRIDE=primary).
+// Scopo: severity Tag per origine riga. Distinzione visiva delle 4 origini
+// nella tabella righe: DA_LISTINO neutra (preview), OVERRIDE info (prezzo
+// personalizzato), AGGIUNTA success (articolo aggiunto al contratto),
+// ESCLUSIONE warn (articolo rimosso dal listino).
 function origineSeverity(origine) {
-  if (origine === 'OVERRIDE') return 'info'
-  if (origine === 'DA_LISTINO') return 'secondary'
+  if (origine === TIPO_ECCEZIONE.OVERRIDE) return 'info'
+  if (origine === TIPO_ECCEZIONE.AGGIUNTA) return 'success'
+  if (origine === TIPO_ECCEZIONE.ESCLUSIONE) return 'warn'
+  if (origine === TIPO_ECCEZIONE.DA_LISTINO) return 'secondary'
   return null
 }
 </script>
@@ -795,35 +958,35 @@ function origineSeverity(origine) {
     :dismissable="true"
   >
     <template #header>
-      <DrawerTitle :title="t('contratti.drawer_righe_titolo')" icon="pi pi-list" />
+      <DrawerTitle :title="t('contratti.drawer_righe_titolo')" :icon="MANAGE_ICONS.RIGHE" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
       <!-- === Intestazione contesto contratto === -->
-      <div v-if="contrattoStatoCodice" style="text-align: right;" class="mb-2">
-        <Tag :value="contrattoStatoDescrizione"
-          :severity="statoContrattoSeverity(contrattoStatoCodice)" />
-      </div>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('contratti.field_numero') }}</label>
-          <span class="font-bold">{{ contrattoNumero }}</span>
+      <div class="contratto-righe-context">
+        <div class="contratto-righe-context-grid">
+          <div class="contratto-righe-context-item">
+            <span class="contratto-righe-context-label">{{ t('contratti.field_numero') }}</span>
+            <span class="font-bold">{{ contrattoNumero }}</span>
+          </div>
+          <div class="contratto-righe-context-item">
+            <span class="contratto-righe-context-label">{{ t('contratti.col_ba') }}</span>
+            <span>{{ contrattoCliente }}</span>
+          </div>
+          <div class="contratto-righe-context-item">
+            <span class="contratto-righe-context-label">{{ t('contratti.col_valido_dal') }}</span>
+            <span>{{ displayDate(contrattoValidoDal) }}</span>
+          </div>
+          <div class="contratto-righe-context-item">
+            <span class="contratto-righe-context-label">{{ t('contratti.col_valido_al') }}</span>
+            <span>{{ contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' }}</span>
+          </div>
         </div>
-        <div class="form-field">
-          <label>{{ t('contratti.col_ba') }}</label>
-          <span>{{ contrattoCliente }}</span>
-        </div>
-      </div>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('contratti.col_valido_dal') }}</label>
-          <span>{{ displayDate(contrattoValidoDal) }}</span>
-        </div>
-        <div class="form-field">
-          <label>{{ t('contratti.col_valido_al') }}</label>
-          <span>{{ contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' }}</span>
-        </div>
+        <Tag v-if="contrattoStatoCodice"
+          :value="contrattoStatoDescrizione"
+          :severity="statoContrattoSeverity(contrattoStatoCodice)"
+          class="contratto-righe-context-status" />
       </div>
 
       <!-- Banner contesto pricing (refactor modalita 2026-05-15, FE 2.2):
@@ -904,7 +1067,7 @@ function origineSeverity(origine) {
         selection-mode="single"
         :data-key="isSenzaListino ? 'id' : '_row_key'"
         :row-class="rowClass"
-        class="app-datatable"
+        class="app-datatable app-datatable--inner"
         striped-rows
         paginator
         :rows="10"
@@ -913,7 +1076,7 @@ function origineSeverity(origine) {
         sort-field="articolo_descrizione"
         :sort-order="1"
         removable-sort
-        @row-select="onRowSelect"
+        @row-click="onRowClick"
       >
         <!-- Expander custom per bundle BoM: chevron visibile solo dove la
              riga è padre composito con figli (componenti JSONB non vuoto).
@@ -971,25 +1134,20 @@ function origineSeverity(origine) {
             <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
           </template>
         </Column>
-        <!-- Sub-tabella componenti BoM: padre + figli annidati (pattern
-             uniforme con PreventiviRigheTable). I figli arrivano già
-             aggregati nel JSONB `componenti` dalla funzione DB
-             `vendite.fn_contratto_righe_preview` — niente API extra. -->
+        <!-- Sub-tabella componenti BoM: padre + figli annidati.
+             `ComponentiPanel` in modalita' data-driven (prop `initialData`):
+             salta la fetch, normalizza shape JSONB (`prezzo`/`coeff_qta`
+             dalla fn DB) sullo shape persistito e auto-nasconde le colonne
+             metadata (origine/approvazione/IVA) assenti nel preview.
+             I figli arrivano gia' aggregati nel JSONB `componenti` da
+             `fn_contratto_righe_preview` tanto per righe DA_LISTINO bundle
+             (figli in `listini_righe_componenti`) quanto per AGGIUNTA-bundle
+             persistite. Il coerce JSONB->Array e' interno al pannello. -->
         <template #expansion="{ data }">
           <div style="padding: 0.25rem 0 0.5rem 2rem; background: var(--app-table-stripe-bg);">
-            <DataTable :value="data.componenti" class="app-datatable" striped-rows>
-              <Column field="componente_codice" :header="t('contratti.componente_codice')" style="width: 140px;" />
-              <Column field="componente_descrizione" :header="t('contratti.componente_descrizione')" />
-              <Column :header="t('contratti.componente_uom')" style="width: 80px;">
-                <template #body="{ data: c }">{{ c.uom_codice ?? '—' }}</template>
-              </Column>
-              <Column :header="t('contratti.componente_coeff_qta')" style="width: 100px;">
-                <template #body="{ data: c }">{{ formatNumber(c.coeff_qta, { placeholder: '—', maximumFractionDigits: 4 }) }}</template>
-              </Column>
-              <Column :header="t('contratti.componente_prezzo')" style="width: 120px;">
-                <template #body="{ data: c }">{{ formatCurrency(c.prezzo, { placeholder: '—', maximumFractionDigits: 6 }) }}</template>
-              </Column>
-            </DataTable>
+            <ComponentiPanel
+              :initial-data="data.componenti"
+              i18n-prefix="vendite.componenti.panel" />
           </div>
         </template>
       </DataTable>
@@ -1050,7 +1208,23 @@ function origineSeverity(origine) {
           </div>
         </div>
 
+        <!-- Refactor 2026-05-19: Select fonte_quantita_attesa.
+             Le 5 fonti sono filtrate per tipo_erogazione (CHECK DB
+             chk_contrighe_coerenza_fonte_erogazione vieta le 7 combinazioni
+             incoerenti — non appaiono nelle opzioni). Tooltip "uso atipico"
+             sulle combinazioni rare (🟡 nella matrice). -->
         <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('contratti.field_fonte_quantita_attesa') }} *</label>
+            <Select v-model="form.fonte_quantita_attesa"
+              :options="fonteQuantitaOptions"
+              option-label="label" option-value="value"
+              :placeholder="t('contratti.select_fonte_quantita')"
+              class="w-full" />
+            <small v-if="fonteCorrente?.severity === 'warn'" class="contratti-fonte-uso-atipico">
+              <i class="pi pi-info-circle" /> {{ t('contratti.fonte_quantita_uso_atipico') }}
+            </small>
+          </div>
           <div class="form-field">
             <label>
               {{ t('contratti.field_prezzo_unitario') }}
@@ -1071,16 +1245,30 @@ function origineSeverity(origine) {
                          || form.tipo_eccezione === 'ESCLUSIONE'"
               :min-fraction-digits="2" :max-fraction-digits="4" showButtons />
           </div>
-          <div class="form-field">
-            <label>{{ t('contratti.field_qta_operativa') }} *</label>
+        </div>
+
+        <!-- Refactor 2026-05-19: Q.ta operativa visibile/obbligatoria solo
+             per fonte FISSA. Per le altre 4 fonti il valore vero arriva
+             downstream (manuale/timesheet/letture) o e' derivato dal
+             trigger DB z90_propaga_qta_componenti (DERIVATA_COMPONENTI).
+             Mostriamo un Tag readonly per chiarire all'utente da dove
+             arrivera' il valore. -->
+        <div class="form-grid-2col">
+          <div class="form-field" v-if="showQtaOperativa">
+            <label>{{ t('contratti.field_qta_operativa_fissa') }} *</label>
             <InputNumber v-model="form.qta_operativa" class="w-full"
               :min="0.0001" :min-fraction-digits="0" :max-fraction-digits="4" showButtons />
           </div>
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('contratti.field_ordine') }}</label>
-          <InputNumber v-model="form.ordine" class="w-full" :min="0" />
+          <div class="form-field" v-else-if="form.fonte_quantita_attesa">
+            <label>{{ t('contratti.field_qta_operativa') }}</label>
+            <Tag severity="info"
+              :value="t(`contratti.fonte_quantita_tag_${form.fonte_quantita_attesa.toLowerCase()}`)"
+              v-tooltip.top="t('contratti.fonte_quantita_tag_tooltip')" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('contratti.field_ordine') }}</label>
+            <InputNumber v-model="form.ordine" class="w-full" :min="0" />
+          </div>
         </div>
 
         <!-- Sezione componenti BoM (modello unificato 2026-05-13).
@@ -1101,7 +1289,7 @@ function origineSeverity(origine) {
               :icon="MANAGE_ICONS.BOM"
               outlined
               :disabled="!form.articolo_id || !form.uom_operativa_id
-                || !((form.qta_operativa || 0) > 0)"
+                || (showQtaOperativa && !((form.qta_operativa || 0) > 0))"
               @click="apriComponentiDialog" />
             <small v-if="componentiPayload?.summary"
               class="contratti-componenti-summary">
@@ -1172,6 +1360,48 @@ function origineSeverity(origine) {
 </template>
 
 <style scoped>
+.contratto-righe-context {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.contratto-righe-context-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.35rem 1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.contratto-righe-context-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.contratto-righe-context-label {
+  color: var(--app-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.contratto-righe-context-item > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contratto-righe-context-status {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
 .contratti-componenti-padre-tag {
   font-size: 0.65rem;
   margin-left: 0.4rem;
@@ -1184,5 +1414,25 @@ function origineSeverity(origine) {
 }
 .contratti-componenti-summary {
   color: var(--app-text-muted);
+}
+.contratti-fonte-uso-atipico {
+  display: block;
+  margin-top: 0.25rem;
+  /* PrimeVue yellow-700 hex come fallback: ne' --app-text-warn ne'
+     --p-yellow-700 sono definite nel tema custom; usiamo il pattern
+     dei componenti core (var + fallback hex esplicito). */
+  color: var(--p-yellow-700, #b45309);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 768px) {
+  .contratto-righe-context {
+    flex-direction: column;
+  }
+
+  .contratto-righe-context-grid {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
 }
 </style>

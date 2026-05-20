@@ -33,3 +33,31 @@ export function coerceJsonbToObject(value) {
   if (typeof value === 'object' && !Array.isArray(value)) return value
   return {}
 }
+
+// Scopo: Variante array di coerceJsonbToObject. Normalizza un valore
+//        `jsonb_agg(...)` ad Array JS. Difensivo contro la regressione
+//        psycopg che ritorna stringa JSON invece di list, sintomo visibile
+//        nei JSONB aggregati ritornati da funzioni DB (es. `componenti`
+//        in `vendite.fn_contratto_righe_preview` / `fn_preview_riga_componenti`).
+//
+// Comportamento:
+//   - array (caso normale) → pass-through
+//   - stringa JSON valida che produce array → parse
+//   - null/undefined/stringa malformata/non-array → []
+//
+// Uso: passa l'output al :value di DataTable o alla prop `initialData`
+//      di `ComponentiPanel` (vendite/_shared/componenti) in modalita'
+//      data-driven, senza preoccuparsi della shape effettiva.
+export function coerceJsonbToArray(value) {
+  if (value == null || value === '') return []
+  if (Array.isArray(value)) return value
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}

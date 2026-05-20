@@ -53,3 +53,41 @@ export const ORIGINE_PREZZO = Object.freeze({
   LISTINO_BUNDLE: 'LISTINO_BUNDLE',
   MANUALE: 'MANUALE',
 })
+
+// Tipi eccezione su `vendite.contratti_righe.tipo_eccezione` (ENUM nativo
+// `vendite.tipo_eccezione_contratto`). Refactor modalita 2026-05-15.
+// `DA_LISTINO` non e' un valore della colonna ma una pseudo-origine
+// derivata in `fn_contratto_righe_preview` per righe del listino senza
+// eccezioni — usata lato FE come marker.
+export const TIPO_ECCEZIONE = Object.freeze({
+  OVERRIDE: 'OVERRIDE',
+  ESCLUSIONE: 'ESCLUSIONE',
+  AGGIUNTA: 'AGGIUNTA',
+  DA_LISTINO: 'DA_LISTINO',
+})
+
+// Tipi erogazione su `vendite.contratti_righe.tipo_erogazione` (CHECK DB
+// `chk_contrighe_tipo_erog`). `ORARIO` modellato ma non ancora esposto
+// in UI (modulo timesheet futuro).
+export const TIPO_EROGAZIONE = Object.freeze({
+  CANONE: 'CANONE',
+  UNA_TANTUM: 'UNA_TANTUM',
+  ORARIO: 'ORARIO',
+  CONSUMO: 'CONSUMO',
+})
+
+// Fonti quantita su `vendite.contratti_righe.fonte_quantita_attesa`
+// (CHECK DB `chk_contrighe_fonte_qta`, NOT NULL dal 2026-05-19 via
+// migration 20260519-05). Coerenza con la matrice
+// `tipo_erogazione x fonte_quantita_attesa` vincolata dal CHECK
+// `chk_contrighe_coerenza_fonte_erogazione` (migration 20260519-05):
+// 7 combinazioni vietate, vedi `_FONTE_VIETATE_PER_TIPO_EROGAZIONE`
+// in `apps/vendite/services/contratti_service.py` e il piano
+// `docs/it/dev/work-done/refactor-contratti-fonte-quantita.md` §3.
+export const FONTE_QUANTITA_ATTESA = Object.freeze({
+  FISSA: 'FISSA',
+  MANUALE: 'MANUALE',
+  TIMESHEET: 'TIMESHEET',
+  LETTURE: 'LETTURE',
+  DERIVATA_COMPONENTI: 'DERIVATA_COMPONENTI',
+})

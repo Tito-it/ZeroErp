@@ -77,6 +77,52 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri non validi.",
         ),
+        # ── Building block note partizionate (apps/core/services/partitioned_note_service.py) ──
+        # Codici cross-area: il service in apps/core/ scrive su qualunque partizione
+        # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE/DDT/FATTURA/ATTIVITAFT) e in
+        # prospettiva su tabelle note di altri schemi che adotteranno lo stesso pattern.
+        "E_NOTA_VALIDATION": ErrorPolicy(
+            code="E_NOTA_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Dati nota non validi.",
+        ),
+        "E_NOTA_NOT_FOUND": ErrorPolicy(
+            code="E_NOTA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Nota non trovata.",
+        ),
+        "E_NOTA_PARENT_NOT_FOUND": ErrorPolicy(
+            code="E_NOTA_PARENT_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Documento di riferimento non trovato.",
+        ),
+        "E_NOTA_RIGA_INCOERENTE": ErrorPolicy(
+            code="E_NOTA_RIGA_INCOERENTE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="La riga indicata non appartiene al documento.",
+        ),
+        "E_NOTA_FK": ErrorPolicy(
+            code="E_NOTA_FK",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Riferimento non valido: stile, lingua o riga non esistenti.",
+        ),
+        "E_NOTA_DUPLICATO": ErrorPolicy(
+            code="E_NOTA_DUPLICATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Nota gia' esistente (violato vincolo di univocita').",
+        ),
+        "E_NOTA_CHECK_VIOLATION": ErrorPolicy(
+            code="E_NOTA_CHECK_VIOLATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Valore non ammesso per anchor_tipo, posizione, seq o testo.",
+        ),
         "E_VENDITE_VALIDATION": ErrorPolicy(
             code="E_VENDITE_VALIDATION",
             http_status=400,
@@ -216,6 +262,38 @@ class ErrorPolicyRegistry:
                 "Impossibile rimuovere il listino di riferimento dal "
                 "contratto: rimuovi prima le eccezioni OVERRIDE/ESCLUSIONE "
                 "associate o sostituiscile con AGGIUNTA."
+            ),
+        ),
+        # Refactor 2026-05-20: lock cambio `listino_id` (aggiunta o
+        # sostituzione) su contratto DRAFT con righe persistite. Il listino
+        # definisce il contesto pricing — cambiarlo con righe gia' caricate
+        # causa drift semantico silente. La rimozione resta gestita dal
+        # check piu' fine `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`.
+        "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE": ErrorPolicy(
+            code="E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "Modifica del listino bloccata: ci sono righe gia' caricate "
+                "contro questo contesto pricing. Elimina prima le righe "
+                "oppure annulla il contratto e creane uno nuovo."
+            ),
+        ),
+        # Refactor 2026-05-20: annullamento logico contratto (soft-delete via
+        # stato ANNULLATO). Transizione DRAFT → ANNULLATO sempre ammessa;
+        # ATTIVO → ANNULLATO bloccata se esistono attivita_fatturabili gia'
+        # fatturate (fattura_riga_id IS NOT NULL) — la traccia contabile e'
+        # immutabile, in quel caso l'unica via e' CESSATO con valido_al
+        # opportuna. Sollevato dal trigger DB (id errore DB 457) e
+        # intercettato lato BE via marker in `_KNOWN_DB_ERROR_MARKERS`.
+        "E_CONTRATTO_ANNULLATO_CON_FATTURE": ErrorPolicy(
+            code="E_CONTRATTO_ANNULLATO_CON_FATTURE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Impossibile annullare il contratto: esistono attivita' gia' "
+                "fatturate. Per chiudere il contratto usa la cessazione "
+                "(stato CESSATO con data di fine validita')."
             ),
         ),
         # Refactor 2026-05-18 (decisione §4.4 refactor-contratti-modalita):
@@ -1366,12 +1444,18 @@ class ErrorPolicyRegistry:
                 "suggerito dal listino o richiedi l'autorizzazione al responsabile."
             ),
         ),
+        # Refactor 2026-05-20: user_message generico "Variazione prezzo" per
+        # entrambi i codici. La distinzione SCONTO/MAGGIORAZIONE resta nel
+        # codice errore + nel detail tecnico (segno della variazione) — utile
+        # per workflow approvazione, dashboard e log, ma non per l'utente.
+        # L'UX vede la direzione esplicita nel detail ("in diminuzione" /
+        # "in aumento") generato da `_raise_or_return_violazione_l2`.
         "E_PRICING_SCONTO_ECCESSIVO": ErrorPolicy(
             code="E_PRICING_SCONTO_ECCESSIVO",
             http_status=403,
             ui_action="show_error_banner",
             user_message=(
-                "Sconto oltre il limite consentito per il tuo ruolo. "
+                "Variazione prezzo oltre il limite consentito per il tuo ruolo. "
                 "Richiedi approvazione o rientra nel limite ammesso."
             ),
         ),
@@ -1380,7 +1464,7 @@ class ErrorPolicyRegistry:
             http_status=403,
             ui_action="show_error_banner",
             user_message=(
-                "Maggiorazione oltre il limite consentito per il tuo ruolo. "
+                "Variazione prezzo oltre il limite consentito per il tuo ruolo. "
                 "Richiedi approvazione o rientra nel limite ammesso."
             ),
         ),

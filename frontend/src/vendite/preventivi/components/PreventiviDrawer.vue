@@ -21,7 +21,8 @@ import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
 import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
 import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
-import { DRAWER_WIDTH, TAB_ENTITIES } from '../../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
+import { NAV_ICONS } from '../../../core/navigation'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../../core/components/DrawerFooter.vue'
 import PreventiviForm from './PreventiviForm.vue'
@@ -30,6 +31,7 @@ import PreventiviIntegrazione from './PreventiviIntegrazione.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import PreventivoPdfButton from './PreventivoPdfButton.vue'
 import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
+import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import Drawer from 'primevue/drawer'
 import Dialog from 'primevue/dialog'
 import DatePicker from 'primevue/datepicker'
@@ -91,6 +93,13 @@ const riepilogoIva = ref([])
 const showRiepilogoIva = computed(
   () => Array.isArray(riepilogoIva.value) && riepilogoIva.value.length > 0,
 )
+
+// Sub-drawer note partizionate. Cablato sull'id effettivo del preventivo;
+// gestisce sia note di testata sia di riga (BE supporta entrambi via
+// target_riga_id). Le righe non sono esposte qui come state (vivono in
+// PreventiviRigheTable): per ora la nota-di-riga si crea conoscendo l'id;
+// quando arrivera' il drawer note dalla singola riga il dropdown sara' popolato.
+const noteDrawerVisible = ref(false)
 // Auto-save bozza: in CREATE, appena utility + istanza sono valorizzati, il
 // drawer crea il preventivo in BOZZA e si comporta da "edit-evolved" (mostra
 // righe + integrazione, salvataggi successivi diventano UPDATE). createdId
@@ -660,7 +669,11 @@ function onNuovaRevisione() {
     @after-show="onAfterShow"
     position="right" :style="{ width: DRAWER_WIDTH.WIDE }" :dismissable="true">
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('preventivi.preventivo')" />
+      <DrawerTitle
+        :action="isEdit ? t('common.edit') : t('common.new')"
+        :title="t('preventivi.preventivo')"
+        :icon="NAV_ICONS.PREVENTIVI"
+      />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -714,31 +727,9 @@ function onNuovaRevisione() {
         />
       </div>
 
-      <!-- Banner revisione superseded: visibile sopra le azioni quando il
-           preventivo aperto e' una versione storica (esiste una revisione
-           successiva). Il drawer e' interamente readonly: niente azioni stato,
-           niente nuova revisione, niente edit testata/righe. -->
-      <Message v-if="isSuperseded" severity="warn" :closable="false" class="mt-1">
-        {{ t('preventivi.banner_revisione_superseded') }}
-      </Message>
-
-      <!-- Sprint E (autorizzazioni prezzi L3): preventivo "congelato" se ha
-           righe PENDING (in attesa esito) o REJECTED (da correggere). I 2
-           messaggi sono distinti per dare azioni diverse all'operatore:
-           - PENDING → "attendi esito"
-           - REJECTED → "correggi la riga o eliminala". -->
-      <Message v-if="hasDetail && detail.frozen_for_pending_pricing"
-        severity="warn" :closable="false" class="mt-1">
-        {{ t('preventivi.banner_frozen_pending_pricing', { count: detail.pending_pricing_count }) }}
-      </Message>
-      <Message v-if="hasDetail && detail.frozen_for_rejected_pricing"
-        severity="error" :closable="false" class="mt-1">
-        {{ t('preventivi.banner_frozen_rejected_pricing', { count: detail.rejected_pricing_count }) }}
-      </Message>
-
-      <!-- Azioni stato (visibili appena c'e' detail, non readonly): bottoni dai metadata API. -->
+      <!-- Azioni testata: stato, PDF e note in posizione unica sopra il form. -->
       <div
-        v-if="hasDetail && ((!isReadonly && (availableActions.length || canCreateRevisione)) || detail.emittente_fiscale_id)"
+        v-if="hasDetail"
         class="preventivo-drawer-actions"
       >
         <template v-if="!isReadonly">
@@ -762,7 +753,47 @@ function onNuovaRevisione() {
           :emittente-fiscale-id="detail.emittente_fiscale_id"
           :stato-codice="detail.stato_codice_interno"
         />
+        <Button
+          :label="t('preventivi.gestisci_note')"
+          :icon="MANAGE_ICONS.NOTE"
+          size="small"
+          outlined
+          class="app-manage-btn app-escape"
+          @click="noteDrawerVisible = true"
+        />
       </div>
+
+      <!-- Banner revisione superseded: visibile sotto le azioni quando il
+           preventivo aperto e' una versione storica (esiste una revisione
+           successiva). Il drawer e' interamente readonly: niente azioni stato,
+           niente nuova revisione, niente edit testata/righe. -->
+      <Message v-if="isSuperseded" severity="warn" :closable="false" class="mt-1">
+        {{ t('preventivi.banner_revisione_superseded') }}
+      </Message>
+
+      <!-- Sprint E (autorizzazioni prezzi L3): preventivo "congelato" se ha
+           righe PENDING (in attesa esito) o REJECTED (da correggere). I 2
+           messaggi sono distinti per dare azioni diverse all'operatore:
+           - PENDING → "attendi esito"
+           - REJECTED → "correggi la riga o eliminala". -->
+      <Message v-if="hasDetail && detail.frozen_for_pending_pricing"
+        severity="warn" :closable="false" class="mt-1">
+        {{ t('preventivi.banner_frozen_pending_pricing', { count: detail.pending_pricing_count }) }}
+      </Message>
+      <Message v-if="hasDetail && detail.frozen_for_rejected_pricing"
+        severity="error" :closable="false" class="mt-1">
+        {{ t('preventivi.banner_frozen_rejected_pricing', { count: detail.rejected_pricing_count }) }}
+      </Message>
+      <!-- Area banner informativi non bloccanti: tenere qui i messaggi di
+           contesto del preventivo, evitando banner sparsi in fondo al drawer. -->
+      <Message v-if="hasDetail && detail.ba_ha_contratto_attivo === false"
+        severity="info" :closable="false" class="mt-1">
+        {{ t('preventivi.banner_no_contratto_attivo') }}
+      </Message>
+      <Message v-if="hasDetail && !canPushCommessa && pushCommessaReasonKey"
+        severity="info" :closable="false" class="mt-1">
+        {{ t(pushCommessaReasonKey) }}
+      </Message>
 
       <Divider v-if="hasDetail" />
 
@@ -772,17 +803,6 @@ function onNuovaRevisione() {
         :non-editable-fields="nonEditableFields"
         :is-edit="isEdit || createdId !== null"
         :record="detail" />
-
-      <!-- Banner informativo (non bloccante): il BA non ha contratto attivo
-           per (utility, data) del preventivo. Il pricing delle righe passera'
-           dallo STADIO 2 (matrice categoria→listino), che richiede una mappa
-           popolata in /amm-software/matrice-categorie-listini. Senza mappa
-           il resolver fallisce con E_CATEGORIA_LISTINO_NON_MAPPATA e il
-           prezzo va inserito manualmente. -->
-      <Message v-if="contentReady && hasDetail && detail.ba_ha_contratto_attivo === false"
-        severity="info" :closable="false" class="mt-1">
-        {{ t('preventivi.banner_no_contratto_attivo') }}
-      </Message>
 
       <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
       <template v-if="contentReady && hasDetail">
@@ -806,17 +826,14 @@ function onNuovaRevisione() {
       </template>
 
       <!-- Integrazione: visibile quando il backend conferma can_push_commessa.
-           Se non ammessa ma con reason i18n-ready, mostriamo un Message hint. -->
+           Se non ammessa ma con reason i18n-ready, il Message hint e'
+           mostrato nell'area banner in alto. -->
       <template v-if="contentReady && hasDetail">
         <template v-if="canPushCommessa">
           <Divider />
           <PreventiviIntegrazione :preventivo-id="effectivePreventivoId"
             @push-completato="loadDetail()" />
         </template>
-        <Message v-else-if="pushCommessaReasonKey" severity="info" :closable="false"
-          class="mt-1">
-          {{ t(pushCommessaReasonKey) }}
-        </Message>
       </template>
 
       <!-- Documenti generati per il preventivo (Tranche M motore documentale).
@@ -842,6 +859,14 @@ function onNuovaRevisione() {
         @save="handleSave" @cancel="close" />
     </div>
   </Drawer>
+
+  <!-- Sub-drawer note: cablato sull'id effettivo del preventivo, montato
+       solo quando il drawer principale e' aperto E c'e' un preventivo reale. -->
+  <PreventivoNoteDrawer
+    v-if="effectivePreventivoId"
+    v-model:visible="noteDrawerVisible"
+    :preventivo-id="effectivePreventivoId"
+  />
 
   <!-- Dialog accettazione preventivo (transizione EMESSO → ACCETTATO).
        Richiede modalita' di fatturazione: toggle immediata + datepicker mese

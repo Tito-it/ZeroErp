@@ -13,6 +13,10 @@ from apps.vendite.api.contratti_documenti_views import (
     ApiContrattoDocumentoFile,
     ApiContrattoDocumentoGenera,
 )
+from apps.vendite.api.note_views import (
+    ApiContrattoNoteDetail,
+    ApiContrattoNoteList,
+)
 from apps.vendite.api.views_contratti import (
     ApiContrattiList,
     ApiContrattoCambiaStato,
@@ -105,5 +109,18 @@ urlpatterns = [
         "<int:contratto_id>/documenti/<int:documento_id>/file/",
         ApiContrattoDocumentoFile.as_view(),
         name="vendite-contratti-documenti-file",
+    ),
+    # Note partizionate (vendite.note_contratto) — testata o riga.
+    # GET ?target_riga_id=<rid> per filtrare le note della singola riga.
+    # POST body con target_riga_id per nota di riga.
+    path(
+        "<int:contratto_id>/note/",
+        ApiContrattoNoteList.as_view(),
+        name="vendite-contratto-note-list",
+    ),
+    path(
+        "<int:contratto_id>/note/<int:note_id>/",
+        ApiContrattoNoteDetail.as_view(),
+        name="vendite-contratto-note-detail",
     ),
 ]

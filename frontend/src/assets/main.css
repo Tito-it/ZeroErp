@@ -145,6 +145,46 @@ a {
  */
 .app-datatable {
   font-size: var(--app-table-font-size);
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Scroll orizzontale standard per tutte le DataTable.
+ * PrimeVue tende a comprimere le colonne fino alla larghezza viewport; con
+ * width:max-content + min-width:100% la tabella riempie il contenitore quando
+ * c'e' spazio e genera overflow-x quando la somma delle colonne e' maggiore.
+ */
+.app-datatable .p-datatable-table-container {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto !important;
+}
+
+.app-datatable .p-datatable-table {
+  width: max-content !important;
+  min-width: 100% !important;
+}
+
+/* Soglie centralizzate per liste con molte colonne.
+ * I `width` inline delle Column sono preferenze, ma il table layout puo'
+ * comprimerle se i contenuti sono brevi; per questo le liste preventivi
+ * (molte colonne, testi brevi) non forzavano overflow mentre contratti si`.
+ * La soglia per numero colonne rende lo scroll orizzontale una regola
+ * di building block, non una patch per singola lista.
+ * Il selettore parte dal root .app-datatable per coprire anche il render
+ * scrollable/flex di PrimeVue, dove contenitore e table vengono ricalcolati
+ * quando arrivano i record.
+ */
+.app-datatable:not(.app-datatable--inner):has(.p-datatable-thead > tr > th:nth-child(8)) .p-datatable-table {
+  min-width: max(100%, 1040px) !important;
+}
+
+.app-datatable:not(.app-datatable--inner):has(.p-datatable-thead > tr > th:nth-child(10)) .p-datatable-table {
+  min-width: max(100%, 1280px) !important;
+}
+
+.app-datatable:not(.app-datatable--inner):has(.p-datatable-thead > tr > th:nth-child(12)) .p-datatable-table {
+  min-width: max(100%, 1480px) !important;
 }
 
 .app-datatable .p-datatable-thead > tr > th {
@@ -561,8 +601,9 @@ a {
   color: var(--app-icon-color);
 }
 
-/* Icone custom centralizzate per la navigazione.
- * Mantengono la stessa API delle PrimeIcons: una stringa class sull'elemento <i>. */
+/* Icone custom centralizzate per navigazione e azioni entita' ERP.
+ * Mantengono la stessa API delle PrimeIcons: una stringa class sull'elemento <i>
+ * o nell'`icon` prop di PrimeVue Button. Sono monocromatiche e usano currentColor. */
 .app-nav-icon {
   position: relative;
   display: inline-block;
@@ -595,6 +636,76 @@ a {
   left: 0.76rem;
   top: 0.52rem;
   font-size: 0.46rem;
+}
+
+.app-nav-icon-preventivi::before {
+  content: "\e958";
+  top: 0.02rem;
+  left: 0.18rem;
+  font-size: 0.92rem;
+}
+
+.app-nav-icon-preventivi::after {
+  content: "\e9bd";
+  left: 0.74rem;
+  top: -0.04rem;
+  font-size: 0.5rem;
+}
+
+.app-nav-icon-contratti::before {
+  content: "\ea1b";
+  top: 0.02rem;
+  left: 0.16rem;
+  font-size: 0.92rem;
+}
+
+.app-nav-icon-contratti::after {
+  content: "\e9bd";
+  left: 0.75rem;
+  top: -0.04rem;
+  font-size: 0.5rem;
+}
+
+.app-nav-icon-ddt::before {
+  content: "\e958";
+  top: 0.02rem;
+  left: 0.12rem;
+  font-size: 0.86rem;
+}
+
+.app-nav-icon-ddt::after {
+  content: "\ea00";
+  left: 0.62rem;
+  top: 0.45rem;
+  font-size: 0.48rem;
+}
+
+.app-nav-icon-fatture::before {
+  content: "\ea06";
+  top: 0.02rem;
+  left: 0.16rem;
+  font-size: 0.92rem;
+}
+
+.app-nav-icon-fatture::after {
+  content: "\e9bd";
+  left: 0.75rem;
+  top: -0.04rem;
+  font-size: 0.5rem;
+}
+
+.app-nav-icon-listini::before {
+  content: "\e967";
+  top: 0.08rem;
+  left: 0.12rem;
+  font-size: 0.9rem;
+}
+
+.app-nav-icon-listini::after {
+  content: "\e9bd";
+  left: 0.76rem;
+  top: -0.02rem;
+  font-size: 0.5rem;
 }
 
 /* DatePicker: icona calendario colore primario standard.
@@ -807,6 +918,27 @@ a {
 /* Override striping della inner DataTable: sotto la riga primary, il contrasto
  * gia' c'e' col bordo + tinta dell'expansion, quindi rimuoviamo lo striping
  * interno per una resa piu' calma. */
+.app-datatable--inner .p-datatable-table {
+  width: 100% !important;
+  min-width: 100% !important;
+}
+
+.app-datatable--inner .p-datatable-thead > tr > th {
+  padding: 0.25rem 0.35rem;
+}
+
+.app-datatable--inner .p-datatable-tbody > tr > td {
+  padding: 0.22rem 0.35rem;
+}
+
+.app-datatable--inner .p-datatable-tbody > tr:last-child > td {
+  padding-bottom: 0.22rem;
+}
+
+.app-datatable--inner .p-datatable-tbody::after {
+  content: none;
+}
+
 .app-datatable--inner .p-datatable-tbody > tr:nth-child(even) {
   background: transparent !important;
 }

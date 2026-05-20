@@ -33,6 +33,7 @@ export const TIPO_RUOLO = {
 // Paginazione default
 export const PAGINATION = {
   DEFAULT_ROWS: 25,
+  COMPACT_ROWS: 10,
   ROWS_OPTIONS: [10, 25, 50, 100]
 }
 
@@ -223,7 +224,9 @@ export const MANAGE_ICONS = {
   CONVERSIONI: 'pi pi-sync',
   // Vendite
   VERSIONI: 'pi pi-history',
-  CONTRATTI: 'pi pi-file-edit',
+  CONTRATTI: 'app-nav-icon app-nav-icon-contratti',
+  LISTINI: 'app-nav-icon app-nav-icon-listini',
+  RIGHE: 'pi pi-list',
   // Trasversali
   EDIT: 'pi pi-pencil',
   ADD: 'pi pi-plus',
