@@ -31,6 +31,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -242,6 +243,45 @@ _TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA
 # `resolve_or_check_override_prezzo_riga_contratto` con la matrice
 # Alternativa B (L1 sempre, L2/L3 condizionali al resolver).
 _TIPI_ECCEZIONE_CON_GATE: frozenset[str] = frozenset({"OVERRIDE", "AGGIUNTA"})
+
+# Matrice coerenza (tipo_erogazione, fonte_quantita_attesa) — refactor
+# 2026-05-19. Le 7 combinazioni vietate corrispondono al CHECK DB
+# `chk_contrighe_coerenza_fonte_erogazione` (migration 20260519-05).
+# Defense-in-depth: stesso vincolo applicato lato BE con errore parlante
+# prima del round-trip DB. Vedi docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §3.
+_FONTE_VIETATE_PER_TIPO_EROGAZIONE: frozenset[tuple[str, str]] = frozenset({
+    ("CANONE", "TIMESHEET"),
+    ("CANONE", "LETTURE"),
+    ("UNA_TANTUM", "TIMESHEET"),
+    ("UNA_TANTUM", "LETTURE"),
+    ("ORARIO", "LETTURE"),
+    ("CONSUMO", "FISSA"),
+    ("CONSUMO", "TIMESHEET"),
+})
+
+# Default fonte_quantita_attesa per tipo_erogazione — speculare al trigger
+# DB `trg_contratti_righe_a10_default_fonte_qta_ins_upd` (migration 20260519-06).
+# Applicato lato BE per (a) pre-compilare il FE form CREATE con la scelta
+# predefinita visibile all'utente, (b) errore parlante in validazione 2.1
+# anche su payload minimi (la coppia viene risolta prima del CHECK DB).
+# Nota: per ORARIO il default diventera' TIMESHEET quando il modulo
+# rendicontazione ore sara' implementato.
+_FONTE_DEFAULT_PER_TIPO_EROGAZIONE: dict[str, str] = {
+    "CANONE": "FISSA",
+    "UNA_TANTUM": "FISSA",
+    "ORARIO": "MANUALE",
+    "CONSUMO": "LETTURE",
+}
+
+# Fonti per cui `quantita` non e' inserita dall'utente sulla riga contratto:
+# il valore reale arriva downstream (manuale su documento / timesheet /
+# letture utility). Il BE forza NULL su `quantita` per evitare snapshot
+# fuorvianti. `DERIVATA_COMPONENTI` e' fuori da questo set: la `quantita`
+# del padre composito viene scritta automaticamente dal trigger DB
+# `z90_propaga_qta_componenti` post-INSERT figli (vedi piano §1.d).
+_FONTI_QUANTITA_DOWNSTREAM: frozenset[str] = frozenset({
+    "MANUALE", "TIMESHEET", "LETTURE",
+})
 
 
 # Utility 1:1: chiavi ammesse in create/update. istanza_utility_id e
@@ -1178,8 +1218,20 @@ class ContrattiService:
         # Merge meta riga: il BB ritorna `prezzo_meta` con audit pricing.
         # Va mergiato sul `meta` corrente del data_riga (priorita': payload
         # > fallback existing meta) senza sovrascrivere chiavi gia' presenti.
+        # Coerce JSONB→dict defensivo (fix 2026-05-20): per certi articoli
+        # psycopg ritorna `meta` JSONB della riga esistente come stringa JSON
+        # invece di dict — `dict(str)` solleverebbe TypeError "dictionary
+        # update sequence". Stesso pattern coerce gia' applicato in altri
+        # repo (_decode_jsonb in commesse_repository, coerceJsonbToObject FE).
         if prezzo_meta:
-            merged_meta = dict(data.get("meta") or fallback_meta or {})
+            base_meta = data.get("meta") or fallback_meta or {}
+            if isinstance(base_meta, str):
+                try:
+                    parsed = json.loads(base_meta)
+                    base_meta = parsed if isinstance(parsed, dict) else {}
+                except (json.JSONDecodeError, ValueError):
+                    base_meta = {}
+            merged_meta = dict(base_meta)
             merged_meta.update(prezzo_meta)
             data["meta"] = merged_meta
         # Workflow L3: il BB ha segnalato violazione + richiesta. Crea pratica
@@ -2003,18 +2055,6 @@ class ContrattiService:
                     data[field] = self._coerce_decimal(
                         raw, field=field, message=_MESSAGE_RIGA,
                     )
-        # Deriva `quantita` da `qta_operativa` quando il FE non la invia
-        # (simmetria con preventivi_service._derive_qta_operativa).
-        # Necessario per articoli compositi: la fn DB
-        # `fn_contratto_riga_componenti_init` skippa silenzioso se
-        # `contratti_righe.quantita IS NULL` ("riga a consumo"). Senza questa
-        # derivazione, AGGIUNTA bundle composito creerebbe il padre orfano
-        # con prezzo placeholder 0 e zero figli BoM.
-        # Approssimazione factor=1 (UoM base, caso comune del contratto):
-        # per UoM non-base servirebbe `repo.get_articolo_uom_factor`; se
-        # emergera' come bug reale, estendere via mixin componenti shared.
-        if for_create and "quantita" not in data and data.get("qta_operativa") is not None:
-            data["quantita"] = data["qta_operativa"]
         self._apply_optional_positive_int(
             payload, data, "uom_operativa_id", message=_MESSAGE_RIGA,
         )
@@ -2049,11 +2089,103 @@ class ContrattiService:
                     )
                     assert isinstance(raw, str)
                     data[field] = raw.strip().upper()
+
+        # Refactor 2026-05-19: coerenza (tipo_erogazione, fonte_quantita_attesa)
+        # + normalizzazione `quantita` in base alla fonte.
+        # Il DB applica gli stessi vincoli via CHECK chk_contrighe_coerenza_fonte_erogazione
+        # e trigger trg_contratti_righe_a10_default_fonte_qta_ins_upd (migrations
+        # 20260519-05/06). Lato BE: defense-in-depth + errore parlante prima del
+        # round-trip + UX coerente (FE mostra/nasconde `quantita` in base alla
+        # fonte; il service rispetta la stessa semantica).
+        self._apply_fonte_quantita_logic(data, for_create=for_create)
+
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:
                 data["meta"] = meta
         return data
+
+    # Scopo: Applica la matrice di coerenza (tipo_erogazione, fonte_quantita_attesa)
+    #        sul `data` gia' costruito da _build_data_riga. Tre responsabilita':
+    #         1. Default fonte se non specificata (solo create, e solo se
+    #            tipo_erogazione e' presente nel data accumulato).
+    #         2. Guard combinazione vietata → E_VENDITE_VALIDATION parlante.
+    #         3. Normalizzazione `quantita`: forzata a NULL per fonti downstream
+    #            (MANUALE/TIMESHEET/LETTURE); DERIVATA_COMPONENTI lasciata al
+    #            trigger DB z90_propaga_qta_componenti; FISSA mantenuta.
+    #        Riferimenti: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §2.
+    def _apply_fonte_quantita_logic(
+        self,
+        data: dict[str, Any],
+        *,
+        for_create: bool,
+    ) -> None:
+        tipo = data.get("tipo_erogazione")
+        fonte = data.get("fonte_quantita_attesa")
+
+        # 1) Default fonte: applica solo in create quando tipo e' valorizzato.
+        # In update lasciamo decidere all'utente / trigger DB (il trigger
+        # resetta solo se la combo nuova diventa vietata, vedi decisione 3).
+        if for_create and fonte is None and tipo in _FONTE_DEFAULT_PER_TIPO_EROGAZIONE:
+            fonte = _FONTE_DEFAULT_PER_TIPO_EROGAZIONE[tipo]
+            data["fonte_quantita_attesa"] = fonte
+
+        # 2) Guard combinazione vietata (se entrambi i campi sono presenti
+        # nel data — niente da validare se uno dei due e' implicito DB).
+        if tipo is not None and fonte is not None:
+            ErrorManager.require(
+                (tipo, fonte) not in _FONTE_VIETATE_PER_TIPO_EROGAZIONE,
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE_RIGA,
+                detail=(
+                    f"Combinazione vietata: tipo_erogazione='{tipo}' "
+                    f"non e' compatibile con fonte_quantita_attesa='{fonte}'. "
+                    f"Vedi matrice in docs/it/dev/work-in-progress/"
+                    f"refactor-contratti-fonte-quantita.md §3."
+                ),
+                context={
+                    "tipo_erogazione": tipo,
+                    "fonte_quantita_attesa": fonte,
+                },
+            )
+
+        # 3) Normalizzazione `quantita`:
+        #    - fonti downstream → forza NULL (il valore arrivera' downstream).
+        #    - FISSA → richiede quantita > 0 (guard esplicita, oltre al CHECK).
+        #    - DERIVATA_COMPONENTI → no-op (trigger DB z90_propaga_qta_componenti
+        #      scrive il valore corretto post-INSERT figli BoM).
+        #    - None → lascia passare (tipo/fonte non risolti, validazione
+        #      delegata al DB; succede solo in update parziali atipici).
+        if fonte in _FONTI_QUANTITA_DOWNSTREAM:
+            # Sovrascrivi anche se il payload portava un valore: la fonte e'
+            # il driver semantico, qualsiasi quantita inviata e' fuorviante.
+            # Simmetria obbligata su entrambi: `qta_operativa` alimenta il
+            # trigger `trgfn_qta_from_operativa` che deriverebbe `quantita`
+            # a partire da essa post-INSERT/UPDATE — se non azzeriamo
+            # qta_operativa, il trigger riscriverebbe quantita = qta_operativa,
+            # vanificando il NULL. Bug riscontrato in update parziale
+            # `{fonte: FISSA -> MANUALE}` senza payload qta.
+            data["quantita"] = None
+            data["qta_operativa"] = None
+        elif fonte == "FISSA":
+            qta = data.get("quantita")
+            qta_op = data.get("qta_operativa")
+            # Almeno uno tra quantita e qta_operativa deve essere positivo:
+            # il trigger `trgfn_qta_from_operativa` deriva l'una dall'altra
+            # post-INSERT. Validazione lax: il CHECK DB ha l'ultima parola.
+            ErrorManager.require(
+                (qta is not None and qta > 0) or (qta_op is not None and qta_op > 0),
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE_RIGA,
+                detail=(
+                    "fonte_quantita_attesa='FISSA' richiede una quantita > 0 "
+                    "(campo `quantita` o `qta_operativa`)."
+                ),
+                context={
+                    "tipo_erogazione": tipo,
+                    "fonte_quantita_attesa": fonte,
+                },
+            )
 
     # =================================================================
     # Helpers privati — utility 1:1
@@ -2293,12 +2425,31 @@ def _load_contratto_context_for_pricing(
     )
     assert emittente_sr_id is not None
 
+    # Refactor 2026-05-20: listino_versione_id passato al resolver pricing
+    # v2 come `p_listino_versione_id_preferito` per attivare il fast path
+    # CONTRATTO_LISTINO. Evita il drift verso stadio CATEGORIA quando il BA
+    # ha una mappa categorie_clienti_listini su un listino diverso.
+    # Contratto ATTIVO: usa lo snapshot in testata (zero round-trip).
+    # Contratto DRAFT: lookup dinamico della versione operativa con la stessa
+    # regola di `fn_contratto_righe_preview` (ATTIVA/CHIUSA validità @
+    # valido_dal, BOZZA esclusa) — coerenza preview/pricing garantita.
+    # Senza listino_id: nessun fast path possibile → None (legacy resolver).
+    # Doc DB: cfr. nota team `dev/db-tid` sul 9° arg di fn_resolve_prezzo_listino_v2.
+    listino_versione_id_preferito = testata.get("listino_versione_id")
+    if listino_versione_id_preferito is None:
+        listino_id_raw = testata.get("listino_id")
+        if listino_id_raw is not None:
+            listino_versione_id_preferito = repo.get_listino_versione_attiva_alla_data(
+                int(listino_id_raw), data_riferimento,
+            )
+
     return {
         "testata": testata,
         "ba_id": int(ba_id_raw),
         "utility_id": int(utility_id_raw),
         "emittente_sr_id": emittente_sr_id,
         "data_riferimento": data_riferimento,
+        "listino_versione_id_preferito": listino_versione_id_preferito,
     }
 
 
@@ -2334,6 +2485,7 @@ def contratti_suggerisci_prezzo_riga(
         ba_id=ctx["ba_id"],
         utility_id=ctx["utility_id"],
         emittente_soggetto_ruolo_id=ctx["emittente_sr_id"],
+        listino_versione_id_preferito=ctx["listino_versione_id_preferito"],
     )
 
     # Normalizzazione Decimal/date → string per stabilita' JSON (coerente

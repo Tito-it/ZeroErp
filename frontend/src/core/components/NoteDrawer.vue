@@ -102,6 +102,7 @@ watch(
     form.value = defaultForm()
     await loadAll({ page_size: PAGE_SIZE_DEFAULT })
   },
+  { immediate: true },
 )
 
 function onStartNew() {

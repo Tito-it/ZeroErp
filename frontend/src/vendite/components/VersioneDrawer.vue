@@ -13,7 +13,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { displayDate } from '../../core/utils/date'
-import { formatIvaLabel } from '../../core/utils/format'
+import { formatIvaLabel, formatNumber } from '../../core/utils/format'
 import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
 import {
   createRiga,
@@ -63,6 +63,7 @@ const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'articolo_descrizione',
   defaultSortOrder: 'asc',
 })
+const DRAWER_WIDTH_RIGHE_LISTINO = '1000px'
 
 // Stato master-detail inline
 // formMode: null (nessun form visibile), 'create', 'edit'
@@ -303,6 +304,14 @@ function closeForm() {
   resetUomOptions()
 }
 
+function formatPrezzoListino(value) {
+  return formatNumber(value, {
+    placeholder: '—',
+    minimumFractionDigits: 6,
+    maximumFractionDigits: 6,
+  })
+}
+
 // === Validazione form ===
 const canSave = computed(() => {
   if (isReadonly.value) return false
@@ -446,7 +455,7 @@ const onClose = useDrawerClose(emit)
 
 <template>
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
-    position="right" :style="{ width: DRAWER_WIDTH.WIDE }" :dismissable="!hasChildOpen">
+    position="right" :style="{ width: DRAWER_WIDTH_RIGHE_LISTINO }" :dismissable="!hasChildOpen">
     <template #header>
       <DrawerTitle :title="t('listini.tab_righe')" :icon="MANAGE_ICONS.RIGHE" />
     </template>
@@ -522,7 +531,7 @@ const onClose = useDrawerClose(emit)
             <span v-if="data._isComposito" style="color: var(--app-text-muted); font-style: italic;">
               {{ t('listini.composito_n_componenti', { n: data.n_componenti_bundle }) }}
             </span>
-            <span v-else>{{ data.prezzo }}</span>
+            <span v-else>{{ formatPrezzoListino(data.prezzo) }}</span>
           </template>
         </Column>
         <Column field="iva_aliquota" :header="t('listini.col_iva')" style="width: 70px;">

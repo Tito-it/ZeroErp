@@ -288,7 +288,16 @@ def _raise_or_return_violazione_l2(
     accept_for_approval: bool,
     function_name: str,
 ) -> dict[str, Any] | None:
-    kind_label = "Sconto" if is_sconto else "Maggiorazione"
+    # Refactor 2026-05-20: messaggio generico "Variazione prezzo" con
+    # direzione esplicita ("in diminuzione" / "in aumento") nel detail.
+    # Pattern coerente con la realta' UX: l'utente vede una variazione
+    # numerica e l'errore deve riportare quel segno senza assumere il
+    # ruolo commerciale ("sconto" presuppone intenzionalita' che il
+    # gate L2 non puo' inferire). Codici errore stabili — `*_SCONTO_*` e
+    # `*_MAGGIORAZIONE_*` restano per discriminazione downstream
+    # (approvazioni, dashboard, log) e per backward compatibility.
+    direzione_label = "in diminuzione" if is_sconto else "in aumento"
+    kind_label = "Sconto" if is_sconto else "Maggiorazione"  # backcompat dict
     if accept_for_approval:
         return {
             "tipo_violazione": "SCONTO" if is_sconto else "MAGGIORAZIONE",
@@ -305,9 +314,10 @@ def _raise_or_return_violazione_l2(
     )
     ErrorManager.raise_error(
         code=error_code,
-        message=f"{kind_label} oltre il limite consentito.",
+        message="Variazione prezzo oltre il limite consentito.",
         detail=(
-            f"{kind_label} richiesto: {variazione_abs.quantize(Decimal('0.01'))}% — "
+            f"Variazione richiesta {direzione_label}: "
+            f"{variazione_abs.quantize(Decimal('0.01'))}% — "
             f"massimo ammesso: {limite}%."
         ),
         retryable=True,

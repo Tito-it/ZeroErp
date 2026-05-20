@@ -121,14 +121,14 @@ WHERE codice_interno = '<CODICE>'
 -- categoria_cliente_id=<ID scelto>, value=<valore>
 ```
 
-6. **Sub-test cascata Phase A**: come utente normale (non admin), apri impostazioni e cerca quel parametro. Atteso: colonna **"Categoria cliente"** valorizzata se la categoria del BA dell'utente matcha l'override; vuota altrimenti.
+**Sub-test cascata Phase A**: come utente normale (non admin), apri impostazioni e cerca quel parametro. Atteso: colonna **"Categoria cliente"** valorizzata se la categoria del BA dell'utente matcha l'override; vuota altrimenti.
 
 ---
 
 ## Stato test BE coperti
 
 | Caso | Test BE | File |
-|---|---|---|
+| --- | --- | --- |
 | 1 | `test_create_riga_articolo_composito_auto_init` | [test_contratti_service.py:1806](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1806) |
 | 2 | `test_create_riga_articolo_composito_senza_emittente_solleva` | [test_contratti_service.py:1850](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1850) |
 | 3 | `test_create_riga_articolo_composito_senza_valido_dal_solleva` (nuovo 2026-05-19) | [test_contratti_service.py:1889](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1889) |
@@ -136,6 +136,70 @@ WHERE codice_interno = '<CODICE>'
 | 5 | `test_parameter_service.py` (5 test categoria_cliente) + `test_parameters_api.py` (6 test) | [test_parameter_service.py](../../../../backend/apps/core/tests/services/test_parameter_service.py) |
 
 **Caso 1 refactor expansion `ComponentiPanel` data-driven**: validabile **solo in browser** (è puro FE — il backend non è cambiato).
+
+---
+
+## Casi aggiuntivi — Refactor `fonte_quantita_attesa` (2026-05-19, Step 3 + 3.6)
+
+### Caso 6 — Form CREATE riga: select fonte + default
+
+1. Apri contratto DRAFT → "Aggiungi articolo" → seleziona articolo standard non composito.
+2. Atteso: il form mostra il select **"Fonte quantità"** accanto a "Tipo erogazione".
+3. Cambia `tipo_erogazione`:
+   - `CANONE` / `UNA_TANTUM` → `Fonte = FISSA` (default).
+   - `CONSUMO` → `Fonte = LETTURE` (default).
+   - `ORARIO` → `Fonte = MANUALE` (default).
+4. Il campo `Q.tà contrattualizzata` appare e diventa obbligatorio **solo** quando `Fonte = FISSA`.
+5. Per le altre fonti compare un Tag readonly al posto del campo numerico:
+   - `MANUALE` → "Definita sul documento"
+   - `LETTURE` → "Da letture utility"
+   - `DERIVATA_COMPONENTI` → "Derivata dai componenti"
+
+### Caso 7 — Reset condizionale al cambio `tipo_erogazione`
+
+1. Form CREATE con `tipo=CANONE` + `fonte=FISSA` (default).
+2. Cambia `tipo` a `CONSUMO`: la combo `CONSUMO+FISSA` è ❌ → la UI **deve resettare** `fonte` al default del nuovo tipo (`LETTURE`).
+3. Form CREATE con `tipo=CANONE` + `fonte=DERIVATA_COMPONENTI` (manuale).
+4. Cambia `tipo` a `UNA_TANTUM`: `UNA_TANTUM+DERIVATA_COMPONENTI` è 🟢 valida → la UI **deve preservare** la scelta utente (no reset).
+
+### Caso 8 — Combinazione vietata via API (backend defense)
+
+```bash
+curl -X POST .../api/v1/vendite/contratti/<id>/righe/ \
+  -H "Content-Type: application/json" -H "Authorization: Bearer ..." \
+  -d '{
+    "articolo_id": "<uuid>",
+    "tipo_eccezione": "AGGIUNTA",
+    "tipo_erogazione": "CONSUMO",
+    "fonte_quantita_attesa": "FISSA",
+    "prezzo_unitario": "10"
+  }'
+```
+
+Atteso: HTTP 422 con `code = E_VENDITE_VALIDATION` e `detail` contenente "Combinazione vietata: tipo_erogazione='CONSUMO' non e' compatibile con fonte_quantita_attesa='FISSA'".
+
+### Caso 9 — Composito DERIVATA_COMPONENTI (regressione del fix tampone)
+
+1. Crea contratto ATTIVO con listino → "Aggiungi articolo" → seleziona articolo composito.
+2. Il select `Fonte` ha default `FISSA` (CANONE default). **Per usare DERIVATA_COMPONENTI**: cambialo manualmente.
+3. Salva: il backend NON deve impostare `quantita`. Il trigger DB `z90_propaga_qta_componenti` la scrive post-INSERT figli.
+4. Query SQL:
+
+```sql
+SELECT id, articolo_id, quantita, qta_operativa,
+       tipo_erogazione, fonte_quantita_attesa
+FROM vendite.contratti_righe
+WHERE contratto_id = <ID> ORDER BY id DESC LIMIT 1;
+-- atteso: quantita NON null (scritta dal trigger DB), qta_operativa null,
+--          fonte_quantita_attesa = 'DERIVATA_COMPONENTI'
+```
+
+### Caso 10 — Relabeling kebab (Step 3.6)
+
+1. Riga `OVERRIDE`: kebab → **"Ripristina prezzo di listino"** (NON "Elimina") con icona `pi pi-replay`. Click → dialog parlante "L'articolo X tornerà al prezzo di listino. L'override personalizzato verrà rimosso. Confermi?" → confermare → l'articolo torna `DA_LISTINO` in preview.
+2. Riga `ESCLUSIONE`: kebab → **"Ripristina articolo nel contratto"** + dialog parlante.
+3. Riga `AGGIUNTA`: kebab → **"Rimuovi dal contratto"** con icona `pi pi-trash` (severity danger). Click → dialog di delete → l'articolo sparisce davvero.
+4. Riga `DA_LISTINO`: kebab "Escludi articolo" (invariato).
 
 ---
 

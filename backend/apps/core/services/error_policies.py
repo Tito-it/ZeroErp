@@ -1412,12 +1412,18 @@ class ErrorPolicyRegistry:
                 "suggerito dal listino o richiedi l'autorizzazione al responsabile."
             ),
         ),
+        # Refactor 2026-05-20: user_message generico "Variazione prezzo" per
+        # entrambi i codici. La distinzione SCONTO/MAGGIORAZIONE resta nel
+        # codice errore + nel detail tecnico (segno della variazione) — utile
+        # per workflow approvazione, dashboard e log, ma non per l'utente.
+        # L'UX vede la direzione esplicita nel detail ("in diminuzione" /
+        # "in aumento") generato da `_raise_or_return_violazione_l2`.
         "E_PRICING_SCONTO_ECCESSIVO": ErrorPolicy(
             code="E_PRICING_SCONTO_ECCESSIVO",
             http_status=403,
             ui_action="show_error_banner",
             user_message=(
-                "Sconto oltre il limite consentito per il tuo ruolo. "
+                "Variazione prezzo oltre il limite consentito per il tuo ruolo. "
                 "Richiedi approvazione o rientra nel limite ammesso."
             ),
         ),
@@ -1426,7 +1432,7 @@ class ErrorPolicyRegistry:
             http_status=403,
             ui_action="show_error_banner",
             user_message=(
-                "Maggiorazione oltre il limite consentito per il tuo ruolo. "
+                "Variazione prezzo oltre il limite consentito per il tuo ruolo. "
                 "Richiedi approvazione o rientra nel limite ammesso."
             ),
         ),

@@ -17,7 +17,28 @@ from django.db import connection
 # categoria cliente del BA destinatario.
 # Catena priorita':
 #   user -> categoria_cliente -> group -> emittente -> session -> function -> default
-_SQL_RESOLVE = "SELECT script.fn_get_parameter_full(%s, %s, %s, %s, %s, %s, %s)"
+#
+# Cast espliciti obbligatori sui placeholder (fix 2026-05-20): psycopg
+# passa i Python int come `integer`, mentre la signature DB ha
+# `bigint` (emittente_fiscale_id) e `smallint` (categoria_cliente_id).
+# PG non fa upcast/downcast implicito → "function does not exist".
+# Bug latente finora: i path che passavano `categoria_cliente_id=NULL`
+# non lo manifestavano (NULL accetta qualunque tipo); emerso con il
+# pricing gate L2 contratto MANUALE che passa il valore reale per
+# la prima volta. Il cast sui placeholder `text`/`integer`/`integer[]`
+# non sarebbe strettamente necessario ma e' incluso per simmetria
+# e robustezza (zero ambiguita' sui tipi).
+_SQL_RESOLVE = """
+    SELECT script.fn_get_parameter_full(
+        %s::text,
+        %s::bigint,
+        %s::integer,
+        %s::integer[],
+        %s::text,
+        %s::text,
+        %s::smallint
+    )
+"""
 
 # Limite massimo codici per singola richiesta (difesa contro abuse).
 MAX_CODES = 20
@@ -92,7 +113,18 @@ class ParameterRepository:
         emittente_fiscale_id: int | None = None,
         categoria_cliente_id: int | None = None,
     ) -> list[dict]:
-        sql = "SELECT * FROM script.fn_list_parameters_for_user(%s, %s, %s, %s)"
+        # Cast espliciti (fix 2026-05-20): la signature DB e' (integer,
+        # integer[], bigint, smallint). Senza cast, psycopg manda Python int
+        # come `integer`, e PG non risolve la signature quando esistono
+        # overload competing. Vedi `_SQL_RESOLVE` sopra per il pattern.
+        sql = """
+            SELECT * FROM script.fn_list_parameters_for_user(
+                %s::integer,
+                %s::integer[],
+                %s::bigint,
+                %s::smallint
+            )
+        """
         with connection.cursor() as cursor:
             cursor.execute(
                 sql,

@@ -2002,6 +2002,175 @@ class ContrattiServiceComponentiTests(TestCase):
 # 11) test_resolve_or_check_override_richiesta_approvazione_ritorna_violazione_l2
 
 
+class ContrattiServiceFonteQuantitaTests(TestCase):
+    """Suite refactor 2026-05-19: coerenza (tipo_erogazione, fonte_quantita_attesa)
+    e normalizzazione `quantita` in `_apply_fonte_quantita_logic`.
+
+    Defense-in-depth lato BE: il DB applica CHECK chk_contrighe_coerenza_fonte_erogazione
+    + trigger trg_contratti_righe_a10_default_fonte_qta_ins_upd (migrations
+    20260519-05/06). Qui verifichiamo che il service applichi la stessa logica
+    PRIMA del round-trip DB, con errore parlante.
+
+    Riferimento: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §2.
+
+    Indice test:
+    1) test_apply_default_fonte_per_tipo_in_create — 4 sub-test
+    2) test_apply_no_default_fonte_in_update — i default sono solo create
+    3) test_combinazione_vietata_solleva — 7 sub-test (matrice CHECK DB)
+    4) test_combinazione_ammessa_passa — sub-test sulle combo default/valide
+    5) test_fonte_fissa_richiede_quantita_positiva
+    6) test_fonte_downstream_forza_quantita_null — 3 sub-test (MANUALE/TIMESHEET/LETTURE)
+    7) test_fonte_downstream_forza_qta_operativa_anche_se_assente_dal_payload
+       (regressione bug 2026-05-19 asimmetria normalizzazione)
+    8) test_fonte_derivata_componenti_non_normalizza_quantita
+    """
+
+    def _service(self):
+        # Service stateless rispetto a _apply_fonte_quantita_logic. Niente mock.
+        from apps.vendite.services.contratti_service import ContrattiService
+        return ContrattiService()
+
+    # -- Default --------------------------------------------------------
+
+    def test_apply_default_fonte_per_tipo_in_create(self):
+        svc = self._service()
+        attesi = {
+            "CANONE": "FISSA",
+            "UNA_TANTUM": "FISSA",
+            "ORARIO": "MANUALE",
+            "CONSUMO": "LETTURE",
+        }
+        for tipo, fonte_attesa in attesi.items():
+            with self.subTest(tipo=tipo):
+                data = {"tipo_erogazione": tipo, "quantita": Decimal("1")}
+                svc._apply_fonte_quantita_logic(data, for_create=True)
+                self.assertEqual(data.get("fonte_quantita_attesa"), fonte_attesa)
+
+    def test_apply_no_default_fonte_in_update(self):
+        # In update non auto-applichiamo default: la decisione del trigger DB
+        # (reset solo se la combo diventa vietata) e' speculare lato BE.
+        svc = self._service()
+        data = {"tipo_erogazione": "CANONE"}
+        svc._apply_fonte_quantita_logic(data, for_create=False)
+        self.assertNotIn("fonte_quantita_attesa", data)
+
+    # -- Guard combinazioni vietate --------------------------------------
+
+    def test_combinazione_vietata_solleva(self):
+        svc = self._service()
+        vietate = [
+            ("CANONE", "TIMESHEET"),
+            ("CANONE", "LETTURE"),
+            ("UNA_TANTUM", "TIMESHEET"),
+            ("UNA_TANTUM", "LETTURE"),
+            ("ORARIO", "LETTURE"),
+            ("CONSUMO", "FISSA"),
+            ("CONSUMO", "TIMESHEET"),
+        ]
+        for tipo, fonte in vietate:
+            with self.subTest(tipo=tipo, fonte=fonte):
+                data = {
+                    "tipo_erogazione": tipo,
+                    "fonte_quantita_attesa": fonte,
+                    "quantita": Decimal("1"),
+                }
+                with self.assertRaises(ServiceError) as ctx:
+                    svc._apply_fonte_quantita_logic(data, for_create=True)
+                self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+                self.assertIn("Combinazione vietata", ctx.exception.detail or "")
+
+    def test_combinazione_ammessa_passa(self):
+        svc = self._service()
+        ammesse = [
+            ("CANONE", "FISSA"),
+            ("CANONE", "MANUALE"),
+            ("CANONE", "DERIVATA_COMPONENTI"),
+            ("UNA_TANTUM", "FISSA"),
+            ("ORARIO", "MANUALE"),
+            ("ORARIO", "TIMESHEET"),
+            ("CONSUMO", "MANUALE"),
+            ("CONSUMO", "LETTURE"),
+            ("CONSUMO", "DERIVATA_COMPONENTI"),
+        ]
+        for tipo, fonte in ammesse:
+            with self.subTest(tipo=tipo, fonte=fonte):
+                # Per FISSA serve qta positiva (guard 2.3); usiamo DERIVATA o
+                # qta_operativa per le altre per non rompere la guard FISSA.
+                data = {
+                    "tipo_erogazione": tipo,
+                    "fonte_quantita_attesa": fonte,
+                    "qta_operativa": Decimal("1") if fonte == "FISSA" else None,
+                }
+                # Non deve sollevare.
+                svc._apply_fonte_quantita_logic(data, for_create=True)
+
+    # -- Normalizzazione quantita ---------------------------------------
+
+    def test_fonte_fissa_richiede_quantita_positiva(self):
+        svc = self._service()
+        data = {
+            "tipo_erogazione": "CANONE",
+            "fonte_quantita_attesa": "FISSA",
+            # nessuna quantita ne' qta_operativa
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            svc._apply_fonte_quantita_logic(data, for_create=True)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("quantita > 0", ctx.exception.detail or "")
+
+    def test_fonte_downstream_forza_quantita_null(self):
+        svc = self._service()
+        fonti_downstream = [
+            ("CANONE", "MANUALE"),    # rara ma ammessa
+            ("ORARIO", "TIMESHEET"),  # naturale
+            ("CONSUMO", "LETTURE"),   # naturale
+        ]
+        for tipo, fonte in fonti_downstream:
+            with self.subTest(tipo=tipo, fonte=fonte):
+                data = {
+                    "tipo_erogazione": tipo,
+                    "fonte_quantita_attesa": fonte,
+                    "quantita": Decimal("5"),  # ignorata
+                    "qta_operativa": Decimal("3"),  # ignorata
+                }
+                svc._apply_fonte_quantita_logic(data, for_create=True)
+                self.assertIsNone(data["quantita"])
+                self.assertIsNone(data["qta_operativa"])
+
+    def test_fonte_downstream_forza_qta_operativa_anche_se_assente_dal_payload(self):
+        # Regressione bug 2026-05-19: in update parziale `{fonte_quantita_attesa:
+        # 'MANUALE'}` (l'utente cambia solo la fonte da FISSA a MANUALE), il
+        # service deve forzare a NULL ENTRAMBI `quantita` e `qta_operativa` nel
+        # `data`, anche se il payload non contiene `qta_operativa`. Altrimenti
+        # il trigger DB `trgfn_qta_from_operativa` riscrive `quantita` =
+        # `qta_operativa` post-UPDATE, vanificando il NULL.
+        svc = self._service()
+        data = {
+            "tipo_erogazione": "CANONE",
+            "fonte_quantita_attesa": "MANUALE",
+            # nessuna quantita/qta_operativa nel data
+        }
+        # Payload vuoto (simula update parziale senza qta).
+        svc._apply_fonte_quantita_logic(data, for_create=False)
+        self.assertIsNone(data.get("quantita"))
+        self.assertIsNone(data.get("qta_operativa"))
+
+    def test_fonte_derivata_componenti_non_normalizza_quantita(self):
+        # DERIVATA_COMPONENTI: il trigger DB z90_propaga_qta_componenti scrive
+        # `quantita` post-INSERT figli. Il service NON deve toccarla
+        # (ne' forzare NULL, ne' validare > 0). Lascia passare il valore del
+        # payload o NULL se assente.
+        svc = self._service()
+        data = {
+            "tipo_erogazione": "CANONE",
+            "fonte_quantita_attesa": "DERIVATA_COMPONENTI",
+            # nessuna quantita: il trigger DB la calcola
+        }
+        # Non deve sollevare ne' settare quantita.
+        svc._apply_fonte_quantita_logic(data, for_create=True)
+        self.assertNotIn("quantita", data)
+
+
 class ContrattiServicePricingGateTests(TestCase):
     """Suite gate prezzo riga contratto (BE 2.0, 2026-05-15).
 

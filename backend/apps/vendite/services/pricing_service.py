@@ -129,6 +129,7 @@ class PricingService:
         emittente_soggetto_ruolo_id: int,
         classe_utenza_id: int | None = None,
         articolo_padre_contesto: UUID | str | None = None,
+        listino_versione_id_preferito: int | None = None,
     ) -> dict[str, Any]:
         # require_uuid accetta solo payload dict; simulo un payload per
         # riutilizzare l'helper centralizzato del validator.
@@ -148,6 +149,10 @@ class PricingService:
         )
         if classe_utenza_id is not None:
             self._v.guard_positive_int(classe_utenza_id, field="classe_utenza_id")
+        if listino_versione_id_preferito is not None:
+            self._v.guard_positive_int(
+                listino_versione_id_preferito, field="listino_versione_id_preferito",
+            )
         # Validazione articolo_padre_contesto opzionale (modello unificato BoM
         # 2026-05-13): se fornito attiva lo STADIO BUNDLE del resolver DB.
         padre_str: str | None = None
@@ -167,6 +172,7 @@ class PricingService:
                 emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
                 classe_utenza_id=classe_utenza_id,
                 articolo_padre_contesto=padre_str,
+                listino_versione_id_preferito=listino_versione_id_preferito,
             )
         except DatabaseError as exc:
             self._raise_pricing_error(
