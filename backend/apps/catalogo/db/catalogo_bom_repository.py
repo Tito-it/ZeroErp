@@ -101,6 +101,40 @@ NOTE_RESOLVE_COLUMNS: tuple[str, ...] = (
     "n.user_update AS nota_user_update",
 )
 
+# Frammento SQL riusato dalle 4 query nota arricchita (list/get articolo +
+# list/get componente). Alias senza prefisso `nota_*` per allineare lo shape
+# al pattern partizionato vendite (`PartitionedNoteRepository._SELECT_COLUMNS`),
+# consumato dal building block FE `NoteDrawer` + `useNote` (che leggono
+# `n.id`, `n.testo_md`, `n.anchor_tipo`, ...). Le view sottostanti
+# (`vw_articoli_note`, `vw_articoli_componenti_note`) conservano i nomi
+# originali col prefisso `nota_*` per eventuali altri consumer; l'alias resta
+# confinato al repo. Refactor 2026-05-22 (Fase 2.B.2).
+_NOTA_PARTITIONED_COLUMNS = """
+    vn.nota_id           AS id,
+    vn.nota_target_tipo  AS target_tipo,
+    vn.nota_target_id    AS target_id,
+    vn.nota_target_riga_id AS target_riga_id,
+    vn.nota_anchor_tipo  AS anchor_tipo,
+    vn.nota_posizione    AS posizione,
+    vn.nota_seq          AS seq,
+    vn.nota_testo        AS testo,
+    vn.nota_testo_md     AS testo_md,
+    vn.nota_visibile     AS visibile,
+    vn.nota_solo_stampa  AS solo_stampa,
+    vn.nota_meta         AS meta,
+    vn.nota_data_insert  AS data_insert,
+    vn.nota_user_insert  AS user_insert,
+    vn.nota_data_update  AS data_update,
+    vn.nota_user_update  AS user_update,
+    vn.stile_id          AS id_stile,
+    vn.stile_codice,
+    vn.stile_descrizione,
+    vn.lingua_id         AS id_lingua,
+    vn.lingua_codice_iso,
+    vn.lingua_descrizione,
+    vn.lingua_descrizione_locale
+""".strip()
+
 
 class CatalogoBomRepository:
     """Repository specializzato per componenti BoM e note catalogo."""
@@ -235,34 +269,12 @@ class CatalogoBomRepository:
     def list_note_articolo(self, articolo_id: UUID | str) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT
                     vn.articolo_id,
                     vn.articolo_codice,
                     vn.articolo_descrizione,
-                    vn.nota_id,
-                    vn.nota_target_tipo,
-                    vn.nota_target_id,
-                    vn.nota_target_riga_id,
-                    vn.nota_anchor_tipo,
-                    vn.nota_posizione,
-                    vn.nota_seq,
-                    vn.nota_testo,
-                    vn.nota_testo_md,
-                    vn.nota_visibile,
-                    vn.nota_solo_stampa,
-                    vn.nota_meta,
-                    vn.nota_data_insert,
-                    vn.nota_user_insert,
-                    vn.nota_data_update,
-                    vn.nota_user_update,
-                    vn.stile_id,
-                    vn.stile_codice,
-                    vn.stile_descrizione,
-                    vn.lingua_id,
-                    vn.lingua_codice_iso,
-                    vn.lingua_descrizione,
-                    vn.lingua_descrizione_locale
+                    {_NOTA_PARTITIONED_COLUMNS}
                 FROM catalogo.vw_articoli_note vn
                 WHERE vn.articolo_id = %s
                 ORDER BY vn.nota_anchor_tipo ASC, vn.nota_posizione ASC, vn.nota_seq ASC, vn.nota_id ASC
@@ -279,34 +291,12 @@ class CatalogoBomRepository:
     ) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT
                     vn.articolo_id,
                     vn.articolo_codice,
                     vn.articolo_descrizione,
-                    vn.nota_id,
-                    vn.nota_target_tipo,
-                    vn.nota_target_id,
-                    vn.nota_target_riga_id,
-                    vn.nota_anchor_tipo,
-                    vn.nota_posizione,
-                    vn.nota_seq,
-                    vn.nota_testo,
-                    vn.nota_testo_md,
-                    vn.nota_visibile,
-                    vn.nota_solo_stampa,
-                    vn.nota_meta,
-                    vn.nota_data_insert,
-                    vn.nota_user_insert,
-                    vn.nota_data_update,
-                    vn.nota_user_update,
-                    vn.stile_id,
-                    vn.stile_codice,
-                    vn.stile_descrizione,
-                    vn.lingua_id,
-                    vn.lingua_codice_iso,
-                    vn.lingua_descrizione,
-                    vn.lingua_descrizione_locale
+                    {_NOTA_PARTITIONED_COLUMNS}
                 FROM catalogo.vw_articoli_note vn
                 WHERE vn.articolo_id = %s
                   AND vn.nota_id = %s
@@ -319,7 +309,7 @@ class CatalogoBomRepository:
     def get_nota_componente(self, nota_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT
                     vn.articolo_componente_id,
                     vn.prodotto_id,
@@ -328,29 +318,7 @@ class CatalogoBomRepository:
                     vn.componente_id,
                     vn.componente_codice,
                     vn.componente_descrizione,
-                    vn.nota_id,
-                    vn.nota_target_tipo,
-                    vn.nota_target_id,
-                    vn.nota_target_riga_id,
-                    vn.nota_anchor_tipo,
-                    vn.nota_posizione,
-                    vn.nota_seq,
-                    vn.nota_testo,
-                    vn.nota_testo_md,
-                    vn.nota_visibile,
-                    vn.nota_solo_stampa,
-                    vn.nota_meta,
-                    vn.nota_data_insert,
-                    vn.nota_user_insert,
-                    vn.nota_data_update,
-                    vn.nota_user_update,
-                    vn.stile_id,
-                    vn.stile_codice,
-                    vn.stile_descrizione,
-                    vn.lingua_id,
-                    vn.lingua_codice_iso,
-                    vn.lingua_descrizione,
-                    vn.lingua_descrizione_locale
+                    {_NOTA_PARTITIONED_COLUMNS}
                 FROM catalogo.vw_articoli_componenti_note vn
                 WHERE vn.nota_id = %s
                 """,
@@ -378,13 +346,9 @@ class CatalogoBomRepository:
     def list_note_componente(self, componente_id: str | UUID) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT vn.nota_id, vn.nota_target_tipo, vn.nota_target_id,
-                       vn.nota_anchor_tipo, vn.nota_posizione, vn.nota_seq,
-                       vn.nota_testo, vn.nota_testo_md,
-                       vn.nota_visibile, vn.nota_solo_stampa, vn.nota_meta,
-                       vn.nota_data_insert, vn.nota_user_insert,
-                       vn.stile_id AS id_stile, vn.stile_codice, vn.stile_descrizione
+                f"""
+                SELECT
+                    {_NOTA_PARTITIONED_COLUMNS}
                 FROM catalogo.vw_articoli_componenti_note vn
                 WHERE vn.articolo_componente_id = %s
                 ORDER BY vn.nota_anchor_tipo ASC, vn.nota_posizione ASC,

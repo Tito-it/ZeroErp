@@ -26,6 +26,7 @@ import { addDaysToToday } from '../../core/utils/date'
 import { paramBool, paramInt } from '../../core/utils/parameterCast'
 import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
@@ -53,6 +54,11 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
+
+// Deferimento contenuto: i LookupSelect/AutoComplete/DatePicker montano solo
+// dopo l'animazione del drawer per evitare il rimbalzo (pattern
+// feedback_content_ready_after_show, applicato 2026-05-22).
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // Capability dal detail backend (Fase 1.B3: script.fn_capability_promo_articolo).
 //   - stato_temporale: FUTURA | INIZIATA | SCADUTA (data-driven puro)
@@ -295,6 +301,7 @@ function close() {
   <Drawer
     :visible="visible"
     @update:visible="v => emit('update:visible', v)"
+    @after-show="onAfterShow"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true"
@@ -307,6 +314,7 @@ function close() {
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
+      <template v-if="contentReady">
       <!-- Banner stato temporale: il backend espone stato_temporale +
            can_update_reason (i18n-ready). Quando reason esiste, la chiave
            e' direttamente la label da renderizzare. -->
@@ -441,6 +449,7 @@ function close() {
         @save="handleSave"
         @cancel="close"
       />
+      </template>
     </div>
   </Drawer>
 </template>

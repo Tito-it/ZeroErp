@@ -1,7 +1,26 @@
 // Client API per il dominio catalogo (articoli, UoM, componenti, note).
 import api from '../../core/api'
+import { makeNotesApi } from '../../core/api/notes'
 
 const BASE = '/catalogo'
+
+// --- Note (building block partizionato 2026-05-21) ---
+//
+// Wrapper di dominio sopra `makeNotesApi`: produce un set CRUD note bindato
+// al parent path (articolo o componente). Catalogo usa pattern URL "split":
+// LIST/POST sotto parent (`/catalogo/articoli/<id>/note/`), DETAIL su endpoint
+// generico (`/catalogo/note/<id>/`). Si esprime con `detailBase: '/catalogo'`.
+// Resto identico al pattern vendite (`makeNotesApi('/vendite/preventivi/<id>')`).
+
+// Scopo: Set CRUD note articolo per il building block NoteDrawer + useNote.
+export function makeArticoloNotesApi(articoloId) {
+  return makeNotesApi(`${BASE}/articoli/${articoloId}`, { detailBase: BASE })
+}
+
+// Scopo: Set CRUD note componente articolo per il building block NoteDrawer + useNote.
+export function makeComponenteNotesApi(articoloId, compId) {
+  return makeNotesApi(`${BASE}/articoli/${articoloId}/componenti/${compId}`, { detailBase: BASE })
+}
 
 // --- Articoli ---
 
@@ -85,24 +104,6 @@ export function deleteArticoloComponente(articoloId, compId) {
   return api.delete(`${BASE}/articoli/${articoloId}/componenti/${compId}/`)
 }
 
-// --- Note articolo ---
-
-export function listArticoloNote(articoloId) {
-  return api.get(`${BASE}/articoli/${articoloId}/note/`)
-}
-
-export function createArticoloNota(articoloId, payload) {
-  return api.post(`${BASE}/articoli/${articoloId}/note/`, payload)
-}
-
-export function updateNota(notaId, payload) {
-  return api.patch(`${BASE}/note/${notaId}/`, payload)
-}
-
-export function deleteNota(notaId) {
-  return api.delete(`${BASE}/note/${notaId}/`)
-}
-
 // --- Unita' di misura (CRUD) ---
 
 export function listUomTipi(params = {}) {
@@ -142,16 +143,6 @@ export function disattivaUnitaMisura(id) {
 }
 
 // Nota: il lookup UoM usa l'endpoint generico lookupCodici('catalogo.unita_misura') da core/apiCore.js
-
-// --- Note componenti ---
-
-export function listComponenteNote(articoloId, compId) {
-  return api.get(`${BASE}/articoli/${articoloId}/componenti/${compId}/note/`)
-}
-
-export function createComponenteNota(articoloId, compId, payload) {
-  return api.post(`${BASE}/articoli/${articoloId}/componenti/${compId}/note/`, payload)
-}
 
 // --- Lookup statici ---
 

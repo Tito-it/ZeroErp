@@ -1186,6 +1186,40 @@ def _extract_nota_payload(
             log_to_db=True,
         )
 
+        # Default derivati per anchor_tipo + posizione (CREATE only).
+        # Allineamento col pattern vendite `PartitionedNoteService._normalize`:
+        # se l'operatore non specifica anchor_tipo/posizione, vengono derivati
+        # da target_riga_id (RIGA/AFTER se valorizzato, DOCUMENTO/HEADER altrimenti).
+        # Le colonne `note_articoli`/`note_articoli_componenti` sono NOT NULL,
+        # quindi senza questi default un payload minimale (solo testo+stile)
+        # del building block FE `NoteDrawer` fallirebbe al constraint DB.
+        # In UPDATE i default non si applicano: chi vuole cambiarli deve farlo
+        # esplicitamente, altrimenti restano i valori persisted.
+        riga_eff = data.get("target_riga_id")
+        if "anchor_tipo" not in data:
+            data["anchor_tipo"] = "RIGA" if riga_eff is not None else "DOCUMENTO"
+        if "posizione" not in data:
+            data["posizione"] = "AFTER" if data["anchor_tipo"] == "RIGA" else "HEADER"
+
+        # Coerenza anchor_tipo <-> target_riga_id (defense-in-depth simmetrica
+        # alla guard di vendite, anche se i CHECK DB la coprono in extremis).
+        has_riga = riga_eff is not None
+        ErrorManager.require(
+            (data["anchor_tipo"] == "RIGA") == has_riga,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload nota non valido.",
+            detail=(
+                "anchor_tipo='RIGA' richiede target_riga_id valorizzato; "
+                "anchor_tipo='DOCUMENTO' richiede target_riga_id NULL."
+            ),
+            context={
+                "anchor_tipo": data["anchor_tipo"],
+                "target_riga_id": riga_eff,
+            },
+            function_name=function_name,
+            log_to_db=True,
+        )
+
     return data
 
 

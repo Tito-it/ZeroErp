@@ -25,6 +25,10 @@ import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constant
 import { NAV_ICONS } from '../../../core/navigation'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../../core/components/DrawerFooter.vue'
+import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
+import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
+import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
+import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import PreventiviForm from './PreventiviForm.vue'
 import PreventiviRigheTable from './PreventiviRigheTable.vue'
 import PreventiviIntegrazione from './PreventiviIntegrazione.vue'
@@ -120,10 +124,9 @@ const effectivePreventivoId = computed(() => createdId.value ?? props.preventivo
 const hasDetail = computed(() => detail.value !== null)
 
 // Deferimento contenuto: i LookupSelect/AutoComplete montano dopo l'animazione
-// di apertura del drawer per evitare il rimbalzo iniziale (pattern adottato
-// da ContrattoDrawer + memoria feedback_content_ready_after_show).
-const contentReady = ref(false)
-function onAfterShow() { contentReady.value = true }
+// di apertura del drawer per evitare il rimbalzo iniziale (pattern
+// feedback_content_ready_after_show centralizzato in useDrawerContentReady).
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // Capability dal detail backend (Fase 1: script.fn_available_actions_preventivo).
 // Il drawer NON ricalcola lo stato: tutto deriva dai metadata API.
@@ -319,10 +322,7 @@ async function loadRiepilogoIva(targetId = null) {
 }
 
 watch(() => props.visible, async (v) => {
-  if (!v) {
-    contentReady.value = false
-    return
-  }
+  if (!v) return  // contentReady reset gestito da useDrawerContentReady
   // loadParamDefaults serve in entrambi i mode (paramBool/paramInt usati anche
   // in defaultForm). loadUtilityDefault serve solo in CREATE (in EDIT utility_id
   // arriva dal detail BE).
@@ -662,6 +662,42 @@ function onNuovaRevisione() {
   })
 }
 
+// Azioni della testata preventivo consumate da DrawerActionsBar.
+// In readonly (props.readonly, parentReadonly o isSuperseded) le transizioni
+// di stato e "Nuova revisione" sono nascoste — coerente col template legacy
+// `<template v-if="!isReadonly">`. La voce "Gestisci note" resta sempre
+// visibile (la lettura note ha senso anche in storico). Il PDF stato-aware
+// resta componente dedicato e va nel #suffix del BB.
+const drawerActions = computed(() => {
+  if (!hasDetail.value) return []
+  const list = []
+  if (!isReadonly.value) {
+    list.push(...mapAvailableActionsToDrawerActions({
+      availableActions,
+      t,
+      onAction: onCambiaStato,
+    }))
+    if (canCreateRevisione.value) {
+      list.push({
+        key: 'nuova-revisione',
+        kind: 'state',
+        label: t('preventivi.azione_revisione'),
+        icon: 'pi pi-copy',
+        severity: 'secondary',
+        command: onNuovaRevisione,
+      })
+    }
+  }
+  list.push({
+    key: 'manage-note',
+    kind: 'manage',
+    label: t('preventivi.gestisci_note'),
+    icon: MANAGE_ICONS.NOTE,
+    command: () => { noteDrawerVisible.value = true },
+  })
+  return list
+})
+
 </script>
 
 <template>
@@ -681,12 +717,15 @@ function onNuovaRevisione() {
       <!-- Header info: visibile in EDIT classico e in CREATE post auto-save (hasDetail).
            Cliente denominazione rimossa: gia' visibile nel form testata sotto.
            Contesto pricing (contratto/listino) mostrato come badge per audit visivo
-           del path resolver applicato al preventivo. -->
-      <div v-if="hasDetail" class="preventivo-drawer-header-row">
-        <div class="preventivo-drawer-header-info">
+           del path resolver applicato al preventivo.
+           Refactor UI drawer 2026-05-21: header e azioni passano dai BB
+           condivisi DrawerEntityHeader + DrawerActionsBar (vedi
+           docs/it/dev/frontend/frontend-standards.md §"Azioni Drawer"). -->
+      <template v-if="hasDetail">
+        <DrawerEntityHeader>
           <Tag :value="`${detail.numero} rev.${detail.rev}`" severity="secondary" />
           <Tag v-if="isSuperseded" :value="t('preventivi.tag_superseded')" severity="warn" icon="pi pi-history" />
-          <span v-if="detail.data" class="preventivo-drawer-header-muted">
+          <span v-if="detail.data" class="app-drawer-header-muted">
             {{ displayDate(detail.data) }}
           </span>
           <template v-if="contestoPricing && contestoPricing.fonte === 'CONTRATTO'">
@@ -719,49 +758,33 @@ function onNuovaRevisione() {
               v-tooltip.bottom="t('preventivi.contesto_pricing_none_tooltip')"
             />
           </template>
-        </div>
-        <Tag
-          :value="detail.stato_descrizione"
-          :severity="statoPreventiveSeverity(detail.stato_codice_interno)"
-          class="preventivo-drawer-status"
-        />
-      </div>
 
-      <!-- Azioni testata: stato, PDF e note in posizione unica sopra il form. -->
-      <div
-        v-if="hasDetail"
-        class="preventivo-drawer-actions"
-      >
-        <template v-if="!isReadonly">
-          <Button v-for="action in availableActions" :key="action.key"
-            :icon="action.icon" :label="t(action.label_key)" :severity="action.severity"
-            size="small" @click="onCambiaStato(action)" />
-          <Button v-if="canCreateRevisione"
-            icon="pi pi-copy" :label="t('preventivi.azione_revisione')" severity="secondary"
-            size="small" @click="onNuovaRevisione" />
-        </template>
+          <template #status>
+            <Tag
+              :value="detail.stato_descrizione"
+              :severity="statoPreventiveSeverity(detail.stato_codice_interno)"
+            />
+          </template>
+        </DrawerEntityHeader>
 
-        <!-- PDF stato-aware (Tranche M+):
+        <!-- Azioni testata: stato, PDF e note in posizione unica sopra il form.
+             PDF stato-aware (Tranche M+):
                - DRAFT     -> Anteprima inline (no save)
                - EMESSO    -> Genera PDF (con dialog conferma rigenerazione)
                - ACCETTATO/EVASO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
-             Visibile appena c'e' detail. Coerente con la regola di dominio
-             "EMESSO == almeno una versione PDF" (atomica BE). -->
-        <PreventivoPdfButton
-          v-if="detail.emittente_fiscale_id"
-          :preventivo-id="effectivePreventivoId"
-          :emittente-fiscale-id="detail.emittente_fiscale_id"
-          :stato-codice="detail.stato_codice_interno"
-        />
-        <Button
-          :label="t('preventivi.gestisci_note')"
-          :icon="MANAGE_ICONS.NOTE"
-          size="small"
-          outlined
-          class="app-manage-btn app-escape"
-          @click="noteDrawerVisible = true"
-        />
-      </div>
+             Resta componente dedicato dentro #suffix (stateful), non rappresentabile
+             come azione `command: () => void`. -->
+        <DrawerActionsBar :actions="drawerActions">
+          <template #suffix>
+            <PreventivoPdfButton
+              v-if="detail.emittente_fiscale_id"
+              :preventivo-id="effectivePreventivoId"
+              :emittente-fiscale-id="detail.emittente_fiscale_id"
+              :stato-codice="detail.stato_codice_interno"
+            />
+          </template>
+        </DrawerActionsBar>
+      </template>
 
       <!-- Banner revisione superseded: visibile sotto le azioni quando il
            preventivo aperto e' una versione storica (esiste una revisione
@@ -857,6 +880,13 @@ function onNuovaRevisione() {
 
       <DrawerFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto" :loading="loading" :disabled="!canSave"
         @save="handleSave" @cancel="close" />
+      <!-- Fallback close-only: in stati post-DRAFT (readonly, no Salva/Annulla)
+           l'utente deve poter uscire deliberatamente dal footer in basso, non
+           solo dalla X in alto (semantica diversa: X=dismiss/escape,
+           Chiudi=completion). Pattern coerente con `feedback_drawer_footer_close_only`
+           e ContrattoRigheDrawer. Nascosto quando il form riga e' aperto per
+           non duplicare l'azione Annulla del form. -->
+      <DrawerFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="close" />
     </div>
   </Drawer>
 
@@ -904,43 +934,3 @@ function onNuovaRevisione() {
   </Dialog>
 </template>
 
-<style scoped>
-.preventivo-drawer-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.5rem;
-}
-
-.preventivo-drawer-header-info {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.preventivo-drawer-header-muted {
-  font-size: 0.85rem;
-  color: var(--text-color-secondary);
-}
-
-.preventivo-drawer-header-client {
-  font-size: 0.85rem;
-  min-width: 0;
-}
-
-.preventivo-drawer-status {
-  margin-left: auto;
-}
-
-.preventivo-drawer-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.5rem;
-}
-</style>

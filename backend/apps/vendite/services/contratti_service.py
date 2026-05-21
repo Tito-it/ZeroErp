@@ -354,10 +354,21 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         E_VENDITE_DUPLICATO,
         "Numero contratto gia' esistente.",
     ),
+    # uq_* nome storico (UNIQUE WITHOUT OVERLAPS pre-2026-05-21);
+    # ex_* nome post-fix overlap parziale 2026-05-21 (migration 20260521-01..03,
+    # EXCLUDE gist partial WHERE NOT is_abortito_snapshot). Entrambi mappati
+    # per resilienza a futuri rename DB.
     "uq_contratti_no_overlap": (
         E_VENDITE_CONTRATTO_OVERLAP,
-        "Esiste gia' un contratto sovrapposto per questa combinazione "
-        "cliente/istanza/utility/ambito nel periodo indicato.",
+        "Esiste gia' un contratto valido in questo periodo per lo stesso "
+        "cliente e punto di fornitura. Annulla o cessa quello esistente "
+        "prima di crearne uno nuovo.",
+    ),
+    "ex_contratti_no_overlap": (
+        E_VENDITE_CONTRATTO_OVERLAP,
+        "Esiste gia' un contratto valido in questo periodo per lo stesso "
+        "cliente e punto di fornitura. Annulla o cessa quello esistente "
+        "prima di crearne uno nuovo.",
     ),
     "uq_contratti_utilities_contratto_id": (
         E_VENDITE_DUPLICATO,

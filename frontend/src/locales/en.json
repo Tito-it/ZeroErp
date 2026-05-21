@@ -1927,6 +1927,7 @@
     },
     "search_placeholder": "Search by number, client, utility...",
     "filtro_stato": "Status",
+    "filtro_utility": "Utility",
     "nuovo_preventivo": "New Quote",
     "preventivo": "Quote",
     "preventivo_creato": "Quote created",

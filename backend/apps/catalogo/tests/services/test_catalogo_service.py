@@ -31,8 +31,11 @@ Indice test eseguiti:
 21) CatalogoServiceTests.test_fn_create_componente_ok
 22) CatalogoServiceTests.test_fn_update_componente_immutabile
 23) CatalogoServiceTests.test_fn_create_nota_articolo_ok
-24) CatalogoServiceTests.test_fn_update_nota_not_found
-25) CatalogoServiceTests.test_fn_create_componente_self_reference
+24) CatalogoServiceTests.test_fn_create_nota_articolo_default_documento_header
+25) CatalogoServiceTests.test_fn_create_nota_componente_default_riga_after
+26) CatalogoServiceTests.test_fn_create_nota_articolo_anchor_riga_inconsistency
+27) CatalogoServiceTests.test_fn_update_nota_not_found
+28) CatalogoServiceTests.test_fn_create_componente_self_reference
 26) CatalogoServiceTests.test_fn_create_articolo_listino_tipologia_id_ok
 27) CatalogoServiceTests.test_fn_update_articolo_listino_tipologia_id_invalid
 28) CatalogoServiceTests.test_fn_create_componente_esposto_in_fattura_ok
@@ -101,7 +104,9 @@ class CatalogoServiceTests(TestCase):
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = [{"id": 1, "uom_codice": "PZ"}]
         mock_bom_repo_cls.return_value.list_componenti.return_value = [{"id": "comp-1"}]
-        mock_bom_repo_cls.return_value.list_note_articolo.return_value = [{"nota_id": 9}]
+        # Shape allineata al pattern partizionato vendite (2026-05-22):
+        # le note ritornano `id`/`testo_md` senza prefisso `nota_`.
+        mock_bom_repo_cls.return_value.list_note_articolo.return_value = [{"id": 9}]
 
         result = fn_get_articolo(7)
 
@@ -109,7 +114,7 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(result["codice"], "ART-007")
         self.assertEqual(result["uom_operative"][0]["uom_codice"], "PZ")
         self.assertEqual(result["componenti"][0]["id"], "comp-1")
-        self.assertEqual(result["note"][0]["nota_id"], 9)
+        self.assertEqual(result["note"][0]["id"], 9)
 
     # Scopo: Dettaglio articolo assente -> not found uniforme.
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
@@ -518,11 +523,83 @@ class CatalogoServiceTests(TestCase):
         mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
         bom_repo = mock_bom_repo_cls.return_value
         bom_repo.create_nota_articolo.return_value = 5
-        bom_repo.get_nota_articolo.return_value = {"nota_id": 5, "nota_testo": "Demo"}
+        # Shape allineata al pattern partizionato vendite (2026-05-22):
+        # alias senza prefisso `nota_` (id/testo invece di nota_id/nota_testo).
+        bom_repo.get_nota_articolo.return_value = {"id": 5, "testo": "Demo"}
 
         result = fn_create_nota_articolo("art-1", {"id_stile": 1, "testo": "Demo"})
 
-        self.assertEqual(result["nota_id"], 5)
+        self.assertEqual(result["id"], 5)
+
+    # Scopo: create nota articolo senza target_riga_id -> anchor_tipo/posizione
+    # default DOCUMENTO/HEADER applicati dal service (allineamento col pattern
+    # vendite PartitionedNoteService). Verifica che il payload passato al repo
+    # contenga i default — senza questi i NOT NULL DB su anchor_tipo/posizione
+    # rifiuterebbero l'INSERT (regression check per il bug E_CATALOGO_VALIDATION
+    # rilevato durante lo smoke Fase 2.B del refactor UI drawer).
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_nota_articolo_default_documento_header(self, mock_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_create_nota_articolo
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+        bom_repo = mock_bom_repo_cls.return_value
+        bom_repo.create_nota.return_value = 5
+        bom_repo.get_nota_articolo.return_value = {"id": 5}
+
+        fn_create_nota_articolo("art-1", {"id_stile": 1, "testo_md": "Demo"})
+
+        # Verifica argomento `data` passato al repo: deve contenere i default.
+        bom_repo.create_nota.assert_called_once()
+        _, _, data_arg = bom_repo.create_nota.call_args.args
+        self.assertEqual(data_arg["anchor_tipo"], "DOCUMENTO")
+        self.assertEqual(data_arg["posizione"], "HEADER")
+
+    # Scopo: create nota componente con target_riga_id -> anchor_tipo/posizione
+    # default RIGA/AFTER applicati dal service.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    def test_fn_create_nota_componente_default_riga_after(self, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_create_nota_componente
+
+        bom_repo = mock_bom_repo_cls.return_value
+        bom_repo.create_nota.return_value = 7
+        bom_repo.get_nota_componente.return_value = {"id": 7}
+
+        riga_uuid = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
+        fn_create_nota_componente(
+            "comp-1",
+            {"id_stile": 1, "testo_md": "Demo", "target_riga_id": riga_uuid},
+        )
+
+        bom_repo.create_nota.assert_called_once()
+        _, _, data_arg = bom_repo.create_nota.call_args.args
+        self.assertEqual(data_arg["anchor_tipo"], "RIGA")
+        self.assertEqual(data_arg["posizione"], "AFTER")
+        self.assertEqual(str(data_arg["target_riga_id"]), riga_uuid)
+
+    # Scopo: create nota con coppia incoerente anchor_tipo='DOCUMENTO' +
+    # target_riga_id valorizzato -> errore E_CATALOGO_VALIDATION (guard
+    # defense-in-depth simmetrica a vendite).
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_nota_articolo_anchor_riga_inconsistency(self, mock_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_create_nota_articolo
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+        del mock_bom_repo_cls  # repo non viene mai chiamato
+
+        riga_uuid = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
+        with self.assertRaises(ServiceError) as ctx:
+            fn_create_nota_articolo(
+                "art-1",
+                {
+                    "id_stile": 1,
+                    "testo_md": "Demo",
+                    "anchor_tipo": "DOCUMENTO",
+                    "target_riga_id": riga_uuid,
+                },
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
 
     # Scopo: update nota inesistente -> 404 dominio catalogo.
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")

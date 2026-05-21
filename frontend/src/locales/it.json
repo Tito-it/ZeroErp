@@ -1933,6 +1933,7 @@
     },
     "search_placeholder": "Cerca per numero, cliente, utility...",
     "filtro_stato": "Stato",
+    "filtro_utility": "Utility",
     "nuovo_preventivo": "Nuovo Preventivo",
     "preventivo": "Preventivo",
     "preventivo_creato": "Preventivo creato",

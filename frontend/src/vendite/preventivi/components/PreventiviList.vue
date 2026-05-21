@@ -8,7 +8,7 @@ import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
 import { displayDate, toDateString } from '../../../core/utils/date'
 import { formatCurrency } from '../../../core/utils/format'
-import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
+import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -17,6 +17,7 @@ import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 import SearchHint from '../../../core/components/SearchHint.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
+import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../../core/components/ReadonlyBadge.vue'
@@ -36,6 +37,7 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 
 // --- Filtri ---
 const statoFilter = ref(null)
+const utilityFilter = ref(store.filters.utility_id ?? null)
 const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
 const dataAlFilter = ref(null)
 // Toggle "mostra storico revisioni": negazione del filtro store
@@ -67,6 +69,11 @@ const pageActions = computed(() => [
 
 function onStatoChange() {
   store.filters.stato = statoFilter.value
+  applyFilters()
+}
+
+function onUtilityChange() {
+  store.filters.utility_id = utilityFilter.value
   applyFilters()
 }
 
@@ -151,6 +158,14 @@ onMounted(() => store.fetchList())
         <InputText v-model="searchText" :placeholder="t('preventivi.search_placeholder')" style="width: 260px;" />
         <LookupSelect v-model="statoFilter" rel="config.stati_doc_preventivi" value-field="codice_interno"
           :placeholder="t('preventivi.filtro_stato')" show-clear @change="onStatoChange" style="width: 160px;" />
+        <UtilityPerRuoloSelect
+          v-model="utilityFilter"
+          :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
+          :placeholder="t('preventivi.filtro_utility')"
+          show-clear
+          apply-default
+          @change="onUtilityChange"
+        />
         <DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
           :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
           @date-select="onDataDaChange" @clear-click="onDataDaChange" />

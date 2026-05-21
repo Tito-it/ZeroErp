@@ -505,6 +505,31 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_CONTRATTO_OVERLAP")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_contratto_overlap_exclusion_partial_mappato(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.generate_numero.return_value = "CNT0000004"
+        repo.get_stato_id_by_codice.return_value = 1
+        # Scopo: post 2026-05-21 (migrations 20260521-01..03) il constraint
+        #        diventa EXCLUDE gist parziale `ex_contratti_no_overlap`
+        #        (WHERE NOT is_abortito_snapshot). Messaggio PG ha tipo
+        #        "exclusion constraint" e nome cambiato. Entrambi i nomi
+        #        sono mappati nei `_UNIQUE_CONSTRAINTS` per resilienza.
+        repo.create_contratto.side_effect = IntegrityError(
+            "conflicting key value violates exclusion constraint \"ex_contratti_no_overlap\""
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().create_contratto({
+                "billing_account_id": 10,
+                "istanza_utility_id": 20,
+                "utility_id": 3,
+                "valido_dal": "2026-01-01",
+            })
+        self.assertEqual(ctx.exception.code, "E_VENDITE_CONTRATTO_OVERLAP")
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_contratto_genera_numero_e_stato_draft(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 

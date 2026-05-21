@@ -32,12 +32,12 @@ import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import {
   listArticoloComponenti, createArticoloComponente,
   updateArticoloComponente,
-  listComponenteNote, createComponenteNota,
+  makeComponenteNotesApi,
 } from '../api/catalogo'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { displayDate, toDateString } from '../../core/utils/date'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
-import CatalogoNoteDrawer from '../../core/components/CatalogoNoteDrawer.vue'
+import NoteDrawer from '../../core/components/NoteDrawer.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
@@ -176,12 +176,17 @@ const duplicaDialogIsImmediata = computed(() => {
   return sel.getTime() === today.getTime()
 })
 
-// Sub-drawer note per componente
+// Sub-drawer note per componente. Refactor 2026-05-21 (Fase 2.B):
+// passa dal vecchio CatalogoNoteDrawer ad-hoc al BB partizionato NoteDrawer
+// + makeComponenteNotesApi. apiClient reattivo a `noteCompId` cosi' il
+// dereffato di useNote intercetta il cambio padre senza ricreare il drawer.
 const noteDrawerVisible = ref(false)
 const noteCompId = ref(null)
 
-const noteListFn = computed(() => () => listComponenteNote(props.articoloId, noteCompId.value))
-const noteCreateFn = computed(() => (payload) => createComponenteNota(props.articoloId, noteCompId.value, payload))
+const noteApiClient = computed(() => {
+  if (!props.articoloId || !noteCompId.value) return null
+  return makeComponenteNotesApi(props.articoloId, noteCompId.value)
+})
 
 function openNoteDrawer(row) {
   noteCompId.value = row.id
@@ -710,11 +715,11 @@ function buildRigaActions(row) {
     </div>
   </Drawer>
 
-  <CatalogoNoteDrawer
+  <NoteDrawer
+    v-if="noteApiClient"
     :visible="noteDrawerVisible"
     @update:visible="v => noteDrawerVisible = v"
-    :list-fn="noteListFn"
-    :create-fn="noteCreateFn"
+    :api-client="noteApiClient"
     :title="t('catalogo.tab_note')"
     @saved="loadComponenti"
   />
