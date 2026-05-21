@@ -4,6 +4,6 @@ id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_u
 3,2,4,t,"{""action_key"":""accetta"",""label_key"":""preventivi.azione_accetta"",""severity"":""success"",""icon"":""pi pi-check"",""requires_confirm"":false,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
 4,2,5,t,"{""action_key"":""rifiuta"",""label_key"":""preventivi.azione_rifiuta"",""severity"":""danger"",""icon"":""pi pi-ban"",""requires_confirm"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
 5,2,7,t,"{""manuale"":false}",2026-04-03 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
-6,2,9,t,"{""action_key"":""annulla"",""label_key"":""preventivi.azione_annulla"",""severity"":""danger"",""icon"":""pi pi-times"",""requires_confirm"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
-7,4,9,t,"{""action_key"":""annulla"",""label_key"":""preventivi.azione_annulla"",""severity"":""danger"",""icon"":""pi pi-times"",""requires_confirm"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
+6,2,9,f,"{""action_key"":""annulla"",""label_key"":""preventivi.azione_annulla"",""severity"":""danger"",""icon"":""pi pi-times"",""requires_confirm"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-05-22 00:00:00+02,mctit
+7,4,9,f,"{""action_key"":""annulla"",""label_key"":""preventivi.azione_annulla"",""severity"":""danger"",""icon"":""pi pi-times"",""requires_confirm"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-05-22 00:00:00+02,mctit
 8,4,10,t,"{""manuale"":false}",2026-05-10 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
