@@ -97,6 +97,23 @@ a {
   background: var(--p-primary-50);
 }
 
+/* ===== Drawer responsive globale =====
+ * Vale per TUTTI i drawer dell'app: il drawer non eccede mai il viewport.
+ * Le DRAWER_WIDTH centralizzate (constants.js: SIMPLE 480 / STANDARD 640 /
+ * COMPLEX 800 / WIDE 960 / XLARGE 1360) sono "richieste massime" — se il
+ * viewport e' piu' stretto della larghezza richiesta, il drawer si adatta
+ * e occupa l'intera larghezza disponibile (anziche' uscire fuori schermo).
+ * I form-grid-* + DataTable interni gestiscono gia' il proprio collapse;
+ * .app-drawer-content (sotto) aggiunge cintura+bretelle con overflow-x:auto
+ * per i casi rari di contenuto non collassabile.
+ *
+ * Nota: l'inline `:style="{ width: DRAWER_WIDTH.X }"` di PrimeVue resta
+ * efficace come "preferenza" — max-width:100vw vince solo sotto soglia.
+ */
+.p-drawer {
+  max-width: 100vw;
+}
+
 /* ===== Drawer header globale =====
  * Titolo centrato con colore primario — vale per TUTTI i drawer. */
 .p-drawer-title {
@@ -110,6 +127,12 @@ a {
  * Layout standard per il contenuto di qualsiasi drawer laterale.
  * Gap tra sezioni, tipografia titoli (h4), font-size uniforme.
  * Applicare class="app-drawer-content" al wrapper dentro il Drawer.
+ *
+ * Responsive: `min-width: 0` permette al wrapper di rimpicciolirsi sotto la
+ * larghezza intrinseca dei figli in contesti flex/grid (default flex item =
+ * `min-width: auto`, che impedisce lo shrink); `overflow-x: auto` mostra la
+ * scrollbar solo quando un figlio non si adatta (tabelle wide, righe lunghe
+ * non collassabili). Pattern speculare a `.app-datatable`.
  */
 .app-drawer-content {
   display: flex;
@@ -117,6 +140,8 @@ a {
   gap: var(--app-drawer-gap);
   font-size: var(--app-font-size-base);
   line-height: 1.5;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .app-drawer-content h4 {
@@ -137,6 +162,102 @@ a {
   margin: 0;
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+/* ===== Header informativo drawer (DrawerEntityHeader) =====
+ * Riga flex con info entita' a sinistra (numero, badge contesto, data) e
+ * Tag stato a destra. Mirror dei pattern duplicati su contratto/preventivo
+ * pre-refactor (.contratto-drawer-header-row / .preventivo-drawer-header-row).
+ */
+.app-drawer-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.app-drawer-header-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.app-drawer-header-status {
+  margin-left: auto;
+}
+
+/* Testo sottotono accanto ai Tag header (data documento, lead time, ecc.) */
+.app-drawer-header-muted {
+  color: var(--app-text-muted);
+  font-size: 0.85rem;
+}
+
+/* ===== Barra azioni drawer (DrawerActionsBar) =====
+ * Riga flex sotto l'header con azioni di processo (state transitions, manage
+ * sub-drawer, secondary). Responsive: vedi @media (hover: none) sotto.
+ * Mirror di .app-page-actions (lista) adattato al contesto drawer.
+ */
+.app-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.app-drawer-actions-desktop {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.app-drawer-actions-compact {
+  display: none;
+  align-items: center;
+}
+
+/* Wrapper bottone azione drawer: posizionato per ospitare il badge counter
+ * (es. "Gestisci righe" -> badge col numero righe). */
+.app-drawer-action-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Badge counter sopra un pulsante azione drawer kind:'manage'.
+ * Pattern portato dal .contratto-drawer-righe-count pre-refactor. */
+.app-drawer-action-badge {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--p-primary-contrast-color);
+  background: var(--p-primary-color);
+  box-shadow: 0 0 0 2px var(--app-content-bg);
+  pointer-events: none;
+}
+
+/* Variante dot per il kebab compact: segnala presenza di counter dentro il
+ * popup senza esporre il numero (sommare counter eterogenei sarebbe ambiguo).
+ * Il numero esatto resta nella label della voce menu (es. "Gestisci righe (5)"). */
+.app-drawer-action-badge-dot {
+  min-width: 0.5rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  padding: 0;
+  top: -0.15rem;
+  right: -0.15rem;
 }
 
 /* ===== Classe utility DataTable compatta =====
@@ -428,6 +549,8 @@ a {
   .app-row-actions-compact { display: inline-flex; }
   .app-page-actions-desktop { display: none; }
   .app-page-actions-compact { display: inline-flex; }
+  .app-drawer-actions-desktop { display: none; }
+  .app-drawer-actions-compact { display: inline-flex; }
   .app-col-actions,
   .p-datatable-table .app-col-actions {
     width: 60px;

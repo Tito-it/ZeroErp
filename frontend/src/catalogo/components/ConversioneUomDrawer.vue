@@ -15,6 +15,7 @@ import { parseIsoDate, toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
@@ -55,15 +56,12 @@ function isFieldLocked(name) {
 }
 
 // Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
-const contentReady = ref(false)
+// (pattern feedback_content_ready_after_show centralizzato in useDrawerContentReady).
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const selectedFromTipoId = computed(() => {
   const selected = uomLookup.items.value.find(item => item.id === form.value.uom_from_id)
   return selected?.tipo_uom_id ?? null
 })
-
-function onAfterShow() {
-  contentReady.value = true
-}
 
 function resetForm() {
   form.value = {
@@ -96,10 +94,7 @@ async function loadDetail() {
 }
 
 watch(() => props.visible, (v) => {
-  if (!v) {
-    contentReady.value = false
-    return
-  }
+  if (!v) return  // contentReady reset gestito da useDrawerContentReady
   if (isEdit.value) {
     loadDetail()
   } else {

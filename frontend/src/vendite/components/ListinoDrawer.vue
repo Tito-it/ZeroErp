@@ -13,6 +13,7 @@ import { DRAWER_WIDTH } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import TipologiaListinoSelect from './TipologiaListinoSelect.vue'
 import Drawer from 'primevue/drawer'
@@ -43,9 +44,9 @@ const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
 
-// Deferimento contenuto
-const contentReady = ref(false)
-function onAfterShow() { contentReady.value = true }
+// Deferimento contenuto (pattern feedback_content_ready_after_show
+// centralizzato in useDrawerContentReady).
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // Flag di soppressione reset tipologia durante il caricamento iniziale in edit.
 // Evita che il watch su form.value.utility_id azzeri la tipologia che loadDetail
@@ -89,7 +90,7 @@ async function loadDetail() {
 }
 
 watch(() => props.visible, async (v) => {
-  if (!v) { contentReady.value = false; return }
+  if (!v) return  // contentReady reset gestito da useDrawerContentReady
   // Carica il default utility (parameter + lookup) prima di resetForm:
   // defaultForm() legge utilityDefaultId.value gia' risolto a id locale.
   await loadUtilityDefault()

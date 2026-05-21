@@ -676,6 +676,31 @@ Le classi in `main.css` gestiscono la catena flex: `.app-page > .p-tabview > .p-
 | STANDARD | 640px     | Indirizzi, anagrafiche             |
 | COMPLEX  | 800px     | Pratiche, contratti                |
 | WIDE     | 960px     | Ricerca universale, form complessi |
+| XLARGE   | 1360px    | Matrici parametri-per-entita'      |
+
+Le `DRAWER_WIDTH` sono **richieste massime**: il drawer non eccede mai il
+viewport. Sotto la larghezza richiesta (es. mobile/tablet) il drawer riempie
+lo schermo. Regola globale in [main.css](../../../../frontend/src/assets/main.css):
+
+```css
+.p-drawer { max-width: 100vw; }
+.app-drawer-content { min-width: 0; overflow-x: auto; }
+```
+
+**Logica responsive uniforme per TUTTI i drawer:**
+
+1. La larghezza inline `:style="{ width: DRAWER_WIDTH.X }"` resta la
+   preferenza desktop; sotto soglia viewport `max-width: 100vw` vince.
+2. I form interni gia' collassano da soli: `form-grid-2col`/`-3col` →
+   1 colonna sotto 480px (vedi "Classi CSS form").
+3. Le DataTable annidate gestiscono il loro scroll orizzontale via
+   `.app-datatable` (e variante `.app-datatable--inner`).
+4. Per gli elementi rari che non si adattano (riga widget custom, contenuto
+   non collassabile), la scrollbar orizzontale appare sul wrapper
+   `.app-drawer-content` come safety net — cintura + bretelle.
+
+Nessun drawer puo' deviare da questa logica con CSS scoped locale: se
+serve un overflow diverso, modificare la regola globale, non sovrascriverla.
 
 ### Struttura interna
 
@@ -841,6 +866,143 @@ const pageActions = computed(() => [
 - `hideWhenReadonly: true` nasconde automaticamente l'azione in LETTURA.
 - `action` aggancia i permessi di processo tramite `auth.isActionAllowed`.
 - `label`, `tooltip` e menu popup devono essere multilingua (`it/en`).
+
+---
+
+## Azioni Drawer — `DrawerActionsBar`
+
+Le azioni di processo dei drawer entita' (cambio stato data-driven, apertura
+sub-drawer "gestisci righe/note", PDF, export) si renderizzano tramite il
+building block **`DrawerActionsBar`** (`src/core/components/DrawerActionsBar.vue`)
+in un'unica fascia **sotto l'header informativo** del drawer (`DrawerEntityHeader`),
+sopra il form. Il pattern e' speculare a `PageActionsBar` ma adattato al
+contesto drawer: niente azione "+ Nuovo", supporto badge counter sui pulsanti
+"gestisci" (es. numero righe), categoria `state` per le transizioni
+`availableActions`.
+
+**Comportamento responsive (CSS-first, nessun JS di detection):**
+
+| Contesto | Variante |
+| --- | --- |
+| Desktop `hover` + viewport `>=1024px` | `primary` + `state` + `manage` inline con label, `secondary` nel kebab `⋮` desktop |
+| Tablet / touch / viewport `<1024px` | Solo `primary` inline; `state`+`manage`+`secondary` tutti dentro lo stesso kebab `⋮` compact |
+
+Lo switch e' realizzato da `@media (hover: none), (max-width: 1024px)` in `main.css`
+sulle classi `.app-drawer-actions-desktop` / `.app-drawer-actions-compact`, stesso
+breakpoint di `RowActionsMenu` e `PageActionsBar`.
+
+**Perche':** su touch i tooltip non funzionano e una fila di 4-6 pulsanti
+manda il drawer su 2-3 righe spingendo il form sotto il fold; sul desktop c'e'
+spazio e l'hover funziona. La soluzione responsive combina il meglio di
+entrambe senza compromessi (stesso approccio di `RowActionsMenu`).
+
+**Pattern di uso nel drawer:**
+
+```vue
+<script setup>
+import { computed } from 'vue'
+import DrawerEntityHeader from '@/core/components/DrawerEntityHeader.vue'
+import DrawerActionsBar from '@/core/components/DrawerActionsBar.vue'
+import { mapAvailableActionsToDrawerActions } from '@/core/composables/useDrawerActions'
+import { MANAGE_ICONS } from '@/core/constants'
+
+const drawerActions = computed(() => [
+  // Transizioni di stato data-driven dal BE (Emetti / Cessa / Riapri / ...).
+  ...mapAvailableActionsToDrawerActions({
+    availableActions: caps.availableActions,
+    t,
+    onAction: onCambiaStato,
+  }),
+  // Apertura sub-drawer con counter (badge).
+  {
+    key: 'manage-righe',
+    kind: 'manage',
+    label: t('contratti.gestisci_righe'),
+    icon: MANAGE_ICONS.RIGHE,
+    badge: righeCount.value,
+    command: () => righeVisible.value = true,
+  },
+  // Utility nel kebab (sempre).
+  {
+    key: 'pdf',
+    kind: 'secondary',
+    label: t('contratti.scarica_pdf'),
+    icon: 'pi pi-file-pdf',
+    command: onScaricaPdf,
+  },
+])
+</script>
+
+<template>
+  <DrawerEntityHeader>
+    <Tag :value="detail.numero" severity="secondary" />
+    <span class="app-drawer-header-muted">{{ displayDate(detail.data) }}</span>
+    <Tag :value="t('contratti.forma_con_listino')" severity="info" />
+
+    <template #status>
+      <Tag :value="detail.stato_descrizione"
+           :severity="statoContrattoSeverity(detail.stato_codice)" />
+    </template>
+  </DrawerEntityHeader>
+
+  <DrawerActionsBar :actions="drawerActions" />
+</template>
+```
+
+**Formato azione:**
+
+```js
+{
+  key: string,              // identificatore univoco
+  kind: 'primary' | 'state' | 'manage' | 'secondary',
+  label: string,            // testo i18n
+  tooltip?: string,         // override tooltip inline (default: label)
+  icon: string,             // PrimeIcons o MANAGE_ICONS.*
+  severity?: 'primary' | 'success' | 'warn' | 'danger' | 'info' | 'secondary',  // pass-through PrimeVue
+  outlined?: boolean,       // default true per kind:'manage', false altrove
+  badge?: number | string,  // counter inline + suffisso label nel popup (solo manage)
+  visible?: boolean,        // default true
+  disabled?: boolean,       // default false
+  hideWhenReadonly?: boolean, // nasconde automaticamente in LETTURA
+  action?: string,          // codename permesso processo (auth.isActionAllowed)
+  command: () => void,      // handler click
+}
+```
+
+**Semantica `kind`:**
+
+| `kind` | Desktop ≥1024px | Mobile/touch | Esempi |
+| --- | --- | --- | --- |
+| `primary` | Inline con label, **sempre visibile** | Inline | Azione terminale critica (es. Annulla contratto DRAFT, Accetta preventivo) — raro |
+| `state` | Inline con label, severity colorata | Nel kebab popup | Transizioni `availableActions` (Emetti, Cessa, Riapri, ANNULLATO) |
+| `manage` | Inline con badge counter | Nel kebab popup (label suffissata col counter) | "Gestisci righe (5)", "Gestisci note (3)" |
+| `secondary` | Nel kebab desktop | Nel kebab compact | PDF, Export, Cronologia, Diagnostica |
+
+**Regole fisse:**
+
+- La fascia azioni vive **subito sotto** `DrawerEntityHeader` e **prima** del form.
+- La modifica del form NON e' un'azione del BB: resta nel `DrawerFooter` come "Salva".
+- Ogni azione ha `label` tradotta (i18n) — l'inline la mostra come testo, il popup come voce.
+- `hideWhenReadonly: true` per le azioni di modifica/transizione che non hanno senso in LETTURA.
+- `class="app-escape"` e' applicata **automaticamente** dal BB a tutti i bottoni: in
+  modalita' readonly (`app-readonly` sul wrapper drawer) le azioni restano cliccabili —
+  il filtro effettivo lo applica `hideWhenReadonly`.
+- `kind: 'primary'` solo per azioni terminali/critiche che l'operatore deve avere a
+  portata di tap su **ogni** viewport. Nel dubbio usare `state` o `manage`.
+- Le transizioni di stato data-driven (`availableActions`) si mappano sempre via
+  `mapAvailableActionsToDrawerActions(...)`: niente loop manuale `v-for="action in availableActions"`
+  nel template.
+
+**Convenzioni centralizzate:**
+
+| Cosa | Dove |
+| --- | --- |
+| Icona kebab | `MANAGE_ICONS.KEBAB` in `src/core/constants.js` |
+| Stile bottone std | `.app-manage-btn` in `main.css` |
+| Voce menu distruttiva | `.app-menu-item-danger` in `main.css` |
+| Tooltip fallback kebab | `common.altre_azioni` ("Altre azioni") in `it.json` |
+| Wrapper barra azioni | `.app-drawer-actions` / `-desktop` / `-compact` in `main.css` |
+| Wrapper badge counter | `.app-drawer-action-wrap` + `.app-drawer-action-badge` |
 
 ---
 

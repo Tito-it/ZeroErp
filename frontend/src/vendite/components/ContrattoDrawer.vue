@@ -16,6 +16,7 @@ import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
@@ -26,6 +27,9 @@ import { paramInt, paramString } from '../../core/utils/parameterCast'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
+import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupListiniSelezionabiliContratto } from '../api/lookup'
@@ -94,9 +98,9 @@ const isContractLocked = computed(() => isEdit.value && !canEditTestata.value)
 const isReadonly = computed(() => parentReadonly.value || isContractLocked.value)
 provide(READONLY_KEY, isReadonly)
 
-// Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer.
-const contentReady = ref(false)
-function onAfterShow() { contentReady.value = true }
+// Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
+// (pattern feedback_content_ready_after_show centralizzato in useDrawerContentReady).
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // Lookup dinamico listini "selezionabili come riferimento contrattuale"
 // (refactor 2026-05-18 §4.4): filtra `vendite.listini` per esistenza di una
@@ -246,9 +250,11 @@ function toIsoDate(d) {
   return typeof d === 'string' ? d : toDateString(d)
 }
 
-// Carica dati all'apertura
+// Carica dati all'apertura. Il reset di `contentReady` alla chiusura e' gestito
+// dal composable useDrawerContentReady — qui resta solo l'invalidation fgVersion
+// per scartare fetch stantii in caso di apertura/chiusura rapide.
 watch(() => props.visible, async (val) => {
-  if (!val) { fgVersion++; contentReady.value = false; return }
+  if (!val) { fgVersion++; return }
   const v = ++fgVersion
 
   // loadParamDefaults serve sia in EDIT (onModalitaChange usa
@@ -498,6 +504,51 @@ function onAnnullaContratto() {
   })
 }
 
+// Azioni della testata contratto consumate da DrawerActionsBar.
+// Composizione: transizioni di stato (availableActions BE) + Annulla DRAFT
+// (fallback hardcoded — vedi nota sotto) + Gestisci righe/note (sub-drawer).
+// Il PDF resta componente dedicato e va nel #suffix del BB (stateful).
+const drawerActions = computed(() => {
+  if (!isEdit.value || !detail.value) return []
+  const list = mapAvailableActionsToDrawerActions({
+    availableActions,
+    t,
+    onAction: onCambiaStato,
+  })
+  // Refactor 2026-05-20: Annulla contratto DRAFT come azione hardcoded finche'
+  // `script.fn_available_actions_contratto` non espone ANNULLATO data-driven.
+  // Quando il BE aggiorna, questo blocco va rimosso (l'azione apparira'
+  // automaticamente nel loop sopra). Visibile solo per DRAFT: ATTIVO ->
+  // ANNULLATO non e' transizione ammessa (per attivi si usa CESSATO).
+  if (detail.value.stato_codice === 'DRAFT') {
+    list.push({
+      key: 'annulla-draft',
+      kind: 'state',
+      label: t('contratti.azione_annulla'),
+      icon: 'pi pi-ban',
+      severity: 'danger',
+      outlined: true,
+      command: onAnnullaContratto,
+    })
+  }
+  list.push({
+    key: 'manage-righe',
+    kind: 'manage',
+    label: t('contratti.gestisci_righe'),
+    icon: MANAGE_ICONS.RIGHE,
+    badge: righeCount.value,
+    command: () => { righeVisible.value = true },
+  })
+  list.push({
+    key: 'manage-note',
+    kind: 'manage',
+    label: t('contratti.gestisci_note'),
+    icon: MANAGE_ICONS.NOTE,
+    command: () => { noteDrawerVisible.value = true },
+  })
+  return list
+})
+
 const onClose = useDrawerClose(emit, 'cancelled')
 </script>
 
@@ -521,71 +572,37 @@ const onClose = useDrawerClose(emit, 'cancelled')
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <template v-if="contentReady">
 
-      <!-- === Intestazione edit: numero/stato + azioni testata omogenee ai preventivi === -->
+      <!-- === Intestazione edit: numero/stato + azioni testata omogenee ai preventivi.
+           Refactor UI drawer 2026-05-21: header info e azioni passano dai BB
+           condivisi DrawerEntityHeader + DrawerActionsBar (vedi
+           docs/it/dev/frontend/frontend-standards.md §"Azioni Drawer"). === -->
       <template v-if="isEdit && detail">
-        <div class="contratto-drawer-header-row">
-          <div class="contratto-drawer-header-info">
-            <Tag :value="detail.numero" severity="secondary" />
-            <span v-if="detail.data" class="contratto-drawer-header-muted">
-              {{ displayDate(detail.data) }}
-            </span>
-            <Tag
-              :value="t(`contratti.forma_${formaDerivata}`)"
-              :severity="formaDerivata === 'senza_listino' ? 'warn' : 'info'"
-            />
-          </div>
-          <Tag
-            :value="detail.stato_descrizione"
-            :severity="statoContrattoSeverity(detail.stato_codice)"
-            class="contratto-drawer-status"
-          />
-        </div>
-
-        <div class="contratto-drawer-actions">
-          <Button v-for="action in availableActions" :key="action.key"
-            :label="t(action.label_key)"
-            :icon="action.icon"
-            :severity="action.severity"
-            size="small"
-            class="app-escape"
-            @click="onCambiaStato(action)" />
-          <!-- Refactor 2026-05-20: bottone "Annulla contratto" hardcoded come
-               fallback finche' `script.fn_available_actions_contratto` non
-               espone l'azione ANNULLATO. Quando aggiornata lato DB, il
-               bottone viene sostituito automaticamente dal loop sopra
-               (azione data-driven) e questo blocco va rimosso.
-               Visibile solo per DRAFT: ATTIVO → ANNULLATO non e' transizione
-               ammessa, per chiudere un contratto attivo si usa CESSATO. -->
-          <Button v-if="detail && detail.stato_codice === 'DRAFT'"
-            :label="t('contratti.azione_annulla')"
-            icon="pi pi-ban"
-            severity="danger"
-            size="small"
-            outlined
-            class="app-escape"
-            @click="onAnnullaContratto" />
-          <ContrattoPdfButton
-            :contratto-id="props.contrattoId"
-            :stato-codice="detail.stato_codice"
-            :numero="detail.numero"
-          />
-          <span class="contratto-drawer-righe-action">
-            <Button :icon="MANAGE_ICONS.RIGHE" :label="t('contratti.gestisci_righe')"
-              size="small"
-              outlined
-              class="app-manage-btn app-escape"
-              @click="righeVisible = true" />
-            <span class="contratto-drawer-righe-count">{{ righeCount }}</span>
+        <DrawerEntityHeader>
+          <Tag :value="detail.numero" severity="secondary" />
+          <span v-if="detail.data" class="app-drawer-header-muted">
+            {{ displayDate(detail.data) }}
           </span>
-          <Button
-            :icon="MANAGE_ICONS.NOTE"
-            :label="t('contratti.gestisci_note')"
-            size="small"
-            outlined
-            class="app-manage-btn app-escape"
-            @click="noteDrawerVisible = true"
+          <Tag
+            :value="t(`contratti.forma_${formaDerivata}`)"
+            :severity="formaDerivata === 'senza_listino' ? 'warn' : 'info'"
           />
-        </div>
+          <template #status>
+            <Tag
+              :value="detail.stato_descrizione"
+              :severity="statoContrattoSeverity(detail.stato_codice)"
+            />
+          </template>
+        </DrawerEntityHeader>
+
+        <DrawerActionsBar :actions="drawerActions">
+          <template #suffix>
+            <ContrattoPdfButton
+              :contratto-id="props.contrattoId"
+              :stato-codice="detail.stato_codice"
+              :numero="detail.numero"
+            />
+          </template>
+        </DrawerActionsBar>
 
         <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo
              modifica valido_al (programma cessazione) + cambio stato.
@@ -773,7 +790,26 @@ const onClose = useDrawerClose(emit, 'cancelled')
         </div>
       </template>
 
-      <DrawerFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="onClose" />
+      <!-- Footer Salva/Annulla solo se editabile. La regola di dominio e':
+           - CREATE (no detail): editabile
+           - EDIT DRAFT: editabile
+           - EDIT ATTIVO/CESSATO/ANNULLATO: NON editabile (solo Chiudi)
+           NB: ATTIVO ammette tecnicamente modifica di `valido_al + meta`
+           (cf. _CONTRATTO_PATCH_ALLOWED_BY_STATE BE + fn_available_actions_contratto
+           che ritorna `can_edit_testata=true` per ATTIVO), ma l'unica modifica
+           operativa in ATTIVO e' la cessazione programmata, gestita via
+           dialog "Cessa contratto" dedicato (non via Salva del drawer).
+           Quindi UX: mostrare solo Chiudi sgombera il footer da azioni
+           ingannevoli ("Salva" semanticamente non porta a nessuna modifica
+           visibile per l'operatore in ATTIVO). -->
+      <DrawerFooter v-if="!isReadonly && (!detail || detail.stato_codice === 'DRAFT')"
+        :loading="loading" :disabled="!canSave"
+        @save="handleSave" @cancel="onClose" />
+      <!-- Fallback close-only: stati post-DRAFT o LETTURA. Footer dedicato
+           con solo "Chiudi" (semantica completion, vs X in alto = dismiss).
+           Pattern coerente con `feedback_drawer_footer_close_only` e
+           PreventiviDrawer. -->
+      <DrawerFooter v-else-if="detail" close-only @cancel="onClose" />
       </template>
     </div>
 
@@ -840,62 +876,3 @@ const onClose = useDrawerClose(emit, 'cancelled')
   </Drawer>
 </template>
 
-<style scoped>
-.contratto-drawer-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.contratto-drawer-header-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.contratto-drawer-header-muted {
-  color: var(--app-text-muted);
-  font-size: 0.85rem;
-}
-
-.contratto-drawer-status {
-  margin-left: auto;
-}
-
-.contratto-drawer-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  margin-top: 0.5rem;
-}
-
-.contratto-drawer-righe-action {
-  position: relative;
-  display: inline-flex;
-}
-
-.contratto-drawer-righe-count {
-  position: absolute;
-  top: -0.35rem;
-  right: -0.35rem;
-  min-width: 1.15rem;
-  height: 1.15rem;
-  padding: 0 0.25rem;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.7rem;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--p-primary-contrast-color);
-  background: var(--p-primary-color);
-  box-shadow: 0 0 0 2px var(--app-content-bg);
-  pointer-events: none;
-}
-</style>
