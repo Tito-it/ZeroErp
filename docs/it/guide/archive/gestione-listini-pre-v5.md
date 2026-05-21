@@ -1,12 +1,12 @@
 # Guida – Gestione Listini Prezzo
 
-> (latest review 09-04-26 — refactor invariante univocita listini_associazioni Fase 1+2 completate, vedi [WIP listini-commercio](/dev/work-in-progress/listini-commercio))
+> (latest review 09-04-26 — refactor invariante univocita listini_associazioni Fase 1+2 completate)
 >
 > Destinatari: sviluppatori database, backend e analisti funzionali
 >
 > Vedi anche
 >
-> * [Analisi e decisioni operative listini](/dev/work-in-progress/gestione-listini) — decisioni architetturali, roadmap DB, integrazione commessa
+> * Analisi e decisioni operative listini — decisioni architetturali, roadmap DB, integrazione commessa
 > * [vendite.listini](/dbzero/vendite/tabelle/listini)
 > * [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)
 > * [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)
@@ -76,7 +76,7 @@ E la finestra temporale in cui un listino e valido. Ogni versione ha:
 
 Le versioni con `stato = 'ATTIVA'` dello stesso listino **non possono sovrapporsi** temporalmente (vincolo esclusione `ex_listini_versioni_no_overlap`, fix `20260409-01`). Le BOZZE possono coesistere con la versione ATTIVA per supportare il workflow clone+publish.
 
-> Il campo `listini_versioni.priorita` e stato **rimosso il 2026-04-09 (Fase 2)** insieme al check constraint `chk_listini_versioni_priorita`. Con l'invariante univocita per versione `ATTIVA` (post-fix `20260409-01`) non discriminava piu nulla. Vedi [WIP listini-commercio §5](/dev/work-in-progress/listini-commercio).
+> Il campo `listini_versioni.priorita` e stato **rimosso il 2026-04-09 (Fase 2)** insieme al check constraint `chk_listini_versioni_priorita`. Con l'invariante univocita per versione `ATTIVA` (post-fix `20260409-01`) non discriminava piu nulla.
 
 ### Riga prezzo
 
@@ -108,7 +108,7 @@ L'associazione non e un semplice collegamento — e il primo filtro che il resol
 
 > **Invariante 2026-04-09**: per ogni triple `(BA, utility, emittente)` — con `NULL` come wildcard discreto — esiste **al massimo una** associazione attiva sull'intervallo temporale, indipendentemente dal listino. Vincolo `ex_listini_associazioni_no_overlap` (EXCLUDE GIST). Le sostituzioni avvengono via *autoclose* (vedi sezione "Workflow di sostituzione" piu sotto).
 >
-> Il campo `listini_associazioni.priorita` e stato **rimosso il 2026-04-09 (Fase 2)** insieme al check constraint `chk_listini_associazioni_priorita`. Con l'invariante univocita stretta non discriminava piu nulla. Vedi [WIP listini-commercio §5](/dev/work-in-progress/listini-commercio).
+> Il campo `listini_associazioni.priorita` e stato **rimosso il 2026-04-09 (Fase 2)** insieme al check constraint `chk_listini_associazioni_priorita`. Con l'invariante univocita stretta non discriminava piu nulla.
 
 ---
 
@@ -281,7 +281,7 @@ Per applicare un listino "promo" su un BA per un periodo limitato `[Pmin, Pmax]`
 Tutto in transazione atomica.
 ```
 
-Questo workflow potra essere astratto in un endpoint backend dedicato `apply_temporary_pricing(BA, Pmin, Pmax, listino_id)` quando emerge il caso d'uso reale. Vedi [WIP listini-commercio §3.4](/dev/work-in-progress/listini-commercio).
+Questo workflow potra essere astratto in un endpoint backend dedicato `apply_temporary_pricing(BA, Pmin, Pmax, listino_id)` quando emerge il caso d'uso reale.
 
 ---
 
@@ -476,7 +476,7 @@ Entrambi i canali usano lo stesso motore di ricerca impatti e lo stesso algoritm
 
 ### Stato attuale
 
-La fase DB-L4 (rettifiche) e ancora da implementare. Il modello dati e il flusso sono definiti nell'[analisi operativa](/dev/work-in-progress/gestione-listini).
+La fase DB-L4 (rettifiche) e ancora da implementare. Il modello dati e il flusso sono definiti nell'analisi operativa interna.
 
 ---
 

@@ -42,7 +42,7 @@
 > e le scope policy (portali + shop):
 >
 > * Guida architetturale: [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
-> * Piano di sviluppo storico: [sviluppo-multi-face-auth](/dev/work-done/sviluppo-multi-face-auth)
+> * Piano di sviluppo storico: roadmap multi-face auth consolidata
 
 ---
 
@@ -233,7 +233,7 @@ Tutte le tabelle specializzate si collegano tramite `soggetto_ruolo_id → sogge
 
 > ⚠️ **Sezione canonica — leggere prima di disegnare nuove tabelle / FK / fn che riferiscono un ruolo specializzato (cliente, fornitore, emittente_fiscale, reseller, ecc.).**
 >
-> Aggiunta 2026-05-02 a chiusura dell'analisi documentata in [refactor-emittente-id-canonico](/dev/work-in-progress/refactor-emittente-id-canonico).
+> Aggiunta 2026-05-02 a chiusura dell'analisi documentata internamente sul refactor dell'emittente id canonico.
 
 Le tabelle specializzate dei ruoli (`emittenti_fiscali`, `clienti`, `fornitori`, `resellers`) hanno **due identificatori validi** che convivono per design:
 
@@ -242,7 +242,7 @@ Le tabelle specializzate dei ruoli (`emittenti_fiscali`, `clienti`, `fornitori`,
 | **PK reale** della tabella ruolo | `emittenti_fiscali.id`, `clienti.id`, `fornitori.id`, `resellers.id` | identita' autoritativa dell'**entita' di ruolo** con i suoi attributi business (`attivo`, `is_default`, `matricola`, ecc.) |
 | **Denorm `soggetto_ruolo_id`** | `emittenti_fiscali.soggetto_ruolo_id`, idem per le altre | riferimento al **soggetto nel ruolo** durante il periodo di validita' (`soggetti_ruoli.valido_dal/valido_al`) |
 
-Le tabelle che vogliono riferire un ruolo specializzato usano una delle due colonne **a seconda della semantica voluta**. **Entrambe sono pattern intenzionali**: non sono "dualita' da eliminare". Refactor che cercano di unificare su un solo pattern sono **sconsigliati** — vedi [analisi 2026-05-02](/dev/work-in-progress/refactor-emittente-id-canonico) per i dettagli.
+Le tabelle che vogliono riferire un ruolo specializzato usano una delle due colonne **a seconda della semantica voluta**. **Entrambe sono pattern intenzionali**: non sono "dualita' da eliminare". Refactor che cercano di unificare su un solo pattern sono **sconsigliati**; i dettagli sono stati fissati nell'analisi interna del 2026-05-02.
 
 #### Quando usare `soggetto_ruolo_id` (SR id)
 

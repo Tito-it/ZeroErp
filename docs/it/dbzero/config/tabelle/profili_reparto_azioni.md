@@ -1,4 +1,3 @@
-{% include-markdown "it/dbzero/config/manual/profili_reparto_azioni.md" %}
 # 📚 Tabella `profili_reparto_azioni`
 
 ## 🗂️ Campi principali

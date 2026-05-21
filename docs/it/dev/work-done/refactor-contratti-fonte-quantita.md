@@ -14,7 +14,7 @@ Allineare la UI del drawer riga contratto al modello DB di `vendite.contratti_ri
 ## 2) Decisioni chiuse (sessione 2026-05-19)
 
 1. **Combinazioni 🟡 rare ammesse**: la UI non filtra strict; tooltip "uso atipico" sulle combinazioni non-default. La realta' ha eccezioni legittime.
-2. **Combinazioni ❌ vietate hard in DB**: nuova CHECK constraint dichiarativa rifiuta le 5 combinazioni semanticamente inconsistenti. Nessuna preoccupazione di compatibilita' dati esistenti (no produzione — vedi memoria [project_no_produzione_solo_sviluppo](../../../../../../.claude/projects/-home-tid-apps-ZeroErp/memory/project_no_produzione_solo_sviluppo.md)).
+2. **Combinazioni ❌ vietate hard in DB**: nuova CHECK constraint dichiarativa rifiuta le 5 combinazioni semanticamente inconsistenti. Nessuna preoccupazione di compatibilita' dati esistenti (no produzione — vedi memoria interna `project_no_produzione_solo_sviluppo.md`).
 3. **Cambio `tipo_erogazione` in EDIT**: reset automatico di `fonte_quantita_attesa` al default SOLO se la fonte corrente diventa ❌ con il nuovo tipo. Meno invadente; preserva scelte legittime dell'utente.
 
 ## 3) Matrice naturale (riferimento)
@@ -475,12 +475,12 @@ Aggiornare [`test-contratto-composito.md`](test-contratto-composito.md):
 ## 7) Riferimenti
 
 - Analisi originale (chat 2026-05-19): osservazione di Tid + ricostruzione modello + scelta opzione B.
-- Sessione 2026-05-19 (refactor `ComponentiPanel` + Stream 3 composito): [handoff_20260519_note_categoria_compositi](../../../../../../.claude/projects/-home-tid-apps-ZeroErp/memory/handoff_20260519_note_categoria_compositi.md).
+- Sessione 2026-05-19 (refactor `ComponentiPanel` + Stream 3 composito): handoff interno `handoff_20260519_note_categoria_compositi.md`.
 - Memorie applicabili:
-  - [feedback_simmetria_modello_no_meta_scope](../../../../../../.claude/projects/-home-tid-apps-ZeroErp/memory/feedback_simmetria_modello_no_meta_scope.md) — abbracciare la simmetria piena subito, non rinviare a fase 2.
-  - [feedback_no_quick_fix_soluzione_assoluta](../../../../../../.claude/projects/-home-tid-apps-ZeroErp/memory/feedback_no_quick_fix_soluzione_assoluta.md) — soluzione sul merito.
-  - [feedback_db_actions_passaggio_team](../../../../../../.claude/projects/-home-tid-apps-ZeroErp/memory/feedback_db_actions_passaggio_team.md) — DB sempre via brief al team.
-  - [project_no_produzione_solo_sviluppo](../../../../../../.claude/projects/-home-tid-apps-ZeroErp/memory/project_no_produzione_solo_sviluppo.md) — niente compat shim, breaking change ammessi.
+  - `feedback_simmetria_modello_no_meta_scope.md` — abbracciare la simmetria piena subito, non rinviare a fase 2.
+  - `feedback_no_quick_fix_soluzione_assoluta.md` — soluzione sul merito.
+  - `feedback_db_actions_passaggio_team.md` — DB sempre via brief al team.
+  - `project_no_produzione_solo_sviluppo.md` — niente compat shim, breaking change ammessi.
 - Codice toccato:
   - BE: [`contratti_service.py`](../../../../backend/apps/vendite/services/contratti_service.py), [`test_contratti_service.py`](../../../../backend/apps/vendite/tests/services/test_contratti_service.py).
   - FE: [`ContrattoRigheDrawer.vue`](../../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue), [`it.json`](../../../../frontend/src/locales/it.json), [`en.json`](../../../../frontend/src/locales/en.json).

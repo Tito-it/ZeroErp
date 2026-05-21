@@ -571,7 +571,7 @@ nascosta lato UI.
 
 > **Nota**: questa sezione descrive funzionalità **previste ma non
 > ancora rilasciate**. Sono tracciate nel piano operativo
-> [sviluppo-personalizzazioni-liste_def.md](/dev/work-in-progress/sviluppo-personalizzazioni-liste_def) con
+> interno con
 > stato, sforzo e decisioni operative aperte. Il riferimento `DEF-N`
 > nei punti seguenti rimanda all'item del piano.
 

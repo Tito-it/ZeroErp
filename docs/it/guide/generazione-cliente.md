@@ -165,7 +165,7 @@ L'operatore crea il cliente direttamente dall'interfaccia. Il `ClienteService` g
 
 Per utility con ciclo tecnico complesso (contatore, allaccio, verifica fisica), la creazione del cliente passa obbligatoriamente dal motore pratiche. L'istanza e reale, collegata a un indirizzo e a un PDP, e il flusso include step di verifica e approvazione.
 
-> **Nota architetturale**: il flag `richiede_pdp` e il discriminante unico per le due modalita. Se in futuro servira un'utility senza PDP che richiede comunque il workflow pratiche, bastera aggiungere un boolean `solo_pratica` su `config.utilities` — vedi [WIP sviluppo-gestione-clienti](../dev/work-in-progress/sviluppo-gestione-clienti.md).
+> **Nota architetturale**: il flag `richiede_pdp` e il discriminante unico per le due modalita. Se in futuro servira un'utility senza PDP che richiede comunque il workflow pratiche, bastera aggiungere un boolean `solo_pratica` su `config.utilities`; l'ipotesi e gia stata annotata nell'analisi interna sulla gestione clienti.
 
 ---
 

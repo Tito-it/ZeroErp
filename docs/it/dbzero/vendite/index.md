@@ -185,6 +185,7 @@
 - [trgfn_contratti_righe_lock_post_attivazione](funzioni/trgfn_contratti_righe_lock_post_attivazione.md) — Le eccezioni di un contratto attivo (OVERRIDE, ESCLUSIONE, AGGIUNTA) sono **immutabili post-attivazione** (§3-bis-A). Questo enforcement avviene a livello DB per garantire il blocco anche da psql diretto, script di manutenzione o chiamate API non validate. Il lock è simmetrico a quello sulla testata (`trgfn_contratti_lock_post_attivazione`).
 - [trgfn_contratti_set_categoria_cliente_snapshot](funzioni/trgfn_contratti_set_categoria_cliente_snapshot.md)
 - [trgfn_contratti_snapshot_precontrattuali](funzioni/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 20/01/26) La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati precontrattuali **solo alla creazione del contratto**.   La scelta progettuale e` deliberata: il contratto diventa la **fonte stabile** per i dati tecnici/commerciali e le eventuali correzioni richiedono **un nuovo contratto**.
+- [trgfn_contratti_sync_is_abortito_snapshot](funzioni/trgfn_contratti_sync_is_abortito_snapshot.md)
 - [trgfn_contratti_utilities_guard_tipo_classe](funzioni/trgfn_contratti_utilities_guard_tipo_classe.md)
 - [trgfn_ddt_gen_codice](funzioni/trgfn_ddt_gen_codice.md) — La trigger function `vendite.trgfn_ddt_gen_codice()` genera automaticamente `numero` DDT quando il valore non viene fornito in inserimento.
 - [trgfn_ddt_guard_transizione_approvazione](funzioni/trgfn_ddt_guard_transizione_approvazione.md)
