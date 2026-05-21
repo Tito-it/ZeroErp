@@ -18,6 +18,11 @@ export const NAV_ICONS = Object.freeze({
   TABELLE: 'pi pi-table',
   IMPOSTAZIONI: 'pi pi-sliders-h',
   CONFIG_DOCUMENTI: 'app-nav-icon app-nav-icon-documenti',
+  PREVENTIVI: 'app-nav-icon app-nav-icon-preventivi',
+  CONTRATTI: 'app-nav-icon app-nav-icon-contratti',
+  DDT: 'app-nav-icon app-nav-icon-ddt',
+  FATTURE: 'app-nav-icon app-nav-icon-fatture',
+  LISTINI: 'app-nav-icon app-nav-icon-listini',
   PERSONALIZZAZIONI_LISTE: 'pi pi-th-large',
   HOME: 'pi pi-home',
   BACK: 'pi pi-arrow-left',
@@ -127,9 +132,9 @@ export const DOMAIN_MENUS = {
     { key: 'uom-tipi', icon: NAV_ICONS.TAGS, to: '/catalogo/uom-tipi' }
   ],
   'vendite': [
-    { key: 'preventivi', icon: NAV_ICONS.FILE, to: '/vendite/preventivi' },
-    { key: 'contratti', icon: NAV_ICONS.FILE_EDIT, to: '/vendite/contratti' },
-    { key: 'listini', icon: NAV_ICONS.TAG, to: '/vendite/listini' },
+    { key: 'preventivi', icon: NAV_ICONS.PREVENTIVI, to: '/vendite/preventivi' },
+    { key: 'contratti', icon: NAV_ICONS.CONTRATTI, to: '/vendite/contratti' },
+    { key: 'listini', icon: NAV_ICONS.LISTINI, to: '/vendite/listini' },
     { key: 'promo-articoli', icon: NAV_ICONS.PERCENTAGE, to: '/vendite/promo-articoli' },
     { key: 'approvazioni-prezzo', icon: NAV_ICONS.CHECK_CIRCLE, to: '/vendite/approvazioni-prezzo' }
   ],

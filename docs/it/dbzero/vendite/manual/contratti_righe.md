@@ -35,12 +35,58 @@ Obiettivi principali:
 ### Campi chiave e logiche operative
 
 * **Articolo** (`articolo_id`) → servizio/voce di catalogo.
-* **Tipo erogazione** (`tipo_erogazione`) → indica la natura della riga (es. canone, consumo, una‑tantum).
-* **Fonte quantita attesa** (`fonte_quantita_attesa`) → stabilisce se la quantita e` fissa, derivata da letture o calcolata.
-* **Periodicita** (`periodicita`) → definisce l’intervallo di fatturazione (mensile, bimestrale, ecc.).
-* **Generazione/competenza canone** (`generazione_canone`, `competenza_canone`) → governano se il canone e` anticipato/posticipato e con quale competenza.
-* **Prezzo unitario** (`prezzo_unitario`) e **quantita fissa** (`quantita_fissa`) → base per righe a canone o una‑tantum.
+* **Tipo erogazione** (`tipo_erogazione`) → natura della riga: `CANONE`, `UNA_TANTUM`, `ORARIO`, `CONSUMO`.
+* **Fonte quantita attesa** (`fonte_quantita_attesa`) → origine della quantita attesa (vedi sezione dedicata).
+* **Periodicita** (`periodicita`) → intervallo di fatturazione (mensile, bimestrale, ecc.).
+* **Generazione/competenza canone** (`generazione_canone`, `competenza_canone`) → canone anticipato/posticipato e competenza.
+* **Prezzo unitario** (`prezzo_unitario`) e **quantita** (`quantita`) → base per righe a canone o una‑tantum.
 * **Meta** (`meta`) → estensioni specifiche (parametri di tariffa, flag tecnici, mapping esterni).
+
+---
+
+### Matrice `tipo_erogazione` × `fonte_quantita_attesa` (dal 2026-05-19)
+
+> **Migrations**: `20260519-05` (backfill + NOT NULL + CHECK), `20260519-06` (trigger normalize).
+
+`fonte_quantita_attesa` e’ **NOT NULL** e deve essere coerente con `tipo_erogazione`.
+Il trigger `trgfn_contratti_righe_default_fonte_qta` imposta il default automaticamente su INSERT
+e resetta la fonte se il cambio di `tipo_erogazione` rende la combinazione vietata.
+
+#### Valori ammessi per `fonte_quantita_attesa`
+
+| Valore | Significato | `quantita` mostrata in UI? |
+| --- | --- | --- |
+| `FISSA` | Quantita contrattualizzata a corpo | Si’, obbligatoria |
+| `MANUALE` | Quantita definita sul documento al momento dell’emissione | No — tag "Definita sul documento" |
+| `TIMESHEET` | Quantita da rendicontazione ore (modulo futuro) | No — tag "Da rendicontazione ore" |
+| `LETTURE` | Quantita da letture utility | No — tag "Da letture utility" |
+| `DERIVATA_COMPONENTI` | Quantita calcolata dai componenti BoM del padre composito | No — tag "Derivata dai componenti" |
+
+Per `DERIVATA_COMPONENTI`: la colonna `quantita` viene **scritta automaticamente** dal trigger
+`trg_contratti_righe_z90_propaga_qta_componenti_upd` a partire dai componenti — non e’ editabile dall’utente
+ma non e’ vuota nel DB.
+
+#### Matrice coerenza (legenda: ✅ default · 🟢 secondaria · 🟡 rara/edge · ❌ vietata)
+
+| tipo_erogazione | FISSA | MANUALE | TIMESHEET | LETTURE | DERIVATA_COMPONENTI |
+| --- | --- | --- | --- | --- | --- |
+| **CANONE** | ✅ | 🟡 | ❌ | ❌ | 🟢 |
+| **UNA_TANTUM** | ✅ | 🟢 | ❌ | ❌ | 🟢 |
+| **ORARIO** | 🟡 | 🟢 | ✅ (futuro) | ❌ | 🟡 |
+| **CONSUMO** | ❌ | 🟢 | ❌ | ✅ | 🟢 |
+
+Le 7 combinazioni ❌ sono bloccate dal CHECK `chk_contrighe_coerenza_fonte_erogazione`.
+Le combinazioni 🟡 rare sono ammesse e segnalate in UI con tooltip "uso atipico".
+
+#### Default per `tipo_erogazione`
+
+| tipo_erogazione | fonte default |
+| --- | --- |
+| `CANONE` | `FISSA` |
+| `UNA_TANTUM` | `FISSA` |
+| `ORARIO` | `MANUALE` (sara’ `TIMESHEET` quando il modulo esistera’) |
+| `CONSUMO` | `LETTURE` |
+| `NULL` o non riconosciuto | `FISSA` (fallback difensivo) |
 
 ---
 
@@ -61,7 +107,7 @@ Quando l’istanza e` di tipo utility, i dati di `anagrafiche.istanze_dati_preco
 
 * fornire **parametri tecnici** per la valorizzazione di `meta`;
 * determinare **regole di fatturazione** (es. tariffe, scaglioni, soglie);
-* influenzare `quantita_fissa` o la **fonte di quantita**.
+* influenzare `quantita` o la **fonte di quantita**.
 
 Per servizi non‑utility, la riga rimane il punto di verita delle condizioni economiche.
 
@@ -124,6 +170,7 @@ blocca **qualsiasi** INSERT/UPDATE/DELETE su `contratti_righe` →
 * **FK principali**: contratto, articolo, UoM operativa.
 * **Trigger**:
   * `trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd` — blocca AGGIUNTA per articoli già in listino (Step 2.2).
+  * `trg_contratti_righe_a10_default_fonte_qta_ins_upd` — normalizza `fonte_quantita_attesa` al default su INSERT e su UPDATE con tipo cambiato (20260519-06).
   * `trg_contratti_righe_a10_qta_from_operativa_ins_upd` — calcolo quantita base da operativa.
   * `trg_contratti_righe_a10_note_contratto_block_deact_upd` — blocca disattivazioni se presenti note figlie.
   * `trg_contratti_righe_a10_articoli_require_attivo_ins_upd` — articolo attivo obbligatorio.

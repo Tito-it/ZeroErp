@@ -59,9 +59,34 @@ Obiettivi principali:
 
 * **Periodo**: `valido_dal` e `valido_al` (NULL = aperto).
 * **Ambito** (`ambito`) separa domini diversi (es. COMMODITY vs servizi extra).
-* **Anti‑overlap operativo**: l’indice `ex_contratti_no_overlap` supporta query di controllo per evitare sovrapposizioni sulla stessa combinazione `billing_account_id + istanza_utility_id + utility_id + ambito`.
+* **Anti‑overlap**: il constraint `ex_contratti_no_overlap` (EXCLUDE USING gist,
+  `btree_gist`) impedisce sovrapposizioni temporali sulla stessa quadrupla
+  `billing_account_id + istanza_utility_id + utility_id + ambito`.
+  Il constraint e` **parziale** (`WHERE NOT is_abortito_snapshot`): i contratti
+  in stato ANNULLATO sono esclusi dal check e non bloccano nuovi contratti
+  sulla stessa quadrupla.
 
-> Nota: l’anti‑overlap e` tipicamente garantito da logiche applicative o trigger di validazione.
+#### Colonna `is_abortito_snapshot` e trigger di sincronizzazione
+
+* **`is_abortito_snapshot BOOLEAN NOT NULL DEFAULT false`**: snapshot
+  denormalizzato di `config.stati_doc_contratti.is_abortito` sulla riga del
+  contratto. Necessario perche’ i constraint DB non possono referenziare altre
+  tabelle — il predicato `WHERE` di `ex_contratti_no_overlap` dipende da un
+  campo sulla stessa riga.
+* **Trigger `trg_contratti_z90_sync_is_abortito_snapshot_ins_upd`** (BEFORE
+  INSERT OR UPDATE OF `stato_doc_contratto_id`, fase `_z90_`): mantiene
+  `is_abortito_snapshot` aggiornato ad ogni transizione di stato.
+  Deve essere BEFORE (non AFTER): il predicato WHERE del constraint e’
+  valutato al momento della scrittura della riga.
+* La colonna `validita` (GENERATED ALWAYS STORED) rimane immutata e continua
+  ad essere usata per query di date (`@>`, `&&`). Il constraint parziale la
+  usa come operand temporale solo per le righe non abortite.
+
+> **Nota PG18**: `UNIQUE WITHOUT OVERLAPS` non supporta predicati `WHERE`
+> parziali e non ammette `’empty’::daterange` nel temporal part. Per questo
+> motivo si usa `EXCLUDE USING gist` parziale anziche’ il temporal UNIQUE
+> SQL:2011 introdotto in PG18 (migration `20260521-03`, vedi
+> `linee-guida-sql §7b`).
 
 ---
 
@@ -178,12 +203,29 @@ per stabilita' rispetto a relabelling.
 | Da | A | Ammessa | Condizione |
 | --- | --- | --- | --- |
 | DRAFT | ATTIVO | si | — |
+| DRAFT | ANNULLATO | si | sempre (nessuna fatturazione su DRAFT) |
 | ATTIVO | CESSATO | si | `valido_al IS NOT NULL AND valido_al < CURRENT_DATE` |
 | ATTIVO | ATTIVO | si | no-op |
 | DRAFT | DRAFT | si | no-op |
-| DRAFT | CESSATO | **no** | una bozza si cancella |
+| DRAFT | CESSATO | **no** | una bozza si annulla, non si cessa |
 | ATTIVO | DRAFT | **no** | irreversibile |
+| ATTIVO | ANNULLATO | **no** | un contratto attivo va cessato ordinariamente |
 | CESSATO | * | **no** | stato terminale |
+| ANNULLATO | * | **no** | stato terminale (`is_abortito = true`) |
+
+**Stato ANNULLATO** (`codice_interno = 'ANNULLATO'`, `is_abortito = true`,
+migration `20260520-07..08`):
+
+* Raggiungibile **solo da DRAFT** — annullamento di una bozza non ancora attivata.
+* Terminale: nessuna transizione successiva ammessa.
+* Il constraint `ex_contratti_no_overlap` **esclude** le righe ANNULLATO
+  (`WHERE NOT is_abortito_snapshot`): un contratto annullato non blocca
+  la creazione di nuovi contratti sulla stessa quadrupla.
+* Il campo `meta` di `config.stati_doc_contratti` per ANNULLATO e` `{}`:
+  stato terminale, nessuna azione manuale in uscita.
+* L'azione UI "Annulla" e` esposta da `script.fn_available_actions_contratto`
+  leggendo `outgoing_action` dal `meta` dello stato DRAFT
+  (migration `20260430-61` + `20260520-10`).
 
 > **Nota su SOSPESO**: il `codice_interno='SOSPESO'` esiste in
 > `config.stati_doc_contratti` ma **non rientra nel workflow operativo

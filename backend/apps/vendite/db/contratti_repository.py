@@ -307,6 +307,39 @@ class ContrattiRepository(ComponentiRepositoryMixin):
             )
             return row_to_dict(cursor)
 
+    # Scopo: Risolve la versione listino operativa per un listino, alla data.
+    #        Replica la stessa regola applicata in `fn_contratto_righe_preview`
+    #        (migration 20260516-04): ATTIVA/CHIUSA validità @ data_riferimento,
+    #        BOZZA esclusa, ordinato per (ATTIVA prima). Lookup puro su
+    #        `listini_versioni` — il caller decide se chiamarlo o se ha gia'
+    #        lo snapshot dalla testata contratto (evita round-trip extra).
+    #        Usato dal pricing gate L2 contratti per popolare
+    #        `listino_versione_id_preferito` del resolver pricing v2 quando
+    #        il contratto e' DRAFT (snapshot non fissato) → evita il drift
+    #        cascata CATEGORIA quando il BA ha mappa categorie_clienti_listini
+    #        su un listino diverso. Ritorna None se nessuna versione operativa.
+    def get_listino_versione_attiva_alla_data(
+        self, listino_id: int, data_riferimento: date,
+    ) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT lv.id
+                  FROM vendite.listini_versioni lv
+                 WHERE lv.listino_id = %s
+                   AND lv.attivo     = TRUE
+                   AND lv.stato      IN ('ATTIVA', 'CHIUSA')
+                   AND lv.validita  @> %s::date
+                 ORDER BY (lv.stato = 'ATTIVA') DESC
+                 LIMIT 1
+                """,
+                [listino_id, data_riferimento],
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return row[0]
+
     # Scopo: Restituisce il contesto minimo richiesto dal motore documentale
     #        per generare un documento da contratto: `id`, `uid` e
     #        `emittente_fiscale_id`. I contratti non hanno la colonna
@@ -458,6 +491,29 @@ class ContrattiRepository(ComponentiRepositoryMixin):
     #        listino dalla testata: senza listino di riferimento, OVERRIDE
     #        e ESCLUSIONE perdono significato (refactor modalita 2026-05-15
     #        §3-bis-F). AGGIUNTA non blocca (resta valida senza listino).
+    # Scopo: Conta le righe persistite attive (qualsiasi tipo_eccezione) di
+    #        un contratto. Usato dal service per bloccare la modifica di
+    #        `listino_id`, `tipo_variazione_globale`, `valore_variazione_globale`
+    #        in stato DRAFT quando ci sono righe già caricate: cambiare il
+    #        contesto pricing (listino o variazione globale) con eccezioni
+    #        persistite causerebbe drift semantico silente (prezzi calcolati
+    #        contro un riferimento diverso da quello che le righe assumevano).
+    #        Pattern coerente con `count_eccezioni_bloccanti` ma generico:
+    #        anche le AGGIUNTA su contratti senza listino contano.
+    def count_righe_attive(self, contratto_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*)::int
+                  FROM vendite.contratti_righe
+                 WHERE contratto_id = %s
+                   AND attivo = TRUE
+                """,
+                [contratto_id],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row else 0
+
     def count_eccezioni_bloccanti(
         self, contratto_id: int,
     ) -> dict[str, int]:

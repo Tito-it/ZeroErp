@@ -27,17 +27,19 @@ Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a 
 
 ### Parametri (`TG_ARGV`)
 
-| Pos | Nome                  | Tipo    | Default | Significato                                                                                                 |
-| --: | --------------------- | ------- | ------- | ----------------------------------------------------------------------------------------------------------- |
-|   0 | `fill_factor_to_base` | boolean | `false` | Se `TRUE` e `NEW.factor_to_base` è `NULL`, **salva lo snapshot** del fattore usato in `NEW.factor_to_base`. |
-|   1 | `fill_uom_id_base`    | boolean | `false` | Se `TRUE`, copia la UoM operativa in `NEW.uom_id` (da usare solo su tabelle che hanno la colonna).          |
+| Pos | Nome                    | Tipo    | Default | Significato                                                                                                 |
+| --: | ----------------------- | ------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+|   0 | `fill_factor_to_base`   | boolean | `false` | Se `TRUE` e `NEW.factor_to_base` è `NULL`, **salva lo snapshot** del fattore usato in `NEW.factor_to_base`. |
+|   1 | `fill_uom_id_base`      | boolean | `false` | Se `TRUE`, copia la UoM operativa in `NEW.uom_id` (da usare solo su tabelle che hanno la colonna).          |
+|   2 | `target_col`            | text    | `'quantita'` | Nome della colonna target in cui scrivere la quantità base calcolata.                                  |
+|   3 | `fonte_nullability_col` | text    | `NULL`  | Nome della colonna che governa la nullabilità di `qta_operativa`. Se valorizzato e `qta_operativa IS NULL`: legge il valore di quella colonna via `to_jsonb(NEW) ->> v_fonte_col`. Se il valore **≠ `'FISSA'`** (e non `NULL`) → `RETURN NEW` senza raise. Usare per tabelle con `fonte_quantita_attesa` (es. `contratti_righe`). **Omettere per le altre tabelle** (comportamento invariato). |
 
 ### 🧾 Precondizioni & Postcondizioni
 
 **Precondizioni**
 
 * `NEW.articolo_id` non `NULL`.
-* `NEW.qta_operativa` **deve** essere valorizzata (se assente → errore `E_QTA_MISSING`).
+* `NEW.qta_operativa` **deve** essere valorizzata, **a meno che** `TG_ARGV[3]` sia fornito e il valore della colonna fonte risulti diverso da `'FISSA'` (per `contratti_righe`: `LETTURE`, `MANUALE`, `TIMESHEET`, `DERIVATA_COMPONENTI`). In quel caso `qta_operativa NULL` è ammessa e il trigger ritorna `NEW` senza ricalcolo (la quantità arriverà da fonte esterna). Se `fonte = 'FISSA'` e `qta_operativa IS NULL` → errore `E_QTA_MISSING` come di consueto.
 * `NEW.uom_operativa_id` può essere `NULL`: in tal caso viene **derivata** dalla UoM base dell’articolo (`catalogo.articoli.uom_id`). Se resta `NULL` → errore `E_UOM_MISSING`.
 
 **Postcondizioni**
@@ -49,8 +51,10 @@ Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a 
 ### Algoritmo (passi rilevanti)
 
 1. **Short‑circuit**: se **entrambi** `NEW.qta_operativa` **e** `NEW.uom_operativa_id` sono già presenti ⇒ **NON ricalcola** (ritorna `NEW` così com’è).
-2. **Lettura parametri** da `TG_ARGV` (`fill_factor_to_base`, `fill_uom_id_base`).
-3. **Validazione quantità operativa**: se `NEW.qta_operativa IS NULL` ⇒ `fn_log_and_raise_error(..., 'E_QTA_MISSING', ...)`.
+2. **Lettura parametri** da `TG_ARGV` (`fill_factor_to_base`, `fill_uom_id_base`, `target_col`, `fonte_nullability_col`).
+3. **Validazione quantità operativa**: se `NEW.qta_operativa IS NULL`:
+   * Se `TG_ARGV[3]` è valorizzato: legge `to_jsonb(NEW) ->> v_fonte_col`. Se il valore **≠ `’FISSA’`** (e non `NULL`) ⇒ **RETURN NEW** senza raise (fonte non-FISSA governa la quantità esternamente).
+   * Altrimenti: `fn_log_and_raise_error(..., ‘E_QTA_MISSING’, ...)`.
 4. **Fallback UoM operativa**: se `NEW.uom_operativa_id IS NULL` ⇒ `SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = NEW.articolo_id`.
 
    * Se ancora `NULL` ⇒ `fn_log_and_raise_error(..., 'E_UOM_MISSING', ...)`.

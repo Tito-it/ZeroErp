@@ -49,6 +49,7 @@
 | `useEntityCapabilities` | [useEntityCapabilities.js](../../../../frontend/src/core/composables/useEntityCapabilities.js) | **Fase 4.F2 refactor frontend vendite.** Adapter sottile per consumare il blob capabilities BE (Fase 1: `script.fn_available_actions_*`/`fn_capability_promo_articolo`). Consumer: `PreventiviDrawer` + `ContrattoDrawer` (`editFlag='can_edit_testata'` default), `PromoArticoloDrawer` (`editFlag='can_update'`). Ritorna `availableActions` (computed array), `nonEditableFields` (computed Set lookup O(1)), `canEdit` (computed bool sul flag `editFlag`), `isLocked(field)` (check `!canEdit OR Set.has`), `flag(key)` (getter generico per altri `can_*`). Mai logica derivata: lookup puro. |
 | `useEmittenteFiscaleField` | [useEmittenteFiscaleField.js](../../../../frontend/src/core/composables/useEmittenteFiscaleField.js) | Composable di supporto a `EmittenteFiscaleField` (componente sotto). Espone profilo + lookup admin + helper di formatting. Modello 1-a-1 operatore→emittente: il valore e' derivato dal profilo, non scelto, salvo per admin globali. Espone `isAdminMode`, `currentEmittente`, `currentEmittenteDisplay`, **`defaultEmittenteId`** (computed: id profilo per operatore, null per admin — usato dai drawer per autopopulate one-liner), `emittentiOptions`/`emittentiLoading`/`emittentiError`/`loadOptions()` (cache modulo-level via `useGlobalLookup`, chiave `amm.emittenti_fiscali`, fetcher `listEmittentiFiscali` admin-only), helper puri `formatEmittenteOptionLabel` e `formatEmittenteFromRecord`. |
 | `useListaConfig` | [useListaConfig.js](../../../../frontend/src/core/composables/useListaConfig.js) | **Blocco D personalizzazioni liste.** Stato per `<ListaConfigurabile>`: `config` (cascata BE), `catalogo` (lazy on first openModal), `dirty` (modifiche non salvate), `colonneNuove` (badge), `loading`. Metodi: `load()`, `ensureCatalogo()`, `applyChange(mutator)`, `save()` (PUT con `Idempotency-Key=crypto.randomUUID()`), `reset()` (DELETE preferenza + reload). Whitelist payload allineata a `ListaPreferenzaService._PAYLOAD_KEYS`. |
+| `useNote` | [useNote.js](../../../../frontend/src/core/composables/useNote.js) | **Building block note partizionate (2026-05-19).** Stato reattivo `notes`/`total`/`page`/`pageSize`/`loading` + comandi `loadAll`/`save`/`remove`/`fetchOne`. Accetta `apiClient` come oggetto statico **oppure** ref/computed (tipicamente costruito con `makeNotesApi('/vendite/preventivi/<id>')`): viene dereffato via `unref` a ogni call, cosi' un cambio di parent id riflette immediatamente senza remount. `save(form)` distingue create vs update guardando `form.id`; in UPDATE rimuove i campi immutabili `target_tipo`/`target_id`/`target_riga_id`. |
 
 ---
 
@@ -85,6 +86,7 @@
 | `extractApiError` / `extractApiErrorCode` | [apiError.js](../../../../frontend/src/core/utils/apiError.js) | Estrae messaggio/codice errore da risposta API |
 | `paramBool` / `paramNumber` / `paramInt` / `paramString` | [parameterCast.js](../../../../frontend/src/core/utils/parameterCast.js) | Cast con fallback dei valori `config.parameters` (BE ritorna `dict[str, str]`). Riusabili da qualsiasi `defaultForm()` parametrizzato. Adottato da: ArticoloUomDrawer (Fase 1 refactor catalogo). |
 | `generateIdempotencyKey` | [idempotency.js](../../../../frontend/src/core/utils/idempotency.js) | Genera UUID v4 da usare come header `Idempotency-Key`. Wrapper su `crypto.randomUUID()` con **fallback** `Date.now()-Math.random().toString(36)` per non-secure context (HTTP su IP LAN / hostname custom, tipico setup VSCode SSH + port forward, dove `crypto.randomUUID` e' `undefined` e tira `TypeError`). Adottato da: `catalogo.js`, stores `uiPreset/Permesso/Definizione/ColonnaAdmin`, `useListaConfig`. |
+| `coerceJsonbToObject` / `coerceJsonbToArray` | [meta.js](../../../../frontend/src/core/utils/meta.js) | Coerce difensivo per valori JSONB serializzati da DB. Normalizza un valore `meta`/`snapshot`/`jsonb_agg` ad oggetto JS o ad array. Indispensabile contro la regressione "psycopg ritorna stringa JSON" che fa fallire silenziosamente `value.field` o `:value="arr"` su DataTable. Pass-through se gia' dict/array; parse se stringa JSON valida; fallback `{}` / `[]`. La variante array (2026-05-19) e' usata internamente da `ComponentiPanel` in modalita' data-driven (prop `initialData`) per i `componenti` aggregati nelle preview righe (`fn_contratto_righe_preview`, `fn_preview_riga_componenti`). |
 
 ---
 
@@ -102,6 +104,8 @@
 | `searchComuni` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Ricerca comuni |
 | `searchStradario` / `searchStradarioGenerale` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Ricerca stradario locale/nazionale |
 | `fetchParameterDefaults` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Risolve N parametri di sistema con override utente (`GET /core/parameters/defaults/`) |
+| `fetchParameterSettings(options)` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Lista parametri con livelli cascata `user > categoria_cliente > group > emittente > default` (`GET /core/parameters/settings/`). Accetta `options.categoria_cliente_id` o `options.billing_account_id` (post 2026-05-19, migration `20260519-01`): attiva colonna `categoria_cliente_value`/`categoria_cliente_override_id`. BE rifiuta valori non-positivi con `E_PARAMETER_VALIDATION` (400). |
+| `upsertParameterOverride(code, value, scope, options)` / `deleteParameterOverride(id, scope, options)` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | CRUD override su `/core/parameters/settings/override/`. Scope: `'user'` (default) / `'emittente'` (admin) / `'categoria_cliente'` (admin, **Phase B 2026-05-19**, richiede `options.categoriaClienteId > 0`). Il BE rifiuta valori non-positivi (`E_PARAMETER_VALIDATION` 400) e accessi non-admin (`E_PERMISSION_DENIED` 403). Lo store `useParametersStore` invalida la cache del code post-write + cross-tab BroadcastChannel. |
 | `lookupBillingAccount` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Ricerca BA per autocomplete cross-dominio (`GET /anagrafiche/billing-account/lookup/`). Scope emittente automatico |
 | `getBillingAccountLookupById` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Restore singolo BA arricchito per edit (`GET /anagrafiche/billing-account/{id}/lookup/`) |
 | `lookupIstanzeUtility` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Ricerca istanze utility per autocomplete cross-dominio (`GET /anagrafiche/istanze-utility/lookup/`). Filtri opzionali `utility_id` (strict) e `soggetto_id`. Scope emittente automatico via BA collegato. |
@@ -119,6 +123,7 @@
 | `getContrattoFormDefaults` / `getPreventivoFormDefaults` | [vendite/api/formDefaults.js](../../../../frontend/src/vendite/api/formDefaults.js) | **Fase 2.B3-B4 refactor frontend vendite.** Defaults form BA-aware. Param opzionale `billing_account_id`: se presente popola categoria_cliente_id_snapshot/utility (contratti) o valuta/termini/iva dal cliente del BA (preventivi). Sempre presenti `default_data`/`default_valido_dal`/`default_validita_al` da parameter. Single source of truth lato BE: `vendite_form_defaults_service`. |
 | `getVersioneNewDefaults` / `getVersioneCloneDefaults` / `getVersioneCloseDefaults` | [vendite/api/formDefaults.js](../../../../frontend/src/vendite/api/formDefaults.js) | **Fase 2.B5a/b/c refactor frontend vendite.** Defaults contestuali alle versioni listino: nuova (existing_drafts + default_valido_dal), clone (codice + suffisso da parameter, min_valido_dal = source.valido_dal), close (default_valido_al = existing oppure oggi+lead_gg). Consumati da `VersioneFormDrawer`/`CloneVersioneDrawer`/`ChiudiVersioneDialog` al posto di `useParameterDefaults` cablato. |
 | `getListaConfig` / `getListaCatalogo` / `putListaPreferenza` / `deleteListaPreferenza` | [core/api/ui-api.js](../../../../frontend/src/core/api/ui-api.js) | **Blocco D personalizzazioni liste.** 4 endpoint `/api/v1/ui/liste/{codice}/{config\|catalogo\|preferenza}/`. PUT preferenza richiede `Idempotency-Key` (caller la passa, generata via `crypto.randomUUID()` in `useListaConfig`). Single source of truth per `<ListaConfigurabile>`. |
+| `makeNotesApi` | [core/api/notes.js](../../../../frontend/src/core/api/notes.js) | **Building block note partizionate (2026-05-19).** Factory `makeNotesApi(basePath)` produce un set CRUD `{ listNote, getNota, createNota, updateNota, deleteNota }` bindato al basePath del dominio (es. `'/vendite/preventivi/42'` o `'/vendite/contratti/7'`). Idempotency-Key generata automaticamente sui POST tramite `generateIdempotencyKey`. Strip trailing slash + guard input. Consumato da `useNote` + wrapper di dominio (`PreventivoNoteDrawer`, `ContrattoNoteDrawer`). |
 
 ---
 
@@ -129,7 +134,7 @@
 | `DRAWER_WIDTH` | Larghezze drawer per complessità (SIMPLE, STANDARD, COMPLEX, WIDE) |
 | `TOAST_DURATION` | Durata toast per tipo (SUCCESS, WARN, ERROR, SYSTEM_ERROR) |
 | `TIPO_RUOLO` | Codici interni tipi ruolo (CL, FO, GE, VE, DI, RE, VT, EF, BANK_B, RIS_UMANA, PSP) |
-| `PAGINATION` | Paginazione default (25 righe, opzioni [10, 25, 50, 100]) |
+| `PAGINATION` | Paginazione default (`DEFAULT_ROWS` 25, `COMPACT_ROWS` 10 sotto tablet, opzioni [10, 25, 50, 100]) |
 | `DATE_FORMAT` | Formato data PrimeVue centralizzato |
 | `TABS` | Limite massimo tab aperte (10) |
 | `BREAKPOINTS` | Breakpoint responsive (MOBILE, TABLET, DESKTOP_SPLIT) |
@@ -138,7 +143,7 @@
 | `LIVELLO_ACCESSO` | Enum livelli accesso (TUTTO, LETTURA, BLOCCATO) |
 | `STATO_PRATICA` | Enum stati pratica (BOZZA, APERTA, SOSPESA, CHIUSA, ANNULLATA) |
 | `STATO_FLUSSO` | Enum stati flusso (DA_ESEGUIRE, IN_CORSO, COMPLETATO, ecc.) |
-| `MANAGE_ICONS` | Icone gestione riga centralizzate per dominio e azioni trasversali. Categorie: dominio (CONTATTI, INDIRIZZI, CONTI_BANCARI, UOM, BOM, NOTE, CONVERSIONI, VERSIONI, CONTRATTI), trasversali (EDIT, ADD, CONFIRM, CANCEL, PLAY, PUBLISH, CLONE, CLOSE, CLOSE_DATE, PERMISSIONS, BILLING_ACCOUNT, UTILITY, LIST, BUILDING, RELOAD, DOWNLOAD, DELETE, KEBAB), workflow (APPROVE, REJECT), **toggle dinamico (EXPAND `pi-chevron-down` / COLLAPSE `pi-chevron-up`)** per accordion/expansion row/tree — usare sempre dinamicamente: `icon: isExpanded ? COLLAPSE : EXPAND` |
+| `MANAGE_ICONS` | Icone gestione riga centralizzate per dominio e azioni trasversali. Categorie: dominio (CONTATTI, INDIRIZZI, CONTI_BANCARI, UOM, BOM, NOTE, CONVERSIONI, VERSIONI, CONTRATTI, LISTINI, RIGHE), trasversali (EDIT, ADD, CONFIRM, CANCEL, PLAY, PUBLISH, CLONE, CLOSE, CLOSE_DATE, PERMISSIONS, BILLING_ACCOUNT, UTILITY, LIST, BUILDING, RELOAD, DOWNLOAD, DELETE, KEBAB), workflow (APPROVE, REJECT), **toggle dinamico (EXPAND `pi-chevron-down` / COLLAPSE `pi-chevron-up`)** per accordion/expansion row/tree — usare sempre dinamicamente: `icon: isExpanded ? COLLAPSE : EXPAND` |
 | `SHORTCUTS` | Scorciatoie tastiera (Ctrl+K ricerca, Ctrl+Tab prossima tab, ecc.) |
 
 ---
@@ -153,6 +158,14 @@
 | `STORAGE_KEYS` | [storage.js](../../../../frontend/src/core/storage.js) | Chiavi localStorage/sessionStorage centralizzate |
 | `local` / `session` | [storage.js](../../../../frontend/src/core/storage.js) | Wrapper localStorage/sessionStorage |
 | `i18n` | [i18n.js](../../../../frontend/src/core/i18n.js) | Istanza Vue I18n (italiano default, inglese fallback) |
+
+### Icone ERP custom
+
+Le icone entita' ERP non coperte bene da PrimeIcons sono classi CSS centralizzate
+in [main.css](../../../../frontend/src/assets/main.css) e usano `currentColor`:
+`app-nav-icon-preventivi`, `app-nav-icon-contratti`, `app-nav-icon-ddt`,
+`app-nav-icon-fatture`, `app-nav-icon-listini`. Esporle sempre tramite
+`NAV_ICONS` o `MANAGE_ICONS`, non cablare le classi nei componenti.
 
 ---
 
@@ -219,7 +232,8 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 
 | Classe | Descrizione |
 |---|---|
-| `app-datatable` | DataTable compatta con header/celle ridotte, righe alternate, hover |
+| `app-datatable` | DataTable compatta con header/celle ridotte, righe alternate, hover e scroll orizzontale standard (`overflow: auto` sul container PrimeVue, `width: max-content; min-width: 100%` sulla tabella interna + soglie centralizzate dal root per liste da 8/10/12 colonne) |
+| `app-datatable--inner` | Variante per liste annidate in drawer/expansion/sub-pannelli: padding piu' compatto, nessuna soglia larghezza da lista principale, tabella al 100% del contenitore |
 | Paginator compatto | Font/padding ridotti — applicato automaticamente dentro `app-datatable` |
 
 ### Classi pulsanti (`main.css`)
@@ -335,6 +349,8 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | `IndirizziSoggettoDrawer` | [IndirizziSoggettoDrawer.vue](../../../../frontend/src/core/components/IndirizziSoggettoDrawer.vue) | Drawer indirizzo per soggetto |
 | `ContiBancariDrawer` | [ContiBancariDrawer.vue](../../../../frontend/src/core/components/ContiBancariDrawer.vue) | Drawer conto bancario per soggetto |
 | `ExportDialog` | [ExportDialog.vue](../../../../frontend/src/core/components/ExportDialog.vue) | **DEF-1 export liste — dialog modale generico**. Chiede all'utente il formato file (default CSV/Excel via `SelectButton` con icone) ed emette `@export(format)` al parent, che resta responsabile della chiamata API + download. Il dialog NON chiama il backend e NON gestisce il blob — separazione di responsabilita': il parent costruisce la query string con i filtri attivi, il dialog e' solo "form di scelta formato". Mostra hint UX coerente sul comportamento di salvataggio (dialog nativo OS via FS Access API su Chrome/Edge HTTPS, o cartella download default su Firefox/Safari) tramite `isFileSystemAccessSupported()`. Props: `visible` (v-model), `formati` (default `[csv, xlsx]`), `loading`. Dialog resta aperto su errore (es. 422 cap superato) per consentire all'utente di raffinare i filtri e riprovare. Pattern adottato da: `ClientiSearchTable` (DEF-1); riusabile in DEF-8. |
+| `NoteDrawer` | [NoteDrawer.vue](../../../../frontend/src/core/components/NoteDrawer.vue) | **Building block note partizionate (2026-05-19).** Drawer riusabile cross-dominio per CRUD note su qualunque partizione `vendite.note_*` (preventivo, contratto, e in prospettiva ordini/DDT/fatture/AF). Pattern formMode (lista DataTable + form sotto, scope-ambito/posizione/seq decorati come Tag e colonne). Props: `visible`, `apiClient` (oggetto da `makeNotesApi(...)`), `title`, `supportsRiga` (abilita select RIGA nel form), `righeOptions` (array `{value, label}` per popolare il select riga). Default applicativi minimi (anchor_tipo/posizione governati dal BE); operatore tocca: testo (Textarea markdown), stile (`LookupSelect rel="config.note_stili"`), riga opzionale, switch visibile + solo_stampa. Watch reattivo a `[visible, apiClient]` per ricaricare quando il padre cambia parent id. Page size `PAGE_SIZE_DEFAULT=200` (cap BE). |
+| `PreventivoNoteDrawer` / `ContrattoNoteDrawer` | [PreventivoNoteDrawer.vue](../../../../frontend/src/vendite/components/PreventivoNoteDrawer.vue) / [ContrattoNoteDrawer.vue](../../../../frontend/src/vendite/components/ContrattoNoteDrawer.vue) | Wrapper thin (~30 righe) sul building block `NoteDrawer`. Costruiscono `makeNotesApi('/vendite/preventivi/<id>')` o `'/vendite/contratti/<id>'` via computed (reattivo a cambio id padre) + adapter righe -> opzioni select `{value:id, label:"<codice_articolo> — <descrizione>"}`. Aggiungere un nuovo dominio note = clonare 30 righe e cambiare 4 token (basePath + titolo i18n). |
 
 ### Autocomplete
 
@@ -421,6 +437,16 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | --- | --- | --- |
 | `TipoVariazioneSelect` | [TipoVariazioneSelect.vue](../../../../frontend/src/vendite/components/TipoVariazioneSelect.vue) | **Wrapper standard tipo_variazione.** Prop `scope` discrimina `'contratto'` (PERCENTUALE/VALORE_FISSO) vs `'promo'` (+ PREZZO_FISSO). Cache modulo-level via `useGlobalLookup` con chiavi `vendite.tipi_variazione.<scope>`. Display `"descrizione (codice)"`. Sostituisce `tipoVariazioneOptions` cablato in `ContrattoDrawer` e `PromoArticoloDrawer`. |
 | `AmbitoContrattoSelect` | [AmbitoContrattoSelect.vue](../../../../frontend/src/vendite/components/AmbitoContrattoSelect.vue) | **Wrapper standard ambito contratto** (COMMODITY/COMMERCIO). Cache `vendite.ambiti_contratto`. Sostituisce `ambitoOptions` cablato. |
+
+### Building block Componenti BoM shared (`src/vendite/_shared/componenti/`)
+
+Famiglia di 3 building block riusabili dalle 4 sorgenti documento composito (preventivi, contratti, ordini, ddt) + listini bundle. Modello unificato 2026-05-13 (padre = SUM figli × coeff_qta). Estratti in Fase H 2026-05-14 per evitare duplicazione cross-sorgente.
+
+| Componente | File | Descrizione |
+| --- | --- | --- |
+| `ComponentiDialog` | [ComponentiDialog.vue](../../../../frontend/src/vendite/_shared/componenti/ComponentiDialog.vue) | **CREATE.** Dialog modale per pre-popolare prezzi componenti BoM prima del save della riga padre composita. Auto-apertura su selezione articolo composito + UoM + qta valida. Props: `articolo`, `documentoId`, `uomOperativaId`, `quantita`, `apiPreview` (callback sorgente-specific), `initialPayload`, `showPrezzoSuggerito` (default true; false per listino bundle), `i18nPrefix`, `emitAllPrices`. Emette `@confirm(payload)` con `{overrides, summary}`. |
+| `ComponentiPanel` | [ComponentiPanel.vue](../../../../frontend/src/vendite/_shared/componenti/ComponentiPanel.vue) | **Panel unificato BoM** (fetch-driven + data-driven, refactor 2026-05-19). Tre modalita' di uso decise al setup in base alle prop passate: (1) **fetch-driven readonly** (expander DataTable righe persistite): apiList(documentoId, rigaId, {soloAttivi}) → tabella read-only; (2) **fetch-driven editabile** (drawer riga, `readonly=false`): apiList + apiUpdate per edit inline prezzo per componente + apiDelete; (3) **data-driven readonly** (prop `initialData` valorizzata): salta la fetch e rende direttamente l'Array o la stringa JSON aggregata da DB (`fn_contratto_righe_preview`, `fn_preview_riga_componenti`). In data-driven le api callback non sono obbligatorie e `readonly` e' forzato. Normalizer interno mappa lo shape JSONB preview (`prezzo`, `coeff_qta`, `componente_id`) sullo shape persistito (`prezzo_unitario`, `quantita`, `id`); le colonne metadata (origine/approvazione/IVA) si auto-nascondono quando nessuna riga visibile ha quei campi (preview = solo dati base). La label della colonna q.ta' diventa "Coeff." quando viene dal preview, "Q.tà" quando viene da snapshot persistito. Props: `documentoId`, `rigaId`, `readonly`, `initialData`, `apiList/apiUpdate/apiDelete`, `tabEntity`, `i18nPrefix`. |
+| `PreventivoNoteDrawer` / `ContrattoNoteDrawer` wrapper note | (vedi sezione Componenti Condivisi → Drawer) | — |
 
 ---
 

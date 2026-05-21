@@ -93,25 +93,48 @@ export function fetchParameterDefaults(codes) {
   })
 }
 
-export function fetchParameterSettings() {
-  return api.get(`${BASE}/parameters/settings/`)
+// `options` ammesse (tutte opzionali):
+//   - categoria_cliente_id (number): attiva il livello categoria_cliente nella
+//     cascata visualizzata (post brief DB 2026-05-19, migration 20260519-01).
+//   - billing_account_id (number): alternativa al precedente; il BE risolve la
+//     categoria dal BA via BillingAccountRepository.get_categoria_cliente_id.
+//     Ignorato se categoria_cliente_id e' valorizzato.
+export function fetchParameterSettings(options = {}) {
+  const params = {}
+  if (options.categoria_cliente_id != null) {
+    params.categoria_cliente_id = options.categoria_cliente_id
+  } else if (options.billing_account_id != null) {
+    params.billing_account_id = options.billing_account_id
+  }
+  return api.get(`${BASE}/parameters/settings/`, { params })
 }
 
-// Scope ammessi: 'user' (default, override personale) | 'emittente' (admin, override aziendale).
-// Il default 'user' e' definito anche in PARAMETER_SCOPE.USER (composables/useParameterSettings.js):
-// teniamo qui la stringa letterale solo come fallback difensivo, le chiamate dovrebbero
-// sempre passare un valore esplicito tramite il composable.
-export function upsertParameterOverride(parameterCode, value, scope = 'user') {
-  return api.post(`${BASE}/parameters/settings/override/`, {
-    parameter_code: parameterCode,
-    value,
-    scope
-  })
+// Scope ammessi: 'user' (default, personale) | 'emittente' (admin, aziendale)
+// | 'categoria_cliente' (admin, per categoria — Phase B 2026-05-19, richiede
+// `categoriaClienteId` esplicito; il BE rifiuta valori non-positivi).
+// Il default 'user' e' definito anche in PARAMETER_SCOPE.USER
+// (composables/useParameterSettings.js); teniamo qui la stringa letterale solo
+// come fallback difensivo: le chiamate dovrebbero sempre passare un valore
+// esplicito tramite il composable.
+export function upsertParameterOverride(
+  parameterCode, value, scope = 'user', { categoriaClienteId = null } = {},
+) {
+  const payload = { parameter_code: parameterCode, value, scope }
+  if (scope === 'categoria_cliente' && categoriaClienteId != null) {
+    payload.categoria_cliente_id = categoriaClienteId
+  }
+  return api.post(`${BASE}/parameters/settings/override/`, payload)
 }
 
-export function deleteParameterOverride(overrideId, scope = 'user') {
+export function deleteParameterOverride(
+  overrideId, scope = 'user', { categoriaClienteId = null } = {},
+) {
+  const params = { scope }
+  if (scope === 'categoria_cliente' && categoriaClienteId != null) {
+    params.categoria_cliente_id = categoriaClienteId
+  }
   return api.delete(`${BASE}/parameters/settings/override/${overrideId}/`, {
-    params: { scope }
+    params
   })
 }
 

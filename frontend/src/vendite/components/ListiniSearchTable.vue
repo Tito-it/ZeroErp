@@ -311,7 +311,7 @@ function buildVersioneActions(ver, listino) {
     {
       key: 'gestisci-righe',
       label: t('listini.gestisci_righe'),
-      icon: MANAGE_ICONS.LIST,
+      icon: MANAGE_ICONS.RIGHE,
       command: () => emit('open-righe', ver, listino),
     },
     {

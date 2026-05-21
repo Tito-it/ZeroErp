@@ -14,6 +14,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useTabEvents } from './useTabEvents'
+import { PAGINATION } from '../constants'
 
 // Scopo: Crea e ritorna una funzione defineStore("...") che implementa
 //        il pattern CRUD admin standard. Il risultato e' usato come
@@ -59,7 +60,7 @@ export function createCrudAdminStore({
     const baseFilters = {
       search: '',
       attivo: true,
-      limit: 25,
+      limit: PAGINATION.DEFAULT_ROWS,
       offset: 0,
       order_by: defaultOrderBy,
       order_dir: defaultOrderDir,

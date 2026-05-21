@@ -152,6 +152,7 @@ Ogni schermata di elenco segue questo schema fisso:
 ### Regole fisse
 
 - **Paginazione SOPRA** la tabella (`paginatorPosition: 'top'`)
+- **Righe per pagina default**: 25 su desktop, 10 sotto `BREAKPOINTS.TABLET`; gestito centralmente da `useSearchTable`. Le liste che nascono esplicitamente a 10 restano eccezioni e non vengono rialzate a 25.
 - **Indicatore pagina**: `1/5` con JumpToPageDropdown per salto diretto
 - **Font compatto** sul paginator (`0.8rem`)
 - **Azioni pagina/lista**: building block `PageActionsBar` — refresh, nuovo e azioni utility/secondarie con comportamento responsive unico
@@ -160,6 +161,8 @@ Ogni schermata di elenco segue questo schema fisso:
 - **Filtri** sopra la tabella nella toolbar, flex-wrap per responsive
 - **Ricerca** con debounce 400ms (gestito da `useSearchTable`)
 - **DataTable** sempre con: `lazy`, `removable-sort`, `striped-rows`, `scrollable`, `scrollHeight="flex"`
+- **Scroll orizzontale** gestito globalmente da `.app-datatable` — non impostare `table-style="min-width: ..."` nelle singole liste salvo eccezioni documentate. Le soglie per 8/10/12 colonne partono dal root `.app-datatable`, così restano valide anche quando PrimeVue ricalcola il container scrollable dopo il caricamento dei record.
+- **Liste annidate** dentro drawer, expansion row o sub-pannelli devono aggiungere `app-datatable--inner` oltre a `app-datatable`: restano compatte e sono escluse dalle soglie larghezza delle liste principali. Esempio: righe preventivo e pannello componenti BoM.
 
 ### Colonna azioni di riga — `RowActionsMenu` (responsive)
 
@@ -198,7 +201,7 @@ function buildRowActions(data) {
     {
       key: 'gestisci-righe',
       label: t('dominio.gestisci_righe'),
-      icon: MANAGE_ICONS.CONTRATTI,
+      icon: MANAGE_ICONS.RIGHE,
       command: () => emit('open-righe', data),
     },
     {

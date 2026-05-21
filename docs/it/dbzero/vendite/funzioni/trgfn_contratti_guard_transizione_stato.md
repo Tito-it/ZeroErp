@@ -12,14 +12,19 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: blocca transizioni stato non ammesse sul workflow contratti
---   (DRAFT -> ATTIVO -> CESSATO).
+-- Scopo: blocca transizioni stato non ammesse sul workflow contratti.
+-- Workflow: DRAFT -> ATTIVO -> CESSATO
+--           DRAFT -> ANNULLATO (sempre ammessa, nessuna fatturazione su DRAFT)
+--
 -- ATTIVO->CESSATO: distingue job automatico da cessazione manuale.
 --   Job (GUC app.cessazione_automatica='true'): valido_al < CURRENT_DATE.
---   Manuale: valido_al >= CURRENT_DATE (oggi o futura, no riscrittura storica).
+--   Manuale: valido_al >= CURRENT_DATE (no riscrittura storica).
 --   Manuale retroattiva: E_CONTRATTO_VALIDO_AL_RETROATTIVO (449).
--- Aggiornato 2026-05-12: blocca DRAFT->ATTIVO se componente BoM PENDING.
+-- ATTIVO->ANNULLATO: non ammessa (cade nel catch generico).
+-- DRAFT->ATTIVO: blocca se componenti BoM CASO A con prezzo PENDING.
+-- Aggiornato 2026-05-12: check PENDING componenti.
 -- Aggiornato 2026-05-14: no-retroattiva su cessazione manuale.
+-- Aggiornato 2026-05-20: DRAFT->ANNULLATO ammessa.
 DECLARE
     v_codice_da config.stati_doc_contratti.codice_interno%TYPE;
     v_codice_a  config.stati_doc_contratti.codice_interno%TYPE;
@@ -35,15 +40,17 @@ BEGIN
     IF v_codice_da = 'DRAFT' AND v_codice_a = 'ATTIVO' THEN
         v_ammessa := true;
 
+    ELSIF v_codice_da = 'DRAFT' AND v_codice_a = 'ANNULLATO' THEN
+        -- DRAFT->ANNULLATO: sempre ammessa (nessuna fatturazione su DRAFT).
+        v_ammessa := true;
+
     ELSIF v_codice_da = 'ATTIVO' AND v_codice_a = 'CESSATO' THEN
         IF current_setting('app.cessazione_automatica', true) = 'true' THEN
             -- Job notturno (fn_apply_chiusura_scadenze): contratto gia' scaduto.
-            -- Ammette valido_al < CURRENT_DATE (comportamento invariato pre-fix).
             v_ammessa := (NEW.valido_al IS NOT NULL
                           AND NEW.valido_al < CURRENT_DATE);
         ELSE
-            -- Cessazione manuale da UI: vietata la riscrittura storica.
-            -- Retroattiva (valido_al < oggi): raise codice specifico e esci.
+            -- Cessazione manuale: vietata la riscrittura storica.
             IF NEW.valido_al IS NOT NULL AND NEW.valido_al < CURRENT_DATE THEN
                 PERFORM script.fn_log_and_raise_error(
                     'database',
@@ -60,8 +67,6 @@ BEGIN
                     CURRENT_DATE::text
                 );
             END IF;
-            -- Ammessa se valido_al IS NOT NULL AND valido_al >= CURRENT_DATE.
-            -- NULL: v_ammessa resta false -> raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA.
             v_ammessa := (NEW.valido_al IS NOT NULL);
         END IF;
     END IF;
@@ -103,7 +108,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
-IS 'Trigger function: controlla transizioni stato contratto (DRAFT->ATTIVO->CESSATO). ATTIVO->CESSATO: job automatico (GUC app.cessazione_automatica=true) ammette valido_al<oggi; cessazione manuale ammette valido_al>=oggi (no retroattiva). Retroattiva raise E_CONTRATTO_VALIDO_AL_RETROATTIVO (449); NULL raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA. Blocca DRAFT->ATTIVO se componenti PENDING (E_COMPONENTE_PREZZO_PENDENTE). rev 2026-05-14.';
+IS 'Trigger function: controlla transizioni stato contratto. DRAFT->ATTIVO: sempre ammessa (check PENDING componenti BoM). DRAFT->ANNULLATO: sempre ammessa (nessuna fatturazione su DRAFT). ATTIVO->ANNULLATO: non ammessa (raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA). ATTIVO->CESSATO: job automatico (GUC app.cessazione_automatica=true) ammette valido_al<oggi; cessazione manuale ammette valido_al>=oggi (no retroattiva). Retroattiva raise E_CONTRATTO_VALIDO_AL_RETROATTIVO (449); NULL raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA. rev 2026-05-20 (DRAFT->ANNULLATO).';
 ```
 
 ---

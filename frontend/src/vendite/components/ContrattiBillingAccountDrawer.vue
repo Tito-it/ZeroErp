@@ -11,6 +11,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContrattiStore } from '../stores/contratti'
 import { listContratti } from '../api/contratti'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { displayDate } from '../../core/utils/date'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -130,7 +131,7 @@ function buildRowActions(data) {
     {
       key: 'gestisci-righe',
       label: t('contratti.gestisci_righe'),
-      icon: MANAGE_ICONS.CONTRATTI,
+      icon: MANAGE_ICONS.RIGHE,
       command: () => onOpenRighe(data),
     },
   ]
@@ -181,7 +182,7 @@ const onClose = useDrawerClose(emit)
     <template #header>
       <DrawerTitle
         :title="t('contratti.contratti_cliente')"
-        icon="pi pi-file-edit"
+        :icon="NAV_ICONS.CONTRATTI"
       />
     </template>
 

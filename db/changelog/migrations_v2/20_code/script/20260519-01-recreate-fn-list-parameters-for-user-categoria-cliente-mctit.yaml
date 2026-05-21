@@ -1,0 +1,294 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260519-01-recreate-fn-list-parameters-for-user-categoria-cliente-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Step §3-bis-C — Refactor contratti: "lato lettura" parametri per admin UI
+  #
+  # Ricrea script.fn_list_parameters_for_user aggiungendo il 4° parametro
+  # p_categoria_cliente_id (smallint DEFAULT NULL) e due nuove colonne in output:
+  #   - categoria_cliente_value       (override di categoria per visualizzazione UI)
+  #   - categoria_cliente_override_id (bigint, per DELETE mirato dalla UI admin)
+  #
+  # La firma 3-arg viene droppata perché CREATE OR REPLACE non è ammesso quando
+  # cambiano le colonne di RETURNS TABLE.
+  #
+  # Cascata resolved_value (coerente con fn_get_parameter_full overload 7-arg
+  # introdotto in 20260515-08):
+  #   user > categoria_cliente > group > emittente > default
+  #
+  # La nuova firma è backward-compatible per i caller SQL a 3 arg grazie a
+  # DEFAULT NULL sul 4° parametro (NULL = NULL è false → livello categoria saltato).
+  #
+  # Prerequisiti: 20260515-06 (ADD COLUMN categoria_cliente_id su parameter_overrides)
+  #               20260515-08 (fn_get_parameter_full 7-arg)
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260519-01-recreate-fn-list-parameters-for-user-categoria-cliente
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Ricrea script.fn_list_parameters_for_user con 4° parametro
+        p_categoria_cliente_id (smallint DEFAULT NULL).
+        Aggiunge colonne categoria_cliente_value e categoria_cliente_override_id.
+        resolved_value calcolato con subquery coerenti con fn_get_parameter_full 7-arg.
+        Cascata: user > categoria_cliente > group > emittente > default.
+        Backward-compatible con caller 3-arg (DEFAULT NULL).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameter_overrides
+            - columnExists:
+                schemaName: config
+                tableName: parameter_overrides
+                columnName: categoria_cliente_id
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: categorie_clienti
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La firma precedente (3-arg) viene droppata perché RETURNS TABLE cambia.
+              DROP FUNCTION IF EXISTS script.fn_list_parameters_for_user(integer, integer[], bigint);
+
+              CREATE OR REPLACE FUNCTION script.fn_list_parameters_for_user(
+                  p_django_user_id        config.parameter_overrides.django_user_id%TYPE,
+                  p_group_ids             integer[]                                             DEFAULT NULL,
+                  p_emittente_fiscale_id  config.parameter_overrides.emittente_fiscale_id%TYPE  DEFAULT NULL,
+                  p_categoria_cliente_id  config.parameter_overrides.categoria_cliente_id%TYPE  DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  code                          config.parameters.code%TYPE,
+                  description                   config.parameters.description%TYPE,
+                  default_value                 config.parameters.default_value%TYPE,
+                  emittente_value               config.parameter_overrides.overridden_value%TYPE,
+                  emittente_override_id         config.parameter_overrides.id%TYPE,
+                  group_value                   config.parameter_overrides.overridden_value%TYPE,
+                  user_value                    config.parameter_overrides.overridden_value%TYPE,
+                  user_override_id              config.parameter_overrides.id%TYPE,
+                  categoria_cliente_value       config.parameter_overrides.overridden_value%TYPE,
+                  categoria_cliente_override_id config.parameter_overrides.id%TYPE,
+                  resolved_value                config.parameter_overrides.overridden_value%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                  -- Scopo: restituisce tutti i parametri di config.parameters con il valore
+                  -- override a ciascun livello di scope (emittente, gruppo, utente,
+                  -- categoria_cliente) e il valore risolto finale.
+                  -- Destinata alla UI admin di gestione parametri: mostra da quale livello
+                  -- proviene il valore effettivo e gli ID per DELETE mirato degli override.
+                  --
+                  -- Cascata resolved_value (replica fn_get_parameter_full overload 7-arg,
+                  -- migration 20260515-08):
+                  --   user > categoria_cliente > group > emittente > default
+                  --
+                  -- Architettura display/resolver:
+                  --   - LEFT JOIN "puri": isolano il valore di ciascun livello per la
+                  --     visualizzazione UI (scope esclusivo). Mostrano solo override
+                  --     "di livello puro" (es. po_em richiede django_user_id IS NULL).
+                  --   - COALESCE per resolved_value: livello user riusa direttamente po_us
+                  --     (WHERE identica al JOIN display). Gli altri tre livelli usano
+                  --     subquery proprie perché i JOIN display hanno filtri IS NULL più
+                  --     restrittivi rispetto a fn_get_parameter_full (es. po_em ha
+                  --     django_user_id IS NULL, la subquery emittente non ce l'ha).
+                  --     La COALESCE short-circuits: se po_us non è NULL, le subquery
+                  --     successive non vengono eseguite.
+                  --
+                  -- Retro-compatibilita': p_categoria_cliente_id DEFAULT NULL ->
+                  --   NULL = NULL è sempre false -> po_cat e le subquery categoria non
+                  --   matchano nessuna riga -> colonne categoria NULL, cascata invariata.
+                  RETURN QUERY
+                  SELECT
+                      p.code,
+                      p.description,
+                      p.default_value,
+
+                      -- Livello emittente (scope puro: solo emittente, no user, no group)
+                      po_em.overridden_value        AS emittente_value,
+                      po_em.id                      AS emittente_override_id,
+
+                      -- Livello gruppo (LATERAL: multi-gruppo, tie-break deterministico per id)
+                      po_gr.overridden_value        AS group_value,
+
+                      -- Livello utente (scope più specifico nella cascata)
+                      po_us.overridden_value        AS user_value,
+                      po_us.id                      AS user_override_id,
+
+                      -- Livello categoria_cliente (scope puro: no user/group/emittente/session/function)
+                      po_cat.overridden_value       AS categoria_cliente_value,
+                      po_cat.id                     AS categoria_cliente_override_id,
+
+                      -- Valore risolto: replica la cascata di fn_get_parameter_full
+                      -- (coerenza tra UI e runtime garantita).
+                      -- Livello user: riusa po_us — WHERE identica al JOIN display,
+                      -- nessuna subquery aggiuntiva necessaria.
+                      -- Livelli categoria/group/emittente: subquery proprie perché i loro
+                      -- JOIN display hanno filtri IS NULL più restrittivi di fn_get_parameter_full
+                      -- (es. po_em richiede django_user_id IS NULL, la subquery no).
+                      -- La COALESCE short-circuits: se po_us non è NULL, le 3 subquery
+                      -- successive non vengono eseguite dal planner.
+                      COALESCE(
+                          -- 1. user: riusa il JOIN display (filtri identici, no subquery extra)
+                          po_us.overridden_value,
+                          -- 2. categoria_cliente (vince su group e emittente)
+                          --    NULL = NULL è false: se p_categoria_cliente_id IS NULL
+                          --    questa subquery non matcha righe, il livello viene saltato
+                          (SELECT po.overridden_value
+                             FROM config.parameter_overrides po
+                            WHERE po.parameter_id         = p.id
+                              AND po.categoria_cliente_id  = p_categoria_cliente_id
+                              AND po.attivo               = true
+                            LIMIT 1),
+                          -- 3. group (tie-break per id su multi-gruppo)
+                          (SELECT po.overridden_value
+                             FROM config.parameter_overrides po
+                            WHERE po.parameter_id    = p.id
+                              AND po.django_group_id = ANY(p_group_ids)
+                              AND po.attivo          = true
+                            ORDER BY po.id
+                            LIMIT 1),
+                          -- 4. emittente
+                          (SELECT po.overridden_value
+                             FROM config.parameter_overrides po
+                            WHERE po.parameter_id         = p.id
+                              AND po.emittente_fiscale_id  = p_emittente_fiscale_id
+                              AND po.attivo               = true
+                            LIMIT 1),
+                          -- 5. default globale
+                          p.default_value
+                      ) AS resolved_value
+
+                  FROM config.parameters p
+
+                  -- Override emittente puro (no user, no group; session/function non gestiti in lista)
+                  LEFT JOIN config.parameter_overrides po_em
+                    ON  po_em.parameter_id         = p.id
+                    AND po_em.emittente_fiscale_id  = p_emittente_fiscale_id
+                    AND po_em.django_user_id        IS NULL
+                    AND po_em.django_group_id       IS NULL
+                    AND po_em.attivo                = true
+
+                  -- Override gruppo: LATERAL per gestire più gruppi con tie-break per id
+                  LEFT JOIN LATERAL (
+                      SELECT o.overridden_value
+                        FROM config.parameter_overrides o
+                       WHERE o.parameter_id    = p.id
+                         AND o.django_group_id = ANY(p_group_ids)
+                         AND o.django_user_id  IS NULL
+                         AND o.attivo          = true
+                       ORDER BY o.id
+                       LIMIT 1
+                  ) po_gr ON p_group_ids IS NOT NULL
+
+                  -- Override utente
+                  LEFT JOIN config.parameter_overrides po_us
+                    ON  po_us.parameter_id   = p.id
+                    AND po_us.django_user_id  = p_django_user_id
+                    AND po_us.attivo          = true
+
+                  -- Override categoria_cliente puro:
+                  -- scope esclusivo (no user, no group, no emittente, no session, no function)
+                  -- per mostrare solo override "di categoria pura" nella UI admin.
+                  -- NULL = NULL è sempre false: se p_categoria_cliente_id IS NULL nessuna
+                  -- riga matcha e le colonne categoria restano NULL (retro-compatibile).
+                  LEFT JOIN config.parameter_overrides po_cat
+                    ON  po_cat.parameter_id         = p.id
+                    AND po_cat.categoria_cliente_id  = p_categoria_cliente_id
+                    AND po_cat.django_user_id        IS NULL
+                    AND po_cat.django_group_id       IS NULL
+                    AND po_cat.emittente_fiscale_id  IS NULL
+                    AND po_cat.session_key           IS NULL
+                    AND po_cat.function_name         IS NULL
+                    AND po_cat.attivo                = true
+
+                  ORDER BY p.code;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_list_parameters_for_user(integer, integer[], bigint, smallint)
+              IS 'Lista tutti i parametri con override per emittente, gruppo, utente e categoria_cliente. '
+                 'Restituisce il valore risolto con cascata user > categoria_cliente > group > emittente > default '
+                 '(coerente con fn_get_parameter_full overload 7-arg, migration 20260515-08). '
+                 'I LEFT JOIN usano scope puri (nessun overlap) per la visualizzazione UI; '
+                 'resolved_value calcolato con subquery indipendenti per coerenza con il runtime. '
+                 'Espone emittente_override_id, user_override_id e categoria_cliente_override_id '
+                 '(bigint) per DELETE mirato dalla UI admin. '
+                 'p_categoria_cliente_id = NULL: livello categoria saltato, retro-compatibile con la firma 3-arg.';
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_list_parameters_for_user(integer, integer[], bigint, smallint);
+
+              CREATE OR REPLACE FUNCTION script.fn_list_parameters_for_user(
+                  p_django_user_id        integer,
+                  p_group_ids             integer[]  DEFAULT NULL,
+                  p_emittente_fiscale_id  bigint     DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  code                 character varying,
+                  description          text,
+                  default_value        text,
+                  emittente_value      text,
+                  emittente_override_id bigint,
+                  group_value          text,
+                  user_value           text,
+                  user_override_id     bigint,
+                  resolved_value       text
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                  RETURN QUERY
+                  SELECT
+                      p.code,
+                      p.description,
+                      p.default_value,
+                      po_em.overridden_value   AS emittente_value,
+                      po_em.id                 AS emittente_override_id,
+                      po_gr.overridden_value   AS group_value,
+                      po_us.overridden_value   AS user_value,
+                      po_us.id                 AS user_override_id,
+                      COALESCE(
+                          po_us.overridden_value,
+                          po_gr.overridden_value,
+                          po_em.overridden_value,
+                          p.default_value
+                      )                        AS resolved_value
+                  FROM config.parameters p
+                  LEFT JOIN config.parameter_overrides po_em
+                    ON  po_em.parameter_id         = p.id
+                    AND po_em.emittente_fiscale_id = p_emittente_fiscale_id
+                    AND po_em.django_user_id       IS NULL
+                    AND po_em.django_group_id      IS NULL
+                    AND po_em.attivo               = true
+                  LEFT JOIN LATERAL (
+                      SELECT o.overridden_value
+                        FROM config.parameter_overrides o
+                       WHERE o.parameter_id    = p.id
+                         AND o.django_group_id = ANY(p_group_ids)
+                         AND o.django_user_id  IS NULL
+                         AND o.attivo          = true
+                       ORDER BY o.id
+                       LIMIT 1
+                  ) po_gr ON p_group_ids IS NOT NULL
+                  LEFT JOIN config.parameter_overrides po_us
+                    ON  po_us.parameter_id   = p.id
+                    AND po_us.django_user_id = p_django_user_id
+                    AND po_us.attivo         = true
+                  ORDER BY p.code;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_list_parameters_for_user(integer, integer[], bigint)
+              IS 'Lista tutti i parametri con override per emittente, gruppo e utente. Restituisce il valore risolto con priorita: user > group > emittente > default. Espone emittente_override_id e user_override_id per consentire DELETE mirato dalla UI.';

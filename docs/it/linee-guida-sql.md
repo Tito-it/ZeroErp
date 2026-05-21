@@ -282,6 +282,62 @@ CREATE INDEX ex_tabella_no_overlap
     WHERE (attivo IS TRUE);
 ```
 
+**Entita' con stati annullabili (`UNIQUE WITHOUT OVERLAPS` + `is_abortito`):**
+
+Quando una tabella usa **Pathway 1** e ha stati che transitano a `is_abortito = true`
+(es. ANNULLATO), le righe abortite partecipano al constraint di overlap bloccando
+nuovi record sulla stessa chiave.
+
+**Nota PG18**: `'empty'::daterange` non e' ammesso come valore nel temporal part di
+`UNIQUE WITHOUT OVERLAPS` — ne' in fase di `ADD CONSTRAINT` ne' su INSERT/UPDATE
+successivi. Non e' possibile "escludere" righe con un range vuoto.
+
+**Soluzione**: migrare da `UNIQUE WITHOUT OVERLAPS` (Pathway 1) a `EXCLUDE USING gist`
+parziale (Pathway 2) con predicato `WHERE (NOT is_abortito_snapshot)`.
+
+1. **Colonna denormalizzata** `is_abortito_snapshot BOOLEAN NOT NULL DEFAULT false`
+   — snapshot di `<tabella_stati>.is_abortito` sulla stessa riga (necessaria perche'
+   i constraint non possono referenziare altre tabelle).
+
+2. **BEFORE trigger** (fase `_z90_`, evento `INSERT OR UPDATE OF <col_stato>`)
+   — mantiene `is_abortito_snapshot` aggiornato. Deve essere BEFORE (non AFTER):
+   nelle BEFORE trigger chain PG aggiorna NEW prima di scrivere la riga; un AFTER
+   trigger non puo' influenzare il predicato WHERE valutato al momento dell'INSERT.
+
+3. **Swap del constraint**: drop `UNIQUE WITHOUT OVERLAPS`, add `EXCLUDE USING gist`
+   con `WHERE (NOT is_abortito_snapshot)`. Richiede `btree_gist` per le colonne
+   di uguaglianza non-range. La colonna `validita` originale resta invariata.
+
+```sql
+-- Step 1: colonna snapshot + backfill
+ALTER TABLE schema.tabella
+    ADD COLUMN is_abortito_snapshot BOOLEAN NOT NULL DEFAULT false;
+UPDATE schema.tabella t
+   SET is_abortito_snapshot = s.is_abortito
+  FROM config.stati_doc_<entita> s
+ WHERE s.id = t.stato_doc_<entita>_id;
+
+-- Step 2: BEFORE trigger (vedere naming convention trigger)
+
+-- Step 3: swap constraint
+ALTER TABLE schema.tabella
+    DROP CONSTRAINT uq_tabella_no_overlap;
+ALTER TABLE schema.tabella
+    ADD CONSTRAINT ex_tabella_no_overlap
+    EXCLUDE USING gist (
+        key_col_1 WITH =,
+        key_col_2 WITH =,
+        validita  WITH &&
+    )
+    WHERE (NOT is_abortito_snapshot);
+```
+
+Righe abortite escluse dal predicato `WHERE`: non partecipano al check di overlap.
+`dbops.automazione_overlap` deve restare `active = false` per la tabella
+(il constraint parziale non e' gestibile dal framework standard).
+
+> Prima applicazione: `vendite.contratti`, migration `20260521-01..03`.
+
 **Temporal FK** (PG 18, solo se padre ha temporal UNIQUE):
 
 ```sql

@@ -26,7 +26,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(rev 2026-05-15 — Step 2.4: tipo_eccezione + versione fissata)
+(rev 2026-05-20 — 9° param p_listino_versione_id_preferito: fast path diretto)
 
 `vendite.fn_resolve_prezzo_listino_v2` e' il **resolver prezzi pricing v5**. Riceve le dimensioni di calcolo (articolo, uom, data, BA, utility, emittente, classe utenza opzionale) e restituisce **una sola riga** con il prezzo risolto, il prezzo base pre-variazione e tutti i metadati necessari per lo snapshot in `commesse_attivita` / `attivita_fatturabili`.
 
@@ -34,16 +34,19 @@ La risoluzione avviene in **stadi deterministici** (nessun tie-break): la prima 
 
 ---
 
-### Ordine di valutazione (3 stadi + BUNDLE)
+### Ordine di valutazione (3 stadi + BUNDLE + FAST PATH)
 
-| Stadio | Fonte prezzo | Origine output |
-| ------ | ------------ | -------------- |
-| **0** | `vendite.promo_articoli` (overlay, non in contesto bundle) | `PROMO` |
-| **1a** | `vendite.contratti_righe.tipo_eccezione` — OVERRIDE o AGGIUNTA | `CONTRATTO_OVERRIDE` / `CONTRATTO_AGGIUNTA` |
-| **1a-ESC** | `vendite.contratti_righe.tipo_eccezione` = ESCLUSIONE | raise `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` |
-| **1b** | Versione listino contratto + variazione globale (standalone) | `CONTRATTO_LISTINO` |
-| **BUNDLE** | `vendite.listini_righe_componenti` (se `p_articolo_padre_contesto IS NOT NULL`) | `LISTINO_BUNDLE` |
-| **2** | Matrice `categorie_clienti_listini` + variazione | `CATEGORIA` |
+| Stadio | Attivo quando | Fonte prezzo | Origine output |
+| ------ | ------------- | ------------ | -------------- |
+| **FAST PATH** | `p_listino_versione_id_preferito IS NOT NULL` | Versione fornita direttamente — bundle poi standalone | `LISTINO_BUNDLE` / `CONTRATTO_LISTINO`; se articolo non trovato → fallback a STADIO 2 |
+| **0** | sempre (overlay) | `vendite.promo_articoli` (non in contesto bundle) | `PROMO` |
+| **1a** | `p_listino_versione_id_preferito IS NULL` | `vendite.contratti_righe.tipo_eccezione` — OVERRIDE o AGGIUNTA | `CONTRATTO_OVERRIDE` / `CONTRATTO_AGGIUNTA` |
+| **1a-ESC** | `p_listino_versione_id_preferito IS NULL` | `vendite.contratti_righe.tipo_eccezione` = ESCLUSIONE | raise `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` |
+| **1b** | `p_listino_versione_id_preferito IS NULL` | Versione listino contratto + variazione globale (standalone) | `CONTRATTO_LISTINO` |
+| **BUNDLE** | `p_articolo_padre_contesto IS NOT NULL` | `vendite.listini_righe_componenti` | `LISTINO_BUNDLE` |
+| **2** | `v_origine IS NULL` (nessun prezzo trovato) | Matrice `categorie_clienti_listini` + variazione | `CATEGORIA` |
+
+**FAST PATH — versione diretta (dal 2026-05-20)**: se `p_listino_versione_id_preferito IS NOT NULL`, il lookup contratto-via-BA (STADIO 1) viene saltato interamente. Il resolver usa la versione fornita direttamente per cercare bundle (`listini_righe_componenti`) e poi standalone (`listini_righe`). Se l'articolo **non e' presente** in quella versione, non alza errore: resetta e cade nel STADIO 2 (CATEGORIA). `contratto_id`, `tipo_eccezione` restano `NULL` nell'output. Pensato per contesti di anteprima (form atomic drawer) dove il caller gia' conosce la versione listino da usare.
 
 **STADIO 1a — tipo_eccezione (dal 2026-05-15)**: cerca riga in `contratti_righe` per `(contratto_id, articolo_id)` e legge `tipo_eccezione`. Tre esiti:
 
@@ -74,8 +77,9 @@ vendite.fn_resolve_prezzo_listino_v2(
     p_ba_id                       anagrafiche.billing_account.id%TYPE,
     p_utility_id                  config.utilities.id%TYPE,
     p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
-    p_classe_utenza_id            config.classi_utenze.id%TYPE DEFAULT NULL,
-    p_articolo_padre_contesto     uuid DEFAULT NULL
+    p_classe_utenza_id              config.classi_utenze.id%TYPE DEFAULT NULL,
+    p_articolo_padre_contesto       uuid DEFAULT NULL,
+    p_listino_versione_id_preferito vendite.listini_versioni.id%TYPE DEFAULT NULL
 )
 RETURNS TABLE (
     prezzo_finale                  vendite.listini_righe.prezzo%TYPE,
@@ -109,6 +113,7 @@ RETURNS TABLE (
 | `p_emittente_soggetto_ruolo_id` | bigint  | si (>0)      | Emittente fiscale (derivato dal JWT operatore lato BE)            |
 | `p_classe_utenza_id`            | integer | no           | Classe utenza derivata da contratto_utilities o precontrattuali   |
 | `p_articolo_padre_contesto`     | uuid    | no           | UUID articolo padre composito. Se fornito, attiva STADIO BUNDLE: cerca prezzo in `listini_righe_componenti` per (versione, padre, figlio, data). `NULL` = risoluzione standalone (default). |
+| `p_listino_versione_id_preferito` | bigint | no (>0 se fornito) | **Fast path**: se non NULL, salta il lookup contratto-via-BA e usa questa versione listino direttamente. Se l'articolo non e' in quella versione, fallback silenzioso a STADIO 2. `NULL` (default) = comportamento standard. |
 
 ---
 

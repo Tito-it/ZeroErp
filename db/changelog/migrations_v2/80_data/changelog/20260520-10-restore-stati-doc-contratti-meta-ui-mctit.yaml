@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Ripristina meta UI su config.stati_doc_contratti.
+#
+# Contesto: la migration 20260520-08 (loadUpdateData con colonna meta
+# dichiarata, CSV con meta={}) sovrascrive i valori popolati da 20260430-61
+# ogni volta che Liquibase la riapplica (runOnChange). Questo file gira
+# dopo (ordine alfanumerico 20260520-10 > 20260520-08) e ristabilisce
+# il meta corretto per DRAFT e ATTIVO.
+#
+# Pattern: meta UI gestito solo da UPDATE SQL — mai da loadUpdateData.
+# Segue lo stesso principio di 20260430-60 (transizioni_stati_preventivi).
+#
+# DRAFT  → outgoing_action: attiva (→ ATTIVO)
+# ATTIVO → outgoing_action: cessa  (→ CESSATO, requires_date)
+# CESSATO   : terminale, meta={} (default DDL, nessun UPDATE)
+# ANNULLATO : terminale, is_abortito=true, meta={} (default DDL, nessun UPDATE)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260520-10-restore-stati-doc-contratti-meta-ui-mctit.yaml
+
+  - changeSet:
+      id: 20260520-10-restore-stati-doc-contratti-meta-ui
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      failOnError: true
+      comment: >
+        Ripristina meta UI su stati_doc_contratti per DRAFT e ATTIVO.
+        Contromisura alla regressione di 20260520-08 (loadUpdateData con meta
+        incluso sovrascrive 20260430-61). Questo changeset gira dopo per
+        ordine alfanumerico e garantisce che fn_available_actions_contratto
+        trovi always outgoing_action popolato.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_contratti
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- DRAFT — azione in uscita: attiva (-> ATTIVO)
+              UPDATE config.stati_doc_contratti
+                 SET meta = '{"outgoing_action":{"key":"attiva","target_state":"ATTIVO","label_key":"contratti.azione_attiva","severity":"info","icon":"pi pi-play","requires_confirm":false,"requires_date":false}}'::jsonb
+               WHERE codice_interno = 'DRAFT';
+
+              -- ATTIVO — azione in uscita: cessa (-> CESSATO, richiede data).
+              -- default_date e min_date sono contestuali al contratto:
+              -- calcolati runtime da fn_available_actions_contratto.
+              UPDATE config.stati_doc_contratti
+                 SET meta = '{"outgoing_action":{"key":"cessa","target_state":"CESSATO","label_key":"contratti.azione_cessa","severity":"danger","icon":"pi pi-stop","requires_confirm":true,"requires_date":true}}'::jsonb
+               WHERE codice_interno = 'ATTIVO';
+
+              -- CESSATO — terminale, meta={} (default DDL). Nessun UPDATE.
+              -- ANNULLATO — terminale (is_abortito=true), meta={} (default DDL). Nessun UPDATE.
+      rollback:
+        - sql:
+            sql: SELECT 1;

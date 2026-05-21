@@ -1,6 +1,9 @@
 # Guida — Gestione Contratti vendita
 
-> **Ultima revisione**: 15 maggio 2026 — modello unificato post-refactor
+> **Ultima revisione**: 21 maggio 2026 — stato ANNULLATO (DRAFT→ANNULLATO),
+> constraint overlap parziale `ex_contratti_no_overlap` (EXCLUDE USING gist
+> `WHERE NOT is_abortito_snapshot`), colonna `is_abortito_snapshot`.
+> Revisione precedente: 15 maggio 2026 — modello unificato post-refactor
 > (drop modalità A/B/C, `tipo_eccezione` su `contratti_righe`, snapshot
 > `listino_versione_id` all'attivazione, lock post-attivazione).
 >
@@ -151,9 +154,15 @@ da `config.transizioni_stati_contratti`:
 | `DRAFT` | Bozza in costruzione | Sì: testata, righe, utility |
 | `ATTIVO` | Contratto in vigore — usato dal resolver pricing | No (lock post-attivazione) |
 | `CESSATO` | Contratto scaduto o terminato | No (terminale) |
+| `ANNULLATO` | Bozza annullata prima dell'attivazione (`is_abortito = true`) | No (terminale) |
 
 La transizione `ATTIVO → CESSATO` può essere **automatica** (job notturno quando
 `valido_al < CURRENT_DATE`) o **manuale** (operatore che chiude anticipatamente).
+
+La transizione `DRAFT → ANNULLATO` è sempre ammessa: una bozza non ancora
+attivata può essere annullata in qualsiasi momento. Un contratto ANNULLATO non
+partecipa al controllo di overlap temporale: dopo l'annullamento è possibile
+creare un nuovo contratto sulla stessa quadrupla senza conflitti.
 
 Non esiste revisione come nei preventivi: se le condizioni cambiano, si cessa il
 contratto corrente e se ne crea uno nuovo.
@@ -350,11 +359,11 @@ variazione globale) passa per tre gate:
    │  da zero)        │
    └────────┬─────────┘
             │
-   ┌────────▼──────────┐
-   │      DRAFT        │
-   │ Operatore compila │
-   │ testata + utility │
-   │ + eccezioni righe │
+   ┌────────▼──────────┐      annullamento bozza    ┌─────────────┐
+   │      DRAFT        │ ──────────────────────────► │  ANNULLATO  │
+   │ Operatore compila │                             │  (terminale)│
+   │ testata + utility │                             │ is_abortito │
+   │ + eccezioni righe │                             └─────────────┘
    └────────┬──────────┘
             │
             │ DRAFT→ATTIVO: trigger fissa listino_versione_id
@@ -378,9 +387,11 @@ variazione globale) passa per tre gate:
 
 L'attivazione fallisce (oltre alle guard trigger) se:
 
-- il contratto è in overlap temporale con un altro contratto ATTIVO per la stessa
-  quadrupla `(ba, istanza_utility, utility, ambito)` nel periodo `(valido_dal, valido_al)`
-  — vincolo EXCLUDE `ex_contratti_no_overlap`
+- il contratto è in overlap temporale con un altro contratto **non ANNULLATO** per
+  la stessa quadrupla `(ba, istanza_utility, utility, ambito)` nel periodo
+  `(valido_dal, valido_al)` — constraint `ex_contratti_no_overlap` (EXCLUDE USING
+  gist parziale, `WHERE NOT is_abortito_snapshot`; i contratti ANNULLATO non
+  partecipano al check)
 - il contratto è "negoziato puro" (senza listino) e non ha nessuna riga AGGIUNTA/OVERRIDE
 - ci sono approvazioni prezzo PENDING non risolte
 
@@ -504,7 +515,8 @@ sono gli stessi in tutti i domini. Vedi [modello componenti BoM](/dev/manual/mod
 
 | Termine | Significato |
 |---|---|
-| **Contratto** | Relazione commerciale duratura con un BA per una utility. Stato DRAFT → ATTIVO → CESSATO |
+| **Contratto** | Relazione commerciale duratura con un BA per una utility. Stato DRAFT → ATTIVO → CESSATO (oppure DRAFT → ANNULLATO) |
+| **ANNULLATO** | Bozza annullata prima dell'attivazione. Stato terminale con `is_abortito = true`. Non partecipa al check di overlap |
 | **Forma derivata** | "Con listino" / "Senza listino" — derivata dai dati, non scelta dall'operatore |
 | **OVERRIDE** | Eccezione di riga: prezzo personalizzato per articolo del listino. Variazione globale non si applica |
 | **ESCLUSIONE** | Eccezione di riga: articolo del listino non disponibile per il cliente |
@@ -547,13 +559,13 @@ i due artefatti abbiano snapshot strutturalmente diversi, e usare il preventivo
 come offerta commerciale sarebbe una forzatura semantica.
 
 L'analisi di dettaglio (tre opzioni, decisioni da prendere, modello dati proposto)
-è in [`Analisi-iniziale-offerta-commerciale.md`](/dev/work-in-progress/Analisi-iniziale-offerta-commerciale).
+è stata raccolta in un'analisi preliminare interna.
 La decisione di procedere con l'opzione (c) — entità separata `offerte_commerciali`
 con flusso `push_a_contratto` — è raccomandata nel documento ma non ancora presa
 operativamente. Non è bloccante per il refactor contratti corrente né per il backend
 che segue.
 
 *Per il dettaglio tecnico delle API REST, formati payload e codici errore vedi
-[API Contratti](/backend/vendite/manual/api_contratti). Per le decisioni di modello
-del refactor vedi
-[refactor-contratti-modalita](/dev/work-done/refactor-contratti-modalita).*
+[API Contratti](/backend/vendite/manual/api_contratti). Le decisioni di modello
+del refactor sono recepite nelle sezioni precedenti e nella documentazione backend
+di dominio.*

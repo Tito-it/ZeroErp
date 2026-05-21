@@ -15,13 +15,14 @@ import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
-import Button from 'primevue/button'
 import SearchHint from '../../../core/components/SearchHint.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
+import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.vue'
 import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
+import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 
 const emit = defineEmits(['new', 'row-click'])
@@ -92,11 +93,42 @@ function onRowClick(event) { emit('row-click', event.data) }
 // Click `@click.stop` per non triggerare il row-click che apre il drawer.
 const pdfDialogVisible = ref(false)
 const pdfDialogPreventivo = ref(null)
+const noteDrawerVisible = ref(false)
+const noteDrawerPreventivo = ref(null)
 
 function onPdfClick(row) {
   if (!row || row.stato_codice_interno === 'DRAFT') return
   pdfDialogPreventivo.value = row
   pdfDialogVisible.value = true
+}
+
+function onNoteClick(row) {
+  if (!row?.id) return
+  noteDrawerPreventivo.value = row
+  noteDrawerVisible.value = true
+}
+
+// Scopo: costruisce le azioni contestuali di riga. Modifica = click riga.
+function buildRowActions(data) {
+  return [
+    {
+      key: 'documenti-pdf',
+      label: t('preventivi.pdf.label_scarica'),
+      icon: 'pi pi-file-pdf',
+      severity: 'primary',
+      disabled: data.stato_codice_interno === 'DRAFT',
+      tooltip: data.stato_codice_interno === 'DRAFT'
+        ? t('preventivi.pdf.tooltip_lista_disabilitato')
+        : t('preventivi.pdf.tooltip_lista'),
+      command: () => onPdfClick(data),
+    },
+    {
+      key: 'gestisci-note',
+      label: t('preventivi.gestisci_note'),
+      icon: MANAGE_ICONS.NOTE,
+      command: () => onNoteClick(data),
+    },
+  ]
 }
 
 useTabFreshness(store, TAB_ENTITIES.PREVENTIVO)
@@ -174,22 +206,9 @@ onMounted(() => store.fetchList())
             :severity="statoPreventiveSeverity(data.stato_codice_interno)" />
         </template>
       </Column>
-      <Column :header="''" class="app-col-actions" style="width: 60px;">
+      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
-          <!-- Azione PDF: disabilitata in DRAFT (nessun PDF persistito).
-               click.stop per non innescare il row-click che apre il drawer. -->
-          <Button
-            icon="pi pi-file-pdf"
-            text
-            rounded
-            size="small"
-            class="app-pdf-btn"
-            :disabled="data.stato_codice_interno === 'DRAFT'"
-            v-tooltip.top="data.stato_codice_interno === 'DRAFT'
-              ? t('preventivi.pdf.tooltip_lista_disabilitato')
-              : t('preventivi.pdf.tooltip_lista')"
-            @click.stop="onPdfClick(data)"
-          />
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>
@@ -206,6 +225,12 @@ onMounted(() => store.fetchList())
             numero: pdfDialogPreventivo.numero,
           })
         : ''"
+    />
+
+    <PreventivoNoteDrawer
+      v-if="noteDrawerPreventivo?.id"
+      v-model:visible="noteDrawerVisible"
+      :preventivo-id="noteDrawerPreventivo.id"
     />
     </template>
   </div>

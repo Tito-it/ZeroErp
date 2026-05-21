@@ -191,8 +191,9 @@ campo `tipo_eccezione` e' obbligatorio in CREATE e immutabile in UPDATE
   "articolo_id": "00000000-0000-0000-0000-000000000001",
   "tipo_eccezione": "OVERRIDE",
   "tipo_erogazione": "CANONE",
+  "fonte_quantita_attesa": "FISSA",
   "prezzo_unitario": "25.50",
-  "quantita_fissa": "1",
+  "qta_operativa": "1",
   "uom_operativa_id": 5,
   "ordine": 10
 }
@@ -229,6 +230,50 @@ mutabili; `articolo_id` e `tipo_eccezione` immutabili. Cambio di
 `DELETE /api/v1/vendite/contratti/<id>/righe/<riga_id>/` hard-delete
 (bloccato dal trigger se note collegate o contratto ATTIVO).
 
+#### Campo `fonte_quantita_attesa` (refactor 2026-05-19)
+
+`fonte_quantita_attesa` (NOT NULL dal 2026-05-19 via migration `20260519-05`)
+dichiara da dove arriva la quantita' che il motore di fatturazione applichera'
+in fase di push periodico verso le commesse. 5 valori CHECK DB:
+
+| Valore | Semantica | `qta_operativa` lato BE |
+| --- | --- | --- |
+| `FISSA` | Quantita' contrattualizzata, snapshot in riga | Obbligatoria > 0 |
+| `MANUALE` | Definita di volta in volta sul documento downstream | Forzata a NULL (anche se inviata) |
+| `TIMESHEET` | Da rendicontazione ore (modulo timesheet futuro) | Forzata a NULL |
+| `LETTURE` | Da letture utility | Forzata a NULL |
+| `DERIVATA_COMPONENTI` | Per padre composito: scritta automaticamente dal trigger `z90_propaga_qta_componenti` post-INSERT figli BoM | Lasciata vuota (gestita dal DB) |
+
+Matrice coerenza `(tipo_erogazione, fonte_quantita_attesa)` enforced sia dal
+CHECK DB `chk_contrighe_coerenza_fonte_erogazione` (migration `20260519-05`)
+sia dal service Python (`_apply_fonte_quantita_logic` in
+`contratti_service.py`). 7 combinazioni vietate:
+
+| `tipo_erogazione` | Fonti vietate |
+| --- | --- |
+| `CANONE` / `UNA_TANTUM` | `TIMESHEET`, `LETTURE` |
+| `ORARIO` | `LETTURE` |
+| `CONSUMO` | `FISSA`, `TIMESHEET` |
+
+Default applicato in CREATE quando `fonte_quantita_attesa` non e' nel payload
+(stesso comportamento del trigger DB `trg_contratti_righe_a10_default_fonte_qta`):
+
+| `tipo_erogazione` | Fonte default |
+| --- | --- |
+| `CANONE` / `UNA_TANTUM` | `FISSA` |
+| `ORARIO` | `MANUALE` (diventera' `TIMESHEET` quando il modulo esistera') |
+| `CONSUMO` | `LETTURE` |
+
+In UPDATE che cambia `tipo_erogazione`, la fonte non viene auto-applicata:
+il trigger DB la resetta SOLO se la combo nuova diventa vietata, preservando
+le scelte legittime dell'utente.
+
+Combinazione vietata → `E_VENDITE_VALIDATION` con detail "Combinazione vietata:
+tipo_erogazione='...' non e' compatibile con fonte_quantita_attesa='...'".
+
+Riferimento doc dominio:
+[docs/it/dev/work-done/refactor-contratti-fonte-quantita.md](../../../dev/work-done/refactor-contratti-fonte-quantita.md).
+
 #### Workflow autorizzazioni prezzo L1+L2+L3 (refactor 2026-05-19)
 
 CREATE e UPDATE riga sono cablati al BB orchestratore
@@ -253,7 +298,24 @@ restare entro la soglia configurata via parameter
 estesa user → categoria_cliente → group → emittente → default (refactor
 2026-05-15 cascata BA-aware). Se viola: `E_PRICING_SCONTO_ECCESSIVO` o
 `E_PRICING_MAGGIORAZIONE_ECCESSIVA` (403, `retryable=true`: il FE puo'
-offrire la CTA "Richiedi approvazione").
+offrire la CTA "Richiedi approvazione"). Codici stabili per distinguere
+direzione downstream (dashboard / log / pratiche); user_message generico
+"Variazione prezzo oltre il limite consentito per il tuo ruolo" (refactor
+2026-05-20) — il `detail` riporta direzione esplicita "in diminuzione" /
+"in aumento" + percentuale + limite.
+
+**Fast path resolver per contratti** (refactor 2026-05-20). Il pricing gate L2
+invoca `fn_resolve_prezzo_listino_v2` passando come 9° argomento il
+`listino_versione_id` del contratto (snapshot se ATTIVO, lookup dinamico
+ATTIVA/CHIUSA @ `valido_dal` con BOZZA esclusa per DRAFT, replicato via
+`ContrattiRepository.get_listino_versione_attiva_alla_data`). Questo
+attiva lo stadio `CONTRATTO_LISTINO` del resolver e impedisce il drift
+verso lo stadio `CATEGORIA` (che pesca da `categorie_clienti_listini` un
+listino diverso da quello del contratto). Senza fast path il check L2
+confronterebbe il prezzo OVERRIDE con un prezzo categoria semanticamente
+non pertinente. Quando il fast path attivo trova il prezzo, l'output del
+resolver ha `contratto_id` / `tipo_eccezione` = NULL e
+`tipo_variazione_applicata = 'NESSUNA'` (nessun lookup contratto).
 
 **L3 — workflow approvazione**. Quando il payload include
 `richiesta_approvazione=true`, una violazione L2 non solleva ma apre una

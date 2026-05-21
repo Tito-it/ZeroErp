@@ -49,7 +49,7 @@
 > Dettagli:
 >
 > * Guida architetturale: [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
-> * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-done/sviluppo-multi-face-auth)
+> * Piano di sviluppo: roadmap storica multi-face auth consolidata
 
 ---
 

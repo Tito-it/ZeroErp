@@ -4,17 +4,23 @@
 >
 **Approfondimento tabelle:**
 >
-[config.valute](/dbzero/config/tabelle/valute)  
-> [config.utilities](/dbzero/config/tabelle/utilities)  
-> [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)  
+[config.valute](/dbzero/config/tabelle/valute)
+> [config.utilities](/dbzero/config/tabelle/utilities)
+> [config.lingue](/dbzero/config/tabelle/lingue)
+> [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 21-02-2026)  
-La funzione **`dbops.fn_get_lookup_codici()`** fornisce una lista lookup
-uniforme (`id`, `codice`, `descrizione`) su tabelle di configurazione con
-cardinalita` bassa o media, con ordinamento parametrico e filtro automatico
-su `attivo` quando presente.
+(rev 2026-05-20 — override dichiarativi via automation_overrides_cols)
+
+La funzione **`dbops.fn_get_lookup_codici()`** fornisce una lista lookup uniforme
+(`id`, `codice`, `codice_interno`, `descrizione`, `attivo`) su tabelle di configurazione
+a bassa/media cardinalita', con ordinamento parametrico e filtro automatico su `attivo`.
+
+Supporta tabelle con chiavi non-standard (es. `codice_iso`, `iso_code`) tramite
+**override dichiarativi** in `dbops.automation_overrides_cols` — senza branch custom
+nel codice e senza modificare la struttura delle tabelle.
 
 ---
 
@@ -22,60 +28,91 @@ su `attivo` quando presente.
 
 | Parametro | Tipo | Default | Descrizione |
 | --------- | ---- | ------- | ----------- |
-| `p_rel` | regclass | - | Tabella target (`schema.tabella`) da interrogare. |
-| `p_order_col` | text | `descrizione` | Colonna ordinamento: `descrizione` oppure `codice`. |
-| `p_order_dir` | text | `ASC` | Direzione ordinamento: `ASC` oppure `DESC`. |
-| `p_attivo_only` | boolean | `true` | Se la tabella ha `attivo`, applica `WHERE attivo IS TRUE`. |
-| `p_limit` | integer | `200` | Limite righe opzionale per estrazioni piu` leggere. |
-| `p_offset` | integer | `0` | Offset opzionale per paginazione. |
+| `p_rel` | regclass | obbligatorio | Tabella target (`schema.tabella`). |
+| `p_order_col` | text | `descrizione` | Colonna ordinamento: `descrizione` o `codice`. |
+| `p_order_dir` | text | `ASC` | Direzione: `ASC` o `DESC`. |
+| `p_attivo_only` | boolean | `true` | Se la tabella ha `attivo boolean`, applica `WHERE attivo IS TRUE`. |
+| `p_limit` | integer | `500` | Limite righe. |
+| `p_offset` | integer | `0` | Offset per paginazione. |
 
 ---
 
-### Regole principali
+### Regole di risoluzione colonne
 
-* La tabella deve avere colonne `id`, `codice`, `descrizione`.
-* `id` deve essere numerico (`smallint`, `integer`, `bigint`).
-* `id` di tipo `uuid` non e` ammesso: la funzione alza errore.
-* Se la colonna `attivo` non esiste, `p_attivo_only` viene ignorato.
-* La funzione e` pensata per lookup/configurazioni, non per dataset voluminosi.
+La funzione risolve le colonne in questo ordine di priorita`:
+
+1. **Override dichiarativo** da `dbops.automation_overrides_cols` (col_role `CODICE_COL` / `CODICE_INTERNO_COL`).
+2. **Introspezione `pg_attribute`**: colonne `codice` e `codice_interno` della tabella.
+3. **Fallback**: se `codice` assente, usa `COALESCE(codice_interno, id::text)` per il campo `codice`.
+
+Vincoli strutturali obbligatori (nessun override):
+
+* `id` deve essere `integer` o `bigint` (`uuid` non ammesso — `E_LOOKUP_STRUTTURA_TABELLA_INVALIDA` 456).
+* Almeno una tra `codice`, `codice_interno` o un override dichiarativo deve essere presente.
+* `descrizione` obbligatoria.
+* `attivo` opzionale; se presente deve essere `boolean`.
+
+---
+
+### Override dichiarativi per tabelle non-standard
+
+Per tabelle che non hanno colonne `codice` o `codice_interno` ma hanno una chiave naturale stabile con nome diverso, aggiungere righe in `dbops.automation_overrides_cols`:
+
+| `col_role` | Semantica |
+|---|---|
+| `CODICE_COL` | Colonna da esporre come alias `codice` nell’output. |
+| `CODICE_INTERNO_COL` | Colonna da esporre come alias `codice_interno` nell’output. |
+
+**Esempio** — `config.lingue` (chiave naturale `codice_iso`):
+
+```sql
+-- Seed gia’ presente in automation_overrides_cols (migration 20260520-05)
+-- schema_name=config, table_name=lingue, col_role=CODICE_COL,         col_name=codice_iso
+-- schema_name=config, table_name=lingue, col_role=CODICE_INTERNO_COL, col_name=codice_iso
+SELECT * FROM dbops.fn_get_lookup_codici(‘config.lingue’::regclass);
+-- Ritorna: codice=’it’, codice_interno=’it’, descrizione=’Italiano’, attivo=true
+```
 
 ---
 
 ### Output
 
-Ritorna una tabella con:
+```text
+id             bigint
+codice         text    -- colonna ‘codice’ o override CODICE_COL, fallback a COALESCE(codice_interno, id::text)
+codice_interno text    -- colonna ‘codice_interno’ o override CODICE_INTERNO_COL, NULL se assente
+descrizione    text
+attivo         boolean -- NULL se la tabella non ha colonna ‘attivo’
+```
 
-* `id bigint`
-* `codice text`
-* `descrizione text`
+---
+
+### Codici errore
+
+| Codice | id | Quando |
+|---|---|---|
+| `E_PARAMETRO_INVALIDO` | 204 | `p_rel` NULL, `order_col`/`order_dir` non validi, `limit`/`offset` fuori range |
+| `E_LOOKUP_STRUTTURA_TABELLA_INVALIDA` | 456 | `id` mancante / uuid / tipo non supportato; né `codice` né `codice_interno` né override; `descrizione` mancante; `attivo` non boolean |
 
 ---
 
 ### Esempi d’uso
 
 ```sql
--- default: ordine per descrizione ASC, solo attivi se disponibile
-SELECT *
-FROM dbops.fn_get_lookup_codici('config.valute'::regclass);
+-- Tabella standard
+SELECT * FROM dbops.fn_get_lookup_codici(‘config.valute’::regclass);
 
--- ordine per codice DESC, includendo anche non attivi
-SELECT *
-FROM dbops.fn_get_lookup_codici(
-  'config.utilities'::regclass,
-  'codice',
-  'DESC',
-  false
+-- Tabella con chiave non-standard (override in automation_overrides_cols)
+SELECT * FROM dbops.fn_get_lookup_codici(‘config.lingue’::regclass);
+
+-- Ordine per codice DESC, includendo anche non attivi
+SELECT * FROM dbops.fn_get_lookup_codici(
+    ‘config.utilities’::regclass, ‘codice’, ‘DESC’, false
 );
 
--- estrazione limitata/paginata
-SELECT *
-FROM dbops.fn_get_lookup_codici(
-  'config.stati_cliente'::regclass,
-  'descrizione',
-  'ASC',
-  true,
-  50,
-  0
+-- Paginato
+SELECT * FROM dbops.fn_get_lookup_codici(
+    ‘config.stati_cliente’::regclass, ‘descrizione’, ‘ASC’, true, 50, 0
 );
 ```
 

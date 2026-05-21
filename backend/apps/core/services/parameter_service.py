@@ -118,14 +118,21 @@ class ParameterService:
 
     # Scopo: Restituisce la lista completa dei parametri con i valori a ogni
     #        livello di scope e il valore risolto finale per l'utente.
+    #        `categoria_cliente_id` opzionale (post brief DB 2026-05-19,
+    #        migration 20260519-01): se valorizzato attiva il livello
+    #        categoria_cliente fra user e group nella cascata visualizzata
+    #        ed espone `categoria_cliente_value` + `categoria_cliente_override_id`
+    #        nelle righe risultato.
     def list_parameters_for_user(
         self,
         django_user_id: int,
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
+        categoria_cliente_id: int | None = None,
     ) -> list[dict]:
         return self._repo.list_for_user(
             django_user_id, group_ids, emittente_fiscale_id,
+            categoria_cliente_id=categoria_cliente_id,
         )
 
     # Scopo: Crea o aggiorna un override personale dell'utente per un parametro.
@@ -209,6 +216,57 @@ class ParameterService:
             deleted,
             code="E_PARAMETER_NOT_FOUND",
             message="Override emittente non trovato.",
+        )
+        return deleted
+
+    # Scopo: Crea o aggiorna un override a livello categoria_cliente per un
+    #        parametro. Riservato agli admin (check di permesso a carico della
+    #        view). Post brief DB 2026-05-19: chiude lato write il livello
+    #        categoria_cliente della cascata (read gia' attiva via
+    #        list_parameters_for_user).
+    def upsert_categoria_cliente_override(
+        self,
+        parameter_code: str,
+        categoria_cliente_id: int,
+        value: str,
+    ) -> int:
+        ErrorManager.require(
+            bool(parameter_code and parameter_code.strip()),
+            code="E_PARAMETER_VALIDATION",
+            message="Codice parametro obbligatorio.",
+        )
+        ErrorManager.require(
+            categoria_cliente_id is not None and categoria_cliente_id > 0,
+            code="E_PARAMETER_VALIDATION",
+            message="ID categoria cliente obbligatorio.",
+        )
+        return self._repo.upsert_categoria_cliente_override(
+            parameter_code, categoria_cliente_id, value,
+        )
+
+    # Scopo: Rimuove un override a livello categoria_cliente.
+    def delete_categoria_cliente_override(
+        self,
+        override_id: int,
+        categoria_cliente_id: int,
+    ) -> bool:
+        ErrorManager.require(
+            override_id is not None and override_id > 0,
+            code="E_PARAMETER_VALIDATION",
+            message="ID override obbligatorio.",
+        )
+        ErrorManager.require(
+            categoria_cliente_id is not None and categoria_cliente_id > 0,
+            code="E_PARAMETER_VALIDATION",
+            message="ID categoria cliente obbligatorio.",
+        )
+        deleted = self._repo.delete_categoria_cliente_override(
+            override_id, categoria_cliente_id,
+        )
+        ErrorManager.require(
+            deleted,
+            code="E_PARAMETER_NOT_FOUND",
+            message="Override categoria cliente non trovato.",
         )
         return deleted
 

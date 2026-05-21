@@ -3,3 +3,4 @@ id,codice,codice_interno,descrizione,attivo,note,data_insert,user_insert,data_up
 2,GRASSETTO,GRASSETTO,Testo evidenziato in grassetto,t,,2025-10-21 19:00:39.633686+02,titodb,2025-10-21 19:00:39.633686+02,titodb,t
 3,AVVISO,AVVISO,Testo di avviso/attenzione,t,,2025-10-21 19:00:39.633686+02,titodb,2025-10-21 19:00:39.633686+02,titodb,t
 4,PICCOLO,PICCOLO,Testo secondario di dimensione ridotta,t,,2025-10-21 19:00:39.633686+02,titodb,2025-10-21 19:00:39.633686+02,titodb,t
+5,default,DEFAULT,Stile predefinito note documenti,t,,2026-05-19 00:00:00+02,mctit,2026-05-19 00:00:00+02,mctit,t

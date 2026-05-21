@@ -13,11 +13,18 @@
 //     :rows="pagination.rows.value" @page="pagination.onPage">
 
 import { ref, computed } from 'vue'
-import { PAGINATION } from '../constants'
+import { BREAKPOINTS, PAGINATION } from '../constants'
+
+function defaultRowsForViewport() {
+  if (typeof window === 'undefined') return PAGINATION.DEFAULT_ROWS
+  return window.matchMedia(`(max-width: ${BREAKPOINTS.TABLET - 1}px)`).matches
+    ? PAGINATION.COMPACT_ROWS
+    : PAGINATION.DEFAULT_ROWS
+}
 
 export function usePagination(options = {}) {
   const page = ref(1)
-  const rows = ref(options.rows || PAGINATION.DEFAULT_ROWS)
+  const rows = ref(options.rows || defaultRowsForViewport())
   const totalRecords = ref(0)
   const totalPages = computed(() => Math.max(1, Math.ceil(totalRecords.value / rows.value)))
 

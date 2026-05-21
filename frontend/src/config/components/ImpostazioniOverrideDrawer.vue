@@ -15,6 +15,7 @@ import { DRAWER_WIDTH } from '../../core/constants'
 import ParameterFallback from '../../core/components/ParameterFallback.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -34,21 +35,30 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const overrideValue = ref('')
 // Scope override corrente. Default: admin → emittente, altrimenti → user.
 const scope = ref(PARAMETER_SCOPE.USER)
+// Id categoria cliente selezionata quando scope=CATEGORIA_CLIENTE (Phase B
+// 2026-05-19). Resettato ad ogni cambio scope. Obbligatorio lato BE.
+const categoriaClienteId = ref(null)
 
 const isEmittenteScope = computed(() => scope.value === PARAMETER_SCOPE.EMITTENTE)
+const isCategoriaScope = computed(() => scope.value === PARAMETER_SCOPE.CATEGORIA_CLIENTE)
 
 // Solo l'admin puo' scegliere lo scope; gli utenti normali restano fissi su USER.
+// Cascata visualizzata BE: user > categoria_cliente > group > emittente > default.
 const scopeOptions = computed(() => [
   { value: PARAMETER_SCOPE.EMITTENTE, label: t('impostazioni.scope_emittente') },
+  { value: PARAMETER_SCOPE.CATEGORIA_CLIENTE, label: t('impostazioni.scope_categoria_cliente') },
   { value: PARAMETER_SCOPE.USER, label: t('impostazioni.scope_user') }
 ])
 
 // Edit attivo se per lo scope corrente esiste già un valore configurato.
+// Per categoria controlliamo l'override_id specifico al BE (potrebbe esserci
+// `categoria_cliente_value` di una categoria DIVERSA da quella selezionata
+// nel drawer — l'override_id stesso e' specifico della tupla `(param, cat_id)`).
 const isEdit = computed(() => {
   if (!props.parameter) return false
-  return isEmittenteScope.value
-    ? props.parameter.emittente_value != null
-    : props.parameter.user_override_id != null
+  if (isEmittenteScope.value) return props.parameter.emittente_value != null
+  if (isCategoriaScope.value) return props.parameter.categoria_cliente_override_id != null
+  return props.parameter.user_override_id != null
 })
 
 // Restituisce il valore preimpostato per il campo in base allo scope corrente:
@@ -56,26 +66,51 @@ const isEdit = computed(() => {
 function valueForCurrentScope() {
   const p = props.parameter
   if (!p) return ''
-  const existing = isEmittenteScope.value ? p.emittente_value : p.user_value
+  let existing = null
+  if (isEmittenteScope.value) existing = p.emittente_value
+  else if (isCategoriaScope.value) existing = p.categoria_cliente_value
+  else existing = p.user_value
   return existing ?? p.resolved_value ?? ''
 }
 
 watch(() => props.visible, (v) => {
   if (!v || !props.parameter) return
   scope.value = auth.isAdmin ? PARAMETER_SCOPE.EMITTENTE : PARAMETER_SCOPE.USER
+  categoriaClienteId.value = null
   overrideValue.value = valueForCurrentScope()
 })
 
 watch(scope, () => {
-  if (props.visible) overrideValue.value = valueForCurrentScope()
+  if (!props.visible) return
+  // Reset categoria all'uscita dallo scope: evita di mandare al BE un id
+  // che riferisce un altro scope ("orfano").
+  if (!isCategoriaScope.value) categoriaClienteId.value = null
+  overrideValue.value = valueForCurrentScope()
 })
 
-const canSave = computed(() => overrideValue.value !== '')
+const canSave = computed(() => {
+  if (overrideValue.value === '') return false
+  // Scope categoria richiede id selezionato (BE rifiuta 400 se manca).
+  if (isCategoriaScope.value && categoriaClienteId.value == null) return false
+  return true
+})
+
+// Label dinamica del campo valore in base allo scope.
+const overrideLabel = computed(() => {
+  if (isEmittenteScope.value) return t('impostazioni.emittente_override')
+  if (isCategoriaScope.value) return t('impostazioni.categoria_cliente_override')
+  return t('impostazioni.your_override')
+})
 
 async function handleSave() {
   if (!props.parameter) return
+  const options = isCategoriaScope.value
+    ? { categoriaClienteId: categoriaClienteId.value }
+    : {}
   const result = await execute(
-    () => store.saveOverride(props.parameter.code, overrideValue.value, scope.value),
+    () => store.saveOverride(
+      props.parameter.code, overrideValue.value, scope.value, options,
+    ),
     { successMessage: t('impostazioni.override_saved') }
   )
   if (result !== null) {
@@ -124,8 +159,20 @@ function close() {
             :disabled="isReadonly" />
         </div>
 
+        <!-- Quando scope=CATEGORIA_CLIENTE: lookup categoria (admin-only,
+             Phase B 2026-05-19). Il LookupSelect copre la tabella
+             `anagrafiche.categorie_clienti` come whitelist core. Senza
+             selezione, canSave=false. -->
+        <div v-if="isCategoriaScope" class="form-field">
+          <label>{{ t('impostazioni.field_categoria_cliente') }} *</label>
+          <LookupSelect v-model="categoriaClienteId"
+            rel="anagrafiche.categorie_clienti"
+            :placeholder="t('impostazioni.select_categoria_cliente')"
+            :disabled="isReadonly" show-code />
+        </div>
+
         <div class="form-field">
-          <label>{{ isEmittenteScope ? t('impostazioni.emittente_override') : t('impostazioni.your_override') }}</label>
+          <label>{{ overrideLabel }}</label>
           <InputText v-model="overrideValue" :disabled="isReadonly"
             :placeholder="t('impostazioni.override_placeholder')" />
         </div>

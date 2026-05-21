@@ -9,7 +9,7 @@
 >
 > 👀 **Vedi anche**
 >
-> * [Gestione commesse v2 (architettura)](/dev/work-in-progress/gestione-commesse-v2)
+> * Gestione commesse v2 (architettura interna di lavoro)
 > * [Guida fatturazione](/guide/fatturazione)
 > * [Gestione Listini e Pricing v5](/guide/gestione-listini) — modello pricing che alimenta lo snapshot commesse
 > * [vendite.commesse](/dbzero/vendite/tabelle/commesse)

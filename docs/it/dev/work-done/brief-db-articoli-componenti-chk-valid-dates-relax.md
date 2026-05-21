@@ -69,7 +69,7 @@ Cioe': `valido_al = valido_dal` cade in errore tecnico Postgres senza messaggio 
 
 L'admin crea una nuova riga BoM oggi, si accorge subito di aver inserito un componente sbagliato (errore di selezione articolo, errore quantita', etc.) e clicca **"Chiudi riga"** per terminarla immediatamente.
 
-Il pattern v5 [`feedback_stato_terminale_con_data.md`](../../../../.claude/projects/-home-tid-apps-ZeroErp/memory/feedback_stato_terminale_con_data.md) prevede esattamente:
+Il pattern v5 `feedback_stato_terminale_con_data.md` prevede esattamente:
 
 > Chiusura immediata = `valido_al = oggi` (PATCH atomica). La regola fail-safe data-driven per le entita' v5 con storico.
 

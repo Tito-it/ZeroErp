@@ -1,6 +1,9 @@
 <script setup>
 // Scopo: Componente generico che visualizza la catena di fallback di un parametro.
-// Mostra il valore risolto e da quale livello proviene (utente > gruppo > emittente > default).
+// Mostra il valore risolto e da quale livello proviene (cascata BE post brief
+// 2026-05-19: user > categoria_cliente > group > emittente > default).
+// Il livello categoria_cliente compare nella catena solo se la chiamata
+// /settings/ ha passato `categoria_cliente_id` (o `billing_account_id`).
 // Riutilizzabile ovunque serva mostrare la provenienza di un valore parametro.
 //
 // Props:
@@ -23,14 +26,27 @@ const levelLabel = computed(() => t(`impostazioni.level_${resolvedLevel.value}`)
 const levelSeverity = computed(() => parameterLevelSeverity(resolvedLevel.value))
 
 // Scopo: Costruisce la catena di valori per visualizzazione completa.
+//        Il livello `categoria_cliente` si inserisce fra `group` e `user`
+//        (cascata BE: user > categoria_cliente > group > emittente > default).
+//        Lo mostriamo SOLO se il BE ha valorizzato categoria_cliente_value:
+//        per le chiamate /settings/ senza categoria, la colonna resta NULL
+//        e la riga sparisce dal display (evita rumore visivo).
 const levels = computed(() => {
   const p = props.parameter
-  return [
+  const rows = [
     { key: 'default', value: p.default_value, label: t('impostazioni.level_default') },
     { key: 'emittente', value: p.emittente_value, label: t('impostazioni.level_emittente') },
     { key: 'group', value: p.group_value, label: t('impostazioni.level_group') },
-    { key: 'user', value: p.user_value, label: t('impostazioni.level_user') }
   ]
+  if (p.categoria_cliente_value != null || p.categoria_cliente_override_id != null) {
+    rows.push({
+      key: 'categoria_cliente',
+      value: p.categoria_cliente_value,
+      label: t('impostazioni.level_categoria_cliente'),
+    })
+  }
+  rows.push({ key: 'user', value: p.user_value, label: t('impostazioni.level_user') })
+  return rows
 })
 </script>
 

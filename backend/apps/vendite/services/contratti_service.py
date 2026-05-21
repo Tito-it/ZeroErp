@@ -31,6 +31,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -155,7 +156,32 @@ _CONTRATTO_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
     "DRAFT": _UPDATE_KEYS_TESTATA,
     "ATTIVO": frozenset({"valido_al", "meta"}),
     "CESSATO": frozenset(),
+    # ANNULLATO (refactor 2026-05-20): stato terminale "soft-delete", coerente
+    # con preventivi (is_abortito=true). Nessun campo modificabile —
+    # transizione consentita SOLO da DRAFT. Per contratti ATTIVO la chiusura
+    # avviene via CESSATO con data di fine validita'.
+    "ANNULLATO": frozenset(),
 }
+
+# Refactor 2026-05-20 — Lock cambio `listino_id` in presenza di righe.
+# Razionale: il `listino_id` definisce il contesto di pricing contro cui le
+# righe (OVERRIDE/ESCLUSIONE/AGGIUNTA) sono state caricate. Cambiarlo causa
+# drift semantico vero:
+#   - rimozione (valore → NULL): gia' coperta dal check piu' specifico
+#     `count_eccezioni_bloccanti` (blocca OVERRIDE/ESCLUSIONE; AGGIUNTE OK
+#     perche' restano valide senza listino).
+#   - aggiunta (NULL → valore): AGGIUNTE per articoli ora nel nuovo listino
+#     diventano illegali (trigger DB `trgfn_contratti_righe_guard_aggiunta_fuori_listino`).
+#   - sostituzione (valore → altro valore): OVERRIDE/ESCLUSIONE puntano a
+#     articoli del listino vecchio, potrebbero non esistere nel nuovo.
+# Il check inline copre aggiunta + sostituzione (qualsiasi righe attiva blocca).
+#
+# `tipo_variazione_globale` / `valore_variazione_globale` NON sono bloccati:
+# la variazione si applica solo alle righe DA_LISTINO della preview (le
+# persistite OVERRIDE/AGGIUNTA mantengono prezzo proprio, ESCLUSIONE ha
+# prezzo NULL). Cambiarli con righe presenti cambia la visualizzazione preview
+# ma non rompe coerenza dati. Se serve un blocco UX preventivo si aggiunge
+# come gating FE / warning, non come hard guard BE.
 
 # In create: numero e stato_doc_contratto_id sono impostati dal service,
 # mai in payload. In update: oltre a questi, anche gli identificativi
@@ -242,6 +268,45 @@ _TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA
 # `resolve_or_check_override_prezzo_riga_contratto` con la matrice
 # Alternativa B (L1 sempre, L2/L3 condizionali al resolver).
 _TIPI_ECCEZIONE_CON_GATE: frozenset[str] = frozenset({"OVERRIDE", "AGGIUNTA"})
+
+# Matrice coerenza (tipo_erogazione, fonte_quantita_attesa) — refactor
+# 2026-05-19. Le 7 combinazioni vietate corrispondono al CHECK DB
+# `chk_contrighe_coerenza_fonte_erogazione` (migration 20260519-05).
+# Defense-in-depth: stesso vincolo applicato lato BE con errore parlante
+# prima del round-trip DB. Vedi docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §3.
+_FONTE_VIETATE_PER_TIPO_EROGAZIONE: frozenset[tuple[str, str]] = frozenset({
+    ("CANONE", "TIMESHEET"),
+    ("CANONE", "LETTURE"),
+    ("UNA_TANTUM", "TIMESHEET"),
+    ("UNA_TANTUM", "LETTURE"),
+    ("ORARIO", "LETTURE"),
+    ("CONSUMO", "FISSA"),
+    ("CONSUMO", "TIMESHEET"),
+})
+
+# Default fonte_quantita_attesa per tipo_erogazione — speculare al trigger
+# DB `trg_contratti_righe_a10_default_fonte_qta_ins_upd` (migration 20260519-06).
+# Applicato lato BE per (a) pre-compilare il FE form CREATE con la scelta
+# predefinita visibile all'utente, (b) errore parlante in validazione 2.1
+# anche su payload minimi (la coppia viene risolta prima del CHECK DB).
+# Nota: per ORARIO il default diventera' TIMESHEET quando il modulo
+# rendicontazione ore sara' implementato.
+_FONTE_DEFAULT_PER_TIPO_EROGAZIONE: dict[str, str] = {
+    "CANONE": "FISSA",
+    "UNA_TANTUM": "FISSA",
+    "ORARIO": "MANUALE",
+    "CONSUMO": "LETTURE",
+}
+
+# Fonti per cui `quantita` non e' inserita dall'utente sulla riga contratto:
+# il valore reale arriva downstream (manuale su documento / timesheet /
+# letture utility). Il BE forza NULL su `quantita` per evitare snapshot
+# fuorvianti. `DERIVATA_COMPONENTI` e' fuori da questo set: la `quantita`
+# del padre composito viene scritta automaticamente dal trigger DB
+# `z90_propaga_qta_componenti` post-INSERT figli (vedi piano §1.d).
+_FONTI_QUANTITA_DOWNSTREAM: frozenset[str] = frozenset({
+    "MANUALE", "TIMESHEET", "LETTURE",
+})
 
 
 # Utility 1:1: chiavi ammesse in create/update. istanza_utility_id e
@@ -364,6 +429,17 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI",
         ("senza dimensione tipo/classe", "devono essere NULL"),
+    ),
+    # Refactor 2026-05-20: defense-in-depth. La transizione ATTIVO → ANNULLATO
+    # NON e' ammessa lato UI (bottone "Annulla" visibile solo per DRAFT) ma
+    # il trigger DB esiste come safety net e blocca chiunque tenti la
+    # transizione via SQL diretto / tool esterno con E_CONTRATTO_ANNULLATO_CON_FATTURE
+    # se ci sono attivita_fatturabili gia' fatturate. Marker ipotizzati;
+    # se al primo trigger reale il match non scatta, aggiornare le
+    # sottostringhe in base al log.
+    (
+        "E_CONTRATTO_ANNULLATO_CON_FATTURE",
+        ("ANNULLATO", "fatture"),
     ),
 )
 
@@ -614,6 +690,41 @@ class ContrattiService:
                     "campi_ammessi": sorted(allowed_for_state),
                 },
             )
+
+        # Refactor 2026-05-20: lock cambio `listino_id` (aggiunta o sostituzione,
+        # NON rimozione) quando ci sono righe persistite. Vedi commento su
+        # _CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE per il razionale.
+        # La rimozione (valore→NULL) e' gia' coperta dal check piu' specifico
+        # `_check_listino_id_rimozione` qui sotto (blocca solo se OVERRIDE/
+        # ESCLUSIONE attivi, AGGIUNTE compatibili). Questo nuovo check copre
+        # i 2 casi mancanti: introduzione (NULL→valore) e sostituzione (cambio).
+        sta_cambiando_listino_non_rimozione = (
+            "listino_id" in payload
+            and payload["listino_id"] is not None
+            and payload["listino_id"] != existing.get("listino_id")
+        )
+        if sta_cambiando_listino_non_rimozione:
+            n_righe = self._repo.count_righe_attive(contratto_id)
+            if n_righe > 0:
+                ErrorManager.raise_error(
+                    code="E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE",
+                    message="Modifica del listino bloccata: ci sono righe gia' caricate.",
+                    detail=(
+                        f"Il `listino_id` definisce il contesto di pricing contro cui "
+                        f"le {n_righe} righe attive sono state caricate. Cambiare il "
+                        f"listino senza eliminarle prima causerebbe drift semantico "
+                        f"silente (OVERRIDE/ESCLUSIONE punterebbero ad articoli del "
+                        f"listino vecchio, AGGIUNTE potrebbero conflittare col nuovo). "
+                        f"Elimina prima le righe oppure annulla il contratto e creane "
+                        f"uno nuovo."
+                    ),
+                    context={
+                        "contratto_id": contratto_id,
+                        "listino_id_corrente": existing.get("listino_id"),
+                        "listino_id_richiesto": payload["listino_id"],
+                        "righe_count": n_righe,
+                    },
+                )
 
         data = self._build_update_data_testata(payload, existing=existing)
 
@@ -1069,30 +1180,50 @@ class ContrattiService:
                     testata, auth_user_id,
                 )
                 valido_dal_raw = testata.get("valido_dal")
-                # Skip silenzioso ammesso solo se mancano emittente o
-                # valido_dal: l'admin potra' ri-eseguire l'init manualmente.
-                # Logghiamo warning per audit (gap visibile in produzione).
-                if emittente_sr_id is None or valido_dal_raw is None:
-                    logger.warning(
-                        "contratti.create_riga.auto_init_componenti_skipped "
-                        "contratto_id=%s riga_id=%s articolo_id=%s "
-                        "motivo=%s — la riga padre composita resta senza "
-                        "componenti; init manuale richiesto.",
-                        contratto_id, new_id, articolo_id,
-                        ("emittente_non_risolvibile" if emittente_sr_id is None
-                         else "valido_dal_null"),
-                    )
-                else:
-                    data_riferimento = (
-                        valido_dal_raw if isinstance(valido_dal_raw, date)
-                        else date.fromisoformat(str(valido_dal_raw))
-                    )
-                    self._repo.init_componenti_riga(
-                        riga_id=new_id,
-                        emittente_soggetto_ruolo_id=emittente_sr_id,
-                        data_riferimento=data_riferimento,
-                        componenti_overrides=componenti_overrides,
-                    )
+                # Refactor 2026-05-19: stop allo skip silente. Se mancano
+                # emittente o valido_dal, sollevare errore parlante invece
+                # di lasciare un padre composito orfano in DB (la
+                # transaction.atomic sopra ne fa il rollback). L'utente vede
+                # il vero motivo e sa come rimediare. Pattern simmetrico
+                # alla logica preventivi composito (gestisci_riga).
+                ErrorManager.require(
+                    emittente_sr_id is not None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        "Inserimento articolo composito non possibile: "
+                        "emittente fiscale non risolvibile per il contratto."
+                    ),
+                    context={
+                        "contratto_id": contratto_id,
+                        "articolo_id": articolo_id,
+                        "motivo": "emittente_non_risolvibile",
+                    },
+                )
+                ErrorManager.require(
+                    valido_dal_raw is not None,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE_RIGA,
+                    detail=(
+                        "Inserimento articolo composito non possibile: "
+                        "valorizza prima `valido_dal` sulla testata del contratto."
+                    ),
+                    context={
+                        "contratto_id": contratto_id,
+                        "articolo_id": articolo_id,
+                        "motivo": "valido_dal_null",
+                    },
+                )
+                data_riferimento = (
+                    valido_dal_raw if isinstance(valido_dal_raw, date)
+                    else date.fromisoformat(str(valido_dal_raw))
+                )
+                self._repo.init_componenti_riga(
+                    riga_id=new_id,
+                    emittente_soggetto_ruolo_id=emittente_sr_id,
+                    data_riferimento=data_riferimento,
+                    componenti_overrides=componenti_overrides,
+                )
 
         result = self._repo.get_riga(new_id)
         assert result is not None
@@ -1158,8 +1289,20 @@ class ContrattiService:
         # Merge meta riga: il BB ritorna `prezzo_meta` con audit pricing.
         # Va mergiato sul `meta` corrente del data_riga (priorita': payload
         # > fallback existing meta) senza sovrascrivere chiavi gia' presenti.
+        # Coerce JSONB→dict defensivo (fix 2026-05-20): per certi articoli
+        # psycopg ritorna `meta` JSONB della riga esistente come stringa JSON
+        # invece di dict — `dict(str)` solleverebbe TypeError "dictionary
+        # update sequence". Stesso pattern coerce gia' applicato in altri
+        # repo (_decode_jsonb in commesse_repository, coerceJsonbToObject FE).
         if prezzo_meta:
-            merged_meta = dict(data.get("meta") or fallback_meta or {})
+            base_meta = data.get("meta") or fallback_meta or {}
+            if isinstance(base_meta, str):
+                try:
+                    parsed = json.loads(base_meta)
+                    base_meta = parsed if isinstance(parsed, dict) else {}
+                except (json.JSONDecodeError, ValueError):
+                    base_meta = {}
+            merged_meta = dict(base_meta)
             merged_meta.update(prezzo_meta)
             data["meta"] = merged_meta
         # Workflow L3: il BB ha segnalato violazione + richiesta. Crea pratica
@@ -1932,6 +2075,16 @@ class ContrattiService:
             # Coerenza prezzo_unitario / tipo_eccezione (pre-DB):
             # - ESCLUSIONE -> prezzo NULL (l'articolo non e' disponibile)
             # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
+            # Eccezione: articolo composito (modello unificato BoM 2026-05-13).
+            # Il FE puo' omettere `prezzo_unitario` per padri compositi perche'
+            # il prezzo padre = SUM(figli × coeff_qta) calcolato dal trigger
+            # DB `_z90_ricalcola_padre` post-init componenti BoM nello stesso
+            # `@transaction.atomic`. Setto un placeholder Decimal(0) per
+            # superare il CHECK `chk_contrighe_prezzo_per_tipo_eccezione`
+            # (`prezzo_unitario IS NOT NULL` per OVERRIDE/AGGIUNTA) — il
+            # trigger lo sovrascrive sincrono dopo INSERT padre + INSERT figli.
+            # Pattern simmetrico al preventivo (cfr. preventivi_service.py
+            # `gestisci_riga` ~ linea 670, "Padre composito").
             prezzo_raw = payload.get("prezzo_unitario")
             if tipo_eccezione == "ESCLUSIONE":
                 ErrorManager.require(
@@ -1944,17 +2097,25 @@ class ContrattiService:
                     ),
                     context={"tipo_eccezione": tipo_eccezione},
                 )
-            else:
-                # OVERRIDE / AGGIUNTA richiedono prezzo_unitario presente.
+            elif prezzo_raw is None:
+                # OVERRIDE / AGGIUNTA: prezzo None ammesso solo se composito.
+                articolo_id_val = data.get("articolo_id")
+                is_composito = bool(
+                    articolo_id_val
+                    and self._repo.is_articolo_composito(str(articolo_id_val))
+                )
                 ErrorManager.require(
-                    prezzo_raw is not None,
+                    is_composito,
                     code=E_VENDITE_VALIDATION,
                     message=_MESSAGE_RIGA,
                     detail=(
-                        f"{tipo_eccezione}: prezzo_unitario obbligatorio."
+                        f"{tipo_eccezione}: prezzo_unitario obbligatorio "
+                        "per articoli non compositi."
                     ),
                     context={"tipo_eccezione": tipo_eccezione},
                 )
+                # Placeholder: il trigger DB lo sovrascrive a SUM componenti.
+                payload = {**payload, "prezzo_unitario": Decimal("0")}
         # Numeric opzionali.
         for field in ("prezzo_unitario", "quantita", "qta_operativa", "factor_to_base"):
             if field in payload:
@@ -1999,11 +2160,103 @@ class ContrattiService:
                     )
                     assert isinstance(raw, str)
                     data[field] = raw.strip().upper()
+
+        # Refactor 2026-05-19: coerenza (tipo_erogazione, fonte_quantita_attesa)
+        # + normalizzazione `quantita` in base alla fonte.
+        # Il DB applica gli stessi vincoli via CHECK chk_contrighe_coerenza_fonte_erogazione
+        # e trigger trg_contratti_righe_a10_default_fonte_qta_ins_upd (migrations
+        # 20260519-05/06). Lato BE: defense-in-depth + errore parlante prima del
+        # round-trip + UX coerente (FE mostra/nasconde `quantita` in base alla
+        # fonte; il service rispetta la stessa semantica).
+        self._apply_fonte_quantita_logic(data, for_create=for_create)
+
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:
                 data["meta"] = meta
         return data
+
+    # Scopo: Applica la matrice di coerenza (tipo_erogazione, fonte_quantita_attesa)
+    #        sul `data` gia' costruito da _build_data_riga. Tre responsabilita':
+    #         1. Default fonte se non specificata (solo create, e solo se
+    #            tipo_erogazione e' presente nel data accumulato).
+    #         2. Guard combinazione vietata → E_VENDITE_VALIDATION parlante.
+    #         3. Normalizzazione `quantita`: forzata a NULL per fonti downstream
+    #            (MANUALE/TIMESHEET/LETTURE); DERIVATA_COMPONENTI lasciata al
+    #            trigger DB z90_propaga_qta_componenti; FISSA mantenuta.
+    #        Riferimenti: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §2.
+    def _apply_fonte_quantita_logic(
+        self,
+        data: dict[str, Any],
+        *,
+        for_create: bool,
+    ) -> None:
+        tipo = data.get("tipo_erogazione")
+        fonte = data.get("fonte_quantita_attesa")
+
+        # 1) Default fonte: applica solo in create quando tipo e' valorizzato.
+        # In update lasciamo decidere all'utente / trigger DB (il trigger
+        # resetta solo se la combo nuova diventa vietata, vedi decisione 3).
+        if for_create and fonte is None and tipo in _FONTE_DEFAULT_PER_TIPO_EROGAZIONE:
+            fonte = _FONTE_DEFAULT_PER_TIPO_EROGAZIONE[tipo]
+            data["fonte_quantita_attesa"] = fonte
+
+        # 2) Guard combinazione vietata (se entrambi i campi sono presenti
+        # nel data — niente da validare se uno dei due e' implicito DB).
+        if tipo is not None and fonte is not None:
+            ErrorManager.require(
+                (tipo, fonte) not in _FONTE_VIETATE_PER_TIPO_EROGAZIONE,
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE_RIGA,
+                detail=(
+                    f"Combinazione vietata: tipo_erogazione='{tipo}' "
+                    f"non e' compatibile con fonte_quantita_attesa='{fonte}'. "
+                    f"Vedi matrice in docs/it/dev/work-in-progress/"
+                    f"refactor-contratti-fonte-quantita.md §3."
+                ),
+                context={
+                    "tipo_erogazione": tipo,
+                    "fonte_quantita_attesa": fonte,
+                },
+            )
+
+        # 3) Normalizzazione `quantita`:
+        #    - fonti downstream → forza NULL (il valore arrivera' downstream).
+        #    - FISSA → richiede quantita > 0 (guard esplicita, oltre al CHECK).
+        #    - DERIVATA_COMPONENTI → no-op (trigger DB z90_propaga_qta_componenti
+        #      scrive il valore corretto post-INSERT figli BoM).
+        #    - None → lascia passare (tipo/fonte non risolti, validazione
+        #      delegata al DB; succede solo in update parziali atipici).
+        if fonte in _FONTI_QUANTITA_DOWNSTREAM:
+            # Sovrascrivi anche se il payload portava un valore: la fonte e'
+            # il driver semantico, qualsiasi quantita inviata e' fuorviante.
+            # Simmetria obbligata su entrambi: `qta_operativa` alimenta il
+            # trigger `trgfn_qta_from_operativa` che deriverebbe `quantita`
+            # a partire da essa post-INSERT/UPDATE — se non azzeriamo
+            # qta_operativa, il trigger riscriverebbe quantita = qta_operativa,
+            # vanificando il NULL. Bug riscontrato in update parziale
+            # `{fonte: FISSA -> MANUALE}` senza payload qta.
+            data["quantita"] = None
+            data["qta_operativa"] = None
+        elif fonte == "FISSA":
+            qta = data.get("quantita")
+            qta_op = data.get("qta_operativa")
+            # Almeno uno tra quantita e qta_operativa deve essere positivo:
+            # il trigger `trgfn_qta_from_operativa` deriva l'una dall'altra
+            # post-INSERT. Validazione lax: il CHECK DB ha l'ultima parola.
+            ErrorManager.require(
+                (qta is not None and qta > 0) or (qta_op is not None and qta_op > 0),
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE_RIGA,
+                detail=(
+                    "fonte_quantita_attesa='FISSA' richiede una quantita > 0 "
+                    "(campo `quantita` o `qta_operativa`)."
+                ),
+                context={
+                    "tipo_erogazione": tipo,
+                    "fonte_quantita_attesa": fonte,
+                },
+            )
 
     # =================================================================
     # Helpers privati — utility 1:1
@@ -2243,12 +2496,31 @@ def _load_contratto_context_for_pricing(
     )
     assert emittente_sr_id is not None
 
+    # Refactor 2026-05-20: listino_versione_id passato al resolver pricing
+    # v2 come `p_listino_versione_id_preferito` per attivare il fast path
+    # CONTRATTO_LISTINO. Evita il drift verso stadio CATEGORIA quando il BA
+    # ha una mappa categorie_clienti_listini su un listino diverso.
+    # Contratto ATTIVO: usa lo snapshot in testata (zero round-trip).
+    # Contratto DRAFT: lookup dinamico della versione operativa con la stessa
+    # regola di `fn_contratto_righe_preview` (ATTIVA/CHIUSA validità @
+    # valido_dal, BOZZA esclusa) — coerenza preview/pricing garantita.
+    # Senza listino_id: nessun fast path possibile → None (legacy resolver).
+    # Doc DB: cfr. nota team `dev/db-tid` sul 9° arg di fn_resolve_prezzo_listino_v2.
+    listino_versione_id_preferito = testata.get("listino_versione_id")
+    if listino_versione_id_preferito is None:
+        listino_id_raw = testata.get("listino_id")
+        if listino_id_raw is not None:
+            listino_versione_id_preferito = repo.get_listino_versione_attiva_alla_data(
+                int(listino_id_raw), data_riferimento,
+            )
+
     return {
         "testata": testata,
         "ba_id": int(ba_id_raw),
         "utility_id": int(utility_id_raw),
         "emittente_sr_id": emittente_sr_id,
         "data_riferimento": data_riferimento,
+        "listino_versione_id_preferito": listino_versione_id_preferito,
     }
 
 
@@ -2284,6 +2556,7 @@ def contratti_suggerisci_prezzo_riga(
         ba_id=ctx["ba_id"],
         utility_id=ctx["utility_id"],
         emittente_soggetto_ruolo_id=ctx["emittente_sr_id"],
+        listino_versione_id_preferito=ctx["listino_versione_id_preferito"],
     )
 
     # Normalizzazione Decimal/date → string per stabilita' JSON (coerente
@@ -2320,6 +2593,20 @@ def resolve_or_check_override_prezzo_riga_contratto(
     function_name: str,
     richiesta_approvazione: bool = False,
 ) -> tuple[Any, dict[str, Any] | None]:
+    # Refactor 2026-05-20: skip TUTTI i gate (L1+L2+L3) per contratti senza
+    # listino. Semantica del modello "senza_listino": tutte le righe sono
+    # AGGIUNTA negoziate, il prezzo e' governato dal contratto stesso —
+    # nessun benchmark esterno comparabile. La cascata pricing v5 cadrebbe
+    # comunque su stadio CATEGORIA o PROMO (gli unici disponibili senza
+    # listino del contratto), generando confronti L2 contro riferimenti
+    # semanticamente non pertinenti (stesso pattern del bug fixato per
+    # contratti CON listino via fast path `listino_versione_id_preferito`).
+    # NB: il payload_prezzo viene ritornato as-is senza meta audit; il
+    # CHECK chk_contrighe_prezzo_per_tipo_eccezione del DB resta come
+    # safety net (prezzo NOT NULL per OVERRIDE/AGGIUNTA non-compositi).
+    if testata.get("listino_id") is None:
+        return payload_prezzo, None
+
     testata_normalized = (
         testata if testata.get("data") is not None
         else {**testata, "data": testata.get("valido_dal")}
