@@ -1,4 +1,3 @@
-{% include-markdown "it/dbzero/config/manual/profili_reparto_aree.md" %}
 # 📚 Tabella `profili_reparto_aree`
 
 ## 🗂️ Campi principali

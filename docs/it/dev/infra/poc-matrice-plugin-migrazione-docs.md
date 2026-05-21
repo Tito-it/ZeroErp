@@ -70,7 +70,7 @@ Script introdotto:
 Flow:
 
 1. copia `docs/` in `.tmp/zensical_docs`;
-2. espande ricorsivamente `{% include-markdown "..." %}`;
+2. espande ricorsivamente il tag di include-markdown (esempio: `{ % include-markdown "file.md" % }`);
 3. riscrive i link markdown `](/dbzero/...)` in `](/it/dbzero/...)`;
 4. genera config temporanea `mkdocs.zensical.yml`;
 5. esegue `zensical build`.

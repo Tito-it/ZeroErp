@@ -30,8 +30,8 @@
 >
 > **Vedi anche** — piani sprint:
 >
-> * [Storico piano sprint v5 (work-done)](/dev/work-done/sviluppo-listini-v5) — tutti gli sprint chiusi end-to-end
-> * [Piano test UI v5 (WIP attivo)](/dev/work-in-progress/sviluppo-listini-v5-test-ui) — 7 scenari per validazione UI
+> * Storico piano sprint v5 — tutti gli sprint chiusi end-to-end
+> * Piano test UI v5 — 7 scenari per validazione UI
 
 ---
 

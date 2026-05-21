@@ -205,7 +205,7 @@ WHERE contratto_id = <ID> ORDER BY id DESC LIMIT 1;
 
 ## Riferimenti
 
-- Handoff sessione: [handoff_20260519_note_categoria_compositi.md](../../../../../../.claude/projects/-home-tid-apps-ZeroErp/memory/handoff_20260519_note_categoria_compositi.md) (memoria locale).
+- Handoff sessione: nota interna locale `handoff_20260519_note_categoria_compositi.md`.
 - Refactor BB FE: [catalogo-building-block-frontend.md → ComponentiPanel](../frontend/catalogo-building-block-frontend.md).
 - Codice service: [contratti_service.py:1063-1115](../../../../backend/apps/vendite/services/contratti_service.py#L1063).
 - Codice pannello: [ComponentiPanel.vue](../../../../frontend/src/vendite/_shared/componenti/ComponentiPanel.vue).

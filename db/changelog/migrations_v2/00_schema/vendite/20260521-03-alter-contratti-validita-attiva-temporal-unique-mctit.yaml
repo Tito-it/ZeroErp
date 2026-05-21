@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Step 3/3 — pattern is_abortito_snapshot su vendite.contratti.
+#
+# Tentativo iniziale (Option C): usare colonna GENERATED validita_attiva con
+# 'empty'::daterange per righe abortite. Rifiutato da PG18:
+#   ERRORE: empty WITHOUT OVERLAPS value found in column "validita_attiva"
+# PG18 non ammette 'empty'::daterange nel temporal part di UNIQUE WITHOUT OVERLAPS.
+#
+# Soluzione adottata (Option A):
+#   Sostituire UNIQUE WITHOUT OVERLAPS con EXCLUDE USING gist parziale.
+#   WHERE (NOT is_abortito_snapshot) esclude le righe abortite dal check di overlap.
+#   Richiede btree_gist (gia' installata, era il pattern pre-PG18 su contratti).
+#
+# La colonna validita (GENERATED ALWAYS STORED) resta immutata:
+#   - usata per query di date (@>, &&)
+#   - il nuovo constraint EXCLUDE la usa come temporal operand
+#
+# is_abortito_snapshot (step 1/3) e il trigger BEFORE (step 2/3) sono necessari
+# per il predicato WHERE del constraint parziale.
+#
+# dbops.automazione_overlap: resta active=false. Il constraint e' parziale:
+# non gestibile dal framework automazione_overlap standard (senza WHERE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260521-03-alter-contratti-validita-attiva-temporal-unique-mctit.yaml
+
+  - changeSet:
+      id: 20260521-03-alter-contratti-ex-no-overlap-parziale
+      author: mctit
+      comment: >
+        Step 3/3: sostituisce uq_contratti_no_overlap (UNIQUE WITHOUT OVERLAPS su validita)
+        con ex_contratti_no_overlap (EXCLUDE USING gist parziale WHERE NOT is_abortito_snapshot).
+        Righe ANNULLATO escluse dal check di overlap: nuovi contratti sulla stessa
+        quadrupla billing_account+istanza+utility+ambito sono ammessi dopo un annullamento.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: is_abortito_snapshot
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pg_extension
+                   WHERE extname = 'btree_gist';
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_contratti_sync_is_abortito_snapshot';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rimuove UNIQUE WITHOUT OVERLAPS: non supporta WHERE parziale e
+              -- non ammette 'empty'::daterange — incompatibile con righe abortite.
+              ALTER TABLE vendite.contratti
+                  DROP CONSTRAINT uq_contratti_no_overlap;
+
+              -- Sostituisce con EXCLUDE USING gist parziale (btree_gist).
+              -- WHERE (NOT is_abortito_snapshot): righe ANNULLATO escluse dal check.
+              -- Due contratti ANNULLATO sulla stessa quadrupla non confliggono tra loro
+              -- e non bloccano nuovi contratti attivi sullo stesso perimetro.
+              ALTER TABLE vendite.contratti
+                  ADD CONSTRAINT ex_contratti_no_overlap
+                  EXCLUDE USING gist (
+                      billing_account_id WITH =,
+                      istanza_utility_id WITH =,
+                      utility_id         WITH =,
+                      ambito             WITH =,
+                      validita           WITH &&
+                  )
+                  WHERE (NOT is_abortito_snapshot);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                  DROP CONSTRAINT IF EXISTS ex_contratti_no_overlap;
+              ALTER TABLE vendite.contratti
+                  ADD CONSTRAINT uq_contratti_no_overlap
+                  UNIQUE (billing_account_id, istanza_utility_id, utility_id, ambito,
+                          validita WITHOUT OVERLAPS);

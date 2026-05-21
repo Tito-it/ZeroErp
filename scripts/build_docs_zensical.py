@@ -54,6 +54,10 @@ SOURCE_FILE_EXTENSIONS = {
     ".csv",
     ".txt",
 }
+DEFAULT_EXCLUDED_DOC_DIRS = {
+    "work-in-progress",
+    "work-done",
+}
 
 
 # Scopo: risolvere il path del file incluso con fallback robusto.
@@ -249,10 +253,26 @@ def normalize_ambiguous_markdown(text: str) -> str:
 
 
 # Scopo: preprocessare tutti i file markdown in una copia temporanea della cartella docs.
-def preprocess_docs(src_docs: Path, dst_docs: Path) -> tuple[int, int, int, list[str]]:
+def prune_excluded_doc_dirs(dst_docs: Path, excluded_dirs: set[str]) -> int:
+    removed_dirs = 0
+    for path in sorted(dst_docs.rglob("*")):
+        if not path.is_dir():
+            continue
+        if path.name not in excluded_dirs:
+            continue
+        shutil.rmtree(path)
+        removed_dirs += 1
+    return removed_dirs
+
+
+# Scopo: preprocessare tutti i file markdown in una copia temporanea della cartella docs.
+def preprocess_docs(
+    src_docs: Path, dst_docs: Path, excluded_dirs: set[str]
+) -> tuple[int, int, int, int, list[str]]:
     if dst_docs.exists():
         shutil.rmtree(dst_docs)
     shutil.copytree(src_docs, dst_docs)
+    removed_dirs = prune_excluded_doc_dirs(dst_docs, excluded_dirs)
 
     processed_files = 0
     include_expansions = 0
@@ -276,7 +296,7 @@ def preprocess_docs(src_docs: Path, dst_docs: Path) -> tuple[int, int, int, list
         include_expansions += include_count
         rewritten_links += link_count
 
-    return processed_files, include_expansions, rewritten_links, warnings
+    return processed_files, include_expansions, rewritten_links, removed_dirs, warnings
 
 
 # Scopo: creare una config temporanea puntata alla docs preprocessata e al site_dir richiesto.
@@ -385,6 +405,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Solo preprocess (include + link rewrite), senza build statico zensical.",
     )
+    parser.add_argument(
+        "--exclude-dir",
+        action="append",
+        default=[],
+        help="Nome cartella docs da escludere dalla build preprocessata. Ripetibile.",
+    )
     return parser.parse_args()
 
 
@@ -395,9 +421,10 @@ def main() -> int:
     src_docs = Path(args.docs_in).resolve()
     dst_docs = Path(args.docs_out).resolve()
     dst_config = Path(args.config_out).resolve()
+    excluded_dirs = DEFAULT_EXCLUDED_DOC_DIRS | set(args.exclude_dir)
 
-    processed_files, include_expansions, rewritten_links, warnings = preprocess_docs(
-        src_docs, dst_docs
+    processed_files, include_expansions, rewritten_links, removed_dirs, warnings = preprocess_docs(
+        src_docs, dst_docs, excluded_dirs
     )
     rel_docs_dir = os.path.relpath(dst_docs, start=dst_config.parent)
     rel_site_dir = os.path.relpath(Path(args.site_dir).resolve(), start=dst_config.parent)
@@ -406,6 +433,8 @@ def main() -> int:
     print(f"preprocess_files={processed_files}")
     print(f"include_expanded={include_expansions}")
     print(f"links_rewritten={rewritten_links}")
+    print(f"excluded_dirs_removed={removed_dirs}")
+    print(f"excluded_dir_names={','.join(sorted(excluded_dirs))}")
     print(f"include_warnings={len(warnings)}")
     print(f"temp_docs={dst_docs.as_posix()}")
     print(f"temp_config={dst_config.as_posix()}")

@@ -12,9 +12,7 @@
 > `frontend/src/core/composables/useAiAssistant.js` —
 > `docs/it/ai/ai-context.md`
 >
-> **Piano di sviluppo:**
-> [integrazione-ai-sviluppo.md](/dev/work-done/integrazione-ai-sviluppo) (v1, completato) —
-> [integrazione-ai-sviluppo-v2.md](/dev/work-in-progress/integrazione-ai-sviluppo-v2) (evoluzione)
+> **Piano di sviluppo:** v1 completata; evoluzione v2 tracciata internamente.
 
 ---
 
@@ -269,7 +267,7 @@ Queste garanzie sono esplicite nel system prompt e nell'architettura:
 
 ## 9. Evoluzione prevista
 
-Le attivita' di evoluzione sono tracciate in [integrazione-ai-sviluppo-v2.md](/dev/work-in-progress/integrazione-ai-sviluppo-v2):
+Le attivita' di evoluzione previste sono:
 
 - **RAG con pgvector** — ricerca semantica nella documentazione operativa (quando il contesto statico non basta)
 - **Tool estensioni** — indirizzi, contatti, note, fatture (incrementali con le API di dominio)

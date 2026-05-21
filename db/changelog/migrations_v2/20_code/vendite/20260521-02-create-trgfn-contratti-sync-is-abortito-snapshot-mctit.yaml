@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Step 2/3 — pattern is_abortito_snapshot + validita_attiva su vendite.contratti.
+#
+# Crea trgfn_contratti_sync_is_abortito_snapshot e il trigger corrispondente.
+#
+# Perche' BEFORE e non AFTER:
+#   Le colonne GENERATED ALWAYS STORED sono calcolate da PG a partire dal
+#   valore finale di NEW prodotto dai BEFORE trigger. Un AFTER trigger
+#   non puo' modificare NEW: is_abortito_snapshot deve essere aggiornato
+#   PRIMA che PG calcoli validita_attiva.
+#
+# Fase z90 (finale): garantisce che il guard _a10_ abbia gia' validato
+# la transizione di stato prima che is_abortito_snapshot venga sincronizzato.
+#
+# Evento UPDATE OF stato_doc_contratto_id:
+#   Evita esecuzioni inutili su UPDATE di colonne irrilevanti (es. meta,
+#   listino_versione_id). Su INSERT il trigger scatta sempre (nessuna
+#   column list applicabile per INSERT).
+#
+# Dipendenza: migration 20260521-01 (colonna is_abortito_snapshot).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260521-02-create-trgfn-contratti-sync-is-abortito-snapshot-mctit.yaml
+
+  - changeSet:
+      id: 20260521-02-create-trgfn-contratti-sync-is-abortito-snapshot
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Step 2/3: crea trgfn_contratti_sync_is_abortito_snapshot e il trigger
+        BEFORE INSERT OR UPDATE OF stato_doc_contratto_id (fase z90).
+        Prerequisito per la colonna GENERATED validita_attiva (step 3/3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: is_abortito_snapshot
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_sync_is_abortito_snapshot()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: sincronizza is_abortito_snapshot da config.stati_doc_contratti.
+              -- Prerequisito obbligatorio per la colonna GENERATED validita_attiva:
+              -- PG calcola le STORED generated dal NEW finale dei BEFORE trigger,
+              -- quindi il valore corretto di is_abortito_snapshot deve essere
+              -- disponibile in NEW prima che avvenga il calcolo.
+              DECLARE
+                  v_is_abortito config.stati_doc_contratti.is_abortito%TYPE;
+              BEGIN
+                  SELECT is_abortito
+                    INTO v_is_abortito
+                    FROM config.stati_doc_contratti
+                   WHERE id = NEW.stato_doc_contratto_id;
+
+                  NEW.is_abortito_snapshot := COALESCE(v_is_abortito, false);
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_sync_is_abortito_snapshot()
+              IS 'Trigger BEFORE INSERT/UPDATE OF stato_doc_contratto_id: '
+                 'imposta is_abortito_snapshot da config.stati_doc_contratti. '
+                 'Prerequisito per la colonna GENERATED validita_attiva. '
+                 'rev 2026-05-21.';
+
+              DROP TRIGGER IF EXISTS trg_contratti_z90_sync_is_abortito_snapshot_ins_upd
+                  ON vendite.contratti;
+
+              CREATE TRIGGER trg_contratti_z90_sync_is_abortito_snapshot_ins_upd
+                  BEFORE INSERT OR UPDATE OF stato_doc_contratto_id
+                  ON vendite.contratti
+                  FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_contratti_sync_is_abortito_snapshot();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_z90_sync_is_abortito_snapshot_ins_upd
+                  ON vendite.contratti;
+              DROP FUNCTION IF EXISTS vendite.trgfn_contratti_sync_is_abortito_snapshot();
