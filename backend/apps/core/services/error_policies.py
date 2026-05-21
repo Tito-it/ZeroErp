@@ -123,6 +123,22 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Valore non ammesso per anchor_tipo, posizione, seq o testo.",
         ),
+        # Sollevato da dbops.fn_get_lookup_codici (migration 20260520-04+06)
+        # quando la tabella passata non ha la struttura attesa
+        # (id + codice/codice_interno + descrizione) e non esiste override
+        # dichiarativo in dbops.automation_overrides_cols (CODICE_COL/CODICE_INTERNO_COL).
+        # E' un errore di configurazione/sviluppo (rel whitelistato in dbops_repository
+        # senza colonne compatibili, o override mancante per tabella custom):
+        # utente finale non puo' rimediarlo, va corretto dal team.
+        "E_LOOKUP_STRUTTURA_TABELLA_INVALIDA": ErrorPolicy(
+            code="E_LOOKUP_STRUTTURA_TABELLA_INVALIDA",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message=(
+                "Configurazione lookup non valida: la tabella richiesta non e' "
+                "compatibile col formato lookup standard. Contattare l'amministratore."
+            ),
+        ),
         "E_VENDITE_VALIDATION": ErrorPolicy(
             code="E_VENDITE_VALIDATION",
             http_status=400,

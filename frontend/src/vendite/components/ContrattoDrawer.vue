@@ -217,13 +217,14 @@ function onListinoChange(nuovoListinoId) {
   if (!nuovoListinoId) {
     form.value.tipo_variazione_globale = null
     form.value.valore_variazione_globale = null
-  } else if (!form.value.tipo_variazione_globale) {
-    // Pre-fill tipo da parameter; valore resta vuoto = nessuna variazione.
-    form.value.tipo_variazione_globale = paramString(
-      paramDefaults.value.VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE,
-      'PERCENTUALE',
-    )
   }
+  // Selezione listino non-null: nessun pre-fill di tipo. Il pre-fill produceva
+  // coppia incoerente (tipo=PERCENTUALE, valore=null) che in edit mascherava
+  // E_VENDITE_CONTRATTO_OVERLAP con un generico "Payload contratto non valido"
+  // perche' il BE rifiutava la coppia prima del DB check. Il pre-fill del tipo
+  // avviene gia' in `onValoreVariazioneChange` quando l'operatore inizia a
+  // valorizzare il delta — coerente con la regola BE "entrambi presenti o
+  // entrambi NULL".
 }
 
 // Quando l'operatore inserisce un tipo variazione ma non un valore (o
@@ -308,15 +309,20 @@ function onBaSelected(item) {
 // listino tal quale), contratto con listino + variazione e' valido.
 const canSave = computed(() => {
   if (isReadonly.value) return false
-  if (isEdit.value) return true
   const f = form.value
-  if (!f.billing_account_id) return false
-  if (!f.valido_dal || !f.data) return false
-  if (!f.ambito) return false
-  // Coppia variazione coerente: tipo presente <=> valore presente.
+  // Coppia variazione coerente: tipo presente <=> valore presente. Applicabile
+  // sia in create che in edit — il BE rifiuta la coppia incoerente con
+  // `_validate_variazione_globale_coppia_coerente` (entrambi presenti o
+  // entrambi NULL). Disattivare il pulsante Salva e' l'unico modo di evitare
+  // il toast generico "Payload contratto non valido" quando, ad esempio,
+  // l'operatore cambia listino in edit.
   const hasTipo = !!f.tipo_variazione_globale
   const hasValore = f.valore_variazione_globale != null && f.valore_variazione_globale !== ''
   if (hasTipo !== hasValore) return false
+  if (isEdit.value) return true
+  if (!f.billing_account_id) return false
+  if (!f.valido_dal || !f.data) return false
+  if (!f.ambito) return false
   return true
 })
 
