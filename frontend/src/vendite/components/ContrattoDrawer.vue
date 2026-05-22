@@ -87,14 +87,22 @@ const nonEditableFields = caps.nonEditableFields
 const isLocked = caps.isLocked
 const righeCount = computed(() => detail.value?.righe_count ?? detail.value?.righe?.length ?? 0)
 
-// isContractLocked deriva ora da !canEditTestata (mantenuto per leggibilita'
-// del template "banner contratto bloccato"). In create non c'e' detail, quindi
-// non e' "locked".
-const isContractLocked = computed(() => isEdit.value && !canEditTestata.value)
+// isContractLocked = stato post-DRAFT. La regola di dominio e' "modifiche
+// libere via form solo in DRAFT". In ATTIVO la modifica di `valido_al/meta`
+// (whitelist BE) avviene comunque via dialog dedicato "Cessa contratto",
+// non via form drawer. CESSATO/ANNULLATO interamente immutabili.
+// Prima usava `!canEditTestata` (true in ATTIVO/ANNULLATO perche' la fn DB
+// considera ATTIVO parzialmente editabile) -> sub-drawer righe restava
+// erroneamente editabile in stati terminali. Allineato al footer
+// Salva/Chiudi che gia' usa stato_codice === 'DRAFT'.
+const isContractLocked = computed(
+  () => isEdit.value && detail.value?.stato_codice !== 'DRAFT',
+)
 
-// isReadonly effettivo del drawer: OR tra permessi area e !canEditTestata.
+// isReadonly effettivo del drawer: OR tra permessi area e stato post-DRAFT.
 // Tutti i campi/azioni del drawer principale e dei sub-drawer (righe, utility)
-// devono basarsi su questo computed. Propagato via provide ai figli.
+// si basano su questo computed. Propagato via provide ai figli, che usano
+// solo `useInjectReadonly()` senza logica locale (standard del progetto).
 const isReadonly = computed(() => parentReadonly.value || isContractLocked.value)
 provide(READONLY_KEY, isReadonly)
 

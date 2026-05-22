@@ -13,12 +13,12 @@
 //        Convenzione valore firmato (negativo = sconto) allineata al resolver
 //        DB: ammessi valori negativi, rifiutato 0 per PERCENTUALE/VALORE_FISSO.
 //        PREZZO_FISSO accetta solo >= 0 (prezzo assoluto sostitutivo).
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePromoArticoliStore } from '../stores/promoArticoli'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { isoToLocalDate, localDateToIso } from '../../core/utils/dateHelpers'
@@ -114,9 +114,24 @@ const validoAlMinDate = computed(() =>
 const isPromoScaduta = computed(() => statoTemporale.value === 'SCADUTA')
 const isPromoIniziata = computed(() => statoTemporale.value === 'INIZIATA')
 
-const isReadOnlyEffective = computed(() =>
-  props.readonly || isReadonly.value || (isEdit.value && !canUpdate.value),
+// Readonly cumulativo del drawer parent (pattern frontend-standards.md
+// "Drawer di entita' con sub-drawer (catena readonly)"):
+//   1. permessi area/oggetto via inject
+//   2. props.readonly (split-view)
+//   3. capability BE `can_update` (SCADUTA -> false)
+//   4. flag `attivo=false` (= promo "annullata" / disattivata): coerente con
+//      pattern soft-delete contratti.ANNULLATO -> immutabile. Una promo
+//      disattivata e' cristallizzata; per riproporla si crea una nuova promo.
+// Il computed e' propagato via `provide(READONLY_KEY)` cosi' eventuali
+// sub-drawer futuri (note promo, ecc.) ereditano correttamente senza
+// logica locale.
+const isReadOnlyEffective = computed(
+  () => props.readonly
+    || isReadonly.value
+    || (isEdit.value && !canUpdate.value)
+    || (isEdit.value && detail.value?.attivo === false),
 )
+provide(READONLY_KEY, isReadOnlyEffective)
 
 const form = ref({
   codice: '',
