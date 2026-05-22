@@ -700,13 +700,18 @@ function buildRigaActions(row) {
                 <ToggleSwitch v-else v-model="form.esposto_in_fattura" />
               </div>
             </div>
-            <template v-if="isFormReadonly">
-              <DrawerFooter close-only @cancel="closeReadonlyDetail" />
-            </template>
-            <div v-else class="flex justify-end gap-2 mt-05">
-                <Button :label="t('common.cancel')" text @click="cancelAdd" />
-                <Button :label="t('common.save')" :loading="loading" :disabled="!canSaveForm" @click="onSaveNew" />
-            </div>
+            <DrawerFooter
+              v-if="isFormReadonly"
+              close-only
+              @cancel="closeReadonlyDetail"
+            />
+            <DrawerFooter
+              v-else
+              :loading="loading"
+              :disabled="!canSaveForm"
+              @save="onSaveNew"
+              @cancel="cancelAdd"
+            />
           </template>
         </template>
       </template>

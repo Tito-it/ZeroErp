@@ -6,7 +6,7 @@
 #
 annotated-types==0.7.0
     # via pydantic
-anthropic==0.102.0
+anthropic==0.104.0
     # via -r ../requirements.in
 anyio==4.13.0
     # via
@@ -24,7 +24,7 @@ bleach==6.3.0
     # via -r ../requirements.in
 brotli==1.2.0
     # via fonttools
-certifi==2026.4.22
+certifi==2026.5.20
     # via
     #   httpcore
     #   httpx
@@ -70,7 +70,7 @@ httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via anthropic
-idna==3.15
+idna==3.16
     # via
     #   anyio
     #   httpx
@@ -78,7 +78,7 @@ inflection==0.5.1
     # via drf-spectacular
 jinja2==3.1.6
     # via -r ../requirements.in
-jiter==0.14.0
+jiter==0.15.0
     # via anthropic
 jsonschema==4.26.0
     # via drf-spectacular
@@ -108,7 +108,7 @@ pydantic-core==2.46.4
     # via pydantic
 pydyf==0.12.1
     # via weasyprint
-pyjwt==2.12.1
+pyjwt==2.13.0
     # via
     #   -r ../requirements.in
     #   djangorestframework-simplejwt
