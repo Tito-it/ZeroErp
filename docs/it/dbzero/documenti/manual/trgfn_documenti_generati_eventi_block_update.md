@@ -54,4 +54,4 @@ Messaggio in `config.messaggi_errore` (id 426).
 * [`documenti.documenti_generati_eventi`](documenti_generati_eventi.md)
 * [`trgfn_documenti_generati_eventi_block_delete`](trgfn_documenti_generati_eventi_block_delete.md) — guard append-only complementare (DELETE)
 * [`trgfn_documenti_generati_protect_snapshot`](trgfn_documenti_generati_protect_snapshot.md) — guard analogo (immutabilità snapshot) sul padre `documenti_generati`
-* [Sviluppo Documenti — §10-bis.5 (anticipo eventi v1)](/dev/work-in-progress/sviluppo-documenti)
+* [Sviluppo Documenti — §10-bis.5 (anticipo eventi v1)](/dev/work-done/sviluppo-documenti)

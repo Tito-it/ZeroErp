@@ -1434,7 +1434,7 @@ assegnabile a responsabili non admin per Decisione 25).
 - 2 azioni processo + 1 area funzionale: 1 migration seed unica.
 
 Brief al team DB: vedi
-[brief-db-documenti-permessi-seed.md](../work-done/brief-db-documenti-permessi-seed.md).
+[brief-db-documenti-permessi-seed.md](brief-db-documenti-permessi-seed.md).
 
 ### 10-bis.5 Log evento download in v1 — CHIUSA
 
@@ -1451,7 +1451,7 @@ passare `tx_id` esplicito; lo popola la regola 4 dell'automation. Lasciare
 NULL e fidarsi del default DB.
 
 Brief al team DB: vedi
-[brief-db-documenti-eventi-anticipo-fase-b.md](../work-done/brief-db-documenti-eventi-anticipo-fase-b.md).
+[brief-db-documenti-eventi-anticipo-fase-b.md](brief-db-documenti-eventi-anticipo-fase-b.md).
 
 ---
 

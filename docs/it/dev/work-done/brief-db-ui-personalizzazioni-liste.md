@@ -16,7 +16,7 @@
 > **Impatto**: schema `ui` (1 ALTER TABLE + 1 ALTER FK + 1 fn `runOnChange:true` + 1 trigger aggiuntivo) + `db/pgtap/ui/test-fn-resolve-lista-config.sql` (esteso a 12 scenari)
 
 **Data:** 2026-05-06
-**Riferimento:** [`sviluppo-personalizzazioni-liste.md`](sviluppo-personalizzazioni-liste.md) §10.2
+**Riferimento:** [`sviluppo-personalizzazioni-liste.md`](../work-in-progress/sviluppo-personalizzazioni-liste.md) §10.2
 **Branch:** `dev/db-tid`
 **Priorita':** alta — bloccante per Blocco E (prima lista reale `anagrafiche.clienti`); non bloccante per Blocco C (backend) e D (frontend), che possono procedere in parallelo
 **Origine:** backend agent (`dev/backend-tid`), sessione 2026-05-06 — analisi critica post-A/B su DB landed

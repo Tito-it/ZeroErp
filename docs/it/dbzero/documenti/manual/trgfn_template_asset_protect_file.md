@@ -53,4 +53,4 @@ Messaggio in `config.messaggi_errore` (id 413).
 
 * [`documenti.template_asset`](/dbzero/documenti/tabelle/template_asset)
 * [`trgfn_template_asset_block_delete`](trgfn_template_asset_block_delete.md) — guard A3 (delete block)
-* [Sviluppo Documenti — Piano DB §6.4, §13.3 A4, decisione 48](/dev/work-in-progress/sviluppo-documenti-db)
+* [Sviluppo Documenti — Piano DB §6.4, §13.3 A4, decisione 48](/dev/work-done/sviluppo-documenti-db)

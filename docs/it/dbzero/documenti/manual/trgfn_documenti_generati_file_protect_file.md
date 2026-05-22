@@ -55,4 +55,4 @@ Messaggio in `config.messaggi_errore` (id 417).
 * [`documenti.documenti_generati`](/dbzero/documenti/tabelle/documenti_generati)
 * [`trgfn_documenti_generati_protect_snapshot`](trgfn_documenti_generati_protect_snapshot.md) — guard A7 (controparte sul documento)
 * [`trgfn_documenti_generati_block_delete`](trgfn_documenti_generati_block_delete.md) — guard A5
-* [Sviluppo Documenti — Piano DB §13.3 A7-bis, sezione C](/dev/work-in-progress/sviluppo-documenti-db)
+* [Sviluppo Documenti — Piano DB §13.3 A7-bis, sezione C](/dev/work-done/sviluppo-documenti-db)

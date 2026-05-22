@@ -13,7 +13,7 @@ Questo documento isola la parte **DB** dello sviluppo documenti e la riallinea
 alle convenzioni gia' operative in ZeroERP.
 
 Non sostituisce il documento principale
-`docs/it/dev/work-in-progress/sviluppo-documenti.md`: lo integra, restringendo
+`docs/it/dev/work-done/sviluppo-documenti.md`: lo integra, restringendo
 il focus a:
 
 - correzioni strutturali del modello dati;
@@ -29,7 +29,7 @@ Analisi basata prima sulla documentazione, non sulle migrations.
 
 Riferimenti principali:
 
-- `docs/it/dev/work-in-progress/sviluppo-documenti.md`
+- `docs/it/dev/work-done/sviluppo-documenti.md`
 - `docs/it/linee-guida-sql.md`
 - `docs/it/linee-guida-trigger.md`
 - `docs/it/liquibase-setup-workflow.md`
