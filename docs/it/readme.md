@@ -190,7 +190,7 @@ Fotografia sintetica (4 maggio 2026):
   - Schema `documenti`, modelli documenti, versioni, asset documentali, documenti generati e file persistenti
   - Backend: render Jinja2 + WeasyPrint, storage parametrico, endpoint template/asset e endpoint preventivo `genera`/`anteprima`/`lista`/`download`
   - Frontend: Configurazione documenti, modelli, asset, pulsante "Genera PDF" nel drawer preventivo e lista documenti generati
-  - Riferimenti: [sviluppo-documenti.md](./dev/work-in-progress/sviluppo-documenti.md), [sviluppo-documenti-test-ui.md](./dev/work-in-progress/sviluppo-documenti-test-ui.md)
+  - Riferimenti: [sviluppo-documenti.md](./dev/work-done/sviluppo-documenti.md), [sviluppo-documenti-test-ui.md](./dev/work-done/sviluppo-documenti-test-ui.md)
 - Migrazione `daterange` + PG18 STORED generated: **completata**
   - Fase 0-3 (apr 2026): 19 tabelle migrate a `daterange`, `script.trgfn_set_validita()`, linee guida SQL §7b
   - Fase PG18 (mag 2026): `validita` → `GENERATED ALWAYS STORED` su 20 tabelle; 3 tabelle con temporal UNIQUE (`WITHOUT OVERLAPS`); temporal FK `listini_righe_componenti → articoli_componenti`; `trgfn_set_validita` droppata

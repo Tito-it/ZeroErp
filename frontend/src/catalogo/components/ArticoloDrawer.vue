@@ -54,22 +54,11 @@ const nonEditableFields = computed(() => detail.value?.non_editable_fields || []
 function isFieldLocked(name) {
   return isEdit.value && nonEditableFields.value.includes(name)
 }
-
-// Articolo con almeno un componente BoM attivo: i flag struttura
-// (is_composito, is_solo_componente, requires_serial) diventano immutabili.
-// Modificarli causerebbe incoerenze col modello distinta base esistente:
-//  - togliere `is_composito` con componenti vivi -> orfani
-//  - togliere `is_solo_componente` -> permette di venderlo standalone, ma
-//    la BoM corrente lo categorizza come pezzo
-//  - togliere `requires_serial` -> incoerenza con eventuali requisiti di
-//    tracciabilita' della BoM
-// Il BE oggi non ritorna questi campi nel `non_editable_fields` (lock
-// condizionale non gestito da `dbops.vw_non_editable_fields`): guard FE
-// difensivo + segnalato come gap.
-const hasBomAttiva = computed(() => bomRiepilogo.value.length > 0)
-function isFlagStrutturaLocked() {
-  return isEdit.value && hasBomAttiva.value
-}
+// I flag struttura (is_composito, is_solo_componente, requires_serial)
+// arrivano nel `non_editable_fields` quando l'articolo partecipa a una BoM
+// attiva (lock condizionali registrati in `dbops.lock_columns_conditional`
+// + fn `dbops.fn_non_editable_fields`, migrations 20260522-02..04). Single
+// source of truth BE — nessuna logica locale FE.
 
 // Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
 // (pattern feedback_content_ready_after_show centralizzato in useDrawerContentReady).
@@ -417,17 +406,17 @@ const drawerActions = computed(() => {
           <div class="form-field">
             <label>{{ t('catalogo.field_composito') }}</label>
             <ToggleSwitch v-model="form.is_composito"
-              :disabled="isFieldLocked('is_composito') || isFlagStrutturaLocked()" />
+              :disabled="isFieldLocked('is_composito')" />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_solo_componente') }}</label>
             <ToggleSwitch v-model="form.is_solo_componente"
-              :disabled="isFieldLocked('is_solo_componente') || isFlagStrutturaLocked()" />
+              :disabled="isFieldLocked('is_solo_componente')" />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_requires_serial') }}</label>
             <ToggleSwitch v-model="form.requires_serial"
-              :disabled="isFieldLocked('requires_serial') || isFlagStrutturaLocked()" />
+              :disabled="isFieldLocked('requires_serial')" />
           </div>
         </div>
         <!-- Sezione: UoM riepilogo (edit mode) -->

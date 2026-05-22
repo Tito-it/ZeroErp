@@ -58,3 +58,36 @@ class LockColumnsRepository:
                 schema, table, exc,
             )
             return ()
+
+    # Scopo: Lista colonne non editabili per (schema, table, record_id).
+    #        Wrapper su `dbops.fn_non_editable_fields(text,text,text)`:
+    #        unisce lock statici (vw_non_editable_fields) e lock
+    #        condizionali (lock_columns_conditional) valutati sul record.
+    #        Migration 20260522-03; seed regole condizionali in 20260522-04.
+    #        Per casi senza record_id (lock statici-only) usare il metodo
+    #        `list_non_editable` cached. Qui niente cache: il risultato
+    #        dipende dallo stato runtime del record (BoM attiva, ecc.).
+    #        Defensive: se la fn non esiste o il DB e' irraggiungibile,
+    #        fallback al solo lock statico per non rompere il detail.
+    @staticmethod
+    def list_non_editable_for_record(
+        schema: str, table: str, record_id: str | int,
+    ) -> tuple[str, ...]:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT dbops.fn_non_editable_fields(%s, %s, %s)",
+                    [schema, table, str(record_id)],
+                )
+                row = cursor.fetchone()
+            if not row or row[0] is None:
+                return ()
+            return tuple(row[0])
+        except DatabaseError as exc:
+            logger.warning(
+                "LockColumnsRepository.list_non_editable_for_record: query "
+                "fallita per %s.%s id=%s, fallback ai soli lock statici "
+                "(cause: %s).",
+                schema, table, record_id, exc,
+            )
+            return LockColumnsRepository.list_non_editable(schema, table)

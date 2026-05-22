@@ -249,7 +249,7 @@ Queste sono le domande aperte che (c) richiede di chiudere:
 
 - [`refactor-contratti-modalita.md`](../work-done/refactor-contratti-modalita.md) — refactor contratti
   corrente; questa analisi è uscita dalla sua §3-bis-A
-- [`recap-contratti-post-componenti.md`](recap-contratti-post-componenti.md) — recap bug
+- [`recap-contratti-post-componenti.md`](../work-done/recap-contratti-post-componenti.md) — recap bug
   contratti post-componenti, contesto operativo
 - `api_preventivi.md` — modello preventivi esistente, riferimento per pattern riusabile
 - `push_a_commessa` ([preventivi_service.py:1910](../../../backend/apps/vendite/services/preventivi_service.py#L1910)) —

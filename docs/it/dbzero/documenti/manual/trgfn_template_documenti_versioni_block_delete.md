@@ -55,4 +55,4 @@ Messaggio in `config.messaggi_errore` (id 411).
 
 * [`documenti.template_documenti_versioni`](/dbzero/documenti/tabelle/template_documenti_versioni)
 * [`trgfn_template_documenti_versioni_protect_pubblicata`](trgfn_template_documenti_versioni_protect_pubblicata.md) — guard A1 correlato
-* [Sviluppo Documenti — Piano DB §6.3, §13.3 A2](/dev/work-in-progress/sviluppo-documenti-db)
+* [Sviluppo Documenti — Piano DB §6.3, §13.3 A2](/dev/work-done/sviluppo-documenti-db)

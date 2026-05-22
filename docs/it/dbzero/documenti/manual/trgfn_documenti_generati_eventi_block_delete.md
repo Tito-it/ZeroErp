@@ -53,4 +53,4 @@ Messaggio in `config.messaggi_errore` (id 425).
 * [`documenti.documenti_generati_eventi`](documenti_generati_eventi.md)
 * [`trgfn_documenti_generati_eventi_block_update`](trgfn_documenti_generati_eventi_block_update.md) — guard append-only complementare (UPDATE)
 * [`trgfn_documenti_generati_block_delete`](trgfn_documenti_generati_block_delete.md) — guard A5 sul padre `documenti_generati`
-* [Sviluppo Documenti — §10-bis.5 (anticipo eventi v1)](/dev/work-in-progress/sviluppo-documenti)
+* [Sviluppo Documenti — §10-bis.5 (anticipo eventi v1)](/dev/work-done/sviluppo-documenti)

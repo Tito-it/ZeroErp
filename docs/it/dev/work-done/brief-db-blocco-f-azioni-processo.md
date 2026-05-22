@@ -1,7 +1,7 @@
 # Brief Team DB — Blocco F personalizzazioni liste: seed azioni di processo
 
 **Data:** 2026-05-07
-**Riferimento:** [`sviluppo-personalizzazioni-liste.md`](sviluppo-personalizzazioni-liste.md) §11 / Blocco F.1
+**Riferimento:** [`sviluppo-personalizzazioni-liste.md`](../work-in-progress/sviluppo-personalizzazioni-liste.md) §11 / Blocco F.1
 **Branch:** `dev/db-tid` (modifica seed CSV)
 **Priorità:** media — sblocca la pagina amministrazione personalizzazioni liste lato FE/BE.
 
@@ -9,7 +9,7 @@
 
 ## Contesto
 
-Il Blocco F del documento [`sviluppo-personalizzazioni-liste.md`](sviluppo-personalizzazioni-liste.md) introduce la pagina di gestione amministrazione personalizzazioni liste accessibile a:
+Il Blocco F del documento [`sviluppo-personalizzazioni-liste.md`](../work-in-progress/sviluppo-personalizzazioni-liste.md) introduce la pagina di gestione amministrazione personalizzazioni liste accessibile a:
 
 - **SUPER_ADMIN** via `/amm-software/personalizzazioni-liste` (bypass totale, vede tutti i tab inclusi quelli "tecnici" Fase 2)
 - **Tenant admin con azione abilitata** via `/config/personalizzazioni-liste` (solo tab Fase 1 — Preset + Permessi colonne)

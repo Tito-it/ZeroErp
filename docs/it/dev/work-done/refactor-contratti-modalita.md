@@ -4,7 +4,7 @@
 >
 > **Scope**: rivedere il modello UX/dominio della scelta "modalità A/B/C" sui
 > contratti. Non riguarda i bug puntuali — quelli stanno in
-> [`recap-contratti-post-componenti.md`](../work-in-progress/recap-contratti-post-componenti.md)
+> [`recap-contratti-post-componenti.md`](recap-contratti-post-componenti.md)
 > e possono essere fixati prima di o dopo questo refactor.
 >
 > **Premessa**: l'osservazione di Tid (2026-05-15) — "scegliere la modalità è
@@ -779,7 +779,7 @@ dettaglio cronologico.
   righe contratto, CTA FE "Richiedi approvazione" su ContrattoRigheDrawer).
   Service `approvazioni_prezzo_service` reso sorgente-agnostico via
   `_SORGENTE_CONFIG`. Vedi §7.8 + §7.9.
-- Il recap [`recap-contratti-post-componenti.md`](../work-in-progress/recap-contratti-post-componenti.md)
+- Il recap [`recap-contratti-post-componenti.md`](recap-contratti-post-componenti.md)
   e' **obsoleto post-refactor**: le 3 modalità A/B/C non esistono piu' come
   scelta utente (sostituite da forma derivata `con_listino`/`senza_listino`).
   I bug logici §3.1–§3.4 del recap sono stati assorbiti dal refactor (BE

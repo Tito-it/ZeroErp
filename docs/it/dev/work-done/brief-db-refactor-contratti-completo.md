@@ -560,7 +560,7 @@ DELETE FROM config.parameters WHERE code = 'VENDITE_CONTRATTO_DEFAULT_MODALITA';
 
 - [`refactor-contratti-modalita.md`](refactor-contratti-modalita.md) — decisioni di
   modello complete (§3, §3-bis)
-- [`recap-contratti-post-componenti.md`](../work-in-progress/recap-contratti-post-componenti.md) — bug
+- [`recap-contratti-post-componenti.md`](recap-contratti-post-componenti.md) — bug
   puntuali da assorbire nel refactor o fixare prima
 - [`Analisi-iniziale-offerta-commerciale.md`](../work-in-progress/Analisi-iniziale-offerta-commerciale.md) —
   out-of-scope ma collegato, da riprendere in futuro

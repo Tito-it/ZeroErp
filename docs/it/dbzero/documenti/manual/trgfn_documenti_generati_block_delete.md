@@ -53,4 +53,4 @@ Messaggio in `config.messaggi_errore` (id 414).
 * [`documenti.documenti_generati`](/dbzero/documenti/tabelle/documenti_generati)
 * [`trgfn_documenti_generati_check_coerenza`](trgfn_documenti_generati_check_coerenza.md) — guard A6 (coerenza referenziale)
 * [`trgfn_documenti_generati_protect_snapshot`](trgfn_documenti_generati_protect_snapshot.md) — guard A7 (immutabilità snapshot)
-* [Sviluppo Documenti — Piano DB §6.5, §13.3 A5, sezione B](/dev/work-in-progress/sviluppo-documenti-db)
+* [Sviluppo Documenti — Piano DB §6.5, §13.3 A5, sezione B](/dev/work-done/sviluppo-documenti-db)
