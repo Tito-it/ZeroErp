@@ -527,15 +527,31 @@ com'è. Anche `useDrawerContentReady` può essere applicato in modo opportunisti
 a quei drawer più pesanti (es. `EmailTemplateDrawer` con editor markdown), ma è
 un fix di fluidità a parte, non parte del refactor azioni.
 
-### Fase 3.A — PraticaDrawer + FlussoDrawer (⏳ Pendente)
+### Fase 3.A — PraticaDrawer + FlussoDrawer (✅ FATTO 2026-05-22)
 
 Migrazione speculare alla Fase 1: `DrawerEntityHeader` + `DrawerActionsBar` +
-`useDrawerContentReady`. PraticaDrawer più complesso (5 state actions, eventuali
-`requires_confirm`/dialog dedicati), FlussoDrawer più semplice (azioni
-condizionali per stato del flusso).
+`useDrawerContentReady`.
 
-Verificare con un grep finale che `class="(.*-)?drawer-(header|actions)(-row)?"`
-e `<Button.*availableActions` siano usati solo nel pattern uniforme.
+**FlussoDrawer** ([FlussoDrawer.vue](../../../../frontend/src/pratiche/components/FlussoDrawer.vue)):
+
+- `DrawerEntityHeader`: Tag `pratica_codice` + muted `displayTimestamp(data_insert)` + `#status` Tag stato (`statoFlussoSeverity`).
+- `DrawerActionsBar` con **1 sola azione**: "Avvia" (`kind:'state'`, severity `info`, visible solo `stato === DA_ESEGUIRE`).
+- **"Completa con esito" resta inline** come transizione con dati di processo (richiede esito obbligatorio + note opzionali, pattern `feedback_dialog_cambio_stato_dati_processo` — non comprimibile a `command: () => void`).
+- Footer custom Chiudi → `<DrawerFooter close-only />`.
+- Build verde, zero impatto sul chiamante `PraticheDashboard.vue` (props/emit invariati).
+
+**PraticaDrawer** ([PraticaDrawer.vue](../../../../frontend/src/pratiche/components/PraticaDrawer.vue)):
+
+- Header + barra azioni in alto al drawer **sopra il TabView** (prima erano dentro il tab Dati come `.pratica-header-row` + `.pratica-actions`).
+- `DrawerEntityHeader`: Tag `codice` + `#status` con Tag stato + Tag priorità.
+- `DrawerActionsBar` con **5 state actions** condizionali per stato corrente:
+  - `BOZZA` → Apri (info)
+  - `APERTA` → Sospendi (warn) + Chiudi (success) + Annulla (danger outlined)
+  - `SOSPESA` → Riattiva (success) + Chiudi (success) + Annulla (danger outlined)
+  - `CHIUSA`/`ANNULLATA` → nessuna (stati terminali)
+- Tutte `hideWhenReadonly: true`. Annulla mantiene `confirmAction` dialog.
+- Aggiunto wrapper `app-drawer-content` (prima mancava → ora beneficia anche di max-width 100vw + overflow-x della Fase 0.5).
+- CSS scoped `.pratica-header-row` + `.pratica-actions` rimossi (~14 righe).
 
 ### Fase 4 — Pulizia residui
 

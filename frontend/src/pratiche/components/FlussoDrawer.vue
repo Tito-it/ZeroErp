@@ -6,11 +6,15 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
 import { DRAWER_WIDTH, STATO_FLUSSO } from '../../core/constants'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import { displayTimestamp } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
@@ -40,8 +44,32 @@ const esitiOptions = computed(() => [
 
 const stato = computed(() => props.flusso?.stato_codice_interno || '')
 
+// Deferimento contenuto: il drawer ha solo Select statico + Textarea, ma
+// applichiamo il pattern per coerenza con gli altri drawer entita'.
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
+
 watch(() => props.visible, (val) => {
   if (val) { esito.value = null; noteEsito.value = '' }
+})
+
+// Azioni della testata flusso consumate da DrawerActionsBar.
+// Solo "Avvia" come azione semplice (DA_ESEGUIRE -> IN_CORSO). "Completa"
+// resta inline come transizione con dati di processo (richiede esito
+// obbligatorio + note opzionali, pattern feedback_dialog_cambio_stato_dati_processo).
+const drawerActions = computed(() => {
+  if (!props.flusso) return []
+  return [
+    {
+      key: 'avvia',
+      kind: 'state',
+      label: t('pratiche.flusso_avvia'),
+      icon: 'pi pi-play',
+      severity: 'info',
+      visible: stato.value === STATO_FLUSSO.DA_ESEGUIRE,
+      disabled: loading.value,
+      command: onAvvia,
+    },
+  ]
 })
 
 // Scopo: Avvia il flusso (DA_ESEGUIRE → IN_CORSO).
@@ -76,6 +104,7 @@ const onClose = useDrawerClose(emit)
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     @update:visible="val => emit('update:visible', val)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -86,43 +115,33 @@ const onClose = useDrawerClose(emit)
     </template>
 
     <div v-if="flusso" class="app-drawer-content">
-      <!-- Header flusso -->
-      <div class="form-grid">
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('pratiche.col_codice') }}</label>
-            <span class="form-value">{{ flusso.pratica_codice || `#${flusso.pratica_id}` }}</span>
-          </div>
-          <div class="form-field">
-            <label>{{ t('pratiche.col_stato') }}</label>
-            <Tag :value="stato" :severity="statoFlussoSeverity(stato)" />
-          </div>
-        </div>
+      <template v-if="contentReady">
 
-        <div v-if="flusso.template_flusso_descrizione" class="form-field">
-          <label>{{ t('pratiche.flusso_col_template') }}</label>
-          <span class="form-value">{{ flusso.template_flusso_descrizione }}</span>
-        </div>
+      <!-- Refactor UI drawer 2026-05-22 (Fase 3.A): header info + barra
+           azioni state in alto, simmetrici a contratti/preventivi.
+           "Completa con esito" resta inline come transizione con dati
+           di processo (richiede form esito obbligatorio). -->
+      <DrawerEntityHeader>
+        <Tag :value="flusso.pratica_codice || `#${flusso.pratica_id}`" severity="secondary" />
+        <span v-if="flusso.data_insert" class="app-drawer-header-muted">
+          {{ displayTimestamp(flusso.data_insert) }}
+        </span>
+        <template #status>
+          <Tag :value="stato" :severity="statoFlussoSeverity(stato)" />
+        </template>
+      </DrawerEntityHeader>
 
-        <div v-if="flusso.data_insert" class="form-field">
-          <label>{{ t('pratiche.col_data_apertura') }}</label>
-          <span class="form-value">{{ displayTimestamp(flusso.data_insert) }}</span>
-        </div>
+      <DrawerActionsBar :actions="drawerActions" />
+
+      <!-- Info flusso: template descrittivo (codice gia' visibile nel titolo). -->
+      <div v-if="flusso.template_flusso_descrizione" class="form-field">
+        <label>{{ t('pratiche.flusso_col_template') }}</label>
+        <span class="form-value">{{ flusso.template_flusso_descrizione }}</span>
       </div>
 
-      <!-- Azioni in base allo stato -->
-
-      <!-- DA_ESEGUIRE: Bottone Avvia -->
-      <div v-if="stato === STATO_FLUSSO.DA_ESEGUIRE" class="flusso-actions">
-        <Button
-          :label="t('pratiche.flusso_avvia')"
-          icon="pi pi-play" severity="info"
-          :loading="loading"
-          @click="onAvvia"
-        />
-      </div>
-
-      <!-- IN_CORSO: Form completamento con esito -->
+      <!-- IN_CORSO: Form completamento con esito.
+           Resta inline (transizione con dati di processo, non comprimibile
+           a `command: () => void` del BB DrawerActionsBar). -->
       <div v-if="stato === STATO_FLUSSO.IN_CORSO" class="flusso-actions">
         <h4>{{ t('pratiche.flusso_completa_con_esito') }}</h4>
         <div class="form-grid">
@@ -164,10 +183,8 @@ const onClose = useDrawerClose(emit)
         </div>
       </div>
 
-      <!-- Footer con Chiudi -->
-      <div class="flex justify-end mt-4">
-        <Button :label="t('common.cancel')" text @click="onClose" />
-      </div>
+      <DrawerFooter close-only @cancel="onClose" />
+      </template>
     </div>
   </Drawer>
 </template>
