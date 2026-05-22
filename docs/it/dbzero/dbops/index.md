@@ -18,6 +18,7 @@
 - [error_log](tabelle/error_log.md) — * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore. * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
 - [fk_index_policy](tabelle/fk_index_policy.md) — (latest review 16-01-26) La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli index sulle foreign key, consentendo di abilitare o disabilitare la creazione/uso di indici per specifici vincoli referenziali.
 - [idempotency_keys](tabelle/idempotency_keys.md) — (latest review 06-02-26) * Prevenire doppie esecuzioni in caso di retry o chiamate duplicate. * Restituire **la stessa risposta** quando arriva la stessa `idempotency_key`. * Collegare operazioni applicative alla **tracciabilità transazionale** tramite `tx_id`.
+- [lock_columns_conditional](tabelle/lock_columns_conditional.md)
 - [pipeline_task_registry](tabelle/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
 - [pipeline_task_registry_impl](tabelle/pipeline_task_registry_impl.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite** per ciascun task. Serve a gestire in modo controllato le varianti (`default`, `v2`, `gas_v1`, ecc.) senza dispatch dinamico libero.
 - [request_log](tabelle/request_log.md) — (latest review 05-03-2026)
@@ -57,6 +58,7 @@
 - [fn_list_indices](funzioni/fn_list_indices.md)
 - [fn_migrate_add_indirizzo_normalizzato](funzioni/fn_migrate_add_indirizzo_normalizzato.md)
 - [fn_name_from_template](funzioni/fn_name_from_template.md) — La funzione **`fn_name_from_template`** genera in modo consistente un **nome normalizzato** (per trigger, constraint, indici, ecc.) a partire da un **template testuale** con *placeholder* e da un set di parametri (schema, tabella, parent/child, nome FK, operazione).
+- [fn_non_editable_fields](funzioni/fn_non_editable_fields.md)
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md)
 - [fn_populate_fk_index_policy](funzioni/fn_populate_fk_index_policy.md) — * **Coerenza iniziale**   Garantire che ogni FK rilevata nella view senza indice abbia la propria entry di policy, evitando omissioni. * **Popolamento “a freddo”**   Tutti i nuovi record vengono creati con `consentito = false`, lasciando in carico all’operatore la decisione di abilitare o meno l’indice. * **Automazione**   Riduce il lavoro manuale di inserimento di policy per nuove FKs.
 - [fn_purge_cleanup_expired](funzioni/fn_purge_cleanup_expired.md) — (latest review 07-02-26) La funzione **`dbops.fn_purge_cleanup_expired`** elimina i record con **`cleanup_at` scaduto** usando una strategia a **batch**, per ridurre lock e impatti sulle tabelle più grandi.
@@ -98,6 +100,6 @@
 - [vw_fk_con_indice_missing_policy](views/vw_fk_con_indice_missing_policy.md) — (latest review 16-01-26) * **Identificare gli indici esistenti**   Trova le FK già indicizzate che non dispongono di una policy dedicata. * **Suggerimento DDL**   Genera automaticamente la stringa `CREATE INDEX ...` per uniformare naming e struttura. * **Supporto auditing e governance**   Permette di scoprire eventuali indici non tracciati, inserendoli poi in `fk_index_policy`.
 - [vw_fk_senza_indice](views/vw_fk_senza_indice.md) — (latest review 16-01-26) * Individuare automaticamente vincoli di integrità referenziale (FK) privi di indice, potenziali colli di bottiglia nelle operazioni di JOIN e DELETE. * Fornire suggerimenti di creazione indice coerenti, facilitando l’ottimizzazione delle performance. * Applicare eventuali policy di esclusione gestite in `dbops.fk_index_policy`.
 - [vw_function_list](views/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
-- [vw_non_editable_fields](views/vw_non_editable_fields.md) — (latest review 28-04-2026)
+- [vw_non_editable_fields](views/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
 - [vw_parameter_fk_surrogate_dangling](views/vw_parameter_fk_surrogate_dangling.md) — (latest review 02-05-2026)
 - [vw_trigger_functions](views/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:

@@ -17,6 +17,7 @@
 - [trgfn_articoli_componenti_guard_is_composito](manual/trgfn_articoli_componenti_guard_is_composito.md) — (latest review 15-01-26) La funzione **`catalogo.trgfn_articoli_componenti_guard_is_composito`** impedisce di usare come **prodotto** un articolo con `is_composito = false`. Serve a garantire che la distinta base sia definita solo per articoli realmente compositi.
 - [trgfn_articoli_componenti_guard_iva](manual/trgfn_articoli_componenti_guard_iva.md)
 - [trgfn_articoli_componenti_guard_solo_componente](manual/trgfn_articoli_componenti_guard_solo_componente.md) — (latest review 14-01-26) La funzione **`catalogo.trgfn_articoli_componenti_guard_solo_componente`** impedisce di usare come **prodotto** un articolo marcato `is_solo_componente = true`. Serve a garantire che articoli “solo componente” non vengano messi come `prodotto_id` in `catalogo.articoli_componenti`.
+- [trgfn_articoli_guard_flags_struttura_bom_attiva](manual/trgfn_articoli_guard_flags_struttura_bom_attiva.md)
 - [trgfn_articoli_guard_iva_bom_attiva](manual/trgfn_articoli_guard_iva_bom_attiva.md)
 - [trgfn_articoli_guard_listino_se_composito](manual/trgfn_articoli_guard_listino_se_composito.md)
 

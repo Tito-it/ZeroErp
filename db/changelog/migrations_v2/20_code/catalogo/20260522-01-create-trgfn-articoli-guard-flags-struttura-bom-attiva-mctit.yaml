@@ -1,0 +1,165 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Guard trigger su catalogo.articoli: blocca modifiche ai flag di struttura
+# (is_composito, is_solo_componente, requires_serial) quando esiste una BoM
+# attiva che renderebbe il cambio semanticamente incoerente.
+#
+# Due condizioni distinte (una per flag):
+#
+# 1. is_composito / requires_serial:
+#    bloccati se l'articolo e' PADRE di una BoM attiva
+#    (articoli_componenti.prodotto_id = NEW.id, attivo IS TRUE,
+#     validita @> CURRENT_DATE).
+#    Togliere is_composito lascerebbe figli BoM orfani; togliere
+#    requires_serial romperebbe la tracciabilita' dei partner BoM.
+#
+# 2. is_solo_componente:
+#    bloccato se l'articolo e' FIGLIO in una BoM attiva
+#    (articoli_componenti.componente_id = NEW.id, attivo IS TRUE,
+#     validita @> CURRENT_DATE).
+#    Togliere il flag farebbe diventare vendibile standalone un pezzo
+#    che e' componente attivo di articoli compositi.
+#
+# Pattern: coerente con catalogo.trgfn_articoli_guard_iva_bom_attiva
+# (EXISTS su articoli_componenti, stessa condizione attivo+validita,
+# stessa fase _a10_, stesso codice errore E_BOM_MODIFICA_VIETATA).
+#
+# Codice errore: E_BOM_MODIFICA_VIETATA (id 387,
+# gia' in config.messaggi_errore e error_policies.py HTTP 409).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260522-01-create-trgfn-articoli-guard-flags-struttura-bom-attiva-mctit.yaml
+
+  - changeSet:
+      id: 20260522-01-create-trgfn-articoli-guard-flags-struttura-bom-attiva
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Guard BEFORE UPDATE OF is_composito, is_solo_componente, requires_serial
+        su catalogo.articoli. Blocca via E_BOM_MODIFICA_VIETATA (387) se esiste
+        una BoM attiva che renderebbe il cambio incoerente:
+        - is_composito/requires_serial: verificato su prodotto_id (l'articolo e' padre)
+        - is_solo_componente: verificato su componente_id (l'articolo e' figlio)
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli_componenti
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli
+                columnName: is_solo_componente
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli
+                columnName: requires_serial
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: blocca modifiche ai flag di struttura (is_composito,
+              -- is_solo_componente, requires_serial) quando esiste una BoM attiva
+              -- che renderebbe il cambio semanticamente incoerente.
+              --
+              -- Due IF distinti per semantiche diverse:
+              --   - is_composito / requires_serial: cerca su prodotto_id (padre)
+              --   - is_solo_componente: cerca su componente_id (figlio)
+              -- Se il valore non cambia (IS NOT DISTINCT FROM) la query EXISTS non viene eseguita.
+              DECLARE
+                  v_ha_figli_attivi  boolean;
+                  v_e_figlio_attivo  boolean;
+              BEGIN
+                  -- Check 1: is_composito e/o requires_serial cambiano.
+                  -- Blocca se l'articolo e' padre di una BoM attiva.
+                  IF OLD.is_composito IS DISTINCT FROM NEW.is_composito
+                     OR OLD.requires_serial IS DISTINCT FROM NEW.requires_serial THEN
+
+                      SELECT EXISTS (
+                          SELECT 1 FROM catalogo.articoli_componenti
+                           WHERE prodotto_id = NEW.id
+                             AND attivo IS TRUE
+                             AND validita @> CURRENT_DATE
+                      ) INTO v_ha_figli_attivi;
+
+                      IF v_ha_figli_attivi THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_BOM_MODIFICA_VIETATA',
+                              jsonb_build_object(
+                                  'articolo_id', NEW.id,
+                                  'hint', 'is_composito e requires_serial non modificabili: '
+                                       || 'articolo padre di una BoM attiva.'
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Check 2: is_solo_componente cambia.
+                  -- Blocca se l'articolo e' figlio in una BoM attiva.
+                  IF OLD.is_solo_componente IS DISTINCT FROM NEW.is_solo_componente THEN
+
+                      SELECT EXISTS (
+                          SELECT 1 FROM catalogo.articoli_componenti
+                           WHERE componente_id = NEW.id
+                             AND attivo IS TRUE
+                             AND validita @> CURRENT_DATE
+                      ) INTO v_e_figlio_attivo;
+
+                      IF v_e_figlio_attivo THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_BOM_MODIFICA_VIETATA',
+                              jsonb_build_object(
+                                  'articolo_id', NEW.id,
+                                  'hint', 'is_solo_componente non modificabile: '
+                                       || 'articolo figlio in una BoM attiva.'
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva()
+              IS 'Guard BEFORE UPDATE OF is_composito, is_solo_componente, requires_serial: '
+                 'blocca is_composito/requires_serial se articolo e'' padre di BoM attiva (prodotto_id); '
+                 'blocca is_solo_componente se articolo e'' figlio in BoM attiva (componente_id). '
+                 'Codice: E_BOM_MODIFICA_VIETATA (387). rev 2026-05-22.';
+
+              DROP TRIGGER IF EXISTS trg_articoli_a10_guard_flags_struttura_bom_attiva_upd
+                  ON catalogo.articoli;
+
+              CREATE TRIGGER trg_articoli_a10_guard_flags_struttura_bom_attiva_upd
+                  BEFORE UPDATE OF is_composito, is_solo_componente, requires_serial
+                  ON catalogo.articoli
+                  FOR EACH ROW
+              EXECUTE FUNCTION catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_a10_guard_flags_struttura_bom_attiva_upd
+                  ON catalogo.articoli;
+              DROP FUNCTION IF EXISTS catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva();
