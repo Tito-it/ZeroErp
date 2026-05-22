@@ -17,6 +17,7 @@ import { displayDate } from '../../core/utils/date'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -169,6 +170,21 @@ function cancelEditFattore() {
 // Nasconde il footer in modalita' adding per non duplicarlo con Annulla/Salva
 // del form e non spingere il form sotto al fold.
 const onClose = useDrawerClose(emit)
+
+// Toolbar pagina: pulsante "Nuovo" sopra la lista (pattern standard
+// frontend-standards "PageActionsBar"). Speculare a ArticoloUomDrawer.
+const pageActions = computed(() => [
+  {
+    key: 'new-conversione',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('catalogo.nuova_conversione_uom'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    disabled: adding.value,
+    command: startAdd,
+  },
+])
 </script>
 
 <template>
@@ -188,13 +204,22 @@ const onClose = useDrawerClose(emit)
       </div>
 
       <template v-if="!listLoading">
+        <!-- Toolbar pagina standard: filtri (vuoti qui) + "Nuovo" prima
+             della lista. Visibile sempre in modalita' lista (non in adding),
+             cosi' anche l'empty state ha il pulsante "Nuovo" accessibile. -->
+        <div v-if="!adding" class="app-page-toolbar">
+          <div class="app-page-filters"></div>
+          <PageActionsBar :actions="pageActions" />
+        </div>
+
         <!-- Lista conversioni -->
         <div v-if="conversioniList.length === 0 && !adding" class="app-empty-state">
           <i class="pi pi-arrows-h" />
           <p>{{ t('catalogo.nessuna_conversione') }}</p>
         </div>
 
-        <DataTable v-if="conversioniList.length > 0" :value="conversioniList" class="app-datatable" striped-rows>
+        <DataTable v-if="conversioniList.length > 0" :value="conversioniList"
+          class="app-datatable app-datatable--inner" striped-rows>
           <Column :header="t('catalogo.col_uom_da')" style="width: 100px;">
             <template #body="{ data }">
               <strong>{{ data.uom_from_codice }}</strong>
@@ -231,18 +256,9 @@ const onClose = useDrawerClose(emit)
           </Column>
         </DataTable>
 
-        <!-- Form inserimento nuova conversione -->
+        <!-- Form inserimento nuova conversione (pulsante "Nuovo" e' nella
+             toolbar sopra la lista, non piu' inline qui). -->
         <template v-if="!isReadonly">
-          <div v-if="!adding" class="mt-05">
-            <Button
-              :label="t('catalogo.nuova_conversione_uom')"
-              :icon="MANAGE_ICONS.ADD"
-              text size="small"
-              class="app-action-btn"
-              @click="startAdd"
-            />
-          </div>
-
           <template v-if="adding">
             <div class="app-drawer-section">
               <h4>{{ t('catalogo.nuova_conversione_uom') }}</h4>
@@ -277,15 +293,21 @@ const onClose = useDrawerClose(emit)
                 <ToggleSwitch v-model="form.valido_dal_sempre" />
               </div>
             </div>
-            <div class="flex justify-end gap-2 mt-05">
-              <Button :label="t('common.cancel')" text @click="cancelAdd" />
-              <Button :label="t('common.save')" :loading="loading" :disabled="!canSaveNew" @click="onSaveNew" />
-            </div>
           </template>
         </template>
       </template>
 
-      <DrawerFooter v-if="!adding" close-only @cancel="onClose" />
+      <!-- Footer standard: in modalita' adding mostra Annulla/Salva del form,
+           altrimenti close-only per chiudere il drawer (pattern speculare
+           ArticoloUomDrawer). -->
+      <DrawerFooter
+        v-if="adding"
+        :loading="loading"
+        :disabled="!canSaveNew"
+        @save="onSaveNew"
+        @cancel="cancelAdd"
+      />
+      <DrawerFooter v-else close-only @cancel="onClose" />
     </div>
   </Drawer>
 </template>

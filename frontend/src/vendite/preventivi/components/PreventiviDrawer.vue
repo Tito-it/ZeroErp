@@ -2,11 +2,11 @@
 // Scopo: Drawer crea/modifica preventivo vendita.
 // CREATE: form testata semplice per creazione rapida.
 // EDIT: testata + righe + totali + integrazione (con azioni stato).
-import { ref, watch, computed, nextTick } from 'vue'
+import { ref, watch, computed, nextTick, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePreventiviStore } from '../stores/preventivi'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
-import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
+import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
@@ -79,9 +79,27 @@ const parentReadonly = useInjectReadonly()
 const isSuperseded = computed(
   () => detail.value !== null && detail.value.is_attiva === false,
 )
+// isReadonly cumulativo: include permessi area parent + props.readonly +
+// is_attiva=false (revisione superseded) + stato post-DRAFT del preventivo.
+// Lo stato post-DRAFT entra qui perche' la regola di dominio "modifiche
+// libere solo in BOZZA" si applica a tutti i sub-drawer (note, righe). Le
+// azioni di stato (Accetta/Rifiuta/Annulla dal BE `availableActions`)
+// restano cliccabili in readonly grazie alla classe `app-escape` applicata
+// automaticamente da `DrawerActionsBar` ai suoi pulsanti — coerente con
+// frontend-standards.md "Transizione a stato terminale".
+//
+// Allineato al pattern ContrattoDrawer: stesso modello "drawer parent calcola
+// readonly + provide(READONLY_KEY) ai figli, sub-drawer usano solo
+// useInjectReadonly() senza logica locale".
 const isReadonly = computed(
-  () => props.readonly || parentReadonly.value || isSuperseded.value,
+  () => props.readonly
+    || parentReadonly.value
+    || isSuperseded.value
+    || (props.mode === 'edit'
+        && detail.value
+        && detail.value.stato_codice_interno !== 'DRAFT'),
 )
+provide(READONLY_KEY, isReadonly)
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
@@ -663,30 +681,28 @@ function onNuovaRevisione() {
 }
 
 // Azioni della testata preventivo consumate da DrawerActionsBar.
-// In readonly (props.readonly, parentReadonly o isSuperseded) le transizioni
-// di stato e "Nuova revisione" sono nascoste — coerente col template legacy
-// `<template v-if="!isReadonly">`. La voce "Gestisci note" resta sempre
-// visibile (la lettura note ha senso anche in storico). Il PDF stato-aware
-// resta componente dedicato e va nel #suffix del BB.
+// Non filtrate da `isReadonly`: le actions di stato (BE data-driven) restano
+// renderizzate anche in stati post-DRAFT o in LETTURA — `DrawerActionsBar`
+// applica automaticamente `.app-escape` per renderle cliccabili sotto
+// `.app-readonly`. La sicurezza e' garantita dal BE che rifiuta i comandi
+// senza permesso (defense-in-depth, frontend-standards "Transizione a stato
+// terminale" + "Tasti di uscita"). Allineato a ContrattoDrawer.
 const drawerActions = computed(() => {
   if (!hasDetail.value) return []
-  const list = []
-  if (!isReadonly.value) {
-    list.push(...mapAvailableActionsToDrawerActions({
-      availableActions,
-      t,
-      onAction: onCambiaStato,
-    }))
-    if (canCreateRevisione.value) {
-      list.push({
-        key: 'nuova-revisione',
-        kind: 'state',
-        label: t('preventivi.azione_revisione'),
-        icon: 'pi pi-copy',
-        severity: 'secondary',
-        command: onNuovaRevisione,
-      })
-    }
+  const list = mapAvailableActionsToDrawerActions({
+    availableActions,
+    t,
+    onAction: onCambiaStato,
+  })
+  if (canCreateRevisione.value) {
+    list.push({
+      key: 'nuova-revisione',
+      kind: 'state',
+      label: t('preventivi.azione_revisione'),
+      icon: 'pi pi-copy',
+      severity: 'secondary',
+      command: onNuovaRevisione,
+    })
   }
   list.push({
     key: 'manage-note',

@@ -1763,6 +1763,93 @@ function buildRowActions(data) {
 **Cosa succede se sbagli e metti `useReadonlyMode` su un drawer figlio puro?**
 Nulla di rotto: `fn_resolve_livello_oggetto` fa fallback al livello area se il model non e' catalogato. Ma e' codice inutile che suggerisce una granularita' che non esiste — lascialo solo sui drawer veramente autonomi.
 
+### Drawer di entita' con sub-drawer (catena readonly)
+
+> **Regola d'oro**: il `readonly` non si calcola mai nei sub-drawer.
+> Lo calcola il drawer di entita' (parent) e lo propaga via `provide(READONLY_KEY, ...)`.
+> I sub-drawer (note, righe, utility, conti, ecc.) usano **solo** `useInjectReadonly()`
+> senza nessuna logica locale.
+
+I drawer di entita' (es. `ContrattoDrawer`, `PreventiviDrawer`) sono il **punto unico**
+dove si combinano i 3 ingredienti del readonly:
+
+1. **Permessi area/oggetto** dell'utente — via `useInjectReadonly()` dal provider della View
+2. **Stato workflow** del documento (DRAFT vs stati post-DRAFT) — derivato da `detail.stato_codice*`
+3. **Contesto** — `props.readonly` (split-view), `is_attiva=false` (revisione superseded), ecc.
+
+Il computed risultante `isReadonly` viene `provide`-ato con `READONLY_KEY` ai sub-drawer,
+che lo ricevono "gia' cotto" tramite `useInjectReadonly()`.
+
+**Template drawer di entita' (parent provider)**:
+
+```js
+// ContrattoDrawer.vue / PreventiviDrawer.vue
+import { computed, provide } from 'vue'
+import { useInjectReadonly, READONLY_KEY } from '@/core/composables/useReadonlyMode'
+
+const parentReadonly = useInjectReadonly()                  // (1) permessi area
+const isWorkflowLocked = computed(                          // (2) stato post-DRAFT
+  () => props.mode === 'edit'
+     && detail.value
+     && detail.value.stato_codice !== 'DRAFT',
+)
+const isSuperseded = computed(                              // (3) contesto entita'
+  () => detail.value !== null && detail.value.is_attiva === false,
+)
+
+const isReadonly = computed(() =>
+  parentReadonly.value
+  || props.readonly
+  || isWorkflowLocked.value
+  || isSuperseded.value,
+)
+provide(READONLY_KEY, isReadonly)
+```
+
+**Template sub-drawer (figlio puro consumer)** — *zero* logica locale:
+
+```js
+// ContrattoRigheDrawer.vue / PreventivoNoteDrawer.vue / ContrattoNoteDrawer.vue
+import { useInjectReadonly } from '@/core/composables/useReadonlyMode'
+
+const isReadonly = useInjectReadonly()  // ← solo lettura. STOP.
+```
+
+**Anti-pattern (DA NON FARE) nel sub-drawer**:
+
+```js
+// ❌ NO: logica locale che ricalcola lo stato workflow
+const parentReadonly = useInjectReadonly()
+const isReadonly = computed(
+  () => parentReadonly.value || props.contrattoStatoCodice !== 'DRAFT',
+)
+```
+
+Perche' e' sbagliato:
+
+- duplica la regola del modello UX in 2 posti (parent + figlio) — drift garantito
+- nasconde una props (`contrattoStatoCodice`) che il sub-drawer non dovrebbe nemmeno conoscere
+- se la regola cambia (es. CESSATO ammette modifica `meta`), va aggiornata in N posti
+- rompe il pattern "Provider → Consumer" su cui si fonda il sistema permessi
+
+Se il sub-drawer ha bisogno di un readonly diverso dal parent (caso raro: il padre e' editabile
+ma il figlio no per ragioni di dominio), allora il **PARENT** estende il proprio `isReadonly`
+con quella regola e la propaga. Il sub-drawer resta agnostico.
+
+**Azioni di stato in drawer readonly** — i pulsanti di transizione (`Emetti`, `Accetta`,
+`Cessa`, ecc.) restano cliccabili anche dentro `app-readonly` perche' `DrawerActionsBar`
+applica automaticamente `.app-escape` a tutti i suoi pulsanti. Non filtrare la lista actions
+per `isReadonly` (allineato a `ContrattoDrawer.drawerActions` / `PreventiviDrawer.drawerActions`):
+la sicurezza e' garantita dal BE che rifiuta i comandi senza permesso.
+
+**Esempi nel codice**:
+
+| Drawer parent (provider) | Sub-drawer figli (consumer) | Cosa propaga |
+| --- | --- | --- |
+| `ContrattoDrawer` | `ContrattoRigheDrawer`, `ContrattoNoteDrawer` | parentReadonly + `stato_codice !== 'DRAFT'` |
+| `PreventiviDrawer` | `PreventivoNoteDrawer`, `PreventiviRigheTable` | parentReadonly + `stato_codice_interno !== 'DRAFT'` + `is_attiva=false` |
+| `SoggettoDrawer` | `IndirizziSoggettoDrawer`, `ContattiSoggettoDrawer` | solo parentReadonly (no workflow state) |
+
 ### Tasti di uscita
 
 Come F12/F3 sui formati protect AS/400, i **pulsanti di chiusura** restano attivi anche in modalita' protect:
