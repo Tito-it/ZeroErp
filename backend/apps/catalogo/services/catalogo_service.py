@@ -97,12 +97,24 @@ _NON_EDITABLE_DB_GAPS: dict[tuple[str, str], tuple[str, ...]] = {
 }
 
 
-# Scopo: Calcola la lista `non_editable_fields` per (schema, tabella)
-# unendo il registro DB (`dbops.vw_non_editable_fields`) col gap Python
-# `_NON_EDITABLE_DB_GAPS`. Single entry-point usato dai 3 detail (articolo,
-# uom_operativa, conversione) cosi' la regola del gap non si replica.
-def _compute_non_editable_fields(schema: str, table: str) -> list[str]:
-    db_locked = set(LockColumnsRepository.list_non_editable(schema, table))
+# Scopo: Calcola la lista `non_editable_fields` per (schema, tabella).
+# Unisce:
+#   - lock statici da `dbops.vw_non_editable_fields` (automation_lock_columns)
+#   - gap Python `_NON_EDITABLE_DB_GAPS` (immutabili non registrati lato DB)
+#   - se passato `record_id`: lock condizionali da `dbops.lock_columns_conditional`
+#     valutati sul record (es. `catalogo.articoli` con BoM attiva blocca
+#     is_composito/is_solo_componente/requires_serial — migration 20260522-04).
+# Senza record_id ritorna i soli lock statici (backward-compat, usato dove
+# il record non e' ancora disponibile o non e' rilevante).
+def _compute_non_editable_fields(
+    schema: str, table: str, *, record_id: str | int | None = None,
+) -> list[str]:
+    if record_id is not None:
+        db_locked = set(
+            LockColumnsRepository.list_non_editable_for_record(schema, table, record_id),
+        )
+    else:
+        db_locked = set(LockColumnsRepository.list_non_editable(schema, table))
     db_locked.update(_NON_EDITABLE_DB_GAPS.get((schema, table), ()))
     return sorted(db_locked)
 
@@ -1186,6 +1198,40 @@ def _extract_nota_payload(
             log_to_db=True,
         )
 
+        # Default derivati per anchor_tipo + posizione (CREATE only).
+        # Allineamento col pattern vendite `PartitionedNoteService._normalize`:
+        # se l'operatore non specifica anchor_tipo/posizione, vengono derivati
+        # da target_riga_id (RIGA/AFTER se valorizzato, DOCUMENTO/HEADER altrimenti).
+        # Le colonne `note_articoli`/`note_articoli_componenti` sono NOT NULL,
+        # quindi senza questi default un payload minimale (solo testo+stile)
+        # del building block FE `NoteDrawer` fallirebbe al constraint DB.
+        # In UPDATE i default non si applicano: chi vuole cambiarli deve farlo
+        # esplicitamente, altrimenti restano i valori persisted.
+        riga_eff = data.get("target_riga_id")
+        if "anchor_tipo" not in data:
+            data["anchor_tipo"] = "RIGA" if riga_eff is not None else "DOCUMENTO"
+        if "posizione" not in data:
+            data["posizione"] = "AFTER" if data["anchor_tipo"] == "RIGA" else "HEADER"
+
+        # Coerenza anchor_tipo <-> target_riga_id (defense-in-depth simmetrica
+        # alla guard di vendite, anche se i CHECK DB la coprono in extremis).
+        has_riga = riga_eff is not None
+        ErrorManager.require(
+            (data["anchor_tipo"] == "RIGA") == has_riga,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload nota non valido.",
+            detail=(
+                "anchor_tipo='RIGA' richiede target_riga_id valorizzato; "
+                "anchor_tipo='DOCUMENTO' richiede target_riga_id NULL."
+            ),
+            context={
+                "anchor_tipo": data["anchor_tipo"],
+                "target_riga_id": riga_eff,
+            },
+            function_name=function_name,
+            log_to_db=True,
+        )
+
     return data
 
 
@@ -1317,7 +1363,13 @@ def fn_get_articolo(articolo_id: UUID | str) -> dict[str, object]:
         else []
     )
     articolo["note"] = bom_repository.list_note_articolo(articolo_id)
-    articolo["non_editable_fields"] = _compute_non_editable_fields("catalogo", "articoli")
+    # record_id valorizzato: include lock condizionali (es. flag struttura
+    # immutabili quando BoM attiva, seed 20260522-04). Senza record_id
+    # avremmo solo i lock statici e l'UX non saprebbe del vincolo finche'
+    # il trigger DB non rifiuta al save.
+    articolo["non_editable_fields"] = _compute_non_editable_fields(
+        "catalogo", "articoli", record_id=articolo_id,
+    )
     return articolo
 
 

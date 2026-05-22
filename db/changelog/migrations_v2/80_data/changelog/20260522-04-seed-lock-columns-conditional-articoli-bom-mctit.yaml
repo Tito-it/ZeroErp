@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Seed dbops.lock_columns_conditional per catalogo.articoli.
+#
+# Tre regole condizionali per i flag di struttura articolo:
+#
+#   is_composito / requires_serial:
+#     bloccati se l'articolo e' PADRE di una BoM attiva
+#     (prodotto_id = $1::uuid, attivo IS TRUE, validita @> CURRENT_DATE).
+#     Simmetrico al check 1 del trigger
+#     trg_articoli_a10_guard_flags_struttura_bom_attiva_upd (20260522-01).
+#
+#   is_solo_componente:
+#     bloccato se l'articolo e' FIGLIO in una BoM attiva
+#     (componente_id = $1::uuid, stesso filtro).
+#     Simmetrico al check 2 del trigger.
+#
+# condition_expr usa $1::uuid: catalogo.articoli.id e' UUID.
+# La funzione dbops.fn_non_editable_fields passa p_record_id come text;
+# il cast e' a carico dell'espressione per disaccoppiare il tipo dalla firma.
+#
+# Prerequisiti: migrations 20260522-02 (tabella) + 20260522-03 (funzione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260522-04-seed-lock-columns-conditional-articoli-bom-mctit.yaml
+
+  - changeSet:
+      id: 20260522-04-seed-lock-columns-conditional-articoli-bom
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      failOnError: true
+      comment: >
+        Seed 3 regole condizionali in dbops.lock_columns_conditional per
+        catalogo.articoli: is_composito e requires_serial bloccati se padre
+        di BoM attiva; is_solo_componente bloccato se figlio in BoM attiva.
+        Simmetrico al trigger trg_articoli_a10_guard_flags_struttura_bom_attiva_upd.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: lock_columns_conditional
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli_componenti
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO dbops.lock_columns_conditional
+                  (schema_name, table_name, column_name, condition_expr, descrizione)
+              VALUES
+                  (
+                      'catalogo',
+                      'articoli',
+                      'is_composito',
+                      'EXISTS (SELECT 1 FROM catalogo.articoli_componenti WHERE prodotto_id = $1::uuid AND attivo IS TRUE AND validita @> CURRENT_DATE)',
+                      'is_composito immutabile se articolo padre di BoM attiva (simmetrico a trg_articoli_a10_guard_flags_struttura_bom_attiva_upd check 1)'
+                  ),
+                  (
+                      'catalogo',
+                      'articoli',
+                      'requires_serial',
+                      'EXISTS (SELECT 1 FROM catalogo.articoli_componenti WHERE prodotto_id = $1::uuid AND attivo IS TRUE AND validita @> CURRENT_DATE)',
+                      'requires_serial immutabile se articolo padre di BoM attiva (simmetrico a trg_articoli_a10_guard_flags_struttura_bom_attiva_upd check 1)'
+                  ),
+                  (
+                      'catalogo',
+                      'articoli',
+                      'is_solo_componente',
+                      'EXISTS (SELECT 1 FROM catalogo.articoli_componenti WHERE componente_id = $1::uuid AND attivo IS TRUE AND validita @> CURRENT_DATE)',
+                      'is_solo_componente immutabile se articolo figlio in BoM attiva (simmetrico a trg_articoli_a10_guard_flags_struttura_bom_attiva_upd check 2)'
+                  )
+              ON CONFLICT ON CONSTRAINT uq_lock_columns_conditional DO UPDATE
+                  SET descrizione  = EXCLUDED.descrizione,
+                      data_update  = now(),
+                      user_update  = CURRENT_USER;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.lock_columns_conditional
+               WHERE schema_name = 'catalogo'
+                 AND table_name  = 'articoli'
+                 AND column_name IN ('is_composito', 'requires_serial', 'is_solo_componente');

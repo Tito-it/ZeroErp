@@ -13,8 +13,11 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
 import { DRAWER_WIDTH, STATO_PRATICA, MANAGE_ICONS } from '../../core/constants'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import PraticaFlussiTab from './PraticaFlussiTab.vue'
@@ -151,6 +154,73 @@ function onAnnullaPratica() {
   })
 }
 
+// Deferimento contenuto: TabView e LookupSelect montano solo dopo l'animazione
+// del drawer (pattern feedback_content_ready_after_show centralizzato in
+// useDrawerContentReady).
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
+
+// Azioni della testata pratica consumate da DrawerActionsBar (refactor UI
+// drawer 2026-05-22, Fase 3.A). 5 state actions condizionali per stato corrente
+// (BOZZA/APERTA/SOSPESA/CHIUSA/ANNULLATA). Annulla con confirmAction integrato.
+// CHIUSA e ANNULLATA sono terminali: nessuna azione visibile.
+const drawerActions = computed(() => {
+  if (!isEdit.value || !detail.value) return []
+  const s = statoCorrente.value
+  return [
+    {
+      key: 'apri',
+      kind: 'state',
+      label: t('pratiche.azione_apri'),
+      icon: 'pi pi-lock-open',
+      severity: 'info',
+      visible: s === STATO_PRATICA.BOZZA,
+      hideWhenReadonly: true,
+      command: onApriPratica,
+    },
+    {
+      key: 'sospendi',
+      kind: 'state',
+      label: t('pratiche.azione_sospendi'),
+      icon: 'pi pi-pause',
+      severity: 'warn',
+      visible: s === STATO_PRATICA.APERTA,
+      hideWhenReadonly: true,
+      command: onSospendiPratica,
+    },
+    {
+      key: 'riattiva',
+      kind: 'state',
+      label: t('pratiche.azione_riattiva'),
+      icon: 'pi pi-play',
+      severity: 'success',
+      visible: s === STATO_PRATICA.SOSPESA,
+      hideWhenReadonly: true,
+      command: onRiattivaPratica,
+    },
+    {
+      key: 'chiudi',
+      kind: 'state',
+      label: t('pratiche.azione_chiudi'),
+      icon: 'pi pi-check-circle',
+      severity: 'success',
+      visible: s === STATO_PRATICA.APERTA || s === STATO_PRATICA.SOSPESA,
+      hideWhenReadonly: true,
+      command: onChiudiPratica,
+    },
+    {
+      key: 'annulla',
+      kind: 'state',
+      label: t('pratiche.azione_annulla'),
+      icon: 'pi pi-times-circle',
+      severity: 'danger',
+      outlined: true,
+      visible: s !== '' && s !== STATO_PRATICA.CHIUSA && s !== STATO_PRATICA.ANNULLATA,
+      hideWhenReadonly: true,
+      command: onAnnullaPratica,
+    },
+  ]
+})
+
 // --- Salvataggio ---
 
 async function onSave() {
@@ -199,6 +269,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
     @update:visible="val => emit('update:visible', val)"
+    @after-show="onAfterShow"
   >
     <template #header>
       <DrawerTitle
@@ -208,7 +279,8 @@ const onClose = useDrawerClose(emit, 'cancelled')
       />
     </template>
 
-    <div :class="{ 'app-readonly': isReadonly }">
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+      <template v-if="contentReady">
 
       <!-- === CREAZIONE: form con soggetto/ruolo opzionali === -->
       <template v-if="!isEdit">
@@ -283,74 +355,37 @@ const onClose = useDrawerClose(emit, 'cancelled')
         />
       </template>
 
-      <!-- === EDIT: TabView con Dati + Flussi + Giornale === -->
+      <!-- === EDIT: header + azioni in alto, poi TabView con Dati + Flussi + Giornale === -->
       <template v-if="isEdit && detail">
+        <!-- Refactor UI drawer 2026-05-22 (Fase 3.A): header info + barra
+             azioni state in alto al drawer (sopra il TabView), simmetrici a
+             contratti/preventivi. Tag stato + Tag priorita' in #status,
+             codice come identificativo a sinistra. -->
+        <DrawerEntityHeader>
+          <Tag :value="detail.codice" severity="secondary" />
+          <template #status>
+            <Tag
+              :value="detail.stato_descrizione"
+              :severity="statoPraticaSeverity(detail.stato_codice_interno)"
+            />
+            <Tag
+              v-if="detail.priorita_descrizione"
+              :value="detail.priorita_descrizione"
+              :severity="prioritaPraticaSeverity(detail.priorita_codice_interno)"
+            />
+          </template>
+        </DrawerEntityHeader>
+
+        <DrawerActionsBar :actions="drawerActions" />
+
         <TabView :key="tabViewKey">
 
           <!-- Tab Dati -->
           <TabPanel :header="t('pratiche.tab_dati')">
-            <!-- Intestazione: codice + stato + priorita' (display dal backend) -->
-            <div class="pratica-header-row">
-              <div class="form-field" style="flex: 1;">
-                <label>{{ t('pratiche.col_codice') }}</label>
-                <InputText :model-value="detail.codice" disabled class="w-full" />
-              </div>
-              <div style="display: flex; gap: 0.5rem; align-self: flex-end;">
-                <Tag
-                  :value="detail.stato_descrizione"
-                  :severity="statoPraticaSeverity(detail.stato_codice_interno)"
-                />
-                <Tag
-                  v-if="detail.priorita_descrizione"
-                  :value="detail.priorita_descrizione"
-                  :severity="prioritaPraticaSeverity(detail.priorita_codice_interno)"
-                />
-              </div>
-            </div>
-
             <!-- Soggetto (se presente) -->
             <div v-if="detail.soggetto_display" class="form-field">
               <label>{{ t('pratiche.col_soggetto') }}</label>
               <InputText :model-value="detail.soggetto_display" disabled class="w-full" />
-            </div>
-
-            <!-- Azioni stato (nascosto quando nessun bottone visibile) -->
-            <div v-if="!isReadonly && statoCorrente !== STATO_PRATICA.CHIUSA && statoCorrente !== STATO_PRATICA.ANNULLATA" class="pratica-actions">
-              <Button
-                v-if="statoCorrente === STATO_PRATICA.BOZZA"
-                :label="t('pratiche.azione_apri')"
-                icon="pi pi-lock-open" size="small"
-                severity="info"
-                @click="onApriPratica"
-              />
-              <Button
-                v-if="statoCorrente === STATO_PRATICA.APERTA"
-                :label="t('pratiche.azione_sospendi')"
-                icon="pi pi-pause" size="small"
-                severity="warn"
-                @click="onSospendiPratica"
-              />
-              <Button
-                v-if="statoCorrente === STATO_PRATICA.SOSPESA"
-                :label="t('pratiche.azione_riattiva')"
-                icon="pi pi-play" size="small"
-                severity="success"
-                @click="onRiattivaPratica"
-              />
-              <Button
-                v-if="statoCorrente === STATO_PRATICA.APERTA || statoCorrente === STATO_PRATICA.SOSPESA"
-                :label="t('pratiche.azione_chiudi')"
-                icon="pi pi-check-circle" size="small"
-                severity="success"
-                @click="onChiudiPratica"
-              />
-              <Button
-                v-if="statoCorrente !== STATO_PRATICA.CHIUSA && statoCorrente !== STATO_PRATICA.ANNULLATA"
-                :label="t('pratiche.azione_annulla')"
-                icon="pi pi-times-circle" size="small"
-                severity="danger"
-                @click="onAnnullaPratica"
-              />
             </div>
 
             <!-- Form dati editabili -->
@@ -419,24 +454,8 @@ const onClose = useDrawerClose(emit, 'cancelled')
         </TabView>
       </template>
 
+      </template>
     </div>
   </Drawer>
 </template>
 
-<style scoped>
-.pratica-header-row {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  margin-bottom: 0.75rem;
-}
-
-.pratica-actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--app-toolbar-border);
-}
-</style>

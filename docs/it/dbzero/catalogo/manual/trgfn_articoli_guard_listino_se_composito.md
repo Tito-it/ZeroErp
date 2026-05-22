@@ -40,7 +40,9 @@ LANGUAGE plpgsql
 
 ## Logica
 
-Il trigger scatta solo quando `is_composito` transita da `FALSE`/`NULL` a `TRUE`. Non interviene su altre variazioni del campo (es. `TRUE → FALSE`, già bloccato da altri guard se la BoM è attiva).
+Il trigger scatta solo quando `is_composito` transita da `FALSE`/`NULL` a `TRUE`. Non interviene su altre variazioni del campo (es. `TRUE → FALSE`, bloccato da
+[`trgfn_articoli_guard_flags_struttura_bom_attiva`](/dbzero/catalogo/manual/trgfn_articoli_guard_flags_struttura_bom_attiva)
+quando la BoM e' attiva — migration `20260522-01`).
 
 ```
 1. IF NOT COALESCE(OLD.is_composito, FALSE)

@@ -60,4 +60,4 @@ Il messaggio è centralizzato in `config.messaggi_errore` (id 410, vedi cliente 
 
 * [`documenti.template_documenti_versioni`](/dbzero/documenti/tabelle/template_documenti_versioni) — tabella protetta
 * [`trgfn_template_documenti_versioni_block_delete`](trgfn_template_documenti_versioni_block_delete.md) — guard A2 (delete block correlato)
-* [Sviluppo Documenti — Piano DB §6.3, §13.3 A1](/dev/work-in-progress/sviluppo-documenti-db)
+* [Sviluppo Documenti — Piano DB §6.3, §13.3 A1](/dev/work-done/sviluppo-documenti-db)

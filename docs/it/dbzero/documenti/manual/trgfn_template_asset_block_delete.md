@@ -52,4 +52,4 @@ Messaggio in `config.messaggi_errore` (id 412).
 
 * [`documenti.template_asset`](/dbzero/documenti/tabelle/template_asset)
 * [`trgfn_template_asset_protect_file`](trgfn_template_asset_protect_file.md) — guard A4 (immutabilità file su UPDATE)
-* [Sviluppo Documenti — Piano DB §6.4, §13.3 A3](/dev/work-in-progress/sviluppo-documenti-db)
+* [Sviluppo Documenti — Piano DB §6.4, §13.3 A3](/dev/work-done/sviluppo-documenti-db)

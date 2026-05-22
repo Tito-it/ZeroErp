@@ -19,11 +19,11 @@ import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RoundingModeSelect from './RoundingModeSelect.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
@@ -237,15 +237,12 @@ function deleteUomTooltip(row) {
   return te(key) ? t(key) : t('common.delete')
 }
 
+// Pattern master-detail inline (memo `feedback_master_detail_inline` +
+// frontend-standards "Click riga → apre drawer in edit"): la modifica si
+// attiva via @row-select sulla DataTable, non dal kebab. Il menu mantiene
+// solo le azioni secondarie (elimina).
 function buildRigaActions(row) {
   return [
-    {
-      key: 'modifica-uom',
-      label: t('common.edit'),
-      icon: MANAGE_ICONS.EDIT,
-      allowWhenInactive: true,
-      command: () => onStartEdit(row),
-    },
     {
       key: 'elimina-uom',
       label: t('common.delete'),
@@ -256,6 +253,29 @@ function buildRigaActions(row) {
       command: () => onDelete(row),
     },
   ]
+}
+
+// Toolbar pagina: pulsante "Nuovo" prima della lista (pattern standard
+// frontend-standards "Azioni Pagina — PageActionsBar"). Nascosto in readonly
+// via prop hideWhenReadonly.
+const pageActions = computed(() => [
+  {
+    key: 'new-uom',
+    kind: 'primary',
+    label: t('common.new'),
+    tooltip: t('catalogo.nuova_uom_operativa'),
+    icon: MANAGE_ICONS.ADD,
+    hideWhenReadonly: true,
+    disabled: formMode.value !== null,
+    command: onStartNew,
+  },
+])
+
+// Click riga DataTable → entra in modifica (modifica = interazione principale,
+// non azione del menu). Pattern master-detail inline.
+function onRowSelect(event) {
+  if (isReadonly.value || formMode.value !== null) return
+  onStartEdit(event.data)
 }
 
 // Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
@@ -279,14 +299,30 @@ const onClose = useDrawerClose(emit)
       </div>
 
       <template v-if="!listLoading && !formMode">
+        <!-- Toolbar pagina standard: filtri (vuoti qui) + azione primaria
+             "Nuovo" prima della lista. Pattern frontend-standards lista
+             "PageActionsBar". -->
+        <div class="app-page-toolbar">
+          <div class="app-page-filters"></div>
+          <PageActionsBar :actions="pageActions" />
+        </div>
+
         <div v-if="uomList.length === 0" class="app-empty-state">
           <i class="pi pi-box" />
           <p>{{ t('catalogo.nessuna_uom') }}</p>
         </div>
 
-        <DataTable v-else :value="uomList" class="app-datatable" striped-rows>
+        <DataTable
+          v-else
+          :value="uomList"
+          class="app-datatable app-datatable--inner"
+          striped-rows
+          selection-mode="single"
+          data-key="id"
+          @row-select="onRowSelect"
+        >
           <Column field="uom_codice" :header="t('catalogo.col_codice')" style="width: 80px;" />
-          <Column field="uom_descrizione" :header="t('catalogo.col_descrizione')" />
+          <Column field="uom_descrizione" :header="t('catalogo.col_descrizione')" style="width: 180px;" />
           <Column :header="t('catalogo.col_base')" style="width: 50px;">
             <template #body="{ data }">
               <Tag v-if="data.is_base" :value="t('catalogo.tag_base')" severity="info" />
@@ -295,16 +331,6 @@ const onClose = useDrawerClose(emit)
           <Column field="factor_to_base" :header="t('catalogo.col_fattore')" style="width: 70px;">
             <template #body="{ data }">
               <span class="font-mono">{{ data.factor_to_base }}</span>
-            </template>
-          </Column>
-          <Column :header="t('catalogo.field_vendita')" style="width: 40px;">
-            <template #body="{ data }">
-              <Tag v-if="data.is_sell_uom" value="V" severity="success" />
-            </template>
-          </Column>
-          <Column :header="t('catalogo.field_acquisto')" style="width: 40px;">
-            <template #body="{ data }">
-              <Tag v-if="data.is_purchase_uom" value="A" severity="success" />
             </template>
           </Column>
           <Column :header="t('catalogo.field_logistica')" style="width: 40px;">
@@ -323,16 +349,6 @@ const onClose = useDrawerClose(emit)
             </template>
           </Column>
         </DataTable>
-
-        <div v-if="!isReadonly" class="mt-05">
-          <Button
-            :label="t('catalogo.aggiungi_uom')"
-            :icon="MANAGE_ICONS.ADD"
-            text size="small"
-            class="app-action-btn"
-            @click="onStartNew"
-          />
-        </div>
       </template>
 
       <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />

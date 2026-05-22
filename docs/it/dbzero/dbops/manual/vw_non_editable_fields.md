@@ -8,10 +8,14 @@ Approfondimento tabelle:
 >
 Approfondimento funzioni / trigger:
 > [dbops.fn_apply_lock_columns](/dbzero/dbops/funzioni/fn_apply_lock_columns)
+>
+Sistema lock condizionali (estensione, 2026-05-22):
+> [dbops.lock_columns_conditional](/dbzero/dbops/manual/lock_columns_conditional) — registro condizionale complementare
+> [dbops.fn_non_editable_fields](/dbzero/dbops/manual/fn_non_editable_fields) — funzione che unisce statici + condizionali per una riga specifica
 
 ### 🎯 Scopo Principale
 
-(latest review 28-04-2026)
+(latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
 
 `dbops.vw_non_editable_fields` e' un **alias semantico** sopra
 [`dbops.automation_lock_columns`](/dbzero/dbops/tabelle/automation_lock_columns):
@@ -67,17 +71,18 @@ non e' mai modificabile dopo l'INSERT, indipendentemente da stato/contesto.
 Questo pattern e' applicato ai codici stabili (`codice`, `codice_interno`),
 identificatori esterni (numero documento, codici SDI), ecc.
 
-**Casi NON coperti** (logica condizionale, non riducibile a "lista colonne"):
+**Casi NON coperti da questa vista** (logica condizionale, non riducibile a "lista colonne fissa"):
 
-| Tabella | Pattern non coperto | Trigger responsabile |
-|---|---|---|
-| `vendite.promo_articoli` | whitelist campi modificabili dipendente da stato derivato (FUTURA / INIZIATA / SCADUTA) | [`vendite.trgfn_promo_articoli_guard_data_driven`](/dbzero/vendite/funzioni/trgfn_promo_articoli_guard_data_driven) |
-| `catalogo.articoli_componenti` | struttura BoM immutabile (tutti i campi struttura lockati, ma `valido_al` modificabile per pattern "Chiudi riga") | [`catalogo.trgfn_articoli_componenti_block_modifica_struttura`](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_block_modifica_struttura) |
+| Tabella | Pattern non coperto | Soluzione |
+| --- | --- | --- |
+| `catalogo.articoli` | `is_composito`, `requires_serial`, `is_solo_componente` bloccati se BoM attiva | ✅ **Risolto** via `dbops.lock_columns_conditional` + `fn_non_editable_fields` (2026-05-22) |
+| `vendite.promo_articoli` | whitelist campi modificabili dipendente da stato derivato (FUTURA / INIZIATA / SCADUTA) | trigger [`vendite.trgfn_promo_articoli_guard_data_driven`](/dbzero/vendite/funzioni/trgfn_promo_articoli_guard_data_driven) + logica service Python |
+| `catalogo.articoli_componenti` | struttura BoM immutabile (tutti i campi struttura lockati, ma `valido_al` modificabile per "Chiudi riga") | trigger [`catalogo.trgfn_articoli_componenti_block_modifica_struttura`](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_block_modifica_struttura) |
 | `vendite.listini_versioni` | regole transizione stato BOZZA → ATTIVA → CHIUSA con campi modificabili condizionati | logica in `apps/vendite/services/listini_service.py` |
 
-Per queste entita' il backend deve continuare a tenere la logica lato
-service Python (o, in futuro, definire un meccanismo dichiarativo separato
-basato su JSONB con espressioni stato-dipendenti).
+I casi non ancora migrati al sistema condizionale richiedono logica nel service Python.
+Quando la regola e' esprimibile come query SQL booleana su `$1` (id riga), si puo'
+registrare in `dbops.lock_columns_conditional` e consumare via `fn_non_editable_fields`.
 
 ---
 
@@ -145,13 +150,13 @@ corrispondenti, mostrando il messaggio mappato da `error_code` (via
   non e' la fonte di verita' delle regole di editabilita' complete (vedi
   sezione "Cosa NON copre"). Per coperture totali bisogna combinare la
   vista con la logica stato-dipendente nei service.
-* **Estensione futura**: se i casi condizionali (promo_articoli,
-  articoli_componenti, listini_versioni) dovessero essere portati a
-  un meccanismo dichiarativo, l'opzione naturale e' una nuova tabella
-  `dbops.field_editability_rules` con colonne JSONB per esprimere
-  espressioni di stato (es. `{"stato": "INIZIATA", "campi_modificabili":
-  ["descrizione", "valido_al", "meta"]}`). Decisione architetturale da
-  affrontare separatamente, non urgente.
+* **Sistema condizionale implementato (2026-05-22)**: i casi lock condizionali
+  sono ora gestibili via `dbops.lock_columns_conditional` +
+  `dbops.fn_non_editable_fields`. Per i detail endpoint che hanno l'id riga,
+  usare `fn_non_editable_fields` al posto di questa vista — restituisce
+  statici + condizionali in un unico array ordinato.
+  Vedi [lock_columns_conditional](/dbzero/dbops/manual/lock_columns_conditional)
+  e [fn_non_editable_fields](/dbzero/dbops/manual/fn_non_editable_fields).
 
 ---
 

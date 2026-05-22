@@ -9,11 +9,14 @@ import { useArticoliStore } from '../stores/articoli'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { listArticoloUom, listArticoloComponenti, listArticoloNote, getArticoloFormDefaults } from '../api/catalogo'
+import { listArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
+import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import IvaSelect from '../../core/components/IvaSelect.vue'
 import ContoContabileSelect from '../../core/components/ContoContabileSelect.vue'
@@ -51,13 +54,15 @@ const nonEditableFields = computed(() => detail.value?.non_editable_fields || []
 function isFieldLocked(name) {
   return isEdit.value && nonEditableFields.value.includes(name)
 }
+// I flag struttura (is_composito, is_solo_componente, requires_serial)
+// arrivano nel `non_editable_fields` quando l'articolo partecipa a una BoM
+// attiva (lock condizionali registrati in `dbops.lock_columns_conditional`
+// + fn `dbops.fn_non_editable_fields`, migrations 20260522-02..04). Single
+// source of truth BE — nessuna logica locale FE.
 
 // Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
-const contentReady = ref(false)
-
-function onAfterShow() {
-  contentReady.value = true
-}
+// (pattern feedback_content_ready_after_show centralizzato in useDrawerContentReady).
+const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // Sub-drawer e riepilogo (edit mode)
 const uomDrawerVisible = ref(false)
@@ -114,11 +119,13 @@ async function loadBomRiepilogo() {
   } catch { bomRiepilogo.value = [] }
 }
 
-// Scopo: Carica riepilogo note.
+// Scopo: Carica riepilogo note (preview prime 80 char in panel sezione).
+//        Usa il BB partizionato `makeArticoloNotesApi` per coerenza col drawer
+//        figlio `ArticoloNoteDrawer`. Refactor 2026-05-21 (Fase 2.B).
 async function loadNoteRiepilogo() {
   if (!props.articoloId) return
   try {
-    const res = await listArticoloNote(props.articoloId)
+    const res = await makeArticoloNotesApi(props.articoloId).listNote()
     const payload = res.data?.data
     noteRiepilogo.value = payload?.results || payload || []
   } catch { noteRiepilogo.value = [] }
@@ -166,10 +173,7 @@ async function applyFormDefaults() {
 }
 
 watch(() => props.visible, async (v) => {
-  if (!v) {
-    contentReady.value = false
-    return
-  }
+  if (!v) return  // contentReady reset gestito da useDrawerContentReady
   if (isEdit.value) {
     loadDetail()
   } else {
@@ -276,6 +280,39 @@ function onConfirmRiattiva() {
     }
   })
 }
+
+// Azioni della testata articolo consumate da DrawerActionsBar (refactor
+// UI drawer 2026-05-21, Fase 2.A). Solo state actions: Disattiva/Riattiva
+// in alternativa esclusiva tramite `visible`. UoM/BoM/Note restano panel
+// inline (pattern misto: state in alto + sub-entita' eterogenee panel).
+// `hideWhenReadonly` rispetta il pattern degli altri drawer: in modalita'
+// LETTURA le azioni di stato si nascondono.
+const drawerActions = computed(() => {
+  if (!isEdit.value || !detail.value) return []
+  return [
+    {
+      key: 'disattiva',
+      kind: 'state',
+      label: t('catalogo.disattiva_articolo'),
+      icon: 'pi pi-ban',
+      severity: 'danger',
+      outlined: true,
+      visible: detail.value.attivo === true,
+      hideWhenReadonly: true,
+      command: onConfirmDisattiva,
+    },
+    {
+      key: 'riattiva',
+      kind: 'state',
+      label: t('catalogo.riattiva_articolo'),
+      icon: 'pi pi-check',
+      severity: 'success',
+      visible: detail.value.attivo === false,
+      hideWhenReadonly: true,
+      command: onConfirmRiattiva,
+    },
+  ]
+})
 </script>
 
 <template>
@@ -288,6 +325,25 @@ function onConfirmRiattiva() {
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <template v-if="contentReady">
+
+        <!-- Refactor UI drawer 2026-05-21 (Fase 2.A): header info + barra
+             azioni state in alto, simmetrici a contratti/preventivi.
+             Tag stato a destra, Disattiva/Riattiva nel BB azioni; UoM/BoM/Note
+             restano panel inline piu' sotto (pattern misto). -->
+        <template v-if="isEdit && detail">
+          <DrawerEntityHeader>
+            <Tag :value="detail.codice" severity="secondary" />
+            <template #status>
+              <Tag
+                :value="detail.attivo ? t('common.active') : t('common.inactive')"
+                :severity="detail.attivo ? 'success' : 'warn'"
+              />
+            </template>
+          </DrawerEntityHeader>
+
+          <DrawerActionsBar :actions="drawerActions" />
+        </template>
+
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('catalogo.field_codice') }} *</label>
@@ -349,51 +405,20 @@ function onConfirmRiattiva() {
         <div class="form-grid-3col">
           <div class="form-field">
             <label>{{ t('catalogo.field_composito') }}</label>
-            <ToggleSwitch v-model="form.is_composito" />
+            <ToggleSwitch v-model="form.is_composito"
+              :disabled="isFieldLocked('is_composito')" />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_solo_componente') }}</label>
-            <ToggleSwitch v-model="form.is_solo_componente" />
+            <ToggleSwitch v-model="form.is_solo_componente"
+              :disabled="isFieldLocked('is_solo_componente')" />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_requires_serial') }}</label>
-            <ToggleSwitch v-model="form.requires_serial" />
+            <ToggleSwitch v-model="form.requires_serial"
+              :disabled="isFieldLocked('requires_serial')" />
           </div>
         </div>
-        <!-- Sezione: Stato articolo (Fase 7) — disattiva/riattiva via endpoint dedicato.
-             L'`attivo` non si modifica piu' via PATCH: pulsanti context-aware con conferma. -->
-        <div v-if="isEdit && detail" class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_stato_articolo') }}</label>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <Tag
-                :value="detail.attivo ? t('common.active') : t('common.inactive')"
-                :severity="detail.attivo ? 'success' : 'warn'"
-              />
-              <Button
-                v-if="detail.attivo && !isReadonly"
-                :label="t('catalogo.disattiva_articolo')"
-                icon="pi pi-ban"
-                severity="danger"
-                text
-                size="small"
-                class="app-escape"
-                @click="onConfirmDisattiva"
-              />
-              <Button
-                v-if="!detail.attivo && !isReadonly"
-                :label="t('catalogo.riattiva_articolo')"
-                icon="pi pi-check"
-                severity="success"
-                text
-                size="small"
-                class="app-escape"
-                @click="onConfirmRiattiva"
-              />
-            </div>
-          </div>
-        </div>
-
         <!-- Sezione: UoM riepilogo (edit mode) -->
         <template v-if="isEdit && detail">
           <div class="app-drawer-section"><h4>{{ t('catalogo.tab_uom') }}</h4></div>
@@ -440,8 +465,8 @@ function onConfirmRiattiva() {
           <div class="app-drawer-section"><h4>{{ t('catalogo.tab_note') }}</h4></div>
           <div class="riepilogo-section">
             <div v-if="noteRiepilogo.length > 0" class="riepilogo-list">
-              <div v-for="n in noteRiepilogo" :key="n.nota_id" class="riepilogo-item">
-                <span class="riepilogo-detail">{{ (n.nota_testo || '').substring(0, 80) }}{{ (n.nota_testo || '').length > 80 ? '...' : '' }}</span>
+              <div v-for="n in noteRiepilogo" :key="n.id" class="riepilogo-item">
+                <span class="riepilogo-detail">{{ ((n.testo_md || n.testo) || '').substring(0, 80) }}{{ ((n.testo_md || n.testo) || '').length > 80 ? '...' : '' }}</span>
               </div>
             </div>
             <div v-else class="riepilogo-empty">{{ t('catalogo.nessuna_nota') }}</div>

@@ -460,21 +460,23 @@ class CatalogoApiTests(JwtMockedApiTest):
         self.assertEqual(response.json()["error"]["code"], "E_CATALOGO_COMPONENTE_NOT_FOUND")
 
     # Scopo: GET note articolo -> 200 con envelope count/results.
+    # Shape allineata al pattern partizionato vendite (2026-05-22):
+    # alias senza prefisso `nota_` (id/testo/testo_md, ecc.).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.catalogo.api.views.fn_list_note_articolo")
     def test_get_articolo_note_ok(self, mocked_list, _mock_auth):
-        mocked_list.return_value = {"count": 1, "results": [{"nota_id": 5, "nota_testo": "Demo"}]}
+        mocked_list.return_value = {"count": 1, "results": [{"id": 5, "testo": "Demo"}]}
 
         response = self.client.get(f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/note/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data"]["results"][0]["nota_id"], 5)
+        self.assertEqual(response.json()["data"]["results"][0]["id"], 5)
 
     # Scopo: POST nota articolo -> 200 e payload inoltrato al service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.catalogo.api.views.fn_create_nota_articolo")
     def test_post_articolo_nota_ok(self, mocked_create, _mock_auth):
-        mocked_create.return_value = {"nota_id": 5, "nota_testo": "Demo"}
+        mocked_create.return_value = {"id": 5, "testo": "Demo"}
 
         response = self.client.post(
             f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/note/",
@@ -483,7 +485,7 @@ class CatalogoApiTests(JwtMockedApiTest):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data"]["nota_id"], 5)
+        self.assertEqual(response.json()["data"]["id"], 5)
         self.assertEqual(str(mocked_create.call_args.args[0]), _ARTICOLO_UUID)
 
     # Scopo: PATCH nota assente -> 404 via policy catalogo.

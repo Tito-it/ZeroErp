@@ -60,4 +60,4 @@ Messaggio in `config.messaggi_errore` (id 416).
 * [`trgfn_documenti_generati_block_delete`](trgfn_documenti_generati_block_delete.md) — guard A5
 * [`trgfn_documenti_generati_check_coerenza`](trgfn_documenti_generati_check_coerenza.md) — guard A6
 * [`trgfn_documenti_generati_file_protect_file`](trgfn_documenti_generati_file_protect_file.md) — guard A7-bis (controparte sul file)
-* [Sviluppo Documenti — Piano DB §13.3 A7, sezione B](/dev/work-in-progress/sviluppo-documenti-db)
+* [Sviluppo Documenti — Piano DB §13.3 A7, sezione B](/dev/work-done/sviluppo-documenti-db)

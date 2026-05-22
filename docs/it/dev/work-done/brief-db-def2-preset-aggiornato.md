@@ -226,7 +226,7 @@ Il backend agent procede in parallelo con:
 
 ## Riferimenti
 
-- Roadmap: [sviluppo-personalizzazioni-liste_def.md](sviluppo-personalizzazioni-liste_def.md) sezione DEF-2.
+- Roadmap: [sviluppo-personalizzazioni-liste_def.md](../work-in-progress/sviluppo-personalizzazioni-liste_def.md) sezione DEF-2.
 - Doc fn corrente: [docs/it/dbzero/ui/manual/fn_resolve_lista_config.md](../../dbzero/ui/manual/fn_resolve_lista_config.md).
 - Doc tabella: [docs/it/dbzero/ui/manual/lista_preferenza_utente.md](../../dbzero/ui/manual/lista_preferenza_utente.md).
 - Pattern complementare gia' esistente: `colonne_nuove` (>0 = "nuove colonne nel catalogo disponibili"). DEF-2 introduce il segnale parallelo "preset modificato dall'admin".

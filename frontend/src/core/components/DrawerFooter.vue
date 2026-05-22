@@ -58,6 +58,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       :label="cancelText"
       :icon="closeOnly ? 'pi pi-times' : undefined"
       severity="secondary"
+      class="app-escape"
       @click="emit('cancel')"
     />
     <Button

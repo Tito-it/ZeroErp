@@ -60,4 +60,4 @@ Messaggio in `config.messaggi_errore` (id 415).
 * [`documenti.template_documenti_versioni`](/dbzero/documenti/tabelle/template_documenti_versioni)
 * [`trgfn_documenti_generati_block_delete`](trgfn_documenti_generati_block_delete.md) — guard A5
 * [`trgfn_documenti_generati_protect_snapshot`](trgfn_documenti_generati_protect_snapshot.md) — guard A7
-* [Sviluppo Documenti — Piano DB §6.5, §13.3 A6](/dev/work-in-progress/sviluppo-documenti-db)
+* [Sviluppo Documenti — Piano DB §6.5, §13.3 A6](/dev/work-done/sviluppo-documenti-db)

@@ -92,13 +92,20 @@ Risultato per stato:
 | `stato_codice` | Azioni disponibili |
 |---|---|
 | `DRAFT` | `emetti`, `annulla` |
-| `EMESSO` | `accetta`, `rifiuta`, `annulla` |
-| `ACCETTATO` | `annulla` |
+| `EMESSO` | `accetta`, `rifiuta` |
+| `ACCETTATO` | `[]` |
 | `ANNULLATO` / `RIFIUTATO` / `SCADUTO` | `[]` |
 
 La transizione `EMESSO → SCADUTO` è **automatica** (job notturno) e
 marcata `manuale=false` in `transizioni_stati_preventivi.meta`: viene
 esclusa dalla lista.
+
+Le transizioni `EMESSO → ANNULLATO` e `ACCETTATO → ANNULLATO` sono
+**disattivate** (`attivo = false` in `config.transizioni_stati_preventivi`,
+righe id=6 e id=7, aggiornamento 2026-05-22). L'annullamento è ammesso
+solo da `DRAFT`. Razionale: un preventivo emesso si rifiuta (dal cliente)
+o si fa scadere; uno accettato ha già attivato downstream (pipeline
+fatturazione, push commessa).
 
 ## Algoritmo
 

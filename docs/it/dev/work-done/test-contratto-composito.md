@@ -1,4 +1,5 @@
 # Test smoke E2E — Contratto + articolo composito
+## TUTTO 
 
 **Data**: 2026-05-19
 **Stato**: checklist operativa per smoke browser post-refactor `ComponentiPanel` data-driven.
@@ -9,6 +10,7 @@
 ---
 
 ## Caso 1 — Composito su contratto reale (path felice + refactor `ComponentiPanel` data-driven)
+## OK CONCLUSO 
 
 **Obiettivo principale**: validare che il refactor (`ComponentiPanel` in modalità `initialData`) renda correttamente l'expansion della riga `DA_LISTINO` bundle, e che la creazione AGGIUNTA composita funzioni end-to-end.
 
@@ -47,7 +49,8 @@ WHERE riga_contratto_id = <RIGA_ID_SOPRA>;
 ---
 
 ## Caso 2 — Composito senza EF risolvibile
-
+## OK TEST COMPLETATO 
+ 
 **Già coperto da test BE**: [test_create_riga_articolo_composito_senza_emittente_solleva](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1850).
 
 In browser serve impersonare un utente che NON ha emittente fiscale risolvibile (admin globale senza EF default per la categoria del BA del contratto).
@@ -68,7 +71,7 @@ WHERE contratto_id = <ID> AND prezzo_unitario = 0
 ---
 
 ## Caso 3 — Composito senza `valido_dal`
---- FATTO ----
+## --- FATTO ----
 **Già coperto dal test BE**: [test_create_riga_articolo_composito_senza_valido_dal_solleva](../../../../backend/apps/vendite/tests/services/test_contratti_service.py#L1889).
 
 In browser:
@@ -82,7 +85,7 @@ In browser:
 ---
 
 ## Caso 4 — Note partizionate (Stream 1)##
-Tutto testato 
+## Tutto testato 
 1. Apri preventivo esistente → bottone "Gestisci note" nel drawer testata → si apre `PreventivoNoteDrawer`.
 2. Crea una nota testata (target_riga_id=null): salva, verifica visibile in lista.
 3. Apri il drawer righe → seleziona una riga → "Gestisci note" → crea nota di riga.
@@ -104,7 +107,7 @@ ORDER BY data_insert DESC;
 ---
 
 ## Caso 5 — Override parametro scope `categoria_cliente` (Stream 2 Phase B)
-
+## TESTATO 
 1. Login admin. Vai a `/config/impostazioni` → seleziona un parametro (es. `MAX_SCONTO_PERCENT`).
 2. Drawer override → vedi 3 radio scope: Utente / Gruppo / **Categoria cliente** (nuovo dopo Phase B).
 3. Seleziona "Categoria cliente" → appare `<LookupSelect rel="anagrafiche.categorie_clienti">`. Seleziona una (es. "Residenziale").
@@ -142,7 +145,7 @@ WHERE codice_interno = '<CODICE>'
 ## Casi aggiuntivi — Refactor `fonte_quantita_attesa` (2026-05-19, Step 3 + 3.6)
 
 ### Caso 6 — Form CREATE riga: select fonte + default
-
+## TESTATO OK 
 1. Apri contratto DRAFT → "Aggiungi articolo" → seleziona articolo standard non composito.
 2. Atteso: il form mostra il select **"Fonte quantità"** accanto a "Tipo erogazione".
 3. Cambia `tipo_erogazione`:
