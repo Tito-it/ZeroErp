@@ -11,6 +11,7 @@ import { useLookup } from '../../core/composables/useLookup'
 import { listAreeFunzionali, listAzioniProcesso } from '../api/amministrazione'
 import { LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -102,7 +103,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
     @update:visible="val => emit('update:visible', val)"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('amm.profilo_reparto', { nome: uoNome })" icon="pi pi-sitemap" />
+      <DrawerTitle :action="t('common.edit')" :title="t('amm.profilo_reparto', { nome: uoNome })" :icon="NAV_ICONS.SITEMAP" />
     </template>
 
     <div :class="{ 'app-readonly': isReadonly }">

@@ -13,6 +13,7 @@ import { useApiHandler } from '../composables/useApiHandler'
 import { usePagination } from '../composables/usePagination'
 import { useContextStore } from '../../stores/context'
 import { DRAWER_WIDTH, TIPO_RUOLO } from '../constants'
+import { NAV_ICONS } from '../navigation'
 import DrawerTitle from './DrawerTitle.vue'
 import SearchDetailTable from './details/SearchDetailTable.vue'
 
@@ -203,7 +204,7 @@ watch(() => props.visible, (newVal) => {
     @update:visible="emit('update:visible', $event)"
   >
     <template #header>
-      <DrawerTitle :title="t('search.title')" icon="pi pi-search" />
+      <DrawerTitle :title="t('search.title')" :icon="NAV_ICONS.SEARCH" />
     </template>
     <div class="app-drawer-content search-drawer-content">
       <!-- Filtri ricerca -->

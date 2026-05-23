@@ -153,7 +153,7 @@ Quando il prezzo del listino cambia dopo la creazione:
 - nel **contratto ATTIVO** la versione e' fissata: il pricing resta blindato.
 
 Approfondimento dominio:
-[`Analisi-iniziale-offerta-commerciale.md`](/dev/work-in-progress/Analisi-iniziale-offerta-commerciale)
+[`analisi-offerta-commerciale.md`](/dev/work-in-progress/analisi-offerta-commerciale)
 discute la simmetria mancante (predecessore "offerta commerciale" non ancora
 modellato).
 

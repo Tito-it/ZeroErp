@@ -12,6 +12,7 @@ import { createVersione } from '../api/listini'
 import { getVersioneNewDefaults } from '../api/formDefaults'
 import { toDateString, addDaysToToday } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
@@ -113,7 +114,7 @@ function close() {
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
     position="right" :style="{ width: DRAWER_WIDTH.STANDARD }">
     <template #header>
-      <DrawerTitle :action="t('common.new')" :title="t('listini.nuova_versione')" icon="pi pi-history" />
+      <DrawerTitle :action="t('common.new')" :title="t('listini.nuova_versione')" :icon="NAV_ICONS.HISTORY" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

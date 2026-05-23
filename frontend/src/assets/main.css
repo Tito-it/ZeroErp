@@ -831,6 +831,58 @@ a {
   font-size: 0.5rem;
 }
 
+/* Clienti = ricevuta (pi-receipt \ea06) + omino sovrapposto (pi-user \e939).
+   Differenzia visivamente dai soggetti (pi-users) e dai fornitori
+   (palazzo+omino) mantenendo la semantica "chi riceve la fattura". */
+.app-nav-icon-clienti::before {
+  content: "\ea06";
+  top: 0.02rem;
+  left: 0.16rem;
+  font-size: 0.92rem;
+}
+
+.app-nav-icon-clienti::after {
+  content: "\e939";
+  left: 0.78rem;
+  top: -0.05rem;
+  font-size: 0.55rem;
+}
+
+/* Fornitori = palazzo (pi-building \e9cf) + omino sovrapposto (pi-user \e939).
+   Semantica "azienda fornitrice + persona di riferimento". Coerente
+   visivamente con clienti (stesso pattern overlay omino piccolo). */
+.app-nav-icon-fornitori::before {
+  content: "\e9cf";
+  top: 0.02rem;
+  left: 0.14rem;
+  font-size: 0.94rem;
+}
+
+.app-nav-icon-fornitori::after {
+  content: "\e939";
+  left: 0.78rem;
+  top: -0.05rem;
+  font-size: 0.55rem;
+}
+
+/* UoM operativa = box (pi-box \e9d9) + ingranaggio sovrapposto (pi-cog \e94a).
+   Distingue le unita' di misura operative dall'icona "articolo" base
+   (pi-box semplice usato come NAV_ICONS.CATALOGO). Semantica:
+   "quanta cosa, con conversione operativa". */
+.app-nav-icon-uom::before {
+  content: "\e9d9";
+  top: 0.04rem;
+  left: 0.14rem;
+  font-size: 0.92rem;
+}
+
+.app-nav-icon-uom::after {
+  content: "\e94a";
+  left: 0.72rem;
+  top: -0.05rem;
+  font-size: 0.7rem;
+}
+
 /* DatePicker: icona calendario colore primario standard.
  * PrimeVue 4 usa SVG inline nel tema — override con !important per vincere la specificita'. */
 .p-datepicker-input-icon-container,

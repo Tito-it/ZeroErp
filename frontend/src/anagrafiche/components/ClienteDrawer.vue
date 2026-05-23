@@ -18,6 +18,7 @@ import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { listUtilitiesPerBillingAccount, listSoggettoIndirizzi } from '../api/anagrafiche'
 import { lookupUtilitiesPerEmittente } from '../../core/apiCore'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
@@ -398,7 +399,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('clienti.cliente')"
-        icon="pi pi-briefcase"
+        :icon="NAV_ICONS.CLIENTI"
       />
     </template>
 

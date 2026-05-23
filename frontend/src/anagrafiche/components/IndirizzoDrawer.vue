@@ -11,6 +11,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useIndirizzoBase, buildCivicoPart } from '../../core/composables/useIndirizzoBase'
 import { getIndirizzo } from '../api/anagrafiche'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import ComuneAutocomplete from '../../core/components/ComuneAutocomplete.vue'
@@ -122,7 +123,7 @@ async function handleSave() {
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :action="isCreate ? t('common.new') : t('common.edit')" :title="t('indirizzi.indirizzo')" icon="pi pi-map-marker" />
+      <DrawerTitle :action="isCreate ? t('common.new') : t('common.edit')" :title="t('indirizzi.indirizzo')" :icon="NAV_ICONS.INDIRIZZO" />
     </template>
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Localizzazione -->

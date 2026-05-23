@@ -7,7 +7,7 @@ import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -96,7 +96,7 @@ const onClose = useDrawerClose(emit)
     :dismissable="true"
   >
     <template #header>
-      <DrawerTitle :title="t('contratti.gestisci_utility')" icon="pi pi-cog" />
+      <DrawerTitle :title="t('contratti.gestisci_utility')" :icon="MANAGE_ICONS.UTILITY" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

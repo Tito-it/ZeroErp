@@ -7,6 +7,7 @@ import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useToponomasticaStore } from '../../anagrafiche/stores/toponomastica'
 import { useApiHandler } from '../composables/useApiHandler'
 import { DRAWER_WIDTH } from '../constants'
+import { NAV_ICONS } from '../navigation'
 import DrawerFooter from './DrawerFooter.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
@@ -71,7 +72,7 @@ async function handleSave() {
     :style="{ width: DRAWER_WIDTH.SIMPLE }"
   >
     <template #header>
-      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('indirizzi.toponomastica')" icon="pi pi-directions" />
+      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('indirizzi.toponomastica')" :icon="NAV_ICONS.TOPONOMASTICA" />
     </template>
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">

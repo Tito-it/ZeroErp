@@ -13,6 +13,7 @@ import { listConversioniUom, createConversioneUom, updateConversioneUom } from '
 import { lookupCodici } from '../../core/apiCore'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { displayDate } from '../../core/utils/date'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -195,7 +196,7 @@ const pageActions = computed(() => [
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :action="t('catalogo.gestisci_conversioni')" :title="uomCodice" icon="pi pi-arrows-h" />
+      <DrawerTitle :action="t('catalogo.gestisci_conversioni')" :title="uomCodice" :icon="NAV_ICONS.ARROWS_H" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

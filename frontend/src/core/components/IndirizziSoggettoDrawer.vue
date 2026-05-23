@@ -16,6 +16,7 @@ import {
 } from '../../anagrafiche/api/anagrafiche'
 import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo, lookupCodici } from '../apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
+import { NAV_ICONS } from '../navigation'
 import { sortByFonte } from '../utils/string'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
@@ -305,7 +306,7 @@ const onClose = useDrawerClose(emit)
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('indirizzi.indirizzo') + ' - ' + t(`indirizzo_soggetto.context_${context}`)" icon="pi pi-map-marker" />
+      <DrawerTitle :action="t('common.edit')" :title="t('indirizzi.indirizzo') + ' - ' + t(`indirizzo_soggetto.context_${context}`)" :icon="NAV_ICONS.INDIRIZZO" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

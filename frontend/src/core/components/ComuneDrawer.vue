@@ -9,6 +9,7 @@ import { useApiHandler } from '../composables/useApiHandler'
 import { useLookup } from '../composables/useLookup'
 import { lookupProvince } from '../../anagrafiche/api/anagrafiche'
 import { DRAWER_WIDTH } from '../constants'
+import { NAV_ICONS } from '../navigation'
 import DrawerFooter from './DrawerFooter.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
@@ -65,7 +66,7 @@ async function handleSave() {
     :style="{ width: DRAWER_WIDTH.SIMPLE }"
   >
     <template #header>
-      <DrawerTitle :action="t('common.new')" :title="t('indirizzi.comune')" icon="pi pi-building" />
+      <DrawerTitle :action="t('common.new')" :title="t('indirizzi.comune')" :icon="NAV_ICONS.COMUNE" />
     </template>
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">

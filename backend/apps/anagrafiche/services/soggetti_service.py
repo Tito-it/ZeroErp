@@ -54,6 +54,31 @@ class SoggettiService:
     def list_soggetti(self, **params: Any) -> tuple[list, int]:
         return self._repo.list_soggetti(**params)
 
+    # Scopo: Risolve i filtri attivi della lista soggetti in dict
+    #        {label_italiano: descrizione_leggibile} per l'header
+    #        dell'export DEF-1. Stesso pattern di
+    #        `ClientiService.resolve_filtri_export_label`: sostituisce il
+    #        dump JSON opaco ("tipo_soggetto_dettaglio_id: 3") con
+    #        etichette comprensibili ("Tipo: Persona Fisica").
+    #
+    #        Fallback: se il lookup non trova match (id obsoleto), usa
+    #        "id=N" per non perdere informazione.
+    def resolve_filtri_export_label(
+        self,
+        *,
+        search: str | None = None,
+        tipo_soggetto_dettaglio_id: int | None = None,
+    ) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        if search:
+            out["Ricerca"] = search
+        if tipo_soggetto_dettaglio_id is not None:
+            desc = self._repo.get_tipo_soggetto_dettaglio_descrizione(
+                tipo_soggetto_dettaglio_id,
+            )
+            out["Tipo"] = desc or f"id={tipo_soggetto_dettaglio_id}"
+        return out
+
     # Scopo: Dettaglio soggetto con contatti, indirizzi, ruoli e dati societari.
     #        Obiettivo: restituire tutto il necessario per popolare il drawer.
     #        emittente_ids filtra i ruoli CL per scope emittente (None = nessun filtro).

@@ -13,6 +13,7 @@ import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative, invitaOperatore, reinviaInvito } from '../api/amministrazione'
 import { TIPO_RUOLO_CODICE } from '../constants'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { displayDate } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
@@ -282,7 +283,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
     @update:visible="val => emit('update:visible', val)"
   >
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amm.operatore')" icon="pi pi-user" />
+      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amm.operatore')" :icon="NAV_ICONS.OPERATORE" />
     </template>
 
     <div :class="{ 'app-readonly': isReadonly }">
