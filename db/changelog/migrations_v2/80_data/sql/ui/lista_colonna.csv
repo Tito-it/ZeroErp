@@ -13,3 +13,9 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 12,1,data_chiusura,Chiusura,Data di chiusura definitiva del contratto,data_chiusura,informazione,date,date_short,110,120,center,Date ciclo vita,3,f,t,t,f,f,t,2026-05-07 00:00:00,mctit,clienti.col_data_chiusura
 13,1,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-05-07 00:00:00,mctit,common.col_azioni
 14,1,sosp_riatt,Sosp./Riatt.,Data sospensione o riattivazione (colonna calcolata FE),,informazione,string,,130,105,center,Date ciclo vita,3,f,f,f,f,f,t,2026-05-08 00:00:00,mctit,clienti.col_sosp_riatt
+15,2,codice,Codice,Codice interno del soggetto,codice,identificatore,string,,130,10,left,Anagrafica,1,t,t,t,f,f,t,2026-05-22 00:00:00,mctit,config_panel.col_codice
+16,2,ragione_sociale_completa,Ragione Sociale,Ragione sociale completa del soggetto,ragione_sociale_completa,informazione,string,,180,20,left,Anagrafica,1,t,t,t,t,f,t,2026-05-22 00:00:00,mctit,soggetti.col_ragione_sociale
+17,2,codice_fiscale,Id. Fiscale,Codice fiscale del soggetto,id_fiscale_univoco_cf_piva,informazione,string,,170,30,left,Anagrafica,1,t,t,t,f,f,t,2026-05-22 00:00:00,mctit,common.id_fiscale
+18,2,tipo_descrizione,Tipo,Tipo soggetto (persona fisica / giuridica / ecc.),tipo_descrizione,informazione,string,,100,40,left,Anagrafica,1,t,t,t,f,f,t,2026-05-22 00:00:00,mctit,soggetti.col_tipo
+19,2,ruoli,Ruoli,Ruoli assegnati al soggetto (es. CLIENTE FORNITORE),ruoli,informazione,string,,240,50,left,Anagrafica,1,f,f,t,f,f,t,2026-05-22 00:00:00,mctit,soggetti.col_ruoli
+20,2,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-05-22 00:00:00,mctit,common.col_azioni

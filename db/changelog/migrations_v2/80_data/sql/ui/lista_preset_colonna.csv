@@ -13,3 +13,9 @@ preset_id,colonna_id,ordine,visibile,fissata
 1,7,110,t,f
 1,8,120,f,f
 1,13,999,t,f
+2,15,10,t,t
+2,16,20,t,f
+2,17,30,t,f
+2,18,40,t,f
+2,19,50,t,f
+2,20,999,t,f
