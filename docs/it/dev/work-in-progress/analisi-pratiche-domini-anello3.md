@@ -34,7 +34,7 @@
 >   tipi_prestazione, template_flussi, handler, generazione cross-pratica
 > - [crm-ticketing-pratiche.md](crm-ticketing-pratiche.md) — pattern già aperto
 >   per assistenza/CRM, qui generalizzato
-> - [Analisi-iniziale-offerta-commerciale.md](Analisi-iniziale-offerta-commerciale.md)
+> - [analisi-offerta-commerciale.md](analisi-offerta-commerciale.md)
 >   — futuro asse `offerta_commerciale → contratto`, distinto da preventivo→ordine
 > - [pratiche_sorgenti](../../dbzero/pratiche/manual/pratiche_sorgenti.md) — tabella
 >   ponte M:N esistente
@@ -1243,7 +1243,7 @@ fase F il motore si può promuovere a contratto stabile.
 - [Manuale vendite.ordini](../../dbzero/vendite/manual/ordini.md)
 - [gestione-pratiche-v2.md](gestione-pratiche-v2.md)
 - [crm-ticketing-pratiche.md](crm-ticketing-pratiche.md)
-- [Analisi-iniziale-offerta-commerciale.md](Analisi-iniziale-offerta-commerciale.md)
+- [analisi-offerta-commerciale.md](analisi-offerta-commerciale.md)
 - [pratiche_sorgenti manual](../../dbzero/pratiche/manual/pratiche_sorgenti.md)
 
 ### 9.2 Tabelle/funzioni DB di interesse
@@ -1266,6 +1266,624 @@ fase F il motore si può promuovere a contratto stabile.
   include `log_evento_dominio` helper provvisorio)
 - `apps/vendite/services/preventivi_service.py` (push_a_commessa già
   esistente, da estendere con split per natura di riga)
+
+---
+
+## 11. Esempio operativo di configurazione: `VENDITA_STANDARD`
+
+> **Stato**: redatto 2026-05-22 come continuazione concreta di §5.
+> Questo capitolo **non è un brief DB** (resta livello modello: nomi, semantica,
+> esempi runtime). I DDL pronti restano in Fase B (§8.2).
+>
+> **Cosa contiene**:
+>
+> - §11.0 chiude le decisioni aperte §7.2 (D0 = entità natura; D1 = derivazione
+>   natura su riga) con esito **decisivo, irreversibile per v1**.
+> - §11.1 mostra la **configurazione completa** del processo preventivo
+>   (`VENDITA_STANDARD`): seed + handler + esempio runtime end-to-end.
+> - §11.2 (in scrittura successiva) farà l'analogo per il **contratto**.
+> - §11.3 (in scrittura successiva) descrive il **percorso fatturazione immediata
+>   → commessa** come ramo dell'handler `vendita.push_preventivo`.
+
+### 11.0 Chiusura decisioni aperte D0 / D1
+
+#### 11.0.1 Verdetto D0 — entità "natura ai fini del routing post-accettazione"
+
+**Audit dello schema esistente** (2026-05-22) ha verificato in
+`catalogo.articoli`, `vendite.articoli_tipologie`, `vendite.articoli_gruppi`,
+`vendite.articoli_spesa`, `vendite.preventivi_righe`, `config.*`:
+
+| Candidata                              | Nata per                                                                          | Vale per il routing?                       |
+| -------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------ |
+| `vendite.articoli_tipologie`           | Raggruppamenti merceologici / analisi statistiche                                 | NO — concetto vicino ma diverso            |
+| `vendite.articoli_gruppi`              | Raggruppamenti commerciali per reportistica                                       | NO — non discrimina BENE / SERVIZIO        |
+| `catalogo.articoli.is_composito`       | Composizione BoM (presenza componenti)                                            | NO — ortogonale alla natura                |
+| `catalogo.articoli.voce_utility`       | Mapping verso utility (energia, idrico, ...)                                      | NO — concetto del dominio utility, non BoM |
+| Nessun campo su `vendite.preventivi_righe` esistente classifica la riga come routing-target. |                                                                                   | —                                          |
+
+**Esito**: nessuna entità nasce per "natura ai fini del routing post-accettazione".
+Le candidate più vicine (`articoli_tipologie`) sono raggruppamenti merceologici
+nati per altri scopi — il loro riuso ricadrebbe nel **riuso opportunistico vietato**
+da §5.3.2.
+
+**Decisione D0 — chiusa**: si introduce in Fase B la nuova tassonomia
+`config.nature_vendita`, dedicata e con un solo scopo.
+
+**Valori semantici per v1** (3 righe seed, di cui solo 2 ammesse in preventivo):
+
+| Codice                | Descrizione                                                                                                                                                          | Ammessa nel routing preventivo                                  | Destinazione                                |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------- |
+| `BENE_FISICO`         | Merce fisica da evadere via magazzino + DDT                                                                                                                          | Sì                                                              | `vendite.ordini`                            |
+| `SERVIZIO_UNA_TANTUM` | Servizio una-tantum esecutivo (installazione, consulenza, intervento progettuale)                                                                                    | Sì                                                              | `vendite.commesse` (commessa diretta)       |
+| `SERVIZIO_RICORRENTE` | Servizio ricorrente con ciclo di fatturazione periodico (canone manutenzione, supporto, abbonamento)                                                                 | **NO** (vedi nota sotto)                                        | `vendite.contratti` via offerta commerciale |
+
+**Nota architetturale critica — perché 3 valori ma solo 2 ammessi**:
+
+Il modello commerciale di ZeroErp (vedi
+[analisi-offerta-commerciale.md](analisi-offerta-commerciale.md)
+§2) tiene **strutturalmente separati** due assi:
+
+- **Preventivo → Ordine / Commessa** = proposta di transazione puntuale,
+  snapshot prezzo riga-per-riga
+- **Offerta commerciale → Contratto** = proposta di condizioni quadro
+  durature, snapshot versione listino
+
+Il dominio `offerta_commerciale` **non esiste ancora** in ZeroErp (è in
+analisi iniziale, stato APERTO). Ma il modello già lo presuppone: la
+ricorrenza non passa per il preventivo, per costruzione.
+
+La natura `SERVIZIO_RICORRENTE` esiste a livello `config.nature_vendita` e su
+`catalogo.articoli` perché è un dato del **catalogo articolo** (la
+"manutenzione annuale" è ricorrente per natura sua, indipendentemente da
+dove venga venduta). Ma in `vendite.preventivi_righe` una riga con
+`natura_vendita_id = SERVIZIO_RICORRENTE` è **un errore commerciale**: il
+preventivo è lo strumento sbagliato per proporre ricorrenza.
+
+**Regola in CONFERMA_VENDITA**: se l'handler trova una riga con natura
+`SERVIZIO_RICORRENTE`, **non procede con lo split** e solleva
+`E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA` con messaggio operativo del tipo
+"La riga N è di natura ricorrente: non può essere venduta via preventivo.
+Emettere un'offerta commerciale separata per le condizioni quadro." Il
+flusso si sospende, l'operatore corregge (cambia natura riga, oppure
+rimuove la riga dal preventivo e apre una pratica `OFFERTA_QUADRO`
+parallela — vedi §11.2 in scrittura).
+
+**Cardinalità (3) giustificata**: pur essendo `SERVIZIO_RICORRENTE` non
+ammesso nel routing del preventivo, la tabella `config.nature_vendita`
+deve poterlo rappresentare perché:
+
+- Il catalogo articolo lo richiede (un articolo nasce ricorrente nel
+  catalogo, anche se viene poi venduto solo via offerta commerciale).
+- L'handler usa quel valore per riconoscere e bloccare correttamente
+  l'errore (senza il valore, non distinguerebbe "ricorrente" da "natura
+  ignota").
+- L'offerta commerciale (futura) leggerà la stessa tassonomia per il
+  proprio routing verso contratto.
+
+Suddivisioni più fini (es. `BENE_FISICO_SU_COMMESSA` per beni venduti dentro
+progetto, `SERVIZIO_RICORRENTE_USAGE` per ricorrenze a consumo) non vengono
+introdotte a priori: si valutano al secondo caso reale (manifesto §7).
+
+**Mapping natura → sorgente di destinazione** (per l'handler): tabella
+dichiarativa, non hardcoded. In Fase B la mappa vive come colonna su
+`config.nature_vendita` (es. `sorgente_codice_destinazione VARCHAR`, FK virtuale
+verso `config.sorgenti.codice`) — così aggiungere una natura nuova non richiede
+modifica codice handler. Per `SERVIZIO_RICORRENTE` la destinazione è
+`CONTRATTO` ma viene letta dal flusso `OFFERTA_QUADRO`, **non** dal flusso
+`VENDITA_STANDARD`.
+
+#### 11.0.2 Verdetto D1 — derivazione natura su riga
+
+**Decisione D1 — chiusa**: la natura su `vendite.preventivi_righe` è
+**derivata + sovrascrivibile**, con la regola operativa seguente:
+
+1. **Catalogo articolo** (`catalogo.articoli.natura_vendita_id`, FK opzionale a
+   `config.nature_vendita`): il catalogista, in fase di seed articolo, dichiara
+   la natura "tipica" dell'articolo. È un dato opzionale: articoli generici
+   senza natura tipica restano con `NULL`.
+2. **Riga preventivo** (`vendite.preventivi_righe.natura_vendita_id`, FK opzionale):
+   alla creazione della riga, default = `catalogo.articoli.natura_vendita_id`
+   se valorizzata; altrimenti `NULL`. L'operatore può **sempre** sovrascrivere
+   il default in fase di editing del preventivo (drawer riga).
+3. **Vincolo CHECK su riga** in apertura del flusso `CONFERMA_VENDITA`:
+   `natura_vendita_id IS NOT NULL` per **tutte** le righe del preventivo,
+   altrimenti il flusso si sospende con errore parlante
+   `E_VENDITA_RIGA_SENZA_NATURA` e l'operatore deve smistare manualmente
+   (Opzione 3 fallback §5.3.2).
+
+**Perché derivata + sovrascrivibile**:
+
+- Riusare il dato del catalogo riduce l'overhead operatore al 95% dei casi
+  (articolo "Server Dell PowerEdge" → BENE_FISICO una sola volta a livello
+  catalogo, mai più toccato).
+- L'override è necessario perché casi limite esistono (es. "vendiamo lo stesso
+  modem come bene a un cliente e come servizio incluso a un altro" — stesso
+  articolo, righe con natura diversa).
+- Il vincolo a `CONFERMA_VENDITA` (non all'INSERT) lascia all'operatore la
+  libertà di compilare un preventivo "bozza" senza natura su tutte le righe,
+  e di smistare al momento opportuno. Coerente con §5.3.2 (sospensione del
+  flusso).
+
+**Quello che NON facciamo**:
+
+- Non rendiamo `natura_vendita_id` `NOT NULL` su `preventivi_righe` (spezzerebbe
+  preventivi in BOZZA / preventivi importati storici).
+- Non derivazione "intelligente" da altri campi (es. "se prezzo è canone
+  mensile allora SERVIZIO_RICORRENTE") — il dato è dichiarativo, non inferito.
+
+#### 11.0.3 Conseguenza per l'esempio §11.1
+
+Da questo punto in poi, l'esempio assume:
+
+- esiste `config.nature_vendita` con le 3 righe di §11.0.1;
+- esiste `catalogo.articoli.natura_vendita_id` (FK opzionale);
+- esiste `vendite.preventivi_righe.natura_vendita_id` (FK opzionale, derivato +
+  sovrascrivibile);
+- esiste `config.messaggi_errore` con `E_VENDITA_RIGA_SENZA_NATURA`.
+
+Le ALTER DDL relative sono **deliverable di Fase B**; qui si tratta il
+modello come dato.
+
+### 11.1 Configurazione completa del processo preventivo
+
+#### 11.1.1 Seed `config.sorgenti` (verifica + completamento)
+
+`config.sorgenti` è la tabella dei tipi di documento citabili da
+`pratiche_sorgenti` e `commesse_sorgenti`. Già esistente, con `PREVENTIVO` e
+`CONTRATTO` seedati. Per il caso `VENDITA_STANDARD` servono inoltre:
+
+| Codice      | Descrizione                          | Stato                                          |
+| ----------- | ------------------------------------ | ---------------------------------------------- |
+| `PREVENTIVO` | Preventivo di vendita               | Già seedato                                    |
+| `CONTRATTO` | Contratto di vendita ricorrente     | Già seedato                                    |
+| `ORDINE`    | Ordine di vendita beni fisici       | **Da verificare in Fase B**: se assente, seed |
+| `COMMESSA`  | Commessa di esecuzione              | **Da verificare in Fase B**: se assente, seed |
+
+Convenzione di naming §6.3 rispettata (singolare maiuscolo).
+
+#### 11.1.2 Seed `config.nature_vendita` (nuova tabella, §11.0.1)
+
+```text
+codice                 descrizione                            sorgente_codice_destinazione
+─────────────────────  ─────────────────────────────────────  ────────────────────────────
+BENE_FISICO            Bene fisico da evadere via magazzino    ORDINE
+SERVIZIO_UNA_TANTUM    Servizio una-tantum esecutivo           COMMESSA
+SERVIZIO_RICORRENTE    Servizio ricorrente con canone          CONTRATTO
+```
+
+#### 11.1.3 Seed `pratiche.tipi_prestazione`
+
+Una sola riga per cominciare (manifesto §7 — secondo template `VENDITA_RAPIDA`
+o `VENDITA_RICORRENTE_PURA` solo quando un caso reale lo chiederà):
+
+| Campo              | Valore                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
+| `codice`           | `VENDITA_STANDARD`                                                                                |
+| `categoria`        | `COMMERCIALE`                                                                                     |
+| `descrizione`      | Processo commerciale standard: dalla richiesta cliente all'esecuzione (ordine, commessa, contratto) |
+| `pre_attivazione`  | `false`                                                                                           |
+| `post_attivazione` | `false`                                                                                           |
+
+Note:
+
+- `pre_attivazione = false` e `post_attivazione = false` insieme significano
+  "ammessa indipendentemente dallo stato BA del cliente" (un preventivo si
+  può fare a un prospect senza BA attivo, oppure a un cliente già attivo per
+  ampliamento fornitura).
+- La validazione contesto anagrafico (soggetto / soggetto_ruolo / istanza
+  utility) è già garantita dal trigger v2 `trgfn_pratiche_guard_contesto`
+  (vedi `gestione-pratiche-v2.md` §1.2): per `VENDITA_STANDARD` ci si aspetta
+  `soggetto_id` + `soggetto_ruolo_id` (ruolo cliente), `istanza_utility_id`
+  generalmente `NULL`.
+
+#### 11.1.4 Seed `pratiche.template_flussi` + prerequisiti + canali
+
+| Seq | Codice                 | Direzione | Obbligatorio          | Esito atteso                                                           | Handler                   |
+| --- | ---------------------- | --------- | --------------------- | ---------------------------------------------------------------------- | ------------------------- |
+| 10  | `RICHIESTA_CLIENTE`    | ENTRATA   | true                  | POSITIVO (richiesta accettata) o NEGATIVO (richiesta non perseguibile) | NULL (manuale)            |
+| 20  | `PREVENTIVAZIONE`      | INTERNA   | true                  | POSITIVO (preventivo EMESSO)                                           | NULL (manuale, drawer)    |
+| 30  | `APPROVAZIONE_CLIENTE` | ENTRATA   | true                  | POSITIVO (ACCETTATO) / NEGATIVO (RIFIUTATO)                            | NULL (manuale)            |
+| 40  | `CONFERMA_VENDITA`     | INTERNA   | true (se 30 positivo) | POSITIVO (split eseguito su ordine e/o commessa)                       | `vendita.push_preventivo` |
+
+Il flusso 40 **non** può generare contratti: la ricorrenza viaggia su un
+asse separato (vedi §11.0.1 nota architetturale e §11.2).
+
+**Prerequisiti** (`pratiche.template_flussi_prerequisiti`):
+
+- `PREVENTIVAZIONE` richiede `RICHIESTA_CLIENTE` POSITIVO
+- `APPROVAZIONE_CLIENTE` richiede `PREVENTIVAZIONE` POSITIVO
+- `CONFERMA_VENDITA` richiede `APPROVAZIONE_CLIENTE` POSITIVO
+
+**Canali ammessi** (`pratiche.template_flussi_canali`): tutti i flussi ENTRATA
+accettano i canali standard di `config.canali_pratiche` (email, telefono,
+sportello, portale). I flussi INTERNA non hanno canale (sono operazioni
+back-office).
+
+#### 11.1.5 Seed `pratiche.handler_flussi`
+
+Una sola riga per `VENDITA_STANDARD` v1 (il flusso `CONFERMA_VENDITA` è
+l'unico con handler):
+
+| Campo            | Valore                                                                |
+| ---------------- | --------------------------------------------------------------------- |
+| `handler_key`    | `vendita.push_preventivo`                                             |
+| `descrizione`    | Split del preventivo per natura di riga e generazione 0..N destinazioni |
+| `attivo`         | `true`                                                                |
+
+`pratiche.template_flussi.handler_id` per `CONFERMA_VENDITA` punta a questa
+riga.
+
+**`handler_params` (statico, sul template `CONFERMA_VENDITA`)** — JSONB di
+default:
+
+```json
+{
+  "natura_obbligatoria_su_tutte_le_righe": true,
+  "comportamento_riga_senza_natura": "SOSPENDI_FLUSSO",
+  "comportamento_riga_ricorrente": "SOSPENDI_FLUSSO",
+  "fatturazione_immediata_default": false
+}
+```
+
+Quattro parametri configurabili per template senza toccare codice:
+
+- `natura_obbligatoria_su_tutte_le_righe`: se `true` il flusso fallisce con
+  `E_VENDITA_RIGA_SENZA_NATURA` quando esiste una riga con
+  `natura_vendita_id IS NULL`. Se `false` (variante per processi
+  sperimentali), le righe senza natura vengono raccolte in un report e
+  l'operatore decide manualmente.
+- `comportamento_riga_senza_natura`: `SOSPENDI_FLUSSO` (default v1) vs
+  `IGNORA_RIGA` (variante futura, non implementata).
+- `comportamento_riga_ricorrente`: `SOSPENDI_FLUSSO` (default v1, vedi
+  §11.0.1: la riga ricorrente in un preventivo è un errore commerciale → il
+  flusso si sospende con `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`). Variante
+  futura `IGNORA_E_SCARTA` (la riga viene espunta dallo split, lo split
+  procede sulle altre nature, operatore avvisato). Non in v1.
+- `fatturazione_immediata_default`: vedi §11.3 (in scrittura successiva).
+
+**`flussi.meta` (dinamico, popolato dall'operatore al lancio del flusso)** —
+JSONB del singolo flusso istanziato:
+
+```json
+{
+  "preventivo_id": 4711,
+  "preventivo_uid": "P/2026/0042",
+  "fatturazione_immediata": false,
+  "note_operatore": "Cliente conferma via email del 15/5"
+}
+```
+
+#### 11.1.6 Seed `pratiche.competenze_flussi` (esempio per un'installazione)
+
+Matrice operatore × template_flusso × unità organizzativa (vedi
+`gestione-pratiche-v2.md` §6.2). Esempio per un'azienda con reparto
+commerciale e back-office:
+
+| `template_flusso`      | `unita_organizzativa` | `risorsa_umana` | `attivo` |
+| ---------------------- | --------------------- | --------------- | -------- |
+| `RICHIESTA_CLIENTE`    | COMMERCIALE           | Alice           | true     |
+| `RICHIESTA_CLIENTE`    | COMMERCIALE           | Bob             | true     |
+| `PREVENTIVAZIONE`      | COMMERCIALE           | Alice           | true     |
+| `PREVENTIVAZIONE`      | COMMERCIALE           | Bob             | true     |
+| `APPROVAZIONE_CLIENTE` | COMMERCIALE           | Alice           | true     |
+| `APPROVAZIONE_CLIENTE` | COMMERCIALE           | Bob             | true     |
+| `CONFERMA_VENDITA`     | BACK_OFFICE           | Carla           | true     |
+
+Lettura: Alice e Bob (commerciale) prendono in carico tutto il front (10/20/30);
+Carla (back-office) si occupa del flusso 40 dove avviene lo split tecnico.
+
+Il seed è **operativo**: lo cura l'admin dell'azienda installatrice via UI
+admin (CRUD competenze esistente, vedi `gestione-pratiche-v2.md` §6.5). Non
+viene scritto nel brief DB iniziale — il brief seeda solo un esempio per i
+test pgTAP. La popolazione reale è atto di setup operativo del cliente.
+
+#### 11.1.7 Esempio runtime end-to-end (caso misto 3+1)
+
+Scenario: cliente "Rossi SRL" (già attivo come cliente per emittente fiscale
+`EF-001`) chiama il commerciale Alice per fornitura datacenter:
+
+- 3 server fisici (BENE_FISICO)
+- installazione e configurazione (SERVIZIO_UNA_TANTUM)
+
+Il cliente ha anche bisogno di manutenzione annuale + supporto 24/7
+(`SERVIZIO_RICORRENTE`), ma Alice **non** la mette nel preventivo perché la
+ricorrenza viaggia su un asse separato (offerta commerciale → contratto, vedi
+§11.0.1). In una sessione successiva Alice apre una pratica `OFFERTA_QUADRO`
+parallela per la parte ricorrente (vedi §11.2). Le due pratiche restano
+distinte ma collegabili a livello cliente.
+
+**t0 — Alice crea la pratica** dalla dashboard pratiche, scegliendo:
+
+| Campo                     | Valore                                                           |
+| ------------------------- | ---------------------------------------------------------------- |
+| `emittente_fiscale_id`    | EF-001                                                           |
+| `tipo_prestazione_id`     | VENDITA_STANDARD                                                 |
+| `soggetto_id`             | (UUID di Rossi SRL)                                              |
+| `soggetto_ruolo_id`       | (ruolo CLIENTE di Rossi SRL)                                     |
+| `istanza_utility_id`      | NULL (vendita non legata a utility)                              |
+| `priorita_id`             | NORMALE                                                          |
+| `risorsa_umana_id`        | Alice (auto, dall'utente loggato)                                |
+| `unita_organizzativa_id`  | COMMERCIALE                                                      |
+| `descrizione`             | "Fornitura datacenter Rossi SRL"                                 |
+| `canale_origine_id`       | TELEFONO                                                         |
+
+Trigger: codice pratica `PRA-0001234` assegnato; stato `BOZZA`; giornale registra
+`PRATICA_CREATA`. I 4 flussi vengono istanziati automaticamente in
+`pratiche.flussi` con stato `DA_ESEGUIRE`.
+
+**t1 — Alice avanza alla stato APERTA**, e completa `RICHIESTA_CLIENTE`
+inserendo nota "richiesta perseguibile, prepariamo preventivo entro venerdì" →
+esito POSITIVO.
+
+Giornale: `STATO_CAMBIATO BOZZA→APERTA`, `data_apertura` valorizzata,
+`FLUSSO_STATO_CAMBIATO RICHIESTA_CLIENTE → COMPLETATO`.
+
+**t2 — Alice apre il flusso `PREVENTIVAZIONE`**. Il flusso espone un bottone
+"Apri preventivo collegato" che apre `PreventivoDrawer` in CREATE mode con
+`pratica_id` pre-impostato in `flussi.meta`. Alice compila il preventivo:
+
+| Riga | Articolo                 | Qta | Prezzo unit. | Natura (derivata)                 |
+| ---- | ------------------------ | --- | ------------ | --------------------------------- |
+| 1    | Dell PowerEdge R750      | 3   | 8.500        | BENE_FISICO (da articolo)         |
+| 2    | Installazione DataCenter | 1   | 4.500        | SERVIZIO_UNA_TANTUM (da articolo) |
+
+Il preventivo viene salvato come BOZZA, poi EMESSO. Al salvataggio della prima
+versione, il backend popola `pratiche.pratiche_sorgenti(pratica_id, sorgente_tipo=PREVENTIVO, sorgente_uid=P/2026/0042, ruolo=ROOT)`.
+
+Alice completa il flusso `PREVENTIVAZIONE` con esito POSITIVO. Giornale:
+`DOMINIO_PREVENTIVO_CREATO`, `FLUSSO_STATO_CAMBIATO PREVENTIVAZIONE → COMPLETATO`.
+
+**t3 — Cliente accetta via email**. Alice apre il flusso
+`APPROVAZIONE_CLIENTE`, registra l'esito POSITIVO con allegato (PDF
+dell'accettazione via email). Internamente questo aggiorna anche lo stato del
+preventivo a ACCETTATO via dialog dedicato (decisione `fatturazione_immediata`
++ `competenza` — pattern `feedback_dialog_cambio_stato_dati_processo`).
+
+Giornale: `DOMINIO_PREVENTIVO_ACCETTATO` (con `fatturazione_immediata: false`),
+`FLUSSO_STATO_CAMBIATO APPROVAZIONE_CLIENTE → COMPLETATO`.
+
+**t4 — Carla (back-office) apre `CONFERMA_VENDITA`** dalla coda lavoro
+(competenza). Il flusso parte in `IN_CORSO`, l'handler `vendita.push_preventivo`
+si attiva:
+
+1. Verifica `natura_obbligatoria_su_tutte_le_righe = true` → entrambe le righe
+   hanno natura: OK.
+2. Verifica `comportamento_riga_ricorrente`: nessuna riga ha natura
+   `SERVIZIO_RICORRENTE` → nessun blocco.
+3. Raggruppa per natura:
+   - BENE_FISICO: riga 1 (3×PowerEdge)
+   - SERVIZIO_UNA_TANTUM: riga 2 (installazione)
+4. Per ciascun raggruppamento chiama la fn DB corrispondente (mapping
+   `config.nature_vendita.sorgente_codice_destinazione`):
+   - `vendite.fn_push_preventivo_a_ordine(p_preventivo_id=4711, p_righe_ids=[1], p_pratica_id=...)` → idempotenza §5.3.3
+   - `vendite.fn_push_preventivo_a_commessa(... p_righe_ids=[2] ...)` (estensione della esistente)
+5. Per ciascuna destinazione creata, registra `pratiche_sorgenti(ruolo=COLLEGATO)`
+   e scrive nel giornale `DOMINIO_<ENTITA>_CREATA` con `meta` strutturato
+   (§6.8).
+6. Verifica che tutte le righe del preventivo siano smistate → transizione
+   preventivo `ACCETTATO → EVASO` (§5.3.1).
+
+Giornale finale del flusso 40:
+
+| Evento                     | meta                                                               |
+| -------------------------- | ------------------------------------------------------------------ |
+| `FLUSSO_STATO_CAMBIATO`    | `CONFERMA_VENDITA: DA_ESEGUIRE → IN_CORSO`                         |
+| `DOMINIO_ORDINE_CREATO`    | `{ordine_id: 8801, righe_ids: [1], preventivo_id: 4711}`           |
+| `DOMINIO_COMMESSA_CREATA`  | `{commessa_id: 7701, righe_ids: [2], preventivo_id: 4711}`         |
+| `DOMINIO_PREVENTIVO_EVASO` | `{preventivo_id: 4711}`                                            |
+| `FLUSSO_STATO_CAMBIATO`    | `CONFERMA_VENDITA: IN_CORSO → COMPLETATO (POSITIVO)`               |
+| `STATO_CAMBIATO`           | `pratica: APERTA → CHIUSA` (tutti i flussi obbligatori completati) |
+
+A questo punto la pratica `PRA-0001234` è chiusa. Aprendo il drawer, l'operatore
+vede il giornale completo end-to-end, le 3 sorgenti in `pratiche_sorgenti`
+(1 preventivo ROOT + 1 ordine + 1 commessa COLLEGATI), e da ciascuna sorgente
+può navigare al documento di dominio. La parte ricorrente (manutenzione
+annuale) verrà gestita in una pratica `OFFERTA_QUADRO` separata, eventualmente
+collegabile per cliente via report cross-pratica (`soggetto_id` comune).
+
+#### 11.1.8 Esempio runtime in caso anomalo (riga senza natura)
+
+Scenario: stesso preventivo ma la riga 2 (Installazione DataCenter) è un articolo
+generico senza natura tipica nel catalogo; Alice non ha compilato manualmente.
+
+**t4 — Carla apre `CONFERMA_VENDITA`**. L'handler trova `righe[2].natura_vendita_id IS NULL`. Con `comportamento_riga_senza_natura = SOSPENDI_FLUSSO`:
+
+1. L'handler **non** procede con lo split.
+2. Solleva `E_VENDITA_RIGA_SENZA_NATURA` con `meta = {righe_senza_natura: [2]}`.
+3. Il flusso transita in stato `SOSPESO` (non `FALLITO`, perché è risolvibile).
+4. Giornale: `FLUSSO_STATO_CAMBIATO CONFERMA_VENDITA → SOSPESO`, evento
+   `DOMINIO_RICHIESTA_SMISTAMENTO_RIGHE` con elenco righe.
+
+**t5 — Carla apre il PreventivoDrawer dalla pratica**, va sulla riga 2, sceglie
+manualmente la natura `SERVIZIO_UNA_TANTUM`, salva. Il preventivo non cambia
+stato (resta EVASO_PARZIALE o ACCETTATO se non era stato evaso ancora; vedi
+modello stati preventivi).
+
+**t6 — Carla rilancia `CONFERMA_VENDITA`** (azione "Riprendi" sul flusso
+sospeso). L'handler ripete il check: ora tutte le righe hanno natura → split
+procede normalmente come §11.1.7.
+
+#### 11.1.9 Cosa rimane in v1 e cosa è già confinato
+
+**In v1 dell'esempio**:
+
+- Catalogo articolo con `natura_vendita_id` opzionale e derivazione automatica
+  su nuova riga preventivo (DDL + trigger di default in Fase B).
+- Handler `vendita.push_preventivo` con split per natura, idempotente per
+  costruzione (§5.3.3), errore parlante su riga senza natura e su riga
+  ricorrente.
+- 2 funzioni DB di push (preventivo → ordine, preventivo → commessa):
+  `fn_push_preventivo_a_ordine` (nuova) e `fn_push_preventivo_a_commessa`
+  (estensione dell'esistente con `p_righe_ids`). Nessuna
+  `fn_push_preventivo_a_contratto`: la ricorrenza non passa dal preventivo.
+- Filtro `fn_list_preventivi_da_pushare`: esclude preventivi già pushati per
+  natura (preventivo è EVASO solo quando tutte le nature ammesse sono
+  smistate).
+
+**Già confinato fuori v1** (in coerenza con manifesto §7):
+
+- Variante `IGNORA_RIGA` di `comportamento_riga_senza_natura` e
+  `IGNORA_E_SCARTA` di `comportamento_riga_ricorrente`.
+- Derivazione natura "intelligente" da altri campi del preventivo.
+- Cancellazione di una destinazione e ripush (es. ordine creato per errore →
+  delete + ripush). Si valuta dopo casi reali.
+- UI dashboard di "righe da smistare" globale (oggi è solo sospensione di un
+  flusso pratica per volta).
+- Collegamento automatico tra pratica `VENDITA_STANDARD` e pratica
+  `OFFERTA_QUADRO` per lo stesso cliente nella stessa trattativa: oggi le due
+  pratiche sono indipendenti, eventuali ponti si valutano dopo §11.2 e
+  l'introduzione del dominio offerta commerciale.
+
+### 11.2 Ossatura del processo offerta commerciale: `OFFERTA_QUADRO`
+
+> **AVVERTENZA — dominio non ancora introdotto**
+>
+> Questa sezione descrive **solo l'ossatura** della configurazione pratica per
+> l'asse "offerta commerciale → contratto". Il dominio
+> `vendite.offerte_commerciali` (tabelle, service, view, drawer) **non esiste
+> oggi in ZeroErp**: è in stato di analisi iniziale APERTA, vedi
+> [analisi-offerta-commerciale.md](analisi-offerta-commerciale.md)
+> §7.
+>
+> Per coerenza con il manifesto §III bis (non disegnare astrazioni che il
+> dominio reale non ha ancora chiesto), §11.2 si ferma a:
+>
+> - il `tipo_prestazione`
+> - i `template_flussi` paralleli a `VENDITA_STANDARD`
+> - l'`handler_flussi` di push
+>
+> **Nessun esempio runtime**: scriverlo senza l'entità sottostante sarebbe
+> fantasia. Il runtime end-to-end (con eventi giornale, stati, transizioni
+> preventivo-like) si scriverà solo dopo la chiusura delle decisioni §5 di
+> `analisi-offerta-commerciale.md` e l'esistenza effettiva di
+> `vendite.offerte_commerciali` come tabella popolabile.
+>
+> Lo scopo di §11.2 è **mostrare che il motore pratiche regge senza
+> riscrittura** il secondo asse commerciale (simmetria con §11.1), non
+> proporre brief operativi.
+
+#### 11.2.1 Seed `pratiche.tipi_prestazione`
+
+| Campo              | Valore                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------- |
+| `codice`           | `OFFERTA_QUADRO`                                                                                        |
+| `categoria`        | `COMMERCIALE`                                                                                           |
+| `descrizione`      | Processo offerta commerciale: dalla richiesta di condizioni quadro all'attivazione del contratto         |
+| `pre_attivazione`  | `false`                                                                                                 |
+| `post_attivazione` | `false` (un'offerta si può fare a prospect senza BA o a cliente già attivo per nuovo contratto)         |
+
+Stessa logica `VENDITA_STANDARD` sul contesto anagrafico: ci si aspetta
+`soggetto_id` + `soggetto_ruolo_id` (ruolo cliente o prospect), `istanza_utility_id`
+opzionale (rilevante per offerte legate a una specifica utility, es. fornitura
+elettrica per un punto di consegna).
+
+#### 11.2.2 Seed `pratiche.template_flussi`
+
+Specchio simmetrico di §11.1.4, riformulato per la semantica offerta/contratto:
+
+| Seq | Codice                  | Direzione | Obbligatorio          | Esito atteso                                                                | Handler                  |
+| --- | ----------------------- | --------- | --------------------- | --------------------------------------------------------------------------- | ------------------------ |
+| 10  | `RICHIESTA_QUADRO`      | ENTRATA   | true                  | POSITIVO (richiesta di condizioni quadro accettata)                         | NULL (manuale)           |
+| 20  | `EMISSIONE_OFFERTA`     | INTERNA   | true                  | POSITIVO (offerta commerciale EMESSA in `vendite.offerte_commerciali`)      | NULL (manuale, drawer)   |
+| 30  | `APPROVAZIONE_CLIENTE`  | ENTRATA   | true                  | POSITIVO (ACCETTATA) / NEGATIVO (RIFIUTATA) / SCADUTA                       | NULL (manuale)           |
+| 40  | `ATTIVAZIONE_CONTRATTO` | INTERNA   | true (se 30 positivo) | POSITIVO (contratto creato in DRAFT o ATTIVO secondo configurazione)        | `offerta.push_a_contratto` |
+
+**Parallelismo con §11.1.4** (mantenuto per scelta architetturale):
+
+- `RICHIESTA_QUADRO` ↔ `RICHIESTA_CLIENTE` (entrambi registrano la
+  domanda iniziale)
+- `EMISSIONE_OFFERTA` ↔ `PREVENTIVAZIONE` (entrambi producono il documento di
+  proposta nel rispettivo dominio)
+- `APPROVAZIONE_CLIENTE` identico in entrambi i template — i due processi
+  condividono il concetto di "esito esplicito del cliente" e in futuro
+  potranno condividere il template, oppure restare separati a seconda di
+  scelte di canale (es. firma digitale obbligatoria per offerte quadro)
+- `ATTIVAZIONE_CONTRATTO` ↔ `CONFERMA_VENDITA` (entrambi eseguono il push
+  verso le destinazioni operative del rispettivo asse)
+
+**Prerequisiti** identici al pattern §11.1.4 (10→20→30→40, con POSITIVO).
+
+**Canali ammessi**: gli stessi di `VENDITA_STANDARD` per i flussi ENTRATA
+(email, telefono, sportello, portale).
+
+#### 11.2.3 Seed `pratiche.handler_flussi`
+
+| Campo         | Valore                                                                                |
+| ------------- | ------------------------------------------------------------------------------------- |
+| `handler_key` | `offerta.push_a_contratto`                                                            |
+| `descrizione` | Crea un contratto a partire da un'offerta commerciale ACCETTATA (snapshot versione listino + eccezioni proposte) |
+| `attivo`      | `true`                                                                                |
+
+`pratiche.template_flussi.handler_id` per `ATTIVAZIONE_CONTRATTO` punta a
+questa riga.
+
+**`handler_params` (statico, sul template `ATTIVAZIONE_CONTRATTO`)** — JSONB di
+default (proposta, da chiudere insieme alle decisioni §5 dell'analisi offerta):
+
+```json
+{
+  "stato_contratto_creato": "DRAFT",
+  "richiede_versione_listino_attiva": true,
+  "comportamento_listino_aggiornato_post_emissione": "RIEMETTI_OFFERTA"
+}
+```
+
+Tre parametri:
+
+- `stato_contratto_creato`: `DRAFT` (default v1, contratto creato e
+  l'operatore lo attiva esplicitamente) vs `ATTIVO` (creazione e attivazione
+  in un colpo solo — variante per processi B2B con accordo già fermo).
+  Mappato sulle decisioni §5.4 dell'analisi offerta commerciale.
+- `richiede_versione_listino_attiva`: se `true`, il push fallisce se la
+  versione listino citata dall'offerta non è più ATTIVA al momento
+  dell'`ATTIVAZIONE_CONTRATTO`. Mappato sulla decisione §5.3 dell'analisi
+  offerta.
+- `comportamento_listino_aggiornato_post_emissione`: `RIEMETTI_OFFERTA`
+  (default conservativo, vedi §5.3 dell'analisi: l'offerta è fissata
+  all'emissione, se cambia il listino prima dell'accettazione si forza una
+  revisione) vs `AGGIORNA_AUTOMATICAMENTE`.
+
+#### 11.2.4 Idempotenza `offerta.push_a_contratto`
+
+In coerenza con §6.9 (convenzione trasversale di idempotenza cross-dominio),
+il push offerta → contratto **deve** essere idempotente per costruzione. La
+proposta di implementazione (DDL pronto solo in Fase B post-introduzione del
+dominio):
+
+```sql
+CREATE UNIQUE INDEX uq_contratti_da_offerta
+  ON vendite.contratti (sorgente_uid)
+  WHERE sorgente_tipo_id = (SELECT id FROM config.sorgenti
+                            WHERE codice = 'OFFERTA_COMMERCIALE');
+```
+
+Più check applicativo con `E_OFFERTA_CONTRATTO_GIA_GENERATO` (errore da
+registrare in `config.messaggi_errore.csv`).
+
+**Sorgente nuova in `config.sorgenti`**: `OFFERTA_COMMERCIALE` (singolare
+maiuscolo come da §6.3). Da seedare contestualmente all'introduzione del
+dominio.
+
+#### 11.2.5 Cosa serve per scrivere il runtime di §11.2
+
+Per poter scrivere un esempio runtime end-to-end equivalente a §11.1.7 servono,
+nell'ordine, deliverable **fuori scope di questo documento**:
+
+1. Chiusura decisioni §5 di `analisi-offerta-commerciale.md`
+   (granularità, eccezioni, listino mobile, workflow accettazione,
+   numerazione).
+2. Brief DB del dominio `vendite.offerte_commerciali` (testata + eccezioni +
+   stati + fn `crea_revisione_*` + fn `push_a_contratto`).
+3. Backend `apps/vendite/services/offerte_service.py` + drawer FE
+   `OffertaDrawer.vue` (scaffolding su pattern preventivo).
+4. Solo allora §11.2 si completa con runtime end-to-end e §11.0 può
+   eventualmente promuovere la natura `SERVIZIO_RICORRENTE` da "errore in
+   preventivo" a "ammessa in offerta".
+
+Fino ad allora, §11.2 resta a livello di **ossatura del template**, e l'unico
+deliverable di Fase B che la tocca è la riserva di sorgente
+`OFFERTA_COMMERCIALE` in `config.sorgenti` (se conveniente seedarla in
+anticipo per evitare migrazioni successive).
 
 ---
 

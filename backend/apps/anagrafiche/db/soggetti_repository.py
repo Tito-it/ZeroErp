@@ -52,7 +52,8 @@ class SoggettiRepository:
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT s.id, s.codice, s.ragione_sociale_completa, s.codice_fiscale,
-                   s.partita_iva, s.cognome, s.nome, s.ragione_sociale,
+                   s.partita_iva, s.id_fiscale_univoco_cf_piva,
+                   s.cognome, s.nome, s.ragione_sociale,
                    tsd.descrizione AS tipo_descrizione,
                    tsd.id AS tipo_soggetto_dettaglio_id,
                    ts.id AS natura_soggetto,
@@ -156,6 +157,18 @@ class SoggettiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_id])
             return cursor.fetchone() is not None
+
+    # Scopo: Risolve la descrizione di un tipo_soggetto_dettaglio per id
+    #        (DEF-1, header filtri leggibili nell'export). Lookup
+    #        opportunistico senza cache: 1-2 chiamate per richiesta export.
+    def get_tipo_soggetto_dettaglio_descrizione(self, tipo_id: int) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT descrizione FROM config.tipi_soggetto_dettaglio WHERE id = %s",
+                [tipo_id],
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
 
     # Scopo: Risolve la natura (PF/PG/ENC) dal tipo_soggetto_dettaglio_id.
     def get_natura_by_tipo_id(self, tipo_id: int) -> str | None:

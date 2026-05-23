@@ -122,6 +122,18 @@ export function listSoggetti(params = {}) {
   return api.get(`${BASE}/soggetti/`, { params })
 }
 
+// Scopo: Export CSV/Excel della lista soggetti (DEF-1).
+//        `params` accetta gli stessi filtri del list endpoint
+//        (search/tipo_soggetto_dettaglio_id/order_*) + obbligatorio
+//        `formato` ('csv' | 'xlsx'). Risposta come Blob per download
+//        diretto. Errori: 422 se >10.000 righe (caller deve gestire).
+export function exportSoggetti(params = {}) {
+  return api.get(`${BASE}/soggetti/export/`, {
+    params,
+    responseType: 'blob',
+  })
+}
+
 export function getSoggetto(id) {
   return api.get(`${BASE}/soggetti/${id}/`)
 }

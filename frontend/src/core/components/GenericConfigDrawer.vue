@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { DRAWER_WIDTH } from '../constants'
+import { NAV_ICONS } from '../navigation'
 import DrawerFooter from './DrawerFooter.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
@@ -139,7 +140,7 @@ async function handleSave() {
     :style="{ width: DRAWER_WIDTH.SIMPLE }"
   >
     <template #header>
-      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="label" icon="pi pi-table" />
+      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="label" :icon="NAV_ICONS.TABELLE" />
     </template>
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">

@@ -222,7 +222,7 @@ const onClose = useDrawerClose(emit)
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :action="formMode === 'new' ? t('common.new') : t('common.edit')" :title="t('conti_bancari.titolo')" icon="pi pi-wallet" />
+      <DrawerTitle :action="formMode === 'new' ? t('common.new') : t('common.edit')" :title="t('conti_bancari.titolo')" :icon="MANAGE_ICONS.CONTI_BANCARI" />
     </template>
 
     <!-- Livello oggetto BLOCCATO: pannello sostitutivo (safety net se

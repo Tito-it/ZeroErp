@@ -6,6 +6,7 @@ import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useStatiStore } from '../../anagrafiche/stores/stati'
 import { useApiHandler } from '../composables/useApiHandler'
 import { DRAWER_WIDTH } from '../constants'
+import { NAV_ICONS } from '../navigation'
 import DrawerFooter from './DrawerFooter.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
@@ -67,7 +68,7 @@ async function handleSave() {
   <Drawer :visible="visible" @update:visible="emit('update:visible', $event)" position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }">
     <template #header>
-      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('geo.stato')" icon="pi pi-globe" />
+      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('geo.stato')" :icon="NAV_ICONS.STATO" />
     </template>
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">

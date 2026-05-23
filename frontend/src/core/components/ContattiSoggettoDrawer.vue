@@ -177,7 +177,7 @@ const onClose = useDrawerClose(emit)
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('soggetti.section_contatto')" icon="pi pi-id-card" />
+      <DrawerTitle :action="t('common.edit')" :title="t('soggetti.section_contatto')" :icon="MANAGE_ICONS.CONTATTI" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

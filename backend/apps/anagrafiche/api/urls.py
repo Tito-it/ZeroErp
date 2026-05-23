@@ -57,6 +57,7 @@ from apps.anagrafiche.api.views_soggetti import (
     SoggettiContattiDetailView,
     SoggettiContattiView,
     SoggettiDetailView,
+    SoggettiExportView,
     SoggettiIndirizziDetailView,
     SoggettiIndirizziView,
     SoggettiRuoliView,
@@ -159,6 +160,7 @@ urlpatterns = [
     # Soggetti — utility (prima delle rotte con <str:soggetto_id>)
     path("soggetti/valida-cf-piva/", ValidaCFPIVAView.as_view(), name="anagrafiche-valida-cf-piva"),
     path("soggetti/genera-cf/", GeneraCFView.as_view(), name="anagrafiche-genera-cf"),
+    path("soggetti/export/", SoggettiExportView.as_view(), name="anagrafiche-soggetti-export"),
     # Soggetti — CRUD
     path("soggetti/", SoggettiView.as_view(), name="anagrafiche-soggetti-list"),
     path("soggetti/<str:soggetto_id>/", SoggettiDetailView.as_view(), name="anagrafiche-soggetti-detail"),

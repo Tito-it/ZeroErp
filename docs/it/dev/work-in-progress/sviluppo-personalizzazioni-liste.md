@@ -1,7 +1,16 @@
 # Colonne visualizzate in liste — architettura
 
+> **Scopo di questo documento**: architettura del modulo `ui` (problema,
+> 3 livelli, tabelle DB, fn `fn_resolve_lista_config`, regole) + **storia
+> cronologica** degli atterraggi (Blocco A→F). Append-only: le voci
+> storiche non si rimuovono.
+>
+> Per il **piano operativo degli sviluppi differiti** (DEF-1..DEF-10:
+> stato corrente, decisioni aperte, dipendenze, sforzo) vedi
+> [sviluppo-personalizzazioni-liste_def.md](sviluppo-personalizzazioni-liste_def.md).
+
 **Modulo:** UI / Presentazione
-**Stato:** Blocchi **A+B+C+D+E+F** completati (incluso F Fase 2 / DEF-5b 2026-05-10) + **DEF-1 export CSV/Excel** atterrato 2026-05-10 sulla lista clienti. DB-1..DB-4 atterrati, Blocco F.2 (i18n + seed clienti) applicato. Prossimo: **DEF-8** (estensione pattern + export ad altre liste — fornitori, articoli, contratti, ...) — vedi [_def.md](sviluppo-personalizzazioni-liste_def.md).
+**Stato:** Blocchi **A+B+C+D+E+F** completati (incluso F Fase 2 / DEF-5b 2026-05-10) + **DEF-1 export CSV/Excel** + **DEF-2 banner "preset aggiornato"** + **DEF-8 lista soggetti** atterrati 2026-05-10/11. DB-1..DB-4 atterrati, Blocco F.2 (i18n + seed clienti) applicato. 2 liste migrate (clienti, soggetti) + 11 residue. Prossimo: **DEF-8 fornitori/articoli/contratti...** — vedi [_def.md](sviluppo-personalizzazioni-liste_def.md).
 **Coerenza:** Sviluppo Concentrico — strato di presentazione che si appoggia ai domini funzionali senza modificarli
 **Revisione 2026-05-06 (post-A/B)**: allineato a DB landed (tipi BIGINT, output JSONB completo), recepiti i pattern di [api.md](../api.md) (skip_area_check, Idempotency-Key, base view) e dei due cataloghi building block. Variazioni in §4.3, §4.5, §5, §10, §11. Brief al team DB raccolti in §10.
 
@@ -23,6 +32,8 @@ Stato cronologico:
 | 2026-05-08 | **Blocco F.2** (i18n etichette + fix seed clienti) atterrato dal team DB: nuova colonna `ui.lista_colonna.etichetta_i18n_key` + `fn_resolve_lista_config` aggiornata + seed clienti corretto (composta `sosp_riatt`). Refactor toolbar lista standard (`<ListaConfigurabile>` + `ClientiSearchTable`). |
 | 2026-05-10 | **Blocco F Fase 2 — DEF-5b** atterrato end-to-end (BE+FE+test+doc): CRUD `ui.lista_definizione` + `ui.lista_colonna` SUPER_ADMIN-only sotto `/amm-software/personalizzazioni-liste-tecniche`. 8 endpoint admin nuovi, 39 test (93/93 ui verdi totali, 590 BE complessivi). 8 decisioni operative chiuse — vedi [_def.md DEF-5b](sviluppo-personalizzazioni-liste_def.md). Helper `optional_string` estratto in `PayloadValidator` (refactor anti-duplicazione). |
 | 2026-05-10 | **DEF-1 export CSV/Excel** atterrato sulla lista clienti (BE+FE+test+doc): renderer puro `ListaExportService` no-fetch (genera bytes da righe + config colonne), endpoint dedicato `GET /api/v1/anagrafiche/clienti/export/` con query param `format=csv` o `xlsx`, hard cap 10.000 righe pre-render via `total_count` window function, foglio "Filtri applicati" XLSX + header con prefisso `#` JSON dei filtri in CSV con BOM UTF-8. Composable FE riusabile `useFileDownload` (pattern Content-Disposition RFC 5987). Aggiunto `openpyxl>=3.1` a requirements (autorizzato Tid). 12 nuovi test renderer. 4 decisioni operative chiuse — vedi [_def.md DEF-1](sviluppo-personalizzazioni-liste_def.md). Refinement architetturale: il modulo `ui` espone solo il renderer (no SQL dinamico sulla `vista_sql`); ogni dominio in DEF-8 estende il proprio repository per ottenere righe e delega al renderer. |
+| 2026-05-11 | **DEF-2 "preset aggiornato"** atterrato (BE+FE+brief DB+test+doc): nuova colonna `ui.lista_preferenza_utente.preset_aggiornato_ignored_at` (tombstone "Ignora"), `ui.fn_resolve_lista_config` aggiornata per esporre flag `preset_aggiornato: bool` via confronto `COALESCE(data_update,data_insert)` snapshot vs corrente, nuovo endpoint `POST /api/v1/ui/liste/<codice>/preferenza/ignore-preset-update/` con `Idempotency-Key`, banner inline `<Message severity="info">` dentro `ListaConfigurabile` (gratis per tutti i caller DEF-8). 3 decisioni operative chiuse + audit critico applicato (helper `_require_lista_id`, `MANAGE_ICONS.PERSONALIZZA` centralizzata) — vedi [_def.md DEF-2](sviluppo-personalizzazioni-liste_def.md). |
+| 2026-05-11 | **DEF-8 soggetti** atterrato (BE+FE+brief DB+test+doc): `<ListaConfigurabile codice="anagrafiche.soggetti">` + endpoint `/anagrafiche/soggetti/export/` simmetrico clienti. 2 fix emersi a smoke: (a) `campo_sorgente='id_fiscale_univoco_cf_piva'` (colonna `GENERATED ALWAYS` su `anagrafiche.soggetti` che COALESCE CF/PIVA, allineato a clienti); (b) `sensibile=false` su `codice_fiscale` (la fn DB filtra fuori le colonne sensibili senza grant, anche per SUPER_ADMIN — pattern clienti = sensibile=false). Aggiornata `manage-test.sh` con override `DJANGO_API_SEARCH_THROTTLE_RATE=100000/min` per neutralizzare 429 falsi positivi nei test (LocMemCache persiste tra SimpleTestCase). 7 test nuovi BE (3 service label + 4 view smoke export). Tutta la suite Django 2494/2494 verde. — vedi [_def.md DEF-8](sviluppo-personalizzazioni-liste_def.md). |
 
 ---
 

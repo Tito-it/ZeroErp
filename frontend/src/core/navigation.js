@@ -28,6 +28,7 @@ export const NAV_ICONS = Object.freeze({
   BACK: 'pi pi-arrow-left',
 
   KEY: 'pi pi-key',
+  SEARCH: 'pi pi-search',
   SITEMAP: 'pi pi-sitemap',
   SHIELD: 'pi pi-shield',
   ID_CARD: 'pi pi-id-card',
@@ -36,8 +37,26 @@ export const NAV_ICONS = Object.freeze({
   AT: 'pi pi-at',
   FILE_EDIT: 'pi pi-file-edit',
   ENVELOPE: 'pi pi-envelope',
-  BRIEFCASE: 'pi pi-briefcase',
-  CLIPBOARD: 'pi pi-clipboard',
+  // Anagrafiche: icone dedicate per le 3 liste root del modulo.
+  // Soggetti = pi pi-users (omini, "anagrafe generale").
+  // Clienti = icona composta receipt+user ("chi riceve fattura").
+  // Fornitori = icona composta building+user ("azienda + persona di riferimento").
+  CLIENTI: 'app-nav-icon app-nav-icon-clienti',
+  FORNITORI: 'app-nav-icon app-nav-icon-fornitori',
+  // Amministrazione operatori (singolo utente tecnico, distinto da
+  // ANAGRAFICHE che usa pi-users per la rubrica multi-soggetto).
+  OPERATORE: 'pi pi-user',
+  // Toponomastica / gestione indirizzi (drawer dedicati in core/components).
+  // pi-building per il comune (edificio civico, distinto dal fornitore
+  // che usa l'icona composta building+user). pi-globe condiviso tra
+  // provincia/regione/stato (gerarchia geografica omogenea).
+  INDIRIZZO: 'pi pi-map-marker',
+  TOPONOMASTICA: 'pi pi-directions',
+  COMUNE: 'pi pi-building',
+  CAP: 'pi pi-inbox',
+  PROVINCIA: 'pi pi-globe',
+  REGIONE: 'pi pi-globe',
+  STATO: 'pi pi-globe',
   MAP_MARKER: 'pi pi-map-marker',
   ARROWS_H: 'pi pi-arrows-h',
   SYNC: 'pi pi-sync',
@@ -121,8 +140,8 @@ export const DOMAIN_MENUS = {
   ],
   'anagrafiche': [
     { key: 'soggetti', icon: NAV_ICONS.ANAGRAFICHE, to: '/anagrafiche/soggetti' },
-    { key: 'clienti', icon: NAV_ICONS.BRIEFCASE, to: '/anagrafiche/clienti' },
-    { key: 'fornitori', icon: NAV_ICONS.CLIPBOARD, to: '/anagrafiche/fornitori' },
+    { key: 'clienti', icon: NAV_ICONS.CLIENTI, to: '/anagrafiche/clienti' },
+    { key: 'fornitori', icon: NAV_ICONS.FORNITORI, to: '/anagrafiche/fornitori' },
     { key: 'indirizzi', icon: NAV_ICONS.MAP_MARKER, to: '/anagrafiche/indirizzi' }
   ],
   'catalogo': [

@@ -44,7 +44,7 @@ function close() {
     :style="{ width: DRAWER_WIDTH.XLARGE }"
   >
     <template #header>
-      <DrawerTitle icon="pi pi-bolt" :title="title" />
+      <DrawerTitle :icon="MANAGE_ICONS.UTILITY" :title="title" />
     </template>
 
     <div :class="{ 'app-readonly': isReadonly }">
