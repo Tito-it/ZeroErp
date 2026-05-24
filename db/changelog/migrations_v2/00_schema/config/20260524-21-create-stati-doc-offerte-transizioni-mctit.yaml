@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea config.stati_doc_offerte_transizioni: matrice delle
+# transizioni ammesse tra stati dell'offerta commerciale.
+#
+# Cinque transizioni (addendum A2 — rimossa BOZZA→RIFIUTATA):
+#   BOZZA(1) -> EMESSA(2)     | emissione (trigger congela listino_versione_id)
+#   BOZZA(1) -> ANNULLATA(6)  | ritiro interno (A2; unica via negativa da BOZZA)
+#   EMESSA(2) -> ACCETTATA(3) | accettazione cliente
+#   EMESSA(2) -> RIFIUTATA(4) | no del cliente
+#   EMESSA(2) -> SUPERATA(5)  | automatico via trigger revisione (Step 6)
+#
+# Nessuna transizione uscente da stati terminali:
+#   ACCETTATA, RIFIUTATA, SUPERATA, ANNULLATA.
+#
+# Pattern identico a config.transizioni_stati_preventivi:
+#   id, stato_da_id, stato_a_id, attivo, meta, audit fields.
+#
+# Il seed (5 righe) e' applicato in Step 4 via 20260524-22.
+# Il trigger guard (trgfn_offerte_commerciali_guard_transizione)
+# e' creato in 20_code/vendite/20260524-23.
+#
+# Dipendenza: config.stati_doc_offerte (migration 20260524-02).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260524-21-create-stati-doc-offerte-transizioni-mctit.yaml
+
+  - changeSet:
+      id: 20260524-21-create-stati-doc-offerte-transizioni
+      author: mctit
+      comment: >
+        Crea config.stati_doc_offerte_transizioni: matrice transizioni stato
+        offerta commerciale. 5 transizioni ammesse (addendum A2: BOZZA->ANNULLATA
+        aggiunta, BOZZA->RIFIUTATA rimossa). Seed in 20260524-22.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_offerte_transizioni
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: stati_doc_offerte_transizioni
+            remarks: >-
+              Matrice delle transizioni ammesse tra stati offerta commerciale.
+              Consultata dal trigger vendite.trgfn_offerte_commerciali_guard_transizione
+              (BEFORE UPDATE OF stato_doc_offerta_id).
+              Pattern identico a config.transizioni_stati_preventivi.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_stati_doc_offerte_transizioni
+                    nullable: false
+
+              - column:
+                  name: stato_da_id
+                  type: bigint
+                  remarks: "FK -> config.stati_doc_offerte.id (stato origine)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: stato_a_id
+                  type: bigint
+                  remarks: "FK -> config.stati_doc_offerte.id (stato destinazione)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Se true, la transizione e' ammessa."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: >-
+                    Metadati UI (action_key, label_key, severity, icon,
+                    requires_confirm, manuale). manuale=false per transizioni
+                    automatiche (es. EMESSA->SUPERATA via trigger revisione).
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: stati_doc_offerte_transizioni
+            columnNames: stato_da_id, stato_a_id
+            constraintName: uq_stati_doc_offerte_transizioni
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: stati_doc_offerte_transizioni
+            baseColumnNames: stato_da_id
+            constraintName: fk_sdot_da
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_offerte
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: stati_doc_offerte_transizioni
+            baseColumnNames: stato_a_id
+            constraintName: fk_sdot_a
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_offerte
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_offerte_transizioni
+                ADD CONSTRAINT ck_sdot_da_diverso_a
+                CHECK (stato_da_id <> stato_a_id);
+
+              COMMENT ON TABLE config.stati_doc_offerte_transizioni IS
+                  'Matrice transizioni ammesse tra stati offerta commerciale. '
+                  'Consultata da vendite.trgfn_offerte_commerciali_guard_transizione. '
+                  '5 transizioni (addendum A2): BOZZA->EMESSA|ANNULLATA, '
+                  'EMESSA->ACCETTATA|RIFIUTATA|SUPERATA. '
+                  'Nessuna transizione uscente da stati terminali. '
+                  'rev 2026-05-24.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: stati_doc_offerte_transizioni

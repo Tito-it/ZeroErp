@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Aggiunge FK fk_offnote_riga su vendite.note_offerte_commerciali:
+#   target_riga_id -> vendite.offerte_commerciali_eccezioni(id)
+#   ON DELETE CASCADE
+#
+# Separata da 20260524-07 perche' offerte_commerciali_eccezioni
+# viene creata in 20260524-05 (Step 3), dopo la creazione della
+# partizione note_offerte_commerciali.
+#
+# Dipendenze:
+#   - vendite.note_offerte_commerciali (migration 20260524-07)
+#   - vendite.offerte_commerciali_eccezioni (migration 20260524-05)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260524-09-add-fk-note-offerte-eccezioni-mctit.yaml
+
+  - changeSet:
+      id: 20260524-09-add-fk-note-offerte-eccezioni
+      author: mctit
+      comment: >
+        Aggiunge FK target_riga_id -> offerte_commerciali_eccezioni(id) su note_offerte_commerciali.
+        Separata da 20260524-07 per ordinamento dipendenze con 20260524-05 (eccezioni).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: note_offerte_commerciali
+            - tableExists:
+                schemaName: vendite
+                tableName: offerte_commerciali_eccezioni
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: note_offerte_commerciali
+            baseColumnNames: target_riga_id
+            constraintName: fk_offnote_riga
+            referencedTableSchemaName: vendite
+            referencedTableName: offerte_commerciali_eccezioni
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: note_offerte_commerciali
+            constraintName: fk_offnote_riga

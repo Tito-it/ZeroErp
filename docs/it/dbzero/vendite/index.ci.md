@@ -54,8 +54,12 @@
 - [note_contratto](manual/note_contratto.md) — `vendite.note_contratto` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [note_ddt](manual/note_ddt.md) — `vendite.note_ddt` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [note_fatture](manual/note_fatture.md) — `vendite.note_fatture` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
+- [note_offerte_commerciali](manual/note_offerte_commerciali.md) — (rev 2026-05-24)
 - [note_ordini](manual/note_ordini.md) — `vendite.note_ordini` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [note_preventivo](manual/note_preventivo.md) — `vendite.note_preventivo` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
+- [offerte_commerciali](manual/offerte_commerciali.md) — (rev 2026-05-24)
+- [offerte_commerciali_eccezioni](manual/offerte_commerciali_eccezioni.md) — (rev 2026-05-24)
+- [offerte_commerciali_utilities](manual/offerte_commerciali_utilities.md) — (rev 2026-05-24)
 - [ordini](manual/ordini.md) — La tabella **`vendite.ordini`** rappresenta la **testata dell’ordine di vendita**, documento commerciale preliminare che raccoglie le condizioni di vendita, spedizione e pagamento concordate con il cliente.   È il punto di partenza del ciclo attivo, destinato a generare documenti successivi (DDT, fatture, contratti di fornitura).
 - [ordini_indirizzi](manual/ordini_indirizzi.md) — `vendite.ordini_indirizzi` memorizza gli **indirizzi associati alla testata ordine** come **snapshot JSON** al momento dell’inserimento/conferma. Per ciascun ordine è ammesso **al massimo un indirizzo per tipo** (es. *spedizione*, *fornitura*, *residenza*), garantito da `UNIQUE(ordine_id, tipo_indirizzo_id)`.
 - [ordini_righe](manual/ordini_righe.md) — Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenza della sorgente. Supporta **doppia rappresentazione delle quantità**:

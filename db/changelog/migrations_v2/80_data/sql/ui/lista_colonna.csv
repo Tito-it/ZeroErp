@@ -19,3 +19,18 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 18,2,tipo_descrizione,Tipo,Tipo soggetto (persona fisica / giuridica / ecc.),tipo_descrizione,informazione,string,,100,40,left,Anagrafica,1,t,t,t,f,f,t,2026-05-22 00:00:00,mctit,soggetti.col_tipo
 19,2,ruoli,Ruoli,Ruoli assegnati al soggetto (es. CLIENTE FORNITORE),ruoli,informazione,string,,240,50,left,Anagrafica,1,f,f,t,f,f,t,2026-05-22 00:00:00,mctit,soggetti.col_ruoli
 20,2,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-05-22 00:00:00,mctit,common.col_azioni
+21,3,codice,Codice,Codice interno del fornitore,codice,identificatore,string,,130,10,left,dati,10,t,t,t,t,f,t,2026-05-24 00:00:00,mctit,fornitori.col_codice
+22,3,ragione_sociale_completa,Ragione Sociale,Ragione sociale completa del fornitore,ragione_sociale_completa,informazione,string,,200,20,left,dati,10,t,t,t,t,f,t,2026-05-24 00:00:00,mctit,fornitori.col_ragione_sociale
+23,3,id_fiscale,Id. Fiscale,Identificativo fiscale univoco (CF o P.IVA),id_fiscale_univoco_cf_piva,informazione,string,,160,30,left,dati,10,t,t,t,t,f,t,2026-05-24 00:00:00,mctit,fornitori.col_id_fiscale
+24,3,modalita_pagamento_desc,Mod. pagamento,Modalità di pagamento del fornitore,modalita_pagamento_desc,informazione,string,,150,40,left,dati,10,t,t,t,f,f,t,2026-05-24 00:00:00,mctit,fornitori.col_modalita_pagamento
+25,3,stato,Stato,Stato corrente del fornitore,stato_descrizione,informazione,string,,110,50,left,dati,10,t,t,t,f,f,t,2026-05-24 00:00:00,mctit,fornitori.col_stato
+26,3,data_insert,Creazione,Data di inserimento del fornitore,data_insert,informazione,date,date_short,110,60,center,dati,10,t,t,t,f,f,t,2026-05-24 00:00:00,mctit,fornitori.col_data_insert
+27,3,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-05-24 00:00:00,mctit,common.col_azioni
+28,3,codice_fiscale,Codice fiscale,Codice fiscale del fornitore,codice_fiscale,informazione,string,,140,70,left,extra,20,t,t,t,t,f,t,2026-05-24 00:00:00,mctit,common.codice_fiscale
+29,3,partita_iva,Partita IVA,Partita IVA del fornitore,partita_iva,informazione,string,,140,80,left,extra,20,t,t,t,t,f,t,2026-05-24 00:00:00,mctit,common.partita_iva
+30,3,pec_email,PEC,Indirizzo PEC del fornitore,pec_email,informazione,string,,220,90,left,extra,20,f,t,t,f,f,t,2026-05-24 00:00:00,mctit,fornitori.col_pec_email
+31,3,canale_fe,Canale FE,Canale di fatturazione elettronica,canale_fe,informazione,string,,100,100,left,extra,20,t,t,t,f,f,t,2026-05-24 00:00:00,mctit,fornitori.col_canale_fe
+32,3,split_payment,Split payment,Fornitore soggetto a split payment,split_payment,informazione,boolean,yesno,110,110,center,extra,20,t,t,t,f,f,t,2026-05-24 00:00:00,mctit,fornitori.col_split_payment
+33,3,ritenuta_acconto,Ritenuta,Fornitore soggetto a ritenuta d'acconto,ritenuta_acconto,informazione,boolean,yesno,110,120,center,extra,20,t,t,t,f,f,t,2026-05-24 00:00:00,mctit,fornitori.col_ritenuta_acconto
+34,3,regime_fiscale,Regime fiscale,Codice del regime fiscale del fornitore,regime_fiscale,informazione,string,,130,130,left,extra,20,f,t,t,f,f,t,2026-05-24 00:00:00,mctit,fornitori.col_regime_fiscale
+35,3,data_update,Aggiornamento,Data ultimo aggiornamento del fornitore,data_update,informazione,date,date_short,110,140,center,extra,20,t,t,t,f,f,t,2026-05-24 00:00:00,mctit,fornitori.col_data_update
