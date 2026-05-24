@@ -255,14 +255,23 @@ function buildRowActions(data) {
 
 **Severity — colore inline e popup:**
 
+Il popup del kebab segue la stessa palette dell'inline. La classe `.app-menu-item-*`
+viene applicata via helper centralizzato `menuItemClass(severity, fallback)` in
+`src/core/utils/rowActions.js`: i consumer (`RowActionsMenu`, `PageActionsBar`,
+`DrawerActionsBar`) passano il proprio fallback (manage o action) e la severity
+dell'azione, l'helper restituisce la classe corretta.
+
 | Severity | Inline (desktop) | Popup (tablet/touch) | Uso tipico |
 | --- | --- | --- | --- |
-| `undefined` | Blu (`app-manage-btn`) | Neutro | Default: apri sub-drawer, clona, gestisci |
-| `'primary'` | Verde (`app-action-btn`) | Neutro | State transition positiva (attiva, approva) |
-| `'warn'` | Arancio (PrimeVue `severity="warn"`) | Neutro | Cautela (chiudi, blocca, scade) |
+| `undefined` | Blu (`app-manage-btn`) | Blu (`app-menu-item-manage`) | Default: apri sub-drawer, clona, gestisci |
+| `'primary'` | Verde (`app-action-btn`) | Verde (`app-menu-item-action`) | State transition positiva (attiva, approva) |
+| `'warn'` | Arancio (PrimeVue `severity="warn"`) | Arancio (`app-menu-item-warn`) | Cautela (chiudi, blocca, scade) |
 | `'danger'` | Rosso (`app-delete-btn`) | Rosso (`app-menu-item-danger`) | Distruttivo (elimina, disattiva) |
+| `'info'` | Blu (`app-manage-btn`) | Blu (`app-menu-item-manage`) | Sinonimo di default |
+| `'success'` | Verde | Verde (`app-menu-item-action`) | Sinonimo di primary |
 
-Solo `danger` differenzia anche nel popup: per le altre severity la label + icona bastano a distinguere l'azione.
+Le voci `:disabled` ricadono sul colore muted PrimeVue (`--app-btn-disabled-color`)
+sovrascrivendo la severity — evita di mostrare "vivace" un'azione non cliccabile.
 
 **Convenzioni centralizzate (niente valori hardcoded nelle liste):**
 
@@ -273,7 +282,8 @@ Solo `danger` differenzia anche nel popup: per le altre severity la label + icon
 | Stile bottone standard | `.app-manage-btn` in `main.css` |
 | Stile bottone distruttivo | `.app-delete-btn` in `main.css` |
 | Larghezza colonna (auto / 60px) | `.app-col-actions` in `main.css` (media query) |
-| Voce menu distruttiva | `.app-menu-item-danger` in `main.css` (eredita `--app-btn-delete-*`) |
+| Voci menu popup | `.app-menu-item-{manage,action,warn,danger}` in `main.css` |
+| Helper severity → classe | `menuItemClass(severity, fallback)` in `src/core/utils/rowActions.js` |
 | Tooltip fallback kebab | `common.altre_azioni` ("Altre azioni") in `it.json` |
 | Tooltip record inattivo | `common.azione_non_disponibile_record_inattivo` in `it.json` |
 | Header colonna azioni | `common.col_azioni` ("Azioni") in `it.json` — sempre questa chiave, mai domain-specific |
@@ -485,7 +495,10 @@ Usato da: `DrawerFooter` (Ctrl+S salva).
 | `app-col-actions`          | `<Column>` azioni di riga         | Larghezza auto su desktop, 60px su tablet/touch (media query `<=1024px`)   |
 | `app-row-actions-inline`   | Interno `RowActionsMenu`          | Wrapper pulsanti inline — visibile solo con hover + viewport `>=1024px`    |
 | `app-row-actions-compact`  | Interno `RowActionsMenu`          | Wrapper kebab + menu popup — visibile su touch o viewport `<1024px`        |
-| `app-menu-item-danger`     | Voce `Menu` PrimeVue              | Colore rosso per azioni distruttive — applicato via `severity: 'danger'`   |
+| `app-menu-item-manage`     | Voce `Menu` PrimeVue              | Colore blu — default popup `RowActionsMenu`                                |
+| `app-menu-item-action`     | Voce `Menu` PrimeVue              | Colore verde — default popup `PageActionsBar` / severity `primary`         |
+| `app-menu-item-warn`       | Voce `Menu` PrimeVue              | Colore arancio — severity `warn` (cautela)                                 |
+| `app-menu-item-danger`     | Voce `Menu` PrimeVue              | Colore rosso — severity `danger` (distruttiva)                             |
 
 ### Composable `useSearchTable(store)`
 

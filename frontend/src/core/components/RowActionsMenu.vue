@@ -37,6 +37,7 @@ import { useI18n } from 'vue-i18n'
 import Menu from 'primevue/menu'
 import Button from 'primevue/button'
 import { MANAGE_ICONS } from '../constants'
+import { menuItemClass } from '../utils/rowActions'
 
 const props = defineProps({
   actions: { type: Array, required: true },
@@ -76,12 +77,14 @@ function actionTooltip(action) {
 }
 
 // Scopo: mappa per il formato PrimeVue Menu (variante compact).
+// La classe della voce e' parallela al colore inline del bottone desktop:
+// default = manage (blu, come app-manage-btn) — coerente con inlineButtonClass.
 const menuItems = computed(() =>
   visibleActions.value.map(a => ({
     label: a.label,
     icon: a.icon,
     disabled: isActionDisabled(a),
-    class: a.severity === 'danger' ? 'app-menu-item-danger' : undefined,
+    class: menuItemClass(a.severity, 'app-menu-item-manage'),
     command: () => {
       if (!isActionDisabled(a)) a.command?.()
     },

@@ -16,6 +16,7 @@ import { getAIStatus } from '../api/ai-api'
 import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
 import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
+import { menuItemClass } from '../utils/rowActions'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -95,16 +96,22 @@ const languageTooltip = computed(() => {
 //        Il trigger è visibile solo su mobile (CSS @media <= 767px);
 //        i pulsanti singoli sono nascosti alla stessa soglia.
 const kebabMenu = ref(null)
+// Scopo: voci kebab topbar. Tutte neutre/preferenze (dark/search/AI/lingua),
+// nessuna severity esplicita -> fallback "action" (verde) coerente con il
+// colore dei pulsanti inline `.topbar-icon-btn` (--p-primary-color).
+const TOPBAR_MENU_CLASS = menuItemClass(undefined, 'app-menu-item-action')
 const kebabItems = computed(() => {
   const items = [
     {
       label: ui.isDark ? t('common.light_mode') : t('common.dark_mode'),
       icon: ui.isDark ? 'pi pi-sun' : 'pi pi-moon',
+      class: TOPBAR_MENU_CLASS,
       command: () => ui.toggleDarkMode()
     },
     {
       label: t('context.tooltip_search'),
       icon: 'pi pi-search',
+      class: TOPBAR_MENU_CLASS,
       command: () => ui.openSearchDrawer()
     }
   ]
@@ -112,12 +119,14 @@ const kebabItems = computed(() => {
     items.push({
       label: t('ai.title'),
       icon: 'pi pi-microchip-ai',
+      class: TOPBAR_MENU_CLASS,
       command: () => ui.toggleAiDrawer()
     })
   }
   items.push({
     label: `${t('common.language')} · ${languageLabel.value}`,
     icon: 'pi pi-globe',
+    class: TOPBAR_MENU_CLASS,
     command: () => toggleLanguage()
   })
   return items

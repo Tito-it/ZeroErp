@@ -41,7 +41,7 @@ import ExportDialog from '../../core/components/ExportDialog.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 
-const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari', 'contratti'])
+const emit = defineEmits(['new', 'row-click', 'soggetto', 'contatti', 'indirizzi', 'conti-bancari', 'contratti'])
 const { t } = useI18n()
 const store = useClientiStore()
 const auth = useAuthStore()
@@ -177,6 +177,12 @@ function onConfigLoaded(config) {
 function buildRowActions(data) {
   const contiBlocked = auth.isObjectBlocked('anagrafiche', 'conto_bancario')
   return [
+    {
+      key: 'soggetto',
+      label: t('clienti.gestisci_soggetto'),
+      icon: MANAGE_ICONS.SOGGETTO,
+      command: () => emit('soggetto', data),
+    },
     {
       key: 'contatti',
       label: t('contatto.gestisci_contatti'),
