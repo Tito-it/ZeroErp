@@ -28,6 +28,9 @@ Indice test eseguiti:
 18) test_auto_clone_tipi_obbligatori — clona primo indirizzo per obbligatori mancanti
 19) test_no_auto_clone_if_flag_false — auto_clone=False, nessuna clonazione
 20) test_auto_clone_riusa_dettaglio — clone riusa indirizzo_dettaglio_id del primo
+21) test_resolve_filtri_export_label_completo — DEF-1 mapping con search+tipo
+22) test_resolve_filtri_export_label_fallback_id — descrizione mancante → id=N
+23) test_resolve_filtri_export_label_vuoto — nessun filtro → dict vuoto
 """
 
 from unittest import TestCase
@@ -422,3 +425,43 @@ class TestAutoCloneIndirizzi(TestCase):
         # Il secondo chiama con indirizzo_dettaglio_id=50 (riuso)
         second_call = repo.crea_indirizzo_soggetto.call_args_list[1]
         self.assertEqual(second_call.kwargs["indirizzo_dettaglio_id"], 50)
+
+
+class TestResolveFiltriExportLabel(TestCase):
+    """DEF-1: traduzione filtri attivi in label leggibili per header export."""
+
+    @patch(SOGG_REPO)
+    def test_resolve_filtri_export_label_completo(self, mock_repo):
+        """Mapping completo: search + tipo_soggetto_dettaglio_id."""
+        repo = mock_repo.return_value
+        repo.get_tipo_soggetto_dettaglio_descrizione.return_value = "Persona Fisica"
+
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        result = SoggettiService().resolve_filtri_export_label(
+            search="mario", tipo_soggetto_dettaglio_id=3,
+        )
+
+        self.assertEqual(result, {"Ricerca": "mario", "Tipo": "Persona Fisica"})
+        repo.get_tipo_soggetto_dettaglio_descrizione.assert_called_once_with(3)
+
+    @patch(SOGG_REPO)
+    def test_resolve_filtri_export_label_fallback_id(self, mock_repo):
+        """Lookup descrizione mancante (id obsoleto): fallback 'id=N'."""
+        repo = mock_repo.return_value
+        repo.get_tipo_soggetto_dettaglio_descrizione.return_value = None
+
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        result = SoggettiService().resolve_filtri_export_label(
+            tipo_soggetto_dettaglio_id=999,
+        )
+
+        self.assertEqual(result, {"Tipo": "id=999"})
+
+    @patch(SOGG_REPO)
+    def test_resolve_filtri_export_label_vuoto(self, mock_repo):
+        """Nessun filtro attivo: dict vuoto."""
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        result = SoggettiService().resolve_filtri_export_label()
+
+        self.assertEqual(result, {})
+        mock_repo.return_value.get_tipo_soggetto_dettaglio_descrizione.assert_not_called()

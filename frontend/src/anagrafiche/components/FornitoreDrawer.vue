@@ -13,6 +13,7 @@ import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
 import { useCodiceField } from '../../core/composables/useCodiceField'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { statoFornitoreSeverity } from '../../core/utils/severity'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
@@ -214,7 +215,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('fornitori.fornitore')"
-        icon="pi pi-clipboard"
+        :icon="NAV_ICONS.FORNITORI"
       />
     </template>
 

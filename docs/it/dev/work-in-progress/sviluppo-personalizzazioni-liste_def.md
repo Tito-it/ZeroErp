@@ -1,11 +1,20 @@
 # Personalizzazioni liste — Piano operativo sviluppi differiti
 
+> **Scopo di questo documento**: roadmap operativa degli sviluppi DEF-1..DEF-10
+> (stato corrente, decisioni operative aperte, sforzo, dipendenze). Sostituzione:
+> i DEF atterrati si segnano `Done` e si sintetizzano in 1 sezione "delivery"
+> qui dentro; il consuntivo cronologico vive nel doc architettura.
+>
+> Per l'**architettura del modulo `ui`** (problema, 3 livelli, tabelle DB,
+> fn `fn_resolve_lista_config`, regole, storia cronologica degli atterraggi)
+> vedi [sviluppo-personalizzazioni-liste.md](sviluppo-personalizzazioni-liste.md).
+
 **Modulo:** UI / Presentazione
 **Riferimento principale:** [sviluppo-personalizzazioni-liste.md](sviluppo-personalizzazioni-liste.md)
-**Stato Blocco F:** Fase 1 ATTERRATA 2026-05-08 (preset + permessi colonne in `/config/personalizzazioni-liste`). Fase 2 = DEF-5 residuo (vedi sotto).
-**Aggiornato:** 2026-05-08
+**Stato Blocco F:** Fase 1 ATTERRATA 2026-05-08 (preset + permessi colonne in `/config/personalizzazioni-liste`). Fase 2 = DEF-5b ATTERRATA 2026-05-10.
+**Aggiornato:** 2026-05-11
 
-Questo documento e' la **roadmap operativa** degli sviluppi non implementati: per ogni DEF c'e' stato corrente, decisioni operative da chiudere prima di partire, struttura tecnica, dipendenze e stima sforzo. Quando un DEF atterra completamente va rimosso o spostato in changelog del WIP principale.
+Questo documento e' la **roadmap operativa** degli sviluppi non implementati: per ogni DEF c'e' stato corrente, decisioni operative da chiudere prima di partire, struttura tecnica, dipendenze e stima sforzo. Quando un DEF atterra completamente la sezione si riduce a "Sintesi delivery" + decisioni chiuse; il dettaglio cronologico passa al doc architettura.
 
 **Convenzione stima sforzo** (sviluppatore singolo, sessione full-stack):
 
@@ -27,7 +36,7 @@ Questo documento e' la **roadmap operativa** degli sviluppi non implementati: pe
 | # | Item | Stato | Sforzo | Priorita' | Dipende da |
 |---|---|---|---|---|---|
 | DEF-5b | Fase 2 Blocco F (CRUD `lista_definizione` + `lista_colonna` + `etichetta_i18n_key` UX) | 🟢 Done 2026-05-10 | L | — | — |
-| DEF-8 | Estendere parametrizzazione ad altre liste (incrementale) | 🟡 Parziale (1/N done) | S per lista | **Alta** | Blocco F Fase 1 done |
+| DEF-8 | Estendere parametrizzazione ad altre liste (incrementale) | 🟡 Parziale (2/N done) | S per lista | **Alta** | Blocco F Fase 1 done |
 | DEF-1 | Export CSV/Excel con metadati filtri | 🟢 Done 2026-05-10 | M | — | — |
 | DEF-2 | Notifica "preset aggiornato" | 🟢 Done 2026-05-11 (BE+FE; DB in brief) | S | — | — |
 | DEF-10 | Pattern formalizzato colonne composte FE-only | 🟡 Parziale (esiste come trick) | S | Media | DEF-5b o standalone |
@@ -349,7 +358,7 @@ Differenza chiave: DEF-7 calcola, DEF-10 compone. Implementativamente entrambi f
 
 ## DEF-8 — Seed catalogo per altre liste (incrementale)
 
-**Stato:** 🟡 Parziale — 1 lista migrata su N
+**Stato:** 🟡 Parziale — 2 liste migrate su N (clienti + soggetti)
 **Sforzo:** S per lista
 
 ### Cosa serve
@@ -365,9 +374,9 @@ Estendere il pattern Blocco E (atterrato per `anagrafiche.clienti`) ad altre lis
 
 | Lista | Componente attuale | Migrata? |
 |---|---|---|
-| `anagrafiche.clienti` | ClientiSearchTable.vue | 🟢 Done (Blocco E5) |
+| `anagrafiche.clienti` | ClientiSearchTable.vue | 🟢 Done (Blocco E5 + DEF-1 export) |
+| `anagrafiche.soggetti` | SoggettiSearchTable.vue | 🟢 Done 2026-05-11 (DEF-8 + DEF-1 export) |
 | `anagrafiche.fornitori` | FornitoriSearchTable.vue | 🔴 Todo |
-| `anagrafiche.soggetti` | SoggettiSearchTable.vue | 🔴 Todo |
 | `anagrafiche.indirizzi` | IndirizziSearchTable.vue | 🔴 Todo |
 | `catalogo.articoli` | ArticoliSearchTable.vue | 🔴 Todo |
 | `catalogo.unita-misura` | UnitaMisuraSearchTable.vue | 🔴 Todo |
@@ -378,7 +387,7 @@ Estendere il pattern Blocco E (atterrato per `anagrafiche.clienti`) ad altre lis
 | `vendite.approvazioni-prezzo` | ApprovazioniPrezzoSearchTable.vue | 🔴 Todo |
 | `pratiche` | PraticheDashboard.vue | 🔴 Todo |
 
-12 liste residue. Ordine suggerito per impatto utente:
+11 liste residue. Ordine suggerito per impatto utente:
 1. `anagrafiche.fornitori` (gemello di clienti, codice gia' rodato)
 2. `catalogo.articoli` (lista molto frequente)
 3. `vendite.contratti` (operatori vendita la usano spesso)
@@ -405,6 +414,31 @@ Estendere il pattern Blocco E (atterrato per `anagrafiche.clienti`) ad altre lis
 
 - Blocco F Fase 1 atterrato — done.
 - Per liste con campi calcolati: DEF-7+10 (oppure soluzione ad-hoc come `sosp_riatt`).
+
+### Lezioni dallo smoke soggetti (2026-05-11) — checklist per i prossimi DEF-8
+
+Due fix emersi a smoke completato sulla lista soggetti, da considerare in
+anticipo per ogni nuova lista migrata:
+
+1. **`campo_sorgente` vs colonne native**: se la tabella sorgente espone una
+   colonna **GENERATED ALWAYS** che combina piu' campi (es.
+   `id_fiscale_univoco_cf_piva = COALESCE(codice_fiscale, partita_iva)` su
+   `anagrafiche.soggetti`), il seed `lista_colonna.campo_sorgente` deve
+   referenziare quella colonna generata, non il singolo campo nativo.
+   Pattern clienti: `campo_sorgente='id_fiscale_univoco_cf_piva'` con
+   `codice='codice_fiscale'`. Verificare le colonne `GENERATED` della
+   tabella prima di scrivere il brief seed.
+2. **`sensibile` con default deny-list**: la fn
+   `ui.fn_resolve_lista_config` filtra fuori (rimuove dal payload!) le
+   colonne `sensibile=true` senza grant esplicito in
+   `ui.lista_colonna_permesso`. Anche SUPER_ADMIN cade in questo filtro
+   (e' lato fn DB, non legato a `IsAdminZeroERP`). Allineare il flag al
+   pattern clienti: CF, PIVA, indirizzi mail/telefono restano
+   `sensibile=false` per default; usare `sensibile=true` SOLO se serve
+   restrizione real per profilo (e in quel caso seedare anche i grant
+   permessi colonna per i profili autorizzati).
+
+Entrambi i fix sono documentati in `brief-db-def8-soggetti-fix-id-fiscale.md`.
 
 ---
 

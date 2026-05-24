@@ -43,7 +43,7 @@ function close() {
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
   >
     <template #header>
-      <DrawerTitle icon="pi pi-credit-card" :title="title" />
+      <DrawerTitle :icon="MANAGE_ICONS.BILLING_ACCOUNT" :title="title" />
     </template>
 
     <div :class="{ 'app-readonly': isReadonly }">

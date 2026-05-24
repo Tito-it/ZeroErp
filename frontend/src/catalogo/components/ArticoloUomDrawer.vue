@@ -290,7 +290,7 @@ const onClose = useDrawerClose(emit)
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_uom')" icon="pi pi-box" />
+      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_uom')" :icon="MANAGE_ICONS.UOM" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

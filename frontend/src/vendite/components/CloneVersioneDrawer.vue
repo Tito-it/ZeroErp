@@ -12,7 +12,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { cloneVersione } from '../api/listini'
 import { getVersioneCloneDefaults } from '../api/formDefaults'
 import { toDateString, displayDate, addDaysToToday } from '../../core/utils/date'
-import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
@@ -108,7 +108,7 @@ function close() {
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
     position="right" :style="{ width: DRAWER_WIDTH.STANDARD }">
     <template #header>
-      <DrawerTitle :action="t('listini.clona')" :title="t('listini.clona_versione')" icon="pi pi-copy" />
+      <DrawerTitle :action="t('listini.clona')" :title="t('listini.clona_versione')" :icon="MANAGE_ICONS.CLONE" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">

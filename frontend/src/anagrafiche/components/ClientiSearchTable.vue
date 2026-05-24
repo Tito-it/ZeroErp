@@ -118,7 +118,7 @@ const pageActions = computed(() => [
     tooltip: colonneNuove.value > 0
       ? t('lista_config.colonne_nuove_disponibili', { n: colonneNuove.value })
       : t('lista_config.personalizza_colonne'),
-    icon: 'pi pi-cog',
+    icon: MANAGE_ICONS.PERSONALIZZA,
     disabled: !configReady.value,
     command: () => listaRef.value?.openModal?.(),
   },
@@ -127,7 +127,7 @@ const pageActions = computed(() => [
     kind: 'utility',
     label: t('lista_config.export'),
     tooltip: t('lista_config.export_tooltip'),
-    icon: 'pi pi-download',
+    icon: MANAGE_ICONS.DOWNLOAD,
     disabled: exportLoading.value,
     command: () => { exportDialogVisible.value = true },
   },

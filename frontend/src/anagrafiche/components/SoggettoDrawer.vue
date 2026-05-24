@@ -17,6 +17,7 @@ import { useLookup } from '../../core/composables/useLookup'
 import { lookupFormeGiuridiche } from '../../core/apiCore'
 import { lookupProvince } from '../api/anagrafiche'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 import { toDateString } from '../../core/utils/date'
 import SoggettoForm from '../../core/components/SoggettoForm.vue'
 import ContattoForm from '../../core/components/ContattoForm.vue'
@@ -351,7 +352,7 @@ async function handleSave() {
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
   >
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('soggetti.soggetto')" icon="pi pi-users" />
+      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('soggetti.soggetto')" :icon="NAV_ICONS.ANAGRAFICHE" />
     </template>
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Sezione: Dati soggetto -->

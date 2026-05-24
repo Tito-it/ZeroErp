@@ -34,6 +34,13 @@ set -a
 source "$ENV_FILE"
 set +a
 
+# Neutralizza il rate-limit DRF SearchBurstRateThrottle (default 30/min)
+# nei test. La cache `LocMemCache` non viene resettata tra SimpleTestCase
+# e il counter persiste tra test ravvicinati sullo stesso endpoint
+# `is_search_endpoint=True`, causando 429 falsi positivi (audit
+# 2026-05-11). Override solo in test, runtime/prod restano a 30/min.
+export DJANGO_API_SEARCH_THROTTLE_RATE="100000/min"
+
 # Build test command
 if [[ $# -eq 0 ]]; then
   set -- test

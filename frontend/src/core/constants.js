@@ -218,7 +218,11 @@ export const MANAGE_ICONS = {
   INDIRIZZI: 'pi pi-map-marker',
   CONTI_BANCARI: 'pi pi-wallet',
   // Catalogo
-  UOM: 'pi pi-box',
+  // UOM: icona composta box+cog (definita in main.css `.app-nav-icon-uom`).
+  // Differenzia visivamente le unita' di misura operative dall'articolo
+  // base (NAV_ICONS.CATALOGO = pi-box semplice). Semantica "quantita' +
+  // conversione operativa".
+  UOM: 'app-nav-icon app-nav-icon-uom',
   BOM: 'pi pi-sitemap',
   NOTE: 'pi pi-file-edit',
   CONVERSIONI: 'pi pi-sync',
@@ -246,6 +250,10 @@ export const MANAGE_ICONS = {
   DOWNLOAD: 'pi pi-download',
   DELETE: 'pi pi-trash',
   KEBAB: 'pi pi-ellipsis-v',
+  // Personalizzazione lista (DEF-8): apre la modale "Personalizza colonne"
+  // di `<ListaConfigurabile>`. Centralizzata 2026-05-11 dopo audit DEF-8
+  // soggetti (era hardcoded in ClientiSearchTable + SoggettiSearchTable).
+  PERSONALIZZA: 'pi pi-cog',
   // Toggle collassa/espandi (accordion, expansion row, tree).
   // Standard PrimeVue/Material: chevron-down sta nello stato collassato
   // (invita ad aprire), chevron-up nello stato espanso (invita a chiudere).

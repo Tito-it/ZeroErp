@@ -9,6 +9,7 @@ import ComuneAutocomplete from './ComuneAutocomplete.vue'
 import DrawerFooter from './DrawerFooter.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import { DRAWER_WIDTH } from '../constants'
+import { NAV_ICONS } from '../navigation'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 
@@ -52,7 +53,7 @@ async function handleSave() {
   <Drawer :visible="visible" @update:visible="emit('update:visible', $event)" position="right"
     :style="{ width: DRAWER_WIDTH.SIMPLE }">
     <template #header>
-      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('indirizzi.cap')" icon="pi pi-inbox" />
+      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('indirizzi.cap')" :icon="NAV_ICONS.CAP" />
     </template>
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">

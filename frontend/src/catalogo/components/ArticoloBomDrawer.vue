@@ -496,7 +496,7 @@ function buildRigaActions(row) {
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_bom')" icon="pi pi-sitemap" />
+      <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_bom')" :icon="MANAGE_ICONS.BOM" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
