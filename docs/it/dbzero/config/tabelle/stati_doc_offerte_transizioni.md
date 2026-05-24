@@ -1,3 +1,5 @@
+{% include-markdown "it/dbzero/config/manual/stati_doc_offerte_transizioni.md" %}
+
 # 📚 Tabella `stati_doc_offerte_transizioni`
 
 ## 🗂️ Campi principali
