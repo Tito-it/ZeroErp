@@ -1,8 +1,8 @@
 bracex==2.6
-certifi==2026.4.22
+certifi==2026.5.20
 cfgv==3.5.0
 charset-normalizer==3.4.7
-click==8.4.0
+click==8.4.1
 colorama==0.4.6
 deepmerge==2.0
 distlib==0.4.0
@@ -10,7 +10,7 @@ EditorConfig==0.17.1
 filelock==3.29.0
 hjson==3.1.0
 identify==2.6.19
-idna==3.15
+idna==3.16
 Jinja2==3.1.6
 jsbeautifier==1.15.4
 Markdown==3.10.2
