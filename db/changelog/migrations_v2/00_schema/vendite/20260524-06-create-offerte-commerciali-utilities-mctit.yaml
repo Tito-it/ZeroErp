@@ -1,0 +1,284 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea vendite.offerte_commerciali_utilities: snapshot precontrattuali
+# utility dell'offerta commerciale. Mirror fedele di
+# vendite.contratti_utilities con offerta_id invece di contratto_id.
+#
+# Relazione 1:1 con l'offerta (UNIQUE offerta_id): un'offerta
+# riguarda una sola utility (mono-utility §5.1) e ha un solo snapshot.
+#
+# Tutti i campi business di contratti_utilities sono presenti:
+#   istanza_utility_id, utility_id, istanza_dati_precontrattuali_id,
+#   classe_utenza_id, tipo_utenza_id, param_1_num, param_2_txt, meta.
+# La copia 1:1 in fn_push_offerta_a_contratto e' triviale.
+#
+# Il guard tipo/classe (trgfn_contratti_utilities_guard_tipo_classe)
+# si applica solo su contratti_utilities; sull'offerta i dati arrivano
+# gia' validati dall'istanza precontrattuale.
+#
+# Dipendenze:
+#   - vendite.offerte_commerciali (migration 20260524-03)
+#   - anagrafiche.istanze_utilities
+#   - anagrafiche.istanze_dati_precontrattuali
+#   - config.utilities
+#   - config.classi_utenze
+#   - config.tipi_utenze
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260524-06-create-offerte-commerciali-utilities-mctit.yaml
+
+  - changeSet:
+      id: 20260524-06-create-offerte-commerciali-utilities
+      author: mctit
+      comment: >
+        Crea vendite.offerte_commerciali_utilities: snapshot precontrattuali 1:1
+        con l'offerta. Mirror fedele di contratti_utilities (tutti i campi business).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: offerte_commerciali_utilities
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: offerte_commerciali_utilities
+            remarks: >-
+              Snapshot precontrattuali utility dell'offerta commerciale (1:1 con offerta).
+              Mirror fedele di vendite.contratti_utilities: tutti i campi business
+              (tipo_utenza, classe_utenza, parametri, istanza precontrattuale)
+              sono inclusi per garantire copia 1:1 in fn_push_offerta_a_contratto.
+            columns:
+
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica (IDENTITY)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_offerte_commerciali_utilities
+                    nullable: false
+
+              - column:
+                  name: offerta_id
+                  type: bigint
+                  remarks: >-
+                    FK → vendite.offerte_commerciali(id). UNIQUE: relazione 1:1
+                    (un'offerta ha al piu' uno snapshot utility, mono-utility §5.1).
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: istanza_utility_id
+                  type: bigint
+                  remarks: "FK → anagrafiche.istanze_utilities(id). Istanza utility oggetto dell'offerta."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: utility_id
+                  type: integer
+                  remarks: "FK → config.utilities(id). Utility di riferimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: istanza_dati_precontrattuali_id
+                  type: bigint
+                  remarks: >-
+                    FK → anagrafiche.istanze_dati_precontrattuali(id). Tracciabilita'
+                    verso il record sorgente dei dati precontrattuali. Nullable.
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: classe_utenza_id
+                  type: integer
+                  remarks: >-
+                    FK → config.classi_utenze(id). Snapshot classe utenza.
+                    NULL per utility senza dimensione classe (commercio / Base).
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: tipo_utenza_id
+                  type: integer
+                  remarks: >-
+                    FK → config.tipi_utenze(id). Snapshot tipo utenza (pricing v5).
+                    NULL per utility senza dimensione tipo/classe.
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: param_1_num
+                  type: numeric
+                  remarks: "Snapshot param_1_num dai precontrattuali. Specchio contratti_utilities."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: param_2_txt
+                  type: character varying
+                  remarks: "Snapshot param_2_txt dai precontrattuali. Specchio contratti_utilities."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Snapshot meta precontrattuale. Specchio contratti_utilities."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID per correlazione audit cross-tabella."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento riga (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente DB che ha inserito la riga (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente DB dell'ultima modifica (audit)."
+                  constraints:
+                    nullable: true
+
+        # ----------------------------------------------------------------
+        # UNIQUE 1:1
+        # ----------------------------------------------------------------
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: offerte_commerciali_utilities
+            columnNames: offerta_id
+            constraintName: uq_offerte_commerciali_utilities_offerta_id
+
+        # ----------------------------------------------------------------
+        # FK esplicite (stessa struttura di contratti_utilities)
+        # ----------------------------------------------------------------
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_utilities
+            baseColumnNames: offerta_id
+            constraintName: fk_offerte_utilities_offerta
+            referencedTableSchemaName: vendite
+            referencedTableName: offerte_commerciali
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_utilities
+            baseColumnNames: istanza_utility_id
+            constraintName: fk_offerte_utilities_istanza_utility
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_utilities
+            baseColumnNames: utility_id
+            constraintName: fk_offerte_utilities_utility
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_utilities
+            baseColumnNames: istanza_dati_precontrattuali_id
+            constraintName: fk_offerte_utilities_istanza_dati_precontrattuali
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_dati_precontrattuali
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_utilities
+            baseColumnNames: classe_utenza_id
+            constraintName: fk_offerte_utilities_classe_utenza
+            referencedTableSchemaName: config
+            referencedTableName: classi_utenze
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_utilities
+            baseColumnNames: tipo_utenza_id
+            constraintName: fk_offerte_utilities_tipo_utenza
+            referencedTableSchemaName: config
+            referencedTableName: tipi_utenze
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # ----------------------------------------------------------------
+        # COMMENT ON TABLE
+        # ----------------------------------------------------------------
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE vendite.offerte_commerciali_utilities IS
+                  'Snapshot precontrattuali utility dell''offerta commerciale (1:1). '
+                  'Mirror fedele di contratti_utilities: tutti i campi business inclusi '
+                  '(tipo_utenza_id, classe_utenza_id, param_1_num, param_2_txt, meta, '
+                  'istanza_dati_precontrattuali_id) per copia 1:1 in fn_push_offerta_a_contratto. '
+                  'La coerenza tipo/classe viene verificata solo su contratti_utilities '
+                  '(il guard si applica al momento del push, non sulla proposta). '
+                  'rev 2026-05-24.';
+
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: offerte_commerciali_utilities

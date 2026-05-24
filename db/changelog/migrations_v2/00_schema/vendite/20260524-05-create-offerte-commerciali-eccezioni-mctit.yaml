@@ -1,0 +1,382 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea vendite.offerte_commerciali_eccezioni: righe dell'offerta
+# commerciale. Mirror fedele di vendite.contratti_righe con queste
+# differenze intenzionali:
+#   - offerta_id invece di contratto_id
+#   - ESCLUSE: stato_approvazione_prezzo, pratica_approvazione_prezzo_id
+#     (il flusso di approvazione prezzo e' solo sui contratti, non
+#     sull'offerta pre-negoziazione)
+#
+# Stesso enum tipo_eccezione_contratto (OVERRIDE, ESCLUSIONE, AGGIUNTA).
+# Stessi 5 CHECK semantici di contratti_righe.
+# Stessi 2 UNIQUE parziali per cardinalita' eccezione/aggiunta.
+#
+# La fedeltà strutturale garantisce che fn_push_offerta_a_contratto
+# sia una copia 1:1 triviale senza conversione colonne (§5.1 analisi).
+#
+# Dipendenze:
+#   - vendite.offerte_commerciali (migration 20260524-03)
+#   - vendite.tipo_eccezione_contratto (migration 20260515-11)
+#   - catalogo.articoli
+#   - catalogo.unita_misura
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260524-05-create-offerte-commerciali-eccezioni-mctit.yaml
+
+  - changeSet:
+      id: 20260524-05-create-offerte-commerciali-eccezioni
+      author: mctit
+      comment: >
+        Crea vendite.offerte_commerciali_eccezioni: mirror fedele di contratti_righe
+        senza stato_approvazione_prezzo/pratica_approvazione_prezzo_id.
+        Stessi CHECKs, stesso enum tipo_eccezione_contratto, stessi UNIQUE parziali.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT COUNT(*)::text FROM pg_type
+                  WHERE typname = 'tipo_eccezione_contratto'
+                    AND typnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'vendite')
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: offerte_commerciali_eccezioni
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: offerte_commerciali_eccezioni
+            remarks: >-
+              Righe dell'offerta commerciale: mirror fedele di vendite.contratti_righe
+              (escluse stato_approvazione_prezzo e pratica_approvazione_prezzo_id).
+              Ogni riga e' un'eccezione tipizzata rispetto al listino dell'offerta:
+              OVERRIDE (prezzo alternativo), ESCLUSIONE (articolo escluso),
+              AGGIUNTA (articolo non in listino). I CHECKs e i UNIQUE parziali
+              sono identici a contratti_righe per garantire copia 1:1 al push.
+            columns:
+
+              # ----------------------------------------------------------------
+              # Chiavi
+              # ----------------------------------------------------------------
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica (IDENTITY)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_offerte_commerciali_eccezioni
+                    nullable: false
+
+              - column:
+                  name: offerta_id
+                  type: bigint
+                  remarks: >-
+                    FK → vendite.offerte_commerciali(id). ON DELETE CASCADE:
+                    le eccezioni sono possedute dall'offerta e scompaiono con essa.
+                  constraints:
+                    nullable: false
+
+              # ----------------------------------------------------------------
+              # Articolo
+              # ----------------------------------------------------------------
+              - column:
+                  name: articolo_id
+                  type: uuid
+                  remarks: "FK → catalogo.articoli(id). Articolo oggetto dell'eccezione."
+                  constraints:
+                    nullable: false
+
+              # ----------------------------------------------------------------
+              # Tipo eccezione (mirror esatto di contratti_righe)
+              # ----------------------------------------------------------------
+              - column:
+                  name: tipo_eccezione
+                  type: vendite.tipo_eccezione_contratto
+                  remarks: >-
+                    Tipo eccezione: OVERRIDE (prezzo_unitario NOT NULL),
+                    ESCLUSIONE (prezzo_unitario NULL), AGGIUNTA (prezzo_unitario NOT NULL).
+                    Stesso enum di contratti_righe per copia 1:1 al push.
+                  constraints:
+                    nullable: false
+
+              # ----------------------------------------------------------------
+              # Erogazione e pricing (mirror contratti_righe)
+              # ----------------------------------------------------------------
+              - column:
+                  name: tipo_erogazione
+                  type: varchar(16)
+                  remarks: "CANONE | UNA_TANTUM | ORARIO | CONSUMO. Specchio contratti_righe."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: fonte_quantita_attesa
+                  type: varchar(32)
+                  remarks: >-
+                    FISSA | MANUALE | TIMESHEET | LETTURE | DERIVATA_COMPONENTI. NOT NULL.
+                    Il trigger default (Step 4) imposta il valore su INSERT coerente con tipo_erogazione.
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: periodicita
+                  type: varchar(32)
+                  remarks: "Periodicita fatturazione. Specchio contratti_righe."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: generazione_canone
+                  type: varchar(32)
+                  remarks: "INIZIO_PERIODO | FINE_PERIODO | PRORATA. Specchio contratti_righe."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: competenza_canone
+                  type: varchar(32)
+                  remarks: "Competenza canone. Specchio contratti_righe."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: prezzo_unitario
+                  type: numeric(18,6)
+                  remarks: >-
+                    Prezzo unitario proposto. NULL per ESCLUSIONE; NOT NULL per
+                    OVERRIDE e AGGIUNTA (CHECK chk_offerte_eccezioni_prezzo_per_tipo_eccezione).
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: quantita
+                  type: numeric(18,6)
+                  remarks: "Quantita proposta. Specchio contratti_righe."
+                  constraints:
+                    nullable: true
+
+              # ----------------------------------------------------------------
+              # Quantita operativa e UoM (mirror contratti_righe)
+              # ----------------------------------------------------------------
+              - column:
+                  name: qta_operativa
+                  type: numeric(18,6)
+                  remarks: "Quantita nella UoM operativa. Specchio contratti_righe."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: uom_operativa_id
+                  type: bigint
+                  remarks: "FK → catalogo.unita_misura(id). UoM operativa dichiarata in riga."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: factor_to_base
+                  type: numeric(18,8)
+                  defaultValueNumeric: 1
+                  remarks: "Snapshot fattore conversione UoM operativa → base. Default 1."
+                  constraints:
+                    nullable: false
+
+              # ----------------------------------------------------------------
+              # Ordinamento e stato
+              # ----------------------------------------------------------------
+              - column:
+                  name: ordine
+                  type: smallint
+                  defaultValueNumeric: 0
+                  remarks: "Ordinamento riga in UI. Default 0."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag attivazione riga. Default true."
+                  constraints:
+                    nullable: false
+
+              # ----------------------------------------------------------------
+              # Metadati
+              # ----------------------------------------------------------------
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estensibili JSON. Specchio contratti_righe."
+                  constraints:
+                    nullable: false
+
+              # ----------------------------------------------------------------
+              # Audit e tx_id
+              # ----------------------------------------------------------------
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID per correlazione audit cross-tabella."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento riga (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente DB che ha inserito la riga (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente DB dell'ultima modifica (audit)."
+                  constraints:
+                    nullable: true
+
+        # ----------------------------------------------------------------
+        # FK esplicite
+        # ----------------------------------------------------------------
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_eccezioni
+            baseColumnNames: offerta_id
+            constraintName: fk_offerte_eccezioni_offerta
+            referencedTableSchemaName: vendite
+            referencedTableName: offerte_commerciali
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_eccezioni
+            baseColumnNames: articolo_id
+            constraintName: fk_offerte_eccezioni_articolo
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_eccezioni
+            baseColumnNames: uom_operativa_id
+            constraintName: fk_offerte_eccezioni_uom_operativa
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        # ----------------------------------------------------------------
+        # CHECK constraints + UNIQUE parziali + COMMENT ON
+        # ----------------------------------------------------------------
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- CHECK: tipo_erogazione (specchio chk_contrighe_tipo_erog).
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_tipo_erog
+                  CHECK (tipo_erogazione IN ('CANONE', 'UNA_TANTUM', 'ORARIO', 'CONSUMO'));
+
+              -- CHECK: fonte_quantita_attesa (specchio chk_contrighe_fonte_qta).
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_fonte_qta
+                  CHECK (fonte_quantita_attesa IN (
+                      'FISSA', 'MANUALE', 'TIMESHEET', 'LETTURE', 'DERIVATA_COMPONENTI'
+                  ));
+
+              -- CHECK: coerenza canone (specchio chk_contrighe_coerenza_canone).
+              -- Se tipo = CANONE, generazione_canone deve avere un valore ammesso.
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_coerenza_canone
+                  CHECK (
+                      (tipo_erogazione <> 'CANONE')
+                      OR (generazione_canone IN ('INIZIO_PERIODO', 'FINE_PERIODO', 'PRORATA'))
+                  );
+
+              -- CHECK: 7 combinazioni vietate tipo_erogazione × fonte_quantita_attesa
+              -- (specchio chk_contrighe_coerenza_fonte_erogazione).
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_coerenza_fonte_erogazione
+                  CHECK (
+                      NOT (
+                              (tipo_erogazione = 'CANONE'     AND fonte_quantita_attesa IN ('TIMESHEET', 'LETTURE'))
+                          OR  (tipo_erogazione = 'UNA_TANTUM' AND fonte_quantita_attesa IN ('TIMESHEET', 'LETTURE'))
+                          OR  (tipo_erogazione = 'ORARIO'     AND fonte_quantita_attesa = 'LETTURE')
+                          OR  (tipo_erogazione = 'CONSUMO'    AND fonte_quantita_attesa IN ('FISSA', 'TIMESHEET'))
+                      )
+                  );
+
+              -- CHECK: coerenza prezzo / tipo eccezione
+              -- (specchio chk_contrighe_prezzo_per_tipo_eccezione).
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_prezzo_per_tipo_eccezione
+                  CHECK (
+                      (tipo_eccezione = 'ESCLUSIONE'                          AND prezzo_unitario IS NULL)
+                      OR (tipo_eccezione IN ('OVERRIDE', 'AGGIUNTA') AND prezzo_unitario IS NOT NULL)
+                  );
+
+              -- UNIQUE parziale: al piu' 1 riga tra OVERRIDE e ESCLUSIONE per (offerta, articolo).
+              CREATE UNIQUE INDEX uq_offerte_eccezioni_one_eccezione_per_articolo
+                  ON vendite.offerte_commerciali_eccezioni (offerta_id, articolo_id)
+                  WHERE tipo_eccezione IN ('OVERRIDE', 'ESCLUSIONE');
+
+              -- UNIQUE parziale: al piu' 1 AGGIUNTA per (offerta, articolo).
+              CREATE UNIQUE INDEX uq_offerte_eccezioni_one_aggiunta_per_articolo
+                  ON vendite.offerte_commerciali_eccezioni (offerta_id, articolo_id)
+                  WHERE tipo_eccezione = 'AGGIUNTA';
+
+              COMMENT ON TABLE vendite.offerte_commerciali_eccezioni IS
+                  'Righe dell''offerta commerciale: eccezioni tipizzate rispetto al listino '
+                  '(OVERRIDE = prezzo alternativo, ESCLUSIONE = articolo escluso, '
+                  'AGGIUNTA = articolo fuori listino). Mirror fedele di contratti_righe '
+                  'senza stato_approvazione_prezzo / pratica_approvazione_prezzo_id. '
+                  'La simmetria strutturale garantisce copia 1:1 in fn_push_offerta_a_contratto. '
+                  'rev 2026-05-24.';
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_offerte_eccezioni_one_aggiunta_per_articolo;
+              DROP INDEX IF EXISTS vendite.uq_offerte_eccezioni_one_eccezione_per_articolo;
+        - dropTable:
+            schemaName: vendite
+            tableName: offerte_commerciali_eccezioni

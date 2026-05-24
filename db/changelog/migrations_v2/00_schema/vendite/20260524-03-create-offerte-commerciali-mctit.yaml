@@ -1,0 +1,533 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea vendite.offerte_commerciali: testata dell'offerta commerciale.
+#
+# L'offerta e' il predecessore tracciato del contratto (offerta->contratto
+# = condizioni quadro), asimmetrica al preventivo (preventivo->commessa
+# = transazione puntuale). Ref: analisi-offerta-commerciale.md §3.3.
+#
+# Struttura speculare a vendite.contratti (specchio fedele per garantire
+# che fn_push_offerta_a_contratto sia una copia 1:1 triviale):
+#   - stesse FK utility (billing_account, istanza_utility, utility)
+#   - stesso schema listino + versione (fissata all'emissione, §5.3)
+#   - stesso tipo_variazione_globale VARCHAR + CHECK (specchio contratti)
+#   - uid UUID per il pattern sorgente (contratti.sorgente_uid)
+#
+# Cardinalita': una offerta riguarda una sola utility (mono-utility, §5.1).
+# Il caso multi-utility e' N offerte 1:1, eventualmente raggruppate in
+# futuro tramite pacchetto commerciale additivo (§5.1-bis).
+#
+# Numerazione OFC-* generata da sistema_codici (Step 5).
+# State machine (Step 4): BOZZA->EMESSA->ACCETTATA/RIFIUTATA + SUPERATA.
+# Revisioni (Step 6-7): revisione_padre_id self-FK, trigger reactivo.
+# Push a contratto (Step 8): fn_push_offerta_a_contratto idempotente.
+#
+# Dipendenze:
+#   - config.stati_doc_offerte (migration 20260524-02)
+#   - anagrafiche.emittenti_fiscali, billing_account, istanze_utilities
+#   - config.utilities
+#   - vendite.listini, vendite.listini_versioni
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260524-03-create-offerte-commerciali-mctit.yaml
+
+  - changeSet:
+      id: 20260524-03-create-offerte-commerciali
+      author: mctit
+      comment: >
+        Crea vendite.offerte_commerciali: testata offerta commerciale,
+        predecessore tracciato del contratto (push 1:1 a contratto DRAFT).
+        Specchio strutturale di vendite.contratti per rendere il push triviale.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_offerte
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: emittenti_fiscali
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: billing_account
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: istanze_utilities
+            - tableExists:
+                schemaName: config
+                tableName: utilities
+            - tableExists:
+                schemaName: vendite
+                tableName: listini
+            - tableExists:
+                schemaName: vendite
+                tableName: listini_versioni
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: offerte_commerciali
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: offerte_commerciali
+            remarks: >-
+              Testata offerta commerciale: predecessore tracciato del contratto.
+              Propone condizioni quadro (listino + variazione + eccezioni) per un
+              billing account e una utility specifica.
+              Stati: BOZZA (editabile) -> EMESSA (proposta) -> ACCETTATA / RIFIUTATA.
+              SUPERATA: marcata dal trigger revisione quando viene creata rev.N+1.
+              All'accettazione, fn_push_offerta_a_contratto crea un contratto DRAFT
+              con copia 1:1 di eccezioni e utility (idempotente per costruzione).
+              Numerazione OFC-NNNNNNN generata da sistema_codici.
+              Revisioni: revisione_padre_id punta alla rev.N precedente (SUPERATA).
+            columns:
+
+              # ----------------------------------------------------------------
+              # Chiavi e identificatori
+              # ----------------------------------------------------------------
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica (IDENTITY)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_offerte_commerciali
+                    nullable: false
+
+              - column:
+                  name: uid
+                  type: uuid
+                  defaultValueComputed: "uuidv7()"
+                  remarks: >-
+                    Identificatore universale dell'offerta. Usato come sorgente_uid
+                    in vendite.contratti al momento del push (pattern §6.3 pratiche).
+                    Immutabile dopo l'inserimento.
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_offerte_commerciali_uid
+
+              - column:
+                  name: codice
+                  type: text
+                  remarks: >-
+                    Codice offerta in formato OFC-NNNNNNN. Generato automaticamente
+                    dal trigger trgfn_offerte_commerciali_gen_codice (Step 5) tramite
+                    config.sistema_codici. Immutabile dopo la generazione.
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_offerte_commerciali_codice
+
+              # ----------------------------------------------------------------
+              # Scope: chi, quale utility, quale listino
+              # ----------------------------------------------------------------
+              - column:
+                  name: emittente_fiscale_id
+                  type: bigint
+                  remarks: >-
+                    FK -> anagrafiche.emittenti_fiscali.id.
+                    Emittente fiscale che propone l'offerta. Coerente con preventivi e contratti.
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: billing_account_id
+                  type: bigint
+                  remarks: >-
+                    FK -> anagrafiche.billing_account.id.
+                    Cliente (account di fatturazione) destinatario dell'offerta.
+                    Tipo bigint, specchio di vendite.contratti.billing_account_id.
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: istanza_utility_id
+                  type: bigint
+                  remarks: >-
+                    FK -> anagrafiche.istanze_utilities.id.
+                    Istanza utility oggetto dell'offerta. NOT NULL: un'offerta
+                    riguarda una sola utility (mono-utility §5.1). Copiato
+                    direttamente su vendite.contratti al push.
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: utility_id
+                  type: integer
+                  remarks: >-
+                    FK -> config.utilities.id. Tipo integer, specchio di
+                    vendite.contratti.utility_id. Copiato sul contratto al push.
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: listino_id
+                  type: bigint
+                  remarks: >-
+                    FK -> vendite.listini.id. Listino di riferimento proposto
+                    nell'offerta. Copiato sul contratto al push.
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: listino_versione_id
+                  type: bigint
+                  remarks: >-
+                    FK -> vendite.listini_versioni.id. Versione del listino fissata
+                    all'emissione (decisione §5.3). NULL ammesso solo in stato BOZZA;
+                    il trigger guard (Step 4) blocca BOZZA->EMESSA se NULL o se la
+                    versione non e' ATTIVA. Copiata sul contratto al push.
+                  constraints:
+                    nullable: true
+
+              # ----------------------------------------------------------------
+              # Condizioni proposte: variazione globale
+              # ----------------------------------------------------------------
+              - column:
+                  name: valore_variazione_globale
+                  type: numeric(10,4)
+                  defaultValueNumeric: 0
+                  remarks: >-
+                    Variazione % o valore fisso globale proposta (default 0 = nessuna
+                    variazione). Copiata sul contratto al push.
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: tipo_variazione_globale
+                  type: varchar(16)
+                  remarks: >-
+                    Tipo della variazione globale: PERCENTUALE | VALORE_FISSO | NULL.
+                    VARCHAR + CHECK chk_offerte_tipo_variazione_globale, specchio esatto
+                    di vendite.contratti.tipo_variazione_globale (stessi valori ammessi,
+                    stessa convenzione: NULL = nessuna variazione globale).
+                    Copiato sul contratto al push senza conversione.
+                  constraints:
+                    nullable: true
+
+              # ----------------------------------------------------------------
+              # Validita' temporale dell'offerta proposta al cliente
+              # ----------------------------------------------------------------
+              - column:
+                  name: validita_dal
+                  type: date
+                  remarks: >-
+                    Data di inizio validita' dell'offerta proposta al cliente.
+                    Indicativa: non vincola il ciclo di vita dello stato.
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: validita_al
+                  type: date
+                  remarks: >-
+                    Data di scadenza dell'offerta proposta al cliente. NULL = nessuna
+                    scadenza esplicita. La scadenza e' un avviso non bloccante (§5.6):
+                    l'offerta resta accettabile anche dopo la scadenza; la UI segnala
+                    lo stato 'scaduta' come attributo calcolato. Nessun job automatico
+                    cambia stato in v1.
+                  constraints:
+                    nullable: true
+
+              # ----------------------------------------------------------------
+              # Stato e ciclo di vita
+              # ----------------------------------------------------------------
+              - column:
+                  name: stato_doc_offerta_id
+                  type: bigint
+                  remarks: >-
+                    FK -> config.stati_doc_offerte.id. Stato corrente dell'offerta.
+                    Default: BOZZA. Transizioni governate dal trigger guard
+                    trgfn_offerte_commerciali_guard_transizione (Step 4).
+                    Stati terminali immutabili: ACCETTATA, RIFIUTATA, SUPERATA.
+                  constraints:
+                    nullable: false
+
+              # ----------------------------------------------------------------
+              # Revisioni
+              # ----------------------------------------------------------------
+              - column:
+                  name: revisione_numero
+                  type: integer
+                  defaultValueNumeric: 1
+                  remarks: >-
+                    Numero di revisione dell'offerta. Parte da 1. Incrementato
+                    da fn_crea_revisione_offerta (Step 7) quando si crea rev.N+1.
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: revisione_padre_id
+                  type: bigint
+                  remarks: >-
+                    FK self -> vendite.offerte_commerciali.id. NULL su rev.1.
+                    Su rev.N+1 punta all'id della rev.N precedente (che viene
+                    automaticamente marcata SUPERATA dal trigger Step 6).
+                  constraints:
+                    nullable: true
+
+              # ----------------------------------------------------------------
+              # Timestamp di transizione stato (valorizzati dal trigger guard Step 4)
+              # ----------------------------------------------------------------
+              - column:
+                  name: data_emissione
+                  type: timestamp with time zone
+                  remarks: "Valorizzata dal trigger al passaggio BOZZA->EMESSA. NULL in BOZZA."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_accettazione
+                  type: timestamp with time zone
+                  remarks: "Valorizzata dal trigger al passaggio EMESSA->ACCETTATA. NULL fino all'accettazione."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_rifiuto
+                  type: timestamp with time zone
+                  remarks: "Valorizzata dal trigger al passaggio EMESSA->RIFIUTATA o BOZZA->RIFIUTATA."
+                  constraints:
+                    nullable: true
+
+              # ----------------------------------------------------------------
+              # Metadati
+              # ----------------------------------------------------------------
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estensibili JSON. Default vuoto per estensioni future controllate."
+                  constraints:
+                    nullable: false
+
+              # ----------------------------------------------------------------
+              # Audit e tx_id
+              # ----------------------------------------------------------------
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID per correlazione audit cross-tabella (gestito da dbops.trgfn_tx_id_managed)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento riga (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente DB che ha inserito la riga (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica (audit)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente DB dell'ultima modifica (audit)."
+                  constraints:
+                    nullable: true
+
+        # ----------------------------------------------------------------
+        # FK esplicite (non inline per evitare naming automatico di Liquibase)
+        # ----------------------------------------------------------------
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali
+            baseColumnNames: emittente_fiscale_id
+            constraintName: fk_offerte_commerciali_emittente_fiscale
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: emittenti_fiscali
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali
+            baseColumnNames: billing_account_id
+            constraintName: fk_offerte_commerciali_billing_account
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: billing_account
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali
+            baseColumnNames: istanza_utility_id
+            constraintName: fk_offerte_commerciali_istanza_utility
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali
+            baseColumnNames: utility_id
+            constraintName: fk_offerte_commerciali_utility
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali
+            baseColumnNames: listino_id
+            constraintName: fk_offerte_commerciali_listino
+            referencedTableSchemaName: vendite
+            referencedTableName: listini
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali
+            baseColumnNames: listino_versione_id
+            constraintName: fk_offerte_commerciali_listino_versione
+            referencedTableSchemaName: vendite
+            referencedTableName: listini_versioni
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali
+            baseColumnNames: stato_doc_offerta_id
+            constraintName: fk_offerte_commerciali_stato_doc
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_offerte
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali
+            baseColumnNames: revisione_padre_id
+            constraintName: fk_offerte_commerciali_revisione_padre
+            referencedTableSchemaName: vendite
+            referencedTableName: offerte_commerciali
+            referencedColumnNames: id
+            onUpdate: NO ACTION
+            onDelete: NO ACTION
+
+        # ----------------------------------------------------------------
+        # CHECK constraints e COMMENT ON (non esprimibili in YAML nativo)
+        # ----------------------------------------------------------------
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- CHECK: tipo_variazione_globale ammessa (specchio di contratti).
+              -- NULL = nessuna variazione globale.
+              ALTER TABLE vendite.offerte_commerciali
+                  ADD CONSTRAINT chk_offerte_tipo_variazione_globale
+                  CHECK (
+                      tipo_variazione_globale IS NULL
+                      OR tipo_variazione_globale IN ('PERCENTUALE', 'VALORE_FISSO')
+                  );
+
+              -- CHECK: coerenza variazione globale (se tipo e' settato, valore deve essere valorizzato).
+              ALTER TABLE vendite.offerte_commerciali
+                  ADD CONSTRAINT chk_offerte_variazione_globale_coerenza
+                  CHECK (
+                      (tipo_variazione_globale IS NULL AND (valore_variazione_globale IS NULL OR valore_variazione_globale = 0))
+                      OR (tipo_variazione_globale IS NOT NULL AND valore_variazione_globale IS NOT NULL)
+                  );
+
+              -- CHECK: validita_al >= validita_dal quando entrambe valorizzate.
+              ALTER TABLE vendite.offerte_commerciali
+                  ADD CONSTRAINT chk_offerte_validita_date
+                  CHECK (validita_al IS NULL OR validita_al >= validita_dal);
+
+              -- CHECK: revisione_numero >= 1.
+              ALTER TABLE vendite.offerte_commerciali
+                  ADD CONSTRAINT chk_offerte_revisione_numero
+                  CHECK (revisione_numero >= 1);
+
+              -- Indice su billing_account_id per query cliente.
+              CREATE INDEX ix_offerte_commerciali_billing_account
+                  ON vendite.offerte_commerciali (billing_account_id);
+
+              -- Indice su istanza_utility_id per query scope utility.
+              CREATE INDEX ix_offerte_commerciali_istanza_utility
+                  ON vendite.offerte_commerciali (istanza_utility_id);
+
+              -- Indice su stato_doc_offerta_id per filtri per stato.
+              CREATE INDEX ix_offerte_commerciali_stato_doc
+                  ON vendite.offerte_commerciali (stato_doc_offerta_id);
+
+              -- Indice su revisione_padre_id per navigazione catena revisioni.
+              CREATE INDEX ix_offerte_commerciali_revisione_padre
+                  ON vendite.offerte_commerciali (revisione_padre_id)
+                  WHERE revisione_padre_id IS NOT NULL;
+
+              -- Indice su listino_versione_id per query pricing.
+              CREATE INDEX ix_offerte_commerciali_listino_versione
+                  ON vendite.offerte_commerciali (listino_versione_id)
+                  WHERE listino_versione_id IS NOT NULL;
+
+              COMMENT ON TABLE vendite.offerte_commerciali IS
+                  'Testata offerta commerciale: predecessore tracciato del contratto '
+                  '(offerta->contratto = condizioni quadro). '
+                  'Un''offerta propone al cliente condizioni quadro per una utility specifica '
+                  '(billing_account + istanza_utility), con listino di riferimento, '
+                  'variazione globale e offerte_commerciali_eccezioni per eccezioni puntuali. '
+                  'Stati: BOZZA (editabile) -> EMESSA -> ACCETTATA (push a contratto DRAFT) '
+                  'oppure RIFIUTATA. SUPERATA: terminale tecnico impostato dal trigger revisione '
+                  'quando viene creata una revisione successiva (fn_crea_revisione_offerta, Step 7). '
+                  'La versione listino viene fissata (congelata) al momento dell''emissione (§5.3). '
+                  'La numerazione OFC-* e'' generata da config.sistema_codici (Step 5). '
+                  'La scadenza (validita_al) e'' un avviso non bloccante (§5.6). '
+                  'Push idempotente tramite contratti.offerta_id UNIQUE (pattern A §6.9.3). '
+                  'rev 2026-05-24.';
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali
+                  DROP CONSTRAINT IF EXISTS chk_offerte_tipo_variazione_globale;
+              ALTER TABLE vendite.offerte_commerciali
+                  DROP CONSTRAINT IF EXISTS chk_offerte_variazione_globale_coerenza;
+              ALTER TABLE vendite.offerte_commerciali
+                  DROP CONSTRAINT IF EXISTS chk_offerte_validita_date;
+              ALTER TABLE vendite.offerte_commerciali
+                  DROP CONSTRAINT IF EXISTS chk_offerte_revisione_numero;
+        - dropTable:
+            schemaName: vendite
+            tableName: offerte_commerciali

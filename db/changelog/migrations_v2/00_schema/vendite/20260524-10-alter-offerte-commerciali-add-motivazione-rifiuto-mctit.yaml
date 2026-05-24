@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Addendum offerta commerciale (2026-05-24) — punto 1 e complemento punto 2:
+#
+#   motivazione_rifiuto TEXT NULL
+#     Testo libero inserito dall'operatore al momento della chiusura
+#     negativa. Valorizzata dal trigger guard (Step 4) sui passaggi:
+#       EMESSA  -> RIFIUTATA  (no del cliente)
+#       BOZZA   -> ANNULLATA  (ritiro da parte nostra)
+#     Non strutturata: e' nota di processo di prima cittadinanza
+#     (visibile in lista, esportabile, filtrabile), non va in meta JSONB.
+#
+#   data_annullamento TIMESTAMP WITH TIME ZONE NULL
+#     Complemento al pattern data_emissione / data_accettazione / data_rifiuto.
+#     Valorizzata dal trigger guard al passaggio BOZZA -> ANNULLATA.
+#     data_rifiuto resta riservata a EMESSA -> RIFIUTATA (no del cliente).
+#
+# Dipendenza: vendite.offerte_commerciali (migration 20260524-03).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260524-10-alter-offerte-commerciali-add-motivazione-rifiuto-mctit.yaml
+
+  - changeSet:
+      id: 20260524-10-alter-offerte-commerciali-add-motivazione-rifiuto
+      author: mctit
+      comment: >
+        Addendum: aggiunge motivazione_rifiuto (testo libero chiusura negativa)
+        e data_annullamento (timestamp BOZZA->ANNULLATA) a vendite.offerte_commerciali.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: offerte_commerciali
+                    columnName: motivazione_rifiuto
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: offerte_commerciali
+            columns:
+              - column:
+                  name: motivazione_rifiuto
+                  type: text
+                  remarks: >-
+                    Testo libero dell'operatore che descrive il motivo della chiusura
+                    negativa dell'offerta. Valorizzata dal trigger guard (Step 4) su:
+                    EMESSA->RIFIUTATA (no del cliente) e BOZZA->ANNULLATA (ritiro da
+                    parte nostra). Dato di processo di prima cittadinanza: visibile in
+                    lista, esportabile, filtrabile. Non appartiene a meta JSONB.
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_annullamento
+                  type: timestamp with time zone
+                  remarks: >-
+                    Valorizzata dal trigger al passaggio BOZZA->ANNULLATA.
+                    Complemento al pattern data_emissione / data_accettazione / data_rifiuto.
+                    data_rifiuto resta riservata a EMESSA->RIFIUTATA (no del cliente):
+                    i due stati terminali negativi hanno timestamp distinti per report separati.
+                  constraints:
+                    nullable: true
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.offerte_commerciali.motivazione_rifiuto IS
+                  'Testo libero motivo chiusura negativa (RIFIUTATA o ANNULLATA). '
+                  'Impostata dal trigger guard insieme al timestamp corrispondente. '
+                  'Primo cittadino: visibile in lista, filtrabile, esportabile.';
+
+              COMMENT ON COLUMN vendite.offerte_commerciali.data_annullamento IS
+                  'Timestamp passaggio BOZZA->ANNULLATA (ritiro da parte nostra). '
+                  'Distinto da data_rifiuto (EMESSA->RIFIUTATA = no del cliente) '
+                  'per consentire report separati sui due flussi di chiusura.';
+
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: offerte_commerciali
+            columnName: motivazione_rifiuto
+        - dropColumn:
+            schemaName: vendite
+            tableName: offerte_commerciali
+            columnName: data_annullamento

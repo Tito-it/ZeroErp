@@ -54,8 +54,12 @@
 - [note_contratto](tabelle/note_contratto.md) — `vendite.note_contratto` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [note_ddt](tabelle/note_ddt.md) — `vendite.note_ddt` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [note_fatture](tabelle/note_fatture.md) — `vendite.note_fatture` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
+- [note_offerte_commerciali](tabelle/note_offerte_commerciali.md) — (rev 2026-05-24)
 - [note_ordini](tabelle/note_ordini.md) — `vendite.note_ordini` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [note_preventivo](tabelle/note_preventivo.md) — `vendite.note_preventivo` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
+- [offerte_commerciali](tabelle/offerte_commerciali.md) — (rev 2026-05-24)
+- [offerte_commerciali_eccezioni](tabelle/offerte_commerciali_eccezioni.md) — (rev 2026-05-24)
+- [offerte_commerciali_utilities](tabelle/offerte_commerciali_utilities.md) — (rev 2026-05-24)
 - [ordini](tabelle/ordini.md) — La tabella **`vendite.ordini`** rappresenta la **testata dell’ordine di vendita**, documento commerciale preliminare che raccoglie le condizioni di vendita, spedizione e pagamento concordate con il cliente.   È il punto di partenza del ciclo attivo, destinato a generare documenti successivi (DDT, fatture, contratti di fornitura).
 - [ordini_indirizzi](tabelle/ordini_indirizzi.md) — `vendite.ordini_indirizzi` memorizza gli **indirizzi associati alla testata ordine** come **snapshot JSON** al momento dell’inserimento/conferma. Per ciascun ordine è ammesso **al massimo un indirizzo per tipo** (es. *spedizione*, *fornitura*, *residenza*), garantito da `UNIQUE(ordine_id, tipo_indirizzo_id)`.
 - [ordini_righe](tabelle/ordini_righe.md) — Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenza della sorgente. Supporta **doppia rappresentazione delle quantità**:
@@ -212,6 +216,7 @@
 - [trgfn_listini_versioni_guard_transizione_stato](funzioni/trgfn_listini_versioni_guard_transizione_stato.md) — (latest review 26-04-2026)
 - [trgfn_logs_guard_delete](funzioni/trgfn_logs_guard_delete.md) — (latest review 20-02-2026)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** blocca la cancellazione diretta dei log funzionali (`fatture_log`, `fatturazione_lotti_log`) salvo abilitazione esplicita di manutenzione.
 - [trgfn_note_validate_generic](funzioni/trgfn_note_validate_generic.md) — La trigger function `vendite.trgfn_note_validate_generic()` valida la coerenza delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
+- [trgfn_offerte_commerciali_guard_transizione](funzioni/trgfn_offerte_commerciali_guard_transizione.md)
 - [trgfn_ordini_ful_guard_consistenza](funzioni/trgfn_ordini_ful_guard_consistenza.md) — La trigger function `vendite.trgfn_ordini_ful_guard_consistenza()` protegge la coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.
 - [trgfn_ordini_gen_codice](funzioni/trgfn_ordini_gen_codice.md) — La trigger function `vendite.trgfn_ordini_gen_codice()` genera automaticamente `numero` ordine quando il campo non viene fornito.
 - [trgfn_ordini_guard_transizione_approvazione](funzioni/trgfn_ordini_guard_transizione_approvazione.md)
