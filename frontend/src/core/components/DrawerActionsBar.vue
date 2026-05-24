@@ -54,6 +54,7 @@ import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import { MANAGE_ICONS } from '../constants'
+import { menuItemClass } from '../utils/rowActions'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 
@@ -133,12 +134,15 @@ function menuLabel(action) {
   return action.label
 }
 
+// Scopo: voci PrimeVue Menu coerenti col colore inline. Default = manage (blu),
+//   come kind:'manage' inline che usa app-manage-btn. Severity esplicite (danger,
+//   primary, warn, ...) mappate via helper centralizzato.
 function menuItems(list) {
   return list.map(a => ({
     label: menuLabel(a),
     icon: a.icon,
     disabled: isActionDisabled(a),
-    class: a.severity === 'danger' ? 'app-menu-item-danger' : undefined,
+    class: menuItemClass(a.severity, 'app-menu-item-manage'),
     command: () => {
       if (!isActionDisabled(a)) a.command?.()
     },

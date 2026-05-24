@@ -1200,6 +1200,7 @@
     "field_garanzia_tipo": "Tipo Garanzia",
     "field_garanzia_importo": "Importo Garanzia",
     "field_pdp": "PDP",
+    "gestisci_soggetto": "Soggetto",
     "gestisci_contatti": "Contatti",
     "gestisci_indirizzi": "Indirizzi",
     "gestisci_conti": "Conti Bancari"
@@ -1250,6 +1251,7 @@
     "placeholder_pec": "indirizzo PEC",
     "section_indirizzi_soggetto": "Indirizzi Soggetto",
     "hint_indirizzi_obbligatori": "Il soggetto deve avere gli indirizzi obbligatori per il ruolo Fornitore. Verificare e completare prima di salvare.",
+    "gestisci_soggetto": "Soggetto",
     "gestisci_contatti": "Contatti",
     "gestisci_indirizzi": "Indirizzi",
     "gestisci_conti": "Conti Bancari"

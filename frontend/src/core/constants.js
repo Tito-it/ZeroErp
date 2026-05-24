@@ -214,6 +214,10 @@ export const STATO_PREVENTIVO = {
 // Uso: <Button :icon="MANAGE_ICONS.CONTATTI" class="app-manage-btn" />
 export const MANAGE_ICONS = {
   // Anagrafiche
+  // SOGGETTO: stessa icona usata in navigazione per la lista Soggetti
+  // (NAV_ICONS.ANAGRAFICHE = pi pi-users). Centralizzata qui per le azioni
+  // di riga che aprono il drawer soggetto dalle liste figlie (clienti/fornitori).
+  SOGGETTO: 'pi pi-users',
   CONTATTI: 'pi pi-id-card',
   INDIRIZZI: 'pi pi-map-marker',
   CONTI_BANCARI: 'pi pi-wallet',

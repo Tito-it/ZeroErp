@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import { MANAGE_ICONS } from '../constants'
+import { menuItemClass } from '../utils/rowActions'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 
@@ -67,12 +68,16 @@ function runAction(action, event) {
   action.command?.()
 }
 
+// Scopo: mappa le azioni nel formato PrimeVue Menu.
+// La classe della voce e' parallela al colore inline del bottone desktop:
+// default = action (verde, come app-reload-btn) — utility/secondarie nel kebab
+// mantengono lo stesso colore che avrebbero avute inline.
 function menuItems(actions) {
   return actions.map(a => ({
     label: a.label,
     icon: a.icon,
     disabled: isActionDisabled(a),
-    class: a.severity === 'danger' ? 'app-menu-item-danger' : undefined,
+    class: menuItemClass(a.severity, 'app-menu-item-action'),
     command: () => {
       if (!isActionDisabled(a)) a.command?.()
     },

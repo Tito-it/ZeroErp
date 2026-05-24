@@ -11,6 +11,7 @@ import { useContextStore } from '../../stores/context'
 import { useClientiStore } from '../stores/clienti'
 import ClientiSearchTable from '../components/ClientiSearchTable.vue'
 import ClienteDrawer from '../components/ClienteDrawer.vue'
+import SoggettoDrawer from '../components/SoggettoDrawer.vue'
 import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
 import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
 import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
@@ -33,6 +34,7 @@ watch(() => route.fullPath, () => {
 }, { immediate: true })
 
 // Sotto-drawer dalla lista
+const soggettoDrawer = ref({ visible: false, soggettoId: null })
 const contattiDrawer = ref({ visible: false, ruoloId: null, istanzaUtilityId: null })
 const indirizziDrawer = ref({ visible: false, ruoloId: null, istanzaUtilityId: null })
 const contiBancariDrawer = ref({ visible: false, ruoloId: null, ownerName: '', istanzaUtilityId: null })
@@ -44,6 +46,10 @@ const contrattiDrawer = ref({
   canCreate: true,
   disabledReason: '',
 })
+
+function onSoggetto(data) {
+  soggettoDrawer.value = { visible: true, soggettoId: data.soggetto_id }
+}
 
 function onContatti(data) {
   contattiDrawer.value = { visible: true, ruoloId: data.soggetto_ruolo_id, istanzaUtilityId: data.istanza_utility_id }
@@ -101,6 +107,7 @@ async function onDrawerSaved(result) {
     <ClientiSearchTable
       @new="drawer.openCreate"
       @row-click="(data) => drawer.editRow(data, 'id')"
+      @soggetto="onSoggetto"
       @contatti="onContatti"
       @indirizzi="onIndirizzi"
       @conti-bancari="onContiBancari"
@@ -114,6 +121,13 @@ async function onDrawerSaved(result) {
       :cliente-id="drawer.state.itemId"
       @saved="onDrawerSaved"
       @cancelled="drawer.close"
+    />
+
+    <SoggettoDrawer
+      :visible="soggettoDrawer.visible"
+      @update:visible="v => soggettoDrawer.visible = v"
+      mode="edit"
+      :item-id="soggettoDrawer.soggettoId"
     />
 
     <ContattiSoggettoDrawer

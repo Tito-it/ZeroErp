@@ -22,7 +22,7 @@ import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 
-const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
+const emit = defineEmits(['new', 'row-click', 'soggetto', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
 const store = useFornitoriStore()
 const auth = useAuthStore()
@@ -61,6 +61,12 @@ function onRowClick(event) { emit('row-click', event.data) }
 function buildRowActions(data) {
   const contiBlocked = auth.isObjectBlocked('anagrafiche', 'conto_bancario')
   return [
+    {
+      key: 'soggetto',
+      label: t('fornitori.gestisci_soggetto'),
+      icon: MANAGE_ICONS.SOGGETTO,
+      command: () => emit('soggetto', data),
+    },
     {
       key: 'contatti',
       label: t('contatto.gestisci_contatti'),
