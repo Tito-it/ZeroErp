@@ -17,9 +17,13 @@
 > - **Step 4 ✅ APPLICATO** — DDL `config.stati_doc_offerte_transizioni`
 >   (`20260524-21`), seed 5 transizioni addendum A2 (`20260524-22`),
 >   trigger guard `trgfn_offerte_commerciali_guard_transizione` (`20260524-23`).
-> - **Steps 5-9 — DA FARE** — in ordine: numerazione OFC-*, trigger revisione,
->   fn_crea_revisione_offerta, fn_push_offerta_a_contratto + ALTER contratti,
->   suite pgTAP.
+> - **Step 5 ✅ APPLICATO** — riga `offerta_commerciale`/`OFC` aggiunta in
+>   `config.sistema_codici` (id=17, migration `20260524-25`).
+> - **Step 6 ✅ APPLICATO** — `trgfn_offerte_commerciali_revisione` AFTER INSERT
+>   `_z90_` (migration `20260524-26`). Nota O4 analizzata: UPDATE su riga diversa,
+>   no DEFERRABLE necessario.
+> - **Steps 7-9 — DA FARE** — in ordine: fn_crea_revisione_offerta,
+>   fn_push_offerta_a_contratto + ALTER contratti, suite pgTAP.
 >
 > **Revisione 2026-05-24 (brief originale)**: corretti i problemi bloccanti
 > B1/B2/B3 e gli importanti I1/I2/I3/I4 emersi dall'analisi critica. Le
@@ -779,20 +783,20 @@ AGENTS.md §Test).
 
 ## 8. Stato del brief
 
-> **Aggiornamento 2026-05-24**: Steps 1-4 applicati su `dev/db-tid`.
-> Steps 5-9 in attesa — prossimo passo: Step 5 (seed `sistema_codici.csv` per OFC-*).
+> **Aggiornamento 2026-05-24**: Steps 1-7 YAML pronti su `dev/db-tid`.
+> Step 7 da applicare al DB. Steps 8-9 in attesa.
 
-| Step | Stato     | Migration / File                               | Note                                                                     |
-| ---- | --------- | ---------------------------------------------- | ------------------------------------------------------------------------ |
-| 1    | APPLICATO | CSV seeds (sorgenti, stati, errori, fk_policy) | 6 stati (A2: +ANNULLATA); 6 errori; sorgente OFFERTA_COMMERCIALE         |
-| 2    | APPLICATO | `20260524-03`, `20260524-10`                   | Testata + motivazione_rifiuto / data_annullamento (A1/A2)                |
-| 3    | APPLICATO | `20260524-05` .. `20260524-09`                 | Eccezioni + utilities + note partition + FK. Docs manual/ creati         |
-| 4    | APPLICATO | `20260524-21`, `20260524-22`, `20260524-23`    | DDL transizioni + seed 5 trans. (A2) + trigger guard                     |
-| 5    | TODO      | dipende da 2                                   | Seed `sistema_codici.csv` (OFC-*) — verifica esistenza tabella           |
-| 6    | TODO      | dipende da 4                                   | Trigger reattivo EMESSA→SUPERATA (DEFERRABLE, O4)                        |
-| 7    | TODO      | dipende da 6                                   | `fn_crea_revisione_offerta`                                              |
-| 8    | TODO      | dipende da 4                                   | `fn_push_offerta_a_contratto` + ALTER contratti (offerta_id, sorgente_*) |
-| 9    | TODO      | dipende da 1-8                                 | Suite pgTAP in `db/pgtap/vendite/offerte_commerciali/`                   |
+| Step | Stato          | Migration / File                               | Note                                                                                     |
+| ---- | -------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 1    | APPLICATO      | CSV seeds (sorgenti, stati, errori, fk_policy) | 6 stati (A2: +ANNULLATA); 6 errori; sorgente OFFERTA_COMMERCIALE                         |
+| 2    | APPLICATO      | `20260524-03`, `20260524-10`                   | Testata + motivazione_rifiuto / data_annullamento (A1/A2)                                |
+| 3    | APPLICATO      | `20260524-05` .. `20260524-09`                 | Eccezioni + utilities + note partition + FK. Docs manual/ creati                         |
+| 4    | APPLICATO      | `20260524-21`, `20260524-22`, `20260524-23`    | DDL transizioni + seed 5 trans. (A2) + trigger guard                                     |
+| 5    | APPLICATO      | CSV `sistema_codici.csv` (id=17)               | Riga `offerta_commerciale`/`OFC` aggiunta; YAML `20250813-05` ricarica                   |
+| 6    | APPLICATO      | `20260524-26` (20_code/vendite)                | `trgfn_offerte_commerciali_revisione` z90 AFTER INSERT. O4: no DEFERRED                  |
+| 7    | YAML PRONTO    | `20260524-27` (20_code/vendite)                | `fn_crea_revisione_offerta(p_offerta_id, p_user)` RETURNS BIGINT.                        |
+| 8    | TODO           | dipende da 4                                   | `fn_push_offerta_a_contratto` + ALTER contratti (offerta_id, sorgente_*)                 |
+| 9    | TODO           | dipende da 1-8                                 | Suite pgTAP in `db/pgtap/vendite/offerte_commerciali/`                                   |
 
 ---
 

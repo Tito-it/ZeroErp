@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed config.sistema_codici: riga offerta_commerciale (Step 5
+# offerte commerciali).
+#
+#   id 17 | offerta_commerciale | prefisso OFC | vendite.offerte_commerciali.codice
+#
+# Il trigger trg_sistema_codici_z90_sync_gen_codice_ins_upd_dlt
+# crea automaticamente al prossimo apply:
+#   - sequenza    vendite.offerte_commerciali_codice_seq
+#   - trgfn       vendite.trgfn_offerte_commerciali_gen_codice()
+#   - trigger     trg_offerte_commerciali_a10_gen_codice_ins_upd
+#
+# Dipendenza: config.sistema_codici deve esistere,
+#   vendite.offerte_commerciali deve esistere (migration 20260524-03).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260524-25-upsert-sistema-codici-offerta-commerciale-mctit.yaml
+
+  - changeSet:
+      id: 20260524-25-upsert-sistema-codici-offerta-commerciale
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: sistema_codici
+        - tableExists:
+            schemaName: vendite
+            tableName: offerte_commerciali
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/sistema_codici.csv
+            tableName: sistema_codici
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: prefisso, type: STRING }
+              - column: { name: separatore, type: STRING }
+              - column: { name: lunghezza_numero, type: STRING }
+              - column: { name: usa_sequenza, type: STRING }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }
+              - column: { name: tx_id, type: uuid }
+              - column: { name: schema_tabella, type: STRING }
+              - column: { name: nome_tabella, type: STRING }
+              - column: { name: nome_colonna, type: STRING }
