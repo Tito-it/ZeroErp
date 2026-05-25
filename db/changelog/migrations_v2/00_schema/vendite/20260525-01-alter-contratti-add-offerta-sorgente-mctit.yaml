@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Step 8a — ALTER vendite.contratti: aggiunge i tre campi necessari
+# al push 1:1 da offerta commerciale (brief analisi-offerta-commerciale-db.md §3 Step 8).
+#
+# Campi aggiunti:
+#   - offerta_id        : FK a vendite.offerte_commerciali — presenza = contratto
+#                         generato da offerta; UNIQUE per idempotenza pattern A
+#                         (§6.9.3 analisi-pratiche-domini-anello3.md).
+#   - sorgente_tipo_id  : FK a config.sorgenti — tipo sorgente del push
+#                         (valore atteso: OFFERTA_COMMERCIALE). Aggiunto per
+#                         simmetria con vendite.ordini / vendite.commesse_sorgenti
+#                         (verificato assente in contratti.md 2026-05-23, §2.2).
+#   - sorgente_uid      : UUID uid del documento sorgente (offerta.uid). Aggiunto
+#                         per simmetria con gli altri documenti vendite.
+#
+# Idempotenza: UNIQUE (offerta_id) garantisce che un'offerta generi al piu'
+# un contratto. La presenza di un record WHERE offerta_id = X basta come
+# controllo idempotenza in fn_push_offerta_a_contratto.
+#
+# Dipendenza: vendite.offerte_commerciali deve esistere (20260524-03).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260525-01-alter-contratti-add-offerta-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260525-01-alter-contratti-add-offerta-sorgente
+      author: mctit
+      comment: >
+        Step 8a: aggiunge offerta_id (FK + UNIQUE), sorgente_tipo_id (FK) e sorgente_uid (UUID)
+        a vendite.contratti. Prerequisito per fn_push_offerta_a_contratto (Step 8b).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti
+            - tableExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+            - tableExists:
+                schemaName: config
+                tableName: sorgenti
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: contratti
+                    columnName: offerta_id
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: contratti
+                    columnName: sorgente_tipo_id
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: contratti
+                    columnName: sorgente_uid
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- FK a offerte_commerciali + UNIQUE per idempotenza pattern A
+              ALTER TABLE vendite.contratti
+                  ADD COLUMN offerta_id BIGINT NULL
+                      CONSTRAINT fk_contratti_offerta
+                      REFERENCES vendite.offerte_commerciali(id)
+                      ON DELETE NO ACTION ON UPDATE CASCADE;
+
+              ALTER TABLE vendite.contratti
+                  ADD CONSTRAINT uq_contratti_offerta_id UNIQUE (offerta_id);
+
+              -- Sorgente tipo: FK a config.sorgenti per tracciabilita' cross-dominio
+              ALTER TABLE vendite.contratti
+                  ADD COLUMN sorgente_tipo_id BIGINT NULL
+                      CONSTRAINT fk_contratti_sorgente_tipo
+                      REFERENCES config.sorgenti(id)
+                      ON DELETE NO ACTION ON UPDATE CASCADE;
+
+              -- Sorgente uid: UUID del documento sorgente (es. offerta.uid)
+              ALTER TABLE vendite.contratti
+                  ADD COLUMN sorgente_uid UUID NULL;
+
+              COMMENT ON COLUMN vendite.contratti.offerta_id IS
+                  'FK a vendite.offerte_commerciali: valorizzato quando il contratto e'' stato '
+                  'generato da una offerta commerciale tramite fn_push_offerta_a_contratto. '
+                  'UNIQUE garantisce idempotenza pattern A (al piu'' un contratto per offerta). '
+                  'rev 2026-05-25.';
+
+              COMMENT ON COLUMN vendite.contratti.sorgente_tipo_id IS
+                  'FK a config.sorgenti: tipo del documento sorgente del push '
+                  '(es. OFFERTA_COMMERCIALE). NULL per contratti creati direttamente. '
+                  'rev 2026-05-25.';
+
+              COMMENT ON COLUMN vendite.contratti.sorgente_uid IS
+                  'UUID uid del documento sorgente del push (es. offerta.uid). '
+                  'NULL per contratti creati direttamente. '
+                  'rev 2026-05-25.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                  DROP COLUMN IF EXISTS sorgente_uid,
+                  DROP COLUMN IF EXISTS sorgente_tipo_id,
+                  DROP COLUMN IF EXISTS offerta_id;

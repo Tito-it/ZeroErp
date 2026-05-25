@@ -20,8 +20,8 @@
 > • `vendite.trgfn_offerte_commerciali_guard_transizione` — guard state machine ✅ (Step 4)
 > • `vendite.trgfn_offerte_commerciali_gen_codice` — generazione `OFC-NNNNNNN` ✅ (Step 5)
 > • `vendite.trgfn_offerte_commerciali_revisione` — marca padre SUPERATA all'INSERT rev.N+1 ✅ (Step 6)
-> • `vendite.fn_crea_revisione_offerta` — crea revisione N+1 (Step 7, da fare)
-> • `vendite.fn_push_offerta_a_contratto` — push idempotente a contratto DRAFT (Step 8, da fare)
+> • [`vendite.fn_crea_revisione_offerta`](/dbzero/vendite/funzioni/fn_crea_revisione_offerta) — crea revisione N+1 ✅ (Step 7)
+> • [`vendite.fn_push_offerta_a_contratto`](/dbzero/vendite/funzioni/fn_push_offerta_a_contratto) — push idempotente a contratto DRAFT ✅ (Step 8)
 
 ---
 

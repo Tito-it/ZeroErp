@@ -29,6 +29,9 @@
 | validita | daterange | NO |  |
 | listino_versione_id | bigint | YES |  |
 | is_abortito_snapshot | boolean | NO | false |
+| offerta_id | bigint | YES |  |
+| sorgente_tipo_id | bigint | YES |  |
+| sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -40,11 +43,14 @@
 | FOREIGN KEY | fk_contratti_istanza | istanza_utility_id |
 | FOREIGN KEY | fk_contratti_listino | listino_id |
 | FOREIGN KEY | fk_contratti_listino_versione | listino_versione_id |
+| FOREIGN KEY | fk_contratti_offerta | offerta_id |
 | FOREIGN KEY | fk_contratti_parent | parent_contratto_id |
+| FOREIGN KEY | fk_contratti_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_contratti_utility | utility_id |
 | FOREIGN KEY | fk_v_contratti_stato_ddt | stato_doc_contratto_id |
 | PRIMARY KEY | pk_contratti | id |
 | UNIQUE | uq_contratti_numero | numero |
+| UNIQUE | uq_contratti_offerta_id | offerta_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -56,6 +62,7 @@
 | ix_contratti_listino_versione | `CREATE INDEX ix_contratti_listino_versione ON vendite.contratti USING btree (listino_versione_id)` |
 | pk_contratti | `CREATE UNIQUE INDEX pk_contratti ON vendite.contratti USING btree (id)` |
 | uq_contratti_numero | `CREATE UNIQUE INDEX uq_contratti_numero ON vendite.contratti USING btree (numero)` |
+| uq_contratti_offerta_id | `CREATE UNIQUE INDEX uq_contratti_offerta_id ON vendite.contratti USING btree (offerta_id)` |
 | uq_contratti_uid | `CREATE UNIQUE INDEX uq_contratti_uid ON vendite.contratti USING btree (uid)` |
 
 ## 🚨 Trigger

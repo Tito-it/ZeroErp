@@ -1,8 +1,8 @@
 # Brief DB — Dominio `vendite.offerte_commerciali` (Step di sviluppo)
 
-> **Stato**: IN SVILUPPO — vedere §8 per lo stato dettagliato di ogni step.
+> **Stato**: ✅ CHIUSO — tutti gli step 1-9 applicati e testati. Vedere §8.
 >
-> **Progressi al 2026-05-24 (branch `dev/db-tid`)**:
+> **Progressi al 2026-05-25 (branch `dev/db-tid`)**:
 >
 > - **Step 1 ✅ APPLICATO** — seed `config.sorgenti` (`OFFERTA_COMMERCIALE`),
 >   `config.stati_doc_offerte` (6 righe incl. `ANNULLATA`), `config.messaggi_errore`
@@ -17,13 +17,22 @@
 > - **Step 4 ✅ APPLICATO** — DDL `config.stati_doc_offerte_transizioni`
 >   (`20260524-21`), seed 5 transizioni addendum A2 (`20260524-22`),
 >   trigger guard `trgfn_offerte_commerciali_guard_transizione` (`20260524-23`).
+>   Fix VARIADIC in `fn_log_and_raise_error`: `20260525-04`.
 > - **Step 5 ✅ APPLICATO** — riga `offerta_commerciale`/`OFC` aggiunta in
 >   `config.sistema_codici` (id=17, migration `20260524-25`).
+>   Fix sequenza mancante + trigger `sync_gen_codice` aggiornato: `20260525-03`.
 > - **Step 6 ✅ APPLICATO** — `trgfn_offerte_commerciali_revisione` AFTER INSERT
 >   `_z90_` (migration `20260524-26`). Nota O4 analizzata: UPDATE su riga diversa,
 >   no DEFERRABLE necessario.
-> - **Steps 7-9 — DA FARE** — in ordine: fn_crea_revisione_offerta,
->   fn_push_offerta_a_contratto + ALTER contratti, suite pgTAP.
+> - **Step 7 ✅ APPLICATO** — `fn_crea_revisione_offerta(p_offerta_id, p_user)`
+>   RETURNS BIGINT (migration `20260524-27`).
+> - **Step 8 ✅ APPLICATO** — ALTER `vendite.contratti`: +`offerta_id` UNIQUE,
+>   +`sorgente_tipo_id`, +`sorgente_uid` (migration `20260525-01`).
+>   `fn_push_offerta_a_contratto` (migration `20260525-02`). UPSERT
+>   `contratti_utilities`.
+> - **Step 9 ✅ CHIUSO** — Suite pgTAP completa in
+>   `db/pgtap/vendite/offerte_commerciali/` (9 file, tutti i test passati
+>   2026-05-25).
 >
 > **Revisione 2026-05-24 (brief originale)**: corretti i problemi bloccanti
 > B1/B2/B3 e gli importanti I1/I2/I3/I4 emersi dall'analisi critica. Le
@@ -783,23 +792,38 @@ AGENTS.md §Test).
 
 ## 8. Stato del brief
 
-> **Aggiornamento 2026-05-24**: Steps 1-7 YAML pronti su `dev/db-tid`.
-> Step 7 da applicare al DB. Steps 8-9 in attesa.
+> **Aggiornamento 2026-05-25**: tutti gli step 1-9 APPLICATI e testati.
+> Brief CHIUSO. Suite pgTAP completa, tutti i test passati.
+> Due bug fix applicati durante lo Step 9 (`20260525-03`, `20260525-04`).
 
-| Step | Stato          | Migration / File                               | Note                                                                                     |
-| ---- | -------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| 1    | APPLICATO      | CSV seeds (sorgenti, stati, errori, fk_policy) | 6 stati (A2: +ANNULLATA); 6 errori; sorgente OFFERTA_COMMERCIALE                         |
-| 2    | APPLICATO      | `20260524-03`, `20260524-10`                   | Testata + motivazione_rifiuto / data_annullamento (A1/A2)                                |
-| 3    | APPLICATO      | `20260524-05` .. `20260524-09`                 | Eccezioni + utilities + note partition + FK. Docs manual/ creati                         |
-| 4    | APPLICATO      | `20260524-21`, `20260524-22`, `20260524-23`    | DDL transizioni + seed 5 trans. (A2) + trigger guard                                     |
-| 5    | APPLICATO      | CSV `sistema_codici.csv` (id=17)               | Riga `offerta_commerciale`/`OFC` aggiunta; YAML `20250813-05` ricarica                   |
-| 6    | APPLICATO      | `20260524-26` (20_code/vendite)                | `trgfn_offerte_commerciali_revisione` z90 AFTER INSERT. O4: no DEFERRED                  |
-| 7    | YAML PRONTO    | `20260524-27` (20_code/vendite)                | `fn_crea_revisione_offerta(p_offerta_id, p_user)` RETURNS BIGINT.                        |
-| 8    | TODO           | dipende da 4                                   | `fn_push_offerta_a_contratto` + ALTER contratti (offerta_id, sorgente_*)                 |
-| 9    | TODO           | dipende da 1-8                                 | Suite pgTAP in `db/pgtap/vendite/offerte_commerciali/`                                   |
+| Step | Stato | Migration / File | Note |
+| ---- | ----- | ---------------- | ---- |
+| 1 | APPLICATO | CSV seeds (sorgenti, stati, errori, fk_policy) | 6 stati (A2: +ANNULLATA); 6 errori; sorgente OFFERTA_COMMERCIALE |
+| 2 | APPLICATO | `20260524-03`, `20260524-10` | Testata + motivazione_rifiuto / data_annullamento (A1/A2) |
+| 3 | APPLICATO | `20260524-05` .. `20260524-09` | Eccezioni + utilities + note partition + FK. Docs manual/ creati |
+| 4 | APPLICATO | `20260524-21`, `20260524-22`, `20260524-23`, `20260525-04` | DDL transizioni + seed 5 trans. (A2) + trigger guard. Fix `20260525-04`: VARIADIC arg mancante in `fn_log_and_raise_error` per `E_OFFERTA_EMISSIONE_*` |
+| 5 | APPLICATO | CSV `sistema_codici.csv` (id=17), `20260524-25`, `20260525-03` | Riga `offerta_commerciale`/`OFC` aggiunta. Fix `20260525-03`: sequenza `offerte_commerciali_codice_seq` mancante; `sync_gen_codice` aggiornato per crearla |
+| 6 | APPLICATO | `20260524-26` (20_code/vendite) | `trgfn_offerte_commerciali_revisione` z90 AFTER INSERT. O4: no DEFERRED |
+| 7 | APPLICATO | `20260524-27` (20_code/vendite) | `fn_crea_revisione_offerta(p_offerta_id, p_user)` RETURNS BIGINT |
+| 8 | APPLICATO | `20260525-01` (00_schema/vendite) + `20260525-02` (20_code/vendite) | ALTER contratti: +offerta_id UNIQUE, +sorgente_tipo_id, +sorgente_uid. `fn_push_offerta_a_contratto`. UPSERT contratti_utilities |
+| 9 | CHIUSO | `db/pgtap/vendite/offerte_commerciali/` (9 file) | Suite pgTAP completa. Tutti i test passati 2026-05-25 |
+
+**File pgTAP**:
+
+| File | Step | Test |
+| ---- | ---- | ---- |
+| `test_offerte_commerciali_struttura.sql` | 2 | Colonne, FK, UNIQUE uid, CHECK variazione globale |
+| `test_offerte_commerciali_eccezioni_struttura.sql` | 3 | Mirror contratti_righe: enum, 5 CHECK, esclusione campi I4 |
+| `test_offerte_commerciali_utilities_struttura.sql` | 3 | UNIQUE (offerta_id), mirror contratti_utilities |
+| `test_offerte_commerciali_state_machine.sql` | 4 | 10 transizioni: ammesse/vietate + guard listino + timestamp |
+| `test_offerte_commerciali_codice.sql` | 5 | Generazione `OFC-*` via `sistema_codici` |
+| `test_offerte_commerciali_revisione_trigger.sql` | 6 | rev.N → SUPERATA al creare rev.N+1 |
+| `test_fn_crea_revisione_offerta.sql` | 7 | Creazione rev.N+1: eccezioni + utility copiate; guard stati |
+| `test_fn_push_offerta_a_contratto.sql` | 8 | Push corretto + idempotenza + copia eccezioni/utility 1:1 |
+| `test_offerte_commerciali_end_to_end.sql` | 9 | Flusso completo BOZZA→EMESSA→ACCETTATA→contratto DRAFT |
 
 ---
 
 *Brief DB Offerta Commerciale — ZeroErp. Revisione 2026-05-24 (correzioni
-B1/B2/B3/I1/I2/I3/I4 + note O1/O4/O5). Pronto per applicazione team DB su
-`dev/db-tid` dopo OK Tid. Documento vivo, da aggiornare a ogni step chiuso.*
+B1/B2/B3/I1/I2/I3/I4 + note O1/O4/O5). CHIUSO 2026-05-25: tutti gli step
+applicati, suite pgTAP completa, tutti i test passati su `dev/db-tid`.*

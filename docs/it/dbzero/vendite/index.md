@@ -90,6 +90,7 @@
 - [fn_contratto_riga_componenti_init](funzioni/fn_contratto_riga_componenti_init.md)
 - [fn_contratto_riga_componenti_preview](funzioni/fn_contratto_riga_componenti_preview.md)
 - [fn_contratto_righe_preview](funzioni/fn_contratto_righe_preview.md)
+- [fn_crea_revisione_offerta](funzioni/fn_crea_revisione_offerta.md) — (rev 2026-05-25)
 - [fn_crea_revisione_preventivo](funzioni/fn_crea_revisione_preventivo.md) — (latest review 15-05-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive, componenti BoM e indirizzi. L'attivazione della revisione non e' piu' gestita qui: il flag `is_revision_attiva` e' stato rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendite.vw_preventivi`.
 - [fn_create_fatturazione_lotto](funzioni/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
 - [fn_ddt_riga_componenti_init](funzioni/fn_ddt_riga_componenti_init.md)
@@ -136,6 +137,7 @@
 - [fn_prepare_sdi_payload](funzioni/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
 - [fn_preventivo_riga_componenti_init](funzioni/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](funzioni/fn_preventivo_riga_componenti_preview.md)
+- [fn_push_offerta_a_contratto](funzioni/fn_push_offerta_a_contratto.md) — (rev 2026-05-25)
 - [fn_reset_fondi_fattura](funzioni/fn_reset_fondi_fattura.md) — La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura applicati ad una **fattura figlia**:
 - [fn_reset_lotto_draft](funzioni/fn_reset_lotto_draft.md) — (latest review 09-02-2026)   La funzione **`vendite.fn_reset_lotto_draft()`** effettua il **rollback tecnico** di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati dal draft e ripristinando le righe di `attivita_fatturabili`.
 - [fn_reset_lotto_fattura_draft](funzioni/fn_reset_lotto_fattura_draft.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_reset_lotto_fattura_draft()`** effettua il reset tecnico di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**, senza annullare il lotto.

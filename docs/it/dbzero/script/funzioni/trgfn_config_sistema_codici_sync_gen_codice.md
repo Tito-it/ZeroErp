@@ -142,6 +142,14 @@ BEGIN
       );
   END IF;
 
+  -- Crea la sequenza se non esiste ancora
+  EXECUTE format(
+    'CREATE SEQUENCE IF NOT EXISTS %I.%I_%I_seq',
+    v_schema_tabella,
+    v_nome_tabella,
+    v_nome_colonna
+  );
+
   IF v_typcategory = 'N' THEN
     v_condition := format('(NEW.%I IS NULL OR NEW.%I = 0)', v_nome_colonna, v_nome_colonna);
   ELSE
@@ -183,7 +191,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_config_sistema_codici_sync_gen_codice()
-IS 'Sincronizza trigger di generazione codici in base a config.sistema_codici (crea/aggiorna/distrugge per usa_sequenza).';
+IS 'Sincronizza trigger e sequenza di generazione codici in base a config.sistema_codici (crea/aggiorna/distrugge per usa_sequenza).';
 ```
 
 ---
