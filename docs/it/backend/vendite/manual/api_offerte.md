@@ -29,10 +29,12 @@ conversioni semantiche.
 
 ## Contesto
 
-- Il **codice offerta** `OFC-*` arriva dal payload finche' il team DB non
-  chiude lo step 5 del brief (numerazione automatica via `config.sistema_codici`).
-  Dopo lo step 5, il service generera' automaticamente il codice e lo
-  rifiutera' dal payload — lo schema OpenAPI si aggiornera' di conseguenza.
+- Il **codice offerta** `OFC-*` e' generato dal trigger DB
+  `trgfn_offerte_commerciali_gen_codice` (BEFORE INSERT, step 5 brief DB
+  atterrato 2026-05-25). Il campo `codice` **non va nel payload** in
+  creazione: se inviato viene rifiutato come `unknown_key`. Lookup
+  `script.fn_generate_codice('offerta_commerciale')` con prefisso `OFC`
+  e lunghezza 7.
 - Lo **stato iniziale** di ogni offerta e' `BOZZA` (risolto dal service via
   `config.stati_doc_offerte.codice_interno`).
 - La **state machine** e' autoritativa lato DB tramite il trigger
@@ -68,16 +70,19 @@ ambiguita'):
   rifiuta il cliente. Per correzioni interne dopo l'emissione si crea una
   revisione (che marcera' la corrente SUPERATA).
 
-### Perimetro D4 (BE iniziale, step DB 1-4 + addendum)
+### Perimetro D5 (BE incrementale, step DB 1-7 + addendum)
 
-Sono cablati gli endpoint coerenti col DB consegnato (testata + state
-machine + eccezioni + utility 1:1). **Non** ancora cablati (in attesa
-step DB 5-8):
+Cablati gli endpoint coerenti col DB consegnato:
 
-- numerazione automatica `OFC-*` (step 5)
-- `POST /<id>/crea-revisione/` (step 7: `fn_crea_revisione_offerta`)
-- `POST /<id>/push-contratto/` (step 8: `fn_push_offerta_a_contratto`
-  + ALTER `contratti.offerta_id`)
+- testata + state machine + eccezioni + utility 1:1 (step 1-4)
+- `motivazione_rifiuto` (addendum 2026-05-24)
+- numerazione automatica `OFC-*` via trigger DB (step 5, 2026-05-25)
+- `POST /<id>/crea-revisione/` + `GET /<id>/revisioni/` (step 6-7, 2026-05-25)
+
+**Non** ancora cablato (in attesa step DB 8):
+
+- `POST /<id>/push-contratto/` (richiede `fn_push_offerta_a_contratto`
+  e `ALTER vendite.contratti ADD offerta_id`)
 
 ## Input
 
@@ -104,7 +109,6 @@ step DB 5-8):
 
 ```json
 {
-  "codice": "OFC-2026-0001",
   "emittente_fiscale_id": 10,
   "billing_account_id": 100,
   "istanza_utility_id": 200,
@@ -121,8 +125,10 @@ step DB 5-8):
 
 Note:
 
-- `codice` richiesto finche' lo step 5 brief DB non e' atterrato. Dopo
-  diventera' immutabile (lock_columns) e generato dal service.
+- `codice` **non va nel payload** (step 5 atterrato 2026-05-25): generato
+  dal trigger DB `trgfn_offerte_commerciali_gen_codice` come
+  `OFC-NNNNNNN`. Se inviato, rifiutato come `unknown_key` con
+  `E_VENDITE_VALIDATION`.
 - `stato_doc_offerta_id` / `uid` / `revisione_*` / `data_*` di transizione
   **NON vanno mai inviati** (rifiutati come unknown_keys con
   `E_VENDITE_VALIDATION`).
@@ -267,6 +273,60 @@ Annullamento ammesso **solo da BOZZA**. Pattern simmetrico ai contratti
 `DRAFT -> ANNULLATO`. Tentativo da EMESSA → 422 con
 `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` propagato dal trigger DB.
 
+### Crea revisione `POST /api/v1/vendite/offerte/<id>/crea-revisione/`
+
+Body vuoto. Crea rev.N+1 in stato `BOZZA` a partire dall'offerta corrente
+(che deve essere in stato `EMESSA`). Effetti:
+
+1. Invoca `vendite.fn_crea_revisione_offerta(offerta_id, user)` (step 7
+   brief DB).
+2. La fn DB copia testata + eccezioni attive + utility 1:1 nella nuova
+   revisione, con `revisione_numero = N+1` e `revisione_padre_id = <id>`.
+3. Il codice `OFC-*` della nuova rev e' generato ex novo dal trigger
+   `gen_codice` (uid e timestamp di transizione restano NULL).
+4. Il trigger `trg_offerte_commerciali_z90_revisione_ins` (step 6,
+   AFTER INSERT) marca **automaticamente** la rev.N come `SUPERATA`
+   (transizione `EMESSA -> SUPERATA` ammessa nel seed).
+5. Ritorna il dettaglio della nuova rev.N+1 (testata + eccezioni + utility).
+
+Guard:
+
+- Stato corrente diverso da `EMESSA` → 422
+  `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`. La fn DB e' guard finale; il
+  service applica anche un pre-check applicativo che ritorna
+  `E_VENDITE_VALIDATION` parlante in caso di stato fuori scope.
+- Offerta inesistente → 404.
+
+`user` di audit: il service prende `request.user.username` se autenticato
+(la fn DB ha `COALESCE(p_user, CURRENT_USER)` come fallback).
+
+### Lista revisioni `GET /api/v1/vendite/offerte/<id>/revisioni/`
+
+Ritorna la **catena di revisioni** che condivide il root (rev.1) con
+l'offerta passata. Output ordinato per `revisione_numero` ASC. Lettura
+libera in ogni stato (utile per il drawer FE che vuole mostrare la
+timeline rev.1 SUPERATA → rev.2 SUPERATA → rev.3 EMESSA → ecc.).
+
+```json
+{
+  "data": [
+    {"id": 1,  "codice": "OFC-0000001", "revisione_numero": 1,
+     "stato_codice_interno": "SUPERATA", "revisione_padre_id": null,
+     "data_emissione": "2026-04-10T09:15:00Z"},
+    {"id": 7,  "codice": "OFC-0000003", "revisione_numero": 2,
+     "stato_codice_interno": "SUPERATA", "revisione_padre_id": 1,
+     "data_emissione": "2026-05-02T16:40:00Z"},
+    {"id": 42, "codice": "OFC-0000019", "revisione_numero": 3,
+     "stato_codice_interno": "EMESSA", "revisione_padre_id": 7,
+     "data_emissione": "2026-05-25T11:00:00Z"}
+  ]
+}
+```
+
+Implementazione: CTE ricorsiva in due passi (risale via `revisione_padre_id`
+fino al root, poi ridiscende a tutti i discendenti). Una query, indici
+gia' presenti su `revisione_padre_id`.
+
 ### Eccezioni
 
 #### Lista `GET /api/v1/vendite/offerte/<id>/eccezioni/`
@@ -389,10 +449,10 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 
 ## Regole
 
-1. **Codice offerta** dal payload finche' lo step 5 brief DB non e'
-   atterrato. Da quel momento generato lato service via
-   `script.fn_generate_codice('offerta_commerciale')` e rifiutato in
-   payload (lock_columns).
+1. **Codice offerta** generato dal trigger DB
+   `trgfn_offerte_commerciali_gen_codice` (BEFORE INSERT) via
+   `script.fn_generate_codice('offerta_commerciale')`. Rifiutato in
+   payload come `unknown_key`.
 2. **Stato iniziale BOZZA**; transizioni via endpoint dedicato.
 3. **Editabilita' solo in BOZZA** per testata, eccezioni e utility.
    Defense-in-depth applicativa; il trigger DB blocca comunque cambi su
@@ -422,7 +482,7 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 | `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`        | 422                 | DB P0001 — `BOZZA -> EMESSA` con `listino_versione_id` NULL                                            | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`   | 422                 | DB P0001 — `BOZZA -> EMESSA` con versione listino non in stato `ATTIVA`                                 | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`                 | 422                 | DB P0001 — transizione non presente in `config.stati_doc_offerte_transizioni` (es. EMESSA -> ANNULLATA, EMESSA -> BOZZA, qualsiasi uscita da stato terminale) | `trgfn_offerte_commerciali_guard_transizione`        |
-| `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`             | 422                 | DB P0001 — riservato a `fn_crea_revisione_offerta` (step 7 brief DB, non ancora cablato lato BE)        | `fn_crea_revisione_offerta`                          |
+| `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`             | 422                 | DB P0001 — `crea_revisione` da stato != EMESSA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_crea_revisione_offerta`                          |
 | `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                  | 422                 | DB P0001 — riservato a `fn_push_offerta_a_contratto` (step 8 brief DB, non ancora cablato lato BE)      | `fn_push_offerta_a_contratto`                        |
 | `E_OFFERTA_CONTRATTO_GIA_GENERATO`                  | 422                 | DB P0001 — push idempotente: doppia invocazione su stessa offerta. Riservato step 8.                    | `fn_push_offerta_a_contratto`                        |
 
@@ -446,14 +506,21 @@ diverso da "transizione non ammessa generica").
 **Funzioni**:
 
 - `script.fn_generate_codice('offerta_commerciale')` — generazione codice
-  `OFC-*` (non cablato finche' step 5 DB non e' atterrato).
-- `vendite.fn_crea_revisione_offerta` — step 7 brief DB (non ancora cablato).
+  `OFC-*` (step 5 atterrato 2026-05-25, invocata dal trigger BEFORE INSERT).
+- `vendite.fn_crea_revisione_offerta(p_offerta_id, p_user)` — step 7
+  atterrato 2026-05-25. Crea rev.N+1 da offerta EMESSA copiando testata +
+  eccezioni attive + utility 1:1. Ritorna `BIGINT` (id nuova rev).
 - `vendite.fn_push_offerta_a_contratto` — step 8 brief DB (non ancora cablato).
 
 **Trigger autoritativi**:
 
 - `trgfn_offerte_commerciali_guard_transizione` — state machine + guard
   versione listino + valorizzazione timestamp transizione.
+- `trgfn_offerte_commerciali_gen_codice` — generazione codice
+  `OFC-NNNNNNN` (BEFORE INSERT) se `codice IS NULL` o vuoto.
+- `trgfn_offerte_commerciali_revisione` — AFTER INSERT: marca la
+  rev.N come SUPERATA quando si inserisce la rev.N+1 (cascata sicura
+  perche' la transizione `EMESSA -> SUPERATA` e' ammessa nel seed).
 
 **Stati** gestiti via `config.stati_doc_offerte`
 (BOZZA / EMESSA / ACCETTATA / RIFIUTATA / ANNULLATA / SUPERATA).
@@ -461,18 +528,15 @@ diverso da "transizione non ammessa generica").
 ## Note di migrazione
 
 - **Step DB 1-4 + addendum atterrati 2026-05-24** (commit `2000d8261`).
-  Cablato lato BE in v1: testata + eccezioni + utility 1:1 + state machine
+  Cablato lato BE: testata + eccezioni + utility 1:1 + state machine
   asimmetrica + 6 codici errore.
-- **Pendenti** (in attesa team DB):
-  - Step 5 — numerazione `OFC-*` via `config.sistema_codici`. Quando
-    landerla', il service generera' il codice e rifiutera' il campo dal
-    payload create; lo schema OpenAPI cambiera' di conseguenza.
-  - Step 6-7 — trigger revisione + `fn_crea_revisione_offerta`. Allora
-    si abilitera' `POST /<id>/crea-revisione/` (rev.N+1 da rev.N EMESSA,
-    rev.N marcata SUPERATA via trigger).
-  - Step 8 — `fn_push_offerta_a_contratto` + ALTER `vendite.contratti.offerta_id`.
-    Allora si abilitera' `POST /<id>/push-contratto/` (idempotente,
-    pattern A `UNIQUE (offerta_id)`).
+- **Step DB 5-7 atterrati 2026-05-25** (commit `13d57a846`). Cablato
+  lato BE: codice automatico `OFC-*` via trigger, `crea-revisione/` end-to-end,
+  `revisioni/` (lista catena via CTE ricorsiva).
+- **Pendente** (in attesa team DB):
+  - Step 8 — `fn_push_offerta_a_contratto` + `ALTER vendite.contratti ADD
+    COLUMN offerta_id`. Quando atterrera', si abilitera'
+    `POST /<id>/push-contratto/` (idempotente, pattern A `UNIQUE (offerta_id)`).
 - **Note offerta** (`note_offerte_commerciali`): partizione gia' creata
   dal team DB, cablaggio applicativo via building block esistente
   `PartitionedNoteRepository` — richiede aggiunta `'OFFERTA'` alla

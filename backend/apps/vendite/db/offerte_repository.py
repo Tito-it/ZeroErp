@@ -371,8 +371,10 @@ class OfferteRepository:
     #        sistema_codici (step 5 brief DB) non e' ancora cablata.
     # Colonne scrivibili in create (whitelist). Le immutabili (`uid`, audit,
     # data_*` di transizione) restano fuori e non sono accettate dal pattern.
+    # `codice` escluso da Step 5 (2026-05-25): generato dal trigger DB
+    # `trgfn_offerte_commerciali_gen_codice` (BEFORE INSERT); il repository
+    # non lo tocca, defense-in-depth applicativa.
     _OFFERTA_CREATE_COLS: tuple[str, ...] = (
-        "codice",
         "emittente_fiscale_id",
         "billing_account_id",
         "istanza_utility_id",
@@ -684,3 +686,70 @@ class OfferteRepository:
             )
             row = cursor.fetchone()
             return None if row is None else str(row[0])
+
+    # =================================================================
+    # Revisioni (Step 6-7 brief DB, atterrati 2026-05-25)
+    # =================================================================
+
+    # Scopo: Crea rev.N+1 invocando `vendite.fn_crea_revisione_offerta`.
+    #        La fn DB copia testata + eccezioni attive + utility 1:1, e il
+    #        trigger `trg_offerte_commerciali_z90_revisione_ins` (AFTER INSERT)
+    #        marca automaticamente la rev.N come SUPERATA. Ritorna l'id della
+    #        nuova rev.N+1.
+    #
+    #        Guard di stato (EMESSA obbligatorio) gia' applicato dalla fn DB
+    #        con codice `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`.
+    def crea_revisione(self, offerta_id: int, user: str | None = None) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_crea_revisione_offerta(%s, %s)",
+                [offerta_id, user],
+            )
+            row = cursor.fetchone()
+            assert row is not None and row[0] is not None
+            return int(row[0])
+
+    # Scopo: Lista catena revisioni che condividono il medesimo "root"
+    #        (rev.1) dell'offerta passata. Risale via `revisione_padre_id`
+    #        fino alla radice, poi ridiscende a tutti i discendenti.
+    #        Output ordinato per `revisione_numero` ASC.
+    #
+    #        Caso "lineare" (n revisioni in serie): ritorna [rev.1, ..., rev.N].
+    #        Caso "fork" (es. due figli da rev.1, scenario teorico, non
+    #        previsto dalla state machine ma supportato dalla query):
+    #        ritorna tutti i nodi della componente connessa.
+    def list_revisioni(self, offerta_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                WITH RECURSIVE
+                ancestors AS (
+                    SELECT id, revisione_padre_id
+                      FROM vendite.offerte_commerciali
+                     WHERE id = %s
+                    UNION ALL
+                    SELECT o.id, o.revisione_padre_id
+                      FROM vendite.offerte_commerciali o
+                      JOIN ancestors a ON a.revisione_padre_id = o.id
+                ),
+                root_id AS (
+                    SELECT id FROM ancestors WHERE revisione_padre_id IS NULL
+                    LIMIT 1
+                ),
+                family AS (
+                    SELECT o.id
+                      FROM vendite.offerte_commerciali o, root_id
+                     WHERE o.id = root_id.id
+                    UNION ALL
+                    SELECT o.id
+                      FROM vendite.offerte_commerciali o
+                      JOIN family f ON o.revisione_padre_id = f.id
+                )
+                SELECT {_SELECT_COLS_OFFERTA}
+                  {_FROM_JOINS_OFFERTA}
+                 WHERE o.id IN (SELECT id FROM family)
+                 ORDER BY o.revisione_numero ASC, o.id ASC
+                """,  # noqa: S608
+                [offerta_id],
+            )
+            return rows_to_list(cursor)

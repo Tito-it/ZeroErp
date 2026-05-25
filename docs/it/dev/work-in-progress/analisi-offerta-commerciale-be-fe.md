@@ -14,7 +14,14 @@
 > (GAP 2/3); aggiunta `motivazione_rifiuto` (GAP 4); annullamento via cambio
 > stato con nuovo stato `ANNULLATA` distinto da `RIFIUTATA` (GAP 5).
 >
-> **Revisione 2026-05-24d** (questa): riallineamento al DB realmente consegnato
+> **Revisione 2026-05-25e** (questa): cablato lato BE quanto consegnato dal
+> commit DB `13d57a846` del 2026-05-25 (step 5-7 brief DB). In sintesi:
+> codice `OFC-*` automatico via trigger DB (rimosso dalla whitelist payload),
+> `POST /<id>/crea-revisione/` end-to-end (chiama `fn_crea_revisione_offerta`)
+> e `GET /<id>/revisioni/` (catena via CTE ricorsiva). 32/32 test verdi.
+> **Solo step 8 (push a contratto) resta fuori scope**. Vedi §0.6.
+>
+> **Revisione 2026-05-24d**: riallineamento al DB realmente consegnato
 > dal team DB il 2026-05-24 (commit `2000d8261`). Step 1-4 del brief + addendum
 > §0.3 atterrati. Tre divergenze minori recepite (D1 `data_annullamento`, D2
 > note in tabella separata, D3 `articolo_id` UUID). Perimetro BE iniziale
@@ -77,6 +84,21 @@ multi-utility e FK errate). Queste correzioni lo riallineano al brief corretto.
 | GAP 3 | FE-3 / FE-4                                                        | **Rimosso `AllegatiPanel`** (non esiste oggi; il contratto non lo ha). Allegati rinviati a brief separato.                                                                                                                                                                                                                                                                              |
 | GAP 4 | OffertaEsitoDialog + testata                                       | Aggiunta colonna `motivazione_rifiuto` sulla testata (non JSONB). Tocca il brief DB (vedi nota).                                                                                                                                                                                                                                                                                        |
 | GAP 5 | Lifecycle + endpoint                                               | Annullamento via **cambio stato** (no hard delete come via di processo), con nuovo stato **`ANNULLATA`** (da noi) distinto da `RIFIUTATA` (dal cliente). Logica uniforme col contratto ("annulla contratto").                                                                                                                                                                           |
+
+### 0.6 Revisione 2026-05-25e (sblocco step DB 5-7)
+
+Il team DB ha consegnato il 2026-05-25 (commit `13d57a846`) tre step
+brief in un colpo: numerazione `OFC-*`, trigger revisione, fn revisione.
+Cablato lato BE in giornata, senza anticipare lo step 8 (push).
+
+| Punto | Cosa cambia                                                                                                                                                                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| E1    | **Codice `OFC-*` automatico** (step 5): `codice` rimosso da `_CREATE_KEYS_OFFERTA` (whitelist payload service) e da `_OFFERTA_CREATE_COLS` (whitelist write repo). Il trigger DB `trgfn_offerte_commerciali_gen_codice` (BEFORE INSERT) genera il codice se NULL. Se passato in payload: rifiutato come `unknown_key`. |
+| E2    | **`POST /<id>/crea-revisione/`** (step 6-7): nuovo endpoint che invoca `vendite.fn_crea_revisione_offerta(p_offerta_id, p_user)`. Guard applicativo `EMESSA`; il DB ha guard finale (`E_OFFERTA_REVISIONE_STATO_NON_AMMESSO` propagato come `code` originale). User di audit preso da `request.user.username`. Ritorna il dettaglio della nuova rev.N+1.                                                                                |
+| E3    | **`GET /<id>/revisioni/`**: lista catena di revisioni che condividono il root con l'offerta passata. CTE ricorsiva ancestors → root → descendants. Lettura libera in ogni stato.                                          |
+| E4    | **Firma fn revisione**: il brief diceva `(p_offerta_id, p_motivazione TEXT)` ma il team DB ha implementato `(p_offerta_id, p_user TEXT)` per coerenza con `fn_crea_revisione_preventivo`. La motivazione di processo non esiste nel flusso revisione (`motivazione_rifiuto` e' riservata a RIFIUTATA/ANNULLATA). Il service passa `request.user.username` o NULL (la fn DB ha `COALESCE(..., CURRENT_USER)`).                          |
+| E5    | **Refuso messaggio errore corretto dal team DB** (bonus): `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` ora documenta correttamente `BOZZA→EMESSA / BOZZA→ANNULLATA`, non piu' `BOZZA→RIFIUTATA`.                                                                                                                                                |
+| E6    | **Test suite 26 → 32**: aggiunti 6 test (crea_revisione da BOZZA/ACCETTATA fallisce + happy path + propagazione errore DB; list_revisioni 404 + happy path) e adattati i 2 test crea_offerta al payload senza `codice`.    |
 
 ### 0.5 Revisione 2026-05-24d (riallineamento al DB consegnato)
 
@@ -860,36 +882,33 @@ brief DB step 4-8 → BE-3 (service) → BE-4 (API)
 
 ## 8. Stato del piano
 
-| Step | Stato                    | Dipendenze                                                                                                  |
-| ---- | ------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| BE-1 | **Sbloccato** (DB step 1-4 + addendum atterrati 2026-05-24, commit `2000d8261`) | Nessuna ulteriore                                          |
-| BE-2 | **Sbloccato (parziale)** | DB step 1-4 OK; metodi `crea_revisione`/`push_a_contratto`/`list_revisioni` rinviati (attesa step 6-8)      |
-| BE-3 | **Sbloccato (parziale)** | DB step 1-4 OK; service `crea_revisione`/`push_a_contratto` rinviati                                        |
-| BE-4 | **Sbloccato (parziale)** | DB step 1-4 OK; endpoint `crea-revisione`/`push-contratto` rinviati                                         |
-| FE-1 | Pronto                   | BE-4 (firma endpoint, anche solo bozza)                                                                     |
-| FE-2 | Pronto                   | FE-1                                                                                                        |
-| FE-3 | Pronto                   | FE-1                                                                                                        |
-| FE-4 | Pronto                   | FE-3                                                                                                        |
-| FE-5 | Pronto                   | FE-3                                                                                                        |
-| FE-6 | Continuo                 | Parallelo a FE-3/4/5                                                                                        |
-| FE-7 | Pronto                   | FE-2/3 testabili                                                                                            |
+| Step | Stato                    | Dipendenze                                                                                                       |
+| ---- | ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| BE-1 | **Atterrato** (rev. e)   | DB step 1-7 + addendum (commit `2000d8261` + `13d57a846`)                                                       |
+| BE-2 | **Atterrato (parziale)** | DB step 1-7 OK; metodo `push_a_contratto` rinviato (attesa step 8)                                              |
+| BE-3 | **Atterrato (parziale)** | DB step 1-7 OK; service `push_a_contratto` rinviato                                                              |
+| BE-4 | **Atterrato (parziale)** | DB step 1-7 OK; endpoint `push-contratto` rinviato                                                               |
+| FE-1 | Pronto                   | BE-4 (firma endpoint, anche solo bozza)                                                                          |
+| FE-2 | Pronto                   | FE-1                                                                                                             |
+| FE-3 | Pronto                   | FE-1                                                                                                             |
+| FE-4 | Pronto                   | FE-3                                                                                                             |
+| FE-5 | Pronto                   | FE-3                                                                                                             |
+| FE-6 | Continuo                 | Parallelo a FE-3/4/5                                                                                             |
+| FE-7 | Pronto                   | FE-2/3 testabili                                                                                                 |
 
-> **Perimetro BE iniziale (D4)**: si implementa SOLO ciò che il DB ha
-> consegnato. Tabelle: testata, eccezioni, utility 1:1, note offerta, state
-> machine con 6 stati e transizioni asimmetriche, 6 codici errore. Si
-> aggiungono `crea_revisione` / `push_a_contratto` / `list_revisioni` (BE+FE)
-> non appena il team DB chiude step 5-8 del brief originale (numerazione +
-> trigger revisione + fn_crea_revisione + fn_push_a_contratto + ALTER
-> `contratti.offerta_id`).
+> **Perimetro BE corrente (D5, rev. e)**: cablato tutto ciò che il DB ha
+> consegnato. Tabelle: testata + eccezioni + utility 1:1 + note offerta +
+> state machine 6 stati + transizioni asimmetriche + numerazione automatica
+> `OFC-*` + revisione end-to-end + 6 codici errore. Resta da cablare solo
+> `push_a_contratto` (BE+FE) quando il team DB chiude lo **step 8** del
+> brief originale (`fn_push_offerta_a_contratto` + `ALTER vendite.contratti
+> ADD offerta_id`).
 
 ---
 
-*Piano BE + FE Offerta Commerciale — ZeroErp. Revisione 2026-05-24c
-(rifiniture coerenza: utility inline in testata C1, endpoint utility mirror
-contratto C2, state machine asimmetrica BOZZA→ANNULLATA / EMESSA→RIFIUTATA C3,
-coerenze numeriche C4, dipendenza addendum DB esplicitata C5, test/smoke
-estesi C6). Eredita rev. b: GAP 1 utility ricca, GAP 2/3 no giornale/allegati,
-GAP 4 motivazione_rifiuto, GAP 5 ANNULLATA. Alcune correzioni toccano il brief
-DB già accettato — vedi §0.3 (addendum). Pronto per applicazione su
-`dev/backend-tid` dopo recepimento addendum DB. Documento vivo, da aggiornare
-a ogni step chiuso.*
+*Piano BE + FE Offerta Commerciale — ZeroErp. Revisione 2026-05-25e
+(sblocco step DB 5-7: codice automatico `OFC-*`, `crea-revisione/` end-to-end,
+`revisioni/` via CTE ricorsiva). Step DB 1-7 + addendum applicati. Resta
+fuori solo lo step 8 (push a contratto), in attesa team DB. Eredita rev. d
+(allineamento DB 1-4) e rev. c (rifiniture coerenza). Documento vivo, da
+aggiornare a ogni step chiuso.*

@@ -215,7 +215,7 @@ const onClose = useDrawerClose(emit, 'annullato')
       <div v-if="selectedSoggetto" class="resolver-selected mb-3">
         <SoggettoMessageBanner
           :ragione-sociale="selectedSoggetto.ragione_sociale_completa"
-          :codice-fiscale="selectedSoggetto.codice_fiscale"
+          :id-fiscale="selectedSoggetto.codice_fiscale || selectedSoggetto.partita_iva"
         />
         <div class="flex justify-end gap-2 mt-2">
           <Button :label="t('resolver.confirm_selection')" :icon="MANAGE_ICONS.CONFIRM"

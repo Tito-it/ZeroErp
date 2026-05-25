@@ -76,6 +76,12 @@ class StatoOfferta:
 _STATI_EDITABILI: frozenset[str] = frozenset({StatoOfferta.BOZZA})
 
 
+# Set "azionabili da EMESSA": registra_accettazione, registra_rifiuto,
+# crea_revisione partono tutti da stato EMESSA. Estratto come costante per
+# evitare 3 allocazioni `frozenset({EMESSA})` ad ogni chiamata di guard.
+_STATI_DA_EMESSA: frozenset[str] = frozenset({StatoOfferta.EMESSA})
+
+
 # Set di esiti cliente da EMESSA (used by registra_esito routing).
 _ESITI_AMMESSI_DA_EMESSA: frozenset[str] = frozenset(
     {StatoOfferta.ACCETTATA, StatoOfferta.RIFIUTATA}
@@ -158,8 +164,11 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 
 # Whitelist payload create offerta (testata).
+# Step 5 brief DB atterrato 2026-05-25: il codice OFC-* e' generato dal trigger
+# `trgfn_offerte_commerciali_gen_codice` (BEFORE INSERT). Il campo `codice` NON
+# va piu' nel payload: se inviato si rifiuta come unknown_key (defense-in-depth
+# applicativo; il trigger DB e' la garanzia ultima).
 _CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
-    "codice",
     "emittente_fiscale_id",
     "billing_account_id",
     "istanza_utility_id",
@@ -367,16 +376,15 @@ class OfferteService:
     # Create / Update / Delete testata
     # =================================================================
 
-    # Scopo: Crea offerta in stato BOZZA. Il `codice` arriva dal payload
-    #        finche' lo step 5 brief DB (numerazione OFC-*) non e' atterrato:
-    #        in v1 lo genera la UI o e' obbligatorio dal client. Lo stato
-    #        BOZZA si risolve via lookup `codice_interno`.
+    # Scopo: Crea offerta in stato BOZZA. Il codice `OFC-*` e' generato
+    #        dal trigger DB `trgfn_offerte_commerciali_gen_codice` (Step 5,
+    #        atterrato 2026-05-25): non va nel payload (rifiutato dalla
+    #        whitelist). Lo stato BOZZA si risolve via lookup `codice_interno`.
     def crea_offerta(self, payload: dict[str, Any]) -> dict[str, Any]:
         self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_OFFERTA)
         # Validazioni applicative minime (il DB rifinisce gli invarianti via
         # CHECK chk_offerte_*).
         for required in (
-            "codice",
             "emittente_fiscale_id",
             "billing_account_id",
             "istanza_utility_id",
@@ -399,10 +407,10 @@ class OfferteService:
         assert stato_bozza_id is not None
         data: dict[str, Any] = dict(payload)
         data["stato_doc_offerta_id"] = stato_bozza_id
-        # `revisione_numero` ha default DB = 1 (vedi tabella offerte_commerciali).
-        # Non e' in _CREATE_KEYS_OFFERTA quindi un payload con quella chiave
-        # avrebbe gia' fallito la whitelist. Niente setdefault qui.
-        with self._db_errors({"codice": payload.get("codice")}):
+        # `codice` NON in payload (vedi nota _CREATE_KEYS_OFFERTA): il trigger
+        # BEFORE INSERT genera OFC-NNNNNNN via `script.fn_generate_codice`.
+        # `revisione_numero` ha default DB = 1.
+        with self._db_errors({"billing_account_id": payload.get("billing_account_id")}):
             with transaction.atomic():
                 offerta_id = self._repo.create_offerta(data)
         return self.get_offerta(offerta_id)
@@ -458,7 +466,7 @@ class OfferteService:
         return self._cambia_stato_manuale(
             offerta_id,
             target_codice=StatoOfferta.ACCETTATA,
-            expected_from=frozenset({StatoOfferta.EMESSA}),
+            expected_from=_STATI_DA_EMESSA,
         )
 
     # Scopo: EMESSA -> RIFIUTATA (esito cliente negativo). Motivazione
@@ -471,7 +479,7 @@ class OfferteService:
         return self._cambia_stato_manuale(
             offerta_id,
             target_codice=StatoOfferta.RIFIUTATA,
-            expected_from=frozenset({StatoOfferta.EMESSA}),
+            expected_from=_STATI_DA_EMESSA,
             motivazione=motivazione.strip(),
         )
 
@@ -492,6 +500,42 @@ class OfferteService:
         if esito == StatoOfferta.ACCETTATA:
             return self.registra_accettazione(offerta_id)
         return self.registra_rifiuto(offerta_id, motivazione=motivazione or "")
+
+    # Scopo: Crea rev.N+1 di un'offerta in stato EMESSA invocando la fn DB
+    #        `vendite.fn_crea_revisione_offerta`. La fn copia testata +
+    #        eccezioni attive + utility 1:1; il trigger DB
+    #        `trg_offerte_commerciali_z90_revisione_ins` marca automaticamente
+    #        la rev.N corrente come SUPERATA. Ritorna la nuova rev.N+1
+    #        (BOZZA) come dettaglio completo.
+    #
+    #        Guard di stato (EMESSA obbligatorio) gia' nel DB con codice
+    #        `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`; replichiamo lato
+    #        applicativo per fail-fast con messaggio strutturato.
+    def crea_revisione(
+        self, offerta_id: int, *, user: str | None = None
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        self._assert_stato_corrente(offerta_id, expected=_STATI_DA_EMESSA)
+        with self._db_errors(
+            {"offerta_id": offerta_id},
+            fallback_message="Errore creazione revisione offerta.",
+        ):
+            with transaction.atomic():
+                new_id = self._repo.crea_revisione(offerta_id, user)
+        return self.get_offerta(new_id)
+
+    # Scopo: Ritorna la catena di revisioni che condivide il root (rev.1)
+    #        con l'offerta passata. Lettura libera in ogni stato.
+    def list_revisioni(self, offerta_id: int) -> list[dict[str, Any]]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        # 404 esplicito se l'offerta non esiste.
+        ErrorManager.require(
+            self._repo.get_stato_codice(offerta_id) is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Offerta non trovata.",
+            context={"offerta_id": offerta_id},
+        )
+        return self._repo.list_revisioni(offerta_id)
 
     # Scopo: BOZZA -> ANNULLATA (ritiro interno prima dell'emissione).
     #        Motivazione obbligatoria. Pattern simmetrico al contratto

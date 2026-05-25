@@ -296,7 +296,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <div v-if="isEdit && form.soggetto_id" class="mb-3">
           <SoggettoMessageBanner
             :ragione-sociale="form.ragione_sociale || `${form.cognome} ${form.nome}`.trim()"
-            :codice-fiscale="form.codice_fiscale"
+            :id-fiscale="form.codice_fiscale || form.partita_iva"
           />
         </div>
 
@@ -305,7 +305,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <div v-if="soggettoSelezionato" class="mb-3">
             <SoggettoMessageBanner
               :ragione-sociale="soggettoSelezionato.ragione_sociale"
-              :codice-fiscale="soggettoSelezionato.cf"
+              :id-fiscale="soggettoSelezionato.cf || soggettoSelezionato.piva"
             />
             <Button :label="t('resolver.change')" :icon="MANAGE_ICONS.EDIT"
               text size="small" class="mt-1" @click="clearSoggetto" />
