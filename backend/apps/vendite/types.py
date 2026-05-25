@@ -328,3 +328,113 @@ class PreventivoPraticaRow(TypedDict):
     stato_codice: str
     stato_descrizione: str
     ruolo_link: str
+
+
+# ── Offerte commerciali ──
+# Specchio strutturale di Contratto/ContrattoRiga/ContrattoUtility (decisioni
+# §5 analisi-offerta-commerciale + brief DB 2026-05-24 step 1-4 atterrati).
+# Le date/Decimal sono `str` ISO/serializzati, coerente col pattern preventivi
+# e contratti (psycopg ritorna stringhe via row_to_dict).
+
+
+class OffertaRow(TypedDict):
+    id: int
+    uid: str
+    codice: str
+    emittente_fiscale_id: int
+    billing_account_id: int
+    istanza_utility_id: int
+    utility_id: int
+    listino_id: int
+    listino_versione_id: int | None
+    valore_variazione_globale: str | None
+    tipo_variazione_globale: str | None
+    validita_dal: str
+    validita_al: str | None
+    stato_doc_offerta_id: int
+    revisione_numero: int
+    revisione_padre_id: int | None
+    data_emissione: str | None
+    data_accettazione: str | None
+    data_rifiuto: str | None
+    data_annullamento: str | None
+    motivazione_rifiuto: str | None
+    meta: dict[str, Any]
+    # Display fields da JOIN
+    stato_codice_interno: str
+    stato_descrizione: str
+    ba_codice: str | None
+    ba_ragione_sociale: str | None
+    utility_codice: str | None
+    utility_descrizione: str | None
+    listino_codice: str | None
+    listino_descrizione: str | None
+    listino_versione_codice: str | None
+    # Audit
+    data_insert: str
+    user_insert: str
+    data_update: str | None
+    user_update: str | None
+
+
+class OffertaEccezioneRow(TypedDict):
+    id: int
+    offerta_id: int
+    articolo_id: str
+    articolo_codice: str | None
+    articolo_descrizione: str | None
+    tipo_eccezione: str
+    tipo_erogazione: str | None
+    fonte_quantita_attesa: str
+    periodicita: str | None
+    generazione_canone: str | None
+    competenza_canone: str | None
+    prezzo_unitario: str | None
+    quantita: str | None
+    qta_operativa: str | None
+    uom_operativa_id: int | None
+    uom_codice: str | None
+    factor_to_base: str
+    ordine: int | None
+    attivo: bool
+    meta: dict[str, Any]
+
+
+class OffertaUtilityRow(TypedDict):
+    id: int
+    offerta_id: int
+    istanza_utility_id: int
+    utility_id: int
+    utility_codice: str | None
+    utility_descrizione: str | None
+    istanza_dati_precontrattuali_id: int | None
+    tipo_utenza_id: int | None
+    tipo_utenza_codice: str | None
+    tipo_utenza_descrizione: str | None
+    classe_utenza_id: int | None
+    classe_utenza_codice: str | None
+    classe_utenza_descrizione: str | None
+    param_1_num: str | None
+    param_2_txt: str | None
+    meta: dict[str, Any]
+
+
+class NotaOffertaRow(TypedDict):
+    id: int
+    offerta_id: int
+    eccezione_id: int | None
+    autore: str | None
+    testo: str
+    meta: dict[str, Any]
+    data_insert: str
+    user_insert: str
+    data_update: str | None
+    user_update: str | None
+
+
+class OffertaPushResult(TypedDict):
+    # In attesa step 8 brief DB (fn_push_offerta_a_contratto). TypedDict
+    # definito per stabilizzare la forma di ritorno futura.
+    contratto_id: int
+    contratto_codice: str
+    sorgente_uid: str

@@ -892,6 +892,24 @@ a {
   font-size: 0.5rem;
 }
 
+/* Approvazioni prezzo = check-circle (pi-check-circle \e90a) + euro
+   sovrapposto in alto a destra (pi-euro \e9bd). Semantica: "approva il
+   prezzo". Allineata al pattern preventivi/contratti/listini/fatture
+   che usano tutti l'overlay euro per le entita' vendite a valore. */
+.app-nav-icon-approvazioni-prezzo::before {
+  content: "\e90a";
+  top: 0.02rem;
+  left: 0.16rem;
+  font-size: 0.92rem;
+}
+
+.app-nav-icon-approvazioni-prezzo::after {
+  content: "\e9bd";
+  left: 0.76rem;
+  top: -0.04rem;
+  font-size: 0.5rem;
+}
+
 /* Clienti = ricevuta (pi-receipt \ea06) + omino sovrapposto (pi-user \e939).
    Differenzia visivamente dai soggetti (pi-users) e dai fornitori
    (palazzo+omino) mantenendo la semantica "chi riceve la fattura". */
@@ -942,6 +960,24 @@ a {
   left: 0.72rem;
   top: -0.05rem;
   font-size: 0.7rem;
+}
+
+/* Promo articoli = percentuale (pi-percentage \e9be) + box sovrapposto in
+   alto a destra (pi-box \e9d9). Stessa logica di UoM ma con ruoli invertiti:
+   l'oggetto principale e' la promo (%) e il dettaglio e' l'articolo a cui si
+   applica. Semantica: "sconto sull'articolo". */
+.app-nav-icon-promo-articoli::before {
+  content: "\e9be";
+  top: 0.04rem;
+  left: 0.14rem;
+  font-size: 0.82rem;
+}
+
+.app-nav-icon-promo-articoli::after {
+  content: "\e9d9";
+  left: 0.82rem;
+  top: -0.05rem;
+  font-size: 0.65rem;
 }
 
 /* DatePicker: icona calendario colore primario standard.

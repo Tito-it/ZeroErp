@@ -108,6 +108,7 @@ class FornitoriRepository:
                    v.ragione_sociale_completa,
                    v.codice_fiscale,
                    v.partita_iva,
+                   v.id_fiscale_univoco_cf_piva,
                    v.valuta_iso,
                    v.modalita_pagamento_codice,
                    v.modalita_pagamento_desc,
@@ -202,6 +203,19 @@ class FornitoriRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [fornitore_id])
             return row_to_dict(cursor)
+
+    # Scopo: Risolve la descrizione breve di uno stato fornitore per id
+    #        (DEF-1, header filtri leggibili nell'export). Lookup
+    #        opportunistico senza cache: 1-2 chiamate per richiesta export.
+    def get_stato_fornitore_descrizione(self, stato_id: int) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT descrizione_breve "
+                "  FROM config.stati_fornitore WHERE id = %s",
+                [stato_id],
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
 
     # =================================================================
     # Aggiornamento

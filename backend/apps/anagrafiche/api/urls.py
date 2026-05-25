@@ -39,7 +39,11 @@ from apps.anagrafiche.api.views_emittenti_fiscali import (
     EmittentiFiscaliUtilitiesView,
     EmittentiFiscaliView,
 )
-from apps.anagrafiche.api.views_fornitori import FornitoriDetailView, FornitoriView
+from apps.anagrafiche.api.views_fornitori import (
+    FornitoriDetailView,
+    FornitoriExportView,
+    FornitoriView,
+)
 from apps.anagrafiche.api.views_contatti_ruolo import RuoloContattiDetailView, RuoloContattiView
 from apps.anagrafiche.api.views_indirizzi_ruolo import RuoloIndirizziDetailView, RuoloIndirizziView
 from apps.anagrafiche.api.views_istanze_utility import (
@@ -110,6 +114,7 @@ urlpatterns = [
     ),
     # Fornitori
     path("fornitori/", FornitoriView.as_view(), name="anagrafiche-fornitori-list"),
+    path("fornitori/export/", FornitoriExportView.as_view(), name="anagrafiche-fornitori-export"),
     path("fornitori/<int:fornitore_id>/", FornitoriDetailView.as_view(), name="anagrafiche-fornitori-detail"),
     path(
         "fornitori/<int:fornitore_id>/invita-portale/",

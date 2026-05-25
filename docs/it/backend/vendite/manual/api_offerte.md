@@ -1,0 +1,489 @@
+# API Offerte commerciali `vendite.offerte_commerciali`
+
+## Scopo
+
+CRUD operativo delle **offerte commerciali**, documento pre-contrattuale che
+propone al cliente le condizioni quadro per una specifica utility prima della
+formalizzazione in contratto. Espone sub-entita' **eccezioni** (mirror di
+`contratti_righe`) e **utility 1:1** (estensione 1:1 con dati di utenza).
+
+L'offerta e' specchio strutturale del contratto: stessa testata, stesso enum
+`tipo_eccezione`, stessa cardinalita' utility. La fedelta' garantisce che il
+push offerta -> contratto (in arrivo allo step DB 8) sia una copia 1:1 senza
+conversioni semantiche.
+
+### Modello (decisioni §5 chiuse 2026-05-23)
+
+- **Mono-utility per offerta**: `istanza_utility_id` e `utility_id` NOT NULL
+  sulla testata. Cliente con piu' utility → N offerte distinte (un eventuale
+  raggruppamento "pacchetto commerciale" e' fuori dal v1).
+- **Versione listino fissata all'emissione**: in `BOZZA` `listino_versione_id`
+  puo' essere NULL; al passaggio `BOZZA -> EMESSA` il trigger guard rifiuta
+  se NULL o versione non ATTIVA. Da `EMESSA` in poi e' immutabile.
+- **Eccezioni come mirror di `contratti_righe`** con i 5 CHECK constraint
+  replicati (`chk_offerte_eccezioni_*`). Esclusi i campi `stato_approvazione_prezzo`
+  e `pratica_approvazione_prezzo_id`: una proposta non ha ancora workflow di
+  approvazione prezzo (al push verranno inseriti NULL sul contratto).
+- **State machine asimmetrica** (decisione operativa): annullamento da noi
+  solo prima dell'emissione; rifiuto cliente solo dopo l'emissione.
+
+## Contesto
+
+- Il **codice offerta** `OFC-*` arriva dal payload finche' il team DB non
+  chiude lo step 5 del brief (numerazione automatica via `config.sistema_codici`).
+  Dopo lo step 5, il service generera' automaticamente il codice e lo
+  rifiutera' dal payload — lo schema OpenAPI si aggiornera' di conseguenza.
+- Lo **stato iniziale** di ogni offerta e' `BOZZA` (risolto dal service via
+  `config.stati_doc_offerte.codice_interno`).
+- La **state machine** e' autoritativa lato DB tramite il trigger
+  `trgfn_offerte_commerciali_guard_transizione` che:
+  - verifica che la transizione sia in `config.stati_doc_offerte_transizioni`
+  - valorizza `data_emissione` / `data_accettazione` / `data_rifiuto` /
+    `data_annullamento` al passaggio
+  - rifiuta `BOZZA -> EMESSA` con `listino_versione_id` NULL o versione non
+    ATTIVA (codici `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO` /
+    `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`)
+- I codici errore `E_OFFERTA_*` sollevati dal trigger sono **estratti dal
+  MESSAGE** del trigger via regex (`_DB_ERROR_CODE_RE`) e propagati al client
+  come `ServiceError.code` originale, non come `E_VENDITE_VALIDATION` generico.
+  Il FE puo' fare routing UI specifico per codice.
+
+### State machine
+
+| Da     | A         | Chi la innesca                | Effetto laterale                                                |
+| ------ | --------- | ----------------------------- | --------------------------------------------------------------- |
+| BOZZA  | EMESSA    | operatore (`/emetti/`)        | Congela versione listino; valorizza `data_emissione`            |
+| BOZZA  | ANNULLATA | operatore (`/annulla/`)       | Valorizza `data_annullamento` + `motivazione_rifiuto`           |
+| EMESSA | ACCETTATA | operatore (`/registra-esito/`) | Valorizza `data_accettazione`                                  |
+| EMESSA | RIFIUTATA | operatore (`/registra-esito/`) | Valorizza `data_rifiuto` + `motivazione_rifiuto`               |
+| EMESSA | SUPERATA  | trigger revisione (Step 7 DB) | Stato terminale tecnico; rev.N+1 diventa la nuova offerta corrente |
+
+Stati terminali immutabili: **ACCETTATA**, **RIFIUTATA**, **SUPERATA**,
+**ANNULLATA**. Transizioni *NON* ammesse (documentate per evitare
+ambiguita'):
+
+- `BOZZA -> RIFIUTATA` non esiste: RIFIUTATA e' il "no del cliente" e dal
+  cliente non si arriva mai con un'offerta ancora in bozza.
+- `EMESSA -> ANNULLATA` non e' ammessa: una volta emessa, o accetta o
+  rifiuta il cliente. Per correzioni interne dopo l'emissione si crea una
+  revisione (che marcera' la corrente SUPERATA).
+
+### Perimetro D4 (BE iniziale, step DB 1-4 + addendum)
+
+Sono cablati gli endpoint coerenti col DB consegnato (testata + state
+machine + eccezioni + utility 1:1). **Non** ancora cablati (in attesa
+step DB 5-8):
+
+- numerazione automatica `OFC-*` (step 5)
+- `POST /<id>/crea-revisione/` (step 7: `fn_crea_revisione_offerta`)
+- `POST /<id>/push-contratto/` (step 8: `fn_push_offerta_a_contratto`
+  + ALTER `contratti.offerta_id`)
+
+## Input
+
+### Lista offerte `GET /api/v1/vendite/offerte/`
+
+| Parametro              | Tipo     | Descrizione                                                                                |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------ |
+| `search`               | string   | ILIKE su `codice` offerta e `ragione_sociale_completa` BA (minimo 3 char se valorizzato)    |
+| `billing_account_id`   | int      | Filtro cliente                                                                              |
+| `stato_codice_interno` | string   | `BOZZA` \| `EMESSA` \| `ACCETTATA` \| `RIFIUTATA` \| `ANNULLATA` \| `SUPERATA`               |
+| `utility_id`           | int      | Filtro utility                                                                              |
+| `listino_id`           | int      | Filtro listino di riferimento                                                               |
+| `validita_dal_min`     | ISO date | Filtro su `validita_dal` (range minimo). Nessun default backend                             |
+| `validita_dal_max`     | ISO date | Filtro su `validita_dal` (range massimo)                                                    |
+| `limit`                | int      | Default 25                                                                                  |
+| `offset`               | int      | Default 0                                                                                   |
+| `order_by`             | string   | `codice` \| `validita_dal` \| `validita_al` \| `data_emissione` \| `ba_ragione_sociale` \| `stato_codice` \| `data_insert` \| `data_update` |
+| `order_dir`            | string   | `asc` o `desc` (default)                                                                    |
+
+> **`search` vuoto**: stringa vuota o whitespace-only trattato come "no filter"
+> (non solleva 422). Il minimo 3 char si applica solo a `search` non-vuota.
+
+### Create testata `POST /api/v1/vendite/offerte/`
+
+```json
+{
+  "codice": "OFC-2026-0001",
+  "emittente_fiscale_id": 10,
+  "billing_account_id": 100,
+  "istanza_utility_id": 200,
+  "utility_id": 3,
+  "listino_id": 50,
+  "listino_versione_id": 5,
+  "tipo_variazione_globale": "PERCENTUALE",
+  "valore_variazione_globale": "-5.00",
+  "validita_dal": "2026-06-01",
+  "validita_al": "2026-12-31",
+  "meta": {"campagna": "estate26"}
+}
+```
+
+Note:
+
+- `codice` richiesto finche' lo step 5 brief DB non e' atterrato. Dopo
+  diventera' immutabile (lock_columns) e generato dal service.
+- `stato_doc_offerta_id` / `uid` / `revisione_*` / `data_*` di transizione
+  **NON vanno mai inviati** (rifiutati come unknown_keys con
+  `E_VENDITE_VALIDATION`).
+- `istanza_utility_id` e `utility_id` sono il riferimento "anagrafico"
+  della utility (mono-utility per offerta). I campi business
+  (tipo/classe utenza, parametri) vivono nel sub-record utility 1:1
+  e si gestiscono via endpoint dedicato (vedi §Utility 1:1).
+- `validita_dal` obbligatorio; `validita_al` opzionale.
+- Coerenza coppia variazione globale: `tipo_variazione_globale` +
+  `valore_variazione_globale` entrambi NULL o entrambi NOT NULL (CHECK DB
+  `chk_offerte_variazione_globale_coerenza`).
+
+### Detail `GET /api/v1/vendite/offerte/<id>/`
+
+Output: testata + display fields + `eccezioni[]` + `utility` (1:1, null se
+non ancora compilato).
+
+```json
+{
+  "data": {
+    "id": 1, "uid": "...", "codice": "OFC-2026-0001",
+    "emittente_fiscale_id": 10,
+    "billing_account_id": 100,
+    "ba_codice": "BA-0123", "ba_ragione_sociale": "Acme S.p.A.",
+    "istanza_utility_id": 200, "utility_id": 3,
+    "utility_codice": "GAS", "utility_descrizione": "Gas naturale",
+    "listino_id": 50, "listino_versione_id": 5,
+    "listino_codice": "LST-GAS-2026", "listino_descrizione": "Listino gas 2026",
+    "listino_versione_codice": "V5",
+    "tipo_variazione_globale": "PERCENTUALE",
+    "valore_variazione_globale": "-5.00",
+    "validita_dal": "2026-06-01", "validita_al": "2026-12-31",
+    "stato_doc_offerta_id": 1,
+    "stato_codice_interno": "BOZZA", "stato_descrizione": "Bozza",
+    "revisione_numero": 1, "revisione_padre_id": null,
+    "data_emissione": null, "data_accettazione": null,
+    "data_rifiuto": null, "data_annullamento": null,
+    "motivazione_rifiuto": null,
+    "meta": {"campagna": "estate26"},
+    "eccezioni": [
+      {
+        "id": 7, "offerta_id": 1, "articolo_id": "uuid-articolo",
+        "articolo_codice": "GAS-STD", "articolo_descrizione": "Gas Standard",
+        "tipo_eccezione": "OVERRIDE", "tipo_erogazione": "CONSUMO",
+        "fonte_quantita_attesa": "LETTURE",
+        "prezzo_unitario": "0.42", "quantita": null,
+        "qta_operativa": null, "uom_operativa_id": 5, "uom_codice": "MWh",
+        "factor_to_base": "1", "ordine": 10, "attivo": true, "meta": {}
+      }
+    ],
+    "utility": {
+      "id": 99, "offerta_id": 1,
+      "istanza_utility_id": 200, "utility_id": 3,
+      "utility_codice": "GAS", "utility_descrizione": "Gas naturale",
+      "tipo_utenza_id": 2, "tipo_utenza_codice": "DOM",
+      "classe_utenza_descrizione": "Domestico",
+      "classe_utenza_id": 7, "classe_utenza_codice": "RES",
+      "tipo_utenza_descrizione": "Residenziale",
+      "param_1_num": "1500", "param_2_txt": "POD-XYZ",
+      "istanza_dati_precontrattuali_id": null, "meta": {}
+    },
+    "data_insert": "2026-05-24T18:30:00Z", "user_insert": "mctit",
+    "data_update": null, "user_update": null
+  }
+}
+```
+
+### Update testata `PATCH /api/v1/vendite/offerte/<id>/`
+
+Solo in stato **BOZZA**. Whitelist campi mutabili: `emittente_fiscale_id`,
+`billing_account_id`, `istanza_utility_id`, `utility_id`, `listino_id`,
+`listino_versione_id`, `valore_variazione_globale`,
+`tipo_variazione_globale`, `validita_dal`, `validita_al`, `meta`.
+
+Immutabili (lock applicativo + DB):
+
+- `codice`, `uid`, `stato_doc_offerta_id` — per il cambio stato c'e'
+  l'endpoint dedicato `/emetti/` / `/registra-esito/` / `/annulla/`.
+- `revisione_*` — gestiti dal flusso revisione (step 7 brief DB).
+- `data_*` di transizione + `motivazione_rifiuto` — valorizzati dal
+  trigger DB al cambio stato.
+
+**Payload `{}` rifiutato** con `E_VENDITE_VALIDATION` (no-op evitato:
+l'operatore non puo' premere "Salva" e vedere `200 OK` senza che nulla
+sia stato scritto in DB).
+
+### Delete `DELETE /api/v1/vendite/offerte/<id>/`
+
+Solo in stato BOZZA. Hard delete dell'offerta + cascade su
+`offerte_commerciali_eccezioni` e `offerte_commerciali_utilities` via FK.
+
+**Annullamento di processo**: per "ritirare" un'offerta gia' presentata
+internamente si usa `POST /<id>/annulla/` (stato ANNULLATA), non DELETE.
+Il delete e' una pulizia tecnica di bozze "vuote".
+
+### Cambio stato BOZZA -> EMESSA `POST /api/v1/vendite/offerte/<id>/emetti/`
+
+Body vuoto. Il trigger DB:
+
+1. verifica `listino_versione_id` NOT NULL → altrimenti
+   `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO` (422)
+2. verifica versione listino in stato `ATTIVA` → altrimenti
+   `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA` (422)
+3. valorizza `data_emissione = now()`
+
+Da questo momento la versione del listino e' "congelata": modifiche al
+listino sottostante non si propagano all'offerta.
+
+### Cambio stato EMESSA -> ACCETTATA/RIFIUTATA `POST /api/v1/vendite/offerte/<id>/registra-esito/`
+
+```json
+{"esito": "ACCETTATA"}
+```
+
+oppure
+
+```json
+{"esito": "RIFIUTATA", "motivazione": "Cliente preferisce concorrente X."}
+```
+
+- `esito = "ACCETTATA"`: valorizza `data_accettazione`. `motivazione`
+  opzionale.
+- `esito = "RIFIUTATA"`: valorizza `data_rifiuto` +
+  `motivazione_rifiuto`. **Motivazione obbligatoria** (stringa non
+  vuota): assenza solleva `E_VENDITE_VALIDATION` pre-DB.
+- `esito` non valido → `E_VENDITE_VALIDATION` con detail "Atteso uno tra
+  ['ACCETTATA', 'RIFIUTATA']".
+
+Routing per esito implementato nel service (`registra_esito`), la view e'
+sottile.
+
+### Cambio stato BOZZA -> ANNULLATA `POST /api/v1/vendite/offerte/<id>/annulla/`
+
+```json
+{"motivazione": "Riscontrato errore nel listino di riferimento."}
+```
+
+Motivazione obbligatoria. Salvata in `motivazione_rifiuto` (colonna
+condivisa con RIFIUTATA). Il trigger DB valorizza `data_annullamento`.
+
+Annullamento ammesso **solo da BOZZA**. Pattern simmetrico ai contratti
+`DRAFT -> ANNULLATO`. Tentativo da EMESSA → 422 con
+`E_OFFERTA_TRANSIZIONE_NON_AMMESSA` propagato dal trigger DB.
+
+### Eccezioni
+
+#### Lista `GET /api/v1/vendite/offerte/<id>/eccezioni/`
+
+Lettura libera in ogni stato. Output: array di eccezioni ordinate per
+`ordine` poi `id`. Include display fields da JOIN (`articolo_codice`,
+`articolo_descrizione`, `uom_codice`).
+
+#### Create `POST /api/v1/vendite/offerte/<id>/eccezioni/`
+
+Solo in BOZZA. Mirror del payload `vendite.contratti_righe` (eccezione
+tipizzata):
+
+```json
+{
+  "articolo_id": "00000000-0000-0000-0000-000000000001",
+  "tipo_eccezione": "OVERRIDE",
+  "tipo_erogazione": "CONSUMO",
+  "fonte_quantita_attesa": "LETTURE",
+  "prezzo_unitario": "0.42",
+  "uom_operativa_id": 5,
+  "factor_to_base": "1",
+  "ordine": 10,
+  "attivo": true
+}
+```
+
+Tipi ammessi (enum DB `vendite.tipo_eccezione_contratto`, identico al
+contratto — riuso intenzionale per push 1:1 senza conversioni):
+
+| `tipo_eccezione` | Significato                                            | `prezzo_unitario` |
+| ---------------- | ------------------------------------------------------ | ----------------- |
+| `OVERRIDE`       | Prezzo personalizzato per articolo del listino         | NOT NULL          |
+| `ESCLUSIONE`     | Articolo del listino non disponibile per il cliente    | NULL              |
+| `AGGIUNTA`       | Articolo fuori-listino aggiunto all'offerta            | NOT NULL          |
+
+Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
+
+- ESCLUSIONE ↔ prezzo NULL; OVERRIDE/AGGIUNTA ↔ prezzo NOT NULL
+  (`chk_offerte_eccezioni_prezzo_per_tipo_eccezione`)
+- Coerenza `(tipo_erogazione, fonte_quantita_attesa)`
+  (`chk_offerte_eccezioni_coerenza_fonte_erogazione`)
+- `fonte_quantita_attesa` NOT NULL
+  (`chk_offerte_eccezioni_fonte_qta`)
+- `tipo_erogazione` ammesso (`chk_offerte_eccezioni_tipo_erog`)
+- Coerenza canone (`chk_offerte_eccezioni_coerenza_canone`)
+- UNIQUE: max 1 `OVERRIDE`/`ESCLUSIONE` per `(offerta_id, articolo_id)`
+  e max 1 `AGGIUNTA` per stessa coppia.
+
+I 5 CHECK sono **stessa logica** di `contratti_righe` (nomi `chk_offerte_eccezioni_*`),
+quindi un'eccezione valida sull'offerta sara' accettata anche al push.
+
+#### Update `PATCH /api/v1/vendite/offerte/<id>/eccezioni/<eid>/`
+
+Solo in BOZZA. `articolo_id` e `tipo_eccezione` immutabili (cambio = DELETE
++ INSERT). Payload `{}` rifiutato (no-op evitato).
+
+Difesa anti-tampering URL: il service verifica
+`eccezione.offerta_id == <id>` e ritorna 404 in caso di mismatch (per
+evitare PATCH `/offerte/1/eccezioni/99/` se l'eccezione 99 appartiene
+all'offerta 42).
+
+#### Delete `DELETE /api/v1/vendite/offerte/<id>/eccezioni/<eid>/`
+
+Solo in BOZZA. Hard delete. Stessa difesa ownership di update.
+
+### Utility 1:1
+
+La utility e' un record di **estensione** 1:1 con i dati business della
+fornitura (tipo/classe utenza, parametri specifici per ambito). Mirror di
+`contratti_utilities`.
+
+#### Get `GET /api/v1/vendite/offerte/<id>/utility/`
+
+Ritorna il record utility 1:1 (null se non ancora creato). Lettura libera.
+
+#### Create `POST /api/v1/vendite/offerte/<id>/utility/`
+
+```json
+{
+  "istanza_utility_id": 200,
+  "utility_id": 3,
+  "tipo_utenza_id": 2,
+  "classe_utenza_id": 7,
+  "param_1_num": "1500",
+  "param_2_txt": "POD-XYZ",
+  "istanza_dati_precontrattuali_id": 88,
+  "meta": {}
+}
+```
+
+Vincoli:
+
+- `istanza_utility_id` + `utility_id` obbligatori; coerenti con la testata
+  dell'offerta.
+- UNIQUE `uq_offerte_commerciali_utilities_offerta_id`: un solo record per
+  offerta. Doppio create → 409 `E_VENDITE_DUPLICATO`.
+- Trigger `trgfn_offerte_utilities_guard_tipo_classe` (analogo a
+  contratti) valida la coerenza `(tipo_utenza, classe_utenza)` per
+  ambito utility.
+
+Solo in BOZZA.
+
+#### Update `PATCH /api/v1/vendite/offerte/<id>/utility/<utility_id>/`
+
+Solo in BOZZA. `istanza_utility_id` e `utility_id` immutabili (cambio =
+DELETE offerta + creazione nuova). Payload `{}` rifiutato. Anti-tampering:
+verifica `utility.id == <utility_id>` e `utility.offerta_id == <id>`.
+
+## Output
+
+Tutte le risposte usano l'envelope `success_response`:
+
+```json
+{"data": { ... }, "meta": {"timestamp": "2026-05-25T10:00:00Z"}}
+```
+
+Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
+`{data: [...], pagination: {total, page, limit}}`.
+
+## Regole
+
+1. **Codice offerta** dal payload finche' lo step 5 brief DB non e'
+   atterrato. Da quel momento generato lato service via
+   `script.fn_generate_codice('offerta_commerciale')` e rifiutato in
+   payload (lock_columns).
+2. **Stato iniziale BOZZA**; transizioni via endpoint dedicato.
+3. **Editabilita' solo in BOZZA** per testata, eccezioni e utility.
+   Defense-in-depth applicativa; il trigger DB blocca comunque cambi su
+   stati terminali.
+4. **Annullamento solo da BOZZA, rifiuto solo da EMESSA**: state machine
+   asimmetrica analoga ai contratti DRAFT/ATTIVO.
+5. **Versione listino congelata all'emissione** (Profilo A); da EMESSA
+   in poi `listino_versione_id` immutabile.
+6. **Mirror del contratto**: enum `tipo_eccezione`, VARCHAR
+   `tipo_variazione_globale`, cardinalita' utility 1:1, 5 CHECK su
+   eccezioni — tutto identico a `vendite.contratti_*` per garantire push
+   1:1 senza conversioni (step 8 DB).
+7. **Anti-tampering URL** su sub-resource (`eccezioni/<eid>/`,
+   `utility/<uid>/`): verifica ownership prima di ogni mutazione.
+8. **Payload `{}` in PATCH rifiutato**: niente no-op silenziosi.
+9. **Motivazione obbligatoria** per RIFIUTATA e ANNULLATA. Trim
+   applicato; stringa whitespace-only rifiutata.
+
+## Codici errore
+
+| Codice                                              | HTTP                | Origine                                                                                                | Trigger DB                                          |
+| --------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| `E_VENDITE_VALIDATION`                              | 400 / 422           | Service: struttura payload, payload vuoto in PATCH, motivazione obbligatoria, esito non valido          | —                                                   |
+| `E_VENDITE_NOT_FOUND`                               | 404                 | Service: offerta/eccezione/utility non trovata; ownership URL                                          | —                                                   |
+| `E_VENDITE_DUPLICATO`                               | 409                 | UNIQUE `uq_offerte_commerciali_codice` / `uq_offerte_commerciali_uid` / `uq_offerte_commerciali_utilities_offerta_id` / `uq_offerte_eccezioni_one_eccezione_per_articolo` / `uq_offerte_eccezioni_one_aggiunta_per_articolo` | —                                                   |
+| `E_VENDITE_FK`                                      | 400                 | FK su BA/emittente/istanza/utility/listino/articolo/uom/tipo/classe utenza                              | —                                                   |
+| `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`        | 422                 | DB P0001 — `BOZZA -> EMESSA` con `listino_versione_id` NULL                                            | `trgfn_offerte_commerciali_guard_transizione`        |
+| `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`   | 422                 | DB P0001 — `BOZZA -> EMESSA` con versione listino non in stato `ATTIVA`                                 | `trgfn_offerte_commerciali_guard_transizione`        |
+| `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`                 | 422                 | DB P0001 — transizione non presente in `config.stati_doc_offerte_transizioni` (es. EMESSA -> ANNULLATA, EMESSA -> BOZZA, qualsiasi uscita da stato terminale) | `trgfn_offerte_commerciali_guard_transizione`        |
+| `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`             | 422                 | DB P0001 — riservato a `fn_crea_revisione_offerta` (step 7 brief DB, non ancora cablato lato BE)        | `fn_crea_revisione_offerta`                          |
+| `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                  | 422                 | DB P0001 — riservato a `fn_push_offerta_a_contratto` (step 8 brief DB, non ancora cablato lato BE)      | `fn_push_offerta_a_contratto`                        |
+| `E_OFFERTA_CONTRATTO_GIA_GENERATO`                  | 422                 | DB P0001 — push idempotente: doppia invocazione su stessa offerta. Riservato step 8.                    | `fn_push_offerta_a_contratto`                        |
+
+I codici `E_OFFERTA_*` sollevati dai trigger sono **propagati al client come
+`ServiceError.code` originale** (non rimpiazzati da `E_VENDITE_VALIDATION`),
+estratti via regex dal MESSAGE del trigger. Questo permette al FE di fare
+routing UI specifico per codice (es. dialog "versione listino non ATTIVA"
+diverso da "transizione non ammessa generica").
+
+## Dipendenze DB
+
+**Tabelle**:
+
+- `vendite.offerte_commerciali` — testata
+- `vendite.offerte_commerciali_eccezioni` — mirror di `contratti_righe`
+- `vendite.offerte_commerciali_utilities` — estensione 1:1 (UNIQUE `offerta_id`)
+- `vendite.note_offerte_commerciali` — partizione del sistema note generico
+  (`target_tipo = 'OFFERTA'`), cablata via building block
+  `apps.core.db.PartitionedNoteRepository` (cablaggio differito, vedi piano BE/FE)
+
+**Funzioni**:
+
+- `script.fn_generate_codice('offerta_commerciale')` — generazione codice
+  `OFC-*` (non cablato finche' step 5 DB non e' atterrato).
+- `vendite.fn_crea_revisione_offerta` — step 7 brief DB (non ancora cablato).
+- `vendite.fn_push_offerta_a_contratto` — step 8 brief DB (non ancora cablato).
+
+**Trigger autoritativi**:
+
+- `trgfn_offerte_commerciali_guard_transizione` — state machine + guard
+  versione listino + valorizzazione timestamp transizione.
+
+**Stati** gestiti via `config.stati_doc_offerte`
+(BOZZA / EMESSA / ACCETTATA / RIFIUTATA / ANNULLATA / SUPERATA).
+
+## Note di migrazione
+
+- **Step DB 1-4 + addendum atterrati 2026-05-24** (commit `2000d8261`).
+  Cablato lato BE in v1: testata + eccezioni + utility 1:1 + state machine
+  asimmetrica + 6 codici errore.
+- **Pendenti** (in attesa team DB):
+  - Step 5 — numerazione `OFC-*` via `config.sistema_codici`. Quando
+    landerla', il service generera' il codice e rifiutera' il campo dal
+    payload create; lo schema OpenAPI cambiera' di conseguenza.
+  - Step 6-7 — trigger revisione + `fn_crea_revisione_offerta`. Allora
+    si abilitera' `POST /<id>/crea-revisione/` (rev.N+1 da rev.N EMESSA,
+    rev.N marcata SUPERATA via trigger).
+  - Step 8 — `fn_push_offerta_a_contratto` + ALTER `vendite.contratti.offerta_id`.
+    Allora si abilitera' `POST /<id>/push-contratto/` (idempotente,
+    pattern A `UNIQUE (offerta_id)`).
+- **Note offerta** (`note_offerte_commerciali`): partizione gia' creata
+  dal team DB, cablaggio applicativo via building block esistente
+  `PartitionedNoteRepository` — richiede aggiunta `'OFFERTA'` alla
+  whitelist `TARGET_TIPI_AMMESSI` in `apps/core/db/partitioned_note_repository.py`
+  + 3 righe di factory in `apps/vendite/api/note_views.py`. Differito al
+  cantiere FE.
+
+## Riferimenti
+
+- Modello: [analisi-offerta-commerciale](/dev/work-in-progress/analisi-offerta-commerciale)
+- Brief DB: [analisi-offerta-commerciale-db](/dev/work-in-progress/analisi-offerta-commerciale-db)
+- Piano BE+FE: [analisi-offerta-commerciale-be-fe](/dev/work-in-progress/analisi-offerta-commerciale-be-fe)
+- Manuale service: [offerte_service](/backend/vendite/manual/offerte_service)
+- API contratto (specchio strutturale): [api_contratti](/backend/vendite/manual/api_contratti)
