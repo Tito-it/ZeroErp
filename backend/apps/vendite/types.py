@@ -360,16 +360,43 @@ class OffertaRow(TypedDict):
     data_annullamento: str | None
     motivazione_rifiuto: str | None
     meta: dict[str, Any]
-    # Display fields da JOIN
+    # Display fields da JOIN. Naming coerente col piano FE+BE rev. f:
+    # `billing_account_display` + `utility_display` sono i campi consumati
+    # dal drawer/lista (display fields backend, niente lookup client-side).
     stato_codice_interno: str
     stato_descrizione: str
     ba_codice: str | None
-    ba_ragione_sociale: str | None
+    billing_account_display: str | None
     utility_codice: str | None
-    utility_descrizione: str | None
+    utility_display: str | None
     listino_codice: str | None
     listino_descrizione: str | None
     listino_versione_codice: str | None
+    # Riferimento al contratto generato (pattern A idempotenza). NULL se
+    # l'offerta non e' ancora stata pushata (o non e' ACCETTATA). Coppia
+    # stabile id + numero: il FE puo' linkare al ContrattoDrawer e mostrare
+    # il dialog parlante post-E_OFFERTA_CONTRATTO_GIA_GENERATO.
+    contratto_id: int | None
+    contratto_numero: str | None
+    # Capability blob da `script.fn_available_actions_offerta` merged sul
+    # detail in `OfferteService.get_offerta` (data-driven 2026-05-26).
+    # Il FE consuma questi campi con `useEntityCapabilities` +
+    # `mapAvailableActionsToDrawerActions` senza ricalcolare la state
+    # machine: la verita' della transizione vive solo in DB.
+    # `available_actions` e' lista di dict opachi (chiave/label_key/severity/
+    # icon/target_state/requires_confirm/requires_motivazione) — Any per non
+    # vincolare il TypedDict a una sotto-shape che il BE puo' arricchire.
+    available_actions: list[dict[str, Any]]
+    can_change_state: bool
+    can_edit_testata: bool
+    can_edit_eccezioni: bool
+    can_edit_utility: bool
+    can_create_revisione: bool
+    can_push_contratto: bool
+    can_push_contratto_reason: str | None
+    can_push_contratto_reason_key: str | None
+    non_editable_fields: list[str]
+    stato_codice: str
     # Audit
     data_insert: str
     user_insert: str

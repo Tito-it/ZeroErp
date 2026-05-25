@@ -559,78 +559,101 @@ a {
   }
 }
 
-/* ===== Voci menu kebab (RowActionsMenu / PageActionsBar / DrawerActionsBar) =====
+/* ===== Voci menu kebab (RowActionsMenu / PageActionsBar / DrawerActionsBar / AppTopbar) =====
  * Pattern: ogni severity inline (app-manage-btn, app-action-btn, app-delete-btn,
  * severity="warn") ha la sua voce-menu corrispondente, in modo che il popup
  * del kebab non appaia "grigetto" rispetto alla versione inline desktop.
  * Le classi sono applicate via helper `menuItemClass(severity, fallback)`
  * (src/core/utils/rowActions.js), che mappa severity -> classe.
  * Default per RowActionsMenu/DrawerActionsBar = app-menu-item-manage (blu).
- * Default per PageActionsBar = app-menu-item-action (verde, come app-reload-btn).
+ * Default per PageActionsBar/AppTopbar      = app-menu-item-action (verde).
  *
- * NB: PrimeVue 4 usa `.p-menu-item-link` / `.p-menu-item-icon` (con hyphen
- * tra "item" e suffix), NON `.p-menuitem-link` come in PrimeVue 3. Lo stato
- * disabled e' `.p-disabled` sul wrapper `.p-menu-item` (sullo stesso elemento
- * che riceve la nostra classe app-menu-item-*).
+ * NB: PrimeVue 4 usa class prefix DIVERSI per i componenti menu:
+ *   - `Menu`       → `.p-menu-item-link` / `.p-menu-item-icon`
+ *   - `TieredMenu` → `.p-tieredmenu-item-link` / `.p-tieredmenu-item-icon`
+ *   - `MenuBar`    → `.p-menubar-item-link` / `.p-menubar-item-icon`
+ * Manteniamo entrambi i selettori per coprire ogni consumer kebab senza
+ * duplicare le regole, e usiamo il selettore wildcard `[class*="-item-link"]`
+ * solo per le altre family se necessario in futuro.
+ *
+ * Lo stato disabled e' `.p-disabled` sul wrapper item (stesso elemento che
+ * porta `.app-menu-item-*`).
  */
 
 /* Voce menu standard "gestisci" — blu, coerente con app-manage-btn. */
-.app-menu-item-manage .p-menu-item-link {
+.app-menu-item-manage .p-menu-item-link,
+.app-menu-item-manage .p-tieredmenu-item-link {
   color: var(--app-btn-manage-color);
 }
-.app-menu-item-manage .p-menu-item-link:hover {
+.app-menu-item-manage .p-menu-item-link:hover,
+.app-menu-item-manage .p-tieredmenu-item-link:hover {
   color: var(--app-btn-manage-hover-color);
   background: var(--app-btn-manage-hover-bg);
 }
-.app-menu-item-manage .p-menu-item-icon {
+.app-menu-item-manage .p-menu-item-icon,
+.app-menu-item-manage .p-tieredmenu-item-icon {
   color: inherit;
 }
 
 /* Voce menu "azione positiva" — verde, coerente con app-action-btn / app-reload-btn. */
-.app-menu-item-action .p-menu-item-link {
+.app-menu-item-action .p-menu-item-link,
+.app-menu-item-action .p-tieredmenu-item-link {
   color: var(--p-primary-color);
 }
-.app-menu-item-action .p-menu-item-link:hover {
+.app-menu-item-action .p-menu-item-link:hover,
+.app-menu-item-action .p-tieredmenu-item-link:hover {
   color: var(--p-primary-700);
   background: var(--p-primary-50);
 }
-.app-menu-item-action .p-menu-item-icon {
+.app-menu-item-action .p-menu-item-icon,
+.app-menu-item-action .p-tieredmenu-item-icon {
   color: inherit;
 }
 
 /* Voce menu "cautela" — arancione, coerente con severity="warn" PrimeVue. */
-.app-menu-item-warn .p-menu-item-link {
+.app-menu-item-warn .p-menu-item-link,
+.app-menu-item-warn .p-tieredmenu-item-link {
   color: var(--p-orange-500);
 }
-.app-menu-item-warn .p-menu-item-link:hover {
+.app-menu-item-warn .p-menu-item-link:hover,
+.app-menu-item-warn .p-tieredmenu-item-link:hover {
   color: var(--p-orange-700);
   background: var(--p-orange-50);
 }
-.app-menu-item-warn .p-menu-item-icon {
+.app-menu-item-warn .p-menu-item-icon,
+.app-menu-item-warn .p-tieredmenu-item-icon {
   color: inherit;
 }
 
 /* Voce menu con azione distruttiva (es. elimina, disattiva).
  * Colori via --app-btn-delete-* in theme.css.
  * Uso: passare severity: 'danger' nelle actions. */
-.app-menu-item-danger .p-menu-item-link {
+.app-menu-item-danger .p-menu-item-link,
+.app-menu-item-danger .p-tieredmenu-item-link {
   color: var(--app-btn-delete-color);
 }
-.app-menu-item-danger .p-menu-item-link:hover {
+.app-menu-item-danger .p-menu-item-link:hover,
+.app-menu-item-danger .p-tieredmenu-item-link:hover {
   color: var(--app-btn-delete-hover-color);
   background: var(--app-btn-delete-hover-bg);
 }
-.app-menu-item-danger .p-menu-item-icon {
+.app-menu-item-danger .p-menu-item-icon,
+.app-menu-item-danger .p-tieredmenu-item-icon {
   color: inherit;
 }
 
 /* Voce menu disabilitata — neutralizza il colore severity e usa il muted PrimeVue.
- * `.p-disabled` viene applicata sul wrapper `.p-menu-item` (stesso elemento che
- * porta `.app-menu-item-*`), quindi selettore combinato sulla stessa classe. */
+ * `.p-disabled` viene applicata sul wrapper item (stesso elemento che
+ * porta `.app-menu-item-*`), quindi selettore combinato sulla stessa classe.
+ * Copre sia Menu che TieredMenu. */
 .app-menu-item-manage.p-disabled .p-menu-item-link,
 .app-menu-item-action.p-disabled .p-menu-item-link,
 .app-menu-item-warn.p-disabled .p-menu-item-link,
-.app-menu-item-danger.p-disabled .p-menu-item-link {
+.app-menu-item-danger.p-disabled .p-menu-item-link,
+.app-menu-item-manage.p-disabled .p-tieredmenu-item-link,
+.app-menu-item-action.p-disabled .p-tieredmenu-item-link,
+.app-menu-item-warn.p-disabled .p-tieredmenu-item-link,
+.app-menu-item-danger.p-disabled .p-tieredmenu-item-link {
   color: var(--app-btn-disabled-color);
 }
 

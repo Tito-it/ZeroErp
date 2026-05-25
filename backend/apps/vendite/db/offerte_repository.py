@@ -13,11 +13,10 @@
 #        (trgfn_offerte_commerciali_guard_transizione): qui niente logica
 #        di business, solo CRUD sottile sulle colonne whitelisted.
 #
-#        Out of scope iniziale (in attesa step DB 5-8):
-#          - generazione codice OFC-* via sistema_codici (step 5)
-#          - fn_crea_revisione_offerta (step 7)
-#          - fn_push_offerta_a_contratto (step 8)
-#        Sono cablati solo i metodi che il DB attualmente supporta.
+#        Stato 2026-05-25: tutti gli step DB 1-9 atterrati e cablati
+#        (numerazione automatica `OFC-*` via trigger BEFORE INSERT,
+#        `crea_revisione` + `list_revisioni`, `push_a_contratto` +
+#        `get_contratto_minimal`). Nessun metodo "fuori scope" residuo.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 
 
@@ -123,11 +122,11 @@ _SELECT_COLS_OFFERTA = """
     o.emittente_fiscale_id,
     o.billing_account_id,
     ba.codice                AS ba_codice,
-    srd.ragione_sociale_completa AS ba_ragione_sociale,
+    srd.ragione_sociale_completa AS billing_account_display,
     o.istanza_utility_id,
     o.utility_id,
     u.codice                 AS utility_codice,
-    u.descrizione            AS utility_descrizione,
+    u.descrizione            AS utility_display,
     o.listino_id,
     l.codice                 AS listino_codice,
     l.descrizione            AS listino_descrizione,
@@ -148,6 +147,8 @@ _SELECT_COLS_OFFERTA = """
     o.data_annullamento,
     o.motivazione_rifiuto,
     o.meta,
+    c.id                     AS contratto_id,
+    c.numero                 AS contratto_numero,
     o.data_insert,
     o.user_insert,
     o.data_update,
@@ -164,6 +165,11 @@ _FROM_JOINS_OFFERTA = """
     JOIN config.stati_doc_offerte sd ON sd.id = o.stato_doc_offerta_id
     LEFT JOIN vendite.listini l ON l.id = o.listino_id
     LEFT JOIN vendite.listini_versioni lv ON lv.id = o.listino_versione_id
+    -- LEFT JOIN col contratto generato dal push (idempotenza Pattern A
+    -- garantita da UNIQUE uq_contratti_offerta_id). 0 o 1 riga: nessun
+    -- rischio di duplicazione. Il FE usa contratto_id/numero per il dialog
+    -- "gia' generato" e per il deep-link a ContrattoDrawer post-push.
+    LEFT JOIN vendite.contratti c ON c.offerta_id = o.id
 """
 
 
@@ -364,6 +370,21 @@ class OfferteRepository:
                 [offerta_id],
             )
             return row_to_dict(cursor)
+
+    # Scopo: Capability dell'offerta per il detail API (refactor data-driven
+    #        2026-05-26). Wrapper su `script.fn_available_actions_offerta`
+    #        (consegnata dal team DB con migration `20260526-01`). Ritorna
+    #        un jsonb opaco lato Python: il service lo merge-a nel dettaglio
+    #        offerta e il FE lo consuma con `useEntityCapabilities` +
+    #        `mapAvailableActionsToDrawerActions` come per contratto/preventivo.
+    #        Struttura ritornata: { available_actions[], can_change_state,
+    #        can_edit_testata, can_edit_eccezioni, can_edit_utility,
+    #        can_create_revisione, can_push_contratto,
+    #        can_push_contratto_reason, can_push_contratto_reason_key,
+    #        non_editable_fields[], stato_codice }. Ritorna {} se la fn DB
+    #        ritorna NULL (offerta inesistente: il caller verifica gia' 404).
+    def get_available_actions(self, offerta_id: int) -> dict[str, Any]:
+        return call_jsonb_fn("script.fn_available_actions_offerta", offerta_id)
 
     # Scopo: Crea una testata offerta (stato iniziale BOZZA gestito dal
     #        service che risolve l'id stato via get_stato_id_by_codice).
@@ -708,6 +729,52 @@ class OfferteRepository:
             row = cursor.fetchone()
             assert row is not None and row[0] is not None
             return int(row[0])
+
+    # =================================================================
+    # Push a contratto (Step 8 brief DB, atterrato 2026-05-25)
+    # =================================================================
+
+    # Scopo: Push offerta ACCETTATA → contratto DRAFT invocando la fn DB
+    #        `vendite.fn_push_offerta_a_contratto`. La fn:
+    #          - guard stato ACCETTATA (E_OFFERTA_PUSH_STATO_NON_AMMESSO)
+    #          - guard idempotenza UNIQUE su contratti.offerta_id
+    #            (E_OFFERTA_CONTRATTO_GIA_GENERATO se gia' pushato)
+    #          - INSERT contratto DRAFT con sorgente_tipo OFFERTA_COMMERCIALE +
+    #            sorgente_uid + offerta_id
+    #          - copia eccezioni 1:1 → contratti_righe
+    #          - UPSERT utility 1:1 → contratti_utilities (sovrascrive il
+    #            record gia' creato dal trigger snapshot_precontrattuali)
+    #          - se p_pratica_id NOT NULL: INSERT pratiche.pratiche_sorgenti
+    #
+    #        Ritorna l'id del nuovo contratto DRAFT.
+    def push_a_contratto(
+        self, offerta_id: int, pratica_id: int | None = None
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_push_offerta_a_contratto(%s, %s)",
+                [offerta_id, pratica_id],
+            )
+            row = cursor.fetchone()
+            assert row is not None and row[0] is not None
+            return int(row[0])
+
+    # Scopo: Lookup minimal del contratto post-push (id + numero + uid).
+    #        Usato dal service per costruire `OffertaPushResult` senza
+    #        invocare il `ContrattiService` (no cross-service coupling).
+    #        Solo i 3 campi che il service consuma: niente JOIN superflui
+    #        sulla tabella stati (fn DB garantisce stato DRAFT al push).
+    def get_contratto_minimal(self, contratto_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, numero, uid
+                  FROM vendite.contratti
+                 WHERE id = %s
+                """,
+                [contratto_id],
+            )
+            return row_to_dict(cursor)
 
     # Scopo: Lista catena revisioni che condividono il medesimo "root"
     #        (rev.1) dell'offerta passata. Risale via `revisione_padre_id`

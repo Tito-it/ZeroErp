@@ -70,19 +70,43 @@ ambiguita'):
   rifiuta il cliente. Per correzioni interne dopo l'emissione si crea una
   revisione (che marcera' la corrente SUPERATA).
 
-### Perimetro D5 (BE incrementale, step DB 1-7 + addendum)
+### Perimetro D6 (BE completo, step DB 1-9 + addendum)
 
-Cablati gli endpoint coerenti col DB consegnato:
+Tutti gli endpoint cablati:
 
 - testata + state machine + eccezioni + utility 1:1 (step 1-4)
 - `motivazione_rifiuto` (addendum 2026-05-24)
-- numerazione automatica `OFC-*` via trigger DB (step 5, 2026-05-25)
-- `POST /<id>/crea-revisione/` + `GET /<id>/revisioni/` (step 6-7, 2026-05-25)
+- numerazione automatica `OFC-*` via trigger DB (step 5, 2026-05-25 AM)
+- `POST /<id>/crea-revisione/` + `GET /<id>/revisioni/` (step 6-7, 2026-05-25 AM)
+- `POST /<id>/push-contratto/` (step 8, 2026-05-25 PM)
+- Suite pgTAP (step 9) confermata da team DB
+- `POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/` —
+  cablaggio building block `PartitionedNoteRepository` per
+  `target_tipo='OFFERTA'` (2026-05-26)
 
-**Non** ancora cablato (in attesa step DB 8):
+### Perimetro D7 — capability layer + refactor atomico (2026-05-26)
 
-- `POST /<id>/push-contratto/` (richiede `fn_push_offerta_a_contratto`
-  e `ALTER vendite.contratti ADD offerta_id`)
+Step migliorativo data-driven applicato dopo la consegna della fn DB
+`script.fn_available_actions_offerta` (migration `20260526-01`):
+
+- **Capability blob** nel detail: `get_offerta` ora include
+  `available_actions[]`, `can_edit_*`, `can_push_contratto`,
+  `non_editable_fields`, `stato_codice` letti da `script.fn_available_actions_offerta`.
+  Il FE consuma con `useEntityCapabilities` + `mapAvailableActionsToDrawerActions`,
+  rimuovendo lo state-machine FE hardcoded.
+- **Contratto collegato**: `contratto_id` + `contratto_numero` esposti
+  via LEFT JOIN `vendite.contratti.offerta_id`. Il FE li usa per il
+  dialog parlante post-`E_OFFERTA_CONTRATTO_GIA_GENERATO` (link al
+  ContrattoDrawer) e per il deep-link `?open=<id>` post-push.
+- **Atomicita' utility 1:1 inline**: `crea_offerta` (POST) e
+  `aggiorna_offerta` (PATCH) accettano un sub-oggetto opzionale `utility`.
+  Se valorizzato, il service esegue il `create/update_utility` nella
+  stessa `transaction.atomic()` (eredita `istanza_utility_id`/`utility_id`
+  dalla testata se non specificati). Mirror del pattern `ContrattoDrawer`,
+  elimina il rischio "offerta orfana di utility" del flusso a 2 round-trip.
+- **Alias display fields**: il SELECT testata ora espone
+  `billing_account_display` + `utility_display` (allineamento al piano
+  FE+BE rev. f), evitando ricodifiche client-side.
 
 ## Input
 
@@ -119,7 +143,12 @@ Cablati gli endpoint coerenti col DB consegnato:
   "valore_variazione_globale": "-5.00",
   "validita_dal": "2026-06-01",
   "validita_al": "2026-12-31",
-  "meta": {"campagna": "estate26"}
+  "meta": {"campagna": "estate26"},
+  "utility": {
+    "tipo_utenza_id": 7,
+    "classe_utenza_id": 4,
+    "param_1_num": "12.5"
+  }
 }
 ```
 
@@ -134,8 +163,17 @@ Note:
   `E_VENDITE_VALIDATION`).
 - `istanza_utility_id` e `utility_id` sono il riferimento "anagrafico"
   della utility (mono-utility per offerta). I campi business
-  (tipo/classe utenza, parametri) vivono nel sub-record utility 1:1
-  e si gestiscono via endpoint dedicato (vedi §Utility 1:1).
+  (tipo/classe utenza, parametri) vivono nel sub-record utility 1:1.
+- **`utility` (sub-oggetto opzionale, atomicita' inline 2026-05-26)**:
+  se valorizzato, il service crea il record utility 1:1 nella stessa
+  `transaction.atomic()` della testata (mirror `ContrattoDrawer` pattern).
+  `istanza_utility_id`/`utility_id` interni al sub-oggetto sono opzionali:
+  vengono ereditati dalla testata se omessi (coerenza FK col BA scelto).
+  Whitelist sub-payload: `istanza_utility_id`, `utility_id`,
+  `istanza_dati_precontrattuali_id`, `tipo_utenza_id`, `classe_utenza_id`,
+  `param_1_num`, `param_2_txt`, `meta`. Alternativa: chiamare
+  `POST /utility/` separato dopo (vedi §Utility 1:1) — sconsigliato
+  perche' non atomico col create testata.
 - `validita_dal` obbligatorio; `validita_al` opzionale.
 - Coerenza coppia variazione globale: `tipo_variazione_globale` +
   `valore_variazione_globale` entrambi NULL o entrambi NOT NULL (CHECK DB
@@ -152,9 +190,9 @@ non ancora compilato).
     "id": 1, "uid": "...", "codice": "OFC-2026-0001",
     "emittente_fiscale_id": 10,
     "billing_account_id": 100,
-    "ba_codice": "BA-0123", "ba_ragione_sociale": "Acme S.p.A.",
+    "ba_codice": "BA-0123", "billing_account_display": "Acme S.p.A.",
     "istanza_utility_id": 200, "utility_id": 3,
-    "utility_codice": "GAS", "utility_descrizione": "Gas naturale",
+    "utility_codice": "GAS", "utility_display": "Gas naturale",
     "listino_id": 50, "listino_versione_id": 5,
     "listino_codice": "LST-GAS-2026", "listino_descrizione": "Listino gas 2026",
     "listino_versione_codice": "V5",
@@ -168,6 +206,7 @@ non ancora compilato).
     "data_rifiuto": null, "data_annullamento": null,
     "motivazione_rifiuto": null,
     "meta": {"campagna": "estate26"},
+    "contratto_id": null, "contratto_numero": null,
     "eccezioni": [
       {
         "id": 7, "offerta_id": 1, "articolo_id": "uuid-articolo",
@@ -190,18 +229,74 @@ non ancora compilato).
       "param_1_num": "1500", "param_2_txt": "POD-XYZ",
       "istanza_dati_precontrattuali_id": null, "meta": {}
     },
+    "available_actions": [
+      {
+        "key": "emetti", "target_state": "EMESSA",
+        "label_key": "vendite.offerte.azione_emetti",
+        "severity": "success", "icon": "pi pi-send",
+        "requires_confirm": true, "requires_motivazione": false
+      },
+      {
+        "key": "annulla", "target_state": "ANNULLATA",
+        "label_key": "vendite.offerte.azione_annulla",
+        "severity": "danger", "icon": "pi pi-ban",
+        "requires_confirm": true, "requires_motivazione": true
+      }
+    ],
+    "can_change_state": true,
+    "can_edit_testata": true,
+    "can_edit_eccezioni": true,
+    "can_edit_utility": true,
+    "can_create_revisione": false,
+    "can_push_contratto": false,
+    "can_push_contratto_reason": "OFFERTA_NON_ACCETTATA",
+    "can_push_contratto_reason_key": "vendite.offerte.push_reason.non_accettata",
+    "non_editable_fields": [
+      "codice", "uid", "revisione_numero", "revisione_padre_id",
+      "stato_doc_offerta_id", "data_emissione", "data_accettazione",
+      "data_rifiuto", "data_annullamento", "motivazione_rifiuto"
+    ],
+    "stato_codice": "BOZZA",
     "data_insert": "2026-05-24T18:30:00Z", "user_insert": "mctit",
     "data_update": null, "user_update": null
   }
 }
 ```
 
+**Campi di output chiave**:
+
+- **Display fields da JOIN backend** (no lookup client-side):
+  `billing_account_display`, `utility_display`, `listino_codice/descrizione`,
+  `listino_versione_codice`, `stato_codice_interno`, `stato_descrizione`,
+  `ba_codice`.
+- **Contratto collegato** (LEFT JOIN `vendite.contratti.offerta_id`):
+  `contratto_id` + `contratto_numero` NULL se l'offerta non e' ancora
+  stata pushata. Idempotenza Pattern A (UNIQUE
+  `uq_contratti_offerta_id`): max 1 contratto per offerta. Il FE usa
+  questi campi per il dialog "gia' generato" e per il deep-link
+  `/vendite/contratti?open=<id>` post-push.
+- **Capability blob** (da `script.fn_available_actions_offerta`, mergiato
+  nel dict): `available_actions[]` lista azioni ammesse nello stato
+  corrente (mappabili 1:1 a `DrawerActionsBar` via
+  `mapAvailableActionsToDrawerActions`); `can_edit_testata` /
+  `can_edit_eccezioni` / `can_edit_utility` flag editabilita';
+  `can_change_state` true se almeno un'azione disponibile;
+  `can_create_revisione` / `can_push_contratto` flag per azioni
+  speciali non-cambio-stato; `can_push_contratto_reason` +
+  `can_push_contratto_reason_key` coppia stabile reason-code +
+  chiave i18n quando il push non e' ammesso (`OFFERTA_NON_ACCETTATA`
+  o `OFFERTA_CONTRATTO_GIA_GENERATO`); `non_editable_fields[]` lista
+  immutabili (sempre + workflow-dipendenti, lista lunga fuori BOZZA);
+  `stato_codice` discriminante macchina (equivalente a
+  `stato_codice_interno`, esposto anche dalla fn DB).
+
 ### Update testata `PATCH /api/v1/vendite/offerte/<id>/`
 
 Solo in stato **BOZZA**. Whitelist campi mutabili: `emittente_fiscale_id`,
 `billing_account_id`, `istanza_utility_id`, `utility_id`, `listino_id`,
 `listino_versione_id`, `valore_variazione_globale`,
-`tipo_variazione_globale`, `validita_dal`, `validita_al`, `meta`.
+`tipo_variazione_globale`, `validita_dal`, `validita_al`, `meta`,
+`utility` (sub-oggetto opzionale).
 
 Immutabili (lock applicativo + DB):
 
@@ -211,9 +306,22 @@ Immutabili (lock applicativo + DB):
 - `data_*` di transizione + `motivazione_rifiuto` — valorizzati dal
   trigger DB al cambio stato.
 
+**Sub-oggetto `utility` (atomico, 2026-05-26)**: simmetria col create
+(POST). Se valorizzato:
+
+- se l'offerta NON ha ancora un record utility 1:1 → `create_utility`
+  nella stessa transazione (eredita `istanza_utility_id`/`utility_id`
+  dalla testata se non specificati nel sub-payload);
+- se l'offerta ha gia' un record utility → `update_utility` filtrando il
+  sub-payload sulla whitelist `_UPDATE_KEYS_UTILITY` (immutabili gli id
+  derivati dal BA, modificabili: `tipo_utenza_id`, `classe_utenza_id`,
+  `param_1_num`, `param_2_txt`, `istanza_dati_precontrattuali_id`,
+  `meta`).
+
 **Payload `{}` rifiutato** con `E_VENDITE_VALIDATION` (no-op evitato:
 l'operatore non puo' premere "Salva" e vedere `200 OK` senza che nulla
-sia stato scritto in DB).
+sia stato scritto in DB). Payload con SOLO `utility` (senza campi
+testata) e' ammesso ed esegue solo l'upsert utility.
 
 ### Delete `DELETE /api/v1/vendite/offerte/<id>/`
 
@@ -299,6 +407,56 @@ Guard:
 
 `user` di audit: il service prende `request.user.username` se autenticato
 (la fn DB ha `COALESCE(p_user, CURRENT_USER)` come fallback).
+
+### Push a contratto `POST /api/v1/vendite/offerte/<id>/push-contratto/`
+
+```json
+{"pratica_id": 7}
+```
+
+oppure body vuoto `{}` per push senza collegamento a pratica.
+
+Genera un **contratto DRAFT** a partire dall'offerta corrente (che deve
+essere in stato `ACCETTATA`). Effetti:
+
+1. Invoca `vendite.fn_push_offerta_a_contratto(offerta_id, pratica_id)`
+   (step 8 brief DB).
+2. La fn DB applica guard ACCETTATA + idempotenza UNIQUE su
+   `vendite.contratti.offerta_id` e copia 1:1:
+   - testata (`billing_account_id`, `istanza_utility_id`, `utility_id`,
+     `listino_id`, `listino_versione_id`, variazione globale,
+     `valido_dal/al` da `validita_dal/al`, `meta`)
+   - eccezioni → `contratti_righe` (campi approvazione prezzo inseriti
+     `NULL`, vedi I4 brief)
+   - utility 1:1 → `contratti_utilities` (`INSERT ... ON CONFLICT DO UPDATE`
+     sovrascrive il record creato dal trigger snapshot precontrattuali
+     con i dati negoziati dell'offerta)
+3. Sul contratto generato: `sorgente_tipo_id = OFFERTA_COMMERCIALE`,
+   `sorgente_uid = offerta.uid`, `offerta_id = <id>` (UNIQUE).
+4. Se `pratica_id` valorizzato: inserisce in `pratiche.pratiche_sorgenti`
+   il contratto come sorgente `CONTRATTO` con ruolo `COLLEGATO`.
+
+Ritorna gli identificativi minimi del nuovo contratto (il FE naviga al
+`ContrattoDrawer` per il dettaglio completo):
+
+```json
+{
+  "data": {
+    "contratto_id": 101,
+    "contratto_codice": "CNT0000045",
+    "sorgente_uid": "11111111-2222-3333-4444-555555555555"
+  }
+}
+```
+
+Guard:
+
+- Stato corrente ≠ `ACCETTATA` → 422 `E_OFFERTA_PUSH_STATO_NON_AMMESSO`.
+  Il service applica anche pre-check applicativo che ritorna
+  `E_VENDITE_VALIDATION` parlante in caso di stato fuori scope.
+- Doppia invocazione su stessa offerta → 422
+  `E_OFFERTA_CONTRATTO_GIA_GENERATO` (idempotenza pattern A §6.9.3).
+- `pratica_id` non-positivo o non-int → `E_VENDITE_VALIDATION`.
 
 ### Lista revisioni `GET /api/v1/vendite/offerte/<id>/revisioni/`
 
@@ -483,8 +641,9 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 | `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`   | 422                 | DB P0001 — `BOZZA -> EMESSA` con versione listino non in stato `ATTIVA`                                 | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`                 | 422                 | DB P0001 — transizione non presente in `config.stati_doc_offerte_transizioni` (es. EMESSA -> ANNULLATA, EMESSA -> BOZZA, qualsiasi uscita da stato terminale) | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`             | 422                 | DB P0001 — `crea_revisione` da stato != EMESSA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_crea_revisione_offerta`                          |
-| `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                  | 422                 | DB P0001 — riservato a `fn_push_offerta_a_contratto` (step 8 brief DB, non ancora cablato lato BE)      | `fn_push_offerta_a_contratto`                        |
-| `E_OFFERTA_CONTRATTO_GIA_GENERATO`                  | 422                 | DB P0001 — push idempotente: doppia invocazione su stessa offerta. Riservato step 8.                    | `fn_push_offerta_a_contratto`                        |
+| `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                  | 422                 | DB P0001 — `push_a_contratto` da stato ≠ ACCETTATA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_push_offerta_a_contratto`                        |
+| `E_OFFERTA_CONTRATTO_GIA_GENERATO`                  | 422                 | DB P0001 — push idempotente (pattern A): doppia invocazione su stessa offerta. UNIQUE `uq_contratti_offerta_id` garantisce protezione strutturale | `fn_push_offerta_a_contratto`                        |
+| `E_CONFIG_MANCANTE`                                 | 422                 | DB P0001 — `OFFERTA_COMMERCIALE` o `CONTRATTO` non trovati in `config.sorgenti`; stato `DRAFT` non in `config.stati_doc_contratti`. Errore di configurazione sistema | `fn_push_offerta_a_contratto`                        |
 
 I codici `E_OFFERTA_*` sollevati dai trigger sono **propagati al client come
 `ServiceError.code` originale** (non rimpiazzati da `E_VENDITE_VALIDATION`),
@@ -510,7 +669,22 @@ diverso da "transizione non ammessa generica").
 - `vendite.fn_crea_revisione_offerta(p_offerta_id, p_user)` — step 7
   atterrato 2026-05-25. Crea rev.N+1 da offerta EMESSA copiando testata +
   eccezioni attive + utility 1:1. Ritorna `BIGINT` (id nuova rev).
-- `vendite.fn_push_offerta_a_contratto` — step 8 brief DB (non ancora cablato).
+- `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id)` —
+  step 8 atterrato 2026-05-25 PM. Crea contratto DRAFT da offerta
+  ACCETTATA, copia 1:1 eccezioni e UPSERT utility (sovrascrive il record
+  creato dal trigger snapshot precontrattuali). Idempotente per
+  costruzione (UNIQUE `uq_contratti_offerta_id`). Pratica opzionale
+  (collega via `pratiche.pratiche_sorgenti`). Ritorna `BIGINT` (id nuovo
+  contratto).
+- `script.fn_available_actions_offerta(p_offerta_id)` — D7 atterrata
+  2026-05-26 (migration `20260526-01`). Capability layer pure-read:
+  ritorna `jsonb` con `available_actions[]` dalla matrice
+  `config.stati_doc_offerte_transizioni.meta` (azioni manuali) + hardcode
+  di `crea_revisione` (EMESSA) e `push_contratto` (ACCETTATA con check
+  cross-dominio `EXISTS vendite.contratti.offerta_id`), oltre a
+  `can_edit_*`, `can_push_contratto_reason`, `non_editable_fields`,
+  `stato_codice`. Mergeata nel detail `get_offerta` per il FE
+  data-driven.
 
 **Trigger autoritativi**:
 
@@ -530,19 +704,34 @@ diverso da "transizione non ammessa generica").
 - **Step DB 1-4 + addendum atterrati 2026-05-24** (commit `2000d8261`).
   Cablato lato BE: testata + eccezioni + utility 1:1 + state machine
   asimmetrica + 6 codici errore.
-- **Step DB 5-7 atterrati 2026-05-25** (commit `13d57a846`). Cablato
+- **Step DB 5-7 atterrati 2026-05-25 AM** (commit `13d57a846`). Cablato
   lato BE: codice automatico `OFC-*` via trigger, `crea-revisione/` end-to-end,
   `revisioni/` (lista catena via CTE ricorsiva).
-- **Pendente** (in attesa team DB):
-  - Step 8 — `fn_push_offerta_a_contratto` + `ALTER vendite.contratti ADD
-    COLUMN offerta_id`. Quando atterrera', si abilitera'
-    `POST /<id>/push-contratto/` (idempotente, pattern A `UNIQUE (offerta_id)`).
-- **Note offerta** (`note_offerte_commerciali`): partizione gia' creata
-  dal team DB, cablaggio applicativo via building block esistente
-  `PartitionedNoteRepository` — richiede aggiunta `'OFFERTA'` alla
-  whitelist `TARGET_TIPI_AMMESSI` in `apps/core/db/partitioned_note_repository.py`
-  + 3 righe di factory in `apps/vendite/api/note_views.py`. Differito al
-  cantiere FE.
+- **Step DB 8-9 atterrati 2026-05-25 PM** (commit `906720ac5`). Cablato
+  lato BE: `push-contratto/` end-to-end con pattern A idempotenza (UNIQUE
+  `uq_contratti_offerta_id`); suite pgTAP completa (revisione, push,
+  codice, struttura, end-to-end, state machine).
+- **Bonus dal team DB**: messaggio errore `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`
+  refuso corretto allineato alla state machine reale; potenziamento sync
+  `sistema_codici` (creazione sequenze automatica); guard transizione
+  in forma `VARIADIC`.
+- **Step DB D7 atterrato 2026-05-26** (`20260526-01-create-fn-available-actions-offerta-mctit.yaml`
+  + seed `stati_doc_offerte_transizioni.csv` aggiornato con
+  `requires_motivazione` per transizioni manuali). Cablato lato BE in
+  giornata: capability blob mergeato in `get_offerta`, atomicita' utility
+  inline su `crea_offerta` + `aggiorna_offerta`, LEFT JOIN `contratti`
+  per `contratto_id`/`contratto_numero`, alias display fields
+  `billing_account_display` + `utility_display`, cablaggio note partizionate
+  `target_tipo='OFFERTA'` con factory in `note_views.py`. Test BE 42/42.
+- **FE cantiere completato 2026-05-26**: `OffertaDrawer.vue` data-driven
+  (`useEntityCapabilities` + `mapAvailableActionsToDrawerActions`,
+  dispatch unico `onActionDispatch(action.key)`), drawer eccezioni
+  master-detail inline, drawer note thin wrapper, deep-link contratto
+  post-push (`?open=<id>` su `ContrattiListView`), dialog parlante
+  `E_OFFERTA_CONTRATTO_GIA_GENERATO` con link al contratto esistente.
+
+Dominio offerta commerciale: **completo lato BE + FE**. Niente cantieri
+aperti.
 
 ## Riferimenti
 

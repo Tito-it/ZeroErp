@@ -19,6 +19,7 @@ export const NAV_ICONS = Object.freeze({
   IMPOSTAZIONI: 'pi pi-sliders-h',
   CONFIG_DOCUMENTI: 'app-nav-icon app-nav-icon-documenti',
   PREVENTIVI: 'app-nav-icon app-nav-icon-preventivi',
+  OFFERTE: 'pi pi-file-edit',
   CONTRATTI: 'app-nav-icon app-nav-icon-contratti',
   DDT: 'app-nav-icon app-nav-icon-ddt',
   FATTURE: 'app-nav-icon app-nav-icon-fatture',
@@ -154,6 +155,7 @@ export const DOMAIN_MENUS = {
   ],
   'vendite': [
     { key: 'preventivi', icon: NAV_ICONS.PREVENTIVI, to: '/vendite/preventivi' },
+    { key: 'offerte', icon: NAV_ICONS.OFFERTE, to: '/vendite/offerte' },
     { key: 'contratti', icon: NAV_ICONS.CONTRATTI, to: '/vendite/contratti' },
     { key: 'listini', icon: NAV_ICONS.LISTINI, to: '/vendite/listini' },
     { key: 'promo-articoli', icon: NAV_ICONS.PROMO_ARTICOLI, to: '/vendite/promo-articoli' },

@@ -290,6 +290,12 @@ const router = createRouter({
           meta: { domain: 'vendite', menuKey: 'preventivi' }
         },
         {
+          path: 'vendite/offerte',
+          name: 'vendite-offerte',
+          component: () => import('../vendite/offerte/views/OfferteView.vue'),
+          meta: { domain: 'vendite', menuKey: 'offerte' }
+        },
+        {
           path: 'vendite/listini',
           name: 'vendite-listini',
           component: () => import('../vendite/views/ListiniView.vue'),

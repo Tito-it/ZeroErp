@@ -1,0 +1,102 @@
+// Scopo: building block preferiti di navigazione — risoluzione, filtro permessi e apertura tab.
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '../../stores/auth'
+import { useNavigationStore } from '../../stores/navigation'
+import { useTabsStore } from '../../stores/tabs'
+import { DOMAINS, DOMAIN_MENUS, resolveNavigationLabel } from '../navigation'
+
+function flattenMenu(items) {
+  return items.flatMap(item => item.children ? [item, ...item.children] : [item])
+}
+
+export function useNavigationFavorites() {
+  const { t, te } = useI18n()
+  const router = useRouter()
+  const auth = useAuthStore()
+  const nav = useNavigationStore()
+  const tabs = useTabsStore()
+
+  // Scopo: replica il filtro visibilita' delle voci L2, usato anche da SidebarDomain.
+  function isMenuItemAllowed(item) {
+    if (!item) return false
+    if (item.requireArea && auth.isAreaBlocked(item.requireArea)) return false
+    if (Array.isArray(item.requireAnyAction) && item.requireAnyAction.length > 0) {
+      if (!auth.isAdmin && !item.requireAnyAction.some(action => auth.isActionAllowed(action))) {
+        return false
+      }
+    }
+    return true
+  }
+
+  // Scopo: trasforma domain/path salvati in localStorage in metadati UI renderizzabili.
+  function resolveFavorite(domainKey, path) {
+    const domain = DOMAINS.find(item => item.key === domainKey)
+    if (!domain || !path) return null
+    if (!auth.visibleDomains.some(item => item.key === domainKey)) return null
+
+    const menuItem = flattenMenu(DOMAIN_MENUS[domainKey] || [])
+      .find(item => item.to === path)
+    if (!menuItem || !isMenuItemAllowed(menuItem)) return null
+
+    const label = resolveNavigationLabel({ domain: domainKey, menuKey: menuItem.key }, t, te) || menuItem.key
+    const domainLabel = resolveNavigationLabel({ domain: domainKey }, t, te) || domainKey
+
+    return {
+      domain: domainKey,
+      path,
+      item: menuItem,
+      label,
+      domainLabel,
+      icon: menuItem.icon,
+      tooltip: t('nav.preferiti_tooltip_dominio_voce', { dominio: domainLabel, voce: label })
+    }
+  }
+
+  const visibleFavorites = computed(() =>
+    nav.getAllFavorites()
+      .map(favorite => resolveFavorite(favorite.domain, favorite.path))
+      .filter(Boolean)
+  )
+
+  // Scopo: apre il preferito come una normale voce L2, mantenendo tab e sidebar coerenti.
+  function navigateToFavorite(favoriteLike) {
+    const favorite = favoriteLike?.item
+      ? favoriteLike
+      : resolveFavorite(favoriteLike?.domain, favoriteLike?.path)
+    if (!favorite) return false
+
+    const opened = tabs.openTab({
+      path: favorite.path,
+      label: favorite.label,
+      domain: favorite.domain,
+      menuKey: favorite.item.key,
+      icon: favorite.icon
+    })
+    if (!opened) return false
+
+    nav.setDomain(favorite.domain)
+    router.push(favorite.path)
+    return true
+  }
+
+  // Scopo: riordina solo il sottoinsieme visibile del dominio preservando eventuali preferiti filtrati.
+  function reorderVisibleDomainFavorites(domainKey, orderedVisiblePaths) {
+    const nextVisible = [...orderedVisiblePaths]
+    const visibleSet = new Set(orderedVisiblePaths)
+    const merged = nav.getDomainFavorites(domainKey).map(path => {
+      if (!visibleSet.has(path)) return path
+      return nextVisible.shift()
+    })
+    nav.reorderFavorites(domainKey, merged)
+  }
+
+  return {
+    visibleFavorites,
+    resolveFavorite,
+    isMenuItemAllowed,
+    navigateToFavorite,
+    reorderVisibleDomainFavorites
+  }
+}

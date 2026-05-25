@@ -14,7 +14,38 @@
 > (GAP 2/3); aggiunta `motivazione_rifiuto` (GAP 4); annullamento via cambio
 > stato con nuovo stato `ANNULLATA` distinto da `RIFIUTATA` (GAP 5).
 >
-> **Revisione 2026-05-25e** (questa): cablato lato BE quanto consegnato dal
+> **Revisione 2026-05-26g** (questa): chiuso il cantiere FE end-to-end.
+> Lato FE: nuova cartella dedicata `frontend/src/vendite/offerte/`
+> (pattern preventivi), drawer 3 tab (testata+utility inline / eccezioni /
+> revisioni), sub-drawer eccezioni master-detail inline, sub-drawer note
+> partizionate, 3 dialog di processo (Emissione / Esito multi-modalita' /
+> Push contratto), dialog parlante "Contratto gia' generato" con link al
+> contratto esistente, deep-link `/vendite/contratti?open=<id>` post-push.
+> Lato DB: applicata `script.fn_available_actions_offerta` (migration
+> `20260526-01`) + seed `stati_doc_offerte_transizioni.csv` con
+> `requires_motivazione`. Lato BE: cablato il capability blob nel detail
+> via `repo.get_available_actions` + merge in `get_offerta`; atomicita'
+> utility 1:1 inline su `crea_offerta` + `aggiorna_offerta` (sub-oggetto
+> `utility` opzionale, transaction unica); SELECT con alias
+> `billing_account_display` / `utility_display` + LEFT JOIN
+> `vendite.contratti.offerta_id` per `contratto_id`/`contratto_numero`;
+> cablate note partizionate `target_tipo='OFFERTA'`. FE refactor:
+> `OffertaDrawer` data-driven con `useEntityCapabilities` +
+> `mapAvailableActionsToDrawerActions` (dispatch unico
+> `onActionDispatch(action.key)`), rimossi tutti i computed
+> `isBozza/isEmessa/isAccettata` hardcoded. **42/42 test BE verdi, build
+> vite verde, eslint pulito**. Dominio offerta commerciale: **completo
+> BE + FE**. Vedi §0.8.
+>
+> **Revisione 2026-05-25f**: cablato lato BE quanto consegnato dal
+> commit DB `906720ac5` del 2026-05-25 PM (step 8-9: push a contratto +
+> suite pgTAP completa). Il dominio offerta commerciale lato BE e'
+> **funzionalmente completo**. `POST /<id>/push-contratto/` end-to-end con
+> pattern A idempotenza, helper `get_contratto_minimal` per coupling-zero
+> col `ContrattiService`, costante `_STATI_PUSHABILI`. 38/38 test verdi.
+> Resta solo il cantiere FE. Vedi §0.7.
+>
+> **Revisione 2026-05-25e**: cablato lato BE quanto consegnato dal
 > commit DB `13d57a846` del 2026-05-25 (step 5-7 brief DB). In sintesi:
 > codice `OFC-*` automatico via trigger DB (rimosso dalla whitelist payload),
 > `POST /<id>/crea-revisione/` end-to-end (chiama `fn_crea_revisione_offerta`)
@@ -84,6 +115,46 @@ multi-utility e FK errate). Queste correzioni lo riallineano al brief corretto.
 | GAP 3 | FE-3 / FE-4                                                        | **Rimosso `AllegatiPanel`** (non esiste oggi; il contratto non lo ha). Allegati rinviati a brief separato.                                                                                                                                                                                                                                                                              |
 | GAP 4 | OffertaEsitoDialog + testata                                       | Aggiunta colonna `motivazione_rifiuto` sulla testata (non JSONB). Tocca il brief DB (vedi nota).                                                                                                                                                                                                                                                                                        |
 | GAP 5 | Lifecycle + endpoint                                               | Annullamento via **cambio stato** (no hard delete come via di processo), con nuovo stato **`ANNULLATA`** (da noi) distinto da `RIFIUTATA` (dal cliente). Logica uniforme col contratto ("annulla contratto").                                                                                                                                                                           |
+
+### 0.8 Revisione 2026-05-26g (cantiere FE chiuso + capability layer data-driven)
+
+Chiusura end-to-end del dominio offerta commerciale dopo la consegna DB della
+fn `script.fn_available_actions_offerta` (migration `20260526-01`).
+
+| Punto | Cosa cambia |
+| ----- | --- |
+| G1 | **Nuova cartella `frontend/src/vendite/offerte/`** (stessa logica preventivi): `api/`, `stores/`, `views/`, `components/`, `components/dialogs/`, `constants.js`. Niente flat in `vendite/components/`. |
+| G2 | **Drawer 3 tab** (`OffertaDrawer.vue`): Testata con sezione utility inline (mirror `ContrattoDrawer.vue:777-785`), Eccezioni (sintesi + bottone manage), Revisioni (CTE ricorsiva). |
+| G3 | **Sub-drawer eccezioni** master-detail inline (`OffertaEccezioniDrawer.vue`): pattern `formMode` null/create/edit + readonly cumulativo via `useInjectReadonly`. |
+| G4 | **Sub-drawer note partizionate** (`OffertaNoteDrawer.vue`) thin wrapper su `NoteDrawer` core + `makeNotesApi('/vendite/offerte/<id>')`. |
+| G5 | **3 dialog di processo**: `OffertaEmissioneDialog`, `OffertaEsitoDialog` multi-modalita' (ACCETTATA / RIFIUTATA / ANNULLATA con motivazione obbligatoria per le ultime due), `OffertaPushDialog` con `pratica_id` opzionale. |
+| G6 | **Dialog parlante `E_OFFERTA_CONTRATTO_GIA_GENERATO`**: doppio trigger (proattivo via `detail.contratto_id` + reattivo via `extractApiErrorCode` su race condition). Bottone "Apri contratto esistente" → emit `navigate-contratto`. |
+| G7 | **Deep-link contratto post-push**: `OfferteView.onNavigateContratto` → `router.push({name:'vendite-contratti', query:{open:id}})`. `ContrattiListView` con watcher su `route.query.open` che apre il drawer + pulisce il query param via `router.replace`. |
+| G8 | **DB D7 — `script.fn_available_actions_offerta`** consegnata (migration `20260526-01-create-fn-available-actions-offerta-mctit.yaml`), seed `stati_doc_offerte_transizioni.csv` aggiornato con `requires_motivazione` su transizioni manuali, severity corretti, 9 test pgTAP. |
+| G9 | **BE D7 — capability blob in `get_offerta`**: `repo.get_available_actions(offerta_id)` wrapper su `call_jsonb_fn`; `get_offerta` ora include `available_actions[]`, `can_edit_*`, `can_push_contratto*`, `non_editable_fields[]`, `stato_codice`. TypedDict `OffertaRow` aggiornato. |
+| G10 | **BE D7 — atomicita' utility 1:1 inline**: `_CREATE_KEYS_OFFERTA` + `_UPDATE_KEYS_OFFERTA` accettano sub-oggetto `utility` opzionale; nuovi helper privati `_add_utility_inline` + `_upsert_utility_inline` (distingue create vs update via lookup esistente, eredita `istanza_utility_id`/`utility_id` dalla testata). Atomicita' garantita dalla stessa `transaction.atomic()`. Niente piu' 2 round-trip ne' `.catch()` silenziosi lato FE. |
+| G11 | **BE D7 — display fields backend** alias rinominati: `ba_ragione_sociale -> billing_account_display`, `utility_descrizione -> utility_display` (allineamento al piano FE+BE rev. f). LEFT JOIN `vendite.contratti.offerta_id` per esporre `contratto_id`/`contratto_numero` (consumati dal dialog "gia' generato" e dal deep-link). |
+| G12 | **BE D7 — note partizionate `target_tipo='OFFERTA'`**: aggiunto a `TARGET_TIPI_AMMESSI` in `apps/core/db/partitioned_note_repository.py`; factory `_OFFERTA_REPO` + views `ApiOffertaNoteList/Detail` in `apps/vendite/api/note_views.py`; rotte `<id>/note/` e `<id>/note/<note_id>/` in `urls_offerte.py`. |
+| G13 | **FE D7 — refactor data-driven** del `OffertaDrawer`: rimossi `isBozza`/`isEmessa`/`isAccettata`/`isOffertaLocked`, sostituiti da `canEditTestata` derivato da `useEntityCapabilities`. `drawerActions` computed ora composito `mapAvailableActionsToDrawerActions(...) + manage-eccezioni + manage-note` (50 righe → 25). Dispatch unico `onActionDispatch(action)` con `switch (action.key)`. |
+| G14 | **FE D7 — pulizia code-coverage**: rimosso `STATI_OFFERTA_EDITABILI` (mai usato dopo refactor); rimosse 3 store action morte (`loadUtility`/`addUtility`/`aggiornaUtility`) — utility ora atomica via `payload.utility` inline su `create`/`update`. |
+| G15 | **Test BE 38 → 42**: 2 test atomicita' utility CREATE (`con_utility_inline_atomico` + `senza_utility_inline_non_chiama_repo`), 2 test atomicita' utility UPDATE (upsert in ramo update e in ramo create per offerta senza utility), test `get_offerta_ok_arricchisce_eccezioni_e_utility` esteso col blob capability. |
+| G16 | **Build vite verde**, eslint pulito sui file `vendite/offerte/`, 1351 → **1351** test BE complessivi (vendite + core). |
+
+### 0.7 Revisione 2026-05-25f (sblocco step DB 8-9: BE completo)
+
+Il team DB ha consegnato il 2026-05-25 PM (commit `906720ac5`) gli ultimi
+step del brief: `fn_push_offerta_a_contratto`, ALTER `contratti.offerta_id`
+e suite pgTAP completa. Cablato lato BE in giornata.
+
+| Punto | Cosa cambia                                                                                                                                                                                                                  |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1    | **`POST /<id>/push-contratto/`** (step 8): nuovo endpoint che invoca `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id)`. Body opzionale `{pratica_id: int?}` per collegare il contratto generato a una pratica. Guard applicativo `ACCETTATA`; il DB ha guard finale + pattern A idempotenza (UNIQUE `uq_contratti_offerta_id`). Ritorna `{contratto_id, contratto_codice, sorgente_uid}` (il FE naviga al `ContrattoDrawer`). |
+| F2    | **`get_contratto_minimal` helper nel repository**: lettura `{id, numero, uid, stato_codice}` da `vendite.contratti` post-push. Evita coupling cross-service col `ContrattiService` (`ContrattiRepository` non importato). Query separata di lookup minimal.                                                                                                                                                                                |
+| F3    | **Costante `_STATI_PUSHABILI = frozenset({ACCETTATA})`** module-level. Coerente col pattern `_STATI_EDITABILI` e `_STATI_DA_EMESSA`: nessuna allocazione inline per chiamata.                                                                                                                                                                                                                                                                |
+| F4    | **Codice errore `E_CONFIG_MANCANTE` mappato**: la fn DB lo solleva se `OFFERTA_COMMERCIALE` / `CONTRATTO` non sono in `config.sorgenti` o stato `DRAFT` non in `config.stati_doc_contratti`. Propagato come `code` originale via regex `_DB_ERROR_CODE_RE`.                                                                                                                                                                                  |
+| F5    | **Test suite 32 → 38**: 6 test push (da EMESSA/BOZZA fallisce, happy path con costruzione `OffertaPushResult`, idempotenza pattern A, pratica_id passato al repo, pratica_id non-positivo rifiutato).                                                                                                                                                                                                                                       |
+| F6    | **Refactor `_STATI_DA_EMESSA`** ereditato rev. e: 3 siti deduplicati (registra_accettazione, registra_rifiuto, crea_revisione).                                                                                                                                                                                                                                                                                                                |
+| F7    | **Suite pgTAP DB completa** (step 9): test per fn_crea_revisione + fn_push + codice + struttura testata/eccezioni/utility + revisione trigger + state machine + end-to-end. Non duplichiamo lato BE (mock unit test).                                                                                                                                                                                                                       |
 
 ### 0.6 Revisione 2026-05-25e (sblocco step DB 5-7)
 
@@ -305,7 +376,7 @@ L'utente operatore commerciale deve poter:
 
 ## 3. Step BE — Backend Django
 
-### Step BE-1 — TypedDict in `types.py`
+### Step BE-1 — TypedDict in `types.py` ✅ Atterrato (rev. f)
 
 **Scopo**: definire i contratti tipizzati di scambio backend ↔ API.
 
@@ -390,8 +461,8 @@ class EccezioneOffertaRow(TypedDict):
     # Esclusi (I4): stato_approvazione_prezzo, pratica_approvazione_prezzo_id
 
 class OffertaPushResult(TypedDict):
-    # In attesa step 8 brief DB (D4): TypedDict definito ma non usato finché
-    # fn_push_offerta_a_contratto non esiste.
+    # Rev. f (2026-05-25 PM): step 8 atterrato + cablato. Ritornato da
+    # `OfferteService.push_a_contratto` via `repo.get_contratto_minimal`.
     contratto_id: int
     contratto_codice: str
     sorgente_uid: str
@@ -409,7 +480,7 @@ class OffertaPushResult(TypedDict):
 **Test**: nessun test dedicato (sono TypedDict). Verifica indiretta nei test
 service.
 
-### Step BE-2 — Repository `offerte_repository.py`
+### Step BE-2 — Repository `offerte_repository.py` ✅ Atterrato (rev. f)
 
 **Scopo**: accesso DB tramite cursor + funzioni PG (no ORM).
 
@@ -427,9 +498,10 @@ service.
 | `create_eccezione(offerta_id, data) -> int`                            | INSERT eccezione                                                                                                   |
 | `update_eccezione(eccezione_id, data) -> bool`                         | UPDATE                                                                                                             |
 | `delete_eccezione(eccezione_id) -> bool`                               | DELETE                                                                                                             |
-| `crea_revisione(offerta_id: int) -> int`                               | `SELECT vendite.fn_crea_revisione_offerta(...)` — **fuori scope BE iniziale** (D4, attesa step 7 brief DB)         |
-| `push_a_contratto(offerta_id: int, pratica_id: int \| None) -> int`    | `SELECT vendite.fn_push_offerta_a_contratto(...)` — **fuori scope BE iniziale** (D4, attesa step 8 brief DB)       |
-| `list_revisioni(offerta_padre_id: int) -> list[OffertaRow]`            | Lista catena revisioni — **fuori scope BE iniziale** (D4, dipende da step 6-7 brief DB)                            |
+| `crea_revisione(offerta_id: int, user: str \| None) -> int`            | ✅ `SELECT vendite.fn_crea_revisione_offerta(%s, %s)` (rev. e, step 7)                                              |
+| `push_a_contratto(offerta_id: int, pratica_id: int \| None) -> int`    | ✅ `SELECT vendite.fn_push_offerta_a_contratto(%s, %s)` (rev. f, step 8 — pattern A idempotenza)                    |
+| `list_revisioni(offerta_id: int) -> list[OffertaRow]`                  | ✅ CTE ricorsiva ancestors→root→descendants (rev. e, step 6-7)                                                      |
+| `get_contratto_minimal(contratto_id: int) -> dict`                     | ✅ Lookup minimal post-push (id+numero+uid, no JOIN superflui) (rev. f, step 8)                                     |
 | `lookup_utility_da_ba(billing_account_id: str) -> dict`                | Risolve `istanza_utility_id`/`utility_id` dal BA (per popolare la testata in create, come fa il contratto)         |
 | `get_utility(offerta_id: int) -> UtilityOffertaRow`                    | Legge il record utility 1:1 dell'offerta (campi business, GAP 1)                                                   |
 | `upsert_utility(offerta_id: int, data: dict) -> int`                   | Crea/aggiorna il record utility 1:1 (tipo/classe utenza + parametri). Guard stato BOZZA lato service               |
@@ -451,7 +523,7 @@ service.
 **Test**: `test_offerte_repository.py` con `unittest.TestCase` + mock di
 `django.db.connection` (AGENTS.md §Test).
 
-### Step BE-3 — Service `offerte_service.py`
+### Step BE-3 — Service `offerte_service.py` ✅ Atterrato (rev. f)
 
 **Scopo**: orchestrazione business logic (validazioni applicative + delega
 repository).
@@ -468,8 +540,9 @@ repository).
 | `registra_accettazione(offerta_id, payload)` | Guard: stato EMESSA. Cambia stato a ACCETTATA                                                                                                        |
 | `registra_rifiuto(offerta_id, payload)`      | Guard: stato EMESSA. Cambia stato a RIFIUTATA (no del cliente) + `motivazione_rifiuto`                                                               |
 | `annulla(offerta_id, payload)`               | Guard: **solo stato BOZZA**. Cambia stato a ANNULLATA + `motivazione_rifiuto`. Mirror "annulla contratto DRAFT" (GAP 5, chiarito C3)                 |
-| `push_a_contratto(offerta_id, pratica_id?)`  | Guard: stato ACCETTATA. Delega a repository (fn DB idempotente). **Fuori scope BE iniziale** (D4, attesa step 8 brief DB)                            |
-| `crea_revisione(offerta_id)`                 | Guard: stato EMESSA. Delega a fn DB. **Fuori scope BE iniziale** (D4, attesa step 7 brief DB)                                                        |
+| `push_a_contratto(offerta_id, *, pratica_id?)` | ✅ Guard ACCETTATA + pattern A idempotenza (rev. f). Ritorna `OffertaPushResult` letto via `get_contratto_minimal`                                   |
+| `crea_revisione(offerta_id, *, user?)`       | ✅ Guard EMESSA. Delega a `fn_crea_revisione_offerta`. Ritorna nuova rev.N+1 (rev. e)                                                                |
+| `list_revisioni(offerta_id)`                 | ✅ Catena revisioni via CTE ricorsiva (rev. e). Lettura libera                                                                                       |
 | `crud_eccezioni(...)`                        | Wrapper attorno a CRUD eccezioni. Guard: solo se stato BOZZA                                                                                         |
 | `add_utility(offerta_id, payload)`           | Crea record utility 1:1 (tipo/classe utenza + parametri). Guard: solo se stato BOZZA. Mirror `add_utility_contratto`                                 |
 | `update_utility(offerta_id, utility_id, payload)` | Aggiorna record utility 1:1. Guard: solo se stato BOZZA. Mirror `update_utility_contratto`                                                       |
@@ -508,7 +581,7 @@ repository).
   si annulla dopo l'emissione, C3)
 - `registra_rifiuto` da BOZZA → ServiceError (no rifiuto da bozza, C3)
 
-### Step BE-4 — API views + routes
+### Step BE-4 — API views + routes ✅ Atterrato (rev. f)
 
 **Scopo**: esporre gli endpoint REST.
 
@@ -524,8 +597,9 @@ repository).
 | POST   | `/api/v1/vendite/offerte/{id}/emetti/`          | BOZZA → EMESSA                           |
 | POST   | `/api/v1/vendite/offerte/{id}/registra-esito/`  | EMESSA → ACCETTATA / RIFIUTATA           |
 | POST   | `/api/v1/vendite/offerte/{id}/annulla/`         | **BOZZA** → ANNULLATA (GAP 5, C3)        |
-| POST   | `/api/v1/vendite/offerte/{id}/push-contratto/`  | ACCETTATA → crea contratto DRAFT (**fuori scope BE iniziale**, D4) |
-| POST   | `/api/v1/vendite/offerte/{id}/crea-revisione/`  | EMESSA → rev.N+1 BOZZA (**fuori scope BE iniziale**, D4)           |
+| POST   | `/api/v1/vendite/offerte/{id}/push-contratto/`  | ✅ ACCETTATA → crea contratto DRAFT (rev. f)            |
+| POST   | `/api/v1/vendite/offerte/{id}/crea-revisione/`  | ✅ EMESSA → rev.N+1 BOZZA (rev. e)                      |
+| GET    | `/api/v1/vendite/offerte/{id}/revisioni/`       | ✅ Catena revisioni (rev. e)                            |
 | POST   | `/api/v1/vendite/offerte/{id}/utility/`         | Crea record utility 1:1 (solo BOZZA, C2) |
 | PATCH  | `/api/v1/vendite/offerte/{id}/utility/{uid}/`   | Aggiorna utility 1:1 (solo BOZZA, C2)    |
 | GET    | `/api/v1/vendite/offerte/{id}/eccezioni/`       | Lista eccezioni                          |
@@ -882,33 +956,45 @@ brief DB step 4-8 → BE-3 (service) → BE-4 (API)
 
 ## 8. Stato del piano
 
-| Step | Stato                    | Dipendenze                                                                                                       |
-| ---- | ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| BE-1 | **Atterrato** (rev. e)   | DB step 1-7 + addendum (commit `2000d8261` + `13d57a846`)                                                       |
-| BE-2 | **Atterrato (parziale)** | DB step 1-7 OK; metodo `push_a_contratto` rinviato (attesa step 8)                                              |
-| BE-3 | **Atterrato (parziale)** | DB step 1-7 OK; service `push_a_contratto` rinviato                                                              |
-| BE-4 | **Atterrato (parziale)** | DB step 1-7 OK; endpoint `push-contratto` rinviato                                                               |
-| FE-1 | Pronto                   | BE-4 (firma endpoint, anche solo bozza)                                                                          |
-| FE-2 | Pronto                   | FE-1                                                                                                             |
-| FE-3 | Pronto                   | FE-1                                                                                                             |
-| FE-4 | Pronto                   | FE-3                                                                                                             |
-| FE-5 | Pronto                   | FE-3                                                                                                             |
-| FE-6 | Continuo                 | Parallelo a FE-3/4/5                                                                                             |
-| FE-7 | Pronto                   | FE-2/3 testabili                                                                                                 |
+| Step | Stato                                       | Dipendenze                                                         |
+| ---- | ------------------------------------------- | ------------------------------------------------------------------ |
+| BE-1 | **Atterrato** (rev. g)                      | DB step 1-9 + addendum + D7 (4 commit DB completati 2026-05-24/26) |
+| BE-2 | **Atterrato**                               | DB step 1-9 + D7 OK                                                |
+| BE-3 | **Atterrato**                               | DB step 1-9 + D7 OK                                                |
+| BE-4 | **Atterrato**                               | DB step 1-9 + D7 OK                                                |
+| FE-1 | **Atterrato** (rev. g)                      | BE-4 ✓                                                             |
+| FE-2 | **Atterrato**                               | FE-1 ✓                                                             |
+| FE-3 | **Atterrato** (data-driven)                 | FE-1 ✓ + fn DB capability                                          |
+| FE-4 | **Atterrato**                               | FE-3 ✓                                                             |
+| FE-5 | **Atterrato** (3 dialog + "gia' generato")  | FE-3 ✓                                                             |
+| FE-6 | **Atterrato**                               | i18n it/en cablato                                                 |
+| FE-7 | **Atterrato**                               | navigation + router + deep-link contratto                          |
 
-> **Perimetro BE corrente (D5, rev. e)**: cablato tutto ciò che il DB ha
-> consegnato. Tabelle: testata + eccezioni + utility 1:1 + note offerta +
-> state machine 6 stati + transizioni asimmetriche + numerazione automatica
-> `OFC-*` + revisione end-to-end + 6 codici errore. Resta da cablare solo
-> `push_a_contratto` (BE+FE) quando il team DB chiude lo **step 8** del
-> brief originale (`fn_push_offerta_a_contratto` + `ALTER vendite.contratti
-> ADD offerta_id`).
+> **Perimetro finale (rev. g, 2026-05-26)**: dominio offerta commerciale
+> **completo lato BE + FE**. Tutto cablato:
+>
+> - **DB**: 6 stati + transizioni asimmetriche + numerazione `OFC-*` +
+>   revisioni + push idempotente + 8 codici errore + suite pgTAP completa +
+>   `script.fn_available_actions_offerta` (capability layer);
+> - **BE Django**: testata + eccezioni + utility 1:1 atomica inline (su
+>   CREATE e UPDATE) + note partizionate + capability blob nel detail +
+>   display fields `billing_account_display` / `utility_display` +
+>   `contratto_id`/`contratto_numero` collegati;
+> - **FE Vue**: cartella dedicata `frontend/src/vendite/offerte/`, drawer
+>   3 tab data-driven (`useEntityCapabilities` +
+>   `mapAvailableActionsToDrawerActions` + dispatch `action.key`), drawer
+>   eccezioni master-detail, drawer note, 3 dialog + dialog "gia' generato"
+>   con link al contratto esistente, deep-link
+>   `/vendite/contratti?open=<id>`.
+>
+> **42/42 test BE verdi, 1351/1351 test BE complessivi, build vite verde,
+> eslint pulito**. Niente cantieri aperti.
 
 ---
 
-*Piano BE + FE Offerta Commerciale — ZeroErp. Revisione 2026-05-25e
-(sblocco step DB 5-7: codice automatico `OFC-*`, `crea-revisione/` end-to-end,
-`revisioni/` via CTE ricorsiva). Step DB 1-7 + addendum applicati. Resta
-fuori solo lo step 8 (push a contratto), in attesa team DB. Eredita rev. d
-(allineamento DB 1-4) e rev. c (rifiniture coerenza). Documento vivo, da
-aggiornare a ogni step chiuso.*
+*Piano BE + FE Offerta Commerciale — ZeroErp. Revisione 2026-05-26g
+(chiusura cantiere FE + capability layer data-driven via
+`script.fn_available_actions_offerta`). **Dominio completo BE + FE, 42/42
+test verdi**. Eredita rev. f (step DB 8-9), rev. e (step 5-7), rev. d
+(step 1-4), rev. c (rifiniture coerenza). Documento vivo, da aggiornare
+solo se emergono follow-up (Pratiche cross-link `OFFERTA_QUADRO`).*

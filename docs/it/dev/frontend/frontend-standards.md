@@ -106,6 +106,46 @@ Le regole di consistenza sono:
 - Logo e nome applicazione in cima, logout e comprimi in fondo
 - Mobile (< 768px): overlay drawer invece di sidebar fissa
 
+### Preferiti utente
+
+I preferiti di navigazione sono **solo frontend**: nessuna API, nessun backend,
+nessun DB. La persistenza usa `localStorage` tramite `useNavigationStore`, con
+chiavi user-scoped sincronizzate al login da `syncUserFavorites(userId)`.
+
+Regole:
+
+- Modello dati store: `{ [domainKey]: routePath[] }`, array ordinato per dominio.
+- Cap: massimo 4 preferiti per dominio. Il quinto tentativo mostra toast warn
+  `nav.preferiti_limite_raggiunto` e non modifica lo stato.
+- Migrazione legacy: un vecchio valore stringa salvato su
+  `domain_default_<domain>` viene letto come array di 1 elemento, copiato
+  nella chiave personale `domain_default_<domain>_user_<id>` e rimosso dalla
+  chiave legacy.
+- Logout: `clearUserState` pulisce solo lo stato in memoria e non cancella
+  il localStorage personale. Al nuovo login dello stesso utente i preferiti
+  ricompaiono; al login di un altro utente vengono caricate altre chiavi.
+- Atterraggio dominio: clic su dominio dalla sidebar HOME apre il primo
+  preferito del dominio; se assente, la prima voce L2; se assente, la route
+  base dominio.
+- Regola anti-salto: se l'utente e' già nel dominio attivo, ricliccare il
+  dominio non deve forzare la navigazione al preferito #1.
+- I preferiti filtrati da permessi/accessi BLOCCATI non vengono renderizzati,
+  ma restano nello storage e ricompaiono se l'accesso torna disponibile.
+- Sidebar collassata: i preferiti sono icone con tooltip `Dominio · Voce`;
+  drag-and-drop disabilitato.
+
+Building block obbligatori:
+
+- `useNavigationFavorites` centralizza risoluzione label/icona, filtro permessi,
+  apertura tab, `router.push`, `nav.setDomain` e riordino del sottoinsieme
+  visibile.
+- `FavoriteItem` renderizza il singolo preferito nelle varianti `sidebar` e
+  `tile`.
+
+I consumer (`SidebarHome`, `HomeView`) gestiscono solo il layout e gli handler
+drag-and-drop; non devono duplicare filtro permessi, label/icon resolution o
+logica di navigazione.
+
 ### Topbar
 
 - Altezza fissa 48px
