@@ -3,14 +3,18 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: URL routing per CRUD vendite.offerte_commerciali.
-#        Perimetro iniziale (D4): testata + cambio stato (emetti, registra-
-#        esito, annulla) + eccezioni + utility 1:1. Endpoint per
-#        crea-revisione e push-contratto saranno aggiunti quando il team DB
-#        chiudera' step 7-8 del brief originale.
+#        Perimetro 2026-05-25 (D6 completo): testata + cambio stato
+#        (emetti, registra-esito, annulla) + eccezioni + utility 1:1 +
+#        revisioni (crea-revisione, revisioni) + push-contratto. Step DB
+#        1-9 atterrati, nessun endpoint pendente.
 # ------------------------------------------------------------
 
 from django.urls import path
 
+from apps.vendite.api.note_views import (
+    ApiOffertaNoteDetail,
+    ApiOffertaNoteList,
+)
 from apps.vendite.api.views_offerte import (
     ApiOffertaAnnulla,
     ApiOffertaCreaRevisione,
@@ -18,6 +22,7 @@ from apps.vendite.api.views_offerte import (
     ApiOffertaEccezioneDetail,
     ApiOffertaEccezioni,
     ApiOffertaEmetti,
+    ApiOffertaPushContratto,
     ApiOffertaRegistraEsito,
     ApiOffertaRevisioni,
     ApiOffertaUtility,
@@ -60,6 +65,12 @@ urlpatterns = [
         ApiOffertaRevisioni.as_view(),
         name="vendite-offerta-revisioni-list",
     ),
+    # Push a contratto (Step 8 brief DB, atterrato 2026-05-25).
+    path(
+        "<int:offerta_id>/push-contratto/",
+        ApiOffertaPushContratto.as_view(),
+        name="vendite-offerta-push-contratto",
+    ),
     # Eccezioni.
     path(
         "<int:offerta_id>/eccezioni/",
@@ -81,5 +92,17 @@ urlpatterns = [
         "<int:offerta_id>/utility/<int:utility_id>/",
         ApiOffertaUtilityDetail.as_view(),
         name="vendite-offerta-utility-detail",
+    ),
+    # Note partizionate (target_tipo='OFFERTA'). Building block
+    # PartitionedNoteRepository: 3 righe di cablaggio + view generata.
+    path(
+        "<int:offerta_id>/note/",
+        ApiOffertaNoteList.as_view(),
+        name="vendite-offerta-note-list",
+    ),
+    path(
+        "<int:offerta_id>/note/<int:note_id>/",
+        ApiOffertaNoteDetail.as_view(),
+        name="vendite-offerta-note-detail",
     ),
 ]

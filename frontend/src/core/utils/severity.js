@@ -251,3 +251,18 @@ export const STATO_CONTRATTO_MAP = {
 export function statoContrattoSeverity(codice) {
   return resolveSeverity(STATO_CONTRATTO_MAP, codice)
 }
+
+// --- Mappa stati offerta commerciale ---
+// BOZZA=grigio, EMESSA=azzurro, ACCETTATA=verde, RIFIUTATA=rosso,
+// ANNULLATA=rosso (ritiro da noi), SUPERATA=grigio (revisione N+1 vincente).
+export const STATO_OFFERTA_MAP = {
+  BOZZA: 'secondary',
+  EMESSA: 'info',
+  ACCETTATA: 'success',
+  RIFIUTATA: 'danger',
+  ANNULLATA: 'danger',
+  SUPERATA: 'secondary',
+}
+export function statoOffertaSeverity(codice) {
+  return resolveSeverity(STATO_OFFERTA_MAP, codice)
+}

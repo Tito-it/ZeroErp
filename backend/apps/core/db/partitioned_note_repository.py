@@ -68,7 +68,8 @@ _NOTE_UPDATE_COLUMNS: frozenset[str] = frozenset({
 # Whitelist valori CHECK partizione note (vendite).
 # Allineata a chk_note_target_tipo / chk_note_anchor_tipo / chk_note_posizione.
 TARGET_TIPI_AMMESSI: frozenset[str] = frozenset({
-    "PREVENTIVO", "CONTRATTO", "ORDINE", "DDT", "FATTURA", "ATTIVITAFT",
+    "PREVENTIVO", "CONTRATTO", "OFFERTA",
+    "ORDINE", "DDT", "FATTURA", "ATTIVITAFT",
 })
 ANCHOR_TIPI_AMMESSI: frozenset[str] = frozenset({"DOCUMENTO", "RIGA"})
 POSIZIONI_AMMESSE: frozenset[str] = frozenset({

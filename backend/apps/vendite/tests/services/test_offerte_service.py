@@ -39,6 +39,16 @@ Indice test eseguiti:
 30) crea_revisione_trigger_db_codice_propagato        [Step 7]
 31) list_revisioni_offerta_inesistente_404            [Step 7]
 32) list_revisioni_ok_passa_id_al_repo                [Step 7]
+33) push_a_contratto_da_emessa_fallisce               [Step 8]
+34) push_a_contratto_da_bozza_fallisce                [Step 8]
+35) push_a_contratto_ok_costruisce_result             [Step 8]
+36) push_a_contratto_idempotenza_codice_propagato     [Step 8: pattern A]
+37) push_a_contratto_con_pratica_passa_pratica_id     [Step 8]
+38) push_a_contratto_pratica_id_invalido_fallisce     [Step 8]
+39) crea_offerta_con_utility_inline_atomico           [refactor utility atomico]
+40) crea_offerta_senza_utility_inline_non_chiama_repo [refactor utility atomico]
+41) aggiorna_offerta_con_utility_inline_update_atomico  [simmetria CREATE/UPDATE]
+42) aggiorna_offerta_con_utility_inline_create_atomico  [upsert: senza utility esistente]
 """
 
 from unittest import TestCase
@@ -103,7 +113,9 @@ class OfferteServiceTests(TestCase):
             OfferteService().get_offerta(999)
         self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
 
-    # Scopo: get_offerta arricchisce con eccezioni + utility (read-after-write).
+    # Scopo: get_offerta arricchisce con eccezioni + utility + capability blob
+    #        (data-driven 2026-05-26: il blob arriva da script.fn_available_actions_offerta,
+    #        merged nel dict di ritorno).
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
     def test_get_offerta_ok_arricchisce_eccezioni_e_utility(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
@@ -112,11 +124,32 @@ class OfferteServiceTests(TestCase):
         repo.get_offerta.return_value = _make_offerta_dict()
         repo.list_eccezioni.return_value = [{"id": 7, "articolo_id": "abc"}]
         repo.get_utility.return_value = {"id": 99, "tipo_utenza_id": 5}
+        repo.get_available_actions.return_value = {
+            "available_actions": [
+                {"key": "emetti", "target_state": "EMESSA"},
+                {"key": "annulla", "target_state": "ANNULLATA"},
+            ],
+            "can_edit_testata": True,
+            "can_edit_eccezioni": True,
+            "can_push_contratto": False,
+            "non_editable_fields": [],
+            "stato_codice": "BOZZA",
+        }
 
         result = OfferteService().get_offerta(1)
 
         self.assertEqual(result["eccezioni"], [{"id": 7, "articolo_id": "abc"}])
         self.assertEqual(result["utility"], {"id": 99, "tipo_utenza_id": 5})
+        # Blob capability merged: il FE consuma da qui
+        self.assertEqual(len(result["available_actions"]), 2)
+        self.assertEqual(result["available_actions"][0]["key"], "emetti")
+        self.assertTrue(result["can_edit_testata"])
+        self.assertFalse(result["can_push_contratto"])
+        self.assertEqual(result["non_editable_fields"], [])
+        self.assertEqual(result["stato_codice"], "BOZZA")
+        # I display fields del SELECT non vengono sovrascritti dal merge
+        # (la fn ritorna `stato_codice` distinto da `stato_codice_interno`).
+        self.assertEqual(result["stato_codice_interno"], "BOZZA")
 
     # --- create -------------------------------------------------------
 
@@ -570,3 +603,258 @@ class OfferteServiceTests(TestCase):
         repo.list_revisioni.assert_called_once_with(1)
         self.assertEqual(len(result), 2)
         self.assertEqual(result[1]["revisione_numero"], 2)
+
+    # --- push a contratto (Step 8) -----------------------------------
+
+    # Scopo: push da EMESSA -> 422 (richiesto ACCETTATA).
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_push_a_contratto_da_emessa_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().push_a_contratto(1)
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: push da BOZZA -> 422.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_push_a_contratto_da_bozza_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = "BOZZA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().push_a_contratto(1)
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: push ok costruisce OffertaPushResult con id+numero+uid del nuovo
+    #        contratto letto da get_contratto_minimal.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_push_a_contratto_ok_costruisce_result(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "ACCETTATA"
+        repo.push_a_contratto.return_value = 101
+        repo.get_contratto_minimal.return_value = {
+            "id": 101,
+            "numero": "CNT0000045",
+            "uid": "11111111-2222-3333-4444-555555555555",
+            "stato_codice": "DRAFT",
+        }
+
+        result = OfferteService().push_a_contratto(1)
+
+        repo.push_a_contratto.assert_called_once_with(1, None)
+        repo.get_contratto_minimal.assert_called_once_with(101)
+        self.assertEqual(result, {
+            "contratto_id": 101,
+            "contratto_codice": "CNT0000045",
+            "sorgente_uid": "11111111-2222-3333-4444-555555555555",
+        })
+
+    # Scopo (pattern A idempotenza): doppia invocazione → la fn DB solleva
+    #        E_OFFERTA_CONTRATTO_GIA_GENERATO e il service lo propaga col
+    #        codice originale (non rimpiazzato da E_VENDITE_VALIDATION).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_push_a_contratto_idempotenza_codice_propagato(self, repo_cls, _atomic):
+        from django.db import DatabaseError
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "ACCETTATA"
+        repo.push_a_contratto.side_effect = DatabaseError(
+            "E_OFFERTA_CONTRATTO_GIA_GENERATO: offerta 1 ha gia' generato il contratto"
+        )
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().push_a_contratto(1)
+        self.assertEqual(
+            cm.exception.code, "E_OFFERTA_CONTRATTO_GIA_GENERATO"
+        )
+
+    # Scopo: pratica_id viene passato al repository quando valorizzato.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_push_a_contratto_con_pratica_passa_pratica_id(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "ACCETTATA"
+        repo.push_a_contratto.return_value = 101
+        repo.get_contratto_minimal.return_value = {
+            "id": 101, "numero": "CNT0000045",
+            "uid": "uid-x", "stato_codice": "DRAFT",
+        }
+
+        OfferteService().push_a_contratto(1, pratica_id=77)
+
+        repo.push_a_contratto.assert_called_once_with(1, 77)
+
+    # Scopo: pratica_id <=0 o non-int viene rifiutato dal guard applicativo.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_push_a_contratto_pratica_id_invalido_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = "ACCETTATA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().push_a_contratto(1, pratica_id=0)
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # --- refactor 2026-05-26: crea_offerta atomico con utility inline ----
+
+    # Scopo: se il payload include `utility: {...}` come sub-oggetto, il
+    #        service crea il record utility 1:1 dentro la stessa
+    #        `transaction.atomic()` della testata, ereditando
+    #        `istanza_utility_id`/`utility_id` dalla testata. Nessuna
+    #        coppia "POST testata + PATCH utility" che potrebbe lasciare
+    #        l'offerta orfana di utility in caso di fallimento intermedio.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_offerta_con_utility_inline_atomico(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_id_by_codice.return_value = 11
+        repo.create_offerta.return_value = 1
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = {"id": 99}
+
+        OfferteService().crea_offerta({
+            "emittente_fiscale_id": 10,
+            "billing_account_id": 100,
+            "istanza_utility_id": 200,
+            "utility_id": 3,
+            "listino_id": 50,
+            "validita_dal": "2026-06-01",
+            "utility": {
+                "tipo_utenza_id": 7,
+                "classe_utenza_id": 4,
+                "param_1_num": "12.5",
+            },
+        })
+
+        # 1) `utility` NON deve finire nel payload testata.
+        testata_call = repo.create_offerta.call_args.args[0]
+        self.assertNotIn("utility", testata_call)
+        # 2) `create_utility` chiamato con merge di istanza_utility_id/utility_id
+        #    della testata + campi business dal sub-oggetto.
+        repo.create_utility.assert_called_once()
+        offerta_id_arg, utility_payload = repo.create_utility.call_args.args
+        self.assertEqual(offerta_id_arg, 1)
+        self.assertEqual(utility_payload["istanza_utility_id"], 200)
+        self.assertEqual(utility_payload["utility_id"], 3)
+        self.assertEqual(utility_payload["tipo_utenza_id"], 7)
+        self.assertEqual(utility_payload["classe_utenza_id"], 4)
+        self.assertEqual(utility_payload["param_1_num"], "12.5")
+
+    # Scopo: senza sub-oggetto utility, il service NON chiama `create_utility`
+    #        (zero side-effect su record satellite). Vale per i flussi
+    #        anagrafici "offerta minimale" dove la utility non viene
+    #        compilata in testata e si arricchisce in edit successivo.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_offerta_senza_utility_inline_non_chiama_repo(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_id_by_codice.return_value = 11
+        repo.create_offerta.return_value = 1
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+
+        OfferteService().crea_offerta({
+            "emittente_fiscale_id": 10,
+            "billing_account_id": 100,
+            "istanza_utility_id": 200,
+            "utility_id": 3,
+            "listino_id": 50,
+            "validita_dal": "2026-06-01",
+        })
+
+        repo.create_utility.assert_not_called()
+
+    # Scopo: PATCH testata con `utility: {...}` inline su offerta che HA
+    #        gia' un record utility -> il service chiama `update_utility`
+    #        (UPDATE atomico, niente create duplicato) filtrando il payload
+    #        sui campi modificabili (istanza_utility_id/utility_id immutabili).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_con_utility_inline_update_atomico(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.list_eccezioni.return_value = []
+        # Utility gia' presente -> ramo update
+        repo.get_utility.return_value = {"id": 99, "tipo_utenza_id": 5}
+
+        OfferteService().aggiorna_offerta(1, {
+            "valore_variazione_globale": "10.5",
+            "tipo_variazione_globale": "PERCENTUALE",
+            "utility": {
+                "tipo_utenza_id": 7,
+                "param_1_num": "42",
+            },
+        })
+
+        # 1) Testata aggiornata SENZA `utility` (filtrato prima del repo).
+        repo.update_offerta.assert_called_once()
+        testata_call = repo.update_offerta.call_args.args[1]
+        self.assertNotIn("utility", testata_call)
+        self.assertEqual(testata_call["valore_variazione_globale"], "10.5")
+        # 2) update_utility chiamato con id utility esistente + payload filtrato.
+        repo.update_utility.assert_called_once()
+        utility_id_arg, utility_payload = repo.update_utility.call_args.args
+        self.assertEqual(utility_id_arg, 99)
+        self.assertEqual(utility_payload, {"tipo_utenza_id": 7, "param_1_num": "42"})
+        # 3) Nessun create utility (esisteva gia').
+        repo.create_utility.assert_not_called()
+
+    # Scopo: PATCH testata con `utility: {...}` inline su offerta SENZA
+    #        record utility (es. creata senza utility, ora arricchita) ->
+    #        il service chiama `create_utility` con merge id testata.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_con_utility_inline_create_atomico(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.list_eccezioni.return_value = []
+        # Utility NON presente -> ramo create
+        repo.get_utility.return_value = None
+
+        OfferteService().aggiorna_offerta(1, {
+            "validita_al": "2026-12-31",
+            "utility": {"tipo_utenza_id": 7},
+        })
+
+        # Testata aggiornata.
+        repo.update_offerta.assert_called_once()
+        # Utility creata col merge degli id derivati dalla testata.
+        repo.create_utility.assert_called_once()
+        offerta_id_arg, utility_payload = repo.create_utility.call_args.args
+        self.assertEqual(offerta_id_arg, 1)
+        self.assertEqual(utility_payload["istanza_utility_id"], 200)
+        self.assertEqual(utility_payload["utility_id"], 3)
+        self.assertEqual(utility_payload["tipo_utenza_id"], 7)
+        repo.update_utility.assert_not_called()

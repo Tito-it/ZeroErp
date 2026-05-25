@@ -12,6 +12,7 @@ import {
 import { resetAllUserScopedStores } from '../core/pinia-plugins/auto-reset'
 import { syncUserLanguage } from '../core/i18n'
 import { useUiStore } from './ui'
+import { useNavigationStore } from './navigation'
 import { isJwtExpired } from '../core/jwt'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -116,12 +117,17 @@ export const useAuthStore = defineStore('auth', () => {
       if (!user.value) {
         throw new Error('Profilo vuoto: risposta API senza dati utente')
       }
-      // Applica preferenze personali dell'utente (tema + lingua UI).
+      // Applica preferenze personali dell'utente (tema + lingua UI + preferiti).
       // Chiavi localStorage user-scoped: evita che la scelta di un altro
       // utente sullo stesso browser persista al login successivo.
-      const uid = user.value.utente?.id ?? null
+      // NB: il response /me/ espone `utente.auth_user_id` (non `utente.id`),
+      // vedi test_me_view._PROFILE_FULL. Usare la chiave sbagliata qui faceva
+      // saltare l'intera sincronizzazione user-scoped al login — i preferiti
+      // restavano sulla chiave base globale (cross-user leak).
+      const uid = user.value.utente?.auth_user_id ?? null
       if (uid != null) {
         useUiStore().syncUserPreferences(uid)
+        useNavigationStore().syncUserFavorites(uid)
         syncUserLanguage(uid)
       }
     } catch (err) {

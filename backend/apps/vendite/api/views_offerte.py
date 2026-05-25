@@ -9,10 +9,10 @@
 #        gli errori P0001 in ServiceError che il middleware converte in
 #        error envelope uniforme.
 #
-#        Out of scope iniziale (in attesa step DB 5-8 del brief originale):
-#          - generazione codice OFC-* (sistema_codici, step 5)
-#          - crea_revisione + push_a_contratto (step 7-8)
-#        Saranno aggiunti come endpoint dedicati appena le fn DB esisteranno.
+#        Stato 2026-05-25: tutti gli endpoint del ciclo offerta esposti.
+#        Codice `OFC-*` automatico via trigger DB; `crea-revisione/`,
+#        `revisioni/`, `push-contratto/` cablati end-to-end. Niente
+#        endpoint "non ancora cablato" residuo.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -416,6 +416,58 @@ class ApiOffertaCreaRevisione(DomainAPIView):
         )
         return success_response(
             OfferteService().crea_revisione(offerta_id, user=user)
+        )
+
+
+_PUSH_CONTRATTO_REQUEST = inline_serializer(
+    name="VenditeOffertaPushContrattoReq",
+    fields={
+        # Pratica opzionale: se valorizzata, il contratto viene inserito
+        # come sorgente collegata in `pratiche.pratiche_sorgenti`.
+        "pratica_id": serializers.IntegerField(required=False, allow_null=True),
+    },
+)
+
+
+class ApiOffertaPushContratto(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_PUSH_CONTRATTO_REQUEST,
+        responses={200: inline_serializer(
+            name="VenditeOffertaPushContrattoResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: ACCETTATA -> contratto DRAFT (Step 8). Idempotente per
+    #        costruzione: doppia chiamata fallisce con
+    #        E_OFFERTA_CONTRATTO_GIA_GENERATO. Ritorna id+numero+uid del
+    #        contratto DRAFT generato — il FE puo' navigare al
+    #        `ContrattoDrawer` via `contratto_id`.
+    def post(self, request: Request, offerta_id: int) -> JsonResponse:
+        body = request.data or {}
+        pratica_id_raw = body.get("pratica_id")
+        pratica_id: int | None = None
+        if pratica_id_raw is not None:
+            # Coercion lato view per accettare sia `7` (int) sia `"7"` (string,
+            # ad es. da QSearchParams o body urlencoded). Conversione errata ->
+            # ServiceError 400 strutturato (no ValueError raw: bypasserebbe
+            # l'error envelope del middleware).
+            try:
+                pratica_id = int(pratica_id_raw)
+            except (TypeError, ValueError) as exc:
+                from apps.core.services.error_manager import ErrorManager
+                ErrorManager.raise_error(
+                    code="E_VENDITE_VALIDATION",
+                    message="pratica_id non valido.",
+                    detail=f"atteso intero positivo, ricevuto {pratica_id_raw!r}",
+                    context={"pratica_id": pratica_id_raw},
+                    cause=exc,
+                )
+        return success_response(
+            OfferteService().push_a_contratto(
+                offerta_id, pratica_id=pratica_id
+            )
         )
 
 
