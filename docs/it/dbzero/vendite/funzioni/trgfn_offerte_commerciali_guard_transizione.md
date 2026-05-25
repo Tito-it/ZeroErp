@@ -66,7 +66,8 @@ BEGIN
                 TG_NAME::text,
                 'E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO',
                 jsonb_build_object('offerta_id', NEW.id),
-                NEW.tx_id
+                NEW.tx_id,
+                NEW.id::text
             );
         END IF;
 
@@ -106,7 +107,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_guard_transizione()
-IS 'BEFORE UPDATE OF stato_doc_offerta_id: blocca transizioni non ammesse (config-driven via config.stati_doc_offerte_transizioni). Guard BOZZA->EMESSA: listino_versione_id NOT NULL + stato ATTIVA. Valorizza data_emissione|data_accettazione|data_rifiuto|data_annullamento. rev 2026-05-24.';
+IS 'BEFORE UPDATE OF stato_doc_offerta_id: blocca transizioni non ammesse (config-driven via config.stati_doc_offerte_transizioni). Guard BOZZA->EMESSA: listino_versione_id NOT NULL + stato ATTIVA. Valorizza data_emissione|data_accettazione|data_rifiuto|data_annullamento. rev 2026-05-25 (fix VARIADIC fn_log_and_raise_error).';
 ```
 
 ---
