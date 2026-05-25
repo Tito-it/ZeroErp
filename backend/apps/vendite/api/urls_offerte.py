@@ -13,11 +13,13 @@ from django.urls import path
 
 from apps.vendite.api.views_offerte import (
     ApiOffertaAnnulla,
+    ApiOffertaCreaRevisione,
     ApiOffertaDetail,
     ApiOffertaEccezioneDetail,
     ApiOffertaEccezioni,
     ApiOffertaEmetti,
     ApiOffertaRegistraEsito,
+    ApiOffertaRevisioni,
     ApiOffertaUtility,
     ApiOffertaUtilityDetail,
     ApiOfferteList,
@@ -46,6 +48,17 @@ urlpatterns = [
         "<int:offerta_id>/annulla/",
         ApiOffertaAnnulla.as_view(),
         name="vendite-offerta-annulla",
+    ),
+    # Revisioni (Step 6-7 brief DB, atterrati 2026-05-25).
+    path(
+        "<int:offerta_id>/crea-revisione/",
+        ApiOffertaCreaRevisione.as_view(),
+        name="vendite-offerta-crea-revisione",
+    ),
+    path(
+        "<int:offerta_id>/revisioni/",
+        ApiOffertaRevisioni.as_view(),
+        name="vendite-offerta-revisioni-list",
     ),
     # Eccezioni.
     path(

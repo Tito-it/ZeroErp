@@ -51,8 +51,9 @@ def _qp_int_optional(raw: str | None, name: str) -> int | None:
 _OFFERTA_CREATE_REQUEST = inline_serializer(
     name="VenditeOffertaCreateReq",
     fields={
-        # `codice` richiesto finche' il team DB non chiude step 5 (sistema_codici).
-        "codice": serializers.CharField(),
+        # Step 5 atterrato 2026-05-25: `codice` generato dal trigger DB
+        # (BEFORE INSERT). Non va piu' nel payload — rifiutato come
+        # unknown_key dalla whitelist applicativa.
         "emittente_fiscale_id": serializers.IntegerField(),
         "billing_account_id": serializers.IntegerField(),
         "istanza_utility_id": serializers.IntegerField(),
@@ -383,6 +384,56 @@ class ApiOffertaAnnulla(DomainAPIView):
         return success_response(
             OfferteService().annulla(offerta_id, motivazione=motivazione)
         )
+
+
+# =================================================================
+# Revisioni (Step 6-7 brief DB, atterrati 2026-05-25)
+# =================================================================
+
+
+class ApiOffertaCreaRevisione(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=None,
+        responses={200: inline_serializer(
+            name="VenditeOffertaCreaRevisioneResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: EMESSA -> crea rev.N+1 (BOZZA). La fn DB
+    #        `fn_crea_revisione_offerta` copia testata + eccezioni attive +
+    #        utility 1:1 e marca la rev.N corrente come SUPERATA via
+    #        trigger AFTER INSERT. Ritorna la nuova rev.N+1.
+    def post(self, request: Request, offerta_id: int) -> JsonResponse:
+        # Audit: username Django se autenticato (pattern progetto via
+        # `is_authenticated`: `AnonymousUser` ha `username=""`, non None, e
+        # `bool(request.user)` e' True per anonimi — affidarci a `request.user`
+        # truthy farebbe scrivere stringa vuota in audit. La fn DB ha
+        # COALESCE(p_user, CURRENT_USER) come fallback per p_user NULL.
+        user = (
+            request.user.username if request.user.is_authenticated else None
+        )
+        return success_response(
+            OfferteService().crea_revisione(offerta_id, user=user)
+        )
+
+
+class ApiOffertaRevisioni(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="VenditeOffertaRevisioniListResp",
+            fields={"data": serializers.ListField()},
+        )},
+    )
+    # Scopo: Lista catena revisioni che condividono il root (rev.1) con
+    #        l'offerta passata. Output ordinato per `revisione_numero`.
+    #        Lettura libera in ogni stato.
+    def get(self, request: Request, offerta_id: int) -> JsonResponse:
+        del request
+        return success_response(OfferteService().list_revisioni(offerta_id))
 
 
 # =================================================================

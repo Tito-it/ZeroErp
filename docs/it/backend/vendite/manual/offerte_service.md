@@ -30,13 +30,19 @@ Il service e' **sottile**: applica solo pre-condizioni applicative
 (stato corrente, payload non vuoto, motivazione obbligatoria su transizioni
 negative) e traduce gli errori DB in `ServiceError` con codice originale.
 
-### Perimetro D4 (rev. 2026-05-24d)
+### Perimetro D5 (rev. 2026-05-25)
 
-Cablati i metodi coerenti con quanto consegnato dal team DB negli step 1-4
-+ addendum del brief. **Non** cablati (in attesa step 5-8):
+Cablati i metodi coerenti con quanto consegnato dal team DB:
 
-- generazione automatica codice `OFC-*` via `sistema_codici` (step 5)
-- `crea_revisione`, `push_a_contratto`, `list_revisioni` (step 7-8)
+- step 1-4 + addendum (commit 2026-05-24): testata, eccezioni, utility 1:1,
+  state machine, `motivazione_rifiuto`
+- step 5-7 (commit 2026-05-25): codice automatico `OFC-*` via trigger,
+  `crea_revisione`, `list_revisioni`
+
+**Non** cablato (in attesa step 8):
+
+- `push_a_contratto` (richiede `fn_push_offerta_a_contratto` + ALTER
+  `vendite.contratti ADD COLUMN offerta_id`)
 
 ## Input
 
@@ -52,10 +58,12 @@ Cablati i metodi coerenti con quanto consegnato dal team DB negli step 1-4
 
 ### Mutazione testata
 
-- `crea_offerta(payload) -> OffertaRow` — payload richiede `codice`,
+- `crea_offerta(payload) -> OffertaRow` — payload richiede
   `emittente_fiscale_id`, `billing_account_id`, `istanza_utility_id`,
-  `utility_id`, `listino_id`, `validita_dal`. Stato iniziale BOZZA
-  risolto via `repo.get_stato_id_by_codice(StatoOfferta.BOZZA)`.
+  `utility_id`, `listino_id`, `validita_dal`. Il `codice` **non va nel
+  payload** (rifiutato come unknown_key): lo genera il trigger DB
+  `trgfn_offerte_commerciali_gen_codice` (BEFORE INSERT). Stato iniziale
+  BOZZA risolto via `repo.get_stato_id_by_codice(StatoOfferta.BOZZA)`.
 - `aggiorna_offerta(offerta_id, payload) -> OffertaRow` — solo in BOZZA;
   payload `{}` rifiutato.
 - `elimina_offerta(offerta_id) -> None` — solo in BOZZA. Pulizia
@@ -72,6 +80,17 @@ Cablati i metodi coerenti con quanto consegnato dal team DB negli step 1-4
   delega al metodo specifico
 - `annulla(offerta_id, *, motivazione) -> OffertaRow` —
   BOZZA -> ANNULLATA + motivazione obbligatoria
+
+### Revisioni (step 6-7, 2026-05-25)
+
+- `crea_revisione(offerta_id, *, user=None) -> OffertaRow` — invoca
+  `vendite.fn_crea_revisione_offerta(p_offerta_id, p_user)`. Guard
+  applicativo `EMESSA`; il DB rifiuta con
+  `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO` propagato come `code` originale.
+  Ritorna la nuova rev.N+1 (dettaglio completo via `get_offerta`).
+- `list_revisioni(offerta_id) -> list[OffertaRow]` — catena di revisioni
+  che condividono il root con l'offerta passata. CTE ricorsiva
+  ancestors → root → descendants. Lettura libera in ogni stato.
 
 ### Mutazione sub-resource
 
@@ -139,11 +158,13 @@ Errori sono `ServiceError` con `code` semantico:
 - `trgfn_offerte_commerciali_guard_transizione` — state machine + guard
   versione listino + valorizzazione `data_*` di transizione
 
-**Funzioni** (riservate, non ancora cablate):
+**Funzioni**:
 
 - `script.fn_generate_codice('offerta_commerciale')` — step 5 DB
-- `vendite.fn_crea_revisione_offerta` — step 7 DB
-- `vendite.fn_push_offerta_a_contratto` — step 8 DB
+  (invocata dal trigger BEFORE INSERT, non chiamata direttamente dal service)
+- `vendite.fn_crea_revisione_offerta(p_offerta_id, p_user)` — step 7 DB,
+  invocata da `repo.crea_revisione`
+- `vendite.fn_push_offerta_a_contratto` — step 8 DB (non ancora cablato)
 
 **Helper applicativi** (`apps.core`):
 
@@ -167,15 +188,17 @@ Errori sono `ServiceError` con `code` semantico:
     (fix #7: niente stringhe magiche sparse)
   - Suite test 16 -> 26 casi con happy path + propagazione codice DB +
     ownership eccezioni
-- **In attesa team DB** (sblocca cantiere BE residuo):
-  - Step 5 — `sistema_codici` `OFC-*`: il service generera' il codice e
-    rifiutera' il campo dal payload; lo schema OpenAPI cambia di conseguenza.
-  - Step 6-7 — trigger revisione + `fn_crea_revisione_offerta`: si
-    aggiungeranno `crea_revisione(offerta_id)` (guard EMESSA) e
-    `list_revisioni(offerta_padre_id)`.
-  - Step 8 — `fn_push_offerta_a_contratto` + ALTER `contratti.offerta_id`:
-    si aggiungera' `push_a_contratto(offerta_id, pratica_id?)` con
-    idempotenza pattern A.
+- **2026-05-25 — Step DB 5-7 atterrati** (commit `13d57a846`):
+  - `codice` rimosso dalla whitelist `_CREATE_KEYS_OFFERTA` e da
+    `_OFFERTA_CREATE_COLS` (generato dal trigger DB)
+  - `crea_revisione(offerta_id, *, user=None)` + `list_revisioni(offerta_id)`
+    aggiunti a service e repository, esposti via `POST .../crea-revisione/`
+    e `GET .../revisioni/`
+  - 6 test happy/fail aggiunti (suite 26 → 32)
+- **In attesa team DB**:
+  - Step 8 — `fn_push_offerta_a_contratto` + `ALTER vendite.contratti ADD
+    offerta_id`: si aggiungera' `push_a_contratto(offerta_id, pratica_id?)`
+    con idempotenza pattern A.
 
 ## Riferimenti
 
