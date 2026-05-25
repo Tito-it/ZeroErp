@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fix preset fornitori_default: rimuove la riga stale (preset_id=3, colonna_id=codice_fiscale).
+#
+# Why: il seed iniziale (20260507-09, loadUpdateData) aveva caricato
+# la riga (preset_id=3, colonna_id=28 = codice_fiscale) dal CSV originale.
+# Il CSV e' stato corretto — colonna_id=23 (id_fiscale, campo_sorgente
+# id_fiscale_univoco_cf_piva) — ma loadUpdateData non elimina righe
+# rimosse dal CSV: occorre una DELETE esplicita sulla riga stale.
+#
+# Ordine di apply: questo changeset esegue DOPO 20260507-09 (che ha gia'
+# inserito la nuova riga 3/23 via upsert), quindi la DELETE e' sicura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260524-24-fix-preset-fornitori-colonna-id-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260524-24-fix-preset-fornitori-colonna-id-fiscale
+      author: mctit
+      failOnError: true
+      comment: >
+        Rimuove la riga stale (preset_id fornitori_default, colonna codice_fiscale)
+        dal preset fornitori_default. La colonna corretta e' id_fiscale
+        (campo_sorgente id_fiscale_univoco_cf_piva), gia' inserita via CSV.
+
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM ui.lista_preset_colonna lpc
+                JOIN ui.lista_preset lp    ON lp.id = lpc.preset_id
+                JOIN ui.lista_colonna lc   ON lc.id = lpc.colonna_id
+                JOIN ui.lista_definizione ld ON ld.id = lp.lista_id
+               WHERE ld.codice = 'anagrafiche.fornitori'
+                 AND lp.codice = 'fornitori_default'
+                 AND lc.codice = 'codice_fiscale';
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rimuove la riga stale codice_fiscale dal preset fornitori_default.
+              -- La preCondition MARK_RAN evita doppia esecuzione se gia' corretta.
+              DELETE FROM ui.lista_preset_colonna
+               WHERE preset_id = (
+                       SELECT lp.id
+                         FROM ui.lista_preset lp
+                         JOIN ui.lista_definizione ld ON ld.id = lp.lista_id
+                        WHERE ld.codice = 'anagrafiche.fornitori'
+                          AND lp.codice = 'fornitori_default'
+                     )
+                 AND colonna_id = (
+                       SELECT lc.id
+                         FROM ui.lista_colonna lc
+                         JOIN ui.lista_definizione ld ON ld.id = lc.lista_id
+                        WHERE ld.codice  = 'anagrafiche.fornitori'
+                          AND lc.codice  = 'codice_fiscale'
+                     );

@@ -1,5 +1,4 @@
 {% include-markdown "it/dbzero/config/manual/stati_doc_offerte_transizioni.md" %}
-
 # 📚 Tabella `stati_doc_offerte_transizioni`
 
 ## 🗂️ Campi principali
@@ -29,6 +28,16 @@
 |------|-------------|
 | pk_stati_doc_offerte_transizioni | `CREATE UNIQUE INDEX pk_stati_doc_offerte_transizioni ON config.stati_doc_offerte_transizioni USING btree (id)` |
 | uq_stati_doc_offerte_transizioni | `CREATE UNIQUE INDEX uq_stati_doc_offerte_transizioni ON config.stati_doc_offerte_transizioni USING btree (stato_da_id, stato_a_id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte__54aa7f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_da_id', 'id')` |
+| trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte__54aa7f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_da_id', 'id')` |
+| trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte__9f88b6 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_a_id', 'id')` |
+| trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte__9f88b6 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_a_id', 'id')` |
+| trg_stati_doc_offerte_transizioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_stati_doc_offerte_transizioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

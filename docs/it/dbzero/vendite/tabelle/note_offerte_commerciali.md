@@ -52,6 +52,12 @@
 |------|--------|--------|--------|
 | trg_note_offerte_commerciali_a10_eccezioni_require_attivo_ins_u | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'offerte_commerciali_eccezioni', 'attivo', 'target_riga_id', 'id')` |
 | trg_note_offerte_commerciali_a10_eccezioni_require_attivo_ins_u | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'offerte_commerciali_eccezioni', 'attivo', 'target_riga_id', 'id')` |
+| trg_note_offerte_commerciali_a10_offerte_commerciali_ecc_499d43 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'offerte_commerciali_eccezioni', 'attivo', 'target_riga_id', 'id')` |
+| trg_note_offerte_commerciali_a10_offerte_commerciali_ecc_499d43 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'offerte_commerciali_eccezioni', 'attivo', 'target_riga_id', 'id')` |
+| trg_note_offerte_commerciali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_note_offerte_commerciali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_note_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_note_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_note_offerte_commerciali_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.offerte_commerciali_eccezioni', 'offerta_id', 'OFFERTA')` |
 | trg_note_offerte_commerciali_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.offerte_commerciali_eccezioni', 'offerta_id', 'OFFERTA')` |
 

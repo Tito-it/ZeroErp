@@ -38,5 +38,13 @@
 | pk_offerte_commerciali_utilities | `CREATE UNIQUE INDEX pk_offerte_commerciali_utilities ON vendite.offerte_commerciali_utilities USING btree (id)` |
 | uq_offerte_commerciali_utilities_offerta_id | `CREATE UNIQUE INDEX uq_offerte_commerciali_utilities_offerta_id ON vendite.offerte_commerciali_utilities USING btree (offerta_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_offerte_commerciali_utilities_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_offerte_commerciali_utilities_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_offerte_commerciali_utilities_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_offerte_commerciali_utilities_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

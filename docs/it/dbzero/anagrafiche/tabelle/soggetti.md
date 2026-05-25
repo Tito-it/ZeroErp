@@ -61,8 +61,8 @@
 |------|--------|--------|--------|
 | trg_soggetti_a10_contatti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'contatti', 'soggetto_id', 'id', 'attivo')` |
 | trg_soggetti_a10_dati_societari_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'dati_societari', 'soggetto_id', 'id', 'attivo')` |
-| trg_soggetti_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_gen_codice()` |
 | trg_soggetti_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_gen_codice()` |
+| trg_soggetti_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_gen_codice()` |
 | trg_soggetti_a10_guard_cf_piva_obbligatori_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()` |
 | trg_soggetti_a10_guard_cf_piva_obbligatori_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()` |
 | trg_soggetti_a10_indirizzi_soggetti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'indirizzi_soggetti', 'soggetto_id', 'id', 'attivo')` |
@@ -75,8 +75,8 @@
 | trg_soggetti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_soggetti_def_guard_dati_societari_required_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_required()` |
 | trg_soggetti_def_guard_dati_societari_required_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_required()` |
-| trg_soggetti_def_guard_indirizzi_required_aft_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()` |
 | trg_soggetti_def_guard_indirizzi_required_aft_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()` |
+| trg_soggetti_def_guard_indirizzi_required_aft_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()` |
 | trg_soggetti_def_guard_soggetto_contatti_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti()` |
 | trg_soggetti_def_guard_soggetto_contatti_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti()` |
 | trg_soggetti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

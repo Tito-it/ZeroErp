@@ -15,11 +15,13 @@
 > • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 > • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
 >
-**Funzioni associate (da implementare — Step 5-8):**
+**Trigger e funzioni associate:**
 >
-> • `vendite.trgfn_offerte_commerciali_guard_transizione` — guard state machine (Step 4)
-> • `vendite.fn_crea_revisione_offerta` — crea revisione N+1, marca padre SUPERATA (Step 7)
-> • `vendite.fn_push_offerta_a_contratto` — push idempotente a contratto DRAFT (Step 8)
+> • `vendite.trgfn_offerte_commerciali_guard_transizione` — guard state machine ✅ (Step 4)
+> • `vendite.trgfn_offerte_commerciali_gen_codice` — generazione `OFC-NNNNNNN` ✅ (Step 5)
+> • `vendite.trgfn_offerte_commerciali_revisione` — marca padre SUPERATA all'INSERT rev.N+1 ✅ (Step 6)
+> • `vendite.fn_crea_revisione_offerta` — crea revisione N+1 (Step 7, da fare)
+> • `vendite.fn_push_offerta_a_contratto` — push idempotente a contratto DRAFT (Step 8, da fare)
 
 ---
 

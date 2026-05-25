@@ -3,10 +3,10 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: seed DEF-8 — lista configurabile anagrafiche.fornitori
--- Scope: verifica che migration 20260524-11 + aggiornamenti CSV
+-- Scope: verifica che migration 20260524-11/12 + aggiornamenti CSV
 --        abbiano prodotto lo stato atteso nel DB.
 --
--- Indice test (1..11):
+-- Indice test (1..12):
 --   1.  Vista vw_fornitori_dettaglio ha id_fiscale_univoco_cf_piva
 --   2.  Lista anagrafiche.fornitori presente in lista_definizione
 --   3.  vista_sql della lista = vw_fornitori_dettaglio
@@ -17,11 +17,11 @@
 --   8.  Preset fornitori_default: pagina_dimensione=50, ambito=sistema
 --   9.  Esattamente 7 colonne nel preset fornitori_default
 --   10. Tutte le 7 colonne del preset hanno visibile=true
---   11. Colonna codice ha fissata=true nel preset (skip se utente non disponibile)
---   SKIP-condizionale: fn_resolve_lista_config restituisce 15 colonne totali
+--   11. Colonna codice ha fissata=true nel preset
+--   12. Il preset mostra id_fiscale (CF/PIVA unificato), NON codice_fiscale
 -- ------------------------------------------------------------
 BEGIN;
-SELECT plan(11);
+SELECT plan(12);
 
 -- =========================================================
 -- 1. Vista vw_fornitori_dettaglio ha id_fiscale_univoco_cf_piva
@@ -185,6 +185,34 @@ SELECT ok(
            AND lc.codice = 'codice'
     ),
     '11. Colonna codice: fissata=true nel preset fornitori_default'
+);
+
+-- =========================================================
+-- 12. Il preset mostra id_fiscale (CF/PIVA unificato), NON codice_fiscale
+--     Verifica fix migration 20260524-12: riga stale codice_fiscale rimossa.
+-- =========================================================
+SELECT ok(
+    EXISTS (
+        SELECT 1
+          FROM ui.lista_preset_colonna lpc
+          JOIN ui.lista_colonna lc    ON lc.id = lpc.colonna_id
+          JOIN ui.lista_preset lp     ON lp.id = lpc.preset_id
+          JOIN ui.lista_definizione ld ON ld.id = lp.lista_id
+         WHERE ld.codice = 'anagrafiche.fornitori'
+           AND lp.codice = 'fornitori_default'
+           AND lc.codice = 'id_fiscale'
+    )
+    AND NOT EXISTS (
+        SELECT 1
+          FROM ui.lista_preset_colonna lpc
+          JOIN ui.lista_colonna lc    ON lc.id = lpc.colonna_id
+          JOIN ui.lista_preset lp     ON lp.id = lpc.preset_id
+          JOIN ui.lista_definizione ld ON ld.id = lp.lista_id
+         WHERE ld.codice = 'anagrafiche.fornitori'
+           AND lp.codice = 'fornitori_default'
+           AND lc.codice = 'codice_fiscale'
+    ),
+    '12. Preset fornitori_default: colonna id_fiscale presente, codice_fiscale assente (fix 20260524-12)'
 );
 
 SELECT * FROM finish();
