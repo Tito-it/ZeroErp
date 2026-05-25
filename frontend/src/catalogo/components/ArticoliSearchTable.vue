@@ -24,7 +24,7 @@ const emit = defineEmits(['new', 'row-click', 'manage-uom', 'manage-bom', 'manag
 const { t, te } = useI18n()
 const store = useArticoliStore()
 const isBlocked = useInjectBlocked()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
+const { searchText, onPage, onSort, applyFilters, reloadAction, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'descrizione'
 })
 
@@ -33,13 +33,7 @@ const compositoFilter = ref(null)
 const tipologiaFilter = ref(null)
 const gruppoFilter = ref(null)
 const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
+  reloadAction(),
   {
     key: 'new',
     kind: 'primary',

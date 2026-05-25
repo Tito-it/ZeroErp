@@ -1,16 +1,30 @@
 <script setup>
-// Scopo: DataTable paginata fornitori con search, filtro stato e attivo.
-// Riusabile da: FornitoriView, futuro ricerca fornitori in altri domini.
+// Scopo: Lista fornitori con search e filtro stato.
+// Migrazione DEF-8 (2026-05-24) gemello clienti+soggetti: il DataTable
+// statico e' sostituito da <ListaConfigurabile codice="anagrafiche.fornitori">.
+// La toolbar e' UNICA, esterna, con PageActionsBar standard:
+// refresh + personalizza-colonne + export + nuovo (su touch finiscono
+// nel kebab).
+//
+// Le colonne provengono dal seed BE (`ui.lista_colonna` di
+// 'anagrafiche.fornitori'); il caller fornisce slot custom solo per la
+// cella `stato` (Tag severity) e per le azioni (3 sub-drawer anagrafici).
+// La colonna 'id_fiscale' ha `campo_sorgente='id_fiscale_univoco_cf_piva'`
+// (colonna GENERATED dalla vista vw_fornitori_dettaglio): il default
+// formatter di <ListaConfigurabile> rende correttamente CF o P.IVA.
+//
+// Allineamento store <-> config: all'evento @config-loaded sincronizziamo
+// `store.filters.limit` con la `pagina_dimensione` risolta dal BE, una
+// sola volta dopo il primo load.
 import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFornitoriStore } from '../stores/fornitori'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { displayDate } from '../../core/utils/date'
+import { useFileDownload } from '../../core/composables/useFileDownload'
+import { exportFornitori } from '../api/anagrafiche'
 import { statoFornitoreSeverity } from '../../core/utils/severity'
 import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import SearchHint from '../../core/components/SearchHint.vue'
@@ -19,6 +33,8 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 
@@ -31,7 +47,40 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
   defaultSortField: 'ragione_sociale_completa'
 })
 
+// Ref al ListaConfigurabile per chiamare openModal() / leggere
+// dirty / colonneNuove (stato esposto via defineExpose, auto-unwrappato
+// nel parent — niente `.value` extra sui ref esposti).
+const listaRef = ref(null)
+const dirty = computed(() => listaRef.value?.dirty ?? false)
+const colonneNuove = computed(() => listaRef.value?.colonneNuove ?? 0)
+const configReady = computed(() => listaRef.value?.config != null)
+
+// Filtri custom (toolbar caller)
 const statoFilter = ref(null)
+
+// Export DEF-1: scarica CSV o Excel con i filtri attualmente applicati.
+const { download: downloadFile, loading: exportLoading } = useFileDownload()
+const exportDialogVisible = ref(false)
+
+function buildExportParams(format) {
+  // NB: il query param si chiama `formato` (italiano) NON `format`.
+  // `format` e' un magic parameter DRF (content-negotiation): se non ha
+  // un renderer registrato per il valore passato, DRF risponde 404 prima
+  // di entrare nella view.
+  const p = { formato: format }
+  if (searchText.value?.trim()) p.search = searchText.value.trim()
+  if (statoFilter.value != null) p.stato_fornitore_id = statoFilter.value
+  return p
+}
+
+async function onExportConfirm(format) {
+  const result = await downloadFile(
+    () => exportFornitori(buildExportParams(format)),
+    { successMessage: t('lista_config.export_success') },
+  )
+  if (result !== null) exportDialogVisible.value = false
+}
+
 const pageActions = computed(() => [
   {
     key: 'reload',
@@ -39,6 +88,28 @@ const pageActions = computed(() => [
     label: t('common.reload_list'),
     icon: MANAGE_ICONS.RELOAD,
     command: reload,
+  },
+  {
+    key: 'personalizza-colonne',
+    kind: 'utility',
+    label: colonneNuove.value > 0
+      ? `${t('lista_config.personalizza_colonne')} (${colonneNuove.value})`
+      : t('lista_config.personalizza_colonne'),
+    tooltip: colonneNuove.value > 0
+      ? t('lista_config.colonne_nuove_disponibili', { n: colonneNuove.value })
+      : t('lista_config.personalizza_colonne'),
+    icon: MANAGE_ICONS.PERSONALIZZA,
+    disabled: !configReady.value,
+    command: () => listaRef.value?.openModal?.(),
+  },
+  {
+    key: 'export',
+    kind: 'utility',
+    label: t('lista_config.export'),
+    tooltip: t('lista_config.export_tooltip'),
+    icon: MANAGE_ICONS.DOWNLOAD,
+    disabled: exportLoading.value,
+    command: () => { exportDialogVisible.value = true },
   },
   {
     key: 'new',
@@ -50,14 +121,33 @@ const pageActions = computed(() => [
     command: () => emit('new'),
   },
 ])
+
 function onStatoChange() {
   store.filters.stato_fornitore_id = statoFilter.value
   applyFilters()
 }
 
-function onRowClick(event) { emit('row-click', event.data) }
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento Primevue).
+function onRowClick(data) { emit('row-click', data) }
+
+// Scopo: Allinea store.filters.limit alla pagina_dimensione risolta dal
+// BE al primo load. Se il valore differisce e l'utente non ha ancora
+// fetchato dati specifici, aggiorna lo store; se e' gia' partita una
+// fetch precedente con limit diverso, il prossimo onPage la risolve.
+const configAligned = ref(false)
+function onConfigLoaded(config) {
+  if (configAligned.value) return
+  configAligned.value = true
+  const newLimit = config?.pagina_dimensione
+  if (newLimit && newLimit !== store.filters.limit) {
+    store.filters.limit = newLimit
+    if (store.hasSearched) store.fetchList()
+  }
+}
 
 // Scopo: azioni di riga del fornitore (sub-drawer anagrafici).
+// Conto bancario disabilitato se l'oggetto e' BLOCCATO per l'operatore
+// (defense-in-depth UX: evita click che genererebbero 403).
 function buildRowActions(data) {
   const contiBlocked = auth.isObjectBlocked('anagrafiche', 'conto_bancario')
   return [
@@ -103,67 +193,77 @@ onMounted(() => {
     <AccessoBloccatoPanel v-if="isBlocked" />
 
     <template v-else>
-    <div class="app-page-toolbar">
-      <div class="app-page-filters">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('fornitori.search_placeholder')"
-        />
-        <LookupSelect
-          v-model="statoFilter"
-          rel="config.stati_fornitore"
-          :placeholder="t('fornitori.filtro_stato')"
-          show-clear
-          @change="onStatoChange"
-        />
+      <!-- Toolbar UNICA esterna (pattern lista standard frontend-standards.md):
+           filtri a sinistra, PageActionsBar a destra. Su touch/tablet
+           PageActionsBar collassa nel kebab. -->
+      <div class="app-page-toolbar">
+        <div class="app-page-filters">
+          <InputText
+            v-model="searchText"
+            :placeholder="t('fornitori.search_placeholder')"
+          />
+          <LookupSelect
+            v-model="statoFilter"
+            rel="config.stati_fornitore"
+            :placeholder="t('fornitori.filtro_stato')"
+            show-clear
+            @change="onStatoChange"
+          />
+        </div>
+        <PageActionsBar :actions="pageActions">
+          <template #suffix>
+            <Tag
+              v-if="dirty"
+              :value="t('lista_config.stato_temporanea')"
+              severity="warn"
+              v-tooltip.bottom="t('lista_config.stato_temporanea_tooltip')"
+            />
+            <Tag
+              v-else-if="configReady"
+              :value="t('lista_config.stato_salvata')"
+              severity="success"
+            />
+            <ReadonlyBadge />
+          </template>
+        </PageActionsBar>
       </div>
-      <PageActionsBar :actions="pageActions">
-        <template #suffix>
-          <ReadonlyBadge />
-        </template>
-      </PageActionsBar>
-    </div>
 
-    <!-- Placeholder: nessuna ricerca effettuata -->
-    <SearchHint v-if="!store.hasSearched && !store.loading" />
+      <!-- Placeholder: nessuna ricerca effettuata. Il <ListaConfigurabile>
+           resta montato anche con dati vuoti per preservare lo stato
+           config; lo SearchHint copre solo visualmente lo stato iniziale. -->
+      <SearchHint v-if="!store.hasSearched && !store.loading" />
 
-    <DataTable
-      v-show="store.hasSearched || store.loading"
-      :value="store.items"
-      :loading="store.loading"
-      v-bind="paginatorProps"
-      lazy
-      removable-sort
-      striped-rows
-      scrollable
-      scrollHeight="flex"
-      class="app-datatable"
-      @page="onPage"
-      @sort="onSort"
-      @row-click="onRowClick"
-      selection-mode="single"
-      data-key="id"
-    >
-      <Column field="codice" :header="t('fornitori.col_codice')" sortable style="width: 130px;" />
-      <Column field="ragione_sociale_completa" :header="t('fornitori.col_ragione_sociale')" sortable style="width: 200px;" />
-      <Column field="codice_fiscale" :header="t('fornitori.col_id_fiscale')" style="width: 160px;">
-        <template #body="{ data }">{{ data.partita_iva || data.codice_fiscale }}</template>
-      </Column>
-      <Column field="modalita_pagamento_desc" :header="t('fornitori.col_modalita_pagamento')" sortable style="width: 150px;" />
-      <Column field="stato_descrizione" :header="t('fornitori.col_stato')" sortable style="width: 110px;">
-        <template #body="{ data }">
+      <ListaConfigurabile
+        ref="listaRef"
+        v-show="store.hasSearched || store.loading"
+        codice="anagrafiche.fornitori"
+        :rows="store.items"
+        :total="store.totalRecords"
+        :loading="store.loading"
+        :paginator-options="paginatorProps"
+        :page="paginatorProps.first / paginatorProps.rows + 1"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
+        @page="onPage"
+        @sort="onSort"
+        @row-click="onRowClick"
+        @config-loaded="onConfigLoaded"
+      >
+        <!-- Stato fornitore: Tag colorato per severity. -->
+        <template #cell-stato="{ data }">
           <Tag :value="data.stato_descrizione" :severity="statoFornitoreSeverity(data.stato_codice)" />
         </template>
-      </Column>
-      <Column field="data_insert" :header="t('fornitori.col_data_insert')" sortable style="width: 110px;">
-        <template #body="{ data }">{{ displayDate(data.data_insert) }}</template>
-      </Column>
-      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-        <template #body="{ data }">
+
+        <template #actions="{ data }">
           <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
-      </Column>
-    </DataTable>
+      </ListaConfigurabile>
     </template>
+
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @export="onExportConfirm"
+    />
   </div>
 </template>

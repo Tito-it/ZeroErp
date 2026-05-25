@@ -47,6 +47,32 @@ class FornitoriService:
     def list_fornitori(self, **params: Any) -> tuple[list, int]:
         return self._repo.list_fornitori(**params)
 
+    # Scopo: Risolve i filtri attivi della lista fornitori in dict
+    #        {label_italiano: descrizione_leggibile} per l'header
+    #        dell'export DEF-1. Stesso pattern di
+    #        `ClientiService.resolve_filtri_export_label` /
+    #        `SoggettiService.resolve_filtri_export_label`: sostituisce il
+    #        dump JSON opaco ("stato_fornitore_id: 3") con etichette
+    #        comprensibili ("Stato: Attivo").
+    #
+    #        Fallback: se il lookup non trova match (id obsoleto), usa
+    #        "id=N" per non perdere informazione.
+    def resolve_filtri_export_label(
+        self,
+        *,
+        search: str | None = None,
+        stato_fornitore_id: int | None = None,
+    ) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        if search:
+            out["Ricerca"] = search
+        if stato_fornitore_id is not None:
+            desc = self._repo.get_stato_fornitore_descrizione(
+                stato_fornitore_id,
+            )
+            out["Stato"] = desc or f"id={stato_fornitore_id}"
+        return out
+
     # Scopo: Dettaglio completo di un fornitore.
     def get_fornitore(self, fornitore_id: int) -> dict[str, Any]:
         fornitore = self._repo.get_fornitore(fornitore_id)

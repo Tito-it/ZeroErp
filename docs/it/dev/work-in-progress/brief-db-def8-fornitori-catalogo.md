@@ -146,14 +146,19 @@ nel preset = appare come "nascosta" finché l'utente non la attiva):
 |---|---|---|---|---|---|
 | `fornitori_default` | `codice` | 10 | 130 | t | t |
 | `fornitori_default` | `ragione_sociale_completa` | 20 | 200 | t | f |
-| `fornitori_default` | `codice_fiscale` | 30 | 160 | t | f |
+| `fornitori_default` | `id_fiscale` | 30 | 160 | t | f |
 | `fornitori_default` | `modalita_pagamento_desc` | 40 | 150 | t | f |
 | `fornitori_default` | `stato` | 50 | 110 | t | f |
 | `fornitori_default` | `data_insert` | 60 | 110 | t | f |
 | `fornitori_default` | `azioni` | 99 |  | t | f |
 
 `codice` ha `fissata=true` (identificatore, pattern clienti+soggetti).
-Le 7 colonne extra del catalogo NON sono nel preset → in
+**Importante**: la colonna visibile nel preset deve essere `id_fiscale`
+(la versione unificata che mostra CF o P.IVA via campo GENERATED), NON
+`codice_fiscale` (CF puro, vuoto per quasi tutti i fornitori azienda).
+Le 8 colonne extra del catalogo (`codice_fiscale`, `partita_iva`,
+`pec_email`, `canale_fe`, `split_payment`, `ritenuta_acconto`,
+`regime_fiscale`, `data_update`) NON sono nel preset → in
 `fn_resolve_lista_config` lo Step 3 "merge colonne nuove" le aggiunge
 automaticamente in coda con `visibile=false`, e il `colonne_nuove` count
 le segnala col badge "N nuove disponibili" all'utente.

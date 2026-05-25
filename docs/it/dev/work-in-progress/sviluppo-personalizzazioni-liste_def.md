@@ -36,7 +36,7 @@ Questo documento e' la **roadmap operativa** degli sviluppi non implementati: pe
 | # | Item | Stato | Sforzo | Priorita' | Dipende da |
 |---|---|---|---|---|---|
 | DEF-5b | Fase 2 Blocco F (CRUD `lista_definizione` + `lista_colonna` + `etichetta_i18n_key` UX) | 🟢 Done 2026-05-10 | L | — | — |
-| DEF-8 | Estendere parametrizzazione ad altre liste (incrementale) | 🟡 Parziale (2/N done) | S per lista | **Alta** | Blocco F Fase 1 done |
+| DEF-8 | Estendere parametrizzazione ad altre liste (incrementale) | 🟡 Parziale (3/N done) | S per lista | **Alta** | Blocco F Fase 1 done |
 | DEF-1 | Export CSV/Excel con metadati filtri | 🟢 Done 2026-05-10 | M | — | — |
 | DEF-2 | Notifica "preset aggiornato" | 🟢 Done 2026-05-11 (BE+FE; DB in brief) | S | — | — |
 | DEF-10 | Pattern formalizzato colonne composte FE-only | 🟡 Parziale (esiste come trick) | S | Media | DEF-5b o standalone |
@@ -358,7 +358,7 @@ Differenza chiave: DEF-7 calcola, DEF-10 compone. Implementativamente entrambi f
 
 ## DEF-8 — Seed catalogo per altre liste (incrementale)
 
-**Stato:** 🟡 Parziale — 2 liste migrate su N (clienti + soggetti)
+**Stato:** 🟡 Parziale — 3 liste migrate su N (clienti + soggetti + fornitori)
 **Sforzo:** S per lista
 
 ### Cosa serve
@@ -376,7 +376,7 @@ Estendere il pattern Blocco E (atterrato per `anagrafiche.clienti`) ad altre lis
 |---|---|---|
 | `anagrafiche.clienti` | ClientiSearchTable.vue | 🟢 Done (Blocco E5 + DEF-1 export) |
 | `anagrafiche.soggetti` | SoggettiSearchTable.vue | 🟢 Done 2026-05-11 (DEF-8 + DEF-1 export) |
-| `anagrafiche.fornitori` | FornitoriSearchTable.vue | 🔴 Todo |
+| `anagrafiche.fornitori` | FornitoriSearchTable.vue | 🟢 Done 2026-05-24 (DEF-8 + DEF-1 export) |
 | `anagrafiche.indirizzi` | IndirizziSearchTable.vue | 🔴 Todo |
 | `catalogo.articoli` | ArticoliSearchTable.vue | 🔴 Todo |
 | `catalogo.unita-misura` | UnitaMisuraSearchTable.vue | 🔴 Todo |
@@ -387,12 +387,12 @@ Estendere il pattern Blocco E (atterrato per `anagrafiche.clienti`) ad altre lis
 | `vendite.approvazioni-prezzo` | ApprovazioniPrezzoSearchTable.vue | 🔴 Todo |
 | `pratiche` | PraticheDashboard.vue | 🔴 Todo |
 
-11 liste residue. Ordine suggerito per impatto utente:
-1. `anagrafiche.fornitori` (gemello di clienti, codice gia' rodato)
-2. `catalogo.articoli` (lista molto frequente)
-3. `vendite.contratti` (operatori vendita la usano spesso)
-4. `vendite.preventivi`
-5. Resto in ordine di ticket / richieste utenti
+10 liste residue. Ordine suggerito per impatto utente:
+
+1. `catalogo.articoli` (lista molto frequente)
+2. `vendite.contratti` (operatori vendita la usano spesso)
+3. `vendite.preventivi`
+4. Resto in ordine di ticket / richieste utenti
 
 ### Decisioni operative aperte (per ogni lista)
 

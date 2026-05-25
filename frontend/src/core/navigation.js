@@ -23,6 +23,8 @@ export const NAV_ICONS = Object.freeze({
   DDT: 'app-nav-icon app-nav-icon-ddt',
   FATTURE: 'app-nav-icon app-nav-icon-fatture',
   LISTINI: 'app-nav-icon app-nav-icon-listini',
+  APPROVAZIONI_PREZZO: 'app-nav-icon app-nav-icon-approvazioni-prezzo',
+  PROMO_ARTICOLI: 'app-nav-icon app-nav-icon-promo-articoli',
   PERSONALIZZAZIONI_LISTE: 'pi pi-th-large',
   HOME: 'pi pi-home',
   BACK: 'pi pi-arrow-left',
@@ -154,8 +156,8 @@ export const DOMAIN_MENUS = {
     { key: 'preventivi', icon: NAV_ICONS.PREVENTIVI, to: '/vendite/preventivi' },
     { key: 'contratti', icon: NAV_ICONS.CONTRATTI, to: '/vendite/contratti' },
     { key: 'listini', icon: NAV_ICONS.LISTINI, to: '/vendite/listini' },
-    { key: 'promo-articoli', icon: NAV_ICONS.PERCENTAGE, to: '/vendite/promo-articoli' },
-    { key: 'approvazioni-prezzo', icon: NAV_ICONS.CHECK_CIRCLE, to: '/vendite/approvazioni-prezzo' }
+    { key: 'promo-articoli', icon: NAV_ICONS.PROMO_ARTICOLI, to: '/vendite/promo-articoli' },
+    { key: 'approvazioni-prezzo', icon: NAV_ICONS.APPROVAZIONI_PREZZO, to: '/vendite/approvazioni-prezzo' }
   ],
   'acquisti': [],
   'magazzino': [],

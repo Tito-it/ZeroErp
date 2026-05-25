@@ -14,7 +14,14 @@
 > (GAP 2/3); aggiunta `motivazione_rifiuto` (GAP 4); annullamento via cambio
 > stato con nuovo stato `ANNULLATA` distinto da `RIFIUTATA` (GAP 5).
 >
-> **Revisione 2026-05-24c** (questa): rifiniture di coerenza dopo verifica
+> **Revisione 2026-05-24d** (questa): riallineamento al DB realmente consegnato
+> dal team DB il 2026-05-24 (commit `2000d8261`). Step 1-4 del brief + addendum
+> §0.3 atterrati. Tre divergenze minori recepite (D1 `data_annullamento`, D2
+> note in tabella separata, D3 `articolo_id` UUID). Perimetro BE iniziale
+> ristretto al solo cablabile: niente `crea_revisione` né `push_a_contratto`
+> finché il team DB non chiude step 5-8 (D4). Vedi §0.5.
+>
+> **Revisione 2026-05-24c**: rifiniture di coerenza dopo verifica
 > incrociata col `ContrattoDrawer` reale e risposte utente. (1) La utility non
 > ha un tab/panel separato: i campi business sono **inline nella testata**
 > esattamente come nel `ContrattoDrawer` (tab del drawer offerta passano da
@@ -70,6 +77,19 @@ multi-utility e FK errate). Queste correzioni lo riallineano al brief corretto.
 | GAP 3 | FE-3 / FE-4                                                        | **Rimosso `AllegatiPanel`** (non esiste oggi; il contratto non lo ha). Allegati rinviati a brief separato.                                                                                                                                                                                                                                                                              |
 | GAP 4 | OffertaEsitoDialog + testata                                       | Aggiunta colonna `motivazione_rifiuto` sulla testata (non JSONB). Tocca il brief DB (vedi nota).                                                                                                                                                                                                                                                                                        |
 | GAP 5 | Lifecycle + endpoint                                               | Annullamento via **cambio stato** (no hard delete come via di processo), con nuovo stato **`ANNULLATA`** (da noi) distinto da `RIFIUTATA` (dal cliente). Logica uniforme col contratto ("annulla contratto").                                                                                                                                                                           |
+
+### 0.5 Revisione 2026-05-24d (riallineamento al DB consegnato)
+
+Il team DB ha consegnato gli step 1-4 del brief + l'addendum §0.3 in un unico
+commit. Tre divergenze minori emerse dalle docs `dbzero/vendite/tabelle/*`
+appena pubblicate, recepite qui:
+
+| Punto | Cosa cambia                                                                                                                                                                                                                                                                                                                              |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1    | **`OffertaRow` — aggiunta `data_annullamento: datetime \| None`**: il team DB l'ha aggiunta per simmetria con `data_emissione`/`data_accettazione`/`data_rifiuto` (bonus utile, non richiesto in addendum). Valorizzata dal trigger di transizione quando si entra in ANNULLATA.                                                          |
+| D2    | **`OffertaRow` — rimossa `note: str \| None`**: il team DB ha estratto le note in tabella dedicata `vendite.note_offerte_commerciali`, partizione del sistema note generico (target_tipo='OFFERTA'). **Niente repository dedicato**: si cabla il building block esistente `apps.core.db.PartitionedNoteRepository` (gia' attivo per PREVENTIVO e CONTRATTO, vedi `apps/vendite/api/note_views.py`). L'integrazione e' a 3 punti: (1) aggiungere `'OFFERTA'` alla whitelist `TARGET_TIPI_AMMESSI`; (2) instanziare il factory `_OFFERTA_REPO` con `partition_table='vendite.note_offerte_commerciali'`, `parent_table='vendite.offerte_commerciali'`, `child_table='vendite.offerte_commerciali_eccezioni'`; (3) generare le view via `make_note_views(...)`. **Differito a fine sprint BE iniziale** (non bloccante per testata/eccezioni/utility). |
+| D3    | **`EccezioneOffertaRow` — `articolo_id: str` (UUID), non `int`**: la PK di `vendite.articoli` è UUID. Conferma: `OffertaRow.billing_account_id` resta `int` (la testata ha `billing_account_id bigint`, non UUID — la stesura precedente diceva erroneamente `str`).                                                                    |
+| D4    | **Perimetro BE in attesa step 5-8**: BE-1/2/3/4 implementano **solo** ciò che il DB ha consegnato (testata, eccezioni, utility 1:1, state machine, note). **Non** vengono cablati `crea_revisione` e `push_a_contratto`: si aggiungeranno appena le fn DB esisteranno (step 7-8 brief originale).                                          |
 
 ### 0.4 Revisione 2026-05-24c (rifiniture coerenza)
 
@@ -209,8 +229,9 @@ L'utente operatore commerciale deve poter:
 
 | Layer      | File nuovo                                                                                           | Pattern                                |
 | ---------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| Types      | `apps/vendite/types.py` (estensione)                                                                 | 4 TypedDict nuovi (vedi §3.1)          |
+| Types      | `apps/vendite/types.py` (estensione)                                                                 | 5 TypedDict nuovi (vedi §3.1: OffertaRow, UtilityOffertaRow, EccezioneOffertaRow, NotaOffertaRow, OffertaPushResult)          |
 | Repository | `apps/vendite/db/offerte_repository.py`                                                              | CRUD + list paginato + lookup          |
+| Note (BB)  | `apps/vendite/api/note_views.py` (estensione) + whitelist `TARGET_TIPI_AMMESSI`                      | Cablaggio building block `PartitionedNoteRepository` per `target_tipo='OFFERTA'` (no repo dedicato, vedi §0.5 D2) |
 | Service    | `apps/vendite/services/offerte_service.py`                                                           | Facade orchestrazione                  |
 | API views  | `apps/vendite/api/views_offerte.py`                                                                  | view (vedi §3.4)                       |
 | API routes | `apps/vendite/api/urls.py` (estensione)                                                              | path nuove                             |
@@ -274,7 +295,7 @@ class OffertaRow(TypedDict):
     uid: str
     codice: str
     emittente_fiscale_id: int
-    billing_account_id: str
+    billing_account_id: int          # bigint (D3): contratti/offerte usano bigint, non UUID
     istanza_utility_id: int          # NOT NULL (B2) — derivato dal BA
     utility_id: int                  # NOT NULL (B2) — derivato dal BA
     listino_id: int
@@ -289,9 +310,12 @@ class OffertaRow(TypedDict):
     data_emissione: datetime | None
     data_accettazione: datetime | None
     data_rifiuto: datetime | None
+    data_annullamento: datetime | None  # (D1) bonus DB: simmetria con altre data_*
     motivazione_rifiuto: str | None  # (GAP 4) valorizzata a RIFIUTATA/ANNULLATA
-    note: str | None
     meta: dict
+    # Niente campo note sulla testata (D2): le note vivono in
+    # vendite.note_offerte_commerciali (mini-dominio satellite, mirror del
+    # pattern note_contratto)
     # Display fields da JOIN
     stato_codice_interno: str
     stato_descrizione: str
@@ -324,22 +348,41 @@ class UtilityOffertaRow(TypedDict):
 class EccezioneOffertaRow(TypedDict):
     id: int
     offerta_id: int
-    articolo_id: int
+    articolo_id: str                 # UUID (D3): vendite.articoli.id è UUID, non bigint
     tipo_eccezione: str              # enum vendite.tipo_eccezione_contratto (B3), NON FK id
-    # ... mirror di ContrattoRigaRow (stesse colonne, esclusi
-    #     stato_approvazione_prezzo e pratica_approvazione_prezzo_id — I4) ...
+    # Mirror di vendite.contratti_righe (verifica diretta su
+    # dbzero/vendite/tabelle/offerte_commerciali_eccezioni.md):
+    tipo_erogazione: str | None
+    fonte_quantita_attesa: str       # NOT NULL nel mirror
+    periodicita: str | None
+    generazione_canone: str | None
+    competenza_canone: str | None
+    prezzo_unitario: Decimal | None
+    quantita: Decimal | None
+    qta_operativa: Decimal | None
+    uom_operativa_id: int | None
+    factor_to_base: Decimal          # NOT NULL default 1
+    ordine: int | None               # smallint default 0
+    attivo: bool                     # default True
+    meta: dict
+    # Esclusi (I4): stato_approvazione_prezzo, pratica_approvazione_prezzo_id
 
 class OffertaPushResult(TypedDict):
+    # In attesa step 8 brief DB (D4): TypedDict definito ma non usato finché
+    # fn_push_offerta_a_contratto non esiste.
     contratto_id: int
     contratto_codice: str
     sorgente_uid: str
 ```
 
-> **Correzioni B2/B3/I2/GAP1/GAP4**: `istanza_utility_id`/`utility_id` NOT NULL
-> derivati dal BA + `utility_display`; `tipo_variazione_globale` è `str`;
-> `tipo_eccezione` è `str` enum; **`UtilityOffertaRow` reintrodotto** con i
-> campi business di `contratti_utilities` (GAP 1, la utility non è solo l'id);
-> aggiunta `motivazione_rifiuto` sulla testata (GAP 4).
+> **Correzioni B2/B3/I2/GAP1/GAP4/D1/D2/D3**:
+> `istanza_utility_id`/`utility_id` NOT NULL derivati dal BA +
+> `utility_display`; `tipo_variazione_globale` è `str`; `tipo_eccezione` è
+> `str` enum; **`UtilityOffertaRow` reintrodotto** con i campi business di
+> `contratti_utilities` (GAP 1); aggiunta `motivazione_rifiuto` (GAP 4) e
+> `data_annullamento` (D1) sulla testata; `note` rimosso dalla testata (D2,
+> tabella dedicata `note_offerte_commerciali`); `articolo_id` su eccezioni è
+> `str` UUID (D3).
 
 **Test**: nessun test dedicato (sono TypedDict). Verifica indiretta nei test
 service.
@@ -362,9 +405,9 @@ service.
 | `create_eccezione(offerta_id, data) -> int`                            | INSERT eccezione                                                                                                   |
 | `update_eccezione(eccezione_id, data) -> bool`                         | UPDATE                                                                                                             |
 | `delete_eccezione(eccezione_id) -> bool`                               | DELETE                                                                                                             |
-| `crea_revisione(offerta_id: int) -> int`                               | `SELECT vendite.fn_crea_revisione_offerta(...)`                                                                    |
-| `push_a_contratto(offerta_id: int, pratica_id: int \| None) -> int`    | `SELECT vendite.fn_push_offerta_a_contratto(...)`                                                                  |
-| `list_revisioni(offerta_padre_id: int) -> list[OffertaRow]`            | Lista catena revisioni                                                                                             |
+| `crea_revisione(offerta_id: int) -> int`                               | `SELECT vendite.fn_crea_revisione_offerta(...)` — **fuori scope BE iniziale** (D4, attesa step 7 brief DB)         |
+| `push_a_contratto(offerta_id: int, pratica_id: int \| None) -> int`    | `SELECT vendite.fn_push_offerta_a_contratto(...)` — **fuori scope BE iniziale** (D4, attesa step 8 brief DB)       |
+| `list_revisioni(offerta_padre_id: int) -> list[OffertaRow]`            | Lista catena revisioni — **fuori scope BE iniziale** (D4, dipende da step 6-7 brief DB)                            |
 | `lookup_utility_da_ba(billing_account_id: str) -> dict`                | Risolve `istanza_utility_id`/`utility_id` dal BA (per popolare la testata in create, come fa il contratto)         |
 | `get_utility(offerta_id: int) -> UtilityOffertaRow`                    | Legge il record utility 1:1 dell'offerta (campi business, GAP 1)                                                   |
 | `upsert_utility(offerta_id: int, data: dict) -> int`                   | Crea/aggiorna il record utility 1:1 (tipo/classe utenza + parametri). Guard stato BOZZA lato service               |
@@ -403,8 +446,8 @@ repository).
 | `registra_accettazione(offerta_id, payload)` | Guard: stato EMESSA. Cambia stato a ACCETTATA                                                                                                        |
 | `registra_rifiuto(offerta_id, payload)`      | Guard: stato EMESSA. Cambia stato a RIFIUTATA (no del cliente) + `motivazione_rifiuto`                                                               |
 | `annulla(offerta_id, payload)`               | Guard: **solo stato BOZZA**. Cambia stato a ANNULLATA + `motivazione_rifiuto`. Mirror "annulla contratto DRAFT" (GAP 5, chiarito C3)                 |
-| `push_a_contratto(offerta_id, pratica_id?)`  | Guard: stato ACCETTATA. Delega a repository (fn DB idempotente)                                                                                      |
-| `crea_revisione(offerta_id)`                 | Guard: stato EMESSA. Delega a fn DB                                                                                                                  |
+| `push_a_contratto(offerta_id, pratica_id?)`  | Guard: stato ACCETTATA. Delega a repository (fn DB idempotente). **Fuori scope BE iniziale** (D4, attesa step 8 brief DB)                            |
+| `crea_revisione(offerta_id)`                 | Guard: stato EMESSA. Delega a fn DB. **Fuori scope BE iniziale** (D4, attesa step 7 brief DB)                                                        |
 | `crud_eccezioni(...)`                        | Wrapper attorno a CRUD eccezioni. Guard: solo se stato BOZZA                                                                                         |
 | `add_utility(offerta_id, payload)`           | Crea record utility 1:1 (tipo/classe utenza + parametri). Guard: solo se stato BOZZA. Mirror `add_utility_contratto`                                 |
 | `update_utility(offerta_id, utility_id, payload)` | Aggiorna record utility 1:1. Guard: solo se stato BOZZA. Mirror `update_utility_contratto`                                                       |
@@ -459,8 +502,8 @@ repository).
 | POST   | `/api/v1/vendite/offerte/{id}/emetti/`          | BOZZA → EMESSA                           |
 | POST   | `/api/v1/vendite/offerte/{id}/registra-esito/`  | EMESSA → ACCETTATA / RIFIUTATA           |
 | POST   | `/api/v1/vendite/offerte/{id}/annulla/`         | **BOZZA** → ANNULLATA (GAP 5, C3)        |
-| POST   | `/api/v1/vendite/offerte/{id}/push-contratto/`  | ACCETTATA → crea contratto DRAFT         |
-| POST   | `/api/v1/vendite/offerte/{id}/crea-revisione/`  | EMESSA → rev.N+1 BOZZA                   |
+| POST   | `/api/v1/vendite/offerte/{id}/push-contratto/`  | ACCETTATA → crea contratto DRAFT (**fuori scope BE iniziale**, D4) |
+| POST   | `/api/v1/vendite/offerte/{id}/crea-revisione/`  | EMESSA → rev.N+1 BOZZA (**fuori scope BE iniziale**, D4)           |
 | POST   | `/api/v1/vendite/offerte/{id}/utility/`         | Crea record utility 1:1 (solo BOZZA, C2) |
 | PATCH  | `/api/v1/vendite/offerte/{id}/utility/{uid}/`   | Aggiorna utility 1:1 (solo BOZZA, C2)    |
 | GET    | `/api/v1/vendite/offerte/{id}/eccezioni/`       | Lista eccezioni                          |
@@ -796,11 +839,13 @@ brief DB step 4-8 → BE-3 (service) → BE-4 (API)
 - **Memoria pricing centralizzato** (`feedback_pricing_centralizzato`): se in
   futuro il drawer offerta dovesse mostrare anche un'anteprima prezzi
   calcolati, va via `PricingService` esistente, non implementare logica nuova.
-- **Documentazione finale**: a chiusura sprint, scrivere/aggiornare:
-  - `docs/it/dev/api_offerte.md` (specchio di `api_preventivi.md`)
-  - `docs/it/backend/vendite/manual/offerte_service.md` (struttura standard
-    AGENTS.md §Regole Documentazione)
-  - Aggiornamento `docs/it/guide/offerte-commerciali.md` (guida operatore)
+- **Documentazione finale** (atterrata 2026-05-25):
+  - [docs/it/backend/vendite/manual/api_offerte.md](../../backend/vendite/manual/api_offerte.md)
+    (specchio di `api_contratti.md` ridotto al perimetro D4 + state machine offerta)
+  - [docs/it/backend/vendite/manual/offerte_service.md](../../backend/vendite/manual/offerte_service.md)
+    (struttura standard AGENTS.md §Regole Documentazione)
+  - Voci aggiunte in `docs/it/backend/vendite/index.md` (sezione API + Altri contenuti)
+  - Da fare quando il dominio sara' user-facing: `docs/it/guide/offerte-commerciali.md` (guida operatore)
 - **Pratiche cross-link**: a fine sprint, scrivere il runtime end-to-end
   dell'asse `OFFERTA_QUADRO` in `analisi-pratiche-domini-anello3.md` §11.2
   (oggi solo ossatura, vedi §11.2.5 di quel documento). Dipende dall'esistenza
@@ -815,25 +860,27 @@ brief DB step 4-8 → BE-3 (service) → BE-4 (API)
 
 ## 8. Stato del piano
 
-| Step | Stato    | Dipendenze                                                                  |
-| ---- | -------- | --------------------------------------------------------------------------- |
-| BE-1 | Pronto   | Brief DB step 2-3 **+ addendum §0.3** (colonna `motivazione_rifiuto`, stato `ANNULLATA` + transizioni C3) |
-| BE-2 | Pronto   | BE-1 + Brief DB step 2-3 + addendum                                         |
-| BE-3 | Pronto   | BE-2 + Brief DB step 4-8 + addendum (state machine `ANNULLATA`)             |
-| BE-4 | Pronto   | BE-3                                                                        |
-| FE-1 | Pronto   | BE-4 (firma endpoint, anche solo bozza)                                     |
-| FE-2 | Pronto   | FE-1                                                                        |
-| FE-3 | Pronto   | FE-1                                                                        |
-| FE-4 | Pronto   | FE-3                                                                        |
-| FE-5 | Pronto   | FE-3                                                                        |
-| FE-6 | Continuo | Parallelo a FE-3/4/5                                                        |
-| FE-7 | Pronto   | FE-2/3 testabili                                                            |
+| Step | Stato                    | Dipendenze                                                                                                  |
+| ---- | ------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| BE-1 | **Sbloccato** (DB step 1-4 + addendum atterrati 2026-05-24, commit `2000d8261`) | Nessuna ulteriore                                          |
+| BE-2 | **Sbloccato (parziale)** | DB step 1-4 OK; metodi `crea_revisione`/`push_a_contratto`/`list_revisioni` rinviati (attesa step 6-8)      |
+| BE-3 | **Sbloccato (parziale)** | DB step 1-4 OK; service `crea_revisione`/`push_a_contratto` rinviati                                        |
+| BE-4 | **Sbloccato (parziale)** | DB step 1-4 OK; endpoint `crea-revisione`/`push-contratto` rinviati                                         |
+| FE-1 | Pronto                   | BE-4 (firma endpoint, anche solo bozza)                                                                     |
+| FE-2 | Pronto                   | FE-1                                                                                                        |
+| FE-3 | Pronto                   | FE-1                                                                                                        |
+| FE-4 | Pronto                   | FE-3                                                                                                        |
+| FE-5 | Pronto                   | FE-3                                                                                                        |
+| FE-6 | Continuo                 | Parallelo a FE-3/4/5                                                                                        |
+| FE-7 | Pronto                   | FE-2/3 testabili                                                                                            |
 
-> **Blocco esplicito**: BE-1 non può consolidare il `TypedDict` finale finché
-> il team DB non ha recepito l'**addendum §0.3** (motivazione_rifiuto +
-> ANNULLATA). Si può comunque scrivere lo scaffold del TypedDict in parallelo
-> all'addendum, con il riserbo che il campo `motivazione_rifiuto` e lo stato
-> `ANNULLATA` riflettano la versione finale dell'addendum.
+> **Perimetro BE iniziale (D4)**: si implementa SOLO ciò che il DB ha
+> consegnato. Tabelle: testata, eccezioni, utility 1:1, note offerta, state
+> machine con 6 stati e transizioni asimmetriche, 6 codici errore. Si
+> aggiungono `crea_revisione` / `push_a_contratto` / `list_revisioni` (BE+FE)
+> non appena il team DB chiude step 5-8 del brief originale (numerazione +
+> trigger revisione + fn_crea_revisione + fn_push_a_contratto + ALTER
+> `contratti.offerta_id`).
 
 ---
 

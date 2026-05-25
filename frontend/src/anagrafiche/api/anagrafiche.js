@@ -279,6 +279,18 @@ export function listFornitori(params = {}) {
   return api.get(`${BASE}/fornitori/`, { params })
 }
 
+// Scopo: Export CSV/Excel della lista fornitori (DEF-1).
+//        `params` accetta gli stessi filtri del list endpoint
+//        (search/stato_fornitore_id/order_*) + obbligatorio
+//        `formato` ('csv' | 'xlsx'). Risposta come Blob per download
+//        diretto. Errori: 422 se >10.000 righe (caller deve gestire).
+export function exportFornitori(params = {}) {
+  return api.get(`${BASE}/fornitori/export/`, {
+    params,
+    responseType: 'blob',
+  })
+}
+
 export function getFornitore(id) {
   return api.get(`${BASE}/fornitori/${id}/`)
 }

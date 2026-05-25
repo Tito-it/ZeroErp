@@ -1,0 +1,475 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unitari OfferteService — perimetro D4 (step DB 1-4 atterrati).
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+1)  list_offerte_invalid_order_by
+2)  list_offerte_search_too_short
+3)  get_offerta_not_found
+4)  get_offerta_ok_arricchisce_eccezioni_e_utility
+5)  crea_offerta_richiede_codice
+6)  crea_offerta_richiede_validita_dal
+7)  crea_offerta_ok_setta_stato_bozza
+8)  aggiorna_offerta_su_emessa_fallisce
+9)  emetti_da_non_bozza_fallisce
+10) registra_accettazione_da_bozza_fallisce
+11) registra_rifiuto_senza_motivazione_fallisce
+12) registra_rifiuto_da_bozza_fallisce_c3
+13) annulla_da_emessa_fallisce_c3
+14) annulla_da_bozza_ok_passa_motivazione
+15) crea_eccezione_su_emessa_fallisce
+16) crea_utility_duplicato_mappato
+17) emetti_ok                                      [happy path]
+18) registra_accettazione_ok                       [happy path]
+19) registra_esito_routing_accettata               [routing service]
+20) registra_esito_routing_rifiutata_richiede_motivazione
+21) registra_esito_invalido
+22) aggiorna_offerta_payload_vuoto_fallisce        [fix #3]
+23) aggiorna_offerta_ok                            [happy path]
+24) crea_eccezione_ok                              [happy path]
+25) aggiorna_eccezione_ownership_violata           [security]
+26) emetti_trigger_db_codice_propagato             [fix #1]
+"""
+
+from unittest import TestCase
+from unittest.mock import MagicMock, patch
+
+from django.db import IntegrityError
+
+from apps.core.services.service_errors import ServiceError
+
+
+def _make_offerta_dict(stato_codice: str = "BOZZA") -> dict[str, object]:
+    return {
+        "id": 1,
+        "uid": "00000000-0000-7000-8000-000000000001",
+        "codice": "OFC-TEST-0001",
+        "emittente_fiscale_id": 10,
+        "billing_account_id": 100,
+        "istanza_utility_id": 200,
+        "utility_id": 3,
+        "listino_id": 50,
+        "listino_versione_id": None,
+        "validita_dal": "2026-06-01",
+        "validita_al": None,
+        "stato_doc_offerta_id": 1,
+        "stato_codice_interno": stato_codice,
+        "revisione_numero": 1,
+        "meta": {},
+    }
+
+
+class OfferteServiceTests(TestCase):
+    # --- lista --------------------------------------------------------
+
+    # Scopo: order_by fuori whitelist -> ServiceError E_VENDITE_VALIDATION.
+    def test_list_offerte_invalid_order_by(self):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().list_offerte(order_by="prezzo_segreto")
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: search con meno di 3 char rifiutato.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_list_offerte_search_too_short(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.list_offerte.return_value = []
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().list_offerte(search="ab")
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # --- dettaglio ----------------------------------------------------
+
+    # Scopo: get_offerta su id inesistente -> 404 (E_VENDITE_NOT_FOUND).
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_get_offerta_not_found(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_offerta.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().get_offerta(999)
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+
+    # Scopo: get_offerta arricchisce con eccezioni + utility (read-after-write).
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_get_offerta_ok_arricchisce_eccezioni_e_utility(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.list_eccezioni.return_value = [{"id": 7, "articolo_id": "abc"}]
+        repo.get_utility.return_value = {"id": 99, "tipo_utenza_id": 5}
+
+        result = OfferteService().get_offerta(1)
+
+        self.assertEqual(result["eccezioni"], [{"id": 7, "articolo_id": "abc"}])
+        self.assertEqual(result["utility"], {"id": 99, "tipo_utenza_id": 5})
+
+    # --- create -------------------------------------------------------
+
+    # Scopo: payload senza `codice` -> ServiceError (validazione obbligatorieta').
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_offerta_richiede_codice(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_stato_id_by_codice.return_value = 1
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().crea_offerta({
+                "emittente_fiscale_id": 10,
+                "billing_account_id": 100,
+                "istanza_utility_id": 200,
+                "utility_id": 3,
+                "listino_id": 50,
+                "validita_dal": "2026-06-01",
+            })
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: payload senza `validita_dal` -> ServiceError.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_offerta_richiede_validita_dal(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_id_by_codice.return_value = 1
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().crea_offerta({
+                "codice": "OFC-001",
+                "emittente_fiscale_id": 10,
+                "billing_account_id": 100,
+                "istanza_utility_id": 200,
+                "utility_id": 3,
+                "listino_id": 50,
+            })
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: create OK risolve stato BOZZA via lookup e passa al repository.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_offerta_ok_setta_stato_bozza(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_id_by_codice.return_value = 11
+        repo.create_offerta.return_value = 1
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+
+        OfferteService().crea_offerta({
+            "codice": "OFC-001",
+            "emittente_fiscale_id": 10,
+            "billing_account_id": 100,
+            "istanza_utility_id": 200,
+            "utility_id": 3,
+            "listino_id": 50,
+            "validita_dal": "2026-06-01",
+        })
+
+        call = repo.create_offerta.call_args.args[0]
+        self.assertEqual(call["stato_doc_offerta_id"], 11)
+        # `revisione_numero` non viene piu' passato dal service: il default DB
+        # (=1) e' autoritativo. Il test verifica che la chiave NON sia presente
+        # (il payload contiene solo cio' che il service ha effettivamente posto).
+        self.assertNotIn("revisione_numero", call)
+        self.assertEqual(call["codice"], "OFC-001")
+
+    # --- update / delete con guard stato ------------------------------
+
+    # Scopo: PATCH testata su offerta EMESSA -> 422 (guard stato BOZZA).
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_su_emessa_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().aggiorna_offerta(1, {"validita_al": "2026-12-31"})
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # --- transizioni di stato -----------------------------------------
+
+    # Scopo: emetti da stato != BOZZA -> 422.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_emetti_da_non_bozza_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().emetti(1)
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: registra_accettazione da BOZZA -> 422 (richiede EMESSA).
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_registra_accettazione_da_bozza_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = "BOZZA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().registra_accettazione(1)
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: registra_rifiuto senza motivazione -> guard non_empty_string.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_registra_rifiuto_senza_motivazione_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().registra_rifiuto(1, motivazione="")
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo (C3): registra_rifiuto da BOZZA -> 422 (rifiuto solo da EMESSA).
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_registra_rifiuto_da_bozza_fallisce_c3(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = "BOZZA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().registra_rifiuto(1, motivazione="non valida")
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo (C3): annulla da EMESSA -> 422 (annullamento solo da BOZZA).
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_annulla_da_emessa_fallisce_c3(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().annulla(1, motivazione="ripensamento interno")
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: annulla da BOZZA OK passa motivazione al repository.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_annulla_da_bozza_ok_passa_motivazione(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_stato_id_by_codice.return_value = 6
+        repo.get_offerta.return_value = _make_offerta_dict(stato_codice="ANNULLATA")
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+
+        OfferteService().annulla(1, motivazione="  errore impostazione  ")
+
+        repo.update_stato.assert_called_once_with(
+            1, 6, motivazione_rifiuto="errore impostazione"
+        )
+
+    # --- eccezioni ----------------------------------------------------
+
+    # Scopo: crea eccezione su offerta EMESSA -> 422.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_eccezione_su_emessa_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().crea_eccezione(1, {
+                "articolo_id": "00000000-0000-7000-8000-000000000abc",
+                "tipo_eccezione": "OVERRIDE",
+                "fonte_quantita_attesa": "MANUALE",
+                "prezzo_unitario": "12.50",
+            })
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # --- utility 1:1 --------------------------------------------------
+
+    # Scopo: create_utility doppio (UNIQUE offerta_id) -> E_VENDITE_DUPLICATO.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_utility_duplicato_mappato(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.create_utility.side_effect = IntegrityError(
+            "duplicate key value violates unique constraint "
+            '"uq_offerte_commerciali_utilities_offerta_id"'
+        )
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().crea_utility(1, {
+                "istanza_utility_id": 200,
+                "utility_id": 3,
+            })
+        self.assertEqual(cm.exception.code, "E_VENDITE_DUPLICATO")
+
+    # --- happy path -----------------------------------------------------
+
+    # Scopo: emetti BOZZA -> EMESSA: chiama update_stato con id risolto.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_emetti_ok(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_stato_id_by_codice.return_value = 2
+        repo.get_offerta.return_value = _make_offerta_dict("EMESSA")
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+
+        OfferteService().emetti(1)
+
+        repo.update_stato.assert_called_once_with(1, 2, motivazione_rifiuto=None)
+
+    # Scopo: registra_accettazione EMESSA -> ACCETTATA, no motivazione.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_registra_accettazione_ok(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSA"
+        repo.get_stato_id_by_codice.return_value = 3
+        repo.get_offerta.return_value = _make_offerta_dict("ACCETTATA")
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+
+        OfferteService().registra_accettazione(1)
+
+        repo.update_stato.assert_called_once_with(1, 3, motivazione_rifiuto=None)
+
+    # Scopo: registra_esito routing: ACCETTATA delega a registra_accettazione.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_registra_esito_routing_accettata(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSA"
+        repo.get_stato_id_by_codice.return_value = 3
+        repo.get_offerta.return_value = _make_offerta_dict("ACCETTATA")
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+
+        OfferteService().registra_esito(1, esito="ACCETTATA")
+
+        # ACCETTATA -> id stato risolto (3), no motivazione
+        repo.update_stato.assert_called_once_with(1, 3, motivazione_rifiuto=None)
+
+    # Scopo: registra_esito routing: RIFIUTATA con motivazione obbligatoria.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_registra_esito_routing_rifiutata_richiede_motivazione(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().registra_esito(1, esito="RIFIUTATA", motivazione="")
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: registra_esito esito non valido -> 422.
+    def test_registra_esito_invalido(self):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().registra_esito(1, esito="FORSE")
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: aggiorna_offerta payload vuoto -> 400 (no-op evitato, fix #3).
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_payload_vuoto_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = "BOZZA"
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().aggiorna_offerta(1, {})
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: aggiorna_offerta OK su BOZZA con campi mutabili.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_ok(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_offerta.return_value = _make_offerta_dict("BOZZA")
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+
+        OfferteService().aggiorna_offerta(1, {"validita_al": "2026-12-31"})
+
+        repo.update_offerta.assert_called_once_with(
+            1, {"validita_al": "2026-12-31"}
+        )
+
+    # Scopo: crea_eccezione OK su BOZZA passa il payload al repository.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_eccezione_ok(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.create_eccezione.return_value = 77
+        repo.get_eccezione.return_value = {"id": 77, "offerta_id": 1}
+
+        payload = {
+            "articolo_id": "00000000-0000-7000-8000-000000000abc",
+            "tipo_eccezione": "OVERRIDE",
+            "fonte_quantita_attesa": "MANUALE",
+            "prezzo_unitario": "12.50",
+        }
+        OfferteService().crea_eccezione(1, payload)
+        repo.create_eccezione.assert_called_once_with(1, payload)
+
+    # Scopo: aggiorna_eccezione ownership cross-offerta -> 404.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_eccezione_ownership_violata(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_eccezione.return_value = {"id": 7, "offerta_id": 999}  # altra offerta!
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().aggiorna_eccezione(1, 7, {"attivo": False})
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+
+    # Scopo: trigger DB E_OFFERTA_* viene propagato come ServiceError con il
+    #        codice originale (fix #1): non piu' rimpiazzato da E_VENDITE_VALIDATION.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_emetti_trigger_db_codice_propagato(self, repo_cls, _atomic):
+        from django.db import DatabaseError
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_stato_id_by_codice.return_value = 2
+        # Simula il P0001 sollevato dal trigger guard transizione.
+        repo.update_stato.side_effect = DatabaseError(
+            "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO: "
+            "listino_versione_id IS NULL su passaggio BOZZA->EMESSA"
+        )
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().emetti(1)
+        self.assertEqual(
+            cm.exception.code, "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO"
+        )
