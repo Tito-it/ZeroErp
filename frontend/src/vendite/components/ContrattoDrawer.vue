@@ -20,7 +20,7 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { addDaysToToday, toDateString, parseIsoDate, displayDate } from '../../core/utils/date'
 import { paramInt, paramString } from '../../core/utils/parameterCast'
@@ -34,6 +34,8 @@ import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupListiniSelezionabiliContratto } from '../api/lookup'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
+import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
+import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import DocumentiGeneratiSorgenteList from '../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
@@ -42,6 +44,7 @@ import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
+import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import Drawer from 'primevue/drawer'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
@@ -154,11 +157,23 @@ const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefault
 // (framework FK-surrogata, DB 2026-05-02). Composable risolve a id locale.
 const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 
+// Emittente fiscale default dal profilo operatore (modello 1-a-1 salvo admin
+// globale multi-EF). Pattern allineato a OffertaDrawer/PreventiviForm post
+// brief simmetria 2026-05-26: il drawer popola `emittente_fiscale_id` in
+// CREATE e il backend lo accetta come opzionale (trigger DB lo deriva
+// dalla GUC `app.current_user_id` se assente).
+const { defaultEmittenteId } = useEmittenteFiscaleField()
+
 function defaultForm() {
   const p = paramDefaults.value
   const dataLeadGg = paramInt(p.VENDITE_CONTRATTO_DEFAULT_DATA_LEAD_GG, 0)
   const validoDalLeadGg = paramInt(p.VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG, 0)
   return {
+    // Emittente derivato dal profilo (1-a-1 operatore->EF, salvo admin
+    // multi-EF). `defaultEmittenteId` e' un ref reattivo; alla prima
+    // apertura del drawer in CREATE puo' essere null finche' il profilo
+    // non e' caricato — il watch d'apertura lo legge gia' valorizzato.
+    emittente_fiscale_id: defaultEmittenteId.value ?? null,
     billing_account_id: null,
     billing_account_obj: null,
     istanza_utility_id: null,
@@ -189,6 +204,7 @@ function resetForm() {
 
 function populateFromDetail(d) {
   form.value = {
+    emittente_fiscale_id: d.emittente_fiscale_id,
     billing_account_id: d.billing_account_id,
     billing_account_obj: d.ba_ragione_sociale ? {
       id: d.billing_account_id,
@@ -302,7 +318,10 @@ function onBaSelected(item) {
     form.value.billing_account_id = null
     form.value.billing_account_obj = null
     form.value.istanza_utility_id = null
-    form.value.utility_id = null
+    // Ripristina il default utility quando si pulisce il BA: l'operatore
+    // mantiene il filtro lookup BA sull'utility tipica del proprio EF
+    // invece di tornare a "vedo tutti i BA". Allinea OffertaDrawer.
+    form.value.utility_id = utilityDefaultId.value
     form.value.categoria_cliente_id_snapshot = null
     return
   }
@@ -334,6 +353,10 @@ const canSave = computed(() => {
   const hasValore = f.valore_variazione_globale != null && f.valore_variazione_globale !== ''
   if (hasTipo !== hasValore) return false
   if (isEdit.value) return true
+  // Per operatore non-admin il `defaultEmittenteId` arriva dal profilo
+  // (`useAuthStore`) e il check non blocca; per admin globale multi-EF
+  // serve scelta esplicita prima di abilitare Salva.
+  if (!f.emittente_fiscale_id) return false
   if (!f.billing_account_id) return false
   if (!f.valido_dal || !f.data) return false
   if (!f.ambito) return false
@@ -392,6 +415,7 @@ async function handleSave() {
   } else {
     const f = form.value
     const payload = {
+      emittente_fiscale_id: f.emittente_fiscale_id,
       billing_account_id: f.billing_account_id,
       istanza_utility_id: f.istanza_utility_id,
       utility_id: f.utility_id,
@@ -625,7 +649,25 @@ const onClose = useDrawerClose(emit, 'cancelled')
         </Message>
       </template>
 
-      <!-- === Cliente (BA) + badge utility/PDP === -->
+      <!-- === Emittente fiscale === -->
+      <!-- Sezione separata sopra il cliente (pattern offerte/preventivi).
+           Operatore con EF assegnato -> read-only auto-popolato dal profilo;
+           admin globale (multi-EF) -> Select sugli EF disponibili.
+           In edit mostra codice + ragione sociale denormalizzati dal record. -->
+      <h4 class="mt-3">{{ t('contratti.section_emittente') }}</h4>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('contratti.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
+          <EmittenteFiscaleField
+            v-model="form.emittente_fiscale_id"
+            :record="detail"
+            :is-edit="isEdit"
+            :disabled="isReadonly"
+          />
+        </div>
+      </div>
+
+      <!-- === Cliente (BA + utility) + badge utility/PDP === -->
       <h4 class="mt-3">
         {{ t('contratti.section_cliente') }}
         <Tag v-if="baBadgeLabel" :value="baBadgeLabel" severity="info" class="ml-2" />
@@ -633,23 +675,44 @@ const onClose = useDrawerClose(emit, 'cancelled')
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('contratti.field_billing_account') }} <span v-if="!isEdit">*</span></label>
+          <!-- `utility-id` pre-filtra il lookup BA sull'utility selezionata
+               (default = utility dell'operatore via `utilityDefaultId`).
+               `onBaSelected` sovrascrive `utility_id` con quella canonical
+               del BA scelto, mantenendo coerenza FK. Allinea OffertaDrawer. -->
           <BillingAccountLookup
             v-if="!isEdit"
             :model-value="form.billing_account_obj"
+            :utility-id="form.utility_id"
             @update:model-value="onBaSelected"
             :placeholder="t('contratti.select_billing_account')"
           />
           <InputText v-else :model-value="detail?.ba_ragione_sociale" disabled class="w-full" />
         </div>
         <div class="form-field">
+          <label>{{ t('contratti.field_utility') }} <span v-if="!isEdit">*</span></label>
+          <!-- Building block standard utility-per-ruolo-EF: filtra le utility
+               configurate per l'EF dell'operatore + ammesse al ruolo CLIENTE
+               (intersezione `emittenti_fiscali_utilities` x
+               `utilities_tipi_ruolo`). Pre-popolato da `defaultForm()` via
+               `utilityDefaultId`; quando l'operatore sceglie il BA,
+               `onBaSelected` sovrascrive con la utility canonical del BA. -->
+          <UtilityPerRuoloSelect
+            v-model="form.utility_id"
+            :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
+            :placeholder="t('contratti.field_utility')"
+            :disabled="isEdit || isReadonly"
+          />
+        </div>
+      </div>
+      <!-- Ambito + Categoria cliente snapshot sulla stessa riga.
+           Categoria editabile in create e in DRAFT, bloccata dopo
+           attivazione (BE/non_editable_fields + trigger DB). -->
+      <div class="form-grid-2col mt-1">
+        <div class="form-field">
           <label>{{ t('contratti.field_ambito') }} <span v-if="!isEdit">*</span></label>
           <AmbitoContrattoSelect v-model="form.ambito"
             class="w-full" :disabled="isEdit && isLocked('ambito')" />
         </div>
-      </div>
-      <!-- Categoria cliente snapshot: editabile in create e in DRAFT,
-           bloccata dopo attivazione (BE/non_editable_fields + trigger DB) -->
-      <div class="form-grid-2col mt-1">
         <div class="form-field">
           <label>{{ t('contratti.field_categoria_cliente_snapshot') }}</label>
           <LookupSelect

@@ -61,3 +61,32 @@ ApiContrattoNoteList, ApiContrattoNoteDetail = make_note_views(
     target_tipo="CONTRATTO",
     model_permission=("vendite", "contratto"),
 )
+
+
+# Scopo: Factory dei service note offerta commerciale. Partizione
+#        'OFFERTA' (target_tipo varchar(16) ammette solo 7 caratteri;
+#        'OFFERTA_COMMERCIALE' (19) e' troppo lungo — vedi doc
+#        `vendite.note_offerte_commerciali`). Il child_table
+#        `vendite.offerte_commerciali_eccezioni` collega le note di RIGA
+#        via FK `offerta_id` (verificata su dbzero/vendite/tabelle).
+_OFFERTA_REPO = PartitionedNoteRepository(
+    partition_table="vendite.note_offerte_commerciali",
+    target_tipo="OFFERTA",
+    parent_table="vendite.offerte_commerciali",
+    parent_pk="id",
+    child_table="vendite.offerte_commerciali_eccezioni",
+    child_parent_fk="offerta_id",
+)
+
+
+def _offerta_service_factory() -> PartitionedNoteService:
+    return PartitionedNoteService(repo=_OFFERTA_REPO)
+
+
+ApiOffertaNoteList, ApiOffertaNoteDetail = make_note_views(
+    area_funzionale="vendite",
+    parent_path_param="offerta_id",
+    service_factory=_offerta_service_factory,
+    target_tipo="OFFERTA",
+    model_permission=("vendite", "offerta_commerciale"),
+)

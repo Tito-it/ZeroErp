@@ -1,6 +1,10 @@
 <script setup>
 // Scopo: stato HOME della sidebar morfica — lista domini con icone.
 // Click su un dominio imposta il dominio attivo e naviga alla pagina default.
+//
+// Preferiti: la lista preferiti NON sta più nella sidebar HOME. È accessibile
+// dal kebab "preferenze utente" nella topbar (subito prima del logout, vedi
+// AppTopbar.vue) e dal pannello tile in HomeView.
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
@@ -16,6 +20,10 @@ const nav = useNavigationStore()
 const emit = defineEmits(['navigate'])
 
 function handleDomainClick(domain) {
+  if (nav.currentDomain === domain.key) {
+    emit('navigate')
+    return
+  }
   nav.setDomain(domain.key)
   const defaultRoute = nav.getDefaultRoute(domain.key)
   if (defaultRoute) {

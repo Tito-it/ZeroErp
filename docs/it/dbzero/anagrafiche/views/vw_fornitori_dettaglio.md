@@ -35,7 +35,8 @@ SELECT f.id,
     f.rating,
     f.qualifica_scadenza,
     f.data_insert,
-    f.data_update
+    f.data_update,
+    s.id_fiscale_univoco_cf_piva
    FROM ((((((anagrafiche.fornitori f
      JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = f.soggetto_ruolo_id)))
      JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))

@@ -328,3 +328,148 @@ class PreventivoPraticaRow(TypedDict):
     stato_codice: str
     stato_descrizione: str
     ruolo_link: str
+
+
+# ── Offerte commerciali ──
+# Specchio strutturale di Contratto/ContrattoRiga/ContrattoUtility (decisioni
+# §5 analisi-offerta-commerciale + brief DB 2026-05-24 step 1-4 atterrati).
+# Le date/Decimal sono `str` ISO/serializzati, coerente col pattern preventivi
+# e contratti (psycopg ritorna stringhe via row_to_dict).
+
+
+class OffertaRow(TypedDict):
+    id: int
+    uid: str
+    codice: str
+    emittente_fiscale_id: int
+    billing_account_id: int
+    istanza_utility_id: int
+    utility_id: int
+    listino_id: int
+    listino_versione_id: int | None
+    valore_variazione_globale: str | None
+    tipo_variazione_globale: str | None
+    validita_dal: str
+    validita_al: str | None
+    stato_doc_offerta_id: int
+    revisione_numero: int
+    revisione_padre_id: int | None
+    data_emissione: str | None
+    data_accettazione: str | None
+    data_rifiuto: str | None
+    data_annullamento: str | None
+    motivazione_rifiuto: str | None
+    meta: dict[str, Any]
+    # Display fields da JOIN. Naming coerente col piano FE+BE rev. f:
+    # `billing_account_display` + `utility_display` sono i campi consumati
+    # dal drawer/lista (display fields backend, niente lookup client-side).
+    stato_codice_interno: str
+    stato_descrizione: str
+    # Denormalizzazione EF (pattern preventivi): consumati da
+    # `EmittenteFiscaleField` in modalita' edit per costruire la option
+    # singola del Select disabled senza round-trip aggiuntivo.
+    emittente_fiscale_codice: str | None
+    emittente_fiscale_descrizione: str | None
+    ba_codice: str | None
+    billing_account_display: str | None
+    # ID fiscale univoco (CF persona fisica o P.IVA) del soggetto del BA.
+    # Esposto via JOIN `anagrafiche.vw_soggetti_ruoli_dettaglio`.
+    id_fiscale: str | None
+    utility_codice: str | None
+    utility_display: str | None
+    listino_codice: str | None
+    listino_descrizione: str | None
+    listino_versione_codice: str | None
+    # Riferimento al contratto generato (pattern A idempotenza). NULL se
+    # l'offerta non e' ancora stata pushata (o non e' ACCETTATA). Coppia
+    # stabile id + numero: il FE puo' linkare al ContrattoDrawer e mostrare
+    # il dialog parlante post-E_OFFERTA_CONTRATTO_GIA_GENERATO.
+    contratto_id: int | None
+    contratto_numero: str | None
+    # Capability blob da `script.fn_available_actions_offerta` merged sul
+    # detail in `OfferteService.get_offerta` (data-driven 2026-05-26).
+    # Il FE consuma questi campi con `useEntityCapabilities` +
+    # `mapAvailableActionsToDrawerActions` senza ricalcolare la state
+    # machine: la verita' della transizione vive solo in DB.
+    # `available_actions` e' lista di dict opachi (chiave/label_key/severity/
+    # icon/target_state/requires_confirm/requires_motivazione) — Any per non
+    # vincolare il TypedDict a una sotto-shape che il BE puo' arricchire.
+    available_actions: list[dict[str, Any]]
+    can_change_state: bool
+    can_edit_testata: bool
+    can_edit_eccezioni: bool
+    can_edit_utility: bool
+    can_create_revisione: bool
+    can_push_contratto: bool
+    can_push_contratto_reason: str | None
+    can_push_contratto_reason_key: str | None
+    non_editable_fields: list[str]
+    stato_codice: str
+    # Audit
+    data_insert: str
+    user_insert: str
+    data_update: str | None
+    user_update: str | None
+
+
+class OffertaEccezioneRow(TypedDict):
+    id: int
+    offerta_id: int
+    articolo_id: str
+    articolo_codice: str | None
+    articolo_descrizione: str | None
+    tipo_eccezione: str
+    tipo_erogazione: str | None
+    fonte_quantita_attesa: str
+    periodicita: str | None
+    generazione_canone: str | None
+    competenza_canone: str | None
+    prezzo_unitario: str | None
+    quantita: str | None
+    qta_operativa: str | None
+    uom_operativa_id: int | None
+    uom_codice: str | None
+    factor_to_base: str
+    ordine: int | None
+    attivo: bool
+    meta: dict[str, Any]
+
+
+class OffertaUtilityRow(TypedDict):
+    id: int
+    offerta_id: int
+    istanza_utility_id: int
+    utility_id: int
+    utility_codice: str | None
+    utility_descrizione: str | None
+    istanza_dati_precontrattuali_id: int | None
+    tipo_utenza_id: int | None
+    tipo_utenza_codice: str | None
+    tipo_utenza_descrizione: str | None
+    classe_utenza_id: int | None
+    classe_utenza_codice: str | None
+    classe_utenza_descrizione: str | None
+    param_1_num: str | None
+    param_2_txt: str | None
+    meta: dict[str, Any]
+
+
+class NotaOffertaRow(TypedDict):
+    id: int
+    offerta_id: int
+    eccezione_id: int | None
+    autore: str | None
+    testo: str
+    meta: dict[str, Any]
+    data_insert: str
+    user_insert: str
+    data_update: str | None
+    user_update: str | None
+
+
+class OffertaPushResult(TypedDict):
+    # In attesa step 8 brief DB (fn_push_offerta_a_contratto). TypedDict
+    # definito per stabilizzare la forma di ritorno futura.
+    contratto_id: int
+    contratto_codice: str
+    sorgente_uid: str

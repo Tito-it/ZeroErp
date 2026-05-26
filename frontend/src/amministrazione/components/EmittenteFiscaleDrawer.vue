@@ -242,7 +242,7 @@ function close() {
             <div v-if="soggettoSelezionato" class="mb-3">
               <SoggettoMessageBanner
                 :ragione-sociale="soggettoSelezionato.ragione_sociale || soggettoSelezionato.ragione_sociale_completa"
-                :codice-fiscale="soggettoSelezionato.cf || soggettoSelezionato.codice_fiscale"
+                :id-fiscale="soggettoSelezionato.cf || soggettoSelezionato.codice_fiscale || soggettoSelezionato.piva || soggettoSelezionato.partita_iva"
               />
               <!-- Validazione P.IVA: requisito legale per emittente fiscale -->
               <Message
@@ -264,7 +264,7 @@ function close() {
           <div v-if="isEdit && detail" class="mb-3">
             <SoggettoMessageBanner
               :ragione-sociale="detail.ragione_sociale_completa"
-              :codice-fiscale="detail.codice_fiscale"
+              :id-fiscale="detail.codice_fiscale || detail.partita_iva"
             />
           </div>
 

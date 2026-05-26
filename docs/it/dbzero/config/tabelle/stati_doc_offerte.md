@@ -1,0 +1,43 @@
+# 📚 Tabella `stati_doc_offerte`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| codice_interno | character varying | NO |  |
+| codice | character varying | NO |  |
+| descrizione | character varying | YES |  |
+| attivo | boolean | NO | true |
+| ordine | smallint | YES |  |
+| meta | jsonb | NO | '{}'::jsonb |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | YES | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| PRIMARY KEY | pk_stati_doc_offerte | id |
+| UNIQUE | uq_stati_doc_offerte_codice | codice |
+| UNIQUE | uq_stati_doc_offerte_codice_interno | codice_interno |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_stati_doc_offerte_attivo | `CREATE INDEX ix_stati_doc_offerte_attivo ON config.stati_doc_offerte USING btree (attivo)` |
+| pk_stati_doc_offerte | `CREATE UNIQUE INDEX pk_stati_doc_offerte ON config.stati_doc_offerte USING btree (id)` |
+| uq_stati_doc_offerte_codice | `CREATE UNIQUE INDEX uq_stati_doc_offerte_codice ON config.stati_doc_offerte USING btree (codice)` |
+| uq_stati_doc_offerte_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_offerte_codice_interno ON config.stati_doc_offerte USING btree (codice_interno)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_stati_doc_offerte_a10_offerte_commerciali_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali', 'stato_doc_offerta_id', 'id', 'attivo')` |
+| trg_stati_doc_offerte_a10_stati_doc_offerte_transizioni__3acc96 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_offerte_transizioni', 'stato_a_id', 'id', 'attivo')` |
+| trg_stati_doc_offerte_a10_stati_doc_offerte_transizioni__89db14 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_offerte_transizioni', 'stato_da_id', 'id', 'attivo')` |
+| trg_stati_doc_offerte_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_stati_doc_offerte_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
+---
+{% include-markdown "signature-core.md" %}

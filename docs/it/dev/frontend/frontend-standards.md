@@ -106,6 +106,46 @@ Le regole di consistenza sono:
 - Logo e nome applicazione in cima, logout e comprimi in fondo
 - Mobile (< 768px): overlay drawer invece di sidebar fissa
 
+### Preferiti utente
+
+I preferiti di navigazione sono **solo frontend**: nessuna API, nessun backend,
+nessun DB. La persistenza usa `localStorage` tramite `useNavigationStore`, con
+chiavi user-scoped sincronizzate al login da `syncUserFavorites(userId)`.
+
+Regole:
+
+- Modello dati store: `{ [domainKey]: routePath[] }`, array ordinato per dominio.
+- Cap: massimo 4 preferiti per dominio. Il quinto tentativo mostra toast warn
+  `nav.preferiti_limite_raggiunto` e non modifica lo stato.
+- Migrazione legacy: un vecchio valore stringa salvato su
+  `domain_default_<domain>` viene letto come array di 1 elemento, copiato
+  nella chiave personale `domain_default_<domain>_user_<id>` e rimosso dalla
+  chiave legacy.
+- Logout: `clearUserState` pulisce solo lo stato in memoria e non cancella
+  il localStorage personale. Al nuovo login dello stesso utente i preferiti
+  ricompaiono; al login di un altro utente vengono caricate altre chiavi.
+- Atterraggio dominio: clic su dominio dalla sidebar HOME apre il primo
+  preferito del dominio; se assente, la prima voce L2; se assente, la route
+  base dominio.
+- Regola anti-salto: se l'utente e' già nel dominio attivo, ricliccare il
+  dominio non deve forzare la navigazione al preferito #1.
+- I preferiti filtrati da permessi/accessi BLOCCATI non vengono renderizzati,
+  ma restano nello storage e ricompaiono se l'accesso torna disponibile.
+- Sidebar collassata: i preferiti sono icone con tooltip `Dominio · Voce`;
+  drag-and-drop disabilitato.
+
+Building block obbligatori:
+
+- `useNavigationFavorites` centralizza risoluzione label/icona, filtro permessi,
+  apertura tab, `router.push`, `nav.setDomain` e riordino del sottoinsieme
+  visibile.
+- `FavoriteItem` renderizza il singolo preferito nelle varianti `sidebar` e
+  `tile`.
+
+I consumer (`SidebarHome`, `HomeView`) gestiscono solo il layout e gli handler
+drag-and-drop; non devono duplicare filtro permessi, label/icon resolution o
+logica di navigazione.
+
 ### Topbar
 
 - Altezza fissa 48px
@@ -255,14 +295,23 @@ function buildRowActions(data) {
 
 **Severity — colore inline e popup:**
 
+Il popup del kebab segue la stessa palette dell'inline. La classe `.app-menu-item-*`
+viene applicata via helper centralizzato `menuItemClass(severity, fallback)` in
+`src/core/utils/rowActions.js`: i consumer (`RowActionsMenu`, `PageActionsBar`,
+`DrawerActionsBar`) passano il proprio fallback (manage o action) e la severity
+dell'azione, l'helper restituisce la classe corretta.
+
 | Severity | Inline (desktop) | Popup (tablet/touch) | Uso tipico |
 | --- | --- | --- | --- |
-| `undefined` | Blu (`app-manage-btn`) | Neutro | Default: apri sub-drawer, clona, gestisci |
-| `'primary'` | Verde (`app-action-btn`) | Neutro | State transition positiva (attiva, approva) |
-| `'warn'` | Arancio (PrimeVue `severity="warn"`) | Neutro | Cautela (chiudi, blocca, scade) |
+| `undefined` | Blu (`app-manage-btn`) | Blu (`app-menu-item-manage`) | Default: apri sub-drawer, clona, gestisci |
+| `'primary'` | Verde (`app-action-btn`) | Verde (`app-menu-item-action`) | State transition positiva (attiva, approva) |
+| `'warn'` | Arancio (PrimeVue `severity="warn"`) | Arancio (`app-menu-item-warn`) | Cautela (chiudi, blocca, scade) |
 | `'danger'` | Rosso (`app-delete-btn`) | Rosso (`app-menu-item-danger`) | Distruttivo (elimina, disattiva) |
+| `'info'` | Blu (`app-manage-btn`) | Blu (`app-menu-item-manage`) | Sinonimo di default |
+| `'success'` | Verde | Verde (`app-menu-item-action`) | Sinonimo di primary |
 
-Solo `danger` differenzia anche nel popup: per le altre severity la label + icona bastano a distinguere l'azione.
+Le voci `:disabled` ricadono sul colore muted PrimeVue (`--app-btn-disabled-color`)
+sovrascrivendo la severity — evita di mostrare "vivace" un'azione non cliccabile.
 
 **Convenzioni centralizzate (niente valori hardcoded nelle liste):**
 
@@ -273,7 +322,8 @@ Solo `danger` differenzia anche nel popup: per le altre severity la label + icon
 | Stile bottone standard | `.app-manage-btn` in `main.css` |
 | Stile bottone distruttivo | `.app-delete-btn` in `main.css` |
 | Larghezza colonna (auto / 60px) | `.app-col-actions` in `main.css` (media query) |
-| Voce menu distruttiva | `.app-menu-item-danger` in `main.css` (eredita `--app-btn-delete-*`) |
+| Voci menu popup | `.app-menu-item-{manage,action,warn,danger}` in `main.css` |
+| Helper severity → classe | `menuItemClass(severity, fallback)` in `src/core/utils/rowActions.js` |
 | Tooltip fallback kebab | `common.altre_azioni` ("Altre azioni") in `it.json` |
 | Tooltip record inattivo | `common.azione_non_disponibile_record_inattivo` in `it.json` |
 | Header colonna azioni | `common.col_azioni` ("Azioni") in `it.json` — sempre questa chiave, mai domain-specific |
@@ -485,7 +535,10 @@ Usato da: `DrawerFooter` (Ctrl+S salva).
 | `app-col-actions`          | `<Column>` azioni di riga         | Larghezza auto su desktop, 60px su tablet/touch (media query `<=1024px`)   |
 | `app-row-actions-inline`   | Interno `RowActionsMenu`          | Wrapper pulsanti inline — visibile solo con hover + viewport `>=1024px`    |
 | `app-row-actions-compact`  | Interno `RowActionsMenu`          | Wrapper kebab + menu popup — visibile su touch o viewport `<1024px`        |
-| `app-menu-item-danger`     | Voce `Menu` PrimeVue              | Colore rosso per azioni distruttive — applicato via `severity: 'danger'`   |
+| `app-menu-item-manage`     | Voce `Menu` PrimeVue              | Colore blu — default popup `RowActionsMenu`                                |
+| `app-menu-item-action`     | Voce `Menu` PrimeVue              | Colore verde — default popup `PageActionsBar` / severity `primary`         |
+| `app-menu-item-warn`       | Voce `Menu` PrimeVue              | Colore arancio — severity `warn` (cautela)                                 |
+| `app-menu-item-danger`     | Voce `Menu` PrimeVue              | Colore rosso — severity `danger` (distruttiva)                             |
 
 ### Composable `useSearchTable(store)`
 
@@ -1374,7 +1427,7 @@ in `:root:not(.p-dark)` (light).
 | `app-page`           | Wrapper root view (flex column, flex:1, overflow:hidden)  |
 | `app-page-toolbar`   | Barra filtri + azioni (flex, space-between, wrap)         |
 | `app-page-filters`   | Gruppo filtri (flex, wrap, gap)                           |
-| `app-page-action`    | Pulsanti azione — responsive: solo icona su mobile        |
+| `app-page-action`    | Pulsanti azione — responsive: solo icona sotto 1024px     |
 | `app-datatable`      | DataTable compatta (font ridotto, padding, stripe, hover) |
 | `app-drawer-content` | Wrapper contenuto drawer (gap via `--app-drawer-gap`)     |
 | `app-drawer-section` | Separatore sezione nei drawer (bordo da theme.css)        |
@@ -1383,6 +1436,14 @@ in `:root:not(.p-dark)` (light).
 | `form-field`         | Coppia label + input (flex column, gap ridotto)           |
 | `form-grid-2col`     | Griglia 2 colonne responsive (1 col < 480px)              |
 | `app-tab-content`    | Wrapper contenuto tab per flex height                     |
+
+**Nota responsive sotto 1024px**: i pulsanti del `DrawerFooter` (Annulla,
+Chiudi, Salva) collassano automaticamente a icon-only via la classe
+`app-drawer-footer-btn` (stessa logica di `.app-page-action`). Il componente
+imposta `v-tooltip.top` con la label per garantire l'accessibilita'. La
+modifica e' centralizzata in [`DrawerFooter.vue`](../../../frontend/src/core/components/DrawerFooter.vue):
+qualsiasi pulsante Annulla/Salva sparso fuori dal componente NON eredita
+questo comportamento — pattern utile per individuare drawer non standard.
 
 ### Centralizzazione stile pulsanti (`main.css`)
 

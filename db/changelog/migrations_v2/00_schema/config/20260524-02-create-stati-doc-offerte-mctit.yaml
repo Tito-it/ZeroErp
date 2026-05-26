@@ -1,0 +1,173 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea config.stati_doc_offerte: catalogo stati documento per
+# vendite.offerte_commerciali.
+#
+# Pattern identico a config.stati_doc_contratti:
+#   id + codice_interno (UQ locked) + codice (UQ) + descrizione
+#   + attivo + ordine + meta + audit fields
+#
+# Non include is_abortito: le offerte_commerciali non usano il
+# pattern temporal-UNIQUE / is_abortito_snapshot (nessun vincolo
+# di overlap su billing_account + utility in v1, decisione §5.1).
+#
+# I 5 stati (BOZZA, EMESSA, ACCETTATA, RIFIUTATA, SUPERATA) e la
+# tabella transizioni vengono seedati in Step 4 dopo la creazione
+# del trigger guard (dipendenza funzionale).
+#
+# Dipendenza: nessuna (tabella autonoma di configurazione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260524-02-create-stati-doc-offerte-mctit.yaml
+
+  - changeSet:
+      id: 20260524-02-create-stati-doc-offerte
+      author: mctit
+      comment: >
+        Crea config.stati_doc_offerte: catalogo stati documento offerta
+        commerciale (BOZZA, EMESSA, ACCETTATA, RIFIUTATA, SUPERATA).
+        Pattern identico a stati_doc_contratti senza is_abortito.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_offerte
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: stati_doc_offerte
+            remarks: >-
+              Catalogo stati documento per vendite.offerte_commerciali.
+              Cinque stati: BOZZA (editabile), EMESSA (proposta al cliente),
+              ACCETTATA (terminale positivo), RIFIUTATA (terminale negativo),
+              SUPERATA (terminale tecnico, set dal trigger revisione).
+              Pattern identico a config.stati_doc_contratti; senza is_abortito
+              perche' le offerte non usano temporal-UNIQUE ne' is_abortito_snapshot.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_stati_doc_offerte
+                    nullable: false
+
+              - column:
+                  name: codice_interno
+                  type: varchar(64)
+                  remarks: >-
+                    Chiave naturale stabile, immutabile dopo la creazione
+                    (lock via script.trgfn_lock_columns).
+                    Usata come riferimento nei seed, migration e codice applicativo.
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_stati_doc_offerte_codice_interno
+
+              - column:
+                  name: codice
+                  type: varchar(64)
+                  remarks: "Codice esposto (UI, API). Univoco."
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_stati_doc_offerte_codice
+
+              - column:
+                  name: descrizione
+                  type: varchar(255)
+                  remarks: "Descrizione leggibile dello stato."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag abilitazione: gli stati disattivati non accettano nuovi documenti."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: ordine
+                  type: smallint
+                  remarks: "Ordinamento per UI (10=BOZZA, 20=EMESSA, 30=ACCETTATA, 40=RIFIUTATA, 50=SUPERATA)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estensibili JSON."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp inserimento riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente DB che ha inserito la riga."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Timestamp ultima modifica."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Utente DB dell'ultima modifica."
+                  constraints:
+                    nullable: true
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Indice su attivo per filtri amministrativi e check rapido sullo stato.
+              CREATE INDEX ix_stati_doc_offerte_attivo
+                  ON config.stati_doc_offerte (attivo);
+
+              COMMENT ON TABLE config.stati_doc_offerte IS
+                  'Catalogo stati documento per vendite.offerte_commerciali. '
+                  'Cinque stati: BOZZA (editabile), EMESSA (proposta al cliente), '
+                  'ACCETTATA (terminale positivo), RIFIUTATA (terminale negativo), '
+                  'SUPERATA (terminale tecnico, set dal trigger trgfn_offerte_commerciali_revisione). '
+                  'codice_interno e'' immutabile (lock via script.trgfn_lock_columns). '
+                  'Le transizioni ammesse sono configurate in config.stati_doc_offerte_transizioni '
+                  '(creata in Step 4). '
+                  'Pattern identico a config.stati_doc_contratti; senza is_abortito perche'' '
+                  'le offerte non usano temporal-UNIQUE ne'' is_abortito_snapshot. '
+                  'rev 2026-05-24.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: stati_doc_offerte

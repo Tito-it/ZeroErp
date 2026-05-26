@@ -178,3 +178,43 @@ class TestFornitoriUpdate(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             FornitoriService().update_fornitore(999, {"rating": 90})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+
+
+class TestResolveFiltriExportLabel(TestCase):
+    """DEF-1: traduzione filtri attivi in label leggibili per header export."""
+
+    @patch(FORN_REPO)
+    def test_resolve_filtri_export_label_completo(self, mock_repo):
+        """Mapping completo: search + stato_fornitore_id."""
+        repo = mock_repo.return_value
+        repo.get_stato_fornitore_descrizione.return_value = "Attivo"
+
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        result = FornitoriService().resolve_filtri_export_label(
+            search="rossi", stato_fornitore_id=3,
+        )
+
+        self.assertEqual(result, {"Ricerca": "rossi", "Stato": "Attivo"})
+        repo.get_stato_fornitore_descrizione.assert_called_once_with(3)
+
+    @patch(FORN_REPO)
+    def test_resolve_filtri_export_label_fallback_id(self, mock_repo):
+        """Lookup descrizione mancante (id obsoleto): fallback 'id=N'."""
+        repo = mock_repo.return_value
+        repo.get_stato_fornitore_descrizione.return_value = None
+
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        result = FornitoriService().resolve_filtri_export_label(
+            stato_fornitore_id=999,
+        )
+
+        self.assertEqual(result, {"Stato": "id=999"})
+
+    @patch(FORN_REPO)
+    def test_resolve_filtri_export_label_vuoto(self, mock_repo):
+        """Nessun filtro attivo: dict vuoto."""
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        result = FornitoriService().resolve_filtri_export_label()
+
+        self.assertEqual(result, {})
+        mock_repo.return_value.get_stato_fornitore_descrizione.assert_not_called()

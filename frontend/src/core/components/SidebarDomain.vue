@@ -6,7 +6,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { computed, inject, ref } from 'vue'
 import { useNavigationStore } from '../../stores/navigation'
 import { useTabsStore } from '../../stores/tabs'
-import { useAuthStore } from '../../stores/auth'
+import { useNotify } from '../composables/useNotify'
+import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { NAV_ICONS, resolveNavigationLabel } from '../navigation'
 import SidebarItem from './SidebarItem.vue'
 
@@ -15,34 +16,11 @@ const route = useRoute()
 const router = useRouter()
 const nav = useNavigationStore()
 const tabs = useTabsStore()
-const auth = useAuthStore()
+const notify = useNotify()
+const { isMenuItemAllowed } = useNavigationFavorites()
 const isCollapsed = inject('sidebarCollapsed', ref(false))
 
-// Scopo: filtra le voci di menu L2 nascondendo quelle che dichiarano:
-//   - `requireArea: 'X'`        -> nascosta se area X BLOCCATA
-//   - `requireAnyAction: ['a','b']` -> nascosta se utente non admin e
-//                                  nessuna delle azioni e' abilitata
-//
-// Coerente con la regola di doc "BLOCCATO = nessun accesso, l'area non
-// e' nemmeno visibile" e con il route guard che valuta il livello area
-// su `meta.domain`. La OR-azione e' usata per voci protette da azioni
-// di processo (es. personalizzazioni-liste sotto config: `ui_preset_manage`
-// OR `ui_permesso_manage`).
-//
-// NOTA: oggi nessuna voce in DOMAIN_MENUS ha `children`. Quando saranno
-// introdotti gruppi annidati, estendere il filter qui (ricorsione su
-// children + nascondi gruppo se vuoto).
-const visibleMenu = computed(() =>
-  nav.currentMenu.filter(item => {
-    if (item.requireArea && auth.isAreaBlocked(item.requireArea)) return false
-    if (Array.isArray(item.requireAnyAction) && item.requireAnyAction.length > 0) {
-      if (!auth.isAdmin && !item.requireAnyAction.some(a => auth.isActionAllowed(a))) {
-        return false
-      }
-    }
-    return true
-  }),
-)
+const visibleMenu = computed(() => nav.currentMenu.filter(isMenuItemAllowed))
 
 const emit = defineEmits(['navigate'])
 const openGroups = ref({})
@@ -110,10 +88,9 @@ function handleMenuClick(item) {
 
 function handleToggleFavorite(item) {
   if (!item.to) return
-  if (nav.isFavorite(item.to)) {
-    nav.clearFavorite(nav.currentDomain)
-  } else {
-    nav.setFavorite(nav.currentDomain, item.to)
+  const changed = nav.toggleFavorite(nav.currentDomain, item.to)
+  if (!changed) {
+    notify.warn(t('nav.preferiti_limite_raggiunto'))
   }
 }
 </script>
@@ -156,9 +133,9 @@ function handleToggleFavorite(item) {
         <i
           v-else-if="!isCollapsed"
           class="pi favorite-star"
-          :class="nav.isFavorite(item.to) ? 'pi-star-fill' : 'pi-star'"
+          :class="nav.isFavoriteOfDomain(nav.currentDomain, item.to) ? 'pi-star-fill' : 'pi-star'"
           @click.stop="handleToggleFavorite(item)"
-          v-tooltip.right="nav.isFavorite(item.to) ? t('nav.remove_favorite') : t('nav.set_favorite')"
+          v-tooltip.right="nav.isFavoriteOfDomain(nav.currentDomain, item.to) ? t('nav.remove_favorite') : t('nav.set_favorite')"
         ></i>
       </SidebarItem>
 
@@ -177,9 +154,9 @@ function handleToggleFavorite(item) {
           </span>
           <i
             class="pi favorite-star"
-            :class="nav.isFavorite(child.to) ? 'pi-star-fill' : 'pi-star'"
+            :class="nav.isFavoriteOfDomain(nav.currentDomain, child.to) ? 'pi-star-fill' : 'pi-star'"
             @click.stop="handleToggleFavorite(child)"
-            v-tooltip.right="nav.isFavorite(child.to) ? t('nav.remove_favorite') : t('nav.set_favorite')"
+            v-tooltip.right="nav.isFavoriteOfDomain(nav.currentDomain, child.to) ? t('nav.remove_favorite') : t('nav.set_favorite')"
           ></i>
         </SidebarItem>
       </div>

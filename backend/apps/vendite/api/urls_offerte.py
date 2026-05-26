@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: URL routing per CRUD vendite.offerte_commerciali.
+#        Perimetro 2026-05-25 (D6 completo): testata + cambio stato
+#        (emetti, registra-esito, annulla) + eccezioni + utility 1:1 +
+#        revisioni (crea-revisione, revisioni) + push-contratto. Step DB
+#        1-9 atterrati, nessun endpoint pendente.
+# ------------------------------------------------------------
+
+from django.urls import path
+
+from apps.vendite.api.note_views import (
+    ApiOffertaNoteDetail,
+    ApiOffertaNoteList,
+)
+from apps.vendite.api.views_offerte import (
+    ApiOffertaAnnulla,
+    ApiOffertaCreaRevisione,
+    ApiOffertaDetail,
+    ApiOffertaEccezioneDetail,
+    ApiOffertaEccezioni,
+    ApiOffertaEmetti,
+    ApiOffertaPushContratto,
+    ApiOffertaRegistraEsito,
+    ApiOffertaRevisioni,
+    ApiOffertaUtility,
+    ApiOffertaUtilityDetail,
+    ApiOfferteList,
+)
+
+urlpatterns = [
+    # Lista + creazione testata.
+    path("", ApiOfferteList.as_view(), name="vendite-offerte-list"),
+    path(
+        "<int:offerta_id>/",
+        ApiOffertaDetail.as_view(),
+        name="vendite-offerta-detail",
+    ),
+    # Transizioni di stato manuali.
+    path(
+        "<int:offerta_id>/emetti/",
+        ApiOffertaEmetti.as_view(),
+        name="vendite-offerta-emetti",
+    ),
+    path(
+        "<int:offerta_id>/registra-esito/",
+        ApiOffertaRegistraEsito.as_view(),
+        name="vendite-offerta-registra-esito",
+    ),
+    path(
+        "<int:offerta_id>/annulla/",
+        ApiOffertaAnnulla.as_view(),
+        name="vendite-offerta-annulla",
+    ),
+    # Revisioni (Step 6-7 brief DB, atterrati 2026-05-25).
+    path(
+        "<int:offerta_id>/crea-revisione/",
+        ApiOffertaCreaRevisione.as_view(),
+        name="vendite-offerta-crea-revisione",
+    ),
+    path(
+        "<int:offerta_id>/revisioni/",
+        ApiOffertaRevisioni.as_view(),
+        name="vendite-offerta-revisioni-list",
+    ),
+    # Push a contratto (Step 8 brief DB, atterrato 2026-05-25).
+    path(
+        "<int:offerta_id>/push-contratto/",
+        ApiOffertaPushContratto.as_view(),
+        name="vendite-offerta-push-contratto",
+    ),
+    # Eccezioni.
+    path(
+        "<int:offerta_id>/eccezioni/",
+        ApiOffertaEccezioni.as_view(),
+        name="vendite-offerta-eccezioni-list",
+    ),
+    path(
+        "<int:offerta_id>/eccezioni/<int:eccezione_id>/",
+        ApiOffertaEccezioneDetail.as_view(),
+        name="vendite-offerta-eccezione-detail",
+    ),
+    # Utility 1:1.
+    path(
+        "<int:offerta_id>/utility/",
+        ApiOffertaUtility.as_view(),
+        name="vendite-offerta-utility",
+    ),
+    path(
+        "<int:offerta_id>/utility/<int:utility_id>/",
+        ApiOffertaUtilityDetail.as_view(),
+        name="vendite-offerta-utility-detail",
+    ),
+    # Note partizionate (target_tipo='OFFERTA'). Building block
+    # PartitionedNoteRepository: 3 righe di cablaggio + view generata.
+    path(
+        "<int:offerta_id>/note/",
+        ApiOffertaNoteList.as_view(),
+        name="vendite-offerta-note-list",
+    ),
+    path(
+        "<int:offerta_id>/note/<int:note_id>/",
+        ApiOffertaNoteDetail.as_view(),
+        name="vendite-offerta-note-detail",
+    ),
+]

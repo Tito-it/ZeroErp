@@ -17,8 +17,9 @@
 
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useContextStore } from '../../stores/context'
-import { BREAKPOINTS, PAGINATION } from '../constants'
+import { BREAKPOINTS, MANAGE_ICONS, PAGINATION } from '../constants'
 
 export function useSearchTable(store, options = {}) {
   const {
@@ -30,6 +31,7 @@ export function useSearchTable(store, options = {}) {
 
   const route = useRoute()
   const ctx = useContextStore()
+  const { t } = useI18n()
   const initialLimit = store.filters.limit
   const useResponsiveDefaultRows = initialLimit === PAGINATION.DEFAULT_ROWS
   const compactRowsQuery = typeof window !== 'undefined'
@@ -155,6 +157,28 @@ export function useSearchTable(store, options = {}) {
     store.fetchList()
   }
 
+  // Scopo: lista priva di record. Heuristica generica: tutte le liste lazy
+  // espongono totalRecords nel paginator -> 0 = niente da paginare = lista vuota.
+  // Usata per disabilitare l'azione "reload" (nulla da ricaricare).
+  const isListEmpty = computed(() => (store.totalRecords ?? 0) === 0)
+
+  // Scopo: factory standard dell'azione "Ricarica lista" usata da PageActionsBar.
+  // Centralizza icona+label+disable logic in modo che ogni consumer scriva una
+  // sola riga (`reloadAction()`) invece di duplicare l'oggetto. `disabled` si
+  // aggiorna reattivamente: se chiamata dentro un computed (pattern standard
+  // pageActions), si rivaluta quando store.totalRecords cambia.
+  function reloadAction(overrides = {}) {
+    return {
+      key: 'reload',
+      kind: 'utility',
+      label: t('common.reload_list'),
+      icon: MANAGE_ICONS.RELOAD,
+      disabled: isListEmpty.value,
+      command: reload,
+      ...overrides,
+    }
+  }
+
   // Props da passare al DataTable via v-bind (include paginazione e sort default)
   const paginatorProps = computed(() => ({
     totalRecords: store.totalRecords,
@@ -175,6 +199,8 @@ export function useSearchTable(store, options = {}) {
     onSort,
     applyFilters,
     reload,
+    isListEmpty,
+    reloadAction,
     paginatorProps
   }
 }

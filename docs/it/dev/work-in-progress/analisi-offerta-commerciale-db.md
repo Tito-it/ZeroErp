@@ -1,13 +1,48 @@
 # Brief DB — Dominio `vendite.offerte_commerciali` (Step di sviluppo)
 
-> **Stato**: BRIEF in attesa del team DB. Nessuna migration ancora scritta.
+> **Stato**: ✅ CHIUSO — tutti gli step 1-9 applicati e testati. Vedere §8.
 >
-> **Revisione 2026-05-24**: corretti i problemi bloccanti B1/B2/B3 e gli
-> importanti I1/I2/I3/I4 emersi dall'analisi critica. Le correzioni
-> **riallineano il brief alla decisione §5.1 dell'analisi** (offerta 1:1
-> contratto, mono-utility, grana fine): una precedente stesura aveva
+> **Progressi al 2026-05-25 (branch `dev/db-tid`)**:
+>
+> - **Step 1 ✅ APPLICATO** — seed `config.sorgenti` (`OFFERTA_COMMERCIALE`),
+>   `config.stati_doc_offerte` (6 righe incl. `ANNULLATA`), `config.messaggi_errore`
+>   (6 codici). FK index policy registrata per le 4 FK delle note.
+> - **Step 2 ✅ APPLICATO** — `vendite.offerte_commerciali` testata (migration
+>   `20260524-03`) + addendum `motivazione_rifiuto` / `data_annullamento`
+>   (migration `20260524-10`).
+> - **Step 3 ✅ APPLICATO** — `offerte_commerciali_eccezioni` (`20260524-05`),
+>   `offerte_commerciali_utilities` (`20260524-06`), partizione
+>   `note_offerte_commerciali` + trigger note (`20260524-07`, `20260524-08`,
+>   `20260524-09`). Documentazione manuale DB creata in `docs/it/dbzero/vendite/manual/`.
+> - **Step 4 ✅ APPLICATO** — DDL `config.stati_doc_offerte_transizioni`
+>   (`20260524-21`), seed 5 transizioni addendum A2 (`20260524-22`),
+>   trigger guard `trgfn_offerte_commerciali_guard_transizione` (`20260524-23`).
+>   Fix VARIADIC in `fn_log_and_raise_error`: `20260525-04`.
+> - **Step 5 ✅ APPLICATO** — riga `offerta_commerciale`/`OFC` aggiunta in
+>   `config.sistema_codici` (id=17, migration `20260524-25`).
+>   Fix sequenza mancante + trigger `sync_gen_codice` aggiornato: `20260525-03`.
+> - **Step 6 ✅ APPLICATO** — `trgfn_offerte_commerciali_revisione` AFTER INSERT
+>   `_z90_` (migration `20260524-26`). Nota O4 analizzata: UPDATE su riga diversa,
+>   no DEFERRABLE necessario.
+> - **Step 7 ✅ APPLICATO** — `fn_crea_revisione_offerta(p_offerta_id, p_user)`
+>   RETURNS BIGINT (migration `20260524-27`).
+> - **Step 8 ✅ APPLICATO** — ALTER `vendite.contratti`: +`offerta_id` UNIQUE,
+>   +`sorgente_tipo_id`, +`sorgente_uid` (migration `20260525-01`).
+>   `fn_push_offerta_a_contratto` (migration `20260525-02`). UPSERT
+>   `contratti_utilities`.
+> - **Step 9 ✅ CHIUSO** — Suite pgTAP completa in
+>   `db/pgtap/vendite/offerte_commerciali/` (9 file, tutti i test passati
+>   2026-05-25).
+>
+> **Revisione 2026-05-24 (brief originale)**: corretti i problemi bloccanti
+> B1/B2/B3 e gli importanti I1/I2/I3/I4 emersi dall'analisi critica. Le
+> correzioni **riallineano il brief alla decisione §5.1 dell'analisi** (offerta
+> 1:1 contratto, mono-utility, grana fine): una precedente stesura aveva
 > reintrodotto erroneamente l'offerta multi-utility (Opzione B), scartata in
 > §5.1. Vedi §0 changelog.
+>
+> **Addendum 2026-05-24 (da piano applicativo BE+FE rev. c)**: tre rifiniture
+> recepite e già applicate alle migration — vedi §0.1.
 >
 > **Owner concettuale**: Tid (Michele Carlo Titini)
 >
@@ -41,7 +76,20 @@
 
 ---
 
-## 0. Changelog correzioni (revisione 2026-05-24)
+## 0. Changelog correzioni
+
+### 0.1 Addendum 2026-05-24 (da piano applicativo BE+FE rev. c)
+
+Tre rifiniture recepite dal piano applicativo BE+FE rev. c, già applicate alle
+migration su `dev/db-tid`. Non cambiano strutture già applicate, solo addizioni.
+
+| Rif. | Punto | Recepimento DB |
+| ---- | ----- | -------------- |
+| A1 | `motivazione_rifiuto TEXT NULL` sulla testata: testo libero motivo chiusura negativa (RIFIUTATA o ANNULLATA). Primo cittadino: visibile in lista, filtrabile, non in `meta`. | Aggiunto in migration `20260524-10`. |
+| A2 | Sesto stato `ANNULLATA` (terminale, ritiro da parte nostra). Transizioni: `BOZZA→ANNULLATA` (unica via negativa da bozza), `EMESSA→RIFIUTATA` (no del cliente). Rimossa `BOZZA→RIFIUTATA` (incongrua: RIFIUTATA è semanticamente "no del cliente"). | `ANNULLATA` aggiunto in `stati_doc_offerte.csv`. `data_annullamento TIMESTAMPTZ NULL` aggiunto in `20260524-10`. Transizioni seed corrette in §3 step 4. |
+| A3 | Conferma mirror fedele `offerte_commerciali_utilities`: tutti i campi business inclusi (`tipo_utenza_id`, `classe_utenza_id`, `param_*`, `istanza_dati_precontrattuali_id`, `meta`). Push 1:1 trasporta tutto. | Confermato — `20260524-06` include tutti i campi. Nessuna migration aggiuntiva. |
+
+### 0.2 Correzioni brief originale (revisione 2026-05-24)
 
 Riepilogo delle correzioni rispetto alla stesura precedente. La radice comune
 di B1/B2/B3/I2 è una sola: **l'offerta deve essere uno specchio fedele del
@@ -209,8 +257,8 @@ Riepilogo di tutto ciò che il brief introduce, distinto per categoria. Gli
 | `config.sorgenti`                      | `OFFERTA_COMMERCIALE` (singolare maiuscolo, convenzione §6.3 pratiche)     | 1    |
 | `config.sistema_codici`                | Riga `offerta_commerciale` con prefisso `OFC` (analogo a `PRV` preventivi) | 5    |
 | `config.messaggi_errore`               | 6 codici nuovi (vedi §4)                                                   | 1    |
-| `config.stati_doc_offerte`             | 5 righe: BOZZA, EMESSA, ACCETTATA, RIFIUTATA, SUPERATA                     | 2    |
-| `config.stati_doc_offerte_transizioni` | Tabella delle transizioni ammesse (vedi §3 step 4)                         | 4    |
+| `config.stati_doc_offerte`             | 6 righe: BOZZA, EMESSA, ACCETTATA, RIFIUTATA, SUPERATA, ANNULLATA (A2)     | 2    |
+| `config.stati_doc_offerte_transizioni` | 5 transizioni (vedi §3 step 4, aggiornate per A2)                          | 4    |
 
 > **Naming stati documenti — chiarito 2026-05-23**: il pattern esistente in
 > `config/tabelle` distingue:
@@ -297,16 +345,24 @@ in base alle convenzioni):
 | `revisione_padre_id`        | BIGINT FK self     | no                | NULL su rev.1, FK a rev.N-1 su rev.N+1                                                                  |
 | `data_emissione`            | TIMESTAMPTZ        | no                | Valorizzata al passaggio BOZZA→EMESSA (trigger step 4)                                                  |
 | `data_accettazione`         | TIMESTAMPTZ        | no                | Valorizzata al passaggio EMESSA→ACCETTATA                                                               |
-| `data_rifiuto`              | TIMESTAMPTZ        | no                | Valorizzata al passaggio EMESSA→RIFIUTATA                                                               |
-| `note`                      | TEXT               | no                | Note libere offerta                                                                                     |
+| `data_rifiuto`              | TIMESTAMPTZ        | no                | Valorizzata al passaggio EMESSA→RIFIUTATA (no del cliente)                                              |
+| `data_annullamento`         | TIMESTAMPTZ        | no                | **A2**: valorizzata al passaggio BOZZA→ANNULLATA (ritiro da parte nostra). Distinta da `data_rifiuto`   |
+| `motivazione_rifiuto`       | TEXT               | no                | **A1**: testo libero motivo chiusura negativa (RIFIUTATA o ANNULLATA). Primo cittadino, non in `meta`   |
 | `meta`                      | JSONB              | sì                | Default `'{}'` per estensioni future controllate                                                        |
 | Audit fields                | (standard)         | sì                | `tx_id`, `data_insert`, `user_insert`, `data_update`, `user_update`                                     |
 
-> **Correzione I2**: `tipo_variazione_globale` è **VARCHAR + CHECK**, allineato
-> alla convenzione di `vendite.contratti.tipo_variazione_globale`
-> (`chk_contratti_tipo_variazione_globale`), **non** una FK a tabella tipi.
-> Stessi valori ammessi del contratto, così il push copia il valore senza
-> conversione.
+> **Note libere offerta**: le note testuali dell'offerta non stanno in una
+> colonna `note TEXT` sulla testata ma nella partizione `vendite.note_offerte_commerciali`
+> (partition di `vendite.note` FOR VALUES IN (`'OFFERTA'`)). Stessa struttura di
+> `note_contratto` / `note_preventivo` con ancoraggio DOCUMENTO (nota testata)
+> e RIGA (nota su singola eccezione). FK `target_id → offerte_commerciali`,
+> `target_riga_id → offerte_commerciali_eccezioni`. Applicata in Step 3.
+
+**Correzione I2**: `tipo_variazione_globale` è **VARCHAR + CHECK**, allineato
+alla convenzione di `vendite.contratti.tipo_variazione_globale`
+(`chk_contratti_tipo_variazione_globale`), **non** una FK a tabella tipi.
+Stessi valori ammessi del contratto, così il push copia il valore senza
+conversione.
 
 **Vincoli**:
 
@@ -410,25 +466,36 @@ config-driven, allineato al pattern già usato per preventivi e contratti
 
 **Deliverable**:
 
-- Seed `config.stati_doc_offerte` con 5 righe:
+- Seed `config.stati_doc_offerte` con **6 righe** (**già applicato in Step 1**):
   - `BOZZA` (iniziale, editabile)
   - `EMESSA` (proposta al cliente, immutabile sui dati propri)
   - `ACCETTATA` (terminale positivo, immutabile)
-  - `RIFIUTATA` (terminale negativo, immutabile)
+  - `RIFIUTATA` (terminale negativo — no del cliente, immutabile)
   - `SUPERATA` (terminale tecnico, valorizzato dal trigger revisione step 6)
-- Seed `config.stati_doc_offerte_transizioni` (oppure
-  `config.transizioni_stati_doc_offerte` a scelta del team DB per coerenza con
-  i naming già scelti su preventivi/pratiche) con le sole transizioni ammesse:
-  - BOZZA → EMESSA, BOZZA → RIFIUTATA (annullamento bozza)
-  - EMESSA → ACCETTATA, EMESSA → RIFIUTATA, EMESSA → SUPERATA
-  - Nessuna transizione uscente da ACCETTATA, RIFIUTATA, SUPERATA (immutabili)
+  - `ANNULLATA` (terminale — ritiro da parte nostra prima/durante bozza, **addendum A2**)
+- Seed `config.stati_doc_offerte_transizioni` (**DA FARE**) con le sole
+  transizioni ammesse (**aggiornate per addendum A2** — rimossa `BOZZA→RIFIUTATA`):
+
+  | Da       | A          | Note                                                |
+  | -------- | ---------- | --------------------------------------------------- |
+  | BOZZA    | EMESSA     | Il trigger congela `listino_versione_id`            |
+  | BOZZA    | ANNULLATA  | Ritiro interno; `BOZZA→RIFIUTATA` rimossa (A2)      |
+  | EMESSA   | ACCETTATA  | Innesca push a contratto                            |
+  | EMESSA   | RIFIUTATA  | No del cliente                                      |
+  | EMESSA   | SUPERATA   | Trigger revisione (step 6)                          |
+
+  Nessuna transizione uscente da ACCETTATA, RIFIUTATA, SUPERATA, ANNULLATA
+  (tutti terminali immutabili).
+
 - Trigger `trgfn_offerte_commerciali_guard_transizione` BEFORE UPDATE OF
-  `stato_doc_offerta_id` ON `vendite.offerte_commerciali`:
+  `stato_doc_offerta_id` ON `vendite.offerte_commerciali` (**DA FARE**):
   - Verifica transizione in `config.stati_doc_offerte_transizioni`
-  - Valorizza `data_emissione`/`data_accettazione`/`data_rifiuto` al passaggio
-  - Guard: in BOZZA→EMESSA verifica che `listino_versione_id` non sia NULL
-    e che la versione listino sia ATTIVA al momento dell'emissione (decisione
-    §5.3)
+  - Valorizza timestamp corrispondente al passaggio:
+    `data_emissione` (→EMESSA), `data_accettazione` (→ACCETTATA),
+    `data_rifiuto` (→RIFIUTATA), `data_annullamento` (→ANNULLATA, **A2**)
+  - Su `motivazione_rifiuto`: obbligatorio o opzionale a scelta del team DB;
+    il campo è già presente per i passaggi negativi (RIFIUTATA, ANNULLATA, **A1**)
+  - Guard BOZZA→EMESSA: `listino_versione_id` NOT NULL + versione ATTIVA (§5.3)
   - Errori via `script.fn_log_and_raise_error()` con codici §4
 - Trigger fase `_a10_` (guard, vedi linee-guida-trigger.md)
 
@@ -725,20 +792,38 @@ AGENTS.md §Test).
 
 ## 8. Stato del brief
 
-| Step | Stato  | Dipendenze          | Note                                                            |
-| ---- | ------ | ------------------- | --------------------------------------------------------------- |
-| 1    | Pronto | nessuna             | Seed minimi, applicabile per primo                              |
-| 2    | Pronto | 1                   | Testata offerta (con utility B2 + tipo_variazione VARCHAR I2)   |
-| 3    | Pronto | 2                   | Eccezioni (enum B3, CHECK I3, esclusioni I4) + utility 1:1 (B1) |
-| 4    | Pronto | 2, 3                | State machine + guard listino                                   |
-| 5    | Pronto | 2                   | Numerazione (verificare prerequisito `sistema_codici` presente) |
-| 6    | Pronto | 4                   | Trigger reattivo revisione (verificare DEFERRABLE, O4)          |
-| 7    | Pronto | 6                   | fn_crea_revisione_offerta                                       |
-| 8    | Pronto | 4 (stato ACCETTATA) | fn_push_offerta_a_contratto + idempotenza obbligatoria (I1)     |
-| 9    | Pronto | 1-8 completati      | Suite pgTAP end-to-end                                          |
+> **Aggiornamento 2026-05-25**: tutti gli step 1-9 APPLICATI e testati.
+> Brief CHIUSO. Suite pgTAP completa, tutti i test passati.
+> Due bug fix applicati durante lo Step 9 (`20260525-03`, `20260525-04`).
+
+| Step | Stato | Migration / File | Note |
+| ---- | ----- | ---------------- | ---- |
+| 1 | APPLICATO | CSV seeds (sorgenti, stati, errori, fk_policy) | 6 stati (A2: +ANNULLATA); 6 errori; sorgente OFFERTA_COMMERCIALE |
+| 2 | APPLICATO | `20260524-03`, `20260524-10` | Testata + motivazione_rifiuto / data_annullamento (A1/A2) |
+| 3 | APPLICATO | `20260524-05` .. `20260524-09` | Eccezioni + utilities + note partition + FK. Docs manual/ creati |
+| 4 | APPLICATO | `20260524-21`, `20260524-22`, `20260524-23`, `20260525-04` | DDL transizioni + seed 5 trans. (A2) + trigger guard. Fix `20260525-04`: VARIADIC arg mancante in `fn_log_and_raise_error` per `E_OFFERTA_EMISSIONE_*` |
+| 5 | APPLICATO | CSV `sistema_codici.csv` (id=17), `20260524-25`, `20260525-03` | Riga `offerta_commerciale`/`OFC` aggiunta. Fix `20260525-03`: sequenza `offerte_commerciali_codice_seq` mancante; `sync_gen_codice` aggiornato per crearla |
+| 6 | APPLICATO | `20260524-26` (20_code/vendite) | `trgfn_offerte_commerciali_revisione` z90 AFTER INSERT. O4: no DEFERRED |
+| 7 | APPLICATO | `20260524-27` (20_code/vendite) | `fn_crea_revisione_offerta(p_offerta_id, p_user)` RETURNS BIGINT |
+| 8 | APPLICATO | `20260525-01` (00_schema/vendite) + `20260525-02` (20_code/vendite) | ALTER contratti: +offerta_id UNIQUE, +sorgente_tipo_id, +sorgente_uid. `fn_push_offerta_a_contratto`. UPSERT contratti_utilities |
+| 9 | CHIUSO | `db/pgtap/vendite/offerte_commerciali/` (9 file) | Suite pgTAP completa. Tutti i test passati 2026-05-25 |
+
+**File pgTAP**:
+
+| File | Step | Test |
+| ---- | ---- | ---- |
+| `test_offerte_commerciali_struttura.sql` | 2 | Colonne, FK, UNIQUE uid, CHECK variazione globale |
+| `test_offerte_commerciali_eccezioni_struttura.sql` | 3 | Mirror contratti_righe: enum, 5 CHECK, esclusione campi I4 |
+| `test_offerte_commerciali_utilities_struttura.sql` | 3 | UNIQUE (offerta_id), mirror contratti_utilities |
+| `test_offerte_commerciali_state_machine.sql` | 4 | 10 transizioni: ammesse/vietate + guard listino + timestamp |
+| `test_offerte_commerciali_codice.sql` | 5 | Generazione `OFC-*` via `sistema_codici` |
+| `test_offerte_commerciali_revisione_trigger.sql` | 6 | rev.N → SUPERATA al creare rev.N+1 |
+| `test_fn_crea_revisione_offerta.sql` | 7 | Creazione rev.N+1: eccezioni + utility copiate; guard stati |
+| `test_fn_push_offerta_a_contratto.sql` | 8 | Push corretto + idempotenza + copia eccezioni/utility 1:1 |
+| `test_offerte_commerciali_end_to_end.sql` | 9 | Flusso completo BOZZA→EMESSA→ACCETTATA→contratto DRAFT |
 
 ---
 
 *Brief DB Offerta Commerciale — ZeroErp. Revisione 2026-05-24 (correzioni
-B1/B2/B3/I1/I2/I3/I4 + note O1/O4/O5). Pronto per applicazione team DB su
-`dev/db-tid` dopo OK Tid. Documento vivo, da aggiornare a ogni step chiuso.*
+B1/B2/B3/I1/I2/I3/I4 + note O1/O4/O5). CHIUSO 2026-05-25: tutti gli step
+applicati, suite pgTAP completa, tutti i test passati su `dev/db-tid`.*

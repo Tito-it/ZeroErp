@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge a config.messaggi_errore i codici per l'emittente
+# fiscale su contratti:
+#   E_CONTRATTO_EMITTENTE_NON_RISOLTO (id=463)
+#   E_CONTRATTO_EMITTENTE_BA_INCOERENTE (id=464)
+#
+# Usati da:
+#   - vendite.trgfn_contratti_default_emittente (20260526-03)
+#   - vendite.trgfn_contratti_guard_emittente_ba (20260526-04)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260526-06-upsert-messaggi-errore-contratti-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260526-06-upsert-messaggi-errore-contratti-emittente
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: messaggi_errore
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/messaggi_errore.csv
+            tableName: messaggi_errore
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: codice,    type: STRING }
+              - column: { name: lingua,    type: STRING }
+              - column: { name: messaggio, type: STRING }
+              - column: { name: id,        type: NUMERIC }
+              - column: { name: causa,     type: STRING }
+              - column: { name: soluzione, type: STRING }

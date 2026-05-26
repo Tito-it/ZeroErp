@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Backfill vendite.contratti.emittente_fiscale_id su righe storiche.
+#
+# Catena di risoluzione (in ordine di preferenza, per coerenza con il
+# modello user-derived):
+#   1) Da user_insert (operatore creatore della riga) via JOIN auth_user
+#      e script.fn_resolve_emittente_for_user
+#   2) Fallback BA-derived: anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id)
+#      (applicabile a tutti i contratti perche' billing_account_id e' NOT NULL)
+#
+# Nota: contratti.billing_account_id e' NOT NULL, quindi il fallback BA-derived
+# copre tutti i residui non risolti dallo step 1 (admin globale, operatori
+# non piu' attivi). Non serve il fallback gestore globale (BA NULL) usato
+# nei preventivi (che ammettono BA nullable).
+#
+# NB: i trigger guard (trgfn_contratti_guard_emittente_ba) non attivi
+# durante questo UPDATE diretto su migration data (Liquibase esegue
+# come utente tecnico, non come middleware API). Il trigger BEFORE INSERT
+# non si applica a UPDATE. Il trigger BEFORE UPDATE OF emittente_fiscale_id
+# si applica ma il guard verifica l'eguaglianza con BA-derived, il che e'
+# garantito dallo step 2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260526-07-backfill-contratti-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260526-07-backfill-contratti-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Backfill emittente_fiscale_id su contratti storici. Catena
+        user_insert -> BA-derived. Idempotente (UPDATE solo righe
+        con emittente_fiscale_id IS NULL).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: contratti
+            columnName: emittente_fiscale_id
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Backfill catena emittente_fiscale_id su contratti
+              --
+              -- Step 1: user_insert -> django.auth_user.id -> resolve_emittente_for_user
+              --   Coerente col modello user-derived dei nuovi contratti.
+              --   Riferimento django.auth_user fully qualified (no %TYPE su
+              --   tabelle django, vedi linee guida progetto).
+              -- ==========================================================
+              UPDATE vendite.contratti c
+                 SET emittente_fiscale_id = script.fn_resolve_emittente_for_user(au.id::integer)
+                FROM django.auth_user au
+               WHERE au.username = c.user_insert
+                 AND au.is_active = true
+                 AND c.emittente_fiscale_id IS NULL
+                 AND script.fn_resolve_emittente_for_user(au.id::integer) IS NOT NULL;
+
+              -- ==========================================================
+              -- Step 2: BA-derived per i residui (operatore non piu' risolvibile
+              -- o admin globale al momento dell'INSERT storico).
+              -- Contratti hanno billing_account_id NOT NULL, quindi fn_get_emittente_fiscale_pk
+              -- copre tutti i residui dello step 1.
+              -- ==========================================================
+              UPDATE vendite.contratti c
+                 SET emittente_fiscale_id = anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id)
+               WHERE c.emittente_fiscale_id IS NULL;
+
+              -- ==========================================================
+              -- Report finale: deve essere 0 NULL prima del SET NOT NULL.
+              -- ==========================================================
+              DO $$
+              DECLARE
+                v_null_count int;
+              BEGIN
+                SELECT COUNT(*) INTO v_null_count
+                  FROM vendite.contratti
+                 WHERE emittente_fiscale_id IS NULL;
+
+                IF v_null_count > 0 THEN
+                  RAISE WARNING 'Backfill emittente contratti: % contratti residui con emittente_fiscale_id NULL. Il successivo SET NOT NULL (90_end) fallira''.', v_null_count;
+                ELSE
+                  RAISE NOTICE 'Backfill emittente contratti completato: 0 NULL residui.';
+                END IF;
+              END $$;

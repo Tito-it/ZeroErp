@@ -1,0 +1,247 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Test: vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id) (Step 8).
+--       Push 1:1 offerta ACCETTATA -> contratto DRAFT.
+--       Idempotenza obbligatoria: doppia invocazione -> E_OFFERTA_CONTRATTO_GIA_GENERATO.
+--
+-- Indice test (1..8):
+--   1)  Funzione fn_push_offerta_a_contratto presente
+--   2)  Push da ACCETTATA: contratto DRAFT generato
+--   3)  contratto.offerta_id valorizzato e contratto.sorgente_uid = offerta.uid
+--   4)  Utility copiata 1:1 (contratti_utilities ha 1 record per il contratto)
+--   5)  Doppia invocazione su stessa offerta -> throws E_OFFERTA_CONTRATTO_GIA_GENERATO
+--   6)  Push da BOZZA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO
+--   7)  Push da EMESSA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO
+--   8)  Push da RIFIUTATA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(8);
+
+-- ============================================================
+-- Setup fixture
+-- ============================================================
+CREATE TEMP TABLE tmp_push_ctx AS
+SELECT
+    (SELECT ba.id FROM anagrafiche.billing_account ba
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
+      ORDER BY ba.id LIMIT 1) AS billing_account_id,
+    (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
+      ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
+    (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
+      ORDER BY ba.id LIMIT 1) AS utility_id,
+    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+    (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
+    (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato = 'ATTIVA' ORDER BY lv.id LIMIT 1) AS listino_versione_id_attiva,
+    (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE ORDER BY a.id LIMIT 1) AS articolo_id,
+    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')     AS stato_bozza_id,
+    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')    AS stato_emessa_id,
+    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA') AS stato_accettata_id,
+    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'RIFIUTATA') AS stato_rifiutata_id,
+    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT')   AS stato_draft_contratto_id,
+    (SELECT id FROM config.sorgenti WHERE codice_interno = 'OFFERTA_COMMERCIALE') AS sorgente_ofc_id;
+
+-- Offerta principale: BOZZA -> EMESSA -> ACCETTATA (per tests 2-5)
+CREATE TEMP TABLE tmp_push_offerta_acc AS
+WITH ins AS (
+    INSERT INTO vendite.offerte_commerciali (
+        emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+        listino_id, listino_versione_id, validita_dal, validita_al,
+        stato_doc_offerta_id
+    )
+    SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
+           ctx.listino_id, ctx.listino_versione_id_attiva,
+           DATE '2098-01-01', DATE '2098-12-31',
+           ctx.stato_bozza_id
+      FROM tmp_push_ctx ctx
+    RETURNING id, uid
+)
+SELECT id, uid FROM ins;
+
+-- BOZZA -> EMESSA -> ACCETTATA
+UPDATE vendite.offerte_commerciali
+   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_push_ctx)
+ WHERE id = (SELECT id FROM tmp_push_offerta_acc);
+
+UPDATE vendite.offerte_commerciali
+   SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_push_ctx)
+ WHERE id = (SELECT id FROM tmp_push_offerta_acc);
+
+-- Eccezione OVERRIDE sull'offerta (per verificare che il push copi le righe)
+INSERT INTO vendite.offerte_commerciali_eccezioni (
+    offerta_id, articolo_id, tipo_eccezione,
+    tipo_erogazione, fonte_quantita_attesa,
+    prezzo_unitario, attivo
+)
+SELECT acc.id, ctx.articolo_id, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto",
+       'UNA_TANTUM', 'MANUALE', 200.00, TRUE
+  FROM tmp_push_offerta_acc acc, tmp_push_ctx ctx
+ WHERE ctx.articolo_id IS NOT NULL;
+
+-- Utility dell'offerta (per verifica copia 1:1)
+INSERT INTO vendite.offerte_commerciali_utilities (
+    offerta_id, istanza_utility_id, utility_id
+)
+SELECT acc.id, ctx.istanza_utility_id, ctx.utility_id
+  FROM tmp_push_offerta_acc acc, tmp_push_ctx ctx;
+
+-- Offerta in BOZZA (per test 6)
+CREATE TEMP TABLE tmp_push_offerta_bozza AS
+WITH ins AS (
+    INSERT INTO vendite.offerte_commerciali (
+        emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+        listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
+    )
+    SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
+           ctx.listino_id, NULL, DATE '2099-01-01', ctx.stato_bozza_id
+      FROM tmp_push_ctx ctx
+    RETURNING id
+)
+SELECT id FROM ins;
+
+-- Offerta in EMESSA (per test 7)
+CREATE TEMP TABLE tmp_push_offerta_emessa AS
+WITH ins AS (
+    INSERT INTO vendite.offerte_commerciali (
+        emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+        listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
+    )
+    SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
+           ctx.listino_id, ctx.listino_versione_id_attiva,
+           DATE '2100-01-01', ctx.stato_bozza_id
+      FROM tmp_push_ctx ctx
+    RETURNING id
+)
+SELECT id FROM ins;
+
+UPDATE vendite.offerte_commerciali
+   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_push_ctx)
+ WHERE id = (SELECT id FROM tmp_push_offerta_emessa);
+
+-- Offerta in RIFIUTATA (per test 8): bypassata via INSERT diretto
+CREATE TEMP TABLE tmp_push_offerta_rif AS
+WITH ins AS (
+    INSERT INTO vendite.offerte_commerciali (
+        emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+        listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
+    )
+    SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
+           ctx.listino_id, ctx.listino_versione_id_attiva,
+           DATE '2101-01-01', ctx.stato_rifiutata_id
+      FROM tmp_push_ctx ctx
+    RETURNING id
+)
+SELECT id FROM ins;
+
+-- ============================================================
+-- 1) Funzione presente
+-- ============================================================
+SELECT ok(
+    EXISTS (
+        SELECT 1 FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE n.nspname = 'vendite'
+           AND p.proname = 'fn_push_offerta_a_contratto'
+    ),
+    '1) vendite.fn_push_offerta_a_contratto presente'
+);
+
+-- ============================================================
+-- 2) Push da ACCETTATA: contratto DRAFT generato
+-- ============================================================
+CREATE TEMP TABLE tmp_push_contratto_id AS
+SELECT vendite.fn_push_offerta_a_contratto(
+    (SELECT id FROM tmp_push_offerta_acc),
+    NULL::bigint
+) AS contratto_id;
+
+SELECT ok(
+    EXISTS (
+        SELECT 1 FROM vendite.contratti c
+          JOIN tmp_push_contratto_id tc ON c.id = tc.contratto_id
+          JOIN tmp_push_ctx ctx ON TRUE
+         WHERE c.stato_doc_contratto_id = ctx.stato_draft_contratto_id
+    ),
+    '2) fn_push_offerta_a_contratto: contratto creato in stato DRAFT'
+);
+
+-- ============================================================
+-- 3) contratto.offerta_id valorizzato + sorgente_uid = offerta.uid
+-- ============================================================
+SELECT ok(
+    EXISTS (
+        SELECT 1 FROM vendite.contratti c
+          JOIN tmp_push_contratto_id tc ON c.id = tc.contratto_id
+          JOIN tmp_push_offerta_acc oa ON TRUE
+          JOIN tmp_push_ctx ctx ON TRUE
+         WHERE c.offerta_id   = oa.id
+           AND c.sorgente_uid = oa.uid
+           AND c.sorgente_tipo_id = ctx.sorgente_ofc_id
+    ),
+    '3) contratto.offerta_id, sorgente_uid e sorgente_tipo_id valorizzati correttamente'
+);
+
+-- ============================================================
+-- 4) Utility copiata 1:1 (contratti_utilities ha 1 record per il contratto)
+-- ============================================================
+SELECT ok(
+    (SELECT COUNT(*) = 1
+       FROM vendite.contratti_utilities cu
+       JOIN tmp_push_contratto_id tc ON cu.contratto_id = tc.contratto_id),
+    '4) utility copiata 1:1: contratti_utilities ha 1 record per il contratto DRAFT'
+);
+
+-- ============================================================
+-- 5) Doppia invocazione -> throws E_OFFERTA_CONTRATTO_GIA_GENERATO
+-- ============================================================
+SELECT throws_ok(
+    format(
+        $q$SELECT vendite.fn_push_offerta_a_contratto(%s, NULL::bigint)$q$,
+        (SELECT id FROM tmp_push_offerta_acc)
+    ),
+    'P0001', NULL,
+    '5) Doppia invocazione su stessa offerta ACCETTATA -> throws E_OFFERTA_CONTRATTO_GIA_GENERATO (idempotenza pattern A)'
+);
+
+-- ============================================================
+-- 6) Push da BOZZA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO
+-- ============================================================
+SELECT throws_ok(
+    format(
+        $q$SELECT vendite.fn_push_offerta_a_contratto(%s, NULL::bigint)$q$,
+        (SELECT id FROM tmp_push_offerta_bozza)
+    ),
+    'P0001', NULL,
+    '6) Push da BOZZA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO'
+);
+
+-- ============================================================
+-- 7) Push da EMESSA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO
+-- ============================================================
+SELECT throws_ok(
+    format(
+        $q$SELECT vendite.fn_push_offerta_a_contratto(%s, NULL::bigint)$q$,
+        (SELECT id FROM tmp_push_offerta_emessa)
+    ),
+    'P0001', NULL,
+    '7) Push da EMESSA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO'
+);
+
+-- ============================================================
+-- 8) Push da RIFIUTATA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO
+-- ============================================================
+SELECT throws_ok(
+    format(
+        $q$SELECT vendite.fn_push_offerta_a_contratto(%s, NULL::bigint)$q$,
+        (SELECT id FROM tmp_push_offerta_rif)
+    ),
+    'P0001', NULL,
+    '8) Push da RIFIUTATA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

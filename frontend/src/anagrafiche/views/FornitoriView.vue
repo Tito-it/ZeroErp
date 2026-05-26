@@ -10,6 +10,7 @@ import { useFornitoriStore } from '../stores/fornitori'
 import { TIPO_RUOLO, READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import FornitoriSearchTable from '../components/FornitoriSearchTable.vue'
 import FornitoreDrawer from '../components/FornitoreDrawer.vue'
+import SoggettoDrawer from '../components/SoggettoDrawer.vue'
 import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
 import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
 import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
@@ -27,10 +28,14 @@ watch(() => route.fullPath, () => {
 }, { immediate: true })
 
 // Sotto-drawer dalla lista
+const soggettoDrawer = ref({ visible: false, soggettoId: null })
 const contattiDrawer = ref({ visible: false, ruoloId: null })
 const indirizziDrawer = ref({ visible: false, ruoloId: null })
 const contiBancariDrawer = ref({ visible: false, ruoloId: null, ownerName: '' })
 
+function onSoggetto(data) {
+  soggettoDrawer.value = { visible: true, soggettoId: data.soggetto_id }
+}
 function onContatti(data) {
   contattiDrawer.value = { visible: true, ruoloId: data.soggetto_ruolo_id }
 }
@@ -61,6 +66,7 @@ async function onDrawerSaved(result) {
     <FornitoriSearchTable
       @new="drawer.openCreate"
       @row-click="(data) => drawer.editRow(data, 'id')"
+      @soggetto="onSoggetto"
       @contatti="onContatti"
       @indirizzi="onIndirizzi"
       @conti-bancari="onContiBancari"
@@ -73,6 +79,13 @@ async function onDrawerSaved(result) {
       :fornitore-id="drawer.state.itemId"
       @saved="onDrawerSaved"
       @cancelled="drawer.close"
+    />
+
+    <SoggettoDrawer
+      :visible="soggettoDrawer.visible"
+      @update:visible="v => soggettoDrawer.visible = v"
+      mode="edit"
+      :item-id="soggettoDrawer.soggettoId"
     />
 
     <ContattiSoggettoDrawer

@@ -15,7 +15,11 @@ export const STORAGE_KEYS = {
   // in localStorage e riletta all'init di i18n.js; inviata al backend come
   // header HTTP Accept-Language (interceptor in core/api.js) per pilotare la
   // GUC myapp.user_language nei messaggi di errore DB.
-  LANGUAGE: 'language'
+  LANGUAGE: 'language',
+  // Stato espanso/collassato del pannello "I tuoi preferiti" in HomeView.
+  // User-scoped: l'utente ritrova la sua scelta a logout/login successivi.
+  // Default fallback: collassato (coerente col pattern SessioniAttivePanel).
+  FAVORITES_EXPANDED: 'favorites_expanded'
 }
 
 export function domainFavoriteKey(domainKey) {

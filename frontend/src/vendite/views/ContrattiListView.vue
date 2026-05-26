@@ -1,6 +1,7 @@
 <script setup>
 // Scopo: Vista gestione contratti v5 (testata + pricing A/B/C + righe + utility).
-import { ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
@@ -11,9 +12,31 @@ import ContrattoRigheDrawer from '../components/ContrattoRigheDrawer.vue'
 
 const drawer = useDrawerState()
 const store = useContrattiStore()
+const route = useRoute()
+const router = useRouter()
 
 // Provider readonly dominio vendite.
 useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.CONTRATTO)
+
+// Deep-link: ?open=<id> apre direttamente il drawer in edit. Usato per la
+// navigazione cross-dominio (es. post-push da OffertaDrawer). Il query
+// param viene rimosso dopo l'apertura per evitare ri-apertura su refresh.
+watch(
+  () => route.query.open,
+  (openId) => {
+    if (!openId) return
+    const idNum = Number(openId)
+    if (!Number.isFinite(idNum) || idNum <= 0) return
+    nextTick(() => {
+      drawer.editRow({ id: idNum }, 'id')
+      // Rimuove il query param per pulire l'URL.
+      const newQuery = { ...route.query }
+      delete newQuery.open
+      router.replace({ query: newQuery })
+    })
+  },
+  { immediate: true },
+)
 
 // Drawer righe aperto direttamente dalla lista
 const righeDrawer = ref({

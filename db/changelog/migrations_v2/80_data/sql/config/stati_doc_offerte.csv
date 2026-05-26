@@ -1,0 +1,7 @@
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update
+1,BOZZA,BOZZA,Bozza,t,10,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb
+2,EMESSA,EMESSA,Emessa,t,20,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb
+3,ACCETTATA,ACCETTATA,Accettata,t,30,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb
+4,RIFIUTATA,RIFIUTATA,Rifiutata,t,40,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb
+5,SUPERATA,SUPERATA,Superata,t,50,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb
+6,ANNULLATA,ANNULLATA,Annullata,t,60,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb

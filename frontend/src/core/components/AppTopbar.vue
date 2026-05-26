@@ -1,21 +1,26 @@
 <script setup>
-// Scopo: topbar principale — emittente, area title, context chip, ricerca, user badge, data, logout.
-// Su mobile mostra hamburger per aprire il drawer sidebar.
-// Su schermi piccoli raggruppa dark/search/AI/lingua in un menu kebab (3 puntini).
+// Scopo: topbar principale — emittente, area title, context chip, badge
+// utente, data, ricerca, AI assistant, kebab preferenze utente (preferiti +
+// lingua + dark mode), logout. Su mobile mostra hamburger per aprire il
+// drawer sidebar; ricerca+AI inline scompaiono e si promuovono come prime
+// voci nello stesso kebab utente — un solo kebab per tutto.
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Chip from 'primevue/chip'
-import Menu from 'primevue/menu'
+import TieredMenu from 'primevue/tieredmenu'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
 import { resolveTabLabel } from '../navigation'
 import { getAIStatus } from '../api/ai-api'
 import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
+import { MANAGE_ICONS } from '../constants'
 import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
+import { menuItemClass } from '../utils/rowActions'
+import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -91,41 +96,83 @@ const languageTooltip = computed(() => {
   return `${t('common.switch_language')} · ${next.toUpperCase()}`
 })
 
-// Scopo: menu kebab per schermi piccoli. Raggruppa dark/ricerca/AI/lingua.
-//        Il trigger è visibile solo su mobile (CSS @media <= 767px);
-//        i pulsanti singoli sono nascosti alla stessa soglia.
-const kebabMenu = ref(null)
-const kebabItems = computed(() => {
-  const items = [
-    {
-      label: ui.isDark ? t('common.light_mode') : t('common.dark_mode'),
-      icon: ui.isDark ? 'pi pi-sun' : 'pi pi-moon',
-      command: () => ui.toggleDarkMode()
-    },
-    {
+// Scopo: classe CSS standard per le voci del kebab topbar. Tutte neutre/
+// preferenze (preferiti/lingua/dark + search/AI quando mobile) -> nessuna
+// severity esplicita, fallback "action" (verde) coerente col colore dei
+// pulsanti inline `.topbar-icon-btn` (--p-primary-color).
+const TOPBAR_MENU_CLASS = menuItemClass(undefined, 'app-menu-item-action')
+// === Kebab "preferenze utente" sempre visibile (pre-logout) ===
+// Submenu Preferiti tramite TieredMenu (PrimeVue 4): voci preferiti
+// risolte dal composable `useNavigationFavorites` (filtro permessi
+// applicato). Stile coerente col kebab standard di lista via la classe
+// `app-menu-item-action` (verde) — stesso pattern del kebab mobile.
+const { visibleFavorites, navigateToFavorite } = useNavigationFavorites()
+const userKebabMenu = ref(null)
+
+function toggleUserKebab(event) {
+  userKebabMenu.value?.toggle(event)
+}
+
+const favoritesSubmenu = computed(() => {
+  if (visibleFavorites.value.length === 0) {
+    return [{
+      label: t('nav.preferiti_empty_short'),
+      icon: 'pi pi-info-circle',
+      disabled: true,
+      class: TOPBAR_MENU_CLASS,
+    }]
+  }
+  return visibleFavorites.value.map(fav => ({
+    label: fav.label,
+    icon: fav.icon,
+    class: TOPBAR_MENU_CLASS,
+    command: () => navigateToFavorite(fav),
+  }))
+})
+
+// Voci del kebab utente. Su mobile (viewport < BREAKPOINTS.MOBILE) le icone
+// inline ricerca+AI sono nascoste via CSS @media: vengono allora promosse
+// dentro il kebab come prime voci, in modo che non serva un secondo kebab
+// separato per gestire il responsive. Su desktop/tablet le inline sono
+// visibili e quindi non duplicate qui.
+const userKebabItems = computed(() => {
+  const items = []
+  if (ui.isMobile) {
+    items.push({
       label: t('context.tooltip_search'),
       icon: 'pi pi-search',
-      command: () => ui.openSearchDrawer()
-    }
-  ]
-  if (ui.aiAvailable) {
-    items.push({
-      label: t('ai.title'),
-      icon: 'pi pi-microchip-ai',
-      command: () => ui.toggleAiDrawer()
+      class: TOPBAR_MENU_CLASS,
+      command: () => ui.openSearchDrawer(),
     })
+    if (ui.aiAvailable) {
+      items.push({
+        label: t('ai.title'),
+        icon: 'pi pi-microchip-ai',
+        class: TOPBAR_MENU_CLASS,
+        command: () => ui.toggleAiDrawer(),
+      })
+    }
   }
+  items.push({
+    label: t('nav.preferiti'),
+    icon: 'pi pi-star',
+    class: TOPBAR_MENU_CLASS,
+    items: favoritesSubmenu.value,
+  })
   items.push({
     label: `${t('common.language')} · ${languageLabel.value}`,
     icon: 'pi pi-globe',
-    command: () => toggleLanguage()
+    class: TOPBAR_MENU_CLASS,
+    command: () => toggleLanguage(),
+  })
+  items.push({
+    label: ui.isDark ? t('common.light_mode') : t('common.dark_mode'),
+    icon: ui.isDark ? 'pi pi-sun' : 'pi pi-moon',
+    class: TOPBAR_MENU_CLASS,
+    command: () => ui.toggleDarkMode(),
   })
   return items
 })
-
-function toggleKebab(event) {
-  kebabMenu.value?.toggle(event)
-}
 
 // Scopo: Verifica disponibilita' AI al mount (best-effort, non blocca).
 //        Solo se l'utente e' autenticato, per evitare 401 inutili.
@@ -176,17 +223,23 @@ onMounted(async () => {
         </template>
       </Chip>
 
-      <!-- Gruppo azioni inline — nascosto su mobile (vedi media query) -->
-      <div class="topbar-actions-inline">
-        <!-- Toggle dark/light mode -->
-        <button
-          class="topbar-icon-btn"
-          v-tooltip.bottom="ui.isDark ? t('common.light_mode') : t('common.dark_mode')"
-          @click="ui.toggleDarkMode()"
-        >
-          <i :class="ui.isDark ? 'pi pi-sun' : 'pi pi-moon'"></i>
-        </button>
+      <!-- Badge SUPER_ADMIN o iniziali utente -->
+      <Chip v-if="auth.isSuperAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
+        <template #default>
+          <i class="pi pi-shield admin-chip-icon" />
+          <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
+        </template>
+      </Chip>
+      <span v-else class="user-initials-badge" v-tooltip.bottom="auth.displayName">
+        {{ userInitials }}
+      </span>
 
+      <span class="topbar-date">{{ formattedDate }}</span>
+
+      <!-- Gruppo azioni inline — dark mode e lingua sono nel kebab utente
+           (subito dopo). Qui restano solo ricerca universale e assistente AI,
+           azioni di lavoro che vivono tra la data e il kebab utente. -->
+      <div class="topbar-actions-inline">
         <!-- Pulsante ricerca universale -->
         <button
           class="topbar-icon-btn"
@@ -205,40 +258,20 @@ onMounted(async () => {
         >
           <i class="pi pi-microchip-ai"></i>
         </button>
-
-        <!-- Switch lingua IT/EN -->
-        <button
-          class="topbar-icon-btn topbar-lang-btn"
-          v-tooltip.bottom="languageTooltip"
-          @click="toggleLanguage()"
-        >
-          <span class="topbar-lang-label">{{ languageLabel }}</span>
-        </button>
       </div>
 
-      <!-- Menu kebab (3 puntini) — visibile solo su mobile -->
+      <!-- Kebab utente: preferiti (submenu) + lingua + dark/light.
+           Standard di kebab (stessa palette `app-menu-item-action`).
+           Sempre visibile, subito prima del logout. -->
       <button
-        class="topbar-icon-btn topbar-kebab-btn"
-        v-tooltip.bottom="t('common.more_options')"
-        @click="toggleKebab"
+        class="topbar-icon-btn topbar-user-kebab-btn"
+        v-tooltip.bottom="t('common.altre_azioni')"
         aria-haspopup="true"
+        @click="toggleUserKebab"
       >
-        <i class="pi pi-ellipsis-v"></i>
+        <i :class="MANAGE_ICONS.KEBAB"></i>
       </button>
-      <Menu ref="kebabMenu" :model="kebabItems" popup class="topbar-kebab-menu" />
-
-      <!-- Badge SUPER_ADMIN o iniziali utente -->
-      <Chip v-if="auth.isSuperAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
-        <template #default>
-          <i class="pi pi-shield admin-chip-icon" />
-          <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
-        </template>
-      </Chip>
-      <span v-else class="user-initials-badge" v-tooltip.bottom="auth.displayName">
-        {{ userInitials }}
-      </span>
-
-      <span class="topbar-date">{{ formattedDate }}</span>
+      <TieredMenu ref="userKebabMenu" :model="userKebabItems" popup class="topbar-user-kebab-menu" />
 
       <!-- Logout -->
       <button
@@ -322,25 +355,6 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-}
-
-/* Kebab menu — visibile solo su mobile (inverso di .topbar-actions-inline).
-   Selettore combinato .topbar-icon-btn.topbar-kebab-btn per specificita` piu`
-   alta di .topbar-icon-btn singolo (altrimenti display: flex di quest'ultimo,
-   dichiarato dopo, sovrascriverebbe display: none). */
-.topbar-icon-btn.topbar-kebab-btn {
-  display: none;
-}
-
-/* Switch lingua — mostra label testuale (IT/EN) anziche' icona */
-.topbar-lang-btn {
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-}
-
-.topbar-lang-label {
-  line-height: 1;
 }
 
 /* Bottone icona topbar — classe riutilizzabile per search, AI, logout */
@@ -452,14 +466,10 @@ onMounted(async () => {
     padding: 0.15rem 0.35rem;
   }
 
-  /* Collassa dark/search/AI/lingua nel menu kebab */
+  /* Su mobile le icone inline ricerca+AI sono nascoste:
+     le voci compaiono allora nel kebab utente (vedi userKebabItems). */
   .topbar-actions-inline {
     display: none;
-  }
-
-  /* Selettore specifico: vedi commento sopra su specificity ordering */
-  .topbar-icon-btn.topbar-kebab-btn {
-    display: flex;
   }
 }
 

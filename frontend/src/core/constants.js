@@ -214,6 +214,10 @@ export const STATO_PREVENTIVO = {
 // Uso: <Button :icon="MANAGE_ICONS.CONTATTI" class="app-manage-btn" />
 export const MANAGE_ICONS = {
   // Anagrafiche
+  // SOGGETTO: stessa icona usata in navigazione per la lista Soggetti
+  // (NAV_ICONS.ANAGRAFICHE = pi pi-users). Centralizzata qui per le azioni
+  // di riga che aprono il drawer soggetto dalle liste figlie (clienti/fornitori).
+  SOGGETTO: 'pi pi-users',
   CONTATTI: 'pi pi-id-card',
   INDIRIZZI: 'pi pi-map-marker',
   CONTI_BANCARI: 'pi pi-wallet',
@@ -236,6 +240,11 @@ export const MANAGE_ICONS = {
   ADD: 'pi pi-plus',
   CONFIRM: 'pi pi-check',
   CANCEL: 'pi pi-times',
+  // BACK: usato dal pulsante "Annulla" di DrawerFooter — la chiusura di un
+  // drawer di form torna alla lista, semantica "indietro" piu' chiara di un
+  // semplice "X". Distinto da CANCEL (close-without-saving generico) e da
+  // NAV_ICONS.BACK (header sidebar "Torna alla Home").
+  BACK: 'pi pi-arrow-left',
   PLAY: 'pi pi-play',
   PUBLISH: 'pi pi-check-circle',
   CLONE: 'pi pi-copy',
@@ -287,6 +296,7 @@ export const READONLY_MODELS = {
   CONTO_BANCARIO: 'conto_bancario',
   CONTRATTO: 'contratto',
   FORNITORE: 'fornitore',
+  OFFERTA_COMMERCIALE: 'offerta_commerciale',
   PROMO_ARTICOLO: 'promo_articolo',
   SOGGETTO: 'soggetto',
   UOM_TIPI: 'uom_tipi',
@@ -322,6 +332,7 @@ export const TAB_ENTITIES = {
   FORNITORE: 'fornitore',
   INDIRIZZO: 'indirizzo',
   LISTINO: 'listino',
+  OFFERTA_COMMERCIALE: 'offerta_commerciale',
   OPERATORE: 'operatore',
   PRATICA: 'pratica',
   PREVENTIVO: 'preventivo',

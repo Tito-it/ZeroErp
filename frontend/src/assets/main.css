@@ -559,18 +559,102 @@ a {
   }
 }
 
+/* ===== Voci menu kebab (RowActionsMenu / PageActionsBar / DrawerActionsBar / AppTopbar) =====
+ * Pattern: ogni severity inline (app-manage-btn, app-action-btn, app-delete-btn,
+ * severity="warn") ha la sua voce-menu corrispondente, in modo che il popup
+ * del kebab non appaia "grigetto" rispetto alla versione inline desktop.
+ * Le classi sono applicate via helper `menuItemClass(severity, fallback)`
+ * (src/core/utils/rowActions.js), che mappa severity -> classe.
+ * Default per RowActionsMenu/DrawerActionsBar = app-menu-item-manage (blu).
+ * Default per PageActionsBar/AppTopbar      = app-menu-item-action (verde).
+ *
+ * NB: PrimeVue 4 usa class prefix DIVERSI per i componenti menu:
+ *   - `Menu`       → `.p-menu-item-link` / `.p-menu-item-icon`
+ *   - `TieredMenu` → `.p-tieredmenu-item-link` / `.p-tieredmenu-item-icon`
+ *   - `MenuBar`    → `.p-menubar-item-link` / `.p-menubar-item-icon`
+ * Manteniamo entrambi i selettori per coprire ogni consumer kebab senza
+ * duplicare le regole, e usiamo il selettore wildcard `[class*="-item-link"]`
+ * solo per le altre family se necessario in futuro.
+ *
+ * Lo stato disabled e' `.p-disabled` sul wrapper item (stesso elemento che
+ * porta `.app-menu-item-*`).
+ */
+
+/* Voce menu standard "gestisci" — blu, coerente con app-manage-btn. */
+.app-menu-item-manage .p-menu-item-link,
+.app-menu-item-manage .p-tieredmenu-item-link {
+  color: var(--app-btn-manage-color);
+}
+.app-menu-item-manage .p-menu-item-link:hover,
+.app-menu-item-manage .p-tieredmenu-item-link:hover {
+  color: var(--app-btn-manage-hover-color);
+  background: var(--app-btn-manage-hover-bg);
+}
+.app-menu-item-manage .p-menu-item-icon,
+.app-menu-item-manage .p-tieredmenu-item-icon {
+  color: inherit;
+}
+
+/* Voce menu "azione positiva" — verde, coerente con app-action-btn / app-reload-btn. */
+.app-menu-item-action .p-menu-item-link,
+.app-menu-item-action .p-tieredmenu-item-link {
+  color: var(--p-primary-color);
+}
+.app-menu-item-action .p-menu-item-link:hover,
+.app-menu-item-action .p-tieredmenu-item-link:hover {
+  color: var(--p-primary-700);
+  background: var(--p-primary-50);
+}
+.app-menu-item-action .p-menu-item-icon,
+.app-menu-item-action .p-tieredmenu-item-icon {
+  color: inherit;
+}
+
+/* Voce menu "cautela" — arancione, coerente con severity="warn" PrimeVue. */
+.app-menu-item-warn .p-menu-item-link,
+.app-menu-item-warn .p-tieredmenu-item-link {
+  color: var(--p-orange-500);
+}
+.app-menu-item-warn .p-menu-item-link:hover,
+.app-menu-item-warn .p-tieredmenu-item-link:hover {
+  color: var(--p-orange-700);
+  background: var(--p-orange-50);
+}
+.app-menu-item-warn .p-menu-item-icon,
+.app-menu-item-warn .p-tieredmenu-item-icon {
+  color: inherit;
+}
+
 /* Voce menu con azione distruttiva (es. elimina, disattiva).
  * Colori via --app-btn-delete-* in theme.css.
- * Uso: passare severity: 'danger' nelle actions di RowActionsMenu. */
-.app-menu-item-danger .p-menuitem-link {
+ * Uso: passare severity: 'danger' nelle actions. */
+.app-menu-item-danger .p-menu-item-link,
+.app-menu-item-danger .p-tieredmenu-item-link {
   color: var(--app-btn-delete-color);
 }
-.app-menu-item-danger .p-menuitem-link:hover {
+.app-menu-item-danger .p-menu-item-link:hover,
+.app-menu-item-danger .p-tieredmenu-item-link:hover {
   color: var(--app-btn-delete-hover-color);
   background: var(--app-btn-delete-hover-bg);
 }
-.app-menu-item-danger .p-menuitem-icon {
+.app-menu-item-danger .p-menu-item-icon,
+.app-menu-item-danger .p-tieredmenu-item-icon {
   color: inherit;
+}
+
+/* Voce menu disabilitata — neutralizza il colore severity e usa il muted PrimeVue.
+ * `.p-disabled` viene applicata sul wrapper item (stesso elemento che
+ * porta `.app-menu-item-*`), quindi selettore combinato sulla stessa classe.
+ * Copre sia Menu che TieredMenu. */
+.app-menu-item-manage.p-disabled .p-menu-item-link,
+.app-menu-item-action.p-disabled .p-menu-item-link,
+.app-menu-item-warn.p-disabled .p-menu-item-link,
+.app-menu-item-danger.p-disabled .p-menu-item-link,
+.app-menu-item-manage.p-disabled .p-tieredmenu-item-link,
+.app-menu-item-action.p-disabled .p-tieredmenu-item-link,
+.app-menu-item-warn.p-disabled .p-tieredmenu-item-link,
+.app-menu-item-danger.p-disabled .p-tieredmenu-item-link {
+  color: var(--app-btn-disabled-color);
 }
 
 /* Messaggio errore sotto campo form */
@@ -831,6 +915,42 @@ a {
   font-size: 0.5rem;
 }
 
+/* Offerte commerciali = file con matita (pi-file-edit \e9f6) + euro
+   sovrapposto in alto a destra (pi-euro \e9bd). Allineata al pattern
+   preventivi/contratti/listini/fatture/approvazioni-prezzo che usano
+   l'overlay euro per le entita' vendite a valore. */
+.app-nav-icon-offerte::before {
+  content: "\e9f6";
+  top: 0.02rem;
+  left: 0.16rem;
+  font-size: 0.92rem;
+}
+
+.app-nav-icon-offerte::after {
+  content: "\e9bd";
+  left: 0.76rem;
+  top: -0.04rem;
+  font-size: 0.5rem;
+}
+
+/* Approvazioni prezzo = check-circle (pi-check-circle \e90a) + euro
+   sovrapposto in alto a destra (pi-euro \e9bd). Semantica: "approva il
+   prezzo". Allineata al pattern preventivi/contratti/listini/fatture
+   che usano tutti l'overlay euro per le entita' vendite a valore. */
+.app-nav-icon-approvazioni-prezzo::before {
+  content: "\e90a";
+  top: 0.02rem;
+  left: 0.16rem;
+  font-size: 0.92rem;
+}
+
+.app-nav-icon-approvazioni-prezzo::after {
+  content: "\e9bd";
+  left: 0.76rem;
+  top: -0.04rem;
+  font-size: 0.5rem;
+}
+
 /* Clienti = ricevuta (pi-receipt \ea06) + omino sovrapposto (pi-user \e939).
    Differenzia visivamente dai soggetti (pi-users) e dai fornitori
    (palazzo+omino) mantenendo la semantica "chi riceve la fattura". */
@@ -881,6 +1001,24 @@ a {
   left: 0.72rem;
   top: -0.05rem;
   font-size: 0.7rem;
+}
+
+/* Promo articoli = percentuale (pi-percentage \e9be) + box sovrapposto in
+   alto a destra (pi-box \e9d9). Stessa logica di UoM ma con ruoli invertiti:
+   l'oggetto principale e' la promo (%) e il dettaglio e' l'articolo a cui si
+   applica. Semantica: "sconto sull'articolo". */
+.app-nav-icon-promo-articoli::before {
+  content: "\e9be";
+  top: 0.04rem;
+  left: 0.14rem;
+  font-size: 0.82rem;
+}
+
+.app-nav-icon-promo-articoli::after {
+  content: "\e9d9";
+  left: 0.82rem;
+  top: -0.05rem;
+  font-size: 0.65rem;
 }
 
 /* DatePicker: icona calendario colore primario standard.
@@ -1118,6 +1256,27 @@ a {
   background: transparent !important;
 }
 
+/* Inner table con paginator-position="top": il tema Aura PrimeVue 4
+ * applica `border-width: 0 0 1px 0` su `.p-datatable-paginator-top`
+ * (token `paginatorTop.borderWidth`) E su `.p-datatable-thead > th`
+ * (token `headerCell.borderWidth`). Con il padding ridotto della inner
+ * (0.25rem/0.22rem) le 2 line risultano otticamente adiacenti — l'utente
+ * percepisce una "doppia underline" sotto le label colonne. Azzeriamo
+ * la border-bottom del paginator-top inner: il separatore visivo viene
+ * mantenuto dal border-bottom dell'header sotto le label. */
+.app-datatable--inner .p-datatable-paginator-top {
+  border-bottom-width: 0;
+}
+
+/* Tabella vuota: PrimeVue 4 renderizza una riga `tr.p-datatable-empty-message`
+ * con la sua `<td>` che eredita il `border-bottom` del bodyCell Aura
+ * (`borderWidth: 0 0 1px 0`). Sommata al border-bottom dell'header (subito
+ * sopra in assenza di righe dati) la linea diventa "doppia". L'empty-message
+ * NON deve avere border: e' uno stato segnaposto, non una riga dati. */
+.app-datatable .p-datatable-tbody > tr.p-datatable-empty-message > td {
+  border-bottom: none;
+}
+
 /* ===== Responsive: schermi piccoli =====
  * Tablet: < 1024px — filtri wrappano, pulsanti azione solo icona + tooltip
  * Mobile: < 768px — padding ridotto (gestito da AppLayout)
@@ -1134,6 +1293,16 @@ a {
   }
 
   .app-page-action {
+    padding: 0.5rem;
+  }
+
+  /* DrawerFooter — Annulla/Chiudi/Salva collassano a icon-only sotto 1024px,
+     pattern standard come .app-page-action. I tooltip (impostati nel
+     componente) restano visibili e garantiscono accessibilita'. */
+  .app-drawer-footer-btn .p-button-label {
+    display: none;
+  }
+  .app-drawer-footer-btn {
     padding: 0.5rem;
   }
 }

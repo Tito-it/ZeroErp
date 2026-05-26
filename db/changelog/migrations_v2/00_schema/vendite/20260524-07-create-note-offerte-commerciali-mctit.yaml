@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea vendite.note_offerte_commerciali: partizione di vendite.note
+# per target_tipo = 'OFFERTA'.
+#
+# Pattern identico a note_contratto / note_preventivo:
+#   - FK target_id  -> vendite.offerte_commerciali(id)  ON DELETE CASCADE
+#   - FK target_riga_id -> vendite.offerte_commerciali_eccezioni(id) ON DELETE CASCADE
+#     (aggiunta in migration 20260524-09, dopo la creazione di eccezioni in 20260524-05)
+#   - CHECK chk_offnote_anchor: coerenza anchor_tipo / posizione / target_riga_id
+#   - Indice ix_offnote_render per ordinamento rendering
+#
+# Estende anche chk_note_target_tipo con 'OFFERTA'.
+#
+# Trigger specifici (20_code 20260524-08):
+#   - trg_note_offerte_commerciali_validate_ins_upd
+#       -> script.trgfn_note_validate_generic(...)
+#   - trg_note_offerte_commerciali_a10_eccezioni_require_attivo_ins_upd
+#       -> dbops.trgfn_child_requires_active_parent(...)
+# Audit e tx_id gestiti da automation_rules (*all).
+#
+# Dipendenze:
+#   - vendite.note (tabella padre partizionata)
+#   - vendite.offerte_commerciali (migration 20260524-03)
+#   La FK verso offerte_commerciali_eccezioni e' in migration 20260524-09.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260524-07-create-note-offerte-commerciali-mctit.yaml
+
+  - changeSet:
+      id: 20260524-07-create-note-offerte-commerciali
+      author: mctit
+      comment: >
+        Crea partizione vendite.note_offerte_commerciali (FOR VALUES IN 'OFFERTA').
+        Estende chk_note_target_tipo. FK verso offerte_commerciali.
+        CHECK anchor coerenza anchor_tipo/posizione/target_riga_id.
+        La FK verso offerte_commerciali_eccezioni (target_riga_id) e' in 20260524-09.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: note
+            - tableExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: note_offerte_commerciali
+      changes:
+
+        # ----------------------------------------------------------------
+        # Step 1: estende chk_note_target_tipo con OFFERTA.
+        # Lista completa: PREVENTIVO, CONTRATTO, FATTURA, ORDINE, DDT,
+        #                 ATTIVITAFT + OFFERTA (nuovo).
+        # ----------------------------------------------------------------
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.note DROP CONSTRAINT IF EXISTS chk_note_target_tipo;
+              ALTER TABLE vendite.note
+                  ADD CONSTRAINT chk_note_target_tipo
+                  CHECK (target_tipo IN (
+                      'PREVENTIVO', 'CONTRATTO', 'FATTURA', 'ORDINE', 'DDT',
+                      'ATTIVITAFT', 'OFFERTA'
+                  ));
+              COMMENT ON CONSTRAINT chk_note_target_tipo ON vendite.note IS
+                  'Valori ammessi: PREVENTIVO | CONTRATTO | FATTURA | ORDINE | DDT | ATTIVITAFT | OFFERTA.';
+
+        # ----------------------------------------------------------------
+        # Step 2: crea la partizione.
+        # ----------------------------------------------------------------
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE vendite.note_offerte_commerciali
+              PARTITION OF vendite.note
+              FOR VALUES IN ('OFFERTA');
+
+              COMMENT ON TABLE vendite.note_offerte_commerciali IS
+                  'Partizione note per vendite.offerte_commerciali. '
+                  'Supporta ancoraggio DOCUMENTO (nota testata offerta) '
+                  'e RIGA (nota su singola eccezione offerte_commerciali_eccezioni). '
+                  'Pattern identico a note_contratto. '
+                  'FK target_riga_id -> offerte_commerciali_eccezioni aggiunta in 20260524-09. '
+                  'rev 2026-05-24.';
+
+        # ----------------------------------------------------------------
+        # Step 3: FK target_id -> offerte_commerciali (ON DELETE CASCADE).
+        # ----------------------------------------------------------------
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: note_offerte_commerciali
+            baseColumnNames: target_id
+            constraintName: fk_offnote_testata
+            referencedTableSchemaName: vendite
+            referencedTableName: offerte_commerciali
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        # ----------------------------------------------------------------
+        # Step 4: CHECK anchor coerenza anchor_tipo / posizione / target_riga_id.
+        # Specchio esatto di chk_contnote_anchor (note_contratto).
+        # ----------------------------------------------------------------
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.note_offerte_commerciali
+                  ADD CONSTRAINT chk_offnote_anchor
+                  CHECK (
+                      (anchor_tipo = 'DOCUMENTO' AND target_riga_id IS NULL     AND posizione IN ('HEADER', 'FOOTER', 'SEZIONE'))
+                      OR
+                      (anchor_tipo = 'RIGA'      AND target_riga_id IS NOT NULL AND posizione IN ('BEFORE', 'AFTER'))
+                  );
+              COMMENT ON CONSTRAINT chk_offnote_anchor ON vendite.note_offerte_commerciali IS
+                  'Regole di coerenza tra anchor_tipo, riga e posizione per offerte commerciali.';
+
+        # ----------------------------------------------------------------
+        # Step 5: indice di rendering per la partizione.
+        # ----------------------------------------------------------------
+        - createIndex:
+            schemaName: vendite
+            tableName: note_offerte_commerciali
+            indexName: ix_offnote_render
+            columns:
+              - column: { name: target_id }
+              - column: { name: anchor_tipo }
+              - column: { name: target_riga_id }
+              - column: { name: posizione }
+              - column: { name: seq }
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS vendite.note_offerte_commerciali;
+              ALTER TABLE vendite.note DROP CONSTRAINT IF EXISTS chk_note_target_tipo;
+              ALTER TABLE vendite.note
+                  ADD CONSTRAINT chk_note_target_tipo
+                  CHECK (target_tipo IN (
+                      'PREVENTIVO', 'CONTRATTO', 'FATTURA', 'ORDINE', 'DDT', 'ATTIVITAFT'
+                  ));

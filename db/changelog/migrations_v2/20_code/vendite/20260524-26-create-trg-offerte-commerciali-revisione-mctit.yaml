@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger revisione per vendite.offerte_commerciali (Step 6).
+#
+# trgfn_offerte_commerciali_revisione (AFTER INSERT):
+#   Quando si inserisce una rev.N+1 con revisione_padre_id IS NOT NULL,
+#   porta automaticamente la rev.N (il padre) in stato SUPERATA.
+#   Innesca il guard _a10_ (EMESSA->SUPERATA e' transizione ammessa
+#   in config.stati_doc_offerte_transizioni, Step 4).
+#
+# Nota O4 (concorrenza): il trigger fa UPDATE sulla stessa tabella
+#   dell'INSERT che lo ha scatenato. Analisi: l'UPDATE agisce su
+#   una riga DIVERSA (revisione_padre_id != NEW.id), quindi nessuna
+#   autoricorsione ne' deadlock intra-transazione. Non e' necessario
+#   DEFERRABLE: la transizione EMESSA->SUPERATA e' gia' ammessa dal
+#   guard _a10_ al momento dell'UPDATE. Il trigger e' fase _z90_
+#   (effetto finale) come da linee-guida-trigger.md.
+#
+# Trigger: trg_offerte_commerciali_z90_revisione_ins
+#   AFTER INSERT ON vendite.offerte_commerciali
+#   Fase _z90_ (effetto finale, ordine lessicografico garantito
+#   dopo qualsiasi _a10_ sullo stesso evento).
+#
+# Dipendenze:
+#   - vendite.offerte_commerciali (20260524-03)
+#   - config.stati_doc_offerte con riga SUPERATA (20260524-02 + 20260524-04)
+#   - trg_offerte_commerciali_a10_guard_transizione_upd (20260524-23)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260524-26-create-trg-offerte-commerciali-revisione-mctit.yaml
+
+  - changeSet:
+      id: 20260524-26-create-trg-offerte-commerciali-revisione
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vendite.trgfn_offerte_commerciali_revisione e trigger
+        trg_offerte_commerciali_z90_revisione_ins.
+        AFTER INSERT: se revisione_padre_id IS NOT NULL, porta il padre in SUPERATA.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_offerte
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Trigger function: marca la revisione padre come SUPERATA
+              -- quando viene inserita una nuova revisione successiva.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_revisione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: al momento dell'INSERT di una rev.N+1 (revisione_padre_id NOT NULL),
+              -- porta la rev.N precedente in stato SUPERATA tramite UPDATE diretto.
+              -- L'UPDATE riattiva il guard _a10_ sulla stessa tabella: la transizione
+              -- EMESSA->SUPERATA e' ammessa in config.stati_doc_offerte_transizioni (Step 4).
+              -- Nota O4: l'UPDATE riguarda una riga diversa da quella inserita, nessuna
+              -- autoricorsione ne' conflitto intra-transazione.
+              DECLARE
+                  v_stato_superata_id config.stati_doc_offerte.id%TYPE;
+              BEGIN
+                  -- Se non e' una revisione (prima rev.), niente da fare.
+                  IF NEW.revisione_padre_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Risolve l'id di SUPERATA dalla config (no hardcode).
+                  SELECT id INTO v_stato_superata_id
+                    FROM config.stati_doc_offerte
+                   WHERE codice_interno = 'SUPERATA';
+
+                  -- Porta la revisione padre in SUPERATA.
+                  -- Il guard _a10_ verifica che EMESSA->SUPERATA sia transizione ammessa.
+                  UPDATE vendite.offerte_commerciali
+                     SET stato_doc_offerta_id = v_stato_superata_id
+                   WHERE id = NEW.revisione_padre_id;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_revisione() IS
+                  'AFTER INSERT su offerte_commerciali: se revisione_padre_id IS NOT NULL, '
+                  'porta la revisione padre in stato SUPERATA. '
+                  'Innesca il guard _a10_ (EMESSA->SUPERATA ammessa in stati_doc_offerte_transizioni). '
+                  'Nota O4: agisce su riga diversa dall''INSERT scatenante, nessun conflitto. '
+                  'rev 2026-05-24.';
+
+              -- Trigger _z90_ (effetto finale, dopo tutti i guard _a10_).
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_z90_revisione_ins
+                  ON vendite.offerte_commerciali;
+
+              CREATE TRIGGER trg_offerte_commerciali_z90_revisione_ins
+              AFTER INSERT ON vendite.offerte_commerciali
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_revisione();
+
+              COMMENT ON TRIGGER trg_offerte_commerciali_z90_revisione_ins
+                  ON vendite.offerte_commerciali IS
+                  'Effetto finale revisione: marca la rev.N padre come SUPERATA '
+                  'quando viene inserita la rev.N+1 (revisione_padre_id IS NOT NULL). '
+                  'Fase _z90_: eseguito dopo tutti i guard _a10_. '
+                  'rev 2026-05-24.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_z90_revisione_ins
+                  ON vendite.offerte_commerciali;
+              DROP FUNCTION IF EXISTS vendite.trgfn_offerte_commerciali_revisione();

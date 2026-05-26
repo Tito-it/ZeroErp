@@ -60,6 +60,15 @@ _SELECT_COLS_CONTRATTO = """
     c.id,
     c.uid,
     c.numero,
+    c.emittente_fiscale_id,
+    -- Denormalizzazione EF (pattern preventivi/offerte): il FE
+    -- `EmittenteFiscaleField` in edit mode legge codice + descrizione dal
+    -- record per costruire la option singola del Select disabled. Senza
+    -- questi campi il display resta vuoto in modifica nonostante
+    -- `emittente_fiscale_id` valorizzato.
+    ef.codice           AS emittente_fiscale_codice,
+    COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+                        AS emittente_fiscale_descrizione,
     c.billing_account_id,
     srd.ragione_sociale_completa AS ba_ragione_sociale,
     ba.codice AS ba_codice,
@@ -102,6 +111,14 @@ _FROM_JOINS_CONTRATTO = """
     LEFT JOIN vendite.listini l ON l.id = c.listino_id
     LEFT JOIN vendite.listini_versioni lv ON lv.id = c.listino_versione_id
     LEFT JOIN anagrafiche.categorie_clienti cc_snap ON cc_snap.id = c.categoria_cliente_id_snapshot
+    -- Decode emittente fiscale (codice + ragione sociale) per la
+    -- denormalizzazione richiesta da `EmittenteFiscaleField` in edit
+    -- mode. Pattern allineato a preventivi/offerte. LEFT JOIN per safety,
+    -- la colonna `emittente_fiscale_id` e' NOT NULL ma il join resta
+    -- difensivo rispetto a eventuali emittenti soft-disabled.
+    LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = c.emittente_fiscale_id
+    LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+    LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
 """
 
 
@@ -196,6 +213,11 @@ class ContrattiRepository(ComponentiRepositoryMixin):
 
     # Scopo: Lista paginata contratti filtrabile per cliente/stato/utility/
     #        ambito + search su numero + intervallo validita' esplicito.
+    #        Lo scope emittente (multi-face) viene applicato direttamente
+    #        sulla colonna `c.emittente_fiscale_id` (post brief simmetria
+    #        2026-05-26) via `script.fn_get_emittenti_scope_pk_ids`, allineato
+    #        al pattern preventivi: NULL = nessun filtro (admin globale),
+    #        ALL ELSE = whitelist degli EF visibili all'utente.
     def list_contratti(
         self,
         *,
@@ -208,6 +230,7 @@ class ContrattiRepository(ComponentiRepositoryMixin):
         data_da: date | None = None,
         data_a: date | None = None,
         scadenza_mese: str | None = None,
+        auth_user_id: int | None = None,
         limit: int = 25,
         offset: int = 0,
         order_by: str = "data",
@@ -264,6 +287,19 @@ class ContrattiRepository(ComponentiRepositoryMixin):
             conditions.append("(c.numero ILIKE %s OR srd.ragione_sociale_completa ILIKE %s)")
             like = f"%{search.strip()}%"
             params.extend([like, like])
+
+        # Scope emittente: la tabella espone `emittente_fiscale_id` come PK
+        # reale di `anagrafiche.emittenti_fiscali.id` (post brief simmetria
+        # 2026-05-26). Usa `fn_get_emittenti_scope_pk_ids` (NON `_sr_ids`,
+        # che mappa a soggetto_ruolo_id). Pattern duale documentato nella
+        # memoria `feedback_emittente_pk_vs_soggetto_ruolo`.
+        if auth_user_id is not None:
+            conditions.append(
+                "(script.fn_get_emittenti_scope_pk_ids(%s) IS NULL "
+                "OR c.emittente_fiscale_id = ANY("
+                "script.fn_get_emittenti_scope_pk_ids(%s)))"
+            )
+            params.extend([auth_user_id, auth_user_id])
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -342,9 +378,10 @@ class ContrattiRepository(ComponentiRepositoryMixin):
 
     # Scopo: Restituisce il contesto minimo richiesto dal motore documentale
     #        per generare un documento da contratto: `id`, `uid` e
-    #        `emittente_fiscale_id`. I contratti non hanno la colonna
-    #        emittente diretta: si risolve la PK reale dell'emittente dalla
-    #        catena del billing account tramite funzione anagrafiche.
+    #        `emittente_fiscale_id`. Post brief simmetria 2026-05-26 la
+    #        colonna e' nativa NOT NULL su `vendite.contratti`: lettura
+    #        diretta, niente piu' derivazione runtime via
+    #        `anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id)`.
     def get_for_documento_generation(
         self, contratto_id: int,
     ) -> dict[str, Any] | None:
@@ -352,8 +389,7 @@ class ContrattiRepository(ComponentiRepositoryMixin):
             SELECT
                 c.id,
                 c.uid::text AS uid,
-                anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id)
-                    AS emittente_fiscale_id
+                c.emittente_fiscale_id
               FROM vendite.contratti c
              WHERE c.id = %s
         """
@@ -793,15 +829,17 @@ class ContrattiRepository(ComponentiRepositoryMixin):
         return EmittentiFiscaliRepository().get_sr_id_by_fiscale_id(fiscale_id)
 
     # Scopo: Deriva i campi di contesto pratica (emittente_fiscale_id +
-    #        soggetto_id + soggetto_ruolo_id) dal billing_account del
-    #        contratto. Speculare a `PreventiviRepository.resolve_contesto_pratica`,
-    #        usato dal workflow L3 (`approvazioni_prezzo_service.crea_richiesta_approvazione_contratto`)
+    #        soggetto_id + soggetto_ruolo_id) dal contratto. Speculare a
+    #        `PreventiviRepository.resolve_contesto_pratica`, usato dal
+    #        workflow L3 (`approvazioni_prezzo_service.crea_richiesta_approvazione_contratto`)
     #        per creare la pratica APPROVAZIONE_PREZZO con scope corretto.
+    #        Post brief simmetria 2026-05-26 `emittente_fiscale_id` e' nativo
+    #        su `vendite.contratti`: lettura diretta della colonna invece
+    #        della derivazione runtime via fn anagrafiche.
     def resolve_contesto_pratica(self, contratto_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT
-                anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id)
-                    AS emittente_fiscale_id,
+                c.emittente_fiscale_id,
                 sr.soggetto_id::text AS soggetto_id,
                 ba.soggetto_ruolo_id
             FROM vendite.contratti c
