@@ -57,6 +57,7 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.stati_doc_contratti",
         "config.stati_doc_ddt",
         "config.stati_doc_fiscale",
+        "config.stati_doc_offerte",
         "config.stati_doc_ordini",
         "config.stati_doc_preventivi",
         "config.stati_flussi_pratiche",

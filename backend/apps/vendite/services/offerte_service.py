@@ -98,7 +98,10 @@ _ORDER_BY_OFFERTE: frozenset[str] = frozenset({
     "validita_dal",
     "validita_al",
     "data_emissione",
-    "ba_ragione_sociale",
+    # Allineato al display field del SELECT (alias `billing_account_display`,
+    # rinominato 2026-05-26 per coerenza col piano FE+BE). Il FE invia
+    # `order_by=billing_account_display` per il sort cliente alfabetico.
+    "billing_account_display",
     "stato_codice",
     "data_insert",
     "data_update",
@@ -380,6 +383,15 @@ class OfferteService:
     #        eventuali collisioni di nome con i display fields sono evitate
     #        per costruzione (la fn ritorna `stato_codice`, lo SELECT ritorna
     #        `stato_codice_interno` + `stato_descrizione`).
+    #
+    #        Graceful fallback (2026-05-26 post bug fn DB `??` JSONB):
+    #        se la fn capability solleva DatabaseError, logghiamo warning e
+    #        ritorniamo il dettaglio senza blob. Il FE cade in readonly
+    #        conservativo (canEditTestata=false), ma l'operatore vede
+    #        comunque l'offerta — niente errore E_DATABASE criptico al
+    #        client per un problema diagnostico del DB. Pattern coerente
+    #        col principio "una rottura del capability layer non deve
+    #        impedire la lettura dell'entita'".
     def get_offerta(self, offerta_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         row = self._repo.get_offerta(offerta_id)
@@ -392,7 +404,17 @@ class OfferteService:
         assert row is not None
         row["eccezioni"] = self._repo.list_eccezioni(offerta_id)
         row["utility"] = self._repo.get_utility(offerta_id)
-        row.update(self._repo.get_available_actions(offerta_id))
+        try:
+            row.update(self._repo.get_available_actions(offerta_id))
+        except DatabaseError as exc:
+            # Capability layer rotto (es. fn DB inesistente o con SQL
+            # invalido). Detail comunque consistente: il FE legge senza
+            # `available_actions[]`/`can_*` e cade in readonly conservativo.
+            logger.warning(
+                "fn_available_actions_offerta fallita per offerta_id=%s: %s. "
+                "Detail ritornato senza blob capability (drawer readonly).",
+                offerta_id, exc,
+            )
         return row
 
     # =================================================================

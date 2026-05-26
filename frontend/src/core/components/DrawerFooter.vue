@@ -10,6 +10,7 @@ import { computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
+import { MANAGE_ICONS } from '../constants'
 import Button from 'primevue/button'
 
 const props = defineProps({
@@ -54,18 +55,28 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 <template>
   <div class="app-drawer-footer">
+    <!-- Annulla: arrow-left (MANAGE_ICONS.BACK) — semantica "torna alla
+         lista"; closeOnly mantiene pi-times (chiusura di lista sub-entita',
+         non c'e' un form da abbandonare).
+         Tooltip mantiene la label leggibile quando il CSS nasconde il testo
+         sotto 1024px (pattern responsive standard, vedi main.css). -->
     <Button
       :label="cancelText"
-      :icon="closeOnly ? 'pi pi-times' : undefined"
+      :icon="closeOnly ? MANAGE_ICONS.CANCEL : MANAGE_ICONS.BACK"
       severity="secondary"
-      class="app-escape"
+      class="app-escape app-drawer-footer-btn"
+      v-tooltip.top="cancelText"
       @click="emit('cancel')"
     />
+    <!-- Salva: check verde (MANAGE_ICONS.CONFIRM) — segnala conferma form. -->
     <Button
       v-if="showSave"
       :label="saveLabel || t('common.save')"
+      :icon="MANAGE_ICONS.CONFIRM"
       :loading="loading"
       :disabled="disabled"
+      class="app-drawer-footer-btn"
+      v-tooltip.top="saveLabel || t('common.save')"
       @click="emit('save')"
     />
   </div>

@@ -29,8 +29,14 @@ const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useOfferteStore()
 const isBlocked = useInjectBlocked()
+// `defaultSortField` DEVE corrispondere a un `<Column field="X" sortable>`
+// visibile nel template: PrimeVue mostra l'indicatore di sort solo su una
+// colonna esistente; se punta a un field "fantasma" il render produce
+// artefatti grafici (es. underline doppia sotto le label). Sort default
+// per UX: `validita_dal` discendente (offerte con inizio validita' piu'
+// recente in cima). Coerente col `store.filters.order_by` di default.
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'data_insert',
+  defaultSortField: 'validita_dal',
   defaultSortOrder: 'desc',
 })
 
@@ -187,6 +193,17 @@ onMounted(() => store.fetchList())
           :header="t('vendite.offerte.col_cliente')"
           sortable
           style="min-width: 180px;"
+        />
+        <Column
+          field="ba_codice"
+          :header="t('vendite.offerte.col_ba_codice')"
+          sortable
+          style="width: 120px;"
+        />
+        <Column
+          field="id_fiscale"
+          :header="t('vendite.offerte.col_id_fiscale')"
+          style="width: 140px;"
         />
         <Column
           field="utility_display"

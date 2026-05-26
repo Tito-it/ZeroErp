@@ -1427,7 +1427,7 @@ in `:root:not(.p-dark)` (light).
 | `app-page`           | Wrapper root view (flex column, flex:1, overflow:hidden)  |
 | `app-page-toolbar`   | Barra filtri + azioni (flex, space-between, wrap)         |
 | `app-page-filters`   | Gruppo filtri (flex, wrap, gap)                           |
-| `app-page-action`    | Pulsanti azione — responsive: solo icona su mobile        |
+| `app-page-action`    | Pulsanti azione — responsive: solo icona sotto 1024px     |
 | `app-datatable`      | DataTable compatta (font ridotto, padding, stripe, hover) |
 | `app-drawer-content` | Wrapper contenuto drawer (gap via `--app-drawer-gap`)     |
 | `app-drawer-section` | Separatore sezione nei drawer (bordo da theme.css)        |
@@ -1436,6 +1436,14 @@ in `:root:not(.p-dark)` (light).
 | `form-field`         | Coppia label + input (flex column, gap ridotto)           |
 | `form-grid-2col`     | Griglia 2 colonne responsive (1 col < 480px)              |
 | `app-tab-content`    | Wrapper contenuto tab per flex height                     |
+
+**Nota responsive sotto 1024px**: i pulsanti del `DrawerFooter` (Annulla,
+Chiudi, Salva) collassano automaticamente a icon-only via la classe
+`app-drawer-footer-btn` (stessa logica di `.app-page-action`). Il componente
+imposta `v-tooltip.top` con la label per garantire l'accessibilita'. La
+modifica e' centralizzata in [`DrawerFooter.vue`](../../../frontend/src/core/components/DrawerFooter.vue):
+qualsiasi pulsante Annulla/Salva sparso fuori dal componente NON eredita
+questo comportamento — pattern utile per individuare drawer non standard.
 
 ### Centralizzazione stile pulsanti (`main.css`)
 

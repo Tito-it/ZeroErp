@@ -915,6 +915,24 @@ a {
   font-size: 0.5rem;
 }
 
+/* Offerte commerciali = file con matita (pi-file-edit \e9f6) + euro
+   sovrapposto in alto a destra (pi-euro \e9bd). Allineata al pattern
+   preventivi/contratti/listini/fatture/approvazioni-prezzo che usano
+   l'overlay euro per le entita' vendite a valore. */
+.app-nav-icon-offerte::before {
+  content: "\e9f6";
+  top: 0.02rem;
+  left: 0.16rem;
+  font-size: 0.92rem;
+}
+
+.app-nav-icon-offerte::after {
+  content: "\e9bd";
+  left: 0.76rem;
+  top: -0.04rem;
+  font-size: 0.5rem;
+}
+
 /* Approvazioni prezzo = check-circle (pi-check-circle \e90a) + euro
    sovrapposto in alto a destra (pi-euro \e9bd). Semantica: "approva il
    prezzo". Allineata al pattern preventivi/contratti/listini/fatture
@@ -1238,6 +1256,27 @@ a {
   background: transparent !important;
 }
 
+/* Inner table con paginator-position="top": il tema Aura PrimeVue 4
+ * applica `border-width: 0 0 1px 0` su `.p-datatable-paginator-top`
+ * (token `paginatorTop.borderWidth`) E su `.p-datatable-thead > th`
+ * (token `headerCell.borderWidth`). Con il padding ridotto della inner
+ * (0.25rem/0.22rem) le 2 line risultano otticamente adiacenti — l'utente
+ * percepisce una "doppia underline" sotto le label colonne. Azzeriamo
+ * la border-bottom del paginator-top inner: il separatore visivo viene
+ * mantenuto dal border-bottom dell'header sotto le label. */
+.app-datatable--inner .p-datatable-paginator-top {
+  border-bottom-width: 0;
+}
+
+/* Tabella vuota: PrimeVue 4 renderizza una riga `tr.p-datatable-empty-message`
+ * con la sua `<td>` che eredita il `border-bottom` del bodyCell Aura
+ * (`borderWidth: 0 0 1px 0`). Sommata al border-bottom dell'header (subito
+ * sopra in assenza di righe dati) la linea diventa "doppia". L'empty-message
+ * NON deve avere border: e' uno stato segnaposto, non una riga dati. */
+.app-datatable .p-datatable-tbody > tr.p-datatable-empty-message > td {
+  border-bottom: none;
+}
+
 /* ===== Responsive: schermi piccoli =====
  * Tablet: < 1024px — filtri wrappano, pulsanti azione solo icona + tooltip
  * Mobile: < 768px — padding ridotto (gestito da AppLayout)
@@ -1254,6 +1293,16 @@ a {
   }
 
   .app-page-action {
+    padding: 0.5rem;
+  }
+
+  /* DrawerFooter — Annulla/Chiudi/Salva collassano a icon-only sotto 1024px,
+     pattern standard come .app-page-action. I tooltip (impostati nel
+     componente) restano visibili e garantiscono accessibilita'. */
+  .app-drawer-footer-btn .p-button-label {
+    display: none;
+  }
+  .app-drawer-footer-btn {
     padding: 0.5rem;
   }
 }

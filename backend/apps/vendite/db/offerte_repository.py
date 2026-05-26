@@ -108,7 +108,8 @@ _ORDER_COLS_OFFERTE: dict[str, str] = {
     "validita_dal": "o.validita_dal",
     "validita_al": "o.validita_al",
     "data_emissione": "o.data_emissione",
-    "ba_ragione_sociale": "srd.ragione_sociale_completa",
+    # Alias coerente col display field del SELECT (rinominato 2026-05-26).
+    "billing_account_display": "srd.ragione_sociale_completa",
     "stato_codice": "sd.codice_interno",
     "data_insert": "o.data_insert",
     "data_update": "o.data_update",
@@ -120,9 +121,20 @@ _SELECT_COLS_OFFERTA = """
     o.uid,
     o.codice,
     o.emittente_fiscale_id,
+    -- Denormalizzazione EF (pattern preventivi): il FE `EmittenteFiscaleField`
+    -- in edit mode legge codice + descrizione dal record per costruire la
+    -- option singola del Select disabled. Senza questi campi il display
+    -- resta vuoto in modifica nonostante `emittente_fiscale_id` valorizzato.
+    ef.codice           AS emittente_fiscale_codice,
+    COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+                        AS emittente_fiscale_descrizione,
     o.billing_account_id,
     ba.codice                AS ba_codice,
     srd.ragione_sociale_completa AS billing_account_display,
+    -- ID fiscale univoco del soggetto del BA (CF persona fisica o P.IVA).
+    -- Esposto dalla vista `anagrafiche.vw_soggetti_ruoli_dettaglio`. Colonna
+    -- visibile nella lista per ricerca/confronto rapido del cliente.
+    srd.id_fiscale_univoco_cf_piva AS id_fiscale,
     o.istanza_utility_id,
     o.utility_id,
     u.codice                 AS utility_codice,
@@ -170,6 +182,13 @@ _FROM_JOINS_OFFERTA = """
     -- rischio di duplicazione. Il FE usa contratto_id/numero per il dialog
     -- "gia' generato" e per il deep-link a ContrattoDrawer post-push.
     LEFT JOIN vendite.contratti c ON c.offerta_id = o.id
+    -- Decode emittente fiscale: codice + ragione sociale (con fallback a
+    -- descrizione plain dell'EF). Pattern allineato a preventivi_repository
+    -- per UX uniforme nei drawer (EmittenteFiscaleField in modalita' edit
+    -- legge questi campi denormalizzati senza round-trip aggiuntivo).
+    LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+    LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+    LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
 """
 
 

@@ -49,6 +49,7 @@ Indice test eseguiti:
 40) crea_offerta_senza_utility_inline_non_chiama_repo [refactor utility atomico]
 41) aggiorna_offerta_con_utility_inline_update_atomico  [simmetria CREATE/UPDATE]
 42) aggiorna_offerta_con_utility_inline_create_atomico  [upsert: senza utility esistente]
+43) get_offerta_capability_db_error_graceful_fallback  [hardening fn DB rotta]
 """
 
 from unittest import TestCase
@@ -858,3 +859,38 @@ class OfferteServiceTests(TestCase):
         self.assertEqual(utility_payload["utility_id"], 3)
         self.assertEqual(utility_payload["tipo_utenza_id"], 7)
         repo.update_utility.assert_not_called()
+
+    # Scopo (hardening 2026-05-26): se `script.fn_available_actions_offerta`
+    #        solleva DatabaseError (es. SQL invalido nella fn — bug `??`
+    #        JSONB osservato in dev), il service NON deve propagare
+    #        E_DATABASE al client: logga warning e ritorna il detail senza
+    #        blob capability. Il FE cade in readonly conservativo ma l'utente
+    #        vede comunque l'offerta. Pattern: "capability layer rotto non
+    #        deve impedire la read della testata".
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_get_offerta_capability_db_error_graceful_fallback(self, repo_cls):
+        from django.db import DatabaseError
+
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+        repo.get_available_actions.side_effect = DatabaseError(
+            "l'operatore non esiste: jsonb ?? unknown"
+        )
+
+        # NON deve sollevare nonostante l'errore DB sulla fn capability.
+        result = OfferteService().get_offerta(1)
+
+        # Detail testata + eccezioni + utility OK
+        self.assertEqual(result["id"], 1)
+        self.assertEqual(result["stato_codice_interno"], "BOZZA")
+        self.assertEqual(result["eccezioni"], [])
+        self.assertIsNone(result["utility"])
+        # Blob capability ASSENTE: niente chiavi `available_actions`/`can_*`.
+        # Il FE cade in readonly conservativo via `useEntityCapabilities`.
+        self.assertNotIn("available_actions", result)
+        self.assertNotIn("can_edit_testata", result)
+        self.assertNotIn("can_push_contratto", result)

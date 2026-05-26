@@ -19,7 +19,7 @@ export const NAV_ICONS = Object.freeze({
   IMPOSTAZIONI: 'pi pi-sliders-h',
   CONFIG_DOCUMENTI: 'app-nav-icon app-nav-icon-documenti',
   PREVENTIVI: 'app-nav-icon app-nav-icon-preventivi',
-  OFFERTE: 'pi pi-file-edit',
+  OFFERTE: 'app-nav-icon app-nav-icon-offerte',
   CONTRATTI: 'app-nav-icon app-nav-icon-contratti',
   DDT: 'app-nav-icon app-nav-icon-ddt',
   FATTURE: 'app-nav-icon app-nav-icon-fatture',

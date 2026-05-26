@@ -31,20 +31,25 @@ import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerFooter from '../../../core/components/DrawerFooter.vue'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
+import EmittenteFiscaleField from '../../../core/components/EmittenteFiscaleField.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
+import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
+import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { useGlobalLookup } from '../../../core/composables/useGlobalLookup'
 import { useNotify } from '../../../core/composables/useNotify'
+import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import {
   READONLY_KEY,
   useInjectReadonly,
 } from '../../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO } from '../../../core/constants'
+import { NAV_ICONS } from '../../../core/navigation'
 import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
 import { displayDate, parseIsoDate, toDateString } from '../../../core/utils/date'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
@@ -131,6 +136,18 @@ function formatListinoOption(item) {
   return item.codice ? `${item.descrizione} (${item.codice})` : item.descrizione
 }
 
+// Defaults da profilo operatore (pattern identico a preventivi/contratti):
+// - Emittente fiscale: derivato dal profilo (1-a-1 operatore->emittente
+//   salvo admin globali multi-EF che vedono il Select). Pre-popolato in
+//   CREATE per evitare il "buco" dell'INSERT senza emittente.
+// - Utility: codice_interno DEFAULT_UTILITY in `config.parameters`,
+//   risolto a id locale dal composable. Pre-popolato in CREATE per
+//   filtrare automaticamente il BillingAccountLookup sull'utility
+//   dell'operatore (UX: l'operatore vede subito solo i BA della sua
+//   utility tipica).
+const { defaultEmittenteId } = useEmittenteFiscaleField()
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
+
 // Sub-drawer + dialogs.
 const eccezioniDrawerVisible = ref(false)
 const noteDrawerVisible = ref(false)
@@ -152,11 +169,19 @@ let fgVersion = 0
 
 function defaultForm() {
   return {
-    emittente_fiscale_id: null,
+    // Emittente derivato dal profilo (1-a-1 operatore->EF, salvo admin
+    // multi-EF). `defaultEmittenteId` e' un ref reattivo; alla prima
+    // apertura del drawer in CREATE puo' essere null finche' il profilo
+    // non e' caricato: il watcher loadOrReset lo legge gia' valorizzato.
+    emittente_fiscale_id: defaultEmittenteId.value ?? null,
     billing_account_id: null,
     billing_account_obj: null,
     istanza_utility_id: null,
-    utility_id: null,
+    // Utility default da DEFAULT_UTILITY parameter (codice_interno
+    // risolto a id locale). Pre-filtra il BillingAccountLookup
+    // sull'utility dell'operatore; viene sovrascritta da onBaSelected
+    // quando l'operatore sceglie il BA (e' la utility canonical del BA).
+    utility_id: utilityDefaultId.value,
     listino_id: null,
     listino_versione_id: null,
     tipo_variazione_globale: null,
@@ -237,7 +262,11 @@ function onBaSelected(item) {
     form.value.billing_account_id = null
     form.value.billing_account_obj = null
     form.value.istanza_utility_id = null
-    form.value.utility_id = null
+    // Ripristina il default utility quando si pulisce il BA: l'operatore
+    // mantiene il filtro lookup BA sull'utility tipica del proprio EF
+    // invece di tornare a "vedo tutti i BA". Coerente col `defaultForm()`
+    // che pre-popola `utility_id` da `utilityDefaultId.value` in CREATE.
+    form.value.utility_id = utilityDefaultId.value
     return
   }
   form.value.billing_account_id = item.id
@@ -265,6 +294,12 @@ async function loadOrReset() {
       if (v === fgVersion) revisioni.value = list
     })
   } else {
+    // CREATE: precarica DEFAULT_UTILITY (codice_interno -> id locale)
+    // prima di resetForm cosi' che il defaultForm() ne legga il valore
+    // gia' risolto. L'emittente fiscale arriva dal profilo gia' caricato
+    // in `useAuthStore` (zero round-trip).
+    await loadUtilityDefault()
+    if (v !== fgVersion) return
     resetForm()
     if (props.initialBillingAccount?.id) {
       onBaSelected(props.initialBillingAccount)
@@ -533,10 +568,11 @@ async function handlePushConferma({ praticaId }) {
 //   1) Transizioni di stato data-driven dal BE
 //      (script.fn_available_actions_offerta, mapped 1:1 in azioni
 //      `kind:'state'` con label/icona/severity dal jsonb).
-//   2) Manage actions FE (sub-drawer eccezioni/note) sempre presenti in
-//      edit, indipendenti dallo stato. Le note hanno read libero anche
-//      nei stati post-BOZZA; le eccezioni si auto-bloccano via readonly
-//      propagato (provide READONLY_KEY).
+//   2) Manage action `manage-eccezioni` per il sub-drawer eccezioni
+//      (master-detail inline). Allineato al pattern ContrattoDrawer:
+//      l'eccezione vive in un sub-drawer dedicato col proprio CRUD, non
+//      in una tab del drawer principale (UX UI 2026-05-26).
+//   3) Manage action `manage-note` per il sub-drawer note partizionate.
 const drawerActions = computed(() => {
   if (!isEdit.value || !detail.value) return []
   const eccCount = detail.value.eccezioni?.length ?? 0
@@ -580,7 +616,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('vendite.offerte.titolo_drawer')"
-        icon="pi pi-file-edit"
+        :icon="NAV_ICONS.OFFERTE"
       />
     </template>
 
@@ -634,12 +670,10 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <Tabs v-model:value="activeTab">
           <TabList>
             <Tab value="testata">{{ t('vendite.offerte.tab_testata') }}</Tab>
-            <Tab value="eccezioni" :disabled="!isEdit">
-              {{ t('vendite.offerte.tab_eccezioni') }}
-              <span v-if="isEdit && detail?.eccezioni?.length">
-                ({{ detail.eccezioni.length }})
-              </span>
-            </Tab>
+            <!-- Tab "Eccezioni" rimossa (UX UI 2026-05-26): l'entry-point
+                 e' il bottone "Gestisci eccezioni" nella DrawerActionsBar
+                 (con badge counter), che apre il sub-drawer master-detail
+                 dedicato. Pattern allineato a ContrattoDrawer. -->
             <Tab value="revisioni" :disabled="!isEdit">
               {{ t('vendite.offerte.tab_revisioni') }}
               <span v-if="isEdit && revisioni.length">({{ revisioni.length }})</span>
@@ -654,41 +688,61 @@ const onClose = useDrawerClose(emit, 'cancelled')
               <div class="form-grid-2col">
                 <div class="form-field">
                   <label>{{ t('vendite.offerte.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
-                  <LookupSelect
+                  <!-- Campo emittente fiscale auto-adattivo (pattern preventivi/contratti):
+                       - edit                 -> testo read-only dal record (codice + RS denormalizzati)
+                       - create + operatore   -> testo read-only dal profilo (derivato 1-a-1)
+                       - create + admin glob. -> Select sugli EF disponibili
+                       In CREATE per operatore non-admin il valore arriva da
+                       `useEmittenteFiscaleField().defaultEmittenteId`. -->
+                  <EmittenteFiscaleField
                     v-model="form.emittente_fiscale_id"
-                    rel="config.emittenti_fiscali"
-                    class="w-full"
-                    :disabled="isEdit"
-                    show-clear
+                    :record="detail"
+                    :is-edit="isEdit"
+                    :disabled="isReadonly"
+                  />
+                </div>
+                <div class="form-field">
+                  <label>{{ t('vendite.offerte.field_utility') }} <span v-if="!isEdit">*</span></label>
+                  <!-- Building block standard utility-per-ruolo-EF
+                       (`UtilityPerRuoloSelect`). Filtra le utility configurate
+                       per l'EF dell'operatore + ammesse al ruolo CLIENTE
+                       (intersezione `emittenti_fiscali_utilities` x
+                       `utilities_tipi_ruolo`). Pre-popolata dal `defaultForm()`
+                       via `utilityDefaultId` (parametro `DEFAULT_UTILITY`,
+                       codice_interno -> id locale). Quando l'operatore sceglie
+                       il BA, `onBaSelected` sovrascrive con la utility canonical
+                       del BA (coerenza FK garantita); se l'operatore pulisce
+                       il BA, ripristiniamo il default per mantenere il filtro
+                       lookup BA sull'utility tipica. -->
+                  <UtilityPerRuoloSelect
+                    v-model="form.utility_id"
+                    :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
+                    :placeholder="t('vendite.offerte.field_utility')"
+                    :disabled="isReadonly"
                   />
                 </div>
               </div>
 
               <h4 class="mt-3">{{ t('vendite.offerte.section_cliente') }}</h4>
-              <div class="form-grid-2col">
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_billing_account') }} <span v-if="!isEdit">*</span></label>
-                  <BillingAccountLookup
-                    v-if="!isEdit"
-                    :model-value="form.billing_account_obj"
-                    :placeholder="t('vendite.offerte.select_billing_account')"
-                    @update:model-value="onBaSelected"
-                  />
-                  <InputText
-                    v-else
-                    :model-value="detail?.billing_account_display"
-                    disabled
-                    class="w-full"
-                  />
-                </div>
-                <div class="form-field">
-                  <label>{{ t('vendite.offerte.field_utility') }}</label>
-                  <InputText
-                    :model-value="detail?.utility_display || form.billing_account_obj?.utility_descrizione || ''"
-                    disabled
-                    class="w-full"
-                  />
-                </div>
+              <div class="form-field">
+                <label>{{ t('vendite.offerte.field_billing_account') }} <span v-if="!isEdit">*</span></label>
+                <!-- `utility-id` (da utilityDefaultId in CREATE) pre-filtra
+                     il lookup BA sull'utility dell'operatore. Lookup ricco
+                     (3 righe: ragione sociale + codice + PDP) — sta a tutta
+                     larghezza in una propria riga. -->
+                <BillingAccountLookup
+                  v-if="!isEdit"
+                  :model-value="form.billing_account_obj"
+                  :utility-id="form.utility_id"
+                  :placeholder="t('vendite.offerte.select_billing_account')"
+                  @update:model-value="onBaSelected"
+                />
+                <InputText
+                  v-else
+                  :model-value="detail?.billing_account_display"
+                  disabled
+                  class="w-full"
+                />
               </div>
 
               <h4 class="mt-3">{{ t('vendite.offerte.section_listino') }}</h4>
@@ -823,58 +877,6 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
             </TabPanel>
 
-            <!-- ====================== TAB ECCEZIONI ====================== -->
-            <TabPanel value="eccezioni">
-              <p class="text-color-secondary mt-1">
-                {{ t('vendite.offerte.eccezioni_intro') }}
-              </p>
-
-              <div v-if="!detail?.eccezioni?.length" class="app-empty-state">
-                <i class="pi pi-list" style="font-size: 2rem;" />
-                <div>{{ t('vendite.offerte.eccezioni_empty') }}</div>
-              </div>
-
-              <DataTable
-                v-else
-                :value="detail.eccezioni"
-                striped-rows
-                scrollable
-                scroll-height="flex"
-                class="app-datatable app-datatable--inner"
-                data-key="id"
-              >
-                <Column field="tipo_eccezione" :header="t('vendite.offerte.col_tipo_eccezione')" style="width: 130px;">
-                  <template #body="{ data }">
-                    <Tag :value="data.tipo_eccezione" severity="info" />
-                  </template>
-                </Column>
-                <Column field="articolo_display"
-                  :header="t('vendite.offerte.col_articolo')"
-                  style="min-width: 180px;">
-                  <template #body="{ data }">
-                    {{ data.articolo_display || data.articolo_id }}
-                  </template>
-                </Column>
-                <Column field="prezzo_unitario"
-                  :header="t('vendite.offerte.col_prezzo_unitario')"
-                  style="width: 120px;" />
-                <Column field="quantita"
-                  :header="t('vendite.offerte.col_quantita')"
-                  style="width: 110px;" />
-              </DataTable>
-
-              <div style="margin-top: 0.75rem; display: flex; justify-content: flex-end;">
-                <Button
-                  :label="t('vendite.offerte.gestisci_eccezioni')"
-                  :icon="MANAGE_ICONS.RIGHE"
-                  outlined
-                  size="small"
-                  :disabled="!isEdit"
-                  @click="eccezioniDrawerVisible = true"
-                />
-              </div>
-            </TabPanel>
-
             <!-- ====================== TAB REVISIONI ====================== -->
             <TabPanel value="revisioni">
               <p class="text-color-secondary mt-1">
@@ -888,8 +890,6 @@ const onClose = useDrawerClose(emit, 'cancelled')
                 v-else
                 :value="revisioni"
                 striped-rows
-                scrollable
-                scroll-height="flex"
                 class="app-datatable app-datatable--inner"
                 data-key="id"
               >

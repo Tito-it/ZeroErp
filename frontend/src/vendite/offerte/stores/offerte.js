@@ -56,7 +56,13 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     data_a: null,
     limit: 25,
     offset: 0,
-    order_by: 'data_insert',
+    // Default coerente con `OfferteSearchTable.useSearchTable.defaultSortField`:
+    // entrambi devono puntare a una colonna visibile e sortable, altrimenti
+    // PrimeVue genera un sort-indicator "fantasma" (underline anomala
+    // sotto le label) sulla riga header. Allineare se si cambia uno dei due.
+    // Default `validita_dal desc`: offerte con inizio validita' piu' recente
+    // in cima (allineato al pattern preventivi/contratti).
+    order_by: 'validita_dal',
     order_dir: 'desc',
   })
 

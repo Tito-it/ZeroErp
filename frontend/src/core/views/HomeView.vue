@@ -1,10 +1,12 @@
 <script setup>
 // Scopo: dashboard home — benvenuto, sessioni attive, 4 card placeholder dashboard
 import { ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import Badge from 'primevue/badge'
 import Button from 'primevue/button'
 import { useAuthStore } from '../../stores/auth'
+import { useUiStore } from '../../stores/ui'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { MANAGE_ICONS } from '../constants'
 import FavoriteItem from '../components/FavoriteItem.vue'
@@ -12,11 +14,14 @@ import SessioniAttivePanel from '../components/SessioniAttivePanel.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
+const ui = useUiStore()
 const { visibleFavorites, reorderVisibleDomainFavorites } = useNavigationFavorites()
 const draggedFavorite = ref(null)
-// Pannello preferiti collassato di default — stesso pattern di SessioniAttivePanel.
-// Il badge col count rende il toggle scopribile senza espandere la griglia.
-const favoritesExpanded = ref(false)
+// Stato espanso/collassato del pannello preferiti — persistito per-utente nel
+// ui store (stesso pattern di isDark): la scelta sopravvive a logout/login
+// dello stesso utente e non si confonde con quella di altri operatori sullo
+// stesso browser. Default: collassato (coerente con SessioniAttivePanel).
+const { favoritesExpanded } = storeToRefs(ui)
 
 // 4 card placeholder per futura dashboard KPI
 const dashCards = [
@@ -85,7 +90,7 @@ function onFavoriteDragEnd() {
           size="small"
           :aria-label="favoritesExpanded ? t('nav.preferiti_comprimi') : t('nav.preferiti_espandi')"
           v-tooltip.left="favoritesExpanded ? t('nav.preferiti_comprimi') : t('nav.preferiti_espandi')"
-          @click="favoritesExpanded = !favoritesExpanded"
+          @click="ui.toggleFavoritesExpanded()"
         />
       </div>
 

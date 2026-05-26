@@ -22,9 +22,9 @@ import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerFooter from '../../../core/components/DrawerFooter.vue'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
-import LookupSelect from '../../../core/components/LookupSelect.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
+import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
@@ -67,6 +67,23 @@ const formMode = ref(null) // null | 'create' | 'edit'
 const editingId = ref(null)
 const selectedRow = ref(null)
 const form = ref({})
+
+const {
+  uomOptions, uomLoading, loadUomPerArticolo, pickBaseUomId, resetUomOptions,
+} = useArticoloUomOptions()
+
+function uomLabel(uom) {
+  const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
+  return `${uom.uom_codice} — ${uom.uom_descrizione}${base}`
+}
+
+// Scopo: carica le UoM dell'articolo e, in create, pre-seleziona la base.
+async function caricaUomConPickBase(articoloId) {
+  const list = await loadUomPerArticolo(articoloId)
+  if (formMode.value === 'create' && !form.value.uom_operativa_id) {
+    form.value.uom_operativa_id = pickBaseUomId(list)
+  }
+}
 
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
@@ -159,7 +176,11 @@ function fromRow(row) {
     tipo_eccezione: row.tipo_eccezione,
     articolo_id: row.articolo_id,
     articolo_obj: row.articolo_id
-      ? { id: row.articolo_id, descrizione: row.articolo_display || '' }
+      ? {
+          id: row.articolo_id,
+          codice: row.articolo_codice || '',
+          descrizione: row.articolo_descrizione || '',
+        }
       : null,
     tipo_erogazione: row.tipo_erogazione || TIPO_EROGAZIONE.CANONE,
     fonte_quantita_attesa: row.fonte_quantita_attesa
@@ -177,6 +198,7 @@ function openCreate() {
   editingId.value = null
   formMode.value = 'create'
   selectedRow.value = null
+  resetUomOptions()
 }
 
 function onRowSelect(event) {
@@ -186,12 +208,19 @@ function onRowSelect(event) {
   editingId.value = row.id
   form.value = fromRow(row)
   formMode.value = 'edit'
+  if (row.articolo_id) {
+    // In edit l'articolo e' immutabile (Tag readonly); carichiamo comunque le
+    // UoM operative dell'articolo cosi' la Select mostra etichetta coerente
+    // per il valore gia' valorizzato. Niente autopick (formMode='edit').
+    loadUomPerArticolo(row.articolo_id)
+  }
 }
 
 function closeForm() {
   formMode.value = null
   editingId.value = null
   selectedRow.value = null
+  resetUomOptions()
 }
 
 watch(() => form.value?.tipo_erogazione, (nuovoTipo) => {
@@ -206,10 +235,16 @@ function onArticoloSelected(item) {
   if (!item) {
     form.value.articolo_id = null
     form.value.articolo_obj = null
+    form.value.uom_operativa_id = null
+    resetUomOptions()
     return
   }
   form.value.articolo_id = item.id
   form.value.articolo_obj = item
+  // Cambio articolo: invalida la UoM precedente, carica le UoM operative
+  // dell'articolo e (in create) preseleziona la base.
+  form.value.uom_operativa_id = null
+  caricaUomConPickBase(item.id)
 }
 
 const canSave = computed(() => {
@@ -288,9 +323,13 @@ function onDeleteRow(row, event) {
 
 const pageActions = computed(() => [
   {
+    // Label standard "Nuovo" (`common.new`), allineata a tutte le toolbar
+    // del progetto (PageActionsBar). Il contesto eccezione e' gia' chiaro
+    // dal drawer; usare "Nuova eccezione" rompe lo standard cross-dominio.
     key: 'nuova',
     kind: 'primary',
-    label: t('vendite.offerte.eccezione_nuova'),
+    label: t('common.new'),
+    tooltip: t('vendite.offerte.eccezione_nuova'),
     icon: MANAGE_ICONS.ADD,
     disabled: isReadonly.value || formMode.value === 'create',
     hideWhenReadonly: true,
@@ -312,7 +351,6 @@ const onClose = useDrawerClose(emit)
   >
     <template #header>
       <DrawerTitle
-        :action="t('common.manage')"
         :title="t('vendite.offerte.eccezioni_titolo')"
         :icon="MANAGE_ICONS.RIGHE"
       />
@@ -346,6 +384,13 @@ const onClose = useDrawerClose(emit)
           <PageActionsBar :actions="pageActions" />
         </div>
 
+        <!-- DataTable in-memory (lista eccezioni gia' caricata via reload()).
+             Pattern allineato a `ContrattoRigheDrawer` per le tabelle inner:
+             niente `scrollable` / `scroll-height="flex"` (servono solo lazy);
+             colonne `sortable` + `sort-field` su una colonna esistente,
+             altrimenti PrimeVue Aura genera artefatti grafici nell'header
+             (doppia underline sotto le label) quando paginator-position=top
+             si combina con un thead senza alcun sort-state attivo. -->
         <DataTable
           :value="eccezioni"
           :loading="loading"
@@ -354,8 +399,9 @@ const onClose = useDrawerClose(emit)
           :rows-per-page-options="[10, 25]"
           paginator-position="top"
           striped-rows
-          scrollable
-          scroll-height="flex"
+          removable-sort
+          sort-field="tipo_eccezione"
+          :sort-order="1"
           class="app-datatable app-datatable--inner"
           selection-mode="single"
           v-model:selection="selectedRow"
@@ -365,6 +411,7 @@ const onClose = useDrawerClose(emit)
           <Column
             field="tipo_eccezione"
             :header="t('vendite.offerte.col_tipo_eccezione')"
+            sortable
             style="width: 130px;"
           >
             <template #body="{ data }">
@@ -372,36 +419,45 @@ const onClose = useDrawerClose(emit)
             </template>
           </Column>
           <Column
-            field="articolo_display"
+            field="articolo_codice"
             :header="t('vendite.offerte.col_articolo')"
+            sortable
             style="min-width: 180px;"
           >
-            <template #body="{ data }">{{ data.articolo_display || data.articolo_id }}</template>
+            <template #body="{ data }">{{
+              data.articolo_codice
+                ? `${data.articolo_codice}${data.articolo_descrizione ? ' — ' + data.articolo_descrizione : ''}`
+                : data.articolo_id
+            }}</template>
           </Column>
           <Column
             field="tipo_erogazione"
             :header="t('vendite.offerte.col_tipo_erogazione')"
+            sortable
             style="width: 130px;"
           />
           <Column
             field="prezzo_unitario"
             :header="t('vendite.offerte.col_prezzo_unitario')"
+            sortable
             style="width: 120px;"
           />
           <Column
             field="quantita"
             :header="t('vendite.offerte.col_quantita')"
+            sortable
             style="width: 100px;"
           />
           <Column
             field="attivo"
             :header="t('vendite.offerte.col_attivo')"
+            sortable
             style="width: 90px;"
           >
             <template #body="{ data }">
               <Tag
-                :value="data.attivo ? t('common.si') : t('common.no')"
-                :severity="data.attivo ? 'success' : 'secondary'"
+                :value="data.attivo ? t('common.active') : t('common.inactive')"
+                :severity="data.attivo ? 'success' : 'warn'"
               />
             </template>
           </Column>
@@ -426,16 +482,14 @@ const onClose = useDrawerClose(emit)
         </DataTable>
 
         <!-- Form dettaglio (create/edit). -->
-        <div
-          v-if="formMode"
-          class="app-drawer-section mt-3"
-          style="border-top: 1px solid var(--app-drawer-section-border); padding-top: 1rem;"
-        >
-          <h4>
-            {{ formMode === 'create'
-              ? t('vendite.offerte.eccezione_nuova')
-              : t('vendite.offerte.eccezione_modifica') }}
-          </h4>
+        <template v-if="formMode">
+          <div class="app-drawer-section">
+            <h4>
+              {{ formMode === 'create'
+                ? t('vendite.offerte.eccezione_nuova')
+                : t('vendite.offerte.eccezione_modifica') }}
+            </h4>
+          </div>
 
           <div class="form-grid-2col">
             <div class="form-field">
@@ -450,16 +504,14 @@ const onClose = useDrawerClose(emit)
               />
             </div>
             <div class="form-field">
-              <label>{{ t('vendite.offerte.field_articolo') }} *</label>
+              <label>
+                {{ t('vendite.offerte.field_articolo') }}
+                <span v-if="formMode === 'create'">*</span>
+              </label>
               <ArticoloLookup
-                v-if="formMode === 'create'"
                 :model-value="form.articolo_obj"
+                :disabled="formMode === 'edit'"
                 @update:model-value="onArticoloSelected"
-              />
-              <Tag
-                v-else
-                :value="form.articolo_obj?.descrizione || form.articolo_id"
-                severity="info"
               />
             </div>
           </div>
@@ -512,10 +564,16 @@ const onClose = useDrawerClose(emit)
           <div class="form-grid-2col">
             <div class="form-field">
               <label>{{ t('vendite.offerte.field_uom_operativa') }}</label>
-              <LookupSelect
+              <Select
                 v-model="form.uom_operativa_id"
-                rel="catalogo.unita_misura"
-                show-clear
+                :options="uomOptions"
+                :option-label="uomLabel"
+                option-value="uom_id"
+                :loading="uomLoading"
+                :disabled="!form.articolo_id || uomLoading"
+                :placeholder="form.articolo_id
+                  ? t('vendite.offerte.field_uom_operativa')
+                  : t('vendite.promo_articoli.field_uom_articolo_first')"
                 class="w-full"
               />
             </div>
@@ -532,27 +590,15 @@ const onClose = useDrawerClose(emit)
             </label>
           </div>
 
-          <div
-            style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;"
-          >
-            <Button
-              :label="t('common.cancel')"
-              text
-              severity="secondary"
-              @click="closeForm"
-            />
-            <Button
-              :label="t('common.save')"
-              icon="pi pi-save"
-              severity="primary"
-              :loading="loading"
-              :disabled="!canSave"
-              @click="handleSave"
-            />
-          </div>
-        </div>
+          <DrawerFooter
+            :loading="loading"
+            :disabled="!canSave"
+            @save="handleSave"
+            @cancel="closeForm"
+          />
+        </template>
 
-        <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
+        <DrawerFooter v-else close-only @cancel="onClose" />
       </template>
     </div>
   </Drawer>
