@@ -14,9 +14,9 @@ CREATE OR REPLACE FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigi
 AS $function$
 -- Scopo:
 --   Generare un contratto DRAFT da un'offerta commerciale in stato
---   ACCETTATA, copiando 1:1 eccezioni e utility (§5.2 analisi).
---   Idempotente: doppia invocazione fallisce con errore semantico,
---   nessun duplicato e' possibile (pattern A §6.9.3 pratiche).
+--   ACCETTATA, copiando 1:1 eccezioni (con componenti BoM) e utility
+--   (§5.2 analisi). Idempotente: doppia invocazione fallisce con errore
+--   semantico; nessun duplicato possibile (pattern A §6.9.3 pratiche).
 --
 -- Parametri:
 --   p_offerta_id : ID offerta commerciale ACCETTATA da trasformare.
@@ -26,11 +26,14 @@ AS $function$
 -- Regole:
 --   - stato ACCETTATA obbligatorio; qualsiasi altro -> errore.
 --   - nessun contratto con offerta_id = p_offerta_id deve esistere.
---   - contratto creato in DRAFT; auto-attivazione NON prevista (§1.2).
+--   - contratto creato in DRAFT; auto-attivazione NON prevista.
+--   - emittente_fiscale_id copiato 1:1 dall'offerta (rev2, 2026-05-26).
+--   - eccezioni: loop per-eccezione per preservare mapping
+--     eccezione.id → riga_contratto.id; componenti copiati dopo
+--     ogni INSERT riga.
 --   - stato_approvazione_prezzo / pratica_approvazione_prezzo_id
---     inseriti NULL in contratti_righe (I4).
---   - utility: UPSERT per gestire il trigger snapshot_precontrattuali
---     che puo' aver gia' creato contratti_utilities sull'INSERT contratto.
+--     delle componenti: trasportati 1:1 dall'offerta (rev3, 2026-05-26).
+--   - utility: UPSERT per gestire trigger snapshot_precontrattuali.
 DECLARE
     v_offerta               vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod             config.stati_doc_offerte.codice_interno%TYPE;
@@ -39,6 +42,8 @@ DECLARE
     v_sorgente_contratto_id config.sorgenti.id%TYPE;
     v_contratto_id          vendite.contratti.id%TYPE;
     v_contratto_uid         vendite.contratti.uid%TYPE;
+    v_eccezione             vendite.offerte_commerciali_eccezioni%ROWTYPE;
+    v_riga_id               vendite.contratti_righe.id%TYPE;
 BEGIN
     -- Guard: parametro obbligatorio e valido.
     IF p_offerta_id IS NULL OR p_offerta_id <= 0 THEN
@@ -73,7 +78,6 @@ BEGIN
      WHERE id = v_offerta.stato_doc_offerta_id;
 
     -- Guard: push ammesso SOLO da stato ACCETTATA.
-    -- BOZZA, EMESSA, RIFIUTATA, SUPERATA, ANNULLATA -> errore.
     IF v_stato_cod IS DISTINCT FROM 'ACCETTATA' THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_push_offerta_a_contratto',
@@ -102,7 +106,7 @@ BEGIN
         );
     END IF;
 
-    -- Config: stato DRAFT contratto (config-driven, no hardcode).
+    -- Config: stato DRAFT contratto.
     SELECT id INTO v_stato_draft_id
       FROM config.stati_doc_contratti
      WHERE codice_interno = 'DRAFT';
@@ -111,10 +115,7 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_push_offerta_a_contratto',
             'E_CONFIG_MANCANTE',
-            jsonb_build_object(
-                'tabella', 'config.stati_doc_contratti',
-                'codice',  'DRAFT'
-            ),
+            jsonb_build_object('tabella', 'config.stati_doc_contratti', 'codice', 'DRAFT'),
             NULL::uuid,
             'stato DRAFT non trovato in config.stati_doc_contratti'
         );
@@ -129,19 +130,13 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_push_offerta_a_contratto',
             'E_CONFIG_MANCANTE',
-            jsonb_build_object(
-                'tabella', 'config.sorgenti',
-                'codice',  'OFFERTA_COMMERCIALE'
-            ),
+            jsonb_build_object('tabella', 'config.sorgenti', 'codice', 'OFFERTA_COMMERCIALE'),
             NULL::uuid,
             'sorgente OFFERTA_COMMERCIALE non trovata in config.sorgenti'
         );
     END IF;
 
     -- INSERT contratto in DRAFT — copia campi business 1:1 dall'offerta.
-    -- numero/uid: generati da trigger trgfn_contratti_gen_codice / default.
-    -- categoria_cliente_id_snapshot: gestita da trigger.
-    -- emittente_fiscale_id: non esiste su contratti (verificato 2026-05-25).
     INSERT INTO vendite.contratti (
         billing_account_id,
         istanza_utility_id,
@@ -156,6 +151,7 @@ BEGIN
         sorgente_tipo_id,
         sorgente_uid,
         offerta_id,
+        emittente_fiscale_id,
         meta
     )
     VALUES (
@@ -172,59 +168,109 @@ BEGIN
         v_sorgente_ofc_id,
         v_offerta.uid,
         p_offerta_id,
+        v_offerta.emittente_fiscale_id,
         COALESCE(v_offerta.meta, '{}'::jsonb)
     )
     RETURNING id, uid INTO v_contratto_id, v_contratto_uid;
 
-    -- Copia eccezioni offerta -> contratti_righe (1:1, §5.2).
-    -- tipo_eccezione: stesso enum tipo_eccezione_contratto, nessuna
-    --   conversione (B3).
-    -- stato_approvazione_prezzo / pratica_approvazione_prezzo_id:
-    --   inseriti NULL — il contratto DRAFT li acquisisce in fase di
-    --   negoziazione (I4).
-    INSERT INTO vendite.contratti_righe (
-        contratto_id,
-        articolo_id,
-        tipo_eccezione,
-        tipo_erogazione,
-        fonte_quantita_attesa,
-        periodicita,
-        generazione_canone,
-        competenza_canone,
-        prezzo_unitario,
-        quantita,
-        qta_operativa,
-        uom_operativa_id,
-        factor_to_base,
-        ordine,
-        attivo,
-        meta
-    )
-    SELECT
-        v_contratto_id,
-        oce.articolo_id,
-        oce.tipo_eccezione,
-        oce.tipo_erogazione,
-        oce.fonte_quantita_attesa,
-        oce.periodicita,
-        oce.generazione_canone,
-        oce.competenza_canone,
-        oce.prezzo_unitario,
-        oce.quantita,
-        oce.qta_operativa,
-        oce.uom_operativa_id,
-        oce.factor_to_base,
-        oce.ordine,
-        oce.attivo,
-        oce.meta
-    FROM vendite.offerte_commerciali_eccezioni oce
-    WHERE oce.offerta_id = p_offerta_id;
+    -- Copia eccezioni offerta → contratti_righe (loop per-eccezione).
+    -- Loop necessario per preservare il mapping eccezione.id →
+    -- riga_contratto.id e copiare i componenti associati.
+    -- tipo_eccezione: stesso enum tipo_eccezione_contratto.
+    -- stato_approvazione_prezzo delle RIGHE: inserito NULL (I4,
+    -- negoziazione avviene sul contratto DRAFT).
+    FOR v_eccezione IN
+        SELECT *
+          FROM vendite.offerte_commerciali_eccezioni
+         WHERE offerta_id = p_offerta_id
+         ORDER BY id
+    LOOP
+        INSERT INTO vendite.contratti_righe (
+            contratto_id,
+            articolo_id,
+            tipo_eccezione,
+            tipo_erogazione,
+            fonte_quantita_attesa,
+            periodicita,
+            generazione_canone,
+            competenza_canone,
+            prezzo_unitario,
+            quantita,
+            qta_operativa,
+            uom_operativa_id,
+            factor_to_base,
+            ordine,
+            attivo,
+            meta
+        )
+        VALUES (
+            v_contratto_id,
+            v_eccezione.articolo_id,
+            v_eccezione.tipo_eccezione,
+            v_eccezione.tipo_erogazione,
+            v_eccezione.fonte_quantita_attesa,
+            v_eccezione.periodicita,
+            v_eccezione.generazione_canone,
+            v_eccezione.competenza_canone,
+            v_eccezione.prezzo_unitario,
+            v_eccezione.quantita,
+            v_eccezione.qta_operativa,
+            v_eccezione.uom_operativa_id,
+            v_eccezione.factor_to_base,
+            v_eccezione.ordine,
+            v_eccezione.attivo,
+            v_eccezione.meta
+        )
+        RETURNING id INTO v_riga_id;
 
-    -- Copia utility offerta -> contratti_utilities (1:1, B1).
+        -- Copia componenti dell'eccezione → contratti_righe_componenti.
+        -- stato_approvazione_prezzo / pratica_approvazione_prezzo_id:
+        -- trasportati 1:1 dall'offerta (rev3): l'eventuale approvazione
+        -- L3 gia' ottenuta sull'offerta non va persa al push.
+        INSERT INTO vendite.contratti_righe_componenti (
+            riga_contratto_id,
+            articolo_componente_id,
+            componente_id,
+            coeff_qta_snapshot,
+            quantita,
+            uom_operativa_id,
+            factor_to_base,
+            qta_operativa,
+            prezzo_unitario,
+            iva_id,
+            origine_prezzo,
+            prezzo_resolver_context,
+            stato_approvazione_prezzo,
+            pratica_approvazione_prezzo_id,
+            meta,
+            ordine,
+            attivo
+        )
+        SELECT
+            v_riga_id,
+            occ.articolo_componente_id,
+            occ.componente_id,
+            occ.coeff_qta_snapshot,
+            occ.quantita,
+            occ.uom_operativa_id,
+            occ.factor_to_base,
+            occ.qta_operativa,
+            occ.prezzo_unitario,
+            occ.iva_id,
+            occ.origine_prezzo,
+            occ.prezzo_resolver_context,
+            occ.stato_approvazione_prezzo,
+            occ.pratica_approvazione_prezzo_id,
+            occ.meta,
+            occ.ordine,
+            occ.attivo
+        FROM vendite.offerte_commerciali_eccezioni_componenti occ
+        WHERE occ.eccezione_offerta_id = v_eccezione.id;
+    END LOOP;
+
+    -- Copia utility offerta → contratti_utilities (1:1).
     -- UPSERT: il trigger trg_contratti_z90_snapshot_precontrattuali_ins
-    --   si attiva AFTER INSERT su contratti e puo' aver gia' creato
-    --   un record da precontrattuali; in quel caso i dati negoziati
-    --   nell'offerta sovrascrivono il precontrattuale generico.
+    -- si attiva AFTER INSERT su contratti e puo' aver gia' creato un record.
     INSERT INTO vendite.contratti_utilities (
         contratto_id,
         istanza_utility_id,
@@ -260,10 +306,6 @@ BEGIN
         meta                            = EXCLUDED.meta;
 
     -- Collegamento pratica (facoltativo).
-    -- Se p_pratica_id valorizzato, registra il contratto generato
-    -- come sorgente COLLEGATO della pratica.
-    -- La registrazione dell'evento nel giornale pratica e' delegata
-    -- al livello applicativo (pratiche_service.log_evento_dominio).
     IF p_pratica_id IS NOT NULL THEN
         SELECT id INTO v_sorgente_contratto_id
           FROM config.sorgenti
@@ -273,17 +315,12 @@ BEGIN
             PERFORM script.fn_log_and_raise_error(
                 'vendite', 'fn_push_offerta_a_contratto',
                 'E_CONFIG_MANCANTE',
-                jsonb_build_object(
-                    'tabella', 'config.sorgenti',
-                    'codice',  'CONTRATTO'
-                ),
+                jsonb_build_object('tabella', 'config.sorgenti', 'codice', 'CONTRATTO'),
                 NULL::uuid,
                 'sorgente CONTRATTO non trovata in config.sorgenti'
             );
         END IF;
 
-        -- UNIQUE uq_pratiche_sorgenti_pratica_tipo_uid_ruolo gestisce
-        -- l'idempotenza: il DO NOTHING evita errore su doppia invocazione.
         INSERT INTO pratiche.pratiche_sorgenti (
             pratica_id,
             sorgente_tipo_id,
@@ -305,7 +342,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint)
-IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Copia 1:1 eccezioni (contratti_righe) e utility (contratti_utilities). Idempotente: doppia invocazione fallisce con E_OFFERTA_CONTRATTO_GIA_GENERATO. Guard stato: solo ACCETTATA — BOZZA/EMESSA/RIFIUTATA/SUPERATA/ANNULLATA -> errore. Pattern A §6.9.3 pratiche: UNIQUE (offerta_id) + controllo esplicito. Parametri: p_offerta_id (offerta ACCETTATA), p_pratica_id (NULL ok). rev 2026-05-25.';
+IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev3 (2026-05-26): copia offerte_commerciali_eccezioni_componenti → contratti_righe_componenti (loop per-eccezione, mapping eccezione→riga). stato_approvazione_prezzo componenti trasportato 1:1. Copia 1:1 eccezioni (contratti_righe) e utility (contratti_utilities). Rev2 (2026-05-26): propaga emittente_fiscale_id. Idempotente: doppia invocazione → E_OFFERTA_CONTRATTO_GIA_GENERATO. Parametri: p_offerta_id (offerta ACCETTATA), p_pratica_id (NULL ok).';
 ```
 
 ---

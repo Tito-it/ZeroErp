@@ -26,7 +26,7 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-05-25)
+(rev 2026-05-26 — aggiunto `emittente_fiscale_id`)
 
 `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id)` genera un
 **contratto DRAFT** da un'offerta commerciale **ACCETTATA**, copiando 1:1
@@ -51,8 +51,10 @@ duplicati (pattern A §6.9.3 analisi pratiche domini).
   - Testata: `billing_account_id`, `istanza_utility_id`, `utility_id`,
     `listino_id`, `listino_versione_id`, `valore/tipo_variazione_globale`,
     `valido_dal`/`valido_al` (da `offerta.validita_dal`/`al`), `meta`.
-  - `emittente_fiscale_id` non copiato: non esiste su `vendite.contratti`
-    (verificato 2026-05-25).
+  - `emittente_fiscale_id` copiato 1:1 da `v_offerta.emittente_fiscale_id`
+    (rev2, 2026-05-26). Il trigger `trgfn_contratti_default_emittente` salta
+    (campo già valorizzato); il guard `trgfn_contratti_guard_emittente_ba`
+    valida la coerenza BA↔emittente.
 - **Eccezioni → `contratti_righe`**: copia 1:1 di tutte le righe
   (`offerte_commerciali_eccezioni`). `stato_approvazione_prezzo` e
   `pratica_approvazione_prezzo_id` inseriti `NULL` (I4 del brief: il contratto
@@ -121,9 +123,11 @@ La sequenza di eventi al momento dell'INSERT del contratto:
 
 ```text
 fn_push_offerta_a_contratto
-  └─ INSERT contratti (DRAFT)
-       ├─ BEFORE INSERT: trgfn_contratti_gen_codice → assegna numero contratto
-       ├─ BEFORE INSERT: trgfn_contratti_normalize → default ambito/campi
+  └─ INSERT contratti (DRAFT, emittente_fiscale_id = v_offerta.emittente_fiscale_id)
+       ├─ BEFORE INSERT: trgfn_contratti_default_emittente  → SKIP (già valorizzato)
+       ├─ BEFORE INSERT: trgfn_contratti_guard_emittente_ba → valida coerenza BA↔EF
+       ├─ BEFORE INSERT: trgfn_contratti_gen_codice         → assegna numero contratto
+       ├─ BEFORE INSERT: trgfn_contratti_normalize          → default ambito/campi
        ├─ BEFORE INSERT: trgfn_contratti_set_categoria_cliente_snapshot
        └─ AFTER INSERT:  trg_contratti_z90_snapshot_precontrattuali_ins
                            └─ crea contratti_utilities dai precontrattuali

@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Guard di coerenza BA <-> emittente fiscale su vendite.contratti.
+#
+# Regola: l'emittente_fiscale_id del contratto deve coincidere con
+# quello derivabile dal billing_account_id tramite
+# anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id).
+#
+# Motivazione: un operatore di EF1 non puo' creare un contratto
+# per un BA che appartiene a EF2. Il trigger fired BEFORE INSERT
+# (dopo trgfn_contratti_default_emittente che ha gia' settato
+# NEW.emittente_fiscale_id) e BEFORE UPDATE OF billing_account_id,
+# emittente_fiscale_id.
+#
+# Firing order (alphabetico nella fase _a10_):
+#   trg_contratti_a10_default_emittente_ins       (INSERT)
+#   trg_contratti_a10_guard_emittente_ba_ins_upd  (INSERT + UPDATE)
+#   trg_contratti_a10_guard_transizione_stato_upd (UPDATE)
+#   trg_contratti_a10_lock_post_attivazione_upd   (UPDATE)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260526-04-create-trgfn-contratti-guard-emittente-ba-mctit.yaml
+
+  - changeSet:
+      id: 20260526-04-create-trgfn-contratti-guard-emittente-ba
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Guard BEFORE INSERT OR UPDATE: verifica che emittente_fiscale_id
+        coincida con fn_get_emittente_fiscale_pk(billing_account_id).
+        Errore: E_CONTRATTO_EMITTENTE_BA_INCOERENTE (id=464).
+        Trigger: trg_contratti_a10_guard_emittente_ba_ins_upd.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: contratti
+            columnName: emittente_fiscale_id
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Function: vendite.trgfn_contratti_guard_emittente_ba
+              --
+              -- Scopo: garantire coerenza BA <-> emittente fiscale su INSERT
+              --        e UPDATE. L'emittente del contratto deve coincidere con
+              --        quello derivabile dal BA scelto.
+              --
+              -- Firing: BEFORE INSERT (dopo default_emittente che ha gia'
+              --         settato NEW.emittente_fiscale_id) e BEFORE UPDATE OF
+              --         billing_account_id, emittente_fiscale_id.
+              --
+              -- Esempio d'errore: operatore di EF1 tenta di associare un BA
+              -- che mappa a EF2 -> E_CONTRATTO_EMITTENTE_BA_INCOERENTE.
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_guard_emittente_ba()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_ef_atteso_id anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                -- Risolve l'emittente atteso per il BA del contratto.
+                -- fn_get_emittente_fiscale_pk solleva E_EMITTENTE_DEFAULT_MISSING
+                -- se il BA non ha mapping EF (configurazione errata, non
+                -- scenario atteso in produzione).
+                v_ef_atteso_id := anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+
+                -- Guard: l'emittente del contratto deve corrispondere a quello del BA.
+                IF NEW.emittente_fiscale_id IS DISTINCT FROM v_ef_atteso_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'trgfn_contratti_guard_emittente_ba',
+                    'E_CONTRATTO_EMITTENTE_BA_INCOERENTE',
+                    jsonb_build_object(
+                      'billing_account_id',   NEW.billing_account_id,
+                      'emittente_fiscale_id', NEW.emittente_fiscale_id,
+                      'emittente_atteso_id',  v_ef_atteso_id,
+                      'numero_contratto',     NEW.numero
+                    ),
+                    NULL::uuid,
+                    concat('ba=', NEW.billing_account_id,
+                           ', ef=', NEW.emittente_fiscale_id,
+                           ', ef_atteso=', v_ef_atteso_id)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_guard_emittente_ba()
+              IS 'Guard BEFORE INSERT/UPDATE: verifica che contratti.emittente_fiscale_id '
+                 'coincida con anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id). '
+                 'Solleva E_CONTRATTO_EMITTENTE_BA_INCOERENTE se incoerente. '
+                 'Fires dopo trgfn_contratti_default_emittente (firing order alphabetico).';
+
+              -- Drop-and-recreate per ridefinizioni (runOnChange:true).
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_emittente_ba_ins_upd
+                ON vendite.contratti;
+
+              -- Fires BEFORE INSERT (dopo default_emittente) e BEFORE UPDATE
+              -- di billing_account_id o emittente_fiscale_id.
+              CREATE TRIGGER trg_contratti_a10_guard_emittente_ba_ins_upd
+                BEFORE INSERT OR UPDATE OF billing_account_id, emittente_fiscale_id
+                ON vendite.contratti
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_contratti_guard_emittente_ba();
+
+              COMMENT ON TRIGGER trg_contratti_a10_guard_emittente_ba_ins_upd
+                ON vendite.contratti
+              IS 'Guard coerenza BA <-> emittente fiscale (E_CONTRATTO_EMITTENTE_BA_INCOERENTE). '
+                 'Fires BEFORE INSERT (dopo default_emittente) e UPDATE OF billing_account_id, '
+                 'emittente_fiscale_id. Fase _a10_guard_*: dopo _a10_default_*, prima di '
+                 '_a10_guard_transizione_stato e _a10_lock_post_attivazione.';
