@@ -230,7 +230,7 @@ class ApiOfferteList(DomainAPIView):
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False,
                              description="codice | validita_dal | validita_al | data_emissione | "
-                                         "ba_ragione_sociale | stato_codice | data_insert | data_update"),
+                                         "billing_account_display | stato_codice | data_insert | data_update"),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: inline_serializer(

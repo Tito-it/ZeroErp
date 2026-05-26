@@ -138,6 +138,7 @@ watch(
       :disabled="isFieldDisabled"
       :filter="useAdminLookup"
       :show-clear="useAdminLookup"
+      class="app-form-select"
       style="width: 100%; min-width: 0;"
     />
     <Message

@@ -54,6 +54,12 @@ def _qp_iso_date(raw: str | None) -> date | None:
 _CONTRATTO_CREATE_REQUEST = inline_serializer(
     name="VenditeContrattoCreateReq",
     fields={
+        # Post brief simmetria 2026-05-26: opzionale. Se omesso il trigger DB
+        # `trgfn_contratti_default_emittente` lo deriva dalla GUC
+        # `app.current_user_id` (operatore non-admin). L'admin globale lo
+        # specifica esplicitamente; il guard DB rifiuta coppie BA<->EF
+        # incoerenti.
+        "emittente_fiscale_id": serializers.IntegerField(required=False, allow_null=True),
         "billing_account_id": serializers.IntegerField(),
         "istanza_utility_id": serializers.IntegerField(),
         "utility_id": serializers.IntegerField(),
@@ -120,7 +126,9 @@ class ApiContrattiList(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Lista paginata contratti con filtri standard.
+    # Scopo: Lista paginata contratti con filtri standard. Scope emittente
+    #        applicato lato repository via `fn_get_emittenti_scope_pk_ids`
+    #        (post brief simmetria 2026-05-26).
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp, default_order="data")
@@ -135,6 +143,7 @@ class ApiContrattiList(DomainAPIView):
             data_da=_qp_iso_date(qp.get("data_da")),
             data_a=_qp_iso_date(qp.get("data_a")),
             scadenza_mese=qp_str(qp.get("scadenza_mese")),
+            auth_user_id=get_scope_user_id(request),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],

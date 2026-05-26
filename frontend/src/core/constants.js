@@ -240,6 +240,11 @@ export const MANAGE_ICONS = {
   ADD: 'pi pi-plus',
   CONFIRM: 'pi pi-check',
   CANCEL: 'pi pi-times',
+  // BACK: usato dal pulsante "Annulla" di DrawerFooter — la chiusura di un
+  // drawer di form torna alla lista, semantica "indietro" piu' chiara di un
+  // semplice "X". Distinto da CANCEL (close-without-saving generico) e da
+  // NAV_ICONS.BACK (header sidebar "Torna alla Home").
+  BACK: 'pi pi-arrow-left',
   PLAY: 'pi pi-play',
   PUBLISH: 'pi pi-check-circle',
   CLONE: 'pi pi-copy',

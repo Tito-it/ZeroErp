@@ -75,6 +75,24 @@ export const useUiStore = defineStore('ui', () => {
     _applyDarkMode()
   }
 
+  // Stato espanso/collassato del pannello "I tuoi preferiti" in HomeView.
+  // Stesso pattern di isDark: chiave user-scoped post-login, fallback "device
+  // default" pre-login (rara — la HomeView non e' visibile pre-auth).
+  const storedFavoritesExpanded = local.get(STORAGE_KEYS.FAVORITES_EXPANDED)
+  const favoritesExpanded = ref(
+    storedFavoritesExpanded !== null ? storedFavoritesExpanded === 'true' : false
+  )
+
+  function setFavoritesExpanded(value) {
+    favoritesExpanded.value = !!value
+    const key = userScopedKey(STORAGE_KEYS.FAVORITES_EXPANDED, currentUserId.value)
+    local.set(key, favoritesExpanded.value)
+  }
+
+  function toggleFavoritesExpanded() {
+    setFavoritesExpanded(!favoritesExpanded.value)
+  }
+
   // Scopo: sincronizza le preferenze user-scoped (tema) con quelle salvate
   //        per l'utente fornito. Chiamata da `auth.fetchProfile` dopo il
   //        login o restore sessione.
@@ -99,6 +117,11 @@ export const useUiStore = defineStore('ui', () => {
     const resolved = userValue !== null ? userValue === 'true' : true
     isDark.value = resolved
     _applyDarkMode()
+
+    // Stato pannello preferiti — chiave personale, fallback collassato.
+    const favKey = userScopedKey(STORAGE_KEYS.FAVORITES_EXPANDED, userId)
+    const favValue = local.get(favKey)
+    favoritesExpanded.value = favValue !== null ? favValue === 'true' : false
   }
 
   function openAiDrawer() { aiDrawerVisible.value = true }
@@ -160,6 +183,9 @@ export const useUiStore = defineStore('ui', () => {
     toggleSidebar,
     isDark,
     toggleDarkMode,
+    favoritesExpanded,
+    setFavoritesExpanded,
+    toggleFavoritesExpanded,
     currentUserId,
     syncUserPreferences,
     clearUserState

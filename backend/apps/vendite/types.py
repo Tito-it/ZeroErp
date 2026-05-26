@@ -365,8 +365,16 @@ class OffertaRow(TypedDict):
     # dal drawer/lista (display fields backend, niente lookup client-side).
     stato_codice_interno: str
     stato_descrizione: str
+    # Denormalizzazione EF (pattern preventivi): consumati da
+    # `EmittenteFiscaleField` in modalita' edit per costruire la option
+    # singola del Select disabled senza round-trip aggiuntivo.
+    emittente_fiscale_codice: str | None
+    emittente_fiscale_descrizione: str | None
     ba_codice: str | None
     billing_account_display: str | None
+    # ID fiscale univoco (CF persona fisica o P.IVA) del soggetto del BA.
+    # Esposto via JOIN `anagrafiche.vw_soggetti_ruoli_dettaglio`.
+    id_fiscale: str | None
     utility_codice: str | None
     utility_display: str | None
     listino_codice: str | None

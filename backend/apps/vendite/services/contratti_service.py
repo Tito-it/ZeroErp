@@ -108,6 +108,14 @@ _TIPI_VARIAZIONE_GLOBALE_AMMESSI: frozenset[str] = frozenset({"PERCENTUALE"})
 # service. `stato_doc_contratto_id` escluso: stato iniziale DRAFT impostato
 # dal service (cambi stato successivi via endpoint dedicato).
 _CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
+    # Post brief simmetria 2026-05-26: `emittente_fiscale_id` ora e' colonna
+    # nativa di `vendite.contratti` (NOT NULL). Pattern duale al trigger
+    # `trgfn_contratti_default_emittente`: se il payload lo specifica il
+    # trigger salta; se NULL il trigger lo deriva da
+    # `script.fn_resolve_emittente_for_user(GUC app.current_user_id)`.
+    # Il FE invia sempre il valore pre-popolato da `defaultEmittenteId`
+    # (operatore non-admin) o scelto dall'admin globale.
+    "emittente_fiscale_id",
     "billing_account_id",
     "istanza_utility_id",
     "utility_id",
@@ -196,6 +204,13 @@ _FORBIDDEN_TESTATA_UPDATE: frozenset[str] = frozenset({
     "billing_account_id",
     "istanza_utility_id",
     "utility_id",
+    # Post brief simmetria 2026-05-26: l'emittente fiscale e' immutabile in
+    # update. Il BA e' gia' immutabile (riga sopra) e il guard DB
+    # `trgfn_contratti_guard_emittente_ba` rifiuta divergenze BA<->EF: un
+    # patch su `emittente_fiscale_id` produrrebbe quindi solo rumore (errore
+    # DB criptico al primo invio). Esclusione esplicita = errore parlante
+    # lato applicativo.
+    "emittente_fiscale_id",
     "stato_doc_contratto_id",
 })
 
@@ -513,6 +528,7 @@ class ContrattiService:
         data_da: date | None = None,
         data_a: date | None = None,
         scadenza_mese: str | None = None,
+        auth_user_id: int | None = None,
         limit: int = 25,
         offset: int = 0,
         order_by: str = "data",
@@ -547,6 +563,7 @@ class ContrattiService:
             data_da=data_da,
             data_a=data_a,
             scadenza_mese=scadenza_mese,
+            auth_user_id=auth_user_id,
             limit=limit,
             offset=offset,
             order_by=order_by,
@@ -1788,6 +1805,14 @@ class ContrattiService:
             ),
             "valido_dal": self._v.require_date(payload, "valido_dal", message=_MESSAGE),
         }
+        # emittente_fiscale_id opzionale: se presente passa al DB e il trigger
+        # `trgfn_contratti_default_emittente` lo lascia (skip su IS NOT NULL);
+        # se assente il trigger lo deriva via `fn_resolve_emittente_for_user`
+        # dalla GUC `app.current_user_id`. Il guard `guard_emittente_ba`
+        # rifiuta in ogni caso divergenze BA<->EF.
+        self._apply_optional_positive_int(
+            payload, data, "emittente_fiscale_id", message=_MESSAGE,
+        )
         # valido_al e ambito opzionali in create (ambito ha default DB
         # 'COMMODITY', valido_al puo' essere aperto).
         if "valido_al" in payload and payload["valido_al"] is not None:
