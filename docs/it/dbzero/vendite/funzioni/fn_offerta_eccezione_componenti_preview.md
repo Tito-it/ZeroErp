@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_offerta_eccezione_componenti_preview.md" %}
 # ⚙️ Funzione `fn_offerta_eccezione_componenti_preview`
 
 ```sql

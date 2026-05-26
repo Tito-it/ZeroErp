@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/offerte_commerciali_eccezioni_componenti.md" %}
 # 📚 Tabella `offerte_commerciali_eccezioni_componenti`
 
 ## 🗂️ Campi principali
