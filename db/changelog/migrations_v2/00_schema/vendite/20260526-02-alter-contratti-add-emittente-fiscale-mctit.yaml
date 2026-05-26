@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge vendite.contratti.emittente_fiscale_id BIGINT NULL
+# con FK ad anagrafiche.emittenti_fiscali.
+#
+# Motivazione: simmetria con vendite.preventivi (20260501-09) e
+# vendite.offerte_commerciali (20260524-03). Emittente persiste
+# come snapshot user-derived a INSERT-time; semplifica scope
+# permessi (filtro diretto vs derivato da BA).
+#
+# La colonna e' inizialmente nullable per consentire backfill
+# (80_data/20260526-07). Il SET NOT NULL avviene in 90_end/20260526-08.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260526-02-alter-contratti-add-emittente-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260526-02-alter-contratti-add-emittente-fiscale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ADD COLUMN emittente_fiscale_id BIGINT NULL con FK a
+        anagrafiche.emittenti_fiscali. Colonna nullable per backfill.
+        SET NOT NULL in 90_end/20260526-08 post-backfill.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: contratti
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: emittente_fiscale_id
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- ADD COLUMN vendite.contratti.emittente_fiscale_id
+              --
+              -- Emittente fiscale che ha emesso il contratto. Snapshot
+              -- user-derived: valorizzato a INSERT-time dal trigger
+              -- trgfn_contratti_default_emittente (20_code/20260526-03).
+              -- Modello simmetrico a preventivi e offerte_commerciali.
+              -- ==========================================================
+              ALTER TABLE vendite.contratti
+                  ADD COLUMN emittente_fiscale_id BIGINT NULL
+                  CONSTRAINT fk_contratti_emittente_fiscale
+                      REFERENCES anagrafiche.emittenti_fiscali(id)
+                      ON DELETE NO ACTION
+                      ON UPDATE CASCADE;
+
+              COMMENT ON COLUMN vendite.contratti.emittente_fiscale_id
+              IS 'Emittente fiscale del contratto. Snapshot user-derived: '
+                 'valorizzato a INSERT-time dal trigger trgfn_contratti_default_emittente '
+                 'tramite GUC app.current_user_id -> fn_resolve_emittente_for_user. '
+                 'Skip se valorizzato esplicitamente nel payload (admin globale, push da offerta). '
+                 'Guard coerenza BA in trgfn_contratti_guard_emittente_ba (20260526-04). '
+                 'NOT NULL dopo backfill (90_end/20260526-08).';

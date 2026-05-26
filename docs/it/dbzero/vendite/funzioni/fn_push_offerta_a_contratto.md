@@ -27,6 +27,7 @@ AS $function$
 --   - stato ACCETTATA obbligatorio; qualsiasi altro -> errore.
 --   - nessun contratto con offerta_id = p_offerta_id deve esistere.
 --   - contratto creato in DRAFT; auto-attivazione NON prevista (§1.2).
+--   - emittente_fiscale_id copiato 1:1 dall'offerta (rev2, 2026-05-26).
 --   - stato_approvazione_prezzo / pratica_approvazione_prezzo_id
 --     inseriti NULL in contratti_righe (I4).
 --   - utility: UPSERT per gestire il trigger snapshot_precontrattuali
@@ -141,7 +142,10 @@ BEGIN
     -- INSERT contratto in DRAFT — copia campi business 1:1 dall'offerta.
     -- numero/uid: generati da trigger trgfn_contratti_gen_codice / default.
     -- categoria_cliente_id_snapshot: gestita da trigger.
-    -- emittente_fiscale_id: non esiste su contratti (verificato 2026-05-25).
+    -- emittente_fiscale_id: copiato 1:1 dall'offerta (rev2, 2026-05-26).
+    --   Il trigger trgfn_contratti_default_emittente salta perche'
+    --   il valore e' esplicitamente valorizzato nel payload.
+    --   Il trigger trgfn_contratti_guard_emittente_ba valida la coerenza.
     INSERT INTO vendite.contratti (
         billing_account_id,
         istanza_utility_id,
@@ -156,6 +160,7 @@ BEGIN
         sorgente_tipo_id,
         sorgente_uid,
         offerta_id,
+        emittente_fiscale_id,
         meta
     )
     VALUES (
@@ -172,6 +177,7 @@ BEGIN
         v_sorgente_ofc_id,
         v_offerta.uid,
         p_offerta_id,
+        v_offerta.emittente_fiscale_id,
         COALESCE(v_offerta.meta, '{}'::jsonb)
     )
     RETURNING id, uid INTO v_contratto_id, v_contratto_uid;
@@ -305,7 +311,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint)
-IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Copia 1:1 eccezioni (contratti_righe) e utility (contratti_utilities). Idempotente: doppia invocazione fallisce con E_OFFERTA_CONTRATTO_GIA_GENERATO. Guard stato: solo ACCETTATA — BOZZA/EMESSA/RIFIUTATA/SUPERATA/ANNULLATA -> errore. Pattern A §6.9.3 pratiche: UNIQUE (offerta_id) + controllo esplicito. Parametri: p_offerta_id (offerta ACCETTATA), p_pratica_id (NULL ok). rev 2026-05-25.';
+IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Copia 1:1 eccezioni (contratti_righe) e utility (contratti_utilities). Rev2 (2026-05-26): propaga emittente_fiscale_id dall''offerta al contratto. Idempotente: doppia invocazione fallisce con E_OFFERTA_CONTRATTO_GIA_GENERATO. Guard stato: solo ACCETTATA — BOZZA/EMESSA/RIFIUTATA/SUPERATA/ANNULLATA -> errore. Pattern A §6.9.3 pratiche: UNIQUE (offerta_id) + controllo esplicito. Parametri: p_offerta_id (offerta ACCETTATA), p_pratica_id (NULL ok).';
 ```
 
 ---

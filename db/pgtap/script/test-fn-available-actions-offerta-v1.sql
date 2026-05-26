@@ -15,10 +15,11 @@
 --     reason='OFFERTA_CONTRATTO_GIA_GENERATO', available_actions=[]
 --  9) Terminale (RIFIUTATA): available_actions=[], can_edit_testata=false,
 --     can_push_contratto=false, non_editable_fields lista lunga
+-- 10) Tutte le label_key in available_actions iniziano per 'vendite.offerte.'
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(9);
+SELECT plan(10);
 
 -- ============================================================
 -- Setup fixture: contesti di riferimento
@@ -121,7 +122,7 @@ WITH ins AS (
 INSERT INTO tmp_aa_ids SELECT 'ACCT-2', id FROM ins;
 
 -- Genera il contratto da ACCT-2 tramite fn_push (p_pratica_id = NULL).
-PERFORM vendite.fn_push_offerta_a_contratto(
+SELECT vendite.fn_push_offerta_a_contratto(
     (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-2'),
     NULL
 );
@@ -274,6 +275,24 @@ SELECT ok(
        FROM tmp_aa_ids o WHERE o.slot = 'RIFIUTATA'
     ),
     '9) RIFIUTATA (terminale): 0 azioni, can_edit_testata=false, can_push=false, non_editable_fields lista lunga'
+);
+
+-- ============================================================
+-- TEST 10) Tutte le label_key in available_actions iniziano per 'vendite.offerte.'
+--          Copre azioni da seed CSV (BOZZA, EMESSA) + hardcoded (ACCT-1).
+-- ============================================================
+SELECT ok(
+    COALESCE(
+        (SELECT bool_and((elem->>'label_key') LIKE 'vendite.offerte.%')
+           FROM (VALUES ('BOZZA'), ('EMESSA'), ('ACCT-1')) AS slots(slot)
+           JOIN tmp_aa_ids o USING (slot),
+                jsonb_array_elements(
+                    script.fn_available_actions_offerta(o.offerta_id)->'available_actions'
+                ) AS elem
+        ),
+        false
+    ),
+    '10) Tutte le label_key in available_actions iniziano per vendite.offerte.'
 );
 
 SELECT * FROM finish();

@@ -142,7 +142,7 @@ databaseChangeLog:
                   c_action_crea_revisione CONSTANT jsonb := jsonb_build_object(
                       'key',                'crea_revisione',
                       'target_state',       NULL,
-                      'label_key',          'offerte.azione_crea_revisione',
+                      'label_key',          'vendite.offerte.azione_crea_revisione',
                       'severity',           'info',
                       'icon',               'pi pi-clone',
                       'requires_confirm',   true,
@@ -155,7 +155,7 @@ databaseChangeLog:
                   c_action_push_contratto CONSTANT jsonb := jsonb_build_object(
                       'key',                'push_contratto',
                       'target_state',       NULL,
-                      'label_key',          'offerte.azione_push_contratto',
+                      'label_key',          'vendite.offerte.azione_push_contratto',
                       'severity',           'success',
                       'icon',               'pi pi-arrow-right',
                       'requires_confirm',   true,
@@ -201,8 +201,8 @@ databaseChangeLog:
                   WHERE t.stato_da_id = v_stato_id
                     AND t.attivo IS TRUE
                     AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
-                    AND t.meta ?? 'action_key'
-                    AND t.meta ?? 'label_key';
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
 
                   -- Aggiunge crea_revisione hardcoded: solo in EMESSA (addendum A2).
                   -- In EMESSA il cliente non ha ancora deciso: la revisione permette

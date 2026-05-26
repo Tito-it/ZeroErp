@@ -137,7 +137,7 @@
 - [fn_prepare_sdi_payload](funzioni/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
 - [fn_preventivo_riga_componenti_init](funzioni/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](funzioni/fn_preventivo_riga_componenti_preview.md)
-- [fn_push_offerta_a_contratto](funzioni/fn_push_offerta_a_contratto.md) — (rev 2026-05-25)
+- [fn_push_offerta_a_contratto](funzioni/fn_push_offerta_a_contratto.md) — (rev 2026-05-26 — aggiunto `emittente_fiscale_id`)
 - [fn_reset_fondi_fattura](funzioni/fn_reset_fondi_fattura.md) — La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura applicati ad una **fattura figlia**:
 - [fn_reset_lotto_draft](funzioni/fn_reset_lotto_draft.md) — (latest review 09-02-2026)   La funzione **`vendite.fn_reset_lotto_draft()`** effettua il **rollback tecnico** di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati dal draft e ripristinando le righe di `attivita_fatturabili`.
 - [fn_reset_lotto_fattura_draft](funzioni/fn_reset_lotto_fattura_draft.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_reset_lotto_fattura_draft()`** effettua il reset tecnico di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**, senza annullare il lotto.
@@ -176,8 +176,10 @@
 - [trgfn_attivita_fatturabili_lotti_gen_codice](funzioni/trgfn_attivita_fatturabili_lotti_gen_codice.md)
 - [trgfn_attivita_fatturabili_normalize](funzioni/trgfn_attivita_fatturabili_normalize.md) — (latest review 21/01/2026) La funzione `vendite.trgfn_attivita_fatturabili_normalize()` applica una **normalizzazione minima** su `vendite.attivita_fatturabili` per garantire coerenza **temporale** e **tecnica** dei dati prima della scrittura.
 - [trgfn_attivita_norm_competenza_mese](funzioni/trgfn_attivita_norm_competenza_mese.md) — (latest review 29-01-2026)   La funzione **`vendite.trgfn_attivita_norm_competenza_mese()`** normalizza `competenza_mese` al **primo giorno del mese**.
+- [trgfn_contratti_default_emittente](funzioni/trgfn_contratti_default_emittente.md) — (rev 2026-05-26)
 - [trgfn_contratti_freeze_listino_versione](funzioni/trgfn_contratti_freeze_listino_versione.md) — Il modello unificato prevede che un contratto ATTIVO abbia una versione listino **fissa e immutabile**: dal momento dell'attivazione il resolver prezzi legge sempre quella versione, anche se il listino ha versioni successive. Questo garantisce stabilità del pricing per tutta la durata del contratto.
 - [trgfn_contratti_gen_codice](funzioni/trgfn_contratti_gen_codice.md) — La trigger function `vendite.trgfn_contratti_gen_codice()` genera automaticamente `numero` contratto quando il valore non viene fornito.
+- [trgfn_contratti_guard_emittente_ba](funzioni/trgfn_contratti_guard_emittente_ba.md) — (rev 2026-05-26)
 - [trgfn_contratti_guard_modalita_c_activation](funzioni/trgfn_contratti_guard_modalita_c_activation.md)
 - [trgfn_contratti_guard_transizione_stato](funzioni/trgfn_contratti_guard_transizione_stato.md) — (latest review 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
 - [trgfn_contratti_lock_post_attivazione](funzioni/trgfn_contratti_lock_post_attivazione.md) — Il pricing di un contratto attivo è **immutabile per design** (§3-bis-A del brief): né listino, né variazione globale, né versione fissata possono essere cambiati dopo l'attivazione. Questo garantisce stabilità del calcolo prezzi per tutta la durata del contratto e coerenza dell'audit trail.
