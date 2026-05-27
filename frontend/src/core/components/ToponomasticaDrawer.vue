@@ -8,7 +8,7 @@ import { useToponomasticaStore } from '../../anagrafiche/stores/toponomastica'
 import { useApiHandler } from '../composables/useApiHandler'
 import { DRAWER_WIDTH } from '../constants'
 import { NAV_ICONS } from '../navigation'
-import DrawerFooter from './DrawerFooter.vue'
+import FormFooter from './FormFooter.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -87,7 +87,7 @@ async function handleSave() {
         </div>
       </div>
 
-      <DrawerFooter
+      <FormFooter
         :loading="loading"
         :disabled="!form.descrizione.trim()"
         @save="handleSave"

@@ -50,6 +50,15 @@ Indice test eseguiti:
 41) aggiorna_offerta_con_utility_inline_update_atomico  [simmetria CREATE/UPDATE]
 42) aggiorna_offerta_con_utility_inline_create_atomico  [upsert: senza utility esistente]
 43) get_offerta_capability_db_error_graceful_fallback  [hardening fn DB rotta]
+44) crea_eccezione_articolo_composito_invoca_init       [BoM simmetria contratti]
+45) crea_eccezione_articolo_atomico_non_invoca_init     [BoM no-op]
+46) crea_eccezione_composito_senza_emittente_fallisce   [BoM guard]
+47) preview_componenti_eccezione_ok                     [BoM preview]
+48) preview_componenti_eccezione_offerta_not_found      [BoM preview 404]
+49) list_componenti_eccezione_ownership_violata         [BoM security]
+50) update_componente_eccezione_payload_vuoto_fallisce  [BoM whitelist]
+51) update_componente_eccezione_ownership_violata       [BoM security]
+52) delete_componente_eccezione_ok                      [BoM happy path]
 """
 
 from unittest import TestCase
@@ -894,3 +903,221 @@ class OfferteServiceTests(TestCase):
         self.assertNotIn("available_actions", result)
         self.assertNotIn("can_edit_testata", result)
         self.assertNotIn("can_push_contratto", result)
+
+    # --- BoM componenti su eccezione (simmetria contratti 2026-05-26) ---
+
+    # Scopo: crea_eccezione su articolo composito invoca
+    #        init_componenti_eccezione con emittente_sr_id risolto dalla
+    #        testata via repo.get_emittente_sr_id_by_fiscale_id e data
+    #        riferimento = validita_dal della testata.
+    @patch("apps.vendite.services.offerte_service.resolve_emittente_sr_id_for_testata")
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_eccezione_articolo_composito_invoca_init(
+        self, repo_cls, _atomic, _resolve,
+    ):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.create_eccezione.return_value = 42
+        repo.is_articolo_composito.return_value = True
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.init_componenti_eccezione.return_value = 3
+        repo.get_eccezione.return_value = {"id": 42, "offerta_id": 1}
+        _resolve.return_value = 555
+
+        OfferteService().crea_eccezione(
+            1,
+            {
+                "articolo_id": "00000000-0000-7000-8000-000000000abc",
+                "tipo_eccezione": "OVERRIDE",
+                "fonte_quantita_attesa": "MANUALE",
+                "prezzo_unitario": "12.50",
+                "componenti_overrides": {"00000000-0000-7000-8000-deadbeef0001": "9.50"},
+            },
+            auth_user_id=99,
+        )
+
+        repo.init_componenti_eccezione.assert_called_once()
+        kwargs = repo.init_componenti_eccezione.call_args.kwargs
+        self.assertEqual(kwargs["eccezione_id"], 42)
+        self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 555)
+        self.assertEqual(kwargs["data_riferimento"], "2026-06-01")
+        self.assertEqual(
+            kwargs["componenti_overrides"],
+            {"00000000-0000-7000-8000-deadbeef0001": "9.50"},
+        )
+
+    # Scopo: crea_eccezione su articolo NON composito non chiama init
+    #        (BoM no-op simmetrico al pattern contratti).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_eccezione_articolo_atomico_non_invoca_init(
+        self, repo_cls, _atomic,
+    ):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.create_eccezione.return_value = 42
+        repo.is_articolo_composito.return_value = False
+        repo.get_eccezione.return_value = {"id": 42, "offerta_id": 1}
+
+        OfferteService().crea_eccezione(
+            1,
+            {
+                "articolo_id": "00000000-0000-7000-8000-000000000abc",
+                "tipo_eccezione": "OVERRIDE",
+                "fonte_quantita_attesa": "MANUALE",
+                "prezzo_unitario": "12.50",
+            },
+            auth_user_id=99,
+        )
+
+        repo.init_componenti_eccezione.assert_not_called()
+        repo.get_offerta.assert_not_called()
+
+    # Scopo: composito senza emittente risolvibile (admin globale + testata
+    #        senza emittente_fiscale_id) -> 400 parlante, no INSERT cascade.
+    @patch("apps.vendite.services.offerte_service.resolve_emittente_sr_id_for_testata")
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_eccezione_composito_senza_emittente_fallisce(
+        self, repo_cls, _atomic, _resolve,
+    ):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.create_eccezione.return_value = 42
+        repo.is_articolo_composito.return_value = True
+        repo.get_offerta.return_value = _make_offerta_dict()
+        _resolve.return_value = None  # admin globale, no emittente
+
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().crea_eccezione(
+                1,
+                {
+                    "articolo_id": "00000000-0000-7000-8000-000000000abc",
+                    "tipo_eccezione": "OVERRIDE",
+                    "fonte_quantita_attesa": "MANUALE",
+                    "prezzo_unitario": "12.50",
+                },
+                auth_user_id=None,
+            )
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        repo.init_componenti_eccezione.assert_not_called()
+
+    # Scopo: preview_componenti_eccezione delega al repo con tutti i campi
+    #        derivati dalla testata + emittente risolto.
+    @patch("apps.vendite.services.offerte_service.resolve_emittente_sr_id_for_testata")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_preview_componenti_eccezione_ok(self, repo_cls, _resolve):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.preview_componenti_eccezione.return_value = [{"componente_id": "x"}]
+        _resolve.return_value = 555
+
+        result = OfferteService().preview_componenti_eccezione(
+            1, articolo_id="00000000-0000-7000-8000-000000000abc",
+            uom_operativa_id=2, quantita="3",
+            auth_user_id=99,
+        )
+
+        self.assertEqual(len(result), 1)
+        repo.preview_componenti_eccezione.assert_called_once()
+        kwargs = repo.preview_componenti_eccezione.call_args.kwargs
+        self.assertEqual(kwargs["data_riferimento"], "2026-06-01")
+        self.assertEqual(kwargs["ba_id"], 100)
+        self.assertEqual(kwargs["utility_id"], 3)
+        self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 555)
+
+    # Scopo: preview su offerta inesistente -> 404 prima del lookup repo.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_preview_componenti_eccezione_offerta_not_found(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_offerta.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().preview_componenti_eccezione(
+                999, articolo_id="x", uom_operativa_id=1, quantita="1",
+            )
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+
+    # Scopo: list_componenti_eccezione tenta tampering offerta/eccezione
+    #        -> 404 (eccezione_id non appartiene a offerta_id richiesto).
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_list_componenti_eccezione_ownership_violata(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_eccezione.return_value = {
+            "id": 42, "offerta_id": 999,
+        }
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().list_componenti_eccezione(1, 42)
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+
+    # Scopo: update_componente_eccezione con payload fuori whitelist
+    #        (campi struttura immutabili) -> 400 "nessun campo aggiornato".
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_update_componente_eccezione_payload_vuoto_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_eccezione.return_value = {"id": 42, "offerta_id": 1}
+        repo.get_componente.return_value = {
+            "id": 7, "eccezione_offerta_id": 42,
+        }
+        repo.update_componente.return_value = False  # whitelist scarta tutto
+
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().update_componente_eccezione(
+                1, 42, 7, {"componente_id": "x"},  # struttura immutabile
+            )
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: update_componente tenta tampering (componente non appartiene
+    #        all'eccezione) -> 404.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_update_componente_eccezione_ownership_violata(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_eccezione.return_value = {"id": 42, "offerta_id": 1}
+        repo.get_componente.return_value = {
+            "id": 7, "eccezione_offerta_id": 999,
+        }
+
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().update_componente_eccezione(
+                1, 42, 7, {"prezzo_unitario": "9.50"},
+            )
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+
+    # Scopo: delete_componente happy path -> attivo=False, ritorna deleted=true.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_delete_componente_eccezione_ok(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_eccezione.return_value = {"id": 42, "offerta_id": 1}
+        repo.get_componente.return_value = {
+            "id": 7, "eccezione_offerta_id": 42,
+        }
+        repo.delete_componente.return_value = True
+
+        result = OfferteService().delete_componente_eccezione(1, 42, 7)
+        self.assertEqual(result["componente_id"], 7)
+        self.assertTrue(result["deleted"])

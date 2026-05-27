@@ -6,7 +6,7 @@ import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useCodiciPostaliStore } from '../../anagrafiche/stores/codiciPostali'
 import { useApiHandler } from '../composables/useApiHandler'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
-import DrawerFooter from './DrawerFooter.vue'
+import FormFooter from './FormFooter.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import { DRAWER_WIDTH } from '../constants'
 import { NAV_ICONS } from '../navigation'
@@ -66,7 +66,7 @@ async function handleSave() {
           <ComuneAutocomplete v-model="form.comune_id" :disabled="mode === 'edit'" />
         </div>
       </div>
-      <DrawerFooter :loading="loading" :disabled="!form.codice.trim() || !form.comune_id"
+      <FormFooter :loading="loading" :disabled="!form.codice.trim() || !form.comune_id"
         @save="handleSave" @cancel="emit('update:visible', false)" />
     </div>
   </Drawer>

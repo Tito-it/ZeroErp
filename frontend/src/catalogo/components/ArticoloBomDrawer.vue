@@ -39,7 +39,7 @@ import { displayDate, toDateString } from '../../core/utils/date'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import NoteDrawer from '../../core/components/NoteDrawer.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import Drawer from 'primevue/drawer'
@@ -700,12 +700,12 @@ function buildRigaActions(row) {
                 <ToggleSwitch v-else v-model="form.esposto_in_fattura" />
               </div>
             </div>
-            <DrawerFooter
+            <FormFooter
               v-if="isFormReadonly"
               close-only
               @cancel="closeReadonlyDetail"
             />
-            <DrawerFooter
+            <FormFooter
               v-else
               :loading="loading"
               :disabled="!canSaveForm"
@@ -716,7 +716,7 @@ function buildRigaActions(row) {
         </template>
       </template>
 
-      <DrawerFooter v-if="!isFormOpen" close-only @cancel="onClose" />
+      <FormFooter v-if="!isFormOpen" close-only @cancel="onClose" />
     </div>
   </Drawer>
 

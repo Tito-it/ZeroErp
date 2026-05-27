@@ -21,12 +21,15 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from django.db import connection
 
+from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
+from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 
 
 # Mappa colonna -> tipo speciale (jsonb). Le altre colonne usano '%s'.
@@ -198,6 +201,7 @@ _SELECT_COLS_ECCEZIONE = """
     e.articolo_id,
     a.codice                 AS articolo_codice,
     a.descrizione            AS articolo_descrizione,
+    a.is_composito           AS is_composito,
     e.tipo_eccezione,
     e.tipo_erogazione,
     e.fonte_quantita_attesa,
@@ -212,7 +216,11 @@ _SELECT_COLS_ECCEZIONE = """
     e.factor_to_base,
     e.ordine,
     e.attivo,
-    e.meta
+    e.meta,
+    -- Aggregato componenti BoM persistiti per expansion FE (data-driven
+    -- `ComponentiPanel`). NULL se l'eccezione non e' composita o non
+    -- ha componenti attivi: il pannello salta il render.
+    COALESCE(comp.componenti, '[]'::jsonb) AS componenti
 """
 
 
@@ -220,6 +228,34 @@ _FROM_JOINS_ECCEZIONE = """
     FROM vendite.offerte_commerciali_eccezioni e
     JOIN catalogo.articoli a ON a.id = e.articolo_id
     LEFT JOIN catalogo.unita_misura um ON um.id = e.uom_operativa_id
+    LEFT JOIN LATERAL (
+      SELECT jsonb_agg(
+               jsonb_build_object(
+                 'id',                  c.id,
+                 'componente_id',       c.componente_id,
+                 'componente_codice',   ca.codice,
+                 'componente_descrizione', ca.descrizione,
+                 'coeff_qta_snapshot',  c.coeff_qta_snapshot,
+                 'quantita',            c.quantita,
+                 'uom_operativa_id',    c.uom_operativa_id,
+                 'uom_codice',          uc.codice,
+                 'prezzo_unitario',     c.prezzo_unitario,
+                 'iva_id',              c.iva_id,
+                 'iva_codice',          ivc.codice,
+                 'iva_aliquota',        ivc.aliquota_iva,
+                 'origine_prezzo',      c.origine_prezzo,
+                 'ordine',              c.ordine,
+                 'attivo',              c.attivo
+               )
+               ORDER BY c.ordine NULLS LAST, c.id
+             ) AS componenti
+        FROM vendite.offerte_commerciali_eccezioni_componenti c
+        JOIN catalogo.articoli ca ON ca.id = c.componente_id
+        LEFT JOIN catalogo.unita_misura uc ON uc.id = c.uom_operativa_id
+        LEFT JOIN config.iva ivc          ON ivc.id = c.iva_id
+       WHERE c.eccezione_offerta_id = e.id
+         AND c.attivo = TRUE
+    ) comp ON TRUE
 """
 
 
@@ -251,14 +287,22 @@ _FROM_JOINS_UTILITY = """
 """
 
 
-class OfferteRepository:
+class OfferteRepository(ComponentiRepositoryMixin):
     """Accesso DB a `vendite.offerte_commerciali` + eccezioni + utility 1:1.
 
     Specchio di `ContrattiRepository` per la testata, le eccezioni
-    (mirror di `contratti_righe`) e la utility 1:1 (mirror di
-    `contratti_utilities`). Niente componenti BoM in v1: l'eccezione
-    e' atomica per articolo.
+    (mirror di `contratti_righe`), la utility 1:1 (mirror di
+    `contratti_utilities`) e i componenti BoM su eccezione composita
+    (mirror di `contratti_righe_componenti`, simmetria piena 2026-05-26).
+
+    Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM
+    (list/get/update/delete/purge) — vedi `_componenti_repo_mixin.py`.
+    `init_componenti_eccezione` e `preview_componenti_eccezione` restano
+    qui perche' chiamano fn DB specifiche dell'offerta.
     """
+
+    _componenti_table_name = "vendite.offerte_commerciali_eccezioni_componenti"
+    _componenti_fk_riga = "eccezione_offerta_id"
 
     # =================================================================
     # Lista e dettaglio testata
@@ -617,6 +661,115 @@ class OfferteRepository:
                 [eccezione_id],
             )
             return cursor.rowcount > 0
+
+    # =================================================================
+    # Componenti BoM su eccezione composita (mirror contratti_righe_componenti)
+    # =================================================================
+    # CRUD singoli (list/get/update/delete/purge) ereditato da
+    # `ComponentiRepositoryMixin`. Init e preview chiamano fn DB specifiche
+    # dell'offerta:
+    #   - vendite.fn_offerta_eccezione_componenti_init(eccezione_id,
+    #       emittente_sr_id, data_riferimento, componenti_overrides::jsonb)
+    #       -> integer (n. componenti inseriti)
+    #   - vendite.fn_offerta_eccezione_componenti_preview(articolo_id,
+    #       uom_id, quantita_padre, data_riferimento, ba_id, utility_id,
+    #       emittente_sr_id, classe_utenza_id) -> SETOF record
+
+    # Scopo: Init componenti BoM per eccezione padre composita. Wrapper
+    # `fn_offerta_eccezione_componenti_init`. La fn DB e' idempotente.
+    def init_componenti_eccezione(
+        self,
+        *,
+        eccezione_id: int,
+        emittente_soggetto_ruolo_id: int,
+        data_riferimento,
+        componenti_overrides: dict[str, Any] | None = None,
+    ) -> int:
+        overrides_json: str | None
+        if componenti_overrides is None:
+            overrides_json = None
+        else:
+            overrides_json = json.dumps(
+                {str(k): str(v) for k, v in componenti_overrides.items()},
+            )
+        sql = (
+            "SELECT vendite.fn_offerta_eccezione_componenti_init("
+            "%s, %s, %s, %s::jsonb)"
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                eccezione_id, emittente_soggetto_ruolo_id, data_riferimento,
+                overrides_json,
+            ])
+            row = cursor.fetchone()
+            return int(row[0]) if row else 0
+
+    # Scopo: Preview componenti BoM per drawer eccezione offerta. Read-only
+    # STABLE. Consumato dal FE per pre-popolare ComponentiDialog PRIMA del
+    # save eccezione. Proiezione allineata a fn DB (mirror contratti).
+    def preview_componenti_eccezione(
+        self,
+        *,
+        articolo_id: str,
+        uom_id: int | None,
+        quantita_padre,
+        data_riferimento,
+        ba_id: int | None,
+        utility_id: int,
+        emittente_soggetto_ruolo_id: int,
+        classe_utenza_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        # Proiezione allineata al RETURNS TABLE della fn DB
+        # `fn_offerta_eccezione_componenti_preview` (rev 2026-05-26).
+        # Nota debito tecnico: la fn contratti `fn_contratto_riga_componenti_preview`
+        # espone in aggiunta `obbligatorio` + `esposto_in_fattura` post-modello-
+        # unificato 2026-05-13. La fn offerte filtra ancora `esposto_in_fattura=TRUE`
+        # nel WHERE e non li ritorna nello shape: simmetria piena da chiudere
+        # con brief DB dedicato (mirror del refactor 2026-05-13 sui contratti).
+        # Fino ad allora il ComponentiDialog rendera' i badge "Obbligatorio" /
+        # "In fattura" come undefined/null (UX accettabile, BoM offerta v1).
+        sql = """
+            SELECT articolo_componente_id,
+                   componente_id,
+                   componente_codice,
+                   componente_descrizione,
+                   coeff_qta_snapshot,
+                   quantita_componente,
+                   uom_id,
+                   uom_codice,
+                   iva_id,
+                   prezzo_suggerito,
+                   origine_prezzo,
+                   resolver_error_reason
+              FROM vendite.fn_offerta_eccezione_componenti_preview(
+                  %s, %s, %s, %s, %s, %s, %s, %s
+              )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                articolo_id, uom_id, quantita_padre, data_riferimento,
+                ba_id, utility_id, emittente_soggetto_ruolo_id,
+                classe_utenza_id,
+            ])
+            return rows_to_list(cursor)
+
+    # Scopo: Lookup emittente_soggetto_ruolo_id a partire da emittente_fiscale_id.
+    # Usato da `resolve_emittente_sr_id_for_testata` per derivare l'sr_id da
+    # passare alle fn DB componenti. Mirror di `ContrattiRepository`.
+    def get_emittente_sr_id_by_fiscale_id(self, fiscale_id: int) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali "
+                "WHERE id = %s",
+                [fiscale_id],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else None
+
+    # Scopo: Articolo composito (delega a catalogo). Usato dai service di
+    # dominio per decidere se invocare `init_componenti_eccezione` post-INSERT.
+    def is_articolo_composito(self, articolo_id: str) -> bool:
+        return CatalogoRepository().is_articolo_composito(articolo_id)
 
     # =================================================================
     # Utility 1:1

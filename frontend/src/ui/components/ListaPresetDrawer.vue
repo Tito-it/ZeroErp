@@ -3,7 +3,7 @@
 //        Pattern standard:
 //          - DrawerTitle (auto-include ReadonlyBadge se readonly)
 //          - app-readonly su contenuto se isReadonly OR props.readonly
-//          - DrawerFooter standard (Salva nascosto in readonly)
+//          - FormFooter standard (Salva nascosto in readonly)
 //          - Refs profilo/emittente condizionali ad ambito
 //        Lookup profili_accesso e emittenti_fiscali via LookupSelect /
 //        endpoint dedicato (admin only). Per tenere il componente minimale
@@ -19,7 +19,7 @@ import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -272,7 +272,7 @@ function onCancel() {
       </div>
     </div>
 
-    <DrawerFooter
+    <FormFooter
       v-if="!isReadonlyEffective"
       :loading="loading"
       :disabled="!canSave"

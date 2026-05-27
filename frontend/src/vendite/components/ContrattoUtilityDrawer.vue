@@ -9,7 +9,7 @@ import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -123,7 +123,7 @@ const onClose = useDrawerClose(emit)
           <InputText v-model="form.param_2_txt" class="w-full" />
         </div>
       </div>
-      <DrawerFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="onClose" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="onClose" />
     </div>
   </Drawer>
 </template>

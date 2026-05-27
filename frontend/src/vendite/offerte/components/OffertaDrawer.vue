@@ -29,7 +29,7 @@ import Column from 'primevue/column'
 import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
-import DrawerFooter from '../../../core/components/DrawerFooter.vue'
+import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import EmittenteFiscaleField from '../../../core/components/EmittenteFiscaleField.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
@@ -922,14 +922,14 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- Footer: Salva visibile solo in CREATE o EDIT BOZZA. Negli stati
              post-BOZZA mostriamo Chiudi (close-only) — il footer Salva non ha
              senso (cambio stato passa dalla DrawerActionsBar). -->
-        <DrawerFooter
+        <FormFooter
           v-if="!isReadonly"
           :loading="loading"
           :disabled="!canSave"
           @save="handleSave"
           @cancel="onClose"
         />
-        <DrawerFooter v-else-if="isEdit" close-only @cancel="onClose" />
+        <FormFooter v-else-if="isEdit" close-only @cancel="onClose" />
       </template>
     </div>
 

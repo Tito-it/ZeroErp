@@ -14,6 +14,7 @@ import { displayDate, toDateString, addDaysToToday } from '../../core/utils/date
 import Dialog from 'primevue/dialog'
 import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
+import FormFooter from '../../core/components/FormFooter.vue'
 import Message from 'primevue/message'
 
 const { t } = useI18n()
@@ -116,12 +117,23 @@ async function rimuoviChiusura() {
     </div>
 
     <div class="flex justify-end gap-2 mt-1">
-      <Button v-if="haGiaChiusura" :label="t('common.delete')"
-        text severity="danger" :loading="loading" @click="rimuoviChiusura" />
-      <Button :label="t('common.cancel')" text @click="onHide" />
-      <Button :label="t('listini.chiudi_versione_conferma')"
-        icon="pi pi-lock" severity="warn"
-        :disabled="!dataChiusura" :loading="loading" @click="conferma" />
+      <!-- "Rimuovi chiusura": bottone aggiuntivo extra-pattern (distruttivo),
+           sta accanto a FormFooter solo se esiste gia' una chiusura impostata. -->
+      <Button
+        v-if="haGiaChiusura"
+        :label="t('common.delete')"
+        text
+        severity="danger"
+        :loading="loading"
+        @click="rimuoviChiusura"
+      />
+      <FormFooter
+        :save-label="t('listini.chiudi_versione_conferma')"
+        :loading="loading"
+        :disabled="!dataChiusura"
+        @cancel="onHide"
+        @save="conferma"
+      />
     </div>
   </Dialog>
 </template>

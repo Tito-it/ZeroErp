@@ -2,7 +2,7 @@
 // Scopo: pannello secondario read-only per split view — risolve il componente Vue
 // dalla route della tab pinnata e lo renderizza in modalita' sola lettura.
 // Usa lo stesso meccanismo provide/inject di useReadonlyMode: NewButton si nasconde,
-// DrawerFooter si nasconde, drawer form diventano readonly — ma la pagina resta
+// FormFooter si nasconde, drawer form diventano readonly — ma la pagina resta
 // navigabile (paginazione, sort, scroll, click riga per dettaglio).
 import { computed, ref, provide } from 'vue'
 import { useI18n } from 'vue-i18n'

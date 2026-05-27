@@ -34,7 +34,7 @@ import {
   getContrattoContestoPricing,
 } from '../api/contratti'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
 import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
@@ -1335,13 +1335,13 @@ function origineSeverity(origine) {
           </div>
         </Message>
 
-        <div class="app-drawer-footer">
+        <div class="app-form-footer">
           <Button :label="t('common.cancel')" severity="secondary" @click="closeForm" />
           <Button :label="t('common.save')" :disabled="!canSave || loading" :loading="loading" @click="onSave" />
         </div>
       </template>
 
-      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
     </div>
 
     <!-- ComponentiDialog modale: pre-popola i prezzi dei componenti BoM

@@ -21,7 +21,7 @@ import { DRAWER_WIDTH, MANAGE_ICONS, READONLY_DOMAINS, READONLY_MODELS } from '.
 import { sortByFonte } from '../utils/string'
 import ContoBancarioForm from './ContoBancarioForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
-import DrawerFooter from './DrawerFooter.vue'
+import FormFooter from './FormFooter.vue'
 import AccessoBloccatoPanel from './AccessoBloccatoPanel.vue'
 import PageActionsBar from './PageActionsBar.vue'
 import Drawer from 'primevue/drawer'
@@ -282,7 +282,7 @@ const onClose = useDrawerClose(emit)
 
       </template>
 
-      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
 
       <!-- Form (aggiungi o modifica) -->
       <template v-if="formMode">
@@ -299,7 +299,7 @@ const onClose = useDrawerClose(emit)
           @branch-select="conto.onBranchSelect"
         />
 
-        <DrawerFooter
+        <FormFooter
           :loading="loading"
           :disabled="!conto.form.iban?.trim()"
           @save="onSaveForm"

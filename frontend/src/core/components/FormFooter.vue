@@ -1,11 +1,22 @@
 <script setup>
-// Scopo: footer standard per drawer con pulsanti Annulla/Salva o Chiudi.
-// Riusabile in tutti i drawer del progetto.
+// Scopo: footer standard "Annulla / Salva" per form, agnostico al contenitore.
+// Usabile sia dentro un <Drawer> (footer slot o footer slot vuoto + render
+// libero) sia dentro un <Dialog> via `#footer` slot. Mantiene icone, tooltip
+// e collapse responsive (icon-only sotto 1024px) coerenti su tutto il progetto.
+//
+// Esempio Drawer:
+//   <Drawer><FormFooter @cancel="..." @save="..." /></Drawer>
+//
+// Esempio Dialog (rifattorizzazione progressiva dei dialog hand-rolled):
+//   <Dialog>
+//     <template #footer><FormFooter :save-label="..." @cancel="..." @save="..." /></template>
+//   </Dialog>
+//
 // Modalita':
-//  - default: Annulla + Salva (form create/edit)
-//  - closeOnly: solo pulsante Chiudi (liste sub-entita')
-// Auto-hide pulsante Salva: in modalita' sola lettura (inject) o se azione non abilitata.
-// Il pulsante Annulla/Chiudi resta sempre visibile (chiusura drawer).
+//  - default:   Annulla (icona pi-arrow-left "torna indietro") + Salva (pi-check)
+//  - closeOnly: solo pulsante Chiudi (icona pi-times) — per drawer di liste sub-entita'.
+// Auto-hide pulsante Salva: in modalita' sola lettura (inject) o se action non abilitata.
+// Il pulsante Annulla/Chiudi resta sempre visibile (chiusura form).
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
@@ -54,7 +65,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <div class="app-drawer-footer">
+  <div class="app-form-footer">
     <!-- Annulla: arrow-left (MANAGE_ICONS.BACK) — semantica "torna alla
          lista"; closeOnly mantiene pi-times (chiusura di lista sub-entita',
          non c'e' un form da abbandonare).
@@ -64,7 +75,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       :label="cancelText"
       :icon="closeOnly ? MANAGE_ICONS.CANCEL : MANAGE_ICONS.BACK"
       severity="secondary"
-      class="app-escape app-drawer-footer-btn"
+      class="app-escape app-form-footer-btn"
       v-tooltip.top="cancelText"
       @click="emit('cancel')"
     />
@@ -75,7 +86,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       :icon="MANAGE_ICONS.CONFIRM"
       :loading="loading"
       :disabled="disabled"
-      class="app-drawer-footer-btn"
+      class="app-form-footer-btn"
       v-tooltip.top="saveLabel || t('common.save')"
       @click="emit('save')"
     />

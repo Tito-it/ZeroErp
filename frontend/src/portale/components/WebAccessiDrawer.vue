@@ -7,12 +7,12 @@
 // dell'auth_user collegato.
 //
 // Usa il pattern drawer autonomi (feedback_drawer_autonomi):
-// ereditarieta' readonly dal padre via inject, DrawerFooter closeOnly,
+// ereditarieta' readonly dal padre via inject, FormFooter closeOnly,
 // DrawerTitle standard.
 import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import PortaleAccessoPanel from './PortaleAccessoPanel.vue'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
@@ -68,7 +68,7 @@ const onClose = useDrawerClose(emit)
         @stato-cambiato="$emit('stato-cambiato')"
       />
 
-      <DrawerFooter close-only @cancel="onClose" />
+      <FormFooter close-only @cancel="onClose" />
     </div>
   </Drawer>
 </template>

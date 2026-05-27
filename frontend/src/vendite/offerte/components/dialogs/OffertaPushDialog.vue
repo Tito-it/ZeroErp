@@ -13,7 +13,7 @@
 //        a future estensioni.
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Button from 'primevue/button'
+import FormFooter from '../../../../core/components/FormFooter.vue'
 import Dialog from 'primevue/dialog'
 import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
@@ -73,19 +73,12 @@ function onConfirm() {
     </div>
 
     <template #footer>
-      <Button
-        :label="t('common.cancel')"
-        text
-        severity="secondary"
-        @click="emit('update:visible', false)"
-      />
-      <Button
-        :label="t('vendite.offerte.push_conferma')"
-        icon="pi pi-arrow-right"
-        severity="success"
+      <FormFooter
+        :save-label="t('vendite.offerte.push_conferma')"
         :loading="props.loading"
         :disabled="props.loading"
-        @click="onConfirm"
+        @cancel="emit('update:visible', false)"
+        @save="onConfirm"
       />
     </template>
   </Dialog>

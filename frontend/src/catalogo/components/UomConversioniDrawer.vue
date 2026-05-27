@@ -17,7 +17,7 @@ import { NAV_ICONS } from '../../core/navigation'
 import { displayDate } from '../../core/utils/date'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
@@ -301,14 +301,14 @@ const pageActions = computed(() => [
       <!-- Footer standard: in modalita' adding mostra Annulla/Salva del form,
            altrimenti close-only per chiudere il drawer (pattern speculare
            ArticoloUomDrawer). -->
-      <DrawerFooter
+      <FormFooter
         v-if="adding"
         :loading="loading"
         :disabled="!canSaveNew"
         @save="onSaveNew"
         @cancel="cancelAdd"
       />
-      <DrawerFooter v-else close-only @cancel="onClose" />
+      <FormFooter v-else close-only @cancel="onClose" />
     </div>
   </Drawer>
 </template>

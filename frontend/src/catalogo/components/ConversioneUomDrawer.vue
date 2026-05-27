@@ -13,7 +13,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import Drawer from 'primevue/drawer'
@@ -220,7 +220,7 @@ function close() {
         <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem;"></i>
       </div>
 
-      <DrawerFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
     </div>
   </Drawer>
 </template>

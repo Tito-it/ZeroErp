@@ -108,6 +108,9 @@ function backToInput() {
         </div>
       </div>
 
+      <!-- TODO: wizard 2-step (input -> preview -> conferma) — NON segue il
+           pattern Annulla/Salva del FormFooter. Quando si introdurra' un
+           WizardFooter centralizzato, sostituire questi 4 bottoni. -->
       <div class="flex justify-end gap-2 mt-1">
         <Button :label="t('common.cancel')" text @click="onHide" />
         <Button :label="t('listini.variazione_pct_preview')" icon="pi pi-eye"
@@ -129,6 +132,7 @@ function backToInput() {
         <Column field="prezzo_calcolato" :header="t('listini.variazione_pct_prezzo_nuovo')" style="width: 130px;" />
       </DataTable>
 
+      <!-- TODO: vedi commento sopra (wizard step 2). -->
       <div class="flex justify-end gap-2 mt-1">
         <Button :label="t('common.back')" text icon="pi pi-arrow-left" @click="backToInput" />
         <Button :label="t('listini.variazione_pct_conferma')" :icon="MANAGE_ICONS.CONFIRM"

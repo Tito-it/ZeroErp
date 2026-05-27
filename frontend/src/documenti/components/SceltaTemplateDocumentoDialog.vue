@@ -7,7 +7,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Dialog from 'primevue/dialog'
-import Button from 'primevue/button'
+import FormFooter from '../../core/components/FormFooter.vue'
 import Listbox from 'primevue/listbox'
 import Tag from 'primevue/tag'
 
@@ -86,19 +86,12 @@ function close() {
     </Listbox>
 
     <template #footer>
-      <Button
-        :label="t('common.cancel')"
-        severity="secondary"
-        text
-        @click="close"
-        :disabled="loading"
-      />
-      <Button
-        :label="t('documenti.scelta_template.confirm')"
-        icon="pi pi-file-pdf"
-        :disabled="!canConfirm"
+      <FormFooter
+        :save-label="t('documenti.scelta_template.confirm')"
         :loading="loading"
-        @click="confirm"
+        :disabled="!canConfirm"
+        @cancel="close"
+        @save="confirm"
       />
     </template>
   </Dialog>

@@ -40,7 +40,7 @@ const props = defineProps({
 //  - `changed`: dopo create/update/delete riga (parent ricarica detail).
 //  - `form-aperto`: emesso quando il form inline (master-detail) cambia
 //    stato. Il drawer parent (PreventiviDrawer) lo usa per nascondere
-//    il proprio DrawerFooter Salva/Annulla testata durante edit-riga,
+//    il proprio FormFooter Salva/Annulla testata durante edit-riga,
 //    evitando duplicazione (stesso pattern distinta base BoM
 //    `ArticoloBomDrawer.isFormOpen`).
 const emit = defineEmits(['changed', 'form-aperto'])
@@ -281,7 +281,7 @@ defineExpose({ loadRighe })
 
     <!-- Form master-detail inline (Fase 3.F3): visibile SOLO quando attivo,
          titolo dipende da formMode. PreventiviRigaForm gia' espone Salva/Annulla
-         interni nel proprio template (no DrawerFooter perche' e' una sezione,
+         interni nel proprio template (no FormFooter perche' e' una sezione,
          non un drawer). -->
     <div v-if="formMode" class="app-drawer-section" style="margin-top: 1rem;">
       <h4>{{ formMode === 'edit' ? t('preventivi.modifica_riga') : t('preventivi.nuova_riga') }}</h4>

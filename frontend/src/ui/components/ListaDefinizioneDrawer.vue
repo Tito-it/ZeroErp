@@ -6,7 +6,7 @@
 //        prima che il team DB faccia atterrare la view via Liquibase.
 //
 //        Pattern standard:
-//          - DrawerTitle + DrawerFooter
+//          - DrawerTitle + FormFooter
 //          - Pre-popolazione da props.recordData in edit
 //          - useApiHandler per call store
 //          - Niente readonly: pagina tecnica SUPER_ADMIN-only
@@ -18,7 +18,7 @@ import Textarea from 'primevue/textarea'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useUiDefinizioneAdminStore } from '../stores/uiDefinizioneAdmin'
@@ -187,7 +187,7 @@ function onCancel() {
       </div>
     </div>
 
-    <DrawerFooter
+    <FormFooter
       :loading="loading"
       :disabled="!canSave"
       @save="onSave"

@@ -28,7 +28,7 @@ import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOpti
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import Drawer from 'primevue/drawer'
@@ -458,7 +458,7 @@ function close() {
         </div>
       </div>
 
-      <DrawerFooter
+      <FormFooter
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"

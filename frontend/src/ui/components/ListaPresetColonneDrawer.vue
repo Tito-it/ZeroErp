@@ -18,7 +18,7 @@ import InputNumber from 'primevue/inputnumber'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
@@ -312,7 +312,7 @@ function onCancel() {
       </Message>
     </div>
 
-    <DrawerFooter
+    <FormFooter
       v-if="!isReadonlyEffective"
       :loading="loading"
       :disabled="!canSave"

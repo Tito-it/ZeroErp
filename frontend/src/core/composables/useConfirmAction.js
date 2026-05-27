@@ -9,6 +9,18 @@
 
 import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
+import { MANAGE_ICONS } from '../constants'
+
+// Icone standard ConfirmDialog (PrimeVue accetta `acceptIcon` / `rejectIcon`
+// nelle opzioni di `useConfirm.require`). Allineate al pattern FormFooter:
+//   - reject (Annulla)  -> arrow-left (back-to-list)
+//   - accept (Conferma) -> check
+//   - accept su delete  -> trash (override sotto)
+// Conseguenza: tutti i dialog di conferma globali ereditano automaticamente
+// le icone standard senza modificare i call site (es. preventivi onCambiaStato
+// con action key='rifiuta', cancellazioni varie, ecc.).
+const STANDARD_ACCEPT_ICON = MANAGE_ICONS.CONFIRM
+const STANDARD_REJECT_ICON = MANAGE_ICONS.BACK
 
 export function useConfirmAction() {
   const confirm = useConfirm()
@@ -29,6 +41,8 @@ export function useConfirmAction() {
       rejectClass: 'p-button-secondary',
       acceptLabel: t('common.confirm'),
       rejectLabel: t('common.cancel'),
+      acceptIcon: MANAGE_ICONS.DELETE,
+      rejectIcon: STANDARD_REJECT_ICON,
       accept: onAccept
     })
   }
@@ -52,6 +66,8 @@ export function useConfirmAction() {
       rejectClass: 'p-button-secondary',
       acceptLabel: acceptLabel || t('common.confirm'),
       rejectLabel: t('common.cancel'),
+      acceptIcon: STANDARD_ACCEPT_ICON,
+      rejectIcon: STANDARD_REJECT_ICON,
       accept: onAccept
     })
   }
@@ -71,6 +87,8 @@ export function useConfirmAction() {
       rejectClass: 'p-button-secondary',
       acceptLabel: t('common.confirm'),
       rejectLabel: t('common.cancel'),
+      acceptIcon: STANDARD_ACCEPT_ICON,
+      rejectIcon: STANDARD_REJECT_ICON,
       accept: onAccept
     })
   }

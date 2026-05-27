@@ -15,7 +15,7 @@ import { paramBool, paramNumber, paramString } from '../../core/utils/parameterC
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import EmittenteRoundingModeSelect from './EmittenteRoundingModeSelect.vue'
 import Drawer from 'primevue/drawer'
@@ -353,7 +353,7 @@ function close() {
 
         <!-- Footer Salva/Annulla -->
         <div class="flex justify-end mt-4">
-          <DrawerFooter
+          <FormFooter
             :loading="loading"
             :disabled="!canSave"
             :save-label="isEdit ? t('common.save') : t('common.create')"
