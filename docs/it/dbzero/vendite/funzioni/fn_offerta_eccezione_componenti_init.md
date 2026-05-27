@@ -12,22 +12,29 @@ CREATE OR REPLACE FUNCTION vendite.fn_offerta_eccezione_componenti_init(p_eccezi
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
+-- Scopo: Popola offerte_commerciali_eccezioni_componenti per un'eccezione composita CASO A.
+--   Modello unificato rev 2026-05-27: tutti i componenti attivi inseriti con attivo=TRUE;
+--   nessun filtro esposto_in_fattura. Chiave overrides: componente_id::text
+--   (uuid articolo figlio — allineato al FE ComponentiDialog).
+--   Guard override=0 solo su obbligatori. Check BOM vuota post-loop.
+--   Fallback resolver P0001: prezzo=0/MANUALE (offerta permissiva vs contratto strict).
+--   No-op su quantita IS NULL (eccezione a consumo). Idempotente.
 DECLARE
-    v_articolo_id  catalogo.articoli.id%TYPE;
-    v_uom_id       catalogo.unita_misura.id%TYPE;
-    v_qta_padre    vendite.offerte_commerciali_eccezioni.quantita%TYPE;
-    v_offerta_id   vendite.offerte_commerciali.id%TYPE;
-    v_is_composito catalogo.articoli.is_composito%TYPE;
-    v_ba_id        anagrafiche.billing_account.id%TYPE;
-    v_utility_id   vendite.offerte_commerciali.utility_id%TYPE;
-    v_istanza_id   vendite.offerte_commerciali.istanza_utility_id%TYPE;
-    v_comp         record;
-    v_resolve      record;
-    v_prezzo       numeric;
-    v_origine      text;
-    v_inserted     integer := 0;
+    v_articolo_id     catalogo.articoli.id%TYPE;
+    v_codice_articolo catalogo.articoli.codice%TYPE;
+    v_uom_id          catalogo.unita_misura.id%TYPE;
+    v_qta_padre       vendite.offerte_commerciali_eccezioni.quantita%TYPE;
+    v_offerta_id      vendite.offerte_commerciali.id%TYPE;
+    v_is_composito    catalogo.articoli.is_composito%TYPE;
+    v_ba_id           anagrafiche.billing_account.id%TYPE;
+    v_utility_id      vendite.offerte_commerciali.utility_id%TYPE;
+    v_istanza_id      vendite.offerte_commerciali.istanza_utility_id%TYPE;
+    v_comp            record;
+    v_resolve         record;
+    v_prezzo          vendite.listini_righe.prezzo%TYPE;
+    v_origine         vendite.offerte_commerciali_eccezioni_componenti.origine_prezzo%TYPE;
+    v_inserted        integer := 0;
 BEGIN
-    -- Guard input
     IF p_eccezione_id IS NULL OR p_eccezione_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_offerta_eccezione_componenti_init',
@@ -48,7 +55,6 @@ BEGIN
         );
     END IF;
 
-    -- Legge dati eccezione padre
     SELECT oce.articolo_id,
            oce.uom_operativa_id,
            oce.quantita,
@@ -67,8 +73,8 @@ BEGIN
         );
     END IF;
 
-    -- No-op silenzioso su articolo non composito (CASO B)
-    SELECT a.is_composito INTO v_is_composito
+    SELECT a.is_composito, a.codice
+      INTO v_is_composito, v_codice_articolo
       FROM catalogo.articoli a WHERE a.id = v_articolo_id;
 
     IF NOT COALESCE(v_is_composito, FALSE) THEN
@@ -81,7 +87,6 @@ BEGIN
         RETURN 0;
     END IF;
 
-    -- Idempotenza: se gia' presenti componenti, no-op
     IF EXISTS (
         SELECT 1 FROM vendite.offerte_commerciali_eccezioni_componenti
          WHERE eccezione_offerta_id = p_eccezione_id
@@ -89,32 +94,39 @@ BEGIN
         RETURN 0;
     END IF;
 
-    -- Legge billing_account_id, utility_id, istanza_utility_id dall'offerta
     SELECT o.billing_account_id, o.utility_id, o.istanza_utility_id
       INTO v_ba_id, v_utility_id, v_istanza_id
       FROM vendite.offerte_commerciali o WHERE o.id = v_offerta_id;
 
-    -- Itera sui componenti BoM esposti (CASO A: esposto_in_fattura = TRUE).
-    -- Per ogni componente: override oppure fn_resolve_prezzo_listino_v2.
-    -- Fallback individuale su P0001: prezzo=0, MANUALE.
+    -- Loop per-componente sulla BoM attiva alla data (tutti i componenti, no filtro esposto).
+    -- Chiave overrides: componente_id::text (uuid articolo figlio).
     FOR v_comp IN
         SELECT ac.id          AS bom_entry_id,
                ac.componente_id,
                ac.coeff_qta,
+               ac.obbligatorio,
                a.uom_id       AS componente_uom_id,
                a.iva_id       AS componente_iva_id
           FROM catalogo.articoli_componenti ac
           JOIN catalogo.articoli a ON a.id = ac.componente_id
          WHERE ac.prodotto_id        = v_articolo_id
-           AND ac.esposto_in_fattura = TRUE
            AND COALESCE(ac.attivo, TRUE) = TRUE
            AND ac.validita           @> p_data_riferimento
     LOOP
         IF p_componenti_overrides IS NOT NULL
-           AND p_componenti_overrides ? v_comp.bom_entry_id::text
+           AND p_componenti_overrides ? v_comp.componente_id::text
         THEN
-            v_prezzo  := (p_componenti_overrides ->> v_comp.bom_entry_id::text)::numeric;
+            v_prezzo  := (p_componenti_overrides ->> v_comp.componente_id::text)::numeric;
             v_origine := 'MANUALE';
+            -- Guard prezzo=0 solo per componenti obbligatori
+            IF v_prezzo = 0 AND COALESCE(v_comp.obbligatorio, TRUE) THEN
+                PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_offerta_eccezione_componenti_init',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('componente_id', v_comp.componente_id,
+                        'hint', 'prezzo override deve essere diverso da zero'),
+                    NULL::uuid, p_eccezione_id::text);
+            END IF;
             INSERT INTO vendite.offerte_commerciali_eccezioni_componenti (
                 eccezione_offerta_id,
                 articolo_componente_id,
@@ -126,6 +138,7 @@ BEGIN
                 prezzo_unitario,
                 iva_id,
                 origine_prezzo,
+                attivo,
                 prezzo_resolver_context
             ) VALUES (
                 p_eccezione_id,
@@ -138,6 +151,7 @@ BEGIN
                 v_prezzo,
                 v_comp.componente_iva_id,
                 v_origine,
+                TRUE,
                 jsonb_build_object(
                     'override',           true,
                     'emittente_sr_id',    p_emittente_sr_id,
@@ -158,7 +172,7 @@ BEGIN
                       v_utility_id::integer,
                       p_emittente_sr_id,
                       NULL,
-                      v_articolo_id
+                      v_articolo_id  -- p_articolo_padre_contesto: attiva STADIO BUNDLE
                   );
                 INSERT INTO vendite.offerte_commerciali_eccezioni_componenti (
                     eccezione_offerta_id,
@@ -171,6 +185,7 @@ BEGIN
                     prezzo_unitario,
                     iva_id,
                     origine_prezzo,
+                    attivo,
                     prezzo_resolver_context
                 ) VALUES (
                     p_eccezione_id,
@@ -183,20 +198,25 @@ BEGIN
                     v_resolve.prezzo_finale,
                     v_comp.componente_iva_id,
                     v_resolve.origine,
+                    TRUE,
                     jsonb_build_object(
-                        'emittente_sr_id',    p_emittente_sr_id,
-                        'data_riferimento',   p_data_riferimento,
-                        'ba_id',              v_ba_id,
-                        'utility_id',         v_utility_id,
-                        'istanza_utility_id', v_istanza_id,
-                        'listino_id',         v_resolve.listino_id,
+                        'emittente_sr_id',     p_emittente_sr_id,
+                        'data_riferimento',    p_data_riferimento,
+                        'ba_id',               v_ba_id,
+                        'utility_id',          v_utility_id,
+                        'istanza_utility_id',  v_istanza_id,
+                        'listino_id',          v_resolve.listino_id,
                         'listino_versione_id', v_resolve.listino_versione_id,
-                        'listino_riga_id',    v_resolve.listino_riga_id,
-                        'contratto_id',       v_resolve.contratto_id,
-                        'origine',            v_resolve.origine
+                        'listino_riga_id',     v_resolve.listino_riga_id,
+                        'contratto_id',        v_resolve.contratto_id,
+                        'origine',             v_resolve.origine
                     )
                 );
             EXCEPTION WHEN SQLSTATE 'P0001' THEN
+                -- Fallback permissivo (offerta vs contratto strict):
+                -- componente senza listino inserito a prezzo=0/MANUALE.
+                -- Il trigger trgfn_componenti_check_prezzo_obbligatorio
+                -- bloccherà l'INSERT se obbligatorio=TRUE.
                 INSERT INTO vendite.offerte_commerciali_eccezioni_componenti (
                     eccezione_offerta_id,
                     articolo_componente_id,
@@ -208,6 +228,7 @@ BEGIN
                     prezzo_unitario,
                     iva_id,
                     origine_prezzo,
+                    attivo,
                     prezzo_resolver_context
                 ) VALUES (
                     p_eccezione_id,
@@ -220,6 +241,7 @@ BEGIN
                     0,
                     v_comp.componente_iva_id,
                     'MANUALE',
+                    TRUE,
                     jsonb_build_object(
                         'error',              'resolver_not_found',
                         'emittente_sr_id',    p_emittente_sr_id,
@@ -234,12 +256,26 @@ BEGIN
         v_inserted := v_inserted + 1;
     END LOOP;
 
+    -- Check BOM vuota: articolo composito senza componenti attivi alla data
+    -- (raggiunto solo se v_qta_padre IS NOT NULL, cioe' eccezione non a consumo)
+    IF v_inserted = 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_offerta_eccezione_componenti_init',
+            'E_DOC_COMPOSITO_BOM_VUOTA',
+            jsonb_build_object('articolo_id', v_articolo_id,
+                'data_riferimento', p_data_riferimento),
+            NULL::uuid,
+            v_codice_articolo,
+            p_data_riferimento::text
+        );
+    END IF;
+
     RETURN v_inserted;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_offerta_eccezione_componenti_init(p_eccezione_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
-IS 'Inizializza componenti BoM CASO A (esposto_in_fattura=TRUE) per un''eccezione offerta composita. Loop su articoli_componenti; per ogni componente: override da p_componenti_overrides {bom_entry_id::text: prezzo} oppure fn_resolve_prezzo_listino_v2. Fallback individuale su P0001: prezzo=0/MANUALE. Idempotente. Ritorna n. componenti inseriti. Rev 2026-05-26.';
+IS 'Inizializza componenti BoM CASO A per un''eccezione offerta composita. Modello unificato rev 2026-05-27: tutti i componenti attivi inseriti con attivo=TRUE (no filtro esposto_in_fattura). Chiave overrides: componente_id::text. Guard override=0 solo su obbligatori. Check BOM vuota post-loop. Fallback resolver P0001: prezzo=0/MANUALE (permissivo). Idempotente. No-op su quantita IS NULL. Ritorna n. componenti inseriti.';
 ```
 
 ---

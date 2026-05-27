@@ -6,7 +6,7 @@
 --       + fn_offerta_eccezione_componenti_preview
 --       + fn_push_offerta_a_contratto (copia componenti rev3)
 -- ------------------------------------------------------------
--- Indice test (1..20):
+-- Indice test (1..26):
 --  1) has_table offerte_commerciali_eccezioni_componenti
 --  2) has_column eccezione_offerta_id
 --  3) has_column articolo_componente_id
@@ -27,32 +27,40 @@
 -- 18) fn_init happy path: componenti inseriti > 0   [skip se no composito]
 -- 19) fn_init override: prezzo overriddato           [skip se no composito]
 -- 20) fn_push copia componenti → contratti_righe_componenti [skip se no composito]
+-- 21) fn_preview esiste (has_function)
+-- 22) fn_preview articolo semplice → 0 righe        [skip se no ctx]
+-- 23) fn_preview articolo composito → righe > 0,
+--     colonne obbligatorio+esposto_in_fattura accessibili [skip se no composito valido]
+-- 24) fn_preview COUNT = COUNT componenti attivi validi
+--     (nessun filtro esposto_in_fattura)              [skip se no composito valido]
+-- 25) fn_preview quantita_componente = coeff_qta * quantita_padre [skip se no composito valido]
+-- 26) fn_preview include componenti esposto=FALSE     [skip se nessun componente non-esposto]
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(20);
+SELECT plan(26);
 
 -- ============================================================
 -- Contesto dati-dipendenti (skip se assenti)
 -- ============================================================
 CREATE TEMP TABLE tmp_oce_ctx AS
 SELECT
-    -- Articolo composito con almeno un componente esposto e tutti opzionali
-    -- (obbligatorio=FALSE esplicito): il fallback prezzo=0 del resolver
-    -- è ammesso solo su componenti opzionali (COALESCE(obbligatorio,TRUE)).
+    -- Articolo composito con almeno un componente attivo valido al DATE '2082-01-01'
+    -- (fixture) e tutti opzionali (obbligatorio=FALSE): il fallback prezzo=0 del
+    -- resolver e' ammesso solo su componenti opzionali. Nessun filtro esposto_in_fattura
+    -- (modello unificato rev 2026-05-27).
     (SELECT a.id
        FROM catalogo.articoli a
       WHERE a.is_composito = TRUE
         AND EXISTS (
             SELECT 1 FROM catalogo.articoli_componenti ac
              WHERE ac.prodotto_id = a.id
-               AND ac.esposto_in_fattura = TRUE
                AND COALESCE(ac.attivo, TRUE) = TRUE
+               AND ac.validita @> DATE '2082-01-01'
         )
         AND NOT EXISTS (
             SELECT 1 FROM catalogo.articoli_componenti ac
              WHERE ac.prodotto_id = a.id
-               AND ac.esposto_in_fattura = TRUE
                AND COALESCE(ac.attivo, TRUE) = TRUE
                AND COALESCE(ac.obbligatorio, TRUE) = TRUE
         )
@@ -376,12 +384,14 @@ SELECT CASE
     ELSE skip('18) skip: nessun articolo composito disponibile')
 END;
 
--- Setup test 19: crea eccezione COMPOSITA-OVR e chiama fn_init con override
+-- Setup test 19: crea eccezione COMPOSITA-OVR e chiama fn_init con override.
+-- Chiave override: componente_id::text (uuid articolo figlio) — modello unificato
+-- rev 2026-05-27; nessun filtro esposto_in_fattura nella ricerca del componente.
 DO $$
 DECLARE
     v_ovr_ecc_id  bigint;
     v_off_id      bigint;
-    v_bom_id      uuid;
+    v_comp_id     uuid;
 BEGIN
     IF NOT (SELECT disponibile FROM tmp_oce_has_composito) THEN RETURN; END IF;
 
@@ -397,10 +407,10 @@ BEGIN
 
     INSERT INTO tmp_oce_ids VALUES ('COMPOSITA-OVR', v_off_id, v_ovr_ecc_id);
 
-    SELECT ac.id INTO v_bom_id
+    -- Prende il componente_id (uuid articolo figlio) del primo componente valido.
+    SELECT ac.componente_id INTO v_comp_id
       FROM catalogo.articoli_componenti ac
      WHERE ac.prodotto_id = (SELECT articolo_composito_id FROM tmp_oce_ctx)
-       AND ac.esposto_in_fattura = TRUE
        AND COALESCE(ac.attivo, TRUE) = TRUE
        AND ac.validita @> DATE '2082-01-01'
      ORDER BY ac.id LIMIT 1;
@@ -409,7 +419,7 @@ BEGIN
         v_ovr_ecc_id,
         (SELECT emittente_sr_id FROM tmp_oce_ctx),
         DATE '2082-01-01',
-        jsonb_build_object(v_bom_id::text, 99999)
+        jsonb_build_object(v_comp_id::text, 99999)
     );
 END $$;
 
@@ -469,6 +479,179 @@ SELECT CASE
         '20) fn_push rev3: contratti_righe_componenti copiati dal push offerta→contratto'
     )
     ELSE skip('20) skip: componenti offerta non disponibili per test push')
+END;
+
+-- ============================================================
+-- Setup test 21-26: fn_offerta_eccezione_componenti_preview
+-- Context separato: richiede componenti validi per CURRENT_DATE.
+-- ============================================================
+CREATE TEMP TABLE tmp_preview_ctx AS
+SELECT
+    ctx.articolo_composito_id,
+    ctx.articolo_semplice_id,
+    ctx.billing_account_id,
+    ctx.utility_id,
+    ctx.emittente_sr_id,
+    a.uom_id   AS composito_uom_id,
+    as_.uom_id AS semplice_uom_id,
+    -- disponibile = true solo se tutti i dati presenti E almeno
+    -- un componente attivo valido per CURRENT_DATE
+    (ctx.articolo_composito_id IS NOT NULL
+     AND ctx.billing_account_id IS NOT NULL
+     AND ctx.emittente_sr_id IS NOT NULL
+     AND EXISTS (
+         SELECT 1 FROM catalogo.articoli_componenti ac
+          WHERE ac.prodotto_id = ctx.articolo_composito_id
+            AND COALESCE(ac.attivo, TRUE) = TRUE
+            AND ac.validita @> CURRENT_DATE
+     )) AS disponibile
+  FROM tmp_oce_ctx ctx
+  LEFT JOIN catalogo.articoli a   ON a.id   = ctx.articolo_composito_id
+  LEFT JOIN catalogo.articoli as_ ON as_.id = ctx.articolo_semplice_id;
+
+-- ============================================================
+-- TEST 21) fn_preview esiste (has_function)
+-- ============================================================
+SELECT has_function(
+    'vendite',
+    'fn_offerta_eccezione_componenti_preview',
+    '21) vendite.fn_offerta_eccezione_componenti_preview esiste'
+);
+
+-- ============================================================
+-- TEST 22) fn_preview articolo semplice → 0 righe
+-- ============================================================
+SELECT CASE
+    WHEN (SELECT billing_account_id IS NOT NULL
+               AND articolo_semplice_id IS NOT NULL
+            FROM tmp_preview_ctx)
+    THEN is(
+        (SELECT COUNT(*) FROM vendite.fn_offerta_eccezione_componenti_preview(
+            (SELECT articolo_semplice_id FROM tmp_preview_ctx),
+            (SELECT semplice_uom_id      FROM tmp_preview_ctx),
+            1,
+            CURRENT_DATE,
+            (SELECT billing_account_id   FROM tmp_preview_ctx),
+            (SELECT utility_id           FROM tmp_preview_ctx),
+            (SELECT emittente_sr_id      FROM tmp_preview_ctx),
+            NULL
+        )),
+        0::bigint,
+        '22) fn_preview articolo semplice → 0 righe (nessun componente BoM)'
+    )
+    ELSE skip('22) skip: articolo semplice o billing context non disponibile')
+END;
+
+-- ============================================================
+-- TEST 23) fn_preview articolo composito → righe > 0
+--          (obbligatorio + esposto_in_fattura accessibili nella proiezione)
+-- ============================================================
+SELECT CASE
+    WHEN (SELECT disponibile FROM tmp_preview_ctx)
+    THEN ok(
+        (SELECT COUNT(*) FROM vendite.fn_offerta_eccezione_componenti_preview(
+            (SELECT articolo_composito_id FROM tmp_preview_ctx),
+            (SELECT composito_uom_id      FROM tmp_preview_ctx),
+            2,
+            CURRENT_DATE,
+            (SELECT billing_account_id    FROM tmp_preview_ctx),
+            (SELECT utility_id            FROM tmp_preview_ctx),
+            (SELECT emittente_sr_id       FROM tmp_preview_ctx),
+            NULL
+        ) p
+        -- IS NOT DISTINCT FROM sé stesso è tautologia: se le colonne non
+        -- esistessero nella RETURNS TABLE, la query fallirebbe qui
+        WHERE p.obbligatorio IS NOT DISTINCT FROM p.obbligatorio
+          AND p.esposto_in_fattura IS NOT DISTINCT FROM p.esposto_in_fattura
+        ) > 0,
+        '23) fn_preview articolo composito: righe > 0, colonne obbligatorio+esposto_in_fattura accessibili'
+    )
+    ELSE skip('23) skip: articolo composito con componenti validi per CURRENT_DATE non disponibile')
+END;
+
+-- ============================================================
+-- TEST 24) COUNT preview = COUNT componenti attivi validi
+--          (nessun filtro esposto_in_fattura → modello unificato)
+-- ============================================================
+SELECT CASE
+    WHEN (SELECT disponibile FROM tmp_preview_ctx)
+    THEN is(
+        (SELECT COUNT(*) FROM vendite.fn_offerta_eccezione_componenti_preview(
+            (SELECT articolo_composito_id FROM tmp_preview_ctx),
+            (SELECT composito_uom_id      FROM tmp_preview_ctx),
+            2,
+            CURRENT_DATE,
+            (SELECT billing_account_id    FROM tmp_preview_ctx),
+            (SELECT utility_id            FROM tmp_preview_ctx),
+            (SELECT emittente_sr_id       FROM tmp_preview_ctx),
+            NULL
+        )),
+        (SELECT COUNT(*)
+           FROM catalogo.articoli_componenti ac
+          WHERE ac.prodotto_id = (SELECT articolo_composito_id FROM tmp_preview_ctx)
+            AND COALESCE(ac.attivo, TRUE) = TRUE
+            AND ac.validita @> CURRENT_DATE),
+        '24) fn_preview COUNT = COUNT componenti attivi validi (nessun filtro esposto_in_fattura)'
+    )
+    ELSE skip('24) skip: articolo composito con componenti validi per CURRENT_DATE non disponibile')
+END;
+
+-- ============================================================
+-- TEST 25) quantita_componente = coeff_qta_snapshot * p_quantita_padre
+-- ============================================================
+SELECT CASE
+    WHEN (SELECT disponibile FROM tmp_preview_ctx)
+    THEN ok(
+        NOT EXISTS (
+            SELECT 1
+              FROM vendite.fn_offerta_eccezione_componenti_preview(
+                  (SELECT articolo_composito_id FROM tmp_preview_ctx),
+                  (SELECT composito_uom_id      FROM tmp_preview_ctx),
+                  2,
+                  CURRENT_DATE,
+                  (SELECT billing_account_id    FROM tmp_preview_ctx),
+                  (SELECT utility_id            FROM tmp_preview_ctx),
+                  (SELECT emittente_sr_id       FROM tmp_preview_ctx),
+                  NULL
+              ) p
+             WHERE p.quantita_componente IS DISTINCT FROM (p.coeff_qta_snapshot * 2)
+        ),
+        '25) fn_preview quantita_componente = coeff_qta_snapshot * 2 (p_quantita_padre) per ogni riga'
+    )
+    ELSE skip('25) skip: articolo composito con componenti validi per CURRENT_DATE non disponibile')
+END;
+
+-- ============================================================
+-- TEST 26) fn_preview include componenti con esposto_in_fattura=FALSE
+--          (verifica rimozione del vecchio filtro AND esposto_in_fattura=TRUE)
+-- ============================================================
+SELECT CASE
+    WHEN (SELECT disponibile FROM tmp_preview_ctx)
+       AND EXISTS (
+           SELECT 1 FROM catalogo.articoli_componenti ac
+            WHERE ac.prodotto_id = (SELECT articolo_composito_id FROM tmp_preview_ctx)
+              AND COALESCE(ac.esposto_in_fattura, TRUE) = FALSE
+              AND COALESCE(ac.attivo, TRUE) = TRUE
+              AND ac.validita @> CURRENT_DATE
+       )
+    THEN ok(
+        EXISTS (
+            SELECT 1
+              FROM vendite.fn_offerta_eccezione_componenti_preview(
+                  (SELECT articolo_composito_id FROM tmp_preview_ctx),
+                  (SELECT composito_uom_id      FROM tmp_preview_ctx),
+                  2,
+                  CURRENT_DATE,
+                  (SELECT billing_account_id    FROM tmp_preview_ctx),
+                  (SELECT utility_id            FROM tmp_preview_ctx),
+                  (SELECT emittente_sr_id       FROM tmp_preview_ctx),
+                  NULL
+              ) p
+             WHERE p.esposto_in_fattura = FALSE
+        ),
+        '26) fn_preview include componenti con esposto_in_fattura=FALSE (filtro AND esposto=TRUE rimosso)'
+    )
+    ELSE skip('26) skip: nessun componente con esposto_in_fattura=FALSE valido per CURRENT_DATE')
 END;
 
 SELECT * FROM finish();
