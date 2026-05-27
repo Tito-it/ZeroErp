@@ -23,7 +23,7 @@ import SoggettoForm from '../../core/components/SoggettoForm.vue'
 import ContattoForm from '../../core/components/ContattoForm.vue'
 import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
 import DatiSocietariForm from '../../core/components/DatiSocietariForm.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
 import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
@@ -516,7 +516,7 @@ async function handleSave() {
         </div>
       </template>
 
-      <DrawerFooter
+      <FormFooter
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"

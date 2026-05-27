@@ -9,7 +9,7 @@ import { useLookup } from '../composables/useLookup'
 import { lookupStati } from '../../anagrafiche/api/anagrafiche'
 import { DRAWER_WIDTH } from '../constants'
 import { NAV_ICONS } from '../navigation'
-import DrawerFooter from './DrawerFooter.vue'
+import FormFooter from './FormFooter.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -72,7 +72,7 @@ async function handleSave() {
             :placeholder="t('geo.select_stato')" :loading="statiLookup.loading.value" filter />
         </div>
       </div>
-      <DrawerFooter :loading="loading" :disabled="!form.descrizione.trim()"
+      <FormFooter :loading="loading" :disabled="!form.descrizione.trim()"
         @save="handleSave" @cancel="emit('update:visible', false)" />
     </div>
   </Drawer>

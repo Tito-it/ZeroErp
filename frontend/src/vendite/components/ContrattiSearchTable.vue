@@ -217,8 +217,9 @@ onMounted(() => {
       data-key="id"
     >
       <Column field="numero" :header="t('contratti.col_numero')" sortable style="width: 140px;" />
-      <Column field="ba_codice" :header="t('contratti.col_ba_codice')" sortable style="width: 120px;" />
       <Column field="ba_ragione_sociale" :header="t('contratti.col_ba')" sortable style="width: 220px;" />
+      <Column field="ba_codice" :header="t('contratti.col_ba_codice')" sortable style="width: 120px;" />
+      <Column field="id_fiscale" :header="t('contratti.col_id_fiscale')" sortable style="width: 140px;" />
       <Column field="utility_codice" :header="t('contratti.col_utility')" sortable style="width: 100px;" />
       <Column field="ambito" :header="t('contratti.col_ambito')" sortable style="width: 120px;" />
       <Column field="categoria_cliente_snapshot_codice" :header="t('contratti.col_categoria_cliente')" sortable style="width: 120px;">

@@ -22,7 +22,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Dialog from 'primevue/dialog'
-import Button from 'primevue/button'
+import FormFooter from './FormFooter.vue'
 import SelectButton from 'primevue/selectbutton'
 import Message from 'primevue/message'
 import { isFileSystemAccessSupported } from '../composables/useFileDownload'
@@ -114,18 +114,11 @@ function onCancel() {
     </div>
 
     <template #footer>
-      <Button
-        :label="t('common.cancel')"
-        severity="secondary"
-        text
-        :disabled="loading"
-        @click="onCancel"
-      />
-      <Button
-        :label="t('export_dialog.scarica')"
-        icon="pi pi-download"
+      <FormFooter
+        :save-label="t('export_dialog.scarica')"
         :loading="loading"
-        @click="onConfirm"
+        @cancel="onCancel"
+        @save="onConfirm"
       />
     </template>
   </Dialog>

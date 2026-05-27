@@ -21,7 +21,7 @@ import SoggettoPreviewBadges from '../../core/components/SoggettoPreviewBadges.v
 import ContattoForm from '../../core/components/ContattoForm.vue'
 import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
@@ -418,7 +418,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         :entita-id-web="props.fornitoreId"
         :email-iniziale-web="detail?.pec_email || ''" />
 
-      <DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
     </div>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->

@@ -1054,7 +1054,7 @@ a {
 }
 
 /* Footer drawer (pulsanti Annulla/Salva) */
-.app-drawer-footer {
+.app-form-footer {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
@@ -1296,13 +1296,13 @@ a {
     padding: 0.5rem;
   }
 
-  /* DrawerFooter — Annulla/Chiudi/Salva collassano a icon-only sotto 1024px,
+  /* FormFooter — Annulla/Chiudi/Salva collassano a icon-only sotto 1024px,
      pattern standard come .app-page-action. I tooltip (impostati nel
      componente) restano visibili e garantiscono accessibilita'. */
-  .app-drawer-footer-btn .p-button-label {
+  .app-form-footer-btn .p-button-label {
     display: none;
   }
-  .app-drawer-footer-btn {
+  .app-form-footer-btn {
     padding: 0.5rem;
   }
 }

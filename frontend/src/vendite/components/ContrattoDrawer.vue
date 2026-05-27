@@ -26,7 +26,7 @@ import { addDaysToToday, toDateString, parseIsoDate, displayDate } from '../../c
 import { paramInt, paramString } from '../../core/utils/parameterCast'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
@@ -873,14 +873,14 @@ const onClose = useDrawerClose(emit, 'cancelled')
            Quindi UX: mostrare solo Chiudi sgombera il footer da azioni
            ingannevoli ("Salva" semanticamente non porta a nessuna modifica
            visibile per l'operatore in ATTIVO). -->
-      <DrawerFooter v-if="!isReadonly && (!detail || detail.stato_codice === 'DRAFT')"
+      <FormFooter v-if="!isReadonly && (!detail || detail.stato_codice === 'DRAFT')"
         :loading="loading" :disabled="!canSave"
         @save="handleSave" @cancel="onClose" />
       <!-- Fallback close-only: stati post-DRAFT o LETTURA. Footer dedicato
            con solo "Chiudi" (semantica completion, vs X in alto = dismiss).
            Pattern coerente con `feedback_drawer_footer_close_only` e
            PreventiviDrawer. -->
-      <DrawerFooter v-else-if="detail" close-only @cancel="onClose" />
+      <FormFooter v-else-if="detail" close-only @cancel="onClose" />
       </template>
     </div>
 

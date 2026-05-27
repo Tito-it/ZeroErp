@@ -37,6 +37,7 @@ import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
+import FormFooter from '../../core/components/FormFooter.vue'
 import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -443,19 +444,12 @@ async function confirmPubblica() {
         </div>
       </div>
       <template #footer>
-        <Button
-          :label="t('common.cancel')"
-          severity="secondary"
-          text
-          @click="pubblicaDialog = false"
-          :disabled="loading"
-        />
-        <Button
-          :label="t('config.modelli_documenti.versioni.action_pubblica')"
-          :icon="MANAGE_ICONS.PUBLISH"
-          :disabled="!pubblicaForm.valido_dal"
+        <FormFooter
+          :save-label="t('config.modelli_documenti.versioni.action_pubblica')"
           :loading="loading"
-          @click="confirmPubblica"
+          :disabled="!pubblicaForm.valido_dal"
+          @cancel="pubblicaDialog = false"
+          @save="confirmPubblica"
         />
       </template>
     </Dialog>

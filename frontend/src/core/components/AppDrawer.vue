@@ -1,10 +1,7 @@
 <script setup>
-import { useI18n } from 'vue-i18n'
 import DrawerTitle from './DrawerTitle.vue'
+import FormFooter from './FormFooter.vue'
 import Drawer from 'primevue/drawer'
-import Button from 'primevue/button'
-
-const { t } = useI18n()
 
 defineProps({
   visible: { type: Boolean, required: true },
@@ -46,21 +43,14 @@ function handleSave() {
     </div>
 
     <template #footer>
-      <div class="drawer-footer">
-        <Button
-          :label="cancelLabel || t('common.cancel')"
-          severity="secondary"
-          text
-          @click="handleCancel"
-          :disabled="loading"
-        />
-        <Button
-          :label="saveLabel || t('common.save')"
-          @click="handleSave"
-          :loading="loading"
-          :disabled="saveDisabled || loading"
-        />
-      </div>
+      <FormFooter
+        :save-label="saveLabel"
+        :cancel-label="cancelLabel"
+        :loading="loading"
+        :disabled="saveDisabled"
+        @cancel="handleCancel"
+        @save="handleSave"
+      />
     </template>
   </Drawer>
 </template>
@@ -70,13 +60,5 @@ function handleSave() {
   flex: 1;
   overflow-y: auto;
   padding: 0 0.25rem;
-}
-
-.drawer-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--app-drawer-footer-border);
 }
 </style>

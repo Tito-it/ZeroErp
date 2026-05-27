@@ -1,10 +1,10 @@
 // Scopo: handler standard di chiusura drawer. Centralizza il pattern
 // `emit('update:visible', false)` ripetuto in ogni drawer di progetto
-// (vedi standard frontend §"Componente DrawerFooter").
+// (vedi standard frontend §"Componente FormFooter").
 //
 // Uso base:
 //   const onClose = useDrawerClose(emit)
-//   // template: <DrawerFooter close-only @cancel="onClose" />
+//   // template: <FormFooter close-only @cancel="onClose" />
 //
 // Uso con evento secondario (alcuni drawer notificano il parent della
 // chiusura per reset/cleanup oltre al toggle di `visible`):

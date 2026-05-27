@@ -30,7 +30,7 @@ import { useNote } from '../composables/useNote'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import LookupSelect from './LookupSelect.vue'
 import DrawerTitle from './DrawerTitle.vue'
-import DrawerFooter from './DrawerFooter.vue'
+import FormFooter from './FormFooter.vue'
 import PageActionsBar from './PageActionsBar.vue'
 
 const { t } = useI18n()
@@ -303,7 +303,7 @@ function rigaLabel(n) {
         </Column>
       </DataTable>
 
-      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
 
       <template v-if="formMode">
         <div class="app-drawer-section">
@@ -362,7 +362,7 @@ function rigaLabel(n) {
           </div>
         </div>
 
-        <DrawerFooter
+        <FormFooter
           :loading="saveLoading"
           :disabled="!canSaveForm"
           @save="onSaveForm"

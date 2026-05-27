@@ -17,7 +17,7 @@ import { toDateString } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RoundingModeSelect from './RoundingModeSelect.vue'
@@ -351,7 +351,7 @@ const onClose = useDrawerClose(emit)
         </DataTable>
       </template>
 
-      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
 
       <template v-if="formMode">
         <div class="app-drawer-section">
@@ -448,7 +448,7 @@ const onClose = useDrawerClose(emit)
           </div>
         </div>
 
-        <DrawerFooter
+        <FormFooter
           :loading="loading"
           :disabled="!canSaveForm"
           @save="onSaveForm"

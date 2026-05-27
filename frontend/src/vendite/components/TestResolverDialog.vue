@@ -19,6 +19,7 @@ import Dialog from 'primevue/dialog'
 import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
+import FormFooter from '../../core/components/FormFooter.vue'
 import Tag from 'primevue/tag'
 import { DATE_FORMAT, DRAWER_WIDTH } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
@@ -393,7 +394,7 @@ function close() {
     </div>
 
     <template #footer>
-      <Button :label="t('common.close')" severity="secondary" @click="close" />
+      <FormFooter close-only @cancel="close" />
     </template>
   </Dialog>
 </template>

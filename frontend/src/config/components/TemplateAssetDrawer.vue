@@ -19,7 +19,7 @@ import { isoToLocalDate, localDateToIso } from '../../core/utils/dateHelpers'
 import { downloadBlob } from '../../core/utils/download'
 import { ASSET_UPLOAD_MAX_BYTES } from '../constants/documentiVersioniWhitelists'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import Drawer from 'primevue/drawer'
@@ -346,7 +346,7 @@ function close() {
     </div>
 
     <template #footer>
-      <DrawerFooter
+      <FormFooter
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"

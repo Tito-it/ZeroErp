@@ -37,8 +37,8 @@ import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
-import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import FormFooter from '../../../core/components/FormFooter.vue'
 import Message from 'primevue/message'
 import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError } from '../../../core/utils/apiError'
@@ -472,15 +472,12 @@ function handleCancel() {
     </div>
 
     <template #footer>
-      <Button
-        :label="t('common.cancel')"
-        severity="secondary"
-        @click="handleCancel"
-      />
-      <Button
-        :label="t('common.save')"
+      <!-- Centralizzato: FormFooter porta automaticamente icone (← / ✓),
+           tooltip, collapse responsive a icon-only sotto 1024px, shortcut Ctrl+S. -->
+      <FormFooter
         :disabled="!canConfirm"
-        @click="handleConfirm"
+        @cancel="handleCancel"
+        @save="handleConfirm"
       />
     </template>
   </Dialog>

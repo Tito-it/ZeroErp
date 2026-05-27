@@ -12,7 +12,7 @@ import { DRAWER_WIDTH, STATO_FLUSSO } from '../../core/constants'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import { displayTimestamp } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import Drawer from 'primevue/drawer'
@@ -183,7 +183,7 @@ const onClose = useDrawerClose(emit)
         </div>
       </div>
 
-      <DrawerFooter close-only @cancel="onClose" />
+      <FormFooter close-only @cancel="onClose" />
       </template>
     </div>
   </Drawer>

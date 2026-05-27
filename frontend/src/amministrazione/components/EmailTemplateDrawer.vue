@@ -12,7 +12,7 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { useEmailTemplatesStore } from '../stores/emailTemplates'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -171,7 +171,7 @@ async function handlePreview() {
     </div>
 
     <template #footer>
-      <DrawerFooter
+      <FormFooter
         :loading="saving"
         :disabled="!canSave"
         @save="handleSave"

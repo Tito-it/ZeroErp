@@ -28,7 +28,7 @@ import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFis
 import { DRAWER_WIDTH } from '../../core/constants'
 import { contextBuilderOptions } from '../constants/documentiContextBuilders'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import TemplateVersioniSection from './TemplateVersioniSection.vue'
@@ -337,7 +337,7 @@ function close() {
     </div>
 
     <template #footer>
-      <DrawerFooter
+      <FormFooter
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"

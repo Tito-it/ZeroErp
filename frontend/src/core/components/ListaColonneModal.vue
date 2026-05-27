@@ -18,6 +18,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
+import FormFooter from './FormFooter.vue'
 import InputSwitch from 'primevue/inputswitch'
 import InputNumber from 'primevue/inputnumber'
 import Badge from 'primevue/badge'
@@ -244,6 +245,8 @@ function onReset() {
 
     <template #footer>
       <div class="lista-config-footer">
+        <!-- Reset preferenza: bottone aggiuntivo non standard del pattern
+             Annulla/Salva, resta standalone. -->
         <Button
           :label="t('lista_config.reset_preferenza')"
           icon="pi pi-refresh"
@@ -253,17 +256,10 @@ function onReset() {
           @click="onReset"
         />
         <div class="lista-config-footer-right">
-          <Button
-            :label="t('common.cancel')"
-            text
-            :disabled="loading"
-            @click="onCancel"
-          />
-          <Button
-            :label="t('common.save')"
-            icon="pi pi-check"
+          <FormFooter
             :loading="loading"
-            @click="onSave"
+            @cancel="onCancel"
+            @save="onSave"
           />
         </div>
       </div>

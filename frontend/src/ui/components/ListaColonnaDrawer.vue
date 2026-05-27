@@ -30,7 +30,7 @@ import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useUiColonnaAdminStore } from '../stores/uiColonnaAdmin'
@@ -413,7 +413,7 @@ function onCancel() {
       </Tabs>
     </div>
 
-    <DrawerFooter
+    <FormFooter
       :loading="loading"
       :disabled="!canSave"
       @save="onSave"

@@ -19,7 +19,7 @@ import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { sortByFonte } from '../utils/string'
 import ContattoForm from './ContattoForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
-import DrawerFooter from './DrawerFooter.vue'
+import FormFooter from './FormFooter.vue'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -234,7 +234,7 @@ const onClose = useDrawerClose(emit)
         </div>
       </template>
 
-      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
 
       <!-- Form (aggiungi o modifica) -->
       <template v-if="formMode">
@@ -251,7 +251,7 @@ const onClose = useDrawerClose(emit)
           :disabled="false"
         />
 
-        <DrawerFooter
+        <FormFooter
           :loading="loading"
           :disabled="!contatto.form.nominativo?.trim()"
           @save="onSaveForm"

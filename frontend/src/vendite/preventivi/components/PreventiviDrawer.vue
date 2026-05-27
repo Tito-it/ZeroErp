@@ -24,7 +24,7 @@ import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../../core/components/DrawerFooter.vue'
+import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
@@ -129,7 +129,7 @@ const noteDrawerVisible = ref(false)
 // salvato. Pattern: master-detail inline (memoria feedback_master_detail_inline).
 const createdId = ref(null)
 // Stato form riga inline: quando l'operatore sta editando/aggiungendo
-// una riga, il DrawerFooter (Salva/Annulla testata) si nasconde per
+// una riga, il FormFooter (Salva/Annulla testata) si nasconde per
 // evitare duplicazione con i bottoni del PreventiviRigaForm.
 // Aggiornato via `@form-aperto` (kebab) da PreventiviRigheTable.
 const formRigaAperto = ref(false)
@@ -461,7 +461,7 @@ watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
 // preventivo deve essere collegato a un'istanza utility, derivabile dal BA o
 // selezionata standalone per prospect). In EDIT l'istanza e' gia' persistita
 // e il backend non richiede di rispedirla.
-// Defense-in-depth: anche se il DrawerFooter e' nascosto da
+// Defense-in-depth: anche se il FormFooter e' nascosto da
 // `v-if="canEditTestataEffective && !isReadonly"`, includiamo isReadonly qui
 // cosi' qualsiasi consumer futuro del computed (shortcut tastiera, save
 // programmato) e' coperto dalla stessa guard.
@@ -894,7 +894,7 @@ const drawerActions = computed(() => {
         />
       </template>
 
-      <DrawerFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto" :loading="loading" :disabled="!canSave"
+      <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto" :loading="loading" :disabled="!canSave"
         @save="handleSave" @cancel="close" />
       <!-- Fallback close-only: in stati post-DRAFT (readonly, no Salva/Annulla)
            l'utente deve poter uscire deliberatamente dal footer in basso, non
@@ -902,7 +902,7 @@ const drawerActions = computed(() => {
            Chiudi=completion). Pattern coerente con `feedback_drawer_footer_close_only`
            e ContrattoRigheDrawer. Nascosto quando il form riga e' aperto per
            non duplicare l'azione Annulla del form. -->
-      <DrawerFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="close" />
+      <FormFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="close" />
     </div>
   </Drawer>
 
@@ -941,11 +941,12 @@ const drawerActions = computed(() => {
       </div>
     </div>
     <template #footer>
-      <Button :label="t('common.cancel')" severity="secondary" text
-        @click="acceptDialogVisible = false" />
-      <Button :label="t('preventivi.accetta_conferma')" severity="primary"
+      <FormFooter
+        :save-label="t('preventivi.accetta_conferma')"
         :disabled="!acceptForm.fatturazione_immediata && !acceptForm.competenza_mese"
-        @click="confirmAcceptDialog" />
+        @cancel="acceptDialogVisible = false"
+        @save="confirmAcceptDialog"
+      />
     </template>
   </Dialog>
 </template>

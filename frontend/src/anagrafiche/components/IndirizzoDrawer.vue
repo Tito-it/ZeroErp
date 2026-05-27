@@ -12,7 +12,7 @@ import { useIndirizzoBase, buildCivicoPart } from '../../core/composables/useInd
 import { getIndirizzo } from '../api/anagrafiche'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import ComuneAutocomplete from '../../core/components/ComuneAutocomplete.vue'
 import StradarioAutocomplete from '../../core/components/StradarioAutocomplete.vue'
@@ -230,7 +230,7 @@ async function handleSave() {
         {{ t('indirizzo_soggetto.replace_non_trovato') }}
       </Message>
 
-      <DrawerFooter
+      <FormFooter
         :loading="loading"
         :disabled="!canSave || addressNotFound"
         @save="handleSave"

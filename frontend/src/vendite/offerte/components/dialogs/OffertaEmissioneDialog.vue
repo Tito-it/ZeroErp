@@ -5,7 +5,7 @@
 //        ATTIVA al momento dell'emissione. Avviso parlante se manca.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Button from 'primevue/button'
+import FormFooter from '../../../../core/components/FormFooter.vue'
 import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
 
@@ -77,19 +77,12 @@ const eccezioniCount = computed(
     </Message>
 
     <template #footer>
-      <Button
-        :label="t('common.cancel')"
-        text
-        severity="secondary"
-        @click="emit('update:visible', false)"
-      />
-      <Button
-        :label="t('vendite.offerte.emissione_conferma')"
-        icon="pi pi-send"
-        severity="success"
+      <FormFooter
+        :save-label="t('vendite.offerte.emissione_conferma')"
         :loading="props.loading"
         :disabled="props.loading"
-        @click="emit('confirm')"
+        @cancel="emit('update:visible', false)"
+        @save="emit('confirm')"
       />
     </template>
   </Dialog>

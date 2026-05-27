@@ -12,7 +12,7 @@ import { useAuthStore } from '../../stores/auth'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import TipologiaListinoSelect from './TipologiaListinoSelect.vue'
@@ -225,7 +225,7 @@ function close() {
         <i class="pi pi-spin pi-spinner"></i>
       </div>
 
-      <DrawerFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
     </div>
   </Drawer>
 </template>

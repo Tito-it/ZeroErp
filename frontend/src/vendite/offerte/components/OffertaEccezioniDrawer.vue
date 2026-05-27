@@ -20,19 +20,27 @@ import ToggleSwitch from 'primevue/toggleswitch'
 
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
-import DrawerFooter from '../../../core/components/DrawerFooter.vue'
+import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
+import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
+import ComponentiPanel from '../../_shared/componenti/ComponentiPanel.vue'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { displayDate } from '../../../core/utils/date'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { FONTE_QUANTITA_ATTESA, TIPO_ECCEZIONE, TIPO_EROGAZIONE } from '../../constants'
+import {
+  previewEccezioneComponenti,
+  listEccezioneComponenti,
+  updateEccezioneComponente,
+  deleteEccezioneComponente,
+} from '../api/offerteApi'
 import { useOfferteStore } from '../stores/offerte'
 
 const { t } = useI18n()
@@ -67,6 +75,34 @@ const formMode = ref(null) // null | 'create' | 'edit'
 const editingId = ref(null)
 const selectedRow = ref(null)
 const form = ref({})
+// Expansion DataTable righe eccezione: chiave = `id` (PK). Mostra
+// `ComponentiPanel` data-driven con i figli aggregati dal BE
+// (`row.componenti` jsonb). Pattern speculare a `ContrattoRigheDrawer`.
+const expandedRows = ref({})
+
+function hasBundleComponenti(row) {
+  return row?.is_composito === true
+    && Array.isArray(row?.componenti)
+    && row.componenti.length > 0
+}
+
+function isExpanded(row) {
+  const key = row?.id
+  if (key == null) return false
+  return Object.prototype.hasOwnProperty.call(expandedRows.value, key)
+}
+
+function toggleExpansion(row) {
+  const key = row?.id
+  if (key == null) return
+  const next = { ...expandedRows.value }
+  if (Object.prototype.hasOwnProperty.call(next, key)) {
+    delete next[key]
+  } else {
+    next[key] = true
+  }
+  expandedRows.value = next
+}
 
 const {
   uomOptions, uomLoading, loadUomPerArticolo, pickBaseUomId, resetUomOptions,
@@ -83,6 +119,51 @@ async function caricaUomConPickBase(articoloId) {
   if (formMode.value === 'create' && !form.value.uom_operativa_id) {
     form.value.uom_operativa_id = pickBaseUomId(list)
   }
+}
+
+// === ComponentiDialog state (modello unificato BoM, simmetria contratti
+// 2026-05-26). Pattern speculare a `ContrattoRigheDrawer`: in CREATE su
+// articolo composito la Dialog si auto-apre al primo set di (articolo,
+// uom) validi; in EDIT lo stato viaggia via `ComponentiPanel` sotto il
+// form (lista persistita).
+const componentiDialogVisible = ref(false)
+const componentiPayload = ref(null)
+
+// Trigger di apertura Dialog: solo in CREATE su articolo composito con
+// articolo + UoM valorizzati. Niente guard `quantita > 0` (diverso da
+// preventivi/contratti): nelle eccezioni offerta la qta puo' essere
+// null per fonti CONSUMO/LETTURE; i prezzi unitari componente non
+// dipendono dalla qta — solo il summary del Dialog mostrera' 0/null
+// se l'operatore non l'ha ancora valorizzata, ma il flusso di
+// conferma overrides resta valido.
+const showComponentiDialog = computed(
+  () => formMode.value === 'create'
+    && form.value?.articolo_obj?.is_composito === true
+    && !!form.value?.articolo_id
+    && !!form.value?.uom_operativa_id,
+)
+
+// Watch articolo + uom: cambia il CONTESTO di pricing → invalida i
+// prezzi suggeriti precedenti, reset del payload + auto-apertura Dialog.
+let _autoOpenedFor = null
+watch(
+  () => [form.value?.articolo_id, form.value?.uom_operativa_id],
+  ([articoloId, uomId]) => {
+    if (formMode.value !== 'create') return
+    componentiPayload.value = null
+    const tupleKey = `${articoloId}|${uomId}`
+    if (showComponentiDialog.value && _autoOpenedFor !== tupleKey) {
+      _autoOpenedFor = tupleKey
+      componentiDialogVisible.value = true
+    } else if (!showComponentiDialog.value) {
+      _autoOpenedFor = null
+      componentiDialogVisible.value = false
+    }
+  },
+)
+
+function onComponentiConfirm(payload) {
+  componentiPayload.value = payload
 }
 
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
@@ -180,6 +261,7 @@ function fromRow(row) {
           id: row.articolo_id,
           codice: row.articolo_codice || '',
           descrizione: row.articolo_descrizione || '',
+          is_composito: row.is_composito === true,
         }
       : null,
     tipo_erogazione: row.tipo_erogazione || TIPO_EROGAZIONE.CANONE,
@@ -193,12 +275,19 @@ function fromRow(row) {
   }
 }
 
+function _resetComponentiState() {
+  componentiDialogVisible.value = false
+  componentiPayload.value = null
+  _autoOpenedFor = null
+}
+
 function openCreate() {
   form.value = newForm()
   editingId.value = null
   formMode.value = 'create'
   selectedRow.value = null
   resetUomOptions()
+  _resetComponentiState()
 }
 
 function onRowSelect(event) {
@@ -208,6 +297,7 @@ function onRowSelect(event) {
   editingId.value = row.id
   form.value = fromRow(row)
   formMode.value = 'edit'
+  _resetComponentiState()
   if (row.articolo_id) {
     // In edit l'articolo e' immutabile (Tag readonly); carichiamo comunque le
     // UoM operative dell'articolo cosi' la Select mostra etichetta coerente
@@ -221,6 +311,7 @@ function closeForm() {
   editingId.value = null
   selectedRow.value = null
   resetUomOptions()
+  _resetComponentiState()
 }
 
 watch(() => form.value?.tipo_erogazione, (nuovoTipo) => {
@@ -244,6 +335,14 @@ function onArticoloSelected(item) {
   // Cambio articolo: invalida la UoM precedente, carica le UoM operative
   // dell'articolo e (in create) preseleziona la base.
   form.value.uom_operativa_id = null
+  // Articolo composito: la ComponentiDialog richiede `quantita > 0` per
+  // caricare la preview BoM. Sull'eccezione la qta puo' essere null
+  // (fonti CONSUMO/LETTURE): qui poniamo un default `1` per garantire
+  // l'apertura della dialog. L'operatore puo' modificarla o azzerarla
+  // successivamente in base alla fonte scelta.
+  if (item.is_composito === true && !form.value.quantita) {
+    form.value.quantita = 1
+  }
   caricaUomConPickBase(item.id)
 }
 
@@ -254,6 +353,10 @@ const canSave = computed(() => {
   if (!f.tipo_eccezione) return false
   if (!f.articolo_id) return false
   if (!f.fonte_quantita_attesa) return false
+  // Blocco CREATE su articolo composito finche' la ComponentiDialog non
+  // ha confermato i prezzi componenti (mirror contratti). In EDIT i
+  // componenti viaggiano via ComponentiPanel.
+  if (showComponentiDialog.value && componentiPayload.value == null) return false
   return true
 })
 
@@ -279,6 +382,13 @@ async function handleSave() {
       tipo_eccezione: form.value.tipo_eccezione,
       articolo_id: form.value.articolo_id,
       ...buildPayload(),
+    }
+    // Modello unificato BoM: in CREATE su articolo composito include i
+    // `componenti_overrides` (delta prezzi vs suggeriti) confermati dalla
+    // ComponentiDialog. La fn DB init applica gli override; gli altri
+    // componenti vengono valorizzati dal resolver bundle-aware.
+    if (showComponentiDialog.value && componentiPayload.value?.overrides) {
+      payload.componenti_overrides = componentiPayload.value.overrides
     }
     const result = await execute(
       () => store.addEccezione(props.offertaId, payload),
@@ -405,9 +515,21 @@ const onClose = useDrawerClose(emit)
           class="app-datatable app-datatable--inner"
           selection-mode="single"
           v-model:selection="selectedRow"
+          v-model:expanded-rows="expandedRows"
           data-key="id"
           @row-select="onRowSelect"
         >
+          <!-- Expander custom per articoli compositi: chevron solo dove la
+               riga e' padre composito con figli persistiti. Click.stop evita
+               che il click apra anche il form di edit. -->
+          <Column style="width: 2.5rem;" :exportable="false">
+            <template #body="{ data }">
+              <Button v-if="hasBundleComponenti(data)"
+                :icon="isExpanded(data) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
+                text rounded size="small"
+                @click.stop="toggleExpansion(data)" />
+            </template>
+          </Column>
           <Column
             field="tipo_eccezione"
             :header="t('vendite.offerte.col_tipo_eccezione')"
@@ -479,6 +601,17 @@ const onClose = useDrawerClose(emit)
               />
             </template>
           </Column>
+          <!-- Expansion BoM: ComponentiPanel data-driven con i figli
+               aggregati dal BE (`data.componenti` jsonb). Pattern speculare
+               a `ContrattoRigheDrawer`. -->
+          <template #expansion="{ data }">
+            <div style="padding: 0.25rem 0 0.5rem 2rem; background: var(--app-table-stripe-bg);">
+              <ComponentiPanel
+                :initial-data="data.componenti"
+                i18n-prefix="vendite.componenti.panel"
+              />
+            </div>
+          </template>
         </DataTable>
 
         <!-- Form dettaglio (create/edit). -->
@@ -590,7 +723,32 @@ const onClose = useDrawerClose(emit)
             </label>
           </div>
 
-          <DrawerFooter
+          <!-- Sezione componenti BoM (modello unificato, simmetria preventivi).
+               CREATE: la ComponentiDialog si auto-apre al primo set valido
+               (articolo composito + uom + qta) tramite watcher; il payload
+               confermato viaggia col save eccezione (`componenti_overrides`).
+               Niente bottone manuale: l'apertura e' automatica, l'eventuale
+               revisione passa dall'expansion della lista eccezioni post-save.
+               EDIT: ComponentiPanel carica i componenti persistiti e li
+               espone editabili (PATCH per componente). -->
+          <template v-if="form.articolo_obj?.is_composito && formMode === 'edit'">
+            <div class="app-drawer-section">
+              <h4>{{ t('vendite.componenti.panel.section_title') }}</h4>
+            </div>
+            <ComponentiPanel
+              :documento-id="props.offertaId"
+              :riga-id="editingId"
+              :readonly="isReadonly"
+              :api-list="listEccezioneComponenti"
+              :api-update="updateEccezioneComponente"
+              :api-delete="deleteEccezioneComponente"
+              :tab-entity="TAB_ENTITIES.OFFERTA_COMMERCIALE"
+              i18n-prefix="vendite.componenti.panel"
+              @changed="reload"
+            />
+          </template>
+
+          <FormFooter
             :loading="loading"
             :disabled="!canSave"
             @save="handleSave"
@@ -598,8 +756,22 @@ const onClose = useDrawerClose(emit)
           />
         </template>
 
-        <DrawerFooter v-else close-only @cancel="onClose" />
+        <FormFooter v-else close-only @cancel="onClose" />
       </template>
     </div>
+
+    <!-- ComponentiDialog modale: pre-popola i prezzi BoM PRIMA del save
+         di una eccezione padre composita. La conferma alimenta
+         `componentiPayload`; il save include `componenti_overrides`. -->
+    <ComponentiDialog
+      v-model:visible="componentiDialogVisible"
+      :articolo="form.articolo_obj"
+      :documento-id="props.offertaId"
+      :uom-operativa-id="form.uom_operativa_id"
+      :quantita="form.quantita"
+      :api-preview="previewEccezioneComponenti"
+      :initial-payload="componentiPayload"
+      @confirm="onComponentiConfirm"
+    />
   </Drawer>
 </template>

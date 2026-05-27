@@ -49,6 +49,7 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "valido_al": "c.valido_al",
     "ba_codice": "ba.codice",
     "ba_ragione_sociale": "ba.ragione_sociale",
+    "id_fiscale": "srd.id_fiscale_univoco_cf_piva",
     "stato_codice": "sd.codice_interno",
     "categoria_cliente_snapshot_codice": "cc_snap.codice",
     "data_insert": "c.data_insert",
@@ -72,6 +73,11 @@ _SELECT_COLS_CONTRATTO = """
     c.billing_account_id,
     srd.ragione_sociale_completa AS ba_ragione_sociale,
     ba.codice AS ba_codice,
+    -- ID fiscale univoco del soggetto del BA (CF persona fisica o P.IVA).
+    -- Esposto dalla vista `anagrafiche.vw_soggetti_ruoli_dettaglio`. Allinea
+    -- offerte/preventivi: colonna visibile nella lista per
+    -- ricerca/confronto rapido del cliente.
+    srd.id_fiscale_univoco_cf_piva AS id_fiscale,
     c.istanza_utility_id,
     c.utility_id,
     u.codice AS utility_codice,

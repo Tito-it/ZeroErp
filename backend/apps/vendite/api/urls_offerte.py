@@ -19,8 +19,11 @@ from apps.vendite.api.views_offerte import (
     ApiOffertaAnnulla,
     ApiOffertaCreaRevisione,
     ApiOffertaDetail,
+    ApiOffertaEccezioneComponenteDetail,
+    ApiOffertaEccezioneComponentiList,
     ApiOffertaEccezioneDetail,
     ApiOffertaEccezioni,
+    ApiOffertaEccezionePreviewComponenti,
     ApiOffertaEmetti,
     ApiOffertaPushContratto,
     ApiOffertaRegistraEsito,
@@ -81,6 +84,22 @@ urlpatterns = [
         "<int:offerta_id>/eccezioni/<int:eccezione_id>/",
         ApiOffertaEccezioneDetail.as_view(),
         name="vendite-offerta-eccezione-detail",
+    ),
+    # Componenti BoM eccezione (mirror contratti, simmetria 2026-05-26).
+    path(
+        "<int:offerta_id>/eccezioni/preview-componenti/",
+        ApiOffertaEccezionePreviewComponenti.as_view(),
+        name="vendite-offerta-eccezioni-preview-componenti",
+    ),
+    path(
+        "<int:offerta_id>/eccezioni/<int:eccezione_id>/componenti/",
+        ApiOffertaEccezioneComponentiList.as_view(),
+        name="vendite-offerta-eccezione-componenti-list",
+    ),
+    path(
+        "<int:offerta_id>/eccezioni/<int:eccezione_id>/componenti/<int:componente_id>/",
+        ApiOffertaEccezioneComponenteDetail.as_view(),
+        name="vendite-offerta-eccezione-componente-detail",
     ),
     # Utility 1:1.
     path(

@@ -17,7 +17,7 @@ import { changeVersioneStato, updateVersione } from '../api/listini'
 import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
 import { DATE_FORMAT } from '../../core/constants'
 import Dialog from 'primevue/dialog'
-import Button from 'primevue/button'
+import FormFooter from '../../core/components/FormFooter.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
@@ -200,13 +200,12 @@ function close() {
     </template>
 
     <template #footer>
-      <Button :label="t('common.cancel')" text @click="close" :disabled="loading || updatingDate" />
-      <Button
-        :label="t('listini.conferma_attivazione')"
-        icon="pi pi-check"
+      <FormFooter
+        :save-label="t('listini.conferma_attivazione')"
         :loading="loading"
         :disabled="!preview || !!previewError || updatingDate"
-        @click="handleConfirm"
+        @cancel="close"
+        @save="handleConfirm"
       />
     </template>
   </Dialog>

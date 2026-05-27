@@ -10,7 +10,7 @@
 //        della state machine = OffertaDrawer.drawerActions computed.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Button from 'primevue/button'
+import FormFooter from '../../../../core/components/FormFooter.vue'
 import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
 import Textarea from 'primevue/textarea'
@@ -129,19 +129,12 @@ function onConfirm() {
     </Message>
 
     <template #footer>
-      <Button
-        :label="t('common.cancel')"
-        text
-        severity="secondary"
-        @click="emit('update:visible', false)"
-      />
-      <Button
-        :label="labelConferma"
-        :icon="iconaConferma"
-        :severity="severityConferma"
+      <FormFooter
+        :save-label="labelConferma"
         :loading="props.loading"
         :disabled="props.loading || !canConfirm"
-        @click="onConfirm"
+        @cancel="emit('update:visible', false)"
+        @save="onConfirm"
       />
     </template>
   </Dialog>

@@ -24,7 +24,7 @@ import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.v
 import AuthUserForm from '../../core/components/AuthUserForm.vue'
 import OperatorePermessiTab from './OperatorePermessiTab.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -443,7 +443,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
         <!-- Footer Salva/Annulla -->
         <div class="flex justify-end mt-4">
-          <DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+          <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
         </div>
       </TabPanel>
 
