@@ -59,7 +59,7 @@
 - [note_preventivo](tabelle/note_preventivo.md) — `vendite.note_preventivo` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [offerte_commerciali](tabelle/offerte_commerciali.md) — (rev 2026-05-24)
 - [offerte_commerciali_eccezioni](tabelle/offerte_commerciali_eccezioni.md) — (rev 2026-05-24)
-- [offerte_commerciali_eccezioni_componenti](tabelle/offerte_commerciali_eccezioni_componenti.md)
+- [offerte_commerciali_eccezioni_componenti](tabelle/offerte_commerciali_eccezioni_componenti.md) — (rev 2026-05-26)
 - [offerte_commerciali_utilities](tabelle/offerte_commerciali_utilities.md) — (rev 2026-05-24)
 - [ordini](tabelle/ordini.md) — La tabella **`vendite.ordini`** rappresenta la **testata dell’ordine di vendita**, documento commerciale preliminare che raccoglie le condizioni di vendita, spedizione e pagamento concordate con il cliente.   È il punto di partenza del ciclo attivo, destinato a generare documenti successivi (DDT, fatture, contratti di fornitura).
 - [ordini_indirizzi](tabelle/ordini_indirizzi.md) — `vendite.ordini_indirizzi` memorizza gli **indirizzi associati alla testata ordine** come **snapshot JSON** al momento dell’inserimento/conferma. Per ciascun ordine è ammesso **al massimo un indirizzo per tipo** (es. *spedizione*, *fornitura*, *residenza*), garantito da `UNIQUE(ordine_id, tipo_indirizzo_id)`.
@@ -140,7 +140,7 @@
 - [fn_prepare_sdi_payload](funzioni/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
 - [fn_preventivo_riga_componenti_init](funzioni/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](funzioni/fn_preventivo_riga_componenti_preview.md)
-- [fn_push_offerta_a_contratto](funzioni/fn_push_offerta_a_contratto.md) — (rev 2026-05-26 — aggiunto `emittente_fiscale_id`)
+- [fn_push_offerta_a_contratto](funzioni/fn_push_offerta_a_contratto.md) — (rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 - [fn_reset_fondi_fattura](funzioni/fn_reset_fondi_fattura.md) — La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura applicati ad una **fattura figlia**:
 - [fn_reset_lotto_draft](funzioni/fn_reset_lotto_draft.md) — (latest review 09-02-2026)   La funzione **`vendite.fn_reset_lotto_draft()`** effettua il **rollback tecnico** di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati dal draft e ripristinando le righe di `attivita_fatturabili`.
 - [fn_reset_lotto_fattura_draft](funzioni/fn_reset_lotto_fattura_draft.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_reset_lotto_fattura_draft()`** effettua il reset tecnico di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**, senza annullare il lotto.

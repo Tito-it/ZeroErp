@@ -59,6 +59,7 @@
 - [note_preventivo](manual/note_preventivo.md) — `vendite.note_preventivo` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [offerte_commerciali](manual/offerte_commerciali.md) — (rev 2026-05-24)
 - [offerte_commerciali_eccezioni](manual/offerte_commerciali_eccezioni.md) — (rev 2026-05-24)
+- [offerte_commerciali_eccezioni_componenti](manual/offerte_commerciali_eccezioni_componenti.md) — (rev 2026-05-26)
 - [offerte_commerciali_utilities](manual/offerte_commerciali_utilities.md) — (rev 2026-05-24)
 - [ordini](manual/ordini.md) — La tabella **`vendite.ordini`** rappresenta la **testata dell’ordine di vendita**, documento commerciale preliminare che raccoglie le condizioni di vendita, spedizione e pagamento concordate con il cliente.   È il punto di partenza del ciclo attivo, destinato a generare documenti successivi (DDT, fatture, contratti di fornitura).
 - [ordini_indirizzi](manual/ordini_indirizzi.md) — `vendite.ordini_indirizzi` memorizza gli **indirizzi associati alla testata ordine** come **snapshot JSON** al momento dell’inserimento/conferma. Per ciascun ordine è ammesso **al massimo un indirizzo per tipo** (es. *spedizione*, *fornitura*, *residenza*), garantito da `UNIQUE(ordine_id, tipo_indirizzo_id)`.
@@ -130,12 +131,14 @@
 - [fn_log_lotto_esito_fatture](manual/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.
 - [fn_log_pipeline_fase](manual/fn_log_pipeline_fase.md) — (latest review 28-01-2026)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
 - [fn_numera_fattura_opz_emessa](manual/fn_numera_fattura_opz_emessa.md) — (latest review 09-02-2026) La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento **EMESSA** usando `codice_interno`.
+- [fn_offerta_eccezione_componenti_init](manual/fn_offerta_eccezione_componenti_init.md)
+- [fn_offerta_eccezione_componenti_preview](manual/fn_offerta_eccezione_componenti_preview.md)
 - [fn_ordine_riga_componenti_init](manual/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](manual/fn_ordine_riga_componenti_preview.md)
 - [fn_prepare_sdi_payload](manual/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
 - [fn_preventivo_riga_componenti_init](manual/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](manual/fn_preventivo_riga_componenti_preview.md)
-- [fn_push_offerta_a_contratto](manual/fn_push_offerta_a_contratto.md) — (rev 2026-05-26 — aggiunto `emittente_fiscale_id`)
+- [fn_push_offerta_a_contratto](manual/fn_push_offerta_a_contratto.md) — (rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 - [fn_reset_fondi_fattura](manual/fn_reset_fondi_fattura.md) — La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura applicati ad una **fattura figlia**:
 - [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — (latest review 09-02-2026)   La funzione **`vendite.fn_reset_lotto_draft()`** effettua il **rollback tecnico** di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati dal draft e ripristinando le righe di `attivita_fatturabili`.
 - [fn_reset_lotto_fattura_draft](manual/fn_reset_lotto_fattura_draft.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_reset_lotto_fattura_draft()`** effettua il reset tecnico di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**, senza annullare il lotto.
