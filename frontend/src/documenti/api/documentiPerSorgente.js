@@ -46,6 +46,30 @@ function buildSorgenteClient(basePathFn) {
         { responseType: 'blob' },
       )
     },
+
+    // Scopo: Lista di tutti i file (principale + allegati) del documento.
+    listFiles(sorgenteId, documentoId) {
+      return api.get(`${basePathFn(sorgenteId)}/${documentoId}/allegati/`)
+    },
+
+    // Scopo: Aggiunge allegati (file secondari) a un documento gia' generato
+    //        (modalita' append). `formData` contiene i file sotto `allegati`.
+    aggiungiAllegati(sorgenteId, documentoId, formData) {
+      return api.post(
+        `${basePathFn(sorgenteId)}/${documentoId}/allegati/`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      )
+    },
+
+    // Scopo: Download di uno specifico file del documento per id (principale
+    //        o allegato). Risposta binaria.
+    downloadFile(sorgenteId, documentoId, fileId) {
+      return api.get(
+        `${basePathFn(sorgenteId)}/${documentoId}/file/${fileId}/`,
+        { responseType: 'blob' },
+      )
+    },
   }
 }
 
@@ -59,4 +83,12 @@ export const preventivoDocumenti = buildSorgenteClient(
 // `apps/vendite/api/urls_contratti.py`.
 export const contrattoDocumenti = buildSorgenteClient(
   (contrattoId) => `/vendite/contratti/${contrattoId}/documenti`,
+)
+
+// Client per documenti di un'OFFERTA_COMMERCIALE. Path coerente con
+// `apps/vendite/api/urls_offerte.py`. Nota: la GENERAZIONE avviene
+// tramite l'endpoint `emetti/` (multipart) del dominio offerta, non via
+// `genera`; qui restano anteprima/lista/download/allegati.
+export const offertaDocumenti = buildSorgenteClient(
+  (offertaId) => `/vendite/offerte/${offertaId}/documenti`,
 )

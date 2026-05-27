@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Widget assistente AI — pannello flottante ancorato in basso a destra.
 //        Non modale: l'utente continua a lavorare con il widget aperto.
-import { ref, nextTick, watch, computed } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
@@ -11,7 +11,7 @@ import { useAiStore } from '../../stores/ai'
 
 const { t } = useI18n()
 
-const props = defineProps({
+defineProps({
   visible: { type: Boolean, required: true }
 })
 const emit = defineEmits(['update:visible'])
@@ -19,7 +19,7 @@ const emit = defineEmits(['update:visible'])
 // State reattivo tramite storeToRefs (la destructuring diretta perderebbe
 // la reattivita'). Le action possono essere destrutturate normalmente.
 const aiStore = useAiStore()
-const { messages, loading, pendingConfirmation } = storeToRefs(aiStore)
+const { messages, loading } = storeToRefs(aiStore)
 const {
   sendMessage, confirmOperation, cancelOperation,
   executeAction, clearConversation

@@ -83,16 +83,6 @@ function openEdit(row) {
   drawer.editRow(row, 'id')
 }
 
-function openBA(row, event) {
-  event.stopPropagation()
-  baDrawer.editRow(row, 'id')
-}
-
-function openUtilities(row, event) {
-  event.stopPropagation()
-  utDrawer.editRow(row, 'id')
-}
-
 // Scopo: azioni di riga emittente fiscale (sub-drawer BA + utilities).
 function buildRowActions(data) {
   return [

@@ -23,7 +23,7 @@ import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 
 const { t } = useI18n()
-const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE)
+useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE)
 const indDrawer = useDrawerState()
 const topoDrawer = useDrawerState()
 const comuneDrawer = useDrawerState()

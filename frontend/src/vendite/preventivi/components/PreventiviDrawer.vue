@@ -12,7 +12,6 @@ import { useEntityCapabilities } from '../../../core/composables/useEntityCapabi
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
 import { STATO_PREVENTIVO } from '../../constants'
 import { addDaysToToday, displayDate, toDateString } from '../../../core/utils/date'
-import { formatCurrency } from '../../../core/utils/format'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
@@ -37,11 +36,10 @@ import PreventivoPdfButton from './PreventivoPdfButton.vue'
 import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import Drawer from 'primevue/drawer'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../../core/components/AppDialog.vue'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
 
@@ -793,9 +791,7 @@ const drawerActions = computed(() => {
         <DrawerActionsBar :actions="drawerActions">
           <template #suffix>
             <PreventivoPdfButton
-              v-if="detail.emittente_fiscale_id"
               :preventivo-id="effectivePreventivoId"
-              :emittente-fiscale-id="detail.emittente_fiscale_id"
               :stato-codice="detail.stato_codice_interno"
             />
           </template>
@@ -918,8 +914,11 @@ const drawerActions = computed(() => {
        Richiede modalita' di fatturazione: toggle immediata + datepicker mese
        di competenza. Regola di priorita' (BE+FE): immediata=true forza
        competenza al mese corrente. -->
-  <Dialog v-model:visible="acceptDialogVisible" modal :closable="false"
-    :header="t('preventivi.accetta_titolo')" :style="{ width: '420px' }">
+  <AppDialog v-model:visible="acceptDialogVisible" :closable="false"
+    :header="t('preventivi.accetta_titolo')" width="sm"
+    :save-label="t('preventivi.accetta_conferma')"
+    :save-disabled="!acceptForm.fatturazione_immediata && !acceptForm.competenza_mese"
+    @save="confirmAcceptDialog">
     <p style="margin: 0 0 1rem 0; color: var(--text-color-secondary);">
       {{ t('preventivi.accetta_descrizione') }}
     </p>
@@ -940,14 +939,6 @@ const drawerActions = computed(() => {
         </small>
       </div>
     </div>
-    <template #footer>
-      <FormFooter
-        :save-label="t('preventivi.accetta_conferma')"
-        :disabled="!acceptForm.fatturazione_immediata && !acceptForm.competenza_mese"
-        @cancel="acceptDialogVisible = false"
-        @save="confirmAcceptDialog"
-      />
-    </template>
-  </Dialog>
+  </AppDialog>
 </template>
 

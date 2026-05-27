@@ -208,7 +208,7 @@ watch(() => props.emittenteId, async (id) => {
   for (const k of Object.keys(editing)) delete editing[k]
   try {
     await store.fetchUtilitiesRecords(id)
-  } catch (e) {
+  } catch {
     store.clearUtilitiesRecords()
   }
 }, { immediate: true })

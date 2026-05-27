@@ -6,8 +6,7 @@
 //        Il default `is_default=true` viene preselezionato all'apertura.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Dialog from 'primevue/dialog'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDialog from '../../core/components/AppDialog.vue'
 import Listbox from 'primevue/listbox'
 import Tag from 'primevue/tag'
 
@@ -38,20 +37,19 @@ function confirm() {
   if (!canConfirm.value) return
   emit('select', selectedId.value)
 }
-
-function close() {
-  emit('update:visible', false)
-  emit('cancel')
-}
 </script>
 
 <template>
-  <Dialog
+  <AppDialog
     :visible="visible"
     @update:visible="v => emit('update:visible', v)"
+    @cancel="emit('cancel')"
     :header="t('documenti.scelta_template.title')"
-    :style="{ width: '520px' }"
-    modal
+    width="md"
+    :loading="loading"
+    :save-disabled="!canConfirm"
+    :save-label="t('documenti.scelta_template.confirm')"
+    @save="confirm"
   >
     <p class="text-color-secondary mb-1">
       {{ t('documenti.scelta_template.subtitle') }}
@@ -84,15 +82,5 @@ function close() {
         </div>
       </template>
     </Listbox>
-
-    <template #footer>
-      <FormFooter
-        :save-label="t('documenti.scelta_template.confirm')"
-        :loading="loading"
-        :disabled="!canConfirm"
-        @cancel="close"
-        @save="confirm"
-      />
-    </template>
-  </Dialog>
+  </AppDialog>
 </template>

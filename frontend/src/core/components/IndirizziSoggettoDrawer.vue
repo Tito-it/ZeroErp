@@ -14,7 +14,7 @@ import {
   listSoggettoIndirizzi, createSoggettoIndirizzo, replaceSoggettoIndirizzo,
   listRuoloIndirizzi, createRuoloIndirizzo, deleteRuoloIndirizzo
 } from '../../anagrafiche/api/anagrafiche'
-import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo, lookupCodici } from '../apiCore'
+import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo } from '../apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { NAV_ICONS } from '../navigation'
 import { sortByFonte } from '../utils/string'

@@ -156,7 +156,7 @@ watch(() => props.visible, async (val) => {
         detail.value = d
         populateFormFromDetail(d)
       }
-    } catch (e) {
+    } catch {
       // Errori di rete/API gestiti dall'interceptor axios globale
       detail.value = null
     }

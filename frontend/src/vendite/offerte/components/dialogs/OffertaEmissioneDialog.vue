@@ -1,17 +1,18 @@
 <script setup>
-// Scopo: Dialog di conferma emissione offerta (BOZZA -> EMESSA).
-//        Mostra riepilogo listino+versione+validita+eccezioni count.
-//        Il trigger DB enforce: listino_versione_id NOT NULL + versione
-//        ATTIVA al momento dell'emissione. Avviso parlante se manca.
+// Scopo: Dialog di emissione offerta (BOZZA -> EMESSA). Wrapper sottile sul
+//        building block generico `DocumentoEmissioneDialog` (modalita'
+//        advances-state): mostra l'anteprima del documento che verra'
+//        generato + consente di allegare file; alla Conferma il parent
+//        chiama l'endpoint emetti multipart (emetti + genera + allegati,
+//        atomico). Il riepilogo specifico offerta (listino/versione/
+//        eccezioni) vive nello slot `#riepilogo`.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import FormFooter from '../../../../core/components/FormFooter.vue'
-import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
-
+import DocumentoEmissioneDialog from '../../../../documenti/components/DocumentoEmissioneDialog.vue'
 import { displayDate } from '../../../../core/utils/date'
 
-const { t } = useI18n()
+const SORGENTE_CODE = 'OFFERTA_COMMERCIALE'
 
 const props = defineProps({
   visible: Boolean,
@@ -19,6 +20,8 @@ const props = defineProps({
   loading: Boolean,
 })
 const emit = defineEmits(['update:visible', 'confirm'])
+
+const { t } = useI18n()
 
 const versioneListinoMancante = computed(
   () => !props.offerta?.listino_versione_id,
@@ -29,61 +32,58 @@ const eccezioniCount = computed(
 </script>
 
 <template>
-  <Dialog
+  <DocumentoEmissioneDialog
     :visible="props.visible"
-    modal
+    :sorgente-code="SORGENTE_CODE"
+    :sorgente-id="props.offerta?.id ?? null"
+    advances-state
     :header="t('vendite.offerte.emissione_titolo')"
-    :style="{ width: '480px' }"
+    :confirm-label="t('vendite.offerte.emissione_conferma')"
+    :loading="props.loading"
+    :confirm-disabled="versioneListinoMancante"
     @update:visible="(val) => emit('update:visible', val)"
+    @confirm="(payload) => emit('confirm', payload)"
   >
-    <p>{{ t('vendite.offerte.emissione_messaggio') }}</p>
+    <template #riepilogo>
+      <p>{{ t('vendite.offerte.emissione_messaggio') }}</p>
 
-    <div v-if="offerta" style="margin: 1rem 0; display: flex; flex-direction: column; gap: 0.4rem;">
-      <div>
-        <strong>{{ t('vendite.offerte.field_listino') }}:</strong>
-        {{ offerta.listino_codice || '—' }}
-        <span v-if="offerta.listino_versione_codice" class="text-color-secondary">
-          · v{{ offerta.listino_versione_codice }}
-        </span>
+      <div v-if="offerta" style="margin: 0.5rem 0; display: flex; flex-direction: column; gap: 0.4rem;">
+        <div>
+          <strong>{{ t('vendite.offerte.field_listino') }}:</strong>
+          {{ offerta.listino_codice || '—' }}
+          <span v-if="offerta.listino_versione_codice" class="text-color-secondary">
+            · v{{ offerta.listino_versione_codice }}
+          </span>
+        </div>
+        <div>
+          <strong>{{ t('vendite.offerte.field_validita_dal') }}:</strong>
+          {{ displayDate(offerta.validita_dal) }}
+          <span v-if="offerta.validita_al">
+            → {{ displayDate(offerta.validita_al) }}
+          </span>
+        </div>
+        <div>
+          <strong>{{ t('vendite.offerte.col_eccezioni') }}:</strong>
+          {{ eccezioniCount }}
+        </div>
       </div>
-      <div>
-        <strong>{{ t('vendite.offerte.field_validita_dal') }}:</strong>
-        {{ displayDate(offerta.validita_dal) }}
-        <span v-if="offerta.validita_al">
-          → {{ displayDate(offerta.validita_al) }}
-        </span>
-      </div>
-      <div>
-        <strong>{{ t('vendite.offerte.col_eccezioni') }}:</strong>
-        {{ eccezioniCount }}
-      </div>
-    </div>
 
-    <Message
-      v-if="versioneListinoMancante"
-      severity="warn"
-      :closable="false"
-      size="small"
-    >
-      {{ t('vendite.offerte.emissione_warn_versione_mancante') }}
-    </Message>
-    <Message
-      v-else
-      severity="info"
-      :closable="false"
-      size="small"
-    >
-      {{ t('vendite.offerte.emissione_info') }}
-    </Message>
-
-    <template #footer>
-      <FormFooter
-        :save-label="t('vendite.offerte.emissione_conferma')"
-        :loading="props.loading"
-        :disabled="props.loading"
-        @cancel="emit('update:visible', false)"
-        @save="emit('confirm')"
-      />
+      <Message
+        v-if="versioneListinoMancante"
+        severity="warn"
+        :closable="false"
+        size="small"
+      >
+        {{ t('vendite.offerte.emissione_warn_versione_mancante') }}
+      </Message>
+      <Message
+        v-else
+        severity="info"
+        :closable="false"
+        size="small"
+      >
+        {{ t('vendite.offerte.emissione_info') }}
+      </Message>
     </template>
-  </Dialog>
+  </DocumentoEmissioneDialog>
 </template>

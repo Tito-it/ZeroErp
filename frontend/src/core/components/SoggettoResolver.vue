@@ -7,11 +7,10 @@ import { ref, watch, computed, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { listSoggetti, getConfigResolver, listSoggettoContatti } from '../../anagrafiche/api/anagrafiche'
-import { useDrawerClose } from '../composables/useDrawerClose'
 import SoggettoDrawer from '../../anagrafiche/components/SoggettoDrawer.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
-import AutoComplete from 'primevue/autocomplete'
+import InputText from 'primevue/inputtext'
 import SoggettoMessageBanner from './SoggettoMessageBanner.vue'
 import Button from 'primevue/button'
 
@@ -31,17 +30,26 @@ const configLoading = ref(false)
 // Sotto-drawer creazione soggetto (delega a SoggettoDrawer)
 const creaDrawerVisible = ref(false)
 
-// Ricerca soggetti — implementazione diretta per compatibilita' PrimeVue AutoComplete
+// Ricerca soggetti — risultati resi come lista INLINE nel drawer (no overlay):
+// un AutoComplete flottante dentro un Drawer PrimeVue confligge col focus-trap
+// e il pannello si chiude al primo movimento del mouse. La lista inline non si
+// chiude mai e resta selezionabile.
 const searchQuery = ref('')
 const suggestions = ref([])
 const searchLoading = ref(false)
+const searched = ref(false)
 let debounceTimer = null
 
-async function onSearch({ query }) {
+// Scopo: lunghezza minima query (data-driven dal config-resolver, default 3).
+const minSearchLength = computed(() => configResolver.value?.min_search_length ?? 3)
+
+// Scopo: ricerca debounced su input testo; popola `suggestions` per la lista inline.
+function onSearchInput() {
   clearTimeout(debounceTimer)
-  const minLen = configResolver.value?.min_search_length ?? 3
-  if (!query || query.length < minLen) {
+  const query = searchQuery.value
+  if (!query || query.length < minSearchLength.value) {
     suggestions.value = []
+    searched.value = false
     return
   }
   searchLoading.value = true
@@ -62,6 +70,7 @@ async function onSearch({ query }) {
       suggestions.value = []
     } finally {
       searchLoading.value = false
+      searched.value = true
     }
   }, 300)
 }
@@ -89,6 +98,7 @@ watch(() => props.visible, async (val) => {
   selectedSoggetto.value = null
   searchQuery.value = ''
   suggestions.value = []
+  searched.value = false
 
   configLoading.value = true
   try {
@@ -105,13 +115,11 @@ watch(() => props.visible, async (val) => {
   }
 })
 
-function onSoggettoSelect(event) {
-  const s = event.value
-  if (!s || s._naturaBloccata) {
-    selectedSoggetto.value = null
-    return
-  }
-  // _ruoloDuplicato: avviso, non blocco — lo stesso soggetto puo' avere piu' istanze
+// Scopo: selezione di una riga della lista inline. Natura bloccata = non
+// selezionabile; ruolo duplicato = solo avviso (lo stesso soggetto puo' avere
+// piu' istanze dello stesso ruolo).
+function onPick(s) {
+  if (!s || s._naturaBloccata) return
   selectedSoggetto.value = s
 }
 
@@ -153,7 +161,6 @@ async function onSoggettoCreatoDaDrawer(data) {
   emit('update:visible', false)
 }
 
-const onClose = useDrawerClose(emit, 'annullato')
 </script>
 
 <template>
@@ -174,41 +181,55 @@ const onClose = useDrawerClose(emit, 'annullato')
     <div class="app-drawer-content">
       <div class="form-field mb-3">
         <label>{{ t('resolver.search_label') }}</label>
-        <AutoComplete
-          v-model="searchQuery"
-          :suggestions="suggestions"
-          :loading="searchLoading || configLoading"
-          :min-length="configResolver?.min_search_length ?? 3"
-          :placeholder="t('resolver.search_placeholder')"
-          option-label="ragione_sociale_completa"
-          :force-selection="false"
-          append-to="self"
-          :panel-style="{ width: '100%', minWidth: '400px' }"
-          class="w-full"
-          @complete="onSearch"
-          @item-select="onSoggettoSelect"
-        >
-          <template #option="{ option }">
-            <div class="resolver-suggestion" :class="{ 'resolver-blocked': option._naturaBloccata }">
-              <div class="resolver-suggestion-name">
-                <strong>{{ option.ragione_sociale_completa }}</strong>
-                <span class="resolver-suggestion-tipo">{{ option.tipo_descrizione }}</span>
-              </div>
-              <div class="resolver-suggestion-detail">
-                <span v-if="option.codice_fiscale">CF: {{ option.codice_fiscale }}</span>
-                <span v-if="option.partita_iva" class="ml-2">P.IVA: {{ option.partita_iva }}</span>
-              </div>
-              <div v-if="option._ruoloDuplicato" class="resolver-warning">
-                <i class="pi pi-exclamation-triangle" />
-                {{ t('resolver.already_role', { ruolo: option._ruoloDescrizione || tipoRuoloCodice }) }}
-              </div>
-              <div v-else-if="option._naturaBloccata" class="resolver-warning">
-                <i class="pi pi-ban" />
-                {{ t('resolver.natura_blocked') }}
-              </div>
+        <span class="p-input-icon-right resolver-search">
+          <InputText
+            v-model="searchQuery"
+            :placeholder="t('resolver.search_placeholder')"
+            class="w-full"
+            autofocus
+            @input="onSearchInput"
+          />
+          <i v-if="searchLoading || configLoading" class="pi pi-spin pi-spinner resolver-search-icon" />
+        </span>
+
+        <!-- Risultati INLINE: nessun overlay, l'elenco resta aperto e selezionabile -->
+        <ul v-if="suggestions.length" class="resolver-results" role="listbox">
+          <li
+            v-for="option in suggestions"
+            :key="option.id"
+            class="resolver-suggestion"
+            :class="{
+              'resolver-blocked': option._naturaBloccata,
+              'resolver-picked': selectedSoggetto && selectedSoggetto.id === option.id
+            }"
+            role="option"
+            :aria-selected="selectedSoggetto && selectedSoggetto.id === option.id"
+            @click="onPick(option)"
+          >
+            <div class="resolver-suggestion-name">
+              <strong>{{ option.ragione_sociale_completa }}</strong>
+              <span class="resolver-suggestion-tipo">{{ option.tipo_descrizione }}</span>
             </div>
-          </template>
-        </AutoComplete>
+            <div class="resolver-suggestion-detail">
+              <span v-if="option.codice_fiscale">CF: {{ option.codice_fiscale }}</span>
+              <span v-if="option.partita_iva" class="ml-2">P.IVA: {{ option.partita_iva }}</span>
+            </div>
+            <div v-if="option._ruoloDuplicato" class="resolver-warning">
+              <i class="pi pi-exclamation-triangle" />
+              {{ t('resolver.already_role', { ruolo: option._ruoloDescrizione || tipoRuoloCodice }) }}
+            </div>
+            <div v-else-if="option._naturaBloccata" class="resolver-warning">
+              <i class="pi pi-ban" />
+              {{ t('resolver.natura_blocked') }}
+            </div>
+          </li>
+        </ul>
+        <small
+          v-else-if="searched && !searchLoading && searchQuery.length >= minSearchLength"
+          class="resolver-empty"
+        >
+          {{ t('resolver.no_results') }}
+        </small>
       </div>
 
       <!-- Soggetto selezionato -->
@@ -243,13 +264,49 @@ const onClose = useDrawerClose(emit, 'annullato')
 </template>
 
 <style scoped>
-/* Input ricerca: occupa tutta la larghezza disponibile */
-:deep(.p-autocomplete-input) {
-  width: 100%;
+/* Campo ricerca: input full-width con spinner a destra */
+.resolver-search {
+  position: relative;
+  display: block;
+}
+.resolver-search-icon {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--app-text-muted);
+}
+
+/* Lista risultati inline (sostituisce l'overlay AutoComplete) */
+.resolver-results {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--app-drawer-section-border);
+  border-radius: 6px;
 }
 
 .resolver-suggestion {
-  padding: 0.35rem 0;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--app-drawer-section-border);
+}
+.resolver-suggestion:last-child {
+  border-bottom: none;
+}
+.resolver-suggestion:hover {
+  background: var(--app-card-hover-bg);
+}
+.resolver-picked {
+  background: var(--app-card-hover-bg);
+  box-shadow: inset 3px 0 0 0 var(--p-primary-color);
+}
+.resolver-empty {
+  display: block;
+  margin-top: 0.5rem;
+  color: var(--app-text-muted);
 }
 
 .resolver-suggestion-name {
@@ -272,6 +329,9 @@ const onClose = useDrawerClose(emit, 'annullato')
 .resolver-blocked {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.resolver-blocked:hover {
+  background: transparent;
 }
 
 .resolver-warning {

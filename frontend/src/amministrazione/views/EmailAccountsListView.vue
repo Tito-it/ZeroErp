@@ -12,7 +12,6 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
-import SearchHint from '../../core/components/SearchHint.vue'
 import EmailAccountDrawer from '../components/EmailAccountDrawer.vue'
 
 const { t } = useI18n()

@@ -59,7 +59,6 @@ export function useArticoloUomOptions() {
       // Best-effort: errore di rete o 5xx -> combo vuota, no toast (il caller
       // puo' propagarlo se serve). Log per debug: senza questo, una combo che
       // resta vuota in produzione non lascia traccia in console.
-      // eslint-disable-next-line no-console
       console.warn('[useArticoloUomOptions] loadUomPerArticolo failed', { articoloId, err })
       if (tk === _fetchToken) uomOptions.value = []
       return []

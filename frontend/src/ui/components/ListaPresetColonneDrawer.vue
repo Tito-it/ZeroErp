@@ -230,7 +230,7 @@ function onCancel() {
         scroll-height="flex"
       >
         <Column field="ordine" :header="t('ui_admin.composizione_col_ordine')" style="width: 90px">
-          <template #body="{ data, index }">
+          <template #body="{ index }">
             <div class="ordine-actions">
               <Button
                 icon="pi pi-chevron-up"

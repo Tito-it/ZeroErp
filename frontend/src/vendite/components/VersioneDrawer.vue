@@ -27,7 +27,7 @@ import {
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
 import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
 import { useListiniRigheStore } from '../stores/listiniRighe'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS } from '../../core/constants'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'

@@ -18,8 +18,11 @@ import ComuneAutocomplete from './ComuneAutocomplete.vue'
 
 const { t } = useI18n()
 
+// Form reattivo del padre via defineModel: il figlio muta `form.value.xxx`
+// (oggetto condiviso per riferimento), senza violare no-mutating-props.
+const form = defineModel('form', { type: Object, required: true })
+
 const props = defineProps({
-  form: { type: Object, required: true },
   tipiSoggetto: { type: Object, required: true },
   isPF: { type: Boolean, default: true },
   showPartitaIva: { type: Boolean, default: false },
@@ -51,11 +54,11 @@ const sessoOptions = [
 // nonEditableFields === [...] → backend ha indicato i campi bloccati.
 const cfDisabled = computed(() => {
   if (props.nonEditableFields !== null) return props.nonEditableFields.includes('codice_fiscale')
-  return props.isEdit && !!props.form.codice_fiscale?.trim()
+  return props.isEdit && !!form.value.codice_fiscale?.trim()
 })
 const pivaDisabled = computed(() => {
   if (props.nonEditableFields !== null) return props.nonEditableFields.includes('partita_iva')
-  return props.isEdit && !!props.form.partita_iva?.trim()
+  return props.isEdit && !!form.value.partita_iva?.trim()
 })
 
 // Tipo soggetto filtrato: per ids ammessi (resolver) o tipi_modificabili_ids (edit, backend-driven).
@@ -77,7 +80,7 @@ const tipiSoggettoFiltrati = computed(() => {
     }
   }
   // Fallback compat: filtro per natura compatibile (vecchia logica)
-  const current = props.tipiSoggetto.items.value.find(t => t.id === props.form.tipo_soggetto_dettaglio_id)
+  const current = props.tipiSoggetto.items.value.find(t => t.id === form.value.tipo_soggetto_dettaglio_id)
   if (!current) return props.tipiSoggetto
   const naturaCorrente = current.natura_soggetto
   return {
@@ -90,11 +93,11 @@ const tipiSoggettoFiltrati = computed(() => {
 const cfLoading = ref(false)
 const canGeneraCF = computed(() =>
   props.isPF
-  && props.form.cognome?.trim()
-  && props.form.nome?.trim()
-  && props.form.sesso
-  && props.form.data_nascita
-  && props.form.comune_nascita_id
+  && form.value.cognome?.trim()
+  && form.value.nome?.trim()
+  && form.value.sesso
+  && form.value.data_nascita
+  && form.value.comune_nascita_id
   && !props.disabled
 )
 
@@ -103,13 +106,13 @@ async function onGeneraCF() {
   cfLoading.value = true
   try {
     const res = await generaCF({
-      cognome: props.form.cognome.trim(),
-      nome: props.form.nome.trim(),
-      sesso: props.form.sesso,
-      data_nascita: toDateString(props.form.data_nascita),
-      comune_nascita_id: props.form.comune_nascita_id,
+      cognome: form.value.cognome.trim(),
+      nome: form.value.nome.trim(),
+      sesso: form.value.sesso,
+      data_nascita: toDateString(form.value.data_nascita),
+      comune_nascita_id: form.value.comune_nascita_id,
     })
-    props.form.codice_fiscale = res.data.data.codice_fiscale
+    form.value.codice_fiscale = res.data.data.codice_fiscale
     onValidaCF()
   } catch {
     cfMessages.value = [{ severity: 'error', text: 'Errore generazione codice fiscale.' }]
@@ -123,14 +126,14 @@ const cfMessages = ref([])
 const pivaMessages = ref([])
 
 async function onValidaCF() {
-  const cf = (props.form.codice_fiscale || '').trim()
+  const cf = (form.value.codice_fiscale || '').trim()
   if (cf.length < 16) { cfMessages.value = []; return }
   try {
     const res = await validaCFPIVA({
       codice_fiscale: cf,
-      sesso: props.form.sesso || null,
-      data_nascita: toDateString(props.form.data_nascita),
-      comune_nascita_id: props.form.comune_nascita_id || null,
+      sesso: form.value.sesso || null,
+      data_nascita: toDateString(form.value.data_nascita),
+      comune_nascita_id: form.value.comune_nascita_id || null,
     })
     const data = res.data.data
     cfMessages.value = [
@@ -143,7 +146,7 @@ async function onValidaCF() {
 }
 
 async function onValidaPIVA() {
-  const piva = (props.form.partita_iva || '').trim()
+  const piva = (form.value.partita_iva || '').trim()
   if (piva.length < 11) { pivaMessages.value = []; return }
   try {
     const res = await validaCFPIVA({ partita_iva: piva })

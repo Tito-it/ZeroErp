@@ -10,7 +10,7 @@ import Select from 'primevue/select'
 import Message from 'primevue/message'
 import { useUiAdminStore } from '../stores/uiAdmin'
 
-const props = defineProps({
+defineProps({
   disabled: { type: Boolean, default: false },
 })
 

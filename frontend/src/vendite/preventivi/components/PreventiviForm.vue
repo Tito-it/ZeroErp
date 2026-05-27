@@ -15,12 +15,14 @@ import BillingAccountLookup from '../../../core/components/BillingAccountLookup.
 import IstanzaUtilityLookup from '../../../core/components/IstanzaUtilityLookup.vue'
 import EmittenteFiscaleField from '../../../core/components/EmittenteFiscaleField.vue'
 import DatePicker from 'primevue/datepicker'
-import InputNumber from 'primevue/inputnumber'
 
 const { t } = useI18n()
 
+// Form reattivo del padre via defineModel: il figlio muta `form.value.xxx`
+// (oggetto condiviso per riferimento), senza violare no-mutating-props.
+const form = defineModel('form', { type: Object, required: true })
+
 const props = defineProps({
-  form: { type: Object, required: true },
   isModificabile: { type: Boolean, default: true },
   nonEditableFields: { type: Array, default: () => [] },
   // Discrimina create vs edit per mostrare l'asterisco sui campi obbligatori
@@ -40,29 +42,30 @@ function isLocked(field) {
 }
 
 // Pattern coerente con ContrattoDrawer.onBaSelected: il BA risolve
-// utility/istanza in modo univoco. Mutiamo direttamente il form (props):
-// il PreventiviDrawer reagisce al watch su form.billing_account_id (chiama
+// utility/istanza in modo univoco. Mutiamo il form via defineModel
+// (form.value.*): resta lo stesso oggetto reattivo condiviso, quindi il
+// PreventiviDrawer reagisce al watch su form.billing_account_id (chiama
 // getPreventivoFormDefaults, vedi Fase 2.B4 + 2.F6).
 function onBaSelected(item) {
   if (!item) {
-    props.form.billing_account_id = null
-    props.form.billing_account_obj = null
-    props.form.istanza_utility_id = null
-    props.form.istanza_utility_obj = null
+    form.value.billing_account_id = null
+    form.value.billing_account_obj = null
+    form.value.istanza_utility_id = null
+    form.value.istanza_utility_obj = null
     return
   }
-  props.form.billing_account_id = item.id
-  props.form.billing_account_obj = item
-  props.form.istanza_utility_id = item.istanza_utility_id || null
+  form.value.billing_account_id = item.id
+  form.value.billing_account_obj = item
+  form.value.istanza_utility_id = item.istanza_utility_id || null
   // Quando il BA porta con se' un'istanza, l'_obj per il picker istanza non
   // viene popolato qui (sapremmo solo l'id, non i campi ricchi). Il picker
   // istanza in questo caso e' disabled e mostra "auto-derivata da BA".
-  props.form.istanza_utility_obj = null
+  form.value.istanza_utility_obj = null
   // Coerenza utility/BA: se l'operatore non aveva selezionato utility prima,
   // pre-compila quella del BA. Se era gia' valorizzata e diversa, lascia
   // intervenire BillingAccountLookup che gia' resetta il BA al cambio utility.
-  if (!props.form.utility_id && item.utility_id) {
-    props.form.utility_id = item.utility_id
+  if (!form.value.utility_id && item.utility_id) {
+    form.value.utility_id = item.utility_id
   }
 }
 
@@ -74,17 +77,17 @@ function onBaClear() {
 // non ha ancora un BA. La selezione popola id + obj nel form.
 function onIstanzaSelected(item) {
   if (!item) {
-    props.form.istanza_utility_id = null
-    props.form.istanza_utility_obj = null
+    form.value.istanza_utility_id = null
+    form.value.istanza_utility_obj = null
     return
   }
-  props.form.istanza_utility_id = item.id
-  props.form.istanza_utility_obj = item
+  form.value.istanza_utility_id = item.id
+  form.value.istanza_utility_obj = item
   // Coerenza utility/istanza: se utility non ancora valorizzata e l'istanza
   // dichiara una utility (via BA campione), pre-compila. Il picker stesso
   // gia' resetta la selezione su cambio utility incoerente.
-  if (!props.form.utility_id && item.utility_id) {
-    props.form.utility_id = item.utility_id
+  if (!form.value.utility_id && item.utility_id) {
+    form.value.utility_id = item.utility_id
   }
 }
 

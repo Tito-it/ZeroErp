@@ -10,8 +10,7 @@
 //        della state machine = OffertaDrawer.drawerActions computed.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import FormFooter from '../../../../core/components/FormFooter.vue'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../../../core/components/AppDialog.vue'
 import Message from 'primevue/message'
 import Textarea from 'primevue/textarea'
 
@@ -54,8 +53,11 @@ const messaggio = computed(() => {
   }
 })
 
-const severityConferma = computed(
-  () => props.modalita === 'ACCETTATA' ? 'success' : 'danger',
+// Conferma: primary (verde) su ACCETTATA, danger (rosso) sulle vie negative
+// (RIFIUTATA/ANNULLATA). L'icona resta il check standard (FormFooter); a
+// distinguere l'azione bastano colore + label.
+const saveSeverity = computed(
+  () => props.modalita === 'ACCETTATA' ? null : 'danger',
 )
 
 const labelConferma = computed(() => {
@@ -64,15 +66,6 @@ const labelConferma = computed(() => {
     case 'RIFIUTATA': return t('vendite.offerte.esito_rifiutata_conferma')
     case 'ANNULLATA': return t('vendite.offerte.esito_annullata_conferma')
     default: return ''
-  }
-})
-
-const iconaConferma = computed(() => {
-  switch (props.modalita) {
-    case 'ACCETTATA': return 'pi pi-check'
-    case 'RIFIUTATA': return 'pi pi-times'
-    case 'ANNULLATA': return 'pi pi-ban'
-    default: return 'pi pi-check'
   }
 })
 
@@ -90,12 +83,16 @@ function onConfirm() {
 </script>
 
 <template>
-  <Dialog
+  <AppDialog
     :visible="props.visible"
-    modal
     :header="titolo"
-    :style="{ width: '500px' }"
+    width="md"
+    :loading="props.loading"
+    :save-disabled="props.loading || !canConfirm"
+    :save-label="labelConferma"
+    :save-severity="saveSeverity"
     @update:visible="(val) => emit('update:visible', val)"
+    @save="onConfirm"
   >
     <p>{{ messaggio }}</p>
 
@@ -127,15 +124,5 @@ function onConfirm() {
     >
       {{ t('vendite.offerte.esito_warn_motivazione') }}
     </Message>
-
-    <template #footer>
-      <FormFooter
-        :save-label="labelConferma"
-        :loading="props.loading"
-        :disabled="props.loading || !canConfirm"
-        @cancel="emit('update:visible', false)"
-        @save="onConfirm"
-      />
-    </template>
-  </Dialog>
+  </AppDialog>
 </template>

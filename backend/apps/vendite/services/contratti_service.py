@@ -832,9 +832,13 @@ class ContrattiService:
     #        (analoga a listini-versioni, vedi feedback_stato_terminale_con_data):
     #          - valido_al obbligatorio (no cessazione "senza data")
     #          - valido_al >= valido_dal (anti CHK constraint DB)
-    #          - valido_al < CURRENT_DATE -> cessazione immediata: applica
-    #            entrambi PATCH+UPDATE in transazione atomica
-    #          - valido_al >= CURRENT_DATE -> CESSAZIONE PROGRAMMATA: applica
+    #          - valido_al < CURRENT_DATE -> VIETATO: cessazione retroattiva
+    #            rifiutata dal guard DB trgfn_contratti_guard_transizione_stato
+    #            (la UI blocca a monte con min-date = oggi).
+    #          - valido_al == CURRENT_DATE -> cessazione IMMEDIATA: applica
+    #            entrambi PATCH+UPDATE in transazione atomica (la data di fine
+    #            validita' = oggi conferma il passaggio a CESSATO).
+    #          - valido_al > CURRENT_DATE -> CESSAZIONE PROGRAMMATA: applica
     #            solo PATCH valido_al; lo stato resta ATTIVO. Il job
     #            notturno DB allineera' lo stato a CESSATO quando la data
     #            scade. Coerente con il principio "data = fonte di verita'
@@ -881,7 +885,8 @@ class ContrattiService:
         # Pre-validazione data-driven per CESSATO (regola fail-safe):
         # - valido_al obbligatorio
         # - valido_al >= valido_dal
-        # - se valido_al >= today -> cessazione programmata (no cambio stato)
+        # - se valido_al > today -> cessazione programmata (no cambio stato);
+        #   valido_al == today -> immediata (transizione a CESSATO)
         cessazione_programmata = False
         if codice_norm == "CESSATO":
             ErrorManager.require(
@@ -918,12 +923,15 @@ class ContrattiService:
                         "valido_dal": existing_valido_dal,
                     },
                 )
-            # Cessazione programmata: data >= oggi -> NON cambiamo lo stato.
-            # Applichiamo solo PATCH valido_al e lasciamo che il job notturno
-            # DB allinei lo stato quando la data scade. Speculare al guard
-            # DB che rifiuta la transizione ATTIVO->CESSATO con valido_al
-            # futuro (defense-in-depth, vedi brief team DB).
-            if valido_al >= date.today():
+            # Cessazione programmata: data STRETTAMENTE futura (> oggi) -> NON
+            # cambiamo lo stato. Applichiamo solo PATCH valido_al e lasciamo
+            # che il job notturno DB allinei lo stato quando la data scade.
+            # Data == oggi -> cessazione IMMEDIATA: transizione a CESSATO subito
+            # (il guard DB la ammette per valido_al >= CURRENT_DATE; e' la data
+            # di fine validita' a confermare). Data < oggi e' retroattiva e
+            # viene rifiutata dal guard DB `trgfn_contratti_guard_transizione_stato`
+            # (la UI la blocca gia' con min-date = oggi).
+            if valido_al > date.today():
                 cessazione_programmata = True
 
         with self._db_errors(

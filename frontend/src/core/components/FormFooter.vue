@@ -32,6 +32,11 @@ const props = defineProps({
   action: { type: String, default: null },
   // Se true, mostra solo il pulsante Chiudi (niente Salva). Per drawer lista.
   closeOnly: { type: Boolean, default: false },
+  // Severity PrimeVue del pulsante di conferma (es. 'danger' per azioni
+  // distruttive come cessazione/rifiuto, 'warn' per cautela). Default null =
+  // primary (verde) — l'azione positiva standard. L'icona resta sempre il
+  // check: a cambiare e' solo il colore, per segnalare la gravita' dell'azione.
+  saveSeverity: { type: String, default: null },
 })
 
 const emit = defineEmits(['save', 'cancel'])
@@ -79,11 +84,13 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       v-tooltip.top="cancelText"
       @click="emit('cancel')"
     />
-    <!-- Salva: check verde (MANAGE_ICONS.CONFIRM) — segnala conferma form. -->
+    <!-- Salva/Conferma: check (MANAGE_ICONS.CONFIRM). Colore = saveSeverity
+         (default primary verde; 'danger'/'warn' per azioni gravi). -->
     <Button
       v-if="showSave"
       :label="saveLabel || t('common.save')"
       :icon="MANAGE_ICONS.CONFIRM"
+      :severity="saveSeverity || undefined"
       :loading="loading"
       :disabled="disabled"
       class="app-form-footer-btn"

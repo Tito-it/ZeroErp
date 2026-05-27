@@ -103,7 +103,6 @@ export function resetAllUserScopedStores() {
     try {
       fn()
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.warn('[auto-reset] module resetter failed', err)
     }
   }

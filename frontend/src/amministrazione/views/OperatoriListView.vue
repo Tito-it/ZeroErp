@@ -91,14 +91,6 @@ function applyExtraFilters() {
   applyFilters()
 }
 
-// Scopo: apre il drawer permessi per la riga cliccata senza aprire il drawer
-//        completo di modifica operatore. Intercetta il click sul pulsante per
-//        evitare che il click propaghi alla riga (che aprirebbe il drawer edit).
-function openPermessi(row, event) {
-  event.stopPropagation()
-  permessiDrawer.editRow(row, 'auth_user_id')
-}
-
 function activeBadgeSeverity(active) {
   return active ? 'success' : 'danger'
 }

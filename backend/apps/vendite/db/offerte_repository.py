@@ -434,6 +434,28 @@ class OfferteRepository(ComponentiRepositoryMixin):
             )
             return row_to_dict(cursor)
 
+    # Scopo: Contesto minimo richiesto dal motore documentale (mirror di
+    #        `PreventiviRepository.get_for_documento_generation` /
+    #        `ContrattiRepository`) per generare un documento dall'offerta:
+    #        `id`, `uid` (UUID stringa -> `documenti_generati.sorgente_uid`),
+    #        `emittente_fiscale_id` (colonna nativa NOT NULL su
+    #        `vendite.offerte_commerciali`, denormalizzata). Niente JOIN:
+    #        lettura diretta. Ritorna None se id inesistente.
+    def get_for_documento_generation(
+        self, offerta_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                id,
+                uid::text AS uid,
+                emittente_fiscale_id
+              FROM vendite.offerte_commerciali
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(offerta_id)])
+            return row_to_dict(cursor)
+
     # Scopo: Capability dell'offerta per il detail API (refactor data-driven
     #        2026-05-26). Wrapper su `script.fn_available_actions_offerta`
     #        (consegnata dal team DB con migration `20260526-01`). Ritorna
@@ -720,14 +742,11 @@ class OfferteRepository(ComponentiRepositoryMixin):
         classe_utenza_id: int | None = None,
     ) -> list[dict[str, Any]]:
         # Proiezione allineata al RETURNS TABLE della fn DB
-        # `fn_offerta_eccezione_componenti_preview` (rev 2026-05-26).
-        # Nota debito tecnico: la fn contratti `fn_contratto_riga_componenti_preview`
-        # espone in aggiunta `obbligatorio` + `esposto_in_fattura` post-modello-
-        # unificato 2026-05-13. La fn offerte filtra ancora `esposto_in_fattura=TRUE`
-        # nel WHERE e non li ritorna nello shape: simmetria piena da chiudere
-        # con brief DB dedicato (mirror del refactor 2026-05-13 sui contratti).
-        # Fino ad allora il ComponentiDialog rendera' i badge "Obbligatorio" /
-        # "In fattura" come undefined/null (UX accettabile, BoM offerta v1).
+        # `fn_offerta_eccezione_componenti_preview` (rev 2026-05-27, modello
+        # unificato: filtro `esposto_in_fattura=TRUE` rimosso dal WHERE +
+        # `obbligatorio`/`esposto_in_fattura` esposti nella proiezione). Shape
+        # ora identica a `fn_contratto_riga_componenti_preview`: il
+        # ComponentiDialog rende i badge "Obbligatorio" / "In fattura".
         sql = """
             SELECT articolo_componente_id,
                    componente_id,
@@ -740,7 +759,9 @@ class OfferteRepository(ComponentiRepositoryMixin):
                    iva_id,
                    prezzo_suggerito,
                    origine_prezzo,
-                   resolver_error_reason
+                   resolver_error_reason,
+                   obbligatorio,
+                   esposto_in_fattura
               FROM vendite.fn_offerta_eccezione_componenti_preview(
                   %s, %s, %s, %s, %s, %s, %s, %s
               )

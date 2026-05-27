@@ -3,7 +3,7 @@
 // Mostra indirizzo_normalizzato, emette l'oggetto selezionato via v-model.
 // Espone noResults per segnalare che la via digitata non esiste nello stradario.
 
-import { computed, watch } from 'vue'
+import { computed } from 'vue'
 import AutoComplete from 'primevue/autocomplete'
 import { searchStradario } from '../apiCore'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'

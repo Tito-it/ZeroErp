@@ -115,7 +115,6 @@ async function loadUtilitiesBaDriven(billingAccountId) {
     }))
   } catch (err) {
     utilitiesBaDriven.value = []
-    // eslint-disable-next-line no-console
     console.warn('ClienteDrawer: loadUtilitiesBaDriven failed', err)
   } finally {
     utilitiesBaLoading.value = false

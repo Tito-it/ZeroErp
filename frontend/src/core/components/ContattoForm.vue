@@ -12,26 +12,29 @@ import Select from 'primevue/select'
 
 const { t } = useI18n()
 
+// Form reattivo del padre via defineModel: il figlio muta `form.value.xxx`
+// (oggetto condiviso per riferimento), senza violare no-mutating-props.
+const form = defineModel('form', { type: Object, required: true })
+
 // Validazione real-time @blur per email e PEC
 const emailInvalid = ref(false)
 const pecInvalid = ref(false)
 
 function onEmailBlur() {
-  emailInvalid.value = !!props.form.email?.trim() && !isEmailValid(props.form.email)
+  emailInvalid.value = !!form.value.email?.trim() && !isEmailValid(form.value.email)
 }
 function onEmailInput() {
   // Reset errore durante la digitazione — rivalidera' su blur
   if (emailInvalid.value) emailInvalid.value = false
 }
 function onPecBlur() {
-  pecInvalid.value = !!props.form.pec?.trim() && !isEmailValid(props.form.pec)
+  pecInvalid.value = !!form.value.pec?.trim() && !isEmailValid(form.value.pec)
 }
 function onPecInput() {
   if (pecInvalid.value) pecInvalid.value = false
 }
 
-const props = defineProps({
-  form: { type: Object, required: true },
+defineProps({
   tipiContatto: { type: Object, required: true },
   unitaOrganizzative: { type: Object, default: null },
   requireEmail: { type: Boolean, default: false },

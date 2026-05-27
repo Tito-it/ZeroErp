@@ -18,8 +18,7 @@ import {
 } from '../api/approvazioniPrezzo'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Button from 'primevue/button'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../core/components/AppDialog.vue'
 import Textarea from 'primevue/textarea'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
@@ -121,7 +120,6 @@ async function confirmDialog() {
     // Diagnostica esplicita: senza riga_id la chiamata API non parte e
     // l'utente vede un toast generico. Logghiamo motivo + meta in console
     // per debug, e differenziamo il messaggio dall'errore HTTP generico.
-    // eslint-disable-next-line no-console
     console.warn(
       '[approvazioni-prezzo] confirmDialog abort: riga_id non trovata nel meta della pratica',
       { pratica_id: pratica?.id, meta_raw: pratica?.meta },
@@ -261,26 +259,20 @@ const pageActions = computed(() => [
       </Column>
     </DataTable>
 
-    <Dialog
+    <AppDialog
       v-model:visible="dialogVisible"
       :header="dialogTitle"
-      modal
-      :style="{ width: '500px' }"
+      width="md"
+      :loading="loading"
+      :save-label="t('common.confirm')"
+      :save-severity="dialogMode === 'rifiuta' ? 'danger' : null"
+      @save="confirmDialog"
     >
       <p>{{ dialogMessage }}</p>
       <div class="form-field mt-1">
         <label>{{ dialogTextLabel }}</label>
         <Textarea v-model="dialogText" rows="3" auto-resize class="w-full" />
       </div>
-      <template #footer>
-        <Button :label="t('common.cancel')" text @click="dialogVisible = false" />
-        <Button
-          :label="t('common.confirm')"
-          :loading="loading"
-          :severity="dialogMode === 'rifiuta' ? 'danger' : 'primary'"
-          @click="confirmDialog"
-        />
-      </template>
-    </Dialog>
+    </AppDialog>
   </div>
 </template>

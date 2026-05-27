@@ -24,7 +24,6 @@ import LookupSelect from '../../core/components/LookupSelect.vue'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useNotify } from '../../core/composables/useNotify'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
 
 const props = defineProps({
@@ -39,7 +38,6 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const { t } = useI18n()
-const notify = useNotify()
 const presetStore = useUiPresetAdminStore()
 const { execute, loading } = useApiHandler()
 
@@ -140,7 +138,7 @@ function buildPayload() {
 async function onSave() {
   if (!canSave.value) return
   const payload = buildPayload()
-  let result = null
+  let result
   if (isEdit.value) {
     result = await execute(
       () => presetStore.update(props.recordId, payload),

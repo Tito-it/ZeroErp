@@ -22,6 +22,9 @@ defineProps({
   // Titolo personalizzabile dal caller (default: "Documenti generati").
   // Tipico uso: "Preventivo P-0001 — Documenti".
   title: { type: String, default: '' },
+  // Abilita l'azione di riga "Aggiungi allegati" sui documenti generati
+  // (es. offerta in EMESSA). Default off: la lista resta sola lettura.
+  allowAllegati: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:visible'])
 </script>
@@ -40,6 +43,7 @@ const emit = defineEmits(['update:visible'])
       v-if="visible && sorgenteId != null"
       :sorgente-code="sorgenteCode"
       :sorgente-id="sorgenteId"
+      :allow-allegati="allowAllegati"
     />
   </Dialog>
 </template>

@@ -40,10 +40,18 @@ export function deleteOfferta(id) {
 
 // --- Transizioni di stato ---
 
-// BOZZA -> EMESSA. Body vuoto, transizioni e validazioni nel trigger DB
-// (listino_versione_id NOT NULL + versione ATTIVA).
-export function emettiOfferta(id) {
-  return api.post(`${BASE}/${id}/emetti/`, {})
+// BOZZA -> EMESSA. L'endpoint (multipart) emette + genera il documento +
+// persiste gli eventuali allegati in una transazione atomica lato BE.
+// `allegati` = array di File (opzionale); `templateId` opzionale (default
+// = template predefinito per OFFERTA_COMMERCIALE/emittente). Validazioni di
+// stato/versione nel trigger DB; mancanza template -> emissione fallisce.
+export function emettiOfferta(id, { allegati = [], templateId = null } = {}) {
+  const formData = new FormData()
+  if (templateId != null) formData.append('template_documento_id', templateId)
+  for (const file of allegati) formData.append('allegati', file)
+  return api.post(`${BASE}/${id}/emetti/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
 
 // EMESSA -> ACCETTATA o RIFIUTATA. Motivazione obbligatoria su RIFIUTATA.

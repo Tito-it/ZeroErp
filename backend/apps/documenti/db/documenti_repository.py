@@ -1261,3 +1261,77 @@ class DocumentiRepository:
             cursor.execute(sql, [int(documento_generato_id)])
             results = rows_to_list(cursor)
         return results[0] if results else None
+
+    # Scopo: Prossimo `ordinamento` globale per i file di un documento.
+    #        Usato per accodare allegati (file secondari) dopo il principale:
+    #        principale = 1, primo allegato = 2, ecc. Calcolo MAX+1 su tutti
+    #        i file del documento (non per file_tipo) per ordering leggibile.
+    def get_next_file_ordinamento(self, documento_generato_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COALESCE(MAX(ordinamento), 0) + 1
+                  FROM documenti.documenti_generati_file
+                 WHERE documento_generato_id = %s
+                """,
+                [int(documento_generato_id)],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return int(row[0])
+
+    # Scopo: Lista di tutti i file di un documento generato (principale +
+    #        allegati), ordinata per `ordinamento`. Usata dalla UI per
+    #        elencare gli allegati e offrirne il download per id.
+    def list_documento_generato_files(
+        self, documento_generato_id: int,
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                f.id,
+                f.documento_generato_id,
+                f.file_tipo_id,
+                tf.codice          AS file_tipo_codice,
+                f.mime_type,
+                f.file_name,
+                f.file_size_bytes,
+                f.storage_key,
+                f.sha256,
+                f.ordinamento,
+                f.is_principale
+              FROM documenti.documenti_generati_file f
+              JOIN documenti.tipi_file_documento tf ON tf.id = f.file_tipo_id
+             WHERE f.documento_generato_id = %s
+             ORDER BY f.ordinamento ASC, f.id ASC
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(documento_generato_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Recupera una singola riga file (principale o allegato) per id,
+    #        nel contesto di un documento. Ritorna metadati per il download.
+    #        Filtra anche su `documento_generato_id` (defense-in-depth: il
+    #        caller verifica lo scope sul documento, qui evitiamo cross-doc).
+    def get_documento_generato_file(
+        self, documento_generato_id: int, file_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                f.id,
+                f.documento_generato_id,
+                f.file_tipo_id,
+                f.mime_type,
+                f.file_name,
+                f.file_size_bytes,
+                f.storage_key,
+                f.sha256,
+                f.is_principale
+              FROM documenti.documenti_generati_file f
+             WHERE f.documento_generato_id = %s
+               AND f.id = %s
+             LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(documento_generato_id), int(file_id)])
+            results = rows_to_list(cursor)
+        return results[0] if results else None

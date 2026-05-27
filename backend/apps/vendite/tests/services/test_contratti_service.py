@@ -741,18 +741,20 @@ class ContrattiServiceTests(TestCase):
         repo.update_stato.assert_not_called()
         self.assertEqual(result["stato_codice"], "ATTIVO")
 
-    # Scopo: cessazione data oggi -> stato resta invariato (programmazione
-    #        per oggi: il job notturno scattera' alle 00:05 della notte
-    #        prossima e applichera' lo stato CESSATO).
+    # Scopo: cessazione data ODIERNA -> cessazione IMMEDIATA. La data == oggi
+    #        non e' programmazione futura: il contratto passa subito a CESSATO
+    #        (e' la data di fine validita' a confermare). PATCH valido_al +
+    #        UPDATE stato entrambi chiamati. Solo data > oggi e' programmata.
     @patch("apps.vendite.services.contratti_service.transaction.atomic")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_cessazione_data_oggi_e_programmata(self, repo_cls, _atomic):
+    def test_cambia_stato_cessazione_data_oggi_e_immediata(self, repo_cls, _atomic):
         from apps.vendite.services.contratti_service import ContrattiService
 
         oggi = date.today()
         repo = repo_cls.return_value
         repo.get_stato_id_by_codice.return_value = 5
         repo.update_contratto.return_value = True
+        repo.update_stato.return_value = True
         repo.get_contratto.return_value = {
             **_testata_default(),
             "stato_codice": "ATTIVO",
@@ -764,8 +766,9 @@ class ContrattiServiceTests(TestCase):
             1, codice_interno="CESSATO", valido_al=oggi,
         )
 
+        # Data odierna = immediata: PATCH valido_al + UPDATE stato a CESSATO.
         repo.update_contratto.assert_called_once_with(1, {"valido_al": oggi})
-        repo.update_stato.assert_not_called()
+        repo.update_stato.assert_called_once_with(1, 5)
 
     # Scopo: cessazione SENZA valido_al rifiutata (data obbligatoria per
     #        CESSATO: forza UI a passare dal dialog dedicato).
