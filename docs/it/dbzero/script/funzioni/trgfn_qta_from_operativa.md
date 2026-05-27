@@ -34,14 +34,14 @@ DECLARE
   -- ------------------------------------------------------------
   -- script.trgfn_qta_from_operativa()
   -- Sorgente unica: UoM/quantità OPERATIVA.
-  -- Se uom_operativa_id e qta_operativa sono entrambi valorizzati -> NON ricalcola.
-  -- Se manca uno dei due -> ricompone l'operativa e poi ricalcola sempre la base.
+  -- Su INSERT: calcola sempre quantita da qta_operativa.
+  -- Su UPDATE: short-circuit se nessun input operativo è cambiato.
   --
   -- TG_ARGV (opzionali):
   --   [0] fill_factor_to_base :: boolean  (default FALSE)
   --       Se TRUE e NEW.factor_to_base è NULL, salva lo snapshot del fattore usato.
   --   [1] fill_uom_id_base    :: boolean  (default FALSE)
-  --       Se TRUE, copia NEW.uom_operativa_id in NEW.uom_id (usare solo dove la colonna esiste).
+  --       Se TRUE, copia NEW.uom_operativa_id in NEW.uom_id.
   --   [2] target_col          :: text     (default 'quantita')
   --       Nome colonna target per la quantita' base calcolata.
   --   [3] fonte_nullability_col :: text   (default NULL)
@@ -49,13 +49,16 @@ DECLARE
   --       Se valorizzato e qta_operativa IS NULL: legge il valore di quella colonna
   --       via to_jsonb(NEW). Se != 'FISSA' (e non NULL) -> RETURN NEW senza raise.
   --       Usare per tabelle con fonte_quantita_attesa (es. contratti_righe).
-  --       Tabelle senza questa colonna: omettere l'argomento (comportamento invariato).
   -- ------------------------------------------------------------
 
   --------------------------------------------------------------------
-  -- short-circuit: entrambe le variabili operative valorizzate -> NON ricalcola
+  -- short-circuit: solo su UPDATE dove nessun input operativo è cambiato.
+  -- Su INSERT: calcola sempre (qta_operativa + uom → quantita).
   --------------------------------------------------------------------
-  IF NEW.qta_operativa IS NOT NULL AND NEW.uom_operativa_id IS NOT NULL THEN
+  IF TG_OP = 'UPDATE'
+     AND NEW.qta_operativa    IS NOT DISTINCT FROM OLD.qta_operativa
+     AND NEW.uom_operativa_id IS NOT DISTINCT FROM OLD.uom_operativa_id
+     AND NEW.factor_to_base   IS NOT DISTINCT FROM OLD.factor_to_base THEN
     RETURN NEW;
   END IF;
 
@@ -108,7 +111,6 @@ DECLARE
     WHERE a.id = NEW.articolo_id;
   END IF;
 
-  -- Errore solo se, dopo il fallback, è ancora NULL
   IF NEW.uom_operativa_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'application','script.trgfn_qta_from_operativa',
@@ -119,7 +121,6 @@ DECLARE
     );
   END IF;
 
-  -- Opzionale: copia uom base in NEW.uom_id (se la colonna esiste nella tabella)
   IF v_fill_uom_id_base THEN
     NEW.uom_id := NEW.uom_operativa_id;
   END IF;
@@ -142,10 +143,8 @@ DECLARE
 
   v_factor_map := COALESCE(v_factor_map, 1);
 
-  -- Fattore effettivo: rispetta snapshot se già presente
   v_factor_used := COALESCE(NEW.factor_to_base, v_factor_map, 1);
 
-  -- Snapshot opzionale (solo se richiesto e assente)
   IF v_fill_factor_to_base THEN
     IF NEW.factor_to_base IS NULL THEN
       NEW.factor_to_base := v_factor_used;
@@ -202,7 +201,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_qta_from_operativa()
-IS 'Calcola quantita (base) da qta_operativa * factor. TG_ARGV[0]=fill_factor_to_base, [1]=fill_uom_id_base, [2]=target_col (default quantita). TG_ARGV[3]=fonte_nullability_col: se valorizzato e qta_operativa IS NULL, legge il valore di quella colonna; se != FISSA -> RETURN NEW senza raise (per LETTURE/MANUALE/TIMESHEET/DERIVATA_COMPONENTI su contratti_righe). Tabelle senza [3] (preventivi/ordini/ddt): comportamento invariato.';
+IS 'Calcola quantita (base) da qta_operativa * factor. TG_ARGV[0]=fill_factor_to_base, [1]=fill_uom_id_base, [2]=target_col (default quantita). TG_ARGV[3]=fonte_nullability_col: se valorizzato e qta_operativa IS NULL, legge il valore di quella colonna; se != FISSA -> RETURN NEW senza raise. Short-circuit limitato a UPDATE senza variazioni agli input operativi: su INSERT calcola sempre quantita da qta_operativa (fix bug INSERT FISSA). Rev 2026-05-27.';
 ```
 
 ---

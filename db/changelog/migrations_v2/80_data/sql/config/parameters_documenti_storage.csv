@@ -7,3 +7,4 @@ id,code,default_value,description,data_insert,user_insert,data_update,user_updat
 35,documenti_storage_secret_ref,"",Riferimento logico a env var o secret manager contenente le credenziali storage. Stringa vuota = non configurato. Mai la credenziale in chiaro.,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
 36,documenti_asset_upload_max_mb,25,Limite massimo in MB per upload asset documentali.,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
 37,documenti_pdf_generato_max_mb,25,Limite massimo in MB per il PDF generato persistibile.,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
+38,documenti_allegato_upload_max_mb,25,Limite massimo in MB per singolo allegato caricato su un documento generato.,2026-05-27 00:00:00,titodb,2026-05-27 00:00:00,titodb,NULL,t
