@@ -1,13 +1,13 @@
 // Scopo: logica condivisa per chiusura tab con conferma dirty.
 // Usato da AppLayout (shortcut Ctrl+W) e ContentTabs (click su X).
 import { useRouter } from 'vue-router'
-import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
+import { useConfirmAction } from './useConfirmAction'
 import { useTabsStore } from '../../stores/tabs'
 
 export function useConfirmCloseTab() {
   const router = useRouter()
-  const confirm = useConfirm()
+  const { confirmAction } = useConfirmAction()
   const { t } = useI18n()
   const tabs = useTabsStore()
 
@@ -24,13 +24,11 @@ export function useConfirmCloseTab() {
     if (!tab) return
 
     if (tab.dirty) {
-      confirm.require({
+      confirmAction({
+        title: t('tabs.close_confirm_title'),
         message: t('tabs.close_confirm_message'),
-        header: t('tabs.close_confirm_title'),
-        icon: 'pi pi-exclamation-triangle',
         acceptLabel: t('tabs.close_confirm_accept'),
-        rejectLabel: t('tabs.close_confirm_reject'),
-        accept: () => closeTabAndNavigate(tab)
+        onAccept: () => closeTabAndNavigate(tab),
       })
       return
     }

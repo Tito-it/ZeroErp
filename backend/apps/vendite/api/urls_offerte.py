@@ -15,6 +15,14 @@ from apps.vendite.api.note_views import (
     ApiOffertaNoteDetail,
     ApiOffertaNoteList,
 )
+from apps.vendite.api.offerte_documenti_views import (
+    ApiOffertaDocumentiList,
+    ApiOffertaDocumentoAllegati,
+    ApiOffertaDocumentoAnteprima,
+    ApiOffertaDocumentoFile,
+    ApiOffertaDocumentoFileDownload,
+    ApiOffertaEmetti,
+)
 from apps.vendite.api.views_offerte import (
     ApiOffertaAnnulla,
     ApiOffertaCreaRevisione,
@@ -24,7 +32,6 @@ from apps.vendite.api.views_offerte import (
     ApiOffertaEccezioneDetail,
     ApiOffertaEccezioni,
     ApiOffertaEccezionePreviewComponenti,
-    ApiOffertaEmetti,
     ApiOffertaPushContratto,
     ApiOffertaRegistraEsito,
     ApiOffertaRevisioni,
@@ -123,5 +130,34 @@ urlpatterns = [
         "<int:offerta_id>/note/<int:note_id>/",
         ApiOffertaNoteDetail.as_view(),
         name="vendite-offerta-note-detail",
+    ),
+    # Documenti generati (motore documentale). L'emissione genera+persiste
+    # il documento + allegati (vedi `ApiOffertaEmetti` sopra). Qui:
+    # anteprima (BOZZA), lista, download principale, lista/append allegati,
+    # download file per id.
+    path(
+        "<int:offerta_id>/documenti/anteprima/",
+        ApiOffertaDocumentoAnteprima.as_view(),
+        name="vendite-offerta-documento-anteprima",
+    ),
+    path(
+        "<int:offerta_id>/documenti/",
+        ApiOffertaDocumentiList.as_view(),
+        name="vendite-offerta-documenti-list",
+    ),
+    path(
+        "<int:offerta_id>/documenti/<int:documento_id>/file/",
+        ApiOffertaDocumentoFile.as_view(),
+        name="vendite-offerta-documento-file",
+    ),
+    path(
+        "<int:offerta_id>/documenti/<int:documento_id>/allegati/",
+        ApiOffertaDocumentoAllegati.as_view(),
+        name="vendite-offerta-documento-allegati",
+    ),
+    path(
+        "<int:offerta_id>/documenti/<int:documento_id>/file/<int:file_id>/",
+        ApiOffertaDocumentoFileDownload.as_view(),
+        name="vendite-offerta-documento-file-download",
     ),
 ]

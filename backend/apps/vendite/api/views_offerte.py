@@ -324,22 +324,9 @@ class ApiOffertaDetail(DomainAPIView):
 # =================================================================
 
 
-class ApiOffertaEmetti(DomainAPIView):
-    area_funzionale = "vendite"
-
-    @extend_schema(
-        request=None,
-        responses={200: inline_serializer(
-            name="VenditeOffertaEmettiResp",
-            fields={"data": serializers.DictField()},
-        )},
-    )
-    # Scopo: BOZZA -> EMESSA. Trigger DB verifica listino_versione_id e
-    #        versione ATTIVA; gli errori salgono come 422 con codice
-    #        E_OFFERTA_EMISSIONE_*.
-    def post(self, request: Request, offerta_id: int) -> JsonResponse:
-        del request
-        return success_response(OfferteService().emetti(offerta_id))
+# `ApiOffertaEmetti` e' stato spostato in `offerte_documenti_views.py`:
+# l'emissione (BOZZA -> EMESSA) ora genera+persiste il documento e gli
+# eventuali allegati in una transazione atomica (decisione 2026-05-27).
 
 
 class ApiOffertaRegistraEsito(DomainAPIView):

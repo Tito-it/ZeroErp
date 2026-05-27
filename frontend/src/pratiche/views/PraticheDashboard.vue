@@ -3,7 +3,7 @@
 // Layout: desktop = sidebar 280px + area principale con SearchTable sopra e FlussiPanel sotto.
 // Tablet: sidebar collassa in toggle, flussi passano da split a tab.
 // Riusa: PraticheCodaLavoro, PraticheSearchTable, PraticaFlussiPanel, PraticaDrawer, FlussoDrawer.
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useApiHandler } from '../../core/composables/useApiHandler'

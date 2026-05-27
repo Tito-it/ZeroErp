@@ -45,7 +45,7 @@ frontend/src/
 │   │   ├── ConfigTablePanel.vue    # Pannello config con tab dinamici
 │   │   ├── IndirizziSoggettoDrawer.vue  # Gestione indirizzi soggetto (multi-tipo, replace, auto-clone)
 │   │   ├── ContattiSoggettoDrawer.vue   # Gestione contatti soggetto
-│   │   ├── DrawerFooter.vue        # Footer drawer con auto-hide readonly
+│   │   ├── FormFooter.vue        # Footer drawer con auto-hide readonly
 │   │   ├── DrawerTitle.vue         # Titolo drawer
 │   │   ├── NewButton.vue           # Pulsante Nuovo con auto-hide readonly
 │   │   ├── PaginationInfo.vue      # Info paginazione
@@ -306,10 +306,10 @@ const { visible, mode, editId, openCreate, openEdit, close } = useDrawerState()
 
 Espone: `visible`, `mode` (create/edit), `editId`, `openCreate()`, `openEdit(id)`, `close()`.
 
-### DrawerFooter (auto-hide readonly)
+### FormFooter (auto-hide readonly)
 
 ```vue
-<DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="close" />
+<FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="close" />
 ```
 
 Si nasconde automaticamente in modalita sola lettura (inject readonly).
@@ -382,7 +382,7 @@ const isReadonly = useInjectReadonly()
 
 ### Componenti auto-hide
 
-- **DrawerFooter**: inietta readonly, si nasconde con `v-if="!isReadonly"`
+- **FormFooter**: inietta readonly, si nasconde con `v-if="!isReadonly"`
 - **NewButton**: inietta readonly, si nasconde con `v-if="!isReadonly"`
 
 ### CSS protect
@@ -585,6 +585,6 @@ cd frontend && npx vite dev         # Dev server
 - [ ] CSS scoped, nessun `:deep()` su componenti custom
 - [ ] Nuove costanti in `constants.js`, non valori magici inline
 - [ ] Composable in `core/composables/`
-- [ ] Drawer usa `useDrawerState` + `DrawerFooter`
+- [ ] Drawer usa `useDrawerState` + `FormFooter`
 - [ ] Lista usa `useSearchTable` + `NewButton`
 - [ ] View con area funzionale usa `useReadonlyMode`

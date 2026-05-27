@@ -89,12 +89,6 @@ function toggleLanguage() {
 }
 
 const languageLabel = computed(() => locale.value.toUpperCase())
-const languageTooltip = computed(() => {
-  // Mostra "EN" se la lingua corrente è IT (e viceversa) per spiegare
-  // su cosa si passerà al click.
-  const next = SUPPORTED_LOCALES.find(l => l !== locale.value) || locale.value
-  return `${t('common.switch_language')} · ${next.toUpperCase()}`
-})
 
 // Scopo: classe CSS standard per le voci del kebab topbar. Tutte neutre/
 // preferenze (preferiti/lingua/dark + search/AI quando mobile) -> nessuna

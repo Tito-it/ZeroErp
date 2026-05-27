@@ -46,15 +46,13 @@ import { useParameterDefaults } from '../../core/composables/useParameterDefault
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import Drawer from 'primevue/drawer'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../core/components/AppDialog.vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import Message from 'primevue/message'
-import Textarea from 'primevue/textarea'
 
 const { t } = useI18n()
 const store = useContrattiStore()
@@ -83,10 +81,6 @@ const form = ref({})
 // Composable centralizzato (Fase 4.F2): isLocked(field) = !canEdit OR Set lookup.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const availableActions = caps.availableActions
-const canEditTestata = caps.canEdit
-const canEditRighe = computed(() => caps.flag('can_edit_righe'))
-const canChangeState = computed(() => caps.flag('can_change_state'))
-const nonEditableFields = caps.nonEditableFields
 const isLocked = caps.isLocked
 const righeCount = computed(() => detail.value?.righe_count ?? detail.value?.righe?.length ?? 0)
 
@@ -445,28 +439,37 @@ async function refreshDetail() {
 }
 
 // Stato dialog cessazione: una azione con `requires_date=true` apre il dialog
-// con `default_date` e `min_date` arrivati direttamente dal BE
-// (script.fn_available_actions_contratto). Niente regole locali sul default
-// data ne' sui vincoli minimi: vivono in DB.
+// con `default_date` e `min_date` arrivati dal BE
+// (script.fn_available_actions_contratto).
 //
-// Comportamento data-driven (allineato col backend e col guard DB):
-// - data <  oggi  -> cessazione immediata: stato passa a CESSATO
-// - data >= oggi  -> cessazione PROGRAMMATA: stato resta ATTIVO,
-//                    job notturno DB allinea quando la data scade
+// Comportamento data-driven (allineato col guard DB
+// `trgfn_contratti_guard_transizione_stato`):
+// - data <  oggi  -> VIETATO (cessazione retroattiva: il DB rifiuta). La UI
+//                    blocca a monte con min-date = oggi, niente scelta retroattiva.
+// - data == oggi  -> cessazione IMMEDIATA: stato passa subito a CESSATO
+//                    (e' la data di fine validita' a confermare).
+// - data >  oggi  -> cessazione PROGRAMMATA: stato resta ATTIVO, il job
+//                    notturno DB allinea a CESSATO quando la data scade.
 const cessaDialogVisible = ref(false)
 const cessaDialogData = ref(null)
 const cessaDialogAction = ref(null)
-const cessaDialogMinDate = computed(
-  () => parseIsoDate(cessaDialogAction.value?.min_date) || null,
-)
+// Min selezionabile: oggi (no retroattivo). Se il contratto inizia nel futuro
+// (valido_dal > oggi, esposto dal BE come min_date) il minimo e' valido_dal.
+const cessaDialogMinDate = computed(() => {
+  const oggi = new Date()
+  oggi.setHours(0, 0, 0, 0)
+  const beMin = parseIsoDate(cessaDialogAction.value?.min_date)
+  return beMin && beMin > oggi ? beMin : oggi
+})
 
+// Programmata SOLO se strettamente futura. Data odierna = cessazione immediata.
 const cessazioneProgrammata = computed(() => {
   if (!cessaDialogData.value) return false
   const oggi = new Date()
   oggi.setHours(0, 0, 0, 0)
   const scelta = new Date(cessaDialogData.value)
   scelta.setHours(0, 0, 0, 0)
-  return scelta >= oggi
+  return scelta > oggi
 })
 
 function openCessaDialog(action) {
@@ -915,11 +918,19 @@ const onClose = useDrawerClose(emit, 'cancelled')
          Comportamento data-driven:
          - data < oggi  -> cessazione immediata, stato CESSATO
          - data >= oggi -> cessazione programmata, stato resta ATTIVO -->
-    <Dialog v-model:visible="cessaDialogVisible" modal
+    <AppDialog v-model:visible="cessaDialogVisible"
       :header="cessazioneProgrammata
         ? t('contratti.cessa_dialog_titolo_programma')
         : t('contratti.cessa_dialog_titolo_immediata')"
-      :style="{ width: '460px' }">
+      width="sm"
+      :readonly="parentReadonly"
+      :loading="loading"
+      :save-disabled="!cessaDialogData || loading"
+      :save-label="cessazioneProgrammata
+        ? t('contratti.cessa_dialog_conferma_programma')
+        : t('contratti.cessa_dialog_conferma_immediata')"
+      :save-severity="cessazioneProgrammata ? 'warn' : 'danger'"
+      @save="onConfermaCessazione">
       <div class="form-field">
         <label>{{ t('contratti.cessa_dialog_data') }}</label>
         <DatePicker v-model="cessaDialogData" date-format="dd/mm/yy"
@@ -931,18 +942,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
           ? t('contratti.cessa_dialog_warning_programmata')
           : t('contratti.cessa_dialog_warning_immediata') }}
       </Message>
-      <template #footer>
-        <Button :label="t('common.cancel')" text severity="secondary"
-          @click="cessaDialogVisible = false" />
-        <Button :label="cessazioneProgrammata
-            ? t('contratti.cessa_dialog_conferma_programma')
-            : t('contratti.cessa_dialog_conferma_immediata')"
-          :icon="cessazioneProgrammata ? 'pi pi-calendar' : 'pi pi-times'"
-          :severity="cessazioneProgrammata ? 'warn' : 'danger'"
-          :disabled="!cessaDialogData || loading" :loading="loading"
-          @click="onConfermaCessazione" />
-      </template>
-    </Dialog>
+    </AppDialog>
 
   </Drawer>
 </template>

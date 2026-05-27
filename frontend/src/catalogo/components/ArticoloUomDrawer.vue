@@ -117,7 +117,6 @@ async function loadUom() {
 }
 
 // Scopo: Verifica se esiste gia' una UoM base nella lista.
-const hasBase = computed(() => uomList.value.some(u => u.is_base))
 
 watch(() => props.visible, async (val) => {
   if (!val) return

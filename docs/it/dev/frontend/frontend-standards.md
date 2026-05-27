@@ -74,7 +74,7 @@ Le regole di consistenza sono:
 
 1. **Un solo modo di fare ogni cosa** — lista, form, filtri, paginazione, notifiche
 2. **Stesso layout ovunque** — toolbar + tabella + drawer, senza varianti
-3. **Stessi componenti ovunque** — `PageActionsBar`, `RowActionsMenu`, `DrawerFooter`, `useSearchTable`, Tag per stati
+3. **Stessi componenti ovunque** — `PageActionsBar`, `RowActionsMenu`, `FormFooter`, `useSearchTable`, Tag per stati
 4. **Stesse classi CSS ovunque** — `app-page`, `app-datatable`, `form-grid`, mai CSS scoped per layout
 5. **Nessun testo hardcoded** — tutto via `$t()`, sempre
 6. **Modifiche al pattern devono essere globali** — se cambi il paginator, cambi `useSearchTable` una volta e tutte le liste si aggiornano
@@ -502,14 +502,14 @@ onMounted(() => window.addEventListener('keydown', onKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 ```
 
-Usato da: `DrawerFooter` (Ctrl+S salva).
+Usato da: `FormFooter` (Ctrl+S salva).
 
 **Shortcut attive:**
 
 | Shortcut | Contesto | Azione | Componente |
 |----------|----------|--------|------------|
 | `F5` | Lista (DataTable) | Ricarica lista senza reload browser | `useSearchTable` |
-| `Ctrl+S` | Drawer (qualsiasi) | Salva — rispetta disabled/loading/readonly | `DrawerFooter` |
+| `Ctrl+S` | Drawer (qualsiasi) | Salva — rispetta disabled/loading/readonly | `FormFooter` |
 | `Esc` | Drawer PrimeVue | Chiude drawer (nativo PrimeVue `dismissable`) | Drawer |
 | `Ctrl+K` | Globale | Apre ricerca universale | `AppTopbar` |
 
@@ -666,7 +666,7 @@ form dettaglio sotto — tutto nello stesso drawer, zero drawer annidati.
 9. **Salva/Annulla**: sempre in basso dopo il form. Salva crea o aggiorna, chiude form, emette `changed`. Annulla chiude form e deseleziona riga
 10. **Elimina**: icona cestino sulla riga (`@click.stop` per non triggerare selezione). Se stavo editando quella riga, chiude il form
 11. **`formMode`**: ref con 3 stati: `null` (nessun form), `'create'`, `'edit'`. Governa visibilita' e comportamento
-12. **Pulsante Chiudi del drawer (obbligatorio)**: in fondo al drawer, in modalita' lista, deve essere presente un `<DrawerFooter close-only>` con la sola voce "Chiudi". Quando si entra in form mode (Nuovo/Modifica riga), **il footer scompare** (`v-if="!formMode"`): il form ha gia' Annulla/Salva, e il footer del drawer duplicherebbe l'azione e spingerebbe il form sotto il fold. Vale per qualunque drawer di sub-entita' con lista (BoM, righe contratto, indirizzi, contatti, conti, ecc.). La X in alto resta come escape rapido (semantica diversa: dismiss vs completion). Vedi sezione "Componente `DrawerFooter`"
+12. **Pulsante Chiudi del drawer (obbligatorio)**: in fondo al drawer, in modalita' lista, deve essere presente un `<FormFooter close-only>` con la sola voce "Chiudi". Quando si entra in form mode (Nuovo/Modifica riga), **il footer scompare** (`v-if="!formMode"`): il form ha gia' Annulla/Salva, e il footer del drawer duplicherebbe l'azione e spingerebbe il form sotto il fold. Vale per qualunque drawer di sub-entita' con lista (BoM, righe contratto, indirizzi, contatti, conti, ecc.). La X in alto resta come escape rapido (semantica diversa: dismiss vs completion). Vedi sezione "Componente `FormFooter`"
 
 ### Riferimento implementativo
 
@@ -771,7 +771,7 @@ serve un overflow diverso, modificare la regola globale, non sovrascriverla.
 │     div.form-grid-2col           │  ← griglia 2 colonne (opzionale)
 │       ...                        │
 │                                  │
-│   DrawerFooter                   │  ← componente riutilizzabile
+│   FormFooter                   │  ← componente riutilizzabile
 │     [Annulla]        [Salva]     │
 └──────────────────────────────────┘
 ```
@@ -786,20 +786,20 @@ const drawer = useDrawerState()
 // Template: :visible="drawer.state.visible" @update:visible="v => drawer.state.visible = v"
 ```
 
-### Componente `DrawerFooter`
+### Componente `FormFooter`
 
 Footer standard del drawer — mai duplicare i pulsanti inline. Due modalita':
 
 **1. Default (form di add/edit)**: Annulla + Salva.
 
 ```html
-<DrawerFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+<FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
 ```
 
 **2. `close-only` (drawer di lista / sola visualizzazione)**: solo "Chiudi". Obbligatorio in qualsiasi drawer che mostra una lista di sub-entita' (vedi pattern Master-Detail inline §"Regole del pattern" punto 12). Senza esso, l'operatore deve raggiungere la X in alto per uscire — UX storta su touch e violazione di Fitts's law.
 
 ```html
-<DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
+<FormFooter v-if="!formMode" close-only @cancel="onClose" />
 ```
 
 Regola di visibilita': **nascondere il close-only quando il drawer e' in form mode** (`v-if="!formMode"` o `v-if="!adding"`). Motivi:
@@ -823,6 +823,63 @@ const onClose = useDrawerClose(emit, 'cancelled') // con notifica al parent
 
 Note: la X in alto del drawer PrimeVue resta come escape rapido (semantica diversa da "Chiudi"): X = dismiss/escape, Chiudi = completion deliberata. Non sono duplicati, vanno tenuti entrambi.
 
+### Componente `AppDialog` (OBBLIGATORIO per le dialog modali)
+
+**Regola**: ogni Dialog modale "azione" (conferma, form one-shot, registrazione
+esito) DEVE usare il building block `AppDialog` — mai `<Dialog>` PrimeVue grezzo
+con `<template #footer>` hand-rolled. `AppDialog` è il mirror di `AppDrawer` per
+le Dialog: incapsula chrome uniforme + `FormFooter` integrato.
+
+Cosa centralizza:
+
+* **chrome**: `modal`/`closable`/`closeOnEscape`/`dismissableMask` con default
+  sensati (modal+closable=true), override via prop;
+* **width**: da scala centralizzata `DIALOG_WIDTH` (`sm`/`md`/`lg`/`xl`) — **mai
+  più px hardcoded** (`'480px'`, `'90vw'`, ecc.);
+* **footer**: `FormFooter` integrato (icone ←/✓, collapse responsive icon-only
+  sotto 1024px, Ctrl+S, readonly-aware);
+* **`v-model:visible`** uniforme.
+
+```html
+<!-- Dialog standard: conferma/form -->
+<AppDialog
+  v-model:visible="visible"
+  :header="t('...')"
+  width="md"                       <!-- sm | md | lg | xl -->
+  :loading="loading"
+  :save-disabled="!canSave"
+  :save-label="t('...')"           <!-- default 'Salva' -->
+  @save="onSave" @cancel="onCancel"
+>
+  <!-- body -->
+</AppDialog>
+```
+
+Scala `DIALOG_WIDTH` (in `core/constants.js`):
+
+| Taglia | px | Uso |
+| --- | --- | --- |
+| `sm` | 480px | conferme brevi, form 1-2 campi |
+| `md` | 560px | form standard |
+| `lg` | 720px | preview/tabelle |
+| `xl` | `min(92vw, 1200px)` | tabelle larghe responsive |
+
+Prop e casi speciali:
+
+* **Azione distruttiva**: `:save-severity="'danger'"` (o `'warn'`) — il bottone
+  conferma diventa rosso/arancio, l'icona resta il check. Es. cessazione
+  contratto, rifiuto offerta.
+* **Footer custom** (terzo bottone, wizard): slot `#footer` per sovrascrivere il
+  footer mantenendo il chrome `AppDialog`. Es. `ChiudiVersioneDialog` (bottone
+  "Rimuovi chiusura" + Annulla/Conferma), `ApplicaVariazioneDialog` (wizard
+  multi-step → usa `hide-footer`).
+* **Solo Chiudi**: `close-only` (dialog informativo/viewer con un solo pulsante).
+* **Nessun footer**: `hide-footer` (viewer puro).
+
+Dialog di **sola conferma** (no form, sì/no su un'azione) restano gestiti da
+`useConfirmAction()` (ConfirmDialog globale, vedi §"Conferme azioni"), NON da
+`AppDialog`: quello serve quando la dialog ha un corpo (campi, tabella, scelta).
+
 ### Classi CSS form
 
 | Classe               | Scopo                                                   |
@@ -831,7 +888,7 @@ Note: la X in alto del drawer PrimeVue resta come escape rapido (semantica diver
 | `form-grid`          | Contenitore campi (flex column, gap 0.75rem)            |
 | `form-field`         | Coppia label + input (flex column, gap 0.25rem)         |
 | `form-grid-2col`     | Griglia 2 colonne responsive (1 colonna sotto 480px)    |
-| `app-drawer-footer`  | Footer fisso in basso (flex, justify-content: flex-end) |
+| `app-form-footer`    | Footer Annulla/Salva (FormFooter) — flex, justify-end   |
 
 ---
 
@@ -846,7 +903,7 @@ Ogni sotto-area che potrebbe essere usata in piu' di un contesto deve essere un 
 | Criterio | Collocazione | Esempio |
 | --- | --- | --- |
 | Entita' config condivisa (tabelle `config.*`) usata o potenzialmente usabile da 2+ domini | `core/components/` | ToponomasticaSearchTable, ComuniSearchTable, ProvinceDrawer |
-| Componente di layout, form o UI generico | `core/components/` | PageActionsBar, DrawerFooter, SoggettoForm |
+| Componente di layout, form o UI generico | `core/components/` | PageActionsBar, FormFooter, SoggettoForm |
 | Logica specifica di un solo dominio | `<dominio>/components/` | IndirizzoDrawer (via nuova + stradario), UtentePermessiTab |
 
 **Eccezione documentata**: i componenti geografici (toponomastica, comuni, province, regioni, stati)
@@ -1034,7 +1091,7 @@ const drawerActions = computed(() => [
 **Regole fisse:**
 
 - La fascia azioni vive **subito sotto** `DrawerEntityHeader` e **prima** del form.
-- La modifica del form NON e' un'azione del BB: resta nel `DrawerFooter` come "Salva".
+- La modifica del form NON e' un'azione del BB: resta nel `FormFooter` come "Salva".
 - Ogni azione ha `label` tradotta (i18n) — l'inline la mostra come testo, il popup come voce.
 - `hideWhenReadonly: true` per le azioni di modifica/transizione che non hanno senso in LETTURA.
 - `class="app-escape"` e' applicata **automaticamente** dal BB a tutti i bottoni: in
@@ -1162,11 +1219,18 @@ function onCambiaStato(codice) {
 }
 ```
 
-**3. Dialog dedicato con DatePicker default oggi.**
+**3. Dialog dedicato con DatePicker default oggi.** Usa `AppDialog` (vedi
+§"Componente `AppDialog`"): `save-severity="danger"` per l'azione distruttiva,
+niente px hardcoded né footer custom.
 
 ```vue
-<Dialog v-model:visible="cessaDialogVisible" modal
-  :header="t('<dominio>.cessa_dialog_titolo')" :style="{ width: '420px' }">
+<AppDialog v-model:visible="cessaDialogVisible"
+  :header="t('<dominio>.cessa_dialog_titolo')" width="sm"
+  :loading="loading"
+  :save-disabled="!cessaDialogData || loading"
+  :save-label="t('<dominio>.cessa_dialog_conferma')"
+  save-severity="danger"
+  @save="onConfermaCessazione">
   <div class="form-field">
     <label>{{ t('<dominio>.cessa_dialog_data') }}</label>
     <DatePicker v-model="cessaDialogData" date-format="dd/mm/yy" show-icon />
@@ -1174,13 +1238,7 @@ function onCambiaStato(codice) {
   <Message severity="warn" :closable="false" size="small">
     {{ t('<dominio>.cessa_dialog_warning') }}
   </Message>
-  <template #footer>
-    <Button :label="t('common.cancel')" text severity="secondary" @click="cessaDialogVisible = false" />
-    <Button :label="t('<dominio>.cessa_dialog_conferma')" icon="pi pi-times" severity="danger"
-      :disabled="!cessaDialogData || loading" :loading="loading"
-      @click="onConfermaCessazione" />
-  </template>
-</Dialog>
+</AppDialog>
 ```
 
 ```js
@@ -1339,9 +1397,22 @@ La schermata di login e' l'unica pagina senza sidebar e topbar.
 Qualsiasi azione irreversibile richiede un **dialog di conferma** centrato:
 
 - Titolo + nome dell'elemento coinvolto
-- Due pulsanti: **Annulla** (secondario) e **Conferma** (primario, rosso per distruttive)
+- Due pulsanti: **Annulla** (secondario, icona ←) e **Conferma** (primario, icona
+  ✓; rosso per distruttive)
 - Il dialog si chiude solo tramite pulsanti — non con ESC o clic fuori
-- Gestito da `useConfirmAction()` — mai creare dialog custom
+- Gestito da `useConfirmAction()` — mai creare ConfirmDialog custom. Il composable
+  applica già le icone standard (`acceptIcon`/`rejectIcon`) e il colore danger
+  (`confirmDelete`, o `confirmAction({ danger: true })`).
+
+**Quando `useConfirmAction` e quando `AppDialog`:**
+
+| Caso | Componente |
+| --- | --- |
+| Solo conferma sì/no di un'azione (nessun campo da compilare) | `useConfirmAction()` |
+| Dialog con un corpo: campi form, scelta formato, tabella, motivazione | `AppDialog` (vedi §"Componente `AppDialog`") |
+
+Mai un `<Dialog>` PrimeVue grezzo con `<template #footer>` hand-rolled: o è una
+conferma (`useConfirmAction`) o è un form/azione con corpo (`AppDialog`).
 
 ---
 
@@ -1437,11 +1508,11 @@ in `:root:not(.p-dark)` (light).
 | `form-grid-2col`     | Griglia 2 colonne responsive (1 col < 480px)              |
 | `app-tab-content`    | Wrapper contenuto tab per flex height                     |
 
-**Nota responsive sotto 1024px**: i pulsanti del `DrawerFooter` (Annulla,
+**Nota responsive sotto 1024px**: i pulsanti del `FormFooter` (Annulla,
 Chiudi, Salva) collassano automaticamente a icon-only via la classe
 `app-drawer-footer-btn` (stessa logica di `.app-page-action`). Il componente
 imposta `v-tooltip.top` con la label per garantire l'accessibilita'. La
-modifica e' centralizzata in [`DrawerFooter.vue`](../../../frontend/src/core/components/DrawerFooter.vue):
+modifica e' centralizzata in [`FormFooter.vue`](../../../frontend/src/core/components/FormFooter.vue):
 qualsiasi pulsante Annulla/Salva sparso fuori dal componente NON eredita
 questo comportamento — pattern utile per individuare drawer non standard.
 
@@ -1464,7 +1535,7 @@ I pulsanti strutturali (Nuovo, Salva, Annulla) sono centralizzati tramite **comp
 | --- | --- |
 | `PageActionsBar` | Barra azioni pagina/lista — responsive, controllo permessi su action e menu compatto |
 | `NewButton` | Pulsante "Nuovo" specializzato legacy/non-toolbar |
-| `DrawerFooter` | Footer Salva/Annulla nei drawer — Ctrl+S, readonly-aware |
+| `FormFooter` | Footer Salva/Annulla nei drawer — Ctrl+S, readonly-aware |
 
 ### Centralizzazione icone azioni riga (`constants.js`)
 
@@ -1593,7 +1664,7 @@ Le autorizzazioni utente prevedono tre livelli di accesso (`TUTTO`, `LETTURA`, `
 | Livello | Cosa controlla | Trigger FE | Enforcement BE |
 | --- | --- | --- | --- |
 | **Area** (schema DB) | Accesso all'intero dominio | `useReadonlyMode(schemaDb)` + route guard su `BLOCCATO` | `ZeroERPPermission` via `area_funzionale` |
-| **Azione processo** | Singola operazione (es. "genera fatture") | `action` su `PageActionsBar` / `DrawerFooter` | `permission_codename` sulla view |
+| **Azione processo** | Singola operazione (es. "genera fatture") | `action` su `PageActionsBar` / `FormFooter` | `permission_codename` sulla view |
 | **Oggetto / model** (v2) | Singola entita' dentro un'area | `useReadonlyMode(schemaDb, modelName)` | `model_permission = (app_label, model_name)` sulla view |
 
 ### Composable `useReadonlyMode(schemaDb, modelName?)`
@@ -1753,7 +1824,7 @@ A differenza del BLOCCATO di area (dove il route guard impedisce la navigazione)
     <!-- form normale, disabled si propaga via .app-readonly -->
   </div>
 
-  <DrawerFooter @save="onSave" @cancel="onCancel" />
+  <FormFooter @save="onSave" @cancel="onCancel" />
   <!-- pulsante Salva nascosto automaticamente se readonly -->
 </Drawer>
 ```
@@ -1764,7 +1835,7 @@ A differenza del BLOCCATO di area (dove il route guard impedisce la navigazione)
 - ✅ Usare sempre `DrawerTitle` nel `#header` — il badge si propaga automaticamente
 - ❌ Non creare varianti `*ReadOnly.vue` separate
 - ✅ Wrap del contenuto con `:class="{ 'app-readonly': isReadonly }"` per l'effetto protect
-- ✅ `DrawerFooter` nasconde Salva in readonly; tasti di chiusura (X drawer, `.app-escape`) restano attivi
+- ✅ `FormFooter` nasconde Salva in readonly; tasti di chiusura (X drawer, `.app-escape`) restano attivi
 
 ### Drawer autonomo vs drawer figlio puro
 
@@ -1798,7 +1869,7 @@ const isBlocked = useInjectBlocked()
     <!-- contenuto normale -->
   </div>
 
-  <DrawerFooter v-if="!isBlocked" @save="..." @cancel="..." />
+  <FormFooter v-if="!isBlocked" @save="..." @cancel="..." />
 </Drawer>
 ```
 
@@ -1930,7 +2001,7 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 
 - **Non creare varianti read-only** di componenti esistenti — usare la classe `.app-readonly` sul container
 - `DrawerTitle`: auto-include `ReadonlyBadge` a destra del titolo
-- `DrawerFooter`: Salva nascosto se readonly (`v-if="!isReadonly"`)
+- `FormFooter`: Salva nascosto se readonly (`v-if="!isReadonly"`)
 - `PageActionsBar`: nasconde le azioni con `hideWhenReadonly`, mantiene il refresh in LETTURA e usa il kebab su touch/tablet/mobile
 - `ReadonlyBadge`: visibile solo se readonly e non bloccato
 - `AccessoBloccatoPanel`: sostituisce il contenuto lista se bloccato (livello oggetto)
@@ -2191,14 +2262,14 @@ Le azioni di processo controllano **singole operazioni** (es. "crea soggetto", "
 
 ```
 Livello 1: Area (TUTTO / LETTURA / BLOCCATO)  → sidebar + route guard + .app-readonly
-Livello 2: Azione processo (abilitata / negata) → `action` su `PageActionsBar` / `DrawerFooter`
+Livello 2: Azione processo (abilitata / negata) → `action` su `PageActionsBar` / `FormFooter`
 ```
 
 ### Come funziona
 
 L'endpoint `/me/` ritorna `azioni_abilitate: { codename: boolean }` per tutte le azioni attive. Lo store `auth.js` espone `isActionAllowed(codename)`.
 
-I componenti `PageActionsBar` e `DrawerFooter` accettano una prop opzionale `action`:
+I componenti `PageActionsBar` e `FormFooter` accettano una prop opzionale `action`:
 - Se **assente** (default): il componente funziona come prima (solo check readonly)
 - Se **presente**: il componente si nasconde se l'azione non e' abilitata
 
@@ -2207,14 +2278,14 @@ I componenti `PageActionsBar` e `DrawerFooter` accettano una prop opzionale `act
 { key: 'new', kind: 'primary', action: 'crea_soggetto', label: t('common.new'), command: onNew }
 
 <!-- Footer Salva visibile solo se l'azione e' abilitata -->
-<DrawerFooter action="modifica_soggetto" @save="..." @cancel="..." />
+<FormFooter action="modifica_soggetto" @save="..." @cancel="..." />
 ```
 
 ### Come aggiungere un'azione
 
 1. **DB**: inserire riga in `config.azioni_processo` (seed CSV)
 2. **Backend**: aggiungere `post_permission = "codename"` sulla view API
-3. **Frontend**: aggiungere `action: 'codename'` sull'azione `PageActionsBar` o prop `action` su `DrawerFooter`
+3. **Frontend**: aggiungere `action: 'codename'` sull'azione `PageActionsBar` o prop `action` su `FormFooter`
 4. **Configurazione**: da Amm. Software → Profili reparto, abilitare per reparto
 
 ### Composable per casi avanzati
@@ -2243,7 +2314,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 2. Chiamate API passano da `useApiHandler` — mai `api.get/post` nei componenti
 3. Toast via `useNotify()` — mai `useToast()` direttamente
 4. Dialog conferma via `useConfirmAction()` — mai `useConfirm()` direttamente
-5. Drawer usano PrimeVue `Drawer` + `DrawerFooter` — mai pulsanti inline
+5. Drawer usano PrimeVue `Drawer` + `FormFooter` — mai pulsanti inline
 6. Testi visibili via `$t()` — mai stringhe hardcoded
 7. Nessun `console.log` in produzione
 8. Componenti di dominio non importano da altri domini — solo da `core/`
@@ -2254,7 +2325,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 13. Stato drawer da `useDrawerState` — mai `ref(false)` + `ref('create')` separati
 14. CSS layout da `main.css` — mai `<style scoped>` per layout form/pagina
 15. Sola lettura da classe `.app-readonly` sul container — mai componenti duplicati
-16. Azioni processo via `action` su `PageActionsBar`/`DrawerFooter` — mai `v-if` manuali per permessi
+16. Azioni processo via `action` su `PageActionsBar`/`FormFooter` — mai `v-if` manuali per permessi
 17. `ConfirmDialog` solo globale in `App.vue` — mai dentro Drawer (interferenza overlay)
 
 ---
@@ -2289,7 +2360,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | Componente | Scopo | Props chiave | Usato da |
 | --- | --- | --- | --- |
 | `DrawerTitle` | Titolo standard drawer: azione sx + entita' centrata + badge readonly auto | `action`, `title`, `icon` | Tutti i drawer |
-| `DrawerFooter` | Footer drawer con Annulla/Salva, auto-hide Salva in readonly | `loading`, `disabled`, `action`, `closeOnly` | Tutti i drawer |
+| `FormFooter` | Footer drawer con Annulla/Salva, auto-hide Salva in readonly | `loading`, `disabled`, `action`, `closeOnly` | Tutti i drawer |
 | `PageActionsBar` | Barra azioni pagina/lista responsive. Gestisce azione primaria, utility inline desktop e kebab su touch/tablet/mobile | `actions`, `disabled`, `menuTooltip` | Tutte le SearchTable, liste config e sub-liste |
 | `NewButton` | Pulsante specializzato legacy/non-toolbar. Nelle liste usare `PageActionsBar` | `tooltip`, `action` | Casi puntuali fuori toolbar lista |
 | `ReloadButton` | Pulsante specializzato legacy/non-toolbar. Nelle liste usare `PageActionsBar` | — | Casi puntuali fuori toolbar lista |
@@ -2390,10 +2461,10 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | Composable | Scopo | Usato da |
 | --- | --- | --- |
 | `useReadonlyMode` | Provider: derive isReadonly da permessi area + provide | View (SoggettiView, IndirizziView, ConfigTablePanel) |
-| `useInjectReadonly` | Consumer: inject isReadonly dal provider padre | PageActionsBar, DrawerFooter, tutti i Drawer |
+| `useInjectReadonly` | Consumer: inject isReadonly dal provider padre | PageActionsBar, FormFooter, tutti i Drawer |
 | `useActionPermission` | Verifica se un'azione processo e' abilitata (computed reattivo) | Componenti dominio con logica condizionale avanzata |
 
-**Nota**: per i casi standard, usare `action` su `PageActionsBar`/`DrawerFooter` invece del composable diretto.
+**Nota**: per i casi standard, usare `action` su `PageActionsBar`/`FormFooter` invece del composable diretto.
 
 #### Ricerca universale
 

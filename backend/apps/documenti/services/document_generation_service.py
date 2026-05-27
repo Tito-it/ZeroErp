@@ -45,6 +45,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import PayloadValidator, map_integrity_error
 from apps.documenti.db.documenti_repository import DocumentiRepository
 from apps.documenti.services._scope import (
@@ -70,8 +71,36 @@ E_STORAGE_FAILED = "E_DOCUMENTI_STORAGE_FAILED"
 # Memoria feedback_no_hardcoded_ids: lookup per codice, non ID numerici.
 _CODICE_TIPO_FILE_PDF_FINALE = "PDF_FINALE"
 
+# Codice tipo file per gli allegati caricati dall'utente sul documento
+# generato (file secondari, `is_principale=false`). Seed DB dedicato
+# (brief 2026-05-27): senza il tipo file ALLEGATO attivo l'INSERT fallisce
+# sul guard `trgfn_child_requires_active_parent`.
+_CODICE_TIPO_FILE_ALLEGATO = "ALLEGATO"
+
 # MIME canonical del file principale generato in v1.
 _MIME_PDF = "application/pdf"
+
+# Whitelist MIME ammessi per gli allegati (decisione 2026-05-27 con Tid:
+# PDF + immagini). Allineata al pattern asset (`template_asset_admin_service`):
+# nessun upload generico libero.
+_MIME_WHITELIST_ALLEGATO: frozenset[str] = frozenset({
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+})
+
+# Fallback estensione per MIME allegato (usato se file_name senza estensione).
+_MIME_EXT_FALLBACK_ALLEGATO: dict[str, str] = {
+    "application/pdf": "pdf",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+}
+
+# Parametro `config.parameters` per il limite size di un singolo allegato.
+_PARAM_ALLEGATO_MAX_MB = "documenti_allegato_upload_max_mb"
+
+# Lunghezza massima del file_name allegato persistito.
+_MAX_ALLEGATO_FILE_NAME_LEN = 255
 
 # Ordinamento e flag is_principale per il file principale (unico in v1).
 _ORDINAMENTO_PRINCIPALE = 1
@@ -102,10 +131,12 @@ class DocumentGenerationService:
         repo: DocumentiRepository | None = None,
         reader: TemplateService | None = None,
         storage: DocumentStorage | None = None,
+        params: ParameterService | None = None,
     ) -> None:
         self._repo = repo or DocumentiRepository()
         self._reader = reader or TemplateService(repo=self._repo)
         self._storage_factory = (lambda: storage) if storage else get_storage
+        self._params = params or ParameterService()
         self._v = PayloadValidator(validation_code=E_VALIDATION)
 
     # =================================================================
@@ -130,6 +161,7 @@ class DocumentGenerationService:
         sorgente_riga: int | None = None,
         tipo_documento_output_id: int | None = None,
         template_documento_id: int | None = None,
+        allegati: list[dict[str, Any]] | None = None,
         locale: str = "it-IT",
     ) -> dict[str, Any]:
         # 0) guard input scalari (errore parlante PRIMA dei round-trip DB).
@@ -139,6 +171,13 @@ class DocumentGenerationService:
         self._v.guard_non_empty_string(sorgente_uid, field="sorgente_uid")
         if sorgente_riga is not None:
             self._v.guard_positive_int(sorgente_riga, field="sorgente_riga")
+
+        # 0-bis) valida+prepara gli allegati PRIMA del render (fail-fast su
+        #        MIME/size: niente render sprecato se un allegato e' invalido).
+        #        Lista vuota se nessun allegato: persist solo del principale.
+        allegati_prep = self._valida_e_prepara_allegati(
+            allegati, emittente_fiscale_id,
+        )
 
         # 1) auth + cache scope (un solo round-trip per l'intera invocazione,
         #    riusato in `_resolve_template`). Helper di dominio condivisi
@@ -228,6 +267,13 @@ class DocumentGenerationService:
         assert tipo_file is not None
         tipo_file_id = tipo_file["id"]
 
+        # 8-bis) lookup tipo_file ALLEGATO solo se ci sono allegati (no ID
+        #        hardcoded). Risolto fuori dalla transazione: errore parlante
+        #        prima di INSERT/storage.
+        tipo_allegato_id: int | None = None
+        if allegati_prep:
+            tipo_allegato_id = self._resolve_tipo_allegato_id()
+
         # 9) sequenza atomica: INSERT 3 record + storage.write
         progressivo = self._repo.next_progressivo_sorgente(
             sorgente_tipo_id=sorgente_tipo_id,
@@ -278,7 +324,10 @@ class DocumentGenerationService:
         }
 
         storage = self._storage_factory()
-        storage_uri: str | None = None
+        # Tutti gli storage_uri scritti nella transazione (principale +
+        # allegati): in caso di commit fallito vanno ripuliti tutti.
+        written_uris: list[str] = []
+        allegati_persistiti: list[dict[str, Any]] = []
         need_cleanup = False
         try:
             with transaction.atomic():
@@ -310,31 +359,33 @@ class DocumentGenerationService:
                 # write storage solo dopo INSERT OK: se write fallisce,
                 # transaction.atomic fa rollback dei 3 record DB ->
                 # nessun stato incoerente.
-                storage_uri = storage.write(
+                written_uris.append(storage.write(
                     storage_key, pdf_bytes, content_type=_MIME_PDF,
-                )
+                ))
+
+                # Allegati come file secondari (ALLEGATO, is_principale=false),
+                # ordinamento progressivo a partire da 2 (principale = 1).
+                if allegati_prep:
+                    assert tipo_allegato_id is not None
+                    allegati_persistiti = self._persisti_allegati(
+                        storage,
+                        documento_generato_id=documento_id,
+                        tipo_allegato_id=tipo_allegato_id,
+                        prepared=allegati_prep,
+                        ordinamento_start=_ORDINAMENTO_PRINCIPALE + 1,
+                        written_uris=written_uris,
+                    )
+
                 # Da questo punto in poi: l'uscita dal `with` fa il commit;
-                # se il commit fallisce, il file e' gia' su disk -> cleanup
+                # se il commit fallisce, i file sono gia' su disk -> cleanup
                 # nel finally. Il record DB risulta rolled back, l'evento
                 # STORAGE_ORPHAN non e' linkabile (FK NOT NULL su
                 # documento_generato_id) -> log warning + cleanup file.
                 need_cleanup = True
             need_cleanup = False  # commit OK
         finally:
-            if need_cleanup and storage_uri:
-                try:
-                    storage.delete(storage_uri)
-                    logger.warning(
-                        "documenti.documento.storage_orphan_cleanup_ok "
-                        "storage_uri=%s pdf_hash=%s",
-                        storage_uri, pdf_hash,
-                    )
-                except Exception:
-                    logger.exception(
-                        "documenti.documento.storage_orphan_cleanup_failed "
-                        "storage_uri=%s pdf_hash=%s",
-                        storage_uri, pdf_hash,
-                    )
+            if need_cleanup and written_uris:
+                self._cleanup_storage_orphans(storage, written_uris, pdf_hash)
 
         # `generato_at` non viene incluso nel return: il valore autoritativo
         # e' lato DB (default `now()`); il caller fa lookup se gli serve.
@@ -344,11 +395,13 @@ class DocumentGenerationService:
             "nome_file": nome_file,
             "titolo": titolo,
             "pdf_hash": pdf_hash,
-            "storage_uri": storage_uri,
+            # storage_uri del file principale (primo scritto nella tx).
+            "storage_uri": written_uris[0] if written_uris else None,
             "size_bytes": len(pdf_bytes),
             "progressivo_sorgente": progressivo,
             "template_documento_id": template["id"],
             "template_versione_id": versione["id"],
+            "allegati": allegati_persistiti,
         }
 
     # =================================================================
@@ -537,6 +590,183 @@ class DocumentGenerationService:
             "documento_id": documento_id,
         }
 
+    # Scopo: Aggiunge allegati (file secondari) a un documento generato
+    #        gia' esistente (modalita' "append" del building block: l'utente
+    #        allega altri file dopo l'emissione, finche' lo stato sorgente lo
+    #        consente — la regola di stato vive lato dominio). Pipeline:
+    #         1. guard id + auth + scope emittente;
+    #         2. lookup documento (404 unificato no leak);
+    #         3. valida+prepara allegati (MIME/size) usando l'emittente del
+    #            documento per lo storage_key;
+    #         4. transazione atomica: INSERT righe file secondarie + storage
+    #            write, ordinamento progressivo dopo i file esistenti;
+    #         5. cleanup STORAGE_ORPHAN best-effort se il commit fallisce.
+    #        Ritorna l'elenco degli allegati persistiti (id + nome + size).
+    def aggiungi_allegati(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        documento_id: int,
+        allegati: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(documento_id, field="documento_id")
+        guard_user_authenticated(user)
+        assert user is not None
+        scope = resolve_emittente_scope(user)
+
+        documento = self._repo.get_documento_generato(
+            documento_id, emittente_ids_scope=scope,
+        )
+        ErrorManager.require(
+            documento is not None,
+            code=E_NOT_FOUND,
+            message="Documento generato non trovato.",
+            detail=f"documento_id={documento_id}",
+        )
+        assert documento is not None
+
+        emittente_fiscale_id = int(documento["emittente_fiscale_id"])
+        prepared = self._valida_e_prepara_allegati(allegati, emittente_fiscale_id)
+        ErrorManager.require(
+            len(prepared) > 0,
+            code=E_VALIDATION,
+            message="Nessun allegato valido da aggiungere.",
+        )
+        tipo_allegato_id = self._resolve_tipo_allegato_id()
+
+        storage = self._storage_factory()
+        written_uris: list[str] = []
+        allegati_persistiti: list[dict[str, Any]] = []
+        need_cleanup = False
+        try:
+            with transaction.atomic():
+                ordinamento_start = self._repo.get_next_file_ordinamento(
+                    documento_id,
+                )
+                allegati_persistiti = self._persisti_allegati(
+                    storage,
+                    documento_generato_id=documento_id,
+                    tipo_allegato_id=tipo_allegato_id,
+                    prepared=prepared,
+                    ordinamento_start=ordinamento_start,
+                    written_uris=written_uris,
+                )
+                need_cleanup = True
+            need_cleanup = False
+        finally:
+            if need_cleanup and written_uris:
+                self._cleanup_storage_orphans(
+                    storage, written_uris, documento.get("pdf_hash"),
+                )
+
+        return {
+            "documento_id": documento_id,
+            "allegati": allegati_persistiti,
+        }
+
+    # Scopo: Download di uno specifico file (principale o allegato) di un
+    #        documento, per id riga. Mirror di `download_documento` ma per
+    #        file arbitrario: scope sul documento + emit evento `SCARICATO`.
+    def download_documento_file(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        documento_id: int,
+        file_id: int,
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(documento_id, field="documento_id")
+        self._v.guard_positive_int(file_id, field="file_id")
+        guard_user_authenticated(user)
+        assert user is not None
+        scope = resolve_emittente_scope(user)
+
+        documento = self._repo.get_documento_generato(
+            documento_id, emittente_ids_scope=scope,
+        )
+        ErrorManager.require(
+            documento is not None,
+            code=E_NOT_FOUND,
+            message="Documento generato non trovato.",
+            detail=f"documento_id={documento_id}",
+        )
+        assert documento is not None
+
+        file_row = self._repo.get_documento_generato_file(documento_id, file_id)
+        ErrorManager.require(
+            file_row is not None,
+            code=E_NOT_FOUND,
+            message="File del documento non trovato.",
+            detail=f"documento_id={documento_id} file_id={file_id}",
+        )
+        assert file_row is not None
+
+        storage = self._storage_factory()
+        storage_uri = storage.build_storage_uri(file_row["storage_key"])
+        try:
+            file_bytes = storage.read(storage_uri)
+        except Exception:
+            ErrorManager.raise_error(
+                code=E_STORAGE_FAILED,
+                message="Errore lettura file documento dallo storage.",
+                detail=f"documento_id={documento_id} file_id={file_id}",
+            )
+            raise  # unreachable
+
+        try:
+            with transaction.atomic():
+                self._repo.emit_evento_documento({
+                    "documento_generato_id": documento_id,
+                    "evento_tipo": "SCARICATO",
+                    "user_id": getattr(user, "id", None),
+                    "esito": "OK",
+                    "messaggio": None,
+                    "detail": {
+                        "file_id": file_id,
+                        "size_bytes": int(file_row["file_size_bytes"]),
+                        "sha256": file_row.get("sha256"),
+                    },
+                    "meta": {},
+                })
+        except Exception:
+            logger.exception(
+                "documenti.documento.evento_scaricato_file_fallito "
+                "documento_id=%s file_id=%s",
+                documento_id, file_id,
+            )
+
+        return {
+            "pdf_bytes": file_bytes,
+            "nome_file": file_row["file_name"],
+            "mime_type": file_row["mime_type"],
+            "size_bytes": int(file_row["file_size_bytes"]),
+            "documento_id": documento_id,
+            "file_id": file_id,
+        }
+
+    # Scopo: Lista file (principale + allegati) di un documento, con scope
+    #        emittente sul documento. Usata dalla UI per elencare gli
+    #        allegati e offrirne il download per id.
+    def list_documento_files(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        documento_id: int,
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(documento_id, field="documento_id")
+        guard_user_authenticated(user)
+        assert user is not None
+        scope = resolve_emittente_scope(user)
+
+        documento = self._repo.get_documento_generato(
+            documento_id, emittente_ids_scope=scope,
+        )
+        ErrorManager.require(
+            documento is not None,
+            code=E_NOT_FOUND,
+            message="Documento generato non trovato.",
+            detail=f"documento_id={documento_id}",
+        )
+        assert documento is not None
+        files = self._repo.list_documento_generato_files(documento_id)
+        return {"results": files, "total_count": len(files)}
+
     # =================================================================
     # Helpers privati
     # =================================================================
@@ -722,6 +952,171 @@ class DocumentGenerationService:
         if ext and ext.isalnum() and len(ext) <= 10:
             return ext
         return _EXT_PDF
+
+    # =================================================================
+    # Helpers privati — allegati (file secondari)
+    # =================================================================
+
+    # Scopo: Valida e normalizza la lista di allegati in input. Ogni allegato
+    #        e' un dict `{file_bytes, mime_type, file_name}` (il view estrae
+    #        i bytes da request.FILES). Controlli fail-fast:
+    #         - file non vuoto;
+    #         - MIME ∈ whitelist (PDF/jpeg/png);
+    #         - size <= `documenti_allegato_upload_max_mb`.
+    #        Ritorna lista di record pronti per il persist (sha256 +
+    #        storage_key deterministici, file_name sanitizzato). Lista vuota
+    #        se `allegati` e' None/vuoto (caso "solo principale").
+    def _valida_e_prepara_allegati(
+        self,
+        allegati: list[dict[str, Any]] | None,
+        emittente_fiscale_id: int,
+    ) -> list[dict[str, Any]]:
+        if not allegati:
+            return []
+        max_mb = self._params.get_parameter_int(_PARAM_ALLEGATO_MAX_MB)
+        max_bytes = max_mb * 1024 * 1024
+        prepared: list[dict[str, Any]] = []
+        for idx, allegato in enumerate(allegati):
+            file_bytes = allegato.get("file_bytes")
+            mime = (allegato.get("mime_type") or "").strip().lower()
+            name = allegato.get("file_name") or ""
+            if not isinstance(file_bytes, (bytes, bytearray)) or len(file_bytes) == 0:
+                ErrorManager.raise_error(
+                    code=E_VALIDATION,
+                    message="Allegato vuoto o non leggibile.",
+                    detail=f"allegato_index={idx} file_name={name!r}",
+                )
+                raise  # unreachable
+            if mime not in _MIME_WHITELIST_ALLEGATO:
+                ErrorManager.raise_error(
+                    code=E_VALIDATION,
+                    message=(
+                        "Tipo file allegato non ammesso. "
+                        "Ammessi: PDF, JPEG, PNG."
+                    ),
+                    detail=f"allegato_index={idx} mime={mime!r}",
+                )
+                raise  # unreachable
+            size = len(file_bytes)
+            if size > max_bytes:
+                ErrorManager.raise_error(
+                    code=E_VALIDATION,
+                    message=f"Allegato troppo grande. Limite: {max_mb} MB.",
+                    detail=f"allegato_index={idx} size_bytes={size} max_bytes={max_bytes}",
+                )
+                raise  # unreachable
+            file_bytes_immutable = bytes(file_bytes)
+            sha = self._sha256_bytes(file_bytes_immutable)
+            ext = self._resolve_extension_allegato(name, mime)
+            prepared.append({
+                "file_bytes": file_bytes_immutable,
+                "mime_type": mime,
+                "file_name": self._sanitize_file_name_allegato(name),
+                "file_size_bytes": size,
+                "sha256": sha,
+                "storage_key": f"documenti/{emittente_fiscale_id}/{sha}.{ext}",
+            })
+        return prepared
+
+    # Scopo: Risolve l'id del tipo file ALLEGATO (lookup per codice, no ID
+    #        hardcoded). Errore parlante se il seed manca o e' disattivato.
+    def _resolve_tipo_allegato_id(self) -> int:
+        tipo = self._repo.get_tipo_file_documento_by_codice(
+            _CODICE_TIPO_FILE_ALLEGATO,
+        )
+        ErrorManager.require(
+            tipo is not None and tipo.get("attivo"),
+            code=E_VALIDATION,
+            message="Tipo file 'ALLEGATO' non configurato o non attivo.",
+        )
+        assert tipo is not None
+        return int(tipo["id"])
+
+    # Scopo: INSERT righe file secondarie + storage write per gli allegati,
+    #        dentro una transazione gia' aperta dal caller. Accumula gli
+    #        storage_uri scritti in `written_uris` (per cleanup orfani lato
+    #        caller). Ritorna i metadati degli allegati persistiti.
+    def _persisti_allegati(
+        self,
+        storage: DocumentStorage,
+        *,
+        documento_generato_id: int,
+        tipo_allegato_id: int,
+        prepared: list[dict[str, Any]],
+        ordinamento_start: int,
+        written_uris: list[str],
+    ) -> list[dict[str, Any]]:
+        persistiti: list[dict[str, Any]] = []
+        for offset, allegato in enumerate(prepared):
+            ordinamento = ordinamento_start + offset
+            file_data = {
+                "documento_generato_id": documento_generato_id,
+                "file_tipo_id": tipo_allegato_id,
+                "mime_type": allegato["mime_type"],
+                "file_name": allegato["file_name"],
+                "file_size_bytes": allegato["file_size_bytes"],
+                "storage_key": allegato["storage_key"],
+                "sha256": allegato["sha256"],
+                "ordinamento": ordinamento,
+                "is_principale": False,
+                "meta": {},
+            }
+            file_id = self._repo.create_documento_generato_file(file_data)
+            # write storage dopo INSERT OK: rollback tx -> nessuno stato
+            # incoerente; cleanup file in caso di commit fallito.
+            written_uris.append(storage.write(
+                allegato["storage_key"],
+                allegato["file_bytes"],
+                content_type=allegato["mime_type"],
+            ))
+            persistiti.append({
+                "id": file_id,
+                "file_name": allegato["file_name"],
+                "mime_type": allegato["mime_type"],
+                "size_bytes": allegato["file_size_bytes"],
+                "ordinamento": ordinamento,
+            })
+        return persistiti
+
+    # Scopo: Cleanup best-effort dei file storage scritti quando il commit DB
+    #        fallisce (STORAGE_ORPHAN). Non solleva: logga e prosegue per non
+    #        mascherare l'eccezione originale del commit.
+    def _cleanup_storage_orphans(
+        self,
+        storage: DocumentStorage,
+        written_uris: list[str],
+        pdf_hash: str | None,
+    ) -> None:
+        for uri in written_uris:
+            try:
+                storage.delete(uri)
+                logger.warning(
+                    "documenti.documento.storage_orphan_cleanup_ok "
+                    "storage_uri=%s pdf_hash=%s",
+                    uri, pdf_hash,
+                )
+            except Exception:
+                logger.exception(
+                    "documenti.documento.storage_orphan_cleanup_failed "
+                    "storage_uri=%s pdf_hash=%s",
+                    uri, pdf_hash,
+                )
+
+    # Scopo: Estensione lower-case dell'allegato dal file_name; fallback al
+    #        MIME se l'estensione manca o non e' plausibile.
+    def _resolve_extension_allegato(self, file_name: str, mime: str) -> str:
+        _, ext = os.path.splitext(file_name or "")
+        ext = ext.lstrip(".").lower().strip()
+        if ext and ext.isalnum() and len(ext) <= 10:
+            return ext
+        return _MIME_EXT_FALLBACK_ALLEGATO.get(mime, "bin")
+
+    # Scopo: Sanitizza il nome file allegato: basename (no path traversal) +
+    #        troncamento alla lunghezza massima. Fallback se vuoto.
+    def _sanitize_file_name_allegato(self, file_name: str) -> str:
+        base = os.path.basename((file_name or "").strip().replace("\\", "/"))
+        base = base.strip() or "allegato"
+        return base[:_MAX_ALLEGATO_FILE_NAME_LEN]
 
     # Scopo: Hook per testabilita' della data corrente. Default = oggi
     #        (timezone-aware) lato Python; il filtro DB usa

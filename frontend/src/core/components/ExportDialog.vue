@@ -21,8 +21,7 @@
 
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Dialog from 'primevue/dialog'
-import FormFooter from './FormFooter.vue'
+import AppDialog from './AppDialog.vue'
 import SelectButton from 'primevue/selectbutton'
 import Message from 'primevue/message'
 import { isFileSystemAccessSupported } from '../composables/useFileDownload'
@@ -74,22 +73,22 @@ const fsApiHint = computed(() =>
 function onConfirm() {
   emit('export', selectedFormat.value)
 }
-
-function onCancel() {
-  emit('update:visible', false)
-}
 </script>
 
 <template>
-  <Dialog
+  <!-- Pilota building block AppDialog (chrome + FormFooter integrato).
+       width='sm' = DIALOG_WIDTH.sm (480px, invariato). Il cancel chiude via
+       update:visible propagato da AppDialog. -->
+  <AppDialog
     :visible="visible"
     @update:visible="(v) => emit('update:visible', v)"
     :header="t('export_dialog.title')"
-    modal
+    width="sm"
     :closable="!loading"
     :close-on-escape="!loading"
-    :dismissable-mask="false"
-    :style="{ width: '480px' }"
+    :loading="loading"
+    :save-label="t('export_dialog.scarica')"
+    @save="onConfirm"
   >
     <div class="export-dialog-content">
       <div class="form-field">
@@ -112,16 +111,7 @@ function onCancel() {
         {{ fsApiHint }}
       </Message>
     </div>
-
-    <template #footer>
-      <FormFooter
-        :save-label="t('export_dialog.scarica')"
-        :loading="loading"
-        @cancel="onCancel"
-        @save="onConfirm"
-      />
-    </template>
-  </Dialog>
+  </AppDialog>
 </template>
 
 <style scoped>

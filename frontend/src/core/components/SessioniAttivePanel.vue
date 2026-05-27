@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useConfirm } from 'primevue/useconfirm'
+import { useConfirmAction } from '../composables/useConfirmAction'
 import { useNotify } from '../composables/useNotify'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -10,7 +10,7 @@ import Badge from 'primevue/badge'
 import api from '../api'
 
 const { t } = useI18n()
-const confirm = useConfirm()
+const { confirmAction } = useConfirmAction()
 const notify = useNotify()
 
 const sessioni = ref([])
@@ -65,24 +65,22 @@ function timeAgo(dateStr) {
 function confermaRevoca(sessione) {
   const device = parseUserAgent(sessione.user_agent)
   const ip = sessione.ip_address || '—'
-  confirm.require({
-    header: t('sessions.revoke_confirm_title'),
+  confirmAction({
+    title: t('sessions.revoke_confirm_title'),
     message: t('sessions.revoke_confirm_message', { device, ip }),
     acceptLabel: t('sessions.revoke'),
-    rejectLabel: t('common.cancel'),
-    acceptClass: 'p-button-danger',
-    accept: () => revocaSessione(sessione.jti)
+    danger: true,
+    onAccept: () => revocaSessione(sessione.jti),
   })
 }
 
 function confermaRevocaTutte() {
-  confirm.require({
-    header: t('sessions.revoke_all_confirm_title'),
+  confirmAction({
+    title: t('sessions.revoke_all_confirm_title'),
     message: t('sessions.revoke_all_confirm_message', { count: sessioni.value.length }),
     acceptLabel: t('sessions.revoke_all'),
-    rejectLabel: t('common.cancel'),
-    acceptClass: 'p-button-danger',
-    accept: revocaTutteSessioni,
+    danger: true,
+    onAccept: revocaTutteSessioni,
   })
 }
 

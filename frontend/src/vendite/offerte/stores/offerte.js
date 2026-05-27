@@ -151,9 +151,10 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
 
   // --- Transizioni stato ---
 
-  // BOZZA -> EMESSA.
-  async function emetti(id) {
-    const res = await emettiOfferta(id)
+  // BOZZA -> EMESSA. Genera+persiste documento + allegati (multipart) lato
+  // BE in transazione atomica. `allegati` = array di File (opzionale).
+  async function emetti(id, { allegati = [], templateId = null } = {}) {
+    const res = await emettiOfferta(id, { allegati, templateId })
     emitDataChanged(TAB_ENTITIES.OFFERTA_COMMERCIALE, id)
     return res.data.data
   }

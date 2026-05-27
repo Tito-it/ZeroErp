@@ -17,7 +17,11 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useTabEvents } from '../../core/composables/useTabEvents'
-import { contrattoDocumenti, preventivoDocumenti } from '../api/documentiPerSorgente'
+import {
+  contrattoDocumenti,
+  offertaDocumenti,
+  preventivoDocumenti,
+} from '../api/documentiPerSorgente'
 
 const STORE_NAME = 'documenti-per-sorgente'
 const EMIT_KEY = 'documenti_per_sorgente'
@@ -29,6 +33,7 @@ const EMIT_KEY = 'documenti_per_sorgente'
 const SORGENTE_CLIENT_MAP = {
   PREVENTIVO: preventivoDocumenti,
   CONTRATTO: contrattoDocumenti,
+  OFFERTA_COMMERCIALE: offertaDocumenti,
 }
 
 export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {
@@ -115,9 +120,40 @@ export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {
     }
   }
 
+  // Scopo: Lista file (principale + allegati) di un documento generato.
+  async function listFiles(documentoId) {
+    if (!sorgenteId.value) throw new Error('Sorgente non impostata')
+    const res = await getClient().listFiles(sorgenteId.value, documentoId)
+    return res.data.data
+  }
+
+  // Scopo: Aggiunge allegati (modalita' append) a un documento esistente.
+  //        `files` = array di File: confezionati in FormData sotto `allegati`.
+  async function aggiungiAllegati(documentoId, files) {
+    if (!sorgenteId.value) throw new Error('Sorgente non impostata')
+    const formData = new FormData()
+    for (const file of files) formData.append('allegati', file)
+    const res = await getClient().aggiungiAllegati(
+      sorgenteId.value, documentoId, formData,
+    )
+    emitDataChanged(EMIT_KEY, documentoId)
+    return res.data.data
+  }
+
+  // Scopo: Download di uno specifico file (principale o allegato) per id.
+  async function downloadFile(documentoId, fileId) {
+    if (!sorgenteId.value) throw new Error('Sorgente non impostata')
+    const res = await getClient().downloadFile(sorgenteId.value, documentoId, fileId)
+    return {
+      blob: res.data,
+      fileName: extractFileName(res) || `file-${fileId}`,
+    }
+  }
+
   return {
     sorgenteCode, sorgenteId, items, totalRecords, loading, lastError,
     setSorgente, fetchList, genera, anteprima, download,
+    listFiles, aggiungiAllegati, downloadFile,
   }
 }, { userScoped: true })
 

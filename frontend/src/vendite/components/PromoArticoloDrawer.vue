@@ -73,7 +73,6 @@ const statoTemporale = computed(() => detail.value?.stato_temporale || null)
 // In create detail=null -> can_update non e' valutato dal BE; lasciamo true.
 const canUpdate = computed(() => !isEdit.value || caps.canEdit.value)
 const canUpdateReason = computed(() => detail.value?.can_update_reason || null)
-const nonEditableFields = caps.nonEditableFields
 const minValidoDalDetail = computed(() => isoToLocalDate(detail.value?.min_valido_dal))
 const minValidoAlDetail = computed(() => isoToLocalDate(detail.value?.min_valido_al))
 
@@ -111,7 +110,6 @@ const validoAlMinDate = computed(() =>
 )
 
 // Alias retrocompat con il template (mostra banner per stato).
-const isPromoScaduta = computed(() => statoTemporale.value === 'SCADUTA')
 const isPromoIniziata = computed(() => statoTemporale.value === 'INIZIATA')
 
 // Readonly cumulativo del drawer parent (pattern frontend-standards.md

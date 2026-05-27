@@ -16,8 +16,11 @@ import Checkbox from 'primevue/checkbox'
 
 const { t } = useI18n()
 
+// Form reattivo del padre via defineModel: il figlio muta `form.value.xxx`
+// (oggetto condiviso per riferimento), senza violare no-mutating-props.
+const form = defineModel('form', { type: Object, required: true })
+
 const props = defineProps({
-  form: { type: Object, required: true },
   usiDisponibili: { type: Array, required: true },
   disabled: { type: Boolean, default: false },
   errors: { type: Array, default: () => [] }

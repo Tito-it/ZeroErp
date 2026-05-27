@@ -66,7 +66,7 @@ const isEdit = computed(() => {
 function valueForCurrentScope() {
   const p = props.parameter
   if (!p) return ''
-  let existing = null
+  let existing
   if (isEmittenteScope.value) existing = p.emittente_value
   else if (isCategoriaScope.value) existing = p.categoria_cliente_value
   else existing = p.user_value

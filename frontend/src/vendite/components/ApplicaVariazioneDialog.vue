@@ -5,10 +5,9 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useNotify } from '../../core/composables/useNotify'
 import { applicaVariazionePercentuale } from '../api/listini'
 import { MANAGE_ICONS } from '../../core/constants'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../core/components/AppDialog.vue'
 import InputNumber from 'primevue/inputnumber'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -17,7 +16,6 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
-const notify = useNotify()
 
 const props = defineProps({
   visible: Boolean,
@@ -87,8 +85,11 @@ function backToInput() {
 </script>
 
 <template>
-  <Dialog :visible="visible" @update:visible="onHide" modal
-    :header="t('listini.variazione_pct_titolo')" :style="{ width: '700px' }">
+  <!-- Wizard 2-step (Input -> Preview -> Conferma): i bottoni cambiano per
+       step e stanno nel body, quindi AppDialog serve solo per il chrome
+       (hide-footer). Non e' il pattern Annulla/Salva standard. -->
+  <AppDialog :visible="visible" @update:visible="onHide"
+    :header="t('listini.variazione_pct_titolo')" width="lg" hide-footer>
 
     <!-- Step 1: Input -->
     <template v-if="step === 'input'">
@@ -139,5 +140,5 @@ function backToInput() {
           severity="warn" :loading="loading" @click="applyVariazione" />
       </div>
     </template>
-  </Dialog>
+  </AppDialog>
 </template>

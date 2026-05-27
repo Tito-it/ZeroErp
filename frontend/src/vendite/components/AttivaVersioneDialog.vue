@@ -16,8 +16,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { changeVersioneStato, updateVersione } from '../api/listini'
 import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
 import { DATE_FORMAT } from '../../core/constants'
-import Dialog from 'primevue/dialog'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDialog from '../../core/components/AppDialog.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
@@ -69,7 +68,7 @@ async function loadPreview() {
 // Inizializza anche `dataValidoDal` col valore corrente per il DatePicker.
 watch(
   () => [props.visible, props.versione?.id],
-  ([v, _vid]) => {
+  ([v]) => {
     if (v) {
       dataValidoDal.value = props.versione?.valido_dal
         ? parseIsoDate(props.versione.valido_dal)
@@ -137,14 +136,17 @@ function close() {
 </script>
 
 <template>
-  <Dialog
+  <AppDialog
     :visible="visible"
     @update:visible="v => emit('update:visible', v)"
-    modal
     :header="t('listini.attiva_versione_titolo')"
-    :style="{ width: '560px' }"
+    width="md"
     :dismissable-mask="!loading && !updatingDate"
     :closable="!loading && !updatingDate"
+    :save-label="t('listini.conferma_attivazione')"
+    :loading="loading"
+    :save-disabled="!preview || !!previewError || updatingDate"
+    @save="handleConfirm"
   >
     <div v-if="versione" class="app-drawer-section">
       <h4>{{ versione.codice_versione }}</h4>
@@ -198,15 +200,5 @@ function close() {
         </DataTable>
       </template>
     </template>
-
-    <template #footer>
-      <FormFooter
-        :save-label="t('listini.conferma_attivazione')"
-        :loading="loading"
-        :disabled="!preview || !!previewError || updatingDate"
-        @cancel="close"
-        @save="handleConfirm"
-      />
-    </template>
-  </Dialog>
+  </AppDialog>
 </template>

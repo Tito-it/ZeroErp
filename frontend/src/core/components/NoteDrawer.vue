@@ -51,7 +51,7 @@ const emit = defineEmits(['update:visible', 'saved'])
 
 // toRef preserva la reattivita' della prop: se il padre cambia preventivoId
 // l'apiClient computed restituisce un nuovo oggetto e useNote dereffa via unref.
-const { notes, loading: listLoading, loadAll, save, remove } = useNote({
+const { notes, loading: listLoading, loadAll, remove } = useNote({
   apiClient: toRef(props, 'apiClient'),
 })
 

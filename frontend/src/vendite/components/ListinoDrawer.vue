@@ -19,7 +19,6 @@ import TipologiaListinoSelect from './TipologiaListinoSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
-import Button from 'primevue/button'
 import Message from 'primevue/message'
 
 const { t } = useI18n()

@@ -479,7 +479,7 @@ class AmmSoftwareRepository:
             )
 
     # Scopo: Crea un operatore completo invocando l'orchestratore DB
-    # `anagrafiche.fn_crea_operatore`. Chiama i building block: fn_crea_auth_user,
+    # `anagrafiche.fn_crea_operatore_v2`. Chiama i building block: fn_crea_auth_user,
     # fn_crea_soggetto_pf, fn_crea_risorsa_umana.
     # Parametri Sprint 3: comune_nascita_id, indirizzo_resid_dettaglio_id,
     # indirizzo_domfisc_dettaglio_id (normalizzati via stradario).
@@ -513,7 +513,7 @@ class AmmSoftwareRepository:
         indirizzo_domfisc_dettaglio_id: int | None = None,
     ) -> int:
         sql = """
-            SELECT anagrafiche.fn_crea_operatore(
+            SELECT anagrafiche.fn_crea_operatore_v2(
                 p_soggetto_id                    := %s::uuid,
                 p_cognome                        := %s,
                 p_nome                           := %s,

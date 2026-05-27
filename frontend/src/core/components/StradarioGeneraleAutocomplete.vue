@@ -3,7 +3,7 @@
 // L'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
 // Espone noResults per segnalare che la via digitata non esiste.
 
-import { computed, watch } from 'vue'
+import { computed } from 'vue'
 import AutoComplete from 'primevue/autocomplete'
 import { searchStradarioGenerale } from '../apiCore'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'
@@ -11,7 +11,7 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 
-const props = defineProps({
+defineProps({
   modelValue: { type: Object, default: null },
   disabled: { type: Boolean, default: false }
 })

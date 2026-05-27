@@ -11,15 +11,17 @@ import Password from 'primevue/password'
 const { t } = useI18n()
 const emailInvalid = ref(false)
 
-const props = defineProps({
-  form: { type: Object, required: true },
+// Form reattivo del padre via defineModel: il figlio muta `form.value.xxx`
+// (oggetto condiviso per riferimento), senza violare no-mutating-props.
+const form = defineModel('form', { type: Object, required: true })
+defineProps({
   passwordMatch: { type: Boolean, default: true },
   disabled: { type: Boolean, default: false },
   showPassword: { type: Boolean, default: true }
 })
 
 watch(
-  () => props.form.email,
+  () => form.value.email,
   (value) => {
     if (!value) emailInvalid.value = false
   }

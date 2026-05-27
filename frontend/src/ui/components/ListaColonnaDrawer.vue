@@ -195,7 +195,7 @@ function buildPayload() {
 async function onSave() {
   if (!canSave.value) return
   const payload = buildPayload()
-  let result = null
+  let result
   if (isEdit.value) {
     result = await execute(
       () => colonnaStore.update(props.recordId, payload),

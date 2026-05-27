@@ -1,7 +1,23 @@
 # Addendum brief DB — fn `*_offerta_eccezione_componenti_*` asimmetriche
 
-> **Branch**: `dev/db-tid`. **Stato**: 3 gap di simmetria rilevati a runtime
-> sull'OffertaEccezioniDrawer (CREATE su articolo composito).
+> **Stato**: ✅ RISOLTO 2026-05-27. DB applicato e pushato (`dev/db-tid`,
+> merge #728):
+>
+> - `20260526-27-update-fn-offerta-eccezione-componenti-preview-modello-unificato`
+>   — Gap 1+2: rimosso filtro `esposto_in_fattura=TRUE`, aggiunti
+>   `obbligatorio` + `esposto_in_fattura` al `RETURNS TABLE`.
+> - `20260526-28-update-fn-offerta-eccezione-componenti-init-modello-unificato`
+>   — Gap 3a: rimosso filtro `esposto_in_fattura=TRUE` dal loop; Gap 3b:
+>   chiave overrides `bom_entry_id::text` → `componente_id::text`.
+>
+> BE riallineato (`dev/backend-tid`): `OfferteRepository.preview_componenti_eccezione`
+> SELECT esteso con `obbligatorio, esposto_in_fattura`; commento "debito
+> tecnico" rimosso. 52/52 test offerte verdi.
+>
+> ---
+>
+> **Branch**: `dev/db-tid`. **Stato originale**: 3 gap di simmetria rilevati
+> a runtime sull'OffertaEccezioniDrawer (CREATE su articolo composito).
 >
 > Sintomi osservati:
 >

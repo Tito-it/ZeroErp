@@ -16,8 +16,11 @@ import StradarioGeneraleAutocomplete from './StradarioGeneraleAutocomplete.vue'
 
 const { t } = useI18n()
 
+// Form reattivo del padre via defineModel: il figlio muta `form.value.xxx`
+// (oggetto condiviso per riferimento), senza violare no-mutating-props.
+const form = defineModel('form', { type: Object, required: true })
+
 const props = defineProps({
-  form: { type: Object, required: true },
   isLibera: { type: Boolean, default: false },
   tipiStato: { type: Array, default: () => [] },
   statiLookup: { type: Object, default: null },
@@ -55,10 +58,10 @@ const hasTabAttivo = computed(() => !!tipoAttivoDescrizione.value)
 
 // Warning "via non trovata" — differenziato per stradario locale vs generale
 const viaNoResultsLocale = computed(() =>
-  !props.form.via_nuova && (stradarioRef.value?.noResults || false)
+  !form.value.via_nuova && (stradarioRef.value?.noResults || false)
 )
 const viaNoResultsGenerale = computed(() =>
-  props.form.via_nuova && (stradarioGenRef.value?.noResults || false)
+  form.value.via_nuova && (stradarioGenRef.value?.noResults || false)
 )
 </script>
 

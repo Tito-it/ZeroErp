@@ -4,7 +4,6 @@
 // Destra: DataTable della tabella selezionata con CRUD generico.
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useApiHandler } from '../composables/useApiHandler'
 import { useReadonlyMode } from '../composables/useReadonlyMode'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../constants'
 import { getTablesBySchema, getTableConfig } from '../config-tables'
@@ -18,8 +17,7 @@ import Tag from 'primevue/tag'
 import api from '../api'
 
 const { t } = useI18n()
-const { execute } = useApiHandler()
-const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.CONFIG)
+useReadonlyMode(READONLY_DOMAINS.CONFIG)
 const drawer = useDrawerState()
 
 // Stato

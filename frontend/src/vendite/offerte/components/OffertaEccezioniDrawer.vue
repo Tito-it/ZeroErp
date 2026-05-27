@@ -33,6 +33,7 @@ import { useDrawerContentReady } from '../../../core/composables/useDrawerConten
 import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { displayDate } from '../../../core/utils/date'
+import { coerceJsonbToArray } from '../../../core/utils/meta'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { FONTE_QUANTITA_ATTESA, TIPO_ECCEZIONE, TIPO_EROGAZIONE } from '../../constants'
 import {
@@ -80,10 +81,17 @@ const form = ref({})
 // (`row.componenti` jsonb). Pattern speculare a `ContrattoRigheDrawer`.
 const expandedRows = ref({})
 
+// Coerce difensivo: psycopg puo' restituire il `jsonb_agg` (`row.componenti`)
+// come stringa JSON invece che array — `Array.isArray` fallirebbe e
+// l'expander non comparirebbe pur essendoci i figli. `coerceJsonbToArray`
+// normalizza stringa->array (pass-through se gia' array). Vedi catalogo BB
+// `coerceJsonbToObject/Array`.
+function rowComponenti(row) {
+  return coerceJsonbToArray(row?.componenti)
+}
+
 function hasBundleComponenti(row) {
-  return row?.is_composito === true
-    && Array.isArray(row?.componenti)
-    && row.componenti.length > 0
+  return row?.is_composito === true && rowComponenti(row).length > 0
 }
 
 function isExpanded(row) {
@@ -454,7 +462,7 @@ const onClose = useDrawerClose(emit)
   <Drawer
     :visible="props.visible"
     position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
+    :style="{ width: DRAWER_WIDTH.WIDE_PLUS }"
     :dismissable="true"
     @update:visible="(val) => emit('update:visible', val)"
     @after-show="onAfterShow"
@@ -607,7 +615,7 @@ const onClose = useDrawerClose(emit)
           <template #expansion="{ data }">
             <div style="padding: 0.25rem 0 0.5rem 2rem; background: var(--app-table-stripe-bg);">
               <ComponentiPanel
-                :initial-data="data.componenti"
+                :initial-data="rowComponenti(data)"
                 i18n-prefix="vendite.componenti.panel"
               />
             </div>

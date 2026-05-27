@@ -43,7 +43,6 @@ export function useSetupStatus() {
       // Il setup status non e' bloccante: il banner non viene mostrato.
       // Loggiamo comunque per non mascherare endpoint rotti — il banner
       // serve a segnalare anomalie, non puo' essere lui stesso silente.
-      // eslint-disable-next-line no-console
       console.warn('useSetupStatus: load failed', err)
     } finally {
       loading.value = false

@@ -4,7 +4,18 @@ export const DRAWER_WIDTH = {
   STANDARD: '640px',  // anagrafiche, catalogo
   COMPLEX: '800px',   // pratiche, contratti
   WIDE: '960px',      // ricerca universale, liste con dettaglio
+  WIDE_PLUS: '1100px', // master-detail con sub-tabella expansion (righe + componenti BoM)
   XLARGE: '1360px'    // matrici parametri-per-entita' (utility, slot/override)
+}
+
+// Larghezze Dialog modali "azione" (conferma, form one-shot). Scala usata
+// dal building block AppDialog via prop `width` (sm|md|lg|xl). Centralizza i
+// px hardcoded sparsi (420/480/500/520/560/700/1200) in 4 taglie coerenti.
+export const DIALOG_WIDTH = {
+  sm: '480px',   // conferme brevi, form a 1-2 campi (emissione, export, chiusura)
+  md: '560px',   // form standard (push, esito, attivazione, approvazioni)
+  lg: '720px',   // preview/tabelle (variazione massa)
+  xl: 'min(92vw, 1200px)'  // tabelle larghe responsive (componenti BoM compositi)
 }
 
 // Durata toast in millisecondi

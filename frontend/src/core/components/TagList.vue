@@ -5,7 +5,7 @@
 
 import Tag from 'primevue/tag'
 
-const props = defineProps({
+defineProps({
   items: { type: Array, default: () => [] },
   labelField: { type: String, default: 'descrizione' },
   keyField: { type: String, default: 'codice' },

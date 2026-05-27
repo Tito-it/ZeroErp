@@ -48,7 +48,7 @@ async function load() {
   try {
     const res = await lookupUtilitiesPerEmittente(props.tipoRuoloCodice || undefined)
     items.value = res.data?.data?.results || []
-  } catch (e) {
+  } catch {
     items.value = []
   } finally {
     loading.value = false

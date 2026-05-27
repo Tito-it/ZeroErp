@@ -8,7 +8,6 @@ import { statoFlussoSeverity } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
 import { useFlussiFilter } from '../composables/useFlussiFilter'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 
 const { t } = useI18n()
 
