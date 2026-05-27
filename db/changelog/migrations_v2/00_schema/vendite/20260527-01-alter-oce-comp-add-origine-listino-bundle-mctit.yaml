@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Allineamento chk_oce_comp_origine a contratti (20260513-21-04):
+# aggiunge 'LISTINO_BUNDLE' ai valori ammessi per origine_prezzo.
+#
+# fn_resolve_prezzo_listino_v2 con p_articolo_padre_contesto (STADIO BUNDLE)
+# restituisce origine='LISTINO_BUNDLE'. La fn_offerta_eccezione_componenti_init
+# (rev 2026-05-27) usa lo STADIO BUNDLE → INSERT rifiutato dal CHECK
+# che mancava di LISTINO_BUNDLE.
+#
+# La migration 20260526-22 ha copiato il CHECK dai contratti pre-bundle;
+# questo changeSet riporta l'allineamento analogamente a 20260513-21.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/vendite/20260527-01-alter-oce-comp-add-origine-listino-bundle-mctit.yaml
+
+    - changeSet:
+          id: 20260527-01-01-alter-oce-comp-add-origine-listino-bundle
+          author: mctit
+          comment: >
+              offerte_commerciali_eccezioni_componenti: DROP chk_oce_comp_origine
+              + ADD con LISTINO_BUNDLE. Allineamento a contratti_righe_componenti
+              (20260513-21-04): fn_resolve_prezzo_listino_v2 STADIO BUNDLE
+              restituisce origine='LISTINO_BUNDLE'.
+          preConditions:
+              - onFail: MARK_RAN
+              - and:
+                    - tableExists:
+                          schemaName: vendite
+                          tableName: offerte_commerciali_eccezioni_componenti
+                    - sqlCheck:
+                          expectedResult: 1
+                          sql: |
+                              SELECT COUNT(*) FROM pg_constraint c
+                                JOIN pg_class r ON r.oid = c.conrelid
+                                JOIN pg_namespace n ON n.oid = r.relnamespace
+                               WHERE n.nspname = 'vendite'
+                                 AND r.relname = 'offerte_commerciali_eccezioni_componenti'
+                                 AND c.conname = 'chk_oce_comp_origine';
+          changes:
+              - sql:
+                    splitStatements: true
+                    sql: |
+                        ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                            DROP CONSTRAINT chk_oce_comp_origine;
+
+                        ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                            ADD CONSTRAINT chk_oce_comp_origine
+                            CHECK (origine_prezzo IN (
+                                'PROMO', 'CONTRATTO_OVERRIDE', 'CONTRATTO_LISTINO',
+                                'CATEGORIA', 'MANUALE', 'LISTINO_BUNDLE'
+                            ));
+          rollback:
+              - sql:
+                    splitStatements: true
+                    sql: |
+                        ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                            DROP CONSTRAINT IF EXISTS chk_oce_comp_origine;
+                        ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                            ADD CONSTRAINT chk_oce_comp_origine
+                            CHECK (origine_prezzo IN (
+                                'PROMO', 'CONTRATTO_OVERRIDE', 'CONTRATTO_LISTINO',
+                                'CATEGORIA', 'MANUALE'
+                            ));

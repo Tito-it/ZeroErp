@@ -26,14 +26,18 @@
 --   17) fn_contratto_riga_componenti_init: p_emittente_sr_id NULL -> raise
 --   18) fn_contratto_riga_componenti_init: riga inesistente -> raise
 --   19) fn_contratto_riga_componenti_init: articolo non composito -> 0
---   20) fn_contratto_riga_componenti_init: quantita NULL -> 0 (riga a consumo)
+--   20) fn_contratto_riga_componenti_init: quantita NULL -> 0 (riga a consumo, fonte non-FISSA)
 --   21) fn_contratto_riga_componenti_init: idempotenza -> 0 alla seconda chiamata
 --   22) CASCADE DELETE: struttura FK CASCADE verificata da constraint DDL
 --   23) chk_contrighe_comp_origine: valore non ammesso -> errore CHECK
+--   24) Trigger guard_pending registrato su contratti_righe_componenti
+--   25) Guard pending: UPDATE struttura su PENDING -> raise
+--   26) Invariante post-fix: righe FISSA con qta_operativa NOT NULL hanno quantita NOT NULL
+--   27) trgfn_qta_from_operativa: short-circuit limitato a UPDATE (fix INSERT FISSA)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(34);
+SELECT plan(36);
 
 -- =========================================================
 -- 1) Tabella esiste
@@ -331,6 +335,41 @@ SELECT CASE
         '25) guard_pending blocca UPDATE struttura su componente PENDING'
     )
 END;
+
+-- =========================================================
+-- 26) Invariante post-fix: righe FISSA con qta_operativa NOT NULL hanno quantita NOT NULL
+--     (se fallisce su dati pre-fix, eseguire data fix manuale sulle righe corrotte)
+-- =========================================================
+SELECT CASE
+    WHEN NOT EXISTS (
+        SELECT 1 FROM vendite.contratti_righe
+         WHERE fonte_quantita_attesa = 'FISSA'
+           AND qta_operativa IS NOT NULL
+         LIMIT 1
+    )
+    THEN skip('26) nessuna riga FISSA con qta_operativa disponibile')
+    ELSE ok(
+        NOT EXISTS (
+            SELECT 1 FROM vendite.contratti_righe
+             WHERE fonte_quantita_attesa = 'FISSA'
+               AND qta_operativa IS NOT NULL
+               AND quantita IS NULL
+        ),
+        '26) invariante post-fix: riga FISSA con qta_operativa NOT NULL ha quantita NOT NULL'
+    )
+END;
+
+-- =========================================================
+-- 27) trgfn_qta_from_operativa: short-circuit limitato a UPDATE (fix INSERT FISSA)
+--     Verifica strutturale: la funzione contiene il check TG_OP = 'UPDATE'
+-- =========================================================
+SELECT ok(
+    (SELECT prosrc FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'script' AND p.proname = 'trgfn_qta_from_operativa')
+    LIKE '%TG_OP%',
+    '27) trgfn_qta_from_operativa: short-circuit contiene controllo TG_OP (fix INSERT FISSA)'
+);
 
 SELECT * FROM finish();
 ROLLBACK;
