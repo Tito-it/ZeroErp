@@ -10,7 +10,7 @@
 //        Riusabile da qualsiasi caller che imposti la coppia
 //        (sorgenteCode, sorgenteId) sullo store. Il caller e' anche
 //        responsabile di chiamare `fetchList` al cambio di sorgente.
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDocumentiPerSorgenteStore } from '../stores/documentiPerSorgente'
 import { useNotify } from '../../core/composables/useNotify'
@@ -19,6 +19,7 @@ import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import DocumentoEmissioneDialog from './DocumentoEmissioneDialog.vue'
 import { downloadBlob } from '../../core/utils/download'
 import { MANAGE_ICONS } from '../../core/constants'
 
@@ -29,11 +30,20 @@ const props = defineProps({
   autoFetch: { type: Boolean, default: true },
   // Se true, quando la lista e' vuota mostra solo il messaggio empty.
   hideHeaderWhenEmpty: { type: Boolean, default: false },
+  // Se true, abilita l'azione di riga "Aggiungi allegati" (append di file
+  // secondari al documento generato). Il caller la attiva quando lo stato
+  // della sorgente lo consente (es. offerta in EMESSA).
+  allowAllegati: { type: Boolean, default: false },
 })
 
 const { t } = useI18n()
 const store = useDocumentiPerSorgenteStore()
 const notify = useNotify()
+
+// Stato dialog append allegati (modalita' non-advances-state).
+const allegatiDialogVisible = ref(false)
+const allegatiDocId = ref(null)
+const allegatiLoading = ref(false)
 
 watch(
   () => [props.sorgenteCode, props.sorgenteId],
@@ -59,7 +69,7 @@ const isEmpty = computed(() => !store.loading && (store.items?.length ?? 0) === 
 const showListChrome = computed(() => !isEmpty.value || !props.hideHeaderWhenEmpty)
 
 function buildRowActions(row) {
-  return [
+  const actions = [
     {
       key: 'download',
       label: t('documenti.lista.action_download'),
@@ -68,6 +78,40 @@ function buildRowActions(row) {
       command: () => onDownload(row.id),
     },
   ]
+  if (props.allowAllegati) {
+    actions.push({
+      key: 'allegati',
+      label: t('documenti.lista.action_aggiungi_allegati'),
+      icon: 'pi pi-paperclip',
+      command: () => openAllegati(row.id),
+    })
+  }
+  return actions
+}
+
+function openAllegati(documentoId) {
+  allegatiDocId.value = documentoId
+  allegatiDialogVisible.value = true
+}
+
+// Scopo: Append allegati al documento (modalita' non-advances-state). Su
+//        conferma carica i file scelti come file secondari del documento.
+async function onAllegatiConferma(payload) {
+  const files = payload?.files || []
+  if (!files.length || allegatiDocId.value == null) return
+  allegatiLoading.value = true
+  try {
+    store.setSorgente(props.sorgenteCode, props.sorgenteId)
+    await store.aggiungiAllegati(allegatiDocId.value, files)
+    notify.success(t('documenti.allegati.aggiunti_ok'))
+    allegatiDialogVisible.value = false
+    await store.fetchList()
+  } catch (err) {
+    notify.error(t('documenti.allegati.errore'))
+    console.error('aggiungiAllegati', err)
+  } finally {
+    allegatiLoading.value = false
+  }
 }
 
 async function onDownload(documentoId) {
@@ -130,6 +174,19 @@ async function reload() {
     <div v-if="isEmpty" class="text-color-secondary text-center mt-1">
       {{ t('documenti.lista.empty') }}
     </div>
+
+    <!-- Append allegati a un documento gia' generato (modalita' append). -->
+    <DocumentoEmissioneDialog
+      v-if="allowAllegati"
+      v-model:visible="allegatiDialogVisible"
+      :sorgente-code="sorgenteCode"
+      :sorgente-id="sorgenteId"
+      :advances-state="false"
+      :header="t('documenti.allegati.dialog_titolo')"
+      :confirm-label="t('documenti.allegati.conferma')"
+      :loading="allegatiLoading"
+      @confirm="onAllegatiConferma"
+    />
   </div>
 </template>
 

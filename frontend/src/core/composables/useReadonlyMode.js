@@ -58,7 +58,7 @@ export function useReadonlyMode(areaSchemaDb, modelName = null) {
   return { isReadonly, isBlocked }
 }
 
-// Consumer: i componenti figli (drawer, NewButton, DrawerFooter)
+// Consumer: i componenti figli (drawer, NewButton, FormFooter)
 // iniettano il valore. Default false se nessun provider nell'albero.
 export function useInjectReadonly() {
   return inject(READONLY_KEY, ref(false))

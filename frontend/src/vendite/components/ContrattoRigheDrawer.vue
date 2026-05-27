@@ -34,8 +34,9 @@ import {
   getContrattoContestoPricing,
 } from '../api/contratti'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import { coerceJsonbToArray } from '../../core/utils/meta'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
 import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
 import Drawer from 'primevue/drawer'
@@ -180,20 +181,38 @@ const pageActions = computed(() => [
   },
 ])
 
+// Scopo: normalizza il `jsonb_agg` dei figli (`row.componenti`) ad array.
+// Coerce difensivo: psycopg puo' restituire il JSONB come STRINGA JSON
+// invece che array gia' deserializzato — in quel caso `Array.isArray`
+// fallirebbe e l'expander non comparirebbe pur essendoci i figli.
+// `coerceJsonbToArray` normalizza stringa->array (pass-through se gia'
+// array). Stesso fix gia' applicato a OffertaEccezioniDrawer.
+function rowComponenti(row) {
+  return coerceJsonbToArray(row?.componenti)
+}
+
 // Scopo: vero se la riga è un bundle composito con almeno un componente
 // figlio. Discrimina il chevron expander: visibile solo sui bundle.
 // `componenti` è il jsonb_agg dei figli ritornato dalla funzione DB
 // `vendite.fn_contratto_righe_preview` (migration 20260516-04).
 function hasBundleComponenti(row) {
   return row?.is_composito === true
-    && Array.isArray(row?.componenti)
-    && row.componenti.length > 0
+    && rowComponenti(row).length > 0
+}
+
+// Scopo: chiave riga coerente con la `data-key` dinamica del DataTable.
+// con_listino usa `_row_key` (preview, niente PK stabile per le righe
+// DA_LISTINO); senza_listino usa `id` (riga persistita in contratti_righe).
+// Senza questa coerenza l'expansion del ramo senza_listino non funziona
+// (key undefined -> no-op).
+function rowExpansionKey(row) {
+  return isSenzaListino.value ? row?.id : row?._row_key
 }
 
 // Scopo: stato espansione corrente della riga. v-model:expandedRows
 // PrimeVue indicizza per data-key value.
 function isExpanded(row) {
-  const key = row?._row_key
+  const key = rowExpansionKey(row)
   if (key == null) return false
   return Object.prototype.hasOwnProperty.call(expandedRows.value, key)
 }
@@ -201,7 +220,7 @@ function isExpanded(row) {
 // Scopo: toggle espansione di una singola riga. Pattern uniforme con
 // PreventiviRigheTable (set/delete chiave nell'oggetto).
 function toggleExpansion(row) {
-  const key = row?._row_key
+  const key = rowExpansionKey(row)
   if (key == null) return
   const next = { ...expandedRows.value }
   if (Object.prototype.hasOwnProperty.call(next, key)) {
@@ -306,6 +325,15 @@ const articoloObj = ref(null)
 // il form (lista persistita).
 const componentiDialogVisible = ref(false)
 const componentiPayload = ref(null)
+
+// Componenti della riga sorgente cliccata, in shape preview (jsonb dalla fn
+// DB). Popolato quando si apre il form OVERRIDE da una riga DA_LISTINO
+// composita: i suoi componenti vivono nel listino (non in
+// contratti_righe_componenti), quindi l'`api-list` del ComponentiPanel
+// sarebbe vuota. Li mostriamo read-only inline (data-driven) cosi' l'operatore
+// vede subito la composizione, come nell'OffertaEccezioniDrawer. Vuoto per
+// "Aggiungi articolo" (nessuna riga sorgente).
+const selectedRowComponenti = ref([])
 
 // Trigger di apertura Dialog: solo in CREATE su articolo composito con
 // UoM + qty valida. In EDIT il flusso e' diverso (panel sotto, no Dialog).
@@ -472,6 +500,7 @@ function resetComponentiState() {
   componentiDialogVisible.value = false
   componentiPayload.value = null
   _autoOpenedFor = null
+  selectedRowComponenti.value = []
 }
 
 // === Lifecycle ===
@@ -514,6 +543,9 @@ function onAggiungiArticolo() {
   rigaEditId.value = null
   selectedRow.value = null
   resetUomOptions()
+  // resetComponentiState azzera anche selectedRowComponenti: articolo nuovo
+  // fuori-listino, nessuna composizione sorgente da mostrare. Se composito,
+  // i componenti si definiscono via ComponentiDialog (bottone).
   resetComponentiState()
 }
 
@@ -548,6 +580,14 @@ function onModificaPrezzo(row) {
   // pre-selezionato (PrimeVue richiede che il valore sia nelle options).
   // Pattern identico a `_onEditRigaPersistita` per righe OVERRIDE gia' esistenti.
   resetComponentiState()
+  // Composizione del bundle DA_LISTINO da mostrare read-only inline (i figli
+  // del listino non sono persistiti in contratti_righe_componenti, quindi
+  // l'api-list del ComponentiPanel sarebbe vuota). DOPO resetComponentiState
+  // che azzera selectedRowComponenti. `resetComponentiState` azzera anche
+  // articoloObj: per onModificaPrezzo questo e' voluto (impedisce l'auto-open
+  // della ComponentiDialog), e il blocco read-only si basa su
+  // selectedRowComponenti, non su articoloObj.
+  selectedRowComponenti.value = rowComponenti(row)
   loadUomPerArticolo(row.articolo_id)
 }
 
@@ -650,6 +690,9 @@ function _onEditRigaPersistita(r) {
   componentiDialogVisible.value = false
   componentiPayload.value = null
   _autoOpenedFor = null
+  // EDIT riga persistita: i componenti arrivano dal ComponentiPanel via
+  // api-list (persistiti). Niente blocco read-only da preview.
+  selectedRowComponenti.value = []
   formMode.value = 'edit'
   rigaEditId.value = rigaId
   // Edit con UoM pre-popolata dalla riga: niente autopick, solo fetch.
@@ -1080,8 +1123,11 @@ function origineSeverity(origine) {
       >
         <!-- Expander custom per bundle BoM: chevron visibile solo dove la
              riga è padre composito con figli (componenti JSONB non vuoto).
-             @click.stop evita che il click apra anche il form di edit. -->
-        <Column v-if="!isSenzaListino" style="width: 2.5rem;" :exportable="false">
+             @click.stop evita che il click apra anche il form di edit.
+             Presente in ENTRAMBE le forme: con_listino (componenti dalla
+             preview DB) e senza_listino (componenti aggregati da list_righe,
+             ramo AGGIUNTA bundle persistite). -->
+        <Column style="width: 2.5rem;" :exportable="false">
           <template #body="{ data }">
             <Button v-if="hasBundleComponenti(data)"
               :icon="isExpanded(data) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
@@ -1146,7 +1192,7 @@ function origineSeverity(origine) {
         <template #expansion="{ data }">
           <div style="padding: 0.25rem 0 0.5rem 2rem; background: var(--app-table-stripe-bg);">
             <ComponentiPanel
-              :initial-data="data.componenti"
+              :initial-data="rowComponenti(data)"
               i18n-prefix="vendite.componenti.panel" />
           </div>
         </template>
@@ -1310,6 +1356,23 @@ function origineSeverity(origine) {
             @changed="emit('changed')" />
         </template>
 
+        <!-- Composizione bundle DA_LISTINO (read-only). Mostrata quando si
+             apre il form OVERRIDE da una riga preview composita: i figli
+             vivono nel listino, non in contratti_righe_componenti, quindi
+             l'api-list del pannello sopra sarebbe vuota. Li esponiamo
+             data-driven dai dati gia' caricati nella riga, come nelle offerte.
+             Indipendente dal blocco `articoloObj?.is_composito` (che in
+             onModificaPrezzo resta null per non auto-aprire la Dialog). -->
+        <template v-if="selectedRowComponenti.length">
+          <div class="app-drawer-section">
+            <h4>{{ t('vendite.componenti.panel.section_title') }}</h4>
+          </div>
+          <ComponentiPanel
+            :initial-data="selectedRowComponenti"
+            readonly
+            i18n-prefix="vendite.componenti.panel" />
+        </template>
+
         <!-- Banner inline L2: visibile quando il save ha sollevato un codice
              E_PRICING_SCONTO_ECCESSIVO / E_PRICING_MAGGIORAZIONE_ECCESSIVA.
              Mostra il messaggio BE + CTA "Richiedi approvazione" che retry
@@ -1335,13 +1398,13 @@ function origineSeverity(origine) {
           </div>
         </Message>
 
-        <div class="app-drawer-footer">
+        <div class="app-form-footer">
           <Button :label="t('common.cancel')" severity="secondary" @click="closeForm" />
           <Button :label="t('common.save')" :disabled="!canSave || loading" :loading="loading" @click="onSave" />
         </div>
       </template>
 
-      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
     </div>
 
     <!-- ComponentiDialog modale: pre-popola i prezzi dei componenti BoM

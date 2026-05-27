@@ -49,6 +49,7 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "valido_al": "c.valido_al",
     "ba_codice": "ba.codice",
     "ba_ragione_sociale": "ba.ragione_sociale",
+    "id_fiscale": "srd.id_fiscale_univoco_cf_piva",
     "stato_codice": "sd.codice_interno",
     "categoria_cliente_snapshot_codice": "cc_snap.codice",
     "data_insert": "c.data_insert",
@@ -72,6 +73,11 @@ _SELECT_COLS_CONTRATTO = """
     c.billing_account_id,
     srd.ragione_sociale_completa AS ba_ragione_sociale,
     ba.codice AS ba_codice,
+    -- ID fiscale univoco del soggetto del BA (CF persona fisica o P.IVA).
+    -- Esposto dalla vista `anagrafiche.vw_soggetti_ruoli_dettaglio`. Allinea
+    -- offerte/preventivi: colonna visibile nella lista per
+    -- ricerca/confronto rapido del cliente.
+    srd.id_fiscale_univoco_cf_piva AS id_fiscale,
     c.istanza_utility_id,
     c.utility_id,
     u.codice AS utility_codice,
@@ -150,7 +156,15 @@ _SELECT_COLS_RIGA = """
     r.data_insert,
     r.user_insert,
     r.data_update,
-    r.user_update
+    r.user_update,
+    -- Aggregato componenti BoM persistiti per expansion FE (data-driven
+    -- `ComponentiPanel`). Serve al ramo "senza_listino" (forma C): le righe
+    -- AGGIUNTA bundle vivono in contratti_righe e qui non passavano per la
+    -- preview, quindi senza questo aggregato l'expander non vedeva i figli.
+    -- Pattern speculare a offerte_repository (`_FROM_JOINS_ECCEZIONE`).
+    -- Default '[]' se la riga non e' composita o non ha componenti attivi:
+    -- il pannello salta il render.
+    COALESCE(comp.componenti, '[]'::jsonb) AS componenti
 """
 
 
@@ -158,6 +172,34 @@ _FROM_JOINS_RIGA = """
     FROM vendite.contratti_righe r
     JOIN catalogo.articoli a ON a.id = r.articolo_id
     LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_operativa_id
+    LEFT JOIN LATERAL (
+      SELECT jsonb_agg(
+               jsonb_build_object(
+                 'id',                     c.id,
+                 'componente_id',          c.componente_id,
+                 'componente_codice',      ca.codice,
+                 'componente_descrizione', ca.descrizione,
+                 'coeff_qta_snapshot',     c.coeff_qta_snapshot,
+                 'quantita',               c.quantita,
+                 'uom_operativa_id',       c.uom_operativa_id,
+                 'uom_codice',             uc.codice,
+                 'prezzo_unitario',        c.prezzo_unitario,
+                 'iva_id',                 c.iva_id,
+                 'iva_codice',             ivc.codice,
+                 'iva_aliquota',           ivc.aliquota_iva,
+                 'origine_prezzo',         c.origine_prezzo,
+                 'ordine',                 c.ordine,
+                 'attivo',                 c.attivo
+               )
+               ORDER BY c.ordine NULLS LAST, c.id
+             ) AS componenti
+        FROM vendite.contratti_righe_componenti c
+        JOIN catalogo.articoli ca ON ca.id = c.componente_id
+        LEFT JOIN catalogo.unita_misura uc ON uc.id = c.uom_operativa_id
+        LEFT JOIN config.iva ivc          ON ivc.id = c.iva_id
+       WHERE c.riga_contratto_id = r.id
+         AND c.attivo = TRUE
+    ) comp ON TRUE
 """
 
 

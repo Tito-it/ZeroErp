@@ -8,7 +8,7 @@ import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { DRAWER_WIDTH } from '../constants'
 import { NAV_ICONS } from '../navigation'
-import DrawerFooter from './DrawerFooter.vue'
+import FormFooter from './FormFooter.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -177,7 +177,7 @@ async function handleSave() {
         </template>
       </div>
 
-      <DrawerFooter
+      <FormFooter
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"

@@ -15,7 +15,7 @@ import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/
 import { DRAWER_WIDTH, STATO_PRATICA, MANAGE_ICONS } from '../../core/constants'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
@@ -341,7 +341,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </div>
         </div>
         <div class="flex justify-end mt-4">
-          <DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+          <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
         </div>
 
         <!-- Sotto-drawer: SoggettoResolver -->
@@ -423,7 +423,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             </div>
 
             <div class="flex justify-end mt-4">
-              <DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+              <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
             </div>
           </TabPanel>
 

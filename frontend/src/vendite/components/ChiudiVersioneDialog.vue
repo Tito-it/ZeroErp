@@ -7,18 +7,17 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useNotify } from '../../core/composables/useNotify'
 import { updateVersione } from '../api/listini'
 import { getVersioneCloseDefaults } from '../api/formDefaults'
 import { displayDate, toDateString, addDaysToToday } from '../../core/utils/date'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../core/components/AppDialog.vue'
 import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
+import FormFooter from '../../core/components/FormFooter.vue'
 import Message from 'primevue/message'
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
-const notify = useNotify()
 
 const props = defineProps({
   visible: Boolean,
@@ -100,8 +99,8 @@ async function rimuoviChiusura() {
 </script>
 
 <template>
-  <Dialog :visible="visible" @update:visible="onHide" modal
-    :header="t('listini.chiudi_versione_titolo')" :style="{ width: '480px' }">
+  <AppDialog :visible="visible" @update:visible="onHide"
+    :header="t('listini.chiudi_versione_titolo')" width="sm">
 
     <Message v-if="dataChiusura" severity="warn" :closable="false" class="mb-1">
       {{ t('listini.chiudi_versione_warning', { data_dopo: dataDopoLabel }) }}
@@ -115,13 +114,25 @@ async function rimuoviChiusura() {
       </div>
     </div>
 
-    <div class="flex justify-end gap-2 mt-1">
-      <Button v-if="haGiaChiusura" :label="t('common.delete')"
-        text severity="danger" :loading="loading" @click="rimuoviChiusura" />
-      <Button :label="t('common.cancel')" text @click="onHide" />
-      <Button :label="t('listini.chiudi_versione_conferma')"
-        icon="pi pi-lock" severity="warn"
-        :disabled="!dataChiusura" :loading="loading" @click="conferma" />
-    </div>
-  </Dialog>
+    <!-- Footer custom: oltre ad Annulla/Conferma standard c'e' il bottone
+         distruttivo "Rimuovi chiusura" (terzo pulsante extra-pattern). -->
+    <template #footer>
+      <Button
+        v-if="haGiaChiusura"
+        :label="t('common.delete')"
+        text
+        severity="danger"
+        :loading="loading"
+        @click="rimuoviChiusura"
+      />
+      <FormFooter
+        :save-label="t('listini.chiudi_versione_conferma')"
+        save-severity="warn"
+        :loading="loading"
+        :disabled="!dataChiusura"
+        @cancel="onHide"
+        @save="conferma"
+      />
+    </template>
+  </AppDialog>
 </template>

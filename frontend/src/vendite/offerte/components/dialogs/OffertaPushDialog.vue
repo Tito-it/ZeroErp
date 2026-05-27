@@ -13,8 +13,7 @@
 //        a future estensioni.
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Button from 'primevue/button'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../../../core/components/AppDialog.vue'
 import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
 
@@ -41,12 +40,15 @@ function onConfirm() {
 </script>
 
 <template>
-  <Dialog
+  <AppDialog
     :visible="props.visible"
-    modal
     :header="t('vendite.offerte.push_titolo')"
-    :style="{ width: '500px' }"
+    width="md"
+    :loading="props.loading"
+    :save-disabled="props.loading"
+    :save-label="t('vendite.offerte.push_conferma')"
     @update:visible="(val) => emit('update:visible', val)"
+    @save="onConfirm"
   >
     <p>{{ t('vendite.offerte.push_messaggio') }}</p>
 
@@ -71,22 +73,5 @@ function onConfirm() {
         {{ t('vendite.offerte.push_pratica_hint') }}
       </small>
     </div>
-
-    <template #footer>
-      <Button
-        :label="t('common.cancel')"
-        text
-        severity="secondary"
-        @click="emit('update:visible', false)"
-      />
-      <Button
-        :label="t('vendite.offerte.push_conferma')"
-        icon="pi pi-arrow-right"
-        severity="success"
-        :loading="props.loading"
-        :disabled="props.loading"
-        @click="onConfirm"
-      />
-    </template>
-  </Dialog>
+  </AppDialog>
 </template>

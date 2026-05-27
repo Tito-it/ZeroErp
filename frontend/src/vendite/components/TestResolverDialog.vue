@@ -15,12 +15,12 @@ import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../core/components/AppDialog.vue'
 import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
-import { DATE_FORMAT, DRAWER_WIDTH } from '../../core/constants'
+import { DATE_FORMAT } from '../../core/constants'
 import { toDateString } from '../../core/utils/date'
 
 const { t } = useI18n()
@@ -184,8 +184,8 @@ function close() {
 </script>
 
 <template>
-  <Dialog :visible="visible" @update:visible="v => emit('update:visible', v)"
-    :header="t('listini.test_prezzo')" modal :style="{ width: DRAWER_WIDTH.STANDARD }">
+  <AppDialog :visible="visible" @update:visible="v => emit('update:visible', v)"
+    :header="t('listini.test_prezzo')" width="lg" close-only @cancel="close">
 
     <div class="form-grid-2col">
       <div class="form-field">
@@ -391,9 +391,5 @@ function close() {
         </ul>
       </div>
     </div>
-
-    <template #footer>
-      <Button :label="t('common.close')" severity="secondary" @click="close" />
-    </template>
-  </Dialog>
+  </AppDialog>
 </template>

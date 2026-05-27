@@ -18,7 +18,7 @@ import { lookupCategorieListiniTipiVariazione } from '../api/categorieClientiLis
 import { DRAWER_WIDTH } from '../../core/constants'
 import { isoToLocalDate, localDateToIso } from '../../core/utils/dateHelpers'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
@@ -344,7 +344,7 @@ function close() {
         </div>
       </div>
 
-      <DrawerFooter
+      <FormFooter
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"

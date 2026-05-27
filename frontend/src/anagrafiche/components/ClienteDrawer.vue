@@ -27,7 +27,7 @@ import SoggettoPreviewBadges from '../../core/components/SoggettoPreviewBadges.v
 import ContattoForm from '../../core/components/ContattoForm.vue'
 import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import IvaSelect from '../../core/components/IvaSelect.vue'
 import Drawer from 'primevue/drawer'
@@ -115,7 +115,6 @@ async function loadUtilitiesBaDriven(billingAccountId) {
     }))
   } catch (err) {
     utilitiesBaDriven.value = []
-    // eslint-disable-next-line no-console
     console.warn('ClienteDrawer: loadUtilitiesBaDriven failed', err)
   } finally {
     utilitiesBaLoading.value = false
@@ -639,7 +638,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         :entita-id-web="props.clienteId"
         :email-iniziale-web="detail?.soggetto_email || ''" />
 
-      <DrawerFooter :loading="loading" :disabled="!isEdit && !canSave" @save="onSave" @cancel="onClose" />
+      <FormFooter :loading="loading" :disabled="!isEdit && !canSave" @save="onSave" @cancel="onClose" />
     </div>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->

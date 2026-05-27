@@ -15,13 +15,23 @@ from apps.vendite.api.note_views import (
     ApiOffertaNoteDetail,
     ApiOffertaNoteList,
 )
+from apps.vendite.api.offerte_documenti_views import (
+    ApiOffertaDocumentiList,
+    ApiOffertaDocumentoAllegati,
+    ApiOffertaDocumentoAnteprima,
+    ApiOffertaDocumentoFile,
+    ApiOffertaDocumentoFileDownload,
+    ApiOffertaEmetti,
+)
 from apps.vendite.api.views_offerte import (
     ApiOffertaAnnulla,
     ApiOffertaCreaRevisione,
     ApiOffertaDetail,
+    ApiOffertaEccezioneComponenteDetail,
+    ApiOffertaEccezioneComponentiList,
     ApiOffertaEccezioneDetail,
     ApiOffertaEccezioni,
-    ApiOffertaEmetti,
+    ApiOffertaEccezionePreviewComponenti,
     ApiOffertaPushContratto,
     ApiOffertaRegistraEsito,
     ApiOffertaRevisioni,
@@ -82,6 +92,22 @@ urlpatterns = [
         ApiOffertaEccezioneDetail.as_view(),
         name="vendite-offerta-eccezione-detail",
     ),
+    # Componenti BoM eccezione (mirror contratti, simmetria 2026-05-26).
+    path(
+        "<int:offerta_id>/eccezioni/preview-componenti/",
+        ApiOffertaEccezionePreviewComponenti.as_view(),
+        name="vendite-offerta-eccezioni-preview-componenti",
+    ),
+    path(
+        "<int:offerta_id>/eccezioni/<int:eccezione_id>/componenti/",
+        ApiOffertaEccezioneComponentiList.as_view(),
+        name="vendite-offerta-eccezione-componenti-list",
+    ),
+    path(
+        "<int:offerta_id>/eccezioni/<int:eccezione_id>/componenti/<int:componente_id>/",
+        ApiOffertaEccezioneComponenteDetail.as_view(),
+        name="vendite-offerta-eccezione-componente-detail",
+    ),
     # Utility 1:1.
     path(
         "<int:offerta_id>/utility/",
@@ -104,5 +130,34 @@ urlpatterns = [
         "<int:offerta_id>/note/<int:note_id>/",
         ApiOffertaNoteDetail.as_view(),
         name="vendite-offerta-note-detail",
+    ),
+    # Documenti generati (motore documentale). L'emissione genera+persiste
+    # il documento + allegati (vedi `ApiOffertaEmetti` sopra). Qui:
+    # anteprima (BOZZA), lista, download principale, lista/append allegati,
+    # download file per id.
+    path(
+        "<int:offerta_id>/documenti/anteprima/",
+        ApiOffertaDocumentoAnteprima.as_view(),
+        name="vendite-offerta-documento-anteprima",
+    ),
+    path(
+        "<int:offerta_id>/documenti/",
+        ApiOffertaDocumentiList.as_view(),
+        name="vendite-offerta-documenti-list",
+    ),
+    path(
+        "<int:offerta_id>/documenti/<int:documento_id>/file/",
+        ApiOffertaDocumentoFile.as_view(),
+        name="vendite-offerta-documento-file",
+    ),
+    path(
+        "<int:offerta_id>/documenti/<int:documento_id>/allegati/",
+        ApiOffertaDocumentoAllegati.as_view(),
+        name="vendite-offerta-documento-allegati",
+    ),
+    path(
+        "<int:offerta_id>/documenti/<int:documento_id>/file/<int:file_id>/",
+        ApiOffertaDocumentoFileDownload.as_view(),
+        name="vendite-offerta-documento-file-download",
     ),
 ]

@@ -5,10 +5,9 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useNotify } from '../../core/composables/useNotify'
 import { applicaVariazionePercentuale } from '../api/listini'
 import { MANAGE_ICONS } from '../../core/constants'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../core/components/AppDialog.vue'
 import InputNumber from 'primevue/inputnumber'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -17,7 +16,6 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
-const notify = useNotify()
 
 const props = defineProps({
   visible: Boolean,
@@ -87,8 +85,11 @@ function backToInput() {
 </script>
 
 <template>
-  <Dialog :visible="visible" @update:visible="onHide" modal
-    :header="t('listini.variazione_pct_titolo')" :style="{ width: '700px' }">
+  <!-- Wizard 2-step (Input -> Preview -> Conferma): i bottoni cambiano per
+       step e stanno nel body, quindi AppDialog serve solo per il chrome
+       (hide-footer). Non e' il pattern Annulla/Salva standard. -->
+  <AppDialog :visible="visible" @update:visible="onHide"
+    :header="t('listini.variazione_pct_titolo')" width="lg" hide-footer>
 
     <!-- Step 1: Input -->
     <template v-if="step === 'input'">
@@ -108,6 +109,9 @@ function backToInput() {
         </div>
       </div>
 
+      <!-- TODO: wizard 2-step (input -> preview -> conferma) — NON segue il
+           pattern Annulla/Salva del FormFooter. Quando si introdurra' un
+           WizardFooter centralizzato, sostituire questi 4 bottoni. -->
       <div class="flex justify-end gap-2 mt-1">
         <Button :label="t('common.cancel')" text @click="onHide" />
         <Button :label="t('listini.variazione_pct_preview')" icon="pi pi-eye"
@@ -129,11 +133,12 @@ function backToInput() {
         <Column field="prezzo_calcolato" :header="t('listini.variazione_pct_prezzo_nuovo')" style="width: 130px;" />
       </DataTable>
 
+      <!-- TODO: vedi commento sopra (wizard step 2). -->
       <div class="flex justify-end gap-2 mt-1">
         <Button :label="t('common.back')" text icon="pi pi-arrow-left" @click="backToInput" />
         <Button :label="t('listini.variazione_pct_conferma')" :icon="MANAGE_ICONS.CONFIRM"
           severity="warn" :loading="loading" @click="applyVariazione" />
       </div>
     </template>
-  </Dialog>
+  </AppDialog>
 </template>

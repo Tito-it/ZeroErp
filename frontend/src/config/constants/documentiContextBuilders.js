@@ -19,9 +19,10 @@
 // ------------------------------------------------------------
 
 export const CONTEXT_BUILDER_CODES = [
-  { code: 'PREVENTIVO', i18nKey: 'documenti.context_builders.PREVENTIVO', registered: true },
-  { code: 'CONTRATTO',  i18nKey: 'documenti.context_builders.CONTRATTO',  registered: true },
-  { code: 'ORDINE',     i18nKey: 'documenti.context_builders.ORDINE',     registered: false },
+  { code: 'PREVENTIVO',         i18nKey: 'documenti.context_builders.PREVENTIVO',         registered: true },
+  { code: 'CONTRATTO',          i18nKey: 'documenti.context_builders.CONTRATTO',          registered: true },
+  { code: 'OFFERTA_COMMERCIALE', i18nKey: 'documenti.context_builders.OFFERTA_COMMERCIALE', registered: true },
+  { code: 'ORDINE',             i18nKey: 'documenti.context_builders.ORDINE',             registered: false },
 ]
 
 // Scopo: Helper per il dropdown PrimeVue Select. Ritorna un array di

@@ -14,7 +14,7 @@ import { useAuthStore } from '../../stores/auth'
 import { DRAWER_WIDTH } from '../../core/constants'
 import ParameterFallback from '../../core/components/ParameterFallback.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -66,7 +66,7 @@ const isEdit = computed(() => {
 function valueForCurrentScope() {
   const p = props.parameter
   if (!p) return ''
-  let existing = null
+  let existing
   if (isEmittenteScope.value) existing = p.emittente_value
   else if (isCategoriaScope.value) existing = p.categoria_cliente_value
   else existing = p.user_value
@@ -178,7 +178,7 @@ function close() {
         </div>
       </div>
 
-      <DrawerFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
     </div>
   </Drawer>
 </template>

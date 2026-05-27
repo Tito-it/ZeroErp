@@ -37,7 +37,7 @@ import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../core/components/AppDialog.vue'
 import Message from 'primevue/message'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
@@ -423,11 +423,14 @@ async function confirmPubblica() {
       </div>
     </div>
 
-    <Dialog
+    <AppDialog
       v-model:visible="pubblicaDialog"
       :header="t('config.modelli_documenti.versioni.publish_title')"
-      :style="{ width: '420px' }"
-      modal
+      width="sm"
+      :loading="loading"
+      :save-disabled="!pubblicaForm.valido_dal"
+      :save-label="t('config.modelli_documenti.versioni.action_pubblica')"
+      @save="confirmPubblica"
     >
       <div class="form-grid">
         <Message severity="warn" :closable="false">
@@ -442,23 +445,7 @@ async function confirmPubblica() {
           <DatePicker v-model="pubblicaForm.valido_al" date-format="dd/mm/yy" show-icon />
         </div>
       </div>
-      <template #footer>
-        <Button
-          :label="t('common.cancel')"
-          severity="secondary"
-          text
-          @click="pubblicaDialog = false"
-          :disabled="loading"
-        />
-        <Button
-          :label="t('config.modelli_documenti.versioni.action_pubblica')"
-          :icon="MANAGE_ICONS.PUBLISH"
-          :disabled="!pubblicaForm.valido_dal"
-          :loading="loading"
-          @click="confirmPubblica"
-        />
-      </template>
-    </Dialog>
+    </AppDialog>
   </div>
 </template>
 

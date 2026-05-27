@@ -33,12 +33,11 @@
 //        assoluta lato caller via API listino bundle.
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
-import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import AppDialog from '../../../core/components/AppDialog.vue'
 import Message from 'primevue/message'
 import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError } from '../../../core/utils/apiError'
@@ -311,7 +310,7 @@ function handleCancel() {
 </script>
 
 <template>
-  <Dialog
+  <AppDialog
     :visible="props.visible"
     @update:visible="(v) => emit('update:visible', v)"
     :header="articolo
@@ -320,10 +319,11 @@ function handleCancel() {
           descrizione: articolo.descrizione || '',
         })
       : ''"
-    modal
+    width="xl"
     :closable="false"
-    :style="{ width: '90vw', maxWidth: '1200px' }"
-    :pt="{ root: { class: 'app-dialog-componenti' } }"
+    :save-disabled="!canConfirm"
+    @save="handleConfirm"
+    @cancel="handleCancel"
   >
     <div style="display: flex; flex-direction: column; gap: 0.75rem;">
       <small class="text-color-secondary">{{ t(localizedKey('dialog_hint')) }}</small>
@@ -470,20 +470,7 @@ function handleCancel() {
         </span>
       </div>
     </div>
-
-    <template #footer>
-      <Button
-        :label="t('common.cancel')"
-        severity="secondary"
-        @click="handleCancel"
-      />
-      <Button
-        :label="t('common.save')"
-        :disabled="!canConfirm"
-        @click="handleConfirm"
-      />
-    </template>
-  </Dialog>
+  </AppDialog>
 </template>
 
 <style scoped>

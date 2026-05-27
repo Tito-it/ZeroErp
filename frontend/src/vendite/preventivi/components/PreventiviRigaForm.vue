@@ -12,7 +12,6 @@ import { useAuthStore } from '../../../stores/auth'
 import { suggerisciPrezzoRiga, previewRigaComponenti } from '../api/preventiviApi'
 import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/utils/severity'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
-import { formatCurrency } from '../../../core/utils/format'
 import { PRICING_ACTIONS } from '../../constants'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
@@ -212,9 +211,12 @@ async function caricaUomConPickBase(articoloId) {
 const componentiDialogVisible = ref(false)
 const componentiPayload = ref(null)
 
-// Trigger di apertura Dialog: solo in CREATE su articolo composito con
-// UoM + qta valida (lo stato in EDIT viaggia via PreventiviRigaComponentiPanel).
-const showComponentiButton = computed(
+// Trigger di auto-apertura ComponentiDialog: solo in CREATE su articolo
+// composito con UoM + qta valida. Il watcher sotto setta direttamente
+// `componentiDialogVisible = true` al primo set valido (no bottone
+// manuale: la dialog e' l'unico entry point per CREATE; lo stato in EDIT
+// viaggia via `PreventiviRigaComponentiPanel`).
+const showComponentiDialog = computed(
   () => !isEdit.value
     && articoloObj.value?.is_composito === true
     && !!form.value.articolo_id
@@ -236,34 +238,15 @@ watch(
     if (isEdit.value) return
     componentiPayload.value = null
     const tupleKey = `${articoloId}|${uomId}`
-    if (showComponentiButton.value && _autoOpenedFor !== tupleKey) {
+    if (showComponentiDialog.value && _autoOpenedFor !== tupleKey) {
       _autoOpenedFor = tupleKey
       componentiDialogVisible.value = true
-    } else if (!showComponentiButton.value) {
+    } else if (!showComponentiDialog.value) {
       _autoOpenedFor = null
       componentiDialogVisible.value = false
     }
   },
 )
-
-// Summary "live" che scala il totale del payload confermato con la qty
-// corrente. Il Dialog ritorna `summary.qtaPadre` (snapshot alla
-// conferma); il totale e' lineare in qty_padre → moltiplicazione
-// proporzionale al cambio attuale. Se la qty va a 0 → summary nullo
-// (canSave gia' blocca per qty<=0 a monte).
-const componentiSummaryLive = computed(() => {
-  const s = componentiPayload.value?.summary
-  if (!s) return null
-  const qtaPadreSnapshot = Number(s.qtaPadre) || 0
-  const qtaCorrente = Number(form.value.quantita) || 0
-  if (qtaPadreSnapshot <= 0 || qtaCorrente <= 0) return { n: s.n, total: 0 }
-  const scale = qtaCorrente / qtaPadreSnapshot
-  return { n: s.n, total: s.total * scale }
-})
-
-function apriComponentiDialog() {
-  componentiDialogVisible.value = true
-}
 
 function onComponentiConfirm(payload) {
   // payload = { overrides, attivazioni, summary }; null se nessuna modifica.
@@ -442,7 +425,7 @@ const canSave = computed(() => {
   // blocca il save finche' la ComponentiDialog non e' stata confermata
   // almeno una volta (componentiPayload != null). Se l'operatore
   // annulla, resta bloccato — deve riaprire e confermare.
-  if (showComponentiButton.value && componentiPayload.value == null) return false
+  if (showComponentiDialog.value && componentiPayload.value == null) return false
   return true
 })
 
@@ -488,7 +471,7 @@ function buildRigaPayload(extras = {}) {
   if (!isPadreComposito.value) {
     payload.prezzo_unitario = f.prezzo_unitario
   }
-  if (showComponentiButton.value && componentiPayload.value?.overrides) {
+  if (showComponentiDialog.value && componentiPayload.value?.overrides) {
     payload.componenti_overrides = componentiPayload.value.overrides
   }
   return payload
@@ -686,44 +669,16 @@ async function handleRichiediApprovazione() {
         :readonly="false"
         @changed="emit('componenti-changed')" />
     </div>
-    <!-- Modello unificato 2026-05-13: riepilogo componenti + bottone
-         "Modifica componenti". La valorizzazione vive nella Dialog
-         shared (vendite/_shared/componenti/ComponentiDialog.vue) che si
-         apre automaticamente al primo trigger valido (articolo
-         composito + UoM + qta) e poi a richiesta. -->
-    <div v-if="showComponentiButton" class="app-drawer-section" style="margin-top: 1rem;">
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
-        <div style="display: flex; flex-direction: column; gap: 0.15rem;">
-          <strong style="font-size: 0.95rem;">
-            {{ t('preventivi.componenti_section_title') }}
-          </strong>
-          <small style="color: var(--app-text-muted);">
-            <template v-if="componentiSummaryLive?.n > 0">
-              {{ t('vendite.componenti.summary', {
-                n: componentiSummaryLive.n,
-                total: formatCurrency(componentiSummaryLive.total),
-              }) }}
-            </template>
-            <template v-else-if="componentiPayload">
-              {{ t('vendite.componenti.summary_zero') }}
-            </template>
-            <template v-else>
-              {{ t('preventivi.componenti_preview_hint') }}
-            </template>
-          </small>
-        </div>
-        <Button
-          icon="pi pi-cog"
-          :label="t('preventivi.componenti_modifica')"
-          size="small"
-          severity="secondary"
-          @click="apriComponentiDialog"
-        />
-      </div>
-    </div>
+    <!-- Modello unificato 2026-05-13: la ComponentiDialog si auto-apre al
+         primo set valido (articolo composito + UoM + qta) tramite watcher.
+         Nessun riepilogo/bottone manuale: la conferma alimenta
+         `componentiPayload` che viaggia nel save riga come
+         `componenti_overrides`. Il riepilogo persistito post-save vive
+         nell'expansion della DataTable righe (`<ComponentiPanel
+         :initial-data="row.componenti">` lato `PreventiviRigheTable`). -->
 
     <ComponentiDialog
-      v-if="showComponentiButton"
+      v-if="showComponentiDialog"
       v-model:visible="componentiDialogVisible"
       :articolo="articoloObj"
       :documento-id="preventivoId"
@@ -737,7 +692,7 @@ async function handleRichiediApprovazione() {
     <!-- Bottoni Salva/Annulla della riga: sempre visibili quando l'utente
          sta editando la riga. Il ComponentiDialog modale 90vw copre comunque
          la pagina mentre aperto, quindi non c'e' duplicazione visiva con
-         i bottoni Conferma/Annulla del Dialog. I bottoni del DrawerFooter
+         i bottoni Conferma/Annulla del Dialog. I bottoni del FormFooter
          testata preventivo invece si nascondono via `formRigaAperto` lato
          PreventiviDrawer (pattern distinta base `ArticoloBomDrawer`). -->
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/trgfn_componenti_guard_pending.md" %}
 # ⚙️ Funzione `trgfn_componenti_guard_pending`
 
 ```sql

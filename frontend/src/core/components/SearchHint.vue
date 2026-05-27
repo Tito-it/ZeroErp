@@ -3,7 +3,7 @@
 // Mostra icona search e messaggio "Eseguire una ricerca" finche' l'utente non applica filtri.
 import { useI18n } from 'vue-i18n'
 
-const props = defineProps({
+defineProps({
   message: { type: String, default: null }
 })
 

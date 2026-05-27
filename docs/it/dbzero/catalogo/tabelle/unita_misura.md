@@ -46,14 +46,15 @@
 | trg_unita_misura_a10_listini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'listini_righe', 'uom_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_movimenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'movimenti', 'uom_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_offerte_commerciali_eccezioni_block_ce1c7b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali_eccezioni', 'uom_operativa_id', 'id', 'attivo')` |
+| trg_unita_misura_a10_offerte_commerciali_eccezioni_compo_1ae18e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali_eccezioni_componenti', 'uom_operativa_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_ordini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini_righe', 'uom_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_ordini_righe_componenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe_componenti', 'uom_operativa_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_preventivi_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe', 'uom_operativa_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_preventivi_righe_componenti_block_d_34c143 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe_componenti', 'uom_operativa_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_promo_articoli_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'promo_articoli', 'uom_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_unita_misura_conversioni_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'unita_misura_conversioni', 'uom_from_id', 'id', 'attivo')` |
-| trg_unita_misura_a10_uom_tipi_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'uom_tipi', 'attivo', 'tipo_uom_id', 'id')` |
 | trg_unita_misura_a10_uom_tipi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'uom_tipi', 'attivo', 'tipo_uom_id', 'id')` |
+| trg_unita_misura_a10_uom_tipi_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'uom_tipi', 'attivo', 'tipo_uom_id', 'id')` |
 | trg_unita_misura_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_unita_misura_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

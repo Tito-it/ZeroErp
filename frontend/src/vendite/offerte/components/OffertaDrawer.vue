@@ -11,7 +11,7 @@ import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import DatePicker from 'primevue/datepicker'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../../core/components/AppDialog.vue'
 import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
@@ -29,7 +29,7 @@ import Column from 'primevue/column'
 import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
-import DrawerFooter from '../../../core/components/DrawerFooter.vue'
+import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import EmittenteFiscaleField from '../../../core/components/EmittenteFiscaleField.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
@@ -65,6 +65,7 @@ import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
 import OffertaEmissioneDialog from './dialogs/OffertaEmissioneDialog.vue'
 import OffertaEsitoDialog from './dialogs/OffertaEsitoDialog.vue'
 import OffertaPushDialog from './dialogs/OffertaPushDialog.vue'
+import OffertaPdfButton from './OffertaPdfButton.vue'
 
 const { t } = useI18n()
 const store = useOfferteStore()
@@ -507,9 +508,12 @@ function onApriContrattoEsistente() {
 
 // Handler delegati ai dialog ---
 
-async function handleEmissioneConferma() {
+async function handleEmissioneConferma(payload = {}) {
+  // payload.files = allegati staged nel DocumentoEmissioneDialog. L'emissione
+  // genera+persiste il documento + allegati lato BE (transazione atomica).
+  const allegati = payload?.files || []
   const result = await execute(
-    () => store.emetti(props.offertaId),
+    () => store.emetti(props.offertaId, { allegati }),
     { successMessage: t('vendite.offerte.emessa') },
   )
   if (result !== null) {
@@ -645,7 +649,15 @@ const onClose = useDrawerClose(emit, 'cancelled')
             </template>
           </DrawerEntityHeader>
 
-          <DrawerActionsBar :actions="drawerActions" />
+          <DrawerActionsBar :actions="drawerActions">
+            <template #suffix>
+              <OffertaPdfButton
+                :offerta-id="props.offertaId"
+                :stato-codice="detail.stato_codice_interno"
+                :codice="detail.codice"
+              />
+            </template>
+          </DrawerActionsBar>
 
           <Message
             v-if="isStatoTerminale"
@@ -922,14 +934,14 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- Footer: Salva visibile solo in CREATE o EDIT BOZZA. Negli stati
              post-BOZZA mostriamo Chiudi (close-only) — il footer Salva non ha
              senso (cambio stato passa dalla DrawerActionsBar). -->
-        <DrawerFooter
+        <FormFooter
           v-if="!isReadonly"
           :loading="loading"
           :disabled="!canSave"
           @save="handleSave"
           @cancel="onClose"
         />
-        <DrawerFooter v-else-if="isEdit" close-only @cancel="onClose" />
+        <FormFooter v-else-if="isEdit" close-only @cancel="onClose" />
       </template>
     </div>
 
@@ -983,11 +995,10 @@ const onClose = useDrawerClose(emit, 'cancelled')
          (LEFT JOIN BE) oppure reattivamente se il BE solleva
          E_OFFERTA_CONTRATTO_GIA_GENERATO. Offre link diretto al
          ContrattoDrawer esistente, niente push doppio. -->
-    <Dialog
+    <AppDialog
       v-model:visible="giaGeneratoDialogVisible"
-      modal
       :header="t('vendite.offerte.gia_generato_titolo')"
-      :style="{ width: '500px' }"
+      width="md"
     >
       <Message severity="info" :closable="false" size="small">
         {{ t('vendite.offerte.gia_generato_messaggio') }}
@@ -999,6 +1010,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <strong>{{ t('vendite.offerte.gia_generato_contratto_label') }}:</strong>
         {{ detail.contratto_numero }}
       </div>
+      <!-- Footer custom: navigazione (apri contratto esistente), non Annulla/Salva. -->
       <template #footer>
         <Button
           :label="t('common.close')"
@@ -1014,6 +1026,6 @@ const onClose = useDrawerClose(emit, 'cancelled')
           @click="onApriContrattoEsistente"
         />
       </template>
-    </Dialog>
+    </AppDialog>
   </Drawer>
 </template>

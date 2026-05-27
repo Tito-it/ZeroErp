@@ -23,7 +23,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
@@ -324,22 +324,9 @@ class ApiOffertaDetail(DomainAPIView):
 # =================================================================
 
 
-class ApiOffertaEmetti(DomainAPIView):
-    area_funzionale = "vendite"
-
-    @extend_schema(
-        request=None,
-        responses={200: inline_serializer(
-            name="VenditeOffertaEmettiResp",
-            fields={"data": serializers.DictField()},
-        )},
-    )
-    # Scopo: BOZZA -> EMESSA. Trigger DB verifica listino_versione_id e
-    #        versione ATTIVA; gli errori salgono come 422 con codice
-    #        E_OFFERTA_EMISSIONE_*.
-    def post(self, request: Request, offerta_id: int) -> JsonResponse:
-        del request
-        return success_response(OfferteService().emetti(offerta_id))
+# `ApiOffertaEmetti` e' stato spostato in `offerte_documenti_views.py`:
+# l'emissione (BOZZA -> EMESSA) ora genera+persiste il documento e gli
+# eventuali allegati in una transazione atomica (decisione 2026-05-27).
 
 
 class ApiOffertaRegistraEsito(DomainAPIView):
@@ -514,10 +501,15 @@ class ApiOffertaEccezioni(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Crea un'eccezione (solo in BOZZA).
+    # Scopo: Crea un'eccezione (solo in BOZZA). `auth_user_id` viene passato
+    # al service per risolvere l'emittente_sr_id su articolo composito
+    # (precedenza emittente esplicito sulla testata > operatore loggato).
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         return success_response(
-            OfferteService().crea_eccezione(offerta_id, request.data or {})
+            OfferteService().crea_eccezione(
+                offerta_id, request.data or {},
+                auth_user_id=get_scope_user_id(request),
+            )
         )
 
 
@@ -554,6 +546,176 @@ class ApiOffertaEccezioneDetail(DomainAPIView):
         del request
         OfferteService().elimina_eccezione(offerta_id, eccezione_id)
         return success_response({"deleted": True, "eccezione_id": eccezione_id})
+
+
+# =================================================================
+# Componenti BoM eccezione (mirror contratti, simmetria 2026-05-26)
+# =================================================================
+# Pattern simmetrico contratti:
+#   POST /eccezioni/preview-componenti/        -> ComponentiDialog FE pre-save
+#   GET  /eccezioni/<eid>/componenti/          -> EDIT panel post-save
+#   PATCH/DELETE /eccezioni/<eid>/componenti/<cid>/  -> CRUD singolo
+
+
+_ECCEZIONE_PREVIEW_COMPONENTI_REQUEST = inline_serializer(
+    name="VenditeOffertaEccezionePreviewComponentiReq",
+    fields={
+        "articolo_id": serializers.UUIDField(),
+        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
+        "quantita": serializers.DecimalField(
+            max_digits=22, decimal_places=10, required=True,
+        ),
+    },
+)
+
+
+_ECCEZIONE_COMPONENTE_PATCH_REQUEST = inline_serializer(
+    name="VenditeOffertaEccezioneComponentePatchReq",
+    fields={
+        "prezzo_unitario": serializers.DecimalField(
+            max_digits=22, decimal_places=10, required=False, allow_null=True,
+        ),
+        "iva_id": serializers.IntegerField(required=False, allow_null=True),
+        "uom_operativa_id": serializers.IntegerField(required=False, allow_null=True),
+        "factor_to_base": serializers.DecimalField(
+            max_digits=22, decimal_places=10, required=False, allow_null=True,
+        ),
+        "qta_operativa": serializers.DecimalField(
+            max_digits=22, decimal_places=10, required=False, allow_null=True,
+        ),
+        "origine_prezzo": serializers.CharField(required=False, allow_null=True),
+        "prezzo_resolver_context": serializers.JSONField(
+            required=False, allow_null=True,
+        ),
+        "stato_approvazione_prezzo": serializers.CharField(
+            required=False, allow_null=True,
+        ),
+        "pratica_approvazione_prezzo_id": serializers.IntegerField(
+            required=False, allow_null=True,
+        ),
+        "meta": serializers.JSONField(required=False, allow_null=True),
+        "ordine": serializers.IntegerField(required=False, allow_null=True),
+        "attivo": serializers.BooleanField(required=False),
+    },
+)
+
+
+class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
+    """POST /api/v1/vendite/offerte/<id>/eccezioni/preview-componenti/
+
+    Read-only: ritorna i componenti BoM con prezzo suggerito dal resolver
+    bundle-aware per pre-popolare il ComponentiDialog FE PRIMA del save di
+    una eccezione padre composita. Mirror di
+    `ApiContrattoRigaPreviewComponenti`.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_ECCEZIONE_PREVIEW_COMPONENTI_REQUEST,
+        responses={200: inline_serializer(
+            name="VenditeOffertaEccezionePreviewComponentiResp",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    def post(self, request: Request, offerta_id: int) -> JsonResponse:
+        auth_user_id = get_scope_user_id(request)
+
+        def _handler(payload: dict[str, object]) -> list[dict[str, object]]:
+            articolo_id = str(payload.get("articolo_id") or "")
+            uom_raw = payload.get("uom_operativa_id")
+            uom_operativa_id = int(uom_raw) if uom_raw not in (None, "") else None
+            quantita = payload.get("quantita")
+            return OfferteService().preview_componenti_eccezione(
+                offerta_id,
+                articolo_id=articolo_id,
+                uom_operativa_id=uom_operativa_id,
+                quantita=quantita,
+                auth_user_id=auth_user_id,
+            )
+
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiOffertaEccezioneComponentiList(DomainAPIView):
+    """GET /api/v1/vendite/offerte/<id>/eccezioni/<eid>/componenti/
+
+    Lista componenti BoM persistiti sull'eccezione composita. Mirror di
+    `ApiContrattoRigaComponentiList`. Query param `solo_attivi` default true.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="solo_attivi", type=bool, default=True,
+                description=(
+                    "Default true: solo componenti attivi. Se false include "
+                    "anche opzionali disattivati (EDIT panel)."
+                ),
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="VenditeOffertaEccezioneComponentiListResp",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    def get(
+        self, request: Request, offerta_id: int, eccezione_id: int,
+    ) -> JsonResponse:
+        solo_attivi_raw = request.query_params.get("solo_attivi", "true")
+        solo_attivi = str(solo_attivi_raw).lower() not in ("false", "0", "no", "off")
+        return success_response(
+            OfferteService().list_componenti_eccezione(
+                offerta_id, eccezione_id, solo_attivi=solo_attivi,
+            )
+        )
+
+
+class ApiOffertaEccezioneComponenteDetail(DomainAPIView):
+    """PATCH/DELETE /api/v1/vendite/offerte/<id>/eccezioni/<eid>/componenti/<cid>/
+
+    CRUD singolo componente BoM eccezione offerta. Mirror di
+    `ApiContrattoRigaComponenteDetail`. Match URL anti-tampering:
+    `offerta_id` + `eccezione_id` + `componente_id` devono essere coerenti.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_ECCEZIONE_COMPONENTE_PATCH_REQUEST,
+        responses={200: inline_serializer(
+            name="VenditeOffertaEccezioneComponentePatchResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    def patch(
+        self, request: Request, offerta_id: int, eccezione_id: int,
+        componente_id: int,
+    ) -> JsonResponse:
+        return success_response(
+            OfferteService().update_componente_eccezione(
+                offerta_id, eccezione_id, componente_id, dict(request.data),
+            )
+        )
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="VenditeOffertaEccezioneComponenteDeleteResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    def delete(
+        self, request: Request, offerta_id: int, eccezione_id: int,
+        componente_id: int,
+    ) -> JsonResponse:
+        del request
+        return success_response(
+            OfferteService().delete_componente_eccezione(
+                offerta_id, eccezione_id, componente_id,
+            )
+        )
 
 
 # =================================================================

@@ -187,7 +187,7 @@ export const useNavigationStore = defineStore('navigation', () => {
       const scopedKey = userScopedKey(domainFavoriteKey(domain.key), userId)
       const raw = local.get(scopedKey)
       if (!raw) continue
-      let parsed = raw
+      let parsed
       try {
         parsed = JSON.parse(raw)
       } catch {

@@ -175,7 +175,7 @@ function handleSetContext(row) {
 }
 
 // Scopo: naviga alla scheda anagrafica completa del soggetto
-function handleOpenDetail(row) {
+function handleOpenDetail() {
   const codice = selectedTipoRuolo.value?.codice
   const routeName = TIPO_RUOLO_ROUTES[codice] || 'anagrafiche-soggetti'
   const query = searchTerm.value ? { search: searchTerm.value } : {}

@@ -26,6 +26,7 @@ import logging
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from decimal import Decimal
 from typing import Any
 
 from django.db import DatabaseError, IntegrityError, transaction
@@ -36,6 +37,10 @@ from apps.core.services.payload_helpers import (
     map_integrity_error,
 )
 from apps.vendite.db.offerte_repository import OfferteRepository
+from apps.vendite.services._componenti_service_helpers import (
+    normalize_componenti_overrides,
+    resolve_emittente_sr_id_for_testata,
+)
 from apps.vendite.types import OffertaPushResult
 
 logger = logging.getLogger(__name__)
@@ -220,6 +225,9 @@ _UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
 
 
 # Whitelist payload eccezione (create).
+# `componenti_overrides` non e' campo di `offerte_commerciali_eccezioni`:
+# viene estratto pre-INSERT e passato a `fn_offerta_eccezione_componenti_init`
+# (auto-init post-create_eccezione su articolo composito).
 _CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
     "articolo_id",
     "tipo_eccezione",
@@ -236,12 +244,18 @@ _CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
     "ordine",
     "attivo",
     "meta",
+    "componenti_overrides",
 })
 
 
 # Whitelist payload eccezione (update): articolo_id e tipo_eccezione immutabili.
+# `componenti_overrides` non re-spedito in update (la BoM e' contratto
+# immutabile post-init); la modifica prezzi componente passa via endpoint
+# CRUD dedicato `PATCH .../componenti/<cid>/`.
 _UPDATE_KEYS_ECCEZIONE: frozenset[str] = frozenset(
-    _CREATE_KEYS_ECCEZIONE - {"articolo_id", "tipo_eccezione"}
+    _CREATE_KEYS_ECCEZIONE - {
+        "articolo_id", "tipo_eccezione", "componenti_overrides",
+    }
 )
 
 
@@ -746,7 +760,11 @@ class OfferteService:
 
     # Scopo: Crea un'eccezione. Solo in stato BOZZA.
     def crea_eccezione(
-        self, offerta_id: int, payload: dict[str, Any]
+        self,
+        offerta_id: int,
+        payload: dict[str, Any],
+        *,
+        auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS_ECCEZIONE)
@@ -758,9 +776,82 @@ class OfferteService:
                 message=f"Campo '{required}' obbligatorio.",
                 context={"field": required},
             )
+
+        # Estrae overrides BoM prima di passare il payload al repo (la colonna
+        # non esiste su `offerte_commerciali_eccezioni`); normalizza valori.
+        overrides_raw = payload.pop("componenti_overrides", None)
+        componenti_overrides = normalize_componenti_overrides(
+            overrides_raw,
+            function_name="offerte_service.crea_eccezione",
+            error_code=E_VENDITE_VALIDATION,
+        )
+
+        articolo_id = payload.get("articolo_id")
+        # Pre-check articolo composito (cache locale per non chiamare 2 volte
+        # il repo nel ramo INSERT + init componenti). Usato sia per il guard
+        # `prezzo_unitario = None` sotto, sia per l'auto-init componenti.
+        is_composito = bool(
+            articolo_id
+            and self._repo.is_articolo_composito(str(articolo_id)),
+        )
+
+        # Coerenza prezzo_unitario / tipo_eccezione (pre-DB, specchio CHECK
+        # `chk_offerte_eccezioni_prezzo_per_tipo_eccezione`):
+        # - ESCLUSIONE -> prezzo NULL (l'articolo non e' disponibile)
+        # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
+        # Eccezione: articolo composito (modello unificato BoM). Il FE puo'
+        # omettere `prezzo_unitario` per padri compositi perche' il prezzo
+        # padre = SUM(figli × coeff_qta) calcolato dal trigger DB
+        # `_z90_ricalcola_padre` post-init componenti BoM nello stesso
+        # `transaction.atomic`. Settiamo `Decimal(0)` come placeholder per
+        # superare il CHECK; il trigger lo sovrascrive sincrono dopo INSERT
+        # padre + INSERT figli. Pattern simmetrico ai contratti (cfr.
+        # `contratti_service` ~ linea 2114 "Padre composito").
+        tipo_eccezione = payload.get("tipo_eccezione")
+        prezzo_raw = payload.get("prezzo_unitario")
+        if tipo_eccezione == "ESCLUSIONE":
+            ErrorManager.require(
+                prezzo_raw is None,
+                code=E_VENDITE_VALIDATION,
+                message=(
+                    "ESCLUSIONE: prezzo_unitario deve essere NULL "
+                    "(l'articolo non e' disponibile per questa offerta)."
+                ),
+                context={"tipo_eccezione": tipo_eccezione},
+            )
+        elif prezzo_raw is None and tipo_eccezione in ("OVERRIDE", "AGGIUNTA"):
+            ErrorManager.require(
+                is_composito,
+                code=E_VENDITE_VALIDATION,
+                message=(
+                    f"{tipo_eccezione}: prezzo_unitario obbligatorio "
+                    "per articoli non compositi."
+                ),
+                context={"tipo_eccezione": tipo_eccezione},
+            )
+            # Placeholder: il trigger DB lo sovrascrive a SUM(componenti).
+            payload = {**payload, "prezzo_unitario": Decimal("0")}
+
         with self._db_errors({"offerta_id": offerta_id}):
             with transaction.atomic():
                 eccezione_id = self._repo.create_eccezione(offerta_id, payload)
+                # Auto-init componenti BoM su articolo composito (mirror del
+                # flow contratti: la fn DB e' idempotente, no-op se gia'
+                # presenti o articolo non composito).
+                if is_composito:
+                    testata = self._repo.get_offerta(offerta_id) or {}
+                    emittente_sr_id = self._resolve_emittente_sr_id_for_offerta(
+                        offerta_id=offerta_id,
+                        testata=testata,
+                        auth_user_id=auth_user_id,
+                        function_name="offerte_service.crea_eccezione",
+                    )
+                    self._repo.init_componenti_eccezione(
+                        eccezione_id=eccezione_id,
+                        emittente_soggetto_ruolo_id=emittente_sr_id,
+                        data_riferimento=testata.get("validita_dal"),
+                        componenti_overrides=componenti_overrides,
+                    )
         row = self._repo.get_eccezione(eccezione_id)
         assert row is not None
         return row
@@ -788,6 +879,193 @@ class OfferteService:
         row = self._repo.get_eccezione(eccezione_id)
         assert row is not None
         return row
+
+    # =================================================================
+    # Componenti BoM su eccezione (mirror contratti, simmetria 2026-05-26)
+    # =================================================================
+
+    # Scopo: Preview componenti BoM PRIMA del save eccezione (ComponentiDialog
+    # FE). Read-only, nessun side-effect. Risolve emittente da testata >
+    # operatore. Mirror di `ContrattiService.preview_componenti_riga`.
+    def preview_componenti_eccezione(
+        self,
+        offerta_id: int,
+        *,
+        articolo_id: str,
+        uom_operativa_id: int | None,
+        quantita: Any,
+        auth_user_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        testata = self._repo.get_offerta(offerta_id)
+        ErrorManager.require(
+            testata is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Offerta non trovata.",
+            context={"offerta_id": offerta_id},
+        )
+        assert testata is not None
+        emittente_sr_id = self._resolve_emittente_sr_id_for_offerta(
+            offerta_id=offerta_id,
+            testata=testata,
+            auth_user_id=auth_user_id,
+            function_name="offerte_service.preview_componenti_eccezione",
+        )
+        # `utility_id` NOT NULL su DDL: guard parlante prima del cast per
+        # evitare TypeError criptici in caso di dato malformato (test/dev).
+        utility_id_raw = testata.get("utility_id")
+        ErrorManager.require(
+            utility_id_raw is not None,
+            code=E_VENDITE_VALIDATION,
+            message="Offerta senza utility_id: impossibile risolvere il pricing.",
+            context={"offerta_id": offerta_id},
+        )
+        return self._repo.preview_componenti_eccezione(
+            articolo_id=str(articolo_id),
+            uom_id=uom_operativa_id,
+            quantita_padre=quantita,
+            data_riferimento=testata.get("validita_dal"),
+            ba_id=testata.get("billing_account_id"),
+            utility_id=int(utility_id_raw),
+            emittente_soggetto_ruolo_id=emittente_sr_id,
+        )
+
+    # Scopo: Helper unificato risoluzione emittente_sr_id per le operazioni
+    # componenti BoM dell'offerta. Precedenza: testata > operatore. Solleva
+    # E_VENDITE_VALIDATION se nessuna fonte (admin globale + testata senza
+    # emittente_fiscale_id). Centralizza il pattern riusato da
+    # `crea_eccezione` e `preview_componenti_eccezione`.
+    def _resolve_emittente_sr_id_for_offerta(
+        self,
+        *,
+        offerta_id: int,
+        testata: dict[str, Any],
+        auth_user_id: int | None,
+        function_name: str,
+    ) -> int:
+        emittente_sr_id = resolve_emittente_sr_id_for_testata(
+            testata, auth_user_id,
+            repo_get_sr_id_by_fiscale_id=self._repo.get_emittente_sr_id_by_fiscale_id,
+        )
+        ErrorManager.require(
+            emittente_sr_id is not None,
+            code=E_VENDITE_VALIDATION,
+            message=(
+                "Operazione componenti BoM richiede emittente fiscale "
+                "risolvibile (testata o utente)."
+            ),
+            context={"offerta_id": offerta_id},
+            function_name=function_name,
+        )
+        assert emittente_sr_id is not None
+        return emittente_sr_id
+
+    # Scopo: Lista componenti BoM persistiti su eccezione composita. Guard
+    # esistenza eccezione + match URL anti-tampering (eccezione_id deve
+    # appartenere all'offerta_id richiesto).
+    def list_componenti_eccezione(
+        self,
+        offerta_id: int, eccezione_id: int,
+        *, solo_attivi: bool = True,
+    ) -> list[dict[str, Any]]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        self._v.guard_positive_int(eccezione_id, field="eccezione_id")
+        eccezione = self._repo.get_eccezione(eccezione_id)
+        ErrorManager.require(
+            eccezione is not None
+            and int(eccezione.get("offerta_id") or 0) == offerta_id,
+            code=E_VENDITE_NOT_FOUND,
+            message="Eccezione offerta non trovata.",
+            context={"offerta_id": offerta_id, "eccezione_id": eccezione_id},
+        )
+        return self._repo.list_componenti_riga(eccezione_id, solo_attivi=solo_attivi)
+
+    # Scopo: Modifica componente BoM eccezione esistente. Whitelist colonne via
+    # repo mixin. Guard stato offerta editabile + esistenza componente +
+    # match URL.
+    def update_componente_eccezione(
+        self,
+        offerta_id: int, eccezione_id: int, componente_id: int,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        self._v.guard_positive_int(eccezione_id, field="eccezione_id")
+        self._v.guard_positive_int(componente_id, field="componente_id")
+        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        self._load_componente_for_modification(
+            offerta_id=offerta_id, eccezione_id=eccezione_id,
+            componente_id=componente_id,
+        )
+        with self._db_errors(
+            {"componente_id": componente_id, "eccezione_id": eccezione_id},
+            fallback_message=(
+                "Violazione vincolo DB su componente eccezione offerta."
+            ),
+        ):
+            updated = self._repo.update_componente(componente_id, **payload)
+        ErrorManager.require(
+            updated,
+            code=E_VENDITE_VALIDATION,
+            message="Nessun campo aggiornato sul componente.",
+            detail="Payload vuoto o senza campi nella whitelist.",
+        )
+        return {"status": "ok", "componente_id": componente_id}
+
+    # Scopo: Soft delete componente BoM eccezione (`attivo=FALSE`). Il trigger
+    # DB di ricalcolo padre esclude i componenti inattivi dalla SUM.
+    def delete_componente_eccezione(
+        self,
+        offerta_id: int, eccezione_id: int, componente_id: int,
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        self._v.guard_positive_int(eccezione_id, field="eccezione_id")
+        self._v.guard_positive_int(componente_id, field="componente_id")
+        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        self._load_componente_for_modification(
+            offerta_id=offerta_id, eccezione_id=eccezione_id,
+            componente_id=componente_id,
+        )
+        with self._db_errors(
+            {"componente_id": componente_id, "eccezione_id": eccezione_id},
+            fallback_message="Impossibile eliminare il componente (dipendenze).",
+        ):
+            deleted = self._repo.delete_componente(componente_id)
+        return {
+            "status": "ok",
+            "componente_id": componente_id,
+            "deleted": deleted,
+        }
+
+    # Scopo: Lookup componente + verifica appartenenza eccezione/offerta.
+    # Centralizza guard URL anti-tampering riusato da update/delete componente.
+    def _load_componente_for_modification(
+        self,
+        *,
+        offerta_id: int,
+        eccezione_id: int,
+        componente_id: int,
+    ) -> dict[str, Any]:
+        eccezione = self._repo.get_eccezione(eccezione_id)
+        ErrorManager.require(
+            eccezione is not None
+            and int(eccezione.get("offerta_id") or 0) == offerta_id,
+            code=E_VENDITE_NOT_FOUND,
+            message="Eccezione offerta non trovata.",
+            context={"offerta_id": offerta_id, "eccezione_id": eccezione_id},
+        )
+        componente = self._repo.get_componente(componente_id)
+        ErrorManager.require(
+            componente is not None
+            and int(componente.get("eccezione_offerta_id") or 0) == eccezione_id,
+            code=E_VENDITE_NOT_FOUND,
+            message="Componente non trovato sull'eccezione.",
+            context={
+                "eccezione_id": eccezione_id,
+                "componente_id": componente_id,
+            },
+        )
+        assert componente is not None
+        return componente
 
     # Scopo: Cancella un'eccezione. Solo se offerta in BOZZA.
     def elimina_eccezione(self, offerta_id: int, eccezione_id: int) -> None:

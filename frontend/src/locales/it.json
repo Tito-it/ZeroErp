@@ -10,6 +10,7 @@
     "default": "Default",
     "edit": "Modifica",
     "delete": "Elimina",
+    "remove": "Rimuovi",
     "view": "Visualizza",
     "search": "Cerca",
     "reload_list": "Ricarica lista (F5)",
@@ -580,7 +581,9 @@
     "already_role": "Gia' registrato come {ruolo}",
     "natura_blocked": "Tipo soggetto non ammesso per questo ruolo",
     "open": "Cerca o crea soggetto",
-    "change": "Cambia soggetto"
+    "change": "Cambia soggetto",
+    "no_results": "Nessun soggetto trovato",
+    "searching": "Ricerca in corso..."
   },
   "notifications": {
     "save_success": "Salvataggio completato",
@@ -1476,8 +1479,9 @@
     "filtro_ambito": "Ambito",
     "filtro_scadenza_mese": "Scadenza mese...",
     "col_numero": "Numero",
-    "col_ba_codice": "Codice",
     "col_ba": "Cliente",
+    "col_ba_codice": "Codice",
+    "col_id_fiscale": "Id. Fiscale",
     "col_utility": "Utility",
     "col_ambito": "Ambito",
     "col_categoria_cliente": "Cat. Cliente",
@@ -1608,7 +1612,7 @@
     "cessa_dialog_titolo_programma": "Programma cessazione",
     "cessa_dialog_data": "Data di cessazione",
     "cessa_dialog_warning_immediata": "Operazione irreversibile: il contratto passera' subito a CESSATO con valido_al = data scelta.",
-    "cessa_dialog_warning_programmata": "La data scelta e' nel futuro: il contratto resta nello stato attuale, valido_al viene programmato. Lo stato CESSATO viene applicato automaticamente quando la data scade.",
+    "cessa_dialog_warning_programmata": "Cessazione programmata: il contratto resta nello stato attuale e valido fino alla data scelta. Lo stato CESSATO viene applicato automaticamente alla scadenza.",
     "cessa_dialog_conferma_immediata": "Cessa",
     "cessa_dialog_conferma_programma": "Programma",
     "cessa_dialog_success_immediata": "Contratto cessato",
@@ -1861,6 +1865,13 @@
       "push_eseguito": "Contratto generato in stato DRAFT.",
       "banner_stato_terminale": "Offerta in stato {stato} — sola lettura.",
       "banner_locked_post_bozza": "Offerta in stato {stato}: modifiche bloccate. Cambia stato dalle azioni in alto.",
+      "pdf": {
+        "label_anteprima": "Anteprima PDF",
+        "tooltip_anteprima": "Anteprima del documento (non salvata)",
+        "label_scarica": "Documenti PDF",
+        "tooltip_scarica": "Documenti generati per l'offerta",
+        "dialog_title": "Offerta {codice} — Documenti"
+      },
       "emissione_titolo": "Emetti offerta",
       "emissione_messaggio": "Confermi l'emissione di questa offerta al cliente? Una volta emessa potrà essere solo accettata, rifiutata o superata da una revisione.",
       "emissione_info": "La versione del listino viene fissata al momento dell'emissione.",
@@ -2061,16 +2072,11 @@
     "pdf": {
       "label_anteprima": "Anteprima",
       "tooltip_anteprima": "Anteprima PDF (non viene salvata)",
-      "label_genera": "Genera PDF",
-      "tooltip_genera": "Genera nuova versione PDF",
       "label_scarica": "Scarica PDF",
       "tooltip_scarica": "Scarica un PDF generato",
       "tooltip_lista": "Documenti PDF",
       "tooltip_lista_disabilitato": "Disponibile dopo l'emissione del preventivo",
-      "dialog_title": "Documenti PDF — Preventivo {numero}",
-      "confirm_genera_header": "Generare nuova versione PDF",
-      "confirm_genera_first_message": "Verra' creata la prima versione del PDF per questo preventivo. Confermi?",
-      "confirm_rigenera_message": "Esiste gia' la versione {versione} del {data}. Generare la versione {prossima}? Le versioni precedenti restano archiviate."
+      "dialog_title": "Documenti PDF — Preventivo {numero}"
     },
     "search_placeholder": "Cerca per numero, cliente, utility...",
     "filtro_stato": "Stato",
@@ -2220,13 +2226,11 @@
     "componenti_non_caso_a": "Articolo non composito o nessun componente esposto in fattura.",
     "componenti_l1_richiede_autorizzazione": "Richiede l'azione `prezzo_override_manuale` per modificare il prezzo del componente.",
     "componenti_errore_listino_mancante": "Listino non configurato per il componente {codice}: configuralo in catalogo prima di creare la riga.",
-    "componenti_preview_hint": "Inserisci o modifica i prezzi dei componenti esposti in fattura, poi salva la riga.",
     "componenti_prezzo_aggiornato": "Prezzo componente aggiornato",
     "componenti_componente_eliminato": "Componente eliminato",
     "componenti_conferma_elimina": "Eliminare questo componente dalla riga? Il prezzo della riga padre verrà ricalcolato.",
     "componenti_errore_caricamento": "Errore durante il caricamento dei componenti.",
     "componenti_errore_aggiornamento": "Errore durante l'aggiornamento del componente.",
-    "componenti_modifica": "Modifica componenti",
     "componenti_obbligatorio_zero": "Prezzo non valido per il componente obbligatorio {codice}: deve essere diverso da zero."
   },
   "approvazioni_prezzo": {
@@ -2510,6 +2514,7 @@
     "context_builders": {
       "PREVENTIVO": "Preventivo",
       "CONTRATTO": "Contratto",
+      "OFFERTA_COMMERCIALE": "Offerta commerciale",
       "ORDINE": "Ordine (non disponibile)"
     },
     "genera_pdf": {
@@ -2533,7 +2538,29 @@
       "col_titolo": "Titolo",
       "col_nome_file": "Nome file",
       "col_stato": "Stato",
-      "action_download": "Scarica PDF"
+      "action_download": "Scarica PDF",
+      "action_aggiungi_allegati": "Aggiungi allegati"
+    },
+    "emissione": {
+      "titolo": "Emissione documento",
+      "conferma": "Conferma ed emetti",
+      "anteprima_titolo": "Anteprima documento",
+      "anteprima_scarica": "Scarica anteprima",
+      "anteprima_filename": "anteprima.pdf",
+      "anteprima_errore": "Anteprima non disponibile: verifica che esista un template pubblicato per questa sorgente.",
+      "allegati_titolo": "Allegati",
+      "aggiungi_allegati": "Aggiungi allegati",
+      "allegati_vuoto": "Nessun allegato aggiunto.",
+      "abbandona_titolo": "Abbandonare l'operazione?",
+      "abbandona_messaggio": "Gli allegati selezionati non verranno salvati.",
+      "abbandona_messaggio_draft": "Gli allegati selezionati non verranno salvati e lo stato resterà in bozza.",
+      "abbandona_conferma": "Abbandona"
+    },
+    "allegati": {
+      "dialog_titolo": "Aggiungi allegati",
+      "conferma": "Carica allegati",
+      "aggiunti_ok": "Allegati aggiunti al documento.",
+      "errore": "Errore durante il caricamento degli allegati."
     }
   },
   "config": {

@@ -12,7 +12,6 @@ import { useEntityCapabilities } from '../../../core/composables/useEntityCapabi
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
 import { STATO_PREVENTIVO } from '../../constants'
 import { addDaysToToday, displayDate, toDateString } from '../../../core/utils/date'
-import { formatCurrency } from '../../../core/utils/format'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
@@ -24,7 +23,7 @@ import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../../core/components/DrawerFooter.vue'
+import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
@@ -37,11 +36,10 @@ import PreventivoPdfButton from './PreventivoPdfButton.vue'
 import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import Drawer from 'primevue/drawer'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../../core/components/AppDialog.vue'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
 
@@ -129,7 +127,7 @@ const noteDrawerVisible = ref(false)
 // salvato. Pattern: master-detail inline (memoria feedback_master_detail_inline).
 const createdId = ref(null)
 // Stato form riga inline: quando l'operatore sta editando/aggiungendo
-// una riga, il DrawerFooter (Salva/Annulla testata) si nasconde per
+// una riga, il FormFooter (Salva/Annulla testata) si nasconde per
 // evitare duplicazione con i bottoni del PreventiviRigaForm.
 // Aggiornato via `@form-aperto` (kebab) da PreventiviRigheTable.
 const formRigaAperto = ref(false)
@@ -461,7 +459,7 @@ watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
 // preventivo deve essere collegato a un'istanza utility, derivabile dal BA o
 // selezionata standalone per prospect). In EDIT l'istanza e' gia' persistita
 // e il backend non richiede di rispedirla.
-// Defense-in-depth: anche se il DrawerFooter e' nascosto da
+// Defense-in-depth: anche se il FormFooter e' nascosto da
 // `v-if="canEditTestataEffective && !isReadonly"`, includiamo isReadonly qui
 // cosi' qualsiasi consumer futuro del computed (shortcut tastiera, save
 // programmato) e' coperto dalla stessa guard.
@@ -793,9 +791,7 @@ const drawerActions = computed(() => {
         <DrawerActionsBar :actions="drawerActions">
           <template #suffix>
             <PreventivoPdfButton
-              v-if="detail.emittente_fiscale_id"
               :preventivo-id="effectivePreventivoId"
-              :emittente-fiscale-id="detail.emittente_fiscale_id"
               :stato-codice="detail.stato_codice_interno"
             />
           </template>
@@ -894,7 +890,7 @@ const drawerActions = computed(() => {
         />
       </template>
 
-      <DrawerFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto" :loading="loading" :disabled="!canSave"
+      <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto" :loading="loading" :disabled="!canSave"
         @save="handleSave" @cancel="close" />
       <!-- Fallback close-only: in stati post-DRAFT (readonly, no Salva/Annulla)
            l'utente deve poter uscire deliberatamente dal footer in basso, non
@@ -902,7 +898,7 @@ const drawerActions = computed(() => {
            Chiudi=completion). Pattern coerente con `feedback_drawer_footer_close_only`
            e ContrattoRigheDrawer. Nascosto quando il form riga e' aperto per
            non duplicare l'azione Annulla del form. -->
-      <DrawerFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="close" />
+      <FormFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="close" />
     </div>
   </Drawer>
 
@@ -918,8 +914,11 @@ const drawerActions = computed(() => {
        Richiede modalita' di fatturazione: toggle immediata + datepicker mese
        di competenza. Regola di priorita' (BE+FE): immediata=true forza
        competenza al mese corrente. -->
-  <Dialog v-model:visible="acceptDialogVisible" modal :closable="false"
-    :header="t('preventivi.accetta_titolo')" :style="{ width: '420px' }">
+  <AppDialog v-model:visible="acceptDialogVisible" :closable="false"
+    :header="t('preventivi.accetta_titolo')" width="sm"
+    :save-label="t('preventivi.accetta_conferma')"
+    :save-disabled="!acceptForm.fatturazione_immediata && !acceptForm.competenza_mese"
+    @save="confirmAcceptDialog">
     <p style="margin: 0 0 1rem 0; color: var(--text-color-secondary);">
       {{ t('preventivi.accetta_descrizione') }}
     </p>
@@ -940,13 +939,6 @@ const drawerActions = computed(() => {
         </small>
       </div>
     </div>
-    <template #footer>
-      <Button :label="t('common.cancel')" severity="secondary" text
-        @click="acceptDialogVisible = false" />
-      <Button :label="t('preventivi.accetta_conferma')" severity="primary"
-        :disabled="!acceptForm.fatturazione_immediata && !acceptForm.competenza_mese"
-        @click="confirmAcceptDialog" />
-    </template>
-  </Dialog>
+  </AppDialog>
 </template>
 

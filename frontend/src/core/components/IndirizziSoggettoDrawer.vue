@@ -14,13 +14,13 @@ import {
   listSoggettoIndirizzi, createSoggettoIndirizzo, replaceSoggettoIndirizzo,
   listRuoloIndirizzi, createRuoloIndirizzo, deleteRuoloIndirizzo
 } from '../../anagrafiche/api/anagrafiche'
-import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo, lookupCodici } from '../apiCore'
+import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo } from '../apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { NAV_ICONS } from '../navigation'
 import { sortByFonte } from '../utils/string'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
-import DrawerFooter from './DrawerFooter.vue'
+import FormFooter from './FormFooter.vue'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -381,7 +381,7 @@ const onClose = useDrawerClose(emit)
         </div>
       </template>
 
-      <DrawerFooter v-if="!formMode" close-only @cancel="onClose" />
+      <FormFooter v-if="!formMode" close-only @cancel="onClose" />
 
       <!-- Form (aggiungi o cambia) -->
       <template v-if="formMode">
@@ -412,7 +412,7 @@ const onClose = useDrawerClose(emit)
           {{ t('indirizzo_soggetto.replace_non_trovato') }}
         </Message>
 
-        <DrawerFooter
+        <FormFooter
           :loading="loading"
           :disabled="!indirizzo.canSave.value || addressNotFound"
           @save="onSaveForm"

@@ -15,7 +15,7 @@ import { NAV_ICONS } from '../../core/navigation'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import Drawer from 'primevue/drawer'
 import Accordion from 'primevue/accordion'
 import AccordionPanel from 'primevue/accordionpanel'
@@ -140,6 +140,6 @@ const onClose = useDrawerClose(emit, 'cancelled')
     </Accordion>
     </div>
 
-    <DrawerFooter :loading="loading" @save="onSave" @cancel="onClose" />
+    <FormFooter :loading="loading" @save="onSave" @cancel="onClose" />
   </Drawer>
 </template>

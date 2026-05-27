@@ -5,9 +5,11 @@
 > Approfondimento tabelle:
 > [vendite.offerte_commerciali](/dbzero/vendite/tabelle/offerte_commerciali)
 > [vendite.offerte_commerciali_eccezioni](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni)
+> [vendite.offerte_commerciali_eccezioni_componenti](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni_componenti)
 > [vendite.offerte_commerciali_utilities](/dbzero/vendite/tabelle/offerte_commerciali_utilities)
 > [vendite.contratti](/dbzero/vendite/tabelle/contratti)
 > [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)
+> [vendite.contratti_righe_componenti](/dbzero/vendite/tabelle/contratti_righe_componenti)
 > [vendite.contratti_utilities](/dbzero/vendite/tabelle/contratti_utilities)
 > [config.sorgenti](/dbzero/config/tabelle/sorgenti)
 > [pratiche.pratiche_sorgenti](/dbzero/pratiche/tabelle/pratiche_sorgenti)
@@ -26,7 +28,7 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-05-26 — aggiunto `emittente_fiscale_id`)
+(rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 
 `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id)` genera un
 **contratto DRAFT** da un'offerta commerciale **ACCETTATA**, copiando 1:1
@@ -55,10 +57,12 @@ duplicati (pattern A §6.9.3 analisi pratiche domini).
     (rev2, 2026-05-26). Il trigger `trgfn_contratti_default_emittente` salta
     (campo già valorizzato); il guard `trgfn_contratti_guard_emittente_ba`
     valida la coerenza BA↔emittente.
-- **Eccezioni → `contratti_righe`**: copia 1:1 di tutte le righe
-  (`offerte_commerciali_eccezioni`). `stato_approvazione_prezzo` e
-  `pratica_approvazione_prezzo_id` inseriti `NULL` (I4 del brief: il contratto
-  DRAFT li acquisisce in fase di negoziazione interna).
+- **Eccezioni → `contratti_righe`** + **componenti → `contratti_righe_componenti`**: il batch INSERT di eccezioni è stato convertito in un loop `FOR v_eccezione IN SELECT * FROM offerte_commerciali_eccezioni WHERE offerta_id = p_offerta_id ORDER BY id` che, per ogni eccezione, esegue:
+  1. `INSERT INTO contratti_righe (...) RETURNING id INTO v_riga_id` — ottiene il PK della riga appena creata.
+  2. `INSERT INTO contratti_righe_componenti (...) SELECT v_riga_id, occ.* FROM offerte_commerciali_eccezioni_componenti occ WHERE occ.eccezione_offerta_id = v_eccezione.id` — copia i componenti.
+  - `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` delle eccezioni inseriti `NULL` su `contratti_righe` (I4 del brief).
+  - `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` dei **componenti** copiati **1:1** da `offerte_commerciali_eccezioni_componenti` (preservazione stato approvazione pre-negoziazione).
+  - Il loop evita la necessità di correlare eccezione→riga_contratto tramite `ROW_NUMBER + INSERT RETURNING` (non ordinamento garantito).
 - **Utility → `contratti_utilities`** (UPSERT): il trigger
   `trg_contratti_z90_snapshot_precontrattuali_ins` (AFTER INSERT su contratti)
   può aver già creato un record in `contratti_utilities` dai dati precontrattuali.
@@ -132,8 +136,12 @@ fn_push_offerta_a_contratto
        └─ AFTER INSERT:  trg_contratti_z90_snapshot_precontrattuali_ins
                            └─ crea contratti_utilities dai precontrattuali
                                 (se non esiste già — idempotente)
-  └─ INSERT contratti_righe (da offerte_commerciali_eccezioni)
-       └─ trigger righe: guard aggiunta, default fonte_qta, ecc.
+  └─ FOR EACH eccezione IN offerte_commerciali_eccezioni ORDER BY id:
+       ├─ INSERT contratti_righe (...) RETURNING id INTO v_riga_id
+       │    └─ trigger righe: guard aggiunta, default fonte_qta, ecc.
+       └─ INSERT contratti_righe_componenti SELECT v_riga_id, occ.*
+            FROM offerte_commerciali_eccezioni_componenti
+            WHERE eccezione_offerta_id = v_eccezione.id
   └─ UPSERT contratti_utilities (da offerte_commerciali_utilities)
        └─ ON CONFLICT DO UPDATE → sovrascrive il record creato dal trigger
           precontrattuali con i dati negoziati dell'offerta

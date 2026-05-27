@@ -15,7 +15,7 @@ import { NAV_ICONS } from '../../core/navigation'
 import { displayDate } from '../../core/utils/date'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import ContrattoDrawer from './ContrattoDrawer.vue'
@@ -257,7 +257,7 @@ const onClose = useDrawerClose(emit)
         </Column>
       </DataTable>
 
-      <DrawerFooter close-only @cancel="onClose" />
+      <FormFooter close-only @cancel="onClose" />
     </div>
 
     <!-- Drawer contratto annidato -->

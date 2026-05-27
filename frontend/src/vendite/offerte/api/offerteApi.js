@@ -40,10 +40,18 @@ export function deleteOfferta(id) {
 
 // --- Transizioni di stato ---
 
-// BOZZA -> EMESSA. Body vuoto, transizioni e validazioni nel trigger DB
-// (listino_versione_id NOT NULL + versione ATTIVA).
-export function emettiOfferta(id) {
-  return api.post(`${BASE}/${id}/emetti/`, {})
+// BOZZA -> EMESSA. L'endpoint (multipart) emette + genera il documento +
+// persiste gli eventuali allegati in una transazione atomica lato BE.
+// `allegati` = array di File (opzionale); `templateId` opzionale (default
+// = template predefinito per OFFERTA_COMMERCIALE/emittente). Validazioni di
+// stato/versione nel trigger DB; mancanza template -> emissione fallisce.
+export function emettiOfferta(id, { allegati = [], templateId = null } = {}) {
+  const formData = new FormData()
+  if (templateId != null) formData.append('template_documento_id', templateId)
+  for (const file of allegati) formData.append('allegati', file)
+  return api.post(`${BASE}/${id}/emetti/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
 
 // EMESSA -> ACCETTATA o RIFIUTATA. Motivazione obbligatoria su RIFIUTATA.
@@ -102,6 +110,51 @@ export function updateEccezione(offertaId, eccezioneId, payload) {
 
 export function deleteEccezione(offertaId, eccezioneId) {
   return api.delete(`${BASE}/${offertaId}/eccezioni/${eccezioneId}/`)
+}
+
+// --- Componenti BoM eccezione (mirror contratti, simmetria 2026-05-26) ---
+// Pattern speculare a `previewRigaComponenti`/`listRigaComponenti`/
+// `updateRigaComponente`/`deleteRigaComponente` di `contratti.js`. Init
+// componenti BoM avviene lato BE in `crea_eccezione` quando l'articolo
+// e' composito; il payload puo' includere `componenti_overrides` (delta
+// prezzi diversi dal suggerito) per pre-impostare prezzi manuali al
+// momento della create.
+
+// Preview componenti pre-save: ritorna i figli BoM con `prezzo_suggerito`
+// dal resolver bundle-aware. Consumato da `ComponentiDialog` PRIMA del
+// save di un'eccezione padre composita.
+// Payload: { articolo_id, uom_operativa_id, quantita }.
+export function previewEccezioneComponenti(offertaId, payload) {
+  return api.post(
+    `${BASE}/${offertaId}/eccezioni/preview-componenti/`,
+    payload,
+  )
+}
+
+// `soloAttivi=true` default backcompat. EDIT panel passa false per
+// includere opzionali disattivati e permettere il toggle di riattivazione.
+export function listEccezioneComponenti(offertaId, eccezioneId, { soloAttivi = true } = {}) {
+  const params = soloAttivi ? {} : { solo_attivi: 'false' }
+  return api.get(
+    `${BASE}/${offertaId}/eccezioni/${eccezioneId}/componenti/`,
+    { params },
+  )
+}
+
+// PATCH singolo componente (prezzo override, IVA, origine, ecc.).
+export function updateEccezioneComponente(offertaId, eccezioneId, componenteId, payload) {
+  return api.patch(
+    `${BASE}/${offertaId}/eccezioni/${eccezioneId}/componenti/${componenteId}/`,
+    payload,
+  )
+}
+
+// Soft delete componente: il trigger DB ricalcola il prezzo della
+// eccezione padre.
+export function deleteEccezioneComponente(offertaId, eccezioneId, componenteId) {
+  return api.delete(
+    `${BASE}/${offertaId}/eccezioni/${eccezioneId}/componenti/${componenteId}/`,
+  )
 }
 
 // --- Utility 1:1 (CRUD, solo BOZZA in write) ---

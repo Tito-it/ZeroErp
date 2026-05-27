@@ -10,7 +10,7 @@
 import { useI18n } from 'vue-i18n'
 import LookupSelect from './LookupSelect.vue'
 
-const props = defineProps({
+defineProps({
   modelValue: { type: [Number, String, null], default: null },
   placeholder: { type: String, default: '' },
   disabled: { type: Boolean, default: false },

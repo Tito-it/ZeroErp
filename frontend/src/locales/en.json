@@ -10,6 +10,7 @@
     "default": "Default",
     "edit": "Edit",
     "delete": "Delete",
+    "remove": "Remove",
     "view": "View",
     "search": "Search",
     "reload_list": "Reload list (F5)",
@@ -580,7 +581,9 @@
     "already_role": "Already registered as {ruolo}",
     "natura_blocked": "Subject type not allowed for this role",
     "open": "Search or create subject",
-    "change": "Change subject"
+    "change": "Change subject",
+    "no_results": "No subject found",
+    "searching": "Searching..."
   },
   "notifications": {
     "save_success": "Saved successfully",
@@ -1471,8 +1474,9 @@
     "filtro_ambito": "Scope",
     "filtro_scadenza_mese": "Expiry month...",
     "col_numero": "Number",
-    "col_ba_codice": "Code",
     "col_ba": "Client",
+    "col_ba_codice": "Code",
+    "col_id_fiscale": "Tax ID",
     "col_utility": "Utility",
     "col_ambito": "Scope",
     "col_categoria_cliente": "Client cat.",
@@ -1603,7 +1607,7 @@
     "cessa_dialog_titolo_programma": "Schedule termination",
     "cessa_dialog_data": "Termination date",
     "cessa_dialog_warning_immediata": "Irreversible: the contract will move to TERMINATED immediately with valido_al = chosen date.",
-    "cessa_dialog_warning_programmata": "Future date: the contract stays in its current state, valido_al is scheduled. The TERMINATED status is applied automatically when the date expires.",
+    "cessa_dialog_warning_programmata": "Scheduled termination: the contract stays in its current state and valid until the chosen date. The TERMINATED status is applied automatically at expiry.",
     "cessa_dialog_conferma_immediata": "Terminate",
     "cessa_dialog_conferma_programma": "Schedule",
     "cessa_dialog_success_immediata": "Contract terminated",
@@ -1856,6 +1860,13 @@
       "push_eseguito": "Contract generated in DRAFT.",
       "banner_stato_terminale": "Offer in state {stato} — read-only.",
       "banner_locked_post_bozza": "Offer in state {stato}: edits locked. Change state from the actions above.",
+      "pdf": {
+        "label_anteprima": "PDF preview",
+        "tooltip_anteprima": "Document preview (not saved)",
+        "label_scarica": "PDF documents",
+        "tooltip_scarica": "Documents generated for the offer",
+        "dialog_title": "Offer {codice} — Documents"
+      },
       "emissione_titolo": "Issue offer",
       "emissione_messaggio": "Confirm issuing this offer to the customer? Once issued it can only be accepted, rejected or superseded by a revision.",
       "emissione_info": "The price list version is locked at issuance.",
@@ -2055,16 +2066,11 @@
     "pdf": {
       "label_anteprima": "Preview",
       "tooltip_anteprima": "Preview PDF (not saved)",
-      "label_genera": "Generate PDF",
-      "tooltip_genera": "Generate new PDF version",
       "label_scarica": "Download PDF",
       "tooltip_scarica": "Download a generated PDF",
       "tooltip_lista": "PDF documents",
       "tooltip_lista_disabilitato": "Available after the quote is issued",
-      "dialog_title": "PDF documents — Quote {numero}",
-      "confirm_genera_header": "Generate new PDF version",
-      "confirm_genera_first_message": "The first PDF version for this quote will be created. Confirm?",
-      "confirm_rigenera_message": "Version {versione} exists since {data}. Generate version {prossima}? Previous versions remain archived."
+      "dialog_title": "PDF documents — Quote {numero}"
     },
     "search_placeholder": "Search by number, client, utility...",
     "filtro_stato": "Status",
@@ -2214,13 +2220,11 @@
     "componenti_non_caso_a": "Article is not composite or has no components exposed in the invoice.",
     "componenti_l1_richiede_autorizzazione": "Requires the `prezzo_override_manuale` action to modify the component price.",
     "componenti_errore_listino_mancante": "Price list not configured for component {codice}: configure it in catalog before creating the row.",
-    "componenti_preview_hint": "Enter or modify the prices of components exposed in the invoice, then save the row.",
     "componenti_prezzo_aggiornato": "Component price updated",
     "componenti_componente_eliminato": "Component deleted",
     "componenti_conferma_elimina": "Delete this component from the row? The parent row price will be recalculated.",
     "componenti_errore_caricamento": "Error while loading components.",
     "componenti_errore_aggiornamento": "Error while updating the component.",
-    "componenti_modifica": "Edit components",
     "componenti_obbligatorio_zero": "Invalid price for mandatory component {codice}: must be non-zero."
   },
   "approvazioni_prezzo": {
@@ -2504,6 +2508,7 @@
     "context_builders": {
       "PREVENTIVO": "Quote",
       "CONTRATTO": "Contract",
+      "OFFERTA_COMMERCIALE": "Commercial offer",
       "ORDINE": "Order (not available)"
     },
     "genera_pdf": {
@@ -2527,7 +2532,29 @@
       "col_titolo": "Title",
       "col_nome_file": "File name",
       "col_stato": "Status",
-      "action_download": "Download PDF"
+      "action_download": "Download PDF",
+      "action_aggiungi_allegati": "Add attachments"
+    },
+    "emissione": {
+      "titolo": "Document issuance",
+      "conferma": "Confirm and issue",
+      "anteprima_titolo": "Document preview",
+      "anteprima_scarica": "Download preview",
+      "anteprima_filename": "preview.pdf",
+      "anteprima_errore": "Preview not available: check that a published template exists for this source.",
+      "allegati_titolo": "Attachments",
+      "aggiungi_allegati": "Add attachments",
+      "allegati_vuoto": "No attachments added.",
+      "abbandona_titolo": "Discard the operation?",
+      "abbandona_messaggio": "The selected attachments will not be saved.",
+      "abbandona_messaggio_draft": "The selected attachments will not be saved and the state will remain draft.",
+      "abbandona_conferma": "Discard"
+    },
+    "allegati": {
+      "dialog_titolo": "Add attachments",
+      "conferma": "Upload attachments",
+      "aggiunti_ok": "Attachments added to the document.",
+      "errore": "Error while uploading attachments."
     }
   },
   "config": {

@@ -44,6 +44,12 @@
 #  15. genera_documento_integrity_error_progressivo_mapped
 #  16. genera_documento_storage_write_fail_no_cleanup
 #  17. genera_documento_commit_fail_storage_orphan_cleanup
+#  21. genera_documento_con_allegati_persiste_file_secondari
+#  22. genera_documento_allegato_mime_non_ammesso_raises
+#  23. genera_documento_allegato_troppo_grande_raises
+#  24. aggiungi_allegati_append_persiste_file
+#  25. aggiungi_allegati_documento_inesistente_raises_not_found
+#  26. aggiungi_allegati_lista_vuota_raises_validation
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -779,3 +785,178 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
         # Cleanup chiamato sull'uri del file scritto pre-commit.
         storage.write.assert_called_once()
         storage.delete.assert_called_once_with("fs:abc")
+
+
+# =====================================================================
+# Allegati (file secondari)
+# =====================================================================
+
+
+# Scopo: Lookup tipo file multi-codice (PDF_FINALE + ALLEGATO) per i test
+#        che generano documento con allegati.
+def _tipo_file_lookup(codice: str) -> dict[str, Any] | None:
+    return {
+        "PDF_FINALE": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+        "ALLEGATO": {"id": 9, "codice": "ALLEGATO", "attivo": True},
+    }.get(codice)
+
+
+# Scopo: Imposta un ParameterService mock sul service (limite size allegato).
+def _mock_params(svc: DocumentGenerationService, max_mb: int = 25) -> None:
+    params = MagicMock()
+    params.get_parameter_int.return_value = max_mb
+    svc._params = params  # type: ignore[attr-defined]
+
+
+class GeneraDocumentoAllegatiTests(SimpleTestCase):
+    """genera_documento con allegati: persist file secondari + validazione."""
+
+    # 21. allegato valido -> 2 file persistiti (principale + allegato),
+    #     allegato is_principale=False, ordinamento 2, tipo ALLEGATO.
+    def test_genera_documento_con_allegati_persiste_file_secondari(self) -> None:
+        template = _template_row()
+        versione = _versione_row()
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={
+                "find_template_applicabile": template,
+                "get_versione_pubblicata_attiva": versione,
+                "next_progressivo_sorgente": 1,
+                "create_documento_generato": (99, "uid-x"),
+                "create_documento_generato_file": 123,
+                "emit_evento_documento": 1,
+            },
+            storage_methods={"write": "fs:x"},
+        )
+        repo.get_tipo_file_documento_by_codice.side_effect = _tipo_file_lookup
+        _mock_params(svc)
+        allegati = [{
+            "file_bytes": b"%PDF-1.4 allegato",
+            "mime_type": "application/pdf",
+            "file_name": "condizioni.pdf",
+        }]
+        with _patch_scope(None), _patch_get_builder({"numero": 1}), _patch_render():
+            with _patch_transaction_atomic_noop():
+                result = svc.genera_documento(
+                    _make_user(), allegati=allegati, **_GENERA_DEFAULT,
+                )
+
+        self.assertEqual(repo.create_documento_generato_file.call_count, 2)
+        calls = repo.create_documento_generato_file.call_args_list
+        principale = calls[0].args[0]
+        allegato = calls[1].args[0]
+        self.assertEqual(principale["is_principale"], True)
+        self.assertEqual(principale["ordinamento"], 1)
+        self.assertEqual(allegato["is_principale"], False)
+        self.assertEqual(allegato["ordinamento"], 2)
+        self.assertEqual(allegato["file_tipo_id"], 9)
+        self.assertEqual(allegato["file_name"], "condizioni.pdf")
+        self.assertEqual(allegato["mime_type"], "application/pdf")
+        # 2 write storage: principale + allegato.
+        self.assertEqual(storage.write.call_count, 2)
+        # Return espone gli allegati persistiti.
+        self.assertEqual(len(result["allegati"]), 1)
+        self.assertEqual(result["allegati"][0]["file_name"], "condizioni.pdf")
+        self.assertEqual(result["allegati"][0]["ordinamento"], 2)
+
+    # 22. allegato con MIME non ammesso -> VALIDATION fail-fast (pre-render,
+    #     pre-DB). Nessuna chiamata a template/render/INSERT.
+    def test_genera_documento_allegato_mime_non_ammesso_raises(self) -> None:
+        svc, repo, _, storage = _service_with_mocks()
+        _mock_params(svc)
+        allegati = [{
+            "file_bytes": b"testo",
+            "mime_type": "text/plain",
+            "file_name": "note.txt",
+        }]
+        with self.assertRaises(ServiceError) as ctx:
+            svc.genera_documento(_make_user(), allegati=allegati, **_GENERA_DEFAULT)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.find_template_applicabile.assert_not_called()
+        repo.create_documento_generato.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 23. allegato oltre il limite size -> VALIDATION.
+    def test_genera_documento_allegato_troppo_grande_raises(self) -> None:
+        svc, repo, _, storage = _service_with_mocks()
+        _mock_params(svc, max_mb=1)
+        allegati = [{
+            "file_bytes": b"x" * (2 * 1024 * 1024),  # 2 MB > 1 MB
+            "mime_type": "application/pdf",
+            "file_name": "grosso.pdf",
+        }]
+        with self.assertRaises(ServiceError) as ctx:
+            svc.genera_documento(_make_user(), allegati=allegati, **_GENERA_DEFAULT)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.create_documento_generato.assert_not_called()
+        storage.write.assert_not_called()
+
+
+class AggiungiAllegatiTests(SimpleTestCase):
+    """aggiungi_allegati: append a documento esistente (post-emissione)."""
+
+    # 24. append allegato a documento esistente: scope OK -> persist file
+    #     secondario con ordinamento da get_next_file_ordinamento.
+    def test_aggiungi_allegati_append_persiste_file(self) -> None:
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={
+                "get_documento_generato": {
+                    "id": 99, "emittente_fiscale_id": 11, "pdf_hash": "abc",
+                },
+                "get_next_file_ordinamento": 2,
+                "create_documento_generato_file": 50,
+            },
+            storage_methods={"write": "fs:y"},
+        )
+        repo.get_tipo_file_documento_by_codice.side_effect = _tipo_file_lookup
+        _mock_params(svc)
+        allegati = [{
+            "file_bytes": b"%PDF-1.4 a",
+            "mime_type": "application/pdf",
+            "file_name": "extra.pdf",
+        }]
+        with _patch_scope(None):
+            with _patch_transaction_atomic_noop():
+                result = svc.aggiungi_allegati(_make_user(), 99, allegati)
+
+        self.assertEqual(result["documento_id"], 99)
+        self.assertEqual(len(result["allegati"]), 1)
+        repo.create_documento_generato_file.assert_called_once()
+        file_data = repo.create_documento_generato_file.call_args.args[0]
+        self.assertEqual(file_data["documento_generato_id"], 99)
+        self.assertEqual(file_data["file_tipo_id"], 9)
+        self.assertEqual(file_data["is_principale"], False)
+        self.assertEqual(file_data["ordinamento"], 2)
+        storage.write.assert_called_once()
+
+    # 25. documento inesistente / fuori scope -> NOT_FOUND, no persist.
+    def test_aggiungi_allegati_documento_inesistente_raises_not_found(self) -> None:
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={"get_documento_generato": None},
+        )
+        _mock_params(svc)
+        allegati = [{
+            "file_bytes": b"x", "mime_type": "application/pdf", "file_name": "a.pdf",
+        }]
+        with _patch_scope(None):
+            with self.assertRaises(ServiceError) as ctx:
+                svc.aggiungi_allegati(_make_user(), 999, allegati)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
+        repo.create_documento_generato_file.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 26. lista allegati vuota -> VALIDATION (niente da aggiungere).
+    def test_aggiungi_allegati_lista_vuota_raises_validation(self) -> None:
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={
+                "get_documento_generato": {
+                    "id": 99, "emittente_fiscale_id": 11, "pdf_hash": "abc",
+                },
+            },
+        )
+        _mock_params(svc)
+        with _patch_scope(None):
+            with self.assertRaises(ServiceError) as ctx:
+                svc.aggiungi_allegati(_make_user(), 99, [])
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.create_documento_generato_file.assert_not_called()
+        storage.write.assert_not_called()

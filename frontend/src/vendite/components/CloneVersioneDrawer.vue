@@ -14,7 +14,7 @@ import { getVersioneCloneDefaults } from '../api/formDefaults'
 import { toDateString, displayDate, addDaysToToday } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
@@ -140,7 +140,7 @@ function close() {
         {{ t('listini.warning_retroattivo') }}
       </Message>
 
-      <DrawerFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
+      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />
     </div>
   </Drawer>
 </template>

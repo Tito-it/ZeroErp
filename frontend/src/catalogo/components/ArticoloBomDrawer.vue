@@ -39,14 +39,13 @@ import { displayDate, toDateString } from '../../core/utils/date'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import NoteDrawer from '../../core/components/NoteDrawer.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import FormFooter from '../../core/components/FormFooter.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import Drawer from 'primevue/drawer'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../core/components/AppDialog.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Button from 'primevue/button'
 import Message from 'primevue/message'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -700,12 +699,12 @@ function buildRigaActions(row) {
                 <ToggleSwitch v-else v-model="form.esposto_in_fattura" />
               </div>
             </div>
-            <DrawerFooter
+            <FormFooter
               v-if="isFormReadonly"
               close-only
               @cancel="closeReadonlyDetail"
             />
-            <DrawerFooter
+            <FormFooter
               v-else
               :loading="loading"
               :disabled="!canSaveForm"
@@ -716,7 +715,7 @@ function buildRigaActions(row) {
         </template>
       </template>
 
-      <DrawerFooter v-if="!isFormOpen" close-only @cancel="onClose" />
+      <FormFooter v-if="!isFormOpen" close-only @cancel="onClose" />
     </div>
   </Drawer>
 
@@ -732,12 +731,16 @@ function buildRigaActions(row) {
   <!-- Dialog chiusura riga BoM. Pattern simmetrico a ChiudiVersioneDialog
        dei listini-versioni: DatePicker default oggi, min-date = valido_dal
        della riga, conferma esplicita per evitare PATCH involontario. -->
-  <Dialog
+  <AppDialog
     :visible="chiudiDialogVisible"
     @update:visible="v => { if (!v) annullaChiusura() }"
-    modal
     :header="t('catalogo.chiudi_riga_dialog_titolo')"
-    :style="{ width: '480px' }"
+    width="sm"
+    :loading="loading"
+    :save-disabled="!chiudiDialogData || loading"
+    :save-label="t('catalogo.chiudi_riga_conferma')"
+    save-severity="warn"
+    @save="confermaChiusura"
   >
     <Message
       v-if="chiudiDialogIsImmediata"
@@ -765,27 +768,22 @@ function buildRigaActions(row) {
           show-icon show-button-bar :min-date="chiudiDialogMinDate" />
       </div>
     </div>
-
-    <div class="flex justify-end gap-2 mt-1">
-      <Button :label="t('common.cancel')" text @click="annullaChiusura" />
-      <Button :label="t('catalogo.chiudi_riga_conferma')"
-        :icon="MANAGE_ICONS.CLOSE_DATE" severity="warn"
-        :disabled="!chiudiDialogData || loading" :loading="loading"
-        @click="confermaChiusura" />
-    </div>
-  </Dialog>
+  </AppDialog>
 
   <!-- Dialog "Duplica versione": step 1 del flow (chiusura sorgente).
        Sceglie chiudi_al e su conferma fa PATCH valido_al sulla sorgente.
        Subito dopo il drawer apre il form add pre-compilato con
        valido_dal = chiudi_al + 1 (step 2 in confermaDuplicaVersione).
        min-date = valido_dal sorgente (dal BE come data_min_chiusura). -->
-  <Dialog
+  <AppDialog
     :visible="duplicaDialogVisible"
     @update:visible="v => { if (!v) annullaDuplicaVersione() }"
-    modal
     :header="t('catalogo.duplica_versione_dialog_titolo')"
-    :style="{ width: '480px' }"
+    width="sm"
+    :loading="loading"
+    :save-disabled="!duplicaDialogChiudiAl || loading"
+    :save-label="t('catalogo.duplica_versione_conferma')"
+    @save="confermaDuplicaVersione"
   >
     <Message severity="info" :closable="false" class="mb-1">
       {{ t('catalogo.duplica_versione_info') }}
@@ -816,15 +814,7 @@ function buildRigaActions(row) {
           show-icon show-button-bar :min-date="duplicaDialogMinDate" />
       </div>
     </div>
-
-    <div class="flex justify-end gap-2 mt-1">
-      <Button :label="t('common.cancel')" text @click="annullaDuplicaVersione" />
-      <Button :label="t('catalogo.duplica_versione_conferma')"
-        :icon="MANAGE_ICONS.CLONE"
-        :disabled="!duplicaDialogChiudiAl || loading" :loading="loading"
-        @click="confermaDuplicaVersione" />
-    </div>
-  </Dialog>
+  </AppDialog>
 </template>
 
 <style scoped>
