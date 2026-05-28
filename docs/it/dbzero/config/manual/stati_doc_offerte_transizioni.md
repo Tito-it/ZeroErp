@@ -101,6 +101,15 @@ per costruire i bottoni azione nella UI.
 
 Le transizioni automatiche (id 5, EMESSA → SUPERATA) hanno `meta = {"manuale": false}`.
 
+**Valori `severity` correnti** (rev 28-05-2026):
+
+| id | Transizione | severity |
+|----|-------------|----------|
+| 1 | BOZZA → EMESSA | `info` (era `success` fino al 27-05-2026, allineata a preventivi con migration 20260528-03) |
+| 2 | BOZZA → ANNULLATA | `danger` |
+| 3 | EMESSA → ACCETTATA | `success` |
+| 4 | EMESSA → RIFIUTATA | `danger` |
+
 ---
 
 ### Regole operative
