@@ -8,10 +8,12 @@
 //
 //        Il building block sottostante e' `DocumentiGeneratiSorgenteList`,
 //        che fa fetch automatico al cambio props (`autoFetch=true`).
+//        Qui passa `defaultExpanded=true`: in modalita' dialog dedicato
+//        ha senso mostrare subito principale + allegati senza dover
+//        espandere riga per riga (UX picker).
 import { useI18n } from 'vue-i18n'
-import Dialog from 'primevue/dialog'
+import AppDialog from '../../core/components/AppDialog.vue'
 import DocumentiGeneratiSorgenteList from './DocumentiGeneratiSorgenteList.vue'
-import { DRAWER_WIDTH } from '../../core/constants'
 
 const { t } = useI18n()
 
@@ -30,13 +32,12 @@ const emit = defineEmits(['update:visible'])
 </script>
 
 <template>
-  <Dialog
+  <AppDialog
     :visible="visible"
     @update:visible="v => emit('update:visible', v)"
-    modal
     :header="title || t('documenti.lista.title')"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
-    :closable="true"
+    width="xl"
+    close-only
     dismissable-mask
   >
     <DocumentiGeneratiSorgenteList
@@ -44,6 +45,7 @@ const emit = defineEmits(['update:visible'])
       :sorgente-code="sorgenteCode"
       :sorgente-id="sorgenteId"
       :allow-allegati="allowAllegati"
+      default-expanded
     />
-  </Dialog>
+  </AppDialog>
 </template>

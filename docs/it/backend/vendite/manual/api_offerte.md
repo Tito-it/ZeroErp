@@ -121,6 +121,7 @@ Step migliorativo data-driven applicato dopo la consegna della fn DB
 | `listino_id`           | int      | Filtro listino di riferimento                                                               |
 | `validita_dal_min`     | ISO date | Filtro su `validita_dal` (range minimo). Nessun default backend                             |
 | `validita_dal_max`     | ISO date | Filtro su `validita_dal` (range massimo)                                                    |
+| `solo_attiva`          | bool     | Default `true`: solo l'ultima revisione viva per lineage (`vw_offerte_commerciali_list.is_attiva`). `false` = storico revisioni completo (2026-05-28) |
 | `limit`                | int      | Default 25                                                                                  |
 | `offset`               | int      | Default 0                                                                                   |
 | `order_by`             | string   | `codice` \| `validita_dal` \| `validita_al` \| `data_emissione` \| `ba_ragione_sociale` \| `stato_codice` \| `data_insert` \| `data_update` |
@@ -334,7 +335,31 @@ Il delete e' una pulizia tecnica di bozze "vuote".
 
 ### Cambio stato BOZZA -> EMESSA `POST /api/v1/vendite/offerte/<id>/emetti/`
 
-Body vuoto. Il trigger DB:
+Endpoint **multipart** (Content-Type: `multipart/form-data`). Mirror del
+flusso preventivo/contratto `emetti` (refactor 2026-05-28: pattern
+unificato cross-dominio).
+
+- Parser: `MultiPartParser`, `FormParser`
+- Body multipart:
+  - `template_documento_id` (int, opzionale) — id template da usare. Se
+    omesso, selezione default per
+    `(sorgente=OFFERTA_COMMERCIALE, emittente_fiscale_id, tipo_documento_output_id)`
+  - `tipo_documento_output_id` (int, opzionale)
+  - `allegati` (file ripetuto, opzionale) — file secondari persistiti
+    assieme al PDF principale
+
+Pre-step (refactor 2026-05-28): `OfferteService.emetti` esegue il
+**freeze at emission** della versione listino prima della transizione.
+Se `listino_versione_id` non è già fissata, il service cerca la versione
+del listino in stato `ATTIVA` (fallback `CHIUSA`) alla data odierna e la
+persiste con UPDATE atomico. Motivazione: il form CREATE offerta espone
+solo `listino_id` (non la versione); senza pre-fill il trigger DB
+`trgfn_offerte_commerciali_guard_transizione` rifiuterebbe la transizione
+con `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`. Errore parlante
+`E_VENDITE_VALIDATION` (422) se il listino selezionato non ha versioni
+operative valide oggi.
+
+Trigger DB (post pre-fill):
 
 1. verifica `listino_versione_id` NOT NULL → altrimenti
    `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO` (422)
@@ -342,8 +367,44 @@ Body vuoto. Il trigger DB:
    `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA` (422)
 3. valorizza `data_emissione = now()`
 
-Da questo momento la versione del listino e' "congelata": modifiche al
+Da questo momento la versione del listino è "congelata": modifiche al
 listino sottostante non si propagano all'offerta.
+
+Semantica transazionale (refactor 2026-05-28): la view apre
+`transaction.atomic()` esterno che racchiude (in ordine):
+`OfferteService().emetti(offerta_id)` (con `atomic` nested per pre-fill +
+cambio stato) → `_resolve_contesto_offerta` →
+`DocumentGenerationService.genera_documento(allegati=...)` (render +
+persist su `documenti.documenti_generati` + evento `GENERATO`). Se il
+render fallisce o un allegato viola MIME/size, l'atomic esterno rollbacka
+tutto → l'offerta resta BOZZA e `listino_versione_id` resta NULL
+(nessun side-effect parziale). **Invariante di dominio**:
+`stato='EMESSA'` ⇒ esiste almeno un record `documenti_generati` con
+`sorgente_tipo=OFFERTA_COMMERCIALE, sorgente_id=offerta.id`.
+
+Output `200`:
+
+```json
+{
+  "data": {
+    "offerta": { "...": "testata aggiornata dopo cambio stato" },
+    "documento": {
+      "documento_generato_id": 42,
+      "uid": "...",
+      "progressivo_sorgente": 1,
+      "nome_file": "OFFERTA_OFC-0000001_v1.pdf",
+      "size_bytes": 23456,
+      "allegati_count": 0
+    }
+  }
+}
+```
+
+Helper condivisi: `apps.documenti.api.contesto_helpers.resolve_contesto_documentale`
+(resolve entity + emittente + sorgente_tipo) e
+`apps.documenti.api.multipart_helpers.extract_allegati` (estrazione files
+multipart neutra). Vedi
+[api_documenti_helpers](../../../documenti/manual/api_documenti_helpers.md).
 
 ### Cambio stato EMESSA -> ACCETTATA/RIFIUTATA `POST /api/v1/vendite/offerte/<id>/registra-esito/`
 

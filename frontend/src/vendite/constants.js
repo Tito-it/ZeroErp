@@ -34,6 +34,43 @@ export const STATO_PREVENTIVO = Object.freeze({
   ANNULLATO: 'ANNULLATO',
 })
 
+// Codici stato contratto (`config.stati_doc_contratti.codice_interno`).
+// DRAFT = bozza pre-attivazione; ATTIVO = contratto in vigore; CESSATO =
+// terminato (data fine raggiunta o cessazione manuale anticipata).
+export const STATO_CONTRATTO = Object.freeze({
+  DRAFT: 'DRAFT',
+  ATTIVO: 'ATTIVO',
+  CESSATO: 'CESSATO',
+})
+
+// Stati contratto con documento PDF generato (post-attivazione): usato da
+// `EntityPdfButton` come `stati-con-documento`.
+export const STATI_CONTRATTO_CON_DOCUMENTO = Object.freeze([
+  STATO_CONTRATTO.ATTIVO,
+  STATO_CONTRATTO.CESSATO,
+])
+
+// Stati contratto con anteprima PDF disponibile (DRAFT): usato da
+// `EntityPdfButton` come `stati-preview`.
+export const STATI_CONTRATTO_ANTEPRIMA_PDF = Object.freeze([
+  STATO_CONTRATTO.DRAFT,
+])
+
+// Stati preventivo con documento PDF generato (post-emissione).
+export const STATI_PREVENTIVO_CON_DOCUMENTO = Object.freeze([
+  STATO_PREVENTIVO.EMESSO,
+  STATO_PREVENTIVO.ACCETTATO,
+  STATO_PREVENTIVO.EVASO,
+  STATO_PREVENTIVO.RIFIUTATO,
+  STATO_PREVENTIVO.SCADUTO,
+  STATO_PREVENTIVO.ANNULLATO,
+])
+
+// Stati preventivo con anteprima PDF disponibile.
+export const STATI_PREVENTIVO_ANTEPRIMA_PDF = Object.freeze([
+  STATO_PREVENTIVO.DRAFT,
+])
+
 // Chiave nel meta della pratica APPROVAZIONE_PREZZO che linka la riga
 // preventivo target. Coerente col BE
 // `_approvazioni_prezzo_constants.META_KEY_RIGA_PREVENTIVO_ID`.

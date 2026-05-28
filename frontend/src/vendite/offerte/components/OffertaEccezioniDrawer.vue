@@ -14,6 +14,7 @@ import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
+import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -23,6 +24,7 @@ import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
+import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
 import ComponentiPanel from '../../_shared/componenti/ComponentiPanel.vue'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
@@ -172,6 +174,14 @@ watch(
 
 function onComponentiConfirm(payload) {
   componentiPayload.value = payload
+}
+
+// Riapertura manuale (CREATE) — bottone "Modifica componenti" sotto il
+// form: serve quando l'operatore vuole correggere gli override del Dialog
+// PRIMA di salvare l'eccezione (l'auto-open scatta solo al primo set
+// valido). Pattern allineato a ContrattoRigheDrawer / PreventiviRigaForm.
+function apriComponentiDialog() {
+  componentiDialogVisible.value = true
 }
 
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
@@ -422,9 +432,11 @@ function onDeleteRow(row, event) {
   event?.stopPropagation?.()
   if (isReadonly.value) return
   confirmAction({
-    header: t('vendite.offerte.eccezione_elimina_titolo'),
+    // `title` (non `header`): la composable useConfirmAction mappa internamente
+    // `title` su `header` del PrimeVue ConfirmDialog. Usare `header:` qui
+    // lasciava il dialog senza titolo.
+    title: t('vendite.offerte.eccezione_elimina_titolo'),
     message: t('vendite.offerte.eccezione_elimina_messaggio'),
-    acceptLabel: t('common.delete'),
     danger: true,
     onAccept: async () => {
       const result = await execute(
@@ -755,6 +767,19 @@ const onClose = useDrawerClose(emit)
               @changed="reload"
             />
           </template>
+
+          <!-- CREATE su composito: bottone "Modifica componenti" per
+               correggere gli override del Dialog prima del save eccezione.
+               Pattern allineato a contratti/preventivi via BB
+               `ComponentiCreateActionsPanel`. Niente check qta nel
+               `disabled`: l'auto-open scatta per CONSUMO/LETTURE senza
+               qta, quindi il bottone "riapri" deve restare cliccabile. -->
+          <ComponentiCreateActionsPanel
+            v-if="form.articolo_obj?.is_composito && formMode === 'create'"
+            :disabled="!form.articolo_id || !form.uom_operativa_id"
+            :componenti-payload="componentiPayload"
+            @apri-dialog="apriComponentiDialog"
+          />
 
           <FormFooter
             :loading="loading"

@@ -30,12 +30,14 @@ from decimal import Decimal
 from typing import Any
 
 from django.db import DatabaseError, IntegrityError, transaction
+from django.utils import timezone
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
 )
+from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.db.offerte_repository import OfferteRepository
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_overrides,
@@ -350,6 +352,7 @@ class OfferteService:
         listino_id: int | None = None,
         validita_dal_min: str | None = None,
         validita_dal_max: str | None = None,
+        solo_attiva: bool = True,
         limit: int = 25,
         offset: int = 0,
         order_by: str = "data_insert",
@@ -377,6 +380,7 @@ class OfferteService:
             "validita_dal_min": validita_dal_min,
             "validita_dal_max": validita_dal_max,
             "search": search_norm,
+            "solo_attiva": solo_attiva,
         }
         rows = self._repo.list_offerte(
             **filters,
@@ -604,13 +608,69 @@ class OfferteService:
     # Transizioni di stato manuali
     # =================================================================
 
-    # Scopo: BOZZA -> EMESSA. Il trigger DB verifica `listino_versione_id`
-    #        NOT NULL e versione ATTIVA + valorizza `data_emissione`.
+    # Scopo: BOZZA -> EMESSA. Pre-step: "freeze at emission" della versione
+    #        listino (lookup ATTIVA alla data odierna + UPDATE offerta) se
+    #        non e' gia' fissata; il trigger DB
+    #        `trgfn_offerte_commerciali_guard_transizione` richiede infatti
+    #        `listino_versione_id NOT NULL` per autorizzare la transizione
+    #        (E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO) e l'utente nel
+    #        form CREATE seleziona solo il listino, non la versione.
+    #        Tutto nella stessa transazione del caller (la view che chiama
+    #        `emetti` apre un atomic esterno che include anche la
+    #        generazione documento + allegati).
     def emetti(self, offerta_id: int) -> dict[str, Any]:
-        return self._cambia_stato_manuale(
-            offerta_id,
-            target_codice=StatoOfferta.EMESSA,
-            expected_from=_STATI_EDITABILI,
+        # `transaction.atomic()` (nested = savepoint se c'e' gia' un atomic
+        # esterno della view, tx vera altrimenti) garantisce che il pre-fill
+        # di `listino_versione_id` e il cambio stato siano atomici anche se
+        # `emetti` viene invocato standalone (es. command, sync job, test
+        # integration). Senza wrap, lo standalone potrebbe lasciare
+        # l'offerta con la versione fissata e lo stato ancora BOZZA in
+        # caso di errore del trigger del cambio stato.
+        with transaction.atomic():
+            self._fissa_versione_listino_se_necessario(offerta_id)
+            return self._cambia_stato_manuale(
+                offerta_id,
+                target_codice=StatoOfferta.EMESSA,
+                expected_from=_STATI_EDITABILI,
+            )
+
+    # Scopo: Se l'offerta ha un listino selezionato ma nessuna versione
+    #        fissata, cerca la versione ATTIVA (o CHIUSA come fallback)
+    #        del listino oggi e la persiste su `listino_versione_id`.
+    #        Errore parlante se il listino esiste ma non ha versioni
+    #        operative valide oggi. Idempotente: no-op se gia' fissata o
+    #        offerta senza listino (caso quest'ultimo lasciato al trigger
+    #        DB per coerenza con la sua signaling).
+    def _fissa_versione_listino_se_necessario(self, offerta_id: int) -> None:
+        offerta = self._repo.get_offerta(offerta_id)
+        if offerta is None:
+            return  # 404 verra' segnalato da `_cambia_stato_manuale`.
+        if offerta.get("listino_versione_id") is not None:
+            return
+        listino_id = offerta.get("listino_id")
+        if listino_id is None:
+            return  # nessun listino: gestito dai check di stato del DB.
+        today = timezone.localdate()
+        versione_id = ListiniRepository().get_versione_attiva_alla_data(
+            int(listino_id), today,
+        )
+        ErrorManager.require(
+            versione_id is not None,
+            code=E_VENDITE_VALIDATION,
+            message=(
+                "Il listino di riferimento non ha una versione attiva "
+                "alla data odierna. Impossibile emettere l'offerta: "
+                "pubblicare prima una versione del listino."
+            ),
+            context={
+                "offerta_id": offerta_id,
+                "listino_id": listino_id,
+                "data": today.isoformat(),
+            },
+        )
+        assert versione_id is not None
+        self._repo.update_offerta(
+            offerta_id, {"listino_versione_id": versione_id},
         )
 
     # Scopo: EMESSA -> ACCETTATA (esito cliente positivo). Il trigger DB

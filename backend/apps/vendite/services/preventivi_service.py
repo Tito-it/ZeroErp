@@ -31,15 +31,11 @@ from apps.vendite.services._pricing_gate_helpers import (
     resolve_or_check_override_prezzo,
 )
 from apps.core.services.value_normalizer import empty_to_none
-from apps.documenti.db.documenti_repository import DocumentiRepository
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_attivazioni,
     normalize_componenti_overrides,
     resolve_emittente_sr_id_safe,
     resolve_emittente_sr_id_for_testata,
-)
-from apps.documenti.services.document_generation_service import (
-    DocumentGenerationService,
 )
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.vendite.services._approvazioni_prezzo_constants import (
@@ -62,11 +58,6 @@ _STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 _STATI_FATTURABILI: frozenset[str] = frozenset({"ACCETTATO"})
 _STATI_GENERA_PRATICA: frozenset[str] = frozenset({"ACCETTATO"})
 _FN = "vendite.preventivi_service"
-
-# Codice sorgente PREVENTIVO in `config.sorgenti` — usato dal motore
-# documentale per scegliere il template e tracciare l'origine del PDF.
-# Coerente con la stessa costante in `preventivi_documenti_views`.
-_CODICE_SORGENTE_PREVENTIVO = "PREVENTIVO"
 
 
 # ══════════════════════════════════════════════════════════
@@ -515,64 +506,40 @@ def cambia_stato(
                 result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
             return result
 
-    # Hook atomico emissione: la transizione *->EMESSO genera il PDF
-    # canonico v1 nella stessa transazione del cambio stato. Se il
-    # rendering fallisce (template/versione invalida, builder fail, ...)
-    # l'eccezione propaga -> rollback totale -> il preventivo resta nello
-    # stato precedente. Invariante: EMESSO => almeno una versione PDF
-    # esiste in documenti.documenti_generati.
-    if nuovo_stato == "EMESSO":
-        with transaction.atomic():
-            result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
-            _genera_pdf_emissione(preventivo_id, user=user)
-        return result
+    # Guard refactor 2026-05-28: la transizione *->EMESSO non passa piu' da
+    # qui. ApiPreventivoEmetti (endpoint multipart `/emetti/`) orchestra in
+    # transaction.atomic() la sequenza stato + genera_documento + allegati,
+    # mirror del flusso offerta. cambia_stato resta per le altre transizioni
+    # (ACCETTATO, RIFIUTATO, ANNULLATO, ecc.). Defense-in-depth: se qualcuno
+    # invoca cambia_stato('EMESSO') direttamente la transizione fallirebbe a
+    # meta', lasciando il preventivo EMESSO senza PDF (rompe l'invariante
+    # documentale). Fail-fast con messaggio parlante.
+    ErrorManager.require(
+        nuovo_stato != "EMESSO",
+        code="E_PREV_VALIDAZIONE",
+        message=(
+            "Usare l'endpoint /emetti/ (multipart) per la transizione "
+            "BOZZA->EMESSO: orchestra stato + generazione documento + "
+            "allegati in transazione atomica."
+        ),
+        function_name=f"{_FN}.cambia_stato",
+    )
 
     result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
     return result
 
 
-# Scopo: Genera e persiste il PDF canonico del preventivo emesso (v1
-#        della numerazione `progressivo_sorgente`). Chiamato dentro la
-#        transazione di `cambia_stato` quando lo stato passa a EMESSO:
-#        un fallimento solleva ServiceError che rollbacka l'intera
-#        transizione di stato. Su rigenerazioni successive (in stato
-#        EMESSO, click utente sul pulsante PDF) il caller chiama
-#        direttamente `DocumentGenerationService.genera_documento` via
-#        l'endpoint dedicato `ApiPreventivoDocumentoGenera`: questa
-#        funzione e' specifica per il bootstrap one-shot all'emissione.
-def _genera_pdf_emissione(
-    preventivo_id: int,
-    *,
-    user: AbstractBaseUser | AnonymousUser | None,
-) -> None:
+# Scopo: BOZZA -> EMESSO (transizione di stato). Solo la transizione: la view
+#        multipart `ApiPreventivoEmetti` incapsula questa chiamata insieme a
+#        `DocumentGenerationService.genera_documento(allegati=...)` in
+#        un'unica `transaction.atomic()` esterna, garantendo che EMESSO
+#        implichi sempre l'esistenza del documento generato (invariante di
+#        dominio). Mirror del pattern offerta `OfferteService.emetti`.
+#        Bypassa il guard di `cambia_stato` su EMESSO via accesso diretto
+#        al repository.
+def emetti(preventivo_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
-    preventivo = repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        preventivo is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato per emissione PDF.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}._genera_pdf_emissione",
-    )
-    assert preventivo is not None
-
-    doc_repo = DocumentiRepository()
-    sorgente = doc_repo.get_sorgente_tipo_id_by_codice(_CODICE_SORGENTE_PREVENTIVO)
-    ErrorManager.require(
-        sorgente is not None and sorgente.get("attivo"),
-        code="E_DOCUMENTI_VALIDATION",
-        message="Sorgente 'PREVENTIVO' non configurata o non attiva.",
-        function_name=f"{_FN}._genera_pdf_emissione",
-    )
-    assert sorgente is not None
-
-    DocumentGenerationService().genera_documento(
-        user,
-        emittente_fiscale_id=int(preventivo["emittente_fiscale_id"]),
-        sorgente_tipo_id=int(sorgente["id"]),
-        sorgente_id=int(preventivo["id"]),
-        sorgente_uid=str(preventivo["uid"]),
-    )
+    return repo.cambia_stato(preventivo_id, "EMESSO", "django_api")
 
 
 # Scopo: Crea nuova revisione del preventivo delegando alla funzione DB.
@@ -580,6 +547,15 @@ def crea_revisione(preventivo_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
     result = repo.crea_revisione(preventivo_id, "django_api")
     return result
+
+
+# Scopo: Lista catena revisioni del preventivo (tutte le righe con stesso
+#        `numero`, ordinate per `rev`). Mirror del pattern offerte
+#        `list_revisioni`; differenza chiave: preventivi sono catenate via
+#        `numero` non via `revisione_padre_id`.
+def list_revisioni(preventivo_id: int) -> list[dict[str, Any]]:
+    repo = PreventiviRepository()
+    return repo.list_revisioni(preventivo_id)
 
 
 # ══════════════════════════════════════════════════════════

@@ -48,7 +48,8 @@ const props = defineProps({
   // genera. Deve ritornare (Promise<bool>): se false (o promise rejected)
   // l'azione viene abortita silenziosamente. Tipico uso: dialog di
   // conferma rigenerazione su preventivi gia' emessi (vedi
-  // PreventivoPdfButton). Default: null = comportamento attuale.
+  // `EntityPdfButton` per il pulsante PDF stato-aware riusabile).
+  // Default: null = comportamento attuale.
   beforeGenerate: { type: Function, default: null },
 })
 const emit = defineEmits(['generated'])

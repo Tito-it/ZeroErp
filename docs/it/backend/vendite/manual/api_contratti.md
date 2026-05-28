@@ -165,20 +165,85 @@ skip (non e' percentuale, gate non applicabile). Superuser bypass.
 ### Cambio stato `POST /api/v1/vendite/contratti/<id>/cambia-stato/`
 
 ```json
-{"codice_interno": "ATTIVO"}
+{"codice_interno": "SOSPESO"}
 ```
 
-Stati ammessi: `DRAFT`, `ATTIVO`, `SOSPESO`, `CESSATO` (FK
-`config.stati_doc_contratti`). L'attivazione di un contratto in forma
-"senza_listino" senza righe AGGIUNTA con prezzo valorizzato fallisce
-fail-fast lato DB → `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` (422).
+Stati ammessi via questo endpoint: `SOSPESO`, `CESSATO`, `ANNULLATO` e
+ritorni `→ DRAFT` ammessi dal modello. **`ATTIVO` non è ammesso da questo
+endpoint** (refactor 2026-05-28): il service fail-fast con
+`E_VENDITE_VALIDATION` (400) e indirizza all'endpoint dedicato
+`POST /<id>/emetti/` (sezione seguente). Motivo: l'attivazione deve
+orchestrare atomicamente cambio stato + generazione documento + allegati
+per garantire l'invariante "stato ATTIVO ⇒ esiste un documento PDF
+persistito".
 
-Alla transizione `DRAFT → ATTIVO`, il trigger
-`trgfn_contratti_freeze_listino_versione` fissa
-`listino_versione_id = versione operativa` (stato `IN ('ATTIVA','CHIUSA')`)
-alla data del contratto. Versioni in stato `BOZZA` vengono ignorate anche
-se hanno date sovrapposte. Da quel momento la versione e' immutabile e
-il pricing del contratto e' blindato da cambi del listino.
+Le altre transizioni (`DRAFT → SOSPESO`, `ATTIVO → SOSPESO`,
+`SOSPESO → ATTIVO`, ecc.) restano gestite da questo endpoint. La
+transizione `* → ATTIVO` dovrà comunque passare per `/emetti/` (anche da
+SOSPESO, per coerenza con l'invariante documentale).
+
+### Attivazione DRAFT→ATTIVO `POST /api/v1/vendite/contratti/<id>/emetti/`
+
+Nuovo endpoint multipart 2026-05-28. Mirror del flusso offerta/preventivo
+(`ApiOffertaEmetti` / `ApiPreventivoEmetti`). Sostituisce la transizione
+`DRAFT→ATTIVO` precedentemente esposta via `/cambia-stato/`.
+
+- Metodo: `POST`
+- Content-Type: `multipart/form-data`
+- Parser: `MultiPartParser`, `FormParser`
+- Auth: JWT, `area_funzionale = "vendite"`. Nessun `post_permission`
+  specifico (allineato al cambio stato contratti — l'autorizzazione è a
+  livello area, non azione di processo dedicata)
+- Body multipart:
+  - `template_documento_id` (int, opzionale)
+  - `tipo_documento_output_id` (int, opzionale)
+  - `allegati` (file ripetuto, opzionale) — file secondari da persistere
+    assieme al PDF principale del contratto
+- Output `200`:
+
+```json
+{
+  "data": {
+    "contratto": { "...": "testata aggiornata dopo cambio stato" },
+    "documento": {
+      "documento_generato_id": 42,
+      "uid": "...",
+      "progressivo_sorgente": 1,
+      "nome_file": "CONTRATTO_CNT0000001_v1.pdf",
+      "size_bytes": 34567,
+      "allegati_count": 1
+    }
+  },
+  "meta": { "request_id": "..." }
+}
+```
+
+- Semantica transazionale: la view apre `transaction.atomic()` che
+  racchiude (in ordine): `ContrattiService().emetti(contratto_id)`
+  (cambio stato DRAFT→ATTIVO + freeze `listino_versione_id` via trigger
+  `trgfn_contratti_freeze_listino_versione`) →
+  `_resolve_contesto_contratto` → `DocumentGenerationService.genera_documento(allegati=...)`.
+  Se il render fallisce o un allegato viola MIME/size, l'atomic esterno
+  rollbacka tutto → il contratto resta DRAFT, nessun record orfano.
+  **Invariante di dominio**: `stato='ATTIVO'` ⇒ esiste almeno un record
+  `documenti_generati` con `sorgente_tipo=CONTRATTO,
+  sorgente_id=contratto.id`.
+- Regole pre-attivazione (validate dal trigger DB):
+  - Listino operativo (`ATTIVA`/`CHIUSA`) valido alla data del contratto
+    (versioni `BOZZA` ignorate)
+  - Forma "senza_listino" → almeno una riga AGGIUNTA con prezzo
+    valorizzato, altrimenti `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE`
+    (422)
+  - Template documento applicabile (`PUBBLICATA` valido alla data)
+- Errori:
+  - `E_VENDITE_NOT_FOUND` (404) — contratto inesistente
+  - `E_VENDITE_VALIDATION` (400) — contratto non in DRAFT
+  - `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` (422) — forma senza_listino
+    senza righe valorizzate
+  - `E_DOCUMENTI_VALIDATION` (400/422) — emittente non risolto / sorgente
+    CONTRATTO non attiva / template assente / MIME/size allegato non
+    ammesso
+  - `E_DOCUMENTI_NOT_FOUND` (404)
 
 ### Righe `POST /api/v1/vendite/contratti/<id>/righe/`
 
@@ -561,15 +626,26 @@ passano nel payload (rifiutati). `PATCH` aggiorna solo i campi mutabili.
 
 ### Documenti contratto
 
-Endpoint dedicati alla generazione PDF tramite motore documentale
-parametrico:
+Endpoint del motore documentale parametrico per la sorgente `CONTRATTO`.
+Risolvono il contesto comune (contratto + emittente fiscale + sorgente
+attiva) via helper condiviso
+`apps.documenti.api.contesto_helpers.resolve_contesto_documentale` (vedi
+[api_documenti_helpers](../../../documenti/manual/api_documenti_helpers.md)).
 
 | Metodo | Path | Effetto |
 | --- | --- | --- |
-| `GET` | `/api/v1/vendite/contratti/<id>/documenti/` | Lista documenti generati dal contratto |
+| `GET` | `/api/v1/vendite/contratti/<id>/documenti/` | Lista documenti generati dal contratto (paginata, scope emittente) |
 | `POST` | `/api/v1/vendite/contratti/<id>/documenti/anteprima/` | Render PDF temporaneo, non persistito |
-| `POST` | `/api/v1/vendite/contratti/<id>/documenti/genera/` | Genera PDF, salva record e file |
-| `GET` | `/api/v1/vendite/contratti/<id>/documenti/<documento_id>/file/` | Download PDF principale |
+| `POST` | `/api/v1/vendite/contratti/<id>/documenti/genera/` | Persiste PDF + record DB + evento `GENERATO` (per contratti già ATTIVI: ristampe successive all'attivazione) |
+| `GET` | `/api/v1/vendite/contratti/<id>/documenti/<documento_id>/file/` | Download PDF principale + evento `SCARICATO` |
+| `GET` | `/api/v1/vendite/contratti/<id>/documenti/<documento_id>/allegati/` | Lista files del documento (principale + allegati) |
+| `POST` | `/api/v1/vendite/contratti/<id>/documenti/<documento_id>/allegati/` | Append allegati multipart su documento esistente |
+
+> L'**attivazione iniziale** (DRAFT→ATTIVO con generazione del documento
+> originale) passa per il nuovo endpoint `/emetti/` multipart (vedi
+> sezione "Attivazione DRAFT→ATTIVO" sopra), non per `documenti/genera/`.
+> Questo endpoint `genera/` resta per ristampe/varianti successive su
+> contratti già ATTIVI.
 
 Payload opzionale per `anteprima/` e `genera/`:
 
@@ -586,15 +662,30 @@ tipo_documento_output_id)`. Il context builder backend e'
 `CONTRATTO`; il template iniziale e' documentato in
 [template_contratto_iniziale](template_contratto_iniziale.md).
 
+**Endpoint `allegati/` (nuovi 2026-05-28)**:
+
+- GET: ritorna `{"data": {"principale": {...}, "allegati": [{...}, {...}]}}`.
+  Consumato dal row-expand di `DocumentiGeneratiSorgenteList` per popolare
+  `filesPerDoc`
+- POST: multipart con campo ripetuto `allegati`. Modalità append
+  post-attivazione. Non rigenera il PDF principale, aggiunge solo file
+  secondari al documento esistente. MIME/size validati dal service
+
 ### Regole stampa contratto
 
 - In stato `DRAFT`, il frontend usa `anteprima/`: il PDF viene renderizzato ma
   non viene persistito in `documenti.documenti_generati`.
-- Nel passaggio `DRAFT -> ATTIVO`, il service genera il PDF contrattuale nella
-  stessa transazione applicativa e lo salva come documento generato collegato a
-  `sorgente=CONTRATTO`.
+- La transizione `DRAFT → ATTIVO` passa ora per l'endpoint dedicato
+  `POST /<id>/emetti/` (multipart), che in `transaction.atomic()` cambia
+  stato (con freeze `listino_versione_id` via trigger) e persiste il PDF
+  contrattuale + allegati come `documenti_generati` con
+  `sorgente=CONTRATTO`. Invariante: `stato=ATTIVO` ⇒ almeno un record
+  documentale generato.
 - Dopo l'attivazione, ristampe/download usano il documento salvato; non viene
-  rigenerato il layout storico.
+  rigenerato il layout storico. Nuove versioni esplicite si ottengono via
+  `POST documenti/genera/`.
+- Allegati post-attivazione: append via
+  `POST documenti/<doc_id>/allegati/`. Non rigenera il principale.
 - La lista `GET /documenti/` espone i documenti gia' generati per il contratto,
   ed e' la fonte usata dal drawer e dalla tabella ricerca per le ristampe.
 - La generazione richiede un `emittente_fiscale_id` sul contratto e almeno una
@@ -696,6 +787,8 @@ extra al catalogo.
 | `E_DOC_COMPONENTE_OBBLIGATORIO` | 400 | DB P0001 (tentativo di disattivare un componente obbligatorio) | `trgfn_contratti_righe_componenti_guard_obbligatorio` |
 | `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | 400 | DB P0001 (override prezzo 0 su componente obbligatorio) | `trgfn_contratti_righe_componenti_guard_prezzo` |
 | `E_BOM_IVA_DISCORDANTE` | 400 | DB P0001 (IVA componente diversa da padre — vincolo modello unificato) | trigger catalogo IVA coerenza |
+| `E_DOCUMENTI_VALIDATION` | 400/422 | Endpoint `/emetti/` + sezione "Documenti contratto": emittente non risolto, sorgente CONTRATTO non attiva, template assente/non applicabile, MIME allegato non ammesso, size oltre limite. Sollevato da `apps.documenti.api.contesto_helpers.resolve_contesto_documentale` o da `DocumentGenerationService` | — |
+| `E_DOCUMENTI_NOT_FOUND` | 404 | Endpoint `/emetti/` + sezione "Documenti contratto": contratto o documento atteso non trovato dal resolver di contesto | — |
 
 ## Dipendenze DB
 

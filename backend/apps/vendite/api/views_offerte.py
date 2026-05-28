@@ -27,6 +27,7 @@ from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
+    qp_bool,
     qp_str,
 )
 from apps.core.api.success_responses import success_response
@@ -226,6 +227,11 @@ class ApiOfferteList(DomainAPIView):
             OpenApiParameter(name="validita_dal_min", type=str, required=False,
                              description="Data ISO YYYY-MM-DD. Nessun default backend."),
             OpenApiParameter(name="validita_dal_max", type=str, required=False),
+            OpenApiParameter(name="solo_attiva", type=bool, required=False,
+                             description="Default true: solo l'ultima revisione viva per "
+                                         "lineage (vw_offerte_commerciali_list.is_attiva). "
+                                         "Passa false per vedere lo storico completo delle "
+                                         "revisioni (superate/annullate incluse)."),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False,
@@ -251,6 +257,7 @@ class ApiOfferteList(DomainAPIView):
             listino_id=_qp_int_optional(qp.get("listino_id"), "listino_id"),
             validita_dal_min=qp_str(qp.get("validita_dal_min")),
             validita_dal_max=qp_str(qp.get("validita_dal_max")),
+            solo_attiva=qp_bool(qp.get("solo_attiva"), default=True),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],

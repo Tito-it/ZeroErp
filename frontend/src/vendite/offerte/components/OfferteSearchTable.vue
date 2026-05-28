@@ -9,6 +9,7 @@ import DataTable from 'primevue/datatable'
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
+import ToggleSwitch from 'primevue/toggleswitch'
 
 import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
@@ -49,6 +50,15 @@ const dataDaFilter = ref(
 const dataAlFilter = ref(
   store.filters.data_a ? new Date(`${store.filters.data_a}T00:00:00`) : null,
 )
+// Toggle "mostra storico revisioni" (negazione del filtro store).
+// mostraStorico=ON ⇔ solo_attiva=false. computed get/set per restare
+// allineato al filtro reale anche se cambia altrove (reset, logout,
+// ripristino sessione): single source of truth = store. Pattern speculare
+// a PreventiviList.vue.
+const mostraStorico = computed({
+  get: () => !store.filters.solo_attiva,
+  set: (val) => { store.filters.solo_attiva = !val },
+})
 
 const pageActions = computed(() => [
   {
@@ -86,6 +96,11 @@ function onDataDaChange() {
 
 function onDataAlChange() {
   store.filters.data_a = dataAlFilter.value ? toDateString(dataAlFilter.value) : null
+  applyFilters()
+}
+
+// Il setter del computed scrive gia' lo store; qui basta triggerare la fetch.
+function onMostraStoricoChange() {
   applyFilters()
 }
 
@@ -150,6 +165,13 @@ onMounted(() => store.fetchList())
             @date-select="onDataAlChange"
             @clear-click="onDataAlChange"
           />
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <ToggleSwitch v-model="mostraStorico" inputId="off-mostra-storico"
+              @change="onMostraStoricoChange" />
+            <label for="off-mostra-storico" style="font-size: 0.85rem; cursor: pointer;">
+              {{ t('vendite.offerte.filtro_mostra_storico') }}
+            </label>
+          </div>
         </div>
         <PageActionsBar :actions="pageActions">
           <template #suffix>

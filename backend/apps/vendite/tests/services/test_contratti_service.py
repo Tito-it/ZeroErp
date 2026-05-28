@@ -787,22 +787,25 @@ class ContrattiServiceTests(TestCase):
         repo.update_stato.assert_not_called()
 
     # Scopo: cambia_stato senza valido_al -> non chiama update_contratto.
+    # NB refactor 2026-05-28: ATTIVO non passa piu' da cambia_stato (guard
+    # rinvia a /emetti/). Test riportato su ANNULLATO che non richiede valido_al.
     @patch("apps.vendite.services.contratti_service.transaction.atomic")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_cambia_stato_senza_valido_al_no_patch(self, repo_cls, _atomic):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 2  # ATTIVO id
+        repo.get_stato_id_by_codice.return_value = 9  # ANNULLATO id
+        repo.get_stato_codice.return_value = "DRAFT"
         repo.update_stato.return_value = True
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
 
-        ContrattiService().cambia_stato(1, codice_interno="ATTIVO")
+        ContrattiService().cambia_stato(1, codice_interno="ANNULLATO")
 
         repo.update_contratto.assert_not_called()
-        repo.update_stato.assert_called_once_with(1, 2)
+        repo.update_stato.assert_called_once_with(1, 9)
 
     # Scopo: cambia_stato con valido_al < valido_dal -> errore parlante
     #        (anti CHK constraint DB generico).
@@ -1117,85 +1120,62 @@ class ContrattiServiceTests(TestCase):
 
         repo_cls.return_value.get_stato_id_by_codice.return_value = None
 
+        # Uso un codice non riconosciuto qualsiasi (non ATTIVO che ora ha
+        # un guard dedicato che fa scattare prima del lookup).
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().cambia_stato(1, codice_interno="FROBOZ")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: refactor 2026-05-28 - cambia_stato non gestisce piu' ATTIVO.
+    # L'invariante "ATTIVO => almeno una versione PDF" e' garantita dal
+    # nuovo flusso `ApiContrattoEmetti` che orchestra atomic state +
+    # genera_documento + allegati nella view. cambia_stato fail-fast con
+    # E_VENDITE_VALIDATION se invocato direttamente con 'ATTIVO'.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_cambia_stato_rifiuta_attivo(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().cambia_stato(1, codice_interno="ATTIVO")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        # Nessuna chiamata al repo: il guard scatta prima del lookup stato.
+        repo_cls.return_value.update_stato.assert_not_called()
 
+    # Scopo: marker DB "contratto senza listino e nessuna AGGIUNTA" -> codice
+    # specifico E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE. Test riportato su
+    # emetti() (refactor 2026-05-28): l'attivazione passa da li'.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_negoziato_puro_senza_righe_tradotto(self, repo_cls):
-        # Refactor modalita 2026-05-15: il guard `modalita_c_activation`
-        # e' stato sostituito dal nuovo trigger DB che blocca attivazione di
-        # un contratto senza listino se non ci sono AGGIUNTA con prezzo.
+    def test_emetti_negoziato_puro_senza_righe_tradotto(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 2
-        # Il messaggio simula il template emesso dal trigger DB: il marker
-        # del service esige "contratto senza listino" + "almeno un'AGGIUNTA".
+        repo.get_stato_id_by_codice.return_value = 2  # ATTIVO id
         repo.update_stato.side_effect = DatabaseError(
             "contratto senza listino e nessuna riga AGGIUNTA con prezzo: "
             "serve almeno un'AGGIUNTA prima di attivare."
         )
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().cambia_stato(1, codice_interno="ATTIVO")
+            ContrattiService().emetti(1)
         self.assertEqual(ctx.exception.code, "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE")
 
+    # Scopo: `emetti()` thin wrapper sul repo che bypassa il guard di
+    # cambia_stato (l'orchestrazione atomic state+genera+allegati vive nella
+    # view ApiContrattoEmetti).
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_ok(self, repo_cls):
+    def test_emetti_delega_a_repo(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 2
-        repo.get_stato_codice.return_value = "ATTIVO"
+        repo.get_stato_id_by_codice.return_value = 2  # ATTIVO id
         repo.update_stato.return_value = True
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
 
-        ContrattiService().cambia_stato(1, codice_interno="ATTIVO")
+        ContrattiService().emetti(1)
 
         repo.update_stato.assert_called_once_with(1, 2)
-
-    @patch("apps.vendite.services.contratti_service.transaction.atomic")
-    @patch("apps.vendite.services.contratti_service.DocumentGenerationService")
-    @patch("apps.vendite.services.contratti_service.DocumentiRepository")
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_cambia_stato_attivo_da_draft_genera_pdf_atomico(
-        self, repo_cls, doc_repo_cls, gen_cls, _atomic,
-    ):
-        from apps.vendite.services.contratti_service import ContrattiService
-
-        repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 2
-        repo.get_stato_codice.return_value = "DRAFT"
-        repo.update_stato.return_value = True
-        repo.get_for_documento_generation.return_value = {
-            "id": 1,
-            "uid": "uid-contratto-1",
-            "emittente_fiscale_id": 7,
-        }
-        repo.get_contratto.return_value = {
-            **_testata_default(),
-            "stato_codice": "ATTIVO",
-        }
-        repo.get_utility.return_value = None
-        repo.list_righe.return_value = []
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 99,
-            "attivo": True,
-        }
-
-        user = MagicMock()
-        ContrattiService().cambia_stato(1, codice_interno="ATTIVO", user=user)
-
-        gen_cls.return_value.genera_documento.assert_called_once_with(
-            user,
-            emittente_fiscale_id=7,
-            sorgente_tipo_id=99,
-            sorgente_id=1,
-            sorgente_uid="uid-contratto-1",
-        )
 
     # --- righe ---------------------------------------------------------
 

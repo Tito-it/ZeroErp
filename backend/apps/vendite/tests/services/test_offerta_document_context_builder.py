@@ -11,6 +11,8 @@
 #   0. build_context_shape_e_modalita_a
 #   1. build_context_modalita_c_senza_listino
 #   2. build_context_formatta_decimali_eccezioni_e_componenti
+#   2b. build_context_componenti_stringa_jsonb_deserializzati
+#   2c. build_context_componenti_invalidi_lista_vuota
 #   3. build_context_id_non_valido_raises_validation
 #   4. build_context_offerta_inesistente_raises_not_found
 #   5. registry_contiene_offerta_commerciale_dopo_import_modulo
@@ -151,6 +153,56 @@ class BuildContextOffertaTests(SimpleTestCase):
         comp = riga["componenti"][0]
         self.assertEqual(comp["prezzo_unitario"], "5.250000")
         self.assertEqual(comp["coeff_qta_snapshot"], "1.000000")
+
+    # 2b. componenti come stringa JSON (psycopg/jsonb_agg) -> deserializzati
+    #     in lista di dict, prezzi formattati. Senza questa coercion il
+    #     template Jinja itererebbe sui caratteri ('str object has no
+    #     attribute "get"' a runtime). Pattern speculare al FE
+    #     `coerceJsonbToArray`.
+    def test_build_context_componenti_stringa_jsonb_deserializzati(self) -> None:
+        repo = MagicMock()
+        repo.get_offerta.return_value = _testata_row(listino_id=100)
+        repo.list_eccezioni.return_value = [
+            {
+                "id": 1,
+                "articolo_descrizione": "Articolo composito",
+                "tipo_eccezione": "OVERRIDE",
+                "prezzo_unitario": "10",
+                "componenti": (
+                    '[{"componente_descrizione": "C1", '
+                    '"prezzo_unitario": "1.5", "quantita": "2"}]'
+                ),
+            },
+        ]
+        repo.get_utility.return_value = None
+
+        ctx = OffertaDocumentContextBuilder(repo=repo).build_context(7)
+
+        riga = ctx["eccezioni"][0]
+        self.assertIsInstance(riga["componenti"], list)
+        self.assertEqual(len(riga["componenti"]), 1)
+        comp = riga["componenti"][0]
+        self.assertEqual(comp["componente_descrizione"], "C1")
+        self.assertEqual(comp["prezzo_unitario"], "1.500000")
+        self.assertEqual(comp["quantita"], "2.000000")
+
+    # 2c. componenti nullo / stringa vuota / JSON invalido -> lista vuota
+    #     (no crash). Garantisce che il template non rompa con eccezioni
+    #     non-composite o blob inattesi.
+    def test_build_context_componenti_invalidi_lista_vuota(self) -> None:
+        repo = MagicMock()
+        repo.get_offerta.return_value = _testata_row(listino_id=100)
+        repo.list_eccezioni.return_value = [
+            {"id": 1, "tipo_eccezione": "OVERRIDE", "componenti": None},
+            {"id": 2, "tipo_eccezione": "OVERRIDE", "componenti": ""},
+            {"id": 3, "tipo_eccezione": "OVERRIDE", "componenti": "non-json-{"},
+            {"id": 4, "tipo_eccezione": "OVERRIDE"},  # campo assente
+        ]
+        repo.get_utility.return_value = None
+
+        ctx = OffertaDocumentContextBuilder(repo=repo).build_context(7)
+        for riga in ctx["eccezioni"]:
+            self.assertEqual(riga["componenti"], [])
 
 
 class BuildContextOffertaGuardTests(SimpleTestCase):

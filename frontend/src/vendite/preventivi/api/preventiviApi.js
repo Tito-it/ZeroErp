@@ -38,8 +38,26 @@ export function cambiaStatoPreventivo(id, payload) {
   return api.post(`${BASE}/${id}/stato/`, payload)
 }
 
+// BOZZA -> EMESSO. L'endpoint (multipart) cambia stato + genera documento +
+// persiste eventuali allegati in transazione atomica lato BE (mirror del
+// flusso offerta). NB: la transizione *->EMESSO NON passa piu' da
+// cambiaStatoPreventivo (refactor 2026-05-28): usare questa funzione tramite
+// PreventivoEmissioneDialog.
+export function emettiPreventivo(id, { allegati = [], templateId = null } = {}) {
+  const formData = new FormData()
+  if (templateId != null) formData.append('template_documento_id', templateId)
+  for (const file of allegati) formData.append('allegati', file)
+  return api.post(`${BASE}/${id}/emetti/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
 export function creaRevisione(id) {
   return api.post(`${BASE}/${id}/revisione/`, {})
+}
+
+export function listRevisioni(id) {
+  return api.get(`${BASE}/${id}/revisioni/`)
 }
 
 // --- Righe ---

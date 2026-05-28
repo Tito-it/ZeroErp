@@ -31,6 +31,7 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import { useDocumentiPerSorgenteStore } from '../stores/documentiPerSorgente'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { downloadBlob } from '../../core/utils/download'
+import { formatSize } from '../../core/utils/format'
 
 // MIME ammessi di default per gli allegati (allineato alla whitelist BE).
 const ACCEPT_DEFAULT = 'application/pdf,image/jpeg,image/png'
@@ -64,16 +65,23 @@ const previewUrl = ref(null)
 const previewBlob = ref(null)
 const previewLoading = ref(false)
 const previewError = ref(null)
+// Token monotono per invalidare una `loadPreview` in volo se nel frattempo
+// e' partita una nuova (rapid open/close del dialog). Solo la fetch col
+// token piu' recente puo' aggiornare `previewBlob`/`previewUrl` ed evita
+// race + leak di blob non revocati.
+let _loadToken = 0
 
 const dialogWidth = computed(() => (props.advancesState ? 'xl' : 'md'))
 
-// In append mode confermare senza file non ha senso; in draft mode invece
-// si puo' emettere anche senza allegati.
-const saveDisabled = computed(
-  () => props.loading
-    || props.confirmDisabled
-    || (!props.advancesState && stagedFiles.value.length === 0),
-)
+// Append mode (non advances-state) = upload immediato al pick file:
+// niente staging, niente Conferma, footer close-only. Cosi' evitiamo
+// l'ambiguita' "ho aggiunto un file ma non trovo il Conferma": il file
+// viene caricato subito (il documento esiste gia', non c'e' rollback
+// atomico da gestire). Draft mode (BOZZA -> EMESSA) conserva invece lo
+// staging + Conferma perche' tutto avviene in una transazione atomica.
+const isAppendMode = computed(() => !props.advancesState)
+
+const saveDisabled = computed(() => props.loading || props.confirmDisabled)
 
 watch(
   () => props.visible,
@@ -103,42 +111,58 @@ function revokePreview() {
 async function loadPreview() {
   if (!props.sorgenteId) return
   revokePreview()
+  const myToken = ++_loadToken
   previewLoading.value = true
   try {
     docStore.setSorgente(props.sorgenteCode, props.sorgenteId)
     const { blob } = await docStore.anteprima({})
+    // Una piu' recente loadPreview e' partita nel frattempo: scarta
+    // questo risultato (evita di mostrare blob obsoleto + leak URL).
+    if (myToken !== _loadToken) return
     previewBlob.value = blob
     previewUrl.value = URL.createObjectURL(blob)
   } catch (err) {
+    if (myToken !== _loadToken) return
     previewError.value =
       err?.response?.data?.error?.message
       || t('documenti.emissione.anteprima_errore')
   } finally {
-    previewLoading.value = false
+    if (myToken === _loadToken) previewLoading.value = false
   }
 }
 
 function openFilePicker() {
+  // Guard: in append mode l'upload e' immediato; durante un upload in corso
+  // (props.loading) ignoriamo nuovi click per evitare race su upload
+  // sovrapposti (file appena pickati emessi mentre il precedente e' ancora
+  // in volo).
+  if (props.loading) return
   fileInput.value?.click()
 }
 
 function onFilesSelected(event) {
   const picked = Array.from(event.target.files || [])
-  stagedFiles.value = [...stagedFiles.value, ...picked]
   // Reset per consentire la riselezione dello stesso file.
   event.target.value = ''
+  if (!picked.length) return
+  // Defense-in-depth contro race in append mode: se il dialog e' loading,
+  // scarta il batch (la guard a monte su openFilePicker dovrebbe gia'
+  // bloccare il click, ma il `change` arriva async).
+  if (props.loading) return
+  if (isAppendMode.value) {
+    // Append mode: upload immediato senza staging — il parent gestisce la
+    // chiamata API + chiusura/refresh. Non accodiamo a stagedFiles
+    // (niente "Conferma" da cliccare dopo).
+    emit('confirm', { files: picked })
+    return
+  }
+  // Draft mode: staging + Conferma piu' tardi (commit atomico col cambio
+  // stato).
+  stagedFiles.value = [...stagedFiles.value, ...picked]
 }
 
 function removeFile(index) {
   stagedFiles.value.splice(index, 1)
-}
-
-// Scopo: KB/MB leggibili per la lista allegati staged.
-function formatSize(bytes) {
-  if (!bytes && bytes !== 0) return ''
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function onAnteprimaDownload() {
@@ -191,6 +215,7 @@ onBeforeUnmount(revokePreview)
     :loading="loading"
     :save-disabled="saveDisabled"
     :save-label="confirmLabel || t('documenti.emissione.conferma')"
+    :close-only="isAppendMode"
     @update:visible="onDialogVisible"
     @save="onSave"
   >
@@ -200,7 +225,71 @@ onBeforeUnmount(revokePreview)
         <slot name="riepilogo" />
       </div>
 
-      <!-- Anteprima del documento che verra' generato (solo draft mode). -->
+      <!-- Allegati:
+           - draft mode: staged client-side, caricati alla Conferma (commit
+             atomico col cambio stato);
+           - append mode: upload immediato al pick (no staging, nessun
+             bottone Conferma da cliccare — il file e' caricato subito,
+             il documento esiste gia'). -->
+      <div class="documento-emissione__allegati">
+        <div class="documento-emissione__allegati-head">
+          <span class="documento-emissione__allegati-title">
+            {{ t('documenti.emissione.allegati_titolo') }}
+          </span>
+          <Button
+            icon="pi pi-paperclip"
+            :label="isAppendMode
+              ? t('documenti.allegati.conferma')
+              : t('documenti.emissione.aggiungi_allegati')"
+            size="small"
+            outlined
+            :loading="loading"
+            :disabled="loading"
+            @click="openFilePicker"
+          />
+          <input
+            ref="fileInput"
+            type="file"
+            multiple
+            :accept="accept"
+            :disabled="loading"
+            style="display: none"
+            @change="onFilesSelected"
+          />
+        </div>
+
+        <!-- Lista staged solo in draft mode (in append mode l'upload e'
+             immediato: il file appare nella lista documenti del padre, non
+             qui). -->
+        <template v-if="!isAppendMode">
+          <ul v-if="stagedFiles.length" class="documento-emissione__file-list">
+            <li v-for="(f, idx) in stagedFiles" :key="idx" class="documento-emissione__file">
+              <i class="pi pi-file" />
+              <span class="documento-emissione__file-name">{{ f.name }}</span>
+              <span class="documento-emissione__file-size">{{ formatSize(f.size) }}</span>
+              <Button
+                icon="pi pi-times"
+                text
+                rounded
+                size="small"
+                severity="danger"
+                :aria-label="t('common.remove')"
+                @click="removeFile(idx)"
+              />
+            </li>
+          </ul>
+          <div v-else class="documento-emissione__allegati-empty">
+            {{ t('documenti.emissione.allegati_vuoto') }}
+          </div>
+        </template>
+        <div v-else class="documento-emissione__allegati-empty">
+          {{ t('documenti.allegati.append_hint') }}
+        </div>
+      </div>
+
+      <!-- Anteprima del documento che verra' generato (solo draft mode).
+           Sta sotto allegati per non spingere il bottone graffetta fuori
+           dal viewport visibile del dialog. -->
       <div v-if="advancesState" class="documento-emissione__preview">
         <div class="documento-emissione__preview-head">
           <span class="documento-emissione__preview-title">
@@ -235,50 +324,6 @@ onBeforeUnmount(revokePreview)
           :title="t('documenti.emissione.anteprima_titolo')"
         />
       </div>
-
-      <!-- Allegati in staging (caricati solo alla Conferma). -->
-      <div class="documento-emissione__allegati">
-        <div class="documento-emissione__allegati-head">
-          <span class="documento-emissione__allegati-title">
-            {{ t('documenti.emissione.allegati_titolo') }}
-          </span>
-          <Button
-            icon="pi pi-paperclip"
-            :label="t('documenti.emissione.aggiungi_allegati')"
-            size="small"
-            outlined
-            @click="openFilePicker"
-          />
-          <input
-            ref="fileInput"
-            type="file"
-            multiple
-            :accept="accept"
-            style="display: none"
-            @change="onFilesSelected"
-          />
-        </div>
-
-        <ul v-if="stagedFiles.length" class="documento-emissione__file-list">
-          <li v-for="(f, idx) in stagedFiles" :key="idx" class="documento-emissione__file">
-            <i class="pi pi-file" />
-            <span class="documento-emissione__file-name">{{ f.name }}</span>
-            <span class="documento-emissione__file-size">{{ formatSize(f.size) }}</span>
-            <Button
-              icon="pi pi-times"
-              text
-              rounded
-              size="small"
-              severity="danger"
-              :aria-label="t('common.remove')"
-              @click="removeFile(idx)"
-            />
-          </li>
-        </ul>
-        <div v-else class="documento-emissione__allegati-empty">
-          {{ t('documenti.emissione.allegati_vuoto') }}
-        </div>
-      </div>
     </div>
   </AppDialog>
 </template>
@@ -303,9 +348,9 @@ onBeforeUnmount(revokePreview)
 }
 .documento-emissione__iframe {
   width: 100%;
-  height: 55vh;
-  border: 1px solid var(--app-border-color, var(--p-content-border-color));
-  border-radius: var(--app-radius, 6px);
+  height: 40vh;
+  border: 1px solid var(--app-card-border);
+  border-radius: var(--p-border-radius, 6px);
 }
 .documento-emissione__preview-loading {
   display: flex;
@@ -325,8 +370,8 @@ onBeforeUnmount(revokePreview)
   align-items: center;
   gap: 0.5rem;
   padding: 0.25rem 0.5rem;
-  border: 1px solid var(--app-border-color, var(--p-content-border-color));
-  border-radius: var(--app-radius, 6px);
+  border: 1px solid var(--app-card-border);
+  border-radius: var(--p-border-radius, 6px);
 }
 .documento-emissione__file-name {
   flex: 1 1 auto;

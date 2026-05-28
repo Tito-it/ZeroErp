@@ -25,6 +25,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -177,8 +178,13 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
 
     # Scopo: Normalizza le righe-eccezione formattando i campi decimali
     #        prezzo (e i prezzi dei componenti BoM annidati) a 6 cifre,
-    #        coerente col builder contratto. Il blob `componenti` arriva
-    #        gia' come lista di dict dalla repository (jsonb_agg).
+    #        coerente col builder contratto. Il blob `componenti` puo'
+    #        arrivare gia' come lista di dict (psycopg con encoder jsonb)
+    #        oppure come stringa JSON (driver/lateral con jsonb_agg): in
+    #        quest'ultimo caso lo deserializziamo prima dello shape, cosi'
+    #        il template Jinja itera su dict (non sui caratteri di una
+    #        stringa, errore "'str object' has no attribute 'get'"). Stesso
+    #        fix gia' presente lato FE come `coerceJsonbToArray`.
     def _shape_eccezioni(
         self, eccezioni: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -188,13 +194,24 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
             for field in ("prezzo_unitario", "quantita", "qta_operativa"):
                 if field in r:
                     r[field] = _format_decimal_6(r.get(field))
-            componenti = r.get("componenti")
-            if isinstance(componenti, list):
-                r["componenti"] = [
-                    self._shape_componente(dict(c)) for c in componenti
-                ]
+            r["componenti"] = self._coerce_componenti(r.get("componenti"))
             shaped.append(r)
         return shaped
+
+    # Scopo: Normalizza il blob componenti BoM (jsonb_agg) a lista di dict
+    #        formattati. Accetta lista nativa, stringa JSON o valori
+    #        sentinella vuoti (None / '[]'); ritorna sempre una lista.
+    def _coerce_componenti(self, value: Any) -> list[dict[str, Any]]:
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (ValueError, TypeError):
+                return []
+        if not isinstance(value, list):
+            return []
+        return [self._shape_componente(dict(c)) for c in value if isinstance(c, dict)]
 
     # Scopo: Formatta i campi prezzo/quantita di un componente BoM annidato.
     def _shape_componente(self, comp: dict[str, Any]) -> dict[str, Any]:
