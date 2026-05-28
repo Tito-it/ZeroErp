@@ -1,0 +1,185 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea config.transizioni_stati_contratti: matrice delle transizioni
+# ammesse tra stati del contratto di fornitura.
+#
+# Tre transizioni (stato/trigger codificato in trgfn_contratti_guard_transizione_stato):
+#   DRAFT(1)  -> ATTIVO(2)     | attiva (manuale, operatore)
+#   DRAFT(1)  -> ANNULLATO(8)  | annulla (manuale, ritiro bozza)
+#   ATTIVO(2) -> CESSATO(5)    | cessa (manuale/job, requires_date)
+#
+# ATTIVO -> ANNULLATO non ammessa (solo bozze annullabili):
+#   resta bloccata dal trigger, nessuna riga in tabella.
+#
+# Nessuna transizione uscente da stati terminali:
+#   CESSATO (5), ANNULLATO (8).
+#
+# Simmetria con config.transizioni_stati_preventivi e
+# config.stati_doc_offerte_transizioni: stessa struttura, stesso pattern.
+# Seed (3 righe) in 80_data/changelog/20260528-06.
+#
+# Dipendenza: config.stati_doc_contratti (migration 20250917-02).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260528-04-create-transizioni-stati-contratti-mctit.yaml
+
+  - changeSet:
+      id: 20260528-04-create-transizioni-stati-contratti
+      author: mctit
+      comment: >
+        Crea config.transizioni_stati_contratti: matrice transizioni stato
+        contratto (3 transizioni: DRAFT->ATTIVO, DRAFT->ANNULLATO,
+        ATTIVO->CESSATO). Simmetria con transizioni_stati_preventivi e
+        stati_doc_offerte_transizioni. Seed in 20260528-06.
+        Sostituisce il pattern meta->'outgoing_action' su stati_doc_contratti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: config
+                    tableName: transizioni_stati_contratti
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_contratti
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: transizioni_stati_contratti
+            remarks: >-
+              Matrice delle transizioni ammesse tra stati contratto di fornitura.
+              Consultata da script.fn_available_actions_contratto per costruire
+              available_actions[] (metadati UI: label_key, severity, icon, ecc.).
+              La regola di business e' ancora nel trigger
+              vendite.trgfn_contratti_guard_transizione_stato.
+              Pattern identico a config.transizioni_stati_preventivi.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_transizioni_stati_contratti
+                    nullable: false
+
+              - column:
+                  name: stato_da_id
+                  type: bigint
+                  remarks: "FK -> config.stati_doc_contratti.id (stato origine)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: stato_a_id
+                  type: bigint
+                  remarks: "FK -> config.stati_doc_contratti.id (stato destinazione)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Se true, la transizione e' presente in available_actions."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: >-
+                    Metadati UI (action_key, label_key, severity, icon,
+                    requires_confirm, requires_date, outlined, manuale).
+                    requires_date=true: la UI deve raccogliere una data
+                    (es. cessa -> CESSATO). manuale=false per transizioni
+                    automatiche (job notturno pgAgent).
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: transizioni_stati_contratti
+            columnNames: stato_da_id, stato_a_id
+            constraintName: uq_transizioni_stati_contratti
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: transizioni_stati_contratti
+            baseColumnNames: stato_da_id
+            constraintName: fk_tsc_da
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_contratti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: transizioni_stati_contratti
+            baseColumnNames: stato_a_id
+            constraintName: fk_tsc_a
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_contratti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.transizioni_stati_contratti
+                ADD CONSTRAINT ck_tsc_da_diverso_a
+                CHECK (stato_da_id <> stato_a_id);
+
+              COMMENT ON TABLE config.transizioni_stati_contratti IS
+                  'Matrice transizioni ammesse tra stati contratto di fornitura. '
+                  'Fonte metadati UI per script.fn_available_actions_contratto. '
+                  '3 transizioni: DRAFT->ATTIVO|ANNULLATO, ATTIVO->CESSATO. '
+                  'La regola di business resta in trgfn_contratti_guard_transizione_stato. '
+                  'rev 2026-05-28.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: transizioni_stati_contratti

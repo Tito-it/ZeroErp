@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UPDATE config.stati_doc_offerte_transizioni — severity BOZZA→EMESSA.
+#
+# Allineamento severity offerte a standard preventivi (sempre info):
+#   transizione id=1 (BOZZA → EMESSA): severity success → info.
+#
+# Motivazione: uniformità visiva tra domini. I preventivi usano info
+# per EMETTI; le offerte usavano success (seed 20260524-22). Allineamento
+# richiesto in fase di sviluppo UI available_actions.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260528-03-update-stati-doc-offerte-transizioni-severity-emetti-mctit.yaml
+
+  - changeSet:
+      id: 20260528-03-update-stati-doc-offerte-transizioni-severity-emetti
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      failOnError: true
+      comment: >
+        Allinea severity transizione BOZZA→EMESSA (id=1) in
+        config.stati_doc_offerte_transizioni da "success" a "info".
+        Uniformità con la transizione EMETTI dei preventivi
+        (config.transizioni_stati_preventivi).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_offerte_transizioni
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Transizione BOZZA → EMESSA: severity success → info.
+              -- Il resto del meta (action_key, label_key, icon, requires_confirm,
+              -- requires_motivazione, manuale) resta invariato.
+              UPDATE config.stati_doc_offerte_transizioni
+                 SET meta = meta || '{"severity":"info"}'::jsonb
+               WHERE id = 1;
+      rollback:
+        - sql:
+            sql: |
+              UPDATE config.stati_doc_offerte_transizioni
+                 SET meta = meta || '{"severity":"success"}'::jsonb
+               WHERE id = 1;

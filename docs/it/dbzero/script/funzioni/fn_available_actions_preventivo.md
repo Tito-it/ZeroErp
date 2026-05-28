@@ -17,9 +17,13 @@ AS $function$
 --   Capability del preventivo per il detail API (Fase 1 refactor
 --   frontend vendite). Calcola le transizioni manuali disponibili
 --   leggendo la matrice config.transizioni_stati_preventivi (campo
---   meta per i metadati UI). Restituisce anche i flag can_* usati
---   dai drawer Vue per abilitare/disabilitare azioni e campi senza
---   ricalcolare logica in Python o nel frontend.
+--   meta per i metadati UI). Aggiunge hardcoded le azioni speciali
+--   non-cambio-stato (pattern fn_available_actions_offerta):
+--     - crea_revisione (solo EMESSO): produce rev.N+1 in BOZZA.
+--     - push_commessa (solo ACCETTATO): avvia commessa vendita.
+--   Restituisce anche i flag can_* usati dai drawer Vue per
+--   abilitare/disabilitare azioni e campi senza ricalcolare logica
+--   in Python o nel frontend.
 --
 --   Struttura meta attesa su ogni transizione (80_data seed):
 --     action_key:       chiave azione (es. 'emetti', 'annulla')
@@ -48,8 +52,35 @@ DECLARE
     --     (whitelist aggiorna_preventivo in preventivi_service.py).
     c_sempre_non_edit CONSTANT jsonb := '["utility_id"]'::jsonb;
     c_non_edit_extra  CONSTANT jsonb := '["billing_account_id","istanza_utility_id","valuta_id","termine_pagamento_id","validita_dal","validita_al","competenza_mese","fatturazione_immediata","meta"]'::jsonb;
+
+    -- Azione speciale hardcoded: crea_revisione (EMESSO).
+    -- Non e' una transizione di stato: produce rev.N+1 in BOZZA
+    -- e marca rev.N corrente SUPERATA via trigger z90.
+    -- icon pi pi-clone: coerente con fn_available_actions_offerta.
+    c_action_crea_revisione CONSTANT jsonb := jsonb_build_object(
+        'key',                  'crea_revisione',
+        'target_state',         NULL,
+        'label_key',            'preventivi.azione_crea_revisione',
+        'severity',             'info',
+        'icon',                 'pi pi-clone',
+        'requires_confirm',     true,
+        'requires_motivazione', false
+    );
+
+    -- Azione speciale hardcoded: push_commessa (ACCETTATO).
+    -- Non e' una transizione di stato: avvia la commessa vendita.
+    -- Gate v1: solo stato ACCETTATO (no check cross-dominio in v1).
+    c_action_push_commessa CONSTANT jsonb := jsonb_build_object(
+        'key',                  'push_commessa',
+        'target_state',         NULL,
+        'label_key',            'preventivi.azione_push_commessa',
+        'severity',             'info',
+        'icon',                 'pi pi-arrow-right',
+        'requires_confirm',     true,
+        'requires_motivazione', false
+    );
 BEGIN
-    -- Recupera stato corrente del preventivo
+    -- Recupera stato corrente del preventivo.
     SELECT p.stato_doc_preventivo_id, sdp.codice_interno
       INTO v_stato_id, v_stato_cod
       FROM vendite.preventivi p
@@ -98,6 +129,16 @@ BEGIN
     v_can_push := (v_stato_cod = 'ACCETTATO');
     v_can_rev  := (v_stato_cod = 'EMESSO');
 
+    -- Appende crea_revisione hardcoded: solo in EMESSO.
+    IF v_can_rev THEN
+        v_actions := v_actions || jsonb_build_array(c_action_crea_revisione);
+    END IF;
+
+    -- Appende push_commessa hardcoded: solo in ACCETTATO.
+    IF v_can_push THEN
+        v_actions := v_actions || jsonb_build_array(c_action_push_commessa);
+    END IF;
+
     -- Reason code (machine-readable) + chiave i18n associata.
     -- Coppia stabile reason/reason_key: il FE traduce via key,
     -- il BE/log usa il reason. In Fase 3 si estendera' il CASE
@@ -127,7 +168,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
-IS 'Capability preventivo per detail API: available_actions (da matrice transizioni), can_edit_*, can_push_commessa, can_create_revisione, non_editable_fields. rev 03-05-2026: can_create_revisione solo da EMESSO. rev 11-05-2026: WHERE guard meta ?''action_key'' + ?''label_key'' (defense-in-depth su ck_transizioni_stati_prev_meta_ui).';
+IS 'Capability preventivo per detail API: available_actions (da matrice transizioni + azioni hardcoded crea_revisione/push_commessa), can_edit_*, can_push_commessa, can_create_revisione, non_editable_fields. rev 03-05-2026: can_create_revisione solo da EMESSO. rev 11-05-2026: WHERE guard meta ?''action_key'' + ?''label_key''. rev 28-05-2026: append hardcoded crea_revisione (EMESSO) e push_commessa (ACCETTATO) in available_actions (pattern offerta).';
 ```
 
 ---
