@@ -769,10 +769,14 @@ a {
 /* Lettura: ricerca/filtri/paginazione/sort restano interattivi in protect.
  * Sono operazioni di lettura (non modificano dati) e bloccarle rende
  * l'UI inutilizzabile su liste lunghe. La protezione resta attiva sui
- * form di scrittura (form-field, button salva, ecc.). */
+ * form di scrittura (form-field, button salva, ecc.).
+ * `p-tab` (tab navigation PrimeVue): cambio sezione = navigazione, non
+ * azione di scrittura. Bloccarlo rende invisibili contenuti accessibili
+ * solo da tab (es. drawer offerta tab "Revisioni" in readonly). */
 .app-readonly .app-page-filters,
 .app-readonly .p-paginator,
-.app-readonly .p-datatable-thead {
+.app-readonly .p-datatable-thead,
+.app-readonly .p-tab {
   pointer-events: auto;
   opacity: 1;
 }

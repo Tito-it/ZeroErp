@@ -23,9 +23,10 @@ const emit = defineEmits(['update:visible', 'confirm'])
 
 const { t } = useI18n()
 
-const versioneListinoMancante = computed(
-  () => !props.offerta?.listino_versione_id,
-)
+// Nota: NON controlliamo qui se `listino_versione_id` e' valorizzato.
+// In BOZZA e' legittimamente NULL: il trigger DB lo fissa al momento
+// dell'emissione (versione ATTIVA del listino). Se manca la versione
+// attiva, il trigger rifiuta con errore parlante propagato dal BE.
 const eccezioniCount = computed(
   () => props.offerta?.eccezioni?.length || 0,
 )
@@ -40,7 +41,6 @@ const eccezioniCount = computed(
     :header="t('vendite.offerte.emissione_titolo')"
     :confirm-label="t('vendite.offerte.emissione_conferma')"
     :loading="props.loading"
-    :confirm-disabled="versioneListinoMancante"
     @update:visible="(val) => emit('update:visible', val)"
     @confirm="(payload) => emit('confirm', payload)"
   >
@@ -68,16 +68,9 @@ const eccezioniCount = computed(
         </div>
       </div>
 
+      <!-- Info sempre visibile: la versione del listino viene fissata in
+           automatico al momento dell'emissione (la BOZZA non la ha). -->
       <Message
-        v-if="versioneListinoMancante"
-        severity="warn"
-        :closable="false"
-        size="small"
-      >
-        {{ t('vendite.offerte.emissione_warn_versione_mancante') }}
-      </Message>
-      <Message
-        v-else
         severity="info"
         :closable="false"
         size="small"

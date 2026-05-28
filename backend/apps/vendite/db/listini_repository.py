@@ -289,6 +289,39 @@ class ListiniRepository:
             row = cursor.fetchone()
             return bool(row[0]) if row else False
 
+    # Scopo: Versione operativa (ATTIVA o CHIUSA) del listino a una certa
+    #        data. Usata per "freezare" `listino_versione_id` su offerta
+    #        all'emissione (BOZZA -> EMESSA), mirror del pattern contratti
+    #        (vedi `ContrattiRepository.get_listino_versione_attiva_alla_data`).
+    #        Preferenza ATTIVA, fallback CHIUSA (per backdating con validita'
+    #        passata). Ritorna None se nessuna versione operativa valida.
+    def get_versione_attiva_alla_data(
+        self, listino_id: int, data_riferimento: date,
+    ) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT lv.id
+                  FROM vendite.listini_versioni lv
+                 WHERE lv.listino_id = %s
+                   AND lv.attivo     = TRUE
+                   AND lv.stato      IN ('ATTIVA', 'CHIUSA')
+                   AND lv.validita  @> %s::date
+                 -- Determinismo: preferisce ATTIVA su CHIUSA; a parita' di
+                 -- stato preferisce l'id piu' recente. Necessario perche'
+                 -- a DB non esiste un UNIQUE su (listino_id, stato='ATTIVA')
+                 -- (solo su (listino_id, codice_versione)), quindi
+                 -- teoricamente la query potrebbe trovare piu' di una
+                 -- riga: il secondary order garantisce comunque un esito
+                 -- ripetibile.
+                 ORDER BY (lv.stato = 'ATTIVA') DESC, lv.id DESC
+                 LIMIT 1
+                """,
+                [int(listino_id), data_riferimento],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row else None
+
     # Scopo: Lista lookup dei listini "selezionabili come riferimento
     #        contrattuale": listino attivo + esiste almeno una versione
     #        ATTIVA (oggi). Stesso filtro semantico del guard pre-save

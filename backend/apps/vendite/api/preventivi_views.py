@@ -238,6 +238,23 @@ class ApiPreventivoRevisione(DomainAPIView):
         return handle_post_json(request, handler=_handler)
 
 
+class ApiPreventivoRevisioniList(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PreventivoRevisioniListResponse",
+            fields={"data": serializers.ListField()},
+        )},
+    )
+    # Scopo: Lista catena revisioni che condividono lo stesso `numero` del
+    #        preventivo passato (ordinate per `rev` ASC). Mirror del pattern
+    #        offerte `ApiOffertaRevisioni`. Lettura libera in ogni stato.
+    def get(self, request: Request, preventivo_id: int) -> JsonResponse:
+        del request
+        return success_response(preventivi_service.list_revisioni(preventivo_id))
+
+
 # ── Righe: lista + creazione ──
 
 

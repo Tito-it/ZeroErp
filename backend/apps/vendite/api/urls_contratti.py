@@ -9,9 +9,11 @@ from django.urls import path
 
 from apps.vendite.api.contratti_documenti_views import (
     ApiContrattoDocumentiList,
+    ApiContrattoDocumentoAllegati,
     ApiContrattoDocumentoAnteprima,
     ApiContrattoDocumentoFile,
     ApiContrattoDocumentoGenera,
+    ApiContrattoEmetti,
 )
 from apps.vendite.api.note_views import (
     ApiContrattoNoteDetail,
@@ -47,6 +49,14 @@ urlpatterns = [
         "<int:contratto_id>/cambia-stato/",
         ApiContrattoCambiaStato.as_view(),
         name="vendite-contratto-cambia-stato",
+    ),
+    # Attivazione DRAFT->ATTIVO (multipart): orchestra stato + genera doc +
+    # allegati in transazione atomica. Mirror di vendite-offerta-emetti e
+    # vendite-preventivi-emetti.
+    path(
+        "<int:contratto_id>/emetti/",
+        ApiContrattoEmetti.as_view(),
+        name="vendite-contratto-emetti",
     ),
     path(
         "<int:contratto_id>/righe/",
@@ -109,6 +119,14 @@ urlpatterns = [
         "<int:contratto_id>/documenti/<int:documento_id>/file/",
         ApiContrattoDocumentoFile.as_view(),
         name="vendite-contratti-documenti-file",
+    ),
+    # Lista (GET) + append (POST multipart) dei file del documento
+    # (principale + allegati). Usato dal row-expand di
+    # DocumentiGeneratiSorgenteList per popolare filesPerDoc.
+    path(
+        "<int:contratto_id>/documenti/<int:documento_id>/allegati/",
+        ApiContrattoDocumentoAllegati.as_view(),
+        name="vendite-contratti-documenti-allegati",
     ),
     # Note partizionate (vendite.note_contratto) — testata o riga.
     # GET ?target_riga_id=<rid> per filtrare le note della singola riga.

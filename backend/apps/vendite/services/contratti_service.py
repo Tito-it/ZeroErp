@@ -47,10 +47,6 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
 )
-from apps.documenti.db.documenti_repository import DocumentiRepository
-from apps.documenti.services.document_generation_service import (
-    DocumentGenerationService,
-)
 from apps.vendite.db.contratti_repository import ContrattiRepository
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.services._componenti_service_helpers import (
@@ -76,8 +72,6 @@ E_VENDITE_NOT_FOUND = "E_VENDITE_NOT_FOUND"
 E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_FK = "E_VENDITE_FK"
 E_VENDITE_CONTRATTO_OVERLAP = "E_VENDITE_CONTRATTO_OVERLAP"
-
-_CODICE_SORGENTE_CONTRATTO = "CONTRATTO"
 
 
 _ORDER_BY_CONTRATTI: frozenset[str] = frozenset({
@@ -866,6 +860,24 @@ class ContrattiService:
             context={"field": "codice_interno"},
         )
         codice_norm = codice_interno.strip()
+        # Guard refactor 2026-05-28: la transizione DRAFT->ATTIVO non passa
+        # piu' da qui. ApiContrattoEmetti (endpoint multipart `/emetti/`)
+        # orchestra in transaction.atomic() la sequenza stato +
+        # genera_documento + allegati, mirror del flusso offerta/preventivo.
+        # cambia_stato resta per le altre transizioni (CESSATO, ANNULLATO,
+        # SOSPESO). Defense-in-depth: se qualcuno invoca cambia_stato('ATTIVO')
+        # direttamente la transizione fallirebbe a meta', lasciando il
+        # contratto ATTIVO senza PDF (rompe invariante documentale).
+        ErrorManager.require(
+            codice_norm != "ATTIVO",
+            code=E_VENDITE_VALIDATION,
+            message=(
+                "Usare l'endpoint /emetti/ (multipart) per la transizione "
+                "DRAFT->ATTIVO: orchestra stato + generazione documento + "
+                "allegati in transazione atomica."
+            ),
+            context={"contratto_id": contratto_id},
+        )
         target_stato_id = self._repo.get_stato_id_by_codice(codice_norm)
         ErrorManager.require(
             target_stato_id is not None,
@@ -954,52 +966,37 @@ class ContrattiService:
                         message="Contratto non trovato.",
                         context={"contratto_id": contratto_id},
                     )
-                    if codice_norm == "ATTIVO" and stato_corrente == "DRAFT":
-                        self._genera_pdf_attivazione(contratto_id, user=user)
         return self.get_contratto(contratto_id)
 
-    # Scopo: genera e persiste il PDF canonico del contratto al momento
-    #        dell'attivazione. Chiamato dentro la stessa transaction.atomic
-    #        del cambio stato DRAFT->ATTIVO: un errore render/storage fa
-    #        propagare l'eccezione e rollbacka anche il cambio stato.
-    def _genera_pdf_attivazione(
-        self,
-        contratto_id: int,
-        *,
-        user: AbstractBaseUser | AnonymousUser | None,
-    ) -> None:
-        contratto = self._repo.get_for_documento_generation(contratto_id)
+    # Scopo: DRAFT -> ATTIVO. Solo la transizione di stato: la view multipart
+    #        ApiContrattoEmetti incapsula questa chiamata insieme a
+    #        DocumentGenerationService.genera_documento(allegati=...) in
+    #        un'unica transaction.atomic() esterna, garantendo che ATTIVO
+    #        implichi sempre l'esistenza del documento generato (invariante di
+    #        dominio). Mirror del pattern offerta/preventivo emetti (refactor
+    #        2026-05-28). Bypassa il guard di cambia_stato su ATTIVO via
+    #        accesso diretto al repository.
+    def emetti(self, contratto_id: int) -> dict[str, Any]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        target_stato_id = self._repo.get_stato_id_by_codice("ATTIVO")
         ErrorManager.require(
-            contratto is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Contratto non trovato per generazione PDF.",
-            context={"contratto_id": contratto_id},
+            target_stato_id is not None,
+            code=E_VENDITE_VALIDATION,
+            message="Stato 'ATTIVO' non configurato.",
         )
-        assert contratto is not None
-        ErrorManager.require(
-            contratto.get("emittente_fiscale_id") is not None,
-            code="E_DOCUMENTI_VALIDATION",
-            message="Emittente fiscale non risolto per il contratto.",
-            context={"contratto_id": contratto_id},
-        )
-
-        doc_repo = DocumentiRepository()
-        sorgente = doc_repo.get_sorgente_tipo_id_by_codice(_CODICE_SORGENTE_CONTRATTO)
-        ErrorManager.require(
-            sorgente is not None and sorgente.get("attivo"),
-            code="E_DOCUMENTI_VALIDATION",
-            message="Sorgente 'CONTRATTO' non configurata o non attiva.",
-            context={"contratto_id": contratto_id},
-        )
-        assert sorgente is not None
-
-        DocumentGenerationService().genera_documento(
-            user,
-            emittente_fiscale_id=int(contratto["emittente_fiscale_id"]),
-            sorgente_tipo_id=int(sorgente["id"]),
-            sorgente_id=int(contratto["id"]),
-            sorgente_uid=str(contratto["uid"]),
-        )
+        assert target_stato_id is not None
+        with self._db_errors(
+            {"contratto_id": contratto_id, "codice_interno": "ATTIVO"},
+            fallback_message="Violazione vincolo DB su attivazione contratto.",
+        ):
+            updated = self._repo.update_stato(contratto_id, target_stato_id)
+            ErrorManager.require(
+                updated,
+                code=E_VENDITE_NOT_FOUND,
+                message="Contratto non trovato.",
+                context={"contratto_id": contratto_id},
+            )
+        return self.get_contratto(contratto_id)
 
     # =================================================================
     # Contesto pricing (banner FE)

@@ -38,8 +38,14 @@ import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.v
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import DocumentiGeneratiSorgenteList from '../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
+import ContrattoEmissioneDialog from './dialogs/ContrattoEmissioneDialog.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
-import ContrattoPdfButton from './ContrattoPdfButton.vue'
+import EntityPdfButton from '../../documenti/components/EntityPdfButton.vue'
+import { SORGENTE_CODES } from '../../documenti/constants'
+import {
+  STATI_CONTRATTO_ANTEPRIMA_PDF,
+  STATI_CONTRATTO_CON_DOCUMENTO,
+} from '../constants'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
@@ -453,6 +459,12 @@ async function refreshDetail() {
 const cessaDialogVisible = ref(false)
 const cessaDialogData = ref(null)
 const cessaDialogAction = ref(null)
+// Dialog attivazione contratto: aperto quando l'azione di stato porta a
+// ATTIVO (transizione DRAFT → ATTIVO). Sostituisce il confirmAction generico
+// perche' l'attivazione orchestra atomic state + genera documento + allegati
+// lato BE (refactor 2026-05-28, mirror del flusso offerta/preventivo).
+const emissioneDialogVisible = ref(false)
+const emissioneLoading = ref(false)
 // Min selezionabile: oggi (no retroattivo). Se il contratto inizia nel futuro
 // (valido_dal > oggi, esposto dal BE come min_date) il minimo e' valido_dal.
 const cessaDialogMinDate = computed(() => {
@@ -502,8 +514,24 @@ async function onConfermaCessazione() {
 // - requires_confirm    -> confirmAction con label_key dell'azione
 // - altrimenti          -> diretto
 function onCambiaStato(action) {
+  // Transizione → ATTIVO: dialog dedicato con anteprima documento + allegati.
+  // L'endpoint /emetti/ (multipart) orchestra atomic state + genera + allegati
+  // (refactor 2026-05-28). NB: il BE rifiuta la transizione via /cambia-stato/
+  // con E_VENDITE_VALIDAZIONE — questa intercettazione e' la sola via supportata.
+  if (action.target_state === 'ATTIVO') {
+    emissioneDialogVisible.value = true
+    return
+  }
   if (action.requires_date) {
     openCessaDialog(action)
+    return
+  }
+  // Annullamento: dialog dedicato con messaggio specifico (numero contratto,
+  // wording "operazione irreversibile") invece del confirm generico. Post
+  // brief DB 2026-05-28 l'azione arriva data-driven da
+  // `fn_available_actions_contratto` con `key='annulla'`.
+  if (action.key === 'annulla') {
+    onAnnullaContratto(action)
     return
   }
   if (action.requires_confirm) {
@@ -525,24 +553,45 @@ async function eseguiCambioStato(targetState) {
   if (result !== null) await refreshDetail()
 }
 
+// Scopo: callback @confirm del ContrattoEmissioneDialog. Riceve i file
+// staged dall'utente e chiama store.emetti (POST multipart /emetti/).
+// Loading + abandon-warning sono gestiti dal building block generico.
+async function handleEmissioneConferma({ files }) {
+  emissioneLoading.value = true
+  const result = await execute(
+    () => store.emetti(props.contrattoId, { allegati: files || [] }),
+    { successMessage: t('contratti.stato_cambiato') },
+  )
+  emissioneLoading.value = false
+  if (result !== null) {
+    emissioneDialogVisible.value = false
+    await refreshDetail()
+  }
+}
+
 // Refactor 2026-05-20: annullamento contratto (transizione DRAFT → ANNULLATO).
 // Bottone temporaneo finche' `fn_available_actions_contratto` non espone
 // l'azione lato BE. Solo DRAFT: ATTIVO → ANNULLATO non e' transizione
 // ammessa (per contratti attivi si usa CESSATO con data di fine validita').
-function onAnnullaContratto() {
+function onAnnullaContratto(action) {
+  // target_state arriva data-driven dall'azione BE (`available_actions[]` di
+  // `fn_available_actions_contratto`). Fallback 'ANNULLATO' difensivo per
+  // eventuali chiamate dirette senza action (oggi non esistono).
+  const targetState = action?.target_state || 'ANNULLATO'
   confirmAction({
     header: t('contratti.annulla_dialog_titolo'),
     message: t('contratti.annulla_dialog_messaggio', { numero: detail.value?.numero }),
     acceptLabel: t('contratti.annulla_dialog_conferma'),
     danger: true,
-    onAccept: () => eseguiCambioStato('ANNULLATO'),
+    onAccept: () => eseguiCambioStato(targetState),
   })
 }
 
 // Azioni della testata contratto consumate da DrawerActionsBar.
-// Composizione: transizioni di stato (availableActions BE) + Annulla DRAFT
-// (fallback hardcoded — vedi nota sotto) + Gestisci righe/note (sub-drawer).
-// Il PDF resta componente dedicato e va nel #suffix del BB (stateful).
+// Composizione: transizioni di stato data-driven (availableActions BE) +
+// Gestisci righe/note (sub-drawer). Il PDF resta componente dedicato nel
+// #suffix del BB (stateful). Post brief DB 2026-05-28 anche `annulla` su
+// DRAFT arriva da `fn_available_actions_contratto` (niente piu' hardcoded).
 const drawerActions = computed(() => {
   if (!isEdit.value || !detail.value) return []
   const list = mapAvailableActionsToDrawerActions({
@@ -550,22 +599,6 @@ const drawerActions = computed(() => {
     t,
     onAction: onCambiaStato,
   })
-  // Refactor 2026-05-20: Annulla contratto DRAFT come azione hardcoded finche'
-  // `script.fn_available_actions_contratto` non espone ANNULLATO data-driven.
-  // Quando il BE aggiorna, questo blocco va rimosso (l'azione apparira'
-  // automaticamente nel loop sopra). Visibile solo per DRAFT: ATTIVO ->
-  // ANNULLATO non e' transizione ammessa (per attivi si usa CESSATO).
-  if (detail.value.stato_codice === 'DRAFT') {
-    list.push({
-      key: 'annulla-draft',
-      kind: 'state',
-      label: t('contratti.azione_annulla'),
-      icon: 'pi pi-ban',
-      severity: 'danger',
-      outlined: true,
-      command: onAnnullaContratto,
-    })
-  }
   list.push({
     key: 'manage-righe',
     kind: 'manage',
@@ -631,10 +664,16 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
         <DrawerActionsBar :actions="drawerActions">
           <template #suffix>
-            <ContrattoPdfButton
-              :contratto-id="props.contrattoId"
+            <EntityPdfButton
+              :sorgente-code="SORGENTE_CODES.CONTRATTO"
+              :entity-id="props.contrattoId"
               :stato-codice="detail.stato_codice"
-              :numero="detail.numero"
+              :stati-preview="STATI_CONTRATTO_ANTEPRIMA_PDF"
+              :stati-con-documento="STATI_CONTRATTO_CON_DOCUMENTO"
+              i18n-prefix="contratti.pdf"
+              :dialog-title="detail.numero
+                ? t('contratti.pdf.dialog_title', { numero: detail.numero })
+                : ''"
             />
           </template>
         </DrawerActionsBar>
@@ -911,6 +950,17 @@ const onClose = useDrawerClose(emit, 'cancelled')
       v-model:visible="noteDrawerVisible"
       :contratto-id="props.contrattoId"
       :righe="detail.righe || []"
+    />
+
+    <!-- Dialog attivazione contratto (transizione DRAFT → ATTIVO). Wrapper sul
+         building block DocumentoEmissioneDialog: anteprima PDF + allegati,
+         conferma orchestra atomic state + genera + allegati via /emetti/. -->
+    <ContrattoEmissioneDialog
+      v-if="isEdit && detail"
+      v-model:visible="emissioneDialogVisible"
+      :contratto="detail"
+      :loading="emissioneLoading"
+      @confirm="handleEmissioneConferma"
     />
 
     <!-- Dialog cessazione contratto: chiede la data di cessazione (default

@@ -4,7 +4,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
   listPreventivi, getPreventivo, createPreventivo, updatePreventivo, deletePreventivo,
-  cambiaStatoPreventivo, creaRevisione,
+  cambiaStatoPreventivo, emettiPreventivo, creaRevisione, listRevisioni,
   listRighe, createRiga, updateRiga, deleteRiga, getRiepilogoIva,
   listIndirizzi, upsertIndirizzo,
   pushCommessa, statoFatturazione, generaPratica, listPratiche,
@@ -127,13 +127,26 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     return res.data.data
   }
 
-  // Scopo: Cambia stato preventivo (BOZZA→EMESSO, EMESSO→ACCETTATO, ecc.).
+  // Scopo: Cambia stato preventivo (EMESSO→ACCETTATO, *→ANNULLATO, ecc.).
   // extras: payload aggiuntivo per transizioni che richiedono dati di processo.
   // Caso noto: EMESSO → ACCETTATO richiede fatturazione_immediata + competenza_mese
   // (vedi backend preventivi_service.cambia_stato gate accettazione).
+  // NB refactor 2026-05-28: BOZZA->EMESSO NON passa piu' da qui — usare
+  // `emetti()` sotto (orchestra atomic state + documento + allegati via
+  // PreventivoEmissioneDialog). Il BE rifiuterebbe E_PREV_VALIDAZIONE.
   async function cambiaStato(id, nuovoStato, extras = {}) {
     const payload = { nuovo_stato: nuovoStato, ...extras }
     const res = await cambiaStatoPreventivo(id, payload)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, id)
+    return res.data.data
+  }
+
+  // Scopo: BOZZA -> EMESSO (multipart). Cambia stato + genera documento +
+  // allegati in transazione atomica lato BE. Mirror del flusso offerta.
+  // Invocata dal PreventivoEmissioneDialog (PreventiviDrawer intercetta
+  // l'action 'emetti' e apre il dialog invece di chiamare cambiaStato).
+  async function emetti(id, { allegati = [], templateId = null } = {}) {
+    const res = await emettiPreventivo(id, { allegati, templateId })
     emitDataChanged(TAB_ENTITIES.PREVENTIVO, id)
     return res.data.data
   }
@@ -143,6 +156,13 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     const res = await creaRevisione(id)
     emitDataChanged(TAB_ENTITIES.PREVENTIVO, id)
     return res.data.data
+  }
+
+  // Scopo: Lista catena revisioni del preventivo (stesso `numero`, ordinate
+  // per `rev` ASC). Mirror del pattern offerte.
+  async function loadRevisioni(id) {
+    const res = await listRevisioni(id)
+    return res.data?.data ?? []
   }
 
   // --- Righe ---
@@ -228,7 +248,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   return {
     items, totalRecords, loading, hasSearched, filters,
     fetchList, fetchDetail, create, update, elimina,
-    cambiaStato, nuovaRevisione,
+    cambiaStato, emetti, nuovaRevisione, loadRevisioni,
     loadRighe, addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
     loadIndirizzi, salvaIndirizzo,
     inviaACommessa, loadStatoFatturazione,

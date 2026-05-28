@@ -22,6 +22,7 @@ import {
   offertaDocumenti,
   preventivoDocumenti,
 } from '../api/documentiPerSorgente'
+import { SORGENTE_CODES } from '../constants'
 
 const STORE_NAME = 'documenti-per-sorgente'
 const EMIT_KEY = 'documenti_per_sorgente'
@@ -31,9 +32,9 @@ const EMIT_KEY = 'documenti_per_sorgente'
 //        l'entry qui (es. CONTRATTO -> contrattoDocumenti) per
 //        riutilizzare lo store senza modifiche al componente FE.
 const SORGENTE_CLIENT_MAP = {
-  PREVENTIVO: preventivoDocumenti,
-  CONTRATTO: contrattoDocumenti,
-  OFFERTA_COMMERCIALE: offertaDocumenti,
+  [SORGENTE_CODES.PREVENTIVO]: preventivoDocumenti,
+  [SORGENTE_CODES.CONTRATTO]: contrattoDocumenti,
+  [SORGENTE_CODES.OFFERTA_COMMERCIALE]: offertaDocumenti,
 }
 
 export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {

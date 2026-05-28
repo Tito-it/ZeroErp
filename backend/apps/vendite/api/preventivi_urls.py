@@ -13,9 +13,11 @@ from apps.vendite.api.note_views import (
 )
 from apps.vendite.api.preventivi_documenti_views import (
     ApiPreventivoDocumentiList,
+    ApiPreventivoDocumentoAllegati,
     ApiPreventivoDocumentoAnteprima,
     ApiPreventivoDocumentoFile,
     ApiPreventivoDocumentoGenera,
+    ApiPreventivoEmetti,
 )
 from apps.vendite.api.preventivi_views import (
     ApiPreventiviList,
@@ -26,6 +28,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoPratiche,
     ApiPreventivoPushCommessa,
     ApiPreventivoRevisione,
+    ApiPreventivoRevisioniList,
     ApiPreventivoRiepilogoIva,
     ApiPreventivoRigaComponenteDetail,
     ApiPreventivoRigaComponentiList,
@@ -60,11 +63,25 @@ urlpatterns = [
         ApiPreventivoStato.as_view(),
         name="vendite-preventivi-stato",
     ),
+    # Emissione BOZZA->EMESSO (multipart): orchestra stato + genera doc +
+    # allegati in transazione atomica. Mirror di vendite-offerta-emetti.
+    path(
+        "<int:preventivo_id>/emetti/",
+        ApiPreventivoEmetti.as_view(),
+        name="vendite-preventivi-emetti",
+    ),
     # Revisione
     path(
         "<int:preventivo_id>/revisione/",
         ApiPreventivoRevisione.as_view(),
         name="vendite-preventivi-revisione",
+    ),
+    # Lista catena revisioni (GET): tutte le revisioni con stesso `numero`
+    # ordinate per `rev` ASC. Mirror endpoint offerte `/revisioni/`.
+    path(
+        "<int:preventivo_id>/revisioni/",
+        ApiPreventivoRevisioniList.as_view(),
+        name="vendite-preventivi-revisioni-list",
     ),
     # Righe: lista + creazione
     path(
@@ -164,6 +181,14 @@ urlpatterns = [
         "<int:preventivo_id>/documenti/<int:documento_id>/file/",
         ApiPreventivoDocumentoFile.as_view(),
         name="vendite-preventivi-documenti-file",
+    ),
+    # Lista (GET) + append (POST multipart) dei file del documento (principale
+    # + allegati). Mirror di vendite-offerta-documento-allegati: usato dal
+    # row-expand di DocumentiGeneratiSorgenteList per popolare filesPerDoc.
+    path(
+        "<int:preventivo_id>/documenti/<int:documento_id>/allegati/",
+        ApiPreventivoDocumentoAllegati.as_view(),
+        name="vendite-preventivi-documenti-allegati",
     ),
     # Note partizionate (vendite.note_preventivo) — testata o riga.
     # GET ?target_riga_id=<rid> per filtrare le note della singola riga.

@@ -556,6 +556,28 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             assert result is not None
             return result
 
+    # Scopo: Lista catena revisioni che condividono lo stesso `numero` del
+    #        preventivo passato. Diverso dal modello offerte (catenate via
+    #        `revisione_padre_id`): qui le revisioni hanno tutte stesso
+    #        `numero` e si distinguono per la colonna `rev` (intero, 0 = prima).
+    #        Output ordinato per `rev` ASC. Legge da `vw_preventivi_list` per
+    #        avere `is_attiva` + i campi denormalizzati gia' pronti per il FE
+    #        (stato_descrizione, ecc.) — la vista del filtro lista riusata.
+    def list_revisioni(self, preventivo_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT v.*
+                  FROM vendite.vw_preventivi_list v
+                 WHERE v.numero = (
+                     SELECT numero FROM vendite.preventivi WHERE id = %s
+                 )
+                 ORDER BY v.rev ASC, v.id ASC
+                """,
+                [preventivo_id],
+            )
+            return rows_to_list(cursor)
+
     # ══════════════════════════════════════════════════════════
     #  SCRITTURE — Righe
     #  Nota: il ricalcolo totali e' automatico via trigger AFTER

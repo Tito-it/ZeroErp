@@ -77,6 +77,12 @@ const isSelectedBuilderUnregistered = computed(() =>
   selectedContextBuilderInfo.value?.registered === false,
 )
 
+// Aggiornato via `@form-aperto` da TemplateVersioniSection: quando l'utente
+// e' nel form inline di nuova/modifica versione, nascondiamo la FormFooter
+// del drawer template (i suoi pulsanti non salvano la versione e creano
+// confusione). Stesso pattern di PreventiviDrawer/PreventiviRigheTable.
+const formVersioneAperto = ref(false)
+
 const form = ref(emptyForm())
 function emptyForm() {
   return {
@@ -331,6 +337,7 @@ function close() {
         <TemplateVersioniSection
           :template-id="effectiveId"
           :readonly="isReadOnlyEffective"
+          @form-aperto="(v) => { formVersioneAperto = v }"
         />
       </template>
 
@@ -338,6 +345,7 @@ function close() {
 
     <template #footer>
       <FormFooter
+        v-if="!formVersioneAperto"
         :loading="loading"
         :disabled="!canSave"
         @save="handleSave"

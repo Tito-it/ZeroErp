@@ -41,8 +41,10 @@ import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { useGlobalLookup } from '../../../core/composables/useGlobalLookup'
 import { useNotify } from '../../../core/composables/useNotify'
+import { useRevisioniTab } from '../../../core/composables/useRevisioniTab'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import {
   READONLY_KEY,
@@ -56,6 +58,9 @@ import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { lookupListiniSelezionabiliContratto } from '../../api/lookup'
 import TipoVariazioneSelect from '../../components/TipoVariazioneSelect.vue'
 import {
+  STATI_OFFERTA_ANTEPRIMA_PDF,
+  STATI_OFFERTA_APPEND_ALLEGATI,
+  STATI_OFFERTA_CON_DOCUMENTO,
   STATI_OFFERTA_SEGNALA_SCADENZA,
   STATI_OFFERTA_TERMINALI,
 } from '../constants'
@@ -65,7 +70,8 @@ import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
 import OffertaEmissioneDialog from './dialogs/OffertaEmissioneDialog.vue'
 import OffertaEsitoDialog from './dialogs/OffertaEsitoDialog.vue'
 import OffertaPushDialog from './dialogs/OffertaPushDialog.vue'
-import OffertaPdfButton from './OffertaPdfButton.vue'
+import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 
 const { t } = useI18n()
 const store = useOfferteStore()
@@ -86,8 +92,14 @@ const isEdit = computed(() => props.mode === 'edit')
 
 const detail = ref(null)
 const form = ref({})
-const activeTab = ref('testata')
-const revisioni = ref([])
+// Tab "Testata | Revisioni" — state + load con guard di race incapsulati nel
+// building block `useRevisioniTab` (regola del 2, estratto a 2026-05-28
+// insieme a PreventiviDrawer). Le revisioni hanno il loro guard di versione
+// indipendente da `fv` (fgVersion del detail): sono fetch best-effort separate.
+const revisioniTab = useRevisioniTab({
+  load: (id) => store.loadRevisioni(id),
+})
+const { activeTab, revisioni } = revisioniTab
 
 // State machine data-driven dal BE (Step 9b 2026-05-26:
 // script.fn_available_actions_offerta + arricchimento `get_offerta`).
@@ -163,10 +175,12 @@ const pushDialogVisible = ref(false)
 // (race condition: contratto creato in altro tab tra fetch detail e push).
 const giaGeneratoDialogVisible = ref(false)
 
-// Invalida fetch stantii su apertura/chiusura/cambio-id rapide. Incrementato
-// anche quando offertaId cambia con drawer ancora aperto (caso rev N+1 dopo
-// crea_revisione: il parent fa editRow senza chiudere il drawer).
-let fgVersion = 0
+// Guard di versione per i fetch del detail (apertura/chiusura/cambio-id
+// rapide). Incrementato anche quando offertaId cambia con drawer ancora
+// aperto (caso rev N+1 dopo crea_revisione: il parent fa editRow senza
+// chiudere il drawer). Il guard delle revisioni e' indipendente e vive
+// dentro `revisioniTab` (useFetchVersion interno).
+const fv = useFetchVersion()
 
 function defaultForm() {
   return {
@@ -201,8 +215,9 @@ function defaultForm() {
 function resetForm() {
   form.value = defaultForm()
   detail.value = null
-  revisioni.value = []
-  activeTab.value = 'testata'
+  // Reset revisioni + tab attivo: il composable gestisce anche
+  // l'invalidate del proprio guard di versione (vedi useRevisioniTab).
+  revisioniTab.reset()
 }
 
 function populateFromDetail(d) {
@@ -283,24 +298,35 @@ function onBaSelected(item) {
 // secondo elemento, editRow al volo non innescherebbe il fetch del nuovo
 // detail e il drawer mostrerebbe la rev vecchia con i bottoni della nuova.
 async function loadOrReset() {
-  if (!props.visible) { fgVersion++; return }
-  const v = ++fgVersion
+  if (!props.visible) {
+    fv.invalidate()
+    revisioniTab.reset()
+    return
+  }
+  const t = fv.tag()
+
+  // Reset tab attivo + revisioni sempre, su qualunque apertura (EDIT e
+  // CREATE): senza questo, riaprendo il drawer su un'altra offerta il tab
+  // restava quello dell'apertura precedente (es. chiudo su "Revisioni",
+  // riapro su una nuova offerta → si vede "Revisioni" invece di "Testata").
+  // `resetForm` lo fa solo nel ramo CREATE, quindi qui copre anche
+  // EDIT/cambio-offertaId.
+  revisioniTab.reset()
 
   if (isEdit.value && props.offertaId) {
     const d = await store.fetchDetail(props.offertaId)
-    if (v !== fgVersion) return
+    if (!fv.isCurrent(t)) return
     detail.value = d
     populateFromDetail(d)
-    store.loadRevisioni(props.offertaId).then((list) => {
-      if (v === fgVersion) revisioni.value = list
-    })
+    // revisioniTab usa il proprio guard interno (useFetchVersion incluso).
+    revisioniTab.loadRevisioni(props.offertaId)
   } else {
     // CREATE: precarica DEFAULT_UTILITY (codice_interno -> id locale)
     // prima di resetForm cosi' che il defaultForm() ne legga il valore
     // gia' risolto. L'emittente fiscale arriva dal profilo gia' caricato
     // in `useAuthStore` (zero round-trip).
     await loadUtilityDefault()
-    if (v !== fgVersion) return
+    if (!fv.isCurrent(t)) return
     resetForm()
     if (props.initialBillingAccount?.id) {
       onBaSelected(props.initialBillingAccount)
@@ -410,22 +436,22 @@ async function handleSave() {
 
 async function refreshDetail() {
   if (!props.offertaId) return
-  // Guard fgVersion: protegge contro l'apply di un detail stantio se
-  // l'operatore chiude/cambia offerta mentre il fetch e' in volo.
-  // Stesso pattern del watcher loadOrReset.
-  const v = fgVersion
+  // Guard `fv` (useFetchVersion): protegge contro l'apply di un detail stantio
+  // se l'operatore chiude/cambia offerta mentre il fetch e' in volo. Stesso
+  // pattern del watcher loadOrReset.
+  const t = fv.tag()
   const d = await store.fetchDetail(props.offertaId)
-  if (v !== fgVersion) return
+  if (!fv.isCurrent(t)) return
   detail.value = d
   populateFromDetail(d)
 }
 
-async function reloadRevisioni() {
+// Reload revisioni: thin wrapper su `revisioniTab.loadRevisioni` che ha gia'
+// guard di versione interno (useFetchVersion). Esposto per i callsite che
+// vogliono ricaricare solo le revisioni (post-save, post-revisione).
+function reloadRevisioni() {
   if (!props.offertaId) return
-  const v = fgVersion
-  const list = await store.loadRevisioni(props.offertaId)
-  if (v !== fgVersion) return
-  revisioni.value = list
+  revisioniTab.loadRevisioni(props.offertaId)
 }
 
 // --- Dispatch azioni data-driven ---
@@ -651,10 +677,17 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
           <DrawerActionsBar :actions="drawerActions">
             <template #suffix>
-              <OffertaPdfButton
-                :offerta-id="props.offertaId"
+              <EntityPdfButton
+                :sorgente-code="SORGENTE_CODES.OFFERTA_COMMERCIALE"
+                :entity-id="props.offertaId"
                 :stato-codice="detail.stato_codice_interno"
-                :codice="detail.codice"
+                :stati-preview="STATI_OFFERTA_ANTEPRIMA_PDF"
+                :stati-con-documento="STATI_OFFERTA_CON_DOCUMENTO"
+                :stati-append-allegati="STATI_OFFERTA_APPEND_ALLEGATI"
+                i18n-prefix="vendite.offerte.pdf"
+                :dialog-title="detail.codice
+                  ? t('vendite.offerte.pdf.dialog_title', { codice: detail.codice })
+                  : ''"
               />
             </template>
           </DrawerActionsBar>

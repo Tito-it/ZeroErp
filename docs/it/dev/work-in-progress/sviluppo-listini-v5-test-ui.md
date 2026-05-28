@@ -195,7 +195,7 @@ Eseguire come Admin (Scenario 1 prerequisito).
 
 - [X] Login Senior (ha `prezzo_override_manuale`) → modifica prezzo riga
 - [X] Verifica `meta.origine_prezzo='MANUALE'` + audit completo (FE non visibile, da DB)
-- [X] Login operatore SENZA `prezzo_override_manuale` → tentativo override → errore 403 `E_PRICING_OVERRIDE_NON_AUTORIZZATO`
+- [X] Login operatore SENZA   aggiorna `prezzo_override_manuale` → tentativo override → errore 403 `E_PRICING_OVERRIDE_NON_AUTORIZZATO`
 
 ### 2.3 L2 limiti hint
 

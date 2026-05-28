@@ -36,13 +36,14 @@ from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import optional_int, qp_int
 from apps.core.api.success_responses import success_response
-from apps.core.services.error_manager import ErrorManager
-from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.api.contesto_helpers import resolve_contesto_documentale
+from apps.documenti.api.multipart_helpers import extract_allegati
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
@@ -53,60 +54,29 @@ from apps.vendite.services.offerte_service import OfferteService
 # (memoria feedback_no_hardcoded_ids: lookup per codice, non ID numerici).
 _CODICE_SORGENTE_OFFERTA = "OFFERTA_COMMERCIALE"
 
-E_VALIDATION = "E_DOCUMENTI_VALIDATION"
-E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
-
 
 # Scopo: Risolve il contesto comune per le view che operano "per offerta":
 #        offerta esistente, emittente risolto, sorgente_tipo
-#        OFFERTA_COMMERCIALE attiva. Ritorna `(offerta_dict, sorgente_tipo_id)`.
+#        OFFERTA_COMMERCIALE attiva. Wrapper sottile su
+#        `resolve_contesto_documentale`.
 def _resolve_contesto_offerta(offerta_id: int) -> tuple[dict[str, Any], int]:
-    offerte_repo = OfferteRepository()
-    offerta = offerte_repo.get_for_documento_generation(offerta_id)
-    ErrorManager.require(
-        offerta is not None,
-        code=E_NOT_FOUND,
-        message="Offerta commerciale non trovata.",
-        detail=f"offerta_id={offerta_id}",
+    offerta = OfferteRepository().get_for_documento_generation(offerta_id)
+    return resolve_contesto_documentale(
+        entity=offerta,
+        entity_id=offerta_id,
+        not_found_message="Offerta commerciale non trovata.",
+        emittente_message="Emittente fiscale non risolto per l'offerta.",
+        sorgente_codice=_CODICE_SORGENTE_OFFERTA,
     )
-    assert offerta is not None
-    ErrorManager.require(
-        offerta.get("emittente_fiscale_id") is not None,
-        code=E_VALIDATION,
-        message="Emittente fiscale non risolto per l'offerta.",
-    )
-
-    doc_repo = DocumentiRepository()
-    sorgente = doc_repo.get_sorgente_tipo_id_by_codice(_CODICE_SORGENTE_OFFERTA)
-    ErrorManager.require(
-        sorgente is not None and sorgente.get("attivo"),
-        code=E_VALIDATION,
-        message="Sorgente 'OFFERTA_COMMERCIALE' non configurata o non attiva.",
-    )
-    assert sorgente is not None
-    return offerta, int(sorgente["id"])
-
-
-# Scopo: Estrae gli allegati multipart dal request (`allegati` ripetuto) in
-#        forma neutra `{file_bytes, mime_type, file_name}`, consumabile dal
-#        service senza dipendere dall'oggetto UploadedFile di Django. Lista
-#        vuota se nessun file: il flusso persiste solo il PDF principale.
-def _extract_allegati(request: Request) -> list[dict[str, Any]]:
-    files = request.FILES.getlist("allegati")
-    allegati: list[dict[str, Any]] = []
-    for uploaded in files:
-        allegati.append({
-            "file_bytes": uploaded.read(),
-            "mime_type": getattr(uploaded, "content_type", "") or "",
-            "file_name": getattr(uploaded, "name", "") or "",
-        })
-    return allegati
 
 
 class ApiOffertaEmetti(DomainAPIView):
     """`POST /api/v1/vendite/offerte/<id>/emetti/` (multipart)."""
 
     area_funzionale = "vendite"
+    # Override del default DRF (solo JSONParser) per consentire upload
+    # multipart degli allegati assieme ai campi scalari template/tipo_output.
+    parser_classes = [MultiPartParser, FormParser]
 
     @extend_schema(
         request={
@@ -138,7 +108,7 @@ class ApiOffertaEmetti(DomainAPIView):
         payload = request.data if isinstance(request.data, dict) else {}
         template_id = optional_int(payload, "template_documento_id")
         tipo_output_id = optional_int(payload, "tipo_documento_output_id")
-        allegati = _extract_allegati(request)
+        allegati = extract_allegati(request)
 
         with transaction.atomic():
             emit_result = OfferteService().emetti(offerta_id)
@@ -271,6 +241,8 @@ class ApiOffertaDocumentoAllegati(DomainAPIView):
     """`/api/v1/vendite/offerte/<offerta_id>/documenti/<documento_id>/allegati/`."""
 
     area_funzionale = "vendite"
+    # POST = upload multipart degli allegati su documento esistente.
+    parser_classes = [MultiPartParser, FormParser]
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -313,7 +285,7 @@ class ApiOffertaDocumentoAllegati(DomainAPIView):
         self, request: Request, offerta_id: int, documento_id: int,
     ) -> JsonResponse:
         _resolve_contesto_offerta(offerta_id)
-        allegati = _extract_allegati(request)
+        allegati = extract_allegati(request)
         result = DocumentGenerationService().aggiungi_allegati(
             request.user, int(documento_id), allegati,
         )

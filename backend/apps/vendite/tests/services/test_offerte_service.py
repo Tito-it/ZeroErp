@@ -358,10 +358,12 @@ class OfferteServiceTests(TestCase):
 
     # --- happy path -----------------------------------------------------
 
-    # Scopo: emetti BOZZA -> EMESSA: chiama update_stato con id risolto.
+    # Scopo: emetti BOZZA -> EMESSA: pre-step fissa listino_versione_id
+    #        (ATTIVA del listino oggi) + chiama update_stato con id risolto.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.ListiniRepository")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_emetti_ok(self, repo_cls, _atomic):
+    def test_emetti_ok(self, repo_cls, listini_repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
         _atomic.return_value.__enter__ = MagicMock()
@@ -372,10 +374,38 @@ class OfferteServiceTests(TestCase):
         repo.get_offerta.return_value = _make_offerta_dict("EMESSA")
         repo.list_eccezioni.return_value = []
         repo.get_utility.return_value = None
+        # Pre-step "freeze at emission": il listino ha una versione ATTIVA
+        # (id 77) oggi. Il service la persiste su listino_versione_id.
+        listini_repo_cls.return_value.get_versione_attiva_alla_data.return_value = 77
 
         OfferteService().emetti(1)
 
+        repo.update_offerta.assert_called_once_with(1, {"listino_versione_id": 77})
         repo.update_stato.assert_called_once_with(1, 2, motivazione_rifiuto=None)
+
+    # Scopo: emetti su offerta con listino senza versioni ATTIVE oggi ->
+    #        E_VENDITE_VALIDATION parlante prima del trigger DB (nessuna
+    #        chiamata a update_stato), senza dipendere dal P0001 generico
+    #        del trigger.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.ListiniRepository")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_emetti_senza_versione_attiva_listino_fail(
+        self, repo_cls, listini_repo_cls, _atomic,
+    ):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_offerta.return_value = _make_offerta_dict("BOZZA")
+        listini_repo_cls.return_value.get_versione_attiva_alla_data.return_value = None
+
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().emetti(1)
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        repo.update_offerta.assert_not_called()
+        repo.update_stato.assert_not_called()
 
     # Scopo: registra_accettazione EMESSA -> ACCETTATA, no motivazione.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")

@@ -19,19 +19,27 @@ Indice test eseguiti:
  9) test_patch_immutabile_rifiutato
 10) test_post_cambia_stato_ok
 11) test_post_cambia_stato_modalita_c_tradotto
-12) test_post_riga_ok
-13) test_patch_riga_ok
-14) test_delete_riga_ok
-15) test_post_utility_ok
-16) test_patch_utility_ok
-17) test_post_documento_anteprima_ok
-18) test_get_documenti_list_ok
+12) test_post_emetti_ok — POST emetti (multipart) DRAFT->ATTIVO route OK
+13) test_post_riga_ok
+14) test_patch_riga_ok
+15) test_delete_riga_ok
+16) test_post_utility_ok
+17) test_patch_utility_ok
+18) test_post_documento_anteprima_ok
+19) test_get_documenti_list_ok
+
+TestEmissioneAllegatiContratto (refactor 2026-05-28):
+20) test_emetti_integration_atomic_state_genera_allegati — POST emetti orchestra
+    service.emetti + genera_documento(allegati=...) in transazione atomica
+21) test_get_documento_allegati_list_ok — GET allegati: lista file (princ. + all.)
+22) test_post_documento_allegati_upload_ok — POST allegati: append multipart
 """
 
 import json
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
 
 from apps.core.services.service_errors import ServiceError
@@ -40,8 +48,18 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _SVC = "apps.vendite.api.views_contratti.ContrattiService"
+# ContrattiService importata anche da contratti_documenti_views per il flusso
+# emissione (ApiContrattoEmetti.post). Patcha qui per i test integration.
+_SVC_VIEW_DOC = "apps.vendite.api.contratti_documenti_views.ContrattiService"
 _DOC_SVC = "apps.vendite.api.contratti_documenti_views.DocumentGenerationService"
-_DOC_REPO = "apps.vendite.api.contratti_documenti_views.DocumentiRepository"
+# transaction.atomic patch path per la view emetti (refactor 2026-05-28):
+# l'integration test non apre una vera transazione DB (SimpleTestCase).
+_VIEW_ATOMIC = "apps.vendite.api.contratti_documenti_views.transaction.atomic"
+# DocumentiRepository ora vive solo nel helper condiviso `contesto_helpers`
+# (refactor 2026-05-28): il patch deve puntare lì per mockare la risoluzione
+# del sorgente_tipo. ContrattiRepository resta importato in
+# contratti_documenti_views perche' fetcha il contratto prima del helper.
+_DOC_REPO = "apps.documenti.api.contesto_helpers.DocumentiRepository"
 _CONTRATTI_REPO = "apps.vendite.api.contratti_documenti_views.ContrattiRepository"
 _BASE = "/api/v1/vendite/contratti/"
 
@@ -318,6 +336,17 @@ class TestCambiaStato(_BaseApiTest):
             "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE",
         )
 
+    # Smoke endpoint emissione (multipart). DRAFT->ATTIVO con genera doc +
+    # allegati orchestrato atomicamente in ApiContrattoEmetti (refactor
+    # 2026-05-28). Verifica route registrata: senza auth -> 401, ma la
+    # route esiste (non 404). Pattern mirror di test_emetti_200 preventivi.
+    def test_post_emetti_ok(self):
+        resp = self.client.post(
+            _BASE + "1/emetti/",
+            data={},  # multipart vuoto: nessun allegato
+        )
+        self.assertIn(resp.status_code, [200, 401, 403])
+
 
 class TestRighe(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
@@ -380,3 +409,128 @@ class TestUtility(_BaseApiTest):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
+
+
+class TestEmissioneAllegatiContratto(_BaseApiTest):
+    """Test integration per il flusso emissione + endpoint allegati documento."""
+
+    # Scopo: integration test ApiContrattoEmetti. Verifica che la view
+    # orchestri service.emetti() + genera_documento(allegati=...) passando i
+    # parametri estratti dal contratto + sorgente_tipo_id risolto.
+    # Mock di transaction.atomic per non aprire una vera transazione DB.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_VIEW_ATOMIC)
+    @patch(_DOC_SVC)
+    @patch(_DOC_REPO)
+    @patch(_CONTRATTI_REPO)
+    @patch(_SVC_VIEW_DOC)
+    def test_emetti_integration_atomic_state_genera_allegati(
+        self, svc_cls, repo_cls, doc_repo_cls, doc_svc_cls, _atomic, _auth,
+    ):
+        svc_cls.return_value.emetti.return_value = {
+            "id": 7, "stato_codice": "ATTIVO",
+        }
+        repo_cls.return_value.get_for_documento_generation.return_value = {
+            "id": 7,
+            "uid": "0190b000-0000-0000-0000-000000000007",
+            "emittente_fiscale_id": 11,
+        }
+        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+            "id": 4, "codice": "CONTRATTO", "attivo": True,
+        }
+        doc_svc_cls.return_value.genera_documento.return_value = {
+            "id": 100, "uid": "doc-uid-100", "nome_file": "contratto.pdf",
+        }
+
+        pdf_file = SimpleUploadedFile(
+            "allegato.pdf", b"%PDF-1.4 fake", content_type="application/pdf",
+        )
+        resp = self.client.post(
+            _BASE + "7/emetti/",
+            data={"allegati": [pdf_file]},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        # service.emetti chiamato una sola volta col contratto_id corretto
+        svc_cls.return_value.emetti.assert_called_once_with(7)
+        # genera_documento ricevuto i parametri estratti dal contratto +
+        # l'allegato dal multipart
+        kwargs = doc_svc_cls.return_value.genera_documento.call_args.kwargs
+        self.assertEqual(kwargs["emittente_fiscale_id"], 11)
+        self.assertEqual(kwargs["sorgente_tipo_id"], 4)
+        self.assertEqual(kwargs["sorgente_id"], 7)
+        self.assertEqual(kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000007")
+        self.assertEqual(len(kwargs["allegati"]), 1)
+        self.assertEqual(kwargs["allegati"][0]["mime_type"], "application/pdf")
+        self.assertEqual(kwargs["allegati"][0]["file_name"], "allegato.pdf")
+
+    # Scopo: GET allegati lista i file (principale + allegati) di un documento
+    # esistente. Verifica route e delega a list_documento_files.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_DOC_SVC)
+    @patch(_DOC_REPO)
+    @patch(_CONTRATTI_REPO)
+    def test_get_documento_allegati_list_ok(
+        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+    ):
+        repo_cls.return_value.get_for_documento_generation.return_value = {
+            "id": 7,
+            "uid": "0190b000-0000-0000-0000-000000000007",
+            "emittente_fiscale_id": 11,
+        }
+        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+            "id": 4, "codice": "CONTRATTO", "attivo": True,
+        }
+        doc_svc_cls.return_value.list_documento_files.return_value = {
+            "files": [
+                {"id": 1, "is_principale": True, "file_name": "contratto.pdf"},
+                {"id": 2, "is_principale": False, "file_name": "allegato.pdf"},
+            ],
+        }
+
+        resp = self.client.get(_BASE + "7/documenti/100/allegati/")
+
+        self.assertEqual(resp.status_code, 200)
+        doc_svc_cls.return_value.list_documento_files.assert_called_once()
+        args = doc_svc_cls.return_value.list_documento_files.call_args.args
+        # args = (user, documento_id)
+        self.assertEqual(args[1], 100)
+
+    # Scopo: POST allegati su documento esistente (modalita' append) — utile
+    # post-attivazione per aggiungere file. Estrae multipart e delega a
+    # aggiungi_allegati.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_DOC_SVC)
+    @patch(_DOC_REPO)
+    @patch(_CONTRATTI_REPO)
+    def test_post_documento_allegati_upload_ok(
+        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+    ):
+        repo_cls.return_value.get_for_documento_generation.return_value = {
+            "id": 7,
+            "uid": "0190b000-0000-0000-0000-000000000007",
+            "emittente_fiscale_id": 11,
+        }
+        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+            "id": 4, "codice": "CONTRATTO", "attivo": True,
+        }
+        doc_svc_cls.return_value.aggiungi_allegati.return_value = {
+            "allegati": [{"id": 200, "file_name": "extra.pdf"}],
+        }
+
+        pdf_file = SimpleUploadedFile(
+            "extra.pdf", b"%PDF-1.4 extra", content_type="application/pdf",
+        )
+        resp = self.client.post(
+            _BASE + "7/documenti/100/allegati/",
+            data={"allegati": [pdf_file]},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        doc_svc_cls.return_value.aggiungi_allegati.assert_called_once()
+        args = doc_svc_cls.return_value.aggiungi_allegati.call_args.args
+        # args = (user, documento_id, allegati_list)
+        self.assertEqual(args[1], 100)
+        self.assertEqual(len(args[2]), 1)
+        self.assertEqual(args[2][0]["mime_type"], "application/pdf")
+        self.assertEqual(args[2][0]["file_name"], "extra.pdf")
