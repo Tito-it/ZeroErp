@@ -3,76 +3,129 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: API view documenti generati a partire da PREVENTIVO (Tranche K
-#        motore documentale). 4 endpoint sotto
-#        `/api/v1/vendite/preventivi/<id>/documenti/`:
-#         - `POST genera/`:    persiste un documento generato (PDF +
-#           record DB + evento `GENERATO`);
-#         - `POST anteprima/`: streaming PDF temporaneo, no persist
-#           (Decisione 30);
-#         - `GET ` (lista):    documenti generati per il preventivo
-#           (paginata, scope emittente);
-#         - `GET <doc_id>/file/`: download PDF principale + emit evento
-#           `SCARICATO` (Decisione 31).
+#        motore documentale + emissione 2026-05-28). Endpoint sotto
+#        `/api/v1/vendite/preventivi/<id>/`:
+#         - `POST emetti/`:                  multipart: BOZZA->EMESSO + genera
+#           documento + allegati in transazione atomica (mirror del flusso
+#           offerta `ApiOffertaEmetti`);
+#         - `POST documenti/genera/`:        persiste un documento generato
+#           (PDF + record DB + evento `GENERATO`) per preventivi gia' EMESSI;
+#         - `POST documenti/anteprima/`:     streaming PDF temporaneo, no
+#           persist (Decisione 30);
+#         - `GET  documenti/` (lista):       documenti generati per il
+#           preventivo (paginata, scope emittente);
+#         - `GET  documenti/<doc_id>/file/`: download PDF principale + emit
+#           evento `SCARICATO` (Decisione 31).
 #
 #        Permessi del dominio sorgente (Decisione 75): `area_funzionale =
 #        "vendite"` -> permission default lettura preventivi. Per
 #        endpoint che modificano stato (genera = INSERT) lasciamo
 #        comunque il permesso default lettura: la "generazione documento"
 #        non e' modifica del preventivo, ma riproduzione in PDF di un
-#        dato gia' visibile all'operatore.
+#        dato gia' visibile all'operatore. `emetti/` invece transita lo
+#        stato -> si appoggia al service che applica i guard di dominio.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 from typing import Any
 
+from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_int, qp_int
 from apps.core.api.success_responses import success_response
-from apps.core.services.error_manager import ErrorManager
-from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.api.contesto_helpers import resolve_contesto_documentale
+from apps.documenti.api.multipart_helpers import extract_allegati
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
 from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.vendite.services import preventivi_service
 
 # Codice sorgente PREVENTIVO -> id risolto runtime via repo (memoria
 # feedback_no_hardcoded_ids: lookup per codice, non ID numerici).
 _CODICE_SORGENTE_PREVENTIVO = "PREVENTIVO"
 
-E_VALIDATION = "E_DOCUMENTI_VALIDATION"
-E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 
-
-# Scopo: Risolve il contesto comune per le 3 view che operano "per preventivo"
-#        (genera/anteprima/lista): preventivo esiste, sorgente_tipo PREVENTIVO
-#        attivo, ritorna `(preventivo_dict, sorgente_tipo_id)`.
+# Scopo: Risolve il contesto comune per le view che operano "per preventivo".
+#        Wrapper sottile su `resolve_contesto_documentale`.
 def _resolve_contesto_preventivo(preventivo_id: int) -> tuple[dict[str, Any], int]:
-    prev_repo = PreventiviRepository()
-    preventivo = prev_repo.get_for_documento_generation(preventivo_id)
-    ErrorManager.require(
-        preventivo is not None,
-        code=E_NOT_FOUND,
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
+    preventivo = PreventiviRepository().get_for_documento_generation(preventivo_id)
+    return resolve_contesto_documentale(
+        entity=preventivo,
+        entity_id=preventivo_id,
+        not_found_message="Preventivo non trovato.",
+        emittente_message="Emittente fiscale non risolto per il preventivo.",
+        sorgente_codice=_CODICE_SORGENTE_PREVENTIVO,
     )
-    assert preventivo is not None
 
-    doc_repo = DocumentiRepository()
-    sorgente = doc_repo.get_sorgente_tipo_id_by_codice(_CODICE_SORGENTE_PREVENTIVO)
-    ErrorManager.require(
-        sorgente is not None and sorgente.get("attivo"),
-        code=E_VALIDATION,
-        message="Sorgente 'PREVENTIVO' non configurata o non attiva.",
+
+class ApiPreventivoEmetti(DomainAPIView):
+    """`POST /api/v1/vendite/preventivi/<id>/emetti/` (multipart)."""
+
+    area_funzionale = "vendite"
+    # Cambia stato del preventivo: usa lo stesso permesso del cambio stato.
+    post_permission = "cambia_stato_preventivi"
+    # Override del default DRF (solo JSONParser) per consentire upload
+    # multipart degli allegati assieme ai campi scalari template/tipo_output.
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        request={
+            "multipart/form-data": inline_serializer(
+                name="VenditePreventivoEmettiReq",
+                fields={
+                    "template_documento_id": serializers.IntegerField(required=False, allow_null=True),
+                    "tipo_documento_output_id": serializers.IntegerField(required=False, allow_null=True),
+                    "allegati": serializers.ListField(
+                        child=serializers.FileField(), required=False,
+                    ),
+                },
+            ),
+        },
+        responses={200: inline_serializer(
+            name="VenditePreventivoEmettiResp",
+            fields={"data": serializers.DictField()},
+        )},
     )
-    assert sorgente is not None
-    return preventivo, int(sorgente["id"])
+    # Scopo: BOZZA -> EMESSO con generazione+persistenza del documento e
+    #        degli allegati in UNA transazione atomica. Ordine: prima
+    #        `emetti` (cosi' lo snapshot del context riflette stato EMESSO),
+    #        poi `genera_documento` (che apre il proprio savepoint annidato).
+    #        Se la generazione fallisce, l'`emetti` viene annullato dal
+    #        rollback dell'atomic esterno -> stato resta BOZZA, niente
+    #        record documentale orfano. Mirror del flusso offerta.
+    def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        payload = request.data if isinstance(request.data, dict) else {}
+        template_id = optional_int(payload, "template_documento_id")
+        tipo_output_id = optional_int(payload, "tipo_documento_output_id")
+        allegati = extract_allegati(request)
+
+        with transaction.atomic():
+            emit_result = preventivi_service.emetti(preventivo_id)
+            preventivo, sorgente_tipo_id = _resolve_contesto_preventivo(preventivo_id)
+            documento = DocumentGenerationService().genera_documento(
+                request.user,
+                emittente_fiscale_id=int(preventivo["emittente_fiscale_id"]),
+                sorgente_tipo_id=sorgente_tipo_id,
+                sorgente_id=int(preventivo["id"]),
+                sorgente_uid=str(preventivo["uid"]),
+                template_documento_id=template_id,
+                tipo_documento_output_id=tipo_output_id,
+                allegati=allegati,
+            )
+
+        return success_response({
+            "preventivo": emit_result,
+            "documento": documento,
+        })
 
 
 class ApiPreventivoDocumentoGenera(DomainAPIView):
@@ -198,6 +251,59 @@ class ApiPreventivoDocumentiList(DomainAPIView):
             "page": page,
             "page_size": page_size,
         })
+
+
+class ApiPreventivoDocumentoAllegati(DomainAPIView):
+    """`/api/v1/vendite/preventivi/<preventivo_id>/documenti/<documento_id>/allegati/`."""
+
+    area_funzionale = "vendite"
+    # POST = upload multipart degli allegati su documento esistente.
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PreventivoDocumentoAllegatiListResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Lista di tutti i file del documento (principale + allegati),
+    #        per elenco/scarico nella UI (row-expand su DocumentiGeneratiSorgenteList).
+    def get(
+        self, request: Request, preventivo_id: int, documento_id: int,
+    ) -> JsonResponse:
+        _resolve_contesto_preventivo(preventivo_id)
+        result = DocumentGenerationService().list_documento_files(
+            request.user, int(documento_id),
+        )
+        return success_response(result)
+
+    @extend_schema(
+        request={
+            "multipart/form-data": inline_serializer(
+                name="PreventivoDocumentoAllegatiUploadReq",
+                fields={
+                    "allegati": serializers.ListField(
+                        child=serializers.FileField(),
+                    ),
+                },
+            ),
+        },
+        responses={200: inline_serializer(
+            name="PreventivoDocumentoAllegatiUploadResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Aggiunge allegati (file secondari) a un documento gia' generato
+    #        (modalita' append post-emissione). MIME/size validati dal service.
+    def post(
+        self, request: Request, preventivo_id: int, documento_id: int,
+    ) -> JsonResponse:
+        _resolve_contesto_preventivo(preventivo_id)
+        allegati = extract_allegati(request)
+        result = DocumentGenerationService().aggiungi_allegati(
+            request.user, int(documento_id), allegati,
+        )
+        return success_response(result)
 
 
 class ApiPreventivoDocumentoFile(DomainAPIView):

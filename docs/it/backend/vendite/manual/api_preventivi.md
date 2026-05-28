@@ -127,11 +127,58 @@ Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: nient
 - Metodo: `POST`
 - Path: `/api/v1/vendite/preventivi/{id}/stato/`
 - Auth: `post_permission = "cambia_stato_preventivi"`
-- Body JSON: `{ "nuovo_stato": "EMESSO" }`
+- Body JSON: `{ "nuovo_stato": "ACCETTATO" }`
 - Regole: delega a `vendite.fn_cambia_stato_preventivo()` che valida transizioni e prerequisiti
-- Transizioni: BOZZA→EMESSO (richiede righe), EMESSO→ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO, BOZZA→ANNULLATO
+- Transizioni: EMESSO→ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO, BOZZA→ANNULLATO
+- **Transizione BOZZA→EMESSO non ammessa da questo endpoint** (refactor 2026-05-28): il service fail-fast con `E_PREV_VALIDAZIONE` (400) e indirizza all'endpoint dedicato `POST /<id>/emetti/` (§5b). Motivo: l'emissione deve orchestrare atomicamente cambio stato + generazione documento + allegati per garantire l'invariante "stato EMESSO ⇒ esiste un documento PDF persistito".
 - **Guard L3 verso ACCETTATO (Sprint E)**: il trigger DB `trg_preventivi_a10_guard_transizione_approvazione_upd` blocca la transizione verso ACCETTATO se esiste almeno una riga con `stato_approvazione_prezzo='PENDING'`. Errore `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (409). L'admin deve attendere esito approvazione (vedi `api_approvazioni_prezzo.md`) o annullare la richiesta prima di accettare.
-- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (409)
+- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (409), `E_PREV_VALIDAZIONE` (400 se `nuovo_stato="EMESSO"`)
+
+---
+
+### 5b. Emissione BOZZA→EMESSO `POST /api/v1/vendite/preventivi/{id}/emetti/`
+
+Nuovo endpoint multipart 2026-05-28. Mirror del flusso offerta `POST /api/v1/vendite/offerte/<id>/emetti/`. Sostituisce la transizione `BOZZA→EMESSO` precedentemente esposta via `/stato/`.
+
+- Metodo: `POST`
+- Path: `/api/v1/vendite/preventivi/{id}/emetti/`
+- Content-Type: `multipart/form-data`
+- Parser: `MultiPartParser`, `FormParser` (override del default DRF JSON-only)
+- Auth: JWT, `area_funzionale = "vendite"`, `post_permission = "cambia_stato_preventivi"` (riusa lo stesso permesso del cambio stato — l'emissione è anch'essa una transizione di dominio)
+- Body multipart:
+  - `template_documento_id` (int, opzionale) — id template documentale da usare. Se omesso, il motore documentale seleziona il template `is_default=true` per `(sorgente=PREVENTIVO, emittente_fiscale_id, tipo_documento_output_id)`
+  - `tipo_documento_output_id` (int, opzionale) — id tipo output (PDF, ecc.). Se omesso, default del template
+  - `allegati` (file ripetuto, opzionale) — file secondari da persistere assieme al PDF principale. MIME/size validati dal `DocumentGenerationService`
+- Output `200`:
+
+```json
+{
+  "data": {
+    "preventivo": { "...": "testata aggiornata dopo cambio stato" },
+    "documento": {
+      "documento_generato_id": 42,
+      "uid": "...",
+      "progressivo_sorgente": 1,
+      "nome_file": "PREVENTIVO_P-0001_v1.pdf",
+      "size_bytes": 23456,
+      "allegati_count": 2
+    }
+  },
+  "meta": { "request_id": "..." }
+}
+```
+
+- Semantica transazionale: la view apre `transaction.atomic()` che racchiude (in ordine): `preventivi_service.emetti(preventivo_id)` (cambio stato + valorizza `data_emissione = now()`) → `_resolve_contesto_preventivo` (entity + sorgente_tipo) → `DocumentGenerationService.genera_documento(allegati=...)` (render + persist su `documenti.documenti_generati` + evento `GENERATO`). Se il render fallisce o uno qualsiasi degli allegati viola MIME/size, l'eccezione propaga e l'`atomic` esterno fa rollback completo → il preventivo resta BOZZA, nessun record orfano. **Invariante di dominio**: `stato='EMESSO'` ⇒ esiste almeno un record `documenti_generati` con `sorgente_tipo=PREVENTIVO, sorgente_id=preventivo.id`.
+- Regole pre-emissione (validate dal service + trigger DB):
+  - Preventivo in stato BOZZA con almeno una riga attiva
+  - Righe senza prezzo `PENDING` (Guard L3, vedi §5)
+  - Template documento applicabile (`PUBBLICATA` valido alla data)
+- Errori:
+  - `E_PREV_NOT_FOUND` (404) — preventivo inesistente
+  - `E_PREV_STATO_TRANSIZIONE` (409) — preventivo non in BOZZA
+  - `E_PREV_NESSUNA_RIGA` (400) — nessuna riga attiva
+  - `E_DOCUMENTI_VALIDATION` (400/422) — emittente non risolto / sorgente PREVENTIVO non attiva / template non trovato / MIME allegato non ammesso / size oltre limite
+  - `E_DOCUMENTI_NOT_FOUND` (404) — entity attesa non trovata dal resolver di contesto
 
 ---
 
@@ -141,6 +188,37 @@ Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: nient
 - Path: `/api/v1/vendite/preventivi/{id}/revisione/`
 - Regole: delega a `vendite.fn_crea_revisione_preventivo()` — copia testata+righe, rev+1, nuova rev in BOZZA, disattiva precedente
 - Errori: `E_PREV_REVISIONE_ATTIVA` (409)
+
+---
+
+### 6b. Lista catena revisioni `GET /api/v1/vendite/preventivi/{id}/revisioni/`
+
+Nuovo endpoint 2026-05-28. Mirror di `GET /api/v1/vendite/offerte/<id>/revisioni/`.
+
+- Metodo: `GET`
+- Path: `/api/v1/vendite/preventivi/{id}/revisioni/`
+- Auth: JWT, `area_funzionale = "vendite"`. Lettura libera in ogni stato (utile per timeline UI revisioni anche su preventivi annullati/scaduti)
+- Scopo: ritorna tutte le revisioni che condividono lo stesso `numero` del preventivo passato, ordinate per `rev` ASC. Il frontend lo consuma per il tab "Revisioni" del drawer e per il deep-link revisione → revisione precedente
+- Output `200`:
+
+```json
+{
+  "data": [
+    {"id": 1,  "numero": "P-0001", "rev": 1,
+     "stato_codice": "SUPERATO", "is_attiva": false,
+     "data_emissione": "2026-04-10T09:15:00Z"},
+    {"id": 7,  "numero": "P-0001", "rev": 2,
+     "stato_codice": "SUPERATO", "is_attiva": false,
+     "data_emissione": "2026-05-02T16:40:00Z"},
+    {"id": 42, "numero": "P-0001", "rev": 3,
+     "stato_codice": "EMESSO", "is_attiva": true,
+     "data_emissione": "2026-05-25T11:00:00Z"}
+  ]
+}
+```
+
+- Implementazione: query su `vendite.preventivi` filtrando per `numero = (SELECT numero FROM preventivi WHERE id=<id>)` con `ORDER BY rev ASC`. Indice esistente `(numero, rev)`
+- Errori: `E_PREV_NOT_FOUND` (404) se l'id passato non esiste
 
 ---
 
@@ -400,6 +478,42 @@ Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: nient
 
 ---
 
+### 18. Documenti preventivo
+
+Endpoint del motore documentale parametrico per la sorgente `PREVENTIVO`.
+Risolvono il contesto comune (preventivo + emittente fiscale + sorgente
+attiva) via helper condiviso `apps.documenti.api.contesto_helpers.resolve_contesto_documentale`
+(vedi [api_documenti_helpers](../../../documenti/manual/api_documenti_helpers.md)).
+
+| Metodo | Path | Effetto |
+| --- | --- | --- |
+| `GET` | `/api/v1/vendite/preventivi/<id>/documenti/` | Lista documenti generati per il preventivo (paginata, scope emittente) |
+| `POST` | `/api/v1/vendite/preventivi/<id>/documenti/anteprima/` | Render PDF temporaneo, no persist (Decisione 30) |
+| `POST` | `/api/v1/vendite/preventivi/<id>/documenti/genera/` | Persiste PDF + record DB + evento `GENERATO` (per preventivi già EMESSI: ristampe successive all'emissione iniziale) |
+| `GET` | `/api/v1/vendite/preventivi/<id>/documenti/<doc_id>/file/` | Download PDF principale + evento `SCARICATO` (Decisione 31) |
+| `GET` | `/api/v1/vendite/preventivi/<id>/documenti/<doc_id>/allegati/` | Lista files del documento (principale + allegati) |
+| `POST` | `/api/v1/vendite/preventivi/<id>/documenti/<doc_id>/allegati/` | Append allegati multipart su documento esistente |
+
+Payload `genera/` e `anteprima/` (JSON):
+
+```json
+{
+  "template_documento_id": 123,
+  "tipo_documento_output_id": 2
+}
+```
+
+Entrambi opzionali; selezione default come §5b. Permessi: area `vendite` livello LETTURA (Decisione 75 — la "generazione documento" non è modifica del preventivo ma riproduzione PDF di dato già visibile).
+
+**Endpoint `allegati/` (nuovi 2026-05-28)**:
+
+- GET: ritorna `{"data": {"principale": {...}, "allegati": [{...}, {...}]}}`. Consumato dal row-expand di `DocumentiGeneratiSorgenteList` per popolare `filesPerDoc`
+- POST: multipart con campo ripetuto `allegati`. Modalità append post-emissione. Non rigenera il PDF principale, aggiunge solo file secondari al documento esistente
+
+Errori comuni di tutta la sezione: `E_DOCUMENTI_VALIDATION` (400/422), `E_DOCUMENTI_NOT_FOUND` (404).
+
+---
+
 ## Dipendenze DB
 
 | Tabella/funzione | Ruolo |
@@ -447,6 +561,8 @@ Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: nient
 | `E_DOC_COMPONENTE_OBBLIGATORIO` | 422 | Tentativo di disattivare un componente `obbligatorio=TRUE` via `componenti_attivazioni` o DELETE componente. Sollevato dal trigger DB `script.trgfn_componenti_guard_obbligatorio` |
 | `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | 422 | Prezzo 0 su componente `obbligatorio=TRUE`. Sollevato da `fn_preventivo_riga_componenti_init` (su `componenti_overrides`) o dal trigger DB `script.trgfn_componenti_check_prezzo_obbligatorio` (su PATCH componente). Componenti opzionali ammettono prezzo 0 |
 | `E_DOC_COMPONENTE_LISTINO_MANCANTE` | 422 | Resolver fallito per un componente senza override esplicito. L'operatore deve aggiungere il prezzo manuale in `componenti_overrides` (richiede `prezzo_override_manuale`) o l'admin deve configurare il listino bundle/standalone per quel componente |
+| `E_DOCUMENTI_VALIDATION` | 400/422 | Endpoint §5b + §18: emittente non risolto, sorgente PREVENTIVO non attiva, template assente/non applicabile, MIME allegato non ammesso, size oltre limite. Sollevato da `apps.documenti.api.contesto_helpers.resolve_contesto_documentale` o da `DocumentGenerationService` |
+| `E_DOCUMENTI_NOT_FOUND` | 404 | Endpoint §5b + §18: preventivo o documento atteso non trovato dal resolver di contesto |
 
 ## Integrazione pricing v5
 

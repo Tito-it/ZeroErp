@@ -47,6 +47,13 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
 })
 
+// `form-aperto` segnala al drawer padre se il form inline di versione e'
+// attivo (create/edit). Il padre nasconde la propria FormFooter per
+// evitare doppi pulsanti di Salva/Annulla — pattern di
+// `PreventiviRigheTable`/`PreventiviDrawer` (memoria
+// feedback_master_detail_inline).
+const emit = defineEmits(['form-aperto'])
+
 const { t } = useI18n()
 const store = useTemplateVersioniStore()
 const { execute, loading } = useApiHandler()
@@ -67,6 +74,10 @@ const formatoTemplateOptions = computed(() =>
 const editing = ref(false)
 const editingVersioneId = ref(null)
 const isNew = computed(() => editing.value && editingVersioneId.value === null)
+
+// Propaga al drawer padre l'apertura del form (per nascondere la sua
+// FormFooter durante create/edit versione).
+watch(editing, (v) => emit('form-aperto', v))
 
 const form = ref(emptyForm())
 function emptyForm() {
@@ -299,16 +310,20 @@ async function confirmPubblica() {
       @row-click="(ev) => openEdit(ev.data)"
       selection-mode="single"
     >
-      <Column field="versione" :header="t('config.modelli_documenti.versioni.col_versione')" style="width: 90px;" />
+      <!-- Colonne compatte: pochi caratteri per versione (es. "v12"),
+           date in formato breve, stato/attivo come Tag.
+           La colonna azioni ha width esplicita per restare sempre visibile
+           senza spingere lo scroll orizzontale (memoria layout standard). -->
+      <Column field="versione" :header="t('config.modelli_documenti.versioni.col_versione')" style="width: 60px;" />
       <Column field="titolo" :header="t('config.modelli_documenti.versioni.col_titolo')" />
-      <Column field="stato" :header="t('config.modelli_documenti.versioni.col_stato')" style="width: 130px;">
+      <Column field="stato" :header="t('config.modelli_documenti.versioni.col_stato')" style="width: 110px;">
         <template #body="{ data }">
           <Tag :value="data.stato" :severity="statoSeverity(data.stato)" />
         </template>
       </Column>
-      <Column field="valido_dal" :header="t('config.modelli_documenti.versioni.col_valido_dal')" style="width: 130px;" />
-      <Column field="valido_al" :header="t('config.modelli_documenti.versioni.col_valido_al')" style="width: 130px;" />
-      <Column field="attivo" :header="t('common.attivo')" style="width: 100px;">
+      <Column field="valido_dal" :header="t('config.modelli_documenti.versioni.col_valido_dal')" style="width: 100px;" />
+      <Column field="valido_al" :header="t('config.modelli_documenti.versioni.col_valido_al')" style="width: 100px;" />
+      <Column field="attivo" :header="t('common.attivo')" style="width: 80px;">
         <template #body="{ data }">
           <Tag
             :value="data.attivo ? t('common.active') : t('common.inactive')"
@@ -316,7 +331,7 @@ async function confirmPubblica() {
           />
         </template>
       </Column>
-      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
+      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" style="width: 64px;">
         <template #body="{ data }">
           <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>

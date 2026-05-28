@@ -9,9 +9,16 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useFetchVersion } from '../../../core/composables/useFetchVersion'
+import { useRevisioniTab } from '../../../core/composables/useRevisioniTab'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
-import { STATO_PREVENTIVO } from '../../constants'
+import {
+  STATI_PREVENTIVO_ANTEPRIMA_PDF,
+  STATI_PREVENTIVO_CON_DOCUMENTO,
+  STATO_PREVENTIVO,
+} from '../../constants'
 import { addDaysToToday, displayDate, toDateString } from '../../../core/utils/date'
+import { formatCurrency } from '../../../core/utils/format'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
@@ -32,9 +39,11 @@ import PreventiviForm from './PreventiviForm.vue'
 import PreventiviRigheTable from './PreventiviRigheTable.vue'
 import PreventiviIntegrazione from './PreventiviIntegrazione.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
-import PreventivoPdfButton from './PreventivoPdfButton.vue'
+import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
+import PreventivoEmissioneDialog from './dialogs/PreventivoEmissioneDialog.vue'
 import Drawer from 'primevue/drawer'
 import AppDialog from '../../../core/components/AppDialog.vue'
 import DatePicker from 'primevue/datepicker'
@@ -42,6 +51,13 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 
 const { t } = useI18n()
 const store = usePreventiviStore()
@@ -156,11 +172,9 @@ const canEditTestata = caps.canEdit
 // ContrattoDrawer (`isEdit && isLocked('field')`).
 const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
-// Nuova revisione: capability calcolata dal BE in
-// `script.fn_available_actions_preventivo`. Regola di dominio applicata lato
-// DB: solo preventivi in stato EMESSO ammettono revisione (ACCETTATO chiude
-// la negoziazione, modifiche post-accettazione passano da nuovo preventivo).
-const canCreateRevisione = computed(() => caps.flag('can_create_revisione'))
+// `can_create_revisione`: il flag BE resta esposto per backward-compat, ma il
+// FE non lo legge piu' — l'azione `crea_revisione` arriva ora data-driven in
+// `available_actions` (post brief DB 2026-05-28, mirror offerte).
 const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
 const pushCommessaReasonKey = computed(() => detail.value?.can_push_commessa_reason_key || null)
 // Per PreventiviForm passiamo l'array originale (no Set): il prop e' typed Array.
@@ -254,6 +268,20 @@ watch(() => form.value.validita_dal, (nuovaDal) => {
 // parallelo al detail; assente in CREATE (nessun preventivo ancora salvato).
 const contestoPricing = ref(null)
 
+// Tab "Testata | Revisioni" — state + load con guard di race incapsulati nel
+// building block `useRevisioniTab` (regola del 2, estratto da
+// PreventiviDrawer + OffertaDrawer). `activeTab`, `revisioni`,
+// `loadRevisioni`, `reset` arrivano da li'.
+const revisioniTab = useRevisioniTab({
+  load: (id) => store.loadRevisioni(id),
+})
+const { activeTab, revisioni } = revisioniTab
+
+// Guard di race anti-stale per `getContestoPricing` (fetch fire-and-forget
+// in `loadDetail`). Stesso pattern di `revisioniTab`: una risposta arrivata
+// dopo cambio entita' o chiusura drawer viene scartata.
+const contestoFv = useFetchVersion()
+
 function resetForm() {
   form.value = defaultForm()
   detail.value = null
@@ -270,12 +298,23 @@ async function loadDetail(id = null) {
   // Carica in parallelo il contesto pricing per l'header del drawer (audit
   // visivo: contratto attivo o listino categoria fallback). Best-effort:
   // un fail non blocca il drawer ma logga in console per debug.
+  // Guard di versione via `contestoFv`: cambio entita' / chiusura drawer
+  // invalida la call in volo, evita di mostrare il contesto del preventivo
+  // precedente in quello nuovo.
+  const cTag = contestoFv.tag()
   getContestoPricing(targetId)
-    .then((res) => { contestoPricing.value = res?.data?.data || null })
+    .then((res) => {
+      if (!contestoFv.isCurrent(cTag)) return
+      contestoPricing.value = res?.data?.data || null
+    })
     .catch((err) => {
+      if (!contestoFv.isCurrent(cTag)) return
       contestoPricing.value = null
       console.warn('contesto pricing fetch failed', err?.response?.data || err)
     })
+  // Carica la catena revisioni (tab Revisioni). Guard di versione interno a
+  // `revisioniTab` (useFetchVersion). Mirror OffertaDrawer.
+  revisioniTab.loadRevisioni(targetId)
   // Sospende il watch di ricalcolo finche' non scarica entrambi i campi data:
   // assegnando form.value il watch fires su validita_dal e sovrascriverebbe
   // validita_al persistita.
@@ -338,7 +377,21 @@ async function loadRiepilogoIva(targetId = null) {
 }
 
 watch(() => props.visible, async (v) => {
-  if (!v) return  // contentReady reset gestito da useDrawerContentReady
+  if (!v) {
+    // contentReady reset gestito da useDrawerContentReady. Invalida le load
+    // in volo (revisioni + contesto pricing): una risposta stantia che
+    // arrivasse dopo la chiusura non deve popolare lo stato del prossimo
+    // preventivo aperto.
+    revisioniTab.reset()
+    contestoFv.invalidate()
+    return
+  }
+  // Reset tab attivo sempre, EDIT o CREATE: senza questo, riaprendo il drawer
+  // su un altro preventivo il tab restava quello dell'apertura precedente
+  // (es. chiudo su "Revisioni", riapro su un nuovo preventivo → si vedeva
+  // "Revisioni" invece di "Testata"). Mirror OffertaDrawer.
+  revisioniTab.reset()
+  contestoFv.invalidate()
   // loadParamDefaults serve in entrambi i mode (paramBool/paramInt usati anche
   // in defaultForm). loadUtilityDefault serve solo in CREATE (in EDIT utility_id
   // arriva dal detail BE).
@@ -591,6 +644,12 @@ function onVisibleChange(v) {
 // generico per questa transizione, perche' richiede dati di processo
 // (fatturazione_immediata + competenza_mese, vedi BE preventivi_service.cambia_stato).
 const acceptDialogVisible = ref(false)
+// Dialog emissione preventivo: aperto quando l'azione di stato porta a EMESSO
+// (transizione BOZZA → EMESSO). Sostituisce il confirmAction generico perche'
+// l'emissione orchestra atomic state + genera documento + allegati lato BE
+// (refactor 2026-05-28, mirror del flusso offerta `ApiOffertaEmetti`).
+const emissioneDialogVisible = ref(false)
+const emissioneLoading = ref(false)
 const acceptForm = ref({
   fatturazione_immediata: false,
   // Default 1° del mese corrente: scelta sensata se l'operatore conferma "non
@@ -637,6 +696,29 @@ async function confirmAcceptDialog() {
 }
 
 function onCambiaStato(action) {
+  // Dispatch azioni speciali (target_state=null): post brief DB 2026-05-28 le
+  // azioni `crea_revisione` e `push_commessa` arrivano da `available_actions`
+  // come voci data-driven (mirror offerte). Routing su `action.key`.
+  if (action.key === 'crea_revisione') {
+    onNuovaRevisione()
+    return
+  }
+  if (action.key === 'push_commessa') {
+    // Il push verso commessa ha una sezione dedicata (PreventiviIntegrazione)
+    // con logica propria (scelta competenza, push parziale, log). L'azione
+    // viene esposta dal BE per coerenza modello ma il bottone drawer e'
+    // filtrato a monte (vedi `availableActionsHeader` nel computed
+    // `drawerActions`): questo branch e' difensivo.
+    return
+  }
+  // Transizione → EMESSO: dialog dedicato con anteprima documento + allegati.
+  // L'endpoint /emetti/ (multipart) orchestra atomic state + genera + allegati
+  // (refactor 2026-05-28). NB: il BE rifiuta la transizione via /stato/ con
+  // E_PREV_VALIDAZIONE — questa intercettazione e' la sola via supportata.
+  if (action.target_state === STATO_PREVENTIVO.EMESSO) {
+    emissioneDialogVisible.value = true
+    return
+  }
   // Transizione → ACCETTATO: richiede dialog dedicato per scegliere modalita'
   // di fatturazione. Tutte le altre transizioni usano la conferma generica.
   if (action.target_state === STATO_PREVENTIVO.ACCETTATO) {
@@ -650,6 +732,23 @@ function onCambiaStato(action) {
     })
   } else {
     eseguiCambioStato(action.target_state)
+  }
+}
+
+// Scopo: callback @confirm del PreventivoEmissioneDialog. Riceve i file
+// staged dall'utente e chiama store.emetti (POST multipart /emetti/).
+// Loading e abandon-warning sono gestiti dal building block generico.
+async function handleEmissioneConferma({ files }) {
+  emissioneLoading.value = true
+  const result = await execute(
+    () => store.emetti(effectivePreventivoId.value, { allegati: files || [] }),
+    { successMessage: t('preventivi.stato_cambiato') },
+  )
+  emissioneLoading.value = false
+  if (result !== null) {
+    emissioneDialogVisible.value = false
+    await loadDetail()
+    emit('saved', result)
   }
 }
 
@@ -687,21 +786,19 @@ function onNuovaRevisione() {
 // terminale" + "Tasti di uscita"). Allineato a ContrattoDrawer.
 const drawerActions = computed(() => {
   if (!hasDetail.value) return []
+  // Azioni di stato data-driven dal BE (`script.fn_available_actions_preventivo`,
+  // post brief DB 2026-05-28). `crea_revisione` arriva qui come voce normale
+  // con target_state=null; il dispatch e' su `action.key` in `onCambiaStato`.
+  // `push_commessa` viene filtrato: il push ha una sezione dedicata
+  // (PreventiviIntegrazione) con logica propria che il bottone drawer
+  // duplicherebbe (scelta competenza, push parziale, log).
+  const availableActionsHeader = (availableActions.value || [])
+    .filter(a => a.key !== 'push_commessa')
   const list = mapAvailableActionsToDrawerActions({
-    availableActions,
+    availableActions: availableActionsHeader,
     t,
     onAction: onCambiaStato,
   })
-  if (canCreateRevisione.value) {
-    list.push({
-      key: 'nuova-revisione',
-      kind: 'state',
-      label: t('preventivi.azione_revisione'),
-      icon: 'pi pi-copy',
-      severity: 'secondary',
-      command: onNuovaRevisione,
-    })
-  }
   list.push({
     key: 'manage-note',
     kind: 'manage',
@@ -717,7 +814,7 @@ const drawerActions = computed(() => {
 <template>
   <Drawer :visible="visible" @update:visible="onVisibleChange"
     @after-show="onAfterShow"
-    position="right" :style="{ width: DRAWER_WIDTH.WIDE }" :dismissable="true">
+    position="right" :style="{ width: DRAWER_WIDTH.WIDE_PLUS }" :dismissable="true">
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
@@ -790,9 +887,13 @@ const drawerActions = computed(() => {
              come azione `command: () => void`. -->
         <DrawerActionsBar :actions="drawerActions">
           <template #suffix>
-            <PreventivoPdfButton
-              :preventivo-id="effectivePreventivoId"
+            <EntityPdfButton
+              :sorgente-code="SORGENTE_CODES.PREVENTIVO"
+              :entity-id="effectivePreventivoId"
               :stato-codice="detail.stato_codice_interno"
+              :stati-preview="STATI_PREVENTIVO_ANTEPRIMA_PDF"
+              :stati-con-documento="STATI_PREVENTIVO_CON_DOCUMENTO"
+              i18n-prefix="preventivi.pdf"
             />
           </template>
         </DrawerActionsBar>
@@ -832,63 +933,123 @@ const drawerActions = computed(() => {
 
       <Divider v-if="hasDetail" />
 
-      <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup -->
-      <PreventiviForm v-if="contentReady"
-        :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
-        :non-editable-fields="nonEditableFields"
-        :is-edit="isEdit || createdId !== null"
-        :record="detail" />
+      <!-- Tabs Testata | Revisioni (mirror OffertaDrawer). Tab "Revisioni"
+           disabilitato in CREATE (non c'e' un preventivo da revisionare).
+           Default tab "Testata" resettato all'apertura del drawer. -->
+      <Tabs v-model:value="activeTab">
+        <TabList>
+          <Tab value="testata">{{ t('preventivi.tab_testata') }}</Tab>
+          <Tab value="revisioni" :disabled="!isEdit">
+            {{ t('preventivi.tab_revisioni') }}
+            <span v-if="isEdit && revisioni.length">({{ revisioni.length }})</span>
+          </Tab>
+        </TabList>
 
-      <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
-      <template v-if="contentReady && hasDetail">
-        <Divider />
-        <PreventiviRigheTable
-          :preventivo-id="effectivePreventivoId"
-          :billing-account-id="form.billing_account_id"
-          :is-modificabile="canEditRighe && !isReadonly"
-          @changed="loadDetail()"
-          @form-aperto="(v) => { formRigaAperto = v }" />
+        <TabPanels>
+          <!-- ====================== TAB TESTATA ====================== -->
+          <TabPanel value="testata">
+            <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup -->
+            <PreventiviForm v-if="contentReady"
+              :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
+              :non-editable-fields="nonEditableFields"
+              :is-edit="isEdit || createdId !== null"
+              :record="detail" />
 
-        <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
-             Sempre visibile quando c'e' almeno una riga (mono o multi
-             aliquota). Il footer della tabella mostra gia' totale
-             imponibile + imposta + totale documento. Componente riusabile
-             cross-dominio (stesso pattern arrivera' su fatture). -->
-        <template v-if="showRiepilogoIva">
-          <Divider />
-          <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
-        </template>
-      </template>
+            <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
+            <template v-if="contentReady && hasDetail">
+              <Divider />
+              <PreventiviRigheTable
+                :preventivo-id="effectivePreventivoId"
+                :billing-account-id="form.billing_account_id"
+                :is-modificabile="canEditRighe && !isReadonly"
+                @changed="loadDetail()"
+                @form-aperto="(v) => { formRigaAperto = v }" />
 
-      <!-- Integrazione: visibile quando il backend conferma can_push_commessa.
-           Se non ammessa ma con reason i18n-ready, il Message hint e'
-           mostrato nell'area banner in alto. -->
-      <template v-if="contentReady && hasDetail">
-        <template v-if="canPushCommessa">
-          <Divider />
-          <PreventiviIntegrazione :preventivo-id="effectivePreventivoId"
-            @push-completato="loadDetail()" />
-        </template>
-      </template>
+              <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
+                   Sempre visibile quando c'e' almeno una riga (mono o multi
+                   aliquota). Il footer della tabella mostra gia' totale
+                   imponibile + imposta + totale documento. Componente riusabile
+                   cross-dominio (stesso pattern arrivera' su fatture). -->
+              <template v-if="showRiepilogoIva">
+                <Divider />
+                <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
+              </template>
+            </template>
 
-      <!-- Documenti generati per il preventivo (Tranche M motore documentale).
-           Building block riusabile da qualsiasi sorgente.
-           Visibilita': nascosta in DRAFT (= bozza) — l'anteprima PDF e'
-           inline e non persistita, quindi la lista sarebbe sempre vuota e
-           il messaggio "lista vuota" e' rumore visivo. Mostrata da EMESSO
-           in poi (stato in cui esiste almeno una versione PDF persistita,
-           regola di dominio "EMESSO == almeno una versione PDF" gia'
-           applicata atomica BE).
-           NB: il codice_interno e' `DRAFT` (vedi seed
-           config/stati_doc_preventivi.csv); 'Bozza' e' solo la descrizione
-           localizzata. -->
-      <template v-if="contentReady && hasDetail && detail.uid && detail.stato_codice_interno !== STATO_PREVENTIVO.DRAFT">
-        <Divider />
-        <DocumentiGeneratiSorgenteList
-          sorgente-code="PREVENTIVO"
-          :sorgente-id="effectivePreventivoId"
-        />
-      </template>
+            <!-- Integrazione: visibile quando il backend conferma can_push_commessa.
+                 Se non ammessa ma con reason i18n-ready, il Message hint e'
+                 mostrato nell'area banner in alto. -->
+            <template v-if="contentReady && hasDetail">
+              <template v-if="canPushCommessa">
+                <Divider />
+                <PreventiviIntegrazione :preventivo-id="effectivePreventivoId"
+                  @push-completato="loadDetail()" />
+              </template>
+            </template>
+
+            <!-- Documenti generati per il preventivo (Tranche M motore documentale).
+                 Building block riusabile da qualsiasi sorgente.
+                 Visibilita': nascosta in DRAFT (= bozza) — l'anteprima PDF e'
+                 inline e non persistita, quindi la lista sarebbe sempre vuota e
+                 il messaggio "lista vuota" e' rumore visivo. Mostrata da EMESSO
+                 in poi (stato in cui esiste almeno una versione PDF persistita,
+                 regola di dominio "EMESSO == almeno una versione PDF" gia'
+                 applicata atomica BE).
+                 NB: il codice_interno e' `DRAFT` (vedi seed
+                 config/stati_doc_preventivi.csv); 'Bozza' e' solo la descrizione
+                 localizzata. -->
+            <template v-if="contentReady && hasDetail && detail.uid && detail.stato_codice_interno !== STATO_PREVENTIVO.DRAFT">
+              <Divider />
+              <DocumentiGeneratiSorgenteList
+                sorgente-code="PREVENTIVO"
+                :sorgente-id="effectivePreventivoId"
+              />
+            </template>
+          </TabPanel>
+
+          <!-- ====================== TAB REVISIONI ====================== -->
+          <TabPanel value="revisioni">
+            <p class="text-color-secondary mt-1">
+              {{ t('preventivi.revisioni_intro') }}
+            </p>
+            <div v-if="!revisioni.length" class="app-empty-state">
+              <i class="pi pi-history" style="font-size: 2rem;" />
+              <div>{{ t('preventivi.revisioni_empty') }}</div>
+            </div>
+            <DataTable
+              v-else
+              :value="revisioni"
+              striped-rows
+              class="app-datatable app-datatable--inner"
+              data-key="id"
+            >
+              <Column field="rev"
+                :header="t('preventivi.col_rev')"
+                style="width: 70px;" />
+              <Column field="data"
+                :header="t('preventivi.col_data')"
+                style="width: 130px;">
+                <template #body="{ data }">{{ displayDate(data.data) }}</template>
+              </Column>
+              <Column field="stato_codice_interno"
+                :header="t('preventivi.col_stato')"
+                style="width: 140px;">
+                <template #body="{ data }">
+                  <Tag
+                    :value="data.stato_descrizione"
+                    :severity="statoPreventiveSeverity(data.stato_codice_interno)"
+                  />
+                </template>
+              </Column>
+              <Column field="totale_documento"
+                :header="t('preventivi.col_totale')"
+                style="width: 130px;">
+                <template #body="{ data }">{{ formatCurrency(data.totale_documento) }}</template>
+              </Column>
+            </DataTable>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
 
       <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto" :loading="loading" :disabled="!canSave"
         @save="handleSave" @cancel="close" />
@@ -908,6 +1069,17 @@ const drawerActions = computed(() => {
     v-if="effectivePreventivoId"
     v-model:visible="noteDrawerVisible"
     :preventivo-id="effectivePreventivoId"
+  />
+
+  <!-- Dialog emissione preventivo (transizione BOZZA → EMESSO). Wrapper sul
+       building block DocumentoEmissioneDialog: anteprima PDF + allegati,
+       conferma orchestra atomic state + genera + allegati via /emetti/. -->
+  <PreventivoEmissioneDialog
+    v-if="effectivePreventivoId"
+    v-model:visible="emissioneDialogVisible"
+    :preventivo="detail"
+    :loading="emissioneLoading"
+    @confirm="handleEmissioneConferma"
   />
 
   <!-- Dialog accettazione preventivo (transizione EMESSO → ACCETTATO).

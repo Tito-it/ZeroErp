@@ -26,6 +26,10 @@ export function mapAvailableActionsToDrawerActions({
     label: t(action.label_key),
     icon: action.icon,
     severity: action.severity,
+    // `outlined` pass-through dal BE (default false). Usato per le azioni
+    // "secondarie pericolose" tipo Annulla DRAFT (rosso outlined invece di
+    // rosso pieno), allineato al pattern Annulla offerte/contratti.
+    outlined: action.outlined === true,
     command: () => onAction?.(action),
   }))
 }

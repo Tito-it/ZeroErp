@@ -13,9 +13,14 @@ import { MANAGE_ICONS } from '../constants'
 
 // Icone standard ConfirmDialog (PrimeVue accetta `acceptIcon` / `rejectIcon`
 // nelle opzioni di `useConfirm.require`). Allineate al pattern FormFooter:
-//   - reject (Annulla)  -> arrow-left (back-to-list)
-//   - accept (Conferma) -> check
-//   - accept su delete  -> trash (override sotto)
+//   - reject (Annulla)         -> arrow-left (back-to-list)
+//   - accept (Conferma)        -> check
+//   - accept con danger=true   -> cestino + label "Elimina" (default coppia
+//                                 destructive: label e icona devono sempre
+//                                 stare insieme — "Elimina" senza cestino o
+//                                 "Conferma" con cestino sono inconsistenze
+//                                 visive). Caller possono sovrascrivere
+//                                 passando acceptLabel/acceptIcon espliciti.
 // Conseguenza: tutti i dialog di conferma globali ereditano automaticamente
 // le icone standard senza modificare i call site (es. preventivi onCambiaStato
 // con action key='rifiuta', cancellazioni varie, ecc.).
@@ -39,7 +44,8 @@ export function useConfirmAction() {
       icon: 'pi pi-exclamation-triangle',
       acceptClass: 'p-button-danger',
       rejectClass: 'p-button-secondary',
-      acceptLabel: t('common.confirm'),
+      // Coppia coerente: label "Elimina" + icona cestino (non "Conferma").
+      acceptLabel: t('common.delete'),
       rejectLabel: t('common.cancel'),
       acceptIcon: MANAGE_ICONS.DELETE,
       rejectIcon: STANDARD_REJECT_ICON,
@@ -50,23 +56,30 @@ export function useConfirmAction() {
   /**
    * Mostra un dialog di conferma generico.
    *
+   * Coppia label/icona del bottone accept:
+   *   - default (non-danger): "Conferma" + check
+   *   - danger=true: "Elimina" + cestino (coppia destructive coerente)
+   * Il caller puo' sovrascrivere passando acceptLabel e/o acceptIcon
+   * espliciti — restano vincolati a stare coerenti tra loro.
+   *
    * @param {Object} options
    * @param {string} options.title - titolo del dialog
    * @param {string} options.message - messaggio del dialog
-   * @param {string} [options.acceptLabel] - etichetta pulsante conferma
-   * @param {boolean} [options.danger] - true = pulsante conferma rosso
+   * @param {string} [options.acceptLabel] - etichetta pulsante conferma (override)
+   * @param {string} [options.acceptIcon] - icona pulsante conferma (override)
+   * @param {boolean} [options.danger] - true = pulsante rosso + default "Elimina" + cestino
    * @param {Function} options.onAccept - callback eseguita alla conferma
    */
-  function confirmAction({ title, message, acceptLabel, danger = false, onAccept }) {
+  function confirmAction({ title, message, acceptLabel, acceptIcon, danger = false, onAccept }) {
     confirm.require({
       header: title,
       message: message,
       icon: 'pi pi-exclamation-triangle',
       acceptClass: danger ? 'p-button-danger' : '',
       rejectClass: 'p-button-secondary',
-      acceptLabel: acceptLabel || t('common.confirm'),
+      acceptLabel: acceptLabel || (danger ? t('common.delete') : t('common.confirm')),
       rejectLabel: t('common.cancel'),
-      acceptIcon: STANDARD_ACCEPT_ICON,
+      acceptIcon: acceptIcon || (danger ? MANAGE_ICONS.DELETE : STANDARD_ACCEPT_ICON),
       rejectIcon: STANDARD_REJECT_ICON,
       accept: onAccept
     })

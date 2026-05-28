@@ -3,68 +3,170 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: API view documenti generati a partire da CONTRATTO. Endpoint sotto
-#        `/api/v1/vendite/contratti/<id>/documenti/`:
-#         - `POST genera/`: persiste PDF + record DB + evento `GENERATO`;
-#         - `POST anteprima/`: streaming PDF temporaneo, no persist;
-#         - `GET`: lista documenti generati per il contratto;
-#         - `GET <doc_id>/file/`: download PDF principale + evento.
+#        `/api/v1/vendite/contratti/<id>/`:
+#         - `POST emetti/`:                  multipart: DRAFT->ATTIVO + genera
+#           documento + allegati in transazione atomica (mirror del flusso
+#           offerta/preventivo `ApiOffertaEmetti`/`ApiPreventivoEmetti`);
+#         - `POST documenti/genera/`:        persiste PDF + record DB + evento
+#           `GENERATO` per contratti gia' ATTIVI;
+#         - `POST documenti/anteprima/`:     streaming PDF temporaneo, no persist;
+#         - `GET  documenti/`:               lista documenti generati;
+#         - `GET  documenti/<doc_id>/file/`: download PDF + evento `SCARICATO`;
+#         - `GET/POST documenti/<doc_id>/allegati/`: lista (GET) / append (POST)
+#           dei file (principale + allegati) di un documento esistente.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 from typing import Any
 
+from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_int, qp_int
 from apps.core.api.success_responses import success_response
-from apps.core.services.error_manager import ErrorManager
-from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.api.contesto_helpers import resolve_contesto_documentale
+from apps.documenti.api.multipart_helpers import extract_allegati
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
 from apps.vendite.db.contratti_repository import ContrattiRepository
+from apps.vendite.services.contratti_service import ContrattiService
 
 # Codice sorgente CONTRATTO -> id risolto runtime via repo.
 _CODICE_SORGENTE_CONTRATTO = "CONTRATTO"
 
-E_VALIDATION = "E_DOCUMENTI_VALIDATION"
-E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 
-
-# Scopo: Risolve il contesto comune per le view che operano "per contratto":
-#        contratto esistente, sorgente_tipo CONTRATTO attiva, ritorna
-#        `(contratto_dict, sorgente_tipo_id)`.
+# Scopo: Risolve il contesto comune per le view che operano "per contratto".
+#        Wrapper sottile su `resolve_contesto_documentale`.
 def _resolve_contesto_contratto(contratto_id: int) -> tuple[dict[str, Any], int]:
-    contratti_repo = ContrattiRepository()
-    contratto = contratti_repo.get_for_documento_generation(contratto_id)
-    ErrorManager.require(
-        contratto is not None,
-        code=E_NOT_FOUND,
-        message="Contratto non trovato.",
-        detail=f"contratto_id={contratto_id}",
-    )
-    assert contratto is not None
-    ErrorManager.require(
-        contratto.get("emittente_fiscale_id") is not None,
-        code=E_VALIDATION,
-        message="Emittente fiscale non risolto per il contratto.",
+    contratto = ContrattiRepository().get_for_documento_generation(contratto_id)
+    return resolve_contesto_documentale(
+        entity=contratto,
+        entity_id=contratto_id,
+        not_found_message="Contratto non trovato.",
+        emittente_message="Emittente fiscale non risolto per il contratto.",
+        sorgente_codice=_CODICE_SORGENTE_CONTRATTO,
     )
 
-    doc_repo = DocumentiRepository()
-    sorgente = doc_repo.get_sorgente_tipo_id_by_codice(_CODICE_SORGENTE_CONTRATTO)
-    ErrorManager.require(
-        sorgente is not None and sorgente.get("attivo"),
-        code=E_VALIDATION,
-        message="Sorgente 'CONTRATTO' non configurata o non attiva.",
+
+class ApiContrattoEmetti(DomainAPIView):
+    """`POST /api/v1/vendite/contratti/<id>/emetti/` (multipart)."""
+
+    area_funzionale = "vendite"
+    # Niente post_permission: allineato a `ApiContrattoCambiaStato` (anche le
+    # transizioni di stato contratti si appoggiano all'area-level senza
+    # azione di processo dedicata).
+    # Override del default DRF (solo JSONParser) per consentire upload
+    # multipart degli allegati assieme ai campi scalari template/tipo_output.
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        request={
+            "multipart/form-data": inline_serializer(
+                name="VenditeContrattoEmettiReq",
+                fields={
+                    "template_documento_id": serializers.IntegerField(required=False, allow_null=True),
+                    "tipo_documento_output_id": serializers.IntegerField(required=False, allow_null=True),
+                    "allegati": serializers.ListField(
+                        child=serializers.FileField(), required=False,
+                    ),
+                },
+            ),
+        },
+        responses={200: inline_serializer(
+            name="VenditeContrattoEmettiResp",
+            fields={"data": serializers.DictField()},
+        )},
     )
-    assert sorgente is not None
-    return contratto, int(sorgente["id"])
+    # Scopo: DRAFT -> ATTIVO con generazione+persistenza del documento e
+    #        degli allegati in UNA transazione atomica. Mirror del flusso
+    #        offerta/preventivo: prima cambio stato, poi genera_documento
+    #        con allegati; su fallimento del render l'atomic esterno
+    #        rollbacka lo stato (resta DRAFT, no record orfano).
+    def post(self, request: Request, contratto_id: int) -> JsonResponse:
+        payload = request.data if isinstance(request.data, dict) else {}
+        template_id = optional_int(payload, "template_documento_id")
+        tipo_output_id = optional_int(payload, "tipo_documento_output_id")
+        allegati = extract_allegati(request)
+
+        with transaction.atomic():
+            emit_result = ContrattiService().emetti(contratto_id)
+            contratto, sorgente_tipo_id = _resolve_contesto_contratto(contratto_id)
+            documento = DocumentGenerationService().genera_documento(
+                request.user,
+                emittente_fiscale_id=int(contratto["emittente_fiscale_id"]),
+                sorgente_tipo_id=sorgente_tipo_id,
+                sorgente_id=int(contratto["id"]),
+                sorgente_uid=str(contratto["uid"]),
+                template_documento_id=template_id,
+                tipo_documento_output_id=tipo_output_id,
+                allegati=allegati,
+            )
+
+        return success_response({
+            "contratto": emit_result,
+            "documento": documento,
+        })
+
+
+class ApiContrattoDocumentoAllegati(DomainAPIView):
+    """`/api/v1/vendite/contratti/<contratto_id>/documenti/<documento_id>/allegati/`."""
+
+    area_funzionale = "vendite"
+    # POST = upload multipart degli allegati su documento esistente.
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="ContrattoDocumentoAllegatiListResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Lista di tutti i file del documento (principale + allegati),
+    #        per elenco/scarico nella UI (row-expand su DocumentiGeneratiSorgenteList).
+    def get(
+        self, request: Request, contratto_id: int, documento_id: int,
+    ) -> JsonResponse:
+        _resolve_contesto_contratto(contratto_id)
+        result = DocumentGenerationService().list_documento_files(
+            request.user, int(documento_id),
+        )
+        return success_response(result)
+
+    @extend_schema(
+        request={
+            "multipart/form-data": inline_serializer(
+                name="ContrattoDocumentoAllegatiUploadReq",
+                fields={
+                    "allegati": serializers.ListField(
+                        child=serializers.FileField(),
+                    ),
+                },
+            ),
+        },
+        responses={200: inline_serializer(
+            name="ContrattoDocumentoAllegatiUploadResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Aggiunge allegati (file secondari) a un documento gia' generato
+    #        (modalita' append post-attivazione). MIME/size validati dal service.
+    def post(
+        self, request: Request, contratto_id: int, documento_id: int,
+    ) -> JsonResponse:
+        _resolve_contesto_contratto(contratto_id)
+        allegati = extract_allegati(request)
+        result = DocumentGenerationService().aggiungi_allegati(
+            request.user, int(documento_id), allegati,
+        )
+        return success_response(result)
 
 
 class ApiContrattoDocumentoGenera(DomainAPIView):

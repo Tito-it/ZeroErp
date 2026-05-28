@@ -25,10 +25,25 @@ export function updateContratto(id, payload) {
 // Cambio stato. `validoAl` opzionale (formato ISO YYYY-MM-DD): se presente,
 // il BE applica anche PATCH valido_al nella stessa transazione (caso d'uso:
 // dialog "Cessa contratto" che chiede la data di cessazione al click).
+// NB refactor 2026-05-28: DRAFT->ATTIVO NON passa piu' da qui — usare
+// `emettiContratto()` (orchestra atomic state + documento + allegati via
+// ContrattoEmissioneDialog). Il BE rifiuterebbe E_VENDITE_VALIDAZIONE.
 export function cambiaStatoContratto(id, codiceInterno, { validoAl = null } = {}) {
   const payload = { codice_interno: codiceInterno }
   if (validoAl) payload.valido_al = validoAl
   return api.post(`${BASE}/${id}/cambia-stato/`, payload)
+}
+
+// DRAFT -> ATTIVO (multipart). Cambia stato + genera documento + persiste
+// eventuali allegati in transazione atomica lato BE (mirror del flusso
+// offerta/preventivo). Invocata dal ContrattoEmissioneDialog.
+export function emettiContratto(id, { allegati = [], templateId = null } = {}) {
+  const formData = new FormData()
+  if (templateId != null) formData.append('template_documento_id', templateId)
+  for (const file of allegati) formData.append('allegati', file)
+  return api.post(`${BASE}/${id}/emetti/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
 
 // Righe

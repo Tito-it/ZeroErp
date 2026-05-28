@@ -107,16 +107,75 @@ def _build_update(
 
 # Whitelist ORDER BY per la lista offerte (SQL injection safe).
 _ORDER_COLS_OFFERTE: dict[str, str] = {
-    "codice": "o.codice",
-    "validita_dal": "o.validita_dal",
-    "validita_al": "o.validita_al",
-    "data_emissione": "o.data_emissione",
+    # Whitelist colonne sortable LISTA. Mappate sulla vista
+    # `vendite.vw_offerte_commerciali_list` (alias `v`) post brief 2026-05-27.
+    "codice": "v.codice",
+    "validita_dal": "v.validita_dal",
+    "validita_al": "v.validita_al",
+    "data_emissione": "v.data_emissione",
     # Alias coerente col display field del SELECT (rinominato 2026-05-26).
-    "billing_account_display": "srd.ragione_sociale_completa",
-    "stato_codice": "sd.codice_interno",
-    "data_insert": "o.data_insert",
-    "data_update": "o.data_update",
+    "billing_account_display": "v.cliente_denominazione",
+    "stato_codice": "v.stato_codice_interno",
+    "data_insert": "v.data_insert",
+    # data_update non e' esposta nella vista lista (non serve in lista). Resta
+    # nel detail. Mappato a data_insert come fallback safe per backward compat
+    # di eventuali order_by sortando data_update.
+    "data_update": "v.data_insert",
 }
+
+
+# === Costanti LISTA (post brief vista 2026-05-27) ===
+# La lista paginata legge da `vendite.vw_offerte_commerciali_list`, che espone
+# `is_attiva` + `has_next_revisione` calcolati e i campi denormalizzati gia'
+# pronti per il FE. Aliasing sui nomi che il FE consuma da prima
+# (`billing_account_display`, `ba_codice`, `utility_display`) per evitare
+# churn lato Vue. `listino_codice` non e' in vista: LEFT JOIN su `vendite.listini`
+# nel FROM. Il detail (`get_offerta`) continua a usare `_SELECT_COLS_OFFERTA`
+# + `_FROM_JOINS_OFFERTA` con tutti i campi (motivazione, meta, contratto, EF
+# denormalizzato, listino_versione_codice, ...): la vista lista e' un sub-set
+# pensato per la sola lista.
+_SELECT_COLS_OFFERTA_LIST = """
+    v.id,
+    v.uid,
+    v.codice,
+    v.revisione_numero,
+    v.revisione_padre_id,
+    v.is_attiva,
+    v.has_next_revisione,
+    v.stato_doc_offerta_id,
+    v.stato_codice,
+    v.stato_codice_interno,
+    v.stato_descrizione,
+    v.emittente_fiscale_id,
+    v.billing_account_id,
+    v.billing_account_codice          AS ba_codice,
+    v.cliente_denominazione           AS billing_account_display,
+    v.id_fiscale,
+    v.istanza_utility_id,
+    v.istanza_utility_codice,
+    v.utility_id,
+    v.utility_codice,
+    v.utility_descrizione             AS utility_display,
+    v.listino_id,
+    l.codice                          AS listino_codice,
+    v.listino_versione_id,
+    v.valore_variazione_globale,
+    v.tipo_variazione_globale,
+    v.validita_dal,
+    v.validita_al,
+    v.data_emissione,
+    v.data_accettazione,
+    v.data_rifiuto,
+    v.data_annullamento,
+    v.data_insert,
+    v.user_insert
+"""
+
+
+_FROM_JOINS_OFFERTA_LIST = """
+    FROM vendite.vw_offerte_commerciali_list v
+    LEFT JOIN vendite.listini l ON l.id = v.listino_id
+"""
 
 
 _SELECT_COLS_OFFERTA = """
@@ -321,31 +380,41 @@ class OfferteRepository(ComponentiRepositoryMixin):
         validita_dal_min: str | None,
         validita_dal_max: str | None,
         search: str | None,
+        solo_attiva: bool = True,
     ) -> tuple[str, list[Any]]:
+        # Filtri sulla vista lista `vw_offerte_commerciali_list` (alias `v`).
+        # Tutti i campi consumati qui sono esposti dalla vista — nessun JOIN
+        # ulteriore nel filter builder.
         wheres: list[str] = []
         params: list[Any] = []
         if billing_account_id is not None:
-            wheres.append("o.billing_account_id = %s")
+            wheres.append("v.billing_account_id = %s")
             params.append(billing_account_id)
         if stato_codice_interno:
-            wheres.append("sd.codice_interno = %s")
+            wheres.append("v.stato_codice_interno = %s")
             params.append(stato_codice_interno)
         if utility_id is not None:
-            wheres.append("o.utility_id = %s")
+            wheres.append("v.utility_id = %s")
             params.append(utility_id)
         if listino_id is not None:
-            wheres.append("o.listino_id = %s")
+            wheres.append("v.listino_id = %s")
             params.append(listino_id)
         if validita_dal_min:
-            wheres.append("o.validita_dal >= %s")
+            wheres.append("v.validita_dal >= %s")
             params.append(validita_dal_min)
         if validita_dal_max:
-            wheres.append("o.validita_dal <= %s")
+            wheres.append("v.validita_dal <= %s")
             params.append(validita_dal_max)
         if search:
-            # Search ILIKE su codice + ragione sociale BA. L'API impone >=3 char.
-            wheres.append("(o.codice ILIKE %s OR srd.ragione_sociale_completa ILIKE %s)")
+            # Search ILIKE su codice + denominazione cliente. L'API impone >=3 char.
+            wheres.append("(v.codice ILIKE %s OR v.cliente_denominazione ILIKE %s)")
             params.extend([f"%{search}%", f"%{search}%"])
+        # Filtro revisione attiva (mirror preventivi `solo_attiva`): di default
+        # mostra solo l'ultima revisione "viva" per lineage. `is_attiva` e'
+        # calcolato dalla vista (predicato: stato NOT IN ('SUPERATA','ANNULLATA')).
+        # Quando false, mostra storico completo (tutte le revisioni).
+        if solo_attiva:
+            wheres.append("v.is_attiva IS TRUE")
         where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
         return where_clause, params
 
@@ -361,6 +430,7 @@ class OfferteRepository(ComponentiRepositoryMixin):
         validita_dal_min: str | None = None,
         validita_dal_max: str | None = None,
         search: str | None = None,
+        solo_attiva: bool = True,
         order_by: str = "data_insert",
         order_dir: str = "DESC",
         limit: int = 25,
@@ -376,12 +446,13 @@ class OfferteRepository(ComponentiRepositoryMixin):
             validita_dal_min=validita_dal_min,
             validita_dal_max=validita_dal_max,
             search=search,
+            solo_attiva=solo_attiva,
         )
         sql = f"""
-            SELECT {_SELECT_COLS_OFFERTA}
-              {_FROM_JOINS_OFFERTA}
+            SELECT {_SELECT_COLS_OFFERTA_LIST}
+              {_FROM_JOINS_OFFERTA_LIST}
               {where_clause}
-             ORDER BY {order_col} {order_dir_safe}, o.id DESC
+             ORDER BY {order_col} {order_dir_safe}, v.id DESC
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
@@ -400,6 +471,7 @@ class OfferteRepository(ComponentiRepositoryMixin):
         validita_dal_min: str | None = None,
         validita_dal_max: str | None = None,
         search: str | None = None,
+        solo_attiva: bool = True,
     ) -> int:
         where_clause, params = self._build_offerte_filters(
             billing_account_id=billing_account_id,
@@ -409,10 +481,11 @@ class OfferteRepository(ComponentiRepositoryMixin):
             validita_dal_min=validita_dal_min,
             validita_dal_max=validita_dal_max,
             search=search,
+            solo_attiva=solo_attiva,
         )
         sql = f"""
             SELECT COUNT(*)
-              {_FROM_JOINS_OFFERTA}
+              {_FROM_JOINS_OFFERTA_LIST}
               {where_clause}
         """  # noqa: S608
         with connection.cursor() as cursor:

@@ -186,7 +186,6 @@ function toggleCompactMenu(event) {
         <Button
           :icon="a.icon"
           :label="a.label"
-          size="small"
           :outlined="buttonOutlined(a)"
           :severity="buttonSeverity(a)"
           :class="buttonClass(a)"
@@ -221,7 +220,6 @@ function toggleCompactMenu(event) {
       :key="a.key"
       :icon="a.icon"
       :label="a.label"
-      size="small"
       :outlined="buttonOutlined(a)"
       :severity="buttonSeverity(a)"
       :class="buttonClass(a)"

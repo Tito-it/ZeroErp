@@ -37,6 +37,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import { coerceJsonbToArray } from '../../core/utils/meta'
+import ComponentiCreateActionsPanel from '../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
 import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
 import Drawer from 'primevue/drawer'
@@ -1323,37 +1324,27 @@ function origineSeverity(origine) {
              + summary live. EDIT: ComponentiPanel carica i componenti
              persistiti e li espone editabili. -->
         <template v-if="articoloObj?.is_composito">
-          <div class="app-drawer-section">
-            <h4>{{ t('vendite.componenti.panel.section_title') }}</h4>
-          </div>
-          <div v-if="formMode === 'create'" class="contratti-componenti-create">
-            <Message severity="info" :closable="false" size="small">
-              {{ t('vendite.componenti.panel.create_hint') }}
-            </Message>
-            <Button
-              :label="t('vendite.componenti.panel.modifica_componenti')"
-              :icon="MANAGE_ICONS.BOM"
-              outlined
-              :disabled="!form.articolo_id || !form.uom_operativa_id
-                || (showQtaOperativa && !((form.qta_operativa || 0) > 0))"
-              @click="apriComponentiDialog" />
-            <small v-if="componentiPayload?.summary"
-              class="contratti-componenti-summary">
-              {{ t('vendite.componenti.panel.summary_create', {
-                n: componentiPayload.summary.n,
-              }) }}
-            </small>
-          </div>
-          <ComponentiPanel
-            v-else
-            :documento-id="props.contrattoId"
-            :riga-id="rigaEditId"
-            :readonly="isReadonly || formMode !== 'edit'"
-            :api-list="listContrattoRigaComponenti"
-            :api-update="updateContrattoRigaComponente"
-            :api-delete="deleteContrattoRigaComponente"
-            :tab-entity="TAB_ENTITIES.CONTRATTO"
-            @changed="emit('changed')" />
+          <ComponentiCreateActionsPanel
+            v-if="formMode === 'create'"
+            :disabled="!form.articolo_id || !form.uom_operativa_id
+              || (showQtaOperativa && !((form.qta_operativa || 0) > 0))"
+            :componenti-payload="componentiPayload"
+            @apri-dialog="apriComponentiDialog"
+          />
+          <template v-else>
+            <div class="app-drawer-section">
+              <h4>{{ t('vendite.componenti.panel.section_title') }}</h4>
+            </div>
+            <ComponentiPanel
+              :documento-id="props.contrattoId"
+              :riga-id="rigaEditId"
+              :readonly="isReadonly || formMode !== 'edit'"
+              :api-list="listContrattoRigaComponenti"
+              :api-update="updateContrattoRigaComponente"
+              :api-delete="deleteContrattoRigaComponente"
+              :tab-entity="TAB_ENTITIES.CONTRATTO"
+              @changed="emit('changed')" />
+          </template>
         </template>
 
         <!-- Composizione bundle DA_LISTINO (read-only). Mostrata quando si

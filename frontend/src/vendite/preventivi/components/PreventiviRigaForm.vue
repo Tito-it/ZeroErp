@@ -13,9 +13,11 @@ import { suggerisciPrezzoRiga, previewRigaComponenti } from '../api/preventiviAp
 import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/utils/severity'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
 import { PRICING_ACTIONS } from '../../constants'
+import { MANAGE_ICONS } from '../../../core/constants'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import PreventiviRigaComponentiPanel from './PreventiviRigaComponentiPanel.vue'
+import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
@@ -251,6 +253,14 @@ watch(
 function onComponentiConfirm(payload) {
   // payload = { overrides, attivazioni, summary }; null se nessuna modifica.
   componentiPayload.value = payload
+}
+
+// Riapertura manuale (CREATE) — bottone "Modifica componenti" sotto il
+// form: serve quando l'operatore vuole correggere gli override del Dialog
+// PRIMA di salvare la riga (l'auto-open scatta solo al primo set valido).
+// Pattern allineato a ContrattoRigheDrawer.
+function apriComponentiDialog() {
+  componentiDialogVisible.value = true
 }
 
 // State usato da suggerisciPrezzo(): DEVE stare prima del watch `immediate`
@@ -671,11 +681,20 @@ async function handleRichiediApprovazione() {
     </div>
     <!-- Modello unificato 2026-05-13: la ComponentiDialog si auto-apre al
          primo set valido (articolo composito + UoM + qta) tramite watcher.
-         Nessun riepilogo/bottone manuale: la conferma alimenta
-         `componentiPayload` che viaggia nel save riga come
-         `componenti_overrides`. Il riepilogo persistito post-save vive
-         nell'expansion della DataTable righe (`<ComponentiPanel
-         :initial-data="row.componenti">` lato `PreventiviRigheTable`). -->
+         Per correggere gli override PRIMA del save riga c'e' il bottone
+         "Modifica componenti" qui sotto (riapertura manuale). Il summary
+         live mostra il numero di componenti coperti dall'ultima conferma.
+         Il riepilogo persistito post-save vive nell'expansion della
+         DataTable righe (`<ComponentiPanel :initial-data="row.componenti">`
+         lato `PreventiviRigheTable`). -->
+    <ComponentiCreateActionsPanel
+      v-if="!isEdit && articoloObj?.is_composito"
+      section-title-key="preventivi.componenti_section_title"
+      :disabled="!form.articolo_id || !form.uom_operativa_id
+        || !((form.quantita || 0) > 0)"
+      :componenti-payload="componentiPayload"
+      @apri-dialog="apriComponentiDialog"
+    />
 
     <ComponentiDialog
       v-if="showComponentiDialog"

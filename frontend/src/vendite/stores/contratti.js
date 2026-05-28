@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
   listContratti, getContratto, createContratto, updateContratto, cambiaStatoContratto,
+  emettiContratto,
   addRigaContratto, updateRigaContratto, deleteRigaContratto, listRighePreviewContratto,
   addUtilityContratto, updateUtilityContratto,
 } from '../api/contratti'
@@ -83,8 +84,21 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
   }
 
   // `validoAl` opzionale (ISO YYYY-MM-DD): cessazione atomica con data.
+  // NB refactor 2026-05-28: DRAFT->ATTIVO non passa piu' da qui — usare
+  // `emetti()` sotto (orchestra atomic state + documento + allegati via
+  // ContrattoEmissioneDialog). Il BE rifiuta con E_VENDITE_VALIDAZIONE.
   async function cambiaStato(id, codiceInterno, { validoAl = null } = {}) {
     const res = await cambiaStatoContratto(id, codiceInterno, { validoAl })
+    emitDataChanged(TAB_ENTITIES.CONTRATTO, id)
+    return res.data.data
+  }
+
+  // DRAFT -> ATTIVO (multipart). Cambia stato + genera documento + allegati
+  // in transazione atomica lato BE. Mirror del flusso offerta/preventivo.
+  // Invocata dal ContrattoEmissioneDialog (ContrattoDrawer intercetta
+  // l'action target_state='ATTIVO' e apre il dialog invece di cambiaStato).
+  async function emetti(id, { allegati = [], templateId = null } = {}) {
+    const res = await emettiContratto(id, { allegati, templateId })
     emitDataChanged(TAB_ENTITIES.CONTRATTO, id)
     return res.data.data
   }
@@ -127,7 +141,7 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
 
   return {
     items, totalRecords, loading, hasSearched, filters,
-    fetchList, fetchDetail, create, update, cambiaStato,
+    fetchList, fetchDetail, create, update, cambiaStato, emetti,
     addRiga, updateRiga, deleteRiga, fetchRighePreview,
     addUtility, updateUtility,
   }
