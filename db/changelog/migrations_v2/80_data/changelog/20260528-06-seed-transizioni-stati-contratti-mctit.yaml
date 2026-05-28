@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed config.transizioni_stati_contratti: 3 transizioni.
+#
+# id 1 | DRAFT(1)  -> ATTIVO(2)    | attiva  — info,    pi pi-play
+# id 2 | DRAFT(1)  -> ANNULLATO(8) | annulla — danger,  pi pi-times, outlined
+# id 3 | ATTIVO(2) -> CESSATO(5)   | cessa   — danger,  pi pi-stop, requires_date
+#
+# Dipendenza: config.transizioni_stati_contratti (20260528-04).
+# Letta da script.fn_available_actions_contratto (20260528-05).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260528-06-seed-transizioni-stati-contratti-mctit.yaml
+
+  - changeSet:
+      id: 20260528-06-seed-transizioni-stati-contratti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: transizioni_stati_contratti
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/transizioni_stati_contratti.csv
+            tableName: transizioni_stati_contratti
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: stato_da_id, type: STRING }
+              - column: { name: stato_a_id, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }

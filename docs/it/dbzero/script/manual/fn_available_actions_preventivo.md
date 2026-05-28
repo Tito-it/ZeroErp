@@ -56,7 +56,7 @@ script.fn_available_actions_preventivo(
     "can_push_commessa":            false,   // true solo in ACCETTATO
     "can_push_commessa_reason":     "PREVENTIVO_NON_ACCETTATO",         // reason code machine-readable; null se can_push=true
     "can_push_commessa_reason_key": "preventivi.push_commessa_reason.non_accettato", // chiave i18n associata; null se can_push=true
-    "can_create_revisione":         false,   // true in EMESSO o ACCETTATO
+    "can_create_revisione":         false,   // true solo in EMESSO
     "non_editable_fields":          ["utility_id"],  // sempre presente; vedi dettaglio sotto
     "stato_codice":                 "DRAFT"  // codice_interno stato corrente
 }
@@ -89,12 +89,12 @@ Risultato per stato:
 
 ### Dettaglio `available_actions` per stato
 
-| `stato_codice` | Azioni disponibili |
-|---|---|
-| `DRAFT` | `emetti`, `annulla` |
-| `EMESSO` | `accetta`, `rifiuta` |
-| `ACCETTATO` | `[]` |
-| `ANNULLATO` / `RIFIUTATO` / `SCADUTO` | `[]` |
+| `stato_codice` | Azioni in `available_actions` | Note |
+|---|---|---|
+| `DRAFT` | `emetti`, `annulla` | Da matrice transizioni |
+| `EMESSO` | `accetta`, `rifiuta`, `crea_revisione` | `crea_revisione` hardcoded (rev 28-05-2026) |
+| `ACCETTATO` | `push_commessa` | Hardcoded, gate solo stato in v1 (rev 28-05-2026) |
+| `ANNULLATO` / `RIFIUTATO` / `SCADUTO` | `[]` | Terminali |
 
 La transizione `EMESSO → SCADUTO` è **automatica** (job notturno) e
 marcata `manuale=false` in `transizioni_stati_preventivi.meta`: viene
@@ -115,12 +115,17 @@ fatturazione, push commessa).
    filtrata per `stato_da_id = v_stato_id AND attivo IS TRUE AND manuale IS NOT FALSE`.
    I metadati UI (`label_key`, `severity`, `icon`, `requires_confirm`) vengono
    letti direttamente da `t.meta`. Ordine: `sa.ordine` (ordine stati config).
-3. **Capability derivate** — calcolate da `v_stato_cod` con semplici confronti:
+3. **Azioni speciali hardcoded** — aggiunte in coda a `v_actions` (pattern
+   `fn_available_actions_offerta`, rev 28-05-2026):
+   - `crea_revisione` se `v_stato_cod = 'EMESSO'`: `target_state null`, `icon pi pi-clone`.
+   - `push_commessa` se `v_stato_cod = 'ACCETTATO'`: `target_state null`, `icon pi pi-arrow-right`.
+   Il FE distingue queste azioni dal `key` e usa routing speciale nel drawer.
+4. **Capability derivate** — calcolate da `v_stato_cod` con semplici confronti:
    - `can_edit_testata / can_edit_righe = (stato = 'DRAFT')`
    - `can_push_commessa = (stato = 'ACCETTATO')`
-   - `can_create_revisione = (stato IN ('EMESSO','ACCETTATO'))`
-   - `non_editable_fields`: `[]` in DRAFT, costante `c_non_edit` altrove.
-4. **Build JSONB** — `jsonb_build_object` con tutte le chiavi.
+   - `can_create_revisione = (stato = 'EMESSO')`
+   - `non_editable_fields`: costante ridotta in DRAFT, allargata altrove.
+5. **Build JSONB** — `jsonb_build_object` con tutte le chiavi.
 
 > **Nota Fase 3** — `can_push_commessa` è derivato dallo stato soltanto.
 > Il check cross-dominio (righe già in commessa con `stato_emissione=EMESSA`)

@@ -1,0 +1,169 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea vendite.vw_offerte_commerciali_list
+#
+# Vista lista offerte commerciali denormalizzata, speculare a
+# vw_preventivi_list (rev3 soggetto-via-istanza).
+#
+# Colonne chiave:
+#   is_attiva          — TRUE se l'offerta non è stata superata da una
+#                        revisione successiva né annullata. Derivata dallo
+#                        stato: NOT IN ('SUPERATA','ANNULLATA'). Equivalente
+#                        alla semantica "non esiste revisione successiva
+#                        non-abortita" garantita dal trigger
+#                        trgfn_offerte_commerciali_revisione (_z90_ AFTER INSERT).
+#   has_next_revisione — TRUE se esiste almeno un figlio (qualunque stato).
+#                        Utile per il toggle "mostra storico" in UI.
+#
+# Performance note:
+#   is_attiva     : O(1) — derivata dal join su stati_doc_offerte già presente.
+#   has_next_revisione : EXISTS sul partial index
+#                        ix_offerte_commerciali_revisione_padre
+#                        (revisione_padre_id IS NOT NULL) → efficiente.
+#
+# Edge case documentato: se l'ultima revisione di un lineage viene annullata
+#   senza creare un successore, la revisione padre rimane SUPERATA e nessuna
+#   offerta del lineage risulta is_attiva = true. Limite del modello trigger
+#   attuale; richiederebbe trigger aggiuntivo per retroportare il padre da
+#   SUPERATA a stato precedente — fuori scope.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260528-01-create-vw-offerte-commerciali-list-mctit.yaml
+
+  - changeSet:
+      id: 20260528-01-create-vw-offerte-commerciali-list
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vendite.vw_offerte_commerciali_list: lista offerte denormalizzata,
+        speculare a vw_preventivi_list rev3. Espone is_attiva (revisione
+        non superata né annullata) e has_next_revisione per il toggle storico UI.
+        Soggetto via istanza_utilities (1 join, sempre valorizzato).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_offerte
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: istanze_utilities
+            - columnExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+                columnName: revisione_padre_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ================================================================
+              -- Vista: vendite.vw_offerte_commerciali_list
+              --
+              -- Lista offerte commerciali denormalizzata per UI lista + filtri.
+              -- Speculare a vw_preventivi_list (rev3, 2026-05-02).
+              --
+              -- is_attiva: nessuna revisione successiva non-annullata.
+              --   Derivata da sdo.codice_interno NOT IN ('SUPERATA','ANNULLATA').
+              --   Equivalente alla semantica NOT EXISTS (figlio non-ANNULLATA)
+              --   garantita dal trigger trgfn_offerte_commerciali_revisione.
+              --
+              -- has_next_revisione: EXISTS figlio (qualunque stato).
+              --   Usa ix_offerte_commerciali_revisione_padre (partial index).
+              --
+              -- Soggetto via istanza_utilities (NOT NULL): 1 join vs 3 via BA.
+              -- billing_account_codice sempre presente (BA NOT NULL su offerte).
+              -- ================================================================
+              CREATE OR REPLACE VIEW vendite.vw_offerte_commerciali_list AS
+              SELECT
+                  o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  -- Revisione attiva: non superata da successore né annullata
+                  sdo.codice_interno NOT IN ('SUPERATA', 'ANNULLATA') AS is_attiva,
+                  -- Esiste almeno un figlio (qualunque stato) → toggle storico UI
+                  EXISTS (
+                      SELECT 1 FROM vendite.offerte_commerciali figlio
+                       WHERE figlio.revisione_padre_id = o.id
+                  ) AS has_next_revisione,
+                  -- Stato
+                  o.stato_doc_offerta_id,
+                  sdo.codice                                AS stato_codice,
+                  sdo.codice_interno                        AS stato_codice_interno,
+                  sdo.descrizione                           AS stato_descrizione,
+                  -- Billing account (NOT NULL su offerte)
+                  o.billing_account_id,
+                  ba.codice                                 AS billing_account_codice,
+                  -- Soggetto via istanza (NOT NULL: sempre valorizzato)
+                  s.id                                      AS soggetto_id,
+                  s.ragione_sociale_completa                AS cliente_denominazione,
+                  s.id_fiscale_univoco_cf_piva              AS id_fiscale,
+                  -- Emittente fiscale
+                  o.emittente_fiscale_id,
+                  -- Contesto utility + istanza
+                  o.utility_id,
+                  u.codice                                  AS utility_codice,
+                  u.descrizione                             AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice                                 AS istanza_utility_codice,
+                  -- Listino
+                  o.listino_id,
+                  o.listino_versione_id,
+                  -- Variazione globale (opzionale)
+                  o.valore_variazione_globale,
+                  o.tipo_variazione_globale,
+                  -- Validità
+                  o.validita_dal,
+                  o.validita_al,
+                  -- Date significative ciclo vita
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  -- Audit
+                  o.data_insert,
+                  o.user_insert
+              FROM vendite.offerte_commerciali o
+              JOIN config.stati_doc_offerte sdo
+                ON sdo.id = o.stato_doc_offerta_id
+              -- Istanza (NOT NULL): radice lookup soggetto
+              LEFT JOIN anagrafiche.istanze_utilities iu
+                ON iu.id = o.istanza_utility_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = iu.soggetto_id
+              -- BA (NOT NULL su offerte): per billing_account_codice
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = o.billing_account_id
+              -- Utility
+              LEFT JOIN config.utilities u
+                ON u.id = o.utility_id
+              ORDER BY o.data_insert DESC, o.id DESC;
+
+              COMMENT ON VIEW vendite.vw_offerte_commerciali_list IS
+                  'Lista offerte commerciali denormalizzata. Rev 2026-05-27. '
+                  'Speculare a vw_preventivi_list (rev3): soggetto via istanza_utilities '
+                  '(1 join, sempre valorizzato). '
+                  'is_attiva: offerta non superata da revisione successiva né annullata '
+                  '(sdo.codice_interno NOT IN (SUPERATA, ANNULLATA)); semantica garantita '
+                  'da trgfn_offerte_commerciali_revisione (_z90_ AFTER INSERT). '
+                  'has_next_revisione: EXISTS figlio per toggle storico UI. '
+                  'billing_account_codice sempre presente (BA NOT NULL su offerte).';
+      rollback:
+        - sql:
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_offerte_commerciali_list;
