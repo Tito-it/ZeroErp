@@ -4,7 +4,9 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 6 maggio 2026 — aggiunto componente `ui` in Anello 1 (metadato di presentazione: liste configurabili, personalizzazione colonne, preset per profilo/emittente). Stato: Da fare. Architettura completa in [sviluppo-personalizzazioni-liste.md](dev/work-in-progress/sviluppo-personalizzazioni-liste.md).*
+*Ultimo aggiornamento: 29 maggio 2026 — Anello 3 (vendite): contratti passati al modello unificato (drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino all'attivazione, lock post-attivazione, stato ANNULLATO); nuovo documento **offerte commerciali** (proposta di condizioni quadro → push 1:1 a contratto) sviluppato DB+BE+FE con generazione PDF e allegati; componenti BoM compositi estesi a offerte; valuta su documenti vendite. Vedi [Gestione Offerte commerciali](guide/gestione-offerte-commerciali.md) e [Gestione Contratti](guide/gestione-contratti.md).*
+>
+> *Aggiornamento precedente: 6 maggio 2026 — aggiunto componente `ui` in Anello 1 (metadato di presentazione: liste configurabili, personalizzazione colonne, preset per profilo/emittente). Stato allora: Da fare → **ora Operativo** (vedi tabelle Anello 1). Architettura completa in [sviluppo-personalizzazioni-liste.md](dev/work-in-progress/sviluppo-personalizzazioni-liste.md).*
 
 ---
 
@@ -45,7 +47,7 @@
 
 **Regola fondamentale**: ogni anello dipende solo dagli anelli interni. Mai dipendenze inverse o laterali.
 
-## Aggiornamenti ricostruiti dal 26 aprile al 4 maggio 2026
+## Aggiornamenti ricostruiti dal 26 aprile al 29 maggio 2026
 
 Questa sezione registra solo evidenze presenti nel repository locale: commit e documentazione `docs/it/dev/work-done/` o `docs/it/dev/work-in-progress/`. Dove la documentazione indica test UI o working tree non ancora consolidato, lo stato resta esplicitamente marcato come tale.
 
@@ -59,6 +61,11 @@ Questa sezione registra solo evidenze presenti nel repository locale: commit e d
 | 2 maggio     | Preventivi rev2 landed: `emittente_fiscale_id` persistito, `istanza_utility_id` obbligatoria, guard coerenza utility/istanza, 4 codici errore        | Preventivi diventano piu' rigorosi sul contesto emittente/utility.                                     |
 | 3 maggio     | Scenario preventivi 2.1 chiuso end-to-end, UI revisioni e riepilogo IVA                                                                              | Vendite avanzata su flusso preventivo operativo.                                                       |
 | 3-4 maggio   | Motore documentale parametrico: DB Fase A, backend Tranche A-K, frontend Tranche L-M; test UI dedicato avviato                                       | Nuovo componente `documenti` in Anello 2, operativo tecnicamente ma ancora in test UI.                 |
+| 13 maggio    | BoM modello unificato + simmetria listino; componenti BoM (CASO A) estesi a preventivi/ordini/ddt/contratti                                          | I documenti vendite condividono lo stesso modello componenti a 3 livelli (struttura, listino, documento). |
+| 15-21 maggio | Refactor contratti: modello unificato (drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino all'attivazione, lock post-attivazione, stato ANNULLATO + overlap parziale) | Il sottodominio contratti diventa simmetrico ai preventivi e pronto a ricevere l'offerta come sorgente. |
+| 24-27 maggio | Offerte commerciali (DB): testata + eccezioni delta-listino + componenti BoM + utility, 6 stati, `fn_push_offerta_a_contratto` idempotente, vista `is_attiva`, azioni data-driven | Nuovo documento pre-contrattuale in Anello 3 (vendite): la proposta di condizioni quadro che genera il contratto. |
+| 28-29 maggio | Offerte commerciali (BE+FE): risoluzione prezzo come contratti, generazione documento offerta con allegati, UI uniformata a contratti                | Offerta operativa end-to-end DB+BE+FE; in consolidamento/test UI.                                       |
+| 29 maggio    | Valuta su documenti vendite (`valuta_id` su offerte/contratti/preventivi, default da resolver gestore); guida offerte commerciali pubblicata          | Coerenza valuta cross-documento; documentazione di dominio allineata allo stato reale.                  |
 
 ### Natura degli anelli (post-aggiornamento manifesto §III bis)
 
@@ -131,7 +138,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | `anagrafiche`  | App Django | Operativo | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali, billing account                                           |
 | `catalogo`     | App Django | Operativo | Operativo | Operativo | Articoli (CRUD, UoM, BoM, note) — **completato e testato** (work-done/gestione-articoli.md)                                |
 | `amm-software` | App Django | Operativo | Operativo | Operativo | Gestione operatori, permessi riepilogo, profili reparto, audit log (solo ADMIN), drawer dedicato gestione permessi         |
-| `ui`           | App Django | Da fare   | Da fare   | Da fare   | Metadato di presentazione: liste configurabili, preset per profilo/emittente/sistema, preferenze utente. Di servizio.      |
+| `ui`           | App Django | Operativo | Operativo | Operativo | Metadato di presentazione: liste configurabili, preset per profilo/emittente/sistema, preferenze utente. Di servizio. Schema, app Django e componenti FE implementati (primi consumatori: liste clienti/fornitori). |
 
 > **Multi-Face Auth — COMPLETATO (22-04-2026):** `anagrafiche` usa il bridge generalizzato `identita_digitali` (SSO multi-veste, cutover 19-04-2026). `amm-software` supporta operatori, portale clienti/fornitori e shop B2C. **Infrastruttura auth predisposta per tutte le vesti; le API di dominio portale/shop (fatture, ordini, catalogo B2C) non sono ancora sviluppate e saranno affrontate quando il business lo richiedera'.** Dettaglio: [pr-b-shop-b2c-cambio-modello.md](dev/work-done/pr-b-shop-b2c-cambio-modello.md). Guida: [architettura-multi-face-auth v2.0](guide/architettura-multi-face-auth.md).
 
@@ -153,8 +160,8 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | Catalogo — Articoli             | Operativo  | Lista con 7 filtri, drawer 3 tab (UoM, BoM, note), `ArticoloLookup` BB cross-dominio. **Completato e testato**                                                          |
 | Catalogo — Unita' di Misura     | Operativo  | Lista, drawer CRUD, conversioni UoM, lookup generico whitelist                                                                                                          |
 | Impostazioni Parametri          | Operativo  | Lista multi-scope (default/emittente/gruppo/utente), drawer override con selettore scope (Personale/Emittente) per admin, `PARAMETER_SCOPE` come unica fonte di verita' |
-| UI — Liste (DB/BE)              | Da fare    | Schema ui: catalogo colonne, preset sistema/profilo/EF, preferenze utente. fn_resolve_lista_config. App Django ui + repository + 4 endpoint REST.                       |
-| UI — Liste (Frontend)           | Da fare    | ListaConfigurabile.vue, ListaColonneModal.vue, useListaConfig. Indicatore stato salvato/temporaneo. Badge nuove colonne. Dipende da Blocco C.                           |
+| UI — Liste (DB/BE)              | Operativo  | Schema ui (changeset atterrati): catalogo colonne, preset sistema/profilo/EF, preferenze utente. App Django `ui` con repository, servizi (incl. admin + export) ed endpoint REST.                       |
+| UI — Liste (Frontend)           | Operativo  | `ListaConfigurabile.vue`, `ListaColonneModal.vue`, `useListaConfig` + viste admin (Gestione/Personalizzazioni liste). Primi consumatori: liste clienti/fornitori.                           |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -180,7 +187,7 @@ Una tabella appartiene alla seconda categoria se: (a) non descrive un'entita' di
 
 `ui` e' il terzo schema di Anello 1 con natura cross-dominio, accanto a `config` e `amm-software`. Ospita esclusivamente **metadato di presentazione**: non contiene logica di business, non ha dipendenze da Anello 2 o 3, dipende solo da `config.profili_accesso` e `anagrafiche.emittenti_fiscali` (Anello 1) e `django.auth_user` (Anello 0).
 
-E' classificato **di servizio** all'interno di Anello 1: il suo end-to-end richiede almeno un consumatore reale (prima lista migrata a `<ListaConfigurabile>`). Fino a quel momento resta "predisposto, validazione in corso". Si applica la stessa lezione metodologica del caso pratiche: non va portato a completezza prima che il Blocco E del piano di sviluppo abbia validato il nucleo su un caso reale.
+E' classificato **di servizio** all'interno di Anello 1: il suo end-to-end richiedeva almeno un consumatore reale (prima lista migrata a `<ListaConfigurabile>`). Questo è avvenuto: le liste clienti e fornitori usano il componente configurabile, quindi il nucleo è stato **validato su casi reali** e si considera operativo. La lezione metodologica del caso pratiche (non completare prima della validazione su un caso reale) è stata rispettata.
 
 Riferimento architetturale: [sviluppo-personalizzazioni-liste.md](dev/work-in-progress/sviluppo-personalizzazioni-liste.md). Sviluppi differiti: [sviluppo-personalizzazioni-liste_def.md](dev/work-in-progress/sviluppo-personalizzazioni-liste_def.md).
 
@@ -314,7 +321,10 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 | Commesse (push, orchestrator, handlers) | Operativo                                                                     |
 | Listini v3 (N2/N5/N6/N7/N8a)            | Operativo — Sprint B-v3 completato (aprile 2026)                              |
 | Pricing commesse (N5/N7/N7-sblocco)     | Operativo — riallineamento, variazione, sblocco                               |
-| Contratti Profilo A                     | Operativo — immutabilita' post-DRAFT, cessazione data-driven, righe-preview   |
+| Contratti (modello unificato)           | Operativo — drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino, lock post-attivazione, stato ANNULLATO |
+| Offerte commerciali                     | Operativo (DB+BE+FE), in consolidamento — proposta condizioni quadro → push 1:1 a contratto; componenti BoM; generazione documento + allegati |
+| Componenti BoM compositi (vendite)      | Operativo — modello a 3 livelli condiviso da preventivi/contratti/offerte/ordini/ddt |
+| Valuta su documenti                     | Operativo (DB) — `valuta_id` su offerte/contratti/preventivi, default da resolver gestore |
 | Preventivi rev2                         | Operativo — emittente persistito, istanza obbligatoria, guard utility/istanza |
 | Revisioni preventivo + riepilogo IVA    | Operativo — scenario 2.1 chiuso end-to-end                                    |
 | Generazione PDF preventivo              | In test UI — primo consumatore del motore `documenti`                         |

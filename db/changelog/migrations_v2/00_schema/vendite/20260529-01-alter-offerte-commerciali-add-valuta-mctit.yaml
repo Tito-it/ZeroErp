@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge vendite.offerte_commerciali.valuta_id INTEGER NULL
+# con FK a config.valute(id).
+#
+# Motivazione: simmetria con vendite.preventivi (che ha gia' valuta_id).
+# La valuta diventa source-of-truth sulla testata del documento e
+# resta immutabile dopo il CREATE (snapshot), come su preventivi.
+# Valorizzata a INSERT-time dal trigger trgfn_offerte_commerciali_default_valuta
+# (20_code/20260529-03) se non passata esplicitamente nel payload.
+#
+# Colonna NULLABLE (come preventivi.valuta_id): la valuta puo' restare
+# non risolta solo in scenari degeneri; il trigger solleva E_CONFIG_MANCANTE
+# se nemmeno il fallback gestore risolve.
+#
+# Indice FK: NON creato manualmente. dbops.fn_populate_fk_index_policy()
+# registra la nuova FK con consentito=false (come fk_preventivi_valuta),
+# coerente con la policy centralizzata (linee-guida-sql §9).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260529-01-alter-offerte-commerciali-add-valuta-mctit.yaml
+
+  - changeSet:
+      id: 20260529-01-alter-offerte-commerciali-add-valuta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ADD COLUMN valuta_id INTEGER NULL con FK a config.valute(id).
+        Colonna nullable (simmetria con preventivi.valuta_id). Seed a
+        INSERT-time via trgfn_offerte_commerciali_default_valuta
+        (20_code/20260529-03). Indice FK gestito da policy centralizzata.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: offerte_commerciali
+        - tableExists:
+            schemaName: config
+            tableName: valute
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+                columnName: valuta_id
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- ADD COLUMN vendite.offerte_commerciali.valuta_id
+              --
+              -- Valuta del documento. Snapshot fissato a INSERT-time dal
+              -- trigger trgfn_offerte_commerciali_default_valuta tramite
+              -- la catena vendite.fn_get_valuta_id (BA -> emittente -> gestore).
+              -- Modello simmetrico a vendite.preventivi.valuta_id.
+              -- ==========================================================
+              ALTER TABLE vendite.offerte_commerciali
+                  ADD COLUMN valuta_id INTEGER NULL
+                  CONSTRAINT fk_offerte_commerciali_valuta
+                      REFERENCES config.valute(id)
+                      ON DELETE NO ACTION
+                      ON UPDATE CASCADE;
+
+              COMMENT ON COLUMN vendite.offerte_commerciali.valuta_id
+              IS 'Valuta del documento (FK config.valute). Snapshot fissato a '
+                 'INSERT-time dal trigger trgfn_offerte_commerciali_default_valuta '
+                 'via vendite.fn_get_valuta_id (catena BA -> emittente -> gestore). '
+                 'Skip se valorizzata esplicitamente nel payload. Nullable per '
+                 'simmetria con preventivi.valuta_id.';

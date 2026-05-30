@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Backfill valuta_id su documenti storici:
+#   - vendite.offerte_commerciali (colonna nuova, tutte le righe NULL)
+#   - vendite.contratti           (colonna nuova, tutte le righe NULL)
+#   - vendite.preventivi          (eventuali righe storiche con valuta_id NULL)
+#
+# Catena di risoluzione: riusa il resolver canonico vendite.fn_get_valuta_id
+# (BA -> emittente -> gestore), coerente con i nuovi trigger di seed e con i
+# trigger attivita_fatturabili. L'emittente del documento (emittente_fiscale_id,
+# PK) e' mappato a soggetto_ruolo_id, identificatore atteso dalla fn.
+#
+# Idempotente: UPDATE solo righe con valuta_id IS NULL.
+#
+# Nota: fn_get_valuta_id solleva E_CONFIG_MANCANTE se nemmeno il fallback
+# gestore risolve. In tal caso il backfill si arresta segnalando una reale
+# lacuna di configurazione (gestore senza valuta) da correggere a monte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260529-06-backfill-valuta-documenti-mctit.yaml
+
+  - changeSet:
+      id: 20260529-06-backfill-valuta-documenti
+      author: mctit
+      runOnChange: false
+      # validCheckSums ANY: il changeSet e' stato applicato in dev e
+      # successivamente ripulito (rimozione di un blocco report DO/RAISE
+      # ridondante, sostituito dalla gestione errori tipata di
+      # fn_get_valuta_id). Il contenuto SQL effettivo del backfill e'
+      # invariato e idempotente (WHERE valuta_id IS NULL): ANY consente di
+      # accettare il nuovo checksum senza ri-esecuzione ne' validation error.
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Backfill valuta_id su offerte_commerciali, contratti e preventivi
+        storici via vendite.fn_get_valuta_id (BA -> emittente -> gestore).
+        Idempotente (solo righe valuta_id IS NULL).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+                columnName: valuta_id
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: valuta_id
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- offerte_commerciali: emittente_fiscale_id NOT NULL.
+              -- ==========================================================
+              UPDATE vendite.offerte_commerciali o
+                 SET valuta_id = vendite.fn_get_valuta_id(
+                       o.billing_account_id,
+                       (SELECT ef.soggetto_ruolo_id
+                          FROM anagrafiche.emittenti_fiscali ef
+                         WHERE ef.id = o.emittente_fiscale_id)
+                     )
+               WHERE o.valuta_id IS NULL;
+
+              -- ==========================================================
+              -- contratti: emittente_fiscale_id NOT NULL.
+              -- ==========================================================
+              UPDATE vendite.contratti c
+                 SET valuta_id = vendite.fn_get_valuta_id(
+                       c.billing_account_id,
+                       (SELECT ef.soggetto_ruolo_id
+                          FROM anagrafiche.emittenti_fiscali ef
+                         WHERE ef.id = c.emittente_fiscale_id)
+                     )
+               WHERE c.valuta_id IS NULL;
+
+              -- ==========================================================
+              -- preventivi: billing_account_id NULLABLE (la fn salta il
+              -- livello BA), emittente_fiscale_id NOT NULL.
+              -- ==========================================================
+              UPDATE vendite.preventivi p
+                 SET valuta_id = vendite.fn_get_valuta_id(
+                       p.billing_account_id,
+                       (SELECT ef.soggetto_ruolo_id
+                          FROM anagrafiche.emittenti_fiscali ef
+                         WHERE ef.id = p.emittente_fiscale_id)
+                     )
+               WHERE p.valuta_id IS NULL;
+
+              -- ==========================================================
+              -- Nessun report/RAISE manuale: la gestione errori e' delegata
+              -- a vendite.fn_get_valuta_id, che in caso di valuta non risolta
+              -- (BA/emittente/gestore tutti NULL) solleva E_CONFIG_MANCANTE
+              -- (id 205, registrato in config.messaggi_errore) tramite
+              -- script.fn_log_and_raise_error, abortendo il changeSet.
+              -- Di conseguenza dopo gli UPDATE non possono esistere residui
+              -- valuta_id NULL: ogni fallimento emerge come errore tipato.
+              -- ==========================================================

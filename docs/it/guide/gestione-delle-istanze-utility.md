@@ -6,7 +6,7 @@
 >
 > Vedi anche
 >
-> * [Glossario termini utility](/guide/glossario/glossario-utility) — definizioni di PDP, istanza, billing account, ecc.
+> * [Glossario termini utility](/glossario/glossario-utility) — definizioni di PDP, istanza, billing account, ecc.
 > * [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici)
 > * [Guida Generazione di un Cliente](/guide/generazione-cliente)
 > * [Regole strutturali istanze (Modello 2025)](/dbzero/anagrafiche/tabelle/istanze_utilities)

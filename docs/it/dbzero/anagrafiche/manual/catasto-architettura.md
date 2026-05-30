@@ -3,7 +3,7 @@
 > Vedi anche
 >
 [Guida – Generazione di un Cliente](/guide/generazione-cliente)
-> [Glossario termini utility](/guide/glossario/glossario-utility)
+> [Glossario termini utility](/glossario/glossario-utility)
 >
 Tabelle:
 >
