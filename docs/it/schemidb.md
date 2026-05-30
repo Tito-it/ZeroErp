@@ -88,6 +88,36 @@
       </td>
     </tr>
     <tr>
+      <td><strong><a href="/it/dbzero/pratiche/">pratiche</a></strong></td>
+      <td>
+        Motore di workflow operativo: pratiche, flussi, giornale di bordo, stati e sospensioni.
+        <ul>
+          <li>Esempi: <code>pratiche</code>, <code>flussi</code>, <code>giornale</code>, <code>allegati_pratiche</code></li>
+          <li>Ogni evento significativo (nuovo cliente, ordine, assistenza) genera una pratica tracciata</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong><a href="/it/dbzero/documenti/">documenti</a></strong></td>
+      <td>
+        Motore documentale parametrico: modelli, asset, documenti generati e file persistenti (render PDF).
+        <ul>
+          <li>Esempi: <code>template_documenti</code>, <code>template_asset</code>, <code>documenti_generati</code></li>
+          <li>Genera i documenti ufficiali (es. preventivo, offerta) da template versionati</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong><a href="/it/dbzero/ui/">ui</a></strong></td>
+      <td>
+        Metadati di presentazione: liste configurabili, colonne, preset per profilo/emittente.
+        <ul>
+          <li>Esempi: <code>lista_definizione</code>, <code>lista_colonna</code>, <code>lista_preset</code>, <code>lista_preferenza_utente</code></li>
+          <li>Personalizzazione delle liste senza logica di business</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
       <td><strong><a href="/it/dbzero/script/">script</a></strong></td>
       <td>
         Logica applicativa (viste e funzioni) legate ai processi ERP.
@@ -155,11 +185,14 @@
 - [config](/it/dbzero/config/)  
 - [contabilita](/it/dbzero/contabilita/)
 - [dbops](/it/dbzero/dbops/)  
+- [documenti](/it/dbzero/documenti/)
 - [magazzino](/it/dbzero/magazzino/)
 - [maintenance](/it/dbzero/maintenance/)   
 - [pagamenti](/it/dbzero/pagamenti/)   
+- [pratiche](/it/dbzero/pratiche/)
 - [script](/it/dbzero/script/)  
 - [storico](/it/dbzero/storico/) 
+- [ui](/it/dbzero/ui/)
 - [vendite](/it/dbzero/vendite/) 
 
 >

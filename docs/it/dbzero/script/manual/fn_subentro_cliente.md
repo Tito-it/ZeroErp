@@ -6,7 +6,7 @@
 >
 [Guida – Generazione di un Cliente](/guide/generazione-cliente)
 > [Guida – Gestione delle Istanze Utility](/guide/gestione-delle-istanze-utility)
-> [Glossario termini utility](/guide/glossario/glossario-utility)
+> [Glossario termini utility](/glossario/glossario-utility)
 >
 **Tabelle e funzioni collegate:**
 >

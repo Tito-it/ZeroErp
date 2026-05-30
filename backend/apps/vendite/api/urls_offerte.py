@@ -23,6 +23,7 @@ from apps.vendite.api.offerte_documenti_views import (
     ApiOffertaDocumentoFileDownload,
     ApiOffertaEmetti,
 )
+from apps.vendite.api.views_form_defaults import ApiOffertaFormDefaults
 from apps.vendite.api.views_offerte import (
     ApiOffertaAnnulla,
     ApiOffertaCreaRevisione,
@@ -41,6 +42,13 @@ from apps.vendite.api.views_offerte import (
 )
 
 urlpatterns = [
+    # Form-defaults BA-aware: valuta_id + categoria_cliente + utility
+    # contestuali al BA selezionato. Simmetrico a preventivi/contratti.
+    path(
+        "form-defaults/",
+        ApiOffertaFormDefaults.as_view(),
+        name="vendite-offerta-form-defaults",
+    ),
     # Lista + creazione testata.
     path("", ApiOfferteList.as_view(), name="vendite-offerte-list"),
     path(

@@ -82,10 +82,12 @@ async function handleLogout() {
 //        SUPPORTED_LOCALES; persistita in localStorage da setAppLanguage.
 //        Le prossime chiamate axios invieranno Accept-Language aggiornato
 //        (interceptor in core/api.js) che popola la GUC `myapp.user_language`.
-function toggleLanguage() {
+async function toggleLanguage() {
   const idx = SUPPORTED_LOCALES.indexOf(locale.value)
   const next = SUPPORTED_LOCALES[(idx + 1) % SUPPORTED_LOCALES.length]
-  setAppLanguage(next)
+  // setAppLanguage e' async: carica il chunk della locale prima di
+  // attivarla (la prima volta che si passa a EN scarica en.json).
+  await setAppLanguage(next)
 }
 
 const languageLabel = computed(() => locale.value.toUpperCase())

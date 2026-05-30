@@ -100,6 +100,9 @@ _SELECT_COLS_CONTRATTO = """
     c.categoria_cliente_id_snapshot,
     cc_snap.codice AS categoria_cliente_snapshot_codice,
     cc_snap.descrizione AS categoria_cliente_snapshot_descrizione,
+    c.valuta_id,
+    v_val.codice AS valuta_codice,
+    v_val.descrizione AS valuta_descrizione,
     c.meta,
     c.data_insert,
     c.user_insert,
@@ -117,6 +120,7 @@ _FROM_JOINS_CONTRATTO = """
     LEFT JOIN vendite.listini l ON l.id = c.listino_id
     LEFT JOIN vendite.listini_versioni lv ON lv.id = c.listino_versione_id
     LEFT JOIN anagrafiche.categorie_clienti cc_snap ON cc_snap.id = c.categoria_cliente_id_snapshot
+    LEFT JOIN config.valute v_val ON v_val.id = c.valuta_id
     -- Decode emittente fiscale (codice + ragione sociale) per la
     -- denormalizzazione richiesta da `EmittenteFiscaleField` in edit
     -- mode. Pattern allineato a preventivi/offerte. LEFT JOIN per safety,
@@ -631,6 +635,12 @@ class ContrattiRepository(ComponentiRepositoryMixin):
             "tipo_variazione_globale",
             "valore_variazione_globale",
             "categoria_cliente_id_snapshot",
+            # Snapshot valuta fissato al CREATE, opzionale: se non passato,
+            # il trigger DB `_a*_set_valuta_default_ins` risolve via
+            # `vendite.fn_get_valuta_id` (catena BA → emittente → gestore,
+            # brief work-done 2026-05-29). NON in update_contratto whitelist:
+            # snapshot immutabile post-CREATE (simmetrico a preventivi).
+            "valuta_id",
             "meta",
         )
         cols: list[str] = []

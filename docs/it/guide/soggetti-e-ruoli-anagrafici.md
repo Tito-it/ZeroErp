@@ -8,7 +8,7 @@
 >
 > Vedi anche
 >
-> * [Glossario termini utility](/guide/glossario/glossario-utility)
+> * [Glossario termini utility](/glossario/glossario-utility)
 > * [Guida Generazione di un Cliente](/guide/generazione-cliente)
 > * [Guida Gestione Istanze Utility](/guide/gestione-delle-istanze-utility)
 > * [Guida Gestione dei Contatti](/guide/gestione-dei-contatti)

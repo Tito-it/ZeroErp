@@ -836,7 +836,7 @@ const drawerActions = computed(() => {
         <DrawerEntityHeader>
           <Tag :value="`${detail.numero} rev.${detail.rev}`" severity="secondary" />
           <Tag v-if="isSuperseded" :value="t('preventivi.tag_superseded')" severity="warn" icon="pi pi-history" />
-          <span v-if="detail.data" class="app-drawer-header-muted">
+          <span v-if="detail.data" class="app-drawer-header-muted font-bold">
             {{ displayDate(detail.data) }}
           </span>
           <template v-if="contestoPricing && contestoPricing.fonte === 'CONTRATTO'">

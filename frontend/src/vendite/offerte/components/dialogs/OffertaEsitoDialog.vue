@@ -91,6 +91,7 @@ function onConfirm() {
     :save-disabled="props.loading || !canConfirm"
     :save-label="labelConferma"
     :save-severity="saveSeverity"
+    :readonly="false"
     @update:visible="(val) => emit('update:visible', val)"
     @save="onConfirm"
   >

@@ -61,6 +61,46 @@ Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-
 
 ## Input
 
+### Form-defaults `GET /api/v1/vendite/contratti/form-defaults/`
+
+Endpoint sola lettura per pre-popolare il form CREATE contratto. Riusato
+dal drawer FE all'apertura e al cambio `billing_account_id`. Simmetrico
+a `vendite-offerta-form-defaults` e `vendite-preventivi-form-defaults`.
+
+| Parametro             | Tipo  | Descrizione                                                                                |
+| --------------------- | ----- | ------------------------------------------------------------------------------------------ |
+| `billing_account_id`  | int   | Opzionale. Se presente, popola i campi BA-derived (categoria_cliente, utility, valuta).    |
+
+Risposta `200`:
+
+```json
+{
+  "data": {
+    "billing_account_id": 10,
+    "default_valido_dal": "2026-01-15",
+    "default_data": "2026-01-15",
+    "categoria_cliente_id_snapshot": 7,
+    "categoria_cliente_codice": "STANDARD",
+    "categoria_cliente_descrizione": "Standard",
+    "utility_id": 3,
+    "istanza_utility_id": 20,
+    "utility_codice": "GAS",
+    "utility_descrizione": "Gas",
+    "valuta_id": 1,
+    "valuta_codice": "EUR",
+    "valuta_descrizione": "Euro"
+  }
+}
+```
+
+Risoluzione `valuta_id` (BB `resolve_valuta_default`, allineato a
+`vendite.fn_get_valuta_id`): vedi
+[api_vendite_form_defaults.md](api_vendite_form_defaults.md) per la
+catena 5-livelli (BA → EF-BA → EF-utente → gestore → null).
+`default_valido_dal` / `default_data` calcolati con lead_gg da parameter.
+
+Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
+
 ### Lista contratti `GET /api/v1/vendite/contratti/`
 
 | Parametro | Tipo | Descrizione |
@@ -90,6 +130,7 @@ Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-
   "valido_al": "2026-12-31",
   "data": "2026-01-01",
   "listino_id": 100,
+  "valuta_id": 1,
   "tipo_variazione_globale": "PERCENTUALE",
   "valore_variazione_globale": "10",
   "meta": {"note": "Cliente Gold"},
@@ -103,6 +144,11 @@ Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-
 
 Note (refactor 2026-05-15):
 
+- `valuta_id` opzionale (2026-05-29). Snapshot fissato al CREATE,
+  immutabile in PATCH (non in `_UPDATE_KEYS_TESTATA`). Se omesso, il
+  trigger DB `_a*_set_valuta_default_ins` lo risolve via
+  `vendite.fn_get_valuta_id` (catena BA → emittente → gestore). Il FE può
+  pre-popolare via `GET /api/v1/vendite/contratti/form-defaults/?billing_account_id=...`.
 - `numero` e `stato_doc_contratto_id` **NON vanno mai inviati** in
   payload (rifiutati con `E_VENDITE_VALIDATION`).
 - `utility` (sub-payload opzionale): se presente, crea la riga utility 1:1
@@ -712,6 +758,7 @@ Il dettaglio (`GET /<id>/`) include:
     "categoria_cliente_id_snapshot": 3,
     "categoria_cliente_snapshot_codice": "GOLD",
     "categoria_cliente_snapshot_descrizione": "Cliente gold",
+    "valuta_id": 1, "valuta_codice": "EUR", "valuta_descrizione": "Euro",
     "valido_dal": "2026-01-01", "valido_al": "2026-12-31",
     "utility": {"id": 5, "tipo_utenza_codice": "DOM", ...},
     "righe": [{"id": 99, "articolo_codice": "ART-001", "is_composito": false, "prezzo_unitario": "25.50"}, ...]

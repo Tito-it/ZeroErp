@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge vendite.contratti.valuta_id INTEGER NULL
+# con FK a config.valute(id).
+#
+# Motivazione: simmetria con vendite.preventivi (che ha gia' valuta_id).
+# La valuta diventa source-of-truth sulla testata del contratto e
+# resta immutabile dopo il CREATE (snapshot), come su preventivi.
+# Valorizzata a INSERT-time dal trigger trgfn_contratti_default_valuta
+# (20_code/20260529-04) se non passata esplicitamente nel payload.
+#
+# Colonna NULLABLE (come preventivi.valuta_id). Il trigger solleva
+# E_CONFIG_MANCANTE se nemmeno il fallback gestore risolve.
+#
+# Indice FK: NON creato manualmente. dbops.fn_populate_fk_index_policy()
+# registra la nuova FK con consentito=false (come fk_preventivi_valuta),
+# coerente con la policy centralizzata (linee-guida-sql §9).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260529-02-alter-contratti-add-valuta-mctit.yaml
+
+  - changeSet:
+      id: 20260529-02-alter-contratti-add-valuta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ADD COLUMN valuta_id INTEGER NULL con FK a config.valute(id).
+        Colonna nullable (simmetria con preventivi.valuta_id). Seed a
+        INSERT-time via trgfn_contratti_default_valuta
+        (20_code/20260529-04). Indice FK gestito da policy centralizzata.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: contratti
+        - tableExists:
+            schemaName: config
+            tableName: valute
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: valuta_id
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- ADD COLUMN vendite.contratti.valuta_id
+              --
+              -- Valuta del contratto. Snapshot fissato a INSERT-time dal
+              -- trigger trgfn_contratti_default_valuta tramite la catena
+              -- vendite.fn_get_valuta_id (BA -> emittente -> gestore).
+              -- Modello simmetrico a vendite.preventivi.valuta_id.
+              -- ==========================================================
+              ALTER TABLE vendite.contratti
+                  ADD COLUMN valuta_id INTEGER NULL
+                  CONSTRAINT fk_contratti_valuta
+                      REFERENCES config.valute(id)
+                      ON DELETE NO ACTION
+                      ON UPDATE CASCADE;
+
+              COMMENT ON COLUMN vendite.contratti.valuta_id
+              IS 'Valuta del contratto (FK config.valute). Snapshot fissato a '
+                 'INSERT-time dal trigger trgfn_contratti_default_valuta '
+                 'via vendite.fn_get_valuta_id (catena BA -> emittente -> gestore). '
+                 'Skip se valorizzata esplicitamente nel payload (es. push da offerta). '
+                 'Nullable per simmetria con preventivi.valuta_id.';

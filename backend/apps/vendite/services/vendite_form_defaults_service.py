@@ -115,6 +115,30 @@ def _require_positive_int(value: Any, *, field: str, function_name: str) -> int:
 #        il FE li usa anche all'apertura senza BA. Quando billing_account_id
 #        e' presente, aggiunge i campi BA-derived (categoria_cliente_id_snapshot,
 #        utility_id, istanza_utility_id).
+
+
+# Scopo: Estrae i campi BA-derived comuni a contratti/offerte
+#        (categoria_cliente_*, utility_*, istanza_utility_*) dal lookup BA
+#        e li applica al payload. Helper privato: contratti e offerte
+#        condividono lo stesso pattern testata+eccezioni senza
+#        termini/iva/modalita_pagamento (quelli sono solo nelle eccezioni).
+#        Mantiene `ba_id` esplicito perché il caller può aver già fatto
+#        `_require_positive_int`.
+def _apply_ba_categoria_utility(
+    payload: dict[str, Any], ba: dict[str, Any], ba_id: int,
+) -> None:
+    payload.update({
+        "billing_account_id": ba_id,
+        "categoria_cliente_id_snapshot": ba.get("categoria_cliente_id"),
+        "categoria_cliente_codice": ba.get("categoria_cliente_codice"),
+        "categoria_cliente_descrizione": ba.get("categoria_cliente_descrizione"),
+        "utility_id": ba.get("utility_id"),
+        "istanza_utility_id": ba.get("istanza_utility_id"),
+        "utility_codice": ba.get("utility_codice"),
+        "utility_descrizione": ba.get("utility_descrizione"),
+    })
+
+
 def fn_get_contratto_form_defaults(
     *,
     billing_account_id: int | None,
@@ -142,32 +166,95 @@ def fn_get_contratto_form_defaults(
         "istanza_utility_id": None,
         "utility_codice": None,
         "utility_descrizione": None,
+        # Valuta risolta via BB `resolve_valuta_default` (catena
+        # BA → EF del BA → EF utente → gestore, allineata a
+        # `vendite.fn_get_valuta_id` 2026-05-29).
+        "valuta_id": None,
+        "valuta_codice": None,
+        "valuta_descrizione": None,
     }
-    if billing_account_id is None:
-        return payload
 
-    ba_id = _require_positive_int(
-        billing_account_id, field="billing_account_id", function_name=function_name,
+    ba: dict[str, Any] | None = None
+    ba_id: int | None = None
+    if billing_account_id is not None:
+        ba_id = _require_positive_int(
+            billing_account_id, field="billing_account_id", function_name=function_name,
+        )
+        ba = BillingAccountRepository().get_lookup_by_id(ba_id)
+        ErrorManager.require(
+            ba is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Billing account non trovato.",
+            detail=f"billing_account_id={ba_id}",
+            function_name=function_name,
+        )
+        assert ba is not None
+        _apply_ba_categoria_utility(payload, ba, ba_id)
+
+    valuta = resolve_valuta_default(
+        billing_account_id=ba_id,
+        ba_obj=ba,
+        auth_user_id=auth_user_id,
     )
-    ba = BillingAccountRepository().get_lookup_by_id(ba_id)
-    ErrorManager.require(
-        ba is not None,
-        code=E_VENDITE_NOT_FOUND,
-        message="Billing account non trovato.",
-        detail=f"billing_account_id={ba_id}",
-        function_name=function_name,
+    if valuta:
+        payload.update(valuta)
+    return payload
+
+
+# ══════════════════════════════════════════════════════════
+#  Offerte form-defaults
+# ══════════════════════════════════════════════════════════
+
+
+# Scopo: Defaults per il form offerta commerciale contestuali al BA.
+#        Stesso pattern di `fn_get_contratto_form_defaults` (offerte e
+#        contratti condividono il modello "testata + eccezioni" senza
+#        termini/iva sul testata): valuta via BB centralizzato + campi
+#        BA-derived (utility, categoria_cliente).
+def fn_get_offerta_form_defaults(
+    *,
+    billing_account_id: int | None,
+    auth_user_id: int | None = None,
+) -> dict[str, Any]:
+    function_name = f"{_FN}.fn_get_offerta_form_defaults"
+    payload: dict[str, Any] = {
+        "billing_account_id": None,
+        "categoria_cliente_id_snapshot": None,
+        "categoria_cliente_codice": None,
+        "categoria_cliente_descrizione": None,
+        "utility_id": None,
+        "istanza_utility_id": None,
+        "utility_codice": None,
+        "utility_descrizione": None,
+        "valuta_id": None,
+        "valuta_codice": None,
+        "valuta_descrizione": None,
+    }
+
+    ba: dict[str, Any] | None = None
+    ba_id: int | None = None
+    if billing_account_id is not None:
+        ba_id = _require_positive_int(
+            billing_account_id, field="billing_account_id", function_name=function_name,
+        )
+        ba = BillingAccountRepository().get_lookup_by_id(ba_id)
+        ErrorManager.require(
+            ba is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Billing account non trovato.",
+            detail=f"billing_account_id={ba_id}",
+            function_name=function_name,
+        )
+        assert ba is not None
+        _apply_ba_categoria_utility(payload, ba, ba_id)
+
+    valuta = resolve_valuta_default(
+        billing_account_id=ba_id,
+        ba_obj=ba,
+        auth_user_id=auth_user_id,
     )
-    assert ba is not None
-    payload.update({
-        "billing_account_id": ba_id,
-        "categoria_cliente_id_snapshot": ba.get("categoria_cliente_id"),
-        "categoria_cliente_codice": ba.get("categoria_cliente_codice"),
-        "categoria_cliente_descrizione": ba.get("categoria_cliente_descrizione"),
-        "utility_id": ba.get("utility_id"),
-        "istanza_utility_id": ba.get("istanza_utility_id"),
-        "utility_codice": ba.get("utility_codice"),
-        "utility_descrizione": ba.get("utility_descrizione"),
-    })
+    if valuta:
+        payload.update(valuta)
     return payload
 
 

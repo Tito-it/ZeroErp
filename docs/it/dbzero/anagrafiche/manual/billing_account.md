@@ -5,7 +5,7 @@
 Guide generali:
 >
 [Generazione di un cliente](/guide/generazione-cliente)
-> [Glossario termini utility](/guide/glossario/glossario-utility)
+> [Glossario termini utility](/glossario/glossario-utility)
 >
 Approfondimento tabelle:
 >

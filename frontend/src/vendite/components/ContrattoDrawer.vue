@@ -51,6 +51,7 @@ import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
+import { getContrattoFormDefaults } from '../api/formDefaults'
 import Drawer from 'primevue/drawer'
 import AppDialog from '../../core/components/AppDialog.vue'
 import InputText from 'primevue/inputtext'
@@ -191,6 +192,10 @@ function defaultForm() {
     listino_id: null,
     tipo_variazione_globale: null,
     valore_variazione_globale: null,
+    // Valuta snapshot: pre-popolata da getContrattoFormDefaults (cascata
+    // BA→EF-BA→EF-utente→gestore via BB resolve_valuta_default).
+    // Immutabile in EDIT.
+    valuta_id: null,
     // Utility 1:1 (create inline)
     utility_tipo_utenza_id: null,
     utility_classe_utenza_id: null,
@@ -225,6 +230,7 @@ function populateFromDetail(d) {
     listino_id: d.listino_id,
     tipo_variazione_globale: d.tipo_variazione_globale,
     valore_variazione_globale: d.valore_variazione_globale,
+    valuta_id: d.valuta_id,
     utility_tipo_utenza_id: d.utility?.tipo_utenza_id || null,
     utility_classe_utenza_id: d.utility?.classe_utenza_id || null,
   }
@@ -299,6 +305,21 @@ watch(() => props.visible, async (val) => {
     // Prefill BA se aperto da contesto cliente.
     if (props.initialBillingAccount?.id) {
       onBaSelected(props.initialBillingAccount)
+    } else {
+      // CREATE senza BA: pre-popoliamo la valuta dal BB resolve_valuta_default
+      // lato BE (catena EF utente → gestore). Mirror PreventiviDrawer /
+      // OffertaDrawer. Se BA viene selezionato dopo, il watch su
+      // billing_account_id sovrascrive col valore BA-resolved.
+      try {
+        const res = await getContrattoFormDefaults(null)
+        if (v !== fgVersion) return
+        const data = res?.data?.data
+        if (data && form.value.valuta_id == null && data.valuta_id != null) {
+          form.value.valuta_id = data.valuta_id
+        }
+      } catch {
+        // Best-effort: trigger DB risolverà la valuta al save.
+      }
     }
   }
 })
@@ -332,6 +353,27 @@ function onBaSelected(item) {
   // Pre-compila la categoria dal BA; l'operatore puo' cambiarla.
   form.value.categoria_cliente_id_snapshot = item.categoria_cliente_id || null
 }
+
+// Auto-fill valuta dal form-defaults BE (BB resolve_valuta_default).
+// In CREATE: al cambio BA il BE risolve la catena BA→EF→gestore e ritorna
+// valuta_id. Sovrascriviamo SEMPRE col valore BA-resolved (regola di
+// coerenza dominio "valuta del BA wins se specificata"). Skippiamo in
+// EDIT: la valuta è snapshot immutabile post-CREATE.
+// Pattern mirror di PreventiviDrawer.onBaSelected.
+watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
+  if (isEdit.value) return
+  if (newBaId === oldBaId) return
+  try {
+    const res = await getContrattoFormDefaults(newBaId)
+    const data = res?.data?.data
+    if (data && data.valuta_id != null) {
+      form.value.valuta_id = data.valuta_id
+    }
+  } catch {
+    // Best-effort: errore form-defaults non blocca il flusso CREATE.
+    // Il trigger DB risolverà la valuta al save.
+  }
+})
 
 // Validazione FE (refactor modalita 2026-05-15: niente piu' check su modalita).
 // Vincolo strutturale unico sulla coppia variazione globale: tipo e valore
@@ -419,6 +461,10 @@ async function handleSave() {
       billing_account_id: f.billing_account_id,
       istanza_utility_id: f.istanza_utility_id,
       utility_id: f.utility_id,
+      // Valuta inviata SOLO in CREATE: snapshot immutabile post-INSERT
+      // (non in _UPDATE_KEYS_TESTATA BE). Se null, il trigger DB la
+      // risolve via fn_get_valuta_id (BA→emittente→gestore).
+      valuta_id: f.valuta_id || null,
       ...buildPayload(),
     }
     // Utility 1:1 inline: tipo/classe utenza (opzionali)
@@ -872,6 +918,19 @@ const onClose = useDrawerClose(emit, 'cancelled')
             :disabled="isEdit && isLocked('valore_variazione_globale')"
             :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''" />
           <small class="text-color-secondary">{{ t('contratti.hint_valore_variazione') }}</small>
+        </div>
+      </div>
+
+      <!-- Valuta: snapshot fissato al CREATE, immutabile in EDIT
+           (allineato a preventivi/offerte). Pre-popolata da
+           ApiContrattoFormDefaults via cascata BB resolve_valuta_default. -->
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('contratti.field_valuta') }}</label>
+          <LookupSelect v-model="form.valuta_id" rel="config.valute" class="w-full"
+            :placeholder="t('contratti.field_valuta')"
+            :disabled="isEdit"
+            show-clear />
         </div>
       </div>
 

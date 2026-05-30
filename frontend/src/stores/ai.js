@@ -16,6 +16,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import router from '../router'
 import { queryAI } from '../core/api/ai-api'
 import { useApiHandler } from '../core/composables/useApiHandler'
 
@@ -109,12 +110,8 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   // Scopo: esegue un'azione di navigazione suggerita dall'AI.
-  // Il router viene risolto qui via dynamic import per evitare
-  // dipendenze circolari e perche' le action pinia non hanno setup()
-  // context come i composable.
-  async function executeAction(action) {
+  function executeAction(action) {
     if (action.type === 'navigate' && action.route) {
-      const { default: router } = await import('../router')
       router.push(action.route)
     }
   }

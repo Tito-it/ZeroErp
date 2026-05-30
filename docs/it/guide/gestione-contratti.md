@@ -530,40 +530,35 @@ sono gli stessi in tutti i domini. Vedi [modello componenti BoM](/dev/manual/mod
 
 ---
 
-## Nota — Il collegamento mancante: offerta commerciale → contratto
+## Nota — Il collegamento offerta commerciale → contratto
 
-Il ciclo di vita attuale del contratto ha un **inizio non tracciato**: il contratto
-nasce direttamente dall'operatore in DRAFT, senza un documento precedente che
-formalizzi la proposta di condizioni al cliente.
+Storicamente il ciclo di vita del contratto aveva un **inizio non tracciato**: il
+contratto nasceva direttamente dall'operatore in DRAFT, senza un documento precedente
+che formalizzasse la proposta di condizioni al cliente. Quel collegamento mancante è
+ora **implementato**: è l'**offerta commerciale** — una proposta di condizioni quadro
+(listino + variazione + eccezioni proposte) distinta dal preventivo (che è invece una
+proposta di transazione puntuale).
 
-Questa asimmetria è intenzionale e consapevole: il refactor contratti corrente
-ha preparato il modello per riceverla in futuro senza richiedere modifiche strutturali.
-Il collegamento mancante è l'**offerta commerciale** — una proposta di condizioni
-quadro (listino + variazione + eccezioni proposte) distinta dal preventivo (che è
-invece una proposta di transazione puntuale).
+➡️ Vedi la guida dedicata: [Gestione Offerte commerciali](/guide/gestione-offerte-commerciali).
 
 Il parallelo nel modello:
 
 | Proposta | Accettazione genera | Tipo di fornitura |
 |---|---|---|
 | **Preventivo** (`PRV-*`) | Commessa → fattura | Transazione puntuale |
-| **Offerta commerciale** (`OFC-*`, non ancora esistente) | Contratto in DRAFT → attivazione | Relazione ricorrente duratura |
+| **Offerta commerciale** (`OFC-*`) | Contratto in DRAFT → attivazione | Relazione ricorrente duratura |
 
-Perché i due documenti esisterebbero separati e non si userebbe il preventivo
-come proposta di contratto? Il preventivo è una fotografia riga-per-riga a un
-dato istante (snapshot materializzato, articoli + quantità + prezzi specifici).
-L'offerta commerciale è una proposta di **condizioni quadro** (listino + variazione +
-delta), e il suo "snapshot" è la versione del listino — la stessa struttura già
-implementata per il contratto in §3-bis-A. La simmetria del modello implica che
-i due artefatti abbiano snapshot strutturalmente diversi, e usare il preventivo
-come offerta commerciale sarebbe una forzatura semantica.
+Perché i due documenti esistono separati e non si usa il preventivo come proposta di
+contratto? Il preventivo è una fotografia riga-per-riga a un dato istante (snapshot
+materializzato, articoli + quantità + prezzi specifici). L'offerta commerciale è una
+proposta di **condizioni quadro** (listino + variazione + delta), e il suo "snapshot"
+è la versione del listino — la stessa struttura del contratto. La simmetria del modello
+implica che i due artefatti abbiano snapshot strutturalmente diversi, e usare il
+preventivo come offerta commerciale sarebbe una forzatura semantica.
 
-L'analisi di dettaglio (tre opzioni, decisioni da prendere, modello dati proposto)
-è stata raccolta in un'analisi preliminare interna.
-La decisione di procedere con l'opzione (c) — entità separata `offerte_commerciali`
-con flusso `push_a_contratto` — è raccomandata nel documento ma non ancora presa
-operativamente. Non è bloccante per il refactor contratti corrente né per il backend
-che segue.
+L'offerta è stata realizzata come **entità separata** `offerte_commerciali` con flusso
+`fn_push_offerta_a_contratto` (legame 1:1, idempotente): l'offerta accettata genera un
+contratto DRAFT che ne eredita 1:1 le condizioni. Il dettaglio è nella guida sopra.
 
 *Per il dettaglio tecnico delle API REST, formati payload e codici errore vedi
 [API Contratti](/backend/vendite/manual/api_contratti). Le decisioni di modello

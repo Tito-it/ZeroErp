@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Trigger BEFORE INSERT su vendite.offerte_commerciali che valorizza
+# valuta_id se non passato esplicitamente nel payload.
+#
+# Riusa il resolver canonico vendite.fn_get_valuta_id (catena
+# BA -> emittente -> gestore -> RAISE E_CONFIG_MANCANTE). Nessuna
+# logica di risoluzione duplicata: la fn esistente e' la single source
+# of truth (gia' usata dai trigger attivita_fatturabili).
+#
+# L'emittente del documento e' gia' presente in NEW.emittente_fiscale_id
+# (colonna NOT NULL, valorizzata dal payload), quindi il trigger non legge
+# alcuna GUC: mappa solo l'emittente PK -> soggetto_ruolo_id atteso dalla fn.
+#
+# Pattern simmetrico ai trigger _a10_default_* esistenti (default_emittente).
+# Naming _a10_default_valuta_ins: ordina dopo _a10_default_emittente_ins
+# (e < v) cosi' l'emittente e' gia' risolto quando scatta questo trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260529-03-create-trgfn-offerte-commerciali-default-valuta-mctit.yaml
+
+  - changeSet:
+      id: 20260529-03-create-trgfn-offerte-commerciali-default-valuta
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        BEFORE INSERT trigger su vendite.offerte_commerciali che setta
+        valuta_id via vendite.fn_get_valuta_id se NEW.valuta_id IS NULL.
+        Skip se valorizzato esplicitamente. Solleva E_CONFIG_MANCANTE
+        (dalla fn) se la catena BA->emittente->gestore non risolve.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: offerte_commerciali
+            columnName: valuta_id
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Function: vendite.trgfn_offerte_commerciali_default_valuta
+              --
+              -- Scopo: valorizzare automaticamente offerte_commerciali.valuta_id
+              --        a INSERT-time riusando il resolver canonico
+              --        vendite.fn_get_valuta_id (BA -> emittente -> gestore).
+              --
+              -- Skip se NEW.valuta_id e' gia' valorizzato (payload esplicito,
+              -- migration data, dato pre-risolto dal BE resolve_valuta_default).
+              --
+              -- L'emittente del documento e' gia' su NEW.emittente_fiscale_id
+              -- (NOT NULL). Lo mappiamo a soggetto_ruolo_id, identificatore
+              -- atteso dalla fn (che lo usa per il livello "emittente").
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_default_valuta()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_emittente_sr_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+              BEGIN
+                -- 1) Skip se gia' valorizzato esplicitamente nel payload.
+                IF NEW.valuta_id IS NOT NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 2) Mappa emittente PK -> soggetto_ruolo_id (gia' su NEW).
+                IF NEW.emittente_fiscale_id IS NOT NULL THEN
+                  SELECT ef.soggetto_ruolo_id
+                    INTO v_emittente_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = NEW.emittente_fiscale_id;
+                END IF;
+
+                -- 3) Resolver canonico: BA -> emittente -> gestore -> RAISE.
+                NEW.valuta_id := vendite.fn_get_valuta_id(
+                  NEW.billing_account_id,
+                  v_emittente_sr_id
+                );
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_default_valuta()
+              IS 'BEFORE INSERT trigger fn: setta offerte_commerciali.valuta_id '
+                 'via vendite.fn_get_valuta_id (catena BA -> emittente -> gestore). '
+                 'Skip se valorizzato esplicitamente. Solleva E_CONFIG_MANCANTE '
+                 '(dalla fn) se nulla risolve. Pattern simmetrico a '
+                 'trgfn_preventivi_default_valuta / trgfn_contratti_default_valuta.';
+
+              -- Drop-and-recreate per ridefinizioni (runOnChange:true).
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a10_default_valuta_ins
+                ON vendite.offerte_commerciali;
+
+              -- Naming _a10_default_valuta_ins: ordina dopo _a10_default_emittente_ins.
+              CREATE TRIGGER trg_offerte_commerciali_a10_default_valuta_ins
+                BEFORE INSERT ON vendite.offerte_commerciali
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_default_valuta();
+
+              COMMENT ON TRIGGER trg_offerte_commerciali_a10_default_valuta_ins
+                ON vendite.offerte_commerciali
+              IS 'Default valuta_id via fn_get_valuta_id. Fase _a10_default_*: '
+                 'ordina dopo _a10_default_emittente_ins (emittente gia'' risolto).';

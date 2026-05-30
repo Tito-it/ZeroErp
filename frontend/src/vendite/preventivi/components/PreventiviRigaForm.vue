@@ -253,6 +253,19 @@ watch(
 function onComponentiConfirm(payload) {
   // payload = { overrides, attivazioni, summary }; null se nessuna modifica.
   componentiPayload.value = payload
+  // Anteprima del prezzo padre lato client: il summary del dialog ritorna
+  // `total = SUM(prezzo_componente × quantita_componente)` con
+  // `quantita_componente = coeff_qta_snapshot × qta_padre`. Quindi
+  // `total / qtaPadre = SUM(prezzo × coeff_qta_snapshot)` = prezzo
+  // unitario padre per UNA unità — stesso valore che il trigger DB
+  // `_z90_ricalcola_padre` scriverà al save. Il campo InputNumber resta
+  // `disabled` (isPadreComposito), così l'operatore vede il valore senza
+  // poterlo editare. Al save il payload non include `prezzo_unitario`
+  // per i compositi (vedi build payload), quindi il BE resta la fonte
+  // canonica e nessun drift è possibile.
+  if (isPadreComposito.value && payload?.summary?.qtaPadre > 0) {
+    form.value.prezzo_unitario = payload.summary.total / payload.summary.qtaPadre
+  }
 }
 
 // Riapertura manuale (CREATE) — bottone "Modifica componenti" sotto il

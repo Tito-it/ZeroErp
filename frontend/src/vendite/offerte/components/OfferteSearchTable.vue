@@ -15,8 +15,11 @@ import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../../core/components/ReadonlyBadge.vue'
+import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
 import SearchHint from '../../../core/components/SearchHint.vue'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
+import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
+import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useSearchTable } from '../../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
@@ -106,6 +109,53 @@ function onMostraStoricoChange() {
 
 function onRowClick(event) {
   emit('row-click', event.data)
+}
+
+// --- Azioni di riga (PDF + Note) — pattern allineato a contratti/preventivi ---
+// `@click.stop` implicito tramite RowActionsMenu (kebab) per non triggerare
+// il row-click che apre il drawer.
+const pdfDialogVisible = ref(false)
+const pdfDialogOfferta = ref(null)
+const noteDrawerVisible = ref(false)
+const noteDrawerOfferta = ref(null)
+
+function onPdfClick(row) {
+  // Documenti PDF disponibili solo dopo l'emissione (la fn DB
+  // `genera_documento` richiede l'offerta EMESSA con versione listino
+  // fissata). In BOZZA l'azione è disabled (vedi tooltip_lista_disabilitato).
+  if (!row || row.stato_codice_interno === 'BOZZA') return
+  pdfDialogOfferta.value = row
+  pdfDialogVisible.value = true
+}
+
+function onNoteClick(row) {
+  if (!row?.id) return
+  noteDrawerOfferta.value = row
+  noteDrawerVisible.value = true
+}
+
+// Scopo: costruisce le azioni contestuali di riga per il menu kebab.
+// Modifica = click riga. Pattern simmetrico a contratti/preventivi.
+function buildRowActions(data) {
+  return [
+    {
+      key: 'documenti-pdf',
+      label: t('vendite.offerte.pdf.label_scarica'),
+      icon: MANAGE_ICONS.PDF,
+      severity: 'primary',
+      disabled: data.stato_codice_interno === 'BOZZA',
+      tooltip: data.stato_codice_interno === 'BOZZA'
+        ? t('vendite.offerte.pdf.tooltip_lista_disabilitato')
+        : t('vendite.offerte.pdf.tooltip_lista'),
+      command: () => onPdfClick(data),
+    },
+    {
+      key: 'gestisci-note',
+      label: t('vendite.offerte.gestisci_note'),
+      icon: MANAGE_ICONS.NOTE,
+      command: () => onNoteClick(data),
+    },
+  ]
 }
 
 useTabFreshness(store, TAB_ENTITIES.OFFERTA_COMMERCIALE)
@@ -287,7 +337,37 @@ onMounted(() => store.fetchList())
             />
           </template>
         </Column>
+        <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
+          <template #body="{ data }">
+            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+          </template>
+        </Column>
       </DataTable>
+
+      <!-- Dialog lista PDF per l'offerta selezionata. Riusa il building
+           block `PdfDocumentiSorgenteDialog` che incapsula
+           `DocumentiGeneratiSorgenteList` (stesso BB usato dal drawer). -->
+      <PdfDocumentiSorgenteDialog
+        v-model:visible="pdfDialogVisible"
+        sorgente-code="OFFERTA_COMMERCIALE"
+        :sorgente-id="pdfDialogOfferta?.id ?? null"
+        :title="pdfDialogOfferta
+          ? t('vendite.offerte.pdf.dialog_title', {
+              codice: pdfDialogOfferta.codice,
+            })
+          : ''"
+      />
+
+      <!-- Drawer note offerta: wrapper thin sul BB `NoteDrawer`. Da lista
+           le eccezioni non sono pre-caricate (vivono nel detail); il
+           select RIGA del NoteDrawer si popola con array vuoto, l'operatore
+           può comunque inserire note di testata. Per note di riga è
+           preferibile aprire il drawer dal detail offerta. -->
+      <OffertaNoteDrawer
+        v-if="noteDrawerOfferta?.id"
+        v-model:visible="noteDrawerVisible"
+        :offerta-id="noteDrawerOfferta.id"
+      />
     </template>
   </div>
 </template>
