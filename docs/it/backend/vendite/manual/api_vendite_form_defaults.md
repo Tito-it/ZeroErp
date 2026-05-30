@@ -22,8 +22,12 @@ Il service combina:
   soggetto_ruolo_id, utility_id)` — termine_pagamento_id, iva_id,
   modalita_pagamento_id
 - `ParameterService.get_defaults` — `VENDITE_*` lead_gg / suffix
-- fallback emittente fiscale per `valuta_id` quando il BA non ne ha una
-  (catena `anagrafiche.fn_get_emittente_fiscale_pk` -> emittenti_fiscali.valuta_id)
+- BB centralizzato `resolve_valuta_default` (`apps.anagrafiche.services.valuta_resolver`)
+  per la cascata `valuta_id`, allineato 2026-05-29 alla fn DB
+  `vendite.fn_get_valuta_id` (single source of truth cross-layer):
+  `BA.valuta_id` → EF del BA (catena `fn_get_emittente_fiscale_pk`) →
+  EF utente loggato (con fallback gestore globale) → primo
+  `anagrafiche.gestori` per id → `{}`
 - `ListiniRepository.get_listino` / `get_versione` / `list_versioni` per le
   3 view contestuali alle versioni listino
 
@@ -39,7 +43,7 @@ Defaults form contratto. `billing_account_id` opzionale.
 
 | Query param | Tipo | Note |
 | --- | --- | --- |
-| `billing_account_id` | int | Se presente, popola i campi BA-derived. |
+| `billing_account_id` | int | Se presente, popola i campi BA-derived (categoria_cliente, utility, valuta). |
 
 Risposta `200`:
 
@@ -55,19 +59,59 @@ Risposta `200`:
     "utility_id": 1,
     "istanza_utility_id": 100,
     "utility_codice": "GAS",
-    "utility_descrizione": "Gas"
+    "utility_descrizione": "Gas",
+    "valuta_id": 1,
+    "valuta_codice": "EUR",
+    "valuta_descrizione": "Euro"
   }
 }
 ```
 
-Senza `billing_account_id`: campi BA-derived = `null`, presenti solo
-`default_valido_dal` e `default_data`.
+`valuta_id` (aggiunto 2026-05-29) segue la catena del BB
+`resolve_valuta_default` (sezione preventivi sotto). Senza
+`billing_account_id`: campi BA-derived = `null`, presenti solo
+`default_valido_dal`, `default_data` e (se EF utente o gestore configurato)
+i campi valuta.
 
 Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
-Consumer FE: `ContrattoDrawer.vue` (integrazione futura — l'endpoint è
-attivo per consumi successivi; oggi `onBaSelected` usa direttamente i
-campi del lookup BA che sono allineati a questo payload).
+Consumer FE: `ContrattoDrawer.vue`.
+
+### `GET /api/v1/vendite/offerte/form-defaults/` (2026-05-29)
+
+Defaults form offerta commerciale. `billing_account_id` opzionale.
+Stesso pattern di contratti (testata + eccezioni, senza termini/iva sul
+testata).
+
+| Query param | Tipo | Note |
+| --- | --- | --- |
+| `billing_account_id` | int | Se presente, popola i campi BA-derived (categoria_cliente, utility, valuta). |
+
+Risposta `200`:
+
+```json
+{
+  "data": {
+    "billing_account_id": 100,
+    "categoria_cliente_id_snapshot": 7,
+    "categoria_cliente_codice": "STANDARD",
+    "categoria_cliente_descrizione": "Standard",
+    "utility_id": 3,
+    "istanza_utility_id": 200,
+    "utility_codice": "GAS",
+    "utility_descrizione": "Gas",
+    "valuta_id": 1,
+    "valuta_codice": "EUR",
+    "valuta_descrizione": "Euro"
+  }
+}
+```
+
+Risoluzione `valuta_id`: vedi sezione preventivi sotto (stesso BB).
+
+Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
+
+Consumer FE: `OffertaDrawer.vue` (integrazione FE pendente).
 
 ### `GET /api/v1/vendite/preventivi/form-defaults/` (Fase 2.B4)
 
@@ -104,12 +148,19 @@ Risposta `200`:
 }
 ```
 
-Risoluzione `valuta_id`:
+Risoluzione `valuta_id` (BB `resolve_valuta_default`, allineato a
+`vendite.fn_get_valuta_id` — single source of truth cross-layer
+2026-05-29):
 
 1. `billing_account.valuta_id` se valorizzato
-2. altrimenti `emittenti_fiscali.valuta_id` dell'emittente associato
+2. altrimenti `emittenti_fiscali.valuta_id` dell'EF associato al BA
    (catena `fn_get_emittente_fiscale_pk`)
-3. altrimenti `null` (operatore valorizza)
+3. altrimenti `emittenti_fiscali.valuta_id` dell'EF dell'utente loggato
+   (proxy form-defaults: il documento non esiste ancora; include fallback
+   gestore globale `is_default` via `get_emittente_fiscale_id_for_user`)
+4. altrimenti `anagrafiche.gestori.valuta_id` (primo per id) — mirror del
+   livello 3 di `fn_get_valuta_id`
+5. altrimenti `null` (operatore valorizza)
 
 Risoluzione `termine_pagamento_id` / `iva_id` / `modalita_pagamento_id`:
 dal cliente associato al BA via tripletta UNIQUE

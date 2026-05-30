@@ -8,8 +8,6 @@
 // personale. Evita che utente A (IT) imponga IT a utente B (EN) sullo
 // stesso browser.
 import { createI18n } from 'vue-i18n'
-import it from '../locales/it.json'
-import en from '../locales/en.json'
 import { local, STORAGE_KEYS, userScopedKey } from './storage'
 import { registerUserScopedResetter } from './pinia-plugins/auto-reset'
 
@@ -39,16 +37,39 @@ const i18n = createI18n({
   legacy: false,
   locale: resolveInitialLocale(),
   fallbackLocale: DEFAULT_LOCALE,
-  messages: { it, en }
+  // Le locale NON sono piu' bundlate inline: pesavano 262 KB raw / 65 KB
+  // gzip (~20% del main chunk). Vengono caricate on-demand via
+  // loadLocaleMessages() — solo la locale attiva al boot, l'altra allo
+  // switch. Vedi docs/.../brief-fe-bundle-splitting.md.
+  messages: {}
 })
+
+// Locale gia' caricate in memoria, per evitare re-import (idempotenza).
+const _loadedLocales = new Set()
+
+// Scopo: carica on-demand le traduzioni di una locale e le registra
+//        nell'istanza i18n. Il dynamic import fa si' che Vite emetta un
+//        chunk separato per ogni locale, fuori dal main bundle.
+//        Idempotente: se gia' caricata, ritorna subito.
+export async function loadLocaleMessages(locale) {
+  if (!SUPPORTED_LOCALES.includes(locale)) return false
+  if (_loadedLocales.has(locale)) return true
+  const messages = await import(`../locales/${locale}.json`)
+  i18n.global.setLocaleMessage(locale, messages.default)
+  _loadedLocales.add(locale)
+  return true
+}
 
 // Scopo: imposta la locale corrente di vue-i18n + persiste in localStorage.
 //        Va invocata da qualunque componente che cambia lingua (es. switch
 //        IT/EN in topbar); l'interceptor axios legge i18n.global.locale.value
 //        per popolare l'header Accept-Language della request successiva.
 //        Persiste in chiave user-scoped se loggato, altrimenti "device default".
-export function setAppLanguage(code) {
+export async function setAppLanguage(code) {
   if (!SUPPORTED_LOCALES.includes(code)) return false
+  // Carica le traduzioni della locale target prima di attivarla, cosi'
+  // lo switch non mostra le chiavi grezze nell'attesa del chunk.
+  await loadLocaleMessages(code)
   i18n.global.locale.value = code
   const key = userScopedKey(STORAGE_KEYS.LANGUAGE, _currentUserId)
   local.set(key, code)
@@ -70,10 +91,11 @@ export function setAppLanguage(code) {
 //        ui.js#syncUserPreferences per il razionale (chiave promiscua,
 //        leak cross-user). La chiave globale resta per la pagina di
 //        login pre-auth, non consultata nel sync utente.
-export function syncUserLanguage(userId) {
+export async function syncUserLanguage(userId) {
   _currentUserId = userId ?? null
   if (userId == null) return
   const resolved = _readStoredLocale(userId) || DEFAULT_LOCALE
+  await loadLocaleMessages(resolved)
   i18n.global.locale.value = resolved
   if (typeof document !== 'undefined') {
     document.documentElement.setAttribute('lang', resolved)

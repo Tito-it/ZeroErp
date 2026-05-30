@@ -159,6 +159,8 @@ _SELECT_COLS_OFFERTA_LIST = """
     v.listino_id,
     l.codice                          AS listino_codice,
     v.listino_versione_id,
+    oc.valuta_id,
+    v_val.codice                      AS valuta_codice,
     v.valore_variazione_globale,
     v.tipo_variazione_globale,
     v.validita_dal,
@@ -175,6 +177,11 @@ _SELECT_COLS_OFFERTA_LIST = """
 _FROM_JOINS_OFFERTA_LIST = """
     FROM vendite.vw_offerte_commerciali_list v
     LEFT JOIN vendite.listini l ON l.id = v.listino_id
+    -- JOIN by PK su tabella sottostante per recuperare `valuta_id`: la
+    -- vw_offerte_commerciali_list non lo espone direttamente. Costo
+    -- trascurabile (PK lookup); evita una nuova migration sulla vista.
+    LEFT JOIN vendite.offerte_commerciali oc ON oc.id = v.id
+    LEFT JOIN config.valute v_val ON v_val.id = oc.valuta_id
 """
 
 
@@ -206,6 +213,9 @@ _SELECT_COLS_OFFERTA = """
     l.descrizione            AS listino_descrizione,
     o.listino_versione_id,
     lv.codice_versione       AS listino_versione_codice,
+    o.valuta_id,
+    v_val.codice             AS valuta_codice,
+    v_val.descrizione        AS valuta_descrizione,
     o.tipo_variazione_globale,
     o.valore_variazione_globale,
     o.validita_dal,
@@ -239,6 +249,7 @@ _FROM_JOINS_OFFERTA = """
     JOIN config.stati_doc_offerte sd ON sd.id = o.stato_doc_offerta_id
     LEFT JOIN vendite.listini l ON l.id = o.listino_id
     LEFT JOIN vendite.listini_versioni lv ON lv.id = o.listino_versione_id
+    LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
     -- LEFT JOIN col contratto generato dal push (idempotenza Pattern A
     -- garantita da UNIQUE uq_contratti_offerta_id). 0 o 1 riga: nessun
     -- rischio di duplicazione. Il FE usa contratto_id/numero per il dialog
@@ -560,6 +571,7 @@ class OfferteRepository(ComponentiRepositoryMixin):
         "utility_id",
         "listino_id",
         "listino_versione_id",
+        "valuta_id",
         "valore_variazione_globale",
         "tipo_variazione_globale",
         "validita_dal",
@@ -572,6 +584,8 @@ class OfferteRepository(ComponentiRepositoryMixin):
 
     # Colonne aggiornabili in update (sotto-set di create senza chiavi
     # gestionali: `codice`, `stato_doc_offerta_id`, `revisione_*`).
+    # `valuta_id`: snapshot fissato al CREATE, immutabile in update (simmetrico
+    # a `vendite.preventivi`; eventuale lock applicativo a discrezione del DB).
     _OFFERTA_UPDATE_COLS: tuple[str, ...] = (
         "emittente_fiscale_id",
         "billing_account_id",

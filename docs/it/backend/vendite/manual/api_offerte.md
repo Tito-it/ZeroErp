@@ -110,6 +110,50 @@ Step migliorativo data-driven applicato dopo la consegna della fn DB
 
 ## Input
 
+### Form-defaults `GET /api/v1/vendite/offerte/form-defaults/`
+
+Endpoint sola lettura per pre-popolare il form CREATE offerta. Riusato
+dal drawer FE all'apertura e al cambio `billing_account_id`. Simmetrico
+a `vendite-contratto-form-defaults` e `vendite-preventivi-form-defaults`.
+
+| Parametro             | Tipo  | Descrizione                                                                                |
+| --------------------- | ----- | ------------------------------------------------------------------------------------------ |
+| `billing_account_id`  | int   | Opzionale. Se presente, popola i campi BA-derived (categoria_cliente, utility, valuta).    |
+
+Risposta `200`:
+
+```json
+{
+  "data": {
+    "billing_account_id": 100,
+    "categoria_cliente_id_snapshot": 7,
+    "categoria_cliente_codice": "STANDARD",
+    "categoria_cliente_descrizione": "Standard",
+    "utility_id": 3,
+    "istanza_utility_id": 200,
+    "utility_codice": "GAS",
+    "utility_descrizione": "Gas",
+    "valuta_id": 1,
+    "valuta_codice": "EUR",
+    "valuta_descrizione": "Euro"
+  }
+}
+```
+
+Risoluzione `valuta_id` (BB `resolve_valuta_default`, allineato a
+`vendite.fn_get_valuta_id`):
+
+1. `billing_account.valuta_id` se valorizzato
+2. EF del BA via `fn_get_emittente_fiscale_pk`
+3. EF dell'utente loggato (con fallback gestore globale)
+4. `anagrafiche.gestori.valuta_id` (primo per id)
+5. `null` se nessuna sorgente
+
+Senza `billing_account_id` i campi BA-derived restano `null` ma la
+catena valuta parte comunque dal livello 3.
+
+Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
+
 ### Lista offerte `GET /api/v1/vendite/offerte/`
 
 | Parametro              | Tipo     | Descrizione                                                                                |
@@ -140,6 +184,7 @@ Step migliorativo data-driven applicato dopo la consegna della fn DB
   "utility_id": 3,
   "listino_id": 50,
   "listino_versione_id": 5,
+  "valuta_id": 1,
   "tipo_variazione_globale": "PERCENTUALE",
   "valore_variazione_globale": "-5.00",
   "validita_dal": "2026-06-01",
@@ -155,6 +200,12 @@ Step migliorativo data-driven applicato dopo la consegna della fn DB
 
 Note:
 
+- `valuta_id` opzionale (2026-05-29). Snapshot fissato al CREATE,
+  immutabile in PATCH (simmetrico a preventivi). Se omesso, il trigger DB
+  `_a*_set_valuta_default_ins` lo risolve via `vendite.fn_get_valuta_id`
+  (catena BA → emittente → gestore). Il FE può pre-popolare il valore
+  via `GET /api/v1/vendite/offerte/form-defaults/?billing_account_id=...`
+  che usa il BB `resolve_valuta_default`.
 - `codice` **non va nel payload** (step 5 atterrato 2026-05-25): generato
   dal trigger DB `trgfn_offerte_commerciali_gen_codice` come
   `OFC-NNNNNNN`. Se inviato, rifiutato come `unknown_key` con
@@ -197,6 +248,9 @@ non ancora compilato).
     "listino_id": 50, "listino_versione_id": 5,
     "listino_codice": "LST-GAS-2026", "listino_descrizione": "Listino gas 2026",
     "listino_versione_codice": "V5",
+    "valuta_id": 1,
+    "valuta_codice": "EUR",
+    "valuta_descrizione": "Euro",
     "tipo_variazione_globale": "PERCENTUALE",
     "valore_variazione_globale": "-5.00",
     "validita_dal": "2026-06-01", "validita_al": "2026-12-31",

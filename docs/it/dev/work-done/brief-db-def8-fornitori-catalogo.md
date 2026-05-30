@@ -195,7 +195,7 @@ commit successivi del backend agent.
   [brief-db-def8-soggetti-catalogo.md](brief-db-def8-soggetti-catalogo.md)
   + [brief-db-def8-soggetti-fix-id-fiscale.md](brief-db-def8-soggetti-fix-id-fiscale.md).
 - Lezioni cross-DEF-8 (sensibile=false + campo GENERATED) documentate in
-  [sviluppo-personalizzazioni-liste_def.md](sviluppo-personalizzazioni-liste_def.md)
+  [sviluppo-personalizzazioni-liste_def.md](../work-in-progress/sviluppo-personalizzazioni-liste_def.md)
   sezione DEF-8 "Lezioni dallo smoke soggetti".
 - Repository: [backend/apps/anagrafiche/db/fornitori_repository.py](../../../backend/apps/anagrafiche/db/fornitori_repository.py).
 - FE attuale: [frontend/src/anagrafiche/components/FornitoriSearchTable.vue](../../../frontend/src/anagrafiche/components/FornitoriSearchTable.vue).

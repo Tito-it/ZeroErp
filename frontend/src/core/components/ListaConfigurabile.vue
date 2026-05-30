@@ -276,7 +276,7 @@ async function onReset() {
 // del pattern lista, frontend-standards.md §"Pattern lista").
 const effectivePaginatorOptions = computed(() => ({
   ..._DEFAULT_PAGINATOR_OPTIONS,
-  ...(props.paginatorOptions || {}),
+  ...props.paginatorOptions,
 }))
 
 // API esposta al caller. `openModal` permette di trasformare il bottone

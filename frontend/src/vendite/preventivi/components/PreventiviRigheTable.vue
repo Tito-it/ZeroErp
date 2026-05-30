@@ -133,6 +133,18 @@ async function onRigaSaved() {
 //        Propaga `changed` al parent (drawer) per refresh totali aggregati.
 async function onComponentiChanged() {
   await loadRighe()
+  // Risincronizza `rigaSelezionata` puntandola alla riga aggiornata
+  // (oggetto nuovo da loadRighe), così il watcher `props.riga` del
+  // PreventiviRigaForm scatta e ri-popola `form.prezzo_unitario` col
+  // SUM corrente. Senza questa ri-assegnazione, `rigaSelezionata`
+  // resta ancorata al vecchio oggetto (non più in `righe.value`) e
+  // il form mostra il prezzo stantio finché l'operatore non salva e
+  // riapre (simmetrico ai fix offerte/contratti 2026-05-29).
+  if (formMode.value === 'edit' && rigaSelezionata.value?.id != null) {
+    const id = rigaSelezionata.value.id
+    const refreshed = righe.value.find((r) => r.id === id)
+    if (refreshed) rigaSelezionata.value = refreshed
+  }
   emit('changed')
 }
 

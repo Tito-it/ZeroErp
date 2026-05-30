@@ -23,6 +23,15 @@ export function getPreventivoFormDefaults(billingAccountId = null) {
   return api.get('/vendite/preventivi/form-defaults/', { params })
 }
 
+// Scopo: Defaults form offerta commerciale. Se billingAccountId presente,
+//        popola categoria_cliente_id_snapshot + utility/istanza + valuta_id
+//        dal BA. Senza BA, la valuta arriva comunque dalla catena
+//        EF utente → gestore (BB resolve_valuta_default).
+export function getOffertaFormDefaults(billingAccountId = null) {
+  const params = billingAccountId ? { billing_account_id: billingAccountId } : {}
+  return api.get('/vendite/offerte/form-defaults/', { params })
+}
+
 // Scopo: Defaults nuova versione listino: default_valido_dal (oggi+lead_gg)
 //        + lista BOZZE esistenti (warning UX).
 export function getVersioneNewDefaults(listinoId) {

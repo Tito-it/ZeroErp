@@ -270,6 +270,10 @@ export const MANAGE_ICONS = {
   DOWNLOAD: 'pi pi-download',
   DELETE: 'pi pi-trash',
   KEBAB: 'pi pi-ellipsis-v',
+  // Documenti PDF (lista/anteprima/scarica). Centralizzata 2026-05-30:
+  // usata da GeneraPdfButton + EntityPdfButton (BB documenti) e dai
+  // buildRowActions delle liste vendite (preventivi/contratti/offerte).
+  PDF: 'pi pi-file-pdf',
   // Personalizzazione lista (DEF-8): apre la modale "Personalizza colonne"
   // di `<ListaConfigurabile>`. Centralizzata 2026-05-11 dopo audit DEF-8
   // soggetti (era hardcoded in ClientiSearchTable + SoggettiSearchTable).

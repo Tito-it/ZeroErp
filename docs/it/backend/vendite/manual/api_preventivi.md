@@ -578,4 +578,4 @@ Per la roadmap L2 (limite sconto via parametri) e L3 (approvazione out-of-policy
 
 ## Form-defaults BA-aware (Fase 2.B4)
 
-Il drawer FE preventivi popola valuta_id/termine_pagamento_id/iva_id automaticamente al cambio BA via `GET /api/v1/vendite/preventivi/form-defaults/?billing_account_id=...`. Risolve dal cliente associato al BA tramite tripletta `(istanza_utility_id, soggetto_ruolo_id, utility_id)`, fallback emittente fiscale per `valuta_id`. Vedi [api_vendite_form_defaults.md](api_vendite_form_defaults.md).
+Il drawer FE preventivi popola valuta_id/termine_pagamento_id/iva_id automaticamente al cambio BA via `GET /api/v1/vendite/preventivi/form-defaults/?billing_account_id=...`. Risolve dal cliente associato al BA tramite tripletta `(istanza_utility_id, soggetto_ruolo_id, utility_id)`. `valuta_id` segue la catena del BB `resolve_valuta_default` (BA → EF del BA → EF utente → fallback gestore globale), allineata 2026-05-29 alla fn DB `vendite.fn_get_valuta_id`. Vedi [api_vendite_form_defaults.md](api_vendite_form_defaults.md).

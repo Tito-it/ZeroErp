@@ -190,6 +190,12 @@ _CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
     "utility_id",
     "listino_id",
     "listino_versione_id",
+    # Snapshot valuta fissato al CREATE, opzionale: se non passato, il
+    # trigger DB `_a*_set_valuta_default_ins` risolve via
+    # `vendite.fn_get_valuta_id` (catena BA → emittente → gestore, brief
+    # work-done 2026-05-29). Il FE form-defaults può pre-popolarlo via BB
+    # `resolve_valuta_default` per UX.
+    "valuta_id",
     "valore_variazione_globale",
     "tipo_variazione_globale",
     "validita_dal",

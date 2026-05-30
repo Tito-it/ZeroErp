@@ -121,7 +121,7 @@ function buildRowActions(data) {
     {
       key: 'documenti-pdf',
       label: t('preventivi.pdf.label_scarica'),
-      icon: 'pi pi-file-pdf',
+      icon: MANAGE_ICONS.PDF,
       severity: 'primary',
       disabled: data.stato_codice_interno === 'DRAFT',
       tooltip: data.stato_codice_interno === 'DRAFT'

@@ -25,6 +25,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
+import { MANAGE_ICONS } from '../../core/constants'
 import { downloadBlob } from '../../core/utils/download'
 import { listTemplateApplicabili } from '../api/templateDocumentiLookup'
 import SceltaTemplateDocumentoDialog from './SceltaTemplateDocumentoDialog.vue'
@@ -177,7 +178,7 @@ function onDialogSelect(templateId) {
 
 <template>
   <Button
-    :icon="'pi pi-file-pdf'"
+    :icon="MANAGE_ICONS.PDF"
     :label="label || t('documenti.genera_pdf.label')"
     :tooltip="tooltip || t('documenti.genera_pdf.tooltip')"
     :size="size"
