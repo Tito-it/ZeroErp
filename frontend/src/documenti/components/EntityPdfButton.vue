@@ -29,6 +29,7 @@ import Button from 'primevue/button'
 import PdfDocumentiSorgenteDialog from './PdfDocumentiSorgenteDialog.vue'
 import { useDocumentiPerSorgenteStore } from '../stores/documentiPerSorgente'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { MANAGE_ICONS } from '../../core/constants'
 import { downloadBlob } from '../../core/utils/download'
 
 const props = defineProps({
@@ -112,7 +113,7 @@ function onScaricaClick() {
          `mode === 'disabled'` -> baseDisabled true e niente click handler.
          Lo stato `loading` di preview applica solo in modalita' preview. -->
     <Button
-      icon="pi pi-file-pdf"
+      :icon="MANAGE_ICONS.PDF"
       :label="buttonLabel"
       v-tooltip.top="buttonTooltip"
       size="small"

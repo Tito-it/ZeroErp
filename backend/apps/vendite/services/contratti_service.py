@@ -124,6 +124,12 @@ _CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # Snapshot categoria cliente: opzionale. Se fornito, congela il valore
     # scelto dall'operatore; se omesso, il trigger DB lo popola dal BA.
     "categoria_cliente_id_snapshot",
+    # Snapshot valuta fissato al CREATE, opzionale: se non passato, il
+    # trigger DB `_a*_set_valuta_default_ins` risolve via
+    # `vendite.fn_get_valuta_id` (catena BA → emittente → gestore, brief
+    # work-done 2026-05-29). Non in _UPDATE_KEYS_TESTATA: snapshot
+    # immutabile post-CREATE (simmetrico a preventivi/offerte).
+    "valuta_id",
     "meta",
     # Sub-entita' opzionale: se presente crea la riga utility 1:1 nella
     # stessa transazione. Il service NON permette payload utility senza
@@ -1848,6 +1854,14 @@ class ContrattiService:
         # DB lo popola dal BA.
         self._apply_optional_positive_int(
             payload, data, "categoria_cliente_id_snapshot", message=_MESSAGE,
+        )
+        # Snapshot valuta: opzionale. Se fornito congela il valore scelto
+        # dall'operatore (es. via form-defaults che pre-popola dal BB
+        # `resolve_valuta_default`); se omesso il trigger DB
+        # `_a*_set_valuta_default_ins` risolve via `vendite.fn_get_valuta_id`
+        # (catena BA → emittente → gestore). Brief work-done 2026-05-29.
+        self._apply_optional_positive_int(
+            payload, data, "valuta_id", message=_MESSAGE,
         )
         if "meta" in payload:
             meta = self._v.optional_meta(payload)

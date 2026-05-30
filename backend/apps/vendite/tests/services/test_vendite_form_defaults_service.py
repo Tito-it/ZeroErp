@@ -26,11 +26,12 @@ Indice test eseguiti:
 
 from datetime import date, timedelta
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.vendite_form_defaults_service import (
     fn_get_contratto_form_defaults,
+    fn_get_offerta_form_defaults,
     fn_get_preventivo_form_defaults,
     fn_get_versione_clone_defaults,
     fn_get_versione_close_defaults,
@@ -43,6 +44,11 @@ from apps.vendite.services.vendite_form_defaults_service import (
 _MOD = "apps.vendite.services.vendite_form_defaults_service"
 _PARAM = f"{_MOD}.ParameterService"
 _BA_REPO = f"{_MOD}.BillingAccountRepository"
+# Il BB resolve_valuta_default ha un livello 4 (fallback gestore) che fa
+# una query diretta su anagrafiche.gestori. Va mockata la `connection` nei
+# test che esercitano il path "no BA / no EF utente", altrimenti il
+# resolver finisce a fare una query DB reale.
+_RESOLVER_CONN = "apps.anagrafiche.services.valuta_resolver.connection"
 _LISTINI_REPO = f"{_MOD}.ListiniRepository"
 
 
@@ -114,13 +120,76 @@ class TestContrattoFormDefaults(TestCase):
             fn_get_contratto_form_defaults(billing_account_id=999)
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
 
+    @patch(_RESOLVER_CONN)
     @patch(_PARAM)
-    def test_contratto_param_int_fallback(self, mock_param_cls):
+    def test_contratto_param_int_fallback(self, mock_param_cls, mock_resolver_conn):
         # Scopo: parameter mancante -> il service usa il fallback hardcoded
         #        (0 per i lead_gg). Niente raise.
         mock_param_cls.return_value.get_defaults.return_value = {}
+        # Resolver livello 4: nessun gestore configurato -> {} silente.
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        mock_resolver_conn.cursor.return_value.__enter__.return_value = cur
         result = fn_get_contratto_form_defaults(billing_account_id=None)
         self.assertEqual(result["default_data"], date.today().isoformat())
+
+    @patch(_BA_REPO)
+    @patch(_PARAM)
+    def test_contratto_valuta_dal_ba(self, mock_param_cls, mock_ba_repo_cls):
+        # Scopo: BA con valuta_id valorizzata -> il payload espone valuta_id
+        #        + valuta_codice + valuta_descrizione (livello 1 resolver).
+        mock_param_cls.return_value.get_defaults.return_value = {}
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = _ba_lookup_row(
+            valuta_id=1,
+        )
+        result = fn_get_contratto_form_defaults(billing_account_id=10)
+        self.assertEqual(result["valuta_id"], 1)
+        self.assertEqual(result["valuta_codice"], "EUR")
+        self.assertEqual(result["valuta_descrizione"], "Euro")
+
+
+# ──────────────────────────────────────────────────────────
+# Offerte form-defaults
+# ──────────────────────────────────────────────────────────
+
+
+class TestOffertaFormDefaults(TestCase):
+
+    @patch(_RESOLVER_CONN)
+    def test_offerta_no_ba_no_user_payload_vuoto(self, mock_resolver_conn):
+        # Scopo: nessun BA + nessun user + nessun gestore -> payload con
+        #        tutti i campi a None (BA-derived + valuta).
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        mock_resolver_conn.cursor.return_value.__enter__.return_value = cur
+        result = fn_get_offerta_form_defaults(billing_account_id=None)
+        self.assertEqual(result["billing_account_id"], None)
+        self.assertEqual(result["valuta_id"], None)
+        self.assertEqual(result["categoria_cliente_id_snapshot"], None)
+        self.assertEqual(result["utility_id"], None)
+
+    @patch(_BA_REPO)
+    def test_offerta_con_ba_popola_categoria_e_valuta(self, mock_ba_repo_cls):
+        # Scopo: BA con valuta_id valorizzata -> popola categoria_cliente,
+        #        utility/istanza e valuta dal livello 1 resolver.
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = _ba_lookup_row(
+            ba_id=10, categoria_id=7, valuta_id=1,
+        )
+        result = fn_get_offerta_form_defaults(billing_account_id=10)
+        self.assertEqual(result["billing_account_id"], 10)
+        self.assertEqual(result["categoria_cliente_id_snapshot"], 7)
+        self.assertEqual(result["utility_id"], 1)
+        self.assertEqual(result["istanza_utility_id"], 100)
+        self.assertEqual(result["valuta_id"], 1)
+        self.assertEqual(result["valuta_codice"], "EUR")
+
+    @patch(_BA_REPO)
+    def test_offerta_ba_inesistente_404(self, mock_ba_repo_cls):
+        # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            fn_get_offerta_form_defaults(billing_account_id=999)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
 
 
 # ──────────────────────────────────────────────────────────
@@ -130,12 +199,19 @@ class TestContrattoFormDefaults(TestCase):
 
 class TestPreventivoFormDefaults(TestCase):
 
+    @patch(_RESOLVER_CONN)
     @patch(_PARAM)
-    def test_preventivo_no_ba_solo_parameters(self, mock_param_cls):
+    def test_preventivo_no_ba_solo_parameters(
+        self, mock_param_cls, mock_resolver_conn,
+    ):
         # Scopo: Senza BA il payload calcola validita_al = oggi + N.
         mock_param_cls.return_value.get_defaults.return_value = {
             "VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG": "30",
         }
+        # Resolver livello 4: nessun gestore configurato (-> {} silente).
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        mock_resolver_conn.cursor.return_value.__enter__.return_value = cur
         result = fn_get_preventivo_form_defaults(billing_account_id=None)
         self.assertEqual(result["billing_account_id"], None)
         expected = (date.today() + timedelta(days=30)).isoformat()

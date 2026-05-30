@@ -2,7 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
-import i18n from './core/i18n'
+import i18n, { loadLocaleMessages, DEFAULT_LOCALE } from './core/i18n'
 import { autoResetPlugin } from './core/pinia-plugins/auto-reset'
 
 import PrimeVue from 'primevue/config'
@@ -36,4 +36,18 @@ app.use(ToastService)
 app.use(ConfirmationService)
 app.directive('tooltip', Tooltip)
 
-app.mount('#app')
+// Carica la locale attiva (e il fallback, se diverso) PRIMA del mount: le
+// traduzioni non sono piu' inline nel bundle, quindi il primo paint deve
+// attendere il chunk della locale. Per l'utenza default IT e' un solo
+// chunk (~33 KB gzip) e en.json non viene mai scaricato finche' non si
+// passa a EN.
+async function bootstrap() {
+  const active = i18n.global.locale.value
+  await loadLocaleMessages(active)
+  if (active !== DEFAULT_LOCALE) {
+    await loadLocaleMessages(DEFAULT_LOCALE)
+  }
+  app.mount('#app')
+}
+
+bootstrap()

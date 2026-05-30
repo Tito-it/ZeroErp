@@ -20,7 +20,7 @@ import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
-import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
+import DrawerContextHeader from '../../../core/components/DrawerContextHeader.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
@@ -174,6 +174,19 @@ watch(
 
 function onComponentiConfirm(payload) {
   componentiPayload.value = payload
+  // Anteprima del prezzo padre lato client per articoli compositi
+  // (simmetrico a PreventiviRigaForm + ContrattoRigheDrawer 2026-05-29).
+  // Il summary del dialog ritorna `total = SUM(prezzo × quantita_componente)`
+  // con `quantita_componente = coeff_qta_snapshot × qta_padre`. Quindi
+  // `total / qtaPadre = SUM(prezzo × coeff_qta_snapshot)` = prezzo
+  // unitario padre per UNA unità — stesso valore che il trigger DB
+  // `_z90_ricalcola_padre` scriverà al save. Il campo InputNumber resta
+  // disabled per i compositi (`articolo_obj?.is_composito`), così
+  // l'operatore vede il valore senza poterlo editare. Al save il payload
+  // non include `prezzo_unitario` per i compositi (BE = fonte canonica).
+  if (form.value?.articolo_obj?.is_composito === true && payload?.summary?.qtaPadre > 0) {
+    form.value.prezzo_unitario = payload.summary.total / payload.summary.qtaPadre
+  }
 }
 
 // Riapertura manuale (CREATE) — bottone "Modifica componenti" sotto il
@@ -239,6 +252,19 @@ const fonteOptions = computed(() => _fontiPerTipo(form.value?.tipo_erogazione).m
 async function reload() {
   const list = await store.loadEccezioni(props.offertaId)
   eccezioni.value = list
+  // Se siamo in EDIT su un'eccezione composita e ComponentiPanel ha
+  // appena modificato un prezzo componente (`@changed="reload"`), il
+  // trigger DB `_z90_ricalcola_padre` ha aggiornato `prezzo_unitario`
+  // sull'eccezione padre. Risincronizza solo quel campo del form, così
+  // il drawer mostra il nuovo SUM senza chiudere/riaprire l'EDIT e
+  // senza perdere le altre modifiche pending dell'utente (qty, ordine,
+  // ecc.).
+  if (formMode.value === 'edit' && editingId.value != null) {
+    const refreshed = list.find((r) => r.id === editingId.value)
+    if (refreshed && refreshed.prezzo_unitario != null) {
+      form.value.prezzo_unitario = Number(refreshed.prezzo_unitario)
+    }
+  }
   emit('changed')
 }
 
@@ -380,11 +406,28 @@ const canSave = computed(() => {
 
 function buildPayload() {
   const f = form.value
+  // Coerenza prezzo_unitario / tipo_eccezione (simmetrico a
+  // ContrattoRigheDrawer.buildPayload 2026-05-29 + bugfix 2026-05-29 bis):
+  //   - ESCLUSIONE: il prezzo NON ha semantica (DB
+  //     `chk_offerte_eccezioni_prezzo_per_tipo_eccezione` impone NULL).
+  //     Forza null lato client.
+  //   - OVERRIDE / AGGIUNTA (anche su articolo composito): inviare il
+  //     valore del form. Per i compositi il form è valorizzato da
+  //     `onComponentiConfirm` con `summary.total / qtaPadre` (anteprima
+  //     del SUM); al save BE il trigger `_z90_ricalcola_padre` allinea
+  //     comunque al SUM canonico. Lo stesso check DB richiede
+  //     prezzo_unitario NOT NULL per OVERRIDE/AGGIUNTA quindi NON
+  //     possiamo skipparlo (era il bug del fix precedente).
+  let prezzoUnitarioPayload = null
+  if (f.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE
+      && f.prezzo_unitario != null
+      && f.prezzo_unitario !== '') {
+    prezzoUnitarioPayload = String(f.prezzo_unitario)
+  }
   const payload = {
     tipo_erogazione: f.tipo_erogazione || null,
     fonte_quantita_attesa: f.fonte_quantita_attesa,
-    prezzo_unitario: f.prezzo_unitario != null && f.prezzo_unitario !== ''
-      ? String(f.prezzo_unitario) : null,
+    prezzo_unitario: prezzoUnitarioPayload,
     quantita: f.quantita != null && f.quantita !== ''
       ? String(f.quantita) : null,
     uom_operativa_id: f.uom_operativa_id || null,
@@ -489,25 +532,23 @@ const onClose = useDrawerClose(emit)
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <template v-if="contentReady">
 
-        <DrawerEntityHeader>
-          <Tag :value="props.offertaCodice" severity="secondary" />
-          <span v-if="props.offertaCliente" class="app-drawer-header-muted">
-            {{ props.offertaCliente }}
-          </span>
-          <span
-            v-if="props.offertaValiditaDal"
-            class="app-drawer-header-muted"
-          >
-            {{ displayDate(props.offertaValiditaDal) }} —
-            {{ props.offertaValiditaAl ? displayDate(props.offertaValiditaAl) : '∞' }}
-          </span>
+        <!-- Intestazione contesto offerta (BB DrawerContextHeader): allinea
+             al pattern uniformato 2026-05-29 con ContrattoRigheDrawer
+             (drawer di figli/eccezioni con contesto padre). -->
+        <DrawerContextHeader
+          :tag-value="props.offertaCodice"
+          :items="[
+            { label: t('vendite.offerte.col_cliente'), value: props.offertaCliente },
+            { label: t('vendite.offerte.col_validita_dal'), value: props.offertaValiditaDal ? displayDate(props.offertaValiditaDal) : null },
+            { label: t('vendite.offerte.col_validita_al'), value: props.offertaValiditaAl ? displayDate(props.offertaValiditaAl) : null, fallback: '∞' },
+          ]">
           <template #status>
             <Tag
               :value="props.offertaStatoDescrizione"
               :severity="statoOffertaSeverity(props.offertaStatoCodice)"
             />
           </template>
-        </DrawerEntityHeader>
+        </DrawerContextHeader>
 
         <div class="app-page-toolbar mt-2">
           <div class="app-page-filters" />
@@ -699,6 +740,8 @@ const onClose = useDrawerClose(emit)
               <InputNumber
                 v-model="form.prezzo_unitario"
                 class="w-full"
+                :disabled="form.articolo_obj?.is_composito === true
+                           || form.tipo_eccezione === TIPO_ECCEZIONE.ESCLUSIONE"
                 :min-fraction-digits="0"
                 :max-fraction-digits="6"
               />

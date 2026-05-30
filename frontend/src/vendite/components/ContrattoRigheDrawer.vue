@@ -34,6 +34,7 @@ import {
   getContrattoContestoPricing,
 } from '../api/contratti'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import DrawerContextHeader from '../../core/components/DrawerContextHeader.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import { coerceJsonbToArray } from '../../core/utils/meta'
@@ -281,6 +282,53 @@ async function loadContestoPricing() {
   }
 }
 
+// Scopo: handler @changed di ComponentiPanel API-driven in EDIT su
+//        articolo composito. Dopo PATCH componente, il trigger DB
+//        `_z90_ricalcola_padre` ha aggiornato `prezzo_unitario` sulla
+//        riga padre. Risincronizza solo quel campo del form (UI mostra
+//        SUM aggiornato) senza chiudere/riaprire l'EDIT e senza perdere
+//        modifiche pending dell'utente (qty/ordine/ecc.). Forma A/B:
+//        refresh locale via `loadPreview()`. Forma senza_listino: la
+//        lista vive in `contratti_righe`, viene rinfrescata dal parent
+//        via `emit('changed')` → props.righeIniziali → watcher (vedi
+//        sotto). Simmetrico a OffertaEccezioniDrawer.reload 2026-05-29.
+// Flag attivato quando il refresh `righe` dal parent deve risincronizzare
+// `form.prezzo_unitario` (caso senza_listino: il parent ricarica async dopo
+// `emit('changed')`, il sync va deferred al watcher props.righeIniziali).
+const _componentiPanelChangedPending = ref(false)
+
+async function onComponentiPanelChanged() {
+  if (isSenzaListino.value) {
+    // Forma senza_listino: la riga vive in `contratti_righe` e arriva via
+    // props dal parent (ContrattoDrawer). Il parent ricarica async dopo
+    // `emit('changed')` → re-passa `props.righeIniziali` → watcher
+    // aggiorna `righe.value`. Il sync `form.prezzo_unitario` viene
+    // applicato dal watcher quando il flag pending è true.
+    _componentiPanelChangedPending.value = true
+    emit('changed')
+    return
+  }
+  emit('changed')
+  // Forma A/B: la lista vive in preview, refresh locale via loadPreview.
+  await loadPreview()
+  if (formMode.value === 'edit' && rigaEditId.value != null) {
+    // Match con LO STESSO ordine di `_onEditRigaPersistita` (riga 705):
+    // `rigaEditId = r.id ?? r.override_riga_id`. Cascade prezzi:
+    // snapshot OVERRIDE → override esplicito → prezzo finale applicato.
+    const refreshed = previewRighe.value.find(
+      (r) => (r.id ?? r.override_riga_id) === rigaEditId.value,
+    )
+    if (refreshed) {
+      const nuovoPrezzo = refreshed.prezzo_unitario
+        ?? refreshed.override_prezzo
+        ?? refreshed.prezzo_finale
+      if (nuovoPrezzo != null) {
+        form.value.prezzo_unitario = Number(nuovoPrezzo)
+      }
+    }
+  }
+}
+
 // Reload completo: in modalita' A/B ricarica la preview dal BE; in modalita'
 // C la lista contratti_righe viene rinfrescata dal parent (emit changed).
 // Usato sia dal pulsante Ricarica sia dallo shortcut F5 globale.
@@ -385,6 +433,19 @@ function apriComponentiDialog() {
 // payload del save riga (`componenti_overrides`).
 function onComponentiConfirm(payload) {
   componentiPayload.value = payload
+  // Anteprima del prezzo padre lato client per articoli compositi
+  // (simmetrico a PreventiviRigaForm.onComponentiConfirm 2026-05-29).
+  // Il summary del dialog ritorna `total = SUM(prezzo × quantita_componente)`
+  // con `quantita_componente = coeff_qta_snapshot × qta_padre`. Quindi
+  // `total / qtaPadre = SUM(prezzo × coeff_qta_snapshot)` = prezzo
+  // unitario padre per UNA unità — stesso valore che il trigger DB
+  // `_z90_ricalcola_padre` scriverà al save. Il campo InputNumber resta
+  // disabled per i compositi (`articoloObj?.is_composito`), così
+  // l'operatore vede il valore senza poterlo editare. Al save il payload
+  // non include `prezzo_unitario` per i compositi (BE = fonte canonica).
+  if (articoloObj.value?.is_composito === true && payload?.summary?.qtaPadre > 0) {
+    form.value.prezzo_unitario = payload.summary.total / payload.summary.qtaPadre
+  }
 }
 
 // === UoM operative dell'articolo selezionato ===
@@ -518,6 +579,22 @@ watch(() => props.visible, (v) => {
 
 watch(() => props.righeIniziali, (v) => {
   righe.value = [...(v || [])]
+  // Se il refresh arriva dal flusso ComponentiPanel @changed in
+  // senza_listino, ri-sincronizza `form.prezzo_unitario` dalla riga
+  // aggiornata (il trigger DB `_z90_ricalcola_padre` ha appena scritto
+  // il nuovo SUM). Senza questo handler il drawer mostrava il prezzo
+  // stantio mentre la lista in alto era già aggiornata (bug osservato
+  // 2026-05-29). Si reset comunque il flag a fine ciclo per non lasciare
+  // sync residui su refresh successivi (es. save eccezione altra).
+  if (_componentiPanelChangedPending.value
+      && formMode.value === 'edit'
+      && rigaEditId.value != null) {
+    const refreshed = (v || []).find((r) => r.id === rigaEditId.value)
+    if (refreshed?.prezzo_unitario != null) {
+      form.value.prezzo_unitario = Number(refreshed.prezzo_unitario)
+    }
+    _componentiPanelChangedPending.value = false
+  }
 }, { deep: true })
 
 // Refactor 2026-05-19: reset di `fonte_quantita_attesa` al cambio
@@ -998,7 +1075,7 @@ function origineSeverity(origine) {
     :visible="props.visible"
     @update:visible="val => emit('update:visible', val)"
     position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
+    :style="{ width: DRAWER_WIDTH.WIDE_PLUS }"
     :dismissable="true"
   >
     <template #header>
@@ -1007,31 +1084,20 @@ function origineSeverity(origine) {
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
-      <!-- === Intestazione contesto contratto === -->
-      <div class="contratto-righe-context">
-        <div class="contratto-righe-context-grid">
-          <div class="contratto-righe-context-item">
-            <span class="contratto-righe-context-label">{{ t('contratti.field_numero') }}</span>
-            <span class="font-bold">{{ contrattoNumero }}</span>
-          </div>
-          <div class="contratto-righe-context-item">
-            <span class="contratto-righe-context-label">{{ t('contratti.col_ba') }}</span>
-            <span>{{ contrattoCliente }}</span>
-          </div>
-          <div class="contratto-righe-context-item">
-            <span class="contratto-righe-context-label">{{ t('contratti.col_valido_dal') }}</span>
-            <span>{{ displayDate(contrattoValidoDal) }}</span>
-          </div>
-          <div class="contratto-righe-context-item">
-            <span class="contratto-righe-context-label">{{ t('contratti.col_valido_al') }}</span>
-            <span>{{ contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' }}</span>
-          </div>
-        </div>
-        <Tag v-if="contrattoStatoCodice"
-          :value="contrattoStatoDescrizione"
-          :severity="statoContrattoSeverity(contrattoStatoCodice)"
-          class="contratto-righe-context-status" />
-      </div>
+      <!-- === Intestazione contesto contratto (BB DrawerContextHeader) === -->
+      <DrawerContextHeader
+        :tag-value="contrattoNumero"
+        :items="[
+          { label: t('contratti.col_ba'),         value: contrattoCliente },
+          { label: t('contratti.col_valido_dal'), value: displayDate(contrattoValidoDal) },
+          { label: t('contratti.col_valido_al'),  value: contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' },
+        ]">
+        <template #status>
+          <Tag v-if="contrattoStatoCodice"
+            :value="contrattoStatoDescrizione"
+            :severity="statoContrattoSeverity(contrattoStatoCodice)" />
+        </template>
+      </DrawerContextHeader>
 
       <!-- Banner contesto pricing (refactor modalita 2026-05-15, FE 2.2):
            mostra forma derivata + listino + versione fissata (post-attivazione)
@@ -1343,7 +1409,7 @@ function origineSeverity(origine) {
               :api-update="updateContrattoRigaComponente"
               :api-delete="deleteContrattoRigaComponente"
               :tab-entity="TAB_ENTITIES.CONTRATTO"
-              @changed="emit('changed')" />
+              @changed="onComponentiPanelChanged" />
           </template>
         </template>
 
@@ -1414,48 +1480,6 @@ function origineSeverity(origine) {
 </template>
 
 <style scoped>
-.contratto-righe-context {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.contratto-righe-context-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0.35rem 1rem;
-  flex: 1;
-  min-width: 0;
-}
-
-.contratto-righe-context-item {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  min-width: 0;
-  font-size: 0.9rem;
-}
-
-.contratto-righe-context-label {
-  color: var(--app-text-muted);
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.contratto-righe-context-item > span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.contratto-righe-context-status {
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-
 .contratti-componenti-padre-tag {
   font-size: 0.65rem;
   margin-left: 0.4rem;
@@ -1479,14 +1503,4 @@ function origineSeverity(origine) {
   font-size: 0.8rem;
 }
 
-@media (max-width: 768px) {
-  .contratto-righe-context {
-    flex-direction: column;
-  }
-
-  .contratto-righe-context-grid {
-    grid-template-columns: minmax(0, 1fr);
-    width: 100%;
-  }
-}
 </style>

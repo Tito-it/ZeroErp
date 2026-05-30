@@ -3,28 +3,37 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Building block stateless per risolvere la valuta_id di default
-#        applicando una catena standard cross-dominio:
+#        applicando la STESSA catena della fn DB `vendite.fn_get_valuta_id`
+#        (single source of truth cross-layer, decisione team DB 2026-05-29):
 #
 #          1) ba.valuta_id                         (BA presente e valorizzato)
 #          2) emittente fiscale del BA → valuta_id (catena fn_get_emittente_fiscale_pk)
 #          3) emittente fiscale dell'utente → valuta_id (con fallback gestore globale)
-#          4) {} se nessuna sorgente
+#          4) anagrafiche.gestori.valuta_id        (primo gestore per id)
+#          5) {} se nessuna sorgente
 #
-#        Composizione di BB esistenti (zero SQL nuovo):
+#        Composizione di BB esistenti + lookup diretto anagrafiche.gestori
+#        per il livello 4:
 #          - BillingAccountRepository.get_lookup_by_id    (livello 1)
 #          - BillingAccountRepository.get_emittente_valuta(livello 2)
 #          - ParameterService.get_emittente_fiscale_id_for_user (user → EF)
 #          - EmittentiFiscaliRepository.get_emittente     (livello 3)
+#          - SELECT primo gestore per id                  (livello 4)
 #
-#        Single source of truth per i form-defaults vendite/acquisti che
-#        devono proporre la valuta coerente con BA quando presente, con
-#        fallback all'EF dell'utente loggato (gestore globale per admin
-#        globale).
+#        NOTA: catena BE leggermente più ricca di quella DB (livello 3 = EF
+#        utente, assente in `fn_get_valuta_id` che riceve l'emittente come
+#        parametro esplicito): il BE form-defaults non ha un emittente del
+#        documento perché il documento non esiste ancora, quindi usa l'EF
+#        utente come proxy. Allineamento al DB sul livello 4 (gestore)
+#        deciso 2026-05-29 dopo handoff team DB su dev/db-tid (vedi brief
+#        work-done/brief-db-valuta-offerte-contratti.md).
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 from typing import Any
+
+from django.db import connection
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.db.emittenti_fiscali_repository import EmittentiFiscaliRepository
@@ -32,9 +41,10 @@ from apps.core.services.parameter_service import ParameterService
 
 
 # Scopo: Risolve la valuta_id di default applicando la catena
-#        BA → EF-del-BA → EF-utente. Ritorna sempre lo stesso shape
-#        del payload form-defaults: {valuta_id, valuta_codice,
-#        valuta_descrizione} oppure dict vuoto se nessuna sorgente.
+#        BA → EF-del-BA → EF-utente → gestore.
+#        Ritorna sempre lo stesso shape del payload form-defaults:
+#        {valuta_id, valuta_codice, valuta_descrizione} oppure dict vuoto
+#        se nessuna sorgente.
 #
 # Parametri:
 #   billing_account_id: id BA selezionato (None = no BA, salta livelli 1+2)
@@ -83,4 +93,38 @@ def resolve_valuta_default(
                     "valuta_descrizione": ef.get("valuta_descrizione"),
                 }
 
-    return {}
+    # Livello 4: anagrafiche.gestori → valuta_id (primo per id).
+    # Stesso pattern di `vendite.fn_get_valuta_id` (SELECT g.valuta_id FROM
+    # anagrafiche.gestori g ORDER BY g.id LIMIT 1). Single source of truth
+    # cross-layer: la catena BE è allineata alla catena DB. Copre il caso
+    # "nessun BA + utente senza EF" che prima lasciava la UI con la valuta
+    # vuota (bug 2026-05-29). Niente raise se nessun gestore esiste: lo
+    # scenario è un caso lecito (resolver opzionale per form-defaults), il
+    # caller decide cosa fare con `{}`.
+    return _resolve_da_gestore() or {}
+
+
+# Scopo: Lookup del primo gestore di `anagrafiche.gestori` (ordine per id)
+#        e restituzione del payload `{valuta_id, valuta_codice,
+#        valuta_descrizione}` con JOIN su config.valute. Ritorna None se
+#        nessun gestore configurato (caso lecito, no raise).
+#        Allineato alla query del livello 3 di `vendite.fn_get_valuta_id`.
+def _resolve_da_gestore() -> dict[str, Any] | None:
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            SELECT v.id, v.codice, v.descrizione
+              FROM anagrafiche.gestori g
+              JOIN config.valute    v ON v.id = g.valuta_id
+             ORDER BY g.id
+             LIMIT 1
+            """,
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    return {
+        "valuta_id": row[0],
+        "valuta_codice": row[1],
+        "valuta_descrizione": row[2],
+    }

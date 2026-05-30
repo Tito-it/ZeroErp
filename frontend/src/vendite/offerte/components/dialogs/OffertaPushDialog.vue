@@ -47,6 +47,7 @@ function onConfirm() {
     :loading="props.loading"
     :save-disabled="props.loading"
     :save-label="t('vendite.offerte.push_conferma')"
+    :readonly="false"
     @update:visible="(val) => emit('update:visible', val)"
     @save="onConfirm"
   >
