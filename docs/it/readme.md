@@ -20,6 +20,9 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 > listini vendita v3 **completato** (pricing completo, rettifica controllata, alert scadenze,
 > variazione % massa, riallineamento/variazione prezzo commessa),
 > preventivi rev2 **completati** (emittente fiscale persistito, istanza obbligatoria, revisioni, riepilogo IVA),
+> contratti **modello unificato** (eccezioni delta-listino, snapshot versione listino all'attivazione, lock post-attivazione),
+> offerte commerciali **sviluppate DB+BE+FE** (proposta di condizioni quadro → push 1:1 a contratto, componenti BoM, generazione documento con allegati),
+> valuta su documenti vendite (offerte/contratti/preventivi),
 > motore documentale parametrico **completato tecnicamente e in test UI** (modelli, asset, render PDF WeasyPrint,
 > generazione/lista/download da preventivo),
 > migrazione `daterange` nativo PostgreSQL **completata** (18 tabelle, trigger generico, ottimizzazione backend),
@@ -150,7 +153,7 @@ Il modello e` pensato per supportare processi non lineari e gestione multi-repar
 
 ## Stato dello Sviluppo
 
-Fotografia sintetica (4 maggio 2026):
+Fotografia sintetica (29 maggio 2026):
 
 - Database core: operativo (14 schemi, 200+ tabelle, trigger, funzioni, viste, **daterange nativo**)
 - API backend: operativo; conteggio test complessivo da rigenerare dopo la chiusura della suite UI documenti
@@ -186,6 +189,17 @@ Fotografia sintetica (4 maggio 2026):
   - `emittente_fiscale_id` persistito e immutabile, `istanza_utility_id` obbligatoria, guard coerenza utility/istanza
   - Revisioni preventivo e riepilogo IVA chiusi end-to-end; generazione PDF agganciata al motore documentale in test UI
   - Riferimento: [risposta-db-brief-preventivi-rev2.md](./dev/work-done/risposta-db-brief-preventivi-rev2.md)
+- Contratti — modello unificato: **completato a DB, BE+FE in consolidamento** (15-21 maggio 2026)
+  - Drop modalità A/B/C; eccezioni di riga `tipo_eccezione` (OVERRIDE/ESCLUSIONE/AGGIUNTA); snapshot `listino_versione_id` all'attivazione; lock post-attivazione; stato ANNULLATO con overlap parziale
+  - Componenti BoM su righe composite; gate prezzo L1/L2/L3
+  - Guida: [gestione-contratti.md](./guide/gestione-contratti.md)
+- Offerte commerciali: **sviluppate DB+BE+FE, in consolidamento** (24-29 maggio 2026)
+  - Documento pre-contrattuale (proposta di condizioni quadro), simmetrico ai contratti: eccezioni delta-listino, componenti BoM, utility
+  - 6 stati (BOZZA→EMESSA→ACCETTATA→push contratto; RIFIUTATA/ANNULLATA/SUPERATA), revisioni, azioni data-driven
+  - `fn_push_offerta_a_contratto` idempotente (legame 1:1), generazione documento offerta con allegati, risoluzione prezzo come contratti
+  - Guida: [gestione-offerte-commerciali.md](./guide/gestione-offerte-commerciali.md)
+- Valuta su documenti vendite: **completato a DB** (29 maggio 2026)
+  - `valuta_id` su offerte/contratti/preventivi, default da resolver (catena billing account → gestore). Follow-up: resolver lato backend
 - Motore documentale parametrico: **completato tecnicamente, test UI in corso** (4 maggio 2026)
   - Schema `documenti`, modelli documenti, versioni, asset documentali, documenti generati e file persistenti
   - Backend: render Jinja2 + WeasyPrint, storage parametrico, endpoint template/asset e endpoint preventivo `genera`/`anteprima`/`lista`/`download`
@@ -271,10 +285,13 @@ Struttura essenziale:
 16. ~~Refactor catalogo / amm-software / vendite verso API metadata-driven~~ — fatto
 17. ~~Preventivi rev2 (emittente persistito, istanza obbligatoria, revisioni, riepilogo IVA)~~ — fatto
 18. Motore documentale parametrico (modelli, asset, generazione PDF preventivo) — completato tecnicamente, test UI in corso
-19. Test UI reali su pratiche, clienti, fornitori, parametri e documenti — in corso
-20. **Rettifiche prezzi DB-L4** (motore delta, canali manuale/automatico, audit) — pianificato in WIP dedicato
-21. Permessi v2 (livello oggetto) — pianificato
-22. Integrazione vendite/pratiche e moduli verticali
+19. ~~Contratti modello unificato (eccezioni delta-listino, snapshot versione, lock post-attivazione)~~ — completato a DB, BE+FE in consolidamento
+20. ~~Offerte commerciali (proposta condizioni quadro → push 1:1 a contratto, componenti BoM, documento + allegati)~~ — sviluppate DB+BE+FE, in consolidamento
+21. ~~Valuta su documenti vendite (offerte/contratti/preventivi)~~ — completato a DB; resolver BE da fare
+22. Test UI reali su pratiche, clienti, fornitori, parametri e documenti — in corso
+23. **Rettifiche prezzi DB-L4** (motore delta, canali manuale/automatico, audit) — pianificato in WIP dedicato
+24. Permessi v2 (livello oggetto) — pianificato
+25. Integrazione vendite/pratiche e moduli verticali
 
 ---
 

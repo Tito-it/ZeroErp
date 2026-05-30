@@ -38,3 +38,4 @@
 - [pr_run_lotto_pipeline](manual/pr_run_lotto_pipeline.md) — Orchestrare l'esecuzione della pipeline di fatturazione per un lotto, gestendo:
 - [pricing_service](manual/pricing_service.md) — Wrapper Python su due funzioni DB del pricing v5:
 - [template_contratto_iniziale](manual/template_contratto_iniziale.md) — Template HTML iniziale per la generazione PDF di un contratto commerciale tramite context builder CONTRATTO.
+- [template_offerta_iniziale](manual/template_offerta_iniziale.md) — Template HTML iniziale per la generazione PDF di un'**offerta commerciale** tramite il context builder OFFERTA_COMMERCIALE. Da copiare in documenti.template_documenti_versioni.html_template come prima versione PUBBLICAT…

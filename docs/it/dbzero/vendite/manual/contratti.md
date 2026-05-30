@@ -187,6 +187,26 @@ Trigger modalità C rimossi:
 
 ---
 
+### Valuta del contratto (dal 2026-05-29)
+
+* `valuta_id` — FK a `config.valute(id)`, **nullable**. Source-of-truth della valuta
+  sulla testata, fissata come **snapshot a INSERT-time** (simmetria con
+  `vendite.preventivi` e `vendite.offerte_commerciali`).
+* Valorizzata dal trigger `trg_contratti_a10_default_valuta_ins`
+  (→ [`trgfn_contratti_default_valuta`](/dbzero/vendite/funzioni/trgfn_contratti_default_valuta))
+  **solo se non passata esplicitamente** (es. push da offerta che propaga la
+  valuta dell'offerta): il trigger delega al resolver canonico
+  [`vendite.fn_get_valuta_id`](/dbzero/vendite/funzioni/fn_get_valuta_id) con catena
+  **BA → emittente → gestore**. Nessuna logica di risoluzione duplicata.
+* Ordina dopo `_a10_default_emittente_*`: `emittente_fiscale_id` e' gia' risolto e
+  viene mappato a `soggetto_ruolo_id` per la fn.
+* Se la catena non risolve, `fn_get_valuta_id` solleva `E_CONFIG_MANCANTE` (id 205)
+  via `script.fn_log_and_raise_error`.
+* Indice FK gestito dalla policy centralizzata (`consentito=false` come
+  `fk_preventivi_valuta`): nessun indice manuale.
+
+---
+
 ### Workflow stato e cessazione automatica (dal 2026-04-26)
 
 Le transizioni di stato sono **vincolate da guard trigger**

@@ -128,6 +128,7 @@ nav:
                   - Gestione conti bancari: it/guide/gestione-conti-bancari.md
                   - Gestione listini: it/guide/gestione-listini.md
                   - Gestione preventivi: it/guide/gestione-preventivi.md
+                  - Gestione offerte commerciali: it/guide/gestione-offerte-commerciali.md
                   - Gestione contratti: it/guide/gestione-contratti.md
                   - Fatturazione: it/guide/fatturazione.md
                   - Gestione dei pagamenti: it/guide/gestione-dei-pagamenti.md
@@ -150,10 +151,20 @@ nav:
                   - Generatore Documentazione: it/dbzero/tools/gen_db_docs.md
         - Sviluppatori:
                   - API: it/dev/api.md
-                  - UI: it/dev/frontend-standards.md
+                  - Ricette (dove intervenire): it/dev/ricette-dove-intervenire.md
+                  - Trappole (cosa non fare): it/dev/trappole.md
+                  - Policy ricerca e paginazione (API/DB): "it/dev/Policy-ricerca-e-paginazione(API-DB).md"
+                  - Frontend:
+                            - Standard frontend: it/dev/frontend/frontend-standards.md
+                            - Catalogo Building Block FE: it/dev/frontend/catalogo-building-block-frontend.md
                   - Server:
                             - Backend:
                                       - Guida backend-dev: it/dev/backend/backend-dev.md
+                                      - Playbook operativo backend: it/dev/backend/play-book-operativo-backend.md
+                                      - Catalogo Building Block BE: it/dev/backend/catalogo-building-block-backend.md
+                                      - Piano solidità Django: it/dev/backend/piano-solidita-django.md
+                                      - Provisioning ruoli DB: it/dev/backend/provisioning-db-roles.md
+                                      - Gunicorn dev autoreload: it/dev/backend/gunicorn-dev-autoreload.md
                                       - Checklist post upgrade: it/dev/backend/checklist-post-upgrade.md
                                       - Configurazione Django: it/dev/backend/configurazione-django.md
                             - Database:
@@ -165,5 +176,6 @@ nav:
                   - GitHub:
                             - Documentazione: it/dev/github/configurazione.md
         - Glossario:
+                  - Glossario di dominio: it/glossario/glossario-utility.md
                   - Dev&Ops: it/glossario/devops&db.md
                   - Process Analysis: it/glossario/process-analysis.md

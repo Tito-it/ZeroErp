@@ -116,6 +116,25 @@ Le eccezioni puntuali articolo per articolo risiedono in `offerte_commerciali_ec
 
 ---
 
+### Valuta (dal 2026-05-29)
+
+- `valuta_id` — FK a `config.valute(id)`, **nullable**. Source-of-truth della valuta
+  sulla testata, fissata come **snapshot a INSERT-time** (simmetria con
+  `vendite.preventivi` e `vendite.contratti`).
+- Valorizzata dal trigger `trg_offerte_commerciali_a10_default_valuta_ins`
+  (→ [`trgfn_offerte_commerciali_default_valuta`](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_default_valuta))
+  **solo se non passata esplicitamente** nel payload: il trigger delega al
+  resolver canonico [`vendite.fn_get_valuta_id`](/dbzero/vendite/funzioni/fn_get_valuta_id)
+  con catena **BA → emittente → gestore**. Nessuna logica di risoluzione duplicata.
+- Il trigger ordina dopo `_a10_default_emittente_*`, quindi `emittente_fiscale_id`
+  e' gia' risolto e viene mappato a `soggetto_ruolo_id` per la fn.
+- Se la catena non risolve alcuna valuta, `fn_get_valuta_id` solleva
+  `E_CONFIG_MANCANTE` (id 205) via `script.fn_log_and_raise_error`.
+- L'indice FK e' gestito dalla policy centralizzata (`dbops.fk_index_policy`,
+  `consentito=false` come `fk_preventivi_valuta`): nessun indice manuale.
+
+---
+
 ### Validita temporale
 
 `validita_dal` e `validita_al` indicano la finestra commerciale proposta al cliente.

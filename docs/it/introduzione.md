@@ -75,7 +75,8 @@ Per dubbi o suggerimenti, apri una **Issue**.
 
 ## Documentazione
 
-- Documentazione tecnica: **in corso di pubblicazione su GitBook**
+- Documentazione tecnica: pubblicata da questo stesso sito (build statico Zensical/MkDocs da `docs/`)
+- Punto di partenza: [README](readme.md) e [Mappa Concentrica](mappa-concentrica.md) (stato dello sviluppo)
 - Roadmap e changelog disponibili nel repository
 
 ---
