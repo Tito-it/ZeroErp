@@ -1,0 +1,150 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Refactor quantita/qta_operativa (§5.1, specularita' offerte<->contratti).
+#
+# 1) Installa il default fonte su offerte_commerciali_eccezioni (oggi ASSENTE):
+#    l'offerta deve essere lo specchio del contratto. Backstop DB: se il FE non
+#    manda fonte_quantita_attesa (NOT NULL), il trigger la deriva da
+#    tipo_erogazione invece di violare il NOT NULL.
+# 2) Ri-binda il trigger contratti alla funzione generica script.* e droppa la
+#    vecchia vendite.trgfn_contratti_righe_default_fonte_qta (una sola copia
+#    della logica — file -09).
+#
+# Ordine fase a10: il trigger default_fonte ('d') esegue PRIMA di
+# qta_from_operativa ('q') -> fonte_quantita_attesa e' gia' normalizzata quando
+# il trigger qta legge il governor di nullabilita'.
+#
+# Dipendenza: script.trgfn_righe_default_fonte_qta (file -09).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260531-10-bind-default-fonte-qta-offerte-contratti-mctit.yaml
+
+  - changeSet:
+      id: 20260531-10-01-bind-trg-offerte-eccezioni-default-fonte-qta
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd su
+        offerte_commerciali_eccezioni -> script.trgfn_righe_default_fonte_qta.
+        Specchio del trigger contratti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: offerte_commerciali_eccezioni
+                columnName: fonte_quantita_attesa
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'trgfn_righe_default_fonte_qta';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd
+                  ON vendite.offerte_commerciali_eccezioni;
+
+              CREATE TRIGGER trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione, fonte_quantita_attesa
+                  ON vendite.offerte_commerciali_eccezioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd
+                  ON vendite.offerte_commerciali_eccezioni;
+
+  - changeSet:
+      id: 20260531-10-02-rebind-trg-contrighe-default-fonte-qta-generic
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Ri-binda trg_contratti_righe_a10_default_fonte_qta_ins_upd alla
+        funzione generica script.trgfn_righe_default_fonte_qta e droppa la
+        vecchia vendite.trgfn_contratti_righe_default_fonte_qta (deduplicazione).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_righe_default_fonte_qta';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_default_fonte_qta_ins_upd
+                  ON vendite.contratti_righe;
+
+              CREATE TRIGGER trg_contratti_righe_a10_default_fonte_qta_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione, fonte_quantita_attesa
+                  ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta();
+
+              DROP FUNCTION IF EXISTS vendite.trgfn_contratti_righe_default_fonte_qta();
+      rollback:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Ripristina la funzione vendite.* e ri-binda il trigger contratti ad essa.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_default_fonte_qta()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  IF NEW.fonte_quantita_attesa IS NULL THEN
+                      NEW.fonte_quantita_attesa := CASE NEW.tipo_erogazione
+                          WHEN 'CANONE'     THEN 'FISSA'
+                          WHEN 'UNA_TANTUM' THEN 'FISSA'
+                          WHEN 'ORARIO'     THEN 'MANUALE'
+                          WHEN 'CONSUMO'    THEN 'LETTURE'
+                          ELSE                   'FISSA'
+                      END;
+                  ELSIF TG_OP = 'UPDATE'
+                        AND NEW.tipo_erogazione IS DISTINCT FROM OLD.tipo_erogazione
+                        AND (
+                                (NEW.tipo_erogazione = 'CONSUMO'
+                                     AND NEW.fonte_quantita_attesa IN ('FISSA', 'TIMESHEET'))
+                            OR  (NEW.tipo_erogazione IN ('CANONE', 'UNA_TANTUM')
+                                     AND NEW.fonte_quantita_attesa IN ('TIMESHEET', 'LETTURE'))
+                            OR  (NEW.tipo_erogazione = 'ORARIO'
+                                     AND NEW.fonte_quantita_attesa = 'LETTURE')
+                        )
+                  THEN
+                      NEW.fonte_quantita_attesa := CASE NEW.tipo_erogazione
+                          WHEN 'CANONE'     THEN 'FISSA'
+                          WHEN 'UNA_TANTUM' THEN 'FISSA'
+                          WHEN 'ORARIO'     THEN 'MANUALE'
+                          WHEN 'CONSUMO'    THEN 'LETTURE'
+                          ELSE                   'FISSA'
+                      END;
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_default_fonte_qta_ins_upd
+                  ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_default_fonte_qta_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione, fonte_quantita_attesa
+                  ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_contratti_righe_default_fonte_qta();

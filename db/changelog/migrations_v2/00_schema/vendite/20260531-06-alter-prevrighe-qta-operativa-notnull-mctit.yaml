@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Refactor quantita/qta_operativa (§5.2-5.3) — preventivi_righe: sorgente unica.
+#
+# Modello canonico: la SORGENTE e' qta_operativa (UoM operativa scelta
+# dall'operatore); quantita (base) e' DERIVATA dal trigger
+# script.trgfn_qta_from_operativa. Allineamento a contratti_righe / offerte.
+#
+# preventivi_righe NON ha fonte_quantita_attesa (documento one-shot, nessuna
+# sorgente esterna che differisca la quantita): quindi qta_operativa e' SEMPRE
+# fornita dall'operatore -> diventa NOT NULL. quantita diventa NULLABLE come
+# nelle altre due tabelle (la calcola comunque il trigger su ogni INSERT/UPDATE).
+#
+# Vincolo: il vecchio chk_prevrighe_quantita_pos (quantita > 0) viene SPOSTATO
+# sulla sorgente e cambiato in chk_prevrighe_qta_operativa_nonzero
+# (qta_operativa <> 0). Le quantita' possono essere NEGATIVE (resi, storni,
+# righe a segno misto); resta vietato solo lo ZERO (riga vuota = errore dato).
+# I check simmetrici condizionali su contratti/offerte sono nel file -07.
+#
+# Backfill: per le righe legacy con qta_operativa NULL si imposta
+# qta_operativa = quantita (oggi factor=1 su tutte le righe: quantita ==
+# qta_operativa). Il guard PENDING (trg_..._a10_guard_pending_upd) blocca le
+# modifiche a qta_operativa su righe in stato_approvazione_prezzo='PENDING':
+# viene disabilitato solo per la durata del backfill (tutto in una singola
+# transazione DDL: in caso di errore il ripristino e' automatico).
+#
+# Prerequisito di rilascio: questa migration e' BREAKING per il BE preventivi
+# attuale (deriva qta_operativa = quantita*factor). Va rilasciata insieme alla
+# rimozione di _derive_qta_operativa (brief §6.1).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260531-06-alter-prevrighe-qta-operativa-notnull-mctit.yaml
+
+  - changeSet:
+      id: 20260531-06-01-backfill-prevrighe-qta-operativa
+      author: mctit
+      comment: >
+        Backfill preventivi_righe.qta_operativa = quantita dove NULL (factor=1
+        oggi). Disabilita temporaneamente il guard PENDING per consentire
+        l'UPDATE anche su eventuali righe in approvazione.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - columnExists:
+              schemaName: vendite
+              tableName: preventivi_righe
+              columnName: qta_operativa
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT CASE WHEN EXISTS (
+                  SELECT 1 FROM vendite.preventivi_righe WHERE qta_operativa IS NULL
+                ) THEN 1 ELSE 0 END;
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  DISABLE TRIGGER trg_preventivi_righe_a10_guard_pending_upd;
+
+              UPDATE vendite.preventivi_righe
+                 SET qta_operativa = quantita
+               WHERE qta_operativa IS NULL
+                 AND quantita IS NOT NULL;
+
+              ALTER TABLE vendite.preventivi_righe
+                  ENABLE TRIGGER trg_preventivi_righe_a10_guard_pending_upd;
+      rollback:
+        - sql:
+            sql: SELECT 1;
+
+  - changeSet:
+      id: 20260531-06-02-alter-prevrighe-qta-operativa-not-null
+      author: mctit
+      comment: >
+        preventivi_righe.qta_operativa SET NOT NULL (sorgente sempre presente:
+        nessuna fonte_quantita_attesa sul preventivo).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: vendite
+              tableName: preventivi_righe
+              columnName: qta_operativa
+          - sqlCheck:
+              expectedResult: 0
+              sql: |
+                SELECT COUNT(*) FROM vendite.preventivi_righe WHERE qta_operativa IS NULL;
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  ALTER COLUMN qta_operativa SET NOT NULL;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  ALTER COLUMN qta_operativa DROP NOT NULL;
+
+  - changeSet:
+      id: 20260531-06-03-alter-prevrighe-quantita-nullable
+      author: mctit
+      comment: >
+        preventivi_righe.quantita DROP NOT NULL (colonna derivata dal trigger,
+        uniforme a contratti_righe / offerte_commerciali_eccezioni).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT CASE WHEN attnotnull THEN 1 ELSE 0 END
+                FROM pg_attribute
+               WHERE attrelid = 'vendite.preventivi_righe'::regclass
+                 AND attname = 'quantita';
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  ALTER COLUMN quantita DROP NOT NULL;
+      rollback:
+        - sql:
+            sql: |
+              UPDATE vendite.preventivi_righe SET quantita = qta_operativa * COALESCE(factor_to_base, 1)
+               WHERE quantita IS NULL;
+              ALTER TABLE vendite.preventivi_righe
+                  ALTER COLUMN quantita SET NOT NULL;
+
+  - changeSet:
+      id: 20260531-06-04-move-chk-prevrighe-positivita-su-sorgente
+      author: mctit
+      comment: >
+        Sposta il vincolo dalla colonna derivata alla sorgente:
+        DROP chk_prevrighe_quantita_pos (quantita > 0) e
+        ADD chk_prevrighe_qta_operativa_nonzero (qta_operativa <> 0).
+        Negativi ammessi (resi/storni); vietato solo lo zero.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_constraint c
+                  JOIN pg_class r ON r.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = r.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND r.relname = 'preventivi_righe'
+                   AND c.conname = 'chk_prevrighe_quantita_pos';
+          - sqlCheck:
+              expectedResult: 0
+              sql: |
+                SELECT COUNT(*) FROM vendite.preventivi_righe WHERE qta_operativa = 0;
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  DROP CONSTRAINT chk_prevrighe_quantita_pos;
+              ALTER TABLE vendite.preventivi_righe
+                  ADD CONSTRAINT chk_prevrighe_qta_operativa_nonzero
+                  CHECK (qta_operativa <> 0);
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  DROP CONSTRAINT IF EXISTS chk_prevrighe_qta_operativa_nonzero;
+              ALTER TABLE vendite.preventivi_righe
+                  ADD CONSTRAINT chk_prevrighe_quantita_pos CHECK (quantita > 0);

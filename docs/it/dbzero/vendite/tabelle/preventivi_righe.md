@@ -8,7 +8,7 @@
 | preventivo_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
 | descrizione | character varying | YES |  |
-| quantita | numeric | NO |  |
+| quantita | numeric | YES |  |
 | prezzo_unitario | numeric | NO |  |
 | sconto_percentuale | numeric | YES | 0 |
 | iva_id | integer | YES |  |
@@ -19,9 +19,9 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
-| qta_operativa | numeric | YES |  |
+| qta_operativa | numeric | NO |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | NO | 1 |
+| factor_to_base | numeric | YES |  |
 | stato_approvazione_prezzo | USER-DEFINED | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
 | tx_id | uuid | YES |  |
@@ -29,7 +29,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_prevrighe_quantita_pos |  |
+| CHECK | chk_prevrighe_qta_operativa_nonzero |  |
 | CHECK | chk_prevrighe_sconto |  |
 | FOREIGN KEY | fk_preventivi_vendita_r_uom_operativa | uom_operativa_id |
 | FOREIGN KEY | fk_prevrighe_articoli | articolo_id |

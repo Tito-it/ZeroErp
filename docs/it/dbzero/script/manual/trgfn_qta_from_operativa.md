@@ -18,7 +18,12 @@ Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a 
 
 ### Contesto di utilizzo
 
-* **Trigger**: `trg_a10_ins_upd_ddt_righe_qta_from_operativa` (BEFORE INSERT/UPDATE su `vendite.ddt_righe`).
+* **Trigger / tabelle consumatrici** (BEFORE INSERT/UPDATE):
+  * `vendite.ddt_righe` — `('true','false')`
+  * `vendite.ordini_righe` — `('true','false')`
+  * `vendite.preventivi_righe` — `('true','false')` (no `fonte`: `qta_operativa` sempre obbligatoria)
+  * `vendite.contratti_righe` — `('true','false','quantita','fonte_quantita_attesa')`
+  * `vendite.offerte_commerciali_eccezioni` — `('true','false','quantita','fonte_quantita_attesa')` (dal refactor 2026-05-31, mirror contratti)
 * **Tabelle/oggetti letti**:
 
   * `catalogo.articoli` (fallback UoM base se `uom_operativa_id` assente);
@@ -50,7 +55,7 @@ Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a 
 
 ### Algoritmo (passi rilevanti)
 
-1. **Short‑circuit**: se **entrambi** `NEW.qta_operativa` **e** `NEW.uom_operativa_id` sono già presenti ⇒ **NON ricalcola** (ritorna `NEW` così com’è).
+1. **Short‑circuit** (fix `20260527-02`): scatta **solo su UPDATE** quando **nessun** input operativo cambia (`qta_operativa`, `uom_operativa_id`, `factor_to_base` tutti `IS NOT DISTINCT FROM OLD`) ⇒ ritorna `NEW` così com’è. Su **INSERT calcola SEMPRE** `quantita` da `qta_operativa` (così righe FISSA con `qta_operativa` valorizzata ottengono la base; e i dati legacy aggiornati su colonne non-operative non vengono rivalidati).
 2. **Lettura parametri** da `TG_ARGV` (`fill_factor_to_base`, `fill_uom_id_base`, `target_col`, `fonte_nullability_col`).
 3. **Validazione quantità operativa**: se `NEW.qta_operativa IS NULL`:
    * Se `TG_ARGV[3]` è valorizzato: legge `to_jsonb(NEW) ->> v_fonte_col`. Se il valore **≠ `’FISSA’`** (e non `NULL`) ⇒ **RETURN NEW** senza raise (fonte non-FISSA governa la quantità esternamente).
@@ -170,6 +175,7 @@ databaseChangeLog:
 
 ### Note di implementazione
 
-* La funzione è **idempotente** sul caso “operativa completa” (non ricalcola).
+* La funzione è **idempotente su UPDATE** quando nessun input operativo cambia (short‑circuit); su INSERT ricalcola sempre.
+* **`factor_to_base` nullable** (refactor 2026-05-31 su preventivi/offerte/contratti): se `NEW.factor_to_base IS NULL` e `fill_factor_to_base=TRUE`, il fattore viene letto dal mapping `catalogo.articoli_uom_operativa` e **snapshottato** in `NEW.factor_to_base`. Con la vecchia `NOT NULL DEFAULT 1` lo snapshot era di fatto morto (la colonna non era mai NULL → `COALESCE` prendeva sempre 1).
 * L’errore viene sempre **loggato** in `dbops.error_log` tramite `fn_log_and_raise_error`, con `context` e chiavi (`table`, `column`, ecc.).
 * Progettata per essere **riusabile** su più tabelle (DDT, Ordini, ecc.) tramite `TG_ARGV` e presenza condizionale delle colonne (`uom_id`, `factor_to_base`).

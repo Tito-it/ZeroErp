@@ -290,13 +290,48 @@ Entrambi i bug **confermati empiricamente**. Non sono ipotesi: il refactor §5�
 
 ## 9. Punti aperti / decisioni
 
-- [ ] Conferma di Tid sulla direzione canonica unica (`qta_operativa` sorgente
-      ovunque) — §2/§7.
+- [x] Conferma di Tid sulla direzione canonica unica (`qta_operativa` sorgente
+      ovunque) — §2/§7. **Confermata 2026-05-31.**
 - [x] Esito smoke §8a → **bug numerico confermato** (preventivo: `quantita = Q×factor²`); latente (0/45 righe con factor≠1).
 - [x] Esito smoke §8b → **bug confermato** (push FISSA → `E_QTA_MISSING`).
-- [ ] Decisioni DB su NOT NULL / CHECK colonne (team DB) — §5.
+- [x] Decisioni DB su NOT NULL / CHECK colonne — **chiuse 2026-05-31** (vedi §10):
+      `qta_operativa` NOT NULL sul preventivo (no fonte), `quantita` nullable
+      ovunque, `factor_to_base` nullable ovunque; vincolo positività → **`qta_operativa <> 0`**
+      (negativi ammessi, zero vietato), condizionale `IS NULL OR <> 0` su contratti/offerte.
+- [ ] BE §6 (rimozione `_derive_qta_operativa`, offerte_service) — da rilasciare
+      INSIEME alle migration §10 (breaking).
 - [ ] Collegamento con `brief-db-offerta-push-successione-contratto-overlap.md`
       (stesso flusso di push).
+
+---
+
+## 10. DB — implementato (2026-05-31, branch `dev/db-tid`)
+
+Migration Liquibase (numerazione globale `20260531-05..11`, autogen rigenerato):
+
+| File | Contenuto |
+|------|-----------|
+| `00_schema/vendite/20260531-05-alter-righe-factor-to-base-nullable` | `factor_to_base` → NULLABLE (drop DEFAULT 1) su preventivi/offerte/contratti. **Sblocca lo snapshot del factor dal mapping** `articoli_uom_operativa` (prima morto: COALESCE prendeva sempre il default 1). DB-first puro. |
+| `00_schema/vendite/20260531-06-alter-prevrighe-qta-operativa-notnull` | Preventivi: backfill `qta_operativa=quantita` (disabilita temp. il guard PENDING) → `qta_operativa` NOT NULL → `quantita` nullable → check positività **spostato sulla sorgente** (`chk_prevrighe_qta_operativa_nonzero`, `<> 0`). |
+| `00_schema/vendite/20260531-07-add-chk-qta-operativa-nonzero-contratti-offerte` | Check condizionale `qta_operativa IS NULL OR qta_operativa <> 0` su contratti_righe + offerte_eccezioni (NULL ammesso per fonte ≠ FISSA). |
+| `00_schema/vendite/20260531-08-backfill-offerte-eccezioni-qta-operativa` | Backfill `qta_operativa=quantita` sulle eccezioni offerta FISSA (rende pushabili le offerte già create — evita §8b sui dati storici). |
+| `20_code/script/20260531-09-create-trgfn-righe-default-fonte-qta` | **Generalizza** `vendite.trgfn_contratti_righe_default_fonte_qta` → `script.trgfn_righe_default_fonte_qta` (già table-agnostic, zero logica duplicata). |
+| `20_code/vendite/20260531-10-bind-default-fonte-qta-offerte-contratti` | Bind default-fonte su offerte (`trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd`) + **ri-bind contratti** alla fn generica + drop vecchia fn. Specularità offerte↔contratti. |
+| `20_code/vendite/20260531-11-bind-trg-offerte-eccezioni-qta-from-operativa` | Bind `trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd` → `script.trgfn_qta_from_operativa('true','false','quantita','fonte_quantita_attesa')` (mirror contratti). Chiude §5.1. |
+
+pgTAP (**tutti verdi 2026-05-31** su DB con migration applicate):
+- `db/pgtap/vendite/test-refactor-qta-operativa-preventivi-v1.sql` (11/11; regressione §8a confermata: factor=6 → quantita=12 non 72, factor snapshot=6; negativi ammessi; zero/NULL bloccati).
+- `db/pgtap/vendite/offerte_commerciali/test_offerte_eccezioni_qta_from_operativa.sql` (conversione + default_fonte + specularità + factor≠1 + check).
+- `db/pgtap/vendite/offerte_commerciali/test_push_offerta_fissa_qta_operativa.sql` (regressione §8b: push FISSA senza `E_QTA_MISSING`).
+
+> **Nota implementativa** (per il BE): l'errore parlante `E_QTA_MISSING` su
+> `qta_operativa` NULL arriva **dal trigger** `trgfn_qta_from_operativa`, non dal
+> `NOT NULL` di colonna (che resta come backstop duro). Lo short-circuit
+> (`20260527-02`) protegge i dati esistenti: un UPDATE che non tocca gli input
+> operativi non rifà il calcolo, quindi le righe legacy non vengono rivalidate.
+
+> **Follow-up DB non in scope**: `ddt_righe` / `ordini_righe` hanno lo stesso
+> `factor_to_base NOT NULL DEFAULT 1` (snapshot morto) — da valutare a parte.
 
 ---
 
