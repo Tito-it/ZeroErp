@@ -1026,18 +1026,55 @@ class OfferteRepository(ComponentiRepositoryMixin):
     #            record gia' creato dal trigger snapshot_precontrattuali)
     #          - se p_pratica_id NOT NULL: INSERT pratiche.pratiche_sorgenti
     #
+    #          - overlap sulla quintupla (BA, istanza, utility, ambito,
+    #            validita): se esiste un contratto sovrapposto non abortito e
+    #            `chiudi_esistente` e' False -> E_CONTRATTO_OVERLAP_ESISTENTE
+    #            (caso B); se True -> chiude il contratto esistente per
+    #            successione (caso C) poi crea il nuovo (rev4 DB 2026-05-31).
+    #
     #        Ritorna l'id del nuovo contratto DRAFT.
     def push_a_contratto(
-        self, offerta_id: int, pratica_id: int | None = None
+        self,
+        offerta_id: int,
+        pratica_id: int | None = None,
+        chiudi_esistente: bool = False,
     ) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT vendite.fn_push_offerta_a_contratto(%s, %s)",
-                [offerta_id, pratica_id],
+                "SELECT vendite.fn_push_offerta_a_contratto(%s, %s, %s)",
+                [offerta_id, pratica_id, chiudi_esistente],
             )
             row = cursor.fetchone()
             assert row is not None and row[0] is not None
             return int(row[0])
+
+    # Scopo: Ritorna il contratto (non abortito) la cui validita' si sovrappone
+    #        a quella che il push genererebbe per questa offerta, riusando la
+    #        fn di dominio contratti `vendite.fn_contratto_sovrapposto` (brief
+    #        successione §3.2.1). Read-only: alimenta il dialog FE di
+    #        successione (contratto in conflitto + validita') senza tentare
+    #        l'INSERT. `ambito` = 'COMMODITY' (default colonna usato dall'INSERT
+    #        del push). Ritorna None se nessun overlap.
+    def get_contratto_sovrapposto(self, offerta_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT c.id, c.numero, c.valido_dal, c.valido_al
+                  FROM vendite.offerte_commerciali o
+                  JOIN vendite.contratti c
+                    ON c.id = vendite.fn_contratto_sovrapposto(
+                           o.billing_account_id,
+                           o.istanza_utility_id,
+                           o.utility_id,
+                           'COMMODITY',
+                           o.validita_dal,
+                           o.validita_al
+                       )
+                 WHERE o.id = %s
+                """,
+                [offerta_id],
+            )
+            return row_to_dict(cursor)
 
     # Scopo: Lookup minimal del contratto post-push (id + numero + uid).
     #        Usato dal service per costruire `OffertaPushResult` senza

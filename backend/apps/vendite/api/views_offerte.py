@@ -419,6 +419,12 @@ _PUSH_CONTRATTO_REQUEST = inline_serializer(
         # Pratica opzionale: se valorizzata, il contratto viene inserito
         # come sorgente collegata in `pratiche.pratiche_sorgenti`.
         "pratica_id": serializers.IntegerField(required=False, allow_null=True),
+        # Successione su overlap: se True e c'e' un contratto sovrapposto,
+        # lo chiude (valido_al = nuovo valido_dal - 1) e crea il nuovo;
+        # se False (default), su overlap fallisce con
+        # E_CONTRATTO_OVERLAP_ESISTENTE (il FE mostra il contratto in
+        # conflitto e richiama con chiudi_esistente=true su conferma).
+        "chiudi_esistente": serializers.BooleanField(required=False, default=False),
     },
 )
 
@@ -438,6 +444,11 @@ class ApiOffertaPushContratto(DomainAPIView):
     #        E_OFFERTA_CONTRATTO_GIA_GENERATO. Ritorna id+numero+uid del
     #        contratto DRAFT generato — il FE puo' navigare al
     #        `ContrattoDrawer` via `contratto_id`.
+    #
+    #        Successione su overlap: `chiudi_esistente=true` chiude il
+    #        contratto sovrapposto e crea il nuovo; default false fallisce
+    #        con E_CONTRATTO_OVERLAP_ESISTENTE (vedi
+    #        ApiOffertaContrattoSovrapposto per il preview del conflitto).
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         body = request.data or {}
         pratica_id_raw = body.get("pratica_id")
@@ -458,11 +469,33 @@ class ApiOffertaPushContratto(DomainAPIView):
                     context={"pratica_id": pratica_id_raw},
                     cause=exc,
                 )
+        chiudi_esistente = bool(body.get("chiudi_esistente"))
         return success_response(
             OfferteService().push_a_contratto(
-                offerta_id, pratica_id=pratica_id
+                offerta_id,
+                pratica_id=pratica_id,
+                chiudi_esistente=chiudi_esistente,
             )
         )
+
+
+class ApiOffertaContrattoSovrapposto(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="VenditeOffertaContrattoSovrappostoResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Ritorna il contratto attivo sovrapposto a quello generabile
+    #        dall'offerta (o null). Read-only: alimenta il dialog FE di
+    #        successione dopo che il push ha restituito
+    #        E_CONTRATTO_OVERLAP_ESISTENTE. Risposta: { contratto: {...}|null }.
+    def get(self, request: Request, offerta_id: int) -> JsonResponse:
+        del request
+        contratto = OfferteService().get_contratto_sovrapposto(offerta_id)
+        return success_response({"contratto": contratto})
 
 
 class ApiOffertaRevisioni(DomainAPIView):

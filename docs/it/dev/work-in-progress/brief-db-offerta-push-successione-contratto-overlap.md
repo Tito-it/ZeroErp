@@ -1,10 +1,15 @@
 # Brief DB — Successione contratti: meccanismo generico su overlap
 
-> **Stato**: ✅ **DB COMPLETO** su `dev/db-tid` (2026-05-31). Migration
-> `20260531-01..04` applicate (`liquibase update` ok), pgTAP verdi (18 test),
-> doc auto-gen + manuali narrativi scritti. Restano solo: rigenerazione doc per
-> agganciare i manuali delle 2 nuove fn, e il lavoro a valle BE+FE (§5).
-> Vedi checklist §8 per lo stato puntuale.
+> **Stato**: ✅ **COMPLETO end-to-end** (DB + BE + FE), 2026-05-31. DB su
+> `dev/db-tid` (migration `20260531-01..04`, pgTAP 18 verdi); BE+FE cablati
+> (push a 3 param + endpoint `contratto-sovrapposto/` + dialog di successione,
+> 53/53 test service verdi, vite build verde). Documentazione API aggiornata
+> (`api_offerte.md` + catalogo BB backend). Vedi checklist §8.
+>
+> **Unico residuo aperto**: i percorsi di creazione contratto **diversi dal
+> push offerta** (creazione manuale, futuri push) non agganciano ancora il
+> meccanismo di successione — debito tracciato in §6, fuori scope per
+> decisione di Tid.
 >
 > **Owner concettuale**: Tid (Michele Carlo Titini)
 >
@@ -350,41 +355,50 @@ file dedicato `test_fn_push_offerta_successione.sql`):
   verificare che venga ritradotto in `E_CONTRATTO_OVERLAP_ESISTENTE` e non
   trapeli l'errore grezzo (§3.4 punto 5).
 
-## 5. Lavoro a valle (BE + FE) — fuori da questo brief, da fare a DB pronto
+## 5. Lavoro a valle (BE + FE) — ✅ COMPLETATO 2026-05-31
 
-Annotato per completezza; **non** si implementa finché il DB non chiude.
+Cablato dopo la consegna DB. 53/53 test service verdi, vite build verde,
+eslint pulito.
 
-**Backend** (`apps/vendite`):
+**Backend** (`apps/vendite`) — ✅ fatto:
 
-- `OfferteRepository.push_a_contratto(offerta_id, pratica_id, chiudi_esistente=False)`
+- [x] `OfferteRepository.push_a_contratto(offerta_id, pratica_id, chiudi_esistente=False)`
   → passa il 3° argomento alla fn.
-- Pre-check overlap per il preview FE: esporre `fn_contratto_sovrapposto` (read
-  only) via un metodo repo riusabile — collocarlo in
-  `ContrattiRepository`/helper condiviso (è dominio contratti, non offerta),
-  così anche la futura creazione manuale lo riusa. Ritorna id+numero+validità
-  del contratto in conflitto.
-- `OfferteService.push_a_contratto(..., chiudi_esistente=False)`: il
-  `_db_errors` esistente già estrae i codici `E_*` dal MESSAGE; mappare
-  `E_CONTRATTO_OVERLAP_ESISTENTE` propagando nel detail i dati del contratto in
-  conflitto.
+- [x] `OfferteRepository.get_contratto_sovrapposto(offerta_id)` — pre-check
+  overlap read-only via `fn_contratto_sovrapposto` (id+numero+validità del
+  contratto in conflitto) per il preview FE, senza tentare l'INSERT.
+  **Nota di scope**: collocato in `OfferteRepository` (non in
+  `ContrattiRepository`) perché oggi l'unico consumer è l'offerta; quando la
+  creazione manuale contratto adotterà la successione (§6) il wrapper va
+  promosso a `ContrattiRepository` o helper condiviso.
+- [x] `OfferteService.push_a_contratto(..., chiudi_esistente=False)` +
+  `get_contratto_sovrapposto(offerta_id)`. Il `_db_errors` esistente estrae i
+  codici `E_*` dal MESSAGE → `E_CONTRATTO_OVERLAP_ESISTENTE` propagato parlante.
+- [x] View `ApiOffertaPushContratto` accetta `chiudi_esistente`; nuova view
+  `ApiOffertaContrattoSovrapposto` (`GET /<id>/contratto-sovrapposto/`).
+- [x] Test: 4 nuovi casi (flag inoltrato, codice overlap propagato, preview
+  404 + ok).
 
-**Frontend** (`vendite/offerte`):
+**Frontend** (`vendite/offerte`) — ✅ fatto:
 
-- `OffertaPushDialog.vue`: il pulsante azione diventa il **bottone standard di
-  conferma** (richiesta esplicita Tid — oggi è l'azione `@save` di `AppDialog`
-  con label `vendite.offerte.push_conferma`; allineare alla conferma standard).
-- Flusso a due passi: sul codice `E_CONTRATTO_OVERLAP_ESISTENTE` mostrare il
-  contratto esistente (numero, validità, link al `ContrattoDrawer`) e chiedere
-  conferma "chiudi il contratto esistente (valido fino al GG-MM-AAAA) e genera
-  il nuovo?" → su conferma, re-invocare il push con `chiudi_esistente: true`.
-- API client + store: aggiungere il parametro `chiudiEsistente` a
-  `pushContratto`.
+- [x] `OffertaPushDialog.vue`: pulsante = **conferma standard** (`common.confirm`).
+- [x] **Nuovo `OffertaSuccessioneDialog.vue`**: mostra il contratto in conflitto
+  (numero, validità, link al `ContrattoDrawer`) + data di chiusura calcolata
+  (`decorrenza − 1`), conferma esplicita.
+- [x] `OffertaDrawer.runPush()`: routing a due passi sui codici parlanti —
+  `E_OFFERTA_CONTRATTO_GIA_GENERATO` → dialog idempotenza,
+  `E_CONTRATTO_OVERLAP_ESISTENTE` → carica il contratto sovrapposto e apre il
+  dialog di successione; su conferma re-invoca il push con
+  `chiudi_esistente=true` riusando la pratica scelta.
+- [x] API client (`pushOffertaAContratto` + `getContrattoSovrapposto`), store
+  (`pushAContratto({chiudiEsistente})` + `loadContrattoSovrapposto`), i18n
+  it/en (chiavi `successione_*`).
 
 > Poiché il meccanismo DB è generico, il dialog di successione FE è un buon
 > candidato a **building block riusabile** (memoria
 > `feedback_regola_del_2_estrai_bb`) quando la creazione manuale contratto
-> adotterà lo stesso flusso. Per ora si implementa nel solo push; alla seconda
-> occorrenza si estrae. Da dichiarare a Tid prima di astrarre.
+> adotterà lo stesso flusso. Per ora implementato nel solo push (1ª
+> occorrenza); alla seconda si estrae. Da dichiarare a Tid prima di astrarre.
 
 ## 6. Percorsi non ancora coperti (debito tracciato)
 
@@ -496,6 +510,17 @@ File `20260531-04-update-fn-push-offerta-a-contratto-successione-mctit.yaml`.
 - [x] Liquibase `update` applicato su `dev/db-tid` (fix precondition cross-fase
       del file 03: rimossa la `changeSetExecuted` verso il seed `80_data`).
 - [x] pgTAP verdi (18 test: 12 successione + 6 push).
-- [ ] Rigenerare le pagine `funzioni/` delle 2 nuove fn per agganciare i manuali
-      narrativi appena scritti (gen_db_docs.py).
-- [ ] Aggiornare le memorie di progetto e sbloccare §5 (BE+FE).
+- [x] Rigenerare le pagine `funzioni/` delle 2 nuove fn per agganciare i manuali
+      narrativi (gen_db_docs.py): `fn_contratto_sovrapposto.md` +
+      `fn_chiudi_contratto_per_successione.md` presenti in `funzioni/` e `manual/`.
+
+### Step 6 — BE + FE + documentazione applicativa ✅ (2026-05-31)
+
+- [x] BE: repository + service + view + route (§5). 53/53 test service verdi.
+- [x] FE: `OffertaSuccessioneDialog` + routing `runPush` + API/store/i18n (§5).
+      Vite build verde, eslint pulito.
+- [x] Doc API: `docs/it/backend/vendite/manual/api_offerte.md` (endpoint push a
+      3 param + `contratto-sovrapposto/` + 2 codici errore + dipendenze DB) e
+      `docs/it/dev/backend/catalogo-building-block-backend.md` (sezione
+      "Successione contratti su overlap" con le 4 voci BB).
+- [X] Commit + push (in attesa di OK Tid).
