@@ -14,7 +14,6 @@ import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
-import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -35,7 +34,7 @@ import { useDrawerContentReady } from '../../../core/composables/useDrawerConten
 import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { displayDate } from '../../../core/utils/date'
-import { coerceJsonbToArray } from '../../../core/utils/meta'
+import { rowComponenti, hasBundleComponenti } from '../../_shared/componenti/rowComponenti'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { FONTE_QUANTITA_ATTESA, TIPO_ECCEZIONE, TIPO_EROGAZIONE } from '../../constants'
 import {
@@ -82,19 +81,6 @@ const form = ref({})
 // `ComponentiPanel` data-driven con i figli aggregati dal BE
 // (`row.componenti` jsonb). Pattern speculare a `ContrattoRigheDrawer`.
 const expandedRows = ref({})
-
-// Coerce difensivo: psycopg puo' restituire il `jsonb_agg` (`row.componenti`)
-// come stringa JSON invece che array — `Array.isArray` fallirebbe e
-// l'expander non comparirebbe pur essendoci i figli. `coerceJsonbToArray`
-// normalizza stringa->array (pass-through se gia' array). Vedi catalogo BB
-// `coerceJsonbToObject/Array`.
-function rowComponenti(row) {
-  return coerceJsonbToArray(row?.componenti)
-}
-
-function hasBundleComponenti(row) {
-  return row?.is_composito === true && rowComponenti(row).length > 0
-}
 
 function isExpanded(row) {
   const key = row?.id

@@ -4,6 +4,7 @@
 
 import api from '../../../core/api'
 import { generateIdempotencyKey } from '../../../core/utils/idempotency'
+import { makeComponentiBomApi } from '../../../core/api/componentiBom'
 
 const BASE = '/vendite/preventivi'
 
@@ -111,44 +112,14 @@ export function getContestoPricing(preventivoId) {
 // gestisci_riga BE — niente POST pubblico dedicato.
 // Il prezzo della riga padre e' SUM(componenti × coeff_qta), ricalcolato dai
 // trigger DB a ogni mutazione del componente.
-
-// Form atomic 2026-05-12: preview pre-save dei componenti per il drawer riga.
-// Read-only: per ogni componente esposto del padre ritorna prezzo_suggerito
-// (NULL + resolver_error_reason se manca listino), origine_prezzo, qta.
-// Il FE pre-popola una tabella editabile; l'operatore valorizza eventuali
-// NULL prima del save (con autorizzazione `prezzo_override_manuale`).
-// Il payload del save include `componenti_overrides` con i prezzi manuali.
-export function previewRigaComponenti(preventivoId, payload) {
-  return api.post(
-    `${BASE}/${preventivoId}/righe/preview-componenti/`,
-    payload,
-  )
-}
-
-// `soloAttivi=true` default backcompat (expander tabella righe vede solo
-// componenti attivi). EDIT panel passa false per includere anche gli
-// opzionali disattivati e permettere il toggle di riattivazione.
-export function listRigaComponenti(preventivoId, rigaId, { soloAttivi = true } = {}) {
-  const params = soloAttivi ? {} : { solo_attivi: 'false' }
-  return api.get(`${BASE}/${preventivoId}/righe/${rigaId}/componenti/`, { params })
-}
-
-// Update fine del singolo componente (prezzo override, IVA, ordine, origine).
-// PATCH coerente con updateRiga/updatePreventivo: nessuna Idempotency-Key
-// (BE non la richiede, usa request.data diretto, no handle_post_json).
-export function updateRigaComponente(preventivoId, rigaId, componenteId, payload) {
-  return api.patch(
-    `${BASE}/${preventivoId}/righe/${rigaId}/componenti/${componenteId}/`,
-    payload,
-  )
-}
-
-// Soft delete componente: il trigger DB ricalcola il prezzo della riga padre.
-export function deleteRigaComponente(preventivoId, rigaId, componenteId) {
-  return api.delete(
-    `${BASE}/${preventivoId}/righe/${rigaId}/componenti/${componenteId}/`,
-  )
-}
+// Schema REST identico a contratti: i 4 metodi vengono dal building block
+// `makeComponentiBomApi` (core/api/componentiBom.js), qui solo bindati al
+// path base preventivi e ri-esportati con gli stessi nomi.
+const _componentiApi = makeComponentiBomApi(BASE)
+export const previewRigaComponenti = _componentiApi.previewRigaComponenti
+export const listRigaComponenti = _componentiApi.listRigaComponenti
+export const updateRigaComponente = _componentiApi.updateRigaComponente
+export const deleteRigaComponente = _componentiApi.deleteRigaComponente
 
 // --- Indirizzi ---
 

@@ -37,7 +37,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerContextHeader from '../../core/components/DrawerContextHeader.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
-import { coerceJsonbToArray } from '../../core/utils/meta'
+import { rowComponenti, hasBundleComponenti } from '../_shared/componenti/rowComponenti'
 import ComponentiCreateActionsPanel from '../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
 import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
@@ -182,25 +182,6 @@ const pageActions = computed(() => [
     command: onAggiungiArticolo,
   },
 ])
-
-// Scopo: normalizza il `jsonb_agg` dei figli (`row.componenti`) ad array.
-// Coerce difensivo: psycopg puo' restituire il JSONB come STRINGA JSON
-// invece che array gia' deserializzato — in quel caso `Array.isArray`
-// fallirebbe e l'expander non comparirebbe pur essendoci i figli.
-// `coerceJsonbToArray` normalizza stringa->array (pass-through se gia'
-// array). Stesso fix gia' applicato a OffertaEccezioniDrawer.
-function rowComponenti(row) {
-  return coerceJsonbToArray(row?.componenti)
-}
-
-// Scopo: vero se la riga è un bundle composito con almeno un componente
-// figlio. Discrimina il chevron expander: visibile solo sui bundle.
-// `componenti` è il jsonb_agg dei figli ritornato dalla funzione DB
-// `vendite.fn_contratto_righe_preview` (migration 20260516-04).
-function hasBundleComponenti(row) {
-  return row?.is_composito === true
-    && rowComponenti(row).length > 0
-}
 
 // Scopo: chiave riga coerente con la `data-key` dinamica del DataTable.
 // con_listino usa `_row_key` (preview, niente PK stabile per le righe
