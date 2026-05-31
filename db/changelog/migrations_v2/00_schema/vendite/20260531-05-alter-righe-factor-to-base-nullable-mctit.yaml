@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Refactor quantita/qta_operativa (§5.1-5.3) — passo 1: factor_to_base NULLABLE.
+#
+# Problema: su tutte e tre le tabelle factor_to_base e' NOT NULL DEFAULT 1.
+#   Il trigger script.trgfn_qta_from_operativa fa
+#       v_factor_used := COALESCE(NEW.factor_to_base, v_factor_map, 1)
+#   e snapshotta il fattore SOLO se NEW.factor_to_base IS NULL
+#   (parametro fill_factor_to_base = TG_ARGV[0] = 'true').
+#   Poiche' la colonna non e' mai NULL (default 1), il lookup sul mapping
+#   catalogo.articoli_uom_operativa (v_factor_map) viene SEMPRE ignorato e lo
+#   snapshot non scatta mai: per articoli con factor != 1 la base risulta
+#   sbagliata (quantita = qta_operativa * 1). Latente perche' 1 sola coppia
+#   articolo/UoM ha factor != 1 a sistema.
+#
+# Fix: rendere factor_to_base NULLABLE (drop DEFAULT 1 + drop NOT NULL) cosi'
+#   il trigger deriva il fattore dal mapping e lo snapshotta (DB-first puro:
+#   ne' FE ne' BE devono conoscere il fattore). Le righe esistenti mantengono
+#   il valore 1 (drop default non altera i dati): nessun backfill richiesto.
+#
+# Scope: solo le 3 tabelle del refactor vendite. ddt_righe/ordini_righe hanno
+#   lo stesso difetto latente ma restano fuori scope (follow-up separato).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260531-05-alter-righe-factor-to-base-nullable-mctit.yaml
+
+  - changeSet:
+      id: 20260531-05-01-alter-prevrighe-factor-to-base-nullable
+      author: mctit
+      comment: >
+        preventivi_righe.factor_to_base: drop DEFAULT 1 + drop NOT NULL.
+        Abilita lo snapshot del fattore dal mapping articoli_uom_operativa.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: vendite
+            tableName: preventivi_righe
+            columnName: factor_to_base
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  ALTER COLUMN factor_to_base DROP DEFAULT;
+              ALTER TABLE vendite.preventivi_righe
+                  ALTER COLUMN factor_to_base DROP NOT NULL;
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              UPDATE vendite.preventivi_righe SET factor_to_base = 1 WHERE factor_to_base IS NULL;
+              ALTER TABLE vendite.preventivi_righe
+                  ALTER COLUMN factor_to_base SET DEFAULT 1;
+              ALTER TABLE vendite.preventivi_righe
+                  ALTER COLUMN factor_to_base SET NOT NULL;
+
+  - changeSet:
+      id: 20260531-05-02-alter-offerte-eccezioni-factor-to-base-nullable
+      author: mctit
+      comment: >
+        offerte_commerciali_eccezioni.factor_to_base: drop DEFAULT 1 + drop NOT NULL.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: vendite
+            tableName: offerte_commerciali_eccezioni
+            columnName: factor_to_base
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ALTER COLUMN factor_to_base DROP DEFAULT;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ALTER COLUMN factor_to_base DROP NOT NULL;
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              UPDATE vendite.offerte_commerciali_eccezioni SET factor_to_base = 1 WHERE factor_to_base IS NULL;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ALTER COLUMN factor_to_base SET DEFAULT 1;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ALTER COLUMN factor_to_base SET NOT NULL;
+
+  - changeSet:
+      id: 20260531-05-03-alter-contrighe-factor-to-base-nullable
+      author: mctit
+      comment: >
+        contratti_righe.factor_to_base: drop DEFAULT 1 + drop NOT NULL.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: vendite
+            tableName: contratti_righe
+            columnName: factor_to_base
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN factor_to_base DROP DEFAULT;
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN factor_to_base DROP NOT NULL;
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              UPDATE vendite.contratti_righe SET factor_to_base = 1 WHERE factor_to_base IS NULL;
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN factor_to_base SET DEFAULT 1;
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN factor_to_base SET NOT NULL;

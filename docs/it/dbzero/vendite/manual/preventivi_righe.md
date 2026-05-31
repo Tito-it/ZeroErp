@@ -31,13 +31,26 @@ Le righe sono la base informativa per la successiva generazione di
 
 ### Quantita` e UoM operativa
 
-La tabella supporta doppia rappresentazione quantita`:
+> **Refactor 2026-05-31**: direzione canonica unica `qta_operativa → quantita`,
+> allineata a `contratti_righe` / `offerte_commerciali_eccezioni`.
 
-* `qta_operativa` + `uom_operativa_id` (input operativo utente/sorgente)
-* `quantita` (valore base usato nei calcoli)
-* `factor_to_base` (fattore snapshot al momento della riga)
+La **sorgente** e' sempre la quantita operativa scelta dall'operatore; la quantita
+base e' **derivata** dal trigger:
 
-Il trigger `script.trgfn_qta_from_operativa` mantiene l’allineamento dei valori.
+* `qta_operativa` + `uom_operativa_id` — **SORGENTE** (input operatore nella UoM
+  operativa scelta). `qta_operativa` e' **NOT NULL**: il preventivo non ha
+  `fonte_quantita_attesa` (documento one-shot, nessuna sorgente esterna che
+  differisca la quantita), quindi l'operatore la fornisce sempre.
+* `quantita` — **DERIVATA** (UoM base), **nullable**: la calcola solo il trigger
+  `script.trgfn_qta_from_operativa` come `qta_operativa * factor_to_base`.
+* `factor_to_base` — snapshot del fattore di conversione, **nullable**: se NULL il
+  trigger lo deriva dal mapping `catalogo.articoli_uom_operativa` e lo salva (snapshot
+  DB-first: ne' FE ne' BE devono conoscere il fattore).
+
+> La derivazione avviene **una sola volta** (nel trigger). Prima del refactor il BE
+> calcolava anche `qta_operativa = quantita × factor`, componendosi col trigger e
+> producendo `quantita = quantita × factor²` (bug latente per `factor ≠ 1`): ora
+> rimossa, resta solo la direzione canonica.
 
 ---
 
@@ -45,7 +58,11 @@ Il trigger `script.trgfn_qta_from_operativa` mantiene l’allineamento dei valor
 
 1. Ogni riga appartiene a un preventivo (`preventivo_id` obbligatorio).
 2. `articolo_id` obbligatorio e referenziato a catalogo.
-3. Controlli su valori economici e sconto (`chk_prevrighe_quantita_prezzo`, `chk_prevrighe_sconto`).
+3. Controllo sullo sconto (`chk_prevrighe_sconto`) e vincolo sulla **sorgente**
+   quantita: `chk_prevrighe_qta_operativa_nonzero` (`qta_operativa <> 0`). Le
+   quantita possono essere **negative** (resi/storni); vietato solo lo zero. Non
+   esiste piu' un vincolo di positivita' su `quantita` (rimosso
+   `chk_prevrighe_quantita_pos`).
 4. Flag `attivo` per escludere righe senza cancellazione fisica.
 
 ---

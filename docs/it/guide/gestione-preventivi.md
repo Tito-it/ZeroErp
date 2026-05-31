@@ -88,6 +88,25 @@ Ogni riga rappresenta una voce dell'offerta:
 - prezzo unitario, sconto percentuale, IVA
 - ordine di presentazione
 
+#### La quantità e l'unità di misura operativa
+
+L'operatore inserisce la quantità **nell'unità di misura che ha scelto** (la "UoM
+operativa": per esempio *scatole*, anche se l'articolo a magazzino è contato in
+*pezzi*). È il sistema, non l'operatore, a tradurla nell'unità di misura "base"
+usata per i calcoli interni: se una scatola contiene 6 pezzi e si inseriscono 2
+scatole, il sistema registra automaticamente 12 pezzi.
+
+In pratica:
+
+- l'operatore vede e digita **2** (scatole) — è il dato di partenza;
+- il sistema calcola e salva **12** (pezzi) — è il valore derivato;
+- il fattore di conversione (6) viene "fotografato" sulla riga al momento
+  dell'inserimento, così resta stabile anche se in futuro cambia a catalogo.
+
+La quantità **può essere negativa** (per gestire resi o storni); non può essere
+zero. Questa conversione funziona allo stesso identico modo su preventivi, offerte
+e contratti.
+
 Il prezzo unitario può venire dal **resolver pricing** (riempito automaticamente
 al cambio articolo/UoM) oppure essere inserito manualmente dall'operatore, con
 controlli L1/L2/L3 di autorizzazione che vedremo in §6.

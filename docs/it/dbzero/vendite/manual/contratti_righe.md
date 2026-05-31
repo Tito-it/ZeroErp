@@ -49,8 +49,10 @@ Obiettivi principali:
 > **Migrations**: `20260519-05` (backfill + NOT NULL + CHECK), `20260519-06` (trigger normalize).
 
 `fonte_quantita_attesa` e’ **NOT NULL** e deve essere coerente con `tipo_erogazione`.
-Il trigger `trgfn_contratti_righe_default_fonte_qta` imposta il default automaticamente su INSERT
-e resetta la fonte se il cambio di `tipo_erogazione` rende la combinazione vietata.
+Il trigger `script.trgfn_righe_default_fonte_qta` (funzione **generica**, condivisa
+con `offerte_commerciali_eccezioni` dal refactor 2026-05-31; sostituisce la vecchia
+`vendite.trgfn_contratti_righe_default_fonte_qta`) imposta il default automaticamente
+su INSERT e resetta la fonte se il cambio di `tipo_erogazione` rende la combinazione vietata.
 
 #### Valori ammessi per `fonte_quantita_attesa`
 
@@ -95,9 +97,12 @@ Le combinazioni 🟡 rare sono ammesse e segnalate in UI con tooltip "uso atipic
 Per righe che richiedono una UoM operativa:
 
 * **`uom_operativa_id`** identifica la UoM usata in riga.
-* **`qta_operativa`** indica la quantita nella UoM operativa.
+* **`qta_operativa`** indica la quantita nella UoM operativa (**sorgente**).
 * **`factor_to_base`** salva lo snapshot del fattore di conversione verso la UoM base.
-* Il trigger `script.trgfn_qta_from_operativa(...)` garantisce la **coerenza della quantita base** a partire dalla quantita operativa.
+  **Nullable** dal refactor 2026-05-31 (prima `NOT NULL DEFAULT 1`): se NULL il trigger
+  lo deriva dal mapping `catalogo.articoli_uom_operativa` e lo salva.
+* Il trigger `script.trgfn_qta_from_operativa(...)` garantisce la **coerenza della quantita base** (`quantita`, derivata) a partire dalla quantita operativa.
+* Vincolo `chk_contrighe_qta_operativa_nonzero` (`qta_operativa IS NULL OR qta_operativa <> 0`): negativi ammessi, zero vietato.
 
 ---
 
@@ -170,7 +175,7 @@ blocca **qualsiasi** INSERT/UPDATE/DELETE su `contratti_righe` →
 * **FK principali**: contratto, articolo, UoM operativa.
 * **Trigger**:
   * `trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd` — blocca AGGIUNTA per articoli già in listino (Step 2.2).
-  * `trg_contratti_righe_a10_default_fonte_qta_ins_upd` — normalizza `fonte_quantita_attesa` al default su INSERT e su UPDATE con tipo cambiato (20260519-06).
+  * `trg_contratti_righe_a10_default_fonte_qta_ins_upd` — normalizza `fonte_quantita_attesa` al default su INSERT e su UPDATE con tipo cambiato (20260519-06; ri-bindato alla funzione generica `script.trgfn_righe_default_fonte_qta` in 20260531-10).
   * `trg_contratti_righe_a10_qta_from_operativa_ins_upd` — calcolo quantita base da operativa.
   * `trg_contratti_righe_a10_note_contratto_block_deact_upd` — blocca disattivazioni se presenti note figlie.
   * `trg_contratti_righe_a10_articoli_require_attivo_ins_upd` — articolo attivo obbligatorio.

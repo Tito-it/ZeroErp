@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_chiudi_contratto_per_successione.md" %}
 # ⚙️ Funzione `fn_chiudi_contratto_per_successione`
 
 ```sql

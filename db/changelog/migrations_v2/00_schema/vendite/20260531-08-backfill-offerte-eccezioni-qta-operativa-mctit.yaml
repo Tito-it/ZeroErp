@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Refactor quantita/qta_operativa (§5.1) — backfill dati offerte esistenti.
+#
+# Prima di questo refactor le offerte salvavano quantita (dal FE) lasciando
+# qta_operativa NULL. Dopo aver installato il trigger qta_from_operativa
+# sull'offerta (file -11), un'offerta FISSA gia' esistente, al push verso
+# contratto, copierebbe qta_operativa NULL -> il trigger contratti solleva
+# E_QTA_MISSING (smoke §8b). Per rendere pushabili le offerte gia' create si
+# valorizza qta_operativa = quantita sulle righe FISSA (oggi factor=1 ovunque:
+# quantita == qta_operativa).
+#
+# Solo righe FISSA: per fonte != FISSA qta_operativa NULL e' legittimo (la
+# quantita arriva da fonte esterna) e va lasciato NULL.
+#
+# Questo changeset gira PRIMA dell'installazione del trigger sull'offerta
+# (XX 08 < 11), quindi e' un UPDATE puro senza ricalcolo del trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260531-08-backfill-offerte-eccezioni-qta-operativa-mctit.yaml
+
+  - changeSet:
+      id: 20260531-08-backfill-offerte-eccezioni-qta-operativa
+      author: mctit
+      comment: >
+        Backfill offerte_commerciali_eccezioni.qta_operativa = quantita per le
+        righe FISSA con qta_operativa NULL (factor=1 oggi). Rende pushabili le
+        offerte gia' esistenti senza incorrere in E_QTA_MISSING.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - columnExists:
+              schemaName: vendite
+              tableName: offerte_commerciali_eccezioni
+              columnName: qta_operativa
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT CASE WHEN EXISTS (
+                  SELECT 1 FROM vendite.offerte_commerciali_eccezioni
+                   WHERE qta_operativa IS NULL
+                     AND fonte_quantita_attesa = 'FISSA'
+                     AND quantita IS NOT NULL
+                ) THEN 1 ELSE 0 END;
+      changes:
+        - sql:
+            sql: |
+              UPDATE vendite.offerte_commerciali_eccezioni
+                 SET qta_operativa = quantita
+               WHERE qta_operativa IS NULL
+                 AND fonte_quantita_attesa = 'FISSA'
+                 AND quantita IS NOT NULL;
+      rollback:
+        - sql:
+            sql: SELECT 1;

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_contratto_sovrapposto.md" %}
 # ⚙️ Funzione `fn_contratto_sovrapposto`
 
 ```sql

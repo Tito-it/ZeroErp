@@ -1,20 +1,22 @@
-# ⚙️ Funzione `trgfn_contratti_righe_default_fonte_qta`
+# ⚙️ Funzione `trgfn_righe_default_fonte_qta`
 
 ```sql
-CREATE FUNCTION trgfn_contratti_righe_default_fonte_qta()
+CREATE FUNCTION trgfn_righe_default_fonte_qta()
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_default_fonte_qta()
+CREATE OR REPLACE FUNCTION script.trgfn_righe_default_fonte_qta()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
 BEGIN
     -- Scopo: normalizza fonte_quantita_attesa al default coerente con tipo_erogazione.
-    -- Casistica INSERT: fonte NULL → imposta default dalla matrice.
-    -- Casistica UPDATE: se tipo cambia e la nuova combinazione è vietata (❌) → resetta.
+    -- Generica: nessun riferimento a una tabella specifica (usabile su qualunque
+    -- *_righe / *_eccezioni con le colonne tipo_erogazione + fonte_quantita_attesa).
+    -- INSERT: fonte NULL -> imposta default dalla matrice.
+    -- UPDATE: se tipo cambia e la nuova combinazione e' vietata (❌) -> resetta.
     -- Le combinazioni 🟡 rare ma non vietate non vengono alterate.
 
     IF NEW.fonte_quantita_attesa IS NULL THEN
@@ -52,8 +54,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.trgfn_contratti_righe_default_fonte_qta()
-IS 'Normalizza fonte_quantita_attesa al default per tipo_erogazione. INSERT: imposta default se NULL. UPDATE OF tipo_erogazione: resetta solo se la nuova combinazione tipo+fonte è ❌ (matrice 20260519). Le combinazioni 🟡 rare non vengono alterate. Compatibile con guard_pending (nome alfabeticamente precedente: esegue prima).';
+COMMENT ON FUNCTION script.trgfn_righe_default_fonte_qta()
+IS 'Generica/table-agnostic. Normalizza fonte_quantita_attesa al default per tipo_erogazione. INSERT: imposta default se NULL. UPDATE OF tipo_erogazione: resetta solo se la nuova combinazione tipo+fonte e'' vietata (❌, matrice 20260519). Generalizza vendite.trgfn_contratti_righe_default_fonte_qta. Riusata da contratti_righe e offerte_commerciali_eccezioni. Rev 2026-05-31.';
 ```
 
 ---
