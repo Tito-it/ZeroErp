@@ -11,6 +11,25 @@
 
 ---
 
+## 0. Stato implementazione — COMPLETATO 2026-05-31
+
+| Layer | Stato | Note |
+|---|---|---|
+| **DB** | ✅ fatto (team DB, merge #743) | Trigger `trgfn_qta_from_operativa` su offerte; `qta_operativa` NOT NULL + `quantita` nullable su preventivi; CHECK `qta_operativa <> 0` su tutte e tre. **Incluso anche** `trgfn_..._default_fonte_qta` su offerte (asse "fonte", piena simmetria col contratto). |
+| **BE preventivi** | ✅ fatto | Rimossa derivazione inversa `_derive_qta_operativa` (+ repo `get_articolo_uom_factor`); `gestisci_riga`/`aggiorna_riga` inviano `qta_operativa`, non `quantita` (derivata dal trigger). Guard su `qta_operativa <> 0`. |
+| **BE offerte** | ✅ nessuna modifica | Già simmetrico al contratto (whitelist accetta `qta_operativa`); col trigger DB + FE che invia `qta_operativa` il flusso è corretto. |
+| **BE contratti** | ✅ allineato guard | Solo guard FISSA `> 0` → `<> 0` (negativi ammessi). Resto invariato (riferimento). |
+| **FE** | ✅ fatto + #3 integrato | I 3 drawer inviano `qta_operativa`; estratto il BB **`useComponentiDialog`** (orchestrazione ComponentiDialog condivisa — punto #3 del report regola-del-2). Guard `<> 0`. |
+
+**Guard quantità `<> 0`** (allineata alla CHECK DB): zero vietato, **negativi ammessi**
+(es. resi/note di credito). Applicata a BE (preventivi+contratti) e FE (canSave +
+binding bottoni + `useComponentiDialog.qtaValida`).
+
+**Verifica**: 271/271 test service BE verdi; build FE verde; smoke DB (ROLLBACK)
+confermano il fix — vedi §8.
+
+---
+
 ## 1. Problema
 
 Le tre entità di vendita che hanno righe con quantità (`preventivi_righe`,
@@ -282,9 +301,21 @@ Il trigger contratti rifiuta `FISSA` + `qta_operativa NULL`. Poiché il FE offer
 valorizza solo `quantita` (lascia `qta_operativa` NULL), **il push di
 un'eccezione FISSA fallisce**.
 
-### Conclusione smoke
+### Conclusione smoke (PRIMA del refactor)
 Entrambi i bug **confermati empiricamente**. Non sono ipotesi: il refactor §5–§7
 è necessario, non solo cosmetico.
+
+### 8c. Smoke DI CONFERMA FIX — DOPO il refactor (2026-05-31)
+Replicato il nuovo flusso (il BE/FE inviano `qta_operativa`, `quantita` NULL; il
+trigger deriva la base), in transazioni con ROLLBACK:
+
+| Caso | Input | `quantita` salvata | Esito |
+|---|---|---|---|
+| Preventivo factor=6 | `qta_operativa=2` | **12** (=2×6) | ✅ corretto (prima era 72) |
+| Offerta FISSA | `qta_operativa=3`, `quantita` NULL | **18** (=3×6) | ✅ INSERT ok, **niente `E_QTA_MISSING`** |
+
+Entrambi i bug **chiusi**: la doppia derivazione preventivi è eliminata e il push
+offerta FISSA non è più bloccato.
 
 ---
 
@@ -298,8 +329,11 @@ Entrambi i bug **confermati empiricamente**. Non sono ipotesi: il refactor §5�
       `qta_operativa` NOT NULL sul preventivo (no fonte), `quantita` nullable
       ovunque, `factor_to_base` nullable ovunque; vincolo positività → **`qta_operativa <> 0`**
       (negativi ammessi, zero vietato), condizionale `IS NULL OR <> 0` su contratti/offerte.
-- [ ] BE §6 (rimozione `_derive_qta_operativa`, offerte_service) — da rilasciare
-      INSIEME alle migration §10 (breaking).
+- [x] BE §6 + FE §7 — **fatti 2026-05-31** insieme all'estrazione #3
+      (`useComponentiDialog`). Rimossa `_derive_qta_operativa` (+ repo
+      `get_articolo_uom_factor`); preventivi/offerte FE inviano `qta_operativa`;
+      guard allineate a `<> 0`. `offerte_service` invariato (già simmetrico).
+      271/271 test BE verdi, build FE verde, smoke fix §8c ok.
 - [ ] Collegamento con `brief-db-offerta-push-successione-contratto-overlap.md`
       (stesso flusso di push).
 

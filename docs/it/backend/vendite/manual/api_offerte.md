@@ -644,6 +644,12 @@ Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
   (`chk_offerte_eccezioni_coerenza_fonte_erogazione`)
 - `fonte_quantita_attesa` NOT NULL
   (`chk_offerte_eccezioni_fonte_qta`)
+- **Quantità**: la sorgente è `qta_operativa` (UoM operativa). La colonna base
+  `quantita` è **derivata dal trigger** `trgfn_qta_from_operativa`
+  (`quantita = qta_operativa × factor_to_base`) e non va inviata. `qta_operativa`
+  obbligatoria per `fonte = FISSA` (CHECK `qta_operativa <> 0`: zero vietato,
+  negativi ammessi); ammessa NULL per le altre fonti (la qta arriva downstream).
+  Allineato a contratti/preventivi (refactor 2026-05-31)
 - `tipo_erogazione` ammesso (`chk_offerte_eccezioni_tipo_erog`)
 - Coerenza canone (`chk_offerte_eccezioni_coerenza_canone`)
 - UNIQUE: max 1 `OVERRIDE`/`ESCLUSIONE` per `(offerta_id, articolo_id)`

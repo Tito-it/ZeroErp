@@ -526,6 +526,10 @@ manuali su componenti specifici al momento della create.
 }
 ```
 
+> `quantita` qui è la **quantità padre transiente** per cui prezzare il bundle
+> (il FE passa `form.qta_operativa`), non la colonna riga: il preview è read-only
+> e non scrive nulla.
+
 Read-only (no side-effect): ritorna i componenti BoM validi con
 `prezzo_suggerito` dal resolver bundle-aware. Il FE
 (`ComponentiDialog.vue`) chiama PRIMA del save di una riga composita per

@@ -69,16 +69,21 @@ Qui la duplicazione è reale, ma le occorrenze hanno differenze che vanno gestit
 con cura: estrarre senza pensarci rischia di nascondere comportamenti diversi o
 di far perdere protezioni esistenti.
 
-### 3. Gestione della finestra "Componenti"
+### 3. Gestione della finestra "Componenti" — ✅ FATTO (2026-05-31)
 
 I componenti grafici della finestra sono già condivisi, ma la **logica che la
 governa** (quando aprirla in automatico, come azzerare i dati al cambio
-articolo, cosa fare alla conferma) è ripetuta in preventivi, offerte e contratti.
-Candidato a un composable di orchestrazione.
+articolo, cosa fare alla conferma) era ripetuta in preventivi, offerte e contratti.
+
+**Estratto** nel composable [`useComponentiDialog`](../../../../frontend/src/vendite/_shared/componenti/useComponentiDialog.js),
+adottato dai 3 drawer. Differenze di dominio passate come getter (`isCreate`,
+`isComposito`, `isPadreComposito`, `qtaValida`). Fatto insieme al refactor
+`qta_operativa` (un'unica passata FE). Verifiche: build FE verde, 271/271 test
+BE verdi, smoke DB ok. Documentato nel catalogo BB FE.
 
 > **Aggiornamento (post-analisi quantità).** Questo era il punto da cui è emerso
 > il problema dell'asimmetria `quantita` / `qta_operativa` (vedi
-> [refactor-quantita-qta-operativa.md](refactor-quantita-qta-operativa.md)).
+> [refactor-quantita-qta-operativa.md](../work-done/refactor-quantita-qta-operativa.md)).
 > All'inizio #3 era classificato "con un ma" proprio perché i tre drawer
 > usavano un campo quantità diverso (`form.quantita` in preventivi/offerte vs
 > `form.qta_operativa` nei contratti), il che avrebbe richiesto un composable a

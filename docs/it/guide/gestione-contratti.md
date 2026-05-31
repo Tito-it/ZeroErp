@@ -114,6 +114,15 @@ Constraint DB:
 - Guard: una AGGIUNTA è bloccata se l'articolo è già nel listino fissato al contratto
   (si deve usare OVERRIDE)
 
+**Quantità e unità di misura operativa**: la quantità segue lo **stesso meccanismo**
+di preventivi e offerte (vedi [Gestione preventivi §2.2](gestione-preventivi.md)).
+L'operatore la inserisce **nell'unità di misura operativa scelta** (`qta_operativa`);
+il sistema deriva da sé il valore nell'unità base (`quantita = qta_operativa ×
+factor_to_base`, fattore "fotografato" sulla riga). La quantità **può essere negativa**
+(resi/storni), **non può essere zero**. Quando la fonte non è *fissa*
+(`fonte_quantita_attesa ≠ FISSA`, es. fatturazione a consumo) la quantità resta vuota
+e arriverà dalla sorgente esterna; quando è *fissa* è obbligatoria.
+
 Operativamente: in DRAFT le righe sono liberamente modificabili; dopo l'attivazione
 ogni INSERT / UPDATE / DELETE è bloccato dal trigger di lock.
 

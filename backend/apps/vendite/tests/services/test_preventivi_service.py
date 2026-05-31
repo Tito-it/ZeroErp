@@ -568,7 +568,8 @@ class TestPreventiviService(unittest.TestCase):
         # Repo non deve essere chiamato: validazione blocca PRIMA dell'INSERT.
         self.mock_repo.create_riga.assert_not_called()
 
-    # Scopo: Verifica che quantita zero/negativa venga bloccata lato BE.
+    # Scopo: Verifica che qta_operativa (sorgente) zero/negativa venga bloccata
+    #        lato BE con messaggio parlante prima del CHECK DB.
     def test_gestisci_riga_quantita_non_positiva_ko(self):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
@@ -576,7 +577,7 @@ class TestPreventiviService(unittest.TestCase):
             "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
         }
         with self.assertRaises(ServiceError) as ctx:
-            gestisci_riga(1, {"articolo_id": "uuid-art-1", "quantita": "0"})
+            gestisci_riga(1, {"articolo_id": "uuid-art-1", "qta_operativa": "0"})
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
         self.mock_repo.create_riga.assert_not_called()
 
@@ -1871,17 +1872,16 @@ class TestPreventiviService(unittest.TestCase):
         kwargs = self.mock_repo.list_preventivi.call_args.kwargs
         self.assertFalse(kwargs["solo_attiva"])
 
-    # Scopo: derivazione qta_operativa quando il payload manda solo `quantita`
-    #        (UX standard riga preventivo). Il service consulta factor_to_base
-    #        della UoM operativa e calcola qta_operativa = quantita * factor.
+    # Scopo: modello qta_operativa-sorgente (refactor 2026-05-31). Il FE invia
+    #        `qta_operativa` (UoM operativa scelta) + `uom_operativa_id`; il BE
+    #        li inoltra al repo SENZA derivare nulla e SENZA inviare `quantita`
+    #        (colonna base derivata dal trigger DB `trgfn_qta_from_operativa`).
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
-    def test_gestisci_riga_deriva_qta_operativa_da_factor(self, mock_suggerisci):
+    def test_gestisci_riga_inoltra_qta_operativa_senza_derivare(self, mock_suggerisci):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
         self.mock_repo.get_preventivo.return_value = self._testata_completa()
         self.mock_repo.create_riga.return_value = {"id": 99}
-        # factor_to_base = 12 (es. 1 confezione = 12 pezzi)
-        self.mock_repo.get_articolo_uom_factor.return_value = Decimal("12")
         mock_suggerisci.return_value = {
             "prezzo_finale": "5.00", "origine": "CATEGORIA",
             "listino_id": 100, "contratto_id": None, "promo_id": None,
@@ -1889,43 +1889,16 @@ class TestPreventiviService(unittest.TestCase):
         }
 
         gestisci_riga(
-            1, {"articolo_id": "art-uuid", "uom_operativa_id": 8, "quantita": "3"},
+            1, {"articolo_id": "art-uuid", "uom_operativa_id": 8,
+                "qta_operativa": "3"},
             auth_user_id=42,
         )
 
         call = self.mock_repo.create_riga.call_args.kwargs
-        # quantita 3 (UoM operativa) * factor 12 = 36 in UoM base
-        self.assertEqual(Decimal(call["qta_operativa"]), Decimal("36"))
-        self.assertEqual(Decimal(call["factor_to_base"]), Decimal("12"))
-
-    # Scopo: derivazione qta_operativa fallback factor=1 quando l'articolo
-    #        non ha mappa UoM operativa (caso edge: solo UoM base).
-    #        Resolver ritorna stesso prezzo del payload per evitare check L1
-    #        (focus del test e' la derivazione qta_operativa, non l'override).
-    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
-    def test_gestisci_riga_deriva_qta_operativa_factor_default_1(self, mock_suggerisci):
-        from apps.vendite.services.preventivi_service import gestisci_riga
-
-        self.mock_repo.get_preventivo.return_value = self._testata_completa()
-        self.mock_repo.create_riga.return_value = {"id": 99}
-        # Lookup factor_to_base ritorna None: UoM operativa non mappata
-        self.mock_repo.get_articolo_uom_factor.return_value = None
-        mock_suggerisci.return_value = {
-            "prezzo_finale": "10.00", "origine": "CATEGORIA",
-            "listino_id": 100, "contratto_id": None, "promo_id": None,
-            "tipo_variazione_applicata": None, "valore_variazione_applicata": None,
-        }
-
-        gestisci_riga(
-            1, {"articolo_id": "art-uuid", "uom_operativa_id": 8, "quantita": "5",
-                "prezzo_unitario": "10.00"},
-            auth_user_id=42,
-        )
-
-        call = self.mock_repo.create_riga.call_args.kwargs
-        # Fallback factor=1: qta_operativa = quantita
-        self.assertEqual(Decimal(call["qta_operativa"]), Decimal("5"))
-        self.assertEqual(Decimal(call["factor_to_base"]), Decimal("1"))
+        # qta_operativa inoltrata tale e quale (sorgente operatore)
+        self.assertEqual(call["qta_operativa"], "3")
+        # `quantita` NON inviata dal BE: la calcola il trigger DB
+        self.assertIsNone(call["quantita"])
 
     # ===========================================================
     # Sprint E (autorizzazioni prezzi L3): freeze preventivo

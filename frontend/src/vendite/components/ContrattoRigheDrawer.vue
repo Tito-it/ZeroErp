@@ -40,6 +40,7 @@ import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import { rowComponenti, hasBundleComponenti } from '../_shared/componenti/rowComponenti'
 import ComponentiCreateActionsPanel from '../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
+import { useComponentiDialog } from '../_shared/componenti/useComponentiDialog'
 import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
@@ -353,8 +354,24 @@ const articoloObj = ref(null)
 // composito, la Dialog si auto-apre al primo set di (articolo, uom, qta)
 // validi; in EDIT lo stato componenti viaggia via `ComponentiPanel` sotto
 // il form (lista persistita).
-const componentiDialogVisible = ref(false)
-const componentiPayload = ref(null)
+// Orchestrazione ComponentiDialog centralizzata nel BB `useComponentiDialog`
+// (estrazione regola-del-2 2026-05-31). In CREATE l'auto-open scatta su
+// articolo composito + UoM + qta valida (default `qta_operativa <> 0`); in
+// EDIT il flusso e' diverso (panel sotto, no Dialog). isComposito e
+// isPadreComposito leggono `articoloObj.is_composito`.
+const {
+  componentiDialogVisible,
+  componentiPayload,
+  showComponentiDialog,
+  apriComponentiDialog,
+  onComponentiConfirm,
+  resetComponentiDialog,
+} = useComponentiDialog({
+  form,
+  isCreate: () => formMode.value === 'create',
+  isComposito: () => articoloObj.value?.is_composito === true,
+  isPadreComposito: () => articoloObj.value?.is_composito === true,
+})
 
 // Componenti della riga sorgente cliccata, in shape preview (jsonb dalla fn
 // DB). Popolato quando si apre il form OVERRIDE da una riga DA_LISTINO
@@ -365,69 +382,12 @@ const componentiPayload = ref(null)
 // "Aggiungi articolo" (nessuna riga sorgente).
 const selectedRowComponenti = ref([])
 
-// Trigger di apertura Dialog: solo in CREATE su articolo composito con
-// UoM + qty valida. In EDIT il flusso e' diverso (panel sotto, no Dialog).
-const showComponentiDialog = computed(
-  () => formMode.value === 'create'
-    && articoloObj.value?.is_composito === true
-    && !!form.value.articolo_id
-    && !!form.value.uom_operativa_id
-    && (form.value.qta_operativa || 0) > 0,
-)
-
-// Watch su (articolo, UoM): cambia il CONTESTO di pricing → invalida i
-// prezzi suggeriti precedenti, reset del payload + auto-apertura Dialog
-// per nuova valorizzazione. La qty NON e' qui (non invalida i prezzi
-// unitari, solo il summary). EDIT non scatta mai.
-let _autoOpenedFor = null
-watch(
-  () => [form.value.articolo_id, form.value.uom_operativa_id],
-  ([articoloId, uomId]) => {
-    if (formMode.value !== 'create') return
-    componentiPayload.value = null
-    const tupleKey = `${articoloId}|${uomId}`
-    if (showComponentiDialog.value && _autoOpenedFor !== tupleKey) {
-      _autoOpenedFor = tupleKey
-      componentiDialogVisible.value = true
-    } else if (!showComponentiDialog.value) {
-      _autoOpenedFor = null
-      componentiDialogVisible.value = false
-    }
-  },
-)
-
 // Reset banner L2 se l'utente modifica prezzo o articolo: segnale di retry
 // con contesto potenzialmente diverso. Pattern identico a PreventiviRigaForm.
 watch(
   () => [form.value.prezzo_unitario, form.value.articolo_id],
   () => { if (l2Error.value) l2Error.value = null },
 )
-
-// Riapertura manuale (revisione) — bottone "Modifica componenti" sotto al
-// form in CREATE.
-function apriComponentiDialog() {
-  componentiDialogVisible.value = true
-}
-
-// Conferma Dialog: il payload e' { overrides, summary } (delta prezzi
-// diversi dal suggerito + summary live). Il drawer lo memorizza nel
-// payload del save riga (`componenti_overrides`).
-function onComponentiConfirm(payload) {
-  componentiPayload.value = payload
-  // Anteprima del prezzo padre lato client per articoli compositi
-  // (simmetrico a PreventiviRigaForm.onComponentiConfirm 2026-05-29).
-  // Il summary del dialog ritorna `total = SUM(prezzo × quantita_componente)`
-  // con `quantita_componente = coeff_qta_snapshot × qta_padre`. Quindi
-  // `total / qtaPadre = SUM(prezzo × coeff_qta_snapshot)` = prezzo
-  // unitario padre per UNA unità — stesso valore che il trigger DB
-  // `_z90_ricalcola_padre` scriverà al save. Il campo InputNumber resta
-  // disabled per i compositi (`articoloObj?.is_composito`), così
-  // l'operatore vede il valore senza poterlo editare. Al save il payload
-  // non include `prezzo_unitario` per i compositi (BE = fonte canonica).
-  if (articoloObj.value?.is_composito === true && payload?.summary?.qtaPadre > 0) {
-    form.value.prezzo_unitario = payload.summary.total / payload.summary.qtaPadre
-  }
-}
 
 // === UoM operative dell'articolo selezionato ===
 // Composable centralizzato (Fase 4.F1). Autopick base se il form e' attivo
@@ -540,9 +500,7 @@ function defaultForm(overrides = {}) {
 // Tiene insieme `articoloObj` + Dialog state per evitare drift.
 function resetComponentiState() {
   articoloObj.value = null
-  componentiDialogVisible.value = false
-  componentiPayload.value = null
-  _autoOpenedFor = null
+  resetComponentiDialog()
   selectedRowComponenti.value = []
 }
 
@@ -746,9 +704,7 @@ function _onEditRigaPersistita(r) {
   }
   // EDIT: chiudi ogni Dialog stantia, il pannello sotto e' l'entrypoint
   // per modificare i componenti persistiti (no Dialog).
-  componentiDialogVisible.value = false
-  componentiPayload.value = null
-  _autoOpenedFor = null
+  resetComponentiDialog()
   // EDIT riga persistita: i componenti arrivano dal ComponentiPanel via
   // api-list (persistiti). Niente blocco read-only da preview.
   selectedRowComponenti.value = []
@@ -765,10 +721,9 @@ function onArticoloSelected(item) {
   // `is_composito` esposto dal lookup) per detection ComponentiDialog
   // post pickBase UoM nel watch sopra.
   articoloObj.value = item || null
-  // Cambio articolo: reset payload Dialog precedente (era riferito al
-  // vecchio articolo) e key auto-open per consentire riapertura sul nuovo.
-  componentiPayload.value = null
-  _autoOpenedFor = null
+  // Cambio articolo: reset stato Dialog (payload + key auto-open) per
+  // consentire la riapertura sul nuovo articolo.
+  resetComponentiDialog()
   // Cambio articolo in form aperto: autopick base.
   caricaUomConPickBase(item?.id)
 }
@@ -789,12 +744,13 @@ const canSave = computed(() => {
   if (!form.value.articolo_id) return false
   if (!form.value.uom_operativa_id) return false
   // Refactor 2026-05-19: fonte_quantita_attesa NOT NULL (CHECK DB).
-  // Per FISSA serve anche qta_operativa > 0; per le altre 4 fonti la
-  // quantita verra' impostata downstream (manuale/timesheet/letture)
+  // Per FISSA serve qta_operativa valorizzata e diversa da zero (CHECK DB
+  // `qta_operativa <> 0`: negativi ammessi, es. resi/note credito); per le
+  // altre 4 fonti la quantita arriva downstream (manuale/timesheet/letture)
   // o dal trigger DB (derivata_componenti).
   if (!form.value.fonte_quantita_attesa) return false
   if (form.value.fonte_quantita_attesa === FONTE_QUANTITA_ATTESA.FISSA
-      && (form.value.qta_operativa == null || Number(form.value.qta_operativa) <= 0)) {
+      && (form.value.qta_operativa == null || Number(form.value.qta_operativa) === 0)) {
     return false
   }
   // Refactor modalita 2026-05-15: coerenza prezzo_unitario / tipo_eccezione
@@ -1374,7 +1330,7 @@ function origineSeverity(origine) {
           <ComponentiCreateActionsPanel
             v-if="formMode === 'create'"
             :disabled="!form.articolo_id || !form.uom_operativa_id
-              || (showQtaOperativa && !((form.qta_operativa || 0) > 0))"
+              || (showQtaOperativa && (form.qta_operativa || 0) <= 0)"
             :componenti-payload="componentiPayload"
             @apri-dialog="apriComponentiDialog"
           />
