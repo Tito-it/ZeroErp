@@ -19,22 +19,35 @@
 >
 > Funzioni correlate:
 > [vendite.fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta)
+> [vendite.fn_contratto_sovrapposto](/dbzero/vendite/funzioni/fn_contratto_sovrapposto)
+> [vendite.fn_chiudi_contratto_per_successione](/dbzero/vendite/funzioni/fn_chiudi_contratto_per_successione)
 >
 > Contesto di sviluppo:
 > [Brief DB offerte commerciali — Step 8](/dev/work-in-progress/analisi-offerta-commerciale-db)
 > [analisi-pratiche-domini-anello3.md §6.9.3 — Pattern A idempotenza](/dev/work-in-progress/analisi-pratiche-domini-anello3)
+> [Brief DB — successione contratti su overlap](/dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap)
 
 ---
 
 ### 🎯 Scopo Principale
 
-(rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
+(rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 
-`vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id)` genera un
-**contratto DRAFT** da un'offerta commerciale **ACCETTATA**, copiando 1:1
-eccezioni e utility. La funzione è **idempotente per costruzione**: una seconda
-invocazione sulla stessa offerta fallisce con errore semantico, senza creare
-duplicati (pattern A §6.9.3 analisi pratiche domini).
+`vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id, p_chiudi_contratto_esistente)`
+genera un **contratto DRAFT** da un'offerta commerciale **ACCETTATA**, copiando
+1:1 eccezioni e utility. La funzione è **idempotente per costruzione**: una
+seconda invocazione sulla stessa offerta fallisce con errore semantico, senza
+creare duplicati (pattern A §6.9.3 analisi pratiche domini).
+
+Dalla rev4 il push è **consumatore del meccanismo generico di successione
+contratti**: se per la stessa quintupla (`billing_account`, `istanza_utility`,
+`utility`, `ambito`, periodo) esiste già un contratto attivo sovrapposto, il push
+non lascia trapelare l'errore grezzo del vincolo di esclusione, ma lo gestisce in
+modo esplicito (vedi *Successione su overlap*). La logica di rilevamento e
+chiusura vive nelle funzioni di dominio
+[`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) e
+[`fn_chiudi_contratto_per_successione`](/dbzero/vendite/funzioni/fn_chiudi_contratto_per_successione);
+il push aggiunge solo *lock*, *routing* e *rete di sicurezza*.
 
 ---
 
@@ -79,6 +92,41 @@ duplicati (pattern A §6.9.3 analisi pratiche domini).
 
 ---
 
+### Successione su overlap (rev4)
+
+Subito dopo le guard e prima dell'INSERT del contratto, il push:
+
+1. **Advisory lock sulla quintupla** — `pg_advisory_xact_lock` su una chiave
+   derivata da `billing_account_id : istanza_utility_id : utility_id : ambito`.
+   Serializza i push concorrenti sullo **stesso** combo (due operatori non
+   possono creare contratti sovrapposti nello stesso istante), **senza** bloccare
+   l'intera tabella; il lock si rilascia a fine transazione.
+2. **Rilevamento** — chiama
+   [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto)
+   con `ambito = 'COMMODITY'`. *Invariante*: l'INSERT del push non valorizza
+   `ambito`, quindi il nuovo contratto assume il default `'COMMODITY'`; se un
+   giorno il push valorizzasse `ambito`, va allineato anche il rilevamento.
+3. **Routing**:
+   - **A — nessun overlap**: comportamento standard, crea il contratto.
+   - **B — overlap e `p_chiudi_contratto_esistente = false`** (default): solleva
+     `E_CONTRATTO_OVERLAP_ESISTENTE` con il numero del contratto in conflitto.
+     **Nessun contratto creato.** È il caso che il frontend usa per mostrare il
+     conflitto e chiedere conferma.
+   - **C — overlap e `p_chiudi_contratto_esistente = true`**: chiama
+     [`fn_chiudi_contratto_per_successione`](/dbzero/vendite/funzioni/fn_chiudi_contratto_per_successione)
+     (accorcia il vecchio a `validita_dal − 1`), poi crea il nuovo.
+4. **Backstop** — l'INSERT in `contratti` è avvolto in
+   `EXCEPTION WHEN exclusion_violation`: se il vincolo di esclusione scattasse
+   comunque (gara sfuggita al lock, percorso futuro senza lock, conflitto residuo
+   multi-overlap), l'errore grezzo viene **ritradotto** in
+   `E_CONTRATTO_OVERLAP_ESISTENTE` parlante. Il client non vede mai l'errore GiST.
+
+> La successione **accorcia** il contratto preesistente, non lo annulla, e **non**
+> ne cambia lo stato: la cessazione `ATTIVO → CESSATO` la fa il job notturno
+> `chiusura_scadenze_daily`.
+
+---
+
 ### Ridondanza intenzionale `offerta_id` + `sorgente_uid`
 
 `vendite.contratti` espone due chiavi di lookup verso la sorgente offerta:
@@ -99,6 +147,7 @@ chiave operativa; `sorgente_uid` è la chiave di integrazione cross-dominio.
 | -------------- | -------- | --------------------------------------------------------------------- |
 | `p_offerta_id` | `bigint` | ID offerta commerciale ACCETTATA. Obbligatorio, > 0.                  |
 | `p_pratica_id` | `bigint` | ID pratica da collegare al contratto. Opzionale — `NULL` ammesso.     |
+| `p_chiudi_contratto_esistente` | `boolean` | Default `false`. Se `true` e c'è un contratto sovrapposto, lo chiude per successione e poi crea il nuovo; se `false`, su overlap solleva `E_CONTRATTO_OVERLAP_ESISTENTE` senza creare nulla. |
 
 ---
 
@@ -117,6 +166,7 @@ chiave operativa; `sorgente_uid` è la chiave di integrazione cross-dominio.
 | `E_PARAMETRO_INVALIDO`              | `p_offerta_id` NULL o <= 0; offerta non trovata.                  |
 | `E_OFFERTA_PUSH_STATO_NON_AMMESSO`  | Stato offerta diverso da `ACCETTATA`.                             |
 | `E_OFFERTA_CONTRATTO_GIA_GENERATO`  | Esiste già un contratto con `offerta_id = p_offerta_id`.          |
+| `E_CONTRATTO_OVERLAP_ESISTENTE`     | Esiste un contratto attivo sovrapposto e `p_chiudi_contratto_esistente = false` (caso B), oppure conflitto residuo intercettato dal backstop. |
 | `E_CONFIG_MANCANTE`                 | `DRAFT` non trovato in `stati_doc_contratti`; `OFFERTA_COMMERCIALE` o `CONTRATTO` non trovati in `config.sorgenti`. |
 
 ---
@@ -127,7 +177,11 @@ La sequenza di eventi al momento dell'INSERT del contratto:
 
 ```text
 fn_push_offerta_a_contratto
+  └─ pg_advisory_xact_lock(quintupla)            → serializza push concorrenti
+  └─ fn_contratto_sovrapposto(...)               → rilevamento overlap (routing A/B/C)
+  └─ [caso C] fn_chiudi_contratto_per_successione → accorcia il vecchio
   └─ INSERT contratti (DRAFT, emittente_fiscale_id = v_offerta.emittente_fiscale_id)
+       │  (avvolto in EXCEPTION WHEN exclusion_violation → backstop E_CONTRATTO_OVERLAP_ESISTENTE)
        ├─ BEFORE INSERT: trgfn_contratti_default_emittente  → SKIP (già valorizzato)
        ├─ BEFORE INSERT: trgfn_contratti_guard_emittente_ba → valida coerenza BA↔EF
        ├─ BEFORE INSERT: trgfn_contratti_gen_codice         → assegna numero contratto
@@ -153,13 +207,22 @@ fn_push_offerta_a_contratto
 ### Esempio d'uso
 
 ```sql
--- Push offerta 42 (ACCETTATA) senza pratica collegata
+-- Push offerta 42 (ACCETTATA) senza pratica collegata.
+-- p_chiudi_contratto_esistente omesso = false (default).
 SELECT vendite.fn_push_offerta_a_contratto(42, NULL);
 -- Restituisce: 101  (id del nuovo contratto DRAFT)
 
 -- Push con collegamento pratica 7
 SELECT vendite.fn_push_offerta_a_contratto(42, 7);
 -- Stessa offerta: fallisce con E_OFFERTA_CONTRATTO_GIA_GENERATO (idempotenza)
+
+-- Offerta 55 sovrapposta a un contratto esistente, senza conferma:
+SELECT vendite.fn_push_offerta_a_contratto(55, NULL, false);
+-- Fallisce con E_CONTRATTO_OVERLAP_ESISTENTE (mostra il contratto in conflitto).
+
+-- Stessa offerta 55 con conferma di successione:
+SELECT vendite.fn_push_offerta_a_contratto(55, NULL, true);
+-- Accorcia il contratto esistente e crea il nuovo DRAFT. Restituisce il nuovo id.
 ```
 
 ---

@@ -1,0 +1,165 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea vendite.fn_chiudi_contratto_per_successione: accorcia la finestra
+# di validita' di un contratto esistente per fare spazio a un nuovo
+# contratto che gli succede, impostando valido_al = nuovo_valido_dal - 1
+# (continuita' senza buchi ne' sovrapposizioni).
+#
+# Meccanismo GENERICO di dominio contratti (brief §3.2.2). La chiusura e'
+# un ACCORCIAMENTO di valido_al: NON cambia lo stato. La cessazione di stato
+# (ATTIVO->CESSATO) la esegue il job notturno chiusura_scadenze_daily
+# (framework dbops.automazione_chiusura_scadenze, contratti gia' configurato).
+#
+# Guard data ESPLICITA: sui contratti non esiste un trigger parlante sulle
+# date, solo il CHECK chk_contratti_validita (valido_al >= valido_dal) che
+# darebbe un errore generico. Si solleva quindi E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA
+# PRIMA di lasciar esplodere il CHECK.
+#
+# Lock post-attivazione: trg_contratti_a10_lock_post_attivazione_upd e'
+# BEFORE UPDATE OF dei soli 4 campi di pricing -> NON scatta sull'UPDATE di
+# valido_al. L'accorciamento su un contratto ATTIVO e' quindi consentito
+# (verificato 2026-05-31; coperto da test di regressione).
+#
+# Riferimento: docs/it/dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md §3.2.2
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260531-03-create-fn-chiudi-contratto-per-successione-mctit.yaml
+
+  - changeSet:
+      id: 20260531-03-01-create-fn-chiudi-contratto-per-successione
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vendite.fn_chiudi_contratto_per_successione(contratto_id,
+        nuovo_valido_dal) RETURNS date. Accorcia valido_al = nuovo_valido_dal-1;
+        guard data -> E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA; nessun cambio stato.
+      preConditions:
+        # NB: nessuna precondition sul seed 80_data (20260531-01): le fasi
+        # 20_code girano PRIMA di 80_data, quindi al momento dell'apply il
+        # changeset di seed non risulterebbe ancora eseguito
+        # (feedback_liquibase_phase_ordering_preconditions). I codici errore
+        # 465/466 servono solo a RUNTIME, non alla creazione della funzione.
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: contratti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_chiudi_contratto_per_successione(
+                  p_contratto_esistente_id vendite.contratti.id%TYPE,
+                  p_nuovo_valido_dal       vendite.contratti.valido_dal%TYPE
+              )
+              RETURNS date
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Chiudere (accorciare) un contratto esistente per successione:
+              --   valido_al := p_nuovo_valido_dal - 1. Restringe la daterange
+              --   generata e libera la finestra per il nuovo contratto.
+              --   Cuore del meccanismo generico (brief §3.2.2).
+              --
+              -- Parametri:
+              --   p_contratto_esistente_id : contratto da accorciare.
+              --   p_nuovo_valido_dal       : data di decorrenza del nuovo contratto.
+              --
+              -- Ritorno: il nuovo valido_al impostato sul contratto chiuso.
+              --
+              -- Errori:
+              --   E_PARAMETRO_INVALIDO                  : parametri NULL / contratto inesistente.
+              --   E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA : la chiusura produrrebbe
+              --     valido_al < valido_dal (viola chk_contratti_validita) -> guard
+              --     ESPLICITA prima del CHECK, con numero del contratto nel messaggio.
+              DECLARE
+                  v_fn_name         CONSTANT text := 'fn_chiudi_contratto_per_successione';
+                  v_old             vendite.contratti%ROWTYPE;
+                  v_nuovo_valido_al vendite.contratti.valido_al%TYPE;
+              BEGIN
+                  -- Guard: parametri obbligatori.
+                  IF p_contratto_esistente_id IS NULL OR p_nuovo_valido_dal IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', v_fn_name,
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'p_contratto_esistente_id', p_contratto_esistente_id,
+                              'p_nuovo_valido_dal',        p_nuovo_valido_dal
+                          ),
+                          NULL::uuid,
+                          'parametri NULL non ammessi'
+                      );
+                  END IF;
+
+                  -- Carica e blocca il contratto esistente.
+                  SELECT * INTO v_old
+                    FROM vendite.contratti
+                   WHERE id = p_contratto_esistente_id
+                   FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', v_fn_name,
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('contratto_id', p_contratto_esistente_id),
+                          NULL::uuid,
+                          'contratto non trovato: ' || p_contratto_esistente_id::text
+                      );
+                  END IF;
+
+                  v_nuovo_valido_al := p_nuovo_valido_dal - 1;
+
+                  -- Guard data: la chiusura non deve produrre un intervallo invalido
+                  -- (valido_al < valido_dal). Si solleva PRIMA del CHECK
+                  -- chk_contratti_validita per dare un errore parlante con il numero.
+                  IF v_old.valido_dal > v_nuovo_valido_al THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', v_fn_name,
+                          'E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA',
+                          jsonb_build_object(
+                              'contratto_id',         v_old.id,
+                              'numero',               v_old.numero,
+                              'valido_dal_esistente', v_old.valido_dal,
+                              'nuovo_valido_dal',      p_nuovo_valido_dal,
+                              'nuovo_valido_al_calcolato', v_nuovo_valido_al
+                          ),
+                          NULL::uuid,
+                          v_old.numero
+                      );
+                  END IF;
+
+                  -- Accorciamento. NON cambia lo stato (cessazione via job notturno).
+                  -- L'UPDATE di valido_al non attiva il lock post-attivazione.
+                  UPDATE vendite.contratti
+                     SET valido_al = v_nuovo_valido_al
+                   WHERE id = v_old.id;
+
+                  RETURN v_nuovo_valido_al;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_chiudi_contratto_per_successione(
+                  bigint, date
+              ) IS
+                  'Accorcia un contratto esistente per successione: '
+                  'valido_al = p_nuovo_valido_dal - 1, libera la finestra per il '
+                  'nuovo contratto. Guard data esplicita -> '
+                  'E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA prima del CHECK '
+                  'chk_contratti_validita. NON cambia stato (cessazione via job '
+                  'chiusura_scadenze_daily). Meccanismo generico (brief 2026-05-31).';
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_chiudi_contratto_per_successione(
+                  bigint, date
+              );
