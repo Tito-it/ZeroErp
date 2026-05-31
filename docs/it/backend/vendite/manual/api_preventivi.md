@@ -237,7 +237,7 @@ Nuovo endpoint 2026-05-28. Mirror di `GET /api/v1/vendite/offerte/<id>/revisioni
 - Body JSON:
   - `articolo_id` (uuid string, **obbligatorio**)
   - `descrizione` (string, opzionale — override descrizione articolo)
-  - `quantita` (decimal, opzionale)
+  - `qta_operativa` (decimal, **obbligatorio**, `<> 0`) — quantità nell'UoM operativa scelta (sorgente). La colonna base `quantita` è **derivata dal trigger DB** `trgfn_qta_from_operativa` (`quantita = qta_operativa × factor_to_base`) e **non va inviata** (refactor 2026-05-31, allineamento a contratti/offerte). Zero vietato, negativi ammessi (es. resi/note credito)
   - `prezzo_unitario` (decimal, opzionale — **auto-fill dal resolver pricing v5 se omesso**; per articoli **compositi** non va inviato: il padre e' SUM(figli × coeff_qta) calcolato dai trigger DB)
   - `sconto_percentuale` (decimal, opzionale, default 0)
   - `iva_id` (int, opzionale)
@@ -346,7 +346,7 @@ Nuovo endpoint 2026-05-28. Mirror di `GET /api/v1/vendite/offerte/<id>/revisioni
 
 - Metodo: `PATCH`
 - Path: `/api/v1/vendite/preventivi/{id}/righe/{rid}/`
-- Body JSON: campi modificabili (`quantita`, `prezzo_unitario`, `sconto_percentuale`, `descrizione`, `uom_operativa_id`, `iva_id`, `ordine`, `richiesta_approvazione`)
+- Body JSON: campi modificabili (`qta_operativa`, `prezzo_unitario`, `sconto_percentuale`, `descrizione`, `uom_operativa_id`, `iva_id`, `ordine`, `richiesta_approvazione`). `quantita` (base) è derivata dal trigger e **non aggiornabile dal client**: la sorgente è `qta_operativa`
 - Regole: ammesso solo in stato BOZZA, ricalcolo totali dopo update
 - **L1+L2+L3 su PATCH**: se il payload tocca `prezzo_unitario`, scattano gli stessi check dell'insert (autorizzazione + audit meta + L2 limite + L3 workflow opzionale via flag `richiesta_approvazione=true`). L'articolo/UoM della riga esistente sono usati come contesto resolver
 - **Trigger DB guard riga PENDING**: se la riga ha `stato_approvazione_prezzo='PENDING'`, il trigger `trg_preventivi_righe_a10_guard_pending_upd` (Sprint E) blocca modifica di campi struttura (prezzo, qta, articolo, sconto, ecc.) con `E_RIGA_PREZZO_PENDENTE` (409). Solo `stato_approvazione_prezzo`, `pratica_approvazione_prezzo_id` e `meta` sono ammessi. Per modificare prezzo: prima chiudere il workflow (approva/rifiuta) o annullare la pratica.

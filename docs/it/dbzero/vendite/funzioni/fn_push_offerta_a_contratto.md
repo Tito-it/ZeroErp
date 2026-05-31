@@ -2,38 +2,44 @@
 # ⚙️ Funzione `fn_push_offerta_a_contratto`
 
 ```sql
-CREATE FUNCTION fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint)
+CREATE FUNCTION fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint, p_chiudi_contratto_esistente boolean)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint)
+CREATE OR REPLACE FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint, p_chiudi_contratto_esistente boolean DEFAULT false)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
 -- Scopo:
 --   Generare un contratto DRAFT da un'offerta commerciale in stato
---   ACCETTATA, copiando 1:1 eccezioni (con componenti BoM) e utility
---   (§5.2 analisi). Idempotente: doppia invocazione fallisce con errore
---   semantico; nessun duplicato possibile (pattern A §6.9.3 pratiche).
+--   ACCETTATA, copiando 1:1 eccezioni (con componenti BoM) e utility.
+--   Idempotente: doppia invocazione fallisce con errore semantico.
+--   Consumatore del meccanismo generico di successione contratti:
+--   su overlap mostra/risolve il conflitto invece di lasciar trapelare
+--   l'errore grezzo GiST (brief §3.3/§3.4).
 --
 -- Parametri:
 --   p_offerta_id : ID offerta commerciale ACCETTATA da trasformare.
---   p_pratica_id : ID pratica da collegare al contratto generato
---                  (opzionale — NULL ammesso).
+--   p_pratica_id : ID pratica da collegare (opzionale — NULL ammesso).
+--   p_chiudi_contratto_esistente : se true e c'e' overlap, chiude il
+--       contratto esistente per successione (accorcia valido_al) e poi
+--       genera il nuovo; se false (default) su overlap solleva
+--       E_CONTRATTO_OVERLAP_ESISTENTE senza creare nulla.
 --
 -- Regole:
 --   - stato ACCETTATA obbligatorio; qualsiasi altro -> errore.
 --   - nessun contratto con offerta_id = p_offerta_id deve esistere.
 --   - contratto creato in DRAFT; auto-attivazione NON prevista.
---   - emittente_fiscale_id copiato 1:1 dall'offerta (rev2, 2026-05-26).
---   - eccezioni: loop per-eccezione per preservare mapping
---     eccezione.id → riga_contratto.id; componenti copiati dopo
---     ogni INSERT riga.
---   - stato_approvazione_prezzo / pratica_approvazione_prezzo_id
---     delle componenti: trasportati 1:1 dall'offerta (rev3, 2026-05-26).
+--   - emittente_fiscale_id copiato 1:1 dall'offerta.
+--   - eccezioni: loop per-eccezione (mapping eccezione.id->riga.id),
+--     componenti copiati dopo ogni INSERT riga.
+--   - stato_approvazione_prezzo / pratica_approvazione_prezzo_id delle
+--     componenti: trasportati 1:1 dall'offerta.
 --   - utility: UPSERT per gestire trigger snapshot_precontrattuali.
+--   - overlap: advisory lock + rilevamento + routing + backstop
+--     (vedi header del changelog).
 DECLARE
     v_offerta               vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod             config.stati_doc_offerte.codice_interno%TYPE;
@@ -44,6 +50,12 @@ DECLARE
     v_contratto_uid         vendite.contratti.uid%TYPE;
     v_eccezione             vendite.offerte_commerciali_eccezioni%ROWTYPE;
     v_riga_id               vendite.contratti_righe.id%TYPE;
+    v_overlap_id            vendite.contratti.id%TYPE;
+    v_overlap_numero        vendite.contratti.numero%TYPE;
+    -- ambito assunto dal nuovo contratto: l'INSERT non valorizza la
+    -- colonna, che assume il DEFAULT 'COMMODITY'. INVARIANTE da
+    -- mantenere allineata al rilevamento.
+    c_ambito        CONSTANT vendite.contratti.ambito%TYPE := 'COMMODITY';
 BEGIN
     -- Guard: parametro obbligatorio e valido.
     IF p_offerta_id IS NULL OR p_offerta_id <= 0 THEN
@@ -136,49 +148,130 @@ BEGIN
         );
     END IF;
 
-    -- INSERT contratto in DRAFT — copia campi business 1:1 dall'offerta.
-    INSERT INTO vendite.contratti (
-        billing_account_id,
-        istanza_utility_id,
-        utility_id,
-        listino_id,
-        listino_versione_id,
-        valore_variazione_globale,
-        tipo_variazione_globale,
-        valido_dal,
-        valido_al,
-        stato_doc_contratto_id,
-        sorgente_tipo_id,
-        sorgente_uid,
-        offerta_id,
-        emittente_fiscale_id,
-        meta
-    )
-    VALUES (
+    -- =====================================================
+    -- Successione su overlap (meccanismo generico, brief §3.4)
+    -- =====================================================
+    -- 1) Advisory lock sulla quintupla: serializza push concorrenti
+    --    sullo stesso (BA, istanza, utility, ambito). Non blocca
+    --    l'intera tabella; rilascio automatico a fine transazione.
+    PERFORM pg_advisory_xact_lock(
+        hashtext('vendite.contratti.overlap:'
+                 || v_offerta.billing_account_id::text || ':'
+                 || v_offerta.istanza_utility_id::text || ':'
+                 || v_offerta.utility_id::text || ':'
+                 || c_ambito)
+    );
+
+    -- 2) Rilevamento overlap (read-only).
+    v_overlap_id := vendite.fn_contratto_sovrapposto(
         v_offerta.billing_account_id,
         v_offerta.istanza_utility_id,
         v_offerta.utility_id,
-        v_offerta.listino_id,
-        v_offerta.listino_versione_id,
-        v_offerta.valore_variazione_globale,
-        v_offerta.tipo_variazione_globale,
+        c_ambito,
         v_offerta.validita_dal,
-        v_offerta.validita_al,
-        v_stato_draft_id,
-        v_sorgente_ofc_id,
-        v_offerta.uid,
-        p_offerta_id,
-        v_offerta.emittente_fiscale_id,
-        COALESCE(v_offerta.meta, '{}'::jsonb)
-    )
-    RETURNING id, uid INTO v_contratto_id, v_contratto_uid;
+        v_offerta.validita_al
+    );
+
+    -- 3) Routing.
+    IF v_overlap_id IS NOT NULL THEN
+        SELECT numero INTO v_overlap_numero
+          FROM vendite.contratti WHERE id = v_overlap_id;
+
+        IF NOT COALESCE(p_chiudi_contratto_esistente, false) THEN
+            -- Caso B: overlap senza conferma -> errore parlante, nessun INSERT.
+            PERFORM script.fn_log_and_raise_error(
+                'vendite', 'fn_push_offerta_a_contratto',
+                'E_CONTRATTO_OVERLAP_ESISTENTE',
+                jsonb_build_object(
+                    'offerta_id',           p_offerta_id,
+                    'contratto_overlap_id', v_overlap_id,
+                    'numero',               v_overlap_numero,
+                    'validita_dal',         v_offerta.validita_dal,
+                    'validita_al',          v_offerta.validita_al
+                ),
+                NULL::uuid,
+                COALESCE(v_overlap_numero, v_overlap_id::text)
+            );
+        ELSE
+            -- Caso C: conferma esplicita -> chiusura per successione.
+            PERFORM vendite.fn_chiudi_contratto_per_successione(
+                v_overlap_id, v_offerta.validita_dal
+            );
+        END IF;
+    END IF;
+    -- Caso A (v_overlap_id IS NULL): nessuna azione, prosegue l'INSERT.
+
+    -- INSERT contratto in DRAFT — copia campi business 1:1 dall'offerta.
+    -- Backstop: cattura un eventuale exclusion_violation residuo
+    -- (ex_contratti_no_overlap) e lo ritraduce in errore parlante.
+    BEGIN
+        INSERT INTO vendite.contratti (
+            billing_account_id,
+            istanza_utility_id,
+            utility_id,
+            listino_id,
+            listino_versione_id,
+            valore_variazione_globale,
+            tipo_variazione_globale,
+            valido_dal,
+            valido_al,
+            stato_doc_contratto_id,
+            sorgente_tipo_id,
+            sorgente_uid,
+            offerta_id,
+            emittente_fiscale_id,
+            meta
+        )
+        VALUES (
+            v_offerta.billing_account_id,
+            v_offerta.istanza_utility_id,
+            v_offerta.utility_id,
+            v_offerta.listino_id,
+            v_offerta.listino_versione_id,
+            v_offerta.valore_variazione_globale,
+            v_offerta.tipo_variazione_globale,
+            v_offerta.validita_dal,
+            v_offerta.validita_al,
+            v_stato_draft_id,
+            v_sorgente_ofc_id,
+            v_offerta.uid,
+            p_offerta_id,
+            v_offerta.emittente_fiscale_id,
+            COALESCE(v_offerta.meta, '{}'::jsonb)
+        )
+        RETURNING id, uid INTO v_contratto_id, v_contratto_uid;
+    EXCEPTION
+        WHEN exclusion_violation THEN
+            -- Conflitto residuo (gara sfuggita al lock, percorso senza
+            -- lock, o multi-overlap non risolto dalla singola chiusura).
+            v_overlap_id := vendite.fn_contratto_sovrapposto(
+                v_offerta.billing_account_id,
+                v_offerta.istanza_utility_id,
+                v_offerta.utility_id,
+                c_ambito,
+                v_offerta.validita_dal,
+                v_offerta.validita_al
+            );
+            SELECT numero INTO v_overlap_numero
+              FROM vendite.contratti WHERE id = v_overlap_id;
+
+            PERFORM script.fn_log_and_raise_error(
+                'vendite', 'fn_push_offerta_a_contratto',
+                'E_CONTRATTO_OVERLAP_ESISTENTE',
+                jsonb_build_object(
+                    'offerta_id',           p_offerta_id,
+                    'contratto_overlap_id', v_overlap_id,
+                    'numero',               v_overlap_numero,
+                    'backstop',             true
+                ),
+                NULL::uuid,
+                COALESCE(v_overlap_numero, COALESCE(v_overlap_id::text, '?'))
+            );
+    END;
 
     -- Copia eccezioni offerta → contratti_righe (loop per-eccezione).
     -- Loop necessario per preservare il mapping eccezione.id →
     -- riga_contratto.id e copiare i componenti associati.
-    -- tipo_eccezione: stesso enum tipo_eccezione_contratto.
-    -- stato_approvazione_prezzo delle RIGHE: inserito NULL (I4,
-    -- negoziazione avviene sul contratto DRAFT).
     FOR v_eccezione IN
         SELECT *
           FROM vendite.offerte_commerciali_eccezioni
@@ -224,9 +317,6 @@ BEGIN
         RETURNING id INTO v_riga_id;
 
         -- Copia componenti dell'eccezione → contratti_righe_componenti.
-        -- stato_approvazione_prezzo / pratica_approvazione_prezzo_id:
-        -- trasportati 1:1 dall'offerta (rev3): l'eventuale approvazione
-        -- L3 gia' ottenuta sull'offerta non va persa al push.
         INSERT INTO vendite.contratti_righe_componenti (
             riga_contratto_id,
             articolo_componente_id,
@@ -341,8 +431,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint)
-IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev3 (2026-05-26): copia offerte_commerciali_eccezioni_componenti → contratti_righe_componenti (loop per-eccezione, mapping eccezione→riga). stato_approvazione_prezzo componenti trasportato 1:1. Copia 1:1 eccezioni (contratti_righe) e utility (contratti_utilities). Rev2 (2026-05-26): propaga emittente_fiscale_id. Idempotente: doppia invocazione → E_OFFERTA_CONTRATTO_GIA_GENERATO. Parametri: p_offerta_id (offerta ACCETTATA), p_pratica_id (NULL ok).';
+COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint, p_chiudi_contratto_esistente boolean)
+IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti. 3o parametro p_chiudi_contratto_esistente: su overlap (ex_contratti_no_overlap) se false -> E_CONTRATTO_OVERLAP_ESISTENTE; se true -> chiude il contratto esistente per successione (fn_chiudi_contratto_per_successione) e genera il nuovo. Advisory lock sulla quintupla + backstop exclusion_violation. Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO).';
 ```
 
 ---

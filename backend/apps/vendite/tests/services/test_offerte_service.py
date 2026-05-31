@@ -687,7 +687,7 @@ class OfferteServiceTests(TestCase):
 
         result = OfferteService().push_a_contratto(1)
 
-        repo.push_a_contratto.assert_called_once_with(1, None)
+        repo.push_a_contratto.assert_called_once_with(1, None, False)
         repo.get_contratto_minimal.assert_called_once_with(101)
         self.assertEqual(result, {
             "contratto_id": 101,
@@ -735,7 +735,7 @@ class OfferteServiceTests(TestCase):
 
         OfferteService().push_a_contratto(1, pratica_id=77)
 
-        repo.push_a_contratto.assert_called_once_with(1, 77)
+        repo.push_a_contratto.assert_called_once_with(1, 77, False)
 
     # Scopo: pratica_id <=0 o non-int viene rifiutato dal guard applicativo.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")

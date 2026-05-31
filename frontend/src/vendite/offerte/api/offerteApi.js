@@ -88,10 +88,26 @@ export function listRevisioniOfferta(id) {
 // doppia invocazione fallisce con E_OFFERTA_CONTRATTO_GIA_GENERATO.
 // `praticaId` opzionale: se valorizzato, il contratto viene collegato come
 // sorgente di una pratica esistente.
+// `chiudiEsistente` (brief successione 2026-05-31): se true e c'e' un
+// contratto sovrapposto, lo chiude per successione (valido_al = nuovo
+// valido_dal - 1) e crea il nuovo; se false (default), su overlap il BE
+// solleva E_CONTRATTO_OVERLAP_ESISTENTE.
 // Risposta: { contratto_id, contratto_codice, sorgente_uid }.
-export function pushOffertaAContratto(id, { praticaId = null } = {}) {
-  const body = praticaId != null ? { pratica_id: praticaId } : {}
+export function pushOffertaAContratto(
+  id, { praticaId = null, chiudiEsistente = false } = {},
+) {
+  const body = {}
+  if (praticaId != null) body.pratica_id = praticaId
+  if (chiudiEsistente) body.chiudi_esistente = true
   return api.post(`${BASE}/${id}/push-contratto/`, body)
+}
+
+// Pre-check overlap (brief successione §3.2.1): contratto attivo la cui
+// validita' si sovrappone a quella che il push genererebbe per l'offerta.
+// Read-only: alimenta il dialog di successione dopo
+// E_CONTRATTO_OVERLAP_ESISTENTE. Risposta: { contratto: {...}|null }.
+export function getContrattoSovrapposto(id) {
+  return api.get(`${BASE}/${id}/contratto-sovrapposto/`)
 }
 
 // --- Eccezioni (CRUD, solo BOZZA in write) ---

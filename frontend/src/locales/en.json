@@ -1904,7 +1904,14 @@
       "gia_generato_titolo": "Contract already generated",
       "gia_generato_messaggio": "This offer has already generated a contract. By design (Pattern A idempotency) a second one cannot be generated: open the existing one.",
       "gia_generato_contratto_label": "Contract",
-      "gia_generato_apri_contratto": "Open existing contract"
+      "gia_generato_apri_contratto": "Open existing contract",
+      "successione_titolo": "Overlapping existing contract",
+      "successione_messaggio": "An active contract already exists for this customer/utility in the given period. To generate the new contract you must close the existing one (succession).",
+      "successione_contratto_label": "Existing contract",
+      "successione_apri_contratto": "Open",
+      "successione_validita_attuale": "Current validity",
+      "successione_senza_fine": "no end date",
+      "successione_effetto": "On confirmation, the existing contract will be closed on {data} and the new draft contract will be generated."
     }
   },
   "listini": {

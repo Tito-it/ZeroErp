@@ -79,16 +79,36 @@ di `contratti_righe`:
 Per la matrice completa e la semantica di ogni valore vedi la documentazione di
 [`vendite.contratti_righe`](/dbzero/vendite/tabelle/contratti_righe).
 
+> **Refactor 2026-05-31** (specularita'): l'offerta ha ora anche il default-fonte,
+> trigger `trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd` →
+> `script.trgfn_righe_default_fonte_qta` (funzione **generica** condivisa con
+> `contratti_righe`). Su INSERT imposta `fonte_quantita_attesa` dal `tipo_erogazione`
+> se NULL (backstop al NOT NULL); su UPDATE la resetta se il cambio tipo rende la
+> combinazione vietata. Esegue prima di `qta_from_operativa` (`_a10_d…` < `_a10_q…`).
+
 ---
 
 ### Quantita operative e unita di misura
 
-- `uom_operativa_id` — FK → `catalogo.unita_misura(id)`. UoM operativa dichiarata in riga.
-- `qta_operativa` — quantita nella UoM operativa.
-- `factor_to_base` — snapshot del fattore di conversione verso la UoM base (default 1).
-- `quantita` — quantita nella UoM base.
+> **Refactor 2026-05-31**: l'offerta ora **converte** come il contratto (prima aveva
+> le colonne ma nessuna derivazione: `qta_operativa` restava NULL, `factor_to_base` 1).
 
-Questi campi replicano la struttura di `contratti_righe` per garantire la copia 1:1 al push.
+- `uom_operativa_id` — FK → `catalogo.unita_misura(id)`. UoM operativa dichiarata in riga.
+- `qta_operativa` — **SORGENTE**: quantita nella UoM operativa. Nullable solo per
+  `fonte_quantita_attesa ≠ 'FISSA'` (quantita da sorgente esterna); per `FISSA` e'
+  obbligatoria (altrimenti `E_QTA_MISSING`).
+- `factor_to_base` — snapshot del fattore, **nullable**: se NULL il trigger lo deriva
+  dal mapping `catalogo.articoli_uom_operativa` e lo salva.
+- `quantita` — **DERIVATA** (UoM base): la calcola il trigger
+  `trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd` →
+  `script.trgfn_qta_from_operativa('true','false','quantita','fonte_quantita_attesa')`
+  (stessa configurazione di `contratti_righe`).
+- Vincolo `chk_offerte_eccezioni_qta_operativa_nonzero` (`qta_operativa IS NULL OR
+  qta_operativa <> 0`): negativi ammessi, zero vietato.
+
+Avere `qta_operativa` valorizzata gia' a monte rende la copia 1:1 di
+`fn_push_offerta_a_contratto` coerente: il trigger contratti ricalcola la stessa
+`quantita`, senza `E_QTA_MISSING` (regressione smoke §8b chiusa).
 
 ---
 

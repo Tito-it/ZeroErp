@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge a config.messaggi_errore i codici per il meccanismo
+# generico di successione contratti su overlap temporale:
+#   E_CONTRATTO_OVERLAP_ESISTENTE         (id=465)
+#   E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA (id=466)
+#
+# Usati da:
+#   - vendite.fn_contratto_sovrapposto / fn_push_offerta_a_contratto
+#     (20260531-04) -> E_CONTRATTO_OVERLAP_ESISTENTE (overlap, p_chiudi=false
+#     o backstop exclusion_violation)
+#   - vendite.fn_chiudi_contratto_per_successione (20260531-03)
+#     -> E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA (guard data prima del CHECK
+#     chk_contratti_validita)
+#
+# Codici neutri rispetto al percorso (non E_CONTRATTO_PUSH_*): la logica e'
+# di dominio contratti, il push e' solo il primo consumatore.
+# Riferimento: docs/it/dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260531-01-upsert-messaggi-errore-contratti-successione-mctit.yaml
+
+  - changeSet:
+      id: 20260531-01-upsert-messaggi-errore-contratti-successione
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: messaggi_errore
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/messaggi_errore.csv
+            tableName: messaggi_errore
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: codice,    type: STRING }
+              - column: { name: lingua,    type: STRING }
+              - column: { name: messaggio, type: STRING }
+              - column: { name: id,        type: NUMERIC }
+              - column: { name: causa,     type: STRING }
+              - column: { name: soluzione, type: STRING }

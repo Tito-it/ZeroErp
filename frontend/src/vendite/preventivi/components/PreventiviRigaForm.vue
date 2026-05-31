@@ -13,12 +13,12 @@ import { suggerisciPrezzoRiga, previewRigaComponenti } from '../api/preventiviAp
 import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/utils/severity'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
 import { PRICING_ACTIONS } from '../../constants'
-import { MANAGE_ICONS } from '../../../core/constants'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import PreventiviRigaComponentiPanel from './PreventiviRigaComponentiPanel.vue'
 import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
+import { useComponentiDialog } from '../../_shared/componenti/useComponentiDialog'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -59,7 +59,7 @@ const isCasoA = computed(() => isEdit.value && !!props.riga?.is_composito_caso_a
 const form = ref({
   articolo_id: null,
   descrizione: '',
-  quantita: 1,
+  qta_operativa: 1,
   prezzo_unitario: null,
   sconto_percentuale: 0,
   iva_id: null,
@@ -210,71 +210,24 @@ async function caricaUomConPickBase(articoloId) {
 // Stato: il payload Dialog viene memorizzato in `componentiPayload`
 //   finche' l'operatore non cambia un parametro chiave (articolo/UoM/qta)
 //   -> reset implicito + auto-riapertura per nuova valorizzazione.
-const componentiDialogVisible = ref(false)
-const componentiPayload = ref(null)
-
-// Trigger di auto-apertura ComponentiDialog: solo in CREATE su articolo
-// composito con UoM + qta valida. Il watcher sotto setta direttamente
-// `componentiDialogVisible = true` al primo set valido (no bottone
-// manuale: la dialog e' l'unico entry point per CREATE; lo stato in EDIT
-// viaggia via `PreventiviRigaComponentiPanel`).
-const showComponentiDialog = computed(
-  () => !isEdit.value
-    && articoloObj.value?.is_composito === true
-    && !!form.value.articolo_id
-    && !!form.value.uom_operativa_id
-    && (form.value.quantita || 0) > 0,
-)
-
-// Watch su (articolo, UoM): cambia il CONTESTO di pricing → invalida i
-// prezzi suggeriti precedenti, reset del payload + auto-apertura Dialog
-// per nuova valorizzazione. La quantita' NON e' qui: cambiare la qty
-// non invalida i prezzi unitari dei componenti (il modello e' prezzo ×
-// coeff_qta_snapshot × qty_padre; solo il summary va scalato). EDIT
-// non scatta mai (articolo_id e uom_operativa_id sono disabled e
-// l'init avviene via watch su props.riga).
-let _autoOpenedFor = null
-watch(
-  () => [form.value.articolo_id, form.value.uom_operativa_id],
-  ([articoloId, uomId]) => {
-    if (isEdit.value) return
-    componentiPayload.value = null
-    const tupleKey = `${articoloId}|${uomId}`
-    if (showComponentiDialog.value && _autoOpenedFor !== tupleKey) {
-      _autoOpenedFor = tupleKey
-      componentiDialogVisible.value = true
-    } else if (!showComponentiDialog.value) {
-      _autoOpenedFor = null
-      componentiDialogVisible.value = false
-    }
-  },
-)
-
-function onComponentiConfirm(payload) {
-  // payload = { overrides, attivazioni, summary }; null se nessuna modifica.
-  componentiPayload.value = payload
-  // Anteprima del prezzo padre lato client: il summary del dialog ritorna
-  // `total = SUM(prezzo_componente × quantita_componente)` con
-  // `quantita_componente = coeff_qta_snapshot × qta_padre`. Quindi
-  // `total / qtaPadre = SUM(prezzo × coeff_qta_snapshot)` = prezzo
-  // unitario padre per UNA unità — stesso valore che il trigger DB
-  // `_z90_ricalcola_padre` scriverà al save. Il campo InputNumber resta
-  // `disabled` (isPadreComposito), così l'operatore vede il valore senza
-  // poterlo editare. Al save il payload non include `prezzo_unitario`
-  // per i compositi (vedi build payload), quindi il BE resta la fonte
-  // canonica e nessun drift è possibile.
-  if (isPadreComposito.value && payload?.summary?.qtaPadre > 0) {
-    form.value.prezzo_unitario = payload.summary.total / payload.summary.qtaPadre
-  }
-}
-
-// Riapertura manuale (CREATE) — bottone "Modifica componenti" sotto il
-// form: serve quando l'operatore vuole correggere gli override del Dialog
-// PRIMA di salvare la riga (l'auto-open scatta solo al primo set valido).
-// Pattern allineato a ContrattoRigheDrawer.
-function apriComponentiDialog() {
-  componentiDialogVisible.value = true
-}
+// Orchestrazione ComponentiDialog centralizzata nel BB `useComponentiDialog`
+// (estrazione regola-del-2 2026-05-31). La quantità sorgente è `qta_operativa`.
+// Differenze di dominio passate come getter: in CREATE l'auto-open scatta;
+// il prezzo padre composito si calcola da `isPadreComposito` (CASO A o
+// is_composito). La dialog è l'unico entry point CREATE; in EDIT lo stato
+// viaggia via `PreventiviRigaComponentiPanel`.
+const {
+  componentiDialogVisible,
+  componentiPayload,
+  showComponentiDialog,
+  apriComponentiDialog,
+  onComponentiConfirm,
+} = useComponentiDialog({
+  form,
+  isCreate: () => !isEdit.value,
+  isComposito: () => articoloObj.value?.is_composito === true,
+  isPadreComposito: () => isPadreComposito.value,
+})
 
 // State usato da suggerisciPrezzo(): DEVE stare prima del watch `immediate`
 // qui sotto, altrimenti il primo fire (sincrono in setup) entra in TDZ su
@@ -290,7 +243,7 @@ watch(() => props.riga, (riga) => {
     form.value = {
       articolo_id: riga.articolo_id,
       descrizione: riga.descrizione || '',
-      quantita: Number(riga.quantita) || 1,
+      qta_operativa: Number(riga.qta_operativa) || 1,
       prezzo_unitario: Number(riga.prezzo_unitario) || null,
       sconto_percentuale: Number(riga.sconto_percentuale) || 0,
       iva_id: riga.iva_id || null,
@@ -311,7 +264,7 @@ watch(() => props.riga, (riga) => {
       suggerisciPrezzo()
     }
   } else {
-    form.value = { articolo_id: null, descrizione: '', quantita: 1, prezzo_unitario: null, sconto_percentuale: 0, iva_id: null, uom_operativa_id: null, ordine: null }
+    form.value = { articolo_id: null, descrizione: '', qta_operativa: 1, prezzo_unitario: null, sconto_percentuale: 0, iva_id: null, uom_operativa_id: null, ordine: null }
     articoloObj.value = null
     _resolverPriceLive.value = null
     resetUomOptions()
@@ -429,16 +382,16 @@ watch(() => form.value.uom_operativa_id, (newUom, oldUom) => {
 })
 
 // Validazione FE: tutti i campi obbligatori devono essere valorizzati prima
-// di abilitare il save. Backend richiede: articolo, UoM (per derivare
-// qta_operativa via factor_to_base), quantita > 0, prezzo non null,
-// IVA. Senza UoM scattava il guard DB E_QTA_MISSING; senza prezzo o IVA
-// scattano altri trigger DB. Bloccando lato UX evitiamo round-trip inutili
-// e diamo feedback immediato.
+// di abilitare il save. Backend richiede: articolo, UoM operativa,
+// `qta_operativa` diversa da zero (CHECK DB `<> 0`: negativi ammessi; il
+// trigger deriva `quantita` base), prezzo non null, IVA. Senza qta scatta il
+// guard DB E_QTA_MISSING; senza prezzo o IVA scattano altri trigger DB.
+// Bloccando lato UX evitiamo round-trip inutili e diamo feedback immediato.
 const canSave = computed(() => {
   const f = form.value
   if (!f.articolo_id) return false
   if (!f.uom_operativa_id) return false
-  if (!(f.quantita > 0)) return false
+  if (f.qta_operativa == null || Number(f.qta_operativa) === 0) return false
   // Per articoli compositi (CREATE composito o EDIT CASO A) il prezzo
   // padre e' SUM(componenti × coeff_qta) ricalcolato dai trigger DB:
   // non lo richiediamo nel payload e non lo validiamo qui.
@@ -459,7 +412,7 @@ function buildRigaPayload(extras = {}) {
   const f = form.value
   if (isEdit.value) {
     const base = {
-      quantita: f.quantita,
+      qta_operativa: f.qta_operativa,
       sconto_percentuale: f.sconto_percentuale,
     }
     // Refactor componenti 2026-05-11: per riga CASO A il prezzo padre e'
@@ -481,7 +434,7 @@ function buildRigaPayload(extras = {}) {
   const payload = {
     articolo_id: f.articolo_id,
     descrizione: f.descrizione || null,
-    quantita: f.quantita,
+    qta_operativa: f.qta_operativa,
     sconto_percentuale: f.sconto_percentuale,
     iva_id: f.iva_id,
     uom_operativa_id: f.uom_operativa_id,
@@ -577,7 +530,7 @@ async function handleRichiediApprovazione() {
     <div class="form-grid-3col">
       <div class="form-field">
         <label>{{ t('preventivi.riga_quantita') }} *</label>
-        <InputNumber v-model="form.quantita" :min-fraction-digits="2" :max-fraction-digits="6" />
+        <InputNumber v-model="form.qta_operativa" :min-fraction-digits="2" :max-fraction-digits="6" />
       </div>
       <div class="form-field">
         <label style="display: flex; align-items: center; gap: 0.5rem;">
@@ -704,7 +657,7 @@ async function handleRichiediApprovazione() {
       v-if="!isEdit && articoloObj?.is_composito"
       section-title-key="preventivi.componenti_section_title"
       :disabled="!form.articolo_id || !form.uom_operativa_id
-        || !((form.quantita || 0) > 0)"
+        || ((form.qta_operativa || 0) <= 0)"
       :componenti-payload="componentiPayload"
       @apri-dialog="apriComponentiDialog"
     />
@@ -715,7 +668,7 @@ async function handleRichiediApprovazione() {
       :articolo="articoloObj"
       :documento-id="preventivoId"
       :uom-operativa-id="form.uom_operativa_id"
-      :quantita="form.quantita"
+      :quantita="form.qta_operativa"
       :api-preview="previewRigaComponenti"
       :initial-payload="componentiPayload"
       @confirm="onComponentiConfirm"

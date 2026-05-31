@@ -2277,7 +2277,8 @@ class ContrattiService:
 
         # 3) Normalizzazione `quantita`:
         #    - fonti downstream → forza NULL (il valore arrivera' downstream).
-        #    - FISSA → richiede quantita > 0 (guard esplicita, oltre al CHECK).
+        #    - FISSA → richiede quantita <> 0 (guard esplicita, oltre al CHECK
+        #      `qta_operativa <> 0`: zero vietato, negativi ammessi es. resi).
         #    - DERIVATA_COMPONENTI → no-op (trigger DB z90_propaga_qta_componenti
         #      scrive il valore corretto post-INSERT figli BoM).
         #    - None → lascia passare (tipo/fonte non risolti, validazione
@@ -2296,16 +2297,17 @@ class ContrattiService:
         elif fonte == "FISSA":
             qta = data.get("quantita")
             qta_op = data.get("qta_operativa")
-            # Almeno uno tra quantita e qta_operativa deve essere positivo:
-            # il trigger `trgfn_qta_from_operativa` deriva l'una dall'altra
-            # post-INSERT. Validazione lax: il CHECK DB ha l'ultima parola.
+            # Almeno uno tra quantita e qta_operativa deve essere diverso da zero
+            # (CHECK DB `qta_operativa <> 0`: negativi ammessi). Il trigger
+            # `trgfn_qta_from_operativa` deriva l'una dall'altra post-INSERT.
+            # Validazione lax: il CHECK DB ha l'ultima parola.
             ErrorManager.require(
-                (qta is not None and qta > 0) or (qta_op is not None and qta_op > 0),
+                (qta is not None and qta != 0) or (qta_op is not None and qta_op != 0),
                 code=E_VENDITE_VALIDATION,
                 message=_MESSAGE_RIGA,
                 detail=(
-                    "fonte_quantita_attesa='FISSA' richiede una quantita > 0 "
-                    "(campo `quantita` o `qta_operativa`)."
+                    "fonte_quantita_attesa='FISSA' richiede una quantita diversa "
+                    "da zero (campo `quantita` o `qta_operativa`)."
                 ),
                 context={
                     "tipo_erogazione": tipo,

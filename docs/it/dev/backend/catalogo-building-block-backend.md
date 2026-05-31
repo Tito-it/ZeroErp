@@ -405,6 +405,19 @@ Regola pratica: **mai** leggere direttamente `listini_righe.prezzo` o `categorie
 
 ---
 
+## Vendite — Successione contratti su overlap (`vendite` DB + `apps/vendite/`)
+
+Meccanismo **generico di dominio contratti** per gestire la sovrapposizione temporale (`ex_contratti_no_overlap`) su qualunque percorso di creazione contratto. Oggi consumato dal push offerta→contratto; progettato per essere riusato da creazione manuale contratto e futuri push da altre sorgenti (un aggancio, non una riscrittura). Vedi [brief](../work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md).
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `fn_contratto_sovrapposto` | DB `vendite` (`20260531-02`) | **Rilevamento** read-only (`STABLE`): ritorna l'id del contratto attivo non abortito la cui validità si sovrappone alla quintupla `(BA, istanza, utility, ambito, periodo)`, o NULL. Daterange costruita con `COALESCE→±infinity '[]'` identica alla colonna GENERATED `contratti.validita`. Non solleva mai errori: il chiamante decide come gestire il conflitto. |
+| `fn_chiudi_contratto_per_successione` | DB `vendite` (`20260531-03`) | **Successione**: accorcia il contratto esistente (`valido_al = nuovo valido_dal − 1`), nessun cambio di stato (lo allinea il job notturno `chiusura_scadenze_daily`). Guard `E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA` se le date sono incoerenti (`valido_dal` esistente > nuovo − 1). |
+| `fn_push_offerta_a_contratto` (3 param) | DB `vendite` (`20260531-04`) | Consumatore del meccanismo: `p_chiudi_contratto_esistente` instrada caso A (no overlap → INSERT) / B (overlap + false → `E_CONTRATTO_OVERLAP_ESISTENTE`) / C (overlap + true → successione + INSERT). Advisory lock sulla quintupla + backstop `EXCEPTION WHEN exclusion_violation`. |
+| `OfferteRepository.get_contratto_sovrapposto` | [offerte_repository.py](../../../../backend/apps/vendite/db/offerte_repository.py) | Wrapper read-only su `fn_contratto_sovrapposto`: ritorna il contratto in conflitto al push (id+numero+validità) per il dialog FE di successione, senza tentare l'INSERT. Esposto via `GET /vendite/offerte/<id>/contratto-sovrapposto/`. |
+
+---
+
 ## Documenti — Motore documentale parametrico (`apps/documenti/`)
 
 Foundation v1 del motore documentale (Decisioni 25/30/72-76 di `sviluppo-documenti.md`). Read-only: lista/dettaglio template + versioni. CRUD admin + render in PR successive.

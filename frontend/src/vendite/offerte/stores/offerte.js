@@ -24,6 +24,7 @@ import {
   deleteEccezione,
   deleteOfferta,
   emettiOfferta,
+  getContrattoSovrapposto,
   getOfferta,
   listEccezioni,
   listOfferte,
@@ -200,14 +201,26 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
 
   // ACCETTATA -> contratto DRAFT (idempotente). Ritorna
   // { contratto_id, contratto_codice, sorgente_uid }.
-  async function pushAContratto(id, { praticaId = null } = {}) {
-    const res = await pushOffertaAContratto(id, { praticaId })
+  // `chiudiEsistente`: successione su overlap (chiude il contratto
+  // sovrapposto prima di creare il nuovo). Default false: su overlap il BE
+  // solleva E_CONTRATTO_OVERLAP_ESISTENTE (il drawer apre il dialog di
+  // successione).
+  async function pushAContratto(id, { praticaId = null, chiudiEsistente = false } = {}) {
+    const res = await pushOffertaAContratto(id, { praticaId, chiudiEsistente })
     emitDataChanged(TAB_ENTITIES.OFFERTA_COMMERCIALE, id)
     // Emette anche per il contratto generato (apre/refresh tab contratti).
     if (res.data.data?.contratto_id != null) {
       emitDataChanged(TAB_ENTITIES.CONTRATTO, res.data.data.contratto_id)
     }
     return res.data.data
+  }
+
+  // Contratto attivo sovrapposto al push (read-only). Alimenta il dialog di
+  // successione quando il push fallisce con E_CONTRATTO_OVERLAP_ESISTENTE.
+  // Ritorna l'oggetto contratto { id, numero, valido_dal, valido_al } o null.
+  async function loadContrattoSovrapposto(id) {
+    const res = await getContrattoSovrapposto(id)
+    return res.data.data?.contratto ?? null
   }
 
   // --- Eccezioni ---
@@ -242,6 +255,7 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     fetchList, fetchDetail, create, update, elimina,
     // transizioni
     emetti, registraEsito, annulla, creaRevisione, loadRevisioni, pushAContratto,
+    loadContrattoSovrapposto,
     // eccezioni
     loadEccezioni, addEccezione, aggiornaEccezione, eliminaEccezione,
   }

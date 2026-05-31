@@ -644,6 +644,12 @@ Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
   (`chk_offerte_eccezioni_coerenza_fonte_erogazione`)
 - `fonte_quantita_attesa` NOT NULL
   (`chk_offerte_eccezioni_fonte_qta`)
+- **Quantità**: la sorgente è `qta_operativa` (UoM operativa). La colonna base
+  `quantita` è **derivata dal trigger** `trgfn_qta_from_operativa`
+  (`quantita = qta_operativa × factor_to_base`) e non va inviata. `qta_operativa`
+  obbligatoria per `fonte = FISSA` (CHECK `qta_operativa <> 0`: zero vietato,
+  negativi ammessi); ammessa NULL per le altre fonti (la qta arriva downstream).
+  Allineato a contratti/preventivi (refactor 2026-05-31)
 - `tipo_erogazione` ammesso (`chk_offerte_eccezioni_tipo_erog`)
 - Coerenza canone (`chk_offerte_eccezioni_coerenza_canone`)
 - UNIQUE: max 1 `OVERRIDE`/`ESCLUSIONE` per `(offerta_id, articolo_id)`
@@ -759,6 +765,8 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 | `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                  | 422                 | DB P0001 — `push_a_contratto` da stato ≠ ACCETTATA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_push_offerta_a_contratto`                        |
 | `E_OFFERTA_CONTRATTO_GIA_GENERATO`                  | 422                 | DB P0001 — push idempotente (pattern A): doppia invocazione su stessa offerta. UNIQUE `uq_contratti_offerta_id` garantisce protezione strutturale | `fn_push_offerta_a_contratto`                        |
 | `E_CONFIG_MANCANTE`                                 | 422                 | DB P0001 — `OFFERTA_COMMERCIALE` o `CONTRATTO` non trovati in `config.sorgenti`; stato `DRAFT` non in `config.stati_doc_contratti`. Errore di configurazione sistema | `fn_push_offerta_a_contratto`                        |
+| `E_CONTRATTO_OVERLAP_ESISTENTE`                     | 422                 | DB P0001 — push con contratto attivo sovrapposto e `chiudi_esistente=false`. Il FE legge il conflitto via `contratto-sovrapposto/` e richiama con `chiudi_esistente=true` | `fn_push_offerta_a_contratto` / `fn_contratto_sovrapposto` |
+| `E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA`             | 422                 | DB P0001 — successione con date incoerenti: il contratto esistente inizia dopo la decorrenza del nuovo (chiusura produrrebbe `valido_al < valido_dal`) | `fn_chiudi_contratto_per_successione`                |
 
 I codici `E_OFFERTA_*` sollevati dai trigger sono **propagati al client come
 `ServiceError.code` originale** (non rimpiazzati da `E_VENDITE_VALIDATION`),
@@ -784,13 +792,25 @@ diverso da "transizione non ammessa generica").
 - `vendite.fn_crea_revisione_offerta(p_offerta_id, p_user)` — step 7
   atterrato 2026-05-25. Crea rev.N+1 da offerta EMESSA copiando testata +
   eccezioni attive + utility 1:1. Ritorna `BIGINT` (id nuova rev).
-- `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id)` —
-  step 8 atterrato 2026-05-25 PM. Crea contratto DRAFT da offerta
-  ACCETTATA, copia 1:1 eccezioni e UPSERT utility (sovrascrive il record
-  creato dal trigger snapshot precontrattuali). Idempotente per
-  costruzione (UNIQUE `uq_contratti_offerta_id`). Pratica opzionale
-  (collega via `pratiche.pratiche_sorgenti`). Ritorna `BIGINT` (id nuovo
-  contratto).
+- `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id, p_chiudi_contratto_esistente)` —
+  step 8 atterrato 2026-05-25 PM, esteso 2026-05-31 con la successione su
+  overlap. Crea contratto DRAFT da offerta ACCETTATA, copia 1:1 eccezioni e
+  UPSERT utility (sovrascrive il record creato dal trigger snapshot
+  precontrattuali). Idempotente per costruzione (UNIQUE
+  `uq_contratti_offerta_id`). Pratica opzionale (collega via
+  `pratiche.pratiche_sorgenti`). 3° param `p_chiudi_contratto_esistente`
+  (default false): su contratto attivo sovrapposto solleva
+  `E_CONTRATTO_OVERLAP_ESISTENTE` se false, esegue la successione se true.
+  Ritorna `BIGINT` (id nuovo contratto).
+- `vendite.fn_contratto_sovrapposto(...)` — rilevamento read-only (`STABLE`)
+  del contratto attivo sovrapposto sulla quintupla `ex_contratti_no_overlap`.
+  Meccanismo generico di dominio contratti (riusabile da ogni percorso di
+  creazione). Esposto via `OfferteRepository.get_contratto_sovrapposto` per
+  l'endpoint `GET /<id>/contratto-sovrapposto/`.
+- `vendite.fn_chiudi_contratto_per_successione(p_contratto_id, p_nuovo_valido_dal)` —
+  accorcia il contratto esistente (`valido_al = nuovo valido_dal − 1`); nessun
+  cambio di stato (lo allinea il job notturno `chiusura_scadenze_daily`).
+  Guard `E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA` su date incoerenti.
 - `script.fn_available_actions_offerta(p_offerta_id)` — D7 atterrata
   2026-05-26 (migration `20260526-01`). Capability layer pure-read:
   ritorna `jsonb` con `available_actions[]` dalla matrice
@@ -844,6 +864,14 @@ diverso da "transizione non ammessa generica").
   master-detail inline, drawer note thin wrapper, deep-link contratto
   post-push (`?open=<id>` su `ContrattiListView`), dialog parlante
   `E_OFFERTA_CONTRATTO_GIA_GENERATO` con link al contratto esistente.
+- **Successione contratti su overlap atterrata 2026-05-31** (DB su
+  `dev/db-tid` + BE/FE). Meccanismo generico DB (`fn_contratto_sovrapposto`
+  read-only + `fn_chiudi_contratto_per_successione`), push a 3 parametri,
+  endpoint `GET /<id>/contratto-sovrapposto/`, codici
+  `E_CONTRATTO_OVERLAP_ESISTENTE` / `E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA`.
+  FE: `OffertaSuccessioneDialog` con conferma esplicita; il push si re-invoca
+  con `chiudi_esistente=true`. Vedi
+  [brief](../../../dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md).
 
 Dominio offerta commerciale: **completo lato BE + FE**. Niente cantieri
 aperti.

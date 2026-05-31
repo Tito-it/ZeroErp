@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Refactor quantita/qta_operativa (§5.1) — conversione UoM sull'offerta.
+#
+# Installa su offerte_commerciali_eccezioni il trigger qta_from_operativa con
+# la STESSA configurazione di contratti_righe:
+#     script.trgfn_qta_from_operativa('true','false','quantita','fonte_quantita_attesa')
+#   - [0]='true'  : snapshotta factor_to_base dal mapping se NULL
+#   - [1]='false' : non copia uom_id (l'offerta non ha la colonna uom_id)
+#   - [2]='quantita' : colonna target (base derivata)
+#   - [3]='fonte_quantita_attesa' : governor di nullabilita' -> qta_operativa
+#     NULL ammessa per fonte != FISSA; per FISSA NULL -> E_QTA_MISSING.
+#
+# Perche': oggi l'offerta ha le colonne ma NON deriva nulla (qta_operativa
+# resta NULL, factor_to_base resta 1). L'offerta e' lo specchio del contratto
+# (fn_push_offerta_a_contratto copia 1:1): col trigger installato, qta_operativa
+# e' valorizzata e quantita derivata gia' a monte -> il push copia valori
+# coerenti e il trigger contratti li ricalcola identici (no E_QTA_MISSING).
+#
+# Ordine fase a10: 'default_fonte_qta' (file -10) precede 'qta_from_operativa'
+# ('d' < 'q'), quindi fonte e' normalizzata prima che qta la legga.
+#
+# Dipendenze: script.trgfn_qta_from_operativa con TG_ARGV[3] (20260519-08),
+# colonne quantita / qta_operativa / fonte_quantita_attesa su offerte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260531-11-bind-trg-offerte-eccezioni-qta-from-operativa-mctit.yaml
+
+  - changeSet:
+      id: 20260531-11-bind-trg-offerte-eccezioni-qta-from-operativa
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd su
+        offerte_commerciali_eccezioni -> script.trgfn_qta_from_operativa
+        ('true','false','quantita','fonte_quantita_attesa'). Specchio di
+        contratti_righe: deriva quantita da qta_operativa, fonte governa la
+        nullabilita'.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: offerte_commerciali_eccezioni
+                columnName: qta_operativa
+            - columnExists:
+                schemaName: vendite
+                tableName: offerte_commerciali_eccezioni
+                columnName: fonte_quantita_attesa
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'trgfn_qta_from_operativa';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd
+                  ON vendite.offerte_commerciali_eccezioni;
+
+              CREATE TRIGGER trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.offerte_commerciali_eccezioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita', 'fonte_quantita_attesa');
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd
+                  ON vendite.offerte_commerciali_eccezioni;

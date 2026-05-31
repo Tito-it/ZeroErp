@@ -14,7 +14,6 @@ import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
-import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -26,6 +25,7 @@ import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
 import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
+import { useComponentiDialog } from '../../_shared/componenti/useComponentiDialog'
 import ComponentiPanel from '../../_shared/componenti/ComponentiPanel.vue'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
@@ -35,7 +35,7 @@ import { useDrawerContentReady } from '../../../core/composables/useDrawerConten
 import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { displayDate } from '../../../core/utils/date'
-import { coerceJsonbToArray } from '../../../core/utils/meta'
+import { rowComponenti, hasBundleComponenti } from '../../_shared/componenti/rowComponenti'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { FONTE_QUANTITA_ATTESA, TIPO_ECCEZIONE, TIPO_EROGAZIONE } from '../../constants'
 import {
@@ -83,19 +83,6 @@ const form = ref({})
 // (`row.componenti` jsonb). Pattern speculare a `ContrattoRigheDrawer`.
 const expandedRows = ref({})
 
-// Coerce difensivo: psycopg puo' restituire il `jsonb_agg` (`row.componenti`)
-// come stringa JSON invece che array — `Array.isArray` fallirebbe e
-// l'expander non comparirebbe pur essendoci i figli. `coerceJsonbToArray`
-// normalizza stringa->array (pass-through se gia' array). Vedi catalogo BB
-// `coerceJsonbToObject/Array`.
-function rowComponenti(row) {
-  return coerceJsonbToArray(row?.componenti)
-}
-
-function hasBundleComponenti(row) {
-  return row?.is_composito === true && rowComponenti(row).length > 0
-}
-
 function isExpanded(row) {
   const key = row?.id
   if (key == null) return false
@@ -136,66 +123,26 @@ async function caricaUomConPickBase(articoloId) {
 // articolo composito la Dialog si auto-apre al primo set di (articolo,
 // uom) validi; in EDIT lo stato viaggia via `ComponentiPanel` sotto il
 // form (lista persistita).
-const componentiDialogVisible = ref(false)
-const componentiPayload = ref(null)
-
-// Trigger di apertura Dialog: solo in CREATE su articolo composito con
-// articolo + UoM valorizzati. Niente guard `quantita > 0` (diverso da
-// preventivi/contratti): nelle eccezioni offerta la qta puo' essere
-// null per fonti CONSUMO/LETTURE; i prezzi unitari componente non
-// dipendono dalla qta — solo il summary del Dialog mostrera' 0/null
-// se l'operatore non l'ha ancora valorizzata, ma il flusso di
-// conferma overrides resta valido.
-const showComponentiDialog = computed(
-  () => formMode.value === 'create'
-    && form.value?.articolo_obj?.is_composito === true
-    && !!form.value?.articolo_id
-    && !!form.value?.uom_operativa_id,
-)
-
-// Watch articolo + uom: cambia il CONTESTO di pricing → invalida i
-// prezzi suggeriti precedenti, reset del payload + auto-apertura Dialog.
-let _autoOpenedFor = null
-watch(
-  () => [form.value?.articolo_id, form.value?.uom_operativa_id],
-  ([articoloId, uomId]) => {
-    if (formMode.value !== 'create') return
-    componentiPayload.value = null
-    const tupleKey = `${articoloId}|${uomId}`
-    if (showComponentiDialog.value && _autoOpenedFor !== tupleKey) {
-      _autoOpenedFor = tupleKey
-      componentiDialogVisible.value = true
-    } else if (!showComponentiDialog.value) {
-      _autoOpenedFor = null
-      componentiDialogVisible.value = false
-    }
-  },
-)
-
-function onComponentiConfirm(payload) {
-  componentiPayload.value = payload
-  // Anteprima del prezzo padre lato client per articoli compositi
-  // (simmetrico a PreventiviRigaForm + ContrattoRigheDrawer 2026-05-29).
-  // Il summary del dialog ritorna `total = SUM(prezzo × quantita_componente)`
-  // con `quantita_componente = coeff_qta_snapshot × qta_padre`. Quindi
-  // `total / qtaPadre = SUM(prezzo × coeff_qta_snapshot)` = prezzo
-  // unitario padre per UNA unità — stesso valore che il trigger DB
-  // `_z90_ricalcola_padre` scriverà al save. Il campo InputNumber resta
-  // disabled per i compositi (`articolo_obj?.is_composito`), così
-  // l'operatore vede il valore senza poterlo editare. Al save il payload
-  // non include `prezzo_unitario` per i compositi (BE = fonte canonica).
-  if (form.value?.articolo_obj?.is_composito === true && payload?.summary?.qtaPadre > 0) {
-    form.value.prezzo_unitario = payload.summary.total / payload.summary.qtaPadre
-  }
-}
-
-// Riapertura manuale (CREATE) — bottone "Modifica componenti" sotto il
-// form: serve quando l'operatore vuole correggere gli override del Dialog
-// PRIMA di salvare l'eccezione (l'auto-open scatta solo al primo set
-// valido). Pattern allineato a ContrattoRigheDrawer / PreventiviRigaForm.
-function apriComponentiDialog() {
-  componentiDialogVisible.value = true
-}
+// Orchestrazione ComponentiDialog centralizzata nel BB `useComponentiDialog`
+// (estrazione regola-del-2 2026-05-31). `qtaValida: () => true`: nelle eccezioni
+// offerta la qta puo' essere null per fonti CONSUMO/LETTURE e i prezzi unitari
+// componente non dipendono dalla qta, quindi l'auto-apertura non richiede qta>0
+// (diverso da preventivi/contratti). isComposito/isPadreComposito leggono
+// `form.articolo_obj.is_composito`.
+const {
+  componentiDialogVisible,
+  componentiPayload,
+  showComponentiDialog,
+  apriComponentiDialog,
+  onComponentiConfirm,
+  resetComponentiDialog,
+} = useComponentiDialog({
+  form,
+  isCreate: () => formMode.value === 'create',
+  isComposito: () => form.value?.articolo_obj?.is_composito === true,
+  isPadreComposito: () => form.value?.articolo_obj?.is_composito === true,
+  qtaValida: () => true,
+})
 
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
@@ -289,7 +236,7 @@ function newForm() {
     tipo_erogazione: TIPO_EROGAZIONE.CANONE,
     fonte_quantita_attesa: _defaultFontePerTipo(TIPO_EROGAZIONE.CANONE),
     prezzo_unitario: null,
-    quantita: null,
+    qta_operativa: null,
     uom_operativa_id: null,
     attivo: true,
     ordine: null,
@@ -312,7 +259,7 @@ function fromRow(row) {
     fonte_quantita_attesa: row.fonte_quantita_attesa
       || _defaultFontePerTipo(row.tipo_erogazione || TIPO_EROGAZIONE.CANONE),
     prezzo_unitario: row.prezzo_unitario,
-    quantita: row.quantita,
+    qta_operativa: row.qta_operativa,
     uom_operativa_id: row.uom_operativa_id,
     attivo: row.attivo ?? true,
     ordine: row.ordine ?? null,
@@ -320,9 +267,7 @@ function fromRow(row) {
 }
 
 function _resetComponentiState() {
-  componentiDialogVisible.value = false
-  componentiPayload.value = null
-  _autoOpenedFor = null
+  resetComponentiDialog()
 }
 
 function openCreate() {
@@ -384,8 +329,8 @@ function onArticoloSelected(item) {
   // (fonti CONSUMO/LETTURE): qui poniamo un default `1` per garantire
   // l'apertura della dialog. L'operatore puo' modificarla o azzerarla
   // successivamente in base alla fonte scelta.
-  if (item.is_composito === true && !form.value.quantita) {
-    form.value.quantita = 1
+  if (item.is_composito === true && !form.value.qta_operativa) {
+    form.value.qta_operativa = 1
   }
   caricaUomConPickBase(item.id)
 }
@@ -428,8 +373,8 @@ function buildPayload() {
     tipo_erogazione: f.tipo_erogazione || null,
     fonte_quantita_attesa: f.fonte_quantita_attesa,
     prezzo_unitario: prezzoUnitarioPayload,
-    quantita: f.quantita != null && f.quantita !== ''
-      ? String(f.quantita) : null,
+    qta_operativa: f.qta_operativa != null && f.qta_operativa !== ''
+      ? String(f.qta_operativa) : null,
     uom_operativa_id: f.uom_operativa_id || null,
     attivo: f.attivo,
     ordine: f.ordine,
@@ -626,7 +571,7 @@ const onClose = useDrawerClose(emit)
             style="width: 120px;"
           />
           <Column
-            field="quantita"
+            field="qta_operativa"
             :header="t('vendite.offerte.col_quantita')"
             sortable
             style="width: 100px;"
@@ -749,7 +694,7 @@ const onClose = useDrawerClose(emit)
             <div class="form-field">
               <label>{{ t('vendite.offerte.field_quantita') }}</label>
               <InputNumber
-                v-model="form.quantita"
+                v-model="form.qta_operativa"
                 class="w-full"
                 :min-fraction-digits="0"
                 :max-fraction-digits="6"
@@ -844,7 +789,7 @@ const onClose = useDrawerClose(emit)
       :articolo="form.articolo_obj"
       :documento-id="props.offertaId"
       :uom-operativa-id="form.uom_operativa_id"
-      :quantita="form.quantita"
+      :quantita="form.qta_operativa"
       :api-preview="previewEccezioneComponenti"
       :initial-payload="componentiPayload"
       @confirm="onComponentiConfirm"

@@ -124,9 +124,20 @@ Constraint principali:
 
 Oltre al prezzo, l'eccezione porta i **parametri di fornitura** che serviranno al
 contratto e alla fatturazione ricorrente: `tipo_erogazione`, `fonte_quantita_attesa`,
-`periodicita`, `generazione_canone`, `competenza_canone`, e la quantità
-(`quantita` — se NULL significa *a consumo*, cioè fatturazione sul consumo effettivo
-e non su una quantità fissa).
+`periodicita`, `generazione_canone`, `competenza_canone`, e la quantità.
+
+La quantità si inserisce **nell'unità di misura operativa scelta** e il sistema la
+converte da sé nell'unità base (stesso meccanismo di preventivi e contratti — vedi
+[Gestione preventivi §2.2](gestione-preventivi.md)). Quando la fonte non è *fissa*
+(`fonte_quantita_attesa ≠ FISSA`, es. fatturazione *a consumo*) la quantità resta
+vuota: arriverà dal consumo effettivo, non da un valore fisso. Quando invece è
+*fissa* la quantità è obbligatoria.
+
+> **Allineamento 2026-05-31**: l'offerta ora converte la quantità e imposta il
+> default della fonte **esattamente come il contratto**. In passato non lo faceva, e
+> al momento di trasformare un'offerta accettata in contratto le righe a quantità
+> fissa venivano rifiutate (mancava il dato di quantità operativa). Ora la
+> trasformazione (push) è coerente e non si blocca.
 
 ### 2.3 Componenti BoM `offerte_commerciali_eccezioni_componenti`
 

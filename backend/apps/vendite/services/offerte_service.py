@@ -751,22 +751,36 @@ class OfferteService:
     #
     #        Ritorna `OffertaPushResult` con id+numero del nuovo contratto
     #        DRAFT e il `sorgente_uid` (= `offerta.uid`) per tracciabilita'.
+    #
+    #        Successione su overlap (brief successione 2026-05-31): se per la
+    #        quintupla esiste gia' un contratto attivo sovrapposto, la fn DB
+    #        solleva `E_CONTRATTO_OVERLAP_ESISTENTE` quando `chiudi_esistente`
+    #        e' False (il FE intercetta il codice, mostra il contratto in
+    #        conflitto via `get_contratto_sovrapposto` e ri-chiama con
+    #        `chiudi_esistente=True`, che chiude il vecchio per successione).
     def push_a_contratto(
         self,
         offerta_id: int,
         *,
         pratica_id: int | None = None,
+        chiudi_esistente: bool = False,
     ) -> OffertaPushResult:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         if pratica_id is not None:
             self._v.guard_positive_int(pratica_id, field="pratica_id")
         self._assert_stato_corrente(offerta_id, expected=_STATI_PUSHABILI)
         with self._db_errors(
-            {"offerta_id": offerta_id, "pratica_id": pratica_id},
+            {
+                "offerta_id": offerta_id,
+                "pratica_id": pratica_id,
+                "chiudi_esistente": chiudi_esistente,
+            },
             fallback_message="Errore push offerta a contratto.",
         ):
             with transaction.atomic():
-                contratto_id = self._repo.push_a_contratto(offerta_id, pratica_id)
+                contratto_id = self._repo.push_a_contratto(
+                    offerta_id, pratica_id, chiudi_esistente,
+                )
         contratto = self._repo.get_contratto_minimal(contratto_id)
         ErrorManager.require(
             contratto is not None,
@@ -780,6 +794,23 @@ class OfferteService:
             contratto_codice=str(contratto["numero"]),
             sorgente_uid=str(contratto["uid"]),
         )
+
+    # Scopo: Ritorna il contratto attivo la cui validita' si sovrappone a
+    #        quella che il push genererebbe per questa offerta, o None.
+    #        Lettura libera (read-only): alimenta il dialog FE di successione
+    #        quando il push ha restituito `E_CONTRATTO_OVERLAP_ESISTENTE`.
+    #        Delega a `fn_contratto_sovrapposto` (dominio contratti) via repo.
+    def get_contratto_sovrapposto(
+        self, offerta_id: int
+    ) -> dict[str, Any] | None:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        ErrorManager.require(
+            self._repo.get_stato_codice(offerta_id) is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Offerta non trovata.",
+            context={"offerta_id": offerta_id},
+        )
+        return self._repo.get_contratto_sovrapposto(offerta_id)
 
     # Scopo: Ritorna la catena di revisioni che condivide il root (rev.1)
     #        con l'offerta passata. Lettura libera in ogni stato.

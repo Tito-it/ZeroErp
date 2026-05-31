@@ -71,6 +71,7 @@ import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
 import OffertaEmissioneDialog from './dialogs/OffertaEmissioneDialog.vue'
 import OffertaEsitoDialog from './dialogs/OffertaEsitoDialog.vue'
 import OffertaPushDialog from './dialogs/OffertaPushDialog.vue'
+import OffertaSuccessioneDialog from './dialogs/OffertaSuccessioneDialog.vue'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 
@@ -175,6 +176,14 @@ const pushDialogVisible = ref(false)
 // oppure reattivamente se il BE solleva E_OFFERTA_CONTRATTO_GIA_GENERATO
 // (race condition: contratto creato in altro tab tra fetch detail e push).
 const giaGeneratoDialogVisible = ref(false)
+// Dialog di successione — aperto se il push fallisce con
+// E_CONTRATTO_OVERLAP_ESISTENTE (esiste un contratto attivo sovrapposto).
+// `contrattoSovrapposto` e' il contratto in conflitto (read da BE);
+// `pushPraticaId` conserva la pratica scelta nel push dialog per il
+// re-push con chiudi_esistente=true.
+const successioneDialogVisible = ref(false)
+const contrattoSovrapposto = ref(null)
+const pushPraticaId = ref(null)
 
 // Guard di versione per i fetch del detail (apertura/chiusura/cambio-id
 // rapide). Incrementato anche quando offertaId cambia con drawer ancora
@@ -575,6 +584,14 @@ function onApriContrattoEsistente() {
   }
 }
 
+// Naviga al contratto in conflitto dal dialog di successione (l'operatore
+// vuole ispezionarlo prima di confermare). Chiude il dialog e delega al
+// parent la navigazione (deep-link /vendite/contratti?open=<id>).
+function onNavigateContrattoSovrapposto({ contrattoId }) {
+  successioneDialogVisible.value = false
+  if (contrattoId) emit('navigate-contratto', { contrattoId })
+}
+
 // Handler delegati ai dialog ---
 
 async function handleEmissioneConferma(payload = {}) {
@@ -610,18 +627,34 @@ async function handleEsitoConferma({ esito, motivazione }) {
 }
 
 async function handlePushConferma({ praticaId }) {
-  // Bypass useApiHandler.execute() perche' qui serve routing specifico
-  // sull'error code (E_OFFERTA_CONTRATTO_GIA_GENERATO -> dialog parlante,
-  // tutti gli altri -> toast standard). execute() inghiotte l'errore e
-  // ritorna null senza esporre il code: serve try/catch diretto.
-  // Riusiamo il ref `loading` di useApiHandler per coerenza UX coi bottoni
-  // disabilitati e il successMessage e' il pattern execute() standard
-  // (`notify.success` qui = `successMessage` la').
+  pushPraticaId.value = praticaId
+  await runPush({ praticaId, chiudiEsistente: false })
+}
+
+// Conferma successione: l'operatore ha visto il contratto in conflitto e
+// accetta di chiuderlo. Ri-esegue il push con chiudi_esistente=true,
+// riusando la pratica eventualmente scelta nel push dialog.
+async function handleSuccessioneConferma() {
+  await runPush({ praticaId: pushPraticaId.value, chiudiEsistente: true })
+}
+
+// Esegue il push gestendo i due esiti "parlanti":
+//   - E_OFFERTA_CONTRATTO_GIA_GENERATO -> dialog "gia' generato" (idempotenza)
+//   - E_CONTRATTO_OVERLAP_ESISTENTE    -> dialog di successione (overlap)
+// Bypass useApiHandler.execute() perche' serve routing sull'error code:
+// execute() inghiotte l'errore e ritorna null senza esporre il code.
+async function runPush({ praticaId, chiudiEsistente }) {
   loading.value = true
   try {
-    const data = await store.pushAContratto(props.offertaId, { praticaId })
+    const data = await store.pushAContratto(props.offertaId, {
+      praticaId,
+      chiudiEsistente,
+    })
     notify.success(t('vendite.offerte.push_eseguito'))
     pushDialogVisible.value = false
+    successioneDialogVisible.value = false
+    contrattoSovrapposto.value = null
+    pushPraticaId.value = null
     await refreshDetail()
     emit('navigate-contratto', { contrattoId: data.contratto_id })
   } catch (err) {
@@ -629,6 +662,12 @@ async function handlePushConferma({ praticaId }) {
     if (code === 'E_OFFERTA_CONTRATTO_GIA_GENERATO') {
       pushDialogVisible.value = false
       await handleGiaGeneratoFromBackend()
+    } else if (code === 'E_CONTRATTO_OVERLAP_ESISTENTE') {
+      // Overlap: chiudiamo il push dialog e apriamo quello di successione
+      // con il contratto in conflitto (read-only dal BE).
+      pushDialogVisible.value = false
+      contrattoSovrapposto.value = await store.loadContrattoSovrapposto(props.offertaId)
+      successioneDialogVisible.value = true
     } else {
       notify.error(extractApiError(err, t('vendite.offerte.push_errore_generico')))
     }
@@ -1083,6 +1122,18 @@ const onClose = useDrawerClose(emit, 'cancelled')
       @confirm="handlePushConferma"
     />
 
+    <!-- Dialog di successione — overlap su contratto esistente
+         (E_CONTRATTO_OVERLAP_ESISTENTE). Conferma esplicita per chiudere il
+         vecchio (valido_al = nuova decorrenza - 1) e generare il nuovo. -->
+    <OffertaSuccessioneDialog
+      v-model:visible="successioneDialogVisible"
+      :contratto="contrattoSovrapposto"
+      :nuova-validita-dal="detail?.validita_dal"
+      :loading="loading"
+      @confirm="handleSuccessioneConferma"
+      @navigate-contratto="onNavigateContrattoSovrapposto"
+    />
+
     <!-- Dialog "contratto gia' generato" — idempotenza Pattern A.
          Si apre proattivamente se `detail.contratto_id` e' valorizzato
          (LEFT JOIN BE) oppure reattivamente se il BE solleva
@@ -1096,10 +1147,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
       <Message severity="info" :closable="false" size="small">
         {{ t('vendite.offerte.gia_generato_messaggio') }}
       </Message>
-      <div
-        v-if="detail?.contratto_numero"
-        style="margin: 0.75rem 0; padding: 0.75rem; background: var(--app-preview-bg); border-radius: 0.25rem;"
-      >
+      <div v-if="detail?.contratto_numero" class="app-preview-box">
         <strong>{{ t('vendite.offerte.gia_generato_contratto_label') }}:</strong>
         {{ detail.contratto_numero }}
       </div>

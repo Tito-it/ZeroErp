@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Refactor quantita/qta_operativa (§5.1, specularita' offerte<->contratti).
+#
+# Generalizza vendite.trgfn_contratti_righe_default_fonte_qta (20260519-06) in
+# script.trgfn_righe_default_fonte_qta: la funzione e' gia' table-agnostic
+# (legge solo NEW.tipo_erogazione / NEW.fonte_quantita_attesa, nessun
+# riferimento a contratti_righe), quindi viene spostata in schema script e
+# riusata sia da contratti_righe sia da offerte_commerciali_eccezioni
+# (binding nel file -10). Niente logica duplicata: stesso pattern di
+# script.trgfn_qta_from_operativa, condivisa fra ddt/ordini/contratti/offerte.
+#
+# Matrice default (invariata): CANONE/UNA_TANTUM->FISSA, ORARIO->MANUALE,
+# CONSUMO->LETTURE, NULL/altro->FISSA.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260531-09-create-trgfn-righe-default-fonte-qta-mctit.yaml
+
+  - changeSet:
+      id: 20260531-09-create-trgfn-righe-default-fonte-qta
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea script.trgfn_righe_default_fonte_qta (generica, table-agnostic):
+        normalizza fonte_quantita_attesa al default per tipo_erogazione su
+        INSERT e su UPDATE quando il cambio tipo rende la combinazione vietata.
+        Riusabile su contratti_righe e offerte_commerciali_eccezioni.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_righe_default_fonte_qta()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Scopo: normalizza fonte_quantita_attesa al default coerente con tipo_erogazione.
+                  -- Generica: nessun riferimento a una tabella specifica (usabile su qualunque
+                  -- *_righe / *_eccezioni con le colonne tipo_erogazione + fonte_quantita_attesa).
+                  -- INSERT: fonte NULL -> imposta default dalla matrice.
+                  -- UPDATE: se tipo cambia e la nuova combinazione e' vietata (❌) -> resetta.
+                  -- Le combinazioni 🟡 rare ma non vietate non vengono alterate.
+
+                  IF NEW.fonte_quantita_attesa IS NULL THEN
+                      -- INSERT senza fonte o UPDATE che azzera fonte (difensivo, NOT NULL è il backstop).
+                      NEW.fonte_quantita_attesa := CASE NEW.tipo_erogazione
+                          WHEN 'CANONE'     THEN 'FISSA'
+                          WHEN 'UNA_TANTUM' THEN 'FISSA'
+                          WHEN 'ORARIO'     THEN 'MANUALE'
+                          WHEN 'CONSUMO'    THEN 'LETTURE'
+                          ELSE                   'FISSA'
+                      END;
+
+                  ELSIF TG_OP = 'UPDATE'
+                        AND NEW.tipo_erogazione IS DISTINCT FROM OLD.tipo_erogazione
+                        AND (
+                                (NEW.tipo_erogazione = 'CONSUMO'
+                                     AND NEW.fonte_quantita_attesa IN ('FISSA', 'TIMESHEET'))
+                            OR  (NEW.tipo_erogazione IN ('CANONE', 'UNA_TANTUM')
+                                     AND NEW.fonte_quantita_attesa IN ('TIMESHEET', 'LETTURE'))
+                            OR  (NEW.tipo_erogazione = 'ORARIO'
+                                     AND NEW.fonte_quantita_attesa = 'LETTURE')
+                        )
+                  THEN
+                      -- Tipo cambiato e la combinazione attuale diventa vietata → reset al default.
+                      NEW.fonte_quantita_attesa := CASE NEW.tipo_erogazione
+                          WHEN 'CANONE'     THEN 'FISSA'
+                          WHEN 'UNA_TANTUM' THEN 'FISSA'
+                          WHEN 'ORARIO'     THEN 'MANUALE'
+                          WHEN 'CONSUMO'    THEN 'LETTURE'
+                          ELSE                   'FISSA'
+                      END;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_righe_default_fonte_qta()
+              IS 'Generica/table-agnostic. Normalizza fonte_quantita_attesa al default per '
+                 'tipo_erogazione. INSERT: imposta default se NULL. UPDATE OF tipo_erogazione: '
+                 'resetta solo se la nuova combinazione tipo+fonte e'' vietata (❌, matrice 20260519). '
+                 'Generalizza vendite.trgfn_contratti_righe_default_fonte_qta. '
+                 'Riusata da contratti_righe e offerte_commerciali_eccezioni. Rev 2026-05-31.';
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS script.trgfn_righe_default_fonte_qta();
