@@ -1909,7 +1909,14 @@
       "gia_generato_titolo": "Contratto già generato",
       "gia_generato_messaggio": "Questa offerta ha già generato un contratto. Per costruzione (idempotenza Pattern A) non è possibile generarne un secondo: apri quello esistente.",
       "gia_generato_contratto_label": "Contratto",
-      "gia_generato_apri_contratto": "Apri contratto esistente"
+      "gia_generato_apri_contratto": "Apri contratto esistente",
+      "successione_titolo": "Contratto esistente sovrapposto",
+      "successione_messaggio": "Esiste già un contratto attivo per questo cliente/utility nel periodo indicato. Per generare il nuovo contratto è necessario chiudere quello esistente (successione).",
+      "successione_contratto_label": "Contratto esistente",
+      "successione_apri_contratto": "Apri",
+      "successione_validita_attuale": "Validità attuale",
+      "successione_senza_fine": "senza scadenza",
+      "successione_effetto": "Confermando, il contratto esistente verrà chiuso al {data} e verrà generato il nuovo contratto in BOZZA."
     }
   },
   "listini": {

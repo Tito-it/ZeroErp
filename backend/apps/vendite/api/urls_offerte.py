@@ -26,6 +26,7 @@ from apps.vendite.api.offerte_documenti_views import (
 from apps.vendite.api.views_form_defaults import ApiOffertaFormDefaults
 from apps.vendite.api.views_offerte import (
     ApiOffertaAnnulla,
+    ApiOffertaContrattoSovrapposto,
     ApiOffertaCreaRevisione,
     ApiOffertaDetail,
     ApiOffertaEccezioneComponenteDetail,
@@ -88,6 +89,13 @@ urlpatterns = [
         "<int:offerta_id>/push-contratto/",
         ApiOffertaPushContratto.as_view(),
         name="vendite-offerta-push-contratto",
+    ),
+    # Pre-check overlap per il dialog di successione (brief successione
+    # 2026-05-31): contratto sovrapposto al push, read-only.
+    path(
+        "<int:offerta_id>/contratto-sovrapposto/",
+        ApiOffertaContrattoSovrapposto.as_view(),
+        name="vendite-offerta-contratto-sovrapposto",
     ),
     # Eccezioni.
     path(
