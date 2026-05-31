@@ -677,29 +677,19 @@ def gestisci_riga(
         )
         stato_approvazione = STATO_APPROVAZIONE_PENDING
 
-    # Derivazione qta_operativa + factor_to_base: il FE invia solo `quantita`
-    # (UX semplice: una sola quantita' per riga). Il DB richiede pero'
-    # qta_operativa NOT NULL (guard E_QTA_MISSING) come quantita' nell'UoM
-    # base, derivata dalla UoM operativa scelta. Lookup factor_to_base su
-    # catalogo.articoli_uom_operativa; default 1 se la UoM non e' mappata
-    # (caso edge: articolo con sola UoM base).
-    qta_operativa, factor_to_base = _derive_qta_operativa(
-        repo=repo,
-        articolo_id=articolo_id,
-        uom_id=uom_id,
-        quantita=payload.get("quantita"),
-        qta_operativa_payload=payload.get("qta_operativa"),
-        factor_to_base_payload=payload.get("factor_to_base"),
-    )
-
+    # Modello qta_operativa-sorgente (refactor 2026-05-31): il FE invia
+    # `qta_operativa` (UoM operativa scelta) + `uom_operativa_id`; il trigger DB
+    # `trgfn_qta_from_operativa` deriva `quantita` (base) e riempie
+    # `factor_to_base` dalla mappa UoM. Il BE non deriva piu' nulla e NON invia
+    # `quantita` (colonna derivata, calcolata dal DB). Allineato a contratti/offerte.
     result = repo.create_riga(
         preventivo_id=preventivo_id,
         articolo_id=articolo_id,
         descrizione=payload.get("descrizione"),
-        quantita=payload.get("quantita"),
-        qta_operativa=qta_operativa,
+        quantita=None,
+        qta_operativa=payload.get("qta_operativa"),
         uom_operativa_id=uom_id,
-        factor_to_base=factor_to_base,
+        factor_to_base=payload.get("factor_to_base"),
         prezzo_unitario=prezzo_finale,
         sconto_percentuale=payload.get("sconto_percentuale"),
         iva_id=payload.get("iva_id"),
@@ -846,8 +836,10 @@ def aggiorna_riga(
 
     richiesta_approvazione = bool(payload.get("richiesta_approvazione", False))
     update_fields: dict[str, Any] = {}
+    # `quantita` (base) e' derivata dal trigger e non e' aggiornabile dal client:
+    # la sorgente e' `qta_operativa`.
     for key in (
-        "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
+        "descrizione", "qta_operativa", "uom_operativa_id",
         "factor_to_base", "prezzo_unitario", "sconto_percentuale",
         "iva_id", "ordine", "meta",
     ):
@@ -939,36 +931,8 @@ def aggiorna_riga(
                     cleanup_meta.pop("approvazione_rifiuto", None)
                     update_fields["meta"] = cleanup_meta
 
-    # Coerenza qta_operativa quando l'utente cambia `quantita` in edit
-    # senza mandare qta_operativa: ricalcolo dalla UoM operativa della
-    # riga esistente (o nuova, se l'edit la sta cambiando insieme).
-    # Stesso pattern di gestisci_riga (helper _derive_qta_operativa).
-    # Riusa `_get_riga_esistente()`: lazy + cache nella stessa transazione.
-    if (
-        "quantita" in update_fields
-        and "qta_operativa" not in update_fields
-    ):
-        # Fallback per articolo + UoM solo se NON nel payload (caso normale:
-        # edit modifica solo prezzo/quantita'). Evita fetch inutile quando
-        # il payload li esplicita gia'.
-        if "articolo_id" not in update_fields or "uom_operativa_id" not in update_fields:
-            ref_riga = _get_riga_esistente()
-        else:
-            ref_riga = {}
-        articolo_id_eff = update_fields.get("articolo_id") or ref_riga.get("articolo_id")
-        uom_id_eff = update_fields.get("uom_operativa_id") or ref_riga.get("uom_operativa_id")
-        qta_op, factor_eff = _derive_qta_operativa(
-            repo=repo,
-            articolo_id=articolo_id_eff,
-            uom_id=uom_id_eff,
-            quantita=update_fields["quantita"],
-            qta_operativa_payload=None,
-            factor_to_base_payload=update_fields.get("factor_to_base"),
-        )
-        if qta_op is not None:
-            update_fields["qta_operativa"] = qta_op
-        if "factor_to_base" not in update_fields and factor_eff is not None:
-            update_fields["factor_to_base"] = factor_eff
+    # `qta_operativa` (sorgente) arriva diretta dal FE; il trigger DB ricalcola
+    # `quantita` (base) + `factor_to_base`. Nessuna derivazione lato BE.
 
     if update_fields:
         updated = repo.update_riga(riga_id, **update_fields)
@@ -1068,44 +1032,6 @@ def _coerce_meta_to_dict(value: Any) -> dict[str, Any]:
     return {}
 
 
-# Scopo: Deriva qta_operativa + factor_to_base dalla UoM operativa selezionata
-#        quando il payload FE non li espone. Pattern: il FE invia solo `quantita`
-#        nell'UoM scelta dall'operatore; il BE consulta il fattore di conversione
-#        UoM-operativa -> UoM-base e calcola la quantita' nell'UoM base.
-#        Output: tupla (qta_operativa, factor_to_base) come stringhe Decimal-safe.
-#        Pass-through dei valori payload se gia' valorizzati (rispetto override).
-def _derive_qta_operativa(
-    *,
-    repo: "PreventiviRepository",
-    articolo_id: Any,
-    uom_id: Any,
-    quantita: Any,
-    qta_operativa_payload: Any,
-    factor_to_base_payload: Any,
-) -> tuple[Any, Any]:
-    from decimal import Decimal
-
-    # Pass-through: se il payload li espone, niente lookup.
-    if qta_operativa_payload is not None and factor_to_base_payload is not None:
-        return qta_operativa_payload, factor_to_base_payload
-
-    # Senza articolo+uom o senza quantita non possiamo derivare nulla:
-    # ritorna i valori payload (None) e lascia che la guard DB sollevi
-    # un errore parlante (E_QTA_MISSING / E_UOM_MISSING).
-    if not articolo_id or not uom_id or quantita is None:
-        return qta_operativa_payload, factor_to_base_payload
-
-    factor_db = repo.get_articolo_uom_factor(str(articolo_id), int(uom_id))
-    # Articolo senza UoM operativa mappata (edge case): assumiamo factor=1
-    # cosi' qta_operativa = quantita. La guard DB sull'esistenza UoM e' altrove.
-    factor = Decimal(str(factor_db)) if factor_db is not None else Decimal("1")
-    factor_str = factor_to_base_payload if factor_to_base_payload is not None else str(factor)
-    if qta_operativa_payload is not None:
-        return qta_operativa_payload, factor_str
-    qta_op = Decimal(str(quantita)) * factor
-    return str(qta_op), factor_str
-
-
 # Scopo: Validazione lato BE dei vincoli economici di una riga preventivo
 #        prima del resolver/INSERT/UPDATE. Anticipa i CHECK constraint DB
 #        (`chk_prevrighe_quantita_prezzo`: prezzo >= 0 AND quantita > 0)
@@ -1134,22 +1060,24 @@ def _validate_riga_economic(payload: dict[str, Any], *, function_name: str) -> N
             function_name=function_name,
         )
 
-    if "quantita" in payload and payload["quantita"] is not None:
+    # Sorgente quantita = `qta_operativa` (UoM operativa scelta dall'operatore);
+    # `quantita` (base) e' derivata dal trigger DB e non arriva piu' dal FE.
+    if "qta_operativa" in payload and payload["qta_operativa"] is not None:
         try:
-            quantita = Decimal(str(payload["quantita"]))
+            qta_operativa = Decimal(str(payload["qta_operativa"]))
         except Exception:
             ErrorManager.raise_error(
                 code="E_PREV_VALIDAZIONE",
                 message="Quantita' non numerica.",
-                detail=f"quantita={payload['quantita']!r}",
+                detail=f"qta_operativa={payload['qta_operativa']!r}",
                 function_name=function_name,
             )
             raise AssertionError("unreachable")  # pragma: no cover
         ErrorManager.require(
-            quantita > 0,
+            qta_operativa != 0,
             code="E_PREV_VALIDAZIONE",
-            message="La quantita' deve essere maggiore di zero.",
-            detail=f"quantita={payload['quantita']!r}",
+            message="La quantita' deve essere diversa da zero.",
+            detail=f"qta_operativa={payload['qta_operativa']!r}",
             function_name=function_name,
         )
 

@@ -258,8 +258,8 @@ defineExpose({ loadRighe })
       @row-click="onRowClick">
       <Column field="articolo_codice" :header="t('preventivi.riga_articolo')" sortable style="width: 120px;" />
       <Column field="descrizione" :header="t('preventivi.riga_descrizione')" sortable />
-      <Column field="quantita" :header="t('preventivi.riga_quantita')" sortable style="width: 90px;">
-        <template #body="{ data }">{{ formatNumber(data.quantita) }}</template>
+      <Column field="qta_operativa" :header="t('preventivi.riga_quantita')" sortable style="width: 90px;">
+        <template #body="{ data }">{{ formatNumber(data.qta_operativa) }}</template>
       </Column>
       <Column field="uom_codice" :header="t('preventivi.riga_uom')" style="width: 70px;" />
       <Column field="prezzo_unitario" :header="t('preventivi.riga_prezzo')" sortable style="width: 130px;">

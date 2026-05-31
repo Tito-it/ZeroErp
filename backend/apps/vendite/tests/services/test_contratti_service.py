@@ -2163,7 +2163,7 @@ class ContrattiServiceFonteQuantitaTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             svc._apply_fonte_quantita_logic(data, for_create=True)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertIn("quantita > 0", ctx.exception.detail or "")
+        self.assertIn("diversa da zero", ctx.exception.detail or "")
 
     def test_fonte_downstream_forza_quantita_null(self):
         svc = self._service()
