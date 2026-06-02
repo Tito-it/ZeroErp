@@ -13,7 +13,7 @@
 |---|---|---|---|
 | **A — Fix R-GUC** | reset GUC per-richiesta, fail-closed | **No** (BE puro) | **✅ FATTO 2026-06-02** (gate per l'`ENABLE` sbloccato) |
 | **B — Consolidamento scope read-side** | `get_emittenti_ids` → canonica guarded | Sì: canonica guarded (consegnata) | **✅ FATTO 2026-06-02** |
-| **C — FE robustezza** | gestione 404 IDOR + verifica liste filtrate | Sì: RLS attiva (o stream B) | ⏳ aperto — a valle dell'`ENABLE` |
+| **C — FE robustezza** | gestione 404 IDOR + verifica liste filtrate | Sì: RLS attiva (già ENABLE) | ✅ **BE no-op + FE FATTO 2026-06-02** (drawer 404→toast+chiusura); resta solo smoke runtime |
 
 > **Stato 2026-06-02:** Stream A e B implementati su `dev/backend-tid` (test verdi). Restano:
 > - (a) test d'integrazione leak GUC sotto pool concorrente [follow-up];
@@ -76,12 +76,17 @@ Ordine logico: **A subito** (sblocca l'`ENABLE` lato DB) → **B** quando la can
 
 ## 3. Stream C — FE: robustezza e verifica post-RLS
 
+> **Stato 2026-06-02 — RLS già ENABLE (Ondata 1+2) dal team DB.**
+> - **BE 3.1: ✅ GIÀ SODDISFATTO (no-op) — deviazione dal piano.** Verificato che TUTTI i caller dei getter by-id (`get_contratto`/`get_preventivo`/`get_offerta` via service + i caller interni `approvazioni_prezzo_service`, document context builders) fanno già `ErrorManager.require(row is not None, E_VENDITE_NOT_FOUND / E_PREV_NOT_FOUND / E_DOCUMENTI_NOT_FOUND)` → e quei codici mappano su **HTTP 404** (`error_policies.py`). Quindi RLS-filtrato = `None` = **stesso 404** di id inesistente: **nessuna modifica BE necessaria**. Il design "concentrico" (i service guardano sempre `None`) ha assorbito la RLS.
+> - **FE 3.1: ✅ FATTO 2026-06-02.** Nuovo composable `useDrawerDetailLoad` (`frontend/src/core/composables/`): su detail-load fallito (404 inesistente/fuori scope) → toast (`notifications.detail_non_accessibile`, it+en) + **chiusura drawer**, niente drawer vuoto. Adottato da `ContrattoDrawer`, `OffertaDrawer`, `PreventiviDrawer` (i 3 target IDOR §3.1). eslint+JSON verdi. *(documenti/pratiche: composable pronto, adozione come follow-up se hanno drawer dettaglio by-id.)*
+> - **3.2 liste: ⏳ verifica runtime** via smoke `backend/scripts/tests/smoke-test-rls-emittente-operatore.sh`.
+
 Con la RLS attiva, lo scope è applicato lato DB: il FE **non deve filtrare a mano**, ma ci sono due punti da presidiare.
 
 ### 3.1 Detail-by-id fuori scope → 404 gestito (IDOR B2)
-Oggi un operatore fuori scope che apre un id di contratto/preventivo/offerta lo **vede** (B2). Con la RLS attiva, la `SELECT ... WHERE id = X` di un record fuori scope torna **0 righe** → il backend deve rispondere **404** (non 500), e il FE deve gestirlo con uno stato pulito ("non trovato / non autorizzato"), non un crash o uno spinner infinito.
-- **BE**: verificare che i getter by-id traducano "0 righe" in 404 strutturato (non 500).
-- **FE**: verificare che drawer/dettaglio di contratti, preventivi, offerte, documenti, pratiche gestiscano il 404 in apertura (anche da link diretto/refresh). `[DA CONFERMARE]` lo stato attuale dei drawer su record inesistente.
+Con la RLS attiva, la `SELECT ... WHERE id = X` di un record fuori scope torna **0 righe** → il backend risponde **404** (non 500), e il FE deve gestirlo con uno stato pulito ("non trovato / non autorizzato"), non un crash o uno spinner infinito.
+- **BE**: ✅ **già fatto** — i getter ritornano `None`, i caller sollevano `E_*_NOT_FOUND` → 404 (vedi nota di stato sopra).
+- **FE**: `[DA CONFERMARE]` che drawer/dettaglio di contratti, preventivi, offerte, documenti, pratiche gestiscano il 404 in apertura (anche da link diretto/refresh) — è lo **stesso** 404 di un id inesistente, quindi probabile già coperto.
 
 ### 3.2 Liste: niente regressioni di conteggio/paginazione
 Le liste già filtrate lato server (preventivi, contratti) mostreranno gli stessi dati; quelle **non** filtrate (offerte, B1) mostreranno **meno** righe a un operatore ristretto — è il fix voluto, ma verificare:
@@ -106,7 +111,9 @@ Le liste già filtrate lato server (preventivi, contratti) mostreranno gli stess
 
 ## 5. Smoke e2e (a valle, idempotente)
 
-Coerente con `feedback_smoke_test_idempotenti` (cleanup proattivo + suffisso unico + diagnosi categoria):
+> **✅ Script pronto 2026-06-02**: `backend/scripts/tests/smoke-test-rls-emittente-operatore.sh` (read-only → idempotente per costruzione, niente seed da pulire). Bersaglio **contratti** (la lista espone `emittente_fiscale_id`; il dettaglio→404 è la prova RLS-specifica perché `get_contratto` non ha filtro applicativo). Parametri: `SMOKE_USER`/`SMOKE_PASSWORD` (operatore con whitelist), opzionale `OUT_OF_SCOPE_CONTRATTO_ID` per il test 404. Diagnosi categorie inclusa. **Da eseguire contro un'istanza viva.**
+
+Coerente con `feedback_smoke_test_idempotenti` (idempotenza + diagnosi categoria):
 1. Seed: 2 emittenti EF_A/EF_B, 1 operatore con whitelist su EF_A, ≥1 documento per EF.
 2. Login reale (endpoint JWT) → token → percorso reale `set_jwt_gucs`.
 3. GET lista fatture/offerte → assert: solo EF_A, zero EF_B.
