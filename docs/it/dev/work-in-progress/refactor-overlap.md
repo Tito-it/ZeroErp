@@ -275,16 +275,16 @@ Indicazioni (in ordine di efficacia):
 | --- | --- | --- | --- |
 | **Correggere template linee-guida-sql §7b "Pathway 2"** (`CREATE INDEX`→`EXCLUDE`) | doc/standard | doc | DB+Tid |
 | ✅ Diagnosi overlap CNT0000027/0033 → H2 (ambiti diversi, no bug) | contratti | verifica fatta | DB |
-| Conferma funzionale: COMMERCIO+COMMODITY possono sovrapporsi? | contratti | modello | Tid |
-| Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `listini_righe_componenti` | DDL ✅ generata (`20260602-*`) | DB |
-| Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `promo_articoli` | DDL ✅ generata (`20260602-*`) | DB |
-| Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `listini_versioni` | DDL ✅ generata (`20260602-*`) | DB |
-| Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `categorie_clienti_listini` | DDL ✅ generata (`20260602-*`) | DB |
-| Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `template_documenti_versioni` | DDL ✅ generata (`20260602-*`) | DB |
+| ✅ Conferma funzionale: COMMERCIO+COMMODITY **possono** sovrapporsi (Tid 2026-06-02) → `ambito` resta nella chiave | contratti | modello | Tid |
+| ✅ Ripristino vincolo enforcing (EXCLUDE parziale) + **mapping BE `E_VENDITE_LISTINO_RIGA_COMP_OVERLAP`** (gap chiuso 2026-06-02) | `listini_righe_componenti` | DDL `20260602-01` + BE | DB+BE |
+| ✅ Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `promo_articoli` | DDL `20260602-02` | DB |
+| ✅ Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `listini_versioni` | DDL `20260602-03` | DB |
+| ✅ Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `categorie_clienti_listini` | DDL `20260602-04` | DB |
+| ✅ Ripristino vincolo enforcing + **armonizzazione BE `E_DOCUMENTI_VERSIONE_OVERLAP`** (409 dedicato, prima 400) | `template_documenti_versioni` | DDL `20260602-05` + BE | DB+BE |
 | Verifica ordine close/insert nel push | `fn_push_offerta_a_contratto` | verifica | DB |
-| Guard applicativo overlap su create/attivazione manuale | contratti | BE/DB | DB+BE |
+| ✅ Guard applicativo overlap su **attivazione** (`emetti()`, nomina incumbent) — pre-check `fn_contratto_sovrapposto` | contratti | BE | BE |
 | Test pgTAP "ex_* è davvero un vincolo" | tutte | test | DB |
-| Decisione scope DRAFT / deferrable | contratti | modello | Tid+DB |
+| ✅ Decisione scope DRAFT: **DRAFT esclusi**, esclusivita' solo all'attivazione (Tid 2026-06-02) → brief [brief-db-contratti-overlap-draft-scope.md](brief-db-contratti-overlap-draft-scope.md), DB `20260602-17..22` | contratti | modello | Tid+DB |
 
 **Non in scope (corretti così):** preventivi e offerte commerciali — nessun
 vincolo no-overlap, by design.
@@ -347,4 +347,24 @@ EXCLUDE USING gist (<chiavi> WITH =, validita WITH &&) WHERE (<filtro>)`. Richie
 - ✅ **Correzione `linee-guida-sql.md §7b Pathway 2`** — template
   `CREATE INDEX`→`EXCLUDE`; nota: il framework ora gestisce i parziali via
   `where_predicate`/`key_expressions`.
-- ⏳ **Decisione funzionale ambito** COMMERCIO/COMMODITY su contratti (§2.4) — aperta.
+- ✅ **Decisione funzionale ambito** COMMERCIO/COMMODITY su contratti (§2.4) —
+  **chiusa (Tid 2026-06-02): coesistono legittimamente**, `ambito` resta nella
+  chiave. Era il falso allarme CNT0000027/0033.
+- ✅ **BE/FE overlap (2026-06-02)** — chiusi tutti i lati applicativi:
+  - **mapping mancante `ex_listini_righe_comp_no_overlap`** → nuovo codice
+    `E_VENDITE_LISTINO_RIGA_COMP_OVERLAP` (409) in
+    `listini_service._translate_integrity_error` con relativa policy (prima
+    cadeva nel fallback generico `E_VENDITE_VALIDATION`);
+  - **armonizzazione template-versioni** → `E_DOCUMENTI_VERSIONE_OVERLAP` (409
+    dedicato, prima `E_DOCUMENTI_VALIDATION` 400);
+  - **audit FE banner**: i 6 drawer mostrano tutti il messaggio parlante del 409
+    (toast via `useApiHandler`/`extractApiError`), nessuno swallow;
+  - **guard proattivo contratti** su `emetti()` (DRAFT→ATTIVO): pre-check
+    `fn_contratto_sovrapposto` (wrapper repo `get_contratto_sovrapposto`) che nomina
+    l'incumbent prima del backstop EXCLUDE.
+- ✅ **Scope DRAFT (§3.4)** — **chiusa (Tid 2026-06-02): DRAFT esclusi**,
+  esclusivita' solo all'attivazione → brief
+  [brief-db-contratti-overlap-draft-scope.md](brief-db-contratti-overlap-draft-scope.md),
+  DB implementato (`20260602-17..22`: flag `is_bozza`, snapshot `is_draft_snapshot`,
+  colonna generata `partecipa_overlap_snapshot`, predicato EXCLUDE + framework +
+  `fn_contratto_sovrapposto` allineati).

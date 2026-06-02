@@ -734,6 +734,7 @@ applicativo. Se > 0 il FE puo' mostrare un avviso all'operatore.
 | --- | --- | --- |
 | `E_VENDITE_VALIDATION` | 400 | service (BOZZA-only guard, rows non lista, articolo_padre_id vuoto, versione senza valido_dal) |
 | `E_VENDITE_DUPLICATO` | 409 | UNIQUE `uq_listini_righe_key_attiva` (riga prezzo gia' esistente) |
+| `E_VENDITE_LISTINO_RIGA_COMP_OVERLAP` | 409 | EXCLUDE gist parziale `ex_listini_righe_comp_no_overlap` (ripristino enforcement 2026-06-02, migration `20260602-01`): due righe bundle **attive** sovrapposte sullo stesso `(versione, padre, componente)`. Pattern simmetrico a `E_VENDITE_PROMO_OVERLAP` / `E_VENDITE_LISTINO_VERSIONE_OVERLAP` |
 | `E_RIGA_LISTINO_VERSIONE_CHIUSA` | 409 | trigger DB immutabilita' v5 (rev 2026-05-13) |
 | `E_LISTINO_RIGA_COMP_BOM_INCOERENTE` | 400 | temporal FK PG18 `fk_listrighe_comp_articoli_comp_temporal` + guard residuo coerenza BoM |
 

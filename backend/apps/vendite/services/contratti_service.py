@@ -985,6 +985,29 @@ class ContrattiService:
     #        accesso diretto al repository.
     def emetti(self, contratto_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
+        # Guard proattivo overlap (§3.3 refactor-overlap): se esiste gia' un
+        # contratto ATTIVO sovrapposto sulla stessa quintupla, blocca
+        # l'attivazione con un messaggio che NOMINA il contratto in conflitto,
+        # prima che l'EXCLUDE `ex_contratti_no_overlap` sollevi un errore
+        # generico. La fn DB ignora i DRAFT (esclusivita' solo all'attivazione,
+        # brief §3.4) -> preparare bozze sovrapposte resta lecito; il blocco
+        # scatta solo qui, all'emissione. L'EXCLUDE resta la difesa dura.
+        incumbent = self._repo.get_contratto_sovrapposto(contratto_id)
+        if incumbent is not None:
+            ErrorManager.raise_error(
+                code=E_VENDITE_CONTRATTO_OVERLAP,
+                message=(
+                    f"Impossibile attivare: il contratto {incumbent['numero']} "
+                    "e' gia' attivo e sovrapposto per lo stesso cliente e punto "
+                    "di fornitura nel periodo indicato. Cessa o chiudi quello "
+                    "esistente prima di attivare questo."
+                ),
+                context={
+                    "contratto_id": contratto_id,
+                    "incumbent_id": incumbent["id"],
+                    "incumbent_numero": incumbent["numero"],
+                },
+            )
         target_stato_id = self._repo.get_stato_id_by_codice("ATTIVO")
         ErrorManager.require(
             target_stato_id is not None,

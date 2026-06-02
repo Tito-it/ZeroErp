@@ -1182,6 +1182,23 @@ class TranslateIntegrityErrorTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_LISTINO_RIGA_COMP_BOM_INCOERENTE")
         self.assertIn("distinta base", (ctx.exception.message or "").lower())
 
+    # Scopo: Verifica che l'EXCLUDE parziale ripristinato 2026-06-02
+    #        (`ex_listini_righe_comp_no_overlap`, migration 20260602-01) venga
+    #        tradotto nel codice overlap dedicato `E_VENDITE_LISTINO_RIGA_COMP_OVERLAP`
+    #        (409, simmetrico a PROMO/VERSIONE), non nel fallback E_VENDITE_VALIDATION.
+    #        Prima del fix il vincolo era un indice-civetta: mapping = codice morto.
+    def test_translate_integrity_exclude_righe_comp_overlap(self):
+        from apps.vendite.services.listini_service import _translate_integrity_error
+
+        exc = IntegrityError(
+            'conflicting key value violates exclusion constraint '
+            '"ex_listini_righe_comp_no_overlap"'
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            _translate_integrity_error(exc, function_name="test", entity="bundle")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_LISTINO_RIGA_COMP_OVERLAP")
+        self.assertIn("sovrappost", (ctx.exception.message or "").lower())
+
 
 class FnDeleteBundleTests(TestCase):
     """Wrapper DELETE prezzi bundle composito (tabula rasa idempotente).

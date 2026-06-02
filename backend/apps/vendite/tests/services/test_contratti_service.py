@@ -1149,6 +1149,7 @@ class ContrattiServiceTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
+        repo.get_contratto_sovrapposto.return_value = None  # nessun overlap
         repo.get_stato_id_by_codice.return_value = 2  # ATTIVO id
         repo.update_stato.side_effect = DatabaseError(
             "contratto senza listino e nessuna riga AGGIUNTA con prezzo: "
@@ -1167,6 +1168,7 @@ class ContrattiServiceTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
+        repo.get_contratto_sovrapposto.return_value = None  # nessun overlap
         repo.get_stato_id_by_codice.return_value = 2  # ATTIVO id
         repo.update_stato.return_value = True
         repo.get_contratto.return_value = _testata_default()
@@ -1176,6 +1178,30 @@ class ContrattiServiceTests(TestCase):
         ContrattiService().emetti(1)
 
         repo.update_stato.assert_called_once_with(1, 2)
+
+    # Scopo: guard proattivo overlap §3.3 — se esiste un contratto ATTIVO
+    # sovrapposto, `emetti()` blocca PRIMA di update_stato con
+    # E_VENDITE_CONTRATTO_OVERLAP e un messaggio che NOMINA l'incumbent.
+    # La fn DB ignora i DRAFT (esclusivita' solo all'attivazione, brief §3.4).
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_emetti_bloccato_da_contratto_sovrapposto(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto_sovrapposto.return_value = {
+            "id": 27,
+            "numero": "CNT0000027",
+            "valido_dal": "2026-05-16",
+            "valido_al": "2026-05-28",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().emetti(1)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_CONTRATTO_OVERLAP")
+        self.assertIn("CNT0000027", ctx.exception.message or "")
+        # Non deve nemmeno tentare la transizione di stato.
+        repo.update_stato.assert_not_called()
+        repo.get_stato_id_by_codice.assert_not_called()
 
     # --- righe ---------------------------------------------------------
 

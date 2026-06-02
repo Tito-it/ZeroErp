@@ -55,7 +55,7 @@ Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-
     su articolo gia' presente nel listino
   - `trgfn_contratti_utilities_guard_tipo_classe`
   - CHECK `chk_contrighe_prezzo_per_tipo_eccezione` — ESCLUSIONE ↔ prezzo NULL
-  - Temporal UNIQUE `uq_contratti_no_overlap` su `(billing_account_id, istanza_utility_id, utility_id, ambito, validita WITHOUT OVERLAPS)`.
+  - EXCLUDE gist parziale `ex_contratti_no_overlap` su `(billing_account_id WITH =, istanza_utility_id WITH =, utility_id WITH =, ambito WITH =, validita WITH &&) WHERE (partecipa_overlap_snapshot)` (migration `20260521-03`; predicato DRAFT-escluso da `20260602-17..22`). I contratti DRAFT e quelli abortiti **non** partecipano al vincolo: l'esclusivita' scatta solo all'attivazione (vedi nota DRAFT-scope sotto). Governato dal framework `dbops.automazione_overlap` (re-apply notturno).
 - Il service `ContrattiService` traduce gli errori `P0001` dei trigger nei
   codici applicativi documentati piu' sotto.
 
@@ -804,8 +804,17 @@ extra al catalogo.
    EE), vietati per utility commercio (Base). Coerenza
    `classi_utenze.tipo_utenza_id = contratti_utilities.tipo_utenza_id`
    imposta dal trigger DB.
-9. EXCLUDE no-overlap: un solo contratto attivo per
+9. EXCLUDE no-overlap: un solo contratto **attivo** per
    `(BA, istanza_utility, utility, ambito)` su validita' sovrapposta.
+   **DRAFT-scope (2026-06-02)**: i contratti in DRAFT sono **esclusi** dal
+   vincolo (colonna generata `partecipa_overlap_snapshot = NOT abortito AND
+   NOT draft`). Conseguenze: due bozze sovrapposte sono ammesse, e una bozza
+   puo' sovrapporsi a un contratto attivo (preparazione della successione);
+   il blocco scatta **solo all'attivazione** (`POST .../emetti/`). All'emissione
+   il service esegue un **pre-check proattivo** (`fn_contratto_sovrapposto`) che,
+   se trova un incumbent attivo sovrapposto, solleva `E_VENDITE_CONTRATTO_OVERLAP`
+   con un messaggio che **nomina il contratto in conflitto** (es. "il contratto
+   CNT0000027 e' gia' attivo..."), prima che l'EXCLUDE sollevi l'errore generico.
 10. `categoria_cliente_id_snapshot` e' congelato alla creazione del
     contratto (dal trigger DB, che lo popola dal BA). Rappresenta la
     categoria commerciale del cliente al momento della stipula. Non e'
@@ -821,7 +830,7 @@ extra al catalogo.
 | `E_VENDITE_NOT_FOUND` | 404 | Service (contratto/riga/componente; anti-tampering URL componenti) | — |
 | `E_VENDITE_DUPLICATO` | 400 | UNIQUE `uq_contratti_numero` o `uq_contratti_utilities_contratto_id` o `uq_contrighe_one_eccezione_per_articolo` o `uq_contrighe_one_aggiunta_per_articolo` | — |
 | `E_VENDITE_FK` | 400 | FK su BA/istanza/utility/listino/listino_versione/parent/stato/articolo/UoM/tipo/classe utenza/categoria cliente snapshot | — |
-| `E_VENDITE_CONTRATTO_OVERLAP` | 409 | Temporal UNIQUE `uq_contratti_no_overlap` (WITHOUT OVERLAPS, PG18) | — |
+| `E_VENDITE_CONTRATTO_OVERLAP` | 409 | Pre-check service `fn_contratto_sovrapposto` su `emetti()` (messaggio che nomina l'incumbent) **oppure** backstop EXCLUDE gist `ex_contratti_no_overlap`. Scatta all'**attivazione** (DRAFT esclusi dal vincolo, vedi Regole §9) | — |
 | `E_CONTRATTO_NON_MODIFICABILE` | 409 | Service (operazioni righe/componenti su contratto post-DRAFT) | — |
 | `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` | 422 | DB P0001 (refactor modalita 2026-05-15) — attivazione di contratto senza listino senza righe AGGIUNTA con prezzo valorizzato | `trgfn_contratti_freeze_listino_versione` (guard interno) |
