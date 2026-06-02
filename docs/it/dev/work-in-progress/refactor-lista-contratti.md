@@ -8,11 +8,47 @@
 
 ---
 
+## ✅ STATO: DB ATTERRATO (2026-06-02, `dev/db-tid`)
+
+DB-A + DB-B implementati e verificati su DB dev. **BE/FE (§5) ancora da fare** (attendono questa consegna).
+
+| Changeset | Cosa |
+|---|---|
+| `00_schema/ui/20260602-13` | `ALTER ui.lista_colonna ADD priorita SMALLINT NOT NULL DEFAULT 50` (+ CHECK `>= 0`) |
+| `20_code/ui/20260602-14` | `fn_resolve_lista_config` espone `priorita` per colonna (letta fresca dal catalogo) |
+| `20_code/vendite/20260602-15` | vista `vendite.vw_contratti_lista` `security_invoker=on` |
+| `80_data/.../20260602-16` | `priorita` di dominio per le colonne contratti |
+| `90_end/20260602-17` | **fix**: resync sequenze IDENTITY `ui.*` (`runAlways setval`) — vedi sotto |
+| CSV `80_data/sql/ui/*` | append righe `vendite.contratti` (definizione id=4, colonne 36–57, preset id=4) |
+| pgTAP | `test-fn-resolve-lista-config` 13/13 · `test-lista-contratti-seed` 14/14 |
+
+**Scostamenti consapevoli dal brief:**
+1. **`stato_codice`** aggiunta come colonna catalogo nascosta (il §4 l'aveva omessa, ma §3.1/§4-note la richiedono per il Tag severity FE) — pattern clienti/fornitori.
+2. **Vista → join diretto a `anagrafiche.soggetti`** (via billing_account→soggetti_ruoli→soggetti) invece di annidare `vw_soggetti_ruoli_dettaglio`: una vista nidificata non-invoker reintrodurrebbe la "RLS cosmetica". `ragione_sociale_completa`/`id_fiscale_univoco_cf_piva` sono colonne reali su `soggetti` (come `vw_clienti_lista`).
+3. **Bug latente trovato**: le sequenze IDENTITY delle tabelle `ui.*` seedate con id espliciti via `loadUpdateData` non venivano mai riallineate → collisione `pkey` sugli INSERT auto-id (admin CRUD DEF-5b + test pgTAP). Risolto a monte per tutte e 3 le tabelle con `20260602-17` (`runAlways`, `setval` a `MAX(id)`).
+
+---
+
 ## 0. Obiettivo in una frase
 
 Far sì che la lista contratti **riduca dinamicamente le colonne** (ritirandole in una riga di espansione, zero dati persi) quando lo spazio si stringe — tipicamente all'apertura della sidebar — invece di attivare la scrollbar orizzontale. Perché la logica viva nel layer condiviso `<ListaConfigurabile>` e non come pezza locale, la lista contratti va **portata nel sistema liste configurabili** (oggi ne è fuori), e il catalogo colonne va arricchito con una **priorità di ritiro** (la soglia di larghezza riusa lo standard `larghezza_default` esistente — niente colonna nuova per quello).
 
 Tutta la logica FE/BE a valle (composable ResizeObserver, migrazione `ContrattiSearchTable`, serializer del nuovo attributo) **attende la consegna DB** — vedi §5.
+
+---
+
+## 0-bis. Revisione critica — decisioni ratificate (Tid, 2026-06-02)
+
+Otto punti emersi dalla revisione critica del brief, **tutti ratificati**. Sono vincolanti per il team DB; sostituiscono qualsiasi formulazione ambigua più sotto.
+
+1. **`larghezza_default` NON è una soglia per-colonna.** Il ritiro dinamico è un **packing a somma**: ogni colonna contribuisce con la sua `larghezza_default`; quando la somma supera la larghezza del contenitore si ritira la colonna a `priorita` più bassa, finché la somma rientra. Non c'è compressione intermedia e non c'è soglia "sotto X px ritira". Niente `larghezza_min`.
+2. **`priorita` — default `50`** (mid-pack), non 100. Così le liste anagrafiche esistenti restano uniformi/neutre (tutte a 50, tiebreaker `ordine_default` invariato) e un campo aggiunto in futuro senza valore esplicito atterra a metà classifica invece che in cima. CHECK `priorita >= 0`. Tipo/changeset a scelta del team DB.
+3. **RLS considerata ATTIVA su `vendite.contratti`.** La vista `vw_contratti_lista` va creata **`security_invoker=on`** (non opzionale): la vista è pura denormalizzazione senza scope, l'invoker garantisce che le policy RLS della tabella base si applichino e non sia "RLS cosmetica" (linee-guida-sql §10.1).
+4. **`ba_codice` mantiene il prefisso `ba_`** — è un'**eccezione legittima** alla lezione DEF-8 "niente alias `ba_*`": quella lezione vale solo per `ragione_sociale_completa` e `id_fiscale_univoco_cf_piva` (nomi canonici del soggetto). `ba.codice` nudo collidererebbe con altri `codice` in vista, quindi la vista lo espone come `ba_codice` e il catalogo usa `campo_sorgente='ba_codice'`. Da NON "correggere".
+5. **Rename breaking coordinato.** La vista espone i nomi sorgente senza alias (`ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`), mentre oggi il repository li aliasa (`ba_ragione_sociale`, `id_fiscale`) — vedi `_SELECT_COLS_CONTRATTO` e `_ORDER_COLS_CONTRATTI` in [contratti_repository.py](../../../../backend/apps/vendite/db/contratti_repository.py). Il passaggio del BE a leggere dalla vista cambia i nomi di campo del payload: vista, consumer BE e migrazione `ContrattiSearchTable` vanno commutati **insieme** (sequencing §7).
+6. **`priorita` è attributo GLOBALE di catalogo.** Vive solo su `ui.lista_colonna`, **non** in `ui.lista_preset_colonna` né nel JSONB della preferenza utente. `fn_resolve_lista_config` la legge **fresca** da `lc.priorita` (un cambio admin si propaga a tutti senza reset preferenze). Non è overridabile per preset né per preferenza: la policy di ritiro è design, non preferenza utente.
+7. **Update `fn_resolve_lista_config` = nuovo file `runOnChange`** (mai modificare il changelog già atterrato, regola "MAI modificare changelog mergiati"). I test pgTAP esistenti `db/pgtap/ui/test-fn-resolve-lista-config.sql` che asseriscono la forma del JSONB per colonna vanno **aggiornati in lockstep** (l'aggiunta della chiave `priorita` rompe le asserzioni puntuali sulla struttura).
+8. **Convenzione vista `vw_<entita>_lista`** ratificata come standard per le liste prive di vista di dettaglio riusabile (fornitori riusava `vw_fornitori_dettaglio`; qui si crea ex-novo). Le prossime liste DEF-8 senza dettaglio riusabile (preventivi, offerte, articoli) seguono `vw_<entita>_lista`.
 
 ---
 
@@ -31,9 +67,9 @@ DB-A è prerequisito logico di DB-B (il seed catalogo contratti userà il nuovo 
 
 ### 2.1 Una colonna nuova su `ui.lista_colonna`
 
-- **`priorita`** — intero. **Semantica: peso di permanenza. Più alto = la colonna resta più a lungo; le colonne a priorità più bassa si ritirano per prime** quando lo spazio non basta. Default sensato `100`. Le colonne `tipo_colonna IN ('identificatore','azione')` e quelle `fissata` non si ritirano mai (priorità implicita infinita, indipendente dal valore). A **parità di priorità** il FE usa `ordine_default` come tiebreaker (si ritira prima la colonna più a destra). Questo rende il comportamento sensato anche per le liste esistenti che restano a default, senza obbligo di backfill differenziato.
+- **`priorita`** — intero. **Semantica: peso di permanenza. Più alto = la colonna resta più a lungo; le colonne a priorità più bassa si ritirano per prime** quando lo spazio non basta. Default `50` (mid-pack — vedi §0-bis #2). Le colonne `tipo_colonna IN ('identificatore','azione')` e quelle `fissata` non si ritirano mai (priorità implicita infinita, indipendente dal valore). A **parità di priorità** il FE usa `ordine_default` come tiebreaker (si ritira prima la colonna più a destra). Questo rende il comportamento sensato anche per le liste esistenti che restano a default, senza obbligo di backfill differenziato. È attributo **globale di catalogo**, non overridabile per preset né per preferenza utente (§0-bis #6).
 
-**Niente `larghezza_min`** (decisione Tid 2026-06-02): la soglia "sotto questa larghezza la colonna si ritira" **riusa `larghezza_default`**, lo standard larghezza già esistente e seedato per le liste anagrafiche. Le colonne restano alla loro `larghezza_default` e, quando la somma non entra, si ritirano le meno prioritarie — senza compressione intermedia. Una sola colonna nuova, massimo riuso dello standard.
+**Niente `larghezza_min`** (decisione Tid 2026-06-02): il ritiro è un **packing a somma**, non una soglia per-colonna (§0-bis #1). Ogni colonna contribuisce con la sua `larghezza_default` (lo standard larghezza già esistente e seedato per le liste anagrafiche); quando la **somma** delle larghezze supera il contenitore si ritirano le colonne a priorità più bassa finché rientra — senza compressione intermedia e senza soglia "sotto X px". Una sola colonna nuova, massimo riuso dello standard.
 
 Nessun CHECK particolare richiesto oltre alla coerenza di dominio (`priorita >= 0`). La scelta tipo (SMALLINT vs INTEGER), default e changeset è del team DB.
 
@@ -43,13 +79,13 @@ Le 3 liste già migrate (`anagrafiche.clienti/soggetti/fornitori`) **non richied
 
 ### 2.3 Esposizione nell'output di `fn_resolve_lista_config` — **necessario**
 
-Il FE costruisce le colonne dal JSONB di `fn_resolve_lista_config` (endpoint `GET /config`), **non** dal catalogo grezzo (che è lazy, caricato solo all'apertura della modale). Perché il ritiro dinamico funzioni al primo render, il nuovo attributo deve arrivare **per ogni colonna** nell'output della fn, accanto a `ordine`/`larghezza`/`visibile`/`fissata`/`esportabile`/`tipo_colonna` (`larghezza` già c'è e fa anche da soglia di ritiro):
+Il FE costruisce le colonne dal JSONB di `fn_resolve_lista_config` (endpoint `GET /config`), **non** dal catalogo grezzo (che è lazy, caricato solo all'apertura della modale). Perché il ritiro dinamico funzioni al primo render, il nuovo attributo deve arrivare **per ogni colonna** nell'output della fn, accanto a `ordine`/`larghezza`/`visibile`/`fissata`/`esportabile`/`tipo_colonna` (`larghezza` già c'è e contribuisce al packing a somma — §0-bis #1). `priorita` va letta **fresca** da `lc.priorita` (§0-bis #6), non dal preset/preferenza:
 
 ```jsonc
 {
   "codice": "stato",
   "ordine": 12,
-  "larghezza": 120,           // già presente — usata anche come soglia di ritiro
+  "larghezza": 120,           // già presente — contribuisce al packing a somma
   "priorita": 90,             // ← nuovo
   "visibile": true,
   "fissata": false,
@@ -94,7 +130,7 @@ Oggi i dati lista vengono da una SELECT con JOIN in `ContrattiRepository.list_co
 
 JOIN esatti già noti (riportati nel repository sopra). `parent_contratto_id` e `meta` non servono in lista.
 
-> **Nota forward-compat RLS** (allineamento col workstream parallelo [analisi-attivazione-rls-operatori-db.md](analisi-attivazione-rls-operatori-db.md) §8): se possibile creare la vista già con `security_invoker=on`, così è pronta per la futura RLS sulla tabella base senza essere "RLS cosmetica". Decisione finale al team DB.
+> **RLS considerata ATTIVA — `security_invoker=on` OBBLIGATORIO** (§0-bis #3, allineamento col workstream parallelo [analisi-attivazione-rls-operatori-db.md](analisi-attivazione-rls-operatori-db.md) §8): la vista va creata `WITH (security_invoker = on)`. È pura denormalizzazione senza scope, quindi l'invoker garantisce che le policy RLS della tabella base `vendite.contratti` si applichino al chiamante reale e non sia "RLS cosmetica" (linee-guida-sql §10.1). Non è opzionale.
 
 ### 3.2 Entry `ui.lista_definizione`
 
@@ -125,6 +161,8 @@ Dalle note smoke soggetti/fornitori ([_def.md §DEF-8](sviluppo-personalizzazion
    - stato → `codice='stato'`, `campo_sorgente='stato_descrizione'`
 
    La vista `vw_contratti_lista` deve quindi esporre le colonne col **nome sorgente senza alias** (`ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`, `stato_descrizione`), NON con alias `ba_ragione_sociale`/`id_fiscale`. Il `campo_sorgente` del catalogo è validato contro la vista dal trigger B2: se i nomi non combaciano, il seed fallisce.
+
+   > **Eccezione `ba_codice`** (§0-bis #4): la regola "niente alias `ba_*`" vale **solo** per i nomi canonici del soggetto (`ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`). Il **codice del billing account** è un dato diverso: `ba.codice` nudo collidererebbe con altri `codice` in vista, quindi la vista lo espone come `ba_codice` e il catalogo usa `campo_sorgente='ba_codice'`. Questo alias è corretto e NON va "uniformato" rimuovendo il prefisso.
 2. **`sensibile=false` ovunque**: `fn_resolve_lista_config` filtra fuori le colonne `sensibile=true` senza grant esplicito **anche per SUPER_ADMIN**. Nessuna colonna contratti richiede restrizione reale per profilo in questa fase → tutte `sensibile=false`. (Se in futuro servirà nascondere p.es. `valore_variazione_globale` a certi profili, si seederà il grant insieme al flag.)
 3. **`campo_sorgente` validato contro la vista**: ogni `campo_sorgente` del catalogo deve esistere come colonna di `vw_contratti_lista` (trigger B2). Allineare i nomi.
 
@@ -183,7 +221,7 @@ Colonne **extra opt-in** (nel catalogo ma `visibile=false` nel preset → l'uten
 
 Per memoria `feedback_be_fe_attende_prerequisiti_db`: il BE/FE parte **solo** a DB consegnato. Lo annoto qui per chiarezza, non per chiedere lavoro al team DB:
 
-- **BE** (`apps/ui/`): estendere `UiRepository.list_colonne_by_codice` (SELECT del nuovo campo `priorita`) + `ListaColonnaAdminService`/`ui_admin_repository` (whitelist `priorita` nel CRUD admin DEF-5b). Estendere il repository/export contratti per leggere da `vw_contratti_lista` con scope+filtri+paginazione.
+- **BE** (`apps/ui/`): estendere `UiRepository.list_colonne_by_codice` (SELECT del nuovo campo `priorita`) + `ListaColonnaAdminService`/`ui_admin_repository` (whitelist `priorita` nel CRUD admin DEF-5b). Estendere il repository/export contratti per leggere da `vw_contratti_lista` con scope+filtri+paginazione. **⚠️ Rename breaking** (§0-bis #5): la vista espone i nomi sorgente senza alias, mentre `_SELECT_COLS_CONTRATTO` oggi aliasa `srd.ragione_sociale_completa AS ba_ragione_sociale` e `srd.id_fiscale_univoco_cf_piva AS id_fiscale`; aggiornare anche la mappa `_ORDER_COLS_CONTRATTI` (`ba_ragione_sociale`/`id_fiscale` → nuovi nomi) e il mapping serializer/FE. Vista + consumer BE + `ContrattiSearchTable` si commutano **insieme**.
 - **FE** (`src/core/`): composable `useResponsiveColumns` (ResizeObserver sul container DataTable) dentro `<ListaConfigurabile>`; ritiro delle colonne sotto-soglia in una **expansion row** (`MANAGE_ICONS.EXPAND/COLLAPSE`, zero dati persi); reattivo a viewport **e** apertura sidebar. Migrazione `ContrattiSearchTable.vue` → `<ListaConfigurabile codice="vendite.contratti">` (elimina i 12 `width:Npx` inline che violano [frontend-standards §"Pattern lista"](frontend/src/...)). Azioni di riga in `RowActionsMenu`.
 - **Doc**: nota in `frontend-standards` che motiva la deroga "CSS-first" per il ResizeObserver (le media query non vedono la sidebar — vedi §appendice).
 - **Admin UI** (DEF-5b): aggiungere il campo `priorita` al `ListaColonnaDrawer` (sotto-tab "Layout").
@@ -200,10 +238,10 @@ Per memoria `feedback_be_fe_attende_prerequisiti_db`: il BE/FE parte **solo** a 
 
 ## 7. Sequenza consigliata
 
-1. **DB-A**: ALTER `ui.lista_colonna` (+ default) → update `fn_resolve_lista_config` (output JSONB) → pgTAP fn.
-2. **DB-B**: vista `vw_contratti_lista` (security_invoker se possibile) → seed `lista_definizione` → seed `lista_colonna` (con `priorita`) → seed `lista_preset` + `lista_preset_colonna` → pgTAP seed.
+1. **DB-A**: ALTER `ui.lista_colonna` (+ default `50`) → update `fn_resolve_lista_config` come **nuovo file `runOnChange`** (§0-bis #7, mai modificare il changelog già atterrato) che aggiunge `priorita` all'output JSONB → aggiornare **in lockstep** i test pgTAP esistenti `test-fn-resolve-lista-config.sql` (le asserzioni puntuali sulla forma del JSONB si rompono con la nuova chiave).
+2. **DB-B**: vista `vw_contratti_lista` **`security_invoker=on`** (§0-bis #3) → seed `lista_definizione` → seed `lista_colonna` (con `priorita`) → seed `lista_preset` + `lista_preset_colonna` → pgTAP seed.
 3. Consegna su `dev/db-tid` + nota di atterraggio.
-4. **→ sblocca** BE/FE (§5), che parte dopo.
+4. **→ sblocca** BE/FE (§5), che parte dopo — vista + consumer BE + `ContrattiSearchTable` commutati insieme (§0-bis #5).
 
 > Tutte le scelte di dominio (quali colonne core, priorità, ordinamento default) sono in §3-§4; quelle implementative (changeset, tipi, struttura seed) sono del team DB. Per ogni `[DA VERIFICARE SU DB]` il team DB ha l'ultima parola.
 

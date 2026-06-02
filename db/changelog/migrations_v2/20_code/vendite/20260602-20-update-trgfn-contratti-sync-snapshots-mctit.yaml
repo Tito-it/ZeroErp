@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Brief "Overlap contratti: escludere i DRAFT dal vincolo".
+# Estende trgfn_contratti_sync_is_abortito_snapshot: oltre a is_abortito_snapshot
+# sincronizza anche is_draft_snapshot (da config.stati_doc_contratti.is_bozza).
+# Entrambi gli snapshot derivano dallo stato -> stesso trigger, stesso evento
+# (BEFORE INSERT OR UPDATE OF stato_doc_contratto_id, fase z90). Deve restare
+# BEFORE: la colonna GENERATED partecipa_overlap_snapshot e' calcolata dal NEW
+# finale dei BEFORE trigger.
+#
+# Nome funzione/trigger invariati (estensione in-place, niente churn): la funzione
+# ora sincronizza piu' snapshot derivati dallo stato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260602-20-update-trgfn-contratti-sync-snapshots-mctit.yaml
+
+  - changeSet:
+      id: 20260602-20-update-trgfn-contratti-sync-snapshots
+      author: mctit
+      runOnChange: true
+      comment: >
+        trgfn_contratti_sync_is_abortito_snapshot ora sincronizza anche
+        is_draft_snapshot da config.stati_doc_contratti.is_bozza.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_contratti
+                columnName: is_bozza
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: is_draft_snapshot
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_sync_is_abortito_snapshot()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: sincronizza gli snapshot derivati dallo stato del contratto:
+              --   is_abortito_snapshot  <- config.stati_doc_contratti.is_abortito
+              --   is_draft_snapshot     <- config.stati_doc_contratti.is_bozza
+              -- Deve restare BEFORE: la colonna GENERATED partecipa_overlap_snapshot
+              -- (= NOT abortito AND NOT draft) e' calcolata dal NEW finale dei BEFORE.
+              DECLARE
+                  v_is_abortito config.stati_doc_contratti.is_abortito%TYPE;
+                  v_is_bozza    config.stati_doc_contratti.is_bozza%TYPE;
+              BEGIN
+                  SELECT is_abortito, is_bozza
+                    INTO v_is_abortito, v_is_bozza
+                    FROM config.stati_doc_contratti
+                   WHERE id = NEW.stato_doc_contratto_id;
+
+                  NEW.is_abortito_snapshot := COALESCE(v_is_abortito, false);
+                  NEW.is_draft_snapshot    := COALESCE(v_is_bozza, false);
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_sync_is_abortito_snapshot()
+              IS 'Trigger BEFORE INSERT/UPDATE OF stato_doc_contratto_id (z90): '
+                 'sincronizza is_abortito_snapshot (da is_abortito) e is_draft_snapshot '
+                 '(da is_bozza) di config.stati_doc_contratti. Entrambi alimentano la '
+                 'colonna GENERATED partecipa_overlap_snapshot. rev 2026-06-02.';
+
+              DROP TRIGGER IF EXISTS trg_contratti_z90_sync_is_abortito_snapshot_ins_upd
+                  ON vendite.contratti;
+
+              CREATE TRIGGER trg_contratti_z90_sync_is_abortito_snapshot_ins_upd
+                  BEFORE INSERT OR UPDATE OF stato_doc_contratto_id
+                  ON vendite.contratti
+                  FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_contratti_sync_is_abortito_snapshot();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback logico: ripristinare la versione 20260521-02 (solo is_abortito).
+              SELECT 'rollback gestito ripristinando 20260521-02' AS note;
