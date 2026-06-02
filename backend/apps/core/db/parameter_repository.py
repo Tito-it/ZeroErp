@@ -340,22 +340,37 @@ class ParameterRepository:
 
     # Scopo: Risolve l'emittente_fiscale_id "corrente" per l'utente.
     #        Catena di fallback:
-    #        1) script.fn_get_emittenti_scope -> primo emittente della whitelist
-    #           personale (config.user_emittenti_fiscali);
+    #        1) whitelist personale (config.user_emittenti_fiscali) -> il
+    #           proprio emittente;
     #        2) gestore globale dal mapping anagrafiche.emittenti_fiscali_billing_account
     #           (riga con billing_account_id IS NULL AND is_default = true), risolvendo
     #           poi l'emittenti_fiscali.id via JOIN su soggetto_ruolo_id.
     #        Restituisce None solo se nessuno dei due e' disponibile (sistema
     #        non configurato).
+    #
+    #        NB: la whitelist si legge DIRETTAMENTE, non via le funzioni di
+    #        scope (fn_get_emittenti_scope*). Questa e' una SCELTA di
+    #        "emittente corrente per risoluzione parametri", NON uno scope
+    #        di visibilita': non deve applicare i guard (super_admin ->
+    #        nessuna restrizione). Cosi' un SUPER_ADMIN con whitelist
+    #        risolve sul PROPRIO emittente, non sul gestore globale —
+    #        comportamento storico preservato. La tabella e' 1:1 per
+    #        auth_user (UNIQUE su auth_user_id), quindi al piu' una riga.
     def get_emittente_fiscale_id_for_user(self, auth_user_id: int) -> int | None:
         with connection.cursor() as cursor:
-            # 1) Whitelist personale
-            cursor.execute("SELECT script.fn_get_emittenti_scope(%s)", [auth_user_id])
+            # 1) Whitelist personale (lettura diretta)
+            cursor.execute(
+                """
+                SELECT emittente_fiscale_id
+                  FROM config.user_emittenti_fiscali
+                 WHERE auth_user_id = %s
+                 LIMIT 1
+                """,
+                [auth_user_id],
+            )
             row = cursor.fetchone()
             if row and row[0]:
-                emittenti = list(row[0])
-                if emittenti:
-                    return emittenti[0]
+                return row[0]
 
             # 2) Fallback: gestore globale dal mapping emittenti_fiscali_billing_account.
             #    La riga "gestore" ha billing_account_id IS NULL AND is_default = true.
