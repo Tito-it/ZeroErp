@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fase 2 / refactor-overlap-v2 (opzione A esplicita): aggiunge
+# dbops.automazione_overlap.key_expressions.
+#
+# Scopo: permettere chiavi del vincolo EXCLUDE su ESPRESSIONE
+# (es. COALESCE(classe_utenza_id,-1)), che le colonne semplici di key_columns
+# non possono rappresentare. Separazione esplicita:
+#   - key_columns     -> colonne semplici (validate via fn_col_exists, quotate)
+#   - key_expressions -> espressioni iniettate as-is (DDL di fiducia DBA-only)
+# NULL/vuoto = solo colonne semplici (comportamento attuale invariato).
+#
+# ATTENZIONE: come where_predicate, key_expressions e' un frammento DDL di
+# FIDUCIA (non quotabile, non validabile). Scrivibile SOLO da DBA.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260602-08-alter-automazione-overlap-add-key-expressions-mctit.yaml
+
+  - changeSet:
+      id: 20260602-08-alter-automazione-overlap-add-key-expressions
+      author: mctit
+      comment: >
+        Aggiunge la colonna key_expressions (text[], nullable) a
+        dbops.automazione_overlap per chiavi EXCLUDE su espressione.
+        NULL/vuoto = solo colonne semplici (default attuale).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: automazione_overlap
+            - not:
+                - columnExists:
+                    schemaName: dbops
+                    tableName: automazione_overlap
+                    columnName: key_expressions
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_overlap
+                  ADD COLUMN key_expressions text[];
+
+              COMMENT ON COLUMN dbops.automazione_overlap.key_expressions IS
+                  'Chiavi del vincolo EXCLUDE espresse come espressione (es. '
+                  '''COALESCE(classe_utenza_id, -1)''), appese alle key_columns. '
+                  'Frammento DDL di fiducia, iniettato as-is: solo DBA, mai input '
+                  'applicativo. NULL/vuoto = solo colonne semplici. '
+                  'rev 2026-06-02 (refactor-overlap-v2, opzione A).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.automazione_overlap
+                  DROP COLUMN IF EXISTS key_expressions;

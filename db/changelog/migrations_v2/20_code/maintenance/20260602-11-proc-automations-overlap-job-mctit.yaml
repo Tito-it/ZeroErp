@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fase 2 / refactor-overlap-v2 (§4.4, step 2.13): wrapper job per l'automazione
+# OVERLAP. Finora OVERLAP aveva seed+apply ma NESSUN runner schedulato (a
+# differenza di tx_id/audit/storico/attivo): la config era quindi inerte.
+#
+# Questo proc chiama dbops.fn_apply_automazione_overlap('SCHEDULED', false) con
+# logging+lock via maintenance.fn_run_and_log, allineato agli altri wrapper
+# (proc_automations_cleanup_job, ...). Idempotente: fn_apply ricrea solo i vincoli
+# EXCLUDE mancanti per le righe active=true, salta quelli gia' presenti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20260602-11-proc-automations-overlap-job-mctit.yaml
+
+  - changeSet:
+      id: 20260602-11-proc-automations-overlap-job
+      author: mctit
+      comment: >
+        Crea la procedura job maintenance.proc_automations_overlap_job che chiama
+        dbops.fn_apply_automazione_overlap('SCHEDULED', false) con logging e lock.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_automations_overlap_job()
+                LANGUAGE 'plpgsql'
+              AS $BODY$
+                BEGIN
+                  PERFORM maintenance.fn_run_and_log(
+                    p_jobname  := 'automations_overlap',
+                    p_stepname := 'run_automations_overlap',
+                    p_sql      := 'SELECT dbops.fn_apply_automazione_overlap(''SCHEDULED'', false);',
+                    p_lock_key := hashtext('automations_overlap')
+                  );
+                END;
+              $BODY$;
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_overlap_job()
+                IS 'Job wrapper per chiamare fn_apply_automazione_overlap (OVERLAP) con logging e lock. Ricrea gli EXCLUDE mancanti dalle righe active=true di dbops.automazione_overlap.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP PROCEDURE IF EXISTS maintenance.proc_automations_overlap_job();

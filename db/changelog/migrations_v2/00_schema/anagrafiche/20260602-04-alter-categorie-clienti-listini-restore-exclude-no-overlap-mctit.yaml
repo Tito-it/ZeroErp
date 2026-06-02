@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Ripristino enforcement anti-overlap su anagrafiche.categorie_clienti_listini.
+#
+# Contesto: ex_categ_cli_listini_no_overlap era un vero EXCLUDE (20260414-07);
+# il refactor STORED 20260514-31 lo ha ricreato come CREATE INDEX, perdendo
+# l'enforcement. Diagnosi completa: refactor-overlap.md.
+#
+# Censimento overlap su dev (2026-06-02): 0 coppie violanti -> nessuna bonifica.
+#
+# La chiave include l'espressione COALESCE(classe_utenza_id, -1) (ammessa in
+# EXCLUDE con btree_gist). Vincolo PARZIALE (WHERE attivo): NON gestibile dal
+# framework OVERLAP (guide/automazione-db.md §4.3 — EXCLUDE senza WHERE).
+# Esplicito, come contratti. fn_apply resta idempotente.
+# L'indice standalone ix_categ_cli_listini_validita_gist resta invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260602-04-alter-categorie-clienti-listini-restore-exclude-no-overlap-mctit.yaml
+
+  - changeSet:
+      id: 20260602-04-alter-categorie-clienti-listini-restore-exclude-no-overlap
+      author: mctit
+      comment: >
+        Sostituisce l'indice-civetta ex_categ_cli_listini_no_overlap (CREATE INDEX,
+        non enforçante) con un vero EXCLUDE USING gist parziale WHERE (attivo IS TRUE)
+        sulle chiavi (categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id,
+        COALESCE(classe_utenza_id,-1), validita).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: categorie_clienti_listini
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)::text FROM pg_extension WHERE extname = 'btree_gist';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pg_constraint con
+                    JOIN pg_class c ON c.oid = con.conrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND c.relname = 'categorie_clienti_listini'
+                     AND con.conname = 'ex_categ_cli_listini_no_overlap'
+                     AND con.contype = 'x';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX IF EXISTS anagrafiche.ex_categ_cli_listini_no_overlap;
+
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                  ADD CONSTRAINT ex_categ_cli_listini_no_overlap
+                  EXCLUDE USING gist (
+                      categoria_cliente_id                       WITH =,
+                      utility_id                                 WITH =,
+                      emittente_soggetto_ruolo_id                WITH =,
+                      COALESCE(classe_utenza_id, '-1'::integer)  WITH =,
+                      validita                                   WITH &&
+                  )
+                  WHERE (attivo IS TRUE);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                  DROP CONSTRAINT IF EXISTS ex_categ_cli_listini_no_overlap;
+              CREATE INDEX ex_categ_cli_listini_no_overlap
+                  ON anagrafiche.categorie_clienti_listini
+                  USING gist (categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id,
+                              COALESCE(classe_utenza_id, '-1'::integer), validita)
+                  WHERE (attivo IS TRUE);

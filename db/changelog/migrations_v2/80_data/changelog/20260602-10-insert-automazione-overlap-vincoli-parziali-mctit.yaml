@@ -1,0 +1,116 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fase 2 / refactor-overlap-v2 (§4.2): registra in dbops.automazione_overlap i 6
+# vincoli anti-overlap PARZIALI, con where_predicate e (per categorie) le
+# key_expressions. active=true: il framework li ri-creera' se un futuro refactor
+# li droppa (anti-regressione).
+#
+# I 6 EXCLUDE esistono gia' (migration 20260602-01..05 + contratti 20260521-03):
+# fn_apply e' idempotente e li SALTA. Questa registrazione e' la "fonte di verita'"
+# per la ricreazione futura. range_col='validita' -> il re-apply ricrea
+# l'EXCLUDE identico (validita WITH &&) alle migration esplicite.
+#
+# NOTA: l'anti-regressione e' effettiva solo se fn_apply_automazione_overlap viene
+# eseguito nella pipeline (oggi NON e' schedulato per OVERLAP — vedi
+# refactor-overlap-v2.md step 2.13). Questa migration registra; lo scheduling e'
+# un passo separato.
+#
+# Upsert idempotente su PK (target_schema, target_table).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260602-10-insert-automazione-overlap-vincoli-parziali-mctit.yaml
+
+  - changeSet:
+      id: 20260602-10-insert-automazione-overlap-vincoli-parziali
+      author: mctit
+      comment: >
+        Registra in dbops.automazione_overlap i 6 vincoli anti-overlap parziali
+        (contratti + 5 listini/promo/categorie/template) con where_predicate,
+        key_expressions e active=true. Upsert idempotente.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: dbops
+                tableName: automazione_overlap
+                columnName: where_predicate
+            - columnExists:
+                schemaName: dbops
+                tableName: automazione_overlap
+                columnName: key_expressions
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO dbops.automazione_overlap
+                  (target_schema, target_table, key_columns, key_expressions,
+                   range_col, where_predicate, constraint_name, active, exec_mode, note)
+              VALUES
+                  ('vendite', 'contratti',
+                   ARRAY['billing_account_id','istanza_utility_id','utility_id','ambito'],
+                   NULL, 'validita', 'NOT is_abortito_snapshot',
+                   'ex_contratti_no_overlap', true, 'AUTO',
+                   'refactor-overlap-v2 fase2: parziale annullati esclusi'),
+
+                  ('vendite', 'listini_righe_componenti',
+                   ARRAY['listino_versione_id','articolo_componente_id'],
+                   NULL, 'validita', 'attivo = true',
+                   'ex_listini_righe_comp_no_overlap', true, 'AUTO',
+                   'refactor-overlap-v2 fase2: parziale attivo'),
+
+                  ('vendite', 'promo_articoli',
+                   ARRAY['articolo_id','uom_id'],
+                   NULL, 'validita', 'attivo IS TRUE',
+                   'ex_promo_articoli_no_overlap', true, 'AUTO',
+                   'refactor-overlap-v2 fase2: parziale attivo'),
+
+                  ('vendite', 'listini_versioni',
+                   ARRAY['listino_id'],
+                   NULL, 'validita', 'attivo IS TRUE AND (stato)::text = ''ATTIVA''::text',
+                   'ex_listini_versioni_no_overlap', true, 'AUTO',
+                   'refactor-overlap-v2 fase2: parziale attivo+ATTIVA'),
+
+                  ('anagrafiche', 'categorie_clienti_listini',
+                   ARRAY['categoria_cliente_id','utility_id','emittente_soggetto_ruolo_id'],
+                   ARRAY['COALESCE(classe_utenza_id, ''-1''::integer)'],
+                   'validita', 'attivo IS TRUE',
+                   'ex_categ_cli_listini_no_overlap', true, 'AUTO',
+                   'refactor-overlap-v2 fase2: parziale attivo, chiave su espressione'),
+
+                  ('documenti', 'template_documenti_versioni',
+                   ARRAY['template_documento_id'],
+                   NULL, 'validita', 'attivo IS TRUE AND (stato)::text = ''PUBBLICATA''::text',
+                   'ex_template_documenti_versioni_no_overlap_pubblicata', true, 'AUTO',
+                   'refactor-overlap-v2 fase2: parziale attivo+PUBBLICATA')
+              ON CONFLICT (target_schema, target_table) DO UPDATE SET
+                  key_columns     = EXCLUDED.key_columns,
+                  key_expressions = EXCLUDED.key_expressions,
+                  range_col       = EXCLUDED.range_col,
+                  where_predicate = EXCLUDED.where_predicate,
+                  constraint_name = EXCLUDED.constraint_name,
+                  active          = EXCLUDED.active,
+                  exec_mode       = EXCLUDED.exec_mode,
+                  note            = EXCLUDED.note;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Disattiva (non cancella) le righe registrate da questa migration.
+              -- contratti torna ad active=false (stato pre-fase2); le altre 5 erano
+              -- assenti: le rimuoviamo.
+              UPDATE dbops.automazione_overlap
+                 SET active = false
+               WHERE target_schema = 'vendite' AND target_table = 'contratti';
+              DELETE FROM dbops.automazione_overlap
+               WHERE (target_schema, target_table) IN (
+                   ('vendite','listini_righe_componenti'),
+                   ('vendite','promo_articoli'),
+                   ('vendite','listini_versioni'),
+                   ('anagrafiche','categorie_clienti_listini'),
+                   ('documenti','template_documenti_versioni')
+               );
