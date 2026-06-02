@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fase 9 — Ondata 2, PARTE C: ENABLE ROW LEVEL SECURITY (NO FORCE) su
+# vendite.contratti.
+#
+# R4 RISOLTO (verifica 2026-06-01): il job notturno chiusura_scadenze_daily
+# gira tramite il demone pgAgent connesso come **postgres** (superuser,
+# BYPASSRLS) — quindi e' esente dalla RLS e continua a cessare i contratti
+# scaduti anche con RLS attiva. Nessun fix SECURITY DEFINER necessario su
+# dbops.fn_apply_chiusura_scadenze.
+#
+# Da applicare DOPO Ondata 1 (-38) e Ondata 2 A/B (-39/-40) validate.
+# NO FORCE; rollback = DISABLE (kill-switch, policy preservate).
+# Istantaneo: ALTER TABLE vendite.contratti DISABLE ROW LEVEL SECURITY;
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260601-41-enable-rls-ondata2-contratti-mctit.yaml
+
+  - changeSet:
+      id: 20260601-41-enable-rls-ondata2-contratti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ENABLE ROW LEVEL SECURITY (no FORCE) su vendite.contratti (Ondata 2
+        parte C). R4 risolto: pgAgent gira come postgres (superuser, esente).
+        Rollback = DISABLE.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >
+            Policy operatore su contratti mancante: verificare
+            rls_contratti_ef_whitelist (-28) prima dell'ENABLE.
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_policies
+               WHERE schemaname='vendite' AND tablename='contratti'
+                 AND policyname='rls_contratti_ef_whitelist';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.contratti DISABLE ROW LEVEL SECURITY;

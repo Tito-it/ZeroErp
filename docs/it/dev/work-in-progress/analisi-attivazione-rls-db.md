@@ -166,9 +166,11 @@ Le policy assumono i GUC popolati **e isolati per richiesta**. Esiste un rischio
 
 > Spuntare `[x]` man mano. Le voci già confermate dalla ricognizione su codice sono pre-segnate. L'ordine rispetta le dipendenze: ogni fase assume chiuse le precedenti. **L'`ENABLE` (Fase 8) non parte finché Fase 7 non è in piedi.**
 >
-> **Stato (2026-06-01) — TUTTO IL LAVORO DB FATTIBILE ORA È COMPLETO.** ChangeSet `20260601-06..37` (applicati; introspezione runtime girata, tutte le verifiche `[DA VERIFICARE SU DB]` DB-side chiuse). Include: canonica+adapter (PK/SR/via_fattura/**via_efba**), write-guard esteso, 9 viste `security_invoker`, `ordini` completo, indici, **9 policy RLS dry-run** (tutto il lotto incl. `billing_account` e `ordini`), sanazioni dati. **Test verdi**: `test-fn-scope-ef-whitelist`, `test-rls-fatture-ef-whitelist-functional` (con caso SUPER_ADMIN), `test-rls-viste-security-invoker` (anti-regressione 9/9).
+> **Stato (2026-06-01) — RLS ATTIVATA, LAVORO DB COMPLETO.** ChangeSet `20260601-06..41`. Tutto il lotto coperto: canonica+adapter (PK/SR/via_fattura/via_efba), write-guard esteso, 9 viste `security_invoker`, `ordini` completo, indici, **policy RLS su tutto il lotto**, sanazioni dati. **Test verdi**: scope unit, funzionale fatture (+SUPER_ADMIN/C7), anti-regressione viste 9/9.
 >
-> **Restano SOLO** voci **lato BE** o **bloccate dal BE**: R-GUC e B5 (Python) `[BE]`; le Ondate `ENABLE` `[BLOCCATO]` (+ risolvere R4 su `contratti` prima di Ondata 2). Più estensioni test opzionali a fixture pesante (multi-policy ordini). **Niente altro è fattibile lato DB finché il BE non sblocca.**
+> **Attivazione `ENABLE`** (no-FORCE, kill-switch DISABLE): **Ondata 1 (`-38`) + Ondata 2-A (`-39`) + 2-B billing_account (`-40`) APPLICATE** ("tutto ok"). **Ondata 2-C `contratti` (`-41`) da applicare** (R4 risolto: pgAgent gira come `postgres` superuser → esente). Prerequisito BE **R-GUC: sbloccato**.
+>
+> **Restano SOLO**: applicare `-41`; **B5** ricablaggio `fn_get_emittenti_scope` in Python `[BE]`; benchmark formali + test multi-policy ordini (opzionali); backlog `acquisti.*`/config cross-EF.
 
 ### Fase 0 — Verifiche preliminari (introspezione runtime, a carico DB/BE)
 
@@ -181,7 +183,7 @@ Le policy assumono i GUC popolati **e isolati per richiesta**. Esiste un rischio
 - [x] `vendite.fatture.emittente_soggetto_ruolo_id` confermata NOT NULL (introspezione sez. C; 0 fatture con emittente orfano)
 - [x] Introspezione viste `vw_*` / matview (introspezione sez. A: 9 viste DEFINER, 0 matview)
 - [ ] **[BE]** Caller residui dei legacy `script.fn_get_emittenti_scope` (B5) — usato da repository Python (preventivi/contratti/vendite); ricablaggio nel brief BE
-- [x] Job pgAgent sul lotto **[VERIFICATO]**: solo `chiusura_scadenze_daily` tocca `vendite.contratti` (cessazione automatica). La fn `dbops.fn_apply_chiusura_scadenze` è **SECURITY INVOKER** → **R4 reale per Ondata 2**: prima dell'`ENABLE` su `contratti` decidere **SECURITY DEFINER** (owner-exempt) **oppure** ruolo pgAgent **BYPASSRLS**, altrimenti i contratti scaduti non verrebbero cessati. *(Ondata 1 fatture: nessun job batch coinvolto.)*
+- [x] Job pgAgent sul lotto **[VERIFICATO — R4 RISOLTO 2026-06-01]**: solo `chiusura_scadenze_daily` tocca `vendite.contratti`. Il demone pgAgent gira come **`postgres`** (superuser, BYPASSRLS) → **esente dalla RLS**: il job cessa i contratti scaduti anche con RLS attiva. **Nessun fix necessario** (la fn è SECURITY INVOKER ma il ruolo bypassa). *(Ondata 1 fatture: nessun job batch.)*
 
 ### Fase 1 — Regola canonica + adapter + bonifica duplicati
 
@@ -251,28 +253,32 @@ Le policy assumono i GUC popolati **e isolati per richiesta**. Esiste un rischio
 - [x] Matrice §11 core su `fatture`: whitelist vuota / = emittente / = altro emittente / ruolo non-OPERATORE / identità non attiva / owner esente
 - [x] Caso **SUPER_ADMIN** (fix C7) aggiunto al test funzionale `fatture` (caso 7) — binding profilo SUPER_ADMIN dinamico
 - [x] **Anti-regressione viste** *definer* → `db/pgtap/rls/test-rls-viste-security-invoker.sql` (9 asserzioni `security_invoker=on`, CI-safe)
-- [ ] **Multi-policy `ordini`**: OPERATORE vede solo per emittente, non eredita da cliente/shop — *test da scrivere (fixture ordini); policy `rls_ordini_ef_whitelist` ora presente (`-37`)*
-- [ ] Replicare il template funzionale sulle altre tabelle del lotto (PK / via_sr / via_fattura) + guard negativo
+- [x] **Multi-policy `ordini`** ✅ **verde**: `db/pgtap/rls/test-rls-ordini-multipolicy.sql` — OPERATORE vede solo per emittente, non eredita da cliente/shop; gate per ruolo isola le 3 facce; + kill-switch
+- [~] **Replica template su tutte le tabelle del lotto** — *NON in programma (decisione 2026-06-01)*. Motivo: ridondante. La funzione di scope è unica e già testata (unit verde); SR è coperto da `fatture`, PK da `ordini`, l'interazione multi-policy da `ordini`. Replicare N file per tabella aggiungerebbe manutenzione senza nuova copertura. Se in futuro serve, valutare un singolo test parametrico, non N file.
 
 ### Fase 7 — Prerequisito BE (bloccante per l'`ENABLE`)
 
-- [ ] **[BE — BLOCCANTE]** Fix leak GUC cross-request (reset per richiesta, fail-closed) in piedi e **testato sotto pool concorrente** *(brief BE, R-GUC §13)*. Finché questo non è in piedi, le Fasi 8–9 (`ENABLE`) non partono.
+- [x] **[BE — SBLOCCATO 2026-06-01]** Fix leak GUC cross-request (reset per richiesta, fail-closed) in piedi e testato (conferma utente). → Fasi 8–9 (`ENABLE`) ora abilitate.
 
 ### Fase 8 — Ondata 1 (convenzione SR)
 
-- [ ] Benchmark pre/post `ENABLE` (soglia regressione ≤ 10%, nessun index→seq-scan indotto)
-- [ ] `ENABLE ROW LEVEL SECURITY` (no `FORCE`) su `fatture` + `fatture_scadenze` + `fatturazione_lotti`
-- [ ] Changeset **kill-switch gemello** (`DISABLE`) per ciascuna tabella attivata
+> **Esito [IMPLEMENTATO 2026-06-01, da applicare con gate benchmark].** ChangeSet atomico `20260601-38` (ENABLE no-FORCE su `fatture` + `fatture_scadenze` + `fatturazione_lotti`), rollback = **DISABLE** (kill-switch, policy preservate). Benchmark: `docs/it/dev/work-in-progress/benchmark-rls-ondata1.sql`. *Nessun job batch coinvolto in Ondata 1.*
 
-### Fase 9 — Ondata 2 (convenzione PK), una famiglia per volta
+- [x] Changeset `ENABLE ROW LEVEL SECURITY` (no `FORCE`) atomico sulla famiglia fatture (`-38`)
+- [x] **Kill-switch** = rollback `DISABLE` (non `DROP POLICY`) + snippet psql istantaneo nel commento
+- [ ] **Eseguire il benchmark** pre/post `ENABLE` (soglia ≤ 10%, nessun index→seq-scan) — *a carico DB, come `zeroerp_app` + GUC operatore*
+- [ ] Applicare `-38` (dopo baseline benchmark) e verificare post-ENABLE
 
-- [ ] `preventivi` (+ kill-switch + benchmark)
-- [ ] `contratti` (+ kill-switch + benchmark)
-- [ ] `offerte_commerciali` (+ kill-switch + benchmark)
-- [ ] `documenti_generati` (+ kill-switch + benchmark)
-- [ ] `pratiche` (+ kill-switch + benchmark)
-- [ ] `ordini` — dopo Fase 4 (+ kill-switch + benchmark)
-- [ ] `billing_account` via efba (+ kill-switch + benchmark)
+### Fase 9 — Ondata 2 (convenzione PK), per gruppi di rischio
+
+> **Esito [IMPLEMENTATO 2026-06-01, applicare per gruppi dopo Ondata 1].** Changeset ENABLE splittati per **blast radius / rischio**. Tutti no-FORCE, rollback = DISABLE. Da applicare **una alla volta**, ciascuna con benchmark/verifica.
+
+- [x] **Parte A** (`-39`): ENABLE su `preventivi`, `offerte_commerciali`, `documenti_generati`, `pratiche`, `ordini` (tabelle documentali, nessun job batch)
+- [x] **Parte B** (`-40`): ENABLE su `anagrafiche.billing_account` — ⚠️ **blast radius alto** (dati master), changeset isolato, da validare a parte
+- [x] **Parte C** (`-41`): ENABLE su `vendite.contratti` — **R4 risolto** (pgAgent = `postgres` superuser, esente; nessun fix)
+- [ ] Applicare A → B → C in sequenza, ognuna con benchmark e verifica consumatori
+
+> **⚠️ Sequencing**: `-38/-39/-40` applicano su `liquibase update`. Per attivare **un'ondata per volta** (come da §9), usare `tag` + `updateToTag`/`updateCount`, non un singolo `update` che le attiverebbe tutte. Kill-switch (`rollbackCount`/`DISABLE`) pronto per ciascuna.
 
 ### Fuori dal lotto (backlog)
 
