@@ -4,7 +4,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../../core/composables/useNotify'
-import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
+import { extractApiError } from '../../../core/utils/apiError'
 import { usePreventiviStore } from '../stores/preventivi'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
@@ -19,11 +19,12 @@ import PreventiviRigaComponentiPanel from './PreventiviRigaComponentiPanel.vue'
 import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
 import { useComponentiDialog } from '../../_shared/componenti/useComponentiDialog'
+import L2ErrorBanner from '../../_shared/pricing/L2ErrorBanner.vue'
+import { classifyL2Error } from '../../_shared/pricing/classifyL2Error'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
-import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 
 const { t } = useI18n()
@@ -477,18 +478,13 @@ async function handleSave() {
     notify.success(successMessage)
     emit('saved', result)
   } catch (err) {
-    const code = extractApiErrorCode(err)
-    if (L2_ERROR_CODES.includes(code)) {
-      // Banner inline: niente toast, piu' spazio per il messaggio + azione.
-      l2Error.value = {
-        code,
-        message: extractApiError(err, t('preventivi.errore_generico')),
-        detail: err?.response?.data?.error?.detail || '',
-      }
-    } else {
-      // Fallback pattern standard: toast unico col messaggio BE.
-      notify.error(extractApiError(err, t('preventivi.errore_generico')))
-    }
+    // Banner inline su violazione L2 (BB condiviso); altrimenti toast standard.
+    const l2 = classifyL2Error(err, {
+      fallbackMessage: t('preventivi.errore_generico'),
+      l2ErrorCodes: L2_ERROR_CODES,
+    })
+    if (l2) l2Error.value = l2
+    else notify.error(extractApiError(err, t('preventivi.errore_generico')))
   } finally {
     loading.value = false
   }
@@ -610,23 +606,14 @@ async function handleRichiediApprovazione() {
       </div>
     </div>
 
-    <Message v-if="l2Error" severity="warn" :closable="false">
-      <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-        <strong>{{ l2Error.message }}</strong>
-        <small v-if="l2Error.detail">{{ l2Error.detail }}</small>
-        <div>
-          <Button
-            :label="loading ? t('preventivi.richiedi_approvazione_in_corso') : t('preventivi.richiedi_approvazione')"
-            icon="pi pi-send"
-            size="small"
-            severity="secondary"
-            :loading="loading"
-            v-tooltip.bottom="t('preventivi.richiedi_approvazione_tooltip')"
-            @click="handleRichiediApprovazione"
-          />
-        </div>
-      </div>
-    </Message>
+    <L2ErrorBanner
+      :error="l2Error"
+      :loading="loading"
+      :label="t('preventivi.richiedi_approvazione')"
+      :label-loading="t('preventivi.richiedi_approvazione_in_corso')"
+      :tooltip="t('preventivi.richiedi_approvazione_tooltip')"
+      @richiedi="handleRichiediApprovazione"
+    />
 
     <!-- Sezione componenti BoM CASO A: due rendering distinti.
          (1) EDIT (isCasoA): pannello componenti già persistiti, modifica prezzo

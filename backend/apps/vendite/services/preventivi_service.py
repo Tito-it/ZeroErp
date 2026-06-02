@@ -29,6 +29,7 @@ from apps.vendite.services._pricing_gate_helpers import (
     check_permesso_override_prezzo,
     guard_uom_id_positive,
     resolve_or_check_override_prezzo,
+    validate_componenti_overrides_authorization,
 )
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.services._componenti_service_helpers import (
@@ -39,7 +40,6 @@ from apps.vendite.services._componenti_service_helpers import (
 )
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.vendite.services._approvazioni_prezzo_constants import (
-    AZIONE_OVERRIDE_PREZZO,
     STATO_APPROVAZIONE_APPROVED,
     STATO_APPROVAZIONE_PENDING,
     STATO_APPROVAZIONE_REJECTED,
@@ -614,7 +614,7 @@ def gestisci_riga(
     # Gating L1 sui componenti_overrides (form atomic 2026-05-12): se il
     # payload contiene overrides ma l'operatore non ha l'azione
     # prezzo_override_manuale, solleva 403 prima di toccare DB.
-    _validate_componenti_overrides_authorization(
+    validate_componenti_overrides_authorization(
         payload, auth_user_id, function_name=f"{_FN}.gestisci_riga",
     )
 
@@ -1131,40 +1131,9 @@ def _resolve_or_check_override_prezzo(
 # I test importano direttamente dal modulo helpers (no piu' alias qui).
 
 
-# Scopo: Gating L1 sugli override prezzo componenti (form atomic 2026-05-12).
-#        Solleva `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (esistente) se il payload
-#        contiene `componenti_overrides` non vuoti e l'operatore non ha
-#        l'azione `prezzo_override_manuale`. Stesso pattern del gating su
-#        prezzo override della riga padre: la fn DB accetta gli overrides
-#        senza check (responsabilita' BE), defense-in-depth contro bypass
-#        via curl/DevTools.
-def _validate_componenti_overrides_authorization(
-    payload: dict[str, Any],
-    auth_user_id: int | None,
-    *,
-    function_name: str,
-) -> None:
-    overrides = payload.get("componenti_overrides")
-    if not overrides:
-        return
-    user_model = get_user_model()
-    user = None
-    if auth_user_id is not None:
-        try:
-            user = user_model.objects.get(pk=auth_user_id)
-        except user_model.DoesNotExist:
-            user = None
-    authorized = (
-        user is not None
-        and PermissionResolver.check_azione(user, AZIONE_OVERRIDE_PREZZO)
-    )
-    ErrorManager.require(
-        authorized,
-        code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
-        message="Override prezzo componenti richiede autorizzazione 'prezzo_override_manuale'.",
-        detail="L'operatore non ha l'azione `prezzo_override_manuale` necessaria per inserire prezzi manuali sui componenti.",
-        function_name=function_name,
-    )
+# NB: il gating L1 sugli override prezzo componenti (`componenti_overrides`)
+# vive ora nel BB condiviso `_pricing_gate_helpers.validate_componenti_overrides_authorization`
+# (estratto 2026-06-01, regola del 2: riusato da preventivi/contratti/offerte).
 
 
 # Scopo: Estrae l'unico (o primo) emittente_soggetto_ruolo_id autorizzato

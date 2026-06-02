@@ -100,17 +100,30 @@ function openRifiutaDialog(pratica) {
   dialogVisible.value = true
 }
 
-// Estrae riga_id dal meta della pratica. Contratto BE:
-// `META_KEY_RIGA_PREVENTIVO_ID = "riga_preventivo_id"` in
-// approvazioni_prezzo_service. Fallback `riga_id` per pratiche legacy.
-// Mantenere allineato col BE: typo qui = bottone disabilitato silenziosamente.
-//
+// Chiave meta della riga per sorgente (allineata ai
+// `META_KEY_RIGA_*_ID` del BE `_approvazioni_prezzo_constants`). Fallback
+// `riga_id` per pratiche legacy Sprint E. Typo qui = bottone disabilitato
+// silenziosamente: mantenere allineato col BE.
 // Coerce difensivo: meta puo' arrivare come stringa JSON.
-// Vedi `core/utils/meta.coerceJsonbToObject` per il contratto.
-const META_KEY_RIGA_PREVENTIVO_ID = 'riga_preventivo_id'
+const _RIGA_KEY_BY_SORGENTE = {
+  preventivo: 'riga_preventivo_id',
+  contratto: 'riga_contratto_id',
+  offerta: 'riga_offerta_id',
+}
+
+// Sorgente della pratica: esposta dalla coda BE come campo top-level
+// (`_capabilities_per_pratica`); fallback al meta e infine `preventivo`
+// (pratiche legacy senza discriminator).
+function sorgenteFromPratica(pratica) {
+  const m = coerceJsonbToObject(pratica?.meta)
+  return pratica?.sorgente || m.sorgente || 'preventivo'
+}
+
 function rigaIdFromPratica(pratica) {
   const m = coerceJsonbToObject(pratica?.meta)
-  return m[META_KEY_RIGA_PREVENTIVO_ID] ?? m.riga_id ?? null
+  const key = _RIGA_KEY_BY_SORGENTE[sorgenteFromPratica(pratica)]
+    || _RIGA_KEY_BY_SORGENTE.preventivo
+  return m[key] ?? m.riga_id ?? null
 }
 
 async function confirmDialog() {
@@ -127,13 +140,14 @@ async function confirmDialog() {
     notify.error(t('approvazioni_prezzo.reason_riga_non_linkata'))
     return
   }
+  const sorgente = sorgenteFromPratica(pratica)
   loading.value = true
   try {
     if (dialogMode.value === 'approva') {
-      await approvaPrezzoRiga(rigaId, { nota: dialogText.value || null })
+      await approvaPrezzoRiga(rigaId, { nota: dialogText.value || null }, sorgente)
       notify.success(t('approvazioni_prezzo.approvazione_inviata'))
     } else {
-      await rifiutaPrezzoRiga(rigaId, { motivazione: dialogText.value || null })
+      await rifiutaPrezzoRiga(rigaId, { motivazione: dialogText.value || null }, sorgente)
       notify.success(t('approvazioni_prezzo.rifiuto_inviato'))
     }
     dialogVisible.value = false

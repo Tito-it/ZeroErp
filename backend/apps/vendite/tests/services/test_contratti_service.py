@@ -1843,6 +1843,11 @@ class ContrattiServiceComponentiTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
 
+    @patch(
+        "apps.vendite.services.contratti_service."
+        "validate_componenti_overrides_authorization",
+        return_value=None,
+    )
     @patch("apps.vendite.services.contratti_service.transaction.atomic")
     @patch(
         "apps.vendite.services.contratti_service.ContrattiService."
@@ -1851,7 +1856,7 @@ class ContrattiServiceComponentiTests(TestCase):
     )
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_riga_articolo_composito_auto_init(
-        self, repo_cls, _mock_resolve, _mock_atomic,
+        self, repo_cls, _mock_resolve, _mock_atomic, _mock_l1,
     ):
         """Articolo composito → auto-init componenti in transazione atomica."""
         from apps.vendite.services.contratti_service import ContrattiService
@@ -1886,6 +1891,47 @@ class ContrattiServiceComponentiTests(TestCase):
         # componenti_overrides normalizzato (Decimal-safe).
         self.assertEqual(init_kwargs["componenti_overrides"], {"figlio-1": "5.50"})
         self.assertEqual(result["id"], 500)
+
+    # Fix gap L1 componenti (refactor-prezzi 2026-06-01): create_riga ora
+    # invoca il gate L1 sugli override componenti (prima assente su contratti,
+    # presente su preventivi). Wiring test; la logica vive nel BB condiviso.
+    @patch(
+        "apps.vendite.services.contratti_service.ContrattiService."
+        "_apply_pricing_gate_riga",
+        return_value=(None, None),
+    )
+    @patch(
+        "apps.vendite.services.contratti_service."
+        "validate_componenti_overrides_authorization",
+    )
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_riga_invoca_validate_l1_componenti(
+        self, repo_cls, _atomic, mock_validate, _gate,
+    ):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = MagicMock()
+        repo.get_contratto.return_value = _testata_default()
+        repo.create_riga.return_value = 500
+        repo.is_articolo_composito.return_value = False
+        repo.get_riga.return_value = {"id": 500, "contratto_id": 1}
+        repo_cls.return_value = repo
+
+        ContrattiService().create_riga(
+            1,
+            {
+                "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
+                "tipo_eccezione": "AGGIUNTA",
+                "prezzo_unitario": "5.50",
+                "quantita": "1",
+                "componenti_overrides": {"figlio-1": "5.50"},
+            },
+            auth_user_id=42,
+        )
+
+        mock_validate.assert_called_once()
+        self.assertEqual(mock_validate.call_args.args[1], 42)
 
     @patch("apps.vendite.services.contratti_service.transaction.atomic")
     @patch(

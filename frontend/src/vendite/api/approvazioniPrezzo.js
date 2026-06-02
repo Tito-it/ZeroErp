@@ -9,15 +9,29 @@ export function listCodaApprovazioni(params = {}) {
   return api.get('/vendite/approvazioni-prezzo/', { params })
 }
 
-// POST /vendite/righe/<riga_id>/approva-prezzo/
-// Approva la riga PENDING. Richiede azione `approva_prezzo` (o superuser).
-// Body: { nota?: string }
-export function approvaPrezzoRiga(rigaId, payload = {}) {
-  return api.post(`/vendite/righe/${rigaId}/approva-prezzo/`, payload)
+// Segmento URL per sorgente: il workflow L3 ha endpoint distinti per
+// preventivo / contratto / offerta (riga_id appartiene a tabelle/sequence
+// indipendenti). Allineato ai path BE in `urls_v1.py`. Default `preventivo`
+// per back-compat con i call site Sprint E.
+const _SORGENTE_PATH = {
+  preventivo: 'righe',
+  contratto: 'righe-contratto',
+  offerta: 'eccezioni-offerta',
 }
 
-// POST /vendite/righe/<riga_id>/rifiuta-prezzo/
-// Rifiuta la riga PENDING. Body: { motivazione?: string }
-export function rifiutaPrezzoRiga(rigaId, payload = {}) {
-  return api.post(`/vendite/righe/${rigaId}/rifiuta-prezzo/`, payload)
+function _segmento(sorgente) {
+  return _SORGENTE_PATH[sorgente] || _SORGENTE_PATH.preventivo
+}
+
+// POST /vendite/<segmento>/<riga_id>/approva-prezzo/
+// Approva la riga PENDING. Richiede azione `approva_prezzo_override` (o superuser).
+// Body: { nota?: string }. `sorgente` = preventivo | contratto | offerta.
+export function approvaPrezzoRiga(rigaId, payload = {}, sorgente = 'preventivo') {
+  return api.post(`/vendite/${_segmento(sorgente)}/${rigaId}/approva-prezzo/`, payload)
+}
+
+// POST /vendite/<segmento>/<riga_id>/rifiuta-prezzo/
+// Rifiuta la riga PENDING. Body: { motivazione?: string }.
+export function rifiutaPrezzoRiga(rigaId, payload = {}, sorgente = 'preventivo') {
+  return api.post(`/vendite/${_segmento(sorgente)}/${rigaId}/rifiuta-prezzo/`, payload)
 }

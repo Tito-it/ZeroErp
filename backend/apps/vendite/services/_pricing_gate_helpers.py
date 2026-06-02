@@ -104,6 +104,43 @@ def check_permesso_override_prezzo(
     )
 
 
+# Scopo: Gate L1 sugli override manuali dei PREZZI dei COMPONENTI BoM passati
+#        nel payload (`componenti_overrides`). Estratto da preventivi_service
+#        (era il privato `_validate_componenti_overrides_authorization`) e
+#        promosso a BB condiviso (regola del 2): usato da preventivi, contratti
+#        e offerte. Se il payload non porta override → no-op. Altrimenti
+#        richiede l'azione di processo `prezzo_override_manuale`, come il gate
+#        L1 sul prezzo riga (`check_permesso_override_prezzo`).
+#
+#        Semantica preservata 1:1 dall'originale preventivi (nessun bypass
+#        superuser esplicito: `PermissionResolver.check_azione` gestisce gia'
+#        l'eventuale superuser internamente).
+def validate_componenti_overrides_authorization(
+    payload: dict[str, Any],
+    auth_user_id: int | None,
+    *,
+    function_name: str,
+) -> None:
+    overrides = payload.get("componenti_overrides")
+    if not overrides:
+        return
+    user = _get_user_or_none(auth_user_id) if auth_user_id is not None else None
+    authorized = (
+        user is not None
+        and PermissionResolver.check_azione(user, AZIONE_OVERRIDE_PREZZO)
+    )
+    ErrorManager.require(
+        authorized,
+        code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
+        message="Override prezzo componenti richiede autorizzazione 'prezzo_override_manuale'.",
+        detail=(
+            "L'operatore non ha l'azione `prezzo_override_manuale` necessaria "
+            "per inserire prezzi manuali sui componenti."
+        ),
+        function_name=function_name,
+    )
+
+
 # Scopo: Helper privato. Risolve la soglia % di variazione applicabile a
 #        (utente, BA) attraverso la cascata user → categoria_cliente → group
 #        → emittente → default. Centralizza il pattern usato da entrambi i

@@ -26,7 +26,7 @@ const props = defineProps({
   nuovaValiditaDal: { type: String, default: null },
   loading: Boolean,
 })
-const emit = defineEmits(['update:visible', 'confirm', 'navigate-contratto'])
+const emit = defineEmits(['update:visible', 'confirm', 'ispeziona-contratto'])
 
 // Data di chiusura del contratto esistente = decorrenza nuovo - 1 giorno
 // (mirror della logica DB fn_chiudi_contratto_per_successione). Mostrata
@@ -42,9 +42,12 @@ function onConfirm() {
   emit('confirm')
 }
 
-function onApriContratto() {
+// Apre il contratto in conflitto in sola lettura per ispezione (righe incluse).
+// Il parent chiude questo dialog, mostra il ContrattoDrawer read-only e lo
+// ri-apre alla chiusura: l'operatore rivede e poi conferma/annulla.
+function onIspezionaContratto() {
   if (props.contratto?.id) {
-    emit('navigate-contratto', { contrattoId: props.contratto.id })
+    emit('ispeziona-contratto', { contrattoId: props.contratto.id })
   }
 }
 </script>
@@ -57,7 +60,7 @@ function onApriContratto() {
     :loading="props.loading"
     :save-disabled="props.loading || !props.contratto"
     :save-label="t('common.confirm')"
-    save-severity="warn"
+    :readonly="false"
     @update:visible="(val) => emit('update:visible', val)"
     @save="onConfirm"
   >
@@ -71,10 +74,10 @@ function onApriContratto() {
         {{ props.contratto.numero }}
         <Button
           :label="t('vendite.offerte.successione_apri_contratto')"
-          icon="pi pi-external-link"
+          icon="pi pi-eye"
           text
           size="small"
-          @click="onApriContratto"
+          @click="onIspezionaContratto"
         />
       </div>
       <div class="text-color-secondary">

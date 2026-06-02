@@ -18,9 +18,11 @@ from apps.vendite.api.views import (
 )
 from apps.vendite.api.views_approvazioni_prezzo import (
     ApprovaPrezzoContrattoView,
+    ApprovaPrezzoOffertaView,
     ApprovaPrezzoView,
     ApprovazioniPrezzoCodaView,
     RifiutaPrezzoContrattoView,
+    RifiutaPrezzoOffertaView,
     RifiutaPrezzoView,
 )
 from apps.vendite.api.views_lookups import (
@@ -76,6 +78,19 @@ urlpatterns = [
         "righe-contratto/<int:riga_id>/rifiuta-prezzo/",
         RifiutaPrezzoContrattoView.as_view(),
         name="vendite-rifiuta-prezzo-contratto",
+    ),
+    # L3 workflow approvazione prezzo su **eccezione offerta** (refactor
+    # 2026-06-01 gate prezzi offerte). Endpoint distinto: `riga_id` = id
+    # eccezione; service dispatch via sorgente='offerta'.
+    path(
+        "eccezioni-offerta/<int:riga_id>/approva-prezzo/",
+        ApprovaPrezzoOffertaView.as_view(),
+        name="vendite-approva-prezzo-offerta",
+    ),
+    path(
+        "eccezioni-offerta/<int:riga_id>/rifiuta-prezzo/",
+        RifiutaPrezzoOffertaView.as_view(),
+        name="vendite-rifiuta-prezzo-offerta",
     ),
     path(
         "approvazioni-prezzo/",

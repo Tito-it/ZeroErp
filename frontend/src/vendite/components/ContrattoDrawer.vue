@@ -75,6 +75,11 @@ const props = defineProps({
   contrattoId: { type: Number, default: null },
   // Prefill opzionale per creazione da contesto cliente (ContrattiBillingAccountDrawer).
   initialBillingAccount: { type: Object, default: null },
+  // Forza la sola lettura a prescindere da permessi/stato (allinea allo standard
+  // [[feedback_drawer_readonly]]). Usato per riusare il drawer come visualizzatore
+  // read-only di un contratto "altro" (es. ispezione contratto sovrapposto dal
+  // dialog di successione offerta): si propaga via READONLY_KEY a tutti i sub-drawer.
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -107,7 +112,9 @@ const isContractLocked = computed(
 // Tutti i campi/azioni del drawer principale e dei sub-drawer (righe, utility)
 // si basano su questo computed. Propagato via provide ai figli, che usano
 // solo `useInjectReadonly()` senza logica locale (standard del progetto).
-const isReadonly = computed(() => parentReadonly.value || isContractLocked.value)
+const isReadonly = computed(
+  () => props.readonly || parentReadonly.value || isContractLocked.value,
+)
 provide(READONLY_KEY, isReadonly)
 
 // Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
@@ -640,10 +647,17 @@ function onAnnullaContratto(action) {
 // DRAFT arriva da `fn_available_actions_contratto` (niente piu' hardcoded).
 const drawerActions = computed(() => {
   if (!isEdit.value || !detail.value) return []
+  // Read-only PURO (permesso LETTURA / pannello split / readonly forzato per
+  // ispezione di un contratto "altro"): niente azioni di cambio stato/cessa —
+  // si sta solo visualizzando. NB: `props.readonly || parentReadonly`, NON
+  // `isReadonly`: quest'ultimo include il lock-di-stato (un contratto ATTIVO ha
+  // la form bloccata ma DEVE mostrare "Cessa"). Restano i pannelli righe/note
+  // (aprono i sub-drawer in sola lettura via READONLY_KEY).
   const list = mapAvailableActionsToDrawerActions({
     availableActions,
     t,
     onAction: onCambiaStato,
+    readonly: props.readonly || parentReadonly.value,
   })
   list.push({
     key: 'manage-righe',

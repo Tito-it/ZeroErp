@@ -14,11 +14,22 @@ import { unref } from 'vue'
 // Scopo: trasforma availableActions (ref/computed o array) in azioni
 //   DrawerActionsBar kind:'state'. Il chiamante poi le compone con eventuali
 //   altre azioni (manage sub-drawer, secondary export) nel computed finale.
+//
+//   `readonly` (2026-06-01): in PURE read-only — permesso LETTURA, pannello
+//   split, oppure readonly forzato via prop (es. ispezione di un'entita'
+//   "altra") — le azioni di stato che abilitano un AGGIORNAMENTO spariscono
+//   del tutto (allineamento ai drawer senza barra azioni, es. soggetti/BA).
+//   NB: il chiamante DEVE passare il readonly "puro"
+//   (`parentReadonly || props.readonly`), NON l'isReadonly del drawer che
+//   include anche il lock-di-stato: un contratto ATTIVO ha la form bloccata
+//   ma deve comunque mostrare "Cessa".
 export function mapAvailableActionsToDrawerActions({
   availableActions,
   t,
   onAction,
+  readonly = false,
 }) {
+  if (unref(readonly)) return []
   const list = unref(availableActions) || []
   return list.map(action => ({
     key: action.key || `state-${action.target_state}`,

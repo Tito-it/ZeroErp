@@ -778,12 +778,13 @@ function onNuovaRevisione() {
 }
 
 // Azioni della testata preventivo consumate da DrawerActionsBar.
-// Non filtrate da `isReadonly`: le actions di stato (BE data-driven) restano
-// renderizzate anche in stati post-DRAFT o in LETTURA — `DrawerActionsBar`
-// applica automaticamente `.app-escape` per renderle cliccabili sotto
-// `.app-readonly`. La sicurezza e' garantita dal BE che rifiuta i comandi
-// senza permesso (defense-in-depth, frontend-standards "Transizione a stato
-// terminale" + "Tasti di uscita"). Allineato a ContrattoDrawer.
+// Read-only PURO (permesso LETTURA / pannello split / readonly forzato): le
+// azioni di stato (Accetta/Rifiuta/Annulla/revisione) — che abilitano un
+// aggiornamento — vengono NASCOSTE (2026-06-01, allineamento ai drawer senza
+// barra azioni tipo soggetti/BA). Gate su `props.readonly || parentReadonly`,
+// NON su `isReadonly`: quest'ultimo include il lock-di-stato post-DRAFT, ma in
+// stato post-DRAFT con operatore abilitato le transizioni devono restare
+// visibili. Il BE resta come difesa (defense-in-depth).
 const drawerActions = computed(() => {
   if (!hasDetail.value) return []
   // Azioni di stato data-driven dal BE (`script.fn_available_actions_preventivo`,
@@ -798,6 +799,7 @@ const drawerActions = computed(() => {
     availableActions: availableActionsHeader,
     t,
     onAction: onCambiaStato,
+    readonly: props.readonly || parentReadonly.value,
   })
   list.push({
     key: 'manage-note',
