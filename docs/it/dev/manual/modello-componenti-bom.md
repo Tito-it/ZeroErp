@@ -116,12 +116,22 @@ condividono la **stessa aliquota IVA**.
 
 Trigger `catalogo.trgfn_articoli_componenti_guard_iva`:
 
-- BEFORE INSERT/UPDATE su `catalogo.articoli_componenti`: NEW.componente
-  deve avere `iva_id` uguale al padre
-- BEFORE UPDATE su `catalogo.articoli.iva_id`: se l'articolo e' padre
+- BEFORE INSERT OR UPDATE OF `attivo` su `catalogo.articoli_componenti`:
+  per un legame attivo, NEW.componente deve avere `iva_id` uguale al
+  padre. Il fronte `UPDATE OF attivo` copre la **riattivazione** del
+  legame (FALSE→TRUE), chiudendo il percorso *spegni → cambia IVA →
+  riaccendi* (vedi sotto)
+- BEFORE UPDATE su `catalogo.articoli.iva_id`
+  (`trgfn_articoli_guard_iva_bom_attiva`): se l'articolo e' padre
   composito di righe BoM attive → tutti i figli devono avere stessa
   IVA; se l'articolo e' figlio in BoM attive → il padre deve avere
   stessa IVA
+
+Questi due trigger (+ il freeze struttura che rende `componente_id`
+immutabile) sono il **punto unico di enforcement** dell'invariante: una
+BoM attiva non puo' avere padre e figlio a IVA diversa. Per questo il
+listino non ri-controlla piu' l'IVA (Guard 5 di
+`trgfn_listini_righe_comp_guard_coerenza_bom` rimosso il 2026-06-03).
 
 Conseguenza: il riepilogo IVA del documento e' indistintamente
 calcolabile da padre o da figli (stessa aliquota).
@@ -161,7 +171,8 @@ Vincoli (trigger guard):
 
 - `articolo_componente_id` punta a riga BoM esistente e attiva
 - `padre.is_composito = TRUE`
-- IVA figlio = IVA padre (estensione regola §6)
+- IVA figlio = IVA padre: **non** verificata qui (Guard 5 rimosso il
+  2026-06-03), gia' garantita alla sorgente dai trigger del §6
 - `validita` listino ⊆ `validita` BoM ⊆ `validita` versione listino
 - Immutabilita' v5: INSERT solo in versione non-attiva; UPDATE prezzo
   bloccato in versione attiva (pattern listini v5 esistente)
@@ -256,9 +267,9 @@ Codici errore di dominio (registrati in `config.messaggi_errore`):
 | `E_DOC_COMPOSITO_BOM_VUOTA` | `_init` su composito senza BoM valida alla data |
 | `E_DOC_COMPONENTE_OBBLIGATORIO` | UPDATE `attivo=FALSE` su figlio obbligatorio |
 | `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | Figlio obbligatorio con prezzo 0 |
-| `E_BOM_IVA_DISCORDANTE` | INSERT/UPDATE BoM o `articoli.iva_id` con IVA padre-figlio diversa |
+| `E_BOM_IVA_DISCORDANTE` | INSERT BoM, riattivazione legame, o UPDATE `articoli.iva_id` con IVA padre-figlio diversa |
 | `E_LISTINO_RIGA_COMPOSITO_VIETATO` | INSERT `listini_righe` per `is_composito=TRUE` |
-| `E_LISTINO_COMPONENTE_COERENZA_BOM` | INSERT/UPDATE `listini_righe_componenti` con BoM/IVA/validita' incoerente |
+| `E_LISTINO_COMPONENTE_COERENZA_BOM` | INSERT/UPDATE `listini_righe_componenti` con BoM/validita' incoerente (IVA non piu' verificata qui dal 2026-06-03) |
 
 ## 12. Building block riusabili
 
