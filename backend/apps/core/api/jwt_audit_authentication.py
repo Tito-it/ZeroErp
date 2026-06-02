@@ -33,6 +33,27 @@ E_JWT_SENZA_IDENTITA = "E_JWT_SENZA_IDENTITA"
 E_IDENTITA_NON_ATTIVA = "E_IDENTITA_NON_ATTIVA"
 
 
+# Nomi dei GUC PostgreSQL d'identita propagati per ogni richiesta
+# autenticata. UNICA fonte di verita': il CTE di set_jwt_gucs (che li
+# popola coi valori reali) e JWT_GUC_RESET_SQL (che li azzera) si
+# riferiscono a questa lista. Aggiungere/rimuovere un GUC qui.
+JWT_IDENTITY_GUCS: tuple[str, ...] = (
+    "app.jwt_user",
+    "app.current_user_id",
+    "app.current_identita_id",
+    "app.ruolo_applicativo",
+    "app.soggetto_ruolo_id",
+)
+
+# SQL che azzera (stringa vuota, session-scoped) tutti i JWT_IDENTITY_GUCS
+# in un'unica query. Derivato dalla tupla: niente lista duplicata. Usato
+# dal middleware per il reset di inizio richiesta. I nomi sono costanti
+# fidate (no input utente) → string build sicuro.
+JWT_GUC_RESET_SQL: str = "SELECT " + ", ".join(
+    f"set_config('{_guc}', '', false)" for _guc in JWT_IDENTITY_GUCS
+)
+
+
 class JwtSenzaIdentitaError(AuthenticationFailed):
     """JWT validato ma privo del claim `identita_id` (§8.3.2).
 
@@ -118,7 +139,9 @@ def set_jwt_gucs(
         with connection.cursor() as cursor:
             # Unica query CTE: valida (user, identita) + setta i 5 GUC
             # + ritorna il count delle righe (1 se valida, 0 se revocata
-            # o non appartenente a quell'auth_user).
+            # o non appartenente a quell'auth_user). I 5 GUC qui settati
+            # sono l'elenco canonico JWT_IDENTITY_GUCS (il reset middleware
+            # ne deriva): tenere allineato se si aggiunge/rimuove un GUC.
             cursor.execute(
                 """
                 WITH id_row AS (

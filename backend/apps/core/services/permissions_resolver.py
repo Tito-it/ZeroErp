@@ -183,20 +183,22 @@ class PermissionResolver:
     def get_emittenti_ids(
         cls, user: Any, *, cache: dict[str, Any] | None = None
     ) -> list[int] | None:
-        """Scopo: Restituisce gli ID emittenti fiscali autorizzati per l'utente.
-        Restituisce None se l'utente non ha restrizioni (whitelist vuota = tutto)."""
-        def _query() -> list[int] | None:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT script.fn_get_emittenti_scope(%s)", [user.id]
-                )
-                row = cursor.fetchone()
-            # fn_get_emittenti_scope ritorna bigint[] o NULL
-            if row and row[0]:
-                return list(row[0])
-            return None
+        """Scopo: PK reali (emittenti_fiscali.id) autorizzate per l'utente.
 
-        return _cached(cache, "emittenti_ids", _query)
+        DEPRECATO — alias di `get_emittenti_pk_ids` (stessa convenzione PK).
+        Storicamente avvolgeva la legacy `script.fn_get_emittenti_scope`, che
+        ha la STESSA convenzione PK ma SENZA i guard (nessun bypass
+        SUPER_ADMIN; nessun fail-closed su identita OPERATORE non attiva) →
+        buco B5 (analisi-attivazione-rls-operatori §2.3). Inoltre il vecchio
+        unwrap `if row[0]:` trattava `[]` come falsy → None (=vede tutto),
+        invertendo il "nessun accesso". Ora delega alla versione guarded, che
+        risolve entrambi. I nuovi call-site usino direttamente
+        `get_emittenti_pk_ids`. *(La legacy `script.fn_get_emittenti_scope`
+        resta da dismettere lato DB quando non avra' piu' lettori — brief DB.)*
+
+        Semantica: None = nessuna restrizione, [] = nessun accesso.
+        """
+        return cls.get_emittenti_pk_ids(user, cache=cache)
 
     @classmethod
     def get_emittenti_sr_ids(

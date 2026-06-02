@@ -1,7 +1,7 @@
 # Piano BE/FE — Attivazione RLS scope Emittente Fiscale (operatori)
 
 > **Destinatari**: backend agent (Python/Django), frontend (Vue). **Branch**: `dev/backend-tid`.
-> **Origine**: [analisi-attivazione-rls-operatori.md](analisi-attivazione-rls-operatori.md) (decisioni §11) + brief DB gemello [analisi-attivazione-rls-operatori-db.md](analisi-attivazione-rls-operatori-db.md).
+> **Origine**: [analisi-attivazione-rls-operatori.md](analisi-attivazione-rls-operatori.md) (decisioni §11) + brief DB gemello (DB-side completo) [analisi-attivazione-rls-db.md](../work-done/analisi-attivazione-rls-db.md).
 > **Natura**: piano **dettagliato** con prerequisiti DB espliciti per ogni stream. Le sigle `C#/R#/§#` rimandano all'analisi.
 > Convenzione: `[VERIFICATO]` su codice; `[DA CONFERMARE]` = riga/firma da ricontrollare prima di toccare.
 
@@ -9,17 +9,24 @@
 
 ## 0. Mappa degli stream e dipendenze
 
-| Stream | Cosa | Dipende da DB? | Quando |
+| Stream | Cosa | Dipende da DB? | Stato |
 |---|---|---|---|
-| **A — Fix R-GUC** | reset GUC per-richiesta, fail-closed | **No** (BE puro) | **Subito**, indipendente. È il **gate** per l'`ENABLE` |
-| **B — Consolidamento scope read-side** | `get_emittenti_ids` → canonica guarded; ricablaggio caller | Sì: canonica guarded esistente | Dopo che DB consegna la canonica |
-| **C — FE robustezza** | gestione 404 IDOR + verifica liste filtrate | Sì: RLS attiva (o stream B) | A valle di A/B, in parallelo alla verifica RLS |
+| **A — Fix R-GUC** | reset GUC per-richiesta, fail-closed | **No** (BE puro) | **✅ FATTO 2026-06-02** (gate per l'`ENABLE` sbloccato) |
+| **B — Consolidamento scope read-side** | `get_emittenti_ids` → canonica guarded | Sì: canonica guarded (consegnata) | **✅ FATTO 2026-06-02** |
+| **C — FE robustezza** | gestione 404 IDOR + verifica liste filtrate | Sì: RLS attiva (o stream B) | ⏳ aperto — a valle dell'`ENABLE` |
+
+> **Stato 2026-06-02:** Stream A e B implementati su `dev/backend-tid` (test verdi). Restano:
+> - (a) test d'integrazione leak GUC sotto pool concorrente [follow-up];
+> - (b) ✅ **RISOLTO** — `parameter_repository.get_emittente_fiscale_id_for_user` riscritto (soluzione 3) per leggere la whitelist **direttamente** da `config.user_emittenti_fiscali` (1:1, no guard di scope) anziché via la legacy: comportamento SUPER_ADMIN preservato (lavora sul proprio emittente). **Nessun lettore Python residuo** della legacy `script.fn_get_emittenti_scope` → **può essere dismessa lato DB** [brief DB];
+> - (c) Stream C dopo l'`ENABLE` Ondata 1.
 
 Ordine logico: **A subito** (sblocca l'`ENABLE` lato DB) → **B** quando la canonica è pronta → **C** durante/dopo l'attivazione RLS.
 
 ---
 
 ## 1. Stream A — Fix R-GUC (priorità massima, BE puro)
+
+> **✅ IMPLEMENTATO 2026-06-02** (`dev/backend-tid`). Vedi `jwt_audit_middleware.process_request` + costanti `JWT_IDENTITY_GUCS`/`JWT_GUC_RESET_SQL` in `jwt_audit_authentication.py`. Il testo sotto resta come spec di riferimento.
 
 **Problema** (§11.1, `[VERIFICATO]`): i 5 GUC d'identità sono **session-scoped** (`set_config(..., is_local=false)`) e `CONN_MAX_AGE=600` tiene vive le connessioni. Oggi il reset esiste ma è su `process_response` (fine richiesta) ed è best-effort: se non gira (eccezione a valle/crash/ritorno al pool) i GUC sopravvivono → con RLS attiva una richiesta eredita lo scope di quella precedente sulla stessa connessione (**leak silenzioso**, modo di fallire = "vede troppo"). Il commento in codice assume `CONN_MAX_AGE=0`, assunzione **già falsa**.
 
@@ -47,6 +54,8 @@ Ordine logico: **A subito** (sblocca l'`ENABLE` lato DB) → **B** quando la can
 ---
 
 ## 2. Stream B — Consolidamento scope read-side sulla canonica guarded
+
+> **✅ IMPLEMENTATO 2026-06-02** (`dev/backend-tid`). `get_emittenti_ids` delega a `get_emittenti_pk_ids`; `parameter_repository.get_emittente_fiscale_id_for_user` legge la whitelist diretta (soluzione 3). Zero lettori Python della legacy. Il testo sotto resta come spec di riferimento.
 
 **Problema** (B5, §2.3 `[VERIFICATO]`): `PermissionResolver.get_emittenti_ids` ([backend/apps/core/services/permissions_resolver.py](../../../backend/apps/core/services/permissions_resolver.py) `[DA CONFERMARE riga ~183]`) avvolge la funzione **legacy senza guard** `script.fn_get_emittenti_scope` — non fa fail-closed su identità OPERATORE disattivata e non ha il bypass SUPER_ADMIN coerente. È ancora usata da `documenti`, `ai_assistant`, `parameter_repository.py` `[DA CONFERMARE riga ~353]`.
 
