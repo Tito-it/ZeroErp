@@ -1,0 +1,85 @@
+## Documentazione Concettuale – Funzione `script.fn_scope_ef_whitelist_via_fattura`
+
+> **Vedi anche**
+>
+[Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls)
+>
+**Funzioni correlate:**
+>
+[script.fn_scope_ef_whitelist_via_sr](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_sr) (adapter SR)
+> [script.fn_scope_ef_whitelist](/dbzero/script/funzioni/fn_scope_ef_whitelist) (adapter PK / entry-point)
+> [script.fn_scope_ba_ownership_via_fattura](/dbzero/script/funzioni/fn_scope_ba_ownership_via_fattura) (speculare per lo scope BA)
+>
+**Tabelle correlate:**
+>
+[vendite.fatture](/dbzero/vendite/tabelle/fatture)
+> [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze)
+
+---
+### 🎯 Scopo Principale
+(rev 2026-06-01)
+
+Adapter **via fattura** dello scope `EF_WHITELIST`: per le tabelle **figlie**
+di `vendite.fatture` che non hanno una colonna emittente propria (es.
+`vendite.fatture_scadenze`), risolve l'emittente **attraverso la fattura
+collegata** e delega all'adapter SR.
+
+È lo speculare di `fn_scope_ba_ownership_via_fattura` (stesso pattern per lo
+scope BA cliente/portale).
+
+---
+
+### Parametri di input
+
+| Parametro | Tipo | Descrizione |
+|-----------|------|-------------|
+| `p_auth_user_id` | `integer` | Utente applicativo (dal GUC `app.current_user_id`). |
+| `p_fattura_id` | `vendite.fatture.id%TYPE` | Fattura collegata alla riga figlia (colonna `fattura_id`). |
+
+---
+
+### Output
+
+`BOOLEAN` — esito della canonica. Vedi
+[`fn_scope_ef_whitelist`](/dbzero/script/funzioni/fn_scope_ef_whitelist) per la
+semantica completa.
+
+---
+
+### Catena di risoluzione
+
+```
+fattura_id (= p_fattura_id)
+    → vendite.fatture.emittente_soggetto_ruolo_id
+    → fn_scope_ef_whitelist_via_sr(auth_user_id, emittente_sr_id)
+    → fn_check_user_emittente_scope(auth_user_id, emittente_fiscale_id)
+```
+
+Fattura inesistente → SR `NULL` → `false` se whitelist valorizzata (fail-closed).
+
+---
+
+### Regole implementative
+
+* `LANGUAGE sql`, `STABLE`: inlineable nei predicati `USING`.
+* Evita subquery inline nelle policy RLS (§10.3 linee-guida-sql).
+
+---
+
+### Esempio d'uso
+
+```sql
+CREATE POLICY rls_fatture_scadenze_ef_whitelist ON vendite.fatture_scadenze
+    AS PERMISSIVE FOR SELECT
+    USING (
+        current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+        AND script.fn_scope_ef_whitelist_via_fattura(
+            NULLIF(current_setting('app.current_user_id', true), '')::integer,
+            fattura_id
+        )
+    );
+```
+
+---
+
+{% include-markdown "signature-core.md" %}

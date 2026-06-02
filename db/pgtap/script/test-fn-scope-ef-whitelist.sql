@@ -2,38 +2,44 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: script.fn_scope_ef_whitelist
--- Riferimento: §4.4 WIP multi-face-auth, policy EF_WHITELIST.
+-- Test: script.fn_scope_ef_whitelist (PK) + fn_scope_ef_whitelist_via_sr (SR)
+-- Riferimento: brief RLS §1/§2. Dopo il refactor 20260601-06..09 le fn
+-- delegano alla canonica script.fn_check_user_emittente_scope
+-- (chiave auth_user_id, convenzione PK emittente_fiscale_id), con adapter
+-- SR che risolve emittente_soggetto_ruolo_id -> emittente_fiscale_id.
 --
--- Semantica attesa:
---   - identita inesistente/inattiva     -> false (fail-closed)
---   - identita attiva, whitelist vuota  -> true (accesso globale legacy)
---   - identita attiva, target in lista  -> true
---   - identita attiva, target non lista -> false
+-- Semantica attesa (canonica):
+--   - auth_user inesistente / identita OPERATORE non attiva -> false (fail-closed)
+--   - identita OPERATORE attiva, whitelist vuota            -> true (accesso globale)
+--   - identita attiva, target EF in whitelist               -> true
+--   - identita attiva, target EF non in whitelist           -> false
+--   - super_admin -> true (non coperto qui: nessun binding SUPER_ADMIN nei fixture)
 --
--- Indice test (1..7):
+-- Indice test (1..10):
 --    1. Precondizione: fixture emittente_fiscale disponibile
---    2. Setup: soggetto PF pura + SR RIS_UMANA + 2 identita (attiva, inattiva)
---    3. Identita inesistente -> false (fail-closed)
---    4. Identita inattiva (no whitelist) -> false
---    5. Identita attiva, whitelist vuota -> true (accesso globale)
---    6. Setup: popola user_emittenti_fiscali con 1 riga per identita attiva
---    7. Identita attiva, target EF in lista -> true
---    8. Identita attiva, target SR qualsiasi fuori whitelist -> false
+--    2. Setup: soggetto PF + SR RIS_UMANA + 2 auth_user + 2 identita (attiva/inattiva)
+--    3. PK: auth_user inesistente -> false (fail-closed)
+--    4. PK: identita OPERATORE non attiva -> false
+--    5. PK: identita attiva, whitelist vuota -> true (accesso globale)
+--    6. Setup: popola user_emittenti_fiscali con 1 EF per l'auth_user attivo
+--    7. PK: target EF in whitelist -> true
+--    8. PK: target EF non in whitelist -> false
+--    9. SR: adapter via_sr risolve SR->PK, target in whitelist -> true
+--   10. SR: adapter via_sr, SR non-emittente (PK NULL) -> false
 --
 -- BEGIN; + rollback implicito a fine file (guard DEFERRABLE soggetti
 -- non scattano senza COMMIT).
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(8);
+SELECT plan(10);
 
 -- =========================================================
 -- 1) Precondizione: un emittente_fiscale disponibile
 -- =========================================================
 CREATE TEMP TABLE _t_ef AS
-SELECT ef.id            AS ef_id,
-       ef.soggetto_ruolo_id AS ef_sr_id
+SELECT ef.id                 AS ef_id,
+       ef.soggetto_ruolo_id  AS ef_sr_id
   FROM anagrafiche.emittenti_fiscali ef
  WHERE ef.attivo = true
  ORDER BY ef.id
@@ -91,9 +97,7 @@ BEGIN
 END
 $$;
 
--- Identita attiva (idx=1) e inattiva (idx=2).
--- Entrambe su stesso SR ma attivo mutex via indice parziale: setto
--- attivo=false per l'inattiva, attivo=true per quella attiva.
+-- Identita attiva (idx=1) e inattiva (idx=2) su SR RIS_UMANA.
 CREATE TEMP TABLE _t_id (idx int, identita_id bigint);
 WITH ins_attiva AS (
     INSERT INTO anagrafiche.identita_digitali
@@ -107,8 +111,6 @@ WITH ins_attiva AS (
 INSERT INTO _t_id (idx, identita_id)
 SELECT 1, id FROM ins_attiva;
 
--- Per l'inattiva, uso un SR diverso per evitare conflitto con UNIQUE parziale
--- (anche se attivo=false, l'INSERT non dovrebbe violare l'indice WHERE attivo=true).
 WITH ins_inattiva AS (
     INSERT INTO anagrafiche.identita_digitali
         (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
@@ -127,42 +129,40 @@ SELECT ok(
 );
 
 -- =========================================================
--- 3) Identita inesistente -> false
+-- 3) PK: auth_user inesistente -> false (fail-closed)
 -- =========================================================
 SELECT ok(
     script.fn_scope_ef_whitelist(
-        (SELECT COALESCE(MAX(id), 0) + 999999 FROM anagrafiche.identita_digitali),
-        (SELECT ef_sr_id FROM _t_ef)
+        (SELECT COALESCE(MAX(id), 0) + 999999 FROM django.auth_user),
+        (SELECT ef_id FROM _t_ef)
     ) = false,
-    '3. Identita inesistente -> false (fail-closed)'
+    '3. PK: auth_user inesistente -> false (no identita OPERATORE attiva)'
 );
 
 -- =========================================================
--- 4) Identita inattiva -> false
+-- 4) PK: identita OPERATORE non attiva -> false
 -- =========================================================
 SELECT ok(
     script.fn_scope_ef_whitelist(
-        (SELECT identita_id FROM _t_id WHERE idx = 2),
-        (SELECT ef_sr_id FROM _t_ef)
+        (SELECT auth_user_id FROM _t_au WHERE idx = 2),
+        (SELECT ef_id FROM _t_ef)
     ) = false,
-    '4. Identita inattiva -> false (fail-closed)'
+    '4. PK: auth_user con identita OPERATORE non attiva -> false (fail-closed)'
 );
 
 -- =========================================================
--- 5) Identita attiva, whitelist vuota -> true (accesso globale)
+-- 5) PK: identita attiva, whitelist vuota -> true (accesso globale)
 -- =========================================================
--- L'auth_user dell'identita attiva NON ha righe in user_emittenti_fiscali,
--- quindi la whitelist e' vuota = accesso globale.
 SELECT ok(
     script.fn_scope_ef_whitelist(
-        (SELECT identita_id FROM _t_id WHERE idx = 1),
-        (SELECT ef_sr_id FROM _t_ef)
+        (SELECT auth_user_id FROM _t_au WHERE idx = 1),
+        (SELECT ef_id FROM _t_ef)
     ) = true,
-    '5. Identita attiva, whitelist vuota -> true (accesso globale legacy)'
+    '5. PK: identita attiva, whitelist vuota -> true (accesso globale)'
 );
 
 -- =========================================================
--- 6) Setup: popola user_emittenti_fiscali per identita attiva
+-- 6) Setup: popola user_emittenti_fiscali per l'auth_user attivo
 -- =========================================================
 INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
 VALUES (
@@ -176,33 +176,55 @@ SELECT ok(
         SELECT 1 FROM config.user_emittenti_fiscali
          WHERE auth_user_id = (SELECT auth_user_id FROM _t_au WHERE idx = 1)
     ),
-    '6. Setup: whitelist popolata per identita attiva (1 EF autorizzato)'
+    '6. Setup: whitelist popolata per auth_user attivo (1 EF autorizzato)'
 );
 
 -- =========================================================
--- 7) Target EF in lista -> true
+-- 7) PK: target EF in whitelist -> true
 -- =========================================================
 SELECT ok(
     script.fn_scope_ef_whitelist(
-        (SELECT identita_id FROM _t_id WHERE idx = 1),
+        (SELECT auth_user_id FROM _t_au WHERE idx = 1),
+        (SELECT ef_id FROM _t_ef)
+    ) = true,
+    '7. PK: whitelist valorizzata, target EF in lista -> true'
+);
+
+-- =========================================================
+-- 8) PK: target EF non in whitelist -> false
+-- =========================================================
+SELECT ok(
+    script.fn_scope_ef_whitelist(
+        (SELECT auth_user_id FROM _t_au WHERE idx = 1),
+        (SELECT COALESCE(MAX(id), 0) + 999999 FROM anagrafiche.emittenti_fiscali)
+    ) = false,
+    '8. PK: whitelist valorizzata, target EF fuori lista -> false'
+);
+
+-- =========================================================
+-- 9) SR adapter: risolve SR->PK, target in whitelist -> true
+-- =========================================================
+SELECT ok(
+    script.fn_scope_ef_whitelist_via_sr(
+        (SELECT auth_user_id FROM _t_au WHERE idx = 1),
         (SELECT ef_sr_id FROM _t_ef)
     ) = true,
-    '7. Identita attiva con whitelist valorizzata, target in lista -> true'
+    '9. SR: adapter via_sr risolve emittente_sr -> EF, target in whitelist -> true'
 );
 
 -- =========================================================
--- 8) Target fuori whitelist -> false
+-- 10) SR adapter: SR non-emittente (PK risolto NULL) -> false
 -- =========================================================
--- Uso il soggetto_ruolo_id della risorsa umana stessa (SR RIS_UMANA) come
--- target: non e' un emittente fiscale, quindi non appare nella whitelist.
--- La funzione cerca match su emittenti_fiscali.soggetto_ruolo_id = p_target,
--- che fallira'.
+-- Uso il soggetto_ruolo della risorsa umana: non e' un emittente fiscale,
+-- quindi la risoluzione SR->emittente_fiscale_id da NULL e la canonica con
+-- whitelist valorizzata ritorna false (fail-closed).
 SELECT ok(
-    script.fn_scope_ef_whitelist(
-        (SELECT identita_id FROM _t_id WHERE idx = 1),
+    script.fn_scope_ef_whitelist_via_sr(
+        (SELECT auth_user_id FROM _t_au WHERE idx = 1),
         (SELECT sr_id FROM _t_sr_ru)
     ) = false,
-    '8. Identita attiva con whitelist, target SR non emittente -> false'
+    '10. SR: adapter via_sr, SR non-emittente -> PK NULL -> false'
 );
 
 SELECT * FROM finish();
+ROLLBACK;

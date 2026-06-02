@@ -31,7 +31,7 @@
 
 ### 🎯 Scopo Principale
 
-(rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
+(rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 
 `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id, p_chiudi_contratto_esistente)`
 genera un **contratto DRAFT** da un'offerta commerciale **ACCETTATA**, copiando
@@ -73,7 +73,7 @@ il push aggiunge solo *lock*, *routing* e *rete di sicurezza*.
 - **Eccezioni → `contratti_righe`** + **componenti → `contratti_righe_componenti`**: il batch INSERT di eccezioni è stato convertito in un loop `FOR v_eccezione IN SELECT * FROM offerte_commerciali_eccezioni WHERE offerta_id = p_offerta_id ORDER BY id` che, per ogni eccezione, esegue:
   1. `INSERT INTO contratti_righe (...) RETURNING id INTO v_riga_id` — ottiene il PK della riga appena creata.
   2. `INSERT INTO contratti_righe_componenti (...) SELECT v_riga_id, occ.* FROM offerte_commerciali_eccezioni_componenti occ WHERE occ.eccezione_offerta_id = v_eccezione.id` — copia i componenti.
-  - `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` delle eccezioni inseriti `NULL` su `contratti_righe` (I4 del brief).
+  - `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` delle eccezioni copiati **1:1** su `contratti_righe` (rev5, 2026-06-01). Prima di rev5 venivano forzati a `NULL` perché la sorgente `offerte_commerciali_eccezioni` non aveva le colonne (aggiunte da `20260601-01`): l'approvazione L3 ottenuta in offerta viaggia ora fino al contratto senza riapprovazione (guida §6/§11.3).
   - `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` dei **componenti** copiati **1:1** da `offerte_commerciali_eccezioni_componenti` (preservazione stato approvazione pre-negoziazione).
   - Il loop evita la necessità di correlare eccezione→riga_contratto tramite `ROW_NUMBER + INSERT RETURNING` (non ordinamento garantito).
 - **Utility → `contratti_utilities`** (UPSERT): il trigger

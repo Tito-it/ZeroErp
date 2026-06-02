@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Policy RLS dry-run EF_WHITELIST su anagrafiche.billing_account (Ondata 2).
+# Additiva alle policy portale/shop esistenti (combinazione OR): gate
+# ruolo_applicativo=OPERATORE -> non interferisce con CLIENTE_PORTALE/SHOP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260601-36-create-policy-rls-billing-account-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260601-36-create-policy-rls-billing-account-ef-whitelist
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Policy dry-run rls_billing_account_ef_whitelist: operatore vede solo i
+        billing_account raggiungibili (mapping efba specifico-o-default) dagli
+        emittenti del proprio scope, via adapter fn_scope_ef_whitelist_via_efba.
+        Gate OPERATORE fail-closed; additiva (OR) alle policy portale/shop.
+        Non attiva finche' ENABLE (Ondata 2).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: anagrafiche, tableName: billing_account }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                 WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist_via_efba';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_billing_account_ef_whitelist ON anagrafiche.billing_account;
+
+              CREATE POLICY rls_billing_account_ef_whitelist ON anagrafiche.billing_account
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_efba(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_billing_account_ef_whitelist ON anagrafiche.billing_account IS
+                  'RLS dry-run: operatore vede solo i BA raggiungibili dagli emittenti '
+                  'del proprio scope (adapter via_efba). Additiva (OR) alle policy '
+                  'portale/shop, gate OPERATORE. Non attiva finche ENABLE (Ondata 2).';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_billing_account_ef_whitelist ON anagrafiche.billing_account;

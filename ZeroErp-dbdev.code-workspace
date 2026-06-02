@@ -9,6 +9,7 @@
         "previewLimit": 50,
         "server": "dbdev",
         "port": 5432,
+        "askForPassword": true,
         "driver": "PostgreSQL",
         "name": "zeroerp",
         "database": "zeroerp",

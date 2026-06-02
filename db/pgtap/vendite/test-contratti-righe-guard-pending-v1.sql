@@ -3,13 +3,17 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: Simmetria L3 guard_pending su vendite.contratti_righe
---       Migrations: 20260518-01, 20260518-02
+--       Migrations: 20260518-01, 20260518-02, 20260601-02, 20260601-03
+--       (20260601: guard generalizzato in script.trgfn_righe_guard_pending;
+--        la funzione dedicata vendite.trgfn_contratti_righe_guard_pending
+--        e' stata droppata, il trigger ripuntato al generico.)
 --
 -- Indice test (1..8):
 --   Struttura:
 --   1)  Colonne stato_approvazione_prezzo e pratica_approvazione_prezzo_id
 --       presenti su contratti_righe
---   2)  Funzione trgfn_contratti_righe_guard_pending presente
+--   2)  Trigger trg_contratti_righe_a10_guard_pending_upd usa il generico
+--       script.trgfn_righe_guard_pending
 --   3)  Trigger trg_contratti_righe_a10_guard_pending_upd presente
 --
 --   Comportamento guard (COND: skip se fixture non creata):
@@ -29,23 +33,29 @@ BEGIN;
 -- Setup fixture
 -- ============================================================
 
+-- BA senza tipi_utenze (evita guard tipo/classe), con emittente risolto dalla
+-- stessa funzione usata dalla guard trgfn_contratti_guard_emittente_ba: cosi'
+-- l'emittente_fiscale_id passato e' coerente per costruzione e il trigger
+-- trgfn_contratti_default_emittente salta (GUC vuota in pgTAP).
 CREATE TEMP TABLE tmp_pnd_ctx AS
 SELECT
     ba.id                   AS ba_id,
     ba.istanza_utility_id,
     ba.utility_id,
+    anagrafiche.fn_get_emittente_fiscale_pk(ba.id) AS emittente_fiscale_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT' LIMIT 1) AS id_draft,
     (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE LIMIT 1) AS uom_id
   FROM anagrafiche.billing_account ba
+ WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
  ORDER BY ba.id
  LIMIT 1;
 
 -- Contratto DRAFT per i test (date 2074 per non collidere con altri pgTAP)
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id,
-    stato_doc_contratto_id, valido_dal, valido_al)
+    stato_doc_contratto_id, valido_dal, valido_al, emittente_fiscale_id)
 SELECT 'PGTAP_PND_CNT', c.ba_id, c.istanza_utility_id, c.utility_id,
-       c.id_draft, '2074-01-01'::date, '2074-12-31'::date
+       c.id_draft, '2074-01-01'::date, '2074-12-31'::date, c.emittente_fiscale_id
   FROM tmp_pnd_ctx c;
 
 -- Articolo standalone (tipo_eccezione AGGIUNTA — non richiede listino)
@@ -81,16 +91,24 @@ SELECT ok(
 );
 
 -- ============================================================
--- 2) Funzione trgfn_contratti_righe_guard_pending presente
+-- 2) Trigger guard_pending ripuntato al generico script.trgfn_righe_guard_pending
+--    (la funzione dedicata vendite.trgfn_contratti_righe_guard_pending e' droppata)
 -- ============================================================
 SELECT ok(
     EXISTS (
-        SELECT 1 FROM pg_proc p
-          JOIN pg_namespace n ON n.oid = p.pronamespace
-         WHERE n.nspname = 'vendite'
-           AND p.proname = 'trgfn_contratti_righe_guard_pending'
+        SELECT 1
+          FROM pg_trigger t
+          JOIN pg_class  c ON c.oid = t.tgrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_proc   p ON p.oid = t.tgfoid
+          JOIN pg_namespace pn ON pn.oid = p.pronamespace
+         WHERE n.nspname  = 'vendite'
+           AND c.relname  = 'contratti_righe'
+           AND t.tgname   = 'trg_contratti_righe_a10_guard_pending_upd'
+           AND pn.nspname = 'script'
+           AND p.proname  = 'trgfn_righe_guard_pending'
     ),
-    '2) Funzione trgfn_contratti_righe_guard_pending presente'
+    '2) Trigger guard_pending usa il generico script.trgfn_righe_guard_pending'
 );
 
 -- ============================================================

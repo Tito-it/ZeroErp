@@ -48,6 +48,18 @@ attive e utility (1:1). Il pattern riusa concettualmente
   valorizzati al momento delle proprie future transizioni.
 - **Eccezioni copiate**: solo righe con `attivo IS TRUE` (1:1, senza
   reinterpretazione).
+- **Stato approvazione prezzo carry-forward** (rev2, 2026-06-01): le colonne
+  `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` delle eccezioni
+  (aggiunte da `20260601-01`) sono copiate **1:1** nella nuova revisione, **non**
+  azzerate. Razionale: i gate L1/L2/L3 scattano solo sull'edit BE della riga (non
+  all'emissione/push), quindi lo stato approvazione è l'unico marcatore persistente
+  che un prezzo fuori-soglia è autorizzato/in attesa; azzerarlo lascerebbe un prezzo
+  fuori-policy non marcato, che potrebbe arrivare al contratto senza controllo. Il
+  carry-forward preserva l'invariante "prezzo fuori-policy sempre marcato". L'edit
+  successivo sulla nuova revisione resta governato dal guard
+  [`script.trgfn_righe_guard_pending`](/dbzero/script/funzioni/trgfn_righe_guard_pending)
+  (blocco struttura mentre `PENDING`). *Caveat lifecycle pratica su `PENDING` in
+  revisione SUPERATA: di competenza del dominio approvazioni (livello applicativo).*
 - **Utility copiata**: 1:1, un solo record per offerta (UNIQUE `offerta_id`).
 - **Marcatura padre SUPERATA**: gestita automaticamente dal trigger
   `trg_offerte_commerciali_z90_revisione_ins` (AFTER INSERT, Step 6), non da

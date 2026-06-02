@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260601-16-create-trg-fatture-scadenze-guard-emittente-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260601-16-create-trg-fatture-scadenze-guard-emittente-scope
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Aggancia il write-guard scope emittente a vendite.fatture_scadenze
+        (brief RLS §7, Ondata 1 famiglia fatture). La tabella non ha colonna
+        emittente propria: modalita' 'fattura' su fattura_id (risoluzione via
+        vendite.fatture, speculare alla policy read via_fattura).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: fatture_scadenze }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'trgfn_guard_emittente_scope';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_scadenze_a10_guard_emittente_scope_ins_upd
+                ON vendite.fatture_scadenze;
+
+              CREATE TRIGGER trg_fatture_scadenze_a10_guard_emittente_scope_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.fatture_scadenze
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_guard_emittente_scope(
+                  'fattura', 'fattura_id'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_scadenze_a10_guard_emittente_scope_ins_upd
+                ON vendite.fatture_scadenze;

@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Policy RLS dry-run EF_WHITELIST su vendite.fatture_scadenze (via fattura).
+# La tabella non ha colonna emittente propria: usa l'adapter via_fattura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260601-32-create-policy-rls-fatture-scadenze-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260601-32-create-policy-rls-fatture-scadenze-ef-whitelist
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Policy dry-run rls_fatture_scadenze_ef_whitelist: operatore vede solo
+        scadenze la cui fattura ha emittente in whitelist (adapter via_fattura
+        fn_scope_ef_whitelist_via_fattura). Gate OPERATORE fail-closed.
+        Ondata 1 (famiglia fatture). Non attiva finche' ENABLE.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists: { schemaName: vendite, tableName: fatture_scadenze, columnName: fattura_id }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                 WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist_via_fattura';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_scadenze_ef_whitelist ON vendite.fatture_scadenze;
+
+              CREATE POLICY rls_fatture_scadenze_ef_whitelist ON vendite.fatture_scadenze
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          fattura_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_fatture_scadenze_ef_whitelist ON vendite.fatture_scadenze IS
+                  'RLS dry-run: operatore vede solo scadenze la cui fattura ha emittente in '
+                  'whitelist (adapter via_fattura -> canonica). Non attiva finche ENABLE.';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_scadenze_ef_whitelist ON vendite.fatture_scadenze;
