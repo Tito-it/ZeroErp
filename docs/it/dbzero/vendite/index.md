@@ -249,6 +249,7 @@
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
 
 ## 🔍 Views
+- [vw_contratti_lista](views/vw_contratti_lista.md)
 - [vw_offerte_commerciali_list](views/vw_offerte_commerciali_list.md) — (rev 2026-05-27 — rev1)
 - [vw_preventivi](views/vw_preventivi.md) — (rev 15-05-2026)
 - [vw_preventivi_list](views/vw_preventivi_list.md) — (latest review 15-05-2026 — rev4)

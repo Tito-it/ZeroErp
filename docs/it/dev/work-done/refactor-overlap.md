@@ -232,13 +232,24 @@ Prima **diagnosticare** (H1/H2/H3, §2.4). Poi:
   esiste solo al push). L'EXCLUDE da solo dà un errore generico; il guard
   applicativo migliora la UX, l'EXCLUDE resta la difesa dura (defense-in-depth).
 
-### 3.4 Decisione di modello (per Tid + DB)
+### 3.4 Decisione di modello — CHIUSA e IMPLEMENTATA (2026-06-02)
 
-Lo scope del filtro parziale: includere i **DRAFT** nel vincolo (oggi su
-contratti il filtro è `WHERE NOT is_abortito_snapshot`, quindi DRAFT incluso)?
-Se si vuole poter **preparare** un contratto futuro sovrapposto in DRAFT prima
-della successione, un EXCLUDE immediato lo vieta → valutare lo scope o un
-constraint `DEFERRABLE`. Da chiarire con il flusso di successione.
+Lo scope del filtro parziale: i **DRAFT vanno ESCLUSI** dal vincolo (esclusività
+solo all'attivazione). Decisione di Tid; spec nel brief "Overlap contratti:
+escludere i DRAFT". **Implementato** con `20260602-17..22`:
+
+- flag data-driven `config.stati_doc_contratti.is_bozza` (simmetrico a `is_abortito`);
+- snapshot di riga `contratti.is_draft_snapshot` + colonna **GENERATED**
+  `partecipa_overlap_snapshot` (`= NOT abortito AND NOT draft`), fonte UNICA del
+  predicato per EXCLUDE **e** `fn_contratto_sovrapposto`;
+- EXCLUDE → `WHERE (partecipa_overlap_snapshot)`; framework `automazione_overlap`
+  allineato (anti-regressione);
+- test pgTAP `test-contratti-overlap-draft-escluso-v1` (8/8): due DRAFT sovrapposti
+  ammessi, DRAFT vs ATTIVO ammesso, attivazione sovrapposta bloccata (`23P01`).
+
+Niente `DEFERRABLE`: con close-before-activate nella stessa transazione l'EXCLUDE
+immediato basta. **Ambito** resta nella chiave (COMMERCIO/COMMODITY coesistono, §2.4).
+A valle: guard applicativo BE proattivo (§3.3) ora può usare la semantica nuova.
 
 ### 3.5 Anti-regressione (per non ricascarci)
 

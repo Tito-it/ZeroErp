@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Brief "Overlap contratti: escludere i DRAFT dal vincolo".
+# Allinea la config del framework dbops.automazione_overlap (riga vendite.contratti)
+# al nuovo predicato dell'EXCLUDE: where_predicate da 'NOT is_abortito_snapshot' a
+# 'partecipa_overlap_snapshot'. ESSENZIALE per l'anti-regressione: senza, il runner
+# notturno automations_overlap ricreerebbe il constraint col predicato VECCHIO (DRAFT
+# di nuovo inclusi) alla prima auto-guarigione dopo un drop.
+#
+# UPDATE idempotente (la riga esiste, inserita in 20260602-10).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260602-22-update-automazione-overlap-contratti-partecipa-mctit.yaml
+
+  - changeSet:
+      id: 20260602-22-update-automazione-overlap-contratti-partecipa
+      author: mctit
+      comment: >
+        dbops.automazione_overlap (vendite.contratti): where_predicate ->
+        'partecipa_overlap_snapshot' (allineato al nuovo EXCLUDE, DRAFT esclusi).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: dbops
+                tableName: automazione_overlap
+                columnName: where_predicate
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: partecipa_overlap_snapshot
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE dbops.automazione_overlap
+                 SET where_predicate = 'partecipa_overlap_snapshot'
+               WHERE target_schema = 'vendite'
+                 AND target_table  = 'contratti';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              UPDATE dbops.automazione_overlap
+                 SET where_predicate = 'NOT is_abortito_snapshot'
+               WHERE target_schema = 'vendite'
+                 AND target_table  = 'contratti';

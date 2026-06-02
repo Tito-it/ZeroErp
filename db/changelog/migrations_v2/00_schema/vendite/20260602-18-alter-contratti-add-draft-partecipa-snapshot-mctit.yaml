@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Brief "Overlap contratti: escludere i DRAFT dal vincolo".
+# Aggiunge a vendite.contratti:
+#   - is_draft_snapshot   : snapshot di config.stati_doc_contratti.is_bozza
+#                           (mantenuto da trigger, simmetrico a is_abortito_snapshot);
+#   - partecipa_overlap_snapshot : colonna GENERATED = NOT abortito AND NOT draft.
+#     E' la FONTE UNICA del predicato di partecipazione all'overlap, usata sia
+#     dall'EXCLUDE sia da fn_contratto_sovrapposto (niente duplicazione del
+#     predicato tra i due oggetti). is_abortito_snapshot resta invariato (usato dal BE).
+#
+# Backfill is_draft_snapshot da config.is_bozza (settato in 20260602-17, stessa
+# fase 00_schema). partecipa_overlap_snapshot si ricalcola di conseguenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260602-18-alter-contratti-add-draft-partecipa-snapshot-mctit.yaml
+
+  - changeSet:
+      id: 20260602-18-alter-contratti-add-draft-partecipa-snapshot
+      author: mctit
+      comment: >
+        Aggiunge is_draft_snapshot (snapshot di stati_doc_contratti.is_bozza) e la
+        colonna GENERATED partecipa_overlap_snapshot (= NOT abortito AND NOT draft)
+        a vendite.contratti. Backfill is_draft_snapshot dagli stati correnti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_contratti
+                columnName: is_bozza
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: is_abortito_snapshot
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: contratti
+                    columnName: is_draft_snapshot
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                  ADD COLUMN is_draft_snapshot BOOLEAN NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN vendite.contratti.is_draft_snapshot IS
+                  'Snapshot denormalizzato di config.stati_doc_contratti.is_bozza. '
+                  'Mantenuto dal trigger BEFORE sync snapshots. Un contratto in bozza '
+                  'NON partecipa al vincolo anti-overlap. Non modificare direttamente. '
+                  'rev 2026-06-02.';
+
+              -- Backfill dallo stato corrente (is_bozza gia' settato in 20260602-17)
+              UPDATE vendite.contratti c
+                 SET is_draft_snapshot = sdc.is_bozza
+                FROM config.stati_doc_contratti sdc
+               WHERE sdc.id = c.stato_doc_contratto_id;
+
+              -- Fonte UNICA della partecipazione all'overlap (GENERATED STORED):
+              -- usata da ex_contratti_no_overlap e da fn_contratto_sovrapposto.
+              ALTER TABLE vendite.contratti
+                  ADD COLUMN partecipa_overlap_snapshot BOOLEAN
+                      GENERATED ALWAYS AS (NOT is_abortito_snapshot AND NOT is_draft_snapshot) STORED;
+
+              COMMENT ON COLUMN vendite.contratti.partecipa_overlap_snapshot IS
+                  'GENERATED: TRUE se il contratto partecipa all''esclusivita'' '
+                  'anti-overlap (NOT abortito AND NOT draft). Fonte unica del '
+                  'predicato per ex_contratti_no_overlap e fn_contratto_sovrapposto. '
+                  'rev 2026-06-02.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                  DROP COLUMN IF EXISTS partecipa_overlap_snapshot;
+              ALTER TABLE vendite.contratti
+                  DROP COLUMN IF EXISTS is_draft_snapshot;

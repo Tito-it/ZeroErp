@@ -61,6 +61,7 @@ In tutti gli altri casi (no preferenza, `preset_base_id IS NULL`, snapshot allin
   - `identificatore` → `fissata = TRUE` forzato
   - `BLOCCATO` → colonna rimossa dall'output
   - `LETTURA` → `esportabile = FALSE`
+  - `priorita` letta **fresca** da `ui.lista_colonna` (attributo globale di catalogo: non dal candidato preset/preferenza) e aggiunta al JSONB colonna
 
 **6. Output JSONB** — restituisce la struttura pronta per il frontend.
 
@@ -75,12 +76,14 @@ JSONB con le chiavi:
 
 | Chiave | Tipo | Descrizione |
 |--------|------|-------------|
-| `colonne` | `jsonb[]` | Array di colonne con `codice`, `ordine`, `larghezza`, `visibile`, `fissata`, `esportabile`, `tipo_colonna` |
+| `colonne` | `jsonb[]` | Array di colonne con `codice`, `ordine`, `larghezza`, `visibile`, `fissata`, `esportabile`, `tipo_colonna`, `etichetta_i18n_key`, `priorita` |
 | `ordinamento` | `jsonb[]` | Array `[{"col": "...", "dir": "asc/desc"}]` |
 | `filtri` | `jsonb` | Filtri preimpostati |
 | `pagina_dimensione` | `integer` | Righe per pagina |
 | `colonne_nuove` | `integer` | Numero di colonne aggiunte dal merge automatico (>0 = badge "aggiornato" nel frontend) |
 | `preset_aggiornato` | `boolean` | DEF-2: `TRUE` se il preset di base è stato modificato dopo lo snapshot della preferenza utente E l'utente non ha ancora ignorato l'aggiornamento (o il preset è cambiato di nuovo dopo l'ultimo ignore). `FALSE` in tutti gli altri casi: nessuna preferenza, `preset_base_id IS NULL`, snapshot allineato, ignore attivo. |
+
+> **Campo per colonna `priorita`** (in ogni elemento di `colonne`): `SMALLINT`, peso di permanenza per il **ritiro dinamico** lato FE (packing a somma; più alto = si ritira per ultima). Letto **fresco** da `ui.lista_colonna` ad ogni risoluzione — non dal candidato preset/preferenza, quindi non snapshottato. Vedi [ui.lista_colonna](/dbzero/ui/tabelle/lista_colonna) per l'algoritmo di ritiro.
 
 ## Dipendenze
 
