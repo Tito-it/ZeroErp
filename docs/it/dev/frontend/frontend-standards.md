@@ -204,6 +204,37 @@ Ogni schermata di elenco segue questo schema fisso:
 - **Scroll orizzontale** gestito globalmente da `.app-datatable` — non impostare `table-style="min-width: ..."` nelle singole liste salvo eccezioni documentate. Le soglie per 8/10/12 colonne partono dal root `.app-datatable`, così restano valide anche quando PrimeVue ricalcola il container scrollable dopo il caricamento dei record.
 - **Liste annidate** dentro drawer, expansion row o sub-pannelli devono aggiungere `app-datatable--inner` oltre a `app-datatable`: restano compatte e sono escluse dalle soglie larghezza delle liste principali. Esempio: righe preventivo e pannello componenti BoM.
 
+### Ritiro dinamico colonne — `useResponsiveColumns` (responsive, ResizeObserver)
+
+Le liste configurabili (`<ListaConfigurabile>`) **ritirano dinamicamente** le
+colonne meno prioritarie in una riga di espansione quando lo spazio non basta
+(tipicamente all'**apertura della sidebar**), invece di attivare la scrollbar
+orizzontale. È attivo di default (`prop responsive`, default `true`): tutte le
+liste configurabili ne beneficiano (omogeneità UI). Building block:
+`src/core/composables/useResponsiveColumns.js`.
+
+**Come funziona (packing a somma):** ogni colonna contribuisce con la sua
+`larghezza_default` (catalogo); quando la somma supera la larghezza reale del
+contenitore si ritira la colonna a `priorita` più bassa (catalogo
+`ui.lista_colonna.priorita`, esposta da `fn_resolve_lista_config`; tiebreaker
+`ordine_default` = la più a destra per prima), finché la somma rientra. Le
+colonne `tipo_colonna IN ('identificatore','azione')` e quelle `fissata` non si
+ritirano mai. Le ritirate finiscono nell'expansion row riusando gli slot
+`cell-{codice}` del caller (zero dati persi, resa identica). Niente
+`larghezza_min`: la soglia riusa `larghezza_default`. Le liste responsive sono
+**escluse dalle soglie min-width 8/10/12 colonne** (`.app-datatable--responsive`
+in `main.css`): il packing garantisce già che le colonne entrino.
+
+> **⚠️ DEROGA DOCUMENTATA allo standard "responsive CSS-first, niente JS di
+> detection".** Le media query CSS reagiscono solo a `window.innerWidth`, ma
+> l'apertura della sidebar **non cambia la larghezza della finestra** — restringe
+> solo l'area contenuto. Le media query sono **cieche** a questo evento, e la
+> scrollbar appare proprio lì. L'unico modo per reagire alla larghezza **reale
+> del contenitore** (che cambia sia col viewport sia con la sidebar) è osservarla
+> con un `ResizeObserver`. **Non è una scelta di comodo**: l'alternativa
+> puramente-CSS per questo caso non esiste. La deroga è circoscritta a questo
+> building block; non legittima JS-detection altrove.
+
 ### Colonna azioni di riga — `RowActionsMenu` (responsive)
 
 Le azioni secondarie su una riga (apri sub-drawer, disattiva, clona, ecc.) vanno

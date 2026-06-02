@@ -18,14 +18,9 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params
 from apps.core.api.success_responses import success_response
-from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.services.fornitori_service import FornitoriService
-from apps.ui.db.ui_repository import UiRepository
-from apps.ui.services.lista_export_service import (
-    EXPORT_MAX_ROWS,
-    ListaExportService,
-)
-from apps.ui.services.ui_service import UiService
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 
 
 # Codice della lista nel registry `ui.lista_definizione`. Stabile per
@@ -192,13 +187,7 @@ class FornitoriExportView(DomainAPIView):
     #        per intercettare overflow: se il dataset filtrato supera il
     #        cap, blocca senza serializzare.
     def get(self, request: Request) -> HttpResponse:
-        fmt = (request.query_params.get("formato") or "csv").strip().lower()
-        ErrorManager.require(
-            fmt in ("csv", "xlsx"),
-            code="E_UI_EXPORT_FORMAT_INVALID",
-            message="Formato export non supportato.",
-            detail=f"format='{fmt}', ammessi=['csv','xlsx']",
-        )
+        fmt = parse_export_format(request)
 
         p = parse_list_params(
             request.query_params,
@@ -218,45 +207,15 @@ class FornitoriExportView(DomainAPIView):
             order_by=p["order_by"],
             order_dir=p["order_dir"],
         )
-        ErrorManager.require(
-            int(total or 0) <= EXPORT_MAX_ROWS,
-            code="E_UI_EXPORT_LIMIT_EXCEEDED",
-            message="Export oltre il limite consentito.",
-            detail=(
-                f"matched={total}, max={EXPORT_MAX_ROWS}. "
-                "Raffinare i filtri."
-            ),
-            context={"matched": total, "limit": EXPORT_MAX_ROWS},
-        )
-
-        # Colonne export coerenti con la DataTable a video: combinazione
-        # configurazione runtime (preferenza+preset+permessi) + metadati
-        # catalogo (etichetta, tipo_dato, formato, esportabile).
-        config = UiService().get_lista_config(
-            request.user, _LISTA_CODICE_FORNITORI,
-        )
-        metadata = UiRepository().list_colonne_by_codice(
-            _LISTA_CODICE_FORNITORI,
-        )
-        colonne = ListaExportService.select_colonne_visibili_da_config(
-            config, metadata,
-        )
-
         filtri_applicati = svc.resolve_filtri_export_label(
             search=p["search"],
             stato_fornitore_id=stato_id,
         )
-
-        body, content_type, filename = ListaExportService().render(
+        return build_export_response(
+            request,
             lista_codice=_LISTA_CODICE_FORNITORI,
-            colonne=colonne,
-            righe=results,
+            results=results,
+            total=total,
             filtri_applicati=filtri_applicati,
-            format=fmt,
+            fmt=fmt,
         )
-
-        response = HttpResponse(body, content_type=content_type)
-        response["Content-Disposition"] = (
-            f'attachment; filename="{filename}"'
-        )
-        return response

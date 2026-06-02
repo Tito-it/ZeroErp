@@ -38,7 +38,6 @@ import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
@@ -208,10 +207,22 @@ function onRowSelect(event) {
 }
 
 function onArticoloSelected(item) {
-  // I padri compositi sono pre-filtrati dal lookup (filtri.compositi='escludi'):
-  // `listini_righe` non li ammette (trigger DB `E_LISTINO_RIGA_COMPOSITO_VIETATO`).
-  // I bundle prezzi si gestiscono dalla sezione "Prezzi compositi" in cima
-  // alla lista, non da questo form.
+  // Porta unica "Nuovo": il lookup ammette sia articoli semplici sia padri
+  // compositi. Branching sulla selezione:
+  //   - composito → chiudo il form inline (non ammesso in `listini_righe`,
+  //     trigger DB `E_LISTINO_RIGA_COMPOSITO_VIETATO`) e apro il
+  //     ComponentiDialog dei prezzi bundle (`listini_righe_componenti`).
+  //   - semplice → form prezzo+UoM standard.
+  if (item?.is_composito) {
+    closeForm()
+    openBundleDialog({
+      id: item.id,
+      codice: item.codice,
+      descrizione: item.descrizione,
+      is_composito: true,
+    })
+    return
+  }
   form.value.articolo_id = item?.id || null
   form.value.uom_id = null
   // Create: autopick base.
@@ -556,7 +567,7 @@ const onClose = useDrawerClose(emit)
             v-model="form.articolo_obj"
             @update:modelValue="onArticoloSelected"
             :disabled="formMode === 'edit'"
-            :filtri="{ soloComponenti: 'escludi', compositi: 'escludi' }"
+            :filtri="{ soloComponenti: 'escludi', compositi: 'qualsiasi' }"
           />
         </div>
 
@@ -580,10 +591,7 @@ const onClose = useDrawerClose(emit)
           </div>
         </div>
 
-        <div class="app-form-footer">
-          <Button :label="t('common.cancel')" severity="secondary" @click="closeForm" />
-          <Button :label="t('common.save')" :disabled="!canSave || loading" :loading="loading" @click="onSave" />
-        </div>
+        <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="closeForm" />
       </template>
 
       <FormFooter v-if="!formMode" close-only @cancel="onClose" />

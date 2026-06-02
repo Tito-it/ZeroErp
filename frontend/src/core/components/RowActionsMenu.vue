@@ -45,6 +45,11 @@ const props = defineProps({
   tooltip: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
   disableWhenInactive: { type: Boolean, default: true },
+  // Forza la variante kebab anche su desktop (es. liste responsive con spazio
+  // stretto: comprimere le azioni recupera larghezza prima di ritirare colonne).
+  // Lo switch di default resta CSS-first (touch / <1024px); questo prop lo
+  // sovrascrive via classi modificatrici (vedi .app-row-actions-*--* in main.css).
+  forceCompact: { type: Boolean, default: false },
 })
 
 const { t } = useI18n()
@@ -132,7 +137,10 @@ function toggle(event) {
 
 <template>
   <!-- Desktop: bottoni inline icon-only con tooltip. -->
-  <span class="app-row-actions-inline">
+  <span
+    class="app-row-actions-inline"
+    :class="{ 'app-row-actions-inline--off': forceCompact }"
+  >
     <Button
       v-for="a in visibleActions"
       :key="a.key"
@@ -149,7 +157,10 @@ function toggle(event) {
   </span>
 
   <!-- Tablet / touch: kebab menu. -->
-  <span class="app-row-actions-compact">
+  <span
+    class="app-row-actions-compact"
+    :class="{ 'app-row-actions-compact--on': forceCompact }"
+  >
     <Button
       :icon="MANAGE_ICONS.KEBAB"
       text

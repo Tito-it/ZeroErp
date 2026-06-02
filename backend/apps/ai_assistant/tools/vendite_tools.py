@@ -96,7 +96,7 @@ class CercaContrattiTool(AITool):
     _FIELD_MAP = {
         "id": "id",
         "numero": "numero",
-        "cliente": "ba_ragione_sociale",
+        "cliente": "ragione_sociale_completa",
         "cliente_codice": "ba_codice",
         "utility": "utility_codice",
         "ambito": "ambito",

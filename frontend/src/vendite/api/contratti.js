@@ -11,6 +11,12 @@ export function listContratti(params = {}) {
   return api.get(`${BASE}/`, { params })
 }
 
+// Export CSV/Excel (DEF-1). Stessi filtri della lista; `responseType: blob`
+// per il download. Il param `formato` (italiano) evita il magic `format` DRF.
+export function exportContratti(params = {}) {
+  return api.get(`${BASE}/export/`, { params, responseType: 'blob' })
+}
+
 export function getContratto(id) {
   return api.get(`${BASE}/${id}/`)
 }
