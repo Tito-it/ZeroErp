@@ -289,7 +289,8 @@ class PermissionResolverAzioneTests(TestCase):
 
 
 class PermissionResolverEmittentiTests(TestCase):
-    """Test per get_emittenti_ids — delegata a script.fn_get_emittenti_scope."""
+    """Test per get_emittenti_ids — ora alias guarded di get_emittenti_pk_ids
+    (delega a script.fn_get_emittenti_scope_pk_ids; fix B5)."""
 
     # Scopo: fn ritorna NULL -> None (nessuna restrizione).
     @patch(_CONN)
@@ -312,13 +313,14 @@ class PermissionResolverEmittentiTests(TestCase):
         result = PermissionResolver.get_emittenti_ids(_mock_user())
         self.assertEqual(result, [1, 3, 5])
 
-    # Scopo: Verifica parametri SQL corretti.
+    # Scopo: Verifica delega alla fn guarded (fix B5): get_emittenti_ids
+    # ora interroga fn_get_emittenti_scope_pk_ids, non la legacy no-guard.
     @patch(_CONN)
     def test_emittenti_correct_params(self, mock_conn):
         cursor = _setup_cursor(mock_conn, (None,))
         PermissionResolver.get_emittenti_ids(_mock_user(99))
         cursor.execute.assert_called_once_with(
-            "SELECT script.fn_get_emittenti_scope(%s)", [99]
+            "SELECT script.fn_get_emittenti_scope_pk_ids(%s)", [99]
         )
 
 

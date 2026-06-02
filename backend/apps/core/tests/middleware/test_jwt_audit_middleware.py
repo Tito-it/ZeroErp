@@ -17,12 +17,16 @@ Indice test eseguiti:
 5) test_middleware_seeds_perms_cache
 6) test_middleware_seeds_perms_cache_from_redis
 7) test_process_view_does_not_touch_db
-8) test_process_response_resets_gucs_when_flag_set
-9) test_process_response_no_flag_no_reset
+8) test_process_request_resets_gucs_on_reused_connection
+9) test_process_request_skips_when_no_connection
+10) test_process_request_skips_non_api
+11) test_process_request_fail_closed_on_db_error
 """
 
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
+
+from django.db import DatabaseError
 
 from apps.core.middleware.jwt_audit_middleware import JwtAuditMiddleware
 
@@ -116,24 +120,24 @@ class JwtAuditMiddlewareTests(TestCase):
         self.middleware.process_view(request, None, (), {})
         mock_conn.cursor.assert_not_called()
 
-    # Scopo: process_response resetta le GUC in 1 sola execute SE
-    # JwtAuditAuthentication ha settato il flag _zeroerp_jwt_guc_set.
+    # Scopo: process_request azzera i 5 GUC in 1 sola execute quando
+    # esiste gia' una connessione (potenzialmente sporca di una request
+    # precedente con CONN_MAX_AGE>0). Incondizionato rispetto all'auth.
     @patch("apps.core.middleware.jwt_audit_middleware.connection")
-    def test_process_response_resets_gucs_when_flag_set(self, mock_conn):
+    def test_process_request_resets_gucs_on_reused_connection(self, mock_conn):
+        mock_conn.connection = object()  # connessione gia' stabilita (riusata)
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
 
-        request = _mock_request()
-        request._zeroerp_jwt_guc_set = True  # simula auth class eseguita
-        response_in = MagicMock()
-        response_out = self.middleware.process_response(request, response_in)
+        request = _mock_request()  # nessun marker auth: deve resettare comunque
+        result = self.middleware.process_request(request)
 
-        self.assertIs(response_out, response_in)
+        self.assertIsNone(result)
         self.assertEqual(mock_cursor.execute.call_count, 1)
         sql = mock_cursor.execute.call_args[0][0]
         self.assertIn("set_config", sql)
-        # Reset simmetrico dei 5 GUC settati da JwtAuditAuthentication.
+        # Reset dei 5 GUC settati da JwtAuditAuthentication.
         self.assertIn("app.jwt_user", sql)
         self.assertIn("app.current_user_id", sql)
         self.assertIn("app.current_identita_id", sql)
@@ -142,15 +146,41 @@ class JwtAuditMiddlewareTests(TestCase):
         self.assertIn("''", sql)
         self.assertIn("false", sql)
 
-    # Scopo: process_response NON tocca il DB se il flag non e' settato
-    # (request anonima oppure auth fallita). Critico per
-    # SimpleTestCase API: senza questa condizione tutti i test API
-    # andrebbero in DatabaseOperationForbidden.
+    # Scopo: connessione NON ancora aperta (fresca → GUC gia' puliti) →
+    # nessun accesso DB. Critico per SimpleTestCase API: senza questo
+    # gate i test API senza DB andrebbero in DatabaseOperationForbidden.
     @patch("apps.core.middleware.jwt_audit_middleware.connection")
-    def test_process_response_no_flag_no_reset(self, mock_conn):
+    def test_process_request_skips_when_no_connection(self, mock_conn):
+        mock_conn.connection = None  # nessuna connessione stabilita
         request = _mock_request()
-        # nessun _zeroerp_jwt_guc_set sulla request
-        response_in = MagicMock()
-        response_out = self.middleware.process_response(request, response_in)
-        self.assertIs(response_out, response_in)
+        result = self.middleware.process_request(request)
+        self.assertIsNone(result)
         mock_conn.cursor.assert_not_called()
+
+    # Scopo: path non-/api/ → nessun reset (e nessun accesso DB).
+    @patch("apps.core.middleware.jwt_audit_middleware.connection")
+    def test_process_request_skips_non_api(self, mock_conn):
+        mock_conn.connection = object()
+        request = _mock_request(path="/admin/")
+        result = self.middleware.process_request(request)
+        self.assertIsNone(result)
+        mock_conn.cursor.assert_not_called()
+
+    # Scopo: FAIL-CLOSED — se il reset GUC fallisce, la request NON viene
+    # servita (500), per non procedere con uno scope ereditato.
+    @patch("apps.core.middleware.jwt_audit_middleware.connection")
+    def test_process_request_fail_closed_on_db_error(self, mock_conn):
+        mock_conn.connection = object()
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = DatabaseError("boom")
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        request = _mock_request()
+        result = self.middleware.process_request(request)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.status_code, 500)
+        body = result.json() if hasattr(result, "json") else {}
+        if body:
+            self.assertEqual(body["error"]["code"], "E_GUC_RESET_FAILED")

@@ -3,10 +3,11 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Middleware Django per le request `/api/*`. Tre responsabilita:
-#        1) Pre-load cache permessi Redis L2 sulla request
-#        2) Rifiuto early DISABILITATO con 403
-#        3) Reset simmetrico delle GUC PG settate da
-#           JwtAuditAuthentication (apps/core/api/jwt_audit_authentication.py).
+#        1) Reset GUC PG d'identita all'INIZIO di ogni richiesta /api/
+#           (process_request): lavagna pulita prima dell'auth, fail-closed.
+#           Chiude il leak cross-request su connessioni persistenti.
+#        2) Pre-load cache permessi Redis L2 sulla request (process_view)
+#        3) Rifiuto early DISABILITATO con 403 (process_view)
 #
 #        NOTA: la propagazione delle GUC `app.jwt_user` /
 #        `app.current_user_id` non avviene PIU' in questo middleware
@@ -23,6 +24,7 @@ from django.db import DatabaseError, connection
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
+from apps.core.api.jwt_audit_authentication import JWT_GUC_RESET_SQL
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_DISABILITATO
 from apps.core.services.permissions_cache import load_user_cache
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -32,26 +34,29 @@ logger = logging.getLogger(__name__)
 
 
 class JwtAuditMiddleware(MiddlewareMixin):
-    """Pre-load cache permessi, rifiuto DISABILITATO, reset GUC.
+    """Reset GUC d'identita, pre-load cache permessi, rifiuto DISABILITATO.
 
-    Per le richieste ``/api/`` di utenti autenticati:
+    Per ogni richiesta ``/api/`` (anche anonima):
 
-    1. Pre-carica la cache permessi da Redis L2 su
+    1. ``process_request`` azzera i 5 GUC PG d'identita (``app.jwt_user``,
+       ``app.current_user_id``, ``app.current_identita_id``,
+       ``app.ruolo_applicativo``, ``app.soggetto_ruolo_id``) **prima**
+       dell'auth e di ogni query. Reset incondizionato (non dipende dal
+       marker auth) e FAIL-CLOSED (500 se non riesce). Chiude il leak
+       cross-request su connessioni persistenti (``CONN_MAX_AGE > 0`` /
+       pooling): una richiesta non eredita piu' i GUC della precedente
+       sulla stessa connessione. Sostituisce il vecchio reset di fine
+       richiesta (best-effort, che falliva verso il leak).
+
+    Per le richieste ``/api/`` di utenti autenticati (``process_view``):
+
+    2. Pre-carica la cache permessi da Redis L2 su
        ``request._zeroerp_perms_cache``, riusata da
        ``ZeroERPPermission._get_cache()`` senza query aggiuntive.
-    2. Rifiuta immediatamente gli utenti con ``ruolo_applicativo = DISABILITATO``
+    3. Rifiuta immediatamente gli utenti con ``ruolo_applicativo = DISABILITATO``
        restituendo 403, prima che la request raggiunga la view.
 
-    Per tutte le request:
-
-    3. ``process_response`` resetta le GUC PG ``app.jwt_user`` e
-       ``app.current_user_id`` SE la auth class le ha settate (marker
-       ``request._zeroerp_jwt_guc_set``). Cleanup simmetrico, defensive
-       contro futuri scenari ``CONN_MAX_AGE > 0`` o pgbouncer
-       transaction-mode dove le GUC potrebbero leak fra request sulla
-       stessa connessione.
-
-    **Le GUC NON vengono settate qui**: la propagazione e' fatta da
+    **Le GUC reali NON vengono settate qui**: la propagazione e' fatta da
     ``apps.core.api.jwt_audit_authentication.JwtAuditAuthentication``
     durante ``authenticate()`` del flusso DRF, perche' a ``process_view``
     time ``request.user`` e' AnonymousUser per le request JWT (DRF
@@ -112,31 +117,58 @@ class JwtAuditMiddleware(MiddlewareMixin):
             payload["meta"] = meta
         return JsonResponse(payload, status=403)
 
-    # Scopo: Reset simmetrico delle GUC PG settate da
-    # JwtAuditAuthentication. Resetta solo se la auth class ha
-    # impostato il marker `_zeroerp_jwt_guc_set` sulla request.
-    # Defense-in-depth contro leak fra request in scenari futuri
-    # con CONN_MAX_AGE > 0 o connection pooling esterno.
-    def process_response(
-        self, request: HttpRequest, response: HttpResponse
-    ) -> HttpResponse:
-        if not getattr(request, "_zeroerp_jwt_guc_set", False):
-            return response
+    # Scopo: lavagna pulita dei GUC d'identita all'INIZIO di ogni
+    # richiesta `/api/`, PRIMA che la DRF auth class (JwtAuditAuthentication)
+    # li ripopoli e prima di qualunque query della view.
+    #
+    # Perche' all'inizio e non alla fine: i GUC sono session-scoped
+    # (set_config(..., is_local=false)) e con CONN_MAX_AGE>0 / pooling le
+    # connessioni vengono riusate fra richieste. Un reset di FINE richiesta
+    # e' best-effort (saltato se process_response non gira: eccezione a
+    # valle, crash, ritorno al pool) e fallisce verso il LEAK. Il reset di
+    # INIZIO garantisce che ogni richiesta parta da vuoto a prescindere da
+    # com'e' finita la precedente sulla stessa connessione.
+    #
+    # Incondizionato: azzera anche per le richieste anonime (che NON
+    # passano da set_jwt_gucs) — altrimenti erediterebbero i GUC della
+    # richiesta autenticata precedente. Dopo il reset, l'auth class
+    # ripopola i valori reali per gli autenticati; gli anonimi restano
+    # vuoti (fail-closed lato RLS).
+    #
+    # FAIL-CLOSED: se il reset non riesce, la richiesta NON viene servita
+    # (500). Meglio un errore che servire dati con uno scope ereditato.
+    #
+    # Gate `connection.connection is not None`: si resetta SOLO se esiste
+    # gia' una connessione stabilita (quindi potenzialmente "sporca" di
+    # GUC di una richiesta precedente con CONN_MAX_AGE>0). Una connessione
+    # NUOVA ha per definizione i GUC puliti (sessione PG fresca): non c'e'
+    # nulla da azzerare. Questo gate e' al tempo stesso (a) corretto — il
+    # leak vive solo sulle connessioni riusate — e (b) test-safe: nei test
+    # `SimpleTestCase` senza DB la connessione non e' mai aperta, quindi il
+    # middleware non la tocca e non scatta DatabaseOperationForbidden. NON
+    # e' un gate sull'auth: una richiesta anonima su connessione riusata
+    # viene comunque ripulita (fail-closed sul leak).
+    def process_request(self, request: HttpRequest) -> HttpResponse | None:
+        if not request.path.startswith("/api/"):
+            return None
+        if connection.connection is None:
+            return None  # connessione fresca → GUC gia' puliti
         try:
             with connection.cursor() as cursor:
-                # Scopo: Reset simmetrico dei 5 GUC settati da
-                # set_jwt_gucs — mantenere l'elenco allineato.
-                cursor.execute(
-                    "SELECT set_config('app.jwt_user',            '', false), "
-                    "       set_config('app.current_user_id',     '', false), "
-                    "       set_config('app.current_identita_id', '', false), "
-                    "       set_config('app.ruolo_applicativo',   '', false), "
-                    "       set_config('app.soggetto_ruolo_id',   '', false)"
-                )
+                cursor.execute(JWT_GUC_RESET_SQL)
         except DatabaseError:
-            # Cleanup best-effort: DB irraggiungibile non deve rompere
-            # la response (la connessione si chiude comunque, GUC perse).
-            logger.warning(
-                "jwt_audit_middleware.guc_reset_failed", exc_info=True
+            logger.error(
+                "jwt_audit_middleware.guc_reset_at_start_failed path=%s",
+                request.path,
+                exc_info=True,
             )
-        return response
+            return JsonResponse(
+                {
+                    "error": {
+                        "code": "E_GUC_RESET_FAILED",
+                        "message": "Errore interno di sicurezza sessione.",
+                    }
+                },
+                status=500,
+            )
+        return None
