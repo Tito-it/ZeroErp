@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Sposta il binding di trgfn_articoli_componenti_guard_iva da solo-INSERT a
+# INSERT OR UPDATE OF attivo, per intercettare la riattivazione del legame.
+#
+# Coppia con 20260603-01 (corpo funzione esteso alla riattivazione). Il vecchio
+# trigger trg_articoli_componenti_a10_guard_iva_bom_ins viene rinominato
+# (drop + create) in trg_articoli_componenti_a10_guard_iva_bom_ins_upd.
+# prodotto_id/componente_id restano immutabili (block_modifica_struttura): qui
+# serve solo il fronte UPDATE OF attivo, non l'intero UPDATE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260603-02-recreate-trg-articoli-componenti-guard-iva-ins-upd-mctit.yaml
+
+  - changeSet:
+      id: 20260603-02-recreate-trg-articoli-componenti-guard-iva-ins-upd
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Ricrea il trigger della guardia IVA come BEFORE INSERT OR UPDATE OF attivo
+        (nuovo nome _ins_upd), sostituendo il precedente solo-INSERT _ins. Necessario
+        per far scattare la guardia anche sulla riaccensione del legame (attivo
+        FALSE->TRUE) e chiudere alla sorgente il percorso che generava BoM attive a
+        IVA discordante.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'catalogo'
+                   AND p.proname = 'trgfn_articoli_componenti_guard_iva';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_guard_iva_bom_ins
+                  ON catalogo.articoli_componenti;
+
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_guard_iva_bom_ins_upd
+                  ON catalogo.articoli_componenti;
+
+              CREATE TRIGGER trg_articoli_componenti_a10_guard_iva_bom_ins_upd
+                  BEFORE INSERT OR UPDATE OF attivo
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_iva();
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_guard_iva_bom_ins_upd
+                  ON catalogo.articoli_componenti;
+
+              CREATE TRIGGER trg_articoli_componenti_a10_guard_iva_bom_ins
+                  BEFORE INSERT
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_iva();
