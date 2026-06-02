@@ -37,6 +37,7 @@ from datetime import date
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from django.db import IntegrityError
 from django.test import SimpleTestCase
 
 
@@ -359,3 +360,21 @@ class TemplateVersioniAdminServicePubblicaTests(SimpleTestCase):
             )
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.pubblica_versione.assert_not_called()
+
+    # 14. EXCLUDE parziale ripristinato 2026-06-02 (migration 20260602-05):
+    #     overlap fra versioni PUBBLICATE attive -> codice 409 dedicato
+    #     E_DOCUMENTI_VERSIONE_OVERLAP (armonizzazione, prima era E_DOCUMENTI_VALIDATION).
+    def test_pubblica_overlap_mappato_a_codice_dedicato(self) -> None:
+        svc, repo, _ = _service_with_mocks(
+            reader_methods={"get_versione": dict(_BOZZA_VERSIONE)},
+        )
+        repo.pubblica_versione.side_effect = IntegrityError(
+            'conflicting key value violates exclusion constraint '
+            '"ex_template_documenti_versioni_no_overlap_pubblicata"'
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            svc.pubblica_versione(
+                _make_user(), 1, 11, {"valido_dal": "2026-06-01"}
+            )
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VERSIONE_OVERLAP")
+        self.assertIn("sovrappongono", (ctx.exception.message or "").lower())

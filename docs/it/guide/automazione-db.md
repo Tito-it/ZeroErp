@@ -251,8 +251,10 @@ Per tabelle **versionate** (con colonne `valido_dal`/`valido_al` o `valid_from`/
 **Vincoli parziali (`where_predicate`):** dalla rev 2026-06-02 il framework
 supporta anche EXCLUDE **parziali**, cioè con una clausola `WHERE` (es. "niente
 sovrapposizioni **solo tra le righe attive**"). Basta valorizzare la colonna
-`where_predicate` in config (es. `attivo IS TRUE`, `NOT is_abortito_snapshot`,
-`stato = 'ATTIVA'`); `NULL` = vincolo totale come prima.
+`where_predicate` in config (es. `attivo IS TRUE`, `stato = 'ATTIVA'`, oppure una
+colonna booleana/generata come `partecipa_overlap_snapshot` su `vendite.contratti`,
+che combina `NOT abortito AND NOT draft` → esclusività solo all'attivazione);
+`NULL` = vincolo totale come prima.
 
 **Chiavi su espressione (`key_expressions`):** oltre alle colonne semplici
 (`key_columns`), una chiave può essere un'espressione (es.
@@ -267,7 +269,7 @@ colonna `key_expressions`; le due liste si combinano nella chiave del constraint
 (job `automations_overlap`). Essendo idempotente, a regime non fa nulla; ma se un
 EXCLUDE viene droppato per errore (es. da un refactor), la passata notturna lo
 **ricrea**. È la difesa contro le regressioni silenziose (vedi
-`dev/work-in-progress/refactor-overlap.md`).
+`dev/work-done/refactor-overlap.md`).
 
 **Note operative:**
 

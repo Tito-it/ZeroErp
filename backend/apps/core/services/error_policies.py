@@ -186,6 +186,20 @@ class ErrorPolicyRegistry:
                 "giorno dopo l'inizio della precedente."
             ),
         ),
+        # Ripristino enforcement EXCLUDE parziale su listini_righe_componenti
+        # (migration 20260602-01). Pattern simmetrico a E_VENDITE_PROMO_OVERLAP /
+        # E_VENDITE_LISTINO_VERSIONE_OVERLAP: due righe bundle ATTIVE sovrapposte
+        # sullo stesso (versione, padre, componente) nel periodo di validita'.
+        "E_VENDITE_LISTINO_RIGA_COMP_OVERLAP": ErrorPolicy(
+            code="E_VENDITE_LISTINO_RIGA_COMP_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Esiste gia' un prezzo bundle attivo sovrapposto per questo "
+                "componente nel periodo indicato. Disattiva o chiudi quello "
+                "esistente prima di salvare il nuovo prezzo."
+            ),
+        ),
         # Guard Profilo A promo data-driven (vendite.promo_articoli):
         # le date governano lo stato (FUTURA / INIZIATA / SCADUTA) e vincolano
         # i campi modificabili. Pattern simmetrico a Profilo A contratti
@@ -1740,6 +1754,20 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_error_banner",
             user_message="Eliminazione versione non consentita: stato non BOZZA o gia' usata da documenti generati.",
+        ),
+        # EXCLUDE GIST parziale WHERE attivo+stato=PUBBLICATA (ripristino
+        # enforcement 2026-06-02, migration 20260602-05). Pattern simmetrico agli
+        # altri overlap (E_VENDITE_PROMO_OVERLAP / E_VENDITE_LISTINO_VERSIONE_OVERLAP):
+        # codice 409 dedicato invece del generico E_DOCUMENTI_VALIDATION (400).
+        "E_DOCUMENTI_VERSIONE_OVERLAP": ErrorPolicy(
+            code="E_DOCUMENTI_VERSIONE_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Le date di validita' si sovrappongono con un'altra versione "
+                "PUBBLICATA attiva del template. Chiudi quella esistente prima "
+                "di pubblicare la nuova."
+            ),
         ),
         # ── Documenti — guard asset (Tranche G) ──
         # Sollevati dai trigger DB Fase A

@@ -592,6 +592,7 @@
     "delete_error": "Error while deleting",
     "generic_error": "An error occurred",
     "generic_warn": "Warning",
+    "detail_non_accessibile": "Item not found or no longer accessible.",
     "tab_limit_reached": "Maximum number of tabs reached. Close a tab to open a new one.",
     "network_error": "Unable to reach the server. Please check your connection.",
     "timeout_error": "The server did not respond in time. Please try again.",

@@ -38,6 +38,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
+import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
@@ -356,8 +357,9 @@ async function loadOrReset() {
   revisioniTab.reset()
 
   if (isEdit.value && props.offertaId) {
-    const d = await store.fetchDetail(props.offertaId)
+    const d = await loadDetailOrClose(() => store.fetchDetail(props.offertaId))
     if (!fv.isCurrent(t)) return
+    if (d == null) return  // dettaglio non accessibile → drawer già chiuso
     detail.value = d
     populateFromDetail(d)
     // revisioniTab usa il proprio guard interno (useFetchVersion incluso).
@@ -744,6 +746,8 @@ const drawerActions = computed(() => {
 })
 
 const onClose = useDrawerClose(emit, 'cancelled')
+// Detail fuori scope (RLS) / inesistente → toast + chiusura, niente drawer vuoto.
+const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 </script>
 
 <template>

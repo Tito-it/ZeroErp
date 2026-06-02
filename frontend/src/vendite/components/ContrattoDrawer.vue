@@ -16,6 +16,7 @@ import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -301,8 +302,9 @@ watch(() => props.visible, async (val) => {
   if (isEdit.value && props.contrattoId) {
     await loadParamDefaults()
     if (v !== fgVersion) return
-    const d = await store.fetchDetail(props.contrattoId)
+    const d = await loadDetailOrClose(() => store.fetchDetail(props.contrattoId))
     if (v !== fgVersion) return
+    if (d == null) return  // dettaglio non accessibile → drawer già chiuso
     detail.value = d
     populateFromDetail(d)
   } else {
@@ -678,6 +680,8 @@ const drawerActions = computed(() => {
 })
 
 const onClose = useDrawerClose(emit, 'cancelled')
+// Detail fuori scope (RLS) / inesistente → toast + chiusura, niente drawer vuoto.
+const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 </script>
 
 <template>

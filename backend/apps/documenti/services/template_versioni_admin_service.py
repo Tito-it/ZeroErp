@@ -41,6 +41,7 @@ E_VALIDATION = "E_DOCUMENTI_VALIDATION"
 E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 E_VERSIONE_PUBBLICATA_IMMUTABILE = "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE"
 E_VERSIONE_DELETE_BLOCKED = "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED"
+E_VERSIONE_OVERLAP = "E_DOCUMENTI_VERSIONE_OVERLAP"
 
 # Whitelist set CHECK DDL.
 _FORMATI_VALIDI: frozenset[str] = frozenset({"HTML", "HTML_MARKDOWN_BLOCKS"})
@@ -95,9 +96,14 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         E_VALIDATION,
         "Numero versione gia' presente per il template (race condition: riprovare).",
     ),
+    # Codice overlap dedicato (409) — simmetrico a E_VENDITE_PROMO_OVERLAP /
+    # E_VENDITE_LISTINO_VERSIONE_OVERLAP. Testo allineato a error_policies
+    # (error_translator preferisce ServiceError.message su policy.user_message).
     "ex_template_documenti_versioni_no_overlap_pubblicata": (
-        E_VALIDATION,
-        "Le date di validita' si sovrappongono con un'altra versione PUBBLICATA attiva.",
+        E_VERSIONE_OVERLAP,
+        "Le date di validita' si sovrappongono con un'altra versione "
+        "PUBBLICATA attiva del template. Chiudi quella esistente prima "
+        "di pubblicare la nuova.",
     ),
 }
 

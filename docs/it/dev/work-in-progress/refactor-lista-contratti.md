@@ -12,15 +12,15 @@
 
 DB-A + DB-B implementati e verificati su DB dev. **BE/FE (§5) ancora da fare** (attendono questa consegna).
 
-| Changeset | Cosa |
-|---|---|
-| `00_schema/ui/20260602-13` | `ALTER ui.lista_colonna ADD priorita SMALLINT NOT NULL DEFAULT 50` (+ CHECK `>= 0`) |
-| `20_code/ui/20260602-14` | `fn_resolve_lista_config` espone `priorita` per colonna (letta fresca dal catalogo) |
-| `20_code/vendite/20260602-15` | vista `vendite.vw_contratti_lista` `security_invoker=on` |
-| `80_data/.../20260602-16` | `priorita` di dominio per le colonne contratti |
-| `90_end/20260602-17` | **fix**: resync sequenze IDENTITY `ui.*` (`runAlways setval`) — vedi sotto |
-| CSV `80_data/sql/ui/*` | append righe `vendite.contratti` (definizione id=4, colonne 36–57, preset id=4) |
-| pgTAP | `test-fn-resolve-lista-config` 13/13 · `test-lista-contratti-seed` 14/14 |
+| Changeset                     | Cosa                                                                                |
+| ----------------------------- | ----------------------------------------------------------------------------------- |
+| `00_schema/ui/20260602-13`    | `ALTER ui.lista_colonna ADD priorita SMALLINT NOT NULL DEFAULT 50` (+ CHECK `>= 0`) |
+| `20_code/ui/20260602-14`      | `fn_resolve_lista_config` espone `priorita` per colonna (letta fresca dal catalogo) |
+| `20_code/vendite/20260602-15` | vista `vendite.vw_contratti_lista` `security_invoker=on`                            |
+| `80_data/.../20260602-16`     | `priorita` di dominio per le colonne contratti                                      |
+| `90_end/20260602-17`          | **fix**: resync sequenze IDENTITY `ui.*` (`runAlways setval`) — vedi sotto          |
+| CSV `80_data/sql/ui/*`        | append righe `vendite.contratti` (definizione id=4, colonne 36–57, preset id=4)     |
+| pgTAP                         | `test-fn-resolve-lista-config` 13/13 · `test-lista-contratti-seed` 14/14            |
 
 **Scostamenti consapevoli dal brief:**
 1. **`stato_codice`** aggiunta come colonna catalogo nascosta (il §4 l'aveva omessa, ma §3.1/§4-note la richiedono per il Tag severity FE) — pattern clienti/fornitori.
@@ -54,10 +54,10 @@ Otto punti emersi dalla revisione critica del brief, **tutti ratificati**. Sono 
 
 ## 1. Due workstream DB
 
-| ID | Cosa | Impatta |
-|---|---|---|
+| ID       | Cosa                                                                                                                                 | Impatta                                    |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------ |
 | **DB-A** | **Un** attributo nuovo (`priorita`) sul catalogo colonne (`ui.lista_colonna`) + esposizione nell'output di `fn_resolve_lista_config` | TUTTE le liste configurabili (trasversale) |
-| **DB-B** | Migrazione della lista `vendite.contratti` nel sistema configurabile (vista + definizione + catalogo + preset) | Solo dominio vendite |
+| **DB-B** | Migrazione della lista `vendite.contratti` nel sistema configurabile (vista + definizione + catalogo + preset)                       | Solo dominio vendite                       |
 
 DB-A è prerequisito logico di DB-B (il seed catalogo contratti userà il nuovo attributo), ma può atterrare nello stesso lotto.
 
@@ -110,27 +110,27 @@ Oggi i dati lista vengono da una SELECT con JOIN in `ContrattiRepository.list_co
 
 **Campi richiesti nella vista** (almeno questi — superset ammesso):
 
-| Campo vista | Sorgente | Note |
-|---|---|---|
-| `id`, `uid`, `numero` | `contratti` | identificativi |
-| `billing_account_id`, `ba_codice` | `contratti` / `billing_account.codice` | |
-| `ragione_sociale_completa` | `vw_soggetti_ruoli_dettaglio.ragione_sociale_completa` (BA → soggetto cliente) | **nome cliente** — la vista espone il campo col nome sorgente, **senza alias `ba_*`**, identico a `vw_fornitori_dettaglio` (vedi §3.4) |
-| `id_fiscale_univoco_cf_piva` | `vw_soggetti_ruoli_dettaglio.id_fiscale_univoco_cf_piva` | **colonna unificata CF/P.IVA** — nome sorgente senza alias, identico a fornitori/soggetti (vedi §3.4) |
-| `emittente_fiscale_id`, `emittente_fiscale_codice`, `emittente_fiscale_descrizione` | `contratti` / `emittenti_fiscali` / soggetto EF | extra opt-in |
-| `utility_id`, `utility_codice`, `utility_descrizione` | `contratti` / `config.utilities` | |
-| `ambito` | `contratti` | enum COMMODITY/COMMERCIO |
-| `data`, `valido_dal`, `valido_al` | `contratti` | date |
-| `stato_doc_contratto_id`, `stato_codice`, `stato_descrizione` | `contratti` / `config.stati_doc_contratti` | `stato_codice` = `codice_interno` (per severity Tag FE) |
-| `listino_id`, `listino_codice`, `listino_descrizione` | `contratti` / `vendite.listini` | LEFT (NULL = senza_listino) |
-| `listino_versione_id`, `listino_versione_codice` | `contratti` / `listini_versioni` | extra opt-in |
-| `tipo_variazione_globale`, `valore_variazione_globale` | `contratti` | extra opt-in |
-| `categoria_cliente_id_snapshot`, `categoria_cliente_snapshot_codice`, `categoria_cliente_snapshot_descrizione` | `contratti` / `categorie_clienti` | snapshot |
-| `valuta_id`, `valuta_codice`, `valuta_descrizione` | `contratti` / `config.valute` | extra opt-in |
-| `data_insert`, `user_insert`, `data_update`, `user_update` | `contratti` | audit |
+| Campo vista                                                                                                    | Sorgente                                                                       | Note                                                                                                                                   |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`, `uid`, `numero`                                                                                          | `contratti`                                                                    | identificativi                                                                                                                         |
+| `billing_account_id`, `ba_codice`                                                                              | `contratti` / `billing_account.codice`                                         |                                                                                                                                        |
+| `ragione_sociale_completa`                                                                                     | `vw_soggetti_ruoli_dettaglio.ragione_sociale_completa` (BA → soggetto cliente) | **nome cliente** — la vista espone il campo col nome sorgente, **senza alias `ba_*`**, identico a `vw_fornitori_dettaglio` (vedi §3.4) |
+| `id_fiscale_univoco_cf_piva`                                                                                   | `vw_soggetti_ruoli_dettaglio.id_fiscale_univoco_cf_piva`                       | **colonna unificata CF/P.IVA** — nome sorgente senza alias, identico a fornitori/soggetti (vedi §3.4)                                  |
+| `emittente_fiscale_id`, `emittente_fiscale_codice`, `emittente_fiscale_descrizione`                            | `contratti` / `emittenti_fiscali` / soggetto EF                                | extra opt-in                                                                                                                           |
+| `utility_id`, `utility_codice`, `utility_descrizione`                                                          | `contratti` / `config.utilities`                                               |                                                                                                                                        |
+| `ambito`                                                                                                       | `contratti`                                                                    | enum COMMODITY/COMMERCIO                                                                                                               |
+| `data`, `valido_dal`, `valido_al`                                                                              | `contratti`                                                                    | date                                                                                                                                   |
+| `stato_doc_contratto_id`, `stato_codice`, `stato_descrizione`                                                  | `contratti` / `config.stati_doc_contratti`                                     | `stato_codice` = `codice_interno` (per severity Tag FE)                                                                                |
+| `listino_id`, `listino_codice`, `listino_descrizione`                                                          | `contratti` / `vendite.listini`                                                | LEFT (NULL = senza_listino)                                                                                                            |
+| `listino_versione_id`, `listino_versione_codice`                                                               | `contratti` / `listini_versioni`                                               | extra opt-in                                                                                                                           |
+| `tipo_variazione_globale`, `valore_variazione_globale`                                                         | `contratti`                                                                    | extra opt-in                                                                                                                           |
+| `categoria_cliente_id_snapshot`, `categoria_cliente_snapshot_codice`, `categoria_cliente_snapshot_descrizione` | `contratti` / `categorie_clienti`                                              | snapshot                                                                                                                               |
+| `valuta_id`, `valuta_codice`, `valuta_descrizione`                                                             | `contratti` / `config.valute`                                                  | extra opt-in                                                                                                                           |
+| `data_insert`, `user_insert`, `data_update`, `user_update`                                                     | `contratti`                                                                    | audit                                                                                                                                  |
 
 JOIN esatti già noti (riportati nel repository sopra). `parent_contratto_id` e `meta` non servono in lista.
 
-> **RLS considerata ATTIVA — `security_invoker=on` OBBLIGATORIO** (§0-bis #3, allineamento col workstream parallelo [analisi-attivazione-rls-operatori-db.md](analisi-attivazione-rls-operatori-db.md) §8): la vista va creata `WITH (security_invoker = on)`. È pura denormalizzazione senza scope, quindi l'invoker garantisce che le policy RLS della tabella base `vendite.contratti` si applichino al chiamante reale e non sia "RLS cosmetica" (linee-guida-sql §10.1). Non è opzionale.
+> **Nota forward-compat RLS** (allineamento col workstream parallelo [analisi-attivazione-rls-db.md](../work-done/analisi-attivazione-rls-db.md) §8): se possibile creare la vista già con `security_invoker=on`, così è pronta per la futura RLS sulla tabella base senza essere "RLS cosmetica". Decisione finale al team DB.
 
 ### 3.2 Entry `ui.lista_definizione`
 
@@ -180,34 +180,34 @@ Dalle note smoke soggetti/fornitori ([_def.md §DEF-8](sviluppo-personalizzazion
 
 **Set attuale da preservare: 12 colonne + colonna azioni (che ospita 3 azioni di riga in `RowActionsMenu`).**
 
-| ordine | codice | campo_sorgente | tipo_colonna | tipo_dato | formato | largh_def | priorita | Preset | gruppo |
-|---|---|---|---|---|---|---|---|---|---|
-| 1  | numero | numero | identificatore | string | — | 140 | (max impl.) | ✓ | Identificazione |
-| 2  | ragione_sociale_completa | ragione_sociale_completa | informazione | string | — | 220 | 95 | ✓ | Cliente |
-| 3  | ba_codice | ba_codice | informazione | string | — | 120 | 40 | ✓ | Cliente |
-| 4  | id_fiscale | id_fiscale_univoco_cf_piva | informazione | string | — | 140 | 75 | ✓ | Cliente |
-| 5  | utility_codice | utility_codice | informazione | string | — | 100 | 70 | ✓ | Fornitura |
-| 6  | ambito | ambito | informazione | string | — | 120 | 50 | ✓ | Fornitura |
-| 7  | categoria_cliente_snapshot | categoria_cliente_snapshot_codice | informazione | string | — | 120 | 30 | ✓ | Cliente |
-| 8  | listino_codice | listino_codice | informazione | string | — | 160 | 45 | ✓ | Pricing |
-| 9  | valido_dal | valido_dal | informazione | date | date_short | 110 | 65 | ✓ | Validità |
-| 10 | valido_al | valido_al | informazione | date | date_short | 110 | 60 | ✓ | Validità |
-| 11 | data | data | informazione | date | date_short | 110 | 25 | ✓ | Identificazione |
-| 12 | stato | stato_descrizione | informazione | string | — | 120 | 90 | ✓ | Stato |
-| 13 | azioni | (NULL) | azione | string | — | 60 | (max impl.) | ✓ (3 azioni) | — |
+| ordine | codice                     | campo_sorgente                    | tipo_colonna   | tipo_dato | formato    | largh_def | priorita    | Preset       | gruppo          |
+| ------ | -------------------------- | --------------------------------- | -------------- | --------- | ---------- | --------- | ----------- | ------------ | --------------- |
+| 1      | numero                     | numero                            | identificatore | string    | —          | 140       | (max impl.) | ✓            | Identificazione |
+| 2      | ragione_sociale_completa   | ragione_sociale_completa          | informazione   | string    | —          | 220       | 95          | ✓            | Cliente         |
+| 3      | ba_codice                  | ba_codice                         | informazione   | string    | —          | 120       | 40          | ✓            | Cliente         |
+| 4      | id_fiscale                 | id_fiscale_univoco_cf_piva        | informazione   | string    | —          | 140       | 75          | ✓            | Cliente         |
+| 5      | utility_codice             | utility_codice                    | informazione   | string    | —          | 100       | 70          | ✓            | Fornitura       |
+| 6      | ambito                     | ambito                            | informazione   | string    | —          | 120       | 50          | ✓            | Fornitura       |
+| 7      | categoria_cliente_snapshot | categoria_cliente_snapshot_codice | informazione   | string    | —          | 120       | 30          | ✓            | Cliente         |
+| 8      | listino_codice             | listino_codice                    | informazione   | string    | —          | 160       | 45          | ✓            | Pricing         |
+| 9      | valido_dal                 | valido_dal                        | informazione   | date      | date_short | 110       | 65          | ✓            | Validità        |
+| 10     | valido_al                  | valido_al                         | informazione   | date      | date_short | 110       | 60          | ✓            | Validità        |
+| 11     | data                       | data                              | informazione   | date      | date_short | 110       | 25          | ✓            | Identificazione |
+| 12     | stato                      | stato_descrizione                 | informazione   | string    | —          | 120       | 90          | ✓            | Stato           |
+| 13     | azioni                     | (NULL)                            | azione         | string    | —          | 60        | (max impl.) | ✓ (3 azioni) | —               |
 
 Colonne **extra opt-in** (nel catalogo ma `visibile=false` nel preset → l'utente le attiva dalla modale; `ordine_default` ≥ 20 per stare dopo le visibili):
 
-| ordine | codice | campo_sorgente | tipo_colonna | tipo_dato | formato | largh_def | priorita | gruppo |
-|---|---|---|---|---|---|---|---|---|
-| 20 | emittente_fiscale_codice | emittente_fiscale_codice | informazione | string | — | 120 | 20 | Emittente |
-| 21 | listino_versione | listino_versione_codice | informazione | string | — | 120 | 20 | Pricing |
-| 22 | tipo_variazione_globale | tipo_variazione_globale | informazione | string | — | 130 | 15 | Pricing |
-| 23 | valore_variazione_globale | valore_variazione_globale | informazione | numeric | — | 110 | 15 | Pricing |
-| 24 | valuta | valuta_codice | informazione | string | — | 90 | 10 | Pricing |
-| 25 | utility_descrizione | utility_descrizione | informazione | string | — | 160 | 10 | Fornitura |
-| 26 | data_insert | data_insert | informazione | datetime | datetime_short | 150 | 5 | Audit |
-| 27 | data_update | data_update | informazione | datetime | datetime_short | 150 | 5 | Audit |
+| ordine | codice                    | campo_sorgente            | tipo_colonna | tipo_dato | formato        | largh_def | priorita | gruppo    |
+| ------ | ------------------------- | ------------------------- | ------------ | --------- | -------------- | --------- | -------- | --------- |
+| 20     | emittente_fiscale_codice  | emittente_fiscale_codice  | informazione | string    | —              | 120       | 20       | Emittente |
+| 21     | listino_versione          | listino_versione_codice   | informazione | string    | —              | 120       | 20       | Pricing   |
+| 22     | tipo_variazione_globale   | tipo_variazione_globale   | informazione | string    | —              | 130       | 15       | Pricing   |
+| 23     | valore_variazione_globale | valore_variazione_globale | informazione | numeric   | —              | 110       | 15       | Pricing   |
+| 24     | valuta                    | valuta_codice             | informazione | string    | —              | 90        | 10       | Pricing   |
+| 25     | utility_descrizione       | utility_descrizione       | informazione | string    | —              | 160       | 10       | Fornitura |
+| 26     | data_insert               | data_insert               | informazione | datetime  | datetime_short | 150       | 5        | Audit     |
+| 27     | data_update               | data_update               | informazione | datetime  | datetime_short | 150       | 5        | Audit     |
 
 **Note di dominio sul catalogo:**
 

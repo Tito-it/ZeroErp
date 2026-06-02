@@ -10,7 +10,7 @@
 > `anagrafiche.categorie_clienti_listini`, `documenti.template_documenti_versioni`.
 > La tabella §6 (Step 2b) che dice "ricrea EXCLUDE" è **errata**: il DDL reale è
 > un indice. Diagnosi completa e rimedio in
-> [refactor-overlap.md](../work-in-progress/refactor-overlap.md). Per scrivere un
+> [refactor-overlap.md](refactor-overlap.md). Per scrivere un
 > vincolo "niente sovrapposizioni" segui `linee-guida-sql.md §7b`, non le
 > migration di questo piano.
 >
@@ -19,7 +19,7 @@
 > (con `where_predicate`/`key_expressions` + runner pgagent notturno
 > `automations_overlap`): una regressione futura dello stesso tipo verrebbe
 > **auto-corretta**. Dettagli in
-> [refactor-overlap-v2.md](../work-in-progress/refactor-overlap-v2.md).
+> [refactor-overlap-v2.md](refactor-overlap-v2.md).
 
 ---
 

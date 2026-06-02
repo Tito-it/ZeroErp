@@ -52,7 +52,7 @@ Importante: che siano funzioni-adapter separate o un'unica funzione con normaliz
 
 - **C7 — bypass SUPER_ADMIN nella RLS-read**: una volta che le policy delegano alla canonica, il bypass entra ovunque per costruzione. Verificare che nessuna policy EF resti senza.
 - **Duplicati legacy** (fonte di divergenza): esistono copie `config.fn_check_user_emittente_scope` (modello `ruolo_sistema=ADMIN` vecchio) e `config.fn_get_emittenti_scope*`. Da **dismettere** previa verifica zero-caller `[DA VERIFICARE SU DB]`.
-- **B5 — funzione legacy senza guard**: `script.fn_get_emittenti_scope` (legacy, senza guard OPERATORE/super_admin) è ancora usata da alcuni path. Va dismessa; i lettori vanno portati sulla famiglia guarded. *(Il ricablaggio dei chiamanti Python è nel brief BE/FE.)*
+- **B5 — funzione legacy senza guard**: `script.fn_get_emittenti_scope`. **✅ BE FATTO 2026-06-02** (commit `4201c0f75`): tutti i lettori Python ricablati sulla famiglia guarded → **zero lettori residui**. La legacy (e le `config.fn_get_emittenti_scope*`) **possono essere droppate lato DB**.
 
 ## 4. Scope per famiglia di tabelle (cosa filtra cosa)
 
@@ -170,7 +170,7 @@ Le policy assumono i GUC popolati **e isolati per richiesta**. Esiste un rischio
 >
 > **Attivazione `ENABLE`** (no-FORCE, kill-switch DISABLE): **Ondata 1 (`-38`) + Ondata 2-A (`-39`) + 2-B billing_account (`-40`) APPLICATE** ("tutto ok"). **Ondata 2-C `contratti` (`-41`) da applicare** (R4 risolto: pgAgent gira come `postgres` superuser → esente). Prerequisito BE **R-GUC: sbloccato**.
 >
-> **Restano SOLO**: applicare `-41`; **B5** ricablaggio `fn_get_emittenti_scope` in Python `[BE]`; benchmark formali + test multi-policy ordini (opzionali); backlog `acquisti.*`/config cross-EF.
+> **Restano SOLO**: applicare `-41` (se non già); benchmark formali + test multi-policy ordini (opzionali); **dismissione legacy `fn_get_emittenti_scope`** (ora possibile: B5 BE chiuso `4201c0f75`); backlog `acquisti.*`/config cross-EF. *(B5 BE **✅ FATTO 2026-06-02**.)*
 
 ### Fase 0 — Verifiche preliminari (introspezione runtime, a carico DB/BE)
 
@@ -182,7 +182,7 @@ Le policy assumono i GUC popolati **e isolati per richiesta**. Esiste un rischio
 - [x] `titodb` (migrazioni) **esente** — non superuser/bypassrls ma **owner** → esente via ownership (conferma che la scelta **no-FORCE** è necessaria; introspezione sez. B)
 - [x] `vendite.fatture.emittente_soggetto_ruolo_id` confermata NOT NULL (introspezione sez. C; 0 fatture con emittente orfano)
 - [x] Introspezione viste `vw_*` / matview (introspezione sez. A: 9 viste DEFINER, 0 matview)
-- [ ] **[BE]** Caller residui dei legacy `script.fn_get_emittenti_scope` (B5) — usato da repository Python (preventivi/contratti/vendite); ricablaggio nel brief BE
+- [x] **[BE] ✅ FATTO 2026-06-02 (`4201c0f75`)** Caller del legacy `script.fn_get_emittenti_scope` ricablati sulla famiglia guarded → **zero lettori Python residui**: la legacy è droppabile
 - [x] Job pgAgent sul lotto **[VERIFICATO — R4 RISOLTO 2026-06-01]**: solo `chiusura_scadenze_daily` tocca `vendite.contratti`. Il demone pgAgent gira come **`postgres`** (superuser, BYPASSRLS) → **esente dalla RLS**: il job cessa i contratti scaduti anche con RLS attiva. **Nessun fix necessario** (la fn è SECURITY INVOKER ma il ruolo bypassa). *(Ondata 1 fatture: nessun job batch.)*
 
 ### Fase 1 — Regola canonica + adapter + bonifica duplicati
@@ -196,7 +196,7 @@ Le policy assumono i GUC popolati **e isolati per richiesta**. Esiste un rischio
 - [x] Fix **C7**: bypass SUPER_ADMIN ereditato per delega (read+write unificati sulla canonica)
 - [x] Duplicati legacy `config.fn_*` — **già rimossi** da `20260308-12`; vecchia `fn_scope_ef_whitelist(identita_id, sr_id)` droppata (`-09`)
 - [x] pgTAP `test-fn-scope-ef-whitelist.sql` aggiornato alle nuove firme (PK + via_sr)
-- [ ] **[BE]** B5: portare i lettori di `script.fn_get_emittenti_scope` sulla famiglia guarded *(ricablaggio Python: brief BE)*
+- [x] **[BE] ✅ FATTO 2026-06-02** B5: lettori sulla famiglia guarded (`get_emittenti_ids`→`get_emittenti_pk_ids`; `parameter_repository` legge la whitelist diretta). Legacy droppabile lato DB
 
 ### Fase 2 — Scrittura (trigger guard)
 

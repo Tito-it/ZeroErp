@@ -33,6 +33,27 @@ from apps.core.services.request_context import get_idempotency_key, get_request_
 logger = logging.getLogger(__name__)
 
 
+def _json_error(code: str, message: str, status: int) -> JsonResponse:
+    """Risposta errore JSON con envelope standard
+    ``{error:{code,message}, meta:{request_id?, idempotency_key?}}``.
+
+    Usato per le risposte hard-coded del middleware (DISABILITATO,
+    reset GUC fallito) che NON passano dal DRF exception handler:
+    centralizza l'envelope per non duplicarlo a ogni call-site.
+    """
+    payload: dict = {"error": {"code": code, "message": message}}
+    meta: dict[str, str] = {}
+    request_id = get_request_id()
+    if request_id:
+        meta["request_id"] = request_id
+    idempotency_key = get_idempotency_key()
+    if idempotency_key:
+        meta["idempotency_key"] = idempotency_key
+    if meta:
+        payload["meta"] = meta
+    return JsonResponse(payload, status=status)
+
+
 class JwtAuditMiddleware(MiddlewareMixin):
     """Reset GUC d'identita, pre-load cache permessi, rifiuto DISABILITATO.
 
@@ -100,22 +121,7 @@ class JwtAuditMiddleware(MiddlewareMixin):
             "security.user_disabilitato user_id=%s path=%s",
             user.id, request.path,
         )
-        payload: dict = {
-            "error": {
-                "code": "E_USER_DISABILITATO",
-                "message": "Utente disabilitato.",
-            }
-        }
-        meta: dict[str, str] = {}
-        request_id = get_request_id()
-        if request_id:
-            meta["request_id"] = request_id
-        idempotency_key = get_idempotency_key()
-        if idempotency_key:
-            meta["idempotency_key"] = idempotency_key
-        if meta:
-            payload["meta"] = meta
-        return JsonResponse(payload, status=403)
+        return _json_error("E_USER_DISABILITATO", "Utente disabilitato.", 403)
 
     # Scopo: lavagna pulita dei GUC d'identita all'INIZIO di ogni
     # richiesta `/api/`, PRIMA che la DRF auth class (JwtAuditAuthentication)
@@ -162,13 +168,9 @@ class JwtAuditMiddleware(MiddlewareMixin):
                 request.path,
                 exc_info=True,
             )
-            return JsonResponse(
-                {
-                    "error": {
-                        "code": "E_GUC_RESET_FAILED",
-                        "message": "Errore interno di sicurezza sessione.",
-                    }
-                },
-                status=500,
+            return _json_error(
+                "E_GUC_RESET_FAILED",
+                "Errore interno di sicurezza sessione.",
+                500,
             )
         return None
