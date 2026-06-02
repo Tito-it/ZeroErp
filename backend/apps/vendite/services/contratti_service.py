@@ -47,7 +47,10 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
 )
-from apps.vendite.db.contratti_repository import ContrattiRepository
+from apps.vendite.db.contratti_repository import (
+    _ORDER_COLS_CONTRATTI,
+    ContrattiRepository,
+)
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_overrides,
@@ -75,18 +78,13 @@ E_VENDITE_FK = "E_VENDITE_FK"
 E_VENDITE_CONTRATTO_OVERLAP = "E_VENDITE_CONTRATTO_OVERLAP"
 
 
-_ORDER_BY_CONTRATTI: frozenset[str] = frozenset({
-    "numero",
-    "data",
-    "valido_dal",
-    "valido_al",
-    "ba_codice",
-    "ba_ragione_sociale",
-    "stato_codice",
-    "categoria_cliente_snapshot_codice",
-    "data_insert",
-    "data_update",
-})
+# Whitelist order_by: DERIVATA dalle chiavi del mapping SQL del repository
+# (`_ORDER_COLS_CONTRATTI`), unica fonte di verita'. Evita il drift fra le due
+# strutture: una chiave accettata dal service ma non mappata nel repo
+# darebbe un fallback silenzioso a 'data' (ordinamento sbagliato senza
+# errore). Sono i `campo_sorgente` della vista `vendite.vw_contratti_lista`
+# che il FE invia come sortField (niente alias `ba_*` su cliente/id_fiscale).
+_ORDER_BY_CONTRATTI: frozenset[str] = frozenset(_ORDER_COLS_CONTRATTI)
 
 
 _AMBITI_VALIDI: frozenset[str] = frozenset({"COMMODITY", "COMMERCIO"})
@@ -570,6 +568,45 @@ class ContrattiService:
             order_by=order_by,
             order_dir=order_dir,
         )
+
+    # Scopo: Etichette leggibili dei filtri attivi, incluse come metadato nel
+    #        file di export (DEF-1 §6: un file filtrato deve dichiararsi
+    #        sottoinsieme). I filtri FK sono dichiarati con l'id (sufficiente a
+    #        comunicare "lista filtrata"); i filtri testuali/data sono resi
+    #        come stringa.
+    def resolve_filtri_export_label(
+        self,
+        *,
+        search: str | None = None,
+        ambito: str | None = None,
+        stato_doc_contratto_id: int | None = None,
+        utility_id: int | None = None,
+        listino_id: int | None = None,
+        billing_account_id: int | None = None,
+        data_da: date | None = None,
+        data_a: date | None = None,
+        scadenza_mese: str | None = None,
+    ) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        if search:
+            out["Ricerca"] = search
+        if ambito:
+            out["Ambito"] = ambito
+        if stato_doc_contratto_id is not None:
+            out["Stato (id)"] = stato_doc_contratto_id
+        if utility_id is not None:
+            out["Utility (id)"] = utility_id
+        if listino_id is not None:
+            out["Listino (id)"] = listino_id
+        if billing_account_id is not None:
+            out["Cliente BA (id)"] = billing_account_id
+        if data_da is not None:
+            out["Dal"] = str(data_da)
+        if data_a is not None:
+            out["Al"] = str(data_a)
+        if scadenza_mese:
+            out["Scadenza mese"] = scadenza_mese
+        return out
 
     # Scopo: Dettaglio completo contratto (testata + utility 1:1 + righe +
     #        capabilities). Le capability (available_actions con default_date/

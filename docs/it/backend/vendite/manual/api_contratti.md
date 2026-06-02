@@ -103,20 +103,49 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
 ### Lista contratti `GET /api/v1/vendite/contratti/`
 
+> **DEF-8 (2026-06-02)**: la lista legge dalla vista `vendite.vw_contratti_lista`
+> (lista configurabile `vendite.contratti`, ritiro dinamico colonne lato FE).
+> I campi display usano i **nomi canonici della vista** — cliente =
+> `ragione_sociale_completa`, id. fiscale = `id_fiscale_univoco_cf_piva` (niente
+> alias `ba_*`); stato = `stato_descrizione` + `stato_codice`. Il **dettaglio**
+> (`GET .../<id>/`) conserva invece i nomi storici (`ba_ragione_sociale`,
+> `id_fiscale`): è una fonte diversa (JOIN su tabelle base, non la vista).
+
 | Parametro | Tipo | Descrizione |
 |---|---|---|
-| `search` | string | ILIKE su `numero` contratto e `ragione_sociale` BA |
+| `search` | string | ILIKE su `numero` contratto e `ragione_sociale_completa` del cliente |
 | `billing_account_id` | int | Filtro cliente |
 | `stato_doc_contratto_id` | int | Filtro stato (FK `config.stati_doc_contratti`) |
 | `utility_id` | int | Filtro utility |
 | `ambito` | string | `COMMODITY` o `COMMERCIO` |
 | `listino_id` | int | Filtro listino di pricing (debug forma con_listino vs senza_listino) |
-| `data_da` | ISO date | Filtro su `validita` daterange. **Default: 1 gennaio anno-1** (regola standard liste con date) |
-| `data_a` | ISO date | Filtro su `validita` daterange |
+| `data_da` | ISO date | Filtro periodo validità (overlap `valido_dal`/`valido_al`). **Default: 1 gennaio anno-1** (regola standard liste con date) |
+| `data_a` | ISO date | Filtro periodo validità |
+| `scadenza_mese` | string | `YYYY-MM`: contratti con `valido_al` (ultimo giorno di validità) nel mese indicato |
 | `limit` | int | Default 25, max 200 |
 | `offset` | int | Default 0 |
-| `order_by` | string | `numero` `data` `valido_dal` `valido_al` `ba_ragione_sociale` `stato_codice` `categoria_cliente_snapshot_codice` `data_insert` `data_update` |
+| `order_by` | string | `numero` `data` `valido_dal` `valido_al` `ba_codice` `ragione_sociale_completa` `id_fiscale_univoco_cf_piva` `utility_codice` `ambito` `listino_codice` `stato_descrizione` `stato_codice` `categoria_cliente_snapshot_codice` `data_insert` `data_update` |
 | `order_dir` | string | `asc` (default) o `desc` |
+
+Scope emittente applicato a livello DB (RLS `security_invoker` sulla vista) +
+filtro applicativo `fn_get_emittenti_scope_pk_ids` (defense-in-depth).
+
+### Export lista `GET /api/v1/vendite/contratti/export/`
+
+Genera un file **CSV** o **Excel** con i contratti filtrati (stessi parametri
+della lista). Renderer generico DEF-1 (`ListaExportService`); le colonne sono
+coerenti con la DataTable a video (config runtime: preferenza + preset +
+permessi — colonne nascoste escluse, ordine utente rispettato).
+
+| Parametro | Tipo | Descrizione |
+|---|---|---|
+| `formato` | string | `csv` (default) o `xlsx`. **NB**: parametro `formato` (italiano), NON `format` (magic param DRF) |
+| `search`, `billing_account_id`, `stato_doc_contratto_id`, `utility_id`, `ambito`, `listino_id`, `data_da`, `data_a`, `scadenza_mese`, `order_by`, `order_dir` | — | stessi della lista |
+
+- Hard cap **10.000 righe**: oltre → `422 E_UI_EXPORT_LIMIT_EXCEEDED`.
+- `formato` non valido → `400 E_UI_EXPORT_FORMAT_INVALID`.
+- Risposta binaria: `Content-Disposition: attachment; filename="contratti.csv|xlsx"`; i filtri attivi sono inclusi come metadato nel file.
+- Coda condivisa: `apps.ui.api.export_helpers.{parse_export_format,build_export_response}` (building block DEF-1, gemello clienti/soggetti/fornitori).
 
 ### Create testata `POST /api/v1/vendite/contratti/`
 

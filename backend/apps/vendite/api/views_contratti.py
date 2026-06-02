@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -29,7 +29,12 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.request_parsers import parse_iso_date
 from apps.core.api.success_responses import success_response
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.services.contratti_service import ContrattiService
+
+# Codice lista configurabile (ui.lista_definizione) per contratti.
+_LISTA_CODICE_CONTRATTI = "vendite.contratti"
 
 
 # Scopo: Converte un query param intero opzionale (None se assente o vuoto).
@@ -95,6 +100,98 @@ _CONTRATTO_PATCH_REQUEST = inline_serializer(
         "meta": serializers.JSONField(required=False, allow_null=True),
     },
 )
+
+
+class ApiContrattiExportView(DomainAPIView):
+    """GET /api/v1/vendite/contratti/export/?formato=csv|xlsx
+
+    Genera un file CSV o Excel con i contratti filtrati dalla query string
+    (stessi parametri del list endpoint). Hard cap 10.000 righe — sopra
+    solleva E_UI_EXPORT_LIMIT_EXCEEDED (422). Usa il renderer generico
+    `ListaExportService` (DEF-1) e il catalogo colonne `vendite.contratti`
+    per coerenza con la DataTable a video (colonne nascoste escluse, ordine
+    utente rispettato).
+
+    NB: il parametro si chiama `formato` (italiano) NON `format` — magic
+    parameter DRF (content-negotiation) che intercetterebbe la chiamata
+    prima della view.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="search", type=str, required=False),
+            OpenApiParameter(name="billing_account_id", type=int, required=False),
+            OpenApiParameter(name="stato_doc_contratto_id", type=int, required=False),
+            OpenApiParameter(name="utility_id", type=int, required=False),
+            OpenApiParameter(name="ambito", type=str, required=False),
+            OpenApiParameter(name="listino_id", type=int, required=False),
+            OpenApiParameter(name="data_da", type=str, required=False),
+            OpenApiParameter(name="data_a", type=str, required=False),
+            OpenApiParameter(name="scadenza_mese", type=str, required=False,
+                             description="YYYY-MM"),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        fmt = parse_export_format(request)
+
+        p = parse_list_params(qp, default_order="data")
+        stato_id = _qp_int_optional(qp.get("stato_doc_contratto_id"), "stato_doc_contratto_id")
+        utility_id = _qp_int_optional(qp.get("utility_id"), "utility_id")
+        listino_id = _qp_int_optional(qp.get("listino_id"), "listino_id")
+        ba_id = _qp_int_optional(qp.get("billing_account_id"), "billing_account_id")
+        ambito = qp_str(qp.get("ambito"))
+        data_da = _qp_iso_date(qp.get("data_da"))
+        data_a = _qp_iso_date(qp.get("data_a"))
+        scadenza_mese = qp_str(qp.get("scadenza_mese"))
+
+        svc = ContrattiService()
+        results, total = svc.list_contratti(
+            search=p["search"],
+            billing_account_id=ba_id,
+            stato_doc_contratto_id=stato_id,
+            utility_id=utility_id,
+            ambito=ambito,
+            listino_id=listino_id,
+            data_da=data_da,
+            data_a=data_a,
+            scadenza_mese=scadenza_mese,
+            auth_user_id=get_scope_user_id(request),
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+        )
+        filtri_applicati = svc.resolve_filtri_export_label(
+            search=p["search"],
+            ambito=ambito,
+            stato_doc_contratto_id=stato_id,
+            utility_id=utility_id,
+            listino_id=listino_id,
+            billing_account_id=ba_id,
+            data_da=data_da,
+            data_a=data_a,
+            scadenza_mese=scadenza_mese,
+        )
+        return build_export_response(
+            request,
+            lista_codice=_LISTA_CODICE_CONTRATTI,
+            results=results,
+            total=total,
+            filtri_applicati=filtri_applicati,
+            fmt=fmt,
+        )
 
 
 class ApiContrattiList(DomainAPIView):

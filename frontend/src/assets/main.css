@@ -295,16 +295,23 @@ a {
  * Il selettore parte dal root .app-datatable per coprire anche il render
  * scrollable/flex di PrimeVue, dove contenitore e table vengono ricalcolati
  * quando arrivano i record.
+ *
+ * Le liste in modalita' RESPONSIVE (.app-datatable--responsive, governate dal
+ * composable useResponsiveColumns) sono ESCLUSE: li' il ritiro dinamico delle
+ * colonne mantiene la somma delle larghezze <= contenitore, quindi forzare un
+ * min-width reintrodurrebbe lo scroll proprio quando si apre la sidebar — il
+ * problema che il ritiro elimina. La tabella resta a `width: max-content;
+ * min-width: 100%` (riempie il contenitore senza forzature).
  */
-.app-datatable:not(.app-datatable--inner):has(.p-datatable-thead > tr > th:nth-child(8)) .p-datatable-table {
+.app-datatable:not(.app-datatable--inner):not(.app-datatable--responsive):has(.p-datatable-thead > tr > th:nth-child(8)) .p-datatable-table {
   min-width: max(100%, 1040px) !important;
 }
 
-.app-datatable:not(.app-datatable--inner):has(.p-datatable-thead > tr > th:nth-child(10)) .p-datatable-table {
+.app-datatable:not(.app-datatable--inner):not(.app-datatable--responsive):has(.p-datatable-thead > tr > th:nth-child(10)) .p-datatable-table {
   min-width: max(100%, 1280px) !important;
 }
 
-.app-datatable:not(.app-datatable--inner):has(.p-datatable-thead > tr > th:nth-child(12)) .p-datatable-table {
+.app-datatable:not(.app-datatable--inner):not(.app-datatable--responsive):has(.p-datatable-thead > tr > th:nth-child(12)) .p-datatable-table {
   min-width: max(100%, 1480px) !important;
 }
 
@@ -543,6 +550,14 @@ a {
   align-items: center;
   justify-content: flex-end;
 }
+
+/* Force-compact (RowActionsMenu prop `forceCompact`): kebab anche su desktop,
+ * quando una lista responsive ha spazio stretto e comprime le azioni prima di
+ * ritirare colonne. Selettori a 2 classi (specificita' 0,2,0): vincono sia sul
+ * default (1 classe) sia sulla media query sotto (1 classe), che non aggiunge
+ * specificita'. */
+.app-row-actions-inline.app-row-actions-inline--off { display: none; }
+.app-row-actions-compact.app-row-actions-compact--on { display: inline-flex; }
 
 @media (hover: none), (max-width: 1024px) {
   .app-row-actions-inline { display: none; }
