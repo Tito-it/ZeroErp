@@ -267,7 +267,7 @@ colonna `key_expressions`; le due liste si combinano nella chiave del constraint
 (job `automations_overlap`). Essendo idempotente, a regime non fa nulla; ma se un
 EXCLUDE viene droppato per errore (es. da un refactor), la passata notturna lo
 **ricrea**. È la difesa contro le regressioni silenziose (vedi
-`dev/work-in-progress/refactor-overlap.md`).
+`dev/work-done/refactor-overlap.md`).
 
 **Note operative:**
 

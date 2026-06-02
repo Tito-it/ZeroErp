@@ -288,7 +288,7 @@ ALTER TABLE schema.tabella
 > ⚠️ **Trappola storica (mag 2026).** Lo Step 2b di `piano-miglioramenti-db-pg18`
 > ha ricreato 5 di questi vincoli come `CREATE INDEX` invece che `EXCLUDE`,
 > perdendo silenziosamente l'enforcement (nome `ex_*` identico). Vedi
-> `dev/work-in-progress/refactor-overlap.md`. Un `CREATE INDEX ... USING gist`
+> `dev/work-done/refactor-overlap.md`. Un `CREATE INDEX ... USING gist`
 > **non enforça mai**: per un anti-overlap serve sempre un `ADD CONSTRAINT ...
 > EXCLUDE`.
 >
@@ -297,7 +297,7 @@ ALTER TABLE schema.tabella
 > `where_predicate` (es. `attivo IS TRUE`) — vedi `guide/automazione-db.md §4.3`.
 > Lo scrivi a mano (come qui sotto) oppure lo deleghi al framework; in entrambi i
 > casi l'oggetto finale è un `EXCLUDE` vero. Migrazione dei vincoli esistenti al
-> framework: vedi `dev/work-in-progress/refactor-overlap-v2.md` (Fase 2).
+> framework: vedi `dev/work-done/refactor-overlap-v2.md` (Fase 2).
 
 **Entita' con stati annullabili (`UNIQUE WITHOUT OVERLAPS` + `is_abortito`):**
 
@@ -371,7 +371,7 @@ Per la gestione automatizzata degli EXCLUDE con WHERE: `dbops.automazione_overla
 >
 > ⚠️ **Non usare quel piano come modello per i vincoli anti-overlap.** Il suo
 > Step 2b ha ricreato gli `ex_*_no_overlap` parziali come `CREATE INDEX` (non
-> enforçanti) — bug tracciato in `dev/work-in-progress/refactor-overlap.md`. Per
+> enforçanti) — bug tracciato in `dev/work-done/refactor-overlap.md`. Per
 > un vincolo "niente sovrapposizioni" segui **questa** sezione (Pathway 1 senza
 > `WHERE`, EXCLUDE parziale esplicito con `WHERE`), non le migration `20260514-*`.
 
