@@ -6,7 +6,7 @@
 > **Convenzione marcatura:** `[VERIFICATO]` = riscontrato sul codice/changeset attuale; `[DA VERIFICARE SU DB]` = richiede introspezione runtime non disponibile dal sandbox (psql non raggiungibile); `[DECISIONE TID]` = scelta di dominio aperta.
 >
 > **Documenti derivati** (estratti da questa analisi, 2026-06-01):
-> - [analisi-attivazione-rls-db.md](../work-done/analisi-attivazione-rls-db.md) — brief al team DB **+ log di implementazione** (DB-side completo, changeset `20260601-06..37`). In `work-done`.
+> - [analisi-attivazione-rls-db.md](analisi-attivazione-rls-db.md) — brief al team DB **+ log di implementazione** (DB-side completo, changeset `20260601-06..37`).
 > - [analisi-attivazione-rls-operatori-be-fe.md](analisi-attivazione-rls-operatori-be-fe.md) — piano BE/FE dettagliato con prerequisiti DB.
 
 ---

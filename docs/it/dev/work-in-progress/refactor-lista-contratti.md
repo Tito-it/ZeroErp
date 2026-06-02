@@ -94,7 +94,7 @@ Oggi i dati lista vengono da una SELECT con JOIN in `ContrattiRepository.list_co
 
 JOIN esatti già noti (riportati nel repository sopra). `parent_contratto_id` e `meta` non servono in lista.
 
-> **Nota forward-compat RLS** (allineamento col workstream parallelo [analisi-attivazione-rls-operatori-db.md](analisi-attivazione-rls-operatori-db.md) §8): se possibile creare la vista già con `security_invoker=on`, così è pronta per la futura RLS sulla tabella base senza essere "RLS cosmetica". Decisione finale al team DB.
+> **Nota forward-compat RLS** (allineamento col workstream parallelo [analisi-attivazione-rls-db.md](../work-done/analisi-attivazione-rls-db.md) §8): se possibile creare la vista già con `security_invoker=on`, così è pronta per la futura RLS sulla tabella base senza essere "RLS cosmetica". Decisione finale al team DB.
 
 ### 3.2 Entry `ui.lista_definizione`
 

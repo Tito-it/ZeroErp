@@ -1,7 +1,7 @@
 # Piano BE/FE — Attivazione RLS scope Emittente Fiscale (operatori)
 
 > **Destinatari**: backend agent (Python/Django), frontend (Vue). **Branch**: `dev/backend-tid`.
-> **Origine**: [analisi-attivazione-rls-operatori.md](analisi-attivazione-rls-operatori.md) (decisioni §11) + brief DB gemello (DB-side completo) [analisi-attivazione-rls-db.md](../work-done/analisi-attivazione-rls-db.md).
+> **Origine**: [analisi-attivazione-rls-operatori.md](analisi-attivazione-rls-operatori.md) (decisioni §11) + brief DB gemello (DB-side completo) [analisi-attivazione-rls-db.md](analisi-attivazione-rls-db.md).
 > **Natura**: piano **dettagliato** con prerequisiti DB espliciti per ogni stream. Le sigle `C#/R#/§#` rimandano all'analisi.
 > Convenzione: `[VERIFICATO]` su codice; `[DA CONFERMARE]` = riga/firma da ricontrollare prima di toccare.
 

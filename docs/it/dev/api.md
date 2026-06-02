@@ -585,7 +585,7 @@ l'auth class li ripopoli e prima di qualunque query. È **incondizionato**
 richiesta NON viene servita (500 `E_GUC_RESET_FAILED`). Chiude il leak
 cross-request sulle connessioni persistenti (`CONN_MAX_AGE > 0` / pooling),
 critico ora che la RLS filtra in base ai GUC. Vedi
-`docs/it/dev/work-in-progress/analisi-attivazione-rls-operatori-be-fe.md` §1.
+`docs/it/dev/work-done/analisi-attivazione-rls-operatori-be-fe.md` §1.
 
 ### Scope emittente
 
@@ -619,7 +619,7 @@ il consumer API:
 * una connessione **senza GUC** vede **0 righe** (fail-closed); i ruoli tecnici
   `BYPASSRLS` (migrazioni, job batch owner) restano esenti.
 
-Vedi `docs/it/dev/work-in-progress/analisi-attivazione-rls-operatori.md`.
+Vedi `docs/it/dev/work-done/analisi-attivazione-rls-operatori.md`.
 
 ---
 
