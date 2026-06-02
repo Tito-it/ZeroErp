@@ -47,6 +47,11 @@ const canPreview = computed(() =>
   variazionePct.value != null && variazionePct.value !== 0
 )
 
+// Larghezza dialog dipendente dallo step: 'md' per l'input (2 soli campi —
+// 'xl' risulterebbe sproporzionato), 'xl' per la preview che mostra la
+// tabella righe coinvolte.
+const dialogWidth = computed(() => (step.value === 'input' ? 'md' : 'xl'))
+
 async function loadPreview() {
   const res = await execute(
     () => applicaVariazionePercentuale(props.listinoId, props.versioneId, {
@@ -86,10 +91,13 @@ function backToInput() {
 
 <template>
   <!-- Wizard 2-step (Input -> Preview -> Conferma): i bottoni cambiano per
-       step e stanno nel body, quindi AppDialog serve solo per il chrome
-       (hide-footer). Non e' il pattern Annulla/Salva standard. -->
+       step ma vivono nel chrome standard di AppDialog (slot #footer), con
+       container .app-form-footer (allineamento a destra + collapse
+       responsive) e classe .app-form-footer-btn condivisa col FormFooter:
+       nessun CSS duplicato. Non e' il pattern fisso Annulla/Salva, quindi
+       lo slot override sostituisce il FormFooter di default. -->
   <AppDialog :visible="visible" @update:visible="onHide"
-    :header="t('listini.variazione_pct_titolo')" width="lg" hide-footer>
+    :header="t('listini.variazione_pct_titolo')" :width="dialogWidth">
 
     <!-- Step 1: Input -->
     <template v-if="step === 'input'">
@@ -97,7 +105,12 @@ function backToInput() {
         {{ t('listini.variazione_pct_help') }}
       </Message>
 
-      <div class="form-grid-2col">
+      <!-- Griglia asimmetrica: la percentuale prende lo spazio, i decimali
+           restano stretti (campo 0-10). Gap ampio per separare le celle.
+           `min-width: 0` sulle celle: senza, la colonna 1fr non scende sotto
+           la larghezza intrinseca dell'InputNumber (show-buttons) e sfora
+           spingendo fuori i decimali → scrollbar orizzontale. -->
+      <div class="variazione-grid">
         <div class="form-field">
           <label>{{ t('listini.variazione_pct_campo') }} *</label>
           <InputNumber v-model="variazionePct" :minFractionDigits="1" :maxFractionDigits="4"
@@ -107,15 +120,6 @@ function backToInput() {
           <label>{{ t('listini.variazione_pct_arrotondamento') }}</label>
           <InputNumber v-model="decimali" :min="0" :max="10" show-buttons />
         </div>
-      </div>
-
-      <!-- TODO: wizard 2-step (input -> preview -> conferma) — NON segue il
-           pattern Annulla/Salva del FormFooter. Quando si introdurra' un
-           WizardFooter centralizzato, sostituire questi 4 bottoni. -->
-      <div class="flex justify-end gap-2 mt-1">
-        <Button :label="t('common.cancel')" text @click="onHide" />
-        <Button :label="t('listini.variazione_pct_preview')" icon="pi pi-eye"
-          :disabled="!canPreview" :loading="loading" @click="loadPreview" />
       </div>
     </template>
 
@@ -132,13 +136,55 @@ function backToInput() {
         <Column field="prezzo_attuale" :header="t('listini.variazione_pct_prezzo_attuale')" style="width: 130px;" />
         <Column field="prezzo_calcolato" :header="t('listini.variazione_pct_prezzo_nuovo')" style="width: 130px;" />
       </DataTable>
+    </template>
 
-      <!-- TODO: vedi commento sopra (wizard step 2). -->
-      <div class="flex justify-end gap-2 mt-1">
-        <Button :label="t('common.back')" text icon="pi pi-arrow-left" @click="backToInput" />
+    <!-- Footer wizard nel chrome standard AppDialog: bottoni per step,
+         allineati a destra (.app-form-footer) con stile condiviso FormFooter
+         (.app-form-footer-btn). Annulla/Indietro = secondary (.app-escape);
+         Conferma = verde standard di conferma (come il Salva del FormFooter). -->
+    <template #footer>
+      <div v-if="step === 'input'" class="app-form-footer">
+        <Button :label="t('common.cancel')" :icon="MANAGE_ICONS.CANCEL"
+          severity="secondary" class="app-escape app-form-footer-btn"
+          v-tooltip.top="t('common.cancel')" @click="onHide" />
+        <Button :label="t('listini.variazione_pct_preview')" icon="pi pi-eye"
+          class="app-form-footer-btn" v-tooltip.top="t('listini.variazione_pct_preview')"
+          :disabled="!canPreview" :loading="loading" @click="loadPreview" />
+      </div>
+      <div v-else class="app-form-footer">
+        <Button :label="t('common.back')" :icon="MANAGE_ICONS.BACK"
+          severity="secondary" class="app-escape app-form-footer-btn"
+          v-tooltip.top="t('common.back')" @click="backToInput" />
         <Button :label="t('listini.variazione_pct_conferma')" :icon="MANAGE_ICONS.CONFIRM"
-          severity="warn" :loading="loading" @click="applyVariazione" />
+          class="app-form-footer-btn"
+          v-tooltip.top="t('listini.variazione_pct_conferma')"
+          :loading="loading" @click="applyVariazione" />
       </div>
     </template>
   </AppDialog>
 </template>
+
+<style scoped>
+/* Griglia asimmetrica: percentuale elastica, decimali stretti (campo 0-10).
+   `min-width: 0` sulle celle + width:100%/min-width:0 sull'InputNumber e sul
+   suo input interno: senza, la colonna 1fr non scende sotto la larghezza
+   intrinseca dell'InputNumber (show-buttons) e i decimali finiscono fuori dal
+   dialog con scrollbar orizzontale. */
+.variazione-grid {
+  display: grid;
+  grid-template-columns: 1fr 130px;
+  gap: 1.5rem;
+  align-items: end;
+}
+.variazione-grid .form-field {
+  min-width: 0;
+}
+.variazione-grid :deep(.p-inputnumber) {
+  width: 100%;
+  min-width: 0;
+}
+.variazione-grid :deep(.p-inputnumber-input) {
+  width: 100%;
+  min-width: 0;
+}
+</style>
