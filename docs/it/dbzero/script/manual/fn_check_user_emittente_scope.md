@@ -23,6 +23,15 @@ su tabelle operative (fatture, pagamenti).
 
 Funzione `fn_check_*`: puro boolean, no RAISE.
 
+> **Canonica unica read+write (dal 2026-06-01).** Questa è la **sede unica**
+> della regola di scope emittente. La delegano sia il **write-guard**
+> ([`trgfn_guard_emittente_scope`](/dbzero/script/funzioni/trgfn_guard_emittente_scope))
+> sia la **RLS in lettura**, tramite gli adapter
+> [`fn_scope_ef_whitelist`](/dbzero/script/funzioni/fn_scope_ef_whitelist) (PK),
+> `…_via_sr` e `…_via_fattura`. Modificare la regola qui la propaga a entrambi
+> i lati: nessuna duplicazione. Il bypass SUPER_ADMIN vive qui (chiude il bug
+> "C7" della vecchia RLS-read che ne era priva).
+
 ---
 
 ### Parametri di input

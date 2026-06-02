@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Policy RLS dry-run EF_WHITELIST su vendite.fatturazione_lotti (conv. SR).
+# Usa l'adapter via_sr su emittente_soggetto_ruolo_id (ora NOT NULL dopo
+# la sanazione 20260601-18).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260601-33-create-policy-rls-fatturazione-lotti-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260601-33-create-policy-rls-fatturazione-lotti-ef-whitelist
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Policy dry-run rls_fatturazione_lotti_ef_whitelist: operatore vede
+        solo lotti con emittente in whitelist (adapter SR
+        fn_scope_ef_whitelist_via_sr su emittente_soggetto_ruolo_id).
+        Gate OPERATORE fail-closed. Ondata 1. Non attiva finche' ENABLE.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists: { schemaName: vendite, tableName: fatturazione_lotti, columnName: emittente_soggetto_ruolo_id }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                 WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist_via_sr';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatturazione_lotti_ef_whitelist ON vendite.fatturazione_lotti;
+
+              CREATE POLICY rls_fatturazione_lotti_ef_whitelist ON vendite.fatturazione_lotti
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_soggetto_ruolo_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_fatturazione_lotti_ef_whitelist ON vendite.fatturazione_lotti IS
+                  'RLS dry-run: operatore vede solo lotti con emittente in whitelist '
+                  '(adapter via_sr -> canonica). Non attiva finche ENABLE.';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_fatturazione_lotti_ef_whitelist ON vendite.fatturazione_lotti;

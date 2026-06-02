@@ -140,7 +140,7 @@
 - [fn_prepare_sdi_payload](manual/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
 - [fn_preventivo_riga_componenti_init](manual/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](manual/fn_preventivo_riga_componenti_preview.md)
-- [fn_push_offerta_a_contratto](manual/fn_push_offerta_a_contratto.md) — (rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
+- [fn_push_offerta_a_contratto](manual/fn_push_offerta_a_contratto.md) — (rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 - [fn_reset_fondi_fattura](manual/fn_reset_fondi_fattura.md) — La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura applicati ad una **fattura figlia**:
 - [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — (latest review 09-02-2026)   La funzione **`vendite.fn_reset_lotto_draft()`** effettua il **rollback tecnico** di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati dal draft e ripristinando le righe di `attivita_fatturabili`.
 - [fn_reset_lotto_fattura_draft](manual/fn_reset_lotto_fattura_draft.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_reset_lotto_fattura_draft()`** effettua il reset tecnico di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**, senza annullare il lotto.
@@ -211,8 +211,10 @@
 - [trgfn_logs_guard_delete](manual/trgfn_logs_guard_delete.md) — (latest review 20-02-2026)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** blocca la cancellazione diretta dei log funzionali (`fatture_log`, `fatturazione_lotti_log`) salvo abilitazione esplicita di manutenzione.
 - [trgfn_note_validate_generic](manual/trgfn_note_validate_generic.md) — La trigger function `vendite.trgfn_note_validate_generic()` valida la coerenza delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
 - [trgfn_offerte_commerciali_revisione](manual/trgfn_offerte_commerciali_revisione.md) — (rev 2026-05-24)
+- [trgfn_ordini_default_emittente](manual/trgfn_ordini_default_emittente.md) — (rev 2026-06-01)
 - [trgfn_ordini_ful_guard_consistenza](manual/trgfn_ordini_ful_guard_consistenza.md) — La trigger function `vendite.trgfn_ordini_ful_guard_consistenza()` protegge la coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.
 - [trgfn_ordini_gen_codice](manual/trgfn_ordini_gen_codice.md) — La trigger function `vendite.trgfn_ordini_gen_codice()` genera automaticamente `numero` ordine quando il campo non viene fornito.
+- [trgfn_ordini_guard_emittente_ba](manual/trgfn_ordini_guard_emittente_ba.md) — (rev 2026-06-01)
 - [trgfn_ordini_normalize](manual/trgfn_ordini_normalize.md) — La trigger function `vendite.trgfn_ordini_normalize()` completa i campi temporali minimi dell’ordine quando il `numero` e` presente in insert.
 - [trgfn_ordini_righe_componenti_guard_pending](manual/trgfn_ordini_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga ordine ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. Cambi strutturali durante la fase di approvazione renderebbero la decisione ambigua. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ordini_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_preventivi_default_emittente](manual/trgfn_preventivi_default_emittente.md)

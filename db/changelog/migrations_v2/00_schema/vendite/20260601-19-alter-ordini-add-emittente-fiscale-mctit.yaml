@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge vendite.ordini.emittente_fiscale_id BIGINT NULL con FK ad
+# anagrafiche.emittenti_fiscali (brief RLS §5). Snapshot user-derived,
+# modello simmetrico a preventivi/contratti/offerte_commerciali.
+# Colonna inizialmente nullable per il backfill (80_data/20260601-24);
+# SET NOT NULL in 90_end/20260601-25.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260601-19-alter-ordini-add-emittente-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260601-19-alter-ordini-add-emittente-fiscale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ADD COLUMN emittente_fiscale_id BIGINT NULL con FK a
+        anagrafiche.emittenti_fiscali. Colonna nullable per backfill.
+        SET NOT NULL in 90_end/20260601-25 post-backfill.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: ordini }
+        - tableExists: { schemaName: anagrafiche, tableName: emittenti_fiscali }
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini
+                columnName: emittente_fiscale_id
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- ADD COLUMN vendite.ordini.emittente_fiscale_id
+              --
+              -- Emittente fiscale che ha emesso l'ordine. Snapshot
+              -- user-derived: valorizzato a INSERT-time dal trigger
+              -- trgfn_ordini_default_emittente (20_code/20260601-21).
+              -- Necessario per lo scope RLS operatore (convenzione PK,
+              -- coerente con preventivi/contratti/offerte_commerciali).
+              -- ==========================================================
+              ALTER TABLE vendite.ordini
+                  ADD COLUMN emittente_fiscale_id BIGINT NULL
+                  CONSTRAINT fk_ordini_emittente_fiscale
+                      REFERENCES anagrafiche.emittenti_fiscali(id)
+                      ON DELETE NO ACTION
+                      ON UPDATE CASCADE;
+
+              COMMENT ON COLUMN vendite.ordini.emittente_fiscale_id
+              IS 'Emittente fiscale dell''ordine. Snapshot user-derived: '
+                 'valorizzato a INSERT-time da trgfn_ordini_default_emittente '
+                 'tramite GUC app.current_user_id -> fn_resolve_emittente_for_user. '
+                 'Skip se valorizzato esplicitamente nel payload (admin globale, push). '
+                 'Guard coerenza BA in trgfn_ordini_guard_emittente_ba (20260601-22, '
+                 'skip se BA NULL). NOT NULL dopo backfill (90_end/20260601-25).';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.ordini DROP COLUMN IF EXISTS emittente_fiscale_id;

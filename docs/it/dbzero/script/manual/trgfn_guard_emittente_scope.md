@@ -13,7 +13,7 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 08-03-2026)
+(rev 2026-06-01 — aggiunta modalità `fiscale` PK; delega alla canonica `fn_check_user_emittente_scope`)
 La trigger function **`script.trgfn_guard_emittente_scope`** implementa il
 defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità
 sull'emittente fiscale della riga.
@@ -24,7 +24,7 @@ sull'emittente fiscale della riga.
 
 | Indice | Valore | Descrizione |
 | ------ | ------ | ----------- |
-| `TG_ARGV[0]` | `'soggetto_ruolo'` o `'fattura'` | Modalita di risoluzione emittente. |
+| `TG_ARGV[0]` | `'soggetto_ruolo'` \| `'fattura'` \| `'fiscale'` | Modalita di risoluzione emittente. |
 | `TG_ARGV[1]` | nome colonna | Colonna della riga che contiene l'ID da risolvere. |
 
 ---
@@ -37,7 +37,14 @@ sull'emittente fiscale della riga.
 
 * **`fattura`**: la colonna contiene un `fattura_id`;
   l'emittente si risolve via `vendite.fatture → emittenti_fiscali`.
-  Usato su `pagamenti.vendite_movimenti` (colonna `fattura_id`).
+  Usato su `pagamenti.vendite_movimenti` e `vendite.fatture_scadenze`
+  (colonna `fattura_id`).
+
+* **`fiscale`** *(dal 2026-06-01)*: la colonna contiene **già**
+  `emittente_fiscale_id` (convenzione PK); **nessuna risoluzione**.
+  Usato sulle tabelle documentali PK: `vendite.preventivi`, `contratti`,
+  `offerte_commerciali`, `documenti.documenti_generati`, `pratiche.pratiche`,
+  `vendite.ordini` (colonna `emittente_fiscale_id`).
 
 ---
 

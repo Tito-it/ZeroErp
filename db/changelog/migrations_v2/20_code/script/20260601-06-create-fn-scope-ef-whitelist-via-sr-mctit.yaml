@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260601-06-create-fn-scope-ef-whitelist-via-sr-mctit.yaml
+
+  - changeSet:
+      id: 20260601-06-create-fn-scope-ef-whitelist-via-sr
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Adapter SR per lo scope EF_WHITELIST (brief RLS §1/§2): risolve la
+        convenzione emittente_soggetto_ruolo_id (SR) verso la chiave nativa
+        della whitelist (emittente_fiscale_id, PK) e DELEGA alla canonica
+        gia' esistente script.fn_check_user_emittente_scope(auth_user_id,
+        emittente_fiscale_id). Nessuna logica di whitelist ri-scritta qui:
+        la regola vive una volta sola nella canonica (read+write unificati,
+        bypass SUPER_ADMIN/fix C7 ereditato per costruzione). Speculare a
+        fn_scope_ba_ownership_via_fattura. LANGUAGE sql STABLE per inlining.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: anagrafiche, tableName: emittenti_fiscali }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_check_user_emittente_scope';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Firma con %TYPE sul parametro SR (policy ZeroErp):
+              --   p_auth_user_id    = django.auth_user.id (integer, GUC app.current_user_id)
+              --   p_emittente_sr_id = anagrafiche.emittenti_fiscali.soggetto_ruolo_id
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_sr(
+                  p_auth_user_id    integer,
+                  p_emittente_sr_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Risolve SR -> emittente_fiscale_id (1:1 via soggetto_ruolo_id)
+                  -- e delega alla canonica. SR non mappato / emittente NULL ->
+                  -- la canonica con emittente_fiscale_id NULL ritorna false se la
+                  -- whitelist e' valorizzata (fail-closed), true se vuota/super_admin.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      (SELECT ef.id
+                         FROM anagrafiche.emittenti_fiscali ef
+                        WHERE ef.soggetto_ruolo_id = p_emittente_sr_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_sr(
+                  integer,
+                  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE
+              ) IS
+                  'Adapter SR dello scope EF_WHITELIST: risolve '
+                  'emittente_soggetto_ruolo_id -> emittente_fiscale_id e delega a '
+                  'script.fn_check_user_emittente_scope (canonica auth_user_id/PK). '
+                  'Per tabelle convenzione SR (fatture, fatturazione_lotti). '
+                  'STABLE, inlineable. Nessuna logica whitelist duplicata.';
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_sr(integer, bigint);

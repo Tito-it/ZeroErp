@@ -82,7 +82,10 @@
 - [fn_scope_ba_ownership](funzioni/fn_scope_ba_ownership.md) — (latest review 20-04-2026 — ruolo-aware)
 - [fn_scope_ba_ownership_via_fattura](funzioni/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)
 - [fn_scope_cliente_ownership](funzioni/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
-- [fn_scope_ef_whitelist](funzioni/fn_scope_ef_whitelist.md) — (latest review 18-04-2026)
+- [fn_scope_ef_whitelist](funzioni/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
+- [fn_scope_ef_whitelist_via_efba](funzioni/fn_scope_ef_whitelist_via_efba.md) — (rev 2026-06-01 — Ondata 2)
+- [fn_scope_ef_whitelist_via_fattura](funzioni/fn_scope_ef_whitelist_via_fattura.md) — (rev 2026-06-01)
+- [fn_scope_ef_whitelist_via_sr](funzioni/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
 - [fn_scope_fornitore_ownership](funzioni/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](funzioni/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
@@ -103,7 +106,7 @@
 - [trgfn_componenti_ricalcola_padre](funzioni/trgfn_componenti_ricalcola_padre.md) — Mantiene il prezzo della riga padre composita CASO A sempre coerente con i prezzi dei suoi componenti. Il prezzo padre è **derivato, non inserito direttamente**: qualsiasi modifica (INSERT, UPDATE, DELETE) a un componente propaga automaticamente il ricalcolo.
 - [trgfn_config_sistema_codici_sync_gen_codice](funzioni/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
 - [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
-- [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (latest review 08-03-2026) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
+- [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-06-01 — aggiunta modalità `fiscale` PK; delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
 - [trgfn_guard_sorgente_polimorfa](funzioni/trgfn_guard_sorgente_polimorfa.md) — `script.trgfn_guard_sorgente_polimorfa()` fornisce un **controllo unificato e riusabile** sulla **coerenza dei riferimenti di sorgente** (origine dati) per tabelle applicative che adottano il pattern:
 - [trgfn_guard_utility_tipo_ruolo_by_cols](funzioni/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.
 - [trgfn_listini_righe_comp_guard_coerenza_bom](funzioni/trgfn_listini_righe_comp_guard_coerenza_bom.md)
@@ -112,6 +115,7 @@
 - [trgfn_prevent_modification_generic](funzioni/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
 - [trgfn_qta_from_operativa](funzioni/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
 - [trgfn_righe_default_fonte_qta](funzioni/trgfn_righe_default_fonte_qta.md)
+- [trgfn_righe_guard_pending](funzioni/trgfn_righe_guard_pending.md) — (rev 2026-06-01 — estrazione)
 - [trgfn_storico_generic](funzioni/trgfn_storico_generic.md) — (latest review 02-02-26) * **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md) — * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono. * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.
 - [uuid_nil](funzioni/uuid_nil.md) — * Fornire un valore UUID costante, composto interamente da zeri. * Usato come **fallback** o **default** quando non è possibile generare o recuperare un UUID valido.

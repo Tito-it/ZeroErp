@@ -35,11 +35,13 @@ AS $function$
 --   - emittente_fiscale_id copiato 1:1 dall'offerta.
 --   - eccezioni: loop per-eccezione (mapping eccezione.id->riga.id),
 --     componenti copiati dopo ogni INSERT riga.
---   - stato_approvazione_prezzo / pratica_approvazione_prezzo_id delle
---     componenti: trasportati 1:1 dall'offerta.
+--   - stato_approvazione_prezzo / pratica_approvazione_prezzo_id:
+--     trasportati 1:1 dall'offerta sia sulla RIGA (rev5, 2026-06-01)
+--     sia sui COMPONENTI (rev3). L'approvazione L3 ottenuta in offerta
+--     non va riapprovata sul contratto.
 --   - utility: UPSERT per gestire trigger snapshot_precontrattuali.
 --   - overlap: advisory lock + rilevamento + routing + backstop
---     (vedi header del changelog).
+--     (vedi header del changelog 20260531-04).
 DECLARE
     v_offerta               vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod             config.stati_doc_offerte.codice_interno%TYPE;
@@ -294,7 +296,9 @@ BEGIN
             factor_to_base,
             ordine,
             attivo,
-            meta
+            meta,
+            stato_approvazione_prezzo,
+            pratica_approvazione_prezzo_id
         )
         VALUES (
             v_contratto_id,
@@ -312,7 +316,9 @@ BEGIN
             v_eccezione.factor_to_base,
             v_eccezione.ordine,
             v_eccezione.attivo,
-            v_eccezione.meta
+            v_eccezione.meta,
+            v_eccezione.stato_approvazione_prezzo,
+            v_eccezione.pratica_approvazione_prezzo_id
         )
         RETURNING id INTO v_riga_id;
 
@@ -432,7 +438,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint, p_chiudi_contratto_esistente boolean)
-IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti. 3o parametro p_chiudi_contratto_esistente: su overlap (ex_contratti_no_overlap) se false -> E_CONTRATTO_OVERLAP_ESISTENTE; se true -> chiude il contratto esistente per successione (fn_chiudi_contratto_per_successione) e genera il nuovo. Advisory lock sulla quintupla + backstop exclusion_violation. Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO).';
+IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev5 (2026-06-01): trasporta 1:1 stato_approvazione_prezzo + pratica_approvazione_prezzo_id anche sulle RIGHE (oltre che sui componenti), cosi'' l''approvazione L3 dell''offerta non va riapprovata sul contratto. Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti (advisory lock + overlap + routing + backstop). Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO).';
 ```
 
 ---

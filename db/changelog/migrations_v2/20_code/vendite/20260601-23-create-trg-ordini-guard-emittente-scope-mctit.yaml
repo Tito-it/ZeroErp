@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260601-23-create-trg-ordini-guard-emittente-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260601-23-create-trg-ordini-guard-emittente-scope
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Aggancia il write-guard scope emittente (RLS, simmetria scrittura) a
+        vendite.ordini — completamento della Fase 2 dopo l'aggiunta della
+        colonna emittente_fiscale_id (Fase 4). Modalita' 'fiscale' (PK).
+        Distinto dal guard di coerenza BA (-22): qui si verifica che
+        l'OPERATORE corrente abbia scope sull'emittente (canonica
+        fn_check_user_emittente_scope), non la coerenza emittente<->BA.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists: { schemaName: vendite, tableName: ordini, columnName: emittente_fiscale_id }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'trgfn_guard_emittente_scope';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_emittente_scope_ins_upd
+                ON vendite.ordini;
+
+              CREATE TRIGGER trg_ordini_a10_guard_emittente_scope_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.ordini
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_guard_emittente_scope(
+                  'fiscale', 'emittente_fiscale_id'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_emittente_scope_ins_upd
+                ON vendite.ordini;

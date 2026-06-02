@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Guard di coerenza BA <-> emittente fiscale su vendite.ordini.
+# Regola: se billing_account_id e' valorizzato, emittente_fiscale_id deve
+# coincidere con anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id).
+# Skip se billing_account_id e' NULL (ordini.billing_account_id e' nullable,
+# a differenza di contratti dove e' NOT NULL).
+# Pattern simmetrico a trgfn_contratti_guard_emittente_ba (20260526-04).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260601-22-create-trgfn-ordini-guard-emittente-ba-mctit.yaml
+
+  - changeSet:
+      id: 20260601-22-create-trgfn-ordini-guard-emittente-ba
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Guard BEFORE INSERT OR UPDATE: verifica che emittente_fiscale_id
+        coincida con fn_get_emittente_fiscale_pk(billing_account_id) quando
+        il BA e' valorizzato. Skip se BA NULL. Errore
+        E_ORDINE_EMITTENTE_BA_INCOERENTE (id=468). Trigger
+        trg_ordini_a10_guard_emittente_ba_ins_upd.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: ordini
+            columnName: emittente_fiscale_id
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Function: vendite.trgfn_ordini_guard_emittente_ba
+              --
+              -- Scopo: coerenza BA <-> emittente fiscale su INSERT/UPDATE.
+              -- Differenza da contratti: ordini.billing_account_id e' nullable
+              -- -> skip del check quando il BA non e' valorizzato (l'emittente
+              -- resta quello user-derived senza vincolo BA).
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_guard_emittente_ba()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_ef_atteso_id anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                -- Skip: nessun BA su cui ancorare la coerenza.
+                IF NEW.billing_account_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Emittente atteso per il BA dell'ordine.
+                v_ef_atteso_id := anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+
+                IF NEW.emittente_fiscale_id IS DISTINCT FROM v_ef_atteso_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'trgfn_ordini_guard_emittente_ba',
+                    'E_ORDINE_EMITTENTE_BA_INCOERENTE',
+                    jsonb_build_object(
+                      'billing_account_id',   NEW.billing_account_id,
+                      'emittente_fiscale_id', NEW.emittente_fiscale_id,
+                      'emittente_atteso_id',  v_ef_atteso_id,
+                      'numero_ordine',        NEW.numero
+                    ),
+                    NULL::uuid,
+                    concat('ba=', NEW.billing_account_id,
+                           ', ef=', NEW.emittente_fiscale_id,
+                           ', ef_atteso=', v_ef_atteso_id)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_guard_emittente_ba()
+              IS 'Guard BEFORE INSERT/UPDATE: verifica che ordini.emittente_fiscale_id '
+                 'coincida con anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id) '
+                 'quando il BA e'' valorizzato (skip se BA NULL). Solleva '
+                 'E_ORDINE_EMITTENTE_BA_INCOERENTE. Fires dopo trgfn_ordini_default_emittente.';
+
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_emittente_ba_ins_upd
+                ON vendite.ordini;
+
+              CREATE TRIGGER trg_ordini_a10_guard_emittente_ba_ins_upd
+                BEFORE INSERT OR UPDATE OF billing_account_id, emittente_fiscale_id
+                ON vendite.ordini
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_ordini_guard_emittente_ba();
+
+              COMMENT ON TRIGGER trg_ordini_a10_guard_emittente_ba_ins_upd
+                ON vendite.ordini
+              IS 'Guard coerenza BA <-> emittente fiscale (E_ORDINE_EMITTENTE_BA_INCOERENTE). '
+                 'Skip se BA NULL. Fires BEFORE INSERT (dopo default_emittente) e UPDATE OF '
+                 'billing_account_id, emittente_fiscale_id.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_emittente_ba_ins_upd ON vendite.ordini;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ordini_guard_emittente_ba();

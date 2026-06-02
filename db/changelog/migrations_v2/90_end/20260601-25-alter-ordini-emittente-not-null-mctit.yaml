@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fase 90_end (post-backfill in 80_data/20260601-24):
+#   SET NOT NULL su vendite.ordini.emittente_fiscale_id.
+# Pre-check: zero NULL residui (altrimenti HALT).
+# Pattern simmetrico a 20260526-08 (contratti).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260601-25-alter-ordini-emittente-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260601-25-alter-ordini-emittente-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        SET NOT NULL su ordini.emittente_fiscale_id post-backfill.
+        Pre-check: zero NULL (altrimenti HALT).
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >
+            Backfill incompleto: residui NULL su ordini.emittente_fiscale_id.
+            Verificare il changeset 80_data/20260601-24 (backfill emittente)
+            prima di rieseguire. Cause tipiche: ordini senza BA ne' operatore
+            risolvibile e assenza di gestore globale di default
+            (anagrafiche.emittenti_fiscali_billing_account is_default).
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*)
+                FROM vendite.ordini
+               WHERE emittente_fiscale_id IS NULL;
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini
+                ALTER COLUMN emittente_fiscale_id SET NOT NULL;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.ordini
+                ALTER COLUMN emittente_fiscale_id DROP NOT NULL;

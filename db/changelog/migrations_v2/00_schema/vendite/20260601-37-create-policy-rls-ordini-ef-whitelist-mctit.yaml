@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Policy RLS dry-run EF_WHITELIST su vendite.ordini (convenzione PK).
+# Additiva (OR) alle policy portale/shop esistenti
+# (rls_ordini_cliente_ownership, rls_ordini_shop): gate OPERATORE ->
+# non interferisce con CLIENTE_PORTALE/SHOP_CUSTOMER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260601-37-create-policy-rls-ordini-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260601-37-create-policy-rls-ordini-ef-whitelist
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Policy dry-run rls_ordini_ef_whitelist: operatore vede solo ordini con
+        emittente_fiscale_id in whitelist (adapter PK fn_scope_ef_whitelist).
+        Gate OPERATORE fail-closed; additiva (OR) alle policy portale/shop.
+        Completa la copertura policy del lotto (ordini aveva solo le policy
+        cliente/shop). Non attiva finche' ENABLE (Ondata 2).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists: { schemaName: vendite, tableName: ordini, columnName: emittente_fiscale_id }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                 WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_ordini_ef_whitelist ON vendite.ordini;
+
+              CREATE POLICY rls_ordini_ef_whitelist ON vendite.ordini
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_fiscale_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_ordini_ef_whitelist ON vendite.ordini IS
+                  'RLS dry-run: operatore vede solo ordini con emittente in whitelist '
+                  '(adapter PK fn_scope_ef_whitelist). Additiva (OR) alle policy '
+                  'cliente/shop, gate OPERATORE. Non attiva finche ENABLE (Ondata 2).';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_ordini_ef_whitelist ON vendite.ordini;
