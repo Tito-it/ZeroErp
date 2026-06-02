@@ -210,7 +210,7 @@ Fotografia sintetica (29 maggio 2026):
   - Fase PG18 (mag 2026): `validita` → `GENERATED ALWAYS STORED` su 20 tabelle; 3 tabelle con temporal UNIQUE (`WITHOUT OVERLAPS`); temporal FK `listini_righe_componenti → articoli_componenti`; `trgfn_set_validita` droppata
   - Backend ottimizzato: `validita @>` al posto dei doppi confronti `valido_dal`/`valido_al`
   - Piano PG18: [piano-miglioramenti-db-pg18.md](./dev/work-done/piano-miglioramenti-db-pg18.md)
-  - ⚠️ **Regressione nota (Step 2b):** 5 vincoli `ex_*_no_overlap` parziali ricreati come `CREATE INDEX` (non enforçanti) → vedi [refactor-overlap.md](./dev/work-done/refactor-overlap.md). Da ripristinare a `EXCLUDE` esplicito.
+  - ✅ **Regressione Step 2b risolta** (2026-06-02): i 5 vincoli `ex_*_no_overlap` parziali, ricreati per errore come `CREATE INDEX` (non enforçanti), sono stati **ripristinati a `EXCLUDE` reali** e ora **governati dal framework** `dbops.automazione_overlap` (colonne `where_predicate`/`key_expressions` + runner notturno `automations_overlap` per l'auto-guarigione). Lato contratti aggiunto il **DRAFT-scope** (esclusività solo all'attivazione, colonna generata `partecipa_overlap_snapshot`). Dettagli: [refactor-overlap.md](./dev/work-done/refactor-overlap.md) + [refactor-overlap-v2.md](./dev/work-done/refactor-overlap-v2.md).
 - Rettifiche prezzi (DB-L4): estratte in [work-in-progress/sviluppo-rettifiche.md](./dev/work-in-progress/sviluppo-rettifiche.md), **da implementare**
 - Integrazione AI v1: operativa, **11 tool** registrati
   - Pratiche (cerca, dettaglio, flussi)
