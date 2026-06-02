@@ -1,16 +1,15 @@
 # Refactor overlap — enforcement no-sovrapposizione contratti/listini/promo
 
-> **Data analisi:** 2026-06-02
-> **Natura:** analisi + indicazioni. **NESSUNO script/DDL qui** — le azioni DB
-> sono materia del team DB ([[feedback_db_actions_passaggio_team]]). Questo
-> documento spiega *da dove nasce il problema*, *cosa è stato analizzato* e *cosa
-> conviene fare*; firme/strada implementativa le sceglie il team DB.
-> **Origine:** segnalazione utente — due contratti attivi sovrapposti per lo
-> stesso cliente/utility (CNT0000027 `16/05→27/05` e CNT0000033 `20/05→25/05`),
-> generati nonostante "dovrebbe esserci un controllo".
-> **Convenzione:** `[VERIFICATO]` su codice/migration attuali; `[DA VERIFICARE
-> SU DB]` = introspezione runtime non disponibile dall'analisi (psql non
-> raggiungibile dal sandbox).
+> **Data analisi:** 2026-06-02 · **Verifiche DB + migration correttive:** 2026-06-02 (lato DB)
+> **Natura:** analisi + verifica runtime + piano correttivo **eseguito lato DB**.
+> Le verifiche su DB e le migration correttive sono ora incluse (§5): siamo lato
+> DB, qui si fanno le verifiche e si generano le modifiche.
+> **Origine:** segnalazione utente — due contratti percepiti come sovrapposti per
+> lo stesso cliente/utility (CNT0000027 `16/05→27/05` e CNT0000033 `20/05→25/05`),
+> generati nonostante "dovrebbe esserci un controllo". **Esito:** falso allarme —
+> differiscono su `ambito` (COMMERCIO vs COMMODITY), nessun bug del vincolo (§2.4).
+> **Convenzione:** `[VERIFICATO]` su codice/migration; `[VERIFICATO SU DB]` =
+> confermato via introspezione su dev (PG 18.4, 2026-06-02).
 
 ---
 
@@ -44,13 +43,40 @@ semplice**, non un constraint. Un `CREATE INDEX ... USING gist (...)`:
 - quindi **NON** impedisce due righe con `validita` sovrapposte sulla stessa
   chiave: è solo una struttura di supporto alle query.
 
-Il declassamento è avvenuto durante il refactor di metà maggio 2026 "`validita`
-→ STORED GENERATED" (`20260514-*`): trasformando `validita` in colonna generata
-stored, l'`EXCLUDE` esistente è stato **droppato e ricreato come `CREATE INDEX`**
-(tampone), perdendo silenziosamente l'enforcement. Per confronto, nel **catalogo**
-lo stesso problema (`articoli_componenti`) è stato risolto bene migrando a un
-**UNIQUE temporale PG18 (SQL:2011)** in `20260514-08`, mantenendo l'enforcement.
-Su vendite, invece, due oggetti sono rimasti col tampone a indice.
+Il declassamento è **sistematico** ed è avvenuto durante il refactor di metà
+maggio 2026 "`validita` → STORED GENERATED" (`20260514-*`), pianificato in
+[[piano-miglioramenti-db-pg18]] (Step 2b). Per ogni tabella con periodo: il
+`DROP COLUMN validita CASCADE` droppava l'`EXCLUDE` e lo step "ricrea l'indice"
+scriveva **`CREATE INDEX ... USING gist (chiavi, validita) WHERE (...)`** invece
+di `ADD CONSTRAINT ... EXCLUDE USING gist (chiavi WITH =, validita WITH &&)
+WHERE (...)`. Colonne e `WHERE` preservati, ma **persi gli operatori di
+esclusione (`WITH =`, `WITH &&`) e la natura di constraint**. Nome `ex_*`
+identico → silenzioso.
+
+**Radice istituzionale:** il template è quello di
+[linee-guida-sql.md §7b "Pathway 2"](../../linee-guida-sql.md) (intestazione
+"EXCLUDE USING gist" ma codice `CREATE INDEX`). Ogni migration dello Step 2b lo
+ha copiato. Ironia: la stessa guida, ~50 righe sotto (sezione "stati
+annullabili", caso `contratti`), mostra il pattern **corretto** con `ADD
+CONSTRAINT ... EXCLUDE ... WITH =, WITH && ... WHERE`.
+
+Per confronto, nel **catalogo** le tabelle **senza** `WHERE`
+(`articoli_componenti`, `unita_misura_conversioni`) sono state migrate bene a
+**UNIQUE temporale PG18 (SQL:2011)** (`20260514-07/08`), mantenendo
+l'enforcement. Le tabelle **con** `WHERE` non possono usare il temporal UNIQUE
+(non supporta predicato parziale) e sono tutte finite a indice-civetta.
+
+**Il framework `dbops.automazione_overlap` non ripara il danno** `[VERIFICATO su
+codice]`: (a) `fn_seed_automazione_overlap` rileva un indice GiST solo se la sua
+definizione contiene `daterange(...)` (indice su espressione) — gli indici dello
+Step 2b sono su colonna `validita`, quindi **non rilevati → seedati
+`active=false`**; (b) anche se fossero `active=true`,
+`fn_apply_automazione_overlap` emette `ADD CONSTRAINT ... EXCLUDE USING gist
+(...)` **senza clausola `WHERE`** → per un vincolo parziale produrrebbe un
+EXCLUDE *totale*, semanticamente errato. Tutte le 5 tabelle rotte hanno `WHERE`:
+nessuna è ripristinabile dal framework. L'unica strada corretta è l'`ADD
+CONSTRAINT ... EXCLUDE ... WHERE` esplicito per tabella, come fatto per
+`contratti`.
 
 ### 1.3 La barriera reattiva non basta
 
@@ -84,13 +110,32 @@ a questo controllo.
 
 ### 2.2 Esito per oggetto (da migration) `[VERIFICATO]`
 
-| Oggetto | Tabella | DDL reale (ultima migration) | Enforça? |
-|---|---|---|---|
-| `ex_contratti_no_overlap` | `vendite.contratti` | `ADD CONSTRAINT ... EXCLUDE` (`20260521-03`) | ✅ dovrebbe |
-| `ex_listini_versioni_no_overlap` | `vendite.listini_versioni` | `ADD CONSTRAINT ... EXCLUDE` | ✅ sì |
-| `ex_listini_associazioni_no_overlap` | `vendite.listini_associazioni` | `ADD CONSTRAINT ... EXCLUDE` | ✅ sì |
-| `ex_listini_righe_comp_no_overlap` | `vendite.listini_righe_componenti` | `CREATE INDEX` (`20260513-18`/`20260514-04`) | ❌ **NO** |
-| `ex_promo_articoli_no_overlap` | `vendite.promo_articoli` | declassato a `CREATE INDEX` (`20260514-30`) | ❌ **NO** |
+Verifica tracciata **in avanti** fino all'ultima migration che tocca ciascun
+oggetto (non alla migration di creazione): è qui che la prima stesura di questo
+documento aveva sbagliato su `listini_versioni`, fermandosi alla migration
+`20260409`/`20260224` senza vedere il declassamento di `20260514-29`.
+
+| Oggetto | Tabella | DDL reale (ultima migration) | `WHERE`? | Enforça? |
+| --- | --- | --- | --- | --- |
+| `ex_contratti_no_overlap` | `vendite.contratti` | `ADD CONSTRAINT ... EXCLUDE` (`20260521-03`) | sì | ✅ dovrebbe |
+| `ex_listini_associazioni_no_overlap` | `vendite.listini_associazioni` | tabella **non esistente** su dev `[VERIFICATO SU DB]` (rimossa/rinominata) | — | n/a |
+| `ex_listini_righe_comp_no_overlap` | `vendite.listini_righe_componenti` | `CREATE INDEX` (`20260513-18` nasce così → `20260514-04`) | sì | ❌ **NO** |
+| `ex_promo_articoli_no_overlap` | `vendite.promo_articoli` | declassato a `CREATE INDEX` (`20260514-30`) | sì | ❌ **NO** |
+| `ex_listini_versioni_no_overlap` | `vendite.listini_versioni` | declassato a `CREATE INDEX` (`20260514-29`) | sì | ❌ **NO** |
+| `ex_categ_cli_listini_no_overlap` | `anagrafiche.categorie_clienti_listini` | declassato a `CREATE INDEX` (`20260514-31`) | sì | ❌ **NO** |
+| `ex_template_documenti_versioni_no_overlap_pubblicata` | `documenti.template_documenti_versioni` | declassato a `CREATE INDEX` (`20260514-32`) | sì | ❌ **NO** |
+
+**5 oggetti rotti, non 2.** Lo stesso errore copia-incolla è in tutte le
+migration `20260514-04/29/30/31/32` (Step 2b del piano). Nota: per
+`listini_righe_componenti` non è un *declassamento* — la tabella **nasce già a
+indice** nella sua migration di creazione `20260513-18` (i commenti dicono
+"EXCLUDE gist" ma il DDL è `CREATE INDEX`); il refactor `20260514-04` ha solo
+preservato un indice mai enforçante.
+
+> ⚠️ Il piano `piano-miglioramenti-db-pg18.md` §6 (tabella Step 2b) dichiara che
+> queste migration "**ricreano EXCLUDE**". Le loro DDL ricreano indici semplici:
+> il documento di pianificazione descrive male il DDL effettivamente eseguito, ed
+> è marcato ✅ COMPLETATO con il difetto dentro.
 
 ### 2.3 Preventivi e Offerte commerciali
 
@@ -99,35 +144,34 @@ forniture esclusive. Più preventivi/offerte per lo stesso cliente/utility/perio
 possono coesistere (proposte concorrenti / revisioni). Nessun bug, niente da
 aggiungere.
 
-### 2.4 Il caso contratti (sintomo dell'utente) — diagnosi aperta
+### 2.4 Il caso contratti (sintomo dell'utente) — RISOLTO: H2 `[VERIFICATO SU DB]`
 
-La migration `20260521-03` crea un `EXCLUDE` reale su `contratti`. Quindi il
-vincolo **dovrebbe** bloccare l'overlap. Il fatto che CNT0000027/0033 coesistano
-ha **tre spiegazioni possibili**, tutte da verificare a DB `[DA VERIFICARE SU DB]`:
+`vendite.contratti` ha un `EXCLUDE` reale (`ex_contratti_no_overlap`, contype `x`,
+`WHERE (NOT is_abortito_snapshot)`) — confermato a runtime. Il vincolo funziona.
+La diagnosi dei due contratti chiude su **H2 — non confliggono** perché
+differiscono sulla chiave `ambito`:
 
-- **H1 — vincolo non presente** su quella istanza DB (migration non applicata o
-  successivamente alterata);
-- **H2 — le due righe non confliggono** perché differiscono su una colonna chiave
-  del vincolo: `(billing_account_id, istanza_utility_id, utility_id, ambito)`
-  (es. istanza/PDP diversa, oppure `COMMODITY` vs `COMMERCIO`). In tal caso, per
-  il modello, **non** sono un overlap — ma va capito se la percezione "stesso
-  cliente/utility" nasconde un'istanza diversa;
-- **H3 — una delle due è `is_abortito_snapshot = true`** (ANNULLATO): il vincolo
-  è parziale `WHERE (NOT is_abortito_snapshot)`, quindi una riga abortita non
-  conflitta e non blocca.
+| numero | billing_account | istanza_utility | utility | **ambito** | abortito | validita |
+| --- | --- | --- | --- | --- | --- | --- |
+| CNT0000027 | 173 | 197 | 5 | **COMMERCIO** | no | `[2026-05-16,2026-05-28)` |
+| CNT0000033 | 173 | 197 | 5 | **COMMODITY** | no | `[2026-05-20,2026-05-26)` |
 
-Verifiche minime per il team DB:
-- `\d vendite.contratti` → il constraint `ex_contratti_no_overlap` è di tipo
-  `EXCLUDE` (contype `x`) ed esiste?
-- sui due contratti: valori di `billing_account_id, istanza_utility_id,
-  utility_id, ambito, is_abortito_snapshot, validita`.
+Stessa quadrupla tranne `ambito` (COMMERCIO ≠ COMMODITY) → per il modello **non
+sono un overlap**, l'EXCLUDE (che ha `ambito WITH =`) correttamente non li blocca.
+La percezione "stesso cliente/utility" nascondeva due ambiti distinti. **Nessun
+bug del vincolo.** (H1 escluso: il constraint esiste. H3 escluso: nessuno dei due
+è abortito.)
 
-> Collaterale già emerso: se l'overlap nasce dal push con successione, va anche
-> verificato che `fn_push_offerta_a_contratto` **chiuda l'incumbent prima** di
-> inserire il nuovo (stessa transazione), altrimenti sotto un EXCLUDE immediato
-> il push fallirebbe o (senza vincolo) lascerebbe l'overlap. Nel caso utente
-> CNT0000027 risulta NON chiuso (`27/05`), il che fa pensare a successione non
-> avvenuta o a creazione manuale.
+→ **Azione residua, solo funzionale:** confermare con Tid che una fornitura
+COMMERCIO e una COMMODITY *possano* legittimamente sovrapporsi sullo stesso
+billing/istanza/utility (atteso sì: sono ambiti di business diversi). Se invece
+NON dovessero coesistere, è una questione di **modello** (ridurre la chiave del
+vincolo togliendo `ambito`), non di enforcement.
+
+> Collaterale: `fn_push_offerta_a_contratto` con successione deve chiudere
+> l'incumbent **prima** dell'INSERT (stessa transazione), per compatibilità con
+> l'EXCLUDE immediato. Non è la causa di questo caso (ambiti diversi), ma resta
+> una verifica di robustezza sul push.
 
 ---
 
@@ -140,18 +184,32 @@ Verifiche minime per il team DB:
 
 ### 3.1 Ripristino enforcement dove manca (priorità)
 
-`vendite.listini_righe_componenti` e `vendite.promo_articoli`: riportare
-`ex_*_no_overlap` a un vincolo **che enforça davvero**. Due opzioni (scelta del
-team):
-- `EXCLUDE USING gist (<chiavi> WITH =, validita WITH &&) WHERE (<filtro attivo>)`
-  — come gli altri `ex_*` di vendite ancora sani;
-- oppure **UNIQUE temporale PG18 (SQL:2011)** `WITHOUT OVERLAPS`, come già fatto
-  per `catalogo.articoli_componenti` in `20260514-08` (coerenza col precedente
-  più recente del progetto, e gestisce bene la colonna `validita` generata).
+Le **5 tabelle** rotte (§2.2): `vendite.listini_righe_componenti`,
+`vendite.promo_articoli`, `vendite.listini_versioni`,
+`anagrafiche.categorie_clienti_listini`, `documenti.template_documenti_versioni`.
+Riportare ciascun `ex_*_no_overlap` a un vincolo **che enforça davvero**.
 
-**Prerequisito (entrambe le opzioni):** bonificare gli overlap già presenti in
-quelle tabelle, altrimenti la creazione del vincolo fallisce sulle righe in
-violazione. Serve un censimento preventivo delle righe sovrapposte.
+**Una sola opzione applicabile:**
+
+```sql
+ADD CONSTRAINT ex_<tabella>_no_overlap
+    EXCLUDE USING gist (<chiavi> WITH =, validita WITH &&)
+    WHERE (<filtro attivo>);
+```
+
+Il **temporal UNIQUE PG18 `WITHOUT OVERLAPS` NON è applicabile a nessuna** di
+queste 5: tutte hanno una clausola `WHERE` parziale e il temporal UNIQUE non
+supporta predicati parziali. (Per `catalogo.articoli_componenti`/
+`unita_misura_conversioni` ha funzionato proprio perché *senza* `WHERE`.)
+
+**NON delegare a `dbops.automazione_overlap`:** il framework non emette `WHERE`
+(crea EXCLUDE totali) e non rileva gli indici-civetta su colonna → non ripara
+nessuna delle 5 (dettaglio in §1.2). Il vincolo va scritto **esplicitamente per
+tabella**, come per `contratti` in `20260521-03`.
+
+**Prerequisito — già verificato:** il censimento overlap su dev (§5.1) dà **0
+coppie violanti** su tutte e 5 le tabelle → nessuna bonifica necessaria, gli
+EXCLUDE si creano puliti. (Da rivalutare se cambiano i dati prima dell'apply.)
 
 ### 3.2 Contratti
 
@@ -187,23 +245,42 @@ constraint `DEFERRABLE`. Da chiarire con il flusso di successione.
 Il declassamento EXCLUDE→indice è passato silenzioso perché:
 - il nome `ex_*` resta identico tra vincolo e indice;
 - il doc dbzero non distingue (§2.1);
-- il BE mappava un errore che non arrivava più.
+- il BE mappava un errore che non arrivava più;
+- **la fonte stessa era il template rotto** di linee-guida-sql §7b "Pathway 2"
+  (intestato "EXCLUDE" ma codice `CREATE INDEX`), copiato fedelmente 5 volte;
+- il documento di pianificazione lo descriveva come "ricrea EXCLUDE" (§2.2): la
+  *narrazione* mascherava il DDL.
 
-Indicazione: un **test pgTAP** che asserisca, per ogni `ex_*_no_overlap` atteso,
-che esista un vincolo di tipo esclusione/temporale (es. `pg_constraint.contype
-IN ('x')` o l'equivalente UNIQUE temporale) — non un semplice indice. Trasforma
-il bug in un cancello CI. In subordine, far emergere gli `EXCLUDE` anche nel
-generatore doc dbzero (sezione "Vincoli").
+Indicazioni (in ordine di efficacia):
+
+1. **Correggere linee-guida-sql §7b "Pathway 2"** — è la radice: il template per
+   il caso "con `WHERE`" deve essere `ADD CONSTRAINT ... EXCLUDE USING gist
+   (... WITH =, validita WITH &&) WHERE (...)`, **non** `CREATE INDEX`. Va anche
+   rimossa la frase contraddittoria "Gestito da `dbops.automazione_overlap`
+   (active=true)": il framework non gestisce i parziali (§1.2). Finché il
+   template resta sbagliato, ogni nuova tabella con `WHERE` ricasca nel bug.
+2. **Test pgTAP** che asserisca, per ogni `ex_*_no_overlap` atteso, che esista un
+   vincolo di tipo esclusione/temporale (`pg_constraint.contype IN ('x')` o
+   l'equivalente UNIQUE temporale) — **non** un semplice indice. Avrebbe
+   catturato tutte e 5 (incluso il falso negativo su `listini_versioni`).
+   Trasforma il bug in un cancello CI.
+3. In subordine, far emergere gli `EXCLUDE` anche nel generatore doc dbzero
+   (sezione "Vincoli"), così che il doc smetta di essere ambiguo (§2.1).
 
 ---
 
 ## 4. Sintesi operativa
 
 | Azione | Dominio | Tipo | Owner |
-|---|---|---|---|
-| Diagnosi overlap CNT0000027/0033 (H1/H2/H3) | contratti | verifica | DB |
-| Ripristino vincolo enforcing | `listini_righe_componenti` | DDL (post-bonifica) | DB |
-| Ripristino vincolo enforcing | `promo_articoli` | DDL (post-bonifica) | DB |
+| --- | --- | --- | --- |
+| **Correggere template linee-guida-sql §7b "Pathway 2"** (`CREATE INDEX`→`EXCLUDE`) | doc/standard | doc | DB+Tid |
+| ✅ Diagnosi overlap CNT0000027/0033 → H2 (ambiti diversi, no bug) | contratti | verifica fatta | DB |
+| Conferma funzionale: COMMERCIO+COMMODITY possono sovrapporsi? | contratti | modello | Tid |
+| Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `listini_righe_componenti` | DDL ✅ generata (`20260602-*`) | DB |
+| Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `promo_articoli` | DDL ✅ generata (`20260602-*`) | DB |
+| Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `listini_versioni` | DDL ✅ generata (`20260602-*`) | DB |
+| Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `categorie_clienti_listini` | DDL ✅ generata (`20260602-*`) | DB |
+| Ripristino vincolo enforcing (EXCLUDE parziale esplicito) | `template_documenti_versioni` | DDL ✅ generata (`20260602-*`) | DB |
 | Verifica ordine close/insert nel push | `fn_push_offerta_a_contratto` | verifica | DB |
 | Guard applicativo overlap su create/attivazione manuale | contratti | BE/DB | DB+BE |
 | Test pgTAP "ex_* è davvero un vincolo" | tutte | test | DB |
@@ -211,3 +288,63 @@ generatore doc dbzero (sezione "Vincoli").
 
 **Non in scope (corretti così):** preventivi e offerte commerciali — nessun
 vincolo no-overlap, by design.
+
+---
+
+## 5. Esecuzione lato DB — verifiche e migration correttive (2026-06-02)
+
+Verifiche eseguite su **dev (PG 18.4)** via `psql`. Fonte autoritativa runtime.
+
+### 5.1 Stato confermato `[VERIFICATO SU DB]`
+
+- **Vincoli enforçanti reali:** solo `catalogo.articoli_componenti` +
+  `catalogo.unita_misura_conversioni` (temporal UNIQUE) e `vendite.contratti`
+  (EXCLUDE parziale). Tutto il resto degli `ex_*_no_overlap` su vendite/anagrafiche/
+  documenti è **indice semplice**.
+- **5 indici-civetta confermati** (nessun EXCLUDE, nessun `_c` ricreato dal
+  framework): `listini_righe_componenti`, `promo_articoli`, `listini_versioni`,
+  `categorie_clienti_listini`, `template_documenti_versioni`.
+- **`dbops.automazione_overlap`:** tutte le righe `active=false`; le 5 tabelle
+  rotte **non sono nemmeno in config** → il framework non le tocca. Coerente con
+  `guide/automazione-db.md §4.3`: l'automazione OVERLAP crea EXCLUDE **senza
+  `WHERE`** (solo vincoli totali) → **inadatta ai 5 vincoli parziali**, che vanno
+  scritti a mano (come `contratti`). `fn_apply_automazione_overlap` è idempotente
+  (salta se trova un EXCLUDE sul periodo) → non clobbererà i nuovi vincoli.
+- **`vendite.listini_associazioni` non esiste** su dev (riga del §2.2 corretta).
+- **Censimento overlap = 0** su tutte e 5 le tabelle (rispettando chiave + `WHERE`)
+  → **nessuna bonifica dati necessaria**; gli EXCLUDE si creano senza violazioni
+  (validato eseguendo i 5 `ADD CONSTRAINT` sui dati reali).
+- **Contratti CNT0000027/0033:** H2, falso allarme (§2.4).
+
+### 5.2 Migration correttive generate (da applicare via Liquibase)
+
+Pattern unico per tabella: `DROP INDEX` civetta → `ADD CONSTRAINT ex_*_no_overlap
+EXCLUDE USING gist (<chiavi> WITH =, validita WITH &&) WHERE (<filtro>)`. Richiede
+`btree_gist` (presente). preCondition: `btree_gist` + assenza di EXCLUDE omonimo.
+
+| Migration | Schema/Tabella | Predicato `WHERE` |
+| --- | --- | --- |
+| `20260602-01` | `vendite.listini_righe_componenti` | `attivo = true` |
+| `20260602-02` | `vendite.promo_articoli` | `attivo IS TRUE` |
+| `20260602-03` | `vendite.listini_versioni` | `attivo AND stato='ATTIVA'` |
+| `20260602-04` | `anagrafiche.categorie_clienti_listini` | `attivo IS TRUE` (chiave con `COALESCE(classe_utenza_id,-1)`) |
+| `20260602-05` | `documenti.template_documenti_versioni` | `attivo AND stato='PUBBLICATA'` |
+
+**Stato:** ✅ **applicati** su dev (`DATABASECHANGELOG` 2026-06-02). I 5
+`ex_*_no_overlap` sono ora EXCLUDE reali (contype `x`).
+
+### 5.3 Follow-up — stato
+
+- ✅ **Evoluzione del framework** per gestire gli EXCLUDE parziali →
+  **[refactor-overlap-v2.md](refactor-overlap-v2.md)** completata: Fase 1 (colonna
+  `where_predicate`) + Fase 2 (colonna `key_expressions`, registrazione dei **6**
+  vincoli con `active=true`, **runner pgagent `automations_overlap`** notturno).
+  I vincoli sono ora **governati dal framework**: se un futuro refactor ne droppa
+  uno, il job notturno lo **ricrea** (auto-guarigione provata, v2 §4.4).
+- ✅ **Cancello CI anti-regressione** — `db/pgtap/dbops/test-anti-overlap-enforcement-gate-v1.sql`:
+  asserisce che ogni `ex_*_no_overlap` è un vincolo (contype `x`/`u`), mai un
+  indice-civetta. Verde su dev.
+- ✅ **Correzione `linee-guida-sql.md §7b Pathway 2`** — template
+  `CREATE INDEX`→`EXCLUDE`; nota: il framework ora gestisce i parziali via
+  `where_predicate`/`key_expressions`.
+- ⏳ **Decisione funzionale ambito** COMMERCIO/COMMODITY su contratti (§2.4) — aperta.

@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Ripristino enforcement anti-overlap su vendite.listini_righe_componenti.
+#
+# Contesto: l'oggetto ex_listini_righe_comp_no_overlap era un semplice
+# CREATE INDEX USING gist (non un vincolo) — non enforçava nulla. La tabella
+# nasceva gia' a indice in 20260513-18 e il refactor STORED 20260514-04 ha
+# preservato l'indice-civetta. Diagnosi completa: refactor-overlap.md.
+#
+# Censimento overlap eseguito su dev (2026-06-02): 0 coppie violanti
+# (attivo=true) -> la creazione del constraint non fallisce, nessuna bonifica.
+#
+# Soluzione: sostituire l'indice con un EXCLUDE USING gist parziale, identico
+# per chiavi e predicato. Richiede btree_gist (gia' installata).
+#
+# dbops.automazione_overlap: la tabella non e' in config (e il framework non
+# gestisce i parziali, ADD CONSTRAINT senza WHERE) -> resta esclusa, corretto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260602-01-alter-listini-righe-componenti-restore-exclude-no-overlap-mctit.yaml
+
+  - changeSet:
+      id: 20260602-01-alter-listini-righe-componenti-restore-exclude-no-overlap
+      author: mctit
+      comment: >
+        Sostituisce l'indice-civetta ex_listini_righe_comp_no_overlap (CREATE INDEX,
+        non enforçante) con un vero EXCLUDE USING gist parziale WHERE (attivo = true)
+        sulle chiavi (listino_versione_id, articolo_componente_id, validita).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: listini_righe_componenti
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)::text FROM pg_extension WHERE extname = 'btree_gist';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pg_constraint con
+                    JOIN pg_class c ON c.oid = con.conrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND c.relname = 'listini_righe_componenti'
+                     AND con.conname = 'ex_listini_righe_comp_no_overlap'
+                     AND con.contype = 'x';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rimuove l'indice-civetta (non enforça)
+              DROP INDEX IF EXISTS vendite.ex_listini_righe_comp_no_overlap;
+
+              -- Crea il vincolo reale: l'indice di supporto eredita lo stesso nome
+              ALTER TABLE vendite.listini_righe_componenti
+                  ADD CONSTRAINT ex_listini_righe_comp_no_overlap
+                  EXCLUDE USING gist (
+                      listino_versione_id   WITH =,
+                      articolo_componente_id WITH =,
+                      validita              WITH &&
+                  )
+                  WHERE (attivo = true);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_righe_componenti
+                  DROP CONSTRAINT IF EXISTS ex_listini_righe_comp_no_overlap;
+              CREATE INDEX ex_listini_righe_comp_no_overlap
+                  ON vendite.listini_righe_componenti
+                  USING gist (listino_versione_id, articolo_componente_id, validita)
+                  WHERE (attivo = true);

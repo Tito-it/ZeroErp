@@ -1,5 +1,28 @@
 # Piano Miglioramenti DB — PostgreSQL 18 Feature Adoption
 
+> ⚠️ **ERRATA / NON USARE COME MODELLO PER I VINCOLI ANTI-OVERLAP.**
+> Lo **Step 2b** di questo piano (migration `20260514-04/29/30/31/32`) ha ricreato
+> 5 vincoli `ex_*_no_overlap` **parziali** come `CREATE INDEX ... USING gist`
+> invece di `ADD CONSTRAINT ... EXCLUDE USING gist (... WITH =, validita WITH &&)
+> WHERE (...)` — **perdendo silenziosamente l'enforcement** (nome `ex_*`
+> identico). Le tabelle colpite: `vendite.listini_righe_componenti`,
+> `vendite.promo_articoli`, `vendite.listini_versioni`,
+> `anagrafiche.categorie_clienti_listini`, `documenti.template_documenti_versioni`.
+> La tabella §6 (Step 2b) che dice "ricrea EXCLUDE" è **errata**: il DDL reale è
+> un indice. Diagnosi completa e rimedio in
+> [refactor-overlap.md](../work-in-progress/refactor-overlap.md). Per scrivere un
+> vincolo "niente sovrapposizioni" segui `linee-guida-sql.md §7b`, non le
+> migration di questo piano.
+>
+> ✅ **Risolto (2026-06-02).** I 5 vincoli sono stati ripristinati a EXCLUDE reali
+> (`20260602-01..05`) e ora sono **governati dal framework** `dbops.automazione_overlap`
+> (con `where_predicate`/`key_expressions` + runner pgagent notturno
+> `automations_overlap`): una regressione futura dello stesso tipo verrebbe
+> **auto-corretta**. Dettagli in
+> [refactor-overlap-v2.md](../work-in-progress/refactor-overlap-v2.md).
+
+---
+
 > **Data**: 2026-05-14 (verifiche DB eseguite 2026-05-14)
 > **Stato**: WIP — bozza revisionata dopo verifica empirica su dev (PG 18.3)
 > **Autore**: Tid / Claude Code

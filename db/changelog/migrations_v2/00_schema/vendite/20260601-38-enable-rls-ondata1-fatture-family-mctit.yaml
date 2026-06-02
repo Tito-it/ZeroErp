@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fase 8 — Ondata 1 (brief RLS §9): ENABLE ROW LEVEL SECURITY (NO FORCE)
+# sulla famiglia di join atomica delle fatture:
+#   vendite.fatture + vendite.fatture_scadenze + vendite.fatturazione_lotti.
+#
+# Prerequisiti (tutti soddisfatti):
+#   - policy EF dry-run presenti su tutte e tre (changeSet -08 / -32 / -33)
+#   - write-guard scrittura attaccato (-fatture esistente / -16 / -17)
+#   - viste security_invoker (-26)
+#   - fix BE R-GUC (reset GUC per richiesta) IN PIEDI E TESTATO (Fase 7) <-- sbloccato 2026-06-01
+#
+# NO FORCE: owner (titodb) e ruoli BYPASSRLS restano esenti -> migrazioni
+# e job owner non bloccati. Runtime app = zeroerp_app (NOBYPASSRLS) -> soggetto.
+#
+# Famiglia ATOMICA: i tre ENABLE in un solo changeSet (R9: fatture sì +
+# scadenze no = join incoerente). Tutto o niente.
+#
+# KILL-SWITCH: il rollback di questo changeSet e' DISABLE (non DROP POLICY)
+# -> rollback immediato che NON distrugge le policy. Per disattivazione
+# istantanea fuori Liquibase: `ALTER TABLE <t> DISABLE ROW LEVEL SECURITY;`.
+#
+# >> Gate benchmark §12: eseguire EXPLAIN (ANALYZE, BUFFERS) prima/dopo
+#    (script docs/it/dev/work-in-progress/benchmark-rls-ondata1.sql, come
+#    zeroerp_app + GUC operatore con whitelist). Soglia regressione <= 10%; oltre ->
+#    kill-switch + indice/ottimizzazione prima di riattivare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260601-38-enable-rls-ondata1-fatture-family-mctit.yaml
+
+  - changeSet:
+      id: 20260601-38-enable-rls-ondata1-fatture-family
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ENABLE ROW LEVEL SECURITY (no FORCE) su vendite.fatture +
+        fatture_scadenze + fatturazione_lotti (Ondata 1, famiglia atomica).
+        Rollback = DISABLE (kill-switch, policy preservate).
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >
+            Prerequisiti Ondata 1 mancanti: verificare che le policy EF
+            (rls_fatture_ef_whitelist, rls_fatture_scadenze_ef_whitelist,
+            rls_fatturazione_lotti_ef_whitelist) esistano prima dell'ENABLE.
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_policies
+                 WHERE schemaname='vendite' AND tablename='fatture'
+                   AND policyname='rls_fatture_ef_whitelist';
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_policies
+                 WHERE schemaname='vendite' AND tablename='fatture_scadenze'
+                   AND policyname='rls_fatture_scadenze_ef_whitelist';
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_policies
+                 WHERE schemaname='vendite' AND tablename='fatturazione_lotti'
+                   AND policyname='rls_fatturazione_lotti_ef_whitelist';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture             ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_scadenze    ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatturazione_lotti  ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- KILL-SWITCH: disattiva la RLS senza toccare le policy.
+              ALTER TABLE vendite.fatture             DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_scadenze    DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatturazione_lotti  DISABLE ROW LEVEL SECURITY;

@@ -13,10 +13,12 @@ CREATE OR REPLACE FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, 
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: applica vincoli EXCLUDE GiST su tabelle configurate in
---   dbops.automazione_overlap (active=true). Dual codepath: colonna
---   daterange nativa (range_col) o espressione calcolata (valido_dal/al).
---   Idempotente: skippa se esiste gia' EXCLUDE, altro EXCLUDE sul periodo,
---   o temporal UNIQUE (WITHOUT OVERLAPS) sulla stessa colonna.
+--   dbops.automazione_overlap (active=true). Dual codepath periodo:
+--   colonna daterange nativa (range_col) o espressione calcolata
+--   (valido_dal/al). Chiavi: colonne semplici (key_columns, validate e
+--   quotate) + espressioni (key_expressions, as-is). EXCLUDE parziali
+--   via where_predicate (NULL = totale). Idempotente: skippa se esiste
+--   gia' EXCLUDE/temporal UNIQUE sulla colonna periodo.
 DECLARE
   rconf                  record;
   v_rel                  regclass;
@@ -24,6 +26,7 @@ DECLARE
   v_col                  text;
   v_key_expr             text;
   v_range_expr           text;
+  v_where                text;
   v_bounds               text;
   v_constraint           text;
   v_constraint_exists    boolean;
@@ -41,7 +44,9 @@ BEGIN
   LOOP
     v_rel := (quote_ident(rconf.target_schema)||'.'||quote_ident(rconf.target_table))::regclass;
 
-    IF rconf.key_columns IS NULL OR array_length(rconf.key_columns, 1) IS NULL THEN
+    -- Serve almeno una chiave: colonna semplice o espressione
+    IF (rconf.key_columns IS NULL OR array_length(rconf.key_columns, 1) IS NULL)
+       AND (rconf.key_expressions IS NULL OR array_length(rconf.key_expressions, 1) IS NULL) THEN
       PERFORM dbops.fn_audit_log_once(
         p_function_name => 'dbops.fn_apply_automazione_overlap',
         p_status        => v_skip_status,
@@ -53,7 +58,7 @@ BEGIN
                             'table', rconf.target_schema||'.'||rconf.target_table,
                             'reason', 'NO_KEY_COLUMNS'
                           ),
-        p_message       => 'Skip: key_columns missing'
+        p_message       => 'Skip: nessuna chiave (key_columns e key_expressions vuote)'
       );
       CONTINUE;
     END IF;
@@ -99,14 +104,26 @@ BEGIN
       END IF;
     END IF;
 
-    -- Costruzione key expression
+    -- Costruzione key expression: 1) colonne semplici (validate+quotate)
     v_cols := ARRAY[]::text[];
-    FOREACH v_col IN ARRAY rconf.key_columns
-    LOOP
-      IF dbops.fn_col_exists(rconf.target_schema, rconf.target_table, v_col) THEN
-        v_cols := array_append(v_cols, quote_ident(v_col) || ' WITH =');
-      END IF;
-    END LOOP;
+    IF rconf.key_columns IS NOT NULL THEN
+      FOREACH v_col IN ARRAY rconf.key_columns
+      LOOP
+        IF dbops.fn_col_exists(rconf.target_schema, rconf.target_table, v_col) THEN
+          v_cols := array_append(v_cols, quote_ident(v_col) || ' WITH =');
+        END IF;
+      END LOOP;
+    END IF;
+
+    -- 2) espressioni (key_expressions): iniettate as-is (DDL di fiducia)
+    IF rconf.key_expressions IS NOT NULL THEN
+      FOREACH v_col IN ARRAY rconf.key_expressions
+      LOOP
+        IF COALESCE(btrim(v_col), '') <> '' THEN
+          v_cols := array_append(v_cols, v_col || ' WITH =');
+        END IF;
+      END LOOP;
+    END IF;
 
     IF array_length(v_cols, 1) IS NULL THEN
       PERFORM dbops.fn_audit_log_once(
@@ -119,9 +136,10 @@ BEGIN
         p_params        => jsonb_build_object(
                             'table', rconf.target_schema||'.'||rconf.target_table,
                             'key_columns', rconf.key_columns,
+                            'key_expressions', rconf.key_expressions,
                             'reason', 'KEY_COLUMNS_NOT_FOUND'
                           ),
-        p_message       => 'Skip: key_columns not found in table'
+        p_message       => 'Skip: chiavi non risolte (colonne assenti, nessuna espressione)'
       );
       CONTINUE;
     END IF;
@@ -141,6 +159,14 @@ BEGIN
 
     v_key_expr := array_to_string(v_cols, ', ');
 
+    -- Coda WHERE per EXCLUDE parziale (where_predicate e' DDL di fiducia,
+    -- iniettato as-is). NULL/vuoto => vincolo totale (nessuna coda).
+    v_where := CASE
+                 WHEN COALESCE(btrim(rconf.where_predicate), '') <> ''
+                   THEN ' WHERE (' || rconf.where_predicate || ')'
+                 ELSE ''
+               END;
+
     v_constraint := COALESCE(rconf.constraint_name,
                      dbops.fn_name_from_template('ex_{table}_no_overlap', rconf.target_schema, rconf.target_table, NULL, NULL, NULL, NULL));
 
@@ -152,8 +178,7 @@ BEGIN
       v_constraint := dbops.fn_name_from_template('ex_{table}_no_overlap_c', rconf.target_schema, rconf.target_table, NULL, NULL, NULL, NULL);
     END IF;
 
-    -- Verifica idempotenza: una scan su pg_constraint con LATERAL evita
-    -- 3 query separate e chiama pg_get_constraintdef() una volta per riga
+    -- Verifica idempotenza: una scan su pg_constraint con LATERAL
     SELECT
         bool_or(con.contype = 'x' AND con.conname = v_constraint),
         bool_or(con.contype = 'x'
@@ -203,10 +228,12 @@ BEGIN
                             'table', rconf.target_schema||'.'||rconf.target_table,
                             'constraint', v_constraint,
                             'key_columns', rconf.key_columns,
+                            'key_expressions', rconf.key_expressions,
                             'range_col', rconf.range_col,
                             'valido_dal_col', rconf.valido_dal_col,
                             'valido_al_col', rconf.valido_al_col,
                             'range_bounds', COALESCE(rconf.range_bounds, '[]'),
+                            'where_predicate', rconf.where_predicate,
                             'action', 'DRYRUN_CREATE_EXCLUDE'
                           ),
         p_message       => 'Exclude constraint would be created'
@@ -215,12 +242,13 @@ BEGIN
     END IF;
 
     EXECUTE format(
-      'ALTER TABLE %I.%I ADD CONSTRAINT %I EXCLUDE USING gist (%s, %s)',
+      'ALTER TABLE %I.%I ADD CONSTRAINT %I EXCLUDE USING gist (%s, %s)%s',
       rconf.target_schema,
       rconf.target_table,
       v_constraint,
       v_key_expr,
-      v_range_expr
+      v_range_expr,
+      v_where
     );
     PERFORM dbops.fn_audit_log_once(
       p_function_name => 'dbops.fn_apply_automazione_overlap',
@@ -233,10 +261,12 @@ BEGIN
                           'table', rconf.target_schema||'.'||rconf.target_table,
                           'constraint', v_constraint,
                           'key_columns', rconf.key_columns,
+                          'key_expressions', rconf.key_expressions,
                           'range_col', rconf.range_col,
                           'valido_dal_col', rconf.valido_dal_col,
                           'valido_al_col', rconf.valido_al_col,
                           'range_bounds', COALESCE(rconf.range_bounds, '[]'),
+                          'where_predicate', rconf.where_predicate,
                           'action', 'CREATE_EXCLUDE'
                         ),
       p_message       => 'Exclude constraint created'
@@ -246,7 +276,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, p_dry_run boolean)
-IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap. Dual codepath: colonna daterange nativa (range_col) o espressione calcolata (valido_dal/al). Idempotente per EXCLUDE esistenti e per temporal UNIQUE (WITHOUT OVERLAPS) PG 18. Verifica idempotenza in unica scan pg_constraint (LATERAL).';
+IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap. Chiavi: key_columns (colonne validate+quotate) + key_expressions (espressioni as-is). EXCLUDE parziali via where_predicate (NULL = totale). Dual codepath periodo (range_col o valido_dal/al). Idempotente per EXCLUDE/temporal UNIQUE PG18. key_expressions/where_predicate sono DDL di fiducia DBA-only.';
 ```
 
 ---

@@ -274,13 +274,30 @@ ALTER TABLE schema.tabella
     ADD CONSTRAINT uq_tabella_no_overlap
     UNIQUE (key_col, validita WITHOUT OVERLAPS);
 
--- Pathway 2: con WHERE → EXCLUDE USING gist (unico supportato per EXCLUDE parziale)
--- Gestito da dbops.automazione_overlap (active=true per queste tabelle)
-CREATE INDEX ex_tabella_no_overlap
-    ON schema.tabella
-    USING gist (key_col, validita)
+-- Pathway 2: con WHERE → EXCLUDE USING gist parziale (unico tipo che enforça
+-- con predicato parziale; il temporal UNIQUE PG18 non supporta WHERE).
+-- DEVE essere un ADD CONSTRAINT ... EXCLUDE, NON un CREATE INDEX:
+-- un CREATE INDEX ... USING gist (key_col, validita) NON enforça nulla (e' solo
+-- una struttura di supporto query). Richiede l'estensione btree_gist.
+ALTER TABLE schema.tabella
+    ADD CONSTRAINT ex_tabella_no_overlap
+    EXCLUDE USING gist (key_col WITH =, validita WITH &&)
     WHERE (attivo IS TRUE);
 ```
+
+> ⚠️ **Trappola storica (mag 2026).** Lo Step 2b di `piano-miglioramenti-db-pg18`
+> ha ricreato 5 di questi vincoli come `CREATE INDEX` invece che `EXCLUDE`,
+> perdendo silenziosamente l'enforcement (nome `ex_*` identico). Vedi
+> `dev/work-in-progress/refactor-overlap.md`. Un `CREATE INDEX ... USING gist`
+> **non enforça mai**: per un anti-overlap serve sempre un `ADD CONSTRAINT ...
+> EXCLUDE`.
+>
+> 💡 **Delega al framework (dalla rev giu 2026).** Gli EXCLUDE parziali sono ora
+> gestibili da `dbops.automazione_overlap` valorizzando la colonna
+> `where_predicate` (es. `attivo IS TRUE`) — vedi `guide/automazione-db.md §4.3`.
+> Lo scrivi a mano (come qui sotto) oppure lo deleghi al framework; in entrambi i
+> casi l'oggetto finale è un `EXCLUDE` vero. Migrazione dei vincoli esistenti al
+> framework: vedi `dev/work-in-progress/refactor-overlap-v2.md` (Fase 2).
 
 **Entita' con stati annullabili (`UNIQUE WITHOUT OVERLAPS` + `is_abortito`):**
 
@@ -350,7 +367,13 @@ ALTER TABLE schema.figlio
 
 Per la gestione automatizzata degli EXCLUDE con WHERE: `dbops.automazione_overlap` e `dbops.fn_apply_automazione_overlap`.
 
-> Riferimento: [piano-miglioramenti-db-pg18.md](/dev/work-in-progress/piano-miglioramenti-db-pg18) per verifica empirica, decisioni architetturali e piano di migrazione completo.
+> Riferimento: [piano-miglioramenti-db-pg18.md](/dev/work-done/piano-miglioramenti-db-pg18) per verifica empirica (STORED generated, temporal UNIQUE/FK) e piano di migrazione.
+>
+> ⚠️ **Non usare quel piano come modello per i vincoli anti-overlap.** Il suo
+> Step 2b ha ricreato gli `ex_*_no_overlap` parziali come `CREATE INDEX` (non
+> enforçanti) — bug tracciato in `dev/work-in-progress/refactor-overlap.md`. Per
+> un vincolo "niente sovrapposizioni" segui **questa** sezione (Pathway 1 senza
+> `WHERE`, EXCLUDE parziale esplicito con `WHERE`), non le migration `20260514-*`.
 
 ---
 

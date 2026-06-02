@@ -209,7 +209,8 @@ Fotografia sintetica (29 maggio 2026):
   - Fase 0-3 (apr 2026): 19 tabelle migrate a `daterange`, `script.trgfn_set_validita()`, linee guida SQL §7b
   - Fase PG18 (mag 2026): `validita` → `GENERATED ALWAYS STORED` su 20 tabelle; 3 tabelle con temporal UNIQUE (`WITHOUT OVERLAPS`); temporal FK `listini_righe_componenti → articoli_componenti`; `trgfn_set_validita` droppata
   - Backend ottimizzato: `validita @>` al posto dei doppi confronti `valido_dal`/`valido_al`
-  - Piano PG18: [piano-miglioramenti-db-pg18.md](./dev/work-in-progress/piano-miglioramenti-db-pg18.md)
+  - Piano PG18: [piano-miglioramenti-db-pg18.md](./dev/work-done/piano-miglioramenti-db-pg18.md)
+  - ⚠️ **Regressione nota (Step 2b):** 5 vincoli `ex_*_no_overlap` parziali ricreati come `CREATE INDEX` (non enforçanti) → vedi [refactor-overlap.md](./dev/work-in-progress/refactor-overlap.md). Da ripristinare a `EXCLUDE` esplicito.
 - Rettifiche prezzi (DB-L4): estratte in [work-in-progress/sviluppo-rettifiche.md](./dev/work-in-progress/sviluppo-rettifiche.md), **da implementare**
 - Integrazione AI v1: operativa, **11 tool** registrati
   - Pratiche (cerca, dettaglio, flussi)

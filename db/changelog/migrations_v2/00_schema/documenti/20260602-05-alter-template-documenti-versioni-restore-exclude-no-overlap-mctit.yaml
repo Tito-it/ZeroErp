@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Ripristino enforcement anti-overlap su documenti.template_documenti_versioni.
+#
+# Contesto: ex_template_documenti_versioni_no_overlap_pubblicata era un vero
+# EXCLUDE (20260429-54); il refactor STORED 20260514-32 lo ha ricreato come
+# CREATE INDEX, perdendo l'enforcement. Diagnosi completa: refactor-overlap.md.
+#
+# Censimento overlap su dev (2026-06-02): 0 coppie violanti -> nessuna bonifica.
+#
+# Vincolo PARZIALE (WHERE attivo AND stato='PUBBLICATA'): NON gestibile dal
+# framework OVERLAP (guide/automazione-db.md §4.3 — EXCLUDE senza WHERE).
+# Esplicito, come contratti. fn_apply resta idempotente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20260602-05-alter-template-documenti-versioni-restore-exclude-no-overlap-mctit.yaml
+
+  - changeSet:
+      id: 20260602-05-alter-template-documenti-versioni-restore-exclude-no-overlap
+      author: mctit
+      comment: >
+        Sostituisce l'indice-civetta ex_template_documenti_versioni_no_overlap_pubblicata
+        (CREATE INDEX, non enforçante) con un vero EXCLUDE USING gist parziale
+        WHERE (attivo IS TRUE AND stato = 'PUBBLICATA') su (template_documento_id, validita).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: documenti
+                tableName: template_documenti_versioni
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)::text FROM pg_extension WHERE extname = 'btree_gist';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pg_constraint con
+                    JOIN pg_class c ON c.oid = con.conrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'documenti'
+                     AND c.relname = 'template_documenti_versioni'
+                     AND con.conname = 'ex_template_documenti_versioni_no_overlap_pubblicata'
+                     AND con.contype = 'x';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX IF EXISTS documenti.ex_template_documenti_versioni_no_overlap_pubblicata;
+
+              ALTER TABLE documenti.template_documenti_versioni
+                  ADD CONSTRAINT ex_template_documenti_versioni_no_overlap_pubblicata
+                  EXCLUDE USING gist (
+                      template_documento_id WITH =,
+                      validita              WITH &&
+                  )
+                  WHERE (attivo IS TRUE AND (stato)::text = 'PUBBLICATA'::text);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE documenti.template_documenti_versioni
+                  DROP CONSTRAINT IF EXISTS ex_template_documenti_versioni_no_overlap_pubblicata;
+              CREATE INDEX ex_template_documenti_versioni_no_overlap_pubblicata
+                  ON documenti.template_documenti_versioni
+                  USING gist (template_documento_id, validita)
+                  WHERE (attivo IS TRUE AND (stato)::text = 'PUBBLICATA'::text);

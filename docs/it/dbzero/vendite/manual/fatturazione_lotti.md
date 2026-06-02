@@ -38,6 +38,20 @@ coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, 
 
 ---
 
+### Scope emittente e RLS (2026-06-01)
+
+* `emittente_soggetto_ruolo_id` è ora **NOT NULL** (sanazione changeSet
+  `20260601-18`: backfill via `fn_resolve_lotto_utility_emittente` + `SET NOT NULL`).
+* **RLS in lettura** (Ondata 1, `ENABLE` no-FORCE in `20260601-38`): policy
+  `rls_fatturazione_lotti_ef_whitelist` — l'operatore vede solo i lotti con
+  emittente nella propria whitelist, via adapter SR
+  [`fn_scope_ef_whitelist_via_sr`](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_sr)
+  (gate `ruolo_applicativo = 'OPERATORE'`).
+* **Scrittura**: write-guard `trg_fatturazione_lotti_a10_guard_emittente_scope_ins_upd`
+  (`trgfn_guard_emittente_scope`, modalità `soggetto_ruolo`).
+
+---
+
 ### Best practice operative
 
 * Usare `lock_batch_id` come chiave di lock per processi concorrenti.
