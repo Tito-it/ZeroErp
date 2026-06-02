@@ -592,6 +592,7 @@
     "delete_error": "Errore durante l'eliminazione",
     "generic_error": "Si è verificato un errore",
     "generic_warn": "Attenzione",
+    "detail_non_accessibile": "Elemento non trovato o non più accessibile.",
     "tab_limit_reached": "Numero massimo di schede raggiunto. Chiudere una scheda per aprirne una nuova.",
     "network_error": "Impossibile contattare il server. Verificare la connessione.",
     "timeout_error": "Il server non ha risposto in tempo. Riprovare.",

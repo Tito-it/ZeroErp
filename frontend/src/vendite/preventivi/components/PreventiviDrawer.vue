@@ -8,6 +8,8 @@ import { usePreventiviStore } from '../stores/preventivi'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
+import { useDrawerClose } from '../../../core/composables/useDrawerClose'
+import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { useRevisioniTab } from '../../../core/composables/useRevisioniTab'
@@ -74,6 +76,9 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
+const onClose = useDrawerClose(emit, 'cancelled')
+// Detail fuori scope (RLS) / inesistente → toast + chiusura, niente drawer vuoto.
+const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
 // Readonly effettivo = prop esplicita OR readonly area iniettato dal parent
 // OR revisione superseded: esiste un'altra revisione "viva" con rev maggiore
@@ -292,7 +297,9 @@ function resetForm() {
 async function loadDetail(id = null) {
   const targetId = id ?? effectivePreventivoId.value
   if (!targetId) return
-  const data = await store.fetchDetail(targetId)
+  // Fuori scope (RLS) / inesistente → loadDetailOrClose avvisa, chiude e
+  // ritorna null; `if (!data) return` sotto salta il populate.
+  const data = await loadDetailOrClose(() => store.fetchDetail(targetId))
   if (!data) return
   detail.value = data
   // Carica in parallelo il contesto pricing per l'header del drawer (audit
