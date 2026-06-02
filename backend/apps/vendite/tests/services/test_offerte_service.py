@@ -59,6 +59,14 @@ Indice test eseguiti:
 50) update_componente_eccezione_payload_vuoto_fallisce  [BoM whitelist]
 51) update_componente_eccezione_ownership_violata       [BoM security]
 52) delete_componente_eccezione_ok                      [BoM happy path]
+
+Gate prezzo L1/L2/L3 (refactor-prezzi 2026-06-01):
+53) crea_eccezione_invoca_validate_l1_componenti        [L1 wiring]
+54) crea_eccezione_override_invoca_gate                 [L2/L3 wiring]
+55) crea_eccezione_esclusione_non_invoca_gate           [no gate su ESCLUSIONE]
+56) apply_gate_eccezione_l3_pending_setta_stato         [L3 PENDING + pratica]
+57) resolve_override_prezzo_offerta_skip_senza_listino  [guard listino None]
+58) apply_gate_eccezione_preserva_meta_esistente        [fallback_meta no-clobber]
 """
 
 from unittest import TestCase
@@ -940,11 +948,16 @@ class OfferteServiceTests(TestCase):
     #        init_componenti_eccezione con emittente_sr_id risolto dalla
     #        testata via repo.get_emittente_sr_id_by_fiscale_id e data
     #        riferimento = validita_dal della testata.
+    @patch(
+        "apps.vendite.services.offerte_service."
+        "validate_componenti_overrides_authorization",
+        return_value=None,
+    )
     @patch("apps.vendite.services.offerte_service.resolve_emittente_sr_id_for_testata")
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
     def test_crea_eccezione_articolo_composito_invoca_init(
-        self, repo_cls, _atomic, _resolve,
+        self, repo_cls, _atomic, _resolve, _l1,
     ):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -983,10 +996,15 @@ class OfferteServiceTests(TestCase):
 
     # Scopo: crea_eccezione su articolo NON composito non chiama init
     #        (BoM no-op simmetrico al pattern contratti).
+    @patch(
+        "apps.vendite.services.offerte_service.OfferteService."
+        "_apply_pricing_gate_eccezione",
+        return_value=(None, None),
+    )
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
     def test_crea_eccezione_articolo_atomico_non_invoca_init(
-        self, repo_cls, _atomic,
+        self, repo_cls, _atomic, _gate,
     ):
         from apps.vendite.services.offerte_service import OfferteService
 
@@ -1151,3 +1169,214 @@ class OfferteServiceTests(TestCase):
         result = OfferteService().delete_componente_eccezione(1, 42, 7)
         self.assertEqual(result["componente_id"], 7)
         self.assertTrue(result["deleted"])
+
+
+class OfferteGatePrezzoTests(TestCase):
+    """Gate prezzo L1/L2/L3 sulle eccezioni offerta (refactor 2026-06-01).
+
+    Simmetria col contratto: il wiring (gate invocato per OVERRIDE/AGGIUNTA,
+    L1 componenti, L3 PENDING) e' testato qui; la logica dei singoli gate vive
+    nel BB `_pricing_gate_helpers` (gia' coperto dai test preventivi/contratti).
+    """
+
+    # 53) crea_eccezione invoca il gate L1 sugli override componenti col payload.
+    @patch("apps.vendite.services.offerte_service.OfferteService._apply_pricing_gate_eccezione",
+           return_value=(None, None))
+    @patch("apps.vendite.services.offerte_service.validate_componenti_overrides_authorization")
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_eccezione_invoca_validate_l1_componenti(
+        self, repo_cls, _atomic, mock_validate, _gate,
+    ):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.create_eccezione.return_value = 42
+        repo.is_articolo_composito.return_value = False
+        repo.get_eccezione.return_value = {"id": 42, "offerta_id": 1}
+
+        OfferteService().crea_eccezione(
+            1,
+            {
+                "articolo_id": "00000000-0000-7000-8000-000000000abc",
+                "tipo_eccezione": "AGGIUNTA",
+                "fonte_quantita_attesa": "MANUALE",
+                "prezzo_unitario": "12.50",
+                "componenti_overrides": {"00000000-0000-7000-8000-deadbeef0001": "9.50"},
+            },
+            auth_user_id=99,
+        )
+
+        # Validator invocato col contesto utente (il payload e' poi mutato dal
+        # pop overrides → non si asserisce sul dict, che il mock referenzia).
+        mock_validate.assert_called_once()
+        self.assertEqual(mock_validate.call_args.args[1], 99)
+
+    # 54) OVERRIDE non composito → _apply_pricing_gate_eccezione invocato.
+    @patch("apps.vendite.services.offerte_service.validate_componenti_overrides_authorization",
+           return_value=None)
+    @patch("apps.vendite.services.offerte_service.OfferteService._apply_pricing_gate_eccezione",
+           return_value=(None, None))
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_eccezione_override_invoca_gate(
+        self, repo_cls, _atomic, mock_gate, _l1,
+    ):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.create_eccezione.return_value = 42
+        repo.is_articolo_composito.return_value = False
+        repo.get_eccezione.return_value = {"id": 42, "offerta_id": 1}
+
+        OfferteService().crea_eccezione(
+            1,
+            {
+                "articolo_id": "00000000-0000-7000-8000-000000000abc",
+                "tipo_eccezione": "OVERRIDE",
+                "fonte_quantita_attesa": "MANUALE",
+                "prezzo_unitario": "12.50",
+            },
+            auth_user_id=99,
+        )
+
+        mock_gate.assert_called_once()
+        kwargs = mock_gate.call_args.kwargs
+        self.assertEqual(kwargs["offerta_id"], 1)
+        self.assertEqual(kwargs["riga_id_for_link"], None)
+
+    # 55) ESCLUSIONE (prezzo NULL) → nessun gate prezzo.
+    @patch("apps.vendite.services.offerte_service.validate_componenti_overrides_authorization",
+           return_value=None)
+    @patch("apps.vendite.services.offerte_service.OfferteService._apply_pricing_gate_eccezione")
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_eccezione_esclusione_non_invoca_gate(
+        self, repo_cls, _atomic, mock_gate, _l1,
+    ):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.create_eccezione.return_value = 42
+        repo.is_articolo_composito.return_value = False
+        repo.get_eccezione.return_value = {"id": 42, "offerta_id": 1}
+
+        OfferteService().crea_eccezione(
+            1,
+            {
+                "articolo_id": "00000000-0000-7000-8000-000000000abc",
+                "tipo_eccezione": "ESCLUSIONE",
+                "fonte_quantita_attesa": "MANUALE",
+                "prezzo_unitario": None,
+            },
+            auth_user_id=99,
+        )
+
+        mock_gate.assert_not_called()
+
+    # 56) _apply_pricing_gate_eccezione: violazione L2 + richiesta_approvazione
+    #     → payload riceve stato PENDING + pratica_id (workflow L3).
+    @patch("apps.vendite.services.offerte_service._orchestrate_l3_request_offerta",
+           return_value=777)
+    @patch("apps.vendite.services.offerte_service.resolve_or_check_override_prezzo_riga_offerta")
+    def test_apply_gate_eccezione_l3_pending_setta_stato(
+        self, mock_resolve, mock_orch,
+    ):
+        from decimal import Decimal
+
+        from apps.vendite.services.offerte_service import (
+            OfferteService,
+            STATO_APPROVAZIONE_PENDING,
+        )
+
+        mock_resolve.return_value = (
+            Decimal("12.50"),
+            {
+                "richiesta_approvazione_pending": True,
+                "violazione_l2": {"tipo_violazione": "SCONTO"},
+                "prezzo_base_resolver": "10.00",
+            },
+        )
+        svc = OfferteService()
+        svc._repo = MagicMock()
+        svc._repo.get_offerta.return_value = _make_offerta_dict()
+
+        payload = {"prezzo_unitario": "12.50"}
+        pratica_id, _testata = svc._apply_pricing_gate_eccezione(
+            offerta_id=1,
+            articolo_id="00000000-0000-7000-8000-000000000abc",
+            uom_id=5,
+            payload=payload,
+            auth_user_id=99,
+            richiesta_approvazione=True,
+            riga_id_for_link=42,
+        )
+
+        self.assertEqual(pratica_id, 777)
+        self.assertEqual(payload["stato_approvazione_prezzo"], STATO_APPROVAZIONE_PENDING)
+        self.assertEqual(payload["pratica_approvazione_prezzo_id"], 777)
+        mock_orch.assert_called_once()
+
+    # 57) resolve_or_check_override_prezzo_riga_offerta: offerta senza listino
+    #     → ritorna il prezzo as-is, gate BB non invocato.
+    @patch("apps.vendite.services.offerte_service.resolve_or_check_override_prezzo")
+    def test_resolve_override_prezzo_offerta_skip_senza_listino(self, mock_bb):
+        from apps.vendite.services.offerte_service import (
+            resolve_or_check_override_prezzo_riga_offerta,
+        )
+
+        prezzo, meta = resolve_or_check_override_prezzo_riga_offerta(
+            testata={"listino_id": None, "validita_dal": "2026-06-01"},
+            articolo_id="x",
+            uom_id=5,
+            payload_prezzo="12.50",
+            auth_user_id=99,
+            function_name="test",
+        )
+        self.assertEqual(prezzo, "12.50")
+        self.assertIsNone(meta)
+        mock_bb.assert_not_called()
+
+    # 58) _apply_pricing_gate_eccezione: su override entro-soglia preserva il
+    #     meta persistito (fallback_meta) mergiando l'audit — niente clobber.
+    @patch("apps.vendite.services.offerte_service.resolve_or_check_override_prezzo_riga_offerta")
+    def test_apply_gate_eccezione_preserva_meta_esistente(self, mock_resolve):
+        from decimal import Decimal
+
+        from apps.vendite.services.offerte_service import OfferteService
+
+        # Override accettato (no L3): meta audit senza richiesta_approvazione.
+        mock_resolve.return_value = (
+            Decimal("11.00"),
+            {"origine_prezzo": "MANUALE", "prezzo_base_resolver": "10.00"},
+        )
+        svc = OfferteService()
+        svc._repo = MagicMock()
+        svc._repo.get_offerta.return_value = _make_offerta_dict()
+
+        payload = {"prezzo_unitario": "11.00"}  # update: niente meta nel payload
+        svc._apply_pricing_gate_eccezione(
+            offerta_id=1,
+            articolo_id="00000000-0000-7000-8000-000000000abc",
+            uom_id=5,
+            payload=payload,
+            auth_user_id=99,
+            richiesta_approvazione=False,
+            riga_id_for_link=42,
+            fallback_meta={"nota_interna": "preesistente"},
+        )
+
+        # Il meta esistente (`nota_interna`) sopravvive + audit pricing mergiato.
+        self.assertEqual(payload["meta"]["nota_interna"], "preesistente")
+        self.assertEqual(payload["meta"]["origine_prezzo"], "MANUALE")
+        # Nessun workflow L3 → niente stato/pratica nel payload.
+        self.assertNotIn("stato_approvazione_prezzo", payload)

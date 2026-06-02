@@ -243,15 +243,39 @@ Per tabelle **versionate** (con colonne `valido_dal`/`valido_al` o `valid_from`/
 
 **Componenti:**
 
-* **Config**: `dbops.automazione_overlap` — definisce chiavi logiche, colonne periodo e flag `active`
+* **Config**: `dbops.automazione_overlap` — definisce chiavi logiche (`key_columns` + `key_expressions`), colonne periodo, flag `active` e (opzionale) `where_predicate` per vincoli parziali
 * **Seed**: `dbops.fn_seed_automazione_overlap()` — rileva tabelle eleggibili e imposta `active=true` solo se versionate
-* **Apply**: `dbops.fn_apply_automazione_overlap()` — crea i vincoli EXCLUDE
+* **Apply**: `dbops.fn_apply_automazione_overlap()` — crea i vincoli EXCLUDE (totali o parziali)
+* **Runner schedulato**: `maintenance.proc_automations_overlap_job()` + job pgAgent `automations_overlap` (ogni giorno alle 21:00) — esegue l'apply periodicamente
+
+**Vincoli parziali (`where_predicate`):** dalla rev 2026-06-02 il framework
+supporta anche EXCLUDE **parziali**, cioè con una clausola `WHERE` (es. "niente
+sovrapposizioni **solo tra le righe attive**"). Basta valorizzare la colonna
+`where_predicate` in config (es. `attivo IS TRUE`, `NOT is_abortito_snapshot`,
+`stato = 'ATTIVA'`); `NULL` = vincolo totale come prima.
+
+**Chiavi su espressione (`key_expressions`):** oltre alle colonne semplici
+(`key_columns`), una chiave può essere un'espressione (es.
+`COALESCE(classe_utenza_id, -1)` per trattare i NULL come uguali). Si valorizza la
+colonna `key_expressions`; le due liste si combinano nella chiave del constraint.
+
+> ⚠️ `where_predicate` e `key_expressions` sono **frammenti DDL di fiducia**:
+> iniettati as-is nel constraint (espressioni, non quotabili). Vanno scritti **solo
+> da un DBA**, mai da input applicativo/utente.
+
+**Schedulazione e auto-guarigione:** l'apply non gira solo al setup ma ogni notte
+(job `automations_overlap`). Essendo idempotente, a regime non fa nulla; ma se un
+EXCLUDE viene droppato per errore (es. da un refactor), la passata notturna lo
+**ricrea**. È la difesa contro le regressioni silenziose (vedi
+`dev/work-in-progress/refactor-overlap.md`).
 
 **Note operative:**
 
 * Se `key_columns` non e valorizzato, il vincolo non viene creato
 * Per chiavi UUID e richiesta l'estensione `btree_gist`
 * Le tabelle non versionate restano `active=false`
+* L'apply è idempotente: salta se esiste già un EXCLUDE sul periodo. **Cambiare** un
+  `where_predicate` richiede prima il `DROP CONSTRAINT` manuale (il framework non fa `ALTER`)
 
 ### 4.4 DELETE_BLOCK (blocco DELETE con GUC)
 

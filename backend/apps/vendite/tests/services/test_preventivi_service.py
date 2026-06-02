@@ -185,13 +185,14 @@ class TestPreventiviService(unittest.TestCase):
             return_value=100,
         )
         self.emittente_safe_patcher.start()
-        # _validate_componenti_overrides_authorization chiama
-        # PermissionResolver.check_azione (SQL diretto con user.id) quando il
-        # payload contiene componenti_overrides. Per i test unit senza DB,
-        # mocco il validator a no-op per default. Test specifici che vogliono
-        # esercitare il gating L1 ri-patchano localmente.
+        # validate_componenti_overrides_authorization (BB condiviso, importato
+        # nel namespace preventivi_service) chiama PermissionResolver.check_azione
+        # (SQL diretto con user.id) quando il payload contiene
+        # componenti_overrides. Per i test unit senza DB, mocco il validator a
+        # no-op per default. Test specifici che vogliono esercitare il gating L1
+        # ri-patchano localmente.
         self.gating_overrides_patcher = patch(
-            "apps.vendite.services.preventivi_service._validate_componenti_overrides_authorization",
+            "apps.vendite.services.preventivi_service.validate_componenti_overrides_authorization",
             return_value=None,
         )
         self.gating_overrides_patcher.start()

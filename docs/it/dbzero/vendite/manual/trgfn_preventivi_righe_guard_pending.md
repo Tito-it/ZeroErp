@@ -1,5 +1,15 @@
 ## 📘 Documentazione Concettuale – Trigger Function `vendite.trgfn_preventivi_righe_guard_pending()`
 
+> ⚠️ **DEPRECATA (2026-06-01)** — Questa funzione è stata **droppata** dal
+> changeset `20260601-03` e sostituita dal building-block generico riga-level
+> [`script.trgfn_righe_guard_pending('preventivo_id')`](/dbzero/script/funzioni/trgfn_righe_guard_pending),
+> condiviso con `contratti_righe` e `offerte_commerciali_eccezioni`. Il trigger
+> `trg_preventivi_righe_a10_guard_pending_upd` punta ora al generico. Il
+> comportamento è equivalente (allowlist via `to_jsonb`). Questa pagina resta come
+> riferimento storico della logica.
+
+---
+
 > 👀 **Vedi anche**
 >
 > Tabelle correlate:

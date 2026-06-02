@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260601-15-create-trg-pratiche-guard-emittente-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260601-15-create-trg-pratiche-guard-emittente-scope
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Aggancia il write-guard scope emittente a pratiche.pratiche (brief RLS
+        §7, simmetria scrittura convenzione PK). Modalita' 'fiscale' su
+        emittente_fiscale_id.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: pratiche, tableName: pratiche }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'trgfn_guard_emittente_scope';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_pratiche_a10_guard_emittente_scope_ins_upd
+                ON pratiche.pratiche;
+
+              CREATE TRIGGER trg_pratiche_a10_guard_emittente_scope_ins_upd
+                BEFORE INSERT OR UPDATE ON pratiche.pratiche
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_guard_emittente_scope(
+                  'fiscale', 'emittente_fiscale_id'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_pratiche_a10_guard_emittente_scope_ins_upd
+                ON pratiche.pratiche;

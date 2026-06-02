@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Policy RLS dry-run EF_WHITELIST su vendite.offerte_commerciali (PK).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260601-29-create-policy-rls-offerte-commerciali-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260601-29-create-policy-rls-offerte-commerciali-ef-whitelist
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Policy dry-run rls_offerte_commerciali_ef_whitelist: operatore vede
+        solo offerte con emittente_fiscale_id in whitelist (adapter PK).
+        Gate OPERATORE fail-closed. Non attiva finche' ENABLE (ondata 2).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists: { schemaName: vendite, tableName: offerte_commerciali, columnName: emittente_fiscale_id }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                 WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_offerte_commerciali_ef_whitelist ON vendite.offerte_commerciali;
+
+              CREATE POLICY rls_offerte_commerciali_ef_whitelist ON vendite.offerte_commerciali
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_fiscale_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_offerte_commerciali_ef_whitelist ON vendite.offerte_commerciali IS
+                  'RLS dry-run: operatore vede solo offerte con emittente in whitelist '
+                  '(adapter PK fn_scope_ef_whitelist -> canonica). Non attiva finche ENABLE.';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_offerte_commerciali_ef_whitelist ON vendite.offerte_commerciali;

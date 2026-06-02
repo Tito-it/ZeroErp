@@ -34,12 +34,37 @@ Il workflow è composto da:
 - `trgfn_preventivi_guard_transizione_approvazione`: blocca transizione preventivo → ACCETTATO se esistono righe PENDING (`E_PREVENTIVO_RIGHE_PRICING_PENDENTI`)
 - `trgfn_preventivi_righe_guard_pending`: allowlist su righe PENDING (ammessi solo `stato_approvazione_prezzo`, `pratica_approvazione_prezzo_id`, `meta`); modifica struttura -> `E_RIGA_PREZZO_PENDENTE`
 
+## Sorgenti e routing (preventivo / contratto / offerta)
+
+Il workflow L3 è **sorgente-agnostico**: la stessa pratica `APPROVAZIONE_PREZZO`
+può originare da una riga preventivo, una riga contratto o un'eccezione offerta
+(refactor 2026-06-01). Il discriminatore vive nel `meta` della pratica
+(`sorgente` + chiave riga dedicata) ed è esposto come campo top-level nella coda.
+Gli endpoint approva/rifiuta sono **distinti per sorgente** perché `riga_id`
+appartiene a tabelle/sequence indipendenti; il service fa dispatch via parametro
+`sorgente` (`_SORGENTE_CONFIG`, niente if-chain).
+
+| `sorgente` | Tabella riga | Path approva / rifiuta | Chiave meta riga |
+|---|---|---|---|
+| `preventivo` | `vendite.preventivi_righe` | `/api/v1/vendite/righe/{riga_id}/{approva,rifiuta}-prezzo/` | `riga_preventivo_id` |
+| `contratto` | `vendite.contratti_righe` | `/api/v1/vendite/righe-contratto/{riga_id}/{approva,rifiuta}-prezzo/` | `riga_contratto_id` |
+| `offerta` | `vendite.offerte_commerciali_eccezioni` | `/api/v1/vendite/eccezioni-offerta/{riga_id}/{approva,rifiuta}-prezzo/` | `riga_offerta_id` |
+
+Tutti gli endpoint hanno stesso `post_permission = "approva_prezzo_override"`,
+stesso shape body/risposta, stessi codici errore. La coda (`§3`) restituisce per
+ogni item il campo `sorgente`: il FE lo usa per instradare la chiamata
+approva/rifiuta all'endpoint corretto (`ApprovazioniPrezzoListView`). Le sezioni
+sotto descrivono i campi/effetti usando i preventivi come esempio; contratto e
+offerta sono speculari (cambiano tabella riga e codice not-found,
+`E_VENDITE_NOT_FOUND`).
+
 ## Endpoint
 
 ### 1. Approva richiesta
 
 - Metodo: `POST`
-- Path: `/api/v1/vendite/righe/{riga_id}/approva-prezzo/`
+- Path (preventivi): `/api/v1/vendite/righe/{riga_id}/approva-prezzo/`
+  (contratti: `/righe-contratto/...`; offerte: `/eccezioni-offerta/...`)
 - Auth: `vendite` + `post_permission = "approva_prezzo_override"` (oppure superuser)
 - Header: `Idempotency-Key` raccomandato (gestito da `handle_post_json`)
 - Body JSON:
@@ -70,7 +95,8 @@ Il workflow è composto da:
 ### 2. Rifiuta richiesta
 
 - Metodo: `POST`
-- Path: `/api/v1/vendite/righe/{riga_id}/rifiuta-prezzo/`
+- Path (preventivi): `/api/v1/vendite/righe/{riga_id}/rifiuta-prezzo/`
+  (contratti: `/righe-contratto/...`; offerte: `/eccezioni-offerta/...`)
 - Auth: `vendite` + `post_permission = "approva_prezzo_override"` (oppure superuser)
 - Header: `Idempotency-Key` raccomandato
 - Body JSON:
@@ -144,7 +170,7 @@ Il workflow è composto da:
   - `tipo_prestazione_id = 9001` (codice `APPROVAZIONE_PREZZO`)
   - `stato_codice_interno = 'APERTA'`
   - `emittente_fiscale_id` derivato da `PermissionResolver.get_emittente_for_user` (operatore singolo emittente)
-- **Capability per item (Fase 5.B1)**: ogni item della coda ha `can_approve`/`can_reject`/`action_reason`. Permesso utente calcolato 1 volta (azione `approva_prezzo_override`); per-item solo la verifica `meta.riga_preventivo_id`. Codici stabili `action_reason` esposti come costanti modulo BE (`ACTION_REASON_PERMESSO_MANCANTE`, `ACTION_REASON_RIGA_NON_LINKATA`):
+- **Capability per item (Fase 5.B1)**: ogni item della coda ha `can_approve`/`can_reject`/`action_reason` **e `sorgente`** (`preventivo`/`contratto`/`offerta`, per il routing endpoint lato FE). Permesso utente calcolato 1 volta (azione `approva_prezzo_override`); per-item la verifica della chiave riga corretta per la sorgente (`riga_preventivo_id`/`riga_contratto_id`/`riga_offerta_id`, fallback legacy `riga_id`). Codici stabili `action_reason` esposti come costanti modulo BE (`ACTION_REASON_PERMESSO_MANCANTE`, `ACTION_REASON_RIGA_NON_LINKATA`):
 
 | `action_reason` | Quando | Effetto FE |
 | --- | --- | --- |

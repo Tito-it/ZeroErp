@@ -45,9 +45,11 @@ from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.vendite.services._approvazioni_prezzo_constants import (
     AZIONE_APPROVA_PREZZO,
     META_KEY_RIGA_CONTRATTO_ID,
+    META_KEY_RIGA_OFFERTA_ID,
     META_KEY_RIGA_PREVENTIVO_ID,
     META_KEY_SORGENTE,
     SORGENTE_CONTRATTO,
+    SORGENTE_OFFERTA,
     SORGENTE_PREVENTIVO,
     STATO_APPROVAZIONE_APPROVED,
     STATO_APPROVAZIONE_PENDING,
@@ -112,6 +114,13 @@ def _update_riga_contratto(riga_id: int, fields: dict[str, Any]) -> None:
     ContrattiRepository().update_riga(riga_id, fields)
 
 
+def _update_riga_offerta(riga_id: int, fields: dict[str, Any]) -> None:
+    # `riga_id` qui e' l'id dell'eccezione offerta. `update_eccezione` accetta
+    # un dict positional come `ContrattiRepository.update_riga`.
+    from apps.vendite.db.offerte_repository import OfferteRepository
+    OfferteRepository().update_eccezione(riga_id, fields)
+
+
 _SORGENTE_CONFIG: dict[str, dict[str, Any]] = {
     SORGENTE_PREVENTIVO: {
         "table": "vendite.preventivi_righe",
@@ -132,6 +141,16 @@ _SORGENTE_CONFIG: dict[str, dict[str, Any]] = {
         "error_message_not_found": "Riga contratto non trovata.",
         "label_doc": "contratto",
         "update_riga": _update_riga_contratto,
+    },
+    SORGENTE_OFFERTA: {
+        "table": "vendite.offerte_commerciali_eccezioni",
+        "doc_fk_column": "offerta_id",
+        "meta_key_riga": META_KEY_RIGA_OFFERTA_ID,
+        "meta_key_doc": "offerta_id",
+        "error_code_not_found": "E_VENDITE_NOT_FOUND",
+        "error_message_not_found": "Eccezione offerta non trovata.",
+        "label_doc": "offerta",
+        "update_riga": _update_riga_offerta,
     },
 }
 
@@ -415,6 +434,60 @@ def crea_richiesta_approvazione_contratto(
         # Contratti hanno istanza_utility_id NOT NULL sul header (a differenza
         # dei preventivi). Coerente con la pratica APPROVAZIONE_PREZZO che
         # eredita il riferimento operativo.
+        istanza_utility_id=testata.get("istanza_utility_id"),
+        prezzo_resolver=prezzo_resolver,
+        prezzo_manuale=prezzo_manuale,
+        violazione=violazione,
+        auth_user_id=auth_user_id,
+    )
+
+
+# Scopo: wrapper offerte del workflow L3 (refactor 2026-06-01, gate L1/L2/L3
+#        sulle offerte). Speculare a `crea_richiesta_approvazione_contratto`.
+#        L'eccezione offerta porta `prezzo_unitario` manuale come la riga
+#        contratto; `riga_id` qui e' l'id dell'eccezione (noto subito, l'init
+#        nel service avviene post-create_eccezione → link via riga_id).
+@transaction.atomic
+def crea_richiesta_approvazione_offerta(
+    *,
+    offerta_id: int,
+    riga_id: int | None,
+    articolo_id: str,
+    prezzo_resolver: Decimal | None,
+    prezzo_manuale: Decimal,
+    violazione: dict[str, Any],
+    auth_user_id: int | None,
+) -> int:
+    from apps.vendite.db.offerte_repository import OfferteRepository
+    repo = OfferteRepository()
+    testata = repo.get_offerta(offerta_id)
+    ErrorManager.require(
+        testata is not None,
+        code="E_VENDITE_NOT_FOUND",
+        message="Offerta non trovata.",
+        function_name=f"{_FN}.crea_richiesta_approvazione_offerta",
+    )
+    assert testata is not None
+
+    contesto = repo.resolve_contesto_pratica(offerta_id)
+    ErrorManager.require(
+        contesto is not None,
+        code="E_APPROVAZIONE_PREZZO_NON_AMMESSA",
+        message=(
+            "Impossibile derivare contesto pratica dall'offerta: serve un "
+            "billing account valido con emittente fiscale."
+        ),
+        function_name=f"{_FN}.crea_richiesta_approvazione_offerta",
+    )
+    assert contesto is not None
+
+    return _crea_richiesta_approvazione_impl(
+        sorgente=SORGENTE_OFFERTA,
+        documento_id=offerta_id,
+        riga_id=riga_id,
+        numero_documento=testata.get("codice"),
+        articolo_id=articolo_id,
+        contesto=contesto,
         istanza_utility_id=testata.get("istanza_utility_id"),
         prezzo_resolver=prezzo_resolver,
         prezzo_manuale=prezzo_manuale,

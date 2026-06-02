@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fase 9 — Ondata 2 (brief RLS §9), PARTE A: ENABLE ROW LEVEL SECURITY
+# (NO FORCE) sulle tabelle PK del lotto che NON hanno job batch sopra:
+#   vendite.preventivi, vendite.offerte_commerciali,
+#   documenti.documenti_generati, pratiche.pratiche, vendite.ordini.
+#
+# ESCLUSI da questo changeSet:
+#   - anagrafiche.billing_account: dati MASTER con superficie di lettura
+#     ampia (riferita da tutto il backend) -> changeSet dedicato -40, da
+#     validare a parte (blast radius alto).
+#   - vendite.contratti: il job notturno
+# chiusura_scadenze_daily (dbops.fn_apply_chiusura_scadenze, SECURITY
+# INVOKER) lo tocca -> rischio R4. Va abilitato in un changeSet separato
+# DOPO aver risolto R4 (SECURITY DEFINER oppure pgAgent BYPASSRLS).
+#
+# Prerequisiti: policy EF dry-run presenti su tutte e sei (changeSet
+# -27/-29/-30/-31/-37/-36); fix BE R-GUC in piedi (Fase 7, sbloccato).
+# Applicare DOPO aver validato l'Ondata 1 (-38) e i relativi benchmark.
+#
+# NO FORCE; rollback = DISABLE (kill-switch, policy preservate).
+# Per disattivazione istantanea: ALTER TABLE <t> DISABLE ROW LEVEL SECURITY;
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260601-39-enable-rls-ondata2-pk-no-batch-mctit.yaml
+
+  - changeSet:
+      id: 20260601-39-enable-rls-ondata2-pk-no-batch
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ENABLE ROW LEVEL SECURITY (no FORCE) su preventivi, offerte_commerciali,
+        documenti_generati, pratiche, ordini (Ondata 2 parte A, senza job batch).
+        contratti (R4) e billing_account (master) esclusi. Rollback = DISABLE.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >
+            Prerequisiti Ondata 2 mancanti: verificare le policy
+            rls_*_ef_whitelist sulle 5 tabelle prima dell'ENABLE.
+        - and:
+          - sqlCheck:
+              expectedResult: 5
+              sql: |
+                SELECT COUNT(*) FROM pg_policies
+                 WHERE policyname IN (
+                    'rls_preventivi_ef_whitelist',
+                    'rls_offerte_commerciali_ef_whitelist',
+                    'rls_documenti_generati_ef_whitelist',
+                    'rls_pratiche_ef_whitelist',
+                    'rls_ordini_ef_whitelist');
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.preventivi            ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.offerte_commerciali   ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE documenti.documenti_generati  ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.pratiche             ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ordini                ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- KILL-SWITCH: disattiva la RLS senza toccare le policy.
+              ALTER TABLE vendite.preventivi            DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.offerte_commerciali   DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE documenti.documenti_generati  DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE pratiche.pratiche             DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.ordini                DISABLE ROW LEVEL SECURITY;

@@ -24,7 +24,10 @@ AS $function$
 --   - uid e codice OFC-* generati ex novo (default + BEFORE trigger)
 --   - revisione_numero = rev.N.revisione_numero + 1
 --   - revisione_padre_id = p_offerta_id
---   - eccezioni: solo quelle con attivo IS TRUE
+--   - eccezioni: solo quelle con attivo IS TRUE; stato approvazione
+--     prezzo (stato_approvazione_prezzo + pratica_approvazione_prezzo_id)
+--     copiato 1:1 / carry-forward (rev2, 2026-06-01) per preservare
+--     l'invariante "prezzo fuori-policy sempre marcato".
 --   - utility: copia 1:1 (un record per offerta)
 --   - timestamp transizione (data_emissione, ...) restano NULL
 --
@@ -152,6 +155,9 @@ BEGIN
     -- dell'INSERT della testata rev.N+1 (AFTER INSERT, Step 6).
 
     -- Copia eccezioni rev.N -> rev.N+1 (solo righe attive, 1:1).
+    -- stato_approvazione_prezzo + pratica_approvazione_prezzo_id:
+    --   carry-forward 1:1 (rev2). Vedi header changelog per razionale
+    --   (invariante "prezzo fuori-policy sempre marcato").
     -- Nessun remap FK necessario: offerte_commerciali_eccezioni
     -- non ha tabelle figlie che richiedano remapping.
     INSERT INTO vendite.offerte_commerciali_eccezioni (
@@ -171,6 +177,8 @@ BEGIN
         ordine,
         attivo,
         meta,
+        stato_approvazione_prezzo,
+        pratica_approvazione_prezzo_id,
         user_insert,
         user_update
     )
@@ -191,6 +199,8 @@ BEGIN
         oce.ordine,
         oce.attivo,
         oce.meta,
+        oce.stato_approvazione_prezzo,
+        oce.pratica_approvazione_prezzo_id,
         COALESCE(p_user, CURRENT_USER),
         COALESCE(p_user, CURRENT_USER)
     FROM vendite.offerte_commerciali_eccezioni oce
@@ -233,7 +243,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_offerta(p_offerta_id bigint, p_user text)
-IS 'Crea rev.N+1 di un''offerta EMESSA: copia testata + eccezioni attive + utility (1:1). uid e codice OFC-* generati ex novo. Il trigger z90 revisione (Step 6) marca automaticamente il padre SUPERATA. Guard: stato EMESSO obbligatorio — BOZZA si modifica direttamente; ACCETTATA/RIFIUTATA/SUPERATA/ANNULLATA sono terminali immutabili. Parametri: p_offerta_id (ID offerta da revisionare), p_user (audit). rev 2026-05-24.';
+IS 'Crea rev.N+1 di un''offerta EMESSA: copia testata + eccezioni attive + utility (1:1). Rev2 (2026-06-01): carry-forward 1:1 di stato_approvazione_prezzo + pratica_approvazione_prezzo_id sulle eccezioni (preserva l''invariante "prezzo fuori-policy sempre marcato"). uid e codice OFC-* generati ex novo. Il trigger z90 revisione (Step 6) marca automaticamente il padre SUPERATA. Guard: stato EMESSA obbligatorio. Parametri: p_offerta_id, p_user.';
 ```
 
 ---

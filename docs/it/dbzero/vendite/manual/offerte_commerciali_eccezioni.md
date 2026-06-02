@@ -20,12 +20,20 @@
 proposte nell'offerta commerciale: ogni riga rappresenta una deviazione tipizzata
 rispetto al listino di riferimento dell'offerta.
 
-E' il **mirror fedele di `vendite.contratti_righe`**, con le sole differenze intenzionali:
+E' il **mirror fedele di `vendite.contratti_righe`**, con la sola differenza
+intenzionale di `offerta_id` al posto di `contratto_id`.
 
-- `offerta_id` al posto di `contratto_id`
-- **escluse** `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` — il
-  flusso di approvazione prezzo si applica solo sui contratti, non sull'offerta
-  pre-negoziazione.
+> **Refactor 2026-06-01** (gate L3 sulle offerte): aggiunte
+> `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` (+ FK
+> `fk_offerte_eccezioni_pratica_approvazione_prezzo` → `pratiche.pratiche`, indice
+> parziale `ix_vendite_offerte_eccezioni_stato_approvazione`), prima escluse. Le
+> eccezioni OVERRIDE/AGGIUNTA non composite hanno ora dove registrare lo stato L3,
+> in piena simmetria con `contratti_righe`. Il flusso di approvazione prezzo si
+> applica quindi anche all'offerta (guida §6/§11.3), e il push ne trasporta lo
+> stato 1:1 sul contratto. Una guard riga generica
+> [`script.trgfn_righe_guard_pending('offerta_id')`](/dbzero/script/funzioni/trgfn_righe_guard_pending)
+> (trigger `trg_offerte_eccezioni_a10_guard_pending_upd`) congela i campi struttura
+> mentre lo stato è `PENDING`.
 
 La simmetria strutturale garantisce che `fn_push_offerta_a_contratto` sia una
 copia 1:1 senza conversioni di colonne (§5.1 analisi).

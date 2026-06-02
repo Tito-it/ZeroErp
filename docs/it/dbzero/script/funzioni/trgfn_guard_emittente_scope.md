@@ -23,14 +23,16 @@ BEGIN
   -- Defense-in-depth: verifica che l'utente corrente abbia
   -- scope sull'emittente fiscale della riga.
   --
-  -- Modalita':
+  -- Modalita' (TG_ARGV[0]):
   --   'soggetto_ruolo' = la colonna contiene soggetto_ruolo_id,
   --       si risolve via anagrafiche.emittenti_fiscali
   --   'fattura' = la colonna contiene fattura_id,
-  --       si risolve via vendite.fatture → emittenti_fiscali
+  --       si risolve via vendite.fatture -> emittenti_fiscali
+  --   'fiscale' = la colonna contiene gia' emittente_fiscale_id
+  --       (convenzione PK), nessuna risoluzione
   --
-  -- Se app.current_user_id non e' settato (batch job) → skip.
-  -- Se emittente non risolvibile → skip (dati non ancora linkati).
+  -- Se app.current_user_id non e' settato (batch job) -> skip.
+  -- Se emittente non risolvibile -> skip (dati non ancora linkati).
   -- =========================================================
 
   -- 1. Leggi user_id dalla sessione PG
@@ -69,13 +71,17 @@ BEGIN
       JOIN anagrafiche.emittenti_fiscali ef
         ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
      WHERE f.id = v_col_value;
+
+  ELSIF v_mode = 'fiscale' THEN
+    -- Convenzione PK: la colonna E' gia' emittente_fiscale_id.
+    v_emittente_fiscale_id := v_col_value;
   END IF;
 
   IF v_emittente_fiscale_id IS NULL THEN
     RETURN NEW;  -- emittente non risolvibile
   END IF;
 
-  -- 4. Verifica scope
+  -- 4. Verifica scope (canonica auth_user_id, bypass SUPER_ADMIN)
   IF NOT script.fn_check_user_emittente_scope(
            v_auth_user_id, v_emittente_fiscale_id) THEN
     PERFORM script.fn_log_and_raise_error(
@@ -102,7 +108,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.trgfn_guard_emittente_scope()
-IS 'Defense-in-depth: blocca INSERT/UPDATE se utente non ha scope su emittente fiscale.';
+IS 'Defense-in-depth: blocca INSERT/UPDATE se utente non ha scope su emittente fiscale. Modalita TG_ARGV[0]: soggetto_ruolo | fattura | fiscale (PK diretta).';
 ```
 
 ---

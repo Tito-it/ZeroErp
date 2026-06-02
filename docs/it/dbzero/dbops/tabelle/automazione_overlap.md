@@ -19,6 +19,8 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | range_col | text | YES |  |
+| where_predicate | text | YES |  |
+| key_expressions | ARRAY | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

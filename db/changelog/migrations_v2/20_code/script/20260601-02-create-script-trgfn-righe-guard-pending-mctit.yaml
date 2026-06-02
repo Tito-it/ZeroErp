@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Generalizzazione del guard L3 PENDING per le tabelle RIGA-LEVEL
+# (preventivi_righe, contratti_righe, offerte_commerciali_eccezioni).
+#
+# Regola del 2: esistono gia' due copie dedicate quasi identiche
+#   (vendite.trgfn_preventivi_righe_guard_pending, 20260422-07;
+#    vendite.trgfn_contratti_righe_guard_pending, 20260518-02).
+# Aggiungere una terza copia per l'offerta le violerebbe: si estrae quindi
+# un building-block unico e si ripuntano tutti e tre i trigger (20260601-03,
+# che droppa anche le due funzioni dedicate ora morte).
+#
+# DIFFERENZA dal generico componenti (script.trgfn_componenti_guard_pending):
+#   le denylist riga-level NON sono identiche tra tabelle (contratti hanno
+#   tipo_erogazione/periodicita/...; preventivi hanno descrizione/sconto/iva).
+#   Un'enumerazione statica non generalizza. Si adotta una ALLOWLIST via
+#   to_jsonb: si bloccano TUTTI i campi tranne quelli di workflow/audit.
+#   Vantaggio: robusto all'aggiunta di nuove colonne (niente denylist da
+#   manutenere). Equivalenza comportamentale verificata: le sole colonne
+#   extra-bloccate rispetto alle denylist attuali sono id/data_insert/
+#   user_insert, immutabili in UPDATE.
+#
+# TG_ARGV[0] = nome colonna FK padre (preventivo_id / contratto_id / offerta_id),
+#   usato solo per arricchire il contesto errore.
+#
+# Raise: E_RIGA_PREZZO_PENDENTE (id 390), gia' usato dalle due copie dedicate.
+#
+# Riferimento: docs/it/dev/work-in-progress/refactor-prezzi-db.md §1.1, §3.2
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260601-02-create-script-trgfn-righe-guard-pending-mctit.yaml
+
+  - changeSet:
+      id: 20260601-02-01-create-script-trgfn-righe-guard-pending
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea script.trgfn_righe_guard_pending(). Guard L3 generico riga-level
+        BEFORE UPDATE: quando stato_approvazione_prezzo = PENDING blocca le
+        modifiche a qualsiasi campo struttura (allowlist via to_jsonb).
+        TG_ARGV[0] = nome colonna FK padre. Raise E_RIGA_PREZZO_PENDENTE (390).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+               WHERE n.nspname = 'config'
+                 AND t.typname = 'stato_approvazione_prezzo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_righe_guard_pending()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- Scopo:
+                  --   Guard L3 generico BEFORE UPDATE per le tabelle RIGA-LEVEL del
+                  --   sotto-sistema approvazione prezzo (preventivi_righe,
+                  --   contratti_righe, offerte_commerciali_eccezioni).
+                  --   Quando la riga era in stato_approvazione_prezzo = 'PENDING'
+                  --   (richiesta L3 out-of-policy in attesa di esito), blocca le
+                  --   modifiche ai campi struttura: l'approvatore deve decidere
+                  --   sulla riga ESATTA proposta.
+                  --
+                  --   Strategia ALLOWLIST (non denylist): si confronta to_jsonb(OLD)
+                  --   vs to_jsonb(NEW) dopo aver rimosso i campi ammessi in PENDING.
+                  --   Qualsiasi residuo diverso -> raise. Robusto all'aggiunta di
+                  --   nuove colonne; uniforme tra tabelle con strutture diverse.
+                  --
+                  --   Allowlist (modificabili in PENDING):
+                  --     stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
+                  --     meta, data_update, user_update (audit framework), tx_id.
+                  --
+                  --   TG_ARGV[0]: nome colonna FK padre (es. 'preventivo_id',
+                  --     'contratto_id', 'offerta_id') — solo per contesto errore.
+                  v_col_fk_padre  text := TG_ARGV[0];
+                  v_allow         CONSTANT text[] := ARRAY[
+                      'stato_approvazione_prezzo',
+                      'pratica_approvazione_prezzo_id',
+                      'meta',
+                      'data_update',
+                      'user_update',
+                      'tx_id'
+                  ];
+                  v_old_struct    jsonb;
+                  v_new_struct    jsonb;
+                  v_campi_mod     text[];
+                  v_fk_value      text;
+              BEGIN
+                  -- Attivo solo se la riga era gia' PENDING prima dell'UPDATE.
+                  IF OLD.stato_approvazione_prezzo IS DISTINCT FROM
+                     'PENDING'::config.stato_approvazione_prezzo THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Rimuove i campi workflow/audit e confronta il resto della riga.
+                  v_old_struct := to_jsonb(OLD) - v_allow;
+                  v_new_struct := to_jsonb(NEW) - v_allow;
+
+                  IF v_old_struct IS DISTINCT FROM v_new_struct THEN
+                      -- Raccoglie i campi struttura modificati per il contesto errore.
+                      SELECT array_agg(k ORDER BY k)
+                        INTO v_campi_mod
+                        FROM jsonb_object_keys(v_old_struct) AS k
+                       WHERE (v_old_struct -> k) IS DISTINCT FROM (v_new_struct -> k);
+
+                      v_fk_value := to_jsonb(NEW) ->> v_col_fk_padre;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_RIGA_PREZZO_PENDENTE',
+                          jsonb_build_object(
+                              'riga_id',          OLD.id,
+                              v_col_fk_padre,     v_fk_value,
+                              'campi_modificati', v_campi_mod,
+                              'hint', 'Attendi esito approvazione (APPROVED/REJECTED) '
+                                   || 'o rifiuta la richiesta prima di modificare la riga.'
+                          ),
+                          NULL::uuid,
+                          OLD.id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_righe_guard_pending()
+              IS 'Guard L3 BEFORE UPDATE generico per tabelle RIGA-LEVEL approvazione '
+                 'prezzo (preventivi_righe, contratti_righe, offerte_commerciali_eccezioni). '
+                 'Blocca modifiche ai campi struttura quando stato_approvazione_prezzo=PENDING, '
+                 'via ALLOWLIST su to_jsonb (workflow/audit ammessi). TG_ARGV[0] = nome colonna '
+                 'FK padre per contesto errore. Raise E_RIGA_PREZZO_PENDENTE (390). '
+                 'Rev 2026-06-01 — estrazione di trgfn_{preventivi,contratti}_righe_guard_pending.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.trgfn_righe_guard_pending();

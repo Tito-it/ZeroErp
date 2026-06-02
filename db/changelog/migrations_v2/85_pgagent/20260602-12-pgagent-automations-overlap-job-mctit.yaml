@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fase 2 / refactor-overlap-v2 (§4.4, step 2.13): job pgAgent per OVERLAP.
+# Aggiunge il 6° job automazioni (oltre a tx_id/audit/storico/storico_provision/
+# attivo gia' creati in 20250825-02), schedulato ogni giorno alle 21:00, che
+# invoca maintenance.proc_automations_overlap_job().
+#
+# NON modifica il job esistente (20250825-02, gia' mergiato): crea un job
+# separato 'automations_overlap'. Stile e schedule allineati a quelli.
+# runOnChange + validCheckSums ANY come l'originale (il blocco e' ri-eseguibile:
+# DELETE+INSERT del solo job 'automations_overlap').
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/85_pgagent/20260602-12-pgagent-automations-overlap-job-mctit.yaml
+
+  - changeSet:
+      id: 20260602-12-pgagent-automations-overlap-job
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ "ANY" ]
+      comment: >
+        Crea/aggiorna il job pgAgent 'automations_overlap' (daily @ 21:00) che
+        invoca maintenance.proc_automations_overlap_job().
+      preConditions:
+        - onFail: CONTINUE
+          onError: CONTINUE
+          tableExists:
+            schemaName: pgagent
+            tableName: pga_job
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_classid   INTEGER;
+                v_minutes   boolean[] := (SELECT array_agg((i = 0)::boolean)  FROM generate_series(0,59) AS g(i));   -- minuto 0
+                v_hours     boolean[] := (SELECT array_agg((i = 21)::boolean) FROM generate_series(0,23) AS g(i));  -- ora 21
+                v_weekdays  boolean[] := ARRAY[TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE]::boolean[];
+                v_monthdays boolean[] := array_fill(TRUE, ARRAY[32])::boolean[];
+                v_months    boolean[] := array_fill(TRUE, ARRAY[12])::boolean[];
+              BEGIN
+                SELECT jclid INTO v_classid
+                  FROM pgagent.pga_jobclass
+                 WHERE jclname = 'Routine Maintenance'
+                 LIMIT 1;
+
+                IF v_classid IS NULL THEN
+                  INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                  VALUES ('Routine Maintenance', 'Default job class')
+                  RETURNING jclid INTO v_classid;
+                END IF;
+
+                -- =========================
+                -- OVERLAP
+                -- =========================
+                DELETE FROM pgagent.pga_job WHERE jobname = 'automations_overlap';
+                INSERT INTO pgagent.pga_job(jobjclid, jobname, jobdesc, jobenabled)
+                VALUES (v_classid, 'automations_overlap',
+                        'Esegue dbops.fn_apply_automazione_overlap (SCHEDULED) ogni giorno alle 21:00',
+                        true);
+
+                INSERT INTO pgagent.pga_schedule(
+                  jscjobid, jscname, jscenabled, jscminutes, jschours, jscweekdays, jscmonthdays, jscmonths, jscstart
+                )
+                SELECT jobid, 'daily_21', true, v_minutes, v_hours, v_weekdays, v_monthdays, v_months, now()
+                FROM pgagent.pga_job WHERE jobname = 'automations_overlap';
+
+                INSERT INTO pgagent.pga_jobstep(
+                  jstjobid, jstname, jstkind, jstcode, jstdbname
+                )
+                SELECT jobid, 'run_automations_overlap', 's',
+                       $sql$CALL maintenance.proc_automations_overlap_job();$sql$,
+                       current_database()
+                FROM pgagent.pga_job WHERE jobname = 'automations_overlap';
+              END $$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM pgagent.pga_job WHERE jobname = 'automations_overlap';

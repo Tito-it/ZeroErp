@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fase 3 (brief RLS §8, BLOCKER R1/C2): porta a security_invoker=on le
+# viste DEFINER che insistono sulle tabelle del lotto. Senza questo, una
+# vista definer (owner titodb, BYPASSRLS implicito a runtime se owner) legge
+# le tabelle base scavalcando la RLS -> RLS cosmetica.
+#
+# Elenco da introspezione rls-introspezione-runtime (sezione A, 2026-06-01):
+# 9 viste, nessuna matview. security_invoker fa eseguire la vista col
+# contesto del chiamante (zeroerp_app NOBYPASSRLS + GUC) -> RLS applicata.
+#
+# Nessun effetto finche' le tabelle base non hanno ENABLE ROW LEVEL SECURITY
+# (le policy sono dry-run): conversione sicura da fare prima delle ondate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260601-26-alter-viste-lotto-security-invoker-mctit.yaml
+
+  - changeSet:
+      id: 20260601-26-alter-viste-lotto-security-invoker
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        SET (security_invoker = on) sulle 9 viste DEFINER che leggono le
+        tabelle del lotto RLS (preventivi/pratiche/offerte_commerciali/
+        billing_account). Anti-regressione coperta dai test pgTAP (Fase 6).
+        Idempotente (ALTER VIEW IF EXISTS). NB: i chiamanti (zeroerp_app)
+        devono avere SELECT diretto sulle tabelle base (verificato: ruolo
+        applicativo standard) perche' security_invoker usa i privilegi del
+        chiamante, non dell'owner.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Viste vendite (dominio documenti commerciali)
+              ALTER VIEW IF EXISTS vendite.vw_preventivi                          SET (security_invoker = on);
+              ALTER VIEW IF EXISTS vendite.vw_preventivi_list                     SET (security_invoker = on);
+              ALTER VIEW IF EXISTS vendite.vw_preventivi_pratiche                 SET (security_invoker = on);
+              ALTER VIEW IF EXISTS vendite.vw_preventivi_stato_fatturazione       SET (security_invoker = on);
+              ALTER VIEW IF EXISTS vendite.vw_preventivi_stato_fatturazione_righe SET (security_invoker = on);
+              ALTER VIEW IF EXISTS vendite.vw_offerte_commerciali_list            SET (security_invoker = on);
+
+              -- Viste anagrafiche (clienti via billing_account)
+              ALTER VIEW IF EXISTS anagrafiche.vw_clienti_lista                   SET (security_invoker = on);
+              ALTER VIEW IF EXISTS anagrafiche.vw_clienti_codice_ba              SET (security_invoker = on);
+
+              -- Vista diagnostica dbops (precauzionale: anche i tool DBA non
+              -- devono scavalcare la RLS se eseguiti da ruolo non-bypass).
+              ALTER VIEW IF EXISTS dbops.vw_diag_v_clienti_links                  SET (security_invoker = on);
+      rollback:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW IF EXISTS vendite.vw_preventivi                          SET (security_invoker = off);
+              ALTER VIEW IF EXISTS vendite.vw_preventivi_list                     SET (security_invoker = off);
+              ALTER VIEW IF EXISTS vendite.vw_preventivi_pratiche                 SET (security_invoker = off);
+              ALTER VIEW IF EXISTS vendite.vw_preventivi_stato_fatturazione       SET (security_invoker = off);
+              ALTER VIEW IF EXISTS vendite.vw_preventivi_stato_fatturazione_righe SET (security_invoker = off);
+              ALTER VIEW IF EXISTS vendite.vw_offerte_commerciali_list            SET (security_invoker = off);
+              ALTER VIEW IF EXISTS anagrafiche.vw_clienti_lista                   SET (security_invoker = off);
+              ALTER VIEW IF EXISTS anagrafiche.vw_clienti_codice_ba              SET (security_invoker = off);
+              ALTER VIEW IF EXISTS dbops.vw_diag_v_clienti_links                  SET (security_invoker = off);

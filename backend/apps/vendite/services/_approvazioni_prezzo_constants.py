@@ -46,6 +46,14 @@ META_KEY_SORGENTE = "sorgente"
 SORGENTE_PREVENTIVO = "preventivo"
 SORGENTE_CONTRATTO = "contratto"
 
+# Refactor 2026-06-01 (gate L1/L2/L3 sulle offerte): terza sorgente del
+# workflow L3. Le offerte commerciali hanno eccezioni OVERRIDE/AGGIUNTA col
+# prezzo manuale, simmetriche alle righe contratto. Il DB ha colonne
+# `stato_approvazione_prezzo`/`pratica_approvazione_prezzo_id` su
+# `vendite.offerte_commerciali_eccezioni` (migration 20260601-01).
+META_KEY_RIGA_OFFERTA_ID = "riga_offerta_id"
+SORGENTE_OFFERTA = "offerta"
+
 # Stato preventivo "bozza" (codice_interno in `config.stati_doc_preventivi`).
 # La descrizione mostrata all'utente e' "Bozza" ma il codice tecnico e' DRAFT.
 STATO_PREVENTIVO_DRAFT = "DRAFT"

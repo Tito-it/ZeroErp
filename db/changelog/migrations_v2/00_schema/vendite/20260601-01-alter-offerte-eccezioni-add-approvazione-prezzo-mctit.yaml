@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Simmetria L3 approvazione prezzo — offerte_commerciali_eccezioni (2026-06-01)
+#
+# Mirror esatto di 20260518-01 (contratti_righe), a sua volta replica di
+# 20260422-04 (preventivi_righe). Aggiunge 2 colonne nullable + FK + indice
+# parziale per abilitare il workflow L3 approvazione prezzo sulle eccezioni
+# OVERRIDE/AGGIUNTA non composite dell'offerta.
+#
+# Pre-esistente su offerte_commerciali_eccezioni_componenti (20260526-22):
+#   stato_approvazione_prezzo + pratica_approvazione_prezzo_id gia' presenti.
+# Questo migration chiude la simmetria sulla riga (eccezione standalone), cosi'
+# che un OVERRIDE/AGGIUNTA non composito abbia dove registrare lo stato L3 e il
+# push (20260601-04) possa trasportarlo 1:1 a contratti_righe.
+#
+# 2 changeSet (sub-progressivi -01, -02):
+#   01-01  ADD COLUMN stato_approvazione_prezzo + pratica_approvazione_prezzo_id + FK
+#   01-02  CREATE INDEX parziale ix_vendite_offerte_eccezioni_stato_approvazione
+#
+# Riferimento: docs/it/dev/work-in-progress/refactor-prezzi-db.md §3.1
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260601-01-alter-offerte-eccezioni-add-approvazione-prezzo-mctit.yaml
+
+  - changeSet:
+      id: 20260601-01-01-add-columns-offerte-eccezioni-approvazione-prezzo
+      author: mctit
+      comment: >
+        Simmetria L3: aggiunge 2 colonne a vendite.offerte_commerciali_eccezioni:
+        stato_approvazione_prezzo (ENUM, NULL = non in workflow) e
+        pratica_approvazione_prezzo_id (FK pratiche.pratiche, NULL).
+        Pattern identico a contratti_righe (20260518-01-01).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: offerte_commerciali_eccezioni
+          - tableExists:
+              schemaName: pratiche
+              tableName: pratiche
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_type t
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config'
+                   AND t.typname = 'stato_approvazione_prezzo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD COLUMN stato_approvazione_prezzo      config.stato_approvazione_prezzo,
+                  ADD COLUMN pratica_approvazione_prezzo_id bigint;
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT fk_offerte_eccezioni_pratica_approvazione_prezzo
+                  FOREIGN KEY (pratica_approvazione_prezzo_id)
+                  REFERENCES pratiche.pratiche(id);
+
+              COMMENT ON COLUMN vendite.offerte_commerciali_eccezioni.stato_approvazione_prezzo IS
+                  'Stato del workflow L3 approvazione prezzo out-of-policy. '
+                  'NULL = eccezione non soggetta a workflow (caso piu'' comune). Valori '
+                  'non-NULL: PENDING (richiesta creata, in attesa), APPROVED (L3 '
+                  'autorizzato), REJECTED (L3 rifiutato, prezzo da rivedere). '
+                  'Trasportato 1:1 a contratti_righe dal push e nella nuova revisione. '
+                  'Simmetrico a contratti_righe.stato_approvazione_prezzo.';
+
+              COMMENT ON COLUMN vendite.offerte_commerciali_eccezioni.pratica_approvazione_prezzo_id IS
+                  'FK alla pratiche.pratiche che traccia la richiesta di approvazione '
+                  'per questa eccezione. NULL se non in workflow L3. '
+                  'Simmetrico a contratti_righe.pratica_approvazione_prezzo_id.';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS fk_offerte_eccezioni_pratica_approvazione_prezzo;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP COLUMN IF EXISTS stato_approvazione_prezzo,
+                  DROP COLUMN IF EXISTS pratica_approvazione_prezzo_id;
+
+  - changeSet:
+      id: 20260601-01-02-create-ix-offerte-eccezioni-stato-approvazione
+      author: mctit
+      comment: >
+        Indice parziale su stato_approvazione_prezzo (solo righe IS NOT NULL).
+        Accelera dashboard BE "eccezioni offerta in approvazione". Naming
+        coerente con ix_vendite_contratti_righe_stato_approvazione.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: offerte_commerciali_eccezioni
+            columnName: stato_approvazione_prezzo
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX ix_vendite_offerte_eccezioni_stato_approvazione
+                  ON vendite.offerte_commerciali_eccezioni (stato_approvazione_prezzo)
+                  WHERE stato_approvazione_prezzo IS NOT NULL;
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS vendite.ix_vendite_offerte_eccezioni_stato_approvazione;

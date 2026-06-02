@@ -61,6 +61,7 @@ from apps.vendite.services._pricing_gate_helpers import (
     check_limite_variazione_globale,
     guard_uom_id_positive,
     resolve_or_check_override_prezzo,
+    validate_componenti_overrides_authorization,
 )
 
 logger = logging.getLogger(__name__)
@@ -1159,6 +1160,16 @@ class ContrattiService:
             componenti_overrides_raw,
             function_name="contratti_service.create_riga",
             error_code=E_VENDITE_VALIDATION,
+        )
+        # Gate L1 sugli override prezzo componenti (allineamento a preventivi,
+        # 2026-06-01): contratti non lo applicava → un operatore senza azione
+        # `prezzo_override_manuale` poteva scrivere prezzi manuali sui figli
+        # BoM. BB condiviso, enforcement solo BE (azione di processo Django,
+        # nessun safety-net DB possibile).
+        validate_componenti_overrides_authorization(
+            {"componenti_overrides": componenti_overrides_raw},
+            auth_user_id,
+            function_name="contratti_service.create_riga",
         )
         # Flag opt-in workflow L3 (richiesta approvazione). Estratto qui per
         # non finire nel data_riga.

@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Sanazione fatturazione_lotti.emittente_soggetto_ruolo_id (brief RLS §4):
+# da NULLABLE a NOT NULL. Necessaria prima dell'ENABLE in lettura: una riga
+# a emittente NULL sarebbe invisibile agli operatori con whitelist.
+# Backfill via il resolver esistente (zero logica duplicata), SET NOT NULL
+# fail-fast (la migration fallisce ed elenca i lotti non risolvibili).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260601-18-sanazione-fatturazione-lotti-emittente-notnull-mctit.yaml
+
+  - changeSet:
+      id: 20260601-18-sanazione-fatturazione-lotti-emittente-notnull
+      author: mctit
+      comment: >
+        Backfill emittente_soggetto_ruolo_id sui lotti NULL via
+        vendite.fn_resolve_lotto_utility_emittente (derivazione da BA/utility,
+        p_check_emittente_attivo=false per materializzare anche emittenti
+        storici), poi SET NOT NULL. Se restano lotti non risolvibili (senza BA
+        ne' utility risolvibile) la migration RAISE con la lista degli id: vanno
+        gestiti a mano (regola fix-dati AGENTS.md) prima di rilanciare.
+        Idempotente: su DB gia' sanato il backfill tocca 0 righe e SET NOT NULL
+        e' no-op.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: fatturazione_lotti }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'vendite'
+                   AND p.proname = 'fn_resolve_lotto_utility_emittente';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Backfill: per ogni lotto a emittente NULL prova a risolverlo
+              -- dal BA/utility. Cattura l'eccezione del resolver per riga
+              -- (subtransazione) per poter elencare TUTTI i non risolvibili in
+              -- un solo errore finale, invece di abortire al primo.
+              DO $sanazione$
+              DECLARE
+                  r            record;
+                  v_emittente  bigint;
+                  v_unresolved bigint[] := '{}';
+              BEGIN
+                  FOR r IN
+                      SELECT id, billing_account_id, utility_id
+                        FROM vendite.fatturazione_lotti
+                       WHERE emittente_soggetto_ruolo_id IS NULL
+                  LOOP
+                      BEGIN
+                          SELECT resolved_emittente_soggetto_ruolo_id
+                            INTO v_emittente
+                            FROM vendite.fn_resolve_lotto_utility_emittente(
+                                     p_billing_account_id     := r.billing_account_id,
+                                     p_utility_id             := r.utility_id,
+                                     p_caller                 := 'sanazione-rls-20260601-18',
+                                     p_check_emittente_attivo := false
+                                 );
+                      EXCEPTION WHEN OTHERS THEN
+                          v_emittente := NULL;  -- non risolvibile: raccolto sotto
+                      END;
+
+                      IF v_emittente IS NULL THEN
+                          v_unresolved := array_append(v_unresolved, r.id);
+                      ELSE
+                          UPDATE vendite.fatturazione_lotti
+                             SET emittente_soggetto_ruolo_id = v_emittente
+                           WHERE id = r.id;
+                      END IF;
+                  END LOOP;
+
+                  IF cardinality(v_unresolved) > 0 THEN
+                      RAISE EXCEPTION
+                          'Sanazione fatturazione_lotti: % lotti con emittente non risolvibile (id: %). '
+                          'Risolverli a mano (assegnare emittente_soggetto_ruolo_id o cancellare) '
+                          'prima di rilanciare la migration.',
+                          cardinality(v_unresolved), v_unresolved;
+                  END IF;
+              END
+              $sanazione$;
+
+              -- A questo punto nessun NULL residuo: irrigidisci la colonna.
+              ALTER TABLE vendite.fatturazione_lotti
+                  ALTER COLUMN emittente_soggetto_ruolo_id SET NOT NULL;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti
+                  ALTER COLUMN emittente_soggetto_ruolo_id DROP NOT NULL;

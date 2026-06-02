@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fase 5 (brief RLS §6): indici sulle colonne emittente delle tabelle del
+# lotto a cui mancavano (da introspezione rls-introspezione-runtime sez. D).
+# Servono ai filtri applicativi e alle list-view operatore, con la RLS come
+# Filter residuo (lo scope-predicate e' opaco al planner).
+#
+# Precedente: ix_preventivi_emittente_fiscale_id creato direttamente in
+# 20260501-09 (ADD COLUMN). Stesso approccio qui, con naming di policy
+# ix_<tabella>_<colonna> riconosciuto da dbops.fn_populate_fk_index_policy.
+# CREATE INDEX IF NOT EXISTS: idempotente, compatibile col job FK index policy.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260601-34-create-indici-emittente-lotto-rls-mctit.yaml
+
+  - changeSet:
+      id: 20260601-34-create-indici-emittente-lotto-rls
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CREATE INDEX sulle colonne emittente mancanti (contratti,
+        offerte_commerciali, documenti_generati, pratiche, ordini,
+        fatturazione_lotti). Naming di policy ix_<tabella>_<colonna>.
+        Idempotente (IF NOT EXISTS).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists: { schemaName: vendite,    tableName: contratti,           columnName: emittente_fiscale_id }
+          - columnExists: { schemaName: vendite,    tableName: ordini,              columnName: emittente_fiscale_id }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_contratti_emittente_fiscale_id
+                  ON vendite.contratti (emittente_fiscale_id);
+
+              CREATE INDEX IF NOT EXISTS ix_offerte_commerciali_emittente_fiscale_id
+                  ON vendite.offerte_commerciali (emittente_fiscale_id);
+
+              CREATE INDEX IF NOT EXISTS ix_documenti_generati_emittente_fiscale_id
+                  ON documenti.documenti_generati (emittente_fiscale_id);
+
+              CREATE INDEX IF NOT EXISTS ix_pratiche_emittente_fiscale_id
+                  ON pratiche.pratiche (emittente_fiscale_id);
+
+              CREATE INDEX IF NOT EXISTS ix_ordini_emittente_fiscale_id
+                  ON vendite.ordini (emittente_fiscale_id);
+
+              CREATE INDEX IF NOT EXISTS ix_fatturazione_lotti_emittente_soggetto_ruolo_id
+                  ON vendite.fatturazione_lotti (emittente_soggetto_ruolo_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_contratti_emittente_fiscale_id;
+              DROP INDEX IF EXISTS vendite.ix_offerte_commerciali_emittente_fiscale_id;
+              DROP INDEX IF EXISTS documenti.ix_documenti_generati_emittente_fiscale_id;
+              DROP INDEX IF EXISTS pratiche.ix_pratiche_emittente_fiscale_id;
+              DROP INDEX IF EXISTS vendite.ix_ordini_emittente_fiscale_id;
+              DROP INDEX IF EXISTS vendite.ix_fatturazione_lotti_emittente_soggetto_ruolo_id;

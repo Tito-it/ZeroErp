@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260601-08-repoint-policy-rls-fatture-ef-whitelist-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260601-08-repoint-policy-rls-fatture-ef-whitelist-auth-user
+      author: mctit
+      comment: >
+        Repoint della policy dry-run rls_fatture_ef_whitelist sulla chiave
+        canonica auth_user_id (brief RLS §1 "Nota di migrazione"). Prima la
+        policy passava app.current_identita_id a fn_scope_ef_whitelist
+        (identita_id/SR, logica whitelist duplicata, SENZA bypass
+        SUPER_ADMIN = bug C7). Ora passa app.current_user_id all'adapter SR
+        fn_scope_ef_whitelist_via_sr, che delega alla canonica
+        script.fn_check_user_emittente_scope (la stessa usata dal write-guard
+        trgfn_guard_emittente_scope): lettura e scrittura unificate sulla
+        stessa regola, bypass SUPER_ADMIN ereditato (C7 chiuso per
+        costruzione). Gate ruolo_applicativo = OPERATORE invariato.
+        La tabella resta dry-run (nessun ENABLE: vedi ondata 1 §9 brief).
+        rls_fatture_ba_ownership (cliente portale/shop) NON e' toccata.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: fatture }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_scope_ef_whitelist_via_sr';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Repoint idempotente: drop + recreate solo della policy EF.
+              DROP POLICY IF EXISTS rls_fatture_ef_whitelist ON vendite.fatture;
+
+              -- Policy operatore: visibilita' fatture secondo la whitelist
+              -- emittenti (config.user_emittenti_fiscali) risolta dalla
+              -- canonica. Gate ruolo fail-closed: GUC non settato ->
+              -- current_setting = '' -> confronto fallisce -> policy non
+              -- ammette (0 righe). auth_user_id mancante in contesto
+              -- OPERATORE -> NULLIF -> NULL -> canonica gestisce.
+              CREATE POLICY rls_fatture_ef_whitelist ON vendite.fatture
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_soggetto_ruolo_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_fatture_ef_whitelist ON vendite.fatture IS
+                  'RLS dry-run: operatore vede solo fatture con emittente in '
+                  'whitelist. Delega a fn_scope_ef_whitelist_via_sr -> canonica '
+                  'fn_check_user_emittente_scope (auth_user_id, bypass SUPER_ADMIN, '
+                  'read+write unificati). Non attiva finche ALTER TABLE ... ENABLE '
+                  'ROW LEVEL SECURITY non viene applicato (ondata 1).';
+      rollback:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina la versione precedente (identita_id + fn_scope_ef_whitelist legacy).
+              DROP POLICY IF EXISTS rls_fatture_ef_whitelist ON vendite.fatture;
+              CREATE POLICY rls_fatture_ef_whitelist ON vendite.fatture
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(
+                          NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                          emittente_soggetto_ruolo_id
+                      )
+                  );

@@ -26,6 +26,8 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| stato_approvazione_prezzo | USER-DEFINED | YES |  |
+| pratica_approvazione_prezzo_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -38,12 +40,14 @@
 | CHECK | chk_offerte_eccezioni_tipo_erog |  |
 | FOREIGN KEY | fk_offerte_eccezioni_articolo | articolo_id |
 | FOREIGN KEY | fk_offerte_eccezioni_offerta | offerta_id |
+| FOREIGN KEY | fk_offerte_eccezioni_pratica_approvazione_prezzo | pratica_approvazione_prezzo_id |
 | FOREIGN KEY | fk_offerte_eccezioni_uom_operativa | uom_operativa_id |
 | PRIMARY KEY | pk_offerte_commerciali_eccezioni | id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_vendite_offerte_eccezioni_stato_approvazione | `CREATE INDEX ix_vendite_offerte_eccezioni_stato_approvazione ON vendite.offerte_commerciali_eccezioni USING btree (stato_approvazione_prezzo) WHERE (stato_approvazione_prezzo IS NOT NULL)` |
 | pk_offerte_commerciali_eccezioni | `CREATE UNIQUE INDEX pk_offerte_commerciali_eccezioni ON vendite.offerte_commerciali_eccezioni USING btree (id)` |
 | uq_offerte_eccezioni_one_aggiunta_per_articolo | `CREATE UNIQUE INDEX uq_offerte_eccezioni_one_aggiunta_per_articolo ON vendite.offerte_commerciali_eccezioni USING btree (offerta_id, articolo_id) WHERE (tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto)` |
 | uq_offerte_eccezioni_one_eccezione_per_articolo | `CREATE UNIQUE INDEX uq_offerte_eccezioni_one_eccezione_per_articolo ON vendite.offerte_commerciali_eccezioni USING btree (offerta_id, articolo_id) WHERE (tipo_eccezione = ANY (ARRAY['OVERRIDE'::vendite.tipo_eccezione_contratto, 'ESCLUSIONE'::vendite.tipo_eccezione_contratto]))` |
@@ -63,6 +67,7 @@
 | trg_offerte_commerciali_eccezioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
 | trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
+| trg_offerte_eccezioni_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_pending('offerta_id')` |
 | trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita', 'fonte_quantita_attesa')` |
 | trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false', 'quantita', 'fonte_quantita_attesa')` |
 | trg_offerte_eccezioni_z90_propaga_qta_componenti_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_componenti_propaga_qta('vendite', 'offerte_commerciali_eccezioni_componenti', 'eccezione_offerta_id')` |

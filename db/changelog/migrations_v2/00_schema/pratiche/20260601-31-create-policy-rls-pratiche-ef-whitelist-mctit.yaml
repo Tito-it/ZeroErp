@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Policy RLS dry-run EF_WHITELIST su pratiche.pratiche (PK).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260601-31-create-policy-rls-pratiche-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260601-31-create-policy-rls-pratiche-ef-whitelist
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Policy dry-run rls_pratiche_ef_whitelist: operatore vede solo
+        pratiche con emittente_fiscale_id in whitelist (adapter PK).
+        Gate OPERATORE fail-closed. Non attiva finche' ENABLE (ondata 2).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists: { schemaName: pratiche, tableName: pratiche, columnName: emittente_fiscale_id }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                 WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_pratiche_ef_whitelist ON pratiche.pratiche;
+
+              CREATE POLICY rls_pratiche_ef_whitelist ON pratiche.pratiche
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_fiscale_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_pratiche_ef_whitelist ON pratiche.pratiche IS
+                  'RLS dry-run: operatore vede solo pratiche con emittente in whitelist '
+                  '(adapter PK fn_scope_ef_whitelist -> canonica). Non attiva finche ENABLE.';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_pratiche_ef_whitelist ON pratiche.pratiche;

@@ -51,6 +51,39 @@ canale di creazione dell'ordine.
 
 ---
 
+### Emittente fiscale e scope operatore (RLS, 2026-06-01)
+
+Colonna `emittente_fiscale_id` (FK ad `anagrafiche.emittenti_fiscali`,
+**NOT NULL**): snapshot **user-derived** dell'emittente dell'operatore che
+crea l'ordine, allineata a preventivi/contratti/offerte. Serve allo scope
+RLS operatore (convenzione PK).
+
+* **Valorizzazione**: trigger `trg_ordini_a10_default_emittente_ins`
+  ([trgfn_ordini_default_emittente](/dbzero/vendite/funzioni/trgfn_ordini_default_emittente)),
+  via GUC `app.current_user_id` → `fn_resolve_emittente_for_user`. Skip se
+  già valorizzato nel payload (admin globale / push).
+* **Coerenza BA**: guard `trg_ordini_a10_guard_emittente_ba_ins_upd`
+  ([trgfn_ordini_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ordini_guard_emittente_ba))
+  — emittente == `fn_get_emittente_fiscale_pk(billing_account_id)`, **skip se
+  BA NULL** (a differenza di contratti, qui il BA è nullable).
+* **Scope scrittura**: write-guard `trg_ordini_a10_guard_emittente_scope_ins_upd`
+  (`script.trgfn_guard_emittente_scope`, modalità `fiscale`).
+
+**RLS in lettura — `vendite.ordini` ha ora TRE policy PERMISSIVE (combinate in OR)**:
+
+| Policy | Faccia (gate `ruolo_applicativo`) | Filtra per |
+|---|---|---|
+| `rls_ordini_cliente_ownership` | `CLIENTE_PORTALE` | `soggetto_ruolo_id` (proprio SR) |
+| `rls_ordini_shop` | `SHOP_CUSTOMER` | SR + `canale_origine = 'SHOP'` |
+| **`rls_ordini_ef_whitelist`** *(nuova)* | `OPERATORE` | `emittente_fiscale_id` in whitelist (via `fn_scope_ef_whitelist`) |
+
+Ogni policy è **gated sul proprio ruolo**: un OPERATORE filtra solo per
+emittente e **non eredita** la visibilità delle facce portale/shop (e
+viceversa). RLS attivata con `ALTER TABLE … ENABLE ROW LEVEL SECURITY`
+(no FORCE) — changeSet `20260601-39`.
+
+---
+
 ### Collocazione nel flusso documentale
 
 1. **Creazione ordine** – avvio processo commerciale; definizione di cliente, condizioni economiche e pagamento.  

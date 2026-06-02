@@ -21,9 +21,14 @@ conversioni semantiche.
   puo' essere NULL; al passaggio `BOZZA -> EMESSA` il trigger guard rifiuta
   se NULL o versione non ATTIVA. Da `EMESSA` in poi e' immutabile.
 - **Eccezioni come mirror di `contratti_righe`** con i 5 CHECK constraint
-  replicati (`chk_offerte_eccezioni_*`). Esclusi i campi `stato_approvazione_prezzo`
-  e `pratica_approvazione_prezzo_id`: una proposta non ha ancora workflow di
-  approvazione prezzo (al push verranno inseriti NULL sul contratto).
+  replicati (`chk_offerte_eccezioni_*`) **e** i gate prezzo L1/L2/L3
+  (refactor-prezzi 2026-06-01). Le colonne `stato_approvazione_prezzo` e
+  `pratica_approvazione_prezzo_id` esistono su `offerte_commerciali_eccezioni`
+  (migration `20260601-01`): la proposta ha lo stesso workflow di approvazione
+  prezzo del contratto. Al push lo stato approvazione viene **copiato 1:1** sul
+  contratto (non più NULL) — un override già autorizzato in offerta non va
+  riapprovato. Vedi [API approvazioni prezzo](api_approvazioni_prezzo.md) e
+  [refactor-prezzi](../../dev/work-in-progress/refactor-prezzi.md).
 - **State machine asimmetrica** (decisione operativa): annullamento da noi
   solo prima dell'emissione; rifiuto cliente solo dopo l'emissione.
 
@@ -541,8 +546,10 @@ essere in stato `ACCETTATA`). Effetti:
    - testata (`billing_account_id`, `istanza_utility_id`, `utility_id`,
      `listino_id`, `listino_versione_id`, variazione globale,
      `valido_dal/al` da `validita_dal/al`, `meta`)
-   - eccezioni → `contratti_righe` (campi approvazione prezzo inseriti
-     `NULL`, vedi I4 brief)
+   - eccezioni → `contratti_righe`, con `stato_approvazione_prezzo` e
+     `pratica_approvazione_prezzo_id` **copiati 1:1** dall'eccezione offerta
+     (migration `20260601-04`: prima erano forzati a `NULL`). Un override già
+     autorizzato in offerta non va riapprovato sul contratto.
    - utility 1:1 → `contratti_utilities` (`INSERT ... ON CONFLICT DO UPDATE`
      sovrascrive il record creato dal trigger snapshot precontrattuali
      con i dati negoziati dell'offerta)
@@ -623,9 +630,16 @@ tipizzata):
   "uom_operativa_id": 5,
   "factor_to_base": "1",
   "ordine": 10,
-  "attivo": true
+  "attivo": true,
+  "richiesta_approvazione": false
 }
 ```
+
+Campo opzionale `richiesta_approvazione` (default `false`): flag opt-in del
+workflow L3 (vedi gate prezzo sotto). Non è una colonna DB — viene estratto dal
+service. `componenti_overrides` (override prezzi figli BoM su articolo
+composito) è anch'esso accettato e non persiste come colonna (alimenta
+`fn_offerta_eccezione_componenti_init`).
 
 Tipi ammessi (enum DB `vendite.tipo_eccezione_contratto`, identico al
 contratto — riuso intenzionale per push 1:1 senza conversioni):
@@ -658,10 +672,46 @@ Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
 I 5 CHECK sono **stessa logica** di `contratti_righe` (nomi `chk_offerte_eccezioni_*`),
 quindi un'eccezione valida sull'offerta sara' accettata anche al push.
 
+##### Gate prezzo L1/L2/L3 (su create ed update di OVERRIDE/AGGIUNTA)
+
+Quando un'eccezione OVERRIDE/AGGIUNTA **non composita** porta un prezzo manuale,
+il service applica gli stessi tre gate del contratto/preventivo (BB condiviso
+`_pricing_gate_helpers`, mirror `contratti_service`):
+
+- **L1 — permesso**: l'override del prezzo richiede l'azione di processo
+  `prezzo_override_manuale`; in assenza → `403 E_PRICING_OVERRIDE_NON_AUTORIZZATO`.
+  Lo stesso gate L1 si applica agli **override dei prezzi componenti**
+  (`componenti_overrides`) — allineamento a preventivi.
+- **L2 — soglia**: il delta % rispetto al prezzo suggerito (resolver pricing
+  sul listino fissato/operativo dell'offerta) non può eccedere le soglie
+  `max_sconto_pct` / `max_maggiorazione_pct` (cascata `user → categoria_cliente →
+  group → emittente → default`). Oltre soglia, senza `richiesta_approvazione`
+  → `422 E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA`
+  (`retryable=true`).
+- **L3 — escalation**: con `richiesta_approvazione: true`, una violazione L2
+  **non solleva**: crea una pratica `APPROVAZIONE_PREZZO` (sorgente `offerta`) e
+  salva l'eccezione con `stato_approvazione_prezzo = PENDING` +
+  `pratica_approvazione_prezzo_id`. L'eccezione PENDING è bloccata in modifica
+  dal trigger DB `trgfn_righe_guard_pending` finché l'approver non risolve
+  (vedi [API approvazioni prezzo](api_approvazioni_prezzo.md)).
+
+Note:
+- gate **saltato** per `ESCLUSIONE` (prezzo NULL) e per i **compositi** (il
+  prezzo padre è la somma derivata dei figli; i componenti hanno il proprio
+  audit). Saltato anche se l'offerta è senza `listino_id` (caso non standard:
+  per le offerte è obbligatorio).
+- l'output dell'eccezione (su `GET`/detail) include ora
+  `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id`
+  (NULL = nessuna approvazione richiesta).
+
 #### Update `PATCH /api/v1/vendite/offerte/<id>/eccezioni/<eid>/`
 
 Solo in BOZZA. `articolo_id` e `tipo_eccezione` immutabili (cambio = DELETE
-+ INSERT). Payload `{}` rifiutato (no-op evitato).
++ INSERT). Payload `{}` rifiutato (no-op evitato). Se il PATCH tocca
+`prezzo_unitario` su una eccezione OVERRIDE/AGGIUNTA non composita, **riapplica
+il gate L1/L2/L3** (stesso comportamento del create, incluso il flag opzionale
+`richiesta_approvazione`). Il `meta` persistito dell'eccezione è preservato
+(l'audit pricing viene mergiato, non sovrascritto).
 
 Difesa anti-tampering URL: il service verifica
 `eccezione.offerta_id == <id>` e ritorna 404 in caso di mismatch (per

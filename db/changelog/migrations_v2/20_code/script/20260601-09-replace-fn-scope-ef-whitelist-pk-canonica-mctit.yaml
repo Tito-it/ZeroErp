@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260601-09-replace-fn-scope-ef-whitelist-pk-canonica-mctit.yaml
+
+  - changeSet:
+      id: 20260601-09-replace-fn-scope-ef-whitelist-pk-canonica
+      author: mctit
+      comment: >
+        Sostituzione di script.fn_scope_ef_whitelist: da
+        (identita_id bigint, emittente_sr_id bigint) con logica whitelist
+        ri-scritta e SENZA bypass SUPER_ADMIN (bug C7), a adapter PK
+        (auth_user_id integer, emittente_fiscale_id bigint) che DELEGA alla
+        canonica script.fn_check_user_emittente_scope. Diventa l'entry-point
+        policy per le tabelle convenzione PK (preventivi, contratti,
+        offerte_commerciali, documenti_generati, pratiche, ordini): brief
+        RLS §2 "creare la variante PK adesso". La firma cambia (bigint->
+        integer sul 1o parametro) quindi serve DROP della vecchia: e' gia'
+        de-referenziata dalla policy fatture (repoint changeSet -08). Il
+        registry config.scope_policy referenzia per nome (invariato).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_check_user_emittente_scope';
+          # La policy fatture non deve piu' dipendere dalla vecchia firma
+          # (garantito dall'ordine: -08 repoint prima di -09 drop).
+          - sqlCheck:
+              expectedResult: 0
+              sql: |
+                SELECT COUNT(*) FROM pg_policies
+                 WHERE schemaname = 'vendite'
+                   AND tablename  = 'fatture'
+                   AND policyname = 'rls_fatture_ef_whitelist'
+                   AND qual ~ 'current_identita_id';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Drop della vecchia firma (identita_id, sr_id). Sicuro: nessuna
+              -- policy la referenzia piu' dopo il repoint -08.
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist(bigint, bigint);
+
+              -- Adapter PK = entry-point policy per la convenzione
+              -- emittente_fiscale_id. Wrapper thin sulla canonica: la regola
+              -- (NULL/super_admin/identita OPERATORE/whitelist) vive una volta
+              -- sola in fn_check_user_emittente_scope (read+write unificati).
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist(
+                  p_auth_user_id         integer,
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      p_emittente_fiscale_id
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist(
+                  integer,
+                  anagrafiche.emittenti_fiscali.id%TYPE
+              ) IS
+                  'Adapter PK dello scope EF_WHITELIST (entry-point policy per '
+                  'tabelle con emittente_fiscale_id). Delega a '
+                  'script.fn_check_user_emittente_scope (canonica auth_user_id, '
+                  'bypass SUPER_ADMIN/fix C7, read+write unificati). STABLE, '
+                  'inlineable. Adapter SR/via_fattura in changeSet -06/-07.';
+      rollback:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina la firma legacy (identita_id, sr_id) con la logica
+              -- whitelist precedente (senza bypass SUPER_ADMIN). Necessario
+              -- per il rollback della policy -08.
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist(integer, bigint);
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist(
+                  p_identita_id     anagrafiche.identita_digitali.id%TYPE,
+                  p_emittente_sr_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  WITH ctx AS (
+                      SELECT id.auth_user_id
+                        FROM anagrafiche.identita_digitali id
+                       WHERE id.id     = p_identita_id
+                         AND id.attivo = true
+                  )
+                  SELECT
+                      EXISTS (SELECT 1 FROM ctx)
+                      AND (
+                          NOT EXISTS (
+                              SELECT 1
+                                FROM config.user_emittenti_fiscali uef
+                                JOIN ctx ON ctx.auth_user_id = uef.auth_user_id
+                          )
+                          OR EXISTS (
+                              SELECT 1
+                                FROM config.user_emittenti_fiscali uef
+                                JOIN ctx ON ctx.auth_user_id = uef.auth_user_id
+                                JOIN anagrafiche.emittenti_fiscali ef
+                                  ON ef.id = uef.emittente_fiscale_id
+                               WHERE ef.soggetto_ruolo_id = p_emittente_sr_id
+                          )
+                      );
+              $function$;

@@ -10,7 +10,7 @@ EditorConfig==0.17.1
 filelock==3.29.0
 hjson==3.1.0
 identify==2.6.19
-idna==3.16
+idna==3.17
 Jinja2==3.1.6
 jsbeautifier==1.15.4
 Markdown==3.10.2
@@ -37,6 +37,6 @@ termcolor==3.3.0
 tomli==2.4.1
 typing_extensions==4.15.0
 urllib3==2.7.0
-virtualenv==21.4.1
+virtualenv==21.4.2
 wcmatch==10.1
 zensical==0.0.43

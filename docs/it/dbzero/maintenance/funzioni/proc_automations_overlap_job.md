@@ -1,0 +1,29 @@
+{% include-markdown "it/dbzero/maintenance/manual/proc_automations_overlap_job.md" %}
+# ⚙️ Procedura `proc_automations_overlap_job`
+
+```sql
+CREATE PROCEDURE proc_automations_overlap_job()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE PROCEDURE maintenance.proc_automations_overlap_job()
+ LANGUAGE plpgsql
+AS $procedure$
+  BEGIN
+    PERFORM maintenance.fn_run_and_log(
+      p_jobname  := 'automations_overlap',
+      p_stepname := 'run_automations_overlap',
+      p_sql      := 'SELECT dbops.fn_apply_automazione_overlap(''SCHEDULED'', false);',
+      p_lock_key := hashtext('automations_overlap')
+    );
+  END;
+$procedure$
+
+COMMENT ON PROCEDURE maintenance.proc_automations_overlap_job()
+IS 'Job wrapper per chiamare fn_apply_automazione_overlap (OVERLAP) con logging e lock. Ricrea gli EXCLUDE mancanti dalle righe active=true di dbops.automazione_overlap.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Ripristino enforcement anti-overlap su vendite.listini_versioni.
+#
+# Contesto: ex_listini_versioni_no_overlap era un vero EXCLUDE (20260409-01 /
+# 20260412-07); il refactor STORED 20260514-29 lo ha ricreato come CREATE INDEX,
+# perdendo l'enforcement. (refactor-overlap.md lo aveva inizialmente dato per
+# sano leggendo la migration vecchia: falso negativo corretto.)
+#
+# Censimento overlap su dev (2026-06-02): 0 coppie violanti -> nessuna bonifica.
+#
+# Vincolo PARZIALE (WHERE attivo AND stato='ATTIVA'): NON gestibile dal framework
+# OVERLAP (guide/automazione-db.md §4.3 — fn_apply_automazione_overlap crea
+# EXCLUDE senza WHERE). Esplicito, come contratti. fn_apply resta idempotente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260602-03-alter-listini-versioni-restore-exclude-no-overlap-mctit.yaml
+
+  - changeSet:
+      id: 20260602-03-alter-listini-versioni-restore-exclude-no-overlap
+      author: mctit
+      comment: >
+        Sostituisce l'indice-civetta ex_listini_versioni_no_overlap (CREATE INDEX,
+        non enforçante) con un vero EXCLUDE USING gist parziale
+        WHERE (attivo IS TRUE AND stato = 'ATTIVA') su (listino_id, validita).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: listini_versioni
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)::text FROM pg_extension WHERE extname = 'btree_gist';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pg_constraint con
+                    JOIN pg_class c ON c.oid = con.conrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND c.relname = 'listini_versioni'
+                     AND con.conname = 'ex_listini_versioni_no_overlap'
+                     AND con.contype = 'x';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ex_listini_versioni_no_overlap;
+
+              ALTER TABLE vendite.listini_versioni
+                  ADD CONSTRAINT ex_listini_versioni_no_overlap
+                  EXCLUDE USING gist (
+                      listino_id WITH =,
+                      validita   WITH &&
+                  )
+                  WHERE (attivo IS TRUE AND (stato)::text = 'ATTIVA'::text);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                  DROP CONSTRAINT IF EXISTS ex_listini_versioni_no_overlap;
+              CREATE INDEX ex_listini_versioni_no_overlap
+                  ON vendite.listini_versioni
+                  USING gist (listino_id, validita)
+                  WHERE (attivo IS TRUE AND (stato)::text = 'ATTIVA'::text);

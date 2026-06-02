@@ -22,10 +22,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -39,9 +41,18 @@ from apps.core.services.payload_helpers import (
 )
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.db.offerte_repository import OfferteRepository
+from apps.vendite.services._approvazioni_prezzo_constants import (
+    SORGENTE_OFFERTA,
+    STATO_APPROVAZIONE_PENDING,
+)
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_overrides,
     resolve_emittente_sr_id_for_testata,
+)
+from apps.vendite.services._pricing_gate_helpers import (
+    guard_uom_id_positive,
+    resolve_or_check_override_prezzo,
+    validate_componenti_overrides_authorization,
 )
 from apps.vendite.types import OffertaPushResult
 
@@ -236,6 +247,12 @@ _UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
 # `componenti_overrides` non e' campo di `offerte_commerciali_eccezioni`:
 # viene estratto pre-INSERT e passato a `fn_offerta_eccezione_componenti_init`
 # (auto-init post-create_eccezione su articolo composito).
+# Tipi eccezione che ammettono un prezzo manuale e quindi passano dal gate
+# L1/L2/L3 (mirror di `contratti_service._TIPI_ECCEZIONE_CON_GATE`).
+# ESCLUSIONE ha prezzo NULL → nessun gate.
+_TIPI_ECCEZIONE_CON_GATE: frozenset[str] = frozenset({"OVERRIDE", "AGGIUNTA"})
+
+
 _CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
     "articolo_id",
     "tipo_eccezione",
@@ -253,6 +270,9 @@ _CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
     "attivo",
     "meta",
     "componenti_overrides",
+    # Flag opt-in workflow L3 (richiesta approvazione su violazione L2). Non e'
+    # colonna DB: estratto pre-INSERT dal service (mirror contratti).
+    "richiesta_approvazione",
 })
 
 
@@ -874,6 +894,15 @@ class OfferteService:
                 context={"field": required},
             )
 
+        # Gate L1 override prezzo componenti (BB condiviso, 2026-06-01): se il
+        # payload porta `componenti_overrides` l'operatore deve avere l'azione
+        # `prezzo_override_manuale`. Prima del pop (il payload li contiene ancora).
+        validate_componenti_overrides_authorization(
+            payload, auth_user_id, function_name="offerte_service.crea_eccezione",
+        )
+        # Flag opt-in workflow L3. Estratto qui per non finire nel payload INSERT.
+        richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
+
         # Estrae overrides BoM prima di passare il payload al repo (la colonna
         # non esiste su `offerte_commerciali_eccezioni`); normalizza valori.
         overrides_raw = payload.pop("componenti_overrides", None)
@@ -929,14 +958,40 @@ class OfferteService:
             # Placeholder: il trigger DB lo sovrascrive a SUM(componenti).
             payload = {**payload, "prezzo_unitario": Decimal("0")}
 
+        # Gate prezzo L1+L2+L3 su OVERRIDE/AGGIUNTA NON compositi: il prezzo
+        # composito e' derivato (SUM figli) → nessun confronto col resolver.
+        # `testata_gate` riusato dal ramo composito sotto (1 round-trip in meno).
+        pratica_id_l3: int | None = None
+        testata_gate: dict[str, Any] | None = None
+        if tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE and not is_composito:
+            pratica_id_l3, testata_gate = self._apply_pricing_gate_eccezione(
+                offerta_id=offerta_id,
+                articolo_id=articolo_id,
+                uom_id=payload.get("uom_operativa_id"),
+                payload=payload,
+                auth_user_id=auth_user_id,
+                richiesta_approvazione=richiesta_approvazione,
+                riga_id_for_link=None,  # eccezione_id non noto qui
+            )
+
         with self._db_errors({"offerta_id": offerta_id}):
             with transaction.atomic():
                 eccezione_id = self._repo.create_eccezione(offerta_id, payload)
+                # Link riga<->pratica L3: post-create, eccezione_id ora noto.
+                if pratica_id_l3 is not None:
+                    from apps.vendite.services.approvazioni_prezzo_service import (
+                        link_riga_a_pratica,
+                    )
+                    link_riga_a_pratica(
+                        pratica_id=pratica_id_l3,
+                        riga_id=eccezione_id,
+                        sorgente=SORGENTE_OFFERTA,
+                    )
                 # Auto-init componenti BoM su articolo composito (mirror del
                 # flow contratti: la fn DB e' idempotente, no-op se gia'
                 # presenti o articolo non composito).
                 if is_composito:
-                    testata = self._repo.get_offerta(offerta_id) or {}
+                    testata = testata_gate or self._repo.get_offerta(offerta_id) or {}
                     emittente_sr_id = self._resolve_emittente_sr_id_for_offerta(
                         offerta_id=offerta_id,
                         testata=testata,
@@ -954,13 +1009,19 @@ class OfferteService:
         return row
 
     # Scopo: Aggiorna un'eccezione. Solo se offerta in BOZZA. Payload vuoto
-    #        -> 400 (no-op silenzioso evitato).
+    #        -> 400 (no-op silenzioso evitato). Se il PATCH tocca
+    #        `prezzo_unitario` su una eccezione OVERRIDE/AGGIUNTA non composita,
+    #        applica il gate L1/L2/L3 (mirror di `contratti_service.update_riga`).
     def aggiorna_eccezione(
-        self, offerta_id: int, eccezione_id: int, payload: dict[str, Any]
+        self, offerta_id: int, eccezione_id: int, payload: dict[str, Any],
+        *, auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
         self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS_ECCEZIONE)
+        # Flag opt-in workflow L3 (estratto prima del guard non-vuoto: non e' un
+        # campo di update di per se').
+        richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
         self._guard_payload_non_vuoto(payload, op="aggiorna_eccezione")
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
         existing = self._repo.get_eccezione(eccezione_id)
@@ -970,12 +1031,98 @@ class OfferteService:
             message="Eccezione non trovata o non appartenente all'offerta.",
             context={"offerta_id": offerta_id, "eccezione_id": eccezione_id},
         )
+        assert existing is not None
+        # Gate prezzo L1+L2+L3 quando il PATCH tocca `prezzo_unitario` su
+        # OVERRIDE/AGGIUNTA non composito. Il prezzo composito e' derivato →
+        # nessun gate (i componenti hanno il proprio workflow). `articolo_id` e
+        # `tipo_eccezione` sono immutabili → letti dalla riga esistente.
+        tipo_existing = existing.get("tipo_eccezione")
+        if (
+            tipo_existing in _TIPI_ECCEZIONE_CON_GATE
+            and not bool(existing.get("is_composito"))
+            and "prezzo_unitario" in payload
+        ):
+            self._apply_pricing_gate_eccezione(
+                offerta_id=offerta_id,
+                articolo_id=existing.get("articolo_id"),
+                uom_id=payload.get("uom_operativa_id") or existing.get("uom_operativa_id"),
+                payload=payload,
+                auth_user_id=auth_user_id,
+                richiesta_approvazione=richiesta_approvazione,
+                riga_id_for_link=eccezione_id,  # noto: link inline
+                # Preserva il meta persistito dell'eccezione (audit/altre chiavi):
+                # senza, l'UPDATE prezzo lo sovrascriverebbe col solo audit nuovo.
+                fallback_meta=existing.get("meta"),
+            )
         with self._db_errors({"eccezione_id": eccezione_id}):
             with transaction.atomic():
                 self._repo.update_eccezione(eccezione_id, payload)
         row = self._repo.get_eccezione(eccezione_id)
         assert row is not None
         return row
+
+    # Scopo: Helper unificato gate L1+L2+L3 su eccezione offerta. Mirror di
+    #        `contratti_service._apply_pricing_gate_riga`. Muta `payload`
+    #        (prezzo_unitario normalizzato, merge meta audit, e — se workflow L3
+    #        attivo — stato_approvazione_prezzo=PENDING + pratica id). Orchestra
+    #        la pratica L3 quando il prezzo viola L2 e `richiesta_approvazione`
+    #        e' true. Ritorna `(pratica_id_l3 | None, testata_gate)` (testata
+    #        riusata dal caller per il ramo composito → no double-fetch).
+    def _apply_pricing_gate_eccezione(
+        self,
+        *,
+        offerta_id: int,
+        articolo_id: Any,
+        uom_id: Any,
+        payload: dict[str, Any],
+        auth_user_id: int | None,
+        richiesta_approvazione: bool,
+        riga_id_for_link: int | None,
+        fallback_meta: dict[str, Any] | None = None,
+    ) -> tuple[int | None, dict[str, Any]]:
+        testata_gate = self._repo.get_offerta(offerta_id)
+        assert testata_gate is not None
+        prezzo_finale, prezzo_meta = resolve_or_check_override_prezzo_riga_offerta(
+            testata=testata_gate,
+            articolo_id=articolo_id,
+            uom_id=uom_id,
+            payload_prezzo=payload.get("prezzo_unitario"),
+            auth_user_id=auth_user_id,
+            function_name="offerte_service._apply_pricing_gate_eccezione",
+            richiesta_approvazione=richiesta_approvazione,
+        )
+        if prezzo_finale is not None:
+            payload["prezzo_unitario"] = prezzo_finale
+        if prezzo_meta:
+            # Merge audit pricing sul meta corrente. Priorita': payload.meta >
+            # `fallback_meta` (meta della riga esistente, case update) > {}.
+            # Senza fallback, un UPDATE che tocca il prezzo (payload senza meta)
+            # sovrascriverebbe il meta persistito perdendo le chiavi precedenti.
+            base_meta = payload.get("meta") or fallback_meta or {}
+            # Coerce JSONB→dict difensivo (mirror contratti): il meta puo'
+            # arrivare come stringa JSON da certi path repo.
+            if isinstance(base_meta, str):
+                try:
+                    parsed = json.loads(base_meta)
+                    base_meta = parsed if isinstance(parsed, dict) else {}
+                except (json.JSONDecodeError, ValueError):
+                    base_meta = {}
+            merged_meta = dict(base_meta)
+            merged_meta.update(prezzo_meta)
+            payload["meta"] = merged_meta
+        pratica_id_l3: int | None = None
+        if prezzo_meta and prezzo_meta.get("richiesta_approvazione_pending"):
+            pratica_id_l3 = _orchestrate_l3_request_offerta(
+                offerta_id=offerta_id,
+                articolo_id=articolo_id,
+                prezzo_finale=prezzo_finale,
+                prezzo_meta=prezzo_meta,
+                auth_user_id=auth_user_id,
+                riga_id_for_link=riga_id_for_link,
+            )
+            payload["stato_approvazione_prezzo"] = STATO_APPROVAZIONE_PENDING
+            payload["pratica_approvazione_prezzo_id"] = pratica_id_l3
+        return pratica_id_l3, testata_gate
 
     # =================================================================
     # Componenti BoM su eccezione (mirror contratti, simmetria 2026-05-26)
@@ -1322,3 +1469,217 @@ class OfferteService:
                     motivazione_rifiuto=motivazione,
                 )
         return self.get_offerta(offerta_id)
+
+
+# ══════════════════════════════════════════════════════════
+# Pricing riga offerta + gate L1/L2/L3 (module-level)
+# ══════════════════════════════════════════════════════════
+# Speculari a `contratti_service.contratti_suggerisci_prezzo_riga` +
+# `resolve_or_check_override_prezzo_riga_contratto` (refactor 2026-06-01: gate
+# prezzi sulle offerte, simmetria col contratto). Esposte module-level perche'
+# `resolver_fn` del BB `_pricing_gate_helpers.resolve_or_check_override_prezzo`
+# attende la signature `(documento_id, *, articolo_id, uom_id, auth_user_id)`.
+
+
+# Scopo: Risolve il contesto di pricing per un'offerta: testata + emittente +
+#        BA/utility/data + listino_versione preferita. Mirror di
+#        `contratti_service._load_contratto_context_for_pricing` (offerta usa
+#        `validita_dal` come data di riferimento e `codice` come numero doc).
+def _load_offerta_context_for_pricing(
+    offerta_id: int,
+    auth_user_id: int | None,
+    *,
+    function_name: str,
+    repo: OfferteRepository | None = None,
+) -> dict[str, Any]:
+    if repo is None:
+        repo = OfferteRepository()
+    testata = repo.get_offerta(offerta_id)
+    ErrorManager.require(
+        testata is not None,
+        code=E_VENDITE_NOT_FOUND,
+        message="Offerta non trovata.",
+        function_name=function_name,
+    )
+    assert testata is not None
+
+    ba_id_raw = testata.get("billing_account_id")
+    ErrorManager.require(
+        ba_id_raw is not None,
+        code=E_VENDITE_VALIDATION,
+        message="Offerta senza billing_account: impossibile risolvere il prezzo.",
+        function_name=function_name,
+    )
+    utility_id_raw = testata.get("utility_id")
+    ErrorManager.require(
+        utility_id_raw is not None,
+        code=E_VENDITE_VALIDATION,
+        message="Offerta senza utility: impossibile risolvere il prezzo.",
+        function_name=function_name,
+    )
+    validita_dal_raw = testata.get("validita_dal")
+    ErrorManager.require(
+        validita_dal_raw is not None,
+        code=E_VENDITE_VALIDATION,
+        message="Offerta senza validita_dal: impossibile risolvere il prezzo.",
+        function_name=function_name,
+    )
+    assert validita_dal_raw is not None
+    data_riferimento = (
+        validita_dal_raw if isinstance(validita_dal_raw, date)
+        else date.fromisoformat(str(validita_dal_raw))
+    )
+
+    emittente_sr_id = resolve_emittente_sr_id_for_testata(
+        testata, auth_user_id,
+        repo_get_sr_id_by_fiscale_id=repo.get_emittente_sr_id_by_fiscale_id,
+    )
+    ErrorManager.require(
+        emittente_sr_id is not None,
+        code=E_VENDITE_VALIDATION,
+        message="Impossibile risolvere l'emittente fiscale per il pricing.",
+        function_name=function_name,
+    )
+    assert emittente_sr_id is not None
+
+    # Fast path CONTRATTO_LISTINO via `listino_versione_id_preferito` (come
+    # contratti). In BOZZA la versione e' fissata solo all'emissione → se NULL,
+    # lookup dinamico della versione operativa alla data (ATTIVA/CHIUSA).
+    listino_versione_id_preferito = testata.get("listino_versione_id")
+    if listino_versione_id_preferito is None:
+        listino_id_raw = testata.get("listino_id")
+        if listino_id_raw is not None:
+            listino_versione_id_preferito = ListiniRepository().get_versione_attiva_alla_data(
+                int(listino_id_raw), data_riferimento,
+            )
+
+    return {
+        "testata": testata,
+        "ba_id": int(ba_id_raw),
+        "utility_id": int(utility_id_raw),
+        "emittente_sr_id": emittente_sr_id,
+        "data_riferimento": data_riferimento,
+        "listino_versione_id_preferito": listino_versione_id_preferito,
+    }
+
+
+# Scopo: Suggerisce il prezzo unitario per una riga (eccezione) offerta.
+#        `resolver_fn` per il BB gate. Mirror di
+#        `contratti_suggerisci_prezzo_riga`.
+def offerta_suggerisci_prezzo_riga(
+    offerta_id: int,
+    *,
+    articolo_id: str,
+    uom_id: int,
+    auth_user_id: int | None,
+) -> dict[str, Any]:
+    from apps.vendite.services.pricing_service import PricingService
+
+    function_name = "offerte_service.offerta_suggerisci_prezzo_riga"
+    ErrorManager.require(
+        articolo_id is not None and str(articolo_id).strip() != "",
+        code=E_VENDITE_VALIDATION,
+        message="articolo_id obbligatorio.",
+        function_name=function_name,
+    )
+    guard_uom_id_positive(
+        uom_id, error_code=E_VENDITE_VALIDATION, function_name=function_name,
+    )
+
+    ctx = _load_offerta_context_for_pricing(
+        offerta_id, auth_user_id, function_name=function_name,
+    )
+
+    result = PricingService().resolve_prezzo(
+        articolo_id=str(articolo_id),
+        uom_id=int(uom_id),
+        data_riferimento=ctx["data_riferimento"],
+        ba_id=ctx["ba_id"],
+        utility_id=ctx["utility_id"],
+        emittente_soggetto_ruolo_id=ctx["emittente_sr_id"],
+        listino_versione_id_preferito=ctx["listino_versione_id_preferito"],
+    )
+
+    # Normalizzazione Decimal/date → string per stabilita' JSON (coerente
+    # con contratti/preventivi).
+    def _normalize(v: Any) -> Any:
+        if isinstance(v, Decimal):
+            return str(v)
+        if isinstance(v, date):
+            return v.isoformat()
+        return v
+
+    return {k: _normalize(v) for k, v in result.items()}
+
+
+# Scopo: Thin wrapper sul BB `resolve_or_check_override_prezzo` per le eccezioni
+#        offerta. Mirror di `resolve_or_check_override_prezzo_riga_contratto`.
+#        Normalizza la testata aliasando `data`←`validita_dal` (il BB usa
+#        `testata["data"]` nel guard skip-context). Skip gate se l'offerta
+#        e' senza listino (per coerenza col contratto, anche se sull'offerta
+#        `listino_id` e' obbligatorio).
+def resolve_or_check_override_prezzo_riga_offerta(
+    *,
+    testata: dict[str, Any],
+    articolo_id: Any,
+    uom_id: Any,
+    payload_prezzo: Any,
+    auth_user_id: int | None,
+    function_name: str,
+    richiesta_approvazione: bool = False,
+) -> tuple[Any, dict[str, Any] | None]:
+    if testata.get("listino_id") is None:
+        return payload_prezzo, None
+
+    testata_normalized = (
+        testata if testata.get("data") is not None
+        else {**testata, "data": testata.get("validita_dal")}
+    )
+    return resolve_or_check_override_prezzo(
+        testata=testata_normalized,
+        articolo_id=articolo_id,
+        uom_id=uom_id,
+        payload_prezzo=payload_prezzo,
+        auth_user_id=auth_user_id,
+        function_name=function_name,
+        resolver_fn=offerta_suggerisci_prezzo_riga,
+        error_code_validazione=E_VENDITE_VALIDATION,
+        richiesta_approvazione=richiesta_approvazione,
+    )
+
+
+# Scopo: orchestratore L3 per le eccezioni offerta. Mirror di
+#        `contratti_service._orchestrate_l3_request_contratto`. Crea la pratica
+#        APPROVAZIONE_PREZZO via `crea_richiesta_approvazione_offerta`,
+#        opzionalmente collega riga_id (update: noto subito; create: link
+#        post-INSERT). Ritorna pratica_id.
+def _orchestrate_l3_request_offerta(
+    *,
+    offerta_id: int,
+    articolo_id: Any,
+    prezzo_finale: Any,
+    prezzo_meta: dict[str, Any],
+    auth_user_id: int | None,
+    riga_id_for_link: int | None = None,
+) -> int:
+    from apps.vendite.services.approvazioni_prezzo_service import (
+        crea_richiesta_approvazione_offerta,
+        link_riga_a_pratica,
+    )
+    pratica_id = crea_richiesta_approvazione_offerta(
+        offerta_id=offerta_id,
+        riga_id=riga_id_for_link,
+        articolo_id=str(articolo_id) if articolo_id is not None else "",
+        prezzo_resolver=Decimal(prezzo_meta["prezzo_base_resolver"])
+        if prezzo_meta.get("prezzo_base_resolver") else None,
+        prezzo_manuale=Decimal(str(prezzo_finale)),
+        violazione=prezzo_meta["violazione_l2"],
+        auth_user_id=auth_user_id,
+    )
+    if riga_id_for_link is not None:
+        link_riga_a_pratica(
+            pratica_id=pratica_id,
+            riga_id=riga_id_for_link,
+            sorgente=SORGENTE_OFFERTA,
+        )
+    return pratica_id
