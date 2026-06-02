@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-A (refactor-lista-contratti §2): aggiunge priorita a ui.lista_colonna.
+#
+# Scopo: peso di permanenza per il RITIRO DINAMICO delle colonne (packing
+# a somma lato FE in <ListaConfigurabile>). Piu' alto = la colonna resta
+# piu' a lungo; le colonne a priorita' piu' bassa si ritirano per prime
+# quando la somma delle larghezze supera il contenitore (es. apertura
+# sidebar). A parita' di priorita' il FE usa ordine_default come tiebreaker.
+#
+# Default 50 (mid-pack, decisione Tid 2026-06-02): le 3 liste anagrafiche
+# gia' migrate (clienti/soggetti/fornitori) restano uniformi e neutre
+# (tutte a 50 -> tiebreaker ordine_default = ritiro da destra), senza
+# backfill differenziato. I valori espliciti per i contratti sono settati
+# in 80_data (20260602-16). Le colonne tipo_colonna IN ('identificatore',
+# 'azione') e quelle fissate non si ritirano mai (priorita' implicita
+# infinita lato FE, indipendente dal valore stoccato).
+#
+# E' attributo GLOBALE di catalogo: NON overridabile per preset ne' per
+# preferenza utente. fn_resolve_lista_config la legge fresca da
+# ui.lista_colonna allo step finale (vedi 20260602-14).
+#
+# NOT NULL con DEFAULT: le righe esistenti ereditano 50 immediatamente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260602-13-alter-ui-lista-colonna-add-priorita-mctit.yaml
+
+  - changeSet:
+      id: 20260602-13-alter-ui-lista-colonna-add-priorita
+      author: mctit
+      comment: "Aggiunge priorita SMALLINT NOT NULL DEFAULT 50 a ui.lista_colonna (peso ritiro dinamico FE)"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ui
+                tableName: lista_colonna
+                columnName: priorita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE ui.lista_colonna
+                ADD COLUMN priorita SMALLINT NOT NULL DEFAULT 50
+                  CONSTRAINT chk_ui_lista_colonna_priorita_non_negativa
+                  CHECK (priorita >= 0);
+
+              COMMENT ON COLUMN ui.lista_colonna.priorita IS
+                'Peso di permanenza per il ritiro dinamico colonne (packing a somma FE). '
+                'Piu'' alto = si ritira per ultima; default 50 (mid-pack). A parita'' il FE '
+                'usa ordine_default come tiebreaker. identificatore/azione/fissata non si '
+                'ritirano mai (priorita'' implicita infinita lato FE). Attributo globale di '
+                'catalogo: non overridabile per preset ne'' preferenza; letto fresco da '
+                'fn_resolve_lista_config.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE ui.lista_colonna DROP COLUMN IF EXISTS priorita;

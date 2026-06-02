@@ -22,6 +22,8 @@ AS $function$
 --       Fallback sicuro: GUC assente/vuota/non-ENUM -> NULL -> tutte le vesti.
 -- F.2:  step 5 aggiunge etichetta_i18n_key al JSONB colonna.
 -- DEF-2: step 2.5 calcola preset_aggiornato (flag banner "novita' preset").
+-- DB-A:  step 5 aggiunge priorita (peso ritiro dinamico FE), letta fresca
+--        da ui.lista_colonna (attributo globale, non overridabile).
 DECLARE
   v_lista_id         ui.lista_definizione.id%TYPE;
   v_config_colonne   JSONB;
@@ -316,6 +318,7 @@ BEGIN
   --    - colonne BLOCCATE: rimosse
   --    - colonne LETTURA: esportabile=false
   --    - F.2: aggiunge etichetta_i18n_key (NULL se non valorizzata)
+  --    - DB-A: aggiunge priorita (fresca da ui.lista_colonna, non dal candidato)
   -- -------------------------------------------------------
   SELECT jsonb_agg(
       jsonb_build_object(
@@ -326,7 +329,8 @@ BEGIN
         'fissata',            fissata_norm,
         'esportabile',        CASE WHEN livello_eff = 'LETTURA' THEN FALSE ELSE esportabile END,
         'tipo_colonna',       tipo_colonna::text,
-        'etichetta_i18n_key', etichetta_i18n_key
+        'etichetta_i18n_key', etichetta_i18n_key,
+        'priorita',           priorita
       )
       ORDER BY (elem ->> 'ordine')::INTEGER
     )
@@ -337,6 +341,7 @@ BEGIN
         lc.tipo_colonna,
         lc.esportabile,
         lc.etichetta_i18n_key,
+        lc.priorita,
         COALESCE(
           v_permessi ->> (elem ->> 'codice'),
           CASE WHEN lc.sensibile THEN 'BLOCCATO' ELSE 'TUTTO' END
@@ -380,7 +385,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. DEF-2 (2026-05-11): aggiunge preset_aggiornato (TRUE se preset modificato dopo snapshot e non ignorato).';
+IS 'Risolve configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. DEF-2 (2026-05-11): preset_aggiornato. DB-A (2026-06-02): priorita per colonna (peso ritiro dinamico FE), letta fresca da ui.lista_colonna (attributo globale, non overridabile).';
 ```
 
 ---

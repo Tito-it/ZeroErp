@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-B (refactor-lista-contratti §4): valori espliciti di priorita per le
+# colonne della lista vendite.contratti (lista_id risolto da codice).
+#
+# Perche' un changeset separato e non la colonna priorita nel CSV
+# lista_colonna.csv: il loader runOnChange 20260507-07 e' gia' mergiato e
+# non espone priorita nel mapping columns; aggiungere una colonna al CSV/
+# loader violerebbe "MAI modificare changelog mergiati". La colonna nasce
+# con DEFAULT 50 (20260602-13) e qui si impostano solo i pesi di dominio
+# dei contratti. Le 3 liste anagrafiche restano a 50 (nessun backfill).
+#
+# Asse priorita (peso ritiro dinamico, piu' alto = resiste di piu'):
+#   numero/azioni: identificatore/azione -> FE le tratta come infinite, il
+#   valore stoccato (100) e' solo difensivo per consumer naive. ragione_
+#   sociale(95) e stato(90) resistono a lungo; data(25), categoria(30),
+#   ba_codice(40), listino(45) si ritirano per prime; gli extra opt-in
+#   restano bassi (5..20).
+#
+# Gira DOPO il seed lista_colonna (20260507-07) che inserisce le righe
+# contratti: includeAll ordina per nome file (20260602-16 > 20260507-07).
+# Il re-run del loader NON tocca priorita (non nel suo mapping columns),
+# quindi questi valori sopravvivono ai re-run.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260602-16-seed-ui-lista-colonna-priorita-contratti-mctit.yaml
+
+  - changeSet:
+      id: 20260602-16-seed-ui-lista-colonna-priorita-contratti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Imposta priorita (peso ritiro dinamico) per le colonne della lista
+        vendite.contratti. Valori di dominio dal brief refactor-lista-contratti §4.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: ui
+              tableName: lista_colonna
+              columnName: priorita
+          - sqlCheck:
+              expectedResult: "1"
+              sql: SELECT COUNT(*) FROM ui.lista_definizione WHERE codice = 'vendite.contratti'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE ui.lista_colonna lc
+                 SET priorita = v.priorita
+                FROM (
+                  VALUES
+                    ('numero',                     100),
+                    ('ragione_sociale_completa',    95),
+                    ('stato',                        90),
+                    ('id_fiscale',                   75),
+                    ('utility_codice',               70),
+                    ('valido_dal',                   65),
+                    ('valido_al',                    60),
+                    ('ambito',                       50),
+                    ('listino_codice',               45),
+                    ('ba_codice',                    40),
+                    ('categoria_cliente_snapshot',   30),
+                    ('data',                         25),
+                    ('emittente_fiscale_codice',     20),
+                    ('listino_versione',             20),
+                    ('tipo_variazione_globale',      15),
+                    ('valore_variazione_globale',    15),
+                    ('valuta',                       10),
+                    ('utility_descrizione',          10),
+                    ('stato_codice',                  5),
+                    ('data_insert',                   5),
+                    ('data_update',                   5),
+                    ('azioni',                      100)
+                ) AS v(codice, priorita)
+               WHERE lc.codice = v.codice
+                 AND lc.lista_id = (
+                       SELECT id FROM ui.lista_definizione WHERE codice = 'vendite.contratti'
+                     );

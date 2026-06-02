@@ -20,7 +20,7 @@
 -- di test-fn-get-profili-accesso-applicabili.sql).
 -- BEGIN; + ROLLBACK implicito a fine file.
 --
--- Indice test (1..12):
+-- Indice test (1..13):
 --   1.  Setup dati di test (lista + colonne + utente + identita)
 --   2.  Lista inesistente -> eccezione P0001
 --   3.  Catalogo grezzo: 2 colonne (sensibile BLOCCATA senza grant)
@@ -33,9 +33,10 @@
 --   10. Nuova colonna nel catalogo non in preferenza -> colonne_nuove=1
 --   11. DB-3: cascata preset deterministica (AD_HOC prio=1 vs profilo prio>1 da DB reale)
 --   12. DB-4: GUC-aware (veste OPERATORE -> nessun profilo -> fallback sistema)
+--   13. DB-A: ogni colonna dell'output espone la chiave priorita
 -- ------------------------------------------------------------
 BEGIN;
-SELECT plan(12);
+SELECT plan(13);
 -- =========================================================
 -- 1. Setup: lista + colonne + auth_user + identita
 -- =========================================================
@@ -779,6 +780,27 @@ SELECT is(
 
 -- Reset GUC: stringa vuota = NULLIF -> NULL = comportamento legacy
 SELECT set_config('app.ruolo_applicativo', '', true);
+
+-- =========================================================
+-- 13. DB-A: ogni colonna nell'output espone la chiave 'priorita'
+--     (parte del contratto API; letta fresca da ui.lista_colonna).
+-- =========================================================
+SELECT ok(
+        NOT EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(
+                    (
+                        ui.fn_resolve_lista_config(
+                            (SELECT lista_codice FROM _t_lista),
+                            (SELECT auth_user_id FROM _t_au),
+                            NULL
+                        )
+                    )->'colonne'
+                ) AS elem
+            WHERE NOT (elem ? 'priorita')
+        ),
+        '13. DB-A: ogni colonna dell''output espone la chiave priorita'
+    );
 
 SELECT *
 FROM finish();
