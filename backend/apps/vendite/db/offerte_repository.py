@@ -287,6 +287,10 @@ _SELECT_COLS_ECCEZIONE = """
     e.ordine,
     e.attivo,
     e.meta,
+    -- Stato approvazione prezzo L3 (migration 20260601-01): il FE mostra il
+    -- badge PENDING/APPROVED/REJECTED sulla riga eccezione, come per contratti.
+    e.stato_approvazione_prezzo,
+    e.pratica_approvazione_prezzo_id,
     -- Aggregato componenti BoM persistiti per expansion FE (data-driven
     -- `ComponentiPanel`). NULL se l'eccezione non e' composita o non
     -- ha componenti attivi: il pannello salta il render.
@@ -711,6 +715,9 @@ class OfferteRepository(ComponentiRepositoryMixin):
         "ordine",
         "attivo",
         "meta",
+        # Approvazione prezzo L3 (migration 20260601-01, simmetria contratti_righe).
+        "stato_approvazione_prezzo",
+        "pratica_approvazione_prezzo_id",
     )
 
     _ECCEZIONE_UPDATE_COLS: tuple[str, ...] = (
@@ -727,6 +734,10 @@ class OfferteRepository(ComponentiRepositoryMixin):
         "ordine",
         "attivo",
         "meta",
+        # Approvazione prezzo L3: aggiornabili dal workflow approvazioni
+        # (`_update_riga_offerta`) e dal gate (REJECTED/meta motivazione).
+        "stato_approvazione_prezzo",
+        "pratica_approvazione_prezzo_id",
     )
 
     # Scopo: Inserisce un'eccezione offerta. I 5 CHECK constraint DB
@@ -878,6 +889,26 @@ class OfferteRepository(ComponentiRepositoryMixin):
     # dominio per decidere se invocare `init_componenti_eccezione` post-INSERT.
     def is_articolo_composito(self, articolo_id: str) -> bool:
         return CatalogoRepository().is_articolo_composito(articolo_id)
+
+    # Scopo: Contesto pratica APPROVAZIONE_PREZZO derivato dall'offerta
+    #        (emittente + soggetto + soggetto_ruolo del BA). Mirror di
+    #        `ContrattiRepository.resolve_contesto_pratica`. Usato dal workflow
+    #        L3 (`approvazioni_prezzo_service.crea_richiesta_approvazione_offerta`)
+    #        per creare la pratica. Ritorna None se offerta inesistente.
+    def resolve_contesto_pratica(self, offerta_id: int) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                o.emittente_fiscale_id,
+                sr.soggetto_id::text AS soggetto_id,
+                ba.soggetto_ruolo_id
+            FROM vendite.offerte_commerciali o
+            JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+            JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+            WHERE o.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [offerta_id])
+            return row_to_dict(cursor)
 
     # =================================================================
     # Utility 1:1

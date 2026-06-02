@@ -20,7 +20,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 import { useLimitiPricing } from '../composables/useLimitiPricing'
 import { FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE } from '../constants'
-import { extractApiError, extractApiErrorCode } from '../../core/utils/apiError'
+import { extractApiError } from '../../core/utils/apiError'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency, formatNumber } from '../../core/utils/format'
@@ -42,6 +42,8 @@ import ComponentiCreateActionsPanel from '../_shared/componenti/ComponentiCreate
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
 import { useComponentiDialog } from '../_shared/componenti/useComponentiDialog'
 import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
+import L2ErrorBanner from '../_shared/pricing/L2ErrorBanner.vue'
+import { classifyL2Error } from '../_shared/pricing/classifyL2Error'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -842,16 +844,13 @@ async function onSave() {
     emit('changed')
     closeForm()
   } catch (err) {
-    const code = extractApiErrorCode(err)
-    if (L2_ERROR_CODES.includes(code)) {
-      l2Error.value = {
-        code,
-        message: extractApiError(err, t('contratti.errore_generico')),
-        detail: err?.response?.data?.error?.detail || '',
-      }
-    } else {
-      notify.error(extractApiError(err, t('contratti.errore_generico')))
-    }
+    // Banner inline su violazione L2 (BB condiviso); altrimenti toast standard.
+    const l2 = classifyL2Error(err, {
+      fallbackMessage: t('contratti.errore_generico'),
+      l2ErrorCodes: L2_ERROR_CODES,
+    })
+    if (l2) l2Error.value = l2
+    else notify.error(extractApiError(err, t('contratti.errore_generico')))
   } finally {
     loading.value = false
   }
@@ -1367,30 +1366,18 @@ function origineSeverity(origine) {
             i18n-prefix="vendite.componenti.panel" />
         </template>
 
-        <!-- Banner inline L2: visibile quando il save ha sollevato un codice
-             E_PRICING_SCONTO_ECCESSIVO / E_PRICING_MAGGIORAZIONE_ECCESSIVA.
-             Mostra il messaggio BE + CTA "Richiedi approvazione" che retry
-             il save con `richiesta_approvazione=true` (workflow L3 cablato
-             2026-05-19). Pattern identico a PreventiviRigaForm. -->
-        <Message v-if="l2Error" severity="warn" :closable="false">
-          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-            <strong>{{ l2Error.message }}</strong>
-            <small v-if="l2Error.detail">{{ l2Error.detail }}</small>
-            <div>
-              <Button
-                :label="loading
-                  ? t('contratti.richiedi_approvazione_in_corso')
-                  : t('contratti.richiedi_approvazione')"
-                icon="pi pi-send"
-                size="small"
-                severity="secondary"
-                :loading="loading"
-                v-tooltip.bottom="t('contratti.richiedi_approvazione_tooltip')"
-                @click="onRichiediApprovazione"
-              />
-            </div>
-          </div>
-        </Message>
+        <!-- Banner inline L2 (BB condiviso L2ErrorBanner): visibile quando il
+             save ha sollevato E_PRICING_SCONTO_ECCESSIVO /
+             E_PRICING_MAGGIORAZIONE_ECCESSIVA. CTA "Richiedi approvazione"
+             retry-a il save con `richiesta_approvazione=true` (workflow L3). -->
+        <L2ErrorBanner
+          :error="l2Error"
+          :loading="loading"
+          :label="t('contratti.richiedi_approvazione')"
+          :label-loading="t('contratti.richiedi_approvazione_in_corso')"
+          :tooltip="t('contratti.richiedi_approvazione_tooltip')"
+          @richiedi="onRichiediApprovazione"
+        />
 
         <div class="app-form-footer">
           <Button :label="t('common.cancel')" severity="secondary" @click="closeForm" />

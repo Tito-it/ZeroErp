@@ -7,7 +7,7 @@
 // Pattern speculare a ContrattoDrawer (utility 1:1 inline in testata,
 // listino + variazione globale PERCENTUALE, validita range). Drawer 3 tab
 // (testata, eccezioni, revisioni) come da piano BE+FE rev. f §FE-3.
-import { computed, provide, ref, watch } from 'vue'
+import { computed, nextTick, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import DatePicker from 'primevue/datepicker'
@@ -72,6 +72,9 @@ import OffertaEmissioneDialog from './dialogs/OffertaEmissioneDialog.vue'
 import OffertaEsitoDialog from './dialogs/OffertaEsitoDialog.vue'
 import OffertaPushDialog from './dialogs/OffertaPushDialog.vue'
 import OffertaSuccessioneDialog from './dialogs/OffertaSuccessioneDialog.vue'
+// Riuso read-only del drawer contratti per ispezionare il contratto sovrapposto
+// dal dialog di successione (righe comprese). Read-only forzato via prop.
+import ContrattoDrawer from '../../components/ContrattoDrawer.vue'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 
@@ -184,6 +187,12 @@ const giaGeneratoDialogVisible = ref(false)
 const successioneDialogVisible = ref(false)
 const contrattoSovrapposto = ref(null)
 const pushPraticaId = ref(null)
+// Ispezione read-only del contratto sovrapposto (riuso ContrattoDrawer). Il
+// dialog di successione viene nascosto durante l'ispezione e ri-aperto alla
+// chiusura: `contrattoSovrapposto`/`pushPraticaId` restano valorizzati, quindi
+// al ritorno la conferma successione funziona ancora.
+const contrattoIspezioneVisible = ref(false)
+const contrattoIspezioneId = ref(null)
 
 // Guard di versione per i fetch del detail (apertura/chiusura/cambio-id
 // rapide). Incrementato anche quando offertaId cambia con drawer ancora
@@ -584,12 +593,30 @@ function onApriContrattoEsistente() {
   }
 }
 
-// Naviga al contratto in conflitto dal dialog di successione (l'operatore
-// vuole ispezionarlo prima di confermare). Chiude il dialog e delega al
-// parent la navigazione (deep-link /vendite/contratti?open=<id>).
-function onNavigateContrattoSovrapposto({ contrattoId }) {
+// Apre il contratto sovrapposto in sola lettura (ContrattoDrawer read-only,
+// righe incluse) per ispezione dal dialog di successione: nasconde il dialog
+// e apre il drawer. Niente navigazione → l'offerta resta montata sotto.
+function onIspezionaContrattoSovrapposto({ contrattoId }) {
+  if (!contrattoId) return
   successioneDialogVisible.value = false
-  if (contrattoId) emit('navigate-contratto', { contrattoId })
+  // Prima monta il drawer (v-if sull'id) con `visible` ancora false, poi in
+  // nextTick lo apre: ContrattoDrawer carica il detail nel watch su `visible`
+  // (transizione false→true), NON immediate. Settare id+visible nello stesso
+  // tick monterebbe il drawer già visibile → il watch non scatterebbe → vuoto.
+  contrattoIspezioneId.value = contrattoId
+  nextTick(() => { contrattoIspezioneVisible.value = true })
+}
+
+// Chiusura del drawer di ispezione: ri-apre il dialog di successione cosi'
+// l'operatore conferma/annulla con il contesto ancora valorizzato.
+function onChiudiIspezioneContratto(visible) {
+  contrattoIspezioneVisible.value = visible
+  if (!visible) {
+    contrattoIspezioneId.value = null
+    // Ri-apre la successione solo se il push è ancora in corso (contratto in
+    // conflitto noto): evita riaperture spurie se lo stato è stato resettato.
+    if (contrattoSovrapposto.value) successioneDialogVisible.value = true
+  }
 }
 
 // Handler delegati ai dialog ---
@@ -689,10 +716,14 @@ const drawerActions = computed(() => {
   if (!isEdit.value || !detail.value) return []
   const eccCount = detail.value.eccezioni?.length ?? 0
   return [
+    // Read-only puro (permesso LETTURA / pannello split): niente azioni di
+    // stato (emetti/accetta/rifiuta/push/revisione). Restano i pannelli
+    // gestisci-eccezioni/note (sub-drawer in sola lettura).
     ...mapAvailableActionsToDrawerActions({
       availableActions,
       t,
       onAction: onActionDispatch,
+      readonly: parentReadonly.value,
     }),
     {
       key: 'manage-eccezioni',
@@ -1131,7 +1162,19 @@ const onClose = useDrawerClose(emit, 'cancelled')
       :nuova-validita-dal="detail?.validita_dal"
       :loading="loading"
       @confirm="handleSuccessioneConferma"
-      @navigate-contratto="onNavigateContrattoSovrapposto"
+      @ispeziona-contratto="onIspezionaContrattoSovrapposto"
+    />
+
+    <!-- Ispezione read-only del contratto sovrapposto: riuso integrale del
+         ContrattoDrawer (testata + righe + utility) in sola lettura forzata.
+         Niente navigazione: alla chiusura ri-apre il dialog di successione. -->
+    <ContrattoDrawer
+      v-if="contrattoIspezioneId"
+      :visible="contrattoIspezioneVisible"
+      mode="edit"
+      :contratto-id="contrattoIspezioneId"
+      :readonly="true"
+      @update:visible="onChiudiIspezioneContratto"
     />
 
     <!-- Dialog "contratto gia' generato" — idempotenza Pattern A.

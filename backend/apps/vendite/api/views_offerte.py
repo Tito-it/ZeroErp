@@ -569,7 +569,8 @@ class ApiOffertaEccezioneDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             OfferteService().aggiorna_eccezione(
-                offerta_id, eccezione_id, request.data or {}
+                offerta_id, eccezione_id, request.data or {},
+                auth_user_id=get_scope_user_id(request),
             )
         )
 

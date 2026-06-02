@@ -27,6 +27,11 @@ import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCre
 import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
 import { useComponentiDialog } from '../../_shared/componenti/useComponentiDialog'
 import ComponentiPanel from '../../_shared/componenti/ComponentiPanel.vue'
+import L2ErrorBanner from '../../_shared/pricing/L2ErrorBanner.vue'
+import { classifyL2Error } from '../../_shared/pricing/classifyL2Error'
+import { useLimitiPricing } from '../../composables/useLimitiPricing'
+import { useNotify } from '../../../core/composables/useNotify'
+import { extractApiError } from '../../../core/utils/apiError'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
@@ -51,6 +56,14 @@ const store = useOfferteStore()
 const { execute, loading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const parentReadonly = useInjectReadonly()
+const notify = useNotify()
+// Codici L2 centralizzati (mirror contratti): il banner inline + CTA
+// "richiedi approvazione" sostituisce il toast standard sul gate prezzo.
+const { L2_ERROR_CODES } = useLimitiPricing()
+// Banner errore L2 (BB condiviso). `saving` e' il loading del flusso save/
+// richiesta-approvazione (la lista/delete usano `loading` di useApiHandler).
+const l2Error = ref(null)
+const saving = ref(false)
 
 const props = defineProps({
   visible: Boolean,
@@ -311,6 +324,13 @@ watch(() => form.value?.tipo_erogazione, (nuovoTipo) => {
   }
 })
 
+// Reset banner L2 se l'utente modifica prezzo o articolo: segnale di retry
+// con contesto potenzialmente diverso. Pattern identico a ContrattoRigheDrawer.
+watch(
+  () => [form.value?.prezzo_unitario, form.value?.articolo_id],
+  () => { if (l2Error.value) l2Error.value = null },
+)
+
 function onArticoloSelected(item) {
   if (!item) {
     form.value.articolo_id = null
@@ -382,12 +402,15 @@ function buildPayload() {
   return payload
 }
 
-async function handleSave() {
+// Costruisce il payload completo per create/edit. `extra` permette di
+// iniettare il flag opt-in `richiesta_approvazione: true` per il retry L3.
+function buildFullPayload(extra = {}) {
   if (formMode.value === 'create') {
     const payload = {
       tipo_eccezione: form.value.tipo_eccezione,
       articolo_id: form.value.articolo_id,
       ...buildPayload(),
+      ...extra,
     }
     // Modello unificato BoM: in CREATE su articolo composito include i
     // `componenti_overrides` (delta prezzi vs suggeriti) confermati dalla
@@ -396,23 +419,62 @@ async function handleSave() {
     if (showComponentiDialog.value && componentiPayload.value?.overrides) {
       payload.componenti_overrides = componentiPayload.value.overrides
     }
-    const result = await execute(
-      () => store.addEccezione(props.offertaId, payload),
-      { successMessage: t('vendite.offerte.eccezione_creata') },
-    )
-    if (result !== null) {
-      await reload()
-      closeForm()
-    }
-  } else if (formMode.value === 'edit') {
-    const result = await execute(
-      () => store.aggiornaEccezione(props.offertaId, editingId.value, buildPayload()),
-      { successMessage: t('vendite.offerte.eccezione_aggiornata') },
-    )
-    if (result !== null) {
-      await reload()
-      closeForm()
-    }
+    return payload
+  }
+  return { ...buildPayload(), ...extra }
+}
+
+// Esegue la persistenza (create o update). Store action gia'-unwrappata →
+// chiamata diretta (no useApiHandler.execute) per poter intercettare il
+// codice errore L2 nel catch del chiamante ([[feedback_useapihandler_solo_axios]]).
+function persistEccezione(payload) {
+  return formMode.value === 'create'
+    ? store.addEccezione(props.offertaId, payload)
+    : store.aggiornaEccezione(props.offertaId, editingId.value, payload)
+}
+
+// Scopo: salva l'eccezione intercettando i codici L2
+//        (E_PRICING_SCONTO_ECCESSIVO / E_PRICING_MAGGIORAZIONE_ECCESSIVA) per
+//        mostrare il banner inline + CTA invece del toast standard. Tutti gli
+//        altri errori passano per il toast. Mirror di ContrattoRigheDrawer.onSave.
+async function handleSave() {
+  l2Error.value = null
+  const successMessage = formMode.value === 'create'
+    ? t('vendite.offerte.eccezione_creata')
+    : t('vendite.offerte.eccezione_aggiornata')
+  saving.value = true
+  try {
+    await persistEccezione(buildFullPayload())
+    notify.success(successMessage)
+    await reload()
+    closeForm()
+  } catch (err) {
+    const l2 = classifyL2Error(err, {
+      fallbackMessage: t('vendite.offerte.errore_generico'),
+      l2ErrorCodes: L2_ERROR_CODES,
+    })
+    if (l2) l2Error.value = l2
+    else notify.error(extractApiError(err, t('vendite.offerte.errore_generico')))
+  } finally {
+    saving.value = false
+  }
+}
+
+// Scopo: ri-tenta il save aggiungendo `richiesta_approvazione=true` (workflow
+//        L3). Il BE crea la pratica APPROVAZIONE_PREZZO e salva l'eccezione in
+//        PENDING invece di sollevare. Toast esplicito. Mirror contratti.
+async function onRichiediApprovazione() {
+  l2Error.value = null
+  saving.value = true
+  try {
+    await persistEccezione(buildFullPayload({ richiesta_approvazione: true }))
+    notify.success(t('vendite.offerte.richiesta_approvazione_inviata'))
+    await reload()
+    closeForm()
+  } catch (err) {
+    notify.error(extractApiError(err, t('vendite.offerte.errore_generico')))
+  } finally {
+    saving.value = false
   }
 }
 
@@ -769,8 +831,20 @@ const onClose = useDrawerClose(emit)
             @apri-dialog="apriComponentiDialog"
           />
 
+          <!-- Banner inline L2 (BB condiviso): violazione soglia prezzo →
+               CTA "Richiedi approvazione" che retry-a il save con
+               `richiesta_approvazione=true` (workflow L3). Mirror contratti. -->
+          <L2ErrorBanner
+            :error="l2Error"
+            :loading="saving"
+            :label="t('vendite.offerte.richiedi_approvazione')"
+            :label-loading="t('vendite.offerte.richiedi_approvazione_in_corso')"
+            :tooltip="t('vendite.offerte.richiedi_approvazione_tooltip')"
+            @richiedi="onRichiediApprovazione"
+          />
+
           <FormFooter
-            :loading="loading"
+            :loading="saving"
             :disabled="!canSave"
             @save="handleSave"
             @cancel="closeForm"
