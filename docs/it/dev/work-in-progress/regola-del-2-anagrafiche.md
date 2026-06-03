@@ -134,9 +134,34 @@ edit, altrimenti chiudi.
 Duplicazione reale, ma con differenze da gestire con cura: estrarre senza
 pensarci rischia di nascondere comportamenti diversi o perdere protezioni.
 
-### G1. Store factory Pinia CRUD — clienti / fornitori / soggetti (+ articoli) — **gravità ALTA**
+### G1. Store factory Pinia CRUD — clienti / fornitori / soggetti (+ articoli) — **gravità ALTA** — ✅ FATTO (2026-06-03)
 
-Il candidato più sostanzioso. Quattro store implementano lo **stesso** pattern
+> **Estratto** [`createCrudListStore(storeId, config)`](../../../../frontend/src/core/stores/createCrudListStore.js)
+> in `core/stores/`. I 4 store sono ridotti a config sottili (~10 righe).
+> Parametri: `api {list,detail?,create,update}`, `tabEntity`, `filterDefaults`,
+> `gateKeys` (sottoinsieme che gata la lista-vuota), `orderBy`, `extraActions`
+> (articoli: `disattiva`/`riattiva`), `options` passthrough.
+>
+> - **`articoli.attivo`**: in `filterDefaults` (inviato sempre, default `true`)
+>   ma fuori da `gateKeys` (non gata) → comportamento preservato esatto.
+> - **🔴 Bug latente corretto**: la factory imposta **`userScoped: true`** di
+>   default. I 4 store (+ `indirizzi`, fix 1-riga separato) **non** lo avevano,
+>   mentre i gemelli vendite (contratti/listini/preventivi/offerte) sì → senza
+>   il flag NON venivano azzerati al logout (`resetAllUserScopedStores` gata su
+>   `userScoped`), lasciando `items`/`filters` dell'utente A in memoria al login
+>   di B sullo stesso browser. Verificato: il login sincronizza solo le
+>   *preferenze* localStorage (tema/lingua/preferiti via `userScopedKey`), RLS è
+>   dormiente → nessuno dei due copriva questi store. Ora chiuso.
+> - **`indirizzi`** resta fuori dalla factory (no `fetchDetail` + emit su
+>   `indirizzo_dettaglio_id`), ma ha ricevuto `{ userScoped: true }` standalone.
+>
+> eslint + build FE verdi.
+>
+> **Audit aperto**: il flag `userScoped` manca probabilmente anche su altri store
+> non-G1 (`unitaMisura`, `uomTipi`, `conversioniUom`, `pratiche`, amministrazione…)
+> → audit dedicato da fare a parte (vedi note).
+
+Il candidato più sostanzioso. Quattro store implementavano lo **stesso** pattern
 CRUD lista (state `items/totalRecords/loading/hasSearched/filters`, `fetchList`
 con vincolo min 3 char, `fetchDetail` con `res.data.data`, `create`/`update`
 con `emitDataChanged`). Sovrapposizione ~95%, varia solo il set di filtri:
@@ -159,7 +184,15 @@ parametrizzata su `storeName`, `apiMethods` (`{listFn, detailFn, createFn, updat
 > `fetchDetail`. Collegato a `feedback_pinia_userscoped` (ricordarsi il flag
 > `userScoped` se la factory tocca dati utente).
 
-### G2. Estrazione campi opzionali payload (`_extract_*_data`) — fornitori vs emittenti
+### G2. Estrazione campi opzionali payload (`_extract_*_data`) — fornitori vs emittenti — ✅ FATTO (2026-06-03)
+
+> **Estratto** `extract_optional_fields(payload, *, ints, bools, strings, numeric, dates)`
+> in [`_validators.py`](../../../../backend/apps/anagrafiche/services/_validators.py).
+> I due `_extract_*_data` (fornitori/emittenti) ora delegano passando le liste di
+> chiavi per categoria. Comportamento preservato (stesso parser per categoria,
+> chiave inclusa solo se valore non-None). `categorie_*` lasciati fuori (schema
+> diverso, come da caveat). Import orfani rimossi in fornitori
+> (`optional_str/int/bool/iso_date`). 2628 test BE verdi.
 
 Stesso pattern iterativo "loop su liste hardcoded di campi + include
 condizionale via `optional_*`":
@@ -177,7 +210,14 @@ condizionale via `optional_*`":
 > vanno lasciati fuori. Rischio di astrazione prematura se uno dei due diverge —
 > dichiarare il disegno e valutare con Tid prima di scrivere.
 
-### G3. `get_*` con guard "not found" (`ErrorManager.require`) — clienti vs fornitori
+### G3. `get_*` con guard "not found" (`ErrorManager.require`) — clienti vs fornitori — ✅ FATTO (2026-06-03)
+
+> **Estratto** `require_found(entity, message)` in
+> [`_validators.py`](../../../../backend/apps/anagrafiche/services/_validators.py)
+> (require not-found + assert + return). Adottato da **4** get_*: clienti,
+> fornitori (return diretto), soggetti, emittenti (assegna poi arricchisce).
+> `categorie.get_categoria` lasciato fuori (guard_positive_int + context). 2628
+> test BE verdi.
 
 `entity = repo.get(id); ErrorManager.require(entity is not None, ...); assert; return`
 identico:
@@ -193,9 +233,25 @@ identico:
 > segue lo stesso schema ma aggiunge `guard_positive_int` e `context={...}` →
 > **non** rientra nello stesso BB, va tenuto locale.
 
-### G4. Mappatura `IntegrityError` in create — fornitori / emittenti vs clienti — **rischio bug latente**
+### G4. Mappatura `IntegrityError` in create — fornitori / emittenti vs clienti — ✅ FATTO (2026-06-03) — **bug di mascheramento corretto**
 
-Fornitori ed emittenti usano `create_with_dedup(...)` che converte **qualsiasi**
+> **Bug corretto + BB estratto.** Nuovo helper
+> [`create_with_constraint_mapping(fn, constraint_messages, default_message=None)`](../../../../backend/apps/anagrafiche/services/_validators.py):
+> mappa per-constraint (nome vincolo in `str(exc)`), e sui vincoli **non
+> mappati RILANCIA** l'IntegrityError invece di mascherarlo (= pattern corretto
+> di clienti). Applicato a:
+>
+> - **fornitori** create: `uq_fornitori_soggetto_ruolo_id` → "…per questo soggetto", `uq_fornitori_codice` → "…con questo codice" (prima: tutto "per questo soggetto").
+> - **emittenti** `create_emittente`: `uq_emittenti_fiscali_ruolo` → "…per questo soggetto", `uq:codice` → "…con questo codice".
+> - **clienti** adotta lo stesso helper (era già corretto inline) → 3 consumer unificati; rimossi import orfani (`IntegrityError`, `E_ANAG_DUPLICATO`).
+> - `*_uid` (generato a sistema) → rilanciato, non mascherato.
+>
+> `create_with_dedup` **resta** per i create a UNIQUE-singolo (conti/soggetti/geo/
+> viste ruolo + sub-entità emittenti). Nomi vincoli verificati su
+> `docs/it/dbzero/anagrafiche/tabelle/`. +2 test di regressione (codice→messaggio
+> specifico; vincolo non mappato→rilanciato). 395 test anagrafiche verdi.
+
+Fornitori ed emittenti usavano `create_with_dedup(...)` che converte **qualsiasi**
 `IntegrityError` in un messaggio di duplicato generico; clienti invece matcha il
 constraint specifico (`uq_clienti_istanza_utility`) e lascia risalire gli altri:
 
@@ -213,7 +269,15 @@ constraint specifico (`uq_clienti_istanza_utility`) e lascia risalire gli altri:
 in `anagrafiche/services/_validators.py` (mappatura per-constraint + fall-through
 dei vincoli non mappati).
 
-### G5. `_create_indirizzi_ruolo` — coesione mal posta (non vera duplicazione di codice)
+### G5. `_create_indirizzi_ruolo` — coesione mal posta (non vera duplicazione di codice) — ✅ FATTO (2026-06-03)
+
+> **Spostato** in `SoggettiService.create_indirizzi_ruolo(soggetto_ruolo_id, indirizzi_data, tipo_ruolo_codice='FO')`
+> (operazione di dominio soggetto_ruolo). `crea_fornitore` (tipo 'FO') e
+> `crea_cliente` (tipo 'CL') vi delegano — **eliminato l'accoppiamento improprio**
+> (clienti non istanzia più `FornitoriService`). **Fragilità corretta**: il metodo
+> ora **copia la lista in input** internamente (l'auto-clone faceva `append`
+> mutando la lista del chiamante) → rimossa anche la `list(...)` ridondante in
+> clienti. 2628 test BE verdi.
 
 [fornitori_service.py:214-283](../../../../backend/apps/anagrafiche/services/fornitori_service.py#L214-L283)
 contiene la logica completa di creazione indirizzi-per-ruolo con auto-clone;
@@ -306,12 +370,21 @@ Ordine suggerito per rischio/valore crescente (stato aggiornato 2026-06-03):
 2. ✅ **V2** (`get_or_create_ruolo_*`) e ✅ **V1** (contatto inline) — fatti, 🟢 netti.
 3. ✅ **V4** (`onDrawerSaved`) — fatto (2 viste anagrafiche). Composable in core
    con **5 adottanti cross-dominio** verificati — vedi sezione dedicata. ← **next: decidere adozione cross-dominio**
-4. ⬜ **G1** (store factory) — 🟡 ma **gravità alta** per impatto: gestire
-   l'esclusione di `indirizzi.js` (variante senza `fetchDetail`).
-5. ⬜ **G4** (IntegrityError) — prima **decidere** sul bug di mascheramento, poi
-   estrarre.
-6. ⬜ **G2/G3/G5** — caso per caso, attenzione ai caveat di astrazione prematura.
+4. ✅ **G1** (store factory) — fatto: `createCrudListStore` sui 4 store +
+   **fix bug `userScoped`** (leak cross-user al logout) + `indirizzi` standalone.
+5. ✅ **G4** (IntegrityError) — fatto: `create_with_constraint_mapping` +
+   **fix bug mascheramento** (fornitori/emittenti) + clienti unificato + 2 test.
+6. ✅ **G2/G3/G5** — fatti: `extract_optional_fields` (G2), `require_found` (G3),
+   `SoggettiService.create_indirizzi_ruolo` (G5, +fix mutazione lista input).
 7. ✅ **V3** (PATCH lambda) — fatto: `handle_detail_patch` in core.
+
+> **✅ TUTTI i candidati del report sono stati lavorati** (V1–V4, G1–G5) + 2
+> debiti collaterali + bonus core. Review critica finale eseguita su tutti i G*:
+> corretti fragile (G5 mutazione input), hardcoded (G1 `limit` → `PAGINATION.DEFAULT_ROWS`),
+> doc stale (`_validators`), import orfani. **2628 test BE + eslint/build FE verdi.**
+> Restano solo le **note parcheggiate** (variante Gruppo B `reopenOnCreate`,
+> ConversioniUom, audit `userScoped` su store non-G1, promemoria core
+> `qp_bool_optional_strict`).
 
 ---
 

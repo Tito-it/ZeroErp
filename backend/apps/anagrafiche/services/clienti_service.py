@@ -13,17 +13,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.db import IntegrityError, transaction
+from django.db import transaction
 
 from apps.anagrafiche.db.clienti_repository import ClientiRepository
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.error_codes import (
-    E_ANAG_DUPLICATO,
     E_ANAG_NOT_FOUND,
     E_ANAG_VALIDAZIONE,
     E_BA_ADMIN_GLOBALE_VIETATO,
 )
-from apps.anagrafiche.services._validators import optional_str
+from apps.anagrafiche.services._validators import create_with_constraint_mapping, optional_str, require_found
 from apps.anagrafiche.services.contatti_service import crea_contatto_inline_se_valido
 from apps.core.services.service_errors import ServiceError
 from apps.core.api.payload_validators import optional_int, optional_uuid
@@ -94,11 +93,7 @@ class ClientiService:
 
     # Scopo: Dettaglio completo di un cliente.
     def get_cliente(self, cliente_id: int) -> dict[str, Any]:
-        cliente = self._repo.get_cliente(cliente_id)
-        ErrorManager.require(cliente is not None, code=E_ANAG_NOT_FOUND,
-                             message="Cliente non trovato.")
-        assert cliente is not None
-        return cliente
+        return require_found(self._repo.get_cliente(cliente_id), "Cliente non trovato.")
 
     # Scopo: Aggiorna campi editabili di un cliente (pagamento, PA, garanzia, servizio).
     def update_cliente(self, cliente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
@@ -318,21 +313,15 @@ class ClientiService:
                 categoria_cliente_id=ba_categoria_cliente_id)
 
         # Step 4: Cliente — passa dati obbligatori + opzionali dal payload
-        try:
-            cliente_id = self._repo.create_cliente(
+        cliente_id = create_with_constraint_mapping(
+            lambda: self._repo.create_cliente(
                 istanza_utility_id=istanza_utility_id,
                 billing_account_id=billing_account_id,
                 soggetto_ruolo_id=soggetto_ruolo_id,
                 **cliente_data,
-            )
-        except IntegrityError as exc:
-            err_detail = str(exc)
-            if "uq_clienti_istanza_utility" in err_detail:
-                raise ServiceError(
-                    code=E_ANAG_DUPLICATO,
-                    message="Esiste gia' un cliente per questa istanza.",
-                    detail=err_detail) from exc
-            raise
+            ),
+            {"uq_clienti_istanza_utility": "Esiste gia' un cliente per questa istanza."},
+        )
 
         # Step 5: Contatto ruolo inline opzionale (EMPTY→skip, PARTIAL→errore, VALID→crea).
         crea_contatto_inline_se_valido(
@@ -340,9 +329,9 @@ class ClientiService:
 
         # Step 6: Indirizzi ruolo (se forniti dal drawer inline — auto-clone incluso)
         if indirizzi_data:
-            from apps.anagrafiche.services.fornitori_service import FornitoriService
-            FornitoriService()._create_indirizzi_ruolo(
-                soggetto_ruolo_id, list(indirizzi_data), tipo_ruolo_codice="CL")
+            from apps.anagrafiche.services.soggetti_service import SoggettiService
+            SoggettiService().create_indirizzi_ruolo(
+                soggetto_ruolo_id, indirizzi_data, tipo_ruolo_codice="CL")
 
         return {
             "id": cliente_id,

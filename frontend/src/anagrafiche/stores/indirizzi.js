@@ -87,4 +87,4 @@ export const useIndirizziStore = defineStore('anagrafiche-indirizzi', () => {
     items, totalRecords, loading, hasSearched, filters,
     fetchList, create, update
   }
-})
+}, { userScoped: true })
