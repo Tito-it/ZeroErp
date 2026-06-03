@@ -3,3 +3,5 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 2,2,soggetti_default,Vista standard soggetti,sistema,,,t,50,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-05-22 00:00:00,mctit
 3,3,fornitori_default,Vista standard fornitori,sistema,,,t,50,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-05-24 00:00:00,mctit
 4,4,contratti_default,Vista standard contratti,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-06-02 00:00:00,mctit
+5,5,preventivi_default,Vista standard preventivi,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-06-03 00:00:00,mctit
+6,6,offerte_default,Vista standard offerte commerciali,sistema,,,t,25,"[{""col"":""validita_dal"",""dir"":""desc""}]",t,2026-06-03 00:00:00,mctit

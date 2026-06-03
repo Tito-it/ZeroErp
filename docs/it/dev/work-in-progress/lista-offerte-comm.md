@@ -13,6 +13,33 @@
 
 ---
 
+## ✅ Stato DB — ATTERRATO (2026-06-03)
+
+Il **workstream DB (§3) è completato e migrato** su `dev/db-tid`, test pgTAP
+verdi. Dettaglio e brief consolidato (preventivi + offerte):
+[db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md).
+
+- Vista canonica **self-contained `vendite.vw_offerte_commerciali_lista`**
+  (`20260603-06`, `security_invoker=on`): nomi canonici, assorbe
+  `listino_codice`/`listino_versione_codice`/`valuta_codice` (prima JOIN nel
+  repository) e **materializza `is_scaduta`** (prima solo FE; il gating per stato
+  `STATI_OFFERTA_SEGNALA_SCADENZA` resta lato FE).
+- Seed `ui.*`: definizione `vendite.offerte` (lista_id=6), catalogo 25 colonne
+  (id 79-103), preset `offerte_default` (12 visibili + tecniche nascoste
+  `stato_codice_interno`/`is_scaduta`/`listino_versione_codice`), `priorita` di
+  dominio (`20260603-08`).
+- pgTAP `test-lista-offerte-seed.sql` 16/16.
+- Doc manuale: `manual/vw_offerte_commerciali_lista.md` (nuova) + nota
+  deprecazione su `manual/vw_offerte_commerciali_list.md`.
+- Nota correzione vs §4: `revisione_numero` seedata `tipo_dato=numeric` (l'ENUM
+  `ui.tipo_dato` non ha `integer`); `is_scaduta` `tipo_dato=boolean`.
+
+**Resta da fare**: §5 (BE — rimuove alias + LEFT JOIN ora in vista), §6 (FE). Il
+**drop di `vw_offerte_commerciali_list`** (deprecata, ancora letta da
+`list_offerte`) è rinviato a cleanup post-BE (brief §6 ⚠️ NOTA).
+
+---
+
 ## 0. Obiettivo in una frase
 
 Portare la lista offerte commerciali **dentro il sistema liste configurabili**
@@ -326,10 +353,12 @@ a `<ListaConfigurabile>`, gemello
 ## 8. Sequenza consigliata
 
 1. ✅ Decisioni §7 (allineate a preventivi).
-2. **DB-B offerte**: vista canonica self-contained (incl. `listino_codice`,
+2. ✅ **DB-B offerte ATTERRATO (2026-06-03)**: vista canonica self-contained
+   `vw_offerte_commerciali_lista` (incl. `listino_codice`,
    `listino_versione_codice`, `is_scaduta`, nomi canonici) + definizione +
-   catalogo lista_id=6 + preset + priorita + pgTAP.
-3. **Attendere consegna DB**.
+   catalogo lista_id=6 (id 79-103) + preset + priorita + pgTAP 16/16. Brief:
+   [db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md).
+3. ✅ **DB consegnato** → BE/FE sbloccati.
 4. **BE** (§5): repository su vista canonica (rimuove JOIN/alias), whitelist
    nomi canonici, export endpoint + test.
 5. **FE** (§6): migrazione `OfferteSearchTable.vue` → `<ListaConfigurabile>` +
@@ -360,5 +389,5 @@ a `<ListaConfigurabile>`, gemello
 | Lista | Stato | Doc |
 | --- | --- | --- |
 | `vendite.contratti` | ✅ atterrato (commit `1cc906377`) | [refactor-lista-contratti.md](../work-done/refactor-lista-contratti.md) |
-| `vendite.preventivi` | 📋 piano pronto, decisioni ratificate | [lista-preventivi.md](lista-preventivi.md) |
-| `vendite.offerte` | 📋 piano pronto (questo doc) | — |
+| `vendite.preventivi` | ✅ DB atterrato 2026-06-03 · BE/FE da fare | [lista-preventivi.md](lista-preventivi.md) |
+| `vendite.offerte` | ✅ DB atterrato 2026-06-03 · BE/FE da fare | [db-brief…](../work-done/db-brief-lista-preventivi-offerte.md) |

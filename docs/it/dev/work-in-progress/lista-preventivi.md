@@ -13,6 +13,31 @@
 
 ---
 
+## ✅ Stato DB — ATTERRATO (2026-06-03)
+
+Il **workstream DB (§3) è completato e migrato** su `dev/db-tid`, test pgTAP
+verdi. Dettaglio e brief consolidato (preventivi + offerte):
+[db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md).
+
+- Vista canonica **`vendite.vw_preventivi_lista`** (`20260603-05`,
+  `security_invoker=on`). ⚠️ sorgente **`vendite.vw_preventivi`** (non la tabella):
+  `is_revision_attiva` è stata droppata, `is_attiva` è derivata — la vista riusa
+  quella derivazione (no logica duplicata).
+- Seed `ui.*`: definizione `vendite.preventivi` (lista_id=5), catalogo 21 colonne
+  (id 58-78), preset `preventivi_default` (12 visibili + `stato_codice_interno`
+  nascosta), `priorita` di dominio (`20260603-07`).
+- pgTAP `test-lista-preventivi-seed.sql` 14/14.
+- Doc manuale: `manual/vw_preventivi_lista.md` (nuova) + nota deprecazione su
+  `manual/vw_preventivi_list.md`.
+- Nota correzione vs §4: `rev` seedata `tipo_dato=numeric` (l'ENUM `ui.tipo_dato`
+  non ha `integer`).
+
+**Resta da fare**: §5 (BE), §6 (FE) — partono ora che il DB è consegnato. Il
+**drop di `vw_preventivi_list`** (deprecata, ancora letta da `list_preventivi` +
+`list_revisioni`) è rinviato a cleanup post-BE (brief §6 ⚠️ NOTA).
+
+---
+
 ## 0. Obiettivo in una frase
 
 Portare la lista preventivi vendita **dentro il sistema liste configurabili**
@@ -364,9 +389,11 @@ a `<ListaConfigurabile>`, gemello di
 
 1. ✅ **Decisioni §7 ratificate** (2026-06-03): vista (A), utility codice, rev
    non ordinabile, rename `ba_codice`.
-2. **Brief DB** (DB-B preventivi: vista canonica + definizione + catalogo +
-   preset + priorita + pgTAP) → `dev/db-tid`. DB-A (`priorita`) già atterrato.
-3. **Attendere consegna DB** (memoria `feedback_be_fe_attende_prerequisiti_db`).
+2. ✅ **DB-B preventivi ATTERRATO (2026-06-03)**: vista canonica
+   `vw_preventivi_lista` + definizione + catalogo (id 58-78) + preset + priorita
+   + pgTAP 14/14 su `dev/db-tid`. DB-A (`priorita`) già atterrato. Brief:
+   [db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md).
+3. ✅ **DB consegnato** → BE/FE sbloccati.
 4. **BE** (§5): repository su vista canonica + order_by whitelist + export
    endpoint + test. Vista + consumer BE commutati insieme al rename.
 5. **FE** (§6): migrazione `PreventiviList.vue` → `<ListaConfigurabile>` + export

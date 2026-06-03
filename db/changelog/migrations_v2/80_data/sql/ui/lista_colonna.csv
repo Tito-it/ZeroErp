@@ -56,3 +56,49 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 55,4,utility_descrizione,Descr. Utility,Descrizione del servizio o commodity,utility_descrizione,informazione,string,,160,190,left,Fornitura,3,f,t,t,f,f,t,2026-06-02 00:00:00,mctit,contratti.col_utility_descrizione
 56,4,data_insert,Creazione,Data di inserimento del contratto,data_insert,informazione,datetime,datetime_short,150,200,center,Audit,8,t,t,t,f,f,t,2026-06-02 00:00:00,mctit,contratti.col_data_insert
 57,4,data_update,Aggiornamento,Data ultimo aggiornamento del contratto,data_update,informazione,datetime,datetime_short,150,210,center,Audit,8,t,t,t,f,f,t,2026-06-02 00:00:00,mctit,contratti.col_data_update
+58,5,numero,Numero,Numero del preventivo,numero,identificatore,string,,130,10,left,Identificazione,1,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,preventivi.col_numero
+59,5,rev,Rev,Numero di revisione,rev,informazione,numeric,,60,20,center,Identificazione,1,f,f,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_rev
+60,5,data,Data,Data del preventivo,data,informazione,date,date_short,110,30,center,Identificazione,1,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_data
+61,5,ragione_sociale_completa,Cliente,Ragione sociale completa del cliente,ragione_sociale_completa,informazione,string,,200,40,left,Cliente,2,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,preventivi.col_ragione_sociale
+62,5,ba_codice,Cd. Account,Codice del billing account,ba_codice,informazione,string,,120,50,left,Cliente,2,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,preventivi.col_ba_codice
+63,5,id_fiscale,Id. Fiscale,Identificativo fiscale univoco (CF o P.IVA),id_fiscale_univoco_cf_piva,informazione,string,,140,60,left,Cliente,2,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,preventivi.col_id_fiscale
+64,5,utility_codice,Utility,Codice del servizio o commodity,utility_codice,informazione,string,,100,70,left,Fornitura,3,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_utility
+65,5,istanza_utility_codice,Cod. Istanza,Codice istanza utility,istanza_utility_codice,informazione,string,,130,80,left,Fornitura,3,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_istanza_utility
+66,5,totale_documento,Totale,Totale del documento,totale_documento,informazione,numeric,currency_eur,130,90,right,Importi,4,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_totale
+67,5,validita_al,Validita,Data fine validita,validita_al,informazione,date,date_short,110,100,center,Validita,5,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_validita_al
+68,5,stato,Stato,Stato corrente del preventivo,stato_descrizione,informazione,string,,120,110,center,Stato,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_stato
+69,5,azioni,Azioni,,,azione,string,,60,999,center,,99,f,f,f,f,f,t,2026-06-03 00:00:00,mctit,common.col_azioni
+70,5,stato_codice_interno,Cod. Stato,Codice interno dello stato per la severita del Tag FE,stato_codice_interno,informazione,string,,80,130,left,Stato,6,f,f,f,f,f,t,2026-06-03 00:00:00,mctit,
+71,5,utility_descrizione,Descr. Utility,Descrizione del servizio o commodity,utility_descrizione,informazione,string,,160,135,left,Fornitura,3,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_utility_descrizione
+72,5,validita_dal,Valida dal,Data inizio validita,validita_dal,informazione,date,date_short,110,140,center,Validita,5,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_validita_dal
+73,5,totale_imponibile,Imponibile,Totale imponibile,totale_imponibile,informazione,numeric,currency_eur,120,150,right,Importi,4,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_totale_imponibile
+74,5,totale_iva,IVA,Totale IVA,totale_iva,informazione,numeric,currency_eur,120,160,right,Importi,4,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_totale_iva
+75,5,valuta,Valuta,Codice valuta del preventivo,valuta_codice,informazione,string,,90,170,left,Importi,4,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_valuta
+76,5,emittente_fiscale_codice,Emittente,Codice dell emittente fiscale,emittente_fiscale_codice,informazione,string,,120,180,left,Emittente,7,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_emittente
+77,5,competenza_mese,Competenza,Mese di competenza,competenza_mese,informazione,date,date_short,120,190,center,Validita,5,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_competenza_mese
+78,5,data_insert,Creazione,Data di inserimento del preventivo,data_insert,informazione,datetime,datetime_short,150,200,center,Audit,8,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_data_insert
+79,6,codice,Codice,Codice dell offerta,codice,identificatore,string,,130,10,left,Identificazione,1,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_codice
+80,6,revisione_numero,Rev,Numero di revisione,revisione_numero,informazione,numeric,,60,20,center,Identificazione,1,f,f,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_rev
+81,6,ragione_sociale_completa,Cliente,Ragione sociale completa del cliente,ragione_sociale_completa,informazione,string,,200,30,left,Cliente,2,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_ragione_sociale
+82,6,ba_codice,Cd. Account,Codice del billing account,ba_codice,informazione,string,,120,40,left,Cliente,2,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_ba_codice
+83,6,id_fiscale,Id. Fiscale,Identificativo fiscale univoco (CF o P.IVA),id_fiscale_univoco_cf_piva,informazione,string,,140,50,left,Cliente,2,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_id_fiscale
+84,6,utility_codice,Utility,Codice del servizio o commodity,utility_codice,informazione,string,,100,60,left,Fornitura,3,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_utility
+85,6,listino_codice,Listino,Codice del listino applicato,listino_codice,informazione,string,,140,70,left,Pricing,4,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_listino
+86,6,validita_dal,Valido dal,Data inizio validita,validita_dal,informazione,date,date_short,110,80,center,Validita,5,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_validita_dal
+87,6,validita_al,Valido al,Data fine validita,validita_al,informazione,date,date_short,110,90,center,Validita,5,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_validita_al
+88,6,data_emissione,Emessa,Data di emissione,data_emissione,informazione,date,date_short,110,100,center,Ciclo vita,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_data_emissione
+89,6,stato,Stato,Stato corrente dell offerta,stato_descrizione,informazione,string,,130,110,center,Stato,7,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_stato
+90,6,azioni,Azioni,,,azione,string,,60,999,center,,99,f,f,f,f,f,t,2026-06-03 00:00:00,mctit,common.col_azioni
+91,6,stato_codice_interno,Cod. Stato,Codice interno dello stato per la severita del Tag FE,stato_codice_interno,informazione,string,,80,130,left,Stato,7,f,f,f,f,f,t,2026-06-03 00:00:00,mctit,
+92,6,is_scaduta,Scaduta,Flag offerta scaduta (badge FE),is_scaduta,informazione,boolean,,80,140,center,Stato,7,f,f,f,f,f,t,2026-06-03 00:00:00,mctit,
+93,6,listino_versione_codice,Versione listino,Codice della versione di listino (suffisso FE),listino_versione_codice,informazione,string,,120,150,left,Pricing,4,f,f,f,f,f,t,2026-06-03 00:00:00,mctit,
+94,6,utility_descrizione,Descr. Utility,Descrizione del servizio o commodity,utility_descrizione,informazione,string,,160,160,left,Fornitura,3,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_utility_descrizione
+95,6,istanza_utility_codice,Cod. Istanza,Codice istanza utility,istanza_utility_codice,informazione,string,,130,170,left,Fornitura,3,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_istanza_utility
+96,6,tipo_variazione_globale,Tipo var.,Tipo di variazione globale del prezzo,tipo_variazione_globale,informazione,string,,130,180,left,Pricing,4,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_tipo_variazione
+97,6,valore_variazione_globale,Valore var.,Valore della variazione globale del prezzo,valore_variazione_globale,informazione,numeric,,110,190,right,Pricing,4,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_valore_variazione
+98,6,valuta,Valuta,Codice valuta dell offerta,valuta_codice,informazione,string,,90,200,left,Pricing,4,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_valuta
+99,6,emittente_fiscale_codice,Emittente,Codice dell emittente fiscale,emittente_fiscale_codice,informazione,string,,120,210,left,Emittente,8,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_emittente
+100,6,data_accettazione,Accettata,Data di accettazione,data_accettazione,informazione,date,date_short,110,220,center,Ciclo vita,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_data_accettazione
+101,6,data_rifiuto,Rifiutata,Data di rifiuto,data_rifiuto,informazione,date,date_short,110,230,center,Ciclo vita,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_data_rifiuto
+102,6,data_annullamento,Annullata,Data di annullamento,data_annullamento,informazione,date,date_short,110,240,center,Ciclo vita,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_data_annullamento
+103,6,data_insert,Creazione,Data di inserimento dell offerta,data_insert,informazione,datetime,datetime_short,150,250,center,Audit,9,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_data_insert
