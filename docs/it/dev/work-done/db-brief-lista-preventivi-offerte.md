@@ -2,7 +2,7 @@
 
 > **Branch**: `dev/db-tid`. **Destinatario**: team DB (eseguito qui).
 > **Natura**: brief DB **consolidato e ottimizzato** dei due piani BE/FE gemelli
-> [lista-preventivi.md](../work-in-progress/lista-preventivi.md) e [lista-offerte-comm.md](../work-in-progress/lista-offerte-comm.md).
+> [lista-preventivi.md](lista-preventivi.md) e [lista-offerte-comm.md](lista-offerte-comm.md).
 > Unifica il lato DB delle due liste in **un solo lotto** (sono speculari, decisioni
 > di principio già ratificate il 2026-06-03).
 > **Template DB 1:1**: [refactor-lista-contratti.md](refactor-lista-contratti.md)
@@ -230,6 +230,6 @@ export. FE: migrazione a `<ListaConfigurabile>`. Dettaglio nei due piani WIP §5
 | Lista | DB | BE/FE | Doc |
 | --- | --- | --- | --- |
 | `vendite.contratti` | ✅ | ✅ (`1cc906377`) | [refactor-lista-contratti.md](refactor-lista-contratti.md) |
-| `vendite.preventivi` | ✅ atterrato 2026-06-03 (questo brief) | ⏳ attende DB | [lista-preventivi.md](../work-in-progress/lista-preventivi.md) |
-| `vendite.offerte` | ✅ atterrato 2026-06-03 (questo brief) | ⏳ attende DB | [lista-offerte-comm.md](../work-in-progress/lista-offerte-comm.md) |
-| — viste vecchie | ⏳ drop differito post-BE (§6 NOTA) | — | — |
+| `vendite.preventivi` | ✅ atterrato 2026-06-03 (questo brief) | ✅ atterrato 2026-06-03 | [lista-preventivi.md](lista-preventivi.md) |
+| `vendite.offerte` | ✅ atterrato 2026-06-03 (questo brief) | ✅ atterrato 2026-06-03 | [lista-offerte-comm.md](lista-offerte-comm.md) |
+| — viste vecchie | ✅ droppate 2026-06-03 (cleanup completato) | — | — |

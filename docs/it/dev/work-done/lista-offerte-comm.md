@@ -7,17 +7,26 @@
 > (`feedback_be_fe_attende_prerequisiti_db`).
 > **Origine**: richiesta Tid 2026-06-03 — «genera lista-offerte-comm.md con la
 > stessa logica» della lista preventivi.
-> **Template 1:1**: [refactor-lista-contratti.md](../work-done/refactor-lista-contratti.md)
+> **Template 1:1**: [refactor-lista-contratti.md](refactor-lista-contratti.md)
 > (DEF-8, atterrato) + [lista-preventivi.md](lista-preventivi.md) (piano gemello,
 > stesse decisioni di principio ratificate).
 
 ---
 
+## ✅✅ ATTIVITÀ COMPLETATA (2026-06-03) — DB + BE + FE + cleanup viste
+
+Lista offerte commerciali configurabile (DEF-8) **chiusa end-to-end**: vista
+canonica self-contained (con `is_scaduta` materializzata) + catalogo/preset (DB),
+repository/export/order_by (BE), migrazione `<ListaConfigurabile>` con slot
+listino+versione e badge scaduta (FE), drop della vista deprecata
+`vw_offerte_commerciali_list` (DB). Test BE verdi, build FE verde. Doc API
+aggiornata. Nessun residuo.
+
 ## ✅ Stato DB — ATTERRATO (2026-06-03)
 
 Il **workstream DB (§3) è completato e migrato** su `dev/db-tid`, test pgTAP
 verdi. Dettaglio e brief consolidato (preventivi + offerte):
-[db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md).
+[db-brief-lista-preventivi-offerte.md](db-brief-lista-preventivi-offerte.md).
 
 - Vista canonica **self-contained `vendite.vw_offerte_commerciali_lista`**
   (`20260603-06`, `security_invoker=on`): nomi canonici, assorbe
@@ -52,8 +61,8 @@ verdi. Dettaglio e brief consolidato (preventivi + offerte):
   `exportOfferte` in `offerteApi.js`. Chiavi i18n `vendite.offerte.col_*`
   aggiunte (it/en). Build FE verde.
 - **Doc API**: `api_offerte.md` aggiornata (lista DEF-8 + export).
-- **Drop `vw_offerte_commerciali_list`**: nessun consumer attivo residuo →
-  changeset di cleanup DB da creare (brief §6 ⚠️ NOTA), azione team DB.
+- **Drop `vw_offerte_commerciali_list` ✅ COMPLETATO**: vista deprecata rimossa
+  dal DB (2026-06-03). Nessun consumer attivo residuo. Cleanup chiuso.
 
 ---
 
@@ -82,13 +91,13 @@ preventivi/offerte → candidato BB se Tid conferma).
 Identici a [lista-preventivi.md §1](lista-preventivi.md) — non si ripetono per
 intero. In sintesi:
 
-- **Backend** — [api.md](../../api.md): `DomainAPIView`, `parse_list_params`,
+- **Backend** — [api.md](../api.md): `DomainAPIView`, `parse_list_params`,
   `success_response`+`paginated_envelope`, tiebreaker `id`, `is_search_endpoint`,
   scope `get_scope_user_id`→`fn_get_emittenti_scope_pk_ids`, `ServiceError`,
   export via `apps.ui.api.export_helpers` + `ListaExportService` (param `formato`,
   mai `format` — memoria `feedback_drf_format_magic_param`),
   `UiService.get_lista_config` (memoria `feedback_export_lista_rispetta_preferenza`).
-- **Frontend** — [frontend-standards.md](../../frontend/frontend-standards.md):
+- **Frontend** — [frontend-standards.md](../frontend/frontend-standards.md):
   toolbar UNICA caller (memoria `feedback_lista_pattern_standard`),
   `useResponsiveColumns` (ritiro dinamico, deroga ResizeObserver — ereditato da
   `<ListaConfigurabile>`), `RowActionsMenu` (memoria `feedback_row_actions_menu`),
@@ -374,7 +383,7 @@ a `<ListaConfigurabile>`, gemello
    `vw_offerte_commerciali_lista` (incl. `listino_codice`,
    `listino_versione_codice`, `is_scaduta`, nomi canonici) + definizione +
    catalogo lista_id=6 (id 79-103) + preset + priorita + pgTAP 16/16. Brief:
-   [db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md).
+   [db-brief-lista-preventivi-offerte.md](db-brief-lista-preventivi-offerte.md).
 3. ✅ **DB consegnato** → BE/FE sbloccati.
 4. **BE** (§5): repository su vista canonica (rimuove JOIN/alias), whitelist
    nomi canonici, export endpoint + test.
@@ -405,6 +414,7 @@ a `<ListaConfigurabile>`, gemello
 
 | Lista | Stato | Doc |
 | --- | --- | --- |
-| `vendite.contratti` | ✅ atterrato (commit `1cc906377`) | [refactor-lista-contratti.md](../work-done/refactor-lista-contratti.md) |
-| `vendite.preventivi` | ✅ DB atterrato 2026-06-03 · BE/FE da fare | [lista-preventivi.md](lista-preventivi.md) |
-| `vendite.offerte` | ✅ DB atterrato 2026-06-03 · BE/FE da fare | [db-brief…](../work-done/db-brief-lista-preventivi-offerte.md) |
+| `vendite.contratti` | ✅ completato (commit `1cc906377`) | [refactor-lista-contratti.md](refactor-lista-contratti.md) |
+| `vendite.preventivi` | ✅ completato 2026-06-03 (DB+BE+FE+drop vista) | [lista-preventivi.md](lista-preventivi.md) |
+| `vendite.offerte` | ✅ completato 2026-06-03 (DB+BE+FE+drop vista) | [db-brief…](db-brief-lista-preventivi-offerte.md) |
+| — viste deprecate | ✅ `vw_preventivi_list` + `vw_offerte_commerciali_list` droppate 2026-06-03 | — |
