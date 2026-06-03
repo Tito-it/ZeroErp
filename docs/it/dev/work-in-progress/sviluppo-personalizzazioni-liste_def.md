@@ -358,7 +358,7 @@ Differenza chiave: DEF-7 calcola, DEF-10 compone. Implementativamente entrambi f
 
 ## DEF-8 — Seed catalogo per altre liste (incrementale)
 
-**Stato:** 🟡 Parziale — 3 liste migrate su N (clienti + soggetti + fornitori)
+**Stato:** 🟡 Parziale — 4 liste migrate (clienti + soggetti + fornitori + contratti)
 **Sforzo:** S per lista
 
 ### Cosa serve
@@ -381,18 +381,17 @@ Estendere il pattern Blocco E (atterrato per `anagrafiche.clienti`) ad altre lis
 | `catalogo.articoli` | ArticoliSearchTable.vue | 🔴 Todo |
 | `catalogo.unita-misura` | UnitaMisuraSearchTable.vue | 🔴 Todo |
 | `vendite.preventivi` | PreventiviSearchTable.vue | 🔴 Todo |
-| `vendite.contratti` | ContrattiSearchTable.vue | 🔴 Todo |
+| `vendite.contratti` | ContrattiSearchTable.vue | 🟢 Done 2026-06-03 (refactor-lista-contratti) |
 | `vendite.listini` | ListiniSearchTable.vue | 🔴 Todo |
 | `vendite.promo-articoli` | PromoArticoliListView.vue | 🔴 Todo |
 | `vendite.approvazioni-prezzo` | ApprovazioniPrezzoSearchTable.vue | 🔴 Todo |
 | `pratiche` | PraticheDashboard.vue | 🔴 Todo |
 
-10 liste residue. Ordine suggerito per impatto utente:
+8 liste residue. Ordine suggerito per impatto utente:
 
 1. `catalogo.articoli` (lista molto frequente)
-2. `vendite.contratti` (operatori vendita la usano spesso)
-3. `vendite.preventivi`
-4. Resto in ordine di ticket / richieste utenti
+2. `vendite.preventivi`
+3. Resto in ordine di ticket / richieste utenti
 
 ### Decisioni operative aperte (per ogni lista)
 

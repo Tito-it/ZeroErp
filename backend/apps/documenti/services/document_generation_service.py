@@ -651,6 +651,25 @@ class DocumentGenerationService:
                     written_uris=written_uris,
                 )
                 need_cleanup = True
+                # Evento timeline: l'aggiunta allegati post-emissione
+                # (modalita' append) emette ALLEGATO_AGGIUNTO. Nella stessa
+                # transazione del persist: se l'INSERT evento fallisce, il
+                # rollback + cleanup storage mantengono la coerenza.
+                self._repo.emit_evento_documento({
+                    "documento_generato_id": documento_id,
+                    "evento_tipo": "ALLEGATO_AGGIUNTO",
+                    "user_id": getattr(user, "id", None),
+                    "esito": "OK",
+                    "messaggio": None,
+                    "detail": {
+                        "n_allegati": len(allegati_persistiti),
+                        "file_ids": [a["id"] for a in allegati_persistiti],
+                        "size_bytes_tot": sum(
+                            a["size_bytes"] for a in allegati_persistiti
+                        ),
+                    },
+                    "meta": {},
+                })
             need_cleanup = False
         finally:
             if need_cleanup and written_uris:

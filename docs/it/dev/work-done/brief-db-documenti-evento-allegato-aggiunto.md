@@ -1,5 +1,12 @@
 # Brief DB — Estendere `evento_tipo` ammessi: `ALLEGATO_AGGIUNTO`
 
+> **STATO: APPLICATO** (2026-06-03). DB: migration
+> `00_schema/documenti/20260603-04-alter-documenti-generati-eventi-evento-tipo-allegato-aggiunto`
+> (CHECK esteso). BE: emit `ALLEGATO_AGGIUNTO` in
+> `DocumentGenerationService.aggiungi_allegati` (stessa `transaction.atomic()`
+> del persist), coperto da test (`test_aggiungi_allegati_append_persiste_file`).
+> Lacuna d'audit chiusa.
+>
 > **Branch**: `dev/db-tid`. **Tipo**: DDL minore (CHECK constraint extension).
 > **Tempo stimato**: 5 minuti.
 > **Contesto**: building block "genera documento + allegati" (cantiere
