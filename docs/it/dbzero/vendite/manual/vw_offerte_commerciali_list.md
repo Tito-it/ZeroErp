@@ -1,5 +1,17 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_offerte_commerciali_list`
 
+> ⚠️ **DEPRECATA (2026-06-03)** — sostituita dalla vista canonica e self-contained
+> [`vendite.vw_offerte_commerciali_lista`](/dbzero/vendite/views/vw_offerte_commerciali_lista)
+> per la lista offerte configurabile (sistema liste DEF-8). La nuova vista espone
+> i **nomi canonici** (`ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`,
+> `ba_codice`), assorbe `listino_codice`/`listino_versione_codice`/`valuta_codice`
+> (prima JOIN nel repository) e materializza `is_scaduta`; è `security_invoker=on`.
+> Resta viva solo finché il backend non commuta `list_offerte` sulla canonica; poi
+> verrà droppata con un changeset di cleanup dedicato. **Non usarla per nuovo
+> codice.**
+
+---
+
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:

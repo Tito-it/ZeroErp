@@ -1,5 +1,16 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_preventivi_list`
 
+> ⚠️ **DEPRECATA (2026-06-03)** — sostituita dalla vista canonica
+> [`vendite.vw_preventivi_lista`](/dbzero/vendite/views/vw_preventivi_lista) per
+> la lista preventivi configurabile (sistema liste DEF-8). La nuova vista espone
+> i **nomi canonici** (`ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`,
+> `ba_codice`) ed è `security_invoker=on`. Questa vista resta viva solo finché il
+> backend non commuta `list_preventivi` e `list_revisioni` sulla canonica; poi
+> verrà droppata con un changeset di cleanup dedicato. **Non usarla per nuovo
+> codice.**
+
+---
+
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:

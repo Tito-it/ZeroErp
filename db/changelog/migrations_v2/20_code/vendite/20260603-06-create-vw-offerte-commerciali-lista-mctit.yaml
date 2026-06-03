@@ -1,0 +1,165 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-B (db-brief-lista-preventivi-offerte §3.2): vista sorgente CANONICA e
+# SELF-CONTAINED per la lista configurabile vendite.offerte.
+#
+# Riscrittura canonica di vw_offerte_commerciali_list (20260528-01) che ASSORBE
+# i campi oggi derivati a valle nel repository (LEFT JOIN listini/valute) e
+# materializza is_scaduta (oggi NON esiste nel backend: derivata solo nel FE).
+#
+# Nomi colonna CANONICI (lezione DEF-8, validati dal trigger B2):
+#   - cliente_denominazione        -> ragione_sociale_completa
+#   - id_fiscale                   -> id_fiscale_univoco_cf_piva
+#   - billing_account_codice       -> ba_codice                 (alias ba_* legittimo)
+# Aggiunte rispetto alla vista list:
+#   - listino_codice               (LEFT JOIN vendite.listini)
+#   - listino_versione_codice      (LEFT JOIN vendite.listini_versioni.codice_versione)
+#   - valuta_codice                (LEFT JOIN config.valute via o.valuta_id)
+#   - emittente_fiscale_codice     (LEFT JOIN anagrafiche.emittenti_fiscali)
+#   - is_scaduta = (validita_al IS NOT NULL AND validita_al < CURRENT_DATE)
+#     il gating per stato (STATI_OFFERTA_SEGNALA_SCADENZA) resta lato FE (slot).
+#
+# Pura DENORMALIZZAZIONE: nessun filtro/scope/paginazione (restano nel repository).
+# security_invoker=on (standard liste DEF-8, RLS-ready). Soggetto via
+# istanze_utilities (1 join). is_attiva/has_next_revisione preservati 1:1.
+#
+# NB: vw_offerte_commerciali_list NON viene droppata qui (consegna non-breaking):
+# resta viva finche' il BE non commuta list_offerte sulla vista canonica.
+# Drop differito in changeset di cleanup dedicato (vedi brief §6 NOTA).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260603-06-create-vw-offerte-commerciali-lista-mctit.yaml
+
+  - changeSet:
+      id: 20260603-06-create-vw-offerte-commerciali-lista
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea vendite.vw_offerte_commerciali_lista (security_invoker=on),
+        canonica e self-contained, per la lista configurabile vendite.offerte.
+        Assorbe listino/valuta dal repository e materializza is_scaduta.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: offerte_commerciali
+          - tableExists:
+              schemaName: config
+              tableName: stati_doc_offerte
+          - tableExists:
+              schemaName: vendite
+              tableName: listini_versioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_offerte_commerciali_lista;
+              CREATE VIEW vendite.vw_offerte_commerciali_lista
+              WITH (security_invoker = on) AS
+              SELECT
+                  o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  -- Revisione attiva: non superata da successore ne' annullata
+                  sdo.codice_interno NOT IN ('SUPERATA', 'ANNULLATA') AS is_attiva,
+                  -- Esiste almeno un figlio (qualunque stato) -> toggle storico UI
+                  EXISTS (
+                      SELECT 1 FROM vendite.offerte_commerciali figlio
+                       WHERE figlio.revisione_padre_id = o.id
+                  )                                         AS has_next_revisione,
+                  -- Stato
+                  o.stato_doc_offerta_id,
+                  sdo.codice_interno                        AS stato_codice_interno,
+                  sdo.descrizione                           AS stato_descrizione,
+                  -- Cliente: soggetto via istanza (nomi CANONICI, senza alias)
+                  o.billing_account_id,
+                  ba.codice                                 AS ba_codice,
+                  s.id                                      AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  -- Emittente fiscale
+                  o.emittente_fiscale_id,
+                  ef.codice                                 AS emittente_fiscale_codice,
+                  -- Contesto utility + istanza
+                  o.utility_id,
+                  u.codice                                  AS utility_codice,
+                  u.descrizione                             AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice                                 AS istanza_utility_codice,
+                  -- Listino (LEFT: NULL = senza listino) + versione
+                  o.listino_id,
+                  l.codice                                  AS listino_codice,
+                  o.listino_versione_id,
+                  lv.codice_versione                        AS listino_versione_codice,
+                  -- Variazione globale (opzionale)
+                  o.tipo_variazione_globale,
+                  o.valore_variazione_globale,
+                  -- Valuta
+                  o.valuta_id,
+                  v_val.codice                              AS valuta_codice,
+                  -- Validita' + scadenza (materializzata; gating stato lato FE)
+                  o.validita_dal,
+                  o.validita_al,
+                  (o.validita_al IS NOT NULL
+                       AND o.validita_al < CURRENT_DATE)    AS is_scaduta,
+                  -- Date significative ciclo vita
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  -- Audit
+                  o.data_insert,
+                  o.user_insert
+              FROM vendite.offerte_commerciali o
+              JOIN config.stati_doc_offerte sdo
+                ON sdo.id = o.stato_doc_offerta_id
+              -- Istanza (NOT NULL): radice lookup soggetto
+              LEFT JOIN anagrafiche.istanze_utilities iu
+                ON iu.id = o.istanza_utility_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = iu.soggetto_id
+              -- BA (NOT NULL su offerte): per ba_codice
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = o.billing_account_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.id = o.emittente_fiscale_id
+              LEFT JOIN config.utilities u
+                ON u.id = o.utility_id
+              LEFT JOIN vendite.listini l
+                ON l.id = o.listino_id
+              LEFT JOIN vendite.listini_versioni lv
+                ON lv.id = o.listino_versione_id
+              LEFT JOIN config.valute v_val
+                ON v_val.id = o.valuta_id;
+
+              COMMENT ON VIEW vendite.vw_offerte_commerciali_lista IS
+                'Vista flat canonica e self-contained offerte commerciali per la '
+                'lista UI configurabile (vendite.offerte). Nomi canonici '
+                '(ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice). '
+                'Assorbe listino_codice/listino_versione_codice/valuta_codice (JOIN '
+                'gia'' nel repository) e materializza is_scaduta (validita_al scaduta; '
+                'gating per stato lato FE). Pura denormalizzazione: nessuno scope/'
+                'filtro. security_invoker=on (RLS-ready). is_attiva = non SUPERATA/'
+                'ANNULLATA; has_next_revisione = EXISTS figlio. Sostituisce '
+                'vw_offerte_commerciali_list (deprecata, drop differito post-BE).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_offerte_commerciali_lista;
