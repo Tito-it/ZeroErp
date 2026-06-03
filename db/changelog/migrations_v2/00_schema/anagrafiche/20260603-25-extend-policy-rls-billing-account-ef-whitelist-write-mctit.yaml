@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Copertura scrittura RLS per anagrafiche.billing_account (Ondata 2).
+#
+# Caso speciale (NON "WITH CHECK = USING"): il mapping efba che definisce lo
+# scope del BA e' creato da un trigger AFTER INSERT
+# (trg_billing_account_z90_link_ef_ins), mentre la WITH CHECK RLS e' valutata
+# DURANTE l'INSERT (prima degli AFTER trigger). Quindi una WITH CHECK via_efba
+# su INSERT rifiuterebbe ogni BA nuovo di un operatore con scope ristretto
+# (mapping ancora inesistente). L'autorizzazione "chi puo' creare un BA" e'
+# gia' imposta dal guard BEFORE trgfn_billing_account_guard_admin_globale.
+#
+# Soluzione:
+#   - rls_billing_account_ef_whitelist  -> FOR ALL, USING + WITH CHECK via_efba
+#     (scopa SELECT/UPDATE/DELETE; il WITH CHECK su UPDATE passa perche' il BA
+#      esistente ha gia' il mapping efba).
+#   - rls_billing_account_ef_whitelist_ins -> FOR INSERT, WITH CHECK solo gate
+#     ruolo=OPERATORE. Combinata in OR con la FOR ALL: l'INSERT passa, lo scope
+#     viene stabilito dal trigger AFTER e applicato in lettura dalla USING.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260603-25-extend-policy-rls-billing-account-ef-whitelist-write-mctit.yaml
+
+  - changeSet:
+      id: 20260603-25-extend-policy-rls-billing-account-ef-whitelist-write
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Copertura scrittura billing_account: FOR ALL via_efba (USING+WITH CHECK)
+        per SELECT/UPDATE/DELETE + policy FOR INSERT gate-only (ruolo=OPERATORE)
+        perche' il mapping efba e' creato da trigger AFTER INSERT (la WITH CHECK
+        via_efba su INSERT rifiuterebbe i BA nuovi). Idempotente (DROP+CREATE).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: anagrafiche, tableName: billing_account }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                 WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist_via_efba';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Policy principale: visibilita' + check su UPDATE/DELETE.
+              DROP POLICY IF EXISTS rls_billing_account_ef_whitelist ON anagrafiche.billing_account;
+
+              CREATE POLICY rls_billing_account_ef_whitelist ON anagrafiche.billing_account
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_efba(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          id
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_efba(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_billing_account_ef_whitelist ON anagrafiche.billing_account IS
+                  'RLS operatore: vede/modifica/elimina solo i BA raggiungibili dagli '
+                  'emittenti del proprio scope (adapter via_efba). FOR ALL: la WITH '
+                  'CHECK su UPDATE/DELETE e'' valida (BA gia'' mappato). L''INSERT e'' '
+                  'coperto dalla policy gemella _ins (mapping creato da trigger AFTER).';
+
+              -- 2) Policy INSERT gate-only: l'operatore puo' inserire un BA; lo
+              --    scope post-insert e' stabilito dal trigger AFTER link_ef e
+              --    applicato in lettura dalla USING della policy principale.
+              --    Chi puo' creare e' gia' imposto dal guard BEFORE
+              --    guard_admin_globale. Combinata in OR con la FOR ALL.
+              DROP POLICY IF EXISTS rls_billing_account_ef_whitelist_ins ON anagrafiche.billing_account;
+
+              CREATE POLICY rls_billing_account_ef_whitelist_ins ON anagrafiche.billing_account
+                  AS PERMISSIVE
+                  FOR INSERT
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                  );
+
+              COMMENT ON POLICY rls_billing_account_ef_whitelist_ins ON anagrafiche.billing_account IS
+                  'RLS operatore (INSERT): gate-only ruolo=OPERATORE. NON usa via_efba '
+                  'perche'' il mapping efba e'' creato da trigger AFTER INSERT (via_efba '
+                  'rifiuterebbe i BA nuovi). Autorizzazione create gia'' imposta dal '
+                  'guard BEFORE guard_admin_globale; scope applicato in lettura.';
+      rollback:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina la sola policy FOR SELECT originale.
+              DROP POLICY IF EXISTS rls_billing_account_ef_whitelist_ins ON anagrafiche.billing_account;
+              DROP POLICY IF EXISTS rls_billing_account_ef_whitelist ON anagrafiche.billing_account;
+              CREATE POLICY rls_billing_account_ef_whitelist ON anagrafiche.billing_account
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_efba(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          id
+                      )
+                  );

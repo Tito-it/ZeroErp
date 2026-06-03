@@ -40,8 +40,19 @@ ALTER TABLE vendite.fatture FORCE ROW LEVEL SECURITY;
 ```
 
 **Attenzione**: senza `FORCE`, il ruolo proprietario della tabella ignora le policy.
-In ZeroErp le tabelle sono tipicamente owned da `zeroerp_app`, quindi `FORCE` e'
-**obbligatorio** per far valere la RLS anche quando il backend si connette.
+
+In ZeroErp il backend si connette come `zeroerp_app`, che e' **non-owner** e
+**`NOBYPASSRLS`** (le tabelle sono owned da `postgres`/`titodb`, ruoli di
+migrazione/manutenzione). Per un ruolo non-owner il solo `ENABLE` e' gia'
+sufficiente: la RLS si applica senza bisogno di `FORCE`. Di conseguenza, sulle
+tabelle del ciclo attivo ZeroErp **non** usa `FORCE` in produzione: l'unico
+percorso DML applicativo passa da `zeroerp_app` (gia' soggetto), mentre l'owner
+(superuser/batch) **deve** bypassare per migrazioni e job pgAgent.
+
+`FORCE` serve solo quando e' l'**owner** stesso a fare DML applicativo: non e' il
+caso qui. (Nota: nei test pgTAP `FORCE` viene usato *localmente alla transazione*
+per assoggettare l'owner non-superuser `titodb` senza `SET ROLE` — vedi
+`db/pgtap/rls/`.)
 
 #### Creare una policy
 
@@ -167,15 +178,17 @@ Tre regole di visibilita' concorrenti:
 Configurazione ZeroErp:
 
 ```sql
--- Ruoli tecnici che devono bypassare le policy (migrazioni, analisi, manutenzione)
-ALTER ROLE zeroerp_admin      BYPASSRLS;
+-- Ruoli tecnici/owner che devono bypassare le policy (migrazioni, batch pgAgent,
+-- analisi, manutenzione). Le tabelle sono owned da postgres/titodb.
 ALTER ROLE zeroerp_migration  BYPASSRLS;
 
--- Ruolo applicativo: NON bypassa, e' il ruolo con cui il backend si connette
+-- Ruolo applicativo del backend (DB_USER): NON owner, NON bypassa.
+-- E' il ruolo con cui Django si connette -> soggetto a RLS col solo ENABLE.
 ALTER ROLE zeroerp_app        NOBYPASSRLS;
 
--- Tutte le tabelle sensibili: owner = zeroerp_app, quindi serve FORCE
-ALTER TABLE vendite.fatture   FORCE ROW LEVEL SECURITY;
+-- Sulle tabelle del ciclo attivo basta ENABLE (zeroerp_app e' non-owner):
+ALTER TABLE vendite.fatture   ENABLE ROW LEVEL SECURITY;
+-- FORCE NON necessario: nessun owner fa DML applicativo a runtime.
 ```
 
 Il parametro di sessione `row_security` (default `on`) permette a superuser o owner
@@ -369,9 +382,9 @@ SELECT rolname, rolbypassrls
 3. Logica **sempre** in funzione `script.fn_scope_*`, mai inline.
 4. Funzioni `STABLE` in `LANGUAGE sql` per favorire inlining.
 5. Parametri dai GUC `app.*`, letti dalla policy e passati alla funzione.
-6. `FORCE ROW LEVEL SECURITY` su ogni tabella owned da `zeroerp_app`.
-7. `BYPASSRLS` sui ruoli di manutenzione (`zeroerp_admin`, `zeroerp_migration`).
-8. `WITH CHECK` **esplicito** su `FOR UPDATE`, anche se uguale a `USING`.
+6. Per il ruolo applicativo (`zeroerp_app`, non-owner `NOBYPASSRLS`) basta `ENABLE`; `FORCE` solo se e' l'owner a fare DML (non e' il caso ZeroErp a runtime).
+7. `BYPASSRLS` sui ruoli owner/manutenzione (`zeroerp_migration`, batch pgAgent).
+8. `WITH CHECK` **esplicito**: una policy che copre la scrittura va `FOR ALL` (o `FOR INSERT`/`FOR UPDATE`) con `WITH CHECK`. Una sola `FOR SELECT` su tabella `ENABLE`d **blocca ogni INSERT/UPDATE** ("new row violates row-level security policy").
 9. Viste con `security_invoker = true`.
 10. Test pgTAP obbligatori: visibile / non visibile / senza GUC / bypass / check bloccante.
 
