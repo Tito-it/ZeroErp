@@ -14,6 +14,20 @@
 
 ---
 
+## ✅ STATO: DB ATTERRATO + pgTAP VERDI (2026-06-03)
+
+Lotto DB-ORD (changeset `20260603-11..15`) applicato su `dev/db-tid`, pgTAP verdi
+(`test-lista-ordini-seed` 17/17, `test-ordini-modello-ext` 11/11). `changelog-autogen.yaml`
+rigenerato (`--strict`, zero collisioni). **Doc manuale aggiornata**:
+`manual/vw_ordini_lista.md` (nuova) + `manual/ordini.md` (agente E + documento origine A1
++ FK) + `manual/ordini_righe.md` (bug check risolto + co-presenza).
+
+**Resta aperto (NON DB)**: BE/FE scheletro (analisi §5/§6) + conversione upstream
+(§7.4). Auto-gen `tabelle/`/`views/` dbzero da rigenerare con `gen_db_docs.py` (wiring
+include manuale + refresh campi/vincoli dal DB live).
+
+---
+
 ## 0. TL;DR — cosa esegue questo lotto
 
 Il modello `vendite.ordini` è **sostanzialmente completo** (testata + righe +
@@ -70,11 +84,12 @@ auto-generata e i seed. **Confermata nella sostanza**; tre punti vanno corretti.
 - **`sorgente_tipo_id`/`sorgente_uid` + UQ** presenti sia in testata
   (`uq_ordini_v_sorgente_fk`) sia su righe (`uq_ordini_righe_v_sorgente_fk`).
 
-### 1.🔴 A — Link documento di origine: **A2 NON è fattibile come raccomandato**
+### 1.🔴 A — Link documento di origine: **A2 NON era fattibile come raccomandato → A1**
 
-L'analisi (§1.bis A) raccomanda **A2** = riuso di `sorgente_tipo_id`/`sorgente_uid`
-in testata come link interno al preventivo/offerta d'origine, perché «simmetrico con
-le righe». **La verifica smentisce la fattibilità diretta** su due fronti:
+La prima stesura dell'analisi raccomandava **A2** = riuso di
+`sorgente_tipo_id`/`sorgente_uid` in testata come link interno al preventivo/offerta
+d'origine, perché «simmetrico con le righe». **La verifica DDL ha smentito la
+fattibilità** su due fronti (l'analisi §1.bis è stata poi corretta a A1):
 
 1. **Collisione UNIQUE.** `uq_ordini_v_sorgente_fk` è
    `UNIQUE (sorgente_tipo_id, sorgente_uid) WHERE sorgente_tipo_id IS NOT NULL`.
@@ -95,20 +110,19 @@ le righe». **La verifica smentisce la fattibilità diretta** su due fronti:
 > → al più una riga-ordine), che è proprio ciò che in testata diventa il limite
 > «1 preventivo → 1 ordine». Sono lo stesso meccanismo con conseguenze opposte.
 
-**Raccomandazione** (memoria `feedback_no_quick_fix_soluzione_assoluta` +
-`feedback_simmetria_modello_no_meta_scope`): adottare **A1 — FK tipizzata dedicata**
+**Decisione ratificata (Tid, 2026-06-03): A1 — FK tipizzata dedicata**
 (`documento_origine_tipo` lookup/enum interno + `documento_origine_id bigint`,
 **senza** UNIQUE), che modella esplicitamente la provenienza e **non** impone il
-vincolo 1:1. La simmetria «giusta» non è col meccanismo import delle righe ma con un
-link di provenienza tipizzato. **A1 ≠ più lavoro**: due colonne nullable + un piccolo
-lookup, niente seed `config.sorgenti` da reinterpretare.
-A2 resta praticabile **solo** se Tid conferma la regola «1 preventivo/offerta → 1
-ordine» come invariante di dominio — in quel caso va comunque usato un **tipo
-sorgente nuovo dedicato** (non id=2/14) per non sovraccaricare lo `scope` del registry.
+vincolo 1:1 (memoria `feedback_no_quick_fix_soluzione_assoluta` +
+`feedback_simmetria_modello_no_meta_scope`). La simmetria «giusta» non è col
+meccanismo import delle righe ma con un link di provenienza tipizzato. **A1 ≠ più
+lavoro**: due colonne nullable + un piccolo vocabolario tipi, niente seed
+`config.sorgenti` da reinterpretare.
 
-→ **A non entra in questo lotto**: è un additivo a basso costo che si aggiunge dopo
-la ratifica (la vista/catalogo aggiungono allora le 2 colonne origine via
-`CREATE OR REPLACE VIEW`, additivo in coda). Lo scheletro non lo richiede (§7.4).
+→ **A1 entra in questo lotto** (additivo, costo equivalente a E): DDL colonne + vista
+che le espone (§3) + colonna catalogo (§4). La **conversione** che le valorizza
+(`crea_ordine_da_preventivo`/`_da_offerta`) resta lo step successivo allo scheletro
+(analisi §7.4) — qui non si chiude la porta, si predispone soltanto.
 
 ### 1.🟡 B — `manual/ordini.md` risulta GIÀ allineato (§1.ter dell'analisi è stale)
 
@@ -122,13 +136,19 @@ su [manual/ordini_righe.md](../../dbzero/vendite/manual/ordini_righe.md), che
 **correttamente** documenta il bug check e raccomanda il CHECK di co-presenza UoM
 (la correzione è il DDL §5, non la prosa).
 
-### 1.🟡 C — Imprecisioni di naming/seed (non bloccanti, ma da non riportare in DDL/manuale)
-- **Trigger gen codice**: l'analisi cita `trgfn_ordini_gen_codice`. La verifica trova
-  attiva la normalizzazione testata `trgfn_ordini_normalize` (`20260225-34`), che fa
-  sia la valorizzazione `numero` (se NULL) sia l'**ereditarietà** di
-  `fatturazione_trigger` da `billing_account.fatturazione_ordini`. Effetto invariato
-  (numero all'INSERT) → irrilevante per la lista, ma il team DB **confermi il nome
-  esatto** prima di citarlo in changeset/manuale.
+### 1.🟡 C — Note di naming/seed (rettifiche post-verifica DDL tabella)
+- **Trigger gen codice** (rettifica): la tabella reale ha **entrambi** i trigger —
+  `trg_ordini_a10_gen_codice_ins_upd` → `trgfn_ordini_gen_codice()` (genera `numero`
+  via `fn_generate_codice` se NULL) e `trg_ordini_normalize_ins_upd` →
+  `trgfn_ordini_normalize()` (`20260225-34`, eredita `fatturazione_trigger` da
+  `billing_account.fatturazione_ordini`). Quindi **l'analisi era corretta** a citare
+  `trgfn_ordini_gen_codice` per la numerazione; nessuna ambiguità da risolvere.
+- **RLS**: le 3 policy esistono; RLS è `ENABLE` (Ondata 2, `20260601-39`), **non
+  `FORCE`**. La vista usa `security_invoker=on` → le policy delle tabelle base si
+  applicano comunque.
+- **`tipo_dato='integer'` NON esiste** nell'ENUM `ui.tipo_dato`
+  (`{string,numeric,date,datetime,boolean,enum}`): `anno` nel catalogo §4 è `numeric`
+  (recepito; stesso fix già fatto per `rev`/`revisione_numero`).
 - **RLS**: le 3 policy (`rls_ordini_ef_whitelist`/`_cliente_ownership`/`_shop`)
   esistono; RLS è `ENABLE` (Ondata 2, `20260601-39`), **non `FORCE`**. L'analisi dice
   «già attiva»: vero in lettura. La vista lista usa `security_invoker=on` → le policy
@@ -142,29 +162,38 @@ su [manual/ordini_righe.md](../../dbzero/vendite/manual/ordini_righe.md), che
 
 ## 2. Lotto changeset (numerazione globale per data — memoria `feedback_liquibase_numerazione_globale_per_data`)
 
-Il 2026-06-03 il max NN usato è **`08`** (brief preventivi/offerte). **Se il lotto è
-eseguito il 2026-06-03 → NN da `09`**; se eseguito in altra data → NN da `01` di
-quella data. Stato catalogo `ui.*` attuale: `lista_definizione` max id=**6**,
-`lista_colonna` max id=**103**, `lista_preset` max id=**6**, `lista_preset_colonna`
-max id=**70**.
+Il 2026-06-03 i NN `09`/`10` sono stati occupati dai **drop differiti** delle viste
+preventivi/offerte (`20260603-09-drop-vw-preventivi-list`, `…-10-drop-vw-offerte-
+commerciali-list`), quindi il max NN reale è **`10`**. Il lotto DB-ORD usa il blocco
+contiguo **`11`–`15`** (in ordine di fase). Stato catalogo `ui.*`: `lista_definizione`
+max id=**6**, `lista_colonna` max id=**103**, `lista_preset` max id=**6**,
+`lista_preset_colonna` max id=**70**.
 
-| File (ipotesi data 2026-06-03) | Fase | Cosa |
+| File | Fase | Cosa |
 | --- | --- | --- |
-| `20260603-09-fix-chk-ordini-righe-qta-pos-mctit.yaml` | `00_schema/vendite` | DROP+ADD `chk_ordini_v_r_qta_pos` → `quantita > 0` (+ opz. co-presenza UoM, §5) |
-| `20260603-10-alter-ordini-add-agente-sr-mctit.yaml` | `00_schema/vendite` | DDL **E** `agente_soggetto_ruolo_id bigint NULL` FK + guard parent attivo |
-| `20260603-11-create-vw-ordini-lista-mctit.yaml` | `20_code/vendite` | vista canonica `vw_ordini_lista` (`security_invoker=on`, self-contained) |
-| `20260603-12-seed-ui-lista-colonna-priorita-ordini-mctit.yaml` | `80_data/changelog` | UPDATE `priorita` dominio `vendite.ordini` (pattern `20260603-07/08`) |
+| `20260603-11-fix-chk-ordini-righe-qta-pos-mctit.yaml` | `00_schema/vendite` | DROP+ADD `chk_ordini_v_r_qta_pos` → `quantita > 0` + CHECK co-presenza UoM (§5) |
+| `20260603-12-alter-ordini-add-agente-sr-mctit.yaml` | `00_schema/vendite` | DDL **E** `agente_soggetto_ruolo_id bigint NULL` FK `soggetti_ruoli` |
+| `20260603-13-alter-ordini-add-documento-origine-mctit.yaml` | `00_schema/vendite` | DDL **A1** `documento_origine_tipo varchar` + `documento_origine_id bigint`, 2 CHECK, **SENZA UNIQUE** |
+| `20260603-14-create-vw-ordini-lista-mctit.yaml` | `20_code/vendite` | vista canonica `vw_ordini_lista` (`security_invoker=on`, self-contained; espone agente + origine) |
+| `20260603-15-seed-ui-lista-colonna-priorita-ordini-mctit.yaml` | `80_data/changelog` | UPDATE `priorita` dominio `vendite.ordini` (pattern `20260603-07/08`) |
 | append `lista_definizione.csv` | `80_data/sql/ui` | id=**7** `vendite.ordini` → `vw_ordini_lista` |
-| append `lista_colonna.csv` | `80_data/sql/ui` | id **104–126** (23 colonne, §4) |
+| append `lista_colonna.csv` | `80_data/sql/ui` | id **104–127** (24 colonne, §4) |
 | append `lista_preset.csv` | `80_data/sql/ui` | id=**7** `ordini_default` |
-| append `lista_preset_colonna.csv` | `80_data/sql/ui` | id **71–80** (10 colonne visibili) |
-| `db/pgtap/ui/test-lista-ordini-seed.sql` | pgtap | seed lista |
-| `db/pgtap/vendite/test-ordini-modello-ext.sql` | pgtap | fix check + E + co-presenza |
+| append `lista_preset_colonna.csv` | `80_data/sql/ui` | id **71–81** (11 righe: 10 visibili + `stato_codice_interno` nascosta) |
+| `db/pgtap/ui/test-lista-ordini-seed.sql` | pgtap | seed lista (17 test) |
+| `db/pgtap/vendite/test-ordini-modello-ext.sql` | pgtap | fix check + E + A1 + co-presenza (11 test) |
+
+> **A1 = un solo changeset** (`-13`): nessun vocabolario/lookup separato. Il tipo usa
+> il pattern `varchar + CHECK IN (...)` **già presente nella stessa tabella** per
+> `fatturazione_trigger` (regola del 2) → niente enum/tabella nuova. **5 changeset**
+> totali (11–15) + 4 append CSV + 2 pgTAP. I changeset `00_schema`/`20_code` sono
+> registrati in `changelog-autogen.yaml` (rigenerato con `gen_master_autogen.py
+> --strict`, zero collisioni); il seed `priorita` (`80_data`) entra via `includeAll`.
 
 **Ordinamento vincolato** (come brief preventivi/offerte): la **vista** (20_code) è
 applicata prima del seed `lista_definizione` (80_data) → soddisfa il trigger
 `trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd` (la vista deve esistere). Il
-seed `priorita` (file `…-12-…`) ordina **dopo** il loader `lista_colonna`
+seed `priorita` (file `…-13-…`) ordina **dopo** il loader `lista_colonna`
 (`20260507-07…`) per nome file. **Nessun nuovo loader CSV**: i loader esistenti sono
 `runOnChange:true` + `loadUpdateData` (UPSERT su PK) → si appendono solo righe.
 Resync sequenze IDENTITY `ui.*` (`20260602-17`, `runAlways`) si riallinea da sé.
@@ -195,22 +224,25 @@ Colonne esposte:
   `sconto_tot`, `utility_codice`, `utility_descrizione`, `fatturazione_trigger`,
   `canale_origine`, `modalita_pagamento_codice`, `termine_pagamento_codice`,
   `valuta_codice`, `emittente_fiscale_id`, `emittente_fiscale_codice`,
-  `agente_denominazione` (E — via `soggetti_ruoli`→`soggetti`), `data_insert`,
-  `billing_account_id`, `soggetto_ruolo_id`, `id`, `uid`
+  `agente_denominazione` (E — via `soggetti_ruoli`→`soggetti`),
+  `documento_origine_tipo`, `documento_origine_codice` (A — provenienza upstream,
+  es. `PREVENTIVO · P-2026/123`), `data_insert`, `billing_account_id`,
+  `soggetto_ruolo_id`, `id`, `uid`
 - `numero` **nudo** (sempre valorizzato dal trigger gen codice, anche in BOZZA —
   decisione §8.1; niente `numero_display`).
 
-> **Differita ad A** (post-ratifica §1.A): `documento_origine_tipo` /
-> `documento_origine_codice`. Si aggiungono **in coda** alla SELECT via
-> `CREATE OR REPLACE VIEW` quando A atterra → additivo, nessuna rottura ordine colonne.
+> **A — risoluzione polimorfa** (`documento_origine_codice`): il link è tipizzato
+> (`documento_origine_tipo` ∈ {PREVENTIVO, OFFERTA}) + `documento_origine_id`, quindi
+> il codice leggibile si risolve **per tipo** — due `LEFT JOIN` (preventivi / offerte)
+> + `CASE`/`COALESCE`. Forma esatta a scelta del team DB; entrambe le colonne sono
+> NULL quando l'ordine nasce diretto (non da upstream).
 
 ---
 
 ## 4. Catalogo colonne (`lista_id=7`) — recepiti i fix §1.🟡C
 
-> `anno` → **`numeric`** (non `integer`, non esiste nell'ENUM). `documento_origine`
-> e `agente`: **solo `agente`** entra ora (E ratificato); `documento_origine`
-> arriva col lotto A.
+> `anno` → **`numeric`** (non `integer`, non esiste nell'ENUM). `agente` (E) e
+> `documento_origine` (A1) entrano **entrambi** in questo lotto (extra opt-in).
 
 **Preset (visibili) — preset_colonna id 71–80:**
 
@@ -247,13 +279,14 @@ Colonne esposte:
 | 190 | emittente_fiscale_codice | emittente_fiscale_codice | string | — | 15 | Emittente |
 | 200 | anno | anno | **numeric** | — | 10 | Identificazione |
 | 210 | serie | serie | string | — | 10 | Identificazione |
+| 215 | documento_origine | documento_origine_codice | string | — | 22 | Origine |
 | 218 | agente | agente_denominazione | string | — | 20 | Commerciale |
 | 220 | data_insert | data_insert | datetime | datetime_short | 5 | Audit |
 
-→ **23 colonne** (id 104–126). `ricercabile_full=t` su `numero`,
+→ **24 colonne** (id 104–127). `ricercabile_full=t` su `numero`,
 `ragione_sociale_completa`, `ba_codice`, `id_fiscale` (decisione §8.5). `numero`
-`fissata=true`. (Col `documento_origine` ord 215 + `gruppo=Origine` si aggiunge col
-lotto A → id 127.)
+`fissata=true`. Le 10 colonne visibili nel preset restano invariate (origine e agente
+sono extra opt-in).
 
 **Preset `ordini_default`**: `ambito='sistema'`, `is_default=t`,
 `pagina_dimensione=25`, `ordinamento_default=[{"col":"data","dir":"desc"}]`.
@@ -304,6 +337,37 @@ ALTER TABLE vendite.ordini
 
 ---
 
+## 6.A DDL A — link documento di origine (ratificato A1) — `00_schema/vendite`
+
+Decisione di design (regola del 2): il tipo usa il pattern **già presente in questa
+tabella** per `fatturazione_trigger` (`varchar` + CHECK su vocabolario chiuso), **non**
+un enum/lookup separato → A1 è **un solo changeset**, niente nuovo tipo/tabella e
+**niente** riuso di `config.sorgenti` (scope `PUSH_*`, altra semantica — §1.A).
+
+```sql
+ALTER TABLE vendite.ordini
+  ADD COLUMN documento_origine_tipo VARCHAR(20) NULL,
+  ADD COLUMN documento_origine_id   BIGINT      NULL;
+ALTER TABLE vendite.ordini
+  ADD CONSTRAINT chk_ordini_documento_origine_tipo
+  CHECK (documento_origine_tipo IS NULL OR documento_origine_tipo IN ('PREVENTIVO','OFFERTA'));
+ALTER TABLE vendite.ordini
+  ADD CONSTRAINT chk_ordini_documento_origine_copres
+  CHECK ((documento_origine_tipo IS NULL) = (documento_origine_id IS NULL));
+```
+
+- **Niente UNIQUE** sul link → un preventivo/offerta può generare **più ordini**
+  (regola §1.A). Entrambe nullable (ordine diretto = NULL) → nessun backfill, nessun
+  impatto trigger/RLS.
+- `documento_origine_id` è un riferimento **polimorfo** (preventivo *o* offerta secondo
+  il tipo): niente FK fisica unica (punterebbe a due tabelle). L'integrità si garantisce
+  alla **valorizzazione** (service di conversione, analisi §7.4); lo scheletro non
+  valorizza mai queste colonne, quindi un guard non è urgente.
+- Display in vista: `documento_origine_tipo` + `documento_origine_codice` (risoluzione
+  polimorfa per tipo: `preventivi.numero` | `offerte_commerciali.codice`, §3).
+
+---
+
 ## 7. pgTAP
 
 **`test-lista-ordini-seed.sql`** (gemello `test-lista-contratti/preventivi/offerte-seed`):
@@ -311,7 +375,7 @@ ALTER TABLE vendite.ordini
   del catalogo (incl. `stato_codice_interno`) — anti-typo gemello trigger B2;
 - `lista_definizione` `vendite.ordini` attiva, `vista_sql='vw_ordini_lista'`,
   risolve via `fn_resolve_lista_config`;
-- 23 colonne attive nel catalogo; preset `ordini_default` `is_default=true`,
+- 24 colonne attive nel catalogo; preset `ordini_default` `is_default=true`,
   `ambito='sistema'`, `pagina_dimensione=25`; 10 colonne visibili nel preset;
   `numero` `fissata=true`; `priorita` di dominio applicata; **nessuna** colonna
   `sensibile=true` (no filtro SUPER_ADMIN).
@@ -323,23 +387,24 @@ ALTER TABLE vendite.ordini
   rifiutata;
 - colonna `agente_soggetto_ruolo_id` presente, nullable, FK verso `soggetti_ruoli`;
   insert con agente valido OK, con id inesistente KO.
+- **A**: colonne `documento_origine_tipo`/`documento_origine_id` presenti, nullable,
+  **nessun UNIQUE** sul link; due ordini con stesso (tipo, id) origine → **entrambi
+  ammessi** (regola «più ordini da una origine»); co-presenza tipo↔id (se CHECK incluso)
+  rispettata.
 - Fixture: pattern memoria `feedback_pgtap_patterns` (BEGIN; + CF validi fissi);
   per la testata seguire `feedback_pgtap_preventivi_fixtures` (emittente fiscale +
   iva obbligatori) — `vendite.ordini` ha `emittente_fiscale_id` NOT NULL.
 
 ---
 
-## 8. Decisione APERTA per Tid (sblocca solo il follow-up A)
+## 8. Decisioni ratificate (Tid, 2026-06-03)
 
-**Link documento di origine (A)** — da ratificare prima del lotto A (non blocca lo
-scheletro):
-
-- **A1 (raccomandata)**: FK tipizzata dedicata `documento_origine_tipo` +
-  `documento_origine_id`, **senza** UNIQUE → un preventivo/offerta può generare
-  **più** ordini. Modella la provenienza in modo esplicito.
-- **A2 (solo se invariante «1 origine → 1 ordine» confermata)**: riuso `sorgente_*`
-  con un **tipo sorgente nuovo dedicato** (non id=2/14, per non sovraccaricare lo
-  `scope` del registry push). L'UQ `uq_ordini_v_sorgente_fk` impone l'1:1.
+**Link documento di origine (A) → A1 ✅** (chiusa il 2026-06-03 dopo la verifica
+§1.A): FK tipizzata dedicata `documento_origine_tipo` + `documento_origine_id`,
+**senza** UNIQUE → un preventivo/offerta può generare **più** ordini. Scartata «A2»
+(riuso `sorgente_*`): l'UQ `uq_ordini_v_sorgente_fk` imporrebbe l'1:1 e
+sovraccaricherebbe lo `scope` di `config.sorgenti`. A1 entra in **questo** lotto
+(§2, §6.A).
 
 > Tutto il resto delle decisioni §8 dell'analisi (numero nudo, auto-save BOZZA, push
 > singolo, `fatturazione_trigger` visibile, ricerca estesa) è **confermato dalla
@@ -349,7 +414,7 @@ scheletro):
 
 ## 9. Sequenza di sviluppo (piano)
 
-1. **Lotto DB-ORD** (§2, senza A): fix check + E + vista + catalogo/preset/priorita +
+1. **Lotto DB-ORD** (§2): fix check + E + **A1** + vista + catalogo/preset/priorita +
    pgTAP verde su `dev/db-tid`.
 2. **Consegna DB** → sblocca BE/FE (memoria `feedback_be_fe_attende_prerequisiti_db`).
 3. **BE scheletro** (analisi §5): `ordini_repository.py`/`ordini_service.py`/
@@ -361,10 +426,10 @@ scheletro):
    `<ListaConfigurabile>`** (niente grezza) + drawer + store/api + i18n; build verde.
 5. **Chiusura giro** (analisi §7): conferma ordine → push → `attivita_fatturabili` →
    pipeline lotto → fattura (riuso ~90%); smoke E2E.
-6. **Ratifica A** (Tid, §8) → **follow-up A**: DDL `documento_origine_*` +
-   `CREATE OR REPLACE VIEW` (aggiunge le 2 colonne origine) + catalogo col 127 +
-   valorizzazione in CREATE-da-upstream. Abilita la conversione preventivo/offerta→
-   ordine (analisi §7.4), step successivo allo scheletro.
+6. **Conversione upstream** (analisi §7.4, step successivo allo scheletro): service
+   `crea_ordine_da_preventivo`/`_da_offerta` che copia testata+righe+componenti e
+   **valorizza** `documento_origine_tipo`/`_id` (colonne già pronte dal lotto §2) +
+   FE «genera ordine» sul documento upstream. Qui si usa A1, non si crea.
 
 ---
 
@@ -375,4 +440,4 @@ scheletro):
 | `vendite.contratti` | ✅ (`1cc906377`) | ✅ | [refactor-lista-contratti.md](../work-done/refactor-lista-contratti.md) |
 | `vendite.preventivi` | ✅ 2026-06-03 | ⏳ attende | [db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md) |
 | `vendite.offerte` | ✅ 2026-06-03 | ⏳ attende | [db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md) |
-| **`vendite.ordini`** | 📋 **questo brief** (lista + fix check + E; A differito) | 📋 analisi §5/§6 | [analisi-ordini-vendita.md](./analisi-ordini-vendita.md) |
+| **`vendite.ordini`** | ✅ atterrato 2026-06-03 (`20260603-11..15`) | ⏳ attende (analisi §5/§6) | [analisi-ordini-vendita.md](./analisi-ordini-vendita.md) |

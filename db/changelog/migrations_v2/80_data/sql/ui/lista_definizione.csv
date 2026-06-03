@@ -5,3 +5,4 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
 4,vendite.contratti,Contratti,vendite,vw_contratti_lista,t,2026-06-02 00:00:00,mctit
 5,vendite.preventivi,Preventivi,vendite,vw_preventivi_lista,t,2026-06-03 00:00:00,mctit
 6,vendite.offerte,Offerte commerciali,vendite,vw_offerte_commerciali_lista,t,2026-06-03 00:00:00,mctit
+7,vendite.ordini,Ordini di vendita,vendite,vw_ordini_lista,t,2026-06-03 00:00:00,mctit
