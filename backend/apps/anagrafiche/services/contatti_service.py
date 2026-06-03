@@ -24,7 +24,15 @@ duplicate in frontend/src/core/composables/useContattoForm.js
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
+
+from apps.anagrafiche.error_codes import E_CONTATTO_INCOMPLETO
+from apps.anagrafiche.services._validators import optional_str
+from apps.core.api.payload_validators import optional_int
+from apps.core.services.service_errors import ServiceError
+
+if TYPE_CHECKING:
+    from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 
 # Campi del contatto che indicano "l'utente ha iniziato a compilare".
 # Se almeno UNO e' valorizzato, il contatto e' considerato in compilazione
@@ -81,3 +89,35 @@ def classify_contatto_payload(data: dict[str, Any] | None) -> str:
 def missing_required_fields(data: dict[str, Any] | None) -> list[str]:
     payload = data or {}
     return [f for f in _REQUIRED_FIELDS if not _is_filled(payload.get(f))]
+
+
+# Scopo: Orchestratore contatto inline opzionale: classifica + valida + crea.
+#        Centralizza il blocco identico che era duplicato in clienti_service e
+#        fornitori_service (regola del 2). Stati: EMPTY → skip; PARTIAL → solleva
+#        E_CONTATTO_INCOMPLETO; VALID → crea il contatto via repository.
+def crea_contatto_inline_se_valido(
+    sogg_repo: "SoggettiRepository",
+    soggetto_id: str,
+    soggetto_ruolo_id: int,
+    contatto_data: dict[str, Any] | None,
+) -> None:
+    contatto_status = classify_contatto_payload(contatto_data)
+    if contatto_status == "PARTIAL":
+        raise ServiceError(
+            code=E_CONTATTO_INCOMPLETO,
+            message="Contatto incompleto: completa o svuota tutti i campi.",
+            context={"missing": missing_required_fields(contatto_data)},
+        )
+    if contatto_status == "VALID":
+        assert contatto_data is not None  # type narrowing per il checker
+        sogg_repo.crea_contatto(
+            soggetto_id,
+            nominativo=contatto_data["nominativo"],
+            email=optional_str(contatto_data, "email"),
+            telefono=optional_str(contatto_data, "telefono"),
+            cellulare=optional_str(contatto_data, "cellulare"),
+            pec=optional_str(contatto_data, "pec"),
+            tipo_contatto_id=optional_int(contatto_data, "tipo_contatto_id"),
+            note=optional_str(contatto_data, "note"),
+            soggetto_ruolo_id=soggetto_ruolo_id,
+        )

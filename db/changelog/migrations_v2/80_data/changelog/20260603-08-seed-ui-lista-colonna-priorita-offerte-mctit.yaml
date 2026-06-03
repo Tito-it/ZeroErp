@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-B (db-brief-lista-preventivi-offerte §0/§2): valori espliciti di priorita
+# per le colonne della lista vendite.offerte (lista_id risolto da codice).
+#
+# Stesso meccanismo del seed contratti 20260602-16 / preventivi 20260603-07:
+# priorita non vive nel CSV (DEFAULT 50), qui si impostano i pesi di dominio.
+# Il re-run del loader NON tocca priorita.
+#
+# Asse priorita (peso ritiro dinamico, piu' alto = resiste di piu'):
+#   codice/azioni (100) identificatore/azione -> FE le tratta come infinite.
+#   ragione_sociale(95), stato(90), revisione_numero(88: codice+rev non si
+#   separano), id_fiscale(75), utility(70), validita_dal(65), validita_al(60),
+#   data_emissione(50), listino(45) resistono; ba_codice(40), istanza(35) prima;
+#   extra opt-in e tecniche basse (5..20). is_scaduta/listino_versione_codice
+#   sono tecniche nascoste (slot FE), priorita bassa solo difensiva.
+#
+# Gira DOPO il loader lista_colonna (20260507-07) che inserisce le righe offerte:
+# includeAll ordina per nome file (20260603-08 > 20260507-07).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260603-08-seed-ui-lista-colonna-priorita-offerte-mctit.yaml
+
+  - changeSet:
+      id: 20260603-08-seed-ui-lista-colonna-priorita-offerte
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Imposta priorita (peso ritiro dinamico) per le colonne della lista
+        vendite.offerte. Valori di dominio dal piano lista-offerte-comm §4.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: ui
+              tableName: lista_colonna
+              columnName: priorita
+          - sqlCheck:
+              expectedResult: "1"
+              sql: SELECT COUNT(*) FROM ui.lista_definizione WHERE codice = 'vendite.offerte'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE ui.lista_colonna lc
+                 SET priorita = v.priorita
+                FROM (
+                  VALUES
+                    ('codice',                     100),
+                    ('ragione_sociale_completa',    95),
+                    ('stato',                        90),
+                    ('revisione_numero',             88),
+                    ('id_fiscale',                   75),
+                    ('utility_codice',               70),
+                    ('validita_dal',                 65),
+                    ('validita_al',                  60),
+                    ('data_emissione',               50),
+                    ('listino_codice',               45),
+                    ('ba_codice',                    40),
+                    ('istanza_utility_codice',       35),
+                    ('listino_versione_codice',      20),
+                    ('data_accettazione',            20),
+                    ('data_rifiuto',                 18),
+                    ('data_annullamento',            18),
+                    ('tipo_variazione_globale',      15),
+                    ('valore_variazione_globale',    15),
+                    ('emittente_fiscale_codice',     15),
+                    ('valuta',                       12),
+                    ('utility_descrizione',          10),
+                    ('stato_codice_interno',          5),
+                    ('is_scaduta',                    5),
+                    ('data_insert',                   5),
+                    ('azioni',                      100)
+                ) AS v(codice, priorita)
+               WHERE lc.codice = v.codice
+                 AND lc.lista_id = (
+                       SELECT id FROM ui.lista_definizione WHERE codice = 'vendite.offerte'
+                     );

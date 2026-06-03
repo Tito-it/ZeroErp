@@ -103,12 +103,14 @@ SELECT ok(
     '5. Policy rls_fatture_ef_whitelist esiste su vendite.fatture'
 );
 
+-- Dal 2026-06-03 (migration 20260603-22) la policy operatore copre anche la
+-- scrittura: FOR ALL con WITH CHECK (brief RLS Ondata 2 "insert bloccati").
 SELECT is(
     (SELECT cmd FROM pg_policies
       WHERE schemaname = 'vendite' AND tablename = 'fatture'
         AND policyname = 'rls_fatture_ef_whitelist'),
-    'SELECT',
-    '6. rls_fatture_ef_whitelist: comando = SELECT'
+    'ALL',
+    '6. rls_fatture_ef_whitelist: comando = ALL (copertura scrittura)'
 );
 
 SELECT is(

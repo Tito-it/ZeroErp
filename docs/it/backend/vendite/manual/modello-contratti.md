@@ -176,6 +176,28 @@ Tentativi di modifica sui campi bloccati sollevano
 `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (409). Per cambi sostanziali
 serve un nuovo contratto.
 
+### 7.1 Invariante no-overlap (esclusivita' all'attivazione)
+
+Un solo contratto **partecipante** per `(billing_account, istanza_utility,
+utility, ambito)` puo' insistere su un periodo di `validita` sovrapposto.
+"Partecipante" = colonna generata `partecipa_overlap_snapshot = NOT abortito
+AND NOT draft` (refactor overlap 2026-06-02, migration `20260602-17..22`):
+
+- i contratti **DRAFT** e quelli **abortiti** NON partecipano → due bozze
+  sovrapposte sono ammesse, e una bozza puo' essere preparata sovrapposta a un
+  contratto attivo (flusso di **successione**);
+- l'esclusivita' scatta **solo all'attivazione** (`POST .../emetti/`): per
+  attivare il nuovo contratto della successione va prima chiusa la `valido_al`
+  dell'incumbent, nella stessa transazione (close-before-activate).
+
+Difesa a due livelli: il backstop duro e' l'EXCLUDE gist parziale
+`ex_contratti_no_overlap` (`WHERE partecipa_overlap_snapshot`); davanti, il
+service esegue un **pre-check proattivo** (`fn_contratto_sovrapposto`) in
+`emetti()` che solleva `E_VENDITE_CONTRATTO_OVERLAP` (409) **nominando** il
+contratto incumbent in conflitto. `ambito` resta nella chiave: forniture di
+ambiti diversi (es. COMMERCIO vs COMMODITY) sullo stesso punto coesistono
+legittimamente.
+
 ## 8. Cascata parametri estesa (per gate L2)
 
 Il sistema "autorizzazioni prezzi" (L1 permesso + L2 soglia variazione + L3

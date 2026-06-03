@@ -259,6 +259,96 @@ def fn_get_offerta_form_defaults(
 
 
 # ══════════════════════════════════════════════════════════
+#  Ordini form-defaults
+# ══════════════════════════════════════════════════════════
+
+
+# Scopo: Defaults per il form ordine di vendita. Allinea ordini alla famiglia
+#        (preventivi/offerte/contratti propongono i default all'apertura del
+#        drawer): senza BA ritorna la `valuta_id` dalla catena EF utente →
+#        gestore globale (BB centralizzato `resolve_valuta_default`); con BA
+#        aggiunge i campi BA-derived (utility, categoria). La utility di default
+#        "globale" (parameter DEFAULT_UTILITY) la risolve il FE via
+#        useUtilityDefaultId, come negli altri drawer: qui la utility arriva
+#        solo dal BA quando selezionato.
+def fn_get_ordine_form_defaults(
+    *,
+    billing_account_id: int | None,
+    auth_user_id: int | None = None,
+) -> dict[str, Any]:
+    function_name = f"{_FN}.fn_get_ordine_form_defaults"
+    payload: dict[str, Any] = {
+        "billing_account_id": None,
+        "utility_id": None,
+        "istanza_utility_id": None,
+        "utility_codice": None,
+        "utility_descrizione": None,
+        "valuta_id": None,
+        "valuta_codice": None,
+        "valuta_descrizione": None,
+        "termine_pagamento_id": None,
+        "termine_pagamento_codice": None,
+        "termine_pagamento_descrizione": None,
+        "modalita_pagamento_id": None,
+        "modalita_pagamento_codice": None,
+        "modalita_pagamento_descrizione": None,
+    }
+
+    ba: dict[str, Any] | None = None
+    ba_id: int | None = None
+    if billing_account_id is not None:
+        ba_id = _require_positive_int(
+            billing_account_id, field="billing_account_id", function_name=function_name,
+        )
+        ba_repo = BillingAccountRepository()
+        ba = ba_repo.get_lookup_by_id(ba_id)
+        ErrorManager.require(
+            ba is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Billing account non trovato.",
+            detail=f"billing_account_id={ba_id}",
+            function_name=function_name,
+        )
+        assert ba is not None
+        payload.update({
+            "billing_account_id": ba_id,
+            "utility_id": ba.get("utility_id"),
+            "istanza_utility_id": ba.get("istanza_utility_id"),
+            "utility_codice": ba.get("utility_codice"),
+            "utility_descrizione": ba.get("utility_descrizione"),
+        })
+        # Default pagamento dall'anagrafica cliente del BA (relazione 1:1 via
+        # tripletta istanza+soggetto_ruolo+utility) — stesso BB dei preventivi.
+        # L'ordine NON ha IVA in testata: prendiamo solo termine + modalita.
+        if (ba.get("istanza_utility_id") is not None
+                and ba.get("soggetto_ruolo_id") is not None
+                and ba.get("utility_id") is not None):
+            cliente = ba_repo.get_cliente_defaults(
+                istanza_utility_id=int(ba["istanza_utility_id"]),
+                soggetto_ruolo_id=int(ba["soggetto_ruolo_id"]),
+                utility_id=int(ba["utility_id"]),
+            )
+            if cliente:
+                payload.update({
+                    "termine_pagamento_id": cliente.get("termine_pagamento_id"),
+                    "termine_pagamento_codice": cliente.get("termine_pagamento_codice"),
+                    "termine_pagamento_descrizione": cliente.get("termine_pagamento_descrizione"),
+                    "modalita_pagamento_id": cliente.get("modalita_pagamento_id"),
+                    "modalita_pagamento_codice": cliente.get("modalita_pagamento_codice"),
+                    "modalita_pagamento_descrizione": cliente.get("modalita_pagamento_descrizione"),
+                })
+
+    valuta = resolve_valuta_default(
+        billing_account_id=ba_id,
+        ba_obj=ba,
+        auth_user_id=auth_user_id,
+    )
+    if valuta:
+        payload.update(valuta)
+    return payload
+
+
+# ══════════════════════════════════════════════════════════
 #  2.B4 — Preventivi form-defaults
 # ══════════════════════════════════════════════════════════
 

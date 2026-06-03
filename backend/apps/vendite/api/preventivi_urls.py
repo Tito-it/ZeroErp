@@ -20,6 +20,7 @@ from apps.vendite.api.preventivi_documenti_views import (
     ApiPreventivoEmetti,
 )
 from apps.vendite.api.preventivi_views import (
+    ApiPreventiviExportView,
     ApiPreventiviList,
     ApiPreventivoContestoPricing,
     ApiPreventivoDetail,
@@ -48,6 +49,13 @@ urlpatterns = [
         "form-defaults/",
         ApiPreventivoFormDefaults.as_view(),
         name="vendite-preventivi-form-defaults",
+    ),
+    # Export CSV/XLSX lista configurabile (DEF-1). Prima della rotta lista ""
+    # per matchare il path dedicato.
+    path(
+        "export/",
+        ApiPreventiviExportView.as_view(),
+        name="vendite-preventivi-export",
     ),
     # Testata: lista + creazione
     path("", ApiPreventiviList.as_view(), name="vendite-preventivi-list"),

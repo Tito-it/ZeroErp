@@ -12,6 +12,7 @@
 | Building Block | File | Descrizione |
 |---|---|---|
 | `handle_post_json` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Handler unificato POST JSON con supporto idempotency |
+| `handle_detail_patch` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Handler standard PATCH di dettaglio: `return handle_detail_patch(request, Service().update_X, pk)`. Wrappa `handle_post_json` delegando a `update_fn(pk, payload)`; si passa il metodo bound (no magic string). Estratto 2026-06-03 (regola del 2). Adottato dalle view geo: regioni/province/indirizzi. |
 | `get_scope_user_id` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Restituisce auth_user_id per scope filtering (None per superuser) |
 | `get_risorsa_umana_id` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Risolve risorsa_umana_id dall'utente con cache per-request |
 | `DomainAPIView` | [base_views.py](../../../../backend/apps/core/api/base_views.py) | Base view per endpoint dominio con JWT + ZeroERPPermission. Supporta `model_permission = ("app_label", "model_name")` per attivare livello oggetto (v2 permessi). |
@@ -264,6 +265,22 @@ delle operazioni eccezione OVERRIDE/AGGIUNTA.
 
 ---
 
+## Anagrafiche — Helper condivisi soggetto_ruolo + contatto inline (`apps/anagrafiche/`)
+
+Estratti 2026-06-03 (regola del 2) per de-duplicare codice identico tra
+service/repository di clienti, fornitori, emittenti.
+
+| Building Block | File | Descrizione |
+| --- | --- | --- |
+| `get_or_create_soggetto_ruolo(soggetto_id, ruolo_codice)` | [db/_helpers.py](../../../../backend/apps/anagrafiche/db/_helpers.py) | Wrapper su `script.fn_get_or_create_soggetto_ruolo`; il codice ruolo (`'CL'`/`'FO'`/`'EF'`) passa come parametro `%s`. I tre `get_or_create_ruolo_*` dei repository (clienti/fornitori/emittenti) sono wrapper di una riga su questo helper. |
+| `crea_contatto_inline_se_valido(sogg_repo, soggetto_id, soggetto_ruolo_id, contatto_data)` | [services/contatti_service.py](../../../../backend/apps/anagrafiche/services/contatti_service.py) | Orchestratore contatto inline opzionale: `classify_contatto_payload` → EMPTY skip / PARTIAL `E_CONTATTO_INCOMPLETO` / VALID crea via repository. Usato in `crea_cliente` + crea fornitore. Vive in `contatti_service.py`, già single-source-of-truth della regola contatto (`feedback_classify_payload_three_state`). |
+| `create_with_constraint_mapping(fn, constraint_messages, default_message=None)` | [services/_validators.py](../../../../backend/apps/anagrafiche/services/_validators.py) | Esegue `fn` (create) mappando le violazioni UNIQUE su messaggi per-constraint (nome vincolo in `str(exc)`) → `ServiceError(E_ANAG_DUPLICATO)`. Vincoli **non mappati**: se `default_message` dato lo solleva, altrimenti **rilancia** l'IntegrityError (no mascheramento). Per tabelle multi-UNIQUE (fornitori/emittenti/clienti); evita il bug di `create_with_dedup` che riconduce qualsiasi IntegrityError a un unico messaggio. `create_with_dedup` resta per i create a UNIQUE-singolo. |
+| `extract_optional_fields(payload, *, ints, bools, strings, numeric, dates)` | [services/_validators.py](../../../../backend/apps/anagrafiche/services/_validators.py) | Costruisce un dict coi soli campi opzionali valorizzati: per categoria applica il parser (`optional_int`/`optional_bool`/`optional_str`/grezzo/`optional_iso_date`), includendo la chiave solo se non-None (il DB usa i propri default sui campi assenti). Centralizza i `_extract_*_data` di fornitori/emittenti. |
+| `require_found(entity, message)` | [services/_validators.py](../../../../backend/apps/anagrafiche/services/_validators.py) | Solleva `E_ANAG_NOT_FOUND` se `entity` è None, altrimenti la ritorna (con `assert` per il type checker). Centralizza il pattern get → require not-found → return dei `get_*` (clienti/fornitori/soggetti/emittenti). |
+| `SoggettiService.create_indirizzi_ruolo(soggetto_ruolo_id, indirizzi_data, tipo_ruolo_codice='FO')` | [services/soggetti_service.py](../../../../backend/apps/anagrafiche/services/soggetti_service.py) | Crea indirizzi a livello `soggetto_ruolo` dal payload: risolve tipo (codice→id) e indirizzo (libero o stradario→dettaglio), auto-clone dei tipi obbligatori della matrice ruolo, skip dei tipi già presenti. Operazione di dominio soggetto_ruolo: `crea_fornitore` ('FO') e `crea_cliente` ('CL') vi delegano (no più istanziazione incrociata). Non muta la lista in input. |
+
+---
+
 ## Portale + Shop — Invito veste (`apps/portale/`, `apps/shop/`)
 
 Building block per onboarding self-service vesti non-operatore
@@ -407,7 +424,7 @@ Regola pratica: **mai** leggere direttamente `listini_righe.prezzo` o `categorie
 
 ## Vendite — Successione contratti su overlap (`vendite` DB + `apps/vendite/`)
 
-Meccanismo **generico di dominio contratti** per gestire la sovrapposizione temporale (`ex_contratti_no_overlap`) su qualunque percorso di creazione contratto. Oggi consumato dal push offerta→contratto; progettato per essere riusato da creazione manuale contratto e futuri push da altre sorgenti (un aggancio, non una riscrittura). Vedi [brief](../work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md).
+Meccanismo **generico di dominio contratti** per gestire la sovrapposizione temporale (`ex_contratti_no_overlap`) su qualunque percorso di creazione contratto. Oggi consumato dal push offerta→contratto; progettato per essere riusato da creazione manuale contratto e futuri push da altre sorgenti (un aggancio, non una riscrittura). Vedi [brief](../work-done/brief-db-offerta-push-successione-contratto-overlap.md).
 
 | Building Block | File | Descrizione |
 |---|---|---|
@@ -497,6 +514,7 @@ ai domini funzionali).
 | `UiService.get_catalogo` | [ui_service.py](../../../../backend/apps/ui/services/ui_service.py) | Catalogo per la modale: riusa `get_lista_config()` per filtrare BLOCCATE (single source of truth permessi), arricchisce con metadati ricchi via `list_colonne_by_codice`. 2 round-trip totali, error handling centralizzato. |
 | `ListaPreferenzaService.upsert` | [lista_preferenza_service.py](../../../../backend/apps/ui/services/lista_preferenza_service.py) | UPSERT preferenza con `PayloadValidator` (whitelist anti-injection: `{colonne, ordinamento, filtri, pagina_dimensione}`; per colonna: `{codice, ordine, larghezza, visibile, fissata}`). `pagina_dimensione` cap a `MAX_LIMIT=200`. Snapshot `preset_base_id` + `preset_base_data_update` ritornati al chiamante per UX badge. |
 | `ListaPreferenzaService.delete` | [lista_preferenza_service.py](../../../../backend/apps/ui/services/lista_preferenza_service.py) | DELETE idempotente. Solleva `E_UI_LISTA_NON_TROVATA` se la lista stessa non esiste (protezione anti-tampering URL). |
+| `parse_export_format` / `build_export_response` | [export_helpers.py](../../../../backend/apps/ui/api/export_helpers.py) | **Coda invariante export liste (DEF-1, estrazione regola del 2 2026-06-02).** `parse_export_format(request)` valida `?formato=csv\|xlsx` (solleva `E_UI_EXPORT_FORMAT_INVALID`). `build_export_response(request, *, lista_codice, results, total, filtri_applicati, fmt)` fa il guard limite (`E_UI_EXPORT_LIMIT_EXCEEDED`, cap `EXPORT_MAX_ROWS`), risolve le colonne dalla config runtime (`UiService.get_lista_config` + `UiRepository.list_colonne_by_codice` + `ListaExportService.select_colonne_visibili_da_config`), renderizza e ritorna `HttpResponse` con `Content-Disposition`. Le 4 view export (clienti/soggetti/fornitori/contratti) mantengono solo il parsing dei propri filtri + la chiamata al proprio service con `limit=EXPORT_MAX_ROWS+1` + `resolve_filtri_export_label`. **Mock nei test**: puntare `apps.ui.api.export_helpers.{UiService,UiRepository,ListaExportService}`, non il modulo view. |
 | `ApiListaConfigView` / `ApiListaCatalogoView` / `ApiListaPreferenzaView` | [views.py](../../../../backend/apps/ui/api/views.py) | Le 3 view DRF per i 4 endpoint. Tutte `skip_area_check=True`. PUT preferenza usa `handle_post_json` con `require_idempotency_key=True`. |
 
 **Endpoint** (vedi [api_ui_liste.md](../../backend/ui/manual/api_ui_liste.md) per il contratto completo):

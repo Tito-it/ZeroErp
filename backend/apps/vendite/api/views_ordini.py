@@ -1,0 +1,327 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: API views per vendite.ordini (scheletro CRUD + conferma + push singolo).
+#        Espone: lista DEF-8 + export, testata CRUD, righe + componenti BoM,
+#        conferma (DRAFT->CONFERMATO) e push singolo a commessa. La transizione
+#        di stato e' enforced dal trigger DB trgfn_ordini_guard_transizione_*;
+#        il service traduce gli errori P0001 in ServiceError -> envelope uniforme.
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Any
+
+from django.http import HttpResponse, JsonResponse
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers
+from rest_framework.request import Request
+
+from apps.core.api.base_views import DomainAPIView
+from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.payload_validators import (
+    paginated_envelope,
+    parse_list_params,
+    qp_bool,
+    qp_str,
+)
+from apps.core.api.success_responses import success_response
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.services import ordini_service
+
+# Codice lista configurabile (catalogo ui.lista_definizione id=7). Usato
+# dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
+_LISTA_CODICE_ORDINI = "vendite.ordini"
+
+
+# Scopo: Converte un query param intero opzionale (None se assente o vuoto).
+def _qp_int_optional(raw: str | None, name: str) -> int | None:
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        return int(raw.strip())
+    except ValueError as exc:
+        raise ValueError(f"{name}_invalid") from exc
+
+
+# Scopo: Parse data ISO opzionale (None se assente/vuota).
+def _qp_date_optional(raw: str | None, name: str) -> date | None:
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        return date.fromisoformat(raw.strip())
+    except ValueError as exc:
+        raise ValueError(f"{name}_invalid") from exc
+
+
+# Scopo: Estrae i filtri lista comuni (list + export) dalla query string. NESSUN
+#        default temporale backend: il default `data_da` (anno-1) lo applica la UI
+#        (allineato a preventivi/offerte; evita non-determinismo `date.today()`
+#        lato API).
+def _extract_list_filters(qp) -> dict[str, Any]:
+    return {
+        "stato_codice": qp_str(qp.get("stato_codice_interno")),
+        "billing_account_id": _qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
+        "utility_id": _qp_int_optional(qp.get("utility_id"), "utility_id"),
+        "data_da": _qp_date_optional(qp.get("data_da"), "data_da"),
+        "data_al": _qp_date_optional(qp.get("data_a"), "data_a"),
+    }
+
+
+class ApiOrdiniList(DomainAPIView):
+    """GET/POST /api/v1/vendite/ordini/ — lista paginata + create BOZZA."""
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_ordini_list",
+        parameters=[
+            OpenApiParameter(name="search", type=str, required=False),
+            OpenApiParameter(name="stato_codice_interno", type=str, required=False,
+                             description="codice_interno stato (DRAFT | CONFERMATO | ...)"),
+            OpenApiParameter(name="billing_account_id", type=int, required=False),
+            OpenApiParameter(name="utility_id", type=int, required=False),
+            OpenApiParameter(name="data_da", type=str, required=False,
+                             description="Data ISO; default anno-1."),
+            OpenApiParameter(name="data_a", type=str, required=False),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False,
+                             description="campo_sorgente catalogo 'vendite.ordini' "
+                                         "(numero | data | ragione_sociale_completa | "
+                                         "ba_codice | utility_codice | totale_doc | "
+                                         "fatturazione_trigger | stato_descrizione)."),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={200: inline_serializer(
+            name="VenditeOrdiniListResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Lista paginata ordini con filtri standard + scope emittente.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        p = parse_list_params(qp, default_order="data")
+        f = _extract_list_filters(qp)
+        results, total = ordini_service.list_ordini_rows(
+            search=p["search"],
+            auth_user_id=get_scope_user_id(request),
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            **f,
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+
+    # Scopo: Crea nuovo ordine in stato BOZZA (DRAFT).
+    def post(self, request: Request) -> JsonResponse:
+        return handle_post_json(request, handler=ordini_service.crea_ordine)
+
+
+class ApiOrdiniExportView(DomainAPIView):
+    """GET /api/v1/vendite/ordini/export/?formato=csv|xlsx (DEF-1).
+
+    NB: parametro `formato` (italiano), NON `format` (magic param DRF —
+    memoria feedback_drf_format_magic_param).
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_ordini_export",
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="search", type=str, required=False),
+            OpenApiParameter(name="stato_codice_interno", type=str, required=False),
+            OpenApiParameter(name="billing_account_id", type=int, required=False),
+            OpenApiParameter(name="utility_id", type=int, required=False),
+            OpenApiParameter(name="data_da", type=str, required=False),
+            OpenApiParameter(name="data_a", type=str, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Export CSV/XLSX della lista ordini. Filtri identici al list endpoint;
+    #        fetcha fino a EXPORT_MAX_ROWS+1 per intercettare l'overflow.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        fmt = parse_export_format(request)
+        p = parse_list_params(qp, default_order="data")
+        f = _extract_list_filters(qp)
+        results, total = ordini_service.list_ordini_rows(
+            search=p["search"],
+            auth_user_id=get_scope_user_id(request),
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            **f,
+        )
+        filtri_applicati = ordini_service.resolve_filtri_export_label(
+            search=p["search"],
+            stato_codice=f["stato_codice"],
+            billing_account_id=f["billing_account_id"],
+            utility_id=f["utility_id"],
+            data_da=f["data_da"],
+            data_al=f["data_al"],
+        )
+        return build_export_response(
+            request,
+            lista_codice=_LISTA_CODICE_ORDINI,
+            results=results,
+            total=total,
+            filtri_applicati=filtri_applicati,
+            fmt=fmt,
+        )
+
+
+class ApiOrdineDetail(DomainAPIView):
+    """GET/PATCH/DELETE /api/v1/vendite/ordini/<ordine_id>/."""
+
+    area_funzionale = "vendite"
+
+    # Scopo: Dettaglio testata ordine + capability.
+    def get(self, request: Request, ordine_id: int) -> JsonResponse:
+        return success_response(ordini_service.get_ordine(int(ordine_id)))
+
+    # Scopo: Aggiorna testata ordine (solo DRAFT). PATCH usa request.data
+    #        (api.md §handle_post_json vs request.data): DRF ha gia' parsato il
+    #        body; handle_post_json rileggerebbe il raw consumato.
+    def patch(self, request: Request, ordine_id: int) -> JsonResponse:
+        return success_response(
+            ordini_service.aggiorna_ordine(int(ordine_id), dict(request.data)),
+        )
+
+    # Scopo: Hard-delete ordine (abbandono bozza, solo DRAFT).
+    def delete(self, request: Request, ordine_id: int) -> JsonResponse:
+        return success_response(ordini_service.elimina_ordine(int(ordine_id)))
+
+
+class ApiOrdineConferma(DomainAPIView):
+    """POST /api/v1/vendite/ordini/<ordine_id>/conferma/ (DRAFT->CONFERMATO)."""
+
+    area_funzionale = "vendite"
+
+    def post(self, request: Request, ordine_id: int) -> JsonResponse:
+        return success_response(ordini_service.conferma(int(ordine_id)))
+
+
+class ApiOrdinePush(DomainAPIView):
+    """POST /api/v1/vendite/ordini/<ordine_id>/push/ — push singolo a commessa."""
+
+    area_funzionale = "vendite"
+
+    def post(self, request: Request, ordine_id: int) -> JsonResponse:
+        return success_response(ordini_service.push_a_commessa(int(ordine_id)))
+
+
+class ApiOrdineRighe(DomainAPIView):
+    """GET/POST /api/v1/vendite/ordini/<ordine_id>/righe/."""
+
+    area_funzionale = "vendite"
+
+    # Scopo: Lista righe dell'ordine.
+    def get(self, request: Request, ordine_id: int) -> JsonResponse:
+        return success_response(ordini_service.list_righe(int(ordine_id)))
+
+    # Scopo: Aggiunge una riga (solo DRAFT). Pricing via BB condiviso.
+    def post(self, request: Request, ordine_id: int) -> JsonResponse:
+        auth_user_id = get_scope_user_id(request)
+        return handle_post_json(
+            request,
+            handler=lambda payload: ordini_service.gestisci_riga(
+                int(ordine_id), payload, auth_user_id=auth_user_id,
+            ),
+        )
+
+
+class ApiOrdineRigaDetail(DomainAPIView):
+    """PATCH/DELETE /api/v1/vendite/ordini/<ordine_id>/righe/<riga_id>/."""
+
+    area_funzionale = "vendite"
+
+    def patch(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
+        return success_response(
+            ordini_service.aggiorna_riga(
+                int(ordine_id), int(riga_id), dict(request.data),
+                auth_user_id=get_scope_user_id(request),
+            ),
+        )
+
+    def delete(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
+        return success_response(
+            ordini_service.elimina_riga(int(ordine_id), int(riga_id)),
+        )
+
+
+class ApiOrdineRigaPreviewComponenti(DomainAPIView):
+    """POST /api/v1/vendite/ordini/<ordine_id>/righe/preview-componenti/.
+
+    Preview read-only dei componenti BoM per il drawer riga (pre-save).
+    """
+
+    area_funzionale = "vendite"
+
+    def post(self, request: Request, ordine_id: int) -> JsonResponse:
+        auth_user_id = get_scope_user_id(request)
+
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            righe = ordini_service.preview_componenti_riga(
+                int(ordine_id),
+                articolo_id=str(payload.get("articolo_id")),
+                uom_operativa_id=payload.get("uom_operativa_id"),
+                quantita=payload.get("quantita"),
+                auth_user_id=auth_user_id,
+            )
+            return {"componenti": righe}
+
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiOrdineRigaComponentiList(DomainAPIView):
+    """GET /api/v1/vendite/ordini/<ordine_id>/righe/<riga_id>/componenti/."""
+
+    area_funzionale = "vendite"
+
+    def get(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
+        solo_attivi = qp_bool(request.query_params.get("solo_attivi"), default=True)
+        return success_response(
+            ordini_service.list_componenti_riga(
+                int(ordine_id), int(riga_id), solo_attivi=solo_attivi,
+            ),
+        )
+
+
+class ApiOrdineRigaComponenteDetail(DomainAPIView):
+    """PATCH/DELETE /.../righe/<riga_id>/componenti/<componente_id>/."""
+
+    area_funzionale = "vendite"
+
+    def patch(
+        self, request: Request, ordine_id: int, riga_id: int, componente_id: int,
+    ) -> JsonResponse:
+        return success_response(
+            ordini_service.update_componente(
+                int(ordine_id), int(riga_id), int(componente_id), dict(request.data),
+            ),
+        )
+
+    def delete(
+        self, request: Request, ordine_id: int, riga_id: int, componente_id: int,
+    ) -> JsonResponse:
+        return success_response(
+            ordini_service.delete_componente(
+                int(ordine_id), int(riga_id), int(componente_id),
+            ),
+        )

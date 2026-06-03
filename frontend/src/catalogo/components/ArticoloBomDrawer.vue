@@ -492,7 +492,7 @@ function buildRigaActions(row) {
     :visible="visible"
     @update:visible="emit('update:visible', $event)"
     position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
+    :style="{ width: DRAWER_WIDTH.WIDE }"
   >
     <template #header>
       <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_bom')" :icon="MANAGE_ICONS.BOM" />

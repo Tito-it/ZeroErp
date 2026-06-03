@@ -1,0 +1,33 @@
+<script setup>
+// Wrapper thin: cabla il BB `VenditeNoteDrawer` sull'ordine corrente.
+// Simmetrico a Preventivo/Contratto/Offerta NoteDrawer; cambia solo dominio +
+// title. Il basePath note diventa `/vendite/ordini/<id>` → `/note/` (BE
+// PartitionedNoteRepository target_tipo='ORDINE').
+import { useI18n } from 'vue-i18n'
+import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
+
+const { t } = useI18n()
+
+defineProps({
+  visible: { type: Boolean, default: false },
+  ordineId: { type: [Number, null], default: null },
+  // Righe dell'ordine gia' caricate nel drawer padre: popolano il select RIGA
+  // del form note. Le righe ordine espongono `articolo_codice`/`descrizione`.
+  righe: { type: Array, default: () => [] },
+})
+const emit = defineEmits(['update:visible', 'saved'])
+</script>
+
+<template>
+  <VenditeNoteDrawer
+    :visible="visible"
+    @update:visible="emit('update:visible', $event)"
+    dominio="ordini"
+    :id="ordineId"
+    :title="t('vendite.ordini.note_titolo')"
+    :righe="righe"
+    code-field="articolo_codice"
+    desc-field="descrizione"
+    @saved="emit('saved')"
+  />
+</template>

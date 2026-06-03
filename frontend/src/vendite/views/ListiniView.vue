@@ -5,6 +5,7 @@
 // dialog test resolver prezzo. Cache versioni invalidata sui salvataggi.
 import { ref } from 'vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useDrawerSavedListRefresh } from '../../core/composables/useDrawerSavedListRefresh'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { READONLY_DOMAINS } from '../../core/constants'
 import { useListiniStore } from '../stores/listini'
@@ -17,6 +18,7 @@ import TestResolverDialog from '../components/TestResolverDialog.vue'
 
 const drawer = useDrawerState()
 const store = useListiniStore()
+const { onDrawerSaved } = useDrawerSavedListRefresh(store, drawer)
 useReadonlyMode(READONLY_DOMAINS.VENDITE)
 
 // Drawer righe prezzo (VersioneDrawer)
@@ -35,16 +37,6 @@ const cloneSourceListino = ref(null)
 
 // Test resolver
 const resolverVisible = ref(false)
-
-async function onDrawerSaved(result) {
-  store.filters.offset = 0
-  await store.fetchList()
-  if (result && result.id && drawer.state.mode === 'create') {
-    drawer.editRow({ id: result.id }, 'id')
-  } else {
-    drawer.close()
-  }
-}
 
 const versioneListinoDescrizione = ref('')
 const versioneListinoCodice = ref('')

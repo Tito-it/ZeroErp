@@ -9,11 +9,12 @@
 > • [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento)   
 > • [config.valute](/dbzero/config/tabelle/valute)  
 > • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)  
-> • [config.causali_trasporto](/dbzero/config/tabelle/causali_trasporto)  
-> • [config.aspetti_beni](/dbzero/config/tabelle/aspetti_beni)  
-> • [config.modalita_addebito_trasporto](/dbzero/config/tabelle/modalita_addebito_trasporto)  
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)    
+>
+**Viste correlate:**
+>
+> • [vendite.vw_ordini_lista](/dbzero/vendite/views/vw_ordini_lista) — lista UI configurabile  
 
 ---
 ### 🎯 Scopo Principale
@@ -99,8 +100,11 @@ viceversa). RLS attivata con `ALTER TABLE … ENABLE ROW LEVEL SECURITY`
 
 * **Serie / Numero / Anno** costituiscono la chiave logica per la numerazione manuale o automatica.  
   L’indice univoco `uq_ordini_v_anno_serie_numero` assicura l’unicità solo se `numero IS NOT NULL`.
-* **Trigger di protezione**:  
-  `trg_ordini_a10_upd_v_protect_num` → impedisce modifiche a campi di numerazione dopo conferma.  
+* **Generazione numero**: il trigger `trgfn_ordini_gen_codice` (BEFORE INSERT)
+  assegna `numero` via `script.fn_generate_codice('ordine')` se NULL/vuoto →
+  **valorizzato già all'INSERT, anche in BOZZA** (in pratica mai NULL; l'indice
+  parziale `WHERE numero IS NOT NULL` è difensivo). La colonna è poi **immutabile**
+  (lock colonne su `numero`).  
 * **UID** (`uuid`) – identificatore universale per import/export o sincronizzazione API.
 
 > *Gli ordini possono essere generati anche da sistemi esterni (CRM, portali clienti, configuratori) e successivamente importati nel gestionale tramite `sorgente_tipo_id` + `sorgente_uid`.*
@@ -110,9 +114,13 @@ viceversa). RLS attivata con `ALTER TABLE … ENABLE ROW LEVEL SECURITY`
 ### Stato, logistica e pagamenti
 
 * **Stato documento**: `stato_doc_ordine_id` → `config.stati_doc_ordini`, determina le regole operative (bozza, confermato, spedito, fatturato, annullato).  
-* **Trasporto e consegna**: collegamenti a `causale_trasporto_id`, `aspetto_bene_id`, `modalita_addebito_trasporto_id`, `vettore_soggetto_ruolo_id`.  
-  Questi valori consentono la generazione diretta dei DDT con parametri coerenti.  
-* **Pagamento**: `modalita_pagamento_id`, `termine_pagamento_id`, `giorni_pagamento`, `fine_mese` definiscono le condizioni economiche.  
+* **Trasporto e consegna**: gestiti sul **DDT a valle**, non sulla testata. Le
+  colonne trasporto (`causale_trasporto_id`, `aspetto_bene_id`,
+  `modalita_addebito_trasporto_id`, `vettore_soggetto_ruolo_id`) sono state
+  **rimosse** dalla testata (refactor `20251027-01-ordini-refactor-testata`).  
+* **Pagamento**: `modalita_pagamento_id`, `termine_pagamento_id` definiscono le
+  condizioni economiche. `giorni_pagamento`/`fine_mese` **non sono più in testata**
+  (rimossi nello stesso refactor): derivano da `billing_account`.  
 * **Valuta e cambio**: `valuta_id`, `tasso_cambio` (default = 1).  
 
 ---
@@ -140,12 +148,12 @@ I campi di sintesi (`imponibile_tot`, `sconto_tot`, `iva_tot`, `totale_doc`) rap
 
 * **FK principali**:
   * Cliente → `anagrafiche.soggetti_ruoli`
+  * Agente → `anagrafiche.soggetti_ruoli` (`fk_ordini_v_agente_ruolo`, nullable)
   * Billing Account → `anagrafiche.billing_account`
   * Stato → `config.stati_doc_ordini`
   * Valuta → `config.valute`
   * Pagamento e termini → `config.modalita_pagamento`, `config.termini_pagamento`
-  * Aspetto, causale e modalità trasporto → `config.aspetti_beni`, `config.causali_trasporto`, `config.modalita_addebito_trasporto`
-  * Sorgente → `config.sorgenti`
+  * Sorgente import → `config.sorgenti` (idempotenza CRM, distinta da `documento_origine_*`)
 
 * **Indici**:
   * `ix_ordini_v_cliente_statoid_data` → per dashboard cliente/stato.  
@@ -172,10 +180,52 @@ manualmente per singolo ordine.
 
 ---
 
+### Agente / venditore (2026-06-03)
+
+Colonna `agente_soggetto_ruolo_id` (FK ad `anagrafiche.soggetti_ruoli`, **nullable**):
+l'agente/venditore associato all'ordine, per provvigioni e reporting commerciale.
+
+* **Nullable**: non tutti gli ordini hanno un agente.
+* **FK semplice**, simmetrica al cliente (`fk_ordini_v_cliente_ruolo`): nessun guard
+  `child_requires_active_parent` dedicato sulla testata (l'attivo del soggetto è già
+  garantito a monte da `soggetti_ruoli`). Indice FK delegato a
+  `dbops.apply_fk_index_policy()`.
+* **Display**: nella vista `vw_ordini_lista` come `agente_denominazione` (via
+  `soggetti_ruoli` → `soggetti`).
+
+---
+
+### Documento di origine — provenienza upstream (A1, 2026-06-03)
+
+Quando l'ordine **nasce da un preventivo o un'offerta** (conversione commerciale),
+la provenienza è tracciata da una coppia di colonne tipizzate dedicate:
+
+| Colonna | Tipo | Note |
+| --- | --- | --- |
+| `documento_origine_tipo` | `varchar` + CHECK | vocabolario chiuso `PREVENTIVO` / `OFFERTA` (stesso idioma di `fatturazione_trigger`) |
+| `documento_origine_id` | `bigint` | riferimento **polimorfo**: `preventivi.id` o `offerte_commerciali.id` secondo il tipo |
+
+* **Niente UNIQUE** sul link → un preventivo/offerta può generare **più ordini**
+  (riordini, consegne parziali). CHECK di **co-presenza** tipo↔id
+  (`chk_ordini_documento_origine_copres`): o entrambi NULL (ordine diretto) o entrambi
+  valorizzati.
+* **Riferimento polimorfo**: nessuna FK fisica unica (punterebbe a due tabelle);
+  l'integrità è garantita alla **valorizzazione** (service di conversione), non da una FK.
+* **Distinto da `sorgente_tipo_id`/`sorgente_uid`**: quelle colonne servono
+  all'**idempotenza d'import da sistemi esterni** (CRM/portali, FK `config.sorgenti`,
+  con UNIQUE `uq_ordini_v_sorgente_fk`); `documento_origine_*` traccia invece la
+  **conversione interna** di un documento commerciale. Sono meccanismi separati con
+  scopi diversi (la scelta A1 — colonne dedicate senza UNIQUE — nasce proprio per non
+  imporre il vincolo 1:1 dell'idempotenza import alla conversione).
+* **Display**: nella vista `vw_ordini_lista` come `documento_origine_codice`
+  (`preventivi.numero` | `offerte_commerciali.codice`, risolto per tipo).
+
+---
+
 ### Regole di gestione
 
 1. **Creazione** – ammessi solo stati iniziali (*bozza*).
-2. **Aggiornamento numerazione** – possibile solo da trigger di sistema durante conferma ordine.
+2. **Numerazione** – assegnata dal trigger `trgfn_ordini_gen_codice` all'INSERT (anche in BOZZA) se `numero` è NULL; immutabile dopo (lock colonne).
 3. **Cancellazione** – vietata se ordine gia` confermato o collegato a DDT/fatture (vincolo logico).
 4. **Cambio valuta** – ammesso solo finche` non esistono righe evase.
 5. **Sorgente esterna** – se popolata, blocca rinumerazione automatica e update su `serie/numero`.  

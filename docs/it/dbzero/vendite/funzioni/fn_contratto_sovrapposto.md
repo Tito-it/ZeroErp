@@ -14,10 +14,11 @@ CREATE OR REPLACE FUNCTION vendite.fn_contratto_sovrapposto(p_billing_account_id
  STABLE
 AS $function$
 -- Scopo:
---   Rilevamento read-only del contratto non abortito la cui
---   finestra temporale si sovrappone alla quintupla del nuovo
---   contratto. Cuore del meccanismo generico di successione
---   (brief §3.2.1). NON solleva errori: ritorna id o NULL.
+--   Rilevamento read-only del contratto VINCOLANTE (partecipante
+--   all'overlap: non abortito e non in bozza) la cui finestra
+--   temporale si sovrappone alla quintupla del nuovo contratto.
+--   Cuore del meccanismo generico di successione (brief §3.2.1).
+--   NON solleva errori: ritorna id o NULL.
 --
 -- Parametri: i 5 attributi della chiave dell'EXCLUDE
 --   ex_contratti_no_overlap (billing_account, istanza_utility,
@@ -25,6 +26,8 @@ AS $function$
 --
 -- Ritorno:
 --   id del contratto "incumbent" sovrapposto, oppure NULL.
+--   I contratti in BOZZA non contano (coerente con l'EXCLUDE che li
+--   esclude via partecipa_overlap_snapshot).
 --
 -- Daterange: COALESCE simmetrico identico alla colonna GENERATED
 --   contratti.validita (linee-guida-sql §7b) per garantire che &&
@@ -46,7 +49,7 @@ BEGIN
        AND c.istanza_utility_id = p_istanza_utility_id
        AND c.utility_id         = p_utility_id
        AND c.ambito             = p_ambito
-       AND NOT c.is_abortito_snapshot
+       AND c.partecipa_overlap_snapshot
        AND c.validita && v_finestra
      ORDER BY
          -- "incumbent": prima il contratto che contiene la data
@@ -60,7 +63,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_contratto_sovrapposto(p_billing_account_id bigint, p_istanza_utility_id bigint, p_utility_id integer, p_ambito character varying, p_valido_dal date, p_valido_al date)
-IS 'Rilevamento read-only (STABLE) del contratto non abortito sovrapposto alla quintupla (billing_account, istanza_utility, utility, ambito, periodo) di un nuovo contratto. Ritorna l''id dell''incumbent o NULL. Meccanismo generico di successione (brief 2026-05-31); riusabile come pre-check per preview FE. Daterange con COALESCE simmetrico identico a contratti.validita.';
+IS 'Rilevamento read-only (STABLE) del contratto VINCOLANTE (partecipa_overlap_snapshot: non abortito e non in bozza) sovrapposto alla quintupla (billing_account, istanza_utility, utility, ambito, periodo). Ritorna l''id dell''incumbent o NULL. I DRAFT non contano. Meccanismo generico di successione. Daterange con COALESCE simmetrico identico a contratti.validita. rev 2026-06-02.';
 ```
 
 ---

@@ -42,6 +42,19 @@ La tabella **`ui.lista_colonna`** è il **catalogo delle colonne disponibili** p
 | `gruppo` / `gruppo_ordine` | Raggruppamento nella modale di personalizzazione (es. "Dati anagrafici", "Dati fiscali"). |
 | `sensibile` | `TRUE`: deny-list invertita → blocco default. `FALSE`: accesso pieno salvo restrizioni. |
 | `formato` | Hint di formattazione per il frontend (es. `currency_eur`, `date_short`, `percent_2`, `yesno`). |
+| `larghezza_default` | Larghezza suggerita in pixel. Fa anche da **contributo al packing a somma** del ritiro dinamico (vedi `priorita`). |
+| `priorita` | `SMALLINT NOT NULL DEFAULT 50`. Peso di permanenza per il **ritiro dinamico** delle colonne lato FE. |
+
+---
+
+### Ritiro dinamico delle colonne (`priorita`)
+
+Quando lo spazio orizzontale non basta (tipicamente all'apertura della sidebar), il componente `<ListaConfigurabile>` **ritira** le colonne meno prioritarie in una riga di espansione invece di attivare la scrollbar — zero dati persi. La logica è un **packing a somma**: ogni colonna contribuisce con la sua `larghezza_default`; quando la somma supera la larghezza del contenitore si ritirano per prime le colonne a `priorita` più bassa, finché la somma rientra. Non c'è soglia per-colonna e non c'è compressione intermedia.
+
+* **Più alto = resiste più a lungo.** Default `50` (mid-pack): le liste che non valorizzano `priorita` restano neutre e si ritirano da destra (vedi tiebreaker).
+* **Tiebreaker**: a parità di `priorita` il FE usa `ordine_default` (si ritira prima la colonna più a destra).
+* **Mai ritirate**: `tipo_colonna IN ('identificatore','azione')` e colonne `fissata` hanno priorità implicita infinita lato FE, **indipendente** dal valore stoccato.
+* **Attributo globale di catalogo**: `priorita` **non** è overridabile per preset né per preferenza utente. `fn_resolve_lista_config` la legge **fresca** da `ui.lista_colonna` ad ogni risoluzione, così un cambio amministrativo si propaga a tutti senza reset delle preferenze. È esposta per ogni colonna nell'output della funzione (contratto API).
 
 ---
 

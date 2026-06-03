@@ -386,10 +386,14 @@ nuovo template e disabilitare il precedente.
   - `valido_al < valido_dal`;
   - versione gia' in `PUBBLICATA` o `OBSOLETA` (idempotenza per design:
     una seconda chiamata dopo la pubblicazione iniziale ritorna 400 con
-    "stato_corrente=PUBBLICATA");
-  - violazione GiST EXCLUDE residua
-    `ex_template_documenti_versioni_no_overlap_pubblicata`: caso anomalo,
-    per esempio nuova decorrenza uguale a una versione gia' PUBBLICATA.
+    "stato_corrente=PUBBLICATA").
+- `409` `E_DOCUMENTI_VERSIONE_OVERLAP`: violazione EXCLUDE gist parziale
+  `ex_template_documenti_versioni_no_overlap_pubblicata` (ripristino enforcement
+  2026-06-02, migration `20260602-05`) — le date si sovrappongono con un'altra
+  versione PUBBLICATA attiva e l'auto-close non risolve (es. nuova decorrenza
+  uguale a una versione gia' PUBBLICATA). Codice dedicato 409, armonizzato con
+  gli altri overlap (`E_VENDITE_PROMO_OVERLAP` / `E_VENDITE_LISTINO_VERSIONE_OVERLAP`);
+  prima ricadeva nel generico `E_DOCUMENTI_VALIDATION` (400).
 - `404` `E_DOCUMENTI_NOT_FOUND`: template/versione inesistente o fuori scope.
 
 #### Auto-close versione precedente

@@ -350,7 +350,7 @@ complessità all'offerta.
 > "un seed" è in realtà l'introduzione di una nuova tassonomia + una colonna
 > `contratti.causale_cessazione_id` + il retrofitting del meccanismo di cessazione
 > esistente per leggerla. È **scope creep** rispetto al brief offerta (vedi
-> [analisi-offerta-commerciale-db.md](analisi-offerta-commerciale-db.md) §2.4 nota
+> [analisi-offerta-commerciale-db.md](../work-done/analisi-offerta-commerciale-db.md) §2.4 nota
 > "Causale RECESSO rimossa dal brief offerta").
 >
 > **Decisione conseguente**: in v1 il recesso si gestisce con i meccanismi di

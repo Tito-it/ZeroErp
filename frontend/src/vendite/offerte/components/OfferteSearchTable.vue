@@ -1,141 +1,124 @@
 <script setup>
-// Scopo: DataTable paginata offerte commerciali con search, filtri
-//        stato/utility/data, empty state. Click riga = apre drawer in edit.
-//        Pattern allineato a PreventiviList (frontend-standards "Pattern lista").
+// Scopo: Lista offerte commerciali configurabile (DEF-8). Migrazione 2026-06-03:
+// <ListaConfigurabile codice="vendite.offerte"> con ritiro dinamico colonne
+// (anti-scrollbar), personalizzazione colonne, export CSV/XLSX. Scaffolding
+// (useSearchTable + ref lista + export + pageActions) centralizzato in
+// useListaConfigurabilePage; qui restano filtri custom, slot e azioni di riga.
+// Righe dalla vista canonica self-contained `vw_offerte_commerciali_lista`:
+// cliente=`ragione_sociale_completa`, id.fiscale=`id_fiscale_univoco_cf_piva`,
+// listino_codice + listino_versione_codice + is_scaduta materializzati in vista.
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Column from 'primevue/column'
-import DataTable from 'primevue/datatable'
+import Tag from 'primevue/tag'
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
-import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
 
 import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
+import ListaConfigStatusTag from '../../../core/components/ListaConfigStatusTag.vue'
 import ReadonlyBadge from '../../../core/components/ReadonlyBadge.vue'
 import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
-import SearchHint from '../../../core/components/SearchHint.vue'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
+import ListaConfigurabile from '../../../core/components/ListaConfigurabile.vue'
+import ExportDialog from '../../../core/components/ExportDialog.vue'
 import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
-import { useSearchTable } from '../../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
-import { displayDate, toDateString } from '../../../core/utils/date'
+import { toDateString } from '../../../core/utils/date'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { STATI_OFFERTA_SEGNALA_SCADENZA } from '../constants'
+import { exportOfferte } from '../api/offerteApi'
 import { useOfferteStore } from '../stores/offerte'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useOfferteStore()
 const isBlocked = useInjectBlocked()
-// `defaultSortField` DEVE corrispondere a un `<Column field="X" sortable>`
-// visibile nel template: PrimeVue mostra l'indicatore di sort solo su una
-// colonna esistente; se punta a un field "fantasma" il render produce
-// artefatti grafici (es. underline doppia sotto le label). Sort default
-// per UX: `validita_dal` discendente (offerte con inizio validita' piu'
-// recente in cima). Coerente col `store.filters.order_by` di default.
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'validita_dal',
-  defaultSortOrder: 'desc',
+
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty,
+  exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  exportFn: exportOfferte,
+  getExportParams: (fmt) => buildExportParams(fmt),
+  newTooltipKey: 'vendite.offerte.nuova_offerta',
+  onNew: () => emit('new'),
+  searchTableOptions: { defaultSortField: 'validita_dal', defaultSortOrder: 'desc' },
 })
 
-// --- Filtri ---
+// --- Filtri custom (toolbar caller) ---
 const statoFilter = ref(store.filters.stato_codice_interno ?? null)
 const utilityFilter = ref(store.filters.utility_id ?? null)
-const dataDaFilter = ref(
-  store.filters.data_da ? new Date(`${store.filters.data_da}T00:00:00`) : null,
-)
-const dataAlFilter = ref(
-  store.filters.data_a ? new Date(`${store.filters.data_a}T00:00:00`) : null,
-)
+const dataDaFilter = ref(store.filters.data_da ? new Date(`${store.filters.data_da}T00:00:00`) : null)
+const dataAlFilter = ref(store.filters.data_a ? new Date(`${store.filters.data_a}T00:00:00`) : null)
 // Toggle "mostra storico revisioni" (negazione del filtro store).
 // mostraStorico=ON ⇔ solo_attiva=false. computed get/set per restare
-// allineato al filtro reale anche se cambia altrove (reset, logout,
-// ripristino sessione): single source of truth = store. Pattern speculare
-// a PreventiviList.vue.
+// allineato al filtro reale anche se cambia altrove (reset, logout): single
+// source of truth = store.
 const mostraStorico = computed({
   get: () => !store.filters.solo_attiva,
   set: (val) => { store.filters.solo_attiva = !val },
 })
 
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('vendite.offerte.nuova_offerta'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
-])
-
-function onStatoChange() {
-  store.filters.stato_codice_interno = statoFilter.value
-  applyFilters()
+// Params export: i filtri vivono in store.filters; `search` dal ref immediato.
+// I filtri data BE si chiamano validita_dal_min/validita_dal_max (views_offerte).
+function buildExportParams(format) {
+  const p = { formato: format }
+  if (searchText.value?.trim()) p.search = searchText.value.trim()
+  if (store.filters.stato_codice_interno != null) p.stato_codice_interno = store.filters.stato_codice_interno
+  if (store.filters.utility_id != null) p.utility_id = store.filters.utility_id
+  if (store.filters.data_da) p.validita_dal_min = store.filters.data_da
+  if (store.filters.data_a) p.validita_dal_max = store.filters.data_a
+  p.solo_attiva = store.filters.solo_attiva ? 'true' : 'false'
+  if (store.filters.order_by) {
+    p.order_by = store.filters.order_by
+    p.order_dir = store.filters.order_dir || 'desc'
+  }
+  return p
 }
 
-function onUtilityChange() {
-  store.filters.utility_id = utilityFilter.value
-  applyFilters()
-}
-
+function onStatoChange() { store.filters.stato_codice_interno = statoFilter.value; applyFilters() }
+function onUtilityChange() { store.filters.utility_id = utilityFilter.value; applyFilters() }
 function onDataDaChange() {
   store.filters.data_da = dataDaFilter.value ? toDateString(dataDaFilter.value) : null
   applyFilters()
 }
-
 function onDataAlChange() {
   store.filters.data_a = dataAlFilter.value ? toDateString(dataAlFilter.value) : null
   applyFilters()
 }
-
 // Il setter del computed scrive gia' lo store; qui basta triggerare la fetch.
-function onMostraStoricoChange() {
-  applyFilters()
-}
+function onMostraStoricoChange() { applyFilters() }
 
-function onRowClick(event) {
-  emit('row-click', event.data)
-}
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) { emit('row-click', data) }
 
-// --- Azioni di riga (PDF + Note) — pattern allineato a contratti/preventivi ---
-// `@click.stop` implicito tramite RowActionsMenu (kebab) per non triggerare
-// il row-click che apre il drawer.
+// ── Sub-dialog PDF + drawer note (azioni di riga) ──
 const pdfDialogVisible = ref(false)
 const pdfDialogOfferta = ref(null)
 const noteDrawerVisible = ref(false)
 const noteDrawerOfferta = ref(null)
 
 function onPdfClick(row) {
-  // Documenti PDF disponibili solo dopo l'emissione (la fn DB
-  // `genera_documento` richiede l'offerta EMESSA con versione listino
-  // fissata). In BOZZA l'azione è disabled (vedi tooltip_lista_disabilitato).
+  // Documenti PDF disponibili solo dopo l'emissione (la fn DB genera_documento
+  // richiede l'offerta EMESSA). In BOZZA l'azione e' disabled.
   if (!row || row.stato_codice_interno === 'BOZZA') return
   pdfDialogOfferta.value = row
   pdfDialogVisible.value = true
 }
-
 function onNoteClick(row) {
   if (!row?.id) return
   noteDrawerOfferta.value = row
   noteDrawerVisible.value = true
 }
 
-// Scopo: costruisce le azioni contestuali di riga per il menu kebab.
-// Modifica = click riga. Pattern simmetrico a contratti/preventivi.
+// Scopo: costruisce le azioni contestuali di riga. Modifica = click riga.
 function buildRowActions(data) {
   return [
     {
@@ -161,8 +144,8 @@ function buildRowActions(data) {
 useTabFreshness(store, TAB_ENTITIES.OFFERTA_COMMERCIALE)
 
 // Lista con filtro data_da default anno-1 (frontend-standards "Filtro data
-// standard"): auto-load al mount, lo store guard hasFilters considera
-// data_da come filtro attivo.
+// standard"): auto-load al mount, lo store guard hasFilters considera data_da
+// come filtro attivo.
 onMounted(() => store.fetchList())
 </script>
 
@@ -171,13 +154,10 @@ onMounted(() => store.fetchList())
     <AccessoBloccatoPanel v-if="isBlocked" />
 
     <template v-else>
+      <!-- Toolbar UNICA esterna (pattern lista standard). -->
       <div class="app-page-toolbar">
         <div class="app-page-filters">
-          <InputText
-            v-model="searchText"
-            :placeholder="t('vendite.offerte.search_placeholder')"
-            style="width: 260px;"
-          />
+          <InputText v-model="searchText" :placeholder="t('vendite.offerte.search_placeholder')" style="width: 260px;" />
           <LookupSelect
             v-model="statoFilter"
             rel="config.stati_doc_offerte"
@@ -195,26 +175,12 @@ onMounted(() => store.fetchList())
             apply-default
             @change="onUtilityChange"
           />
-          <DatePicker
-            v-model="dataDaFilter"
-            :placeholder="t('common.data_da')"
-            :date-format="DATE_FORMAT"
-            show-icon
-            show-button-bar
-            style="width: 150px;"
-            @date-select="onDataDaChange"
-            @clear-click="onDataDaChange"
-          />
-          <DatePicker
-            v-model="dataAlFilter"
-            :placeholder="t('common.data_a')"
-            :date-format="DATE_FORMAT"
-            show-icon
-            show-button-bar
-            style="width: 150px;"
-            @date-select="onDataAlChange"
-            @clear-click="onDataAlChange"
-          />
+          <DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
+            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
+            @date-select="onDataDaChange" @clear-click="onDataDaChange" />
+          <DatePicker v-model="dataAlFilter" :placeholder="t('common.data_a')"
+            :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
+            @date-select="onDataAlChange" @clear-click="onDataAlChange" />
           <div style="display: flex; align-items: center; gap: 0.5rem;">
             <ToggleSwitch v-model="mostraStorico" inputId="off-mostra-storico"
               @change="onMostraStoricoChange" />
@@ -225,149 +191,71 @@ onMounted(() => store.fetchList())
         </div>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
+            <ListaConfigStatusTag :dirty="dirty" />
             <ReadonlyBadge />
           </template>
         </PageActionsBar>
       </div>
 
-      <SearchHint v-if="!store.hasSearched && !store.loading" />
-
-      <DataTable
-        v-show="store.hasSearched || store.loading"
-        :value="store.items"
+      <ListaConfigurabile
+        ref="listaRef"
+        codice="vendite.offerte"
+        :rows="store.items"
+        :total="store.totalRecords"
         :loading="store.loading"
-        v-bind="paginatorProps"
-        lazy
-        removable-sort
-        striped-rows
-        scrollable
-        scroll-height="flex"
-        class="app-datatable"
-        selection-mode="single"
-        data-key="id"
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
         @page="onPage"
         @sort="onSort"
         @row-click="onRowClick"
+        @config-loaded="onConfigLoaded"
       >
-        <Column
-          field="codice"
-          :header="t('vendite.offerte.col_codice')"
-          sortable
-          style="width: 130px;"
-        />
-        <Column
-          field="revisione_numero"
-          :header="t('vendite.offerte.col_revisione')"
-          style="width: 60px;"
-        />
-        <Column
-          field="billing_account_display"
-          :header="t('vendite.offerte.col_cliente')"
-          sortable
-          style="min-width: 180px;"
-        />
-        <Column
-          field="ba_codice"
-          :header="t('vendite.offerte.col_ba_codice')"
-          sortable
-          style="width: 120px;"
-        />
-        <Column
-          field="id_fiscale"
-          :header="t('vendite.offerte.col_id_fiscale')"
-          style="width: 140px;"
-        />
-        <Column
-          field="utility_display"
-          :header="t('vendite.offerte.col_utility')"
-          sortable
-          style="width: 130px;"
-        />
-        <Column
-          field="listino_codice"
-          :header="t('vendite.offerte.col_listino')"
-          style="width: 140px;"
-        >
-          <template #body="{ data }">
-            {{ data.listino_codice }}
-            <span v-if="data.listino_versione_codice" style="color: var(--app-text-muted);">
-              · v{{ data.listino_versione_codice }}
-            </span>
-          </template>
-        </Column>
-        <Column
-          field="validita_dal"
-          :header="t('vendite.offerte.col_validita_dal')"
-          sortable
-          style="width: 110px;"
-        >
-          <template #body="{ data }">{{ displayDate(data.validita_dal) }}</template>
-        </Column>
-        <Column
-          field="validita_al"
-          :header="t('vendite.offerte.col_validita_al')"
-          style="width: 110px;"
-        >
-          <template #body="{ data }">{{ displayDate(data.validita_al) }}</template>
-        </Column>
-        <Column
-          field="data_emissione"
-          :header="t('vendite.offerte.col_emissione')"
-          sortable
-          style="width: 110px;"
-        >
-          <template #body="{ data }">{{ displayDate(data.data_emissione) }}</template>
-        </Column>
-        <Column
-          field="stato_codice_interno"
-          :header="t('vendite.offerte.col_stato')"
-          sortable
-          style="width: 130px;"
-        >
-          <template #body="{ data }">
-            <Tag
-              :value="data.stato_descrizione"
-              :severity="statoOffertaSeverity(data.stato_codice_interno)"
-            />
-            <Tag
-              v-if="data.is_scaduta && STATI_OFFERTA_SEGNALA_SCADENZA.includes(data.stato_codice_interno)"
-              :value="t('vendite.offerte.badge_scaduta')"
-              severity="warn"
-              style="margin-left: 0.25rem;"
-            />
-          </template>
-        </Column>
-        <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-          <template #body="{ data }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-          </template>
-        </Column>
-      </DataTable>
+        <!-- Listino: codice + suffisso versione (cella composita). -->
+        <template #cell-listino_codice="{ data }">
+          {{ data.listino_codice }}
+          <span v-if="data.listino_versione_codice" style="color: var(--app-text-muted);">
+            · v{{ data.listino_versione_codice }}
+          </span>
+        </template>
 
-      <!-- Dialog lista PDF per l'offerta selezionata. Riusa il building
-           block `PdfDocumentiSorgenteDialog` che incapsula
-           `DocumentiGeneratiSorgenteList` (stesso BB usato dal drawer). -->
-      <PdfDocumentiSorgenteDialog
-        v-model:visible="pdfDialogVisible"
-        sorgente-code="OFFERTA_COMMERCIALE"
-        :sorgente-id="pdfDialogOfferta?.id ?? null"
-        :title="pdfDialogOfferta
-          ? t('vendite.offerte.pdf.dialog_title', {
-              codice: pdfDialogOfferta.codice,
-            })
-          : ''"
-      />
+        <!-- Stato: Tag severity + badge "scaduta" condizionale. -->
+        <template #cell-stato="{ data }">
+          <Tag :value="data.stato_descrizione" :severity="statoOffertaSeverity(data.stato_codice_interno)" />
+          <Tag
+            v-if="data.is_scaduta && STATI_OFFERTA_SEGNALA_SCADENZA.includes(data.stato_codice_interno)"
+            :value="t('vendite.offerte.badge_scaduta')"
+            severity="warn"
+            style="margin-left: 0.25rem;"
+          />
+        </template>
 
-      <!-- Drawer note offerta: wrapper thin sul BB `NoteDrawer`. Da lista
-           le eccezioni non sono pre-caricate (vivono nel detail); il
-           select RIGA del NoteDrawer si popola con array vuoto, l'operatore
-           può comunque inserire note di testata. Per note di riga è
-           preferibile aprire il drawer dal detail offerta. -->
-      <OffertaNoteDrawer
-        v-if="noteDrawerOfferta?.id"
-        v-model:visible="noteDrawerVisible"
-        :offerta-id="noteDrawerOfferta.id"
-      />
+        <template #actions="{ data, compact }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+        </template>
+      </ListaConfigurabile>
     </template>
+
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @export="onExportConfirm"
+    />
+
+    <PdfDocumentiSorgenteDialog
+      v-model:visible="pdfDialogVisible"
+      sorgente-code="OFFERTA_COMMERCIALE"
+      :sorgente-id="pdfDialogOfferta?.id ?? null"
+      :title="pdfDialogOfferta
+        ? t('vendite.offerte.pdf.dialog_title', { codice: pdfDialogOfferta.codice })
+        : ''"
+    />
+
+    <OffertaNoteDrawer
+      v-if="noteDrawerOfferta?.id"
+      v-model:visible="noteDrawerVisible"
+      :offerta-id="noteDrawerOfferta.id"
+    />
   </div>
 </template>

@@ -16,6 +16,8 @@ Indice test eseguiti:
  5) test_crea_fornitore_con_dati_opzionali — creazione con campi pagamento/fiscale
  6) test_crea_fornitore_missing_soggetto — soggetto_id mancante → E_ANAG_VALIDAZIONE
  7) test_crea_fornitore_duplicato — IntegrityError UNIQUE ruolo → E_ANAG_DUPLICATO
+ 7b) test_crea_fornitore_duplicato_codice — UNIQUE codice → messaggio 'codice' (no mascheramento)
+ 7c) test_crea_fornitore_integrity_non_mappato_rilancia — vincolo non mappato → rilanciato
  8) test_update_fornitore_ok — aggiorna campi editabili
  9) test_update_fornitore_not_found — id inesistente → E_ANAG_NOT_FOUND
 """
@@ -153,6 +155,33 @@ class TestFornitoriCreazione(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             FornitoriService().crea_fornitore(_base_payload())
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
+
+    @patch(TX_ATOMIC, return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock(return_value=False)))
+    @patch(FORN_REPO)
+    def test_crea_fornitore_duplicato_codice(self, mock_repo, _tx):
+        """UNIQUE codice → messaggio specifico 'codice', NON 'soggetto' (no mascheramento)."""
+        mock_repo.return_value.get_or_create_ruolo_fornitore.return_value = 50
+        mock_repo.return_value.create_fornitore.side_effect = IntegrityError(
+            'duplicate key value violates unique constraint "uq_fornitori_codice"'
+        )
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        with self.assertRaises(ServiceError) as ctx:
+            FornitoriService().crea_fornitore(_base_payload())
+        self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
+        self.assertIn("codice", ctx.exception.message)
+        self.assertNotIn("soggetto", ctx.exception.message)
+
+    @patch(TX_ATOMIC, return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock(return_value=False)))
+    @patch(FORN_REPO)
+    def test_crea_fornitore_integrity_non_mappato_rilancia(self, mock_repo, _tx):
+        """IntegrityError su vincolo non mappato (es. uid) → RILANCIATO, non mascherato."""
+        mock_repo.return_value.get_or_create_ruolo_fornitore.return_value = 50
+        mock_repo.return_value.create_fornitore.side_effect = IntegrityError(
+            'duplicate key value violates unique constraint "uq_fornitori_uid"'
+        )
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        with self.assertRaises(IntegrityError):
+            FornitoriService().crea_fornitore(_base_payload())
 
 
 # =================================================================

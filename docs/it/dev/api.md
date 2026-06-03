@@ -502,10 +502,11 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Email**: [api_email.md](/backend/core/manual/api_email)
 * **Parametri**: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md)
 * **Vendite — Pricing v5**: [api_preventivi.md](/backend/vendite/manual/api_preventivi) | [api_listini.md](/backend/vendite/manual/api_listini) | [api_contratti.md](/backend/vendite/manual/api_contratti) | [api_promo_articoli.md](/backend/vendite/manual/api_promo_articoli) | [api_pricing.md](/backend/vendite/manual/api_pricing) | [api_approvazioni_prezzo.md](/backend/vendite/manual/api_approvazioni_prezzo) | [api_vendite_lookups.md](/backend/vendite/manual/api_vendite_lookups) | [api_vendite_form_defaults.md](/backend/vendite/manual/api_vendite_form_defaults)
+* **Vendite — Ciclo attivo**: [api_offerte.md](/backend/vendite/manual/api_offerte) | [api_ordini.md](/backend/vendite/manual/api_ordini)
 * **Documenti**: [api_documenti_templates.md](/backend/documenti/manual/api_documenti_templates) — read-only v1 motore documentale (lista/dettaglio template + versioni). Building block trasversali per view "per sorgente" (offerta/preventivo/contratto): [api_documenti_helpers.md](/backend/documenti/manual/api_documenti_helpers) — `resolve_contesto_documentale` + `extract_allegati` (2026-05-28).
 * **UI — Personalizzazioni liste (runtime)**: [api_ui_liste.md](/backend/ui/manual/api_ui_liste) — risoluzione configurazione lista, catalogo modale, UPSERT/DELETE preferenza utente. Meta-API trasversale (`skip_area_check=True`).
 * **UI — Personalizzazioni liste (admin Blocco F)**: [api_ui_admin_personalizzazioni.md](/backend/ui/manual/api_ui_admin_personalizzazioni) — Fase 1: CRUD preset (testata + composizione atomica) + UPSERT/DELETE permessi colonna; auth via azioni di processo `ui_preset_manage`/`ui_permesso_manage` o SUPER_ADMIN. Fase 2 (DEF-5b 2026-05-10): CRUD `ui.lista_definizione` + `ui.lista_colonna` SUPER_ADMIN-only via `AdminAPIView`.
-* **UI — Export liste (DEF-1, 2026-05-10)**: endpoint dedicato per dominio (`GET /api/v1/anagrafiche/clienti/export/?formato=csv|xlsx`, `GET /api/v1/anagrafiche/soggetti/export/?formato=csv|xlsx` dal 2026-05-11, `GET /api/v1/anagrafiche/fornitori/export/?formato=csv|xlsx` dal 2026-05-24; estensione altre liste in DEF-8). Renderer puro generico `apps.ui.services.lista_export_service.ListaExportService` no-fetch: riceve righe + config colonne + filtri applicati, produce bytes CSV (BOM UTF-8 + header `#` JSON filtri) o XLSX (foglio "Dati" + foglio "Filtri applicati", styling header bold). Hard cap 10.000 righe, errori `E_UI_EXPORT_LIMIT_EXCEEDED` (422) / `E_UI_EXPORT_FORMAT_INVALID` (400) / `E_UI_EXPORT_FAILED` (500). Niente SQL dinamico sulla `vista_sql`: ogni dominio chiama il proprio repository esistente e delega al renderer.
+* **UI — Export liste (DEF-1, 2026-05-10)**: endpoint dedicato per dominio (`GET /api/v1/anagrafiche/clienti/export/?formato=csv|xlsx`, `GET /api/v1/anagrafiche/soggetti/export/?formato=csv|xlsx` dal 2026-05-11, `GET /api/v1/anagrafiche/fornitori/export/?formato=csv|xlsx` dal 2026-05-24, `GET /api/v1/vendite/contratti/export/?formato=csv|xlsx` dal 2026-06-02; estensione altre liste in DEF-8). Renderer puro generico `apps.ui.services.lista_export_service.ListaExportService` no-fetch: riceve righe + config colonne + filtri applicati, produce bytes CSV (BOM UTF-8 + header `#` JSON filtri) o XLSX (foglio "Dati" + foglio "Filtri applicati", styling header bold). Hard cap 10.000 righe, errori `E_UI_EXPORT_LIMIT_EXCEEDED` (422) / `E_UI_EXPORT_FORMAT_INVALID` (400) / `E_UI_EXPORT_FAILED` (500). Niente SQL dinamico sulla `vista_sql`: ogni dominio chiama il proprio repository esistente e delega al renderer. **Coda invariante estratta** (regola del 2, 2026-06-02) in `apps.ui.api.export_helpers.{parse_export_format,build_export_response}`: ogni view export mantiene solo il parsing dei propri filtri + la chiamata al service con `limit=EXPORT_MAX_ROWS+1`; validazione formato, guard limite, risoluzione colonne dalla config runtime, render e `HttpResponse` vivono nel building block.
 
 Per i building block backend riutilizzabili (helpers, services, repository), consultare il [Catalogo Building Block Backend](backend/catalogo-building-block-backend.md).
 
@@ -578,6 +579,15 @@ Invariante "tutto o niente": i 3 GUC di identita' sono popolati insieme
 o restano stringa vuota. Vedi
 `docs/it/guide/risorse-umane-e-accessi.md` sezione GUC.
 
+**Reset per-richiesta (anti-leak).** `JwtAuditMiddleware.process_request`
+azzera i 5 GUC all'**inizio** di ogni richiesta `/api/`, **prima** che
+l'auth class li ripopoli e prima di qualunque query. È **incondizionato**
+(anche richieste anonime) e **fail-closed**: se il reset fallisce la
+richiesta NON viene servita (500 `E_GUC_RESET_FAILED`). Chiude il leak
+cross-request sulle connessioni persistenti (`CONN_MAX_AGE > 0` / pooling),
+critico ora che la RLS filtra in base ai GUC. Vedi
+`docs/it/dev/work-done/analisi-attivazione-rls-operatori-be-fe.md` §1.
+
 ### Scope emittente
 
 Due pattern disponibili in base al dominio:
@@ -588,10 +598,29 @@ Due pattern disponibili in base al dominio:
    risolve in Python i `soggetto_ruolo_id` degli emittenti autorizzati e li passa
    come array `bigint[]` alle query SQL.
 
-Usare `get_emittenti_sr_ids` (non `get_emittenti_ids`) quando il SQL filtra su
-`emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id`.
-`get_emittenti_ids` ritorna le PK di `emittenti_fiscali.id`, utili solo per
-lookup diretti sulla tabella emittenti.
+Usare `get_emittenti_sr_ids` (filtra su `*_soggetto_ruolo_id`, convenzione SR)
+o `get_emittenti_pk_ids` (filtra su `emittente_fiscale_id` PK) secondo la colonna.
+`get_emittenti_ids` è ora un **alias guarded di `get_emittenti_pk_ids`** (stessa
+convenzione PK + bypass SUPER_ADMIN + fail-closed su identita non attiva): usare
+i nomi espliciti `_sr_ids`/`_pk_ids` per chiarezza di convenzione.
+
+**Enforcement RLS (operatori) — dal 2026-06.** Lo scope emittente degli OPERATORI
+è applicato **anche a livello DB** via Row Level Security sulle tabelle sensibili
+(`vendite.fatture` / `fatture_scadenze` / `fatturazione_lotti` / `ordini` /
+`preventivi` / `contratti` / `offerte_commerciali`, `documenti.documenti_generati`,
+`pratiche.pratiche`, `anagrafiche.billing_account`). I filtri applicativi
+(`get_emittenti_*`) **restano** come defense-in-depth e si sommano. Conseguenze per
+il consumer API:
+
+* le **liste** restituiscono solo le righe degli emittenti in whitelist
+  dell'operatore (filtro automatico, anche dove il filtro applicativo non c'era);
+* un **dettaglio by-id** di un record fuori scope torna **404** (`E_*_NOT_FOUND`),
+  identico a un id inesistente — il FE lo gestisce come "non trovato/non accessibile"
+  (composable `useDrawerDetailLoad`: toast + chiusura drawer);
+* una connessione **senza GUC** vede **0 righe** (fail-closed); i ruoli tecnici
+  `BYPASSRLS` (migrazioni, job batch owner) restano esenti.
+
+Vedi `docs/it/dev/work-done/analisi-attivazione-rls-operatori.md`.
 
 ---
 
@@ -640,6 +669,15 @@ in `error_policies.py` prima dell'uso. Il suffisso determina la categoria:
 | `_NOT_FOUND` | 404 | `E_PRATICA_NOT_FOUND` |
 | `_DUPLICATO` / `_IN_ESECUZIONE` | 409 | `E_ANAG_DUPLICATO` |
 | `_NEGATO` / `_DENIED` | 403 | `E_PERMESSO_NEGATO` |
+
+**Eccezione — codici middleware-level.** Alcune risposte sono costruite
+direttamente da `JwtAuditMiddleware` (helper `_json_error`, stesso envelope)
+e **non** passano dall'exception handler / `error_policies.py`:
+
+| Codice | HTTP | Quando |
+| --- | --- | --- |
+| `E_USER_DISABILITATO` | 403 | utente con `ruolo_applicativo = DISABILITATO` (rifiuto early) |
+| `E_GUC_RESET_FAILED` | 500 | il reset GUC d'inizio richiesta è fallito (fail-closed, vedi §GUC) |
 
 #### Codici auth multi-veste (§8.3 PR-B1)
 

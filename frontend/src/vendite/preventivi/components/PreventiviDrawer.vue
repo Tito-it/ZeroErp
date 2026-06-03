@@ -8,6 +8,8 @@ import { usePreventiviStore } from '../stores/preventivi'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
+import { useDrawerClose } from '../../../core/composables/useDrawerClose'
+import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { useRevisioniTab } from '../../../core/composables/useRevisioniTab'
@@ -25,6 +27,7 @@ import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefault
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
+import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
 import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
@@ -74,6 +77,9 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
+const onClose = useDrawerClose(emit, 'cancelled')
+// Detail fuori scope (RLS) / inesistente → toast + chiusura, niente drawer vuoto.
+const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
 // Readonly effettivo = prop esplicita OR readonly area iniettato dal parent
 // OR revisione superseded: esiste un'altra revisione "viva" con rev maggiore
@@ -292,7 +298,9 @@ function resetForm() {
 async function loadDetail(id = null) {
   const targetId = id ?? effectivePreventivoId.value
   if (!targetId) return
-  const data = await store.fetchDetail(targetId)
+  // Fuori scope (RLS) / inesistente → loadDetailOrClose avvisa, chiude e
+  // ritorna null; `if (!data) return` sotto salta il populate.
+  const data = await loadDetailOrClose(() => store.fetchDetail(targetId))
   if (!data) return
   detail.value = data
   // Carica in parallelo il contesto pricing per l'header del drawer (audit
@@ -485,27 +493,17 @@ watch(
 // valuta dell'EF utente caricata al mount (regola di coerenza dominio:
 // "valuta del BA wins se specificata"). Skippiamo in edit (campi gia'
 // persistiti dal payload preventivo).
-let _baDefaultsToken = 0
-watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
-  if (isEdit.value) return
-  if (!newBaId || newBaId === oldBaId) return
-  const tk = ++_baDefaultsToken
-  let res
-  try {
-    res = await getPreventivoFormDefaults(newBaId)
-  } catch {
-    return  // Best-effort: il fallback resta "form vuoto, l'operatore valorizza".
-  }
-  if (tk !== _baDefaultsToken) return  // Apertura/chiusura veloce: scarta stantio.
-  const data = res?.data?.data
-  if (!data) return
-  // Valuta: il BA (o il suo EF) vince sempre sull'EF utente caricato al mount.
-  if (data.valuta_id != null) {
-    form.value.valuta_id = data.valuta_id
-  }
-  if (form.value.termine_pagamento_id == null && data.termine_pagamento_id != null) {
-    form.value.termine_pagamento_id = data.termine_pagamento_id
-  }
+// Watcher BA→defaults condiviso (guard token + valuta BA-wins nel composable).
+// Extra preventivo: termine pagamento (solo se l'operatore non l'ha scelto).
+useBaFormDefaults({
+  form,
+  isEdit,
+  fetchDefaults: getPreventivoFormDefaults,
+  apply: (data, f) => {
+    if (f.termine_pagamento_id == null && data.termine_pagamento_id != null) {
+      f.termine_pagamento_id = data.termine_pagamento_id
+    }
+  },
 })
 
 // In CREATE servono utility e istanza (regola di dominio post brief DB rev2:

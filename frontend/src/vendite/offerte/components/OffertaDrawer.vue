@@ -38,6 +38,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
+import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
@@ -56,6 +57,7 @@ import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiErr
 import { displayDate, parseIsoDate, toDateString } from '../../../core/utils/date'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { getOffertaFormDefaults } from '../../api/formDefaults'
+import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { lookupListiniSelezionabiliContratto } from '../../api/lookup'
 import TipoVariazioneSelect from '../../components/TipoVariazioneSelect.vue'
 import {
@@ -312,26 +314,10 @@ function onBaSelected(item) {
   form.value.utility_id = item.utility_id || null
 }
 
-// Auto-fill valuta dal form-defaults BE (BB resolve_valuta_default).
-// In CREATE: al cambio BA il BE risolve la catena BA→EF→gestore e ritorna
-// valuta_id. Sovrascriviamo SEMPRE col valore BA-resolved (regola di
-// coerenza dominio "valuta del BA wins se specificata"). Skippiamo in
-// EDIT: la valuta è snapshot immutabile post-CREATE.
-// Pattern mirror di PreventiviDrawer.onBaSelected.
-watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
-  if (isEdit.value) return
-  if (newBaId === oldBaId) return
-  try {
-    const res = await getOffertaFormDefaults(newBaId)
-    const data = res?.data?.data
-    if (data && data.valuta_id != null) {
-      form.value.valuta_id = data.valuta_id
-    }
-  } catch {
-    // Best-effort: errore form-defaults non blocca il flusso CREATE.
-    // Il trigger DB risolverà comunque la valuta al save.
-  }
-})
+// Auto-fill valuta dal form-defaults BE (BB resolve_valuta_default), al cambio
+// BA in CREATE: la valuta del BA vince (regola di coerenza dominio). Watcher
+// condiviso `useBaFormDefaults` con guard latest-wins inclusa.
+useBaFormDefaults({ form, isEdit, fetchDefaults: getOffertaFormDefaults })
 
 // Carica/resetta su apertura/chiusura/cambio-id.
 // Watch composito [visible, offertaId]: scatena ricaricamento sia quando il
@@ -356,8 +342,9 @@ async function loadOrReset() {
   revisioniTab.reset()
 
   if (isEdit.value && props.offertaId) {
-    const d = await store.fetchDetail(props.offertaId)
+    const d = await loadDetailOrClose(() => store.fetchDetail(props.offertaId))
     if (!fv.isCurrent(t)) return
+    if (d == null) return  // dettaglio non accessibile → drawer già chiuso
     detail.value = d
     populateFromDetail(d)
     // revisioniTab usa il proprio guard interno (useFetchVersion incluso).
@@ -744,6 +731,8 @@ const drawerActions = computed(() => {
 })
 
 const onClose = useDrawerClose(emit, 'cancelled')
+// Detail fuori scope (RLS) / inesistente → toast + chiusura, niente drawer vuoto.
+const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 </script>
 
 <template>

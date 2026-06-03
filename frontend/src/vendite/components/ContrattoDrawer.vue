@@ -16,6 +16,7 @@ import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
+import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -52,6 +53,7 @@ import { useParameterDefaults } from '../../core/composables/useParameterDefault
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { getContrattoFormDefaults } from '../api/formDefaults'
+import { useBaFormDefaults } from '../_shared/baDefaults/useBaFormDefaults'
 import Drawer from 'primevue/drawer'
 import AppDialog from '../../core/components/AppDialog.vue'
 import InputText from 'primevue/inputtext'
@@ -301,8 +303,9 @@ watch(() => props.visible, async (val) => {
   if (isEdit.value && props.contrattoId) {
     await loadParamDefaults()
     if (v !== fgVersion) return
-    const d = await store.fetchDetail(props.contrattoId)
+    const d = await loadDetailOrClose(() => store.fetchDetail(props.contrattoId))
     if (v !== fgVersion) return
+    if (d == null) return  // dettaglio non accessibile → drawer già chiuso
     detail.value = d
     populateFromDetail(d)
   } else {
@@ -361,26 +364,10 @@ function onBaSelected(item) {
   form.value.categoria_cliente_id_snapshot = item.categoria_cliente_id || null
 }
 
-// Auto-fill valuta dal form-defaults BE (BB resolve_valuta_default).
-// In CREATE: al cambio BA il BE risolve la catena BA→EF→gestore e ritorna
-// valuta_id. Sovrascriviamo SEMPRE col valore BA-resolved (regola di
-// coerenza dominio "valuta del BA wins se specificata"). Skippiamo in
-// EDIT: la valuta è snapshot immutabile post-CREATE.
-// Pattern mirror di PreventiviDrawer.onBaSelected.
-watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
-  if (isEdit.value) return
-  if (newBaId === oldBaId) return
-  try {
-    const res = await getContrattoFormDefaults(newBaId)
-    const data = res?.data?.data
-    if (data && data.valuta_id != null) {
-      form.value.valuta_id = data.valuta_id
-    }
-  } catch {
-    // Best-effort: errore form-defaults non blocca il flusso CREATE.
-    // Il trigger DB risolverà la valuta al save.
-  }
-})
+// Auto-fill valuta dal form-defaults BE (BB resolve_valuta_default), al cambio
+// BA in CREATE: la valuta del BA vince (regola di coerenza dominio). Watcher
+// condiviso `useBaFormDefaults` con guard latest-wins inclusa.
+useBaFormDefaults({ form, isEdit, fetchDefaults: getContrattoFormDefaults })
 
 // Validazione FE (refactor modalita 2026-05-15: niente piu' check su modalita).
 // Vincolo strutturale unico sulla coppia variazione globale: tipo e valore
@@ -678,6 +665,8 @@ const drawerActions = computed(() => {
 })
 
 const onClose = useDrawerClose(emit, 'cancelled')
+// Detail fuori scope (RLS) / inesistente → toast + chiusura, niente drawer vuoto.
+const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 </script>
 
 <template>

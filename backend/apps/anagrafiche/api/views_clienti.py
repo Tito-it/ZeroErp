@@ -18,15 +18,10 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params
 from apps.core.api.success_responses import success_response
-from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.anagrafiche.services.clienti_service import ClientiService
-from apps.ui.db.ui_repository import UiRepository
-from apps.ui.services.lista_export_service import (
-    EXPORT_MAX_ROWS,
-    ListaExportService,
-)
-from apps.ui.services.ui_service import UiService
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 
 
 # =================================================================
@@ -219,19 +214,11 @@ class ClientiExportView(DomainAPIView):
     #        per intercettare overflow: se il dataset "filtrato" supera
     #        il cap, il service renderer rifiuta con messaggio parlante.
     def get(self, request: Request) -> HttpResponse:
-        fmt = (request.query_params.get("formato") or "csv").strip().lower()
-        ErrorManager.require(
-            fmt in ("csv", "xlsx"),
-            code="E_UI_EXPORT_FORMAT_INVALID",
-            message="Formato export non supportato.",
-            detail=f"format='{fmt}', ammessi=['csv','xlsx']",
-        )
+        fmt = parse_export_format(request)
 
         # Stessi filtri del list endpoint, niente paginazione.
-        # `limit=EXPORT_MAX_ROWS+1` per intercettare l'overflow:
-        # `total_count` ritornato dal repo via window function indica
-        # quante righe matchano (anche oltre il fetch limit). Se total
-        # supera il cap, blocchiamo subito senza serializzare.
+        # `limit=EXPORT_MAX_ROWS+1` per intercettare l'overflow: il guard
+        # limite e la coda render+response vivono in `build_export_response`.
         p = parse_list_params(
             request.query_params,
             default_order="ragione_sociale_completa",
@@ -258,57 +245,16 @@ class ClientiExportView(DomainAPIView):
             order_by=p["order_by"],
             order_dir=p["order_dir"],
         )
-        # Overflow check pre-render: messaggio parlante 422 senza
-        # spendere tempo a serializzare 10.001+ righe.
-        ErrorManager.require(
-            int(total or 0) <= EXPORT_MAX_ROWS,
-            code="E_UI_EXPORT_LIMIT_EXCEEDED",
-            message="Export oltre il limite consentito.",
-            detail=(
-                f"matched={total}, max={EXPORT_MAX_ROWS}. "
-                "Raffinare i filtri."
-            ),
-            context={"matched": total, "limit": EXPORT_MAX_ROWS},
-        )
-
-        # Colonne export: combinazione di
-        #   1. configurazione runtime utente (`fn_resolve_lista_config`):
-        #      preferenza personale + preset + permessi -> ordine e
-        #      visibilita' coerenti con la DataTable a video.
-        #   2. catalogo metadati (etichetta, tipo_dato, formato,
-        #      esportabile, tipo_colonna): necessari per il rendering.
-        # Cosi' l'export riflette ESATTAMENTE cio' che l'utente vede:
-        # colonne nascoste -> escluse, ordine personalizzato -> preservato.
-        config = UiService().get_lista_config(
-            request.user, _LISTA_CODICE_CLIENTI,
-        )
-        metadata = UiRepository().list_colonne_by_codice(
-            _LISTA_CODICE_CLIENTI,
-        )
-        colonne = ListaExportService.select_colonne_visibili_da_config(
-            config, metadata,
-        )
-
-        # Filtri per metadato file: dict {label_italiano: descrizione}
-        # invece di JSON opaco con id (decisione 4 _def.md aggiornata
-        # 2026-05-10). `resolve_filtri_export_label` fa lookup leggero
-        # su utility/stato per produrre etichette leggibili.
         filtri_applicati = svc.resolve_filtri_export_label(
             search=p["search"],
             utility_id=utility_id,
             stato_cliente_id=stato_id,
         )
-
-        body, content_type, filename = ListaExportService().render(
+        return build_export_response(
+            request,
             lista_codice=_LISTA_CODICE_CLIENTI,
-            colonne=colonne,
-            righe=results,
+            results=results,
+            total=total,
             filtri_applicati=filtri_applicati,
-            format=fmt,
+            fmt=fmt,
         )
-
-        response = HttpResponse(body, content_type=content_type)
-        response["Content-Disposition"] = (
-            f'attachment; filename="{filename}"'
-        )
-        return response

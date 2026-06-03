@@ -2,3 +2,7 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
 1,anagrafiche.clienti,Elenco Clienti,anagrafiche,vw_clienti_lista,t,2026-05-07 00:00:00,mctit
 2,anagrafiche.soggetti,Soggetti,anagrafiche,NULL,t,2026-05-22 00:00:00,mctit
 3,anagrafiche.fornitori,Fornitori,anagrafiche,vw_fornitori_dettaglio,t,2026-05-24 00:00:00,mctit
+4,vendite.contratti,Contratti,vendite,vw_contratti_lista,t,2026-06-02 00:00:00,mctit
+5,vendite.preventivi,Preventivi,vendite,vw_preventivi_lista,t,2026-06-03 00:00:00,mctit
+6,vendite.offerte,Offerte commerciali,vendite,vw_offerte_commerciali_lista,t,2026-06-03 00:00:00,mctit
+7,vendite.ordini,Ordini di vendita,vendite,vw_ordini_lista,t,2026-06-03 00:00:00,mctit

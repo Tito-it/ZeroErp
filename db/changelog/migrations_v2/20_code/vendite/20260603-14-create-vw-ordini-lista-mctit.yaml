@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-ORD (db-brief-ordini-vendita §3): vista sorgente CANONICA e self-contained
+# per la lista configurabile vendite.ordini. Creata da zero (non esisteva).
+#
+# Pura DENORMALIZZAZIONE (JOIN + campi display): NESSUN filtro/scope/paginazione
+# (scope emittente, filtri e LIMIT/OFFSET restano nel repository consumer BE).
+#
+# RLS ATTIVA su vendite.ordini (Ondata 2, 20260601-39) -> WITH
+# (security_invoker = on): la vista gira col contesto del chiamante, cosi' le
+# policy RLS della tabella base si applicano (no "RLS cosmetica",
+# linee-guida-sql §10.1).
+#
+# Specificita' OdV vs preventivi/offerte:
+#   - cliente via soggetto_ruolo_id (NOT NULL) DIRETTO -> soggetti (niente
+#     istanza_utility, che su ordini non esiste; risolto anche per prospect senza BA).
+#   - niente revisioni (no rev/is_attiva/has_next_revisione), niente listino
+#     in testata, niente is_scaduta.
+#   - +fatturazione_trigger, +canale_origine (assi OdV-specifici).
+#   - +agente_denominazione (E) via soggetto_ruolo agente.
+#   - +documento_origine_tipo/_codice (A1): provenienza upstream, codice risolto
+#     POLIMORFO per tipo (preventivi.numero | offerte_commerciali.codice).
+#
+# Nomi colonna CANONICI (lezione DEF-8, validati dal trigger B2):
+#   ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice (alias
+#   legittimo), stato_codice_interno (severity Tag FE). numero esposto NUDO
+#   (sempre valorizzato da trgfn_ordini_gen_codice, anche in BOZZA).
+#
+# CREATE OR REPLACE preceduto da DROP per cambiare struttura su re-run (runOnChange).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260603-14-create-vw-ordini-lista-mctit.yaml
+
+  - changeSet:
+      id: 20260603-14-create-vw-ordini-lista
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea vendite.vw_ordini_lista (security_invoker=on), canonica e
+        self-contained, per la lista configurabile vendite.ordini. Cliente via
+        soggetto_ruolo diretto; espone agente (E) e documento di origine (A1).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ordini
+          - tableExists:
+              schemaName: config
+              tableName: stati_doc_ordini
+          - columnExists:
+              schemaName: vendite
+              tableName: ordini
+              columnName: agente_soggetto_ruolo_id
+          - columnExists:
+              schemaName: vendite
+              tableName: ordini
+              columnName: documento_origine_tipo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_ordini_lista;
+              CREATE VIEW vendite.vw_ordini_lista
+              WITH (security_invoker = on) AS
+              SELECT
+                  o.id,
+                  o.uid,
+                  -- Identificazione (numero sempre valorizzato dal trigger gen codice)
+                  o.numero,
+                  o.serie,
+                  o.anno,
+                  o.data,
+                  -- Stato
+                  o.stato_doc_ordine_id,
+                  sd.codice_interno                         AS stato_codice_interno,
+                  sd.descrizione                            AS stato_descrizione,
+                  -- Cliente: soggetto via soggetto_ruolo DIRETTO (nomi canonici)
+                  o.soggetto_ruolo_id,
+                  s.id                                      AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  -- Billing account (nullable: prospect senza BA)
+                  o.billing_account_id,
+                  ba.codice                                 AS ba_codice,
+                  -- Emittente fiscale
+                  o.emittente_fiscale_id,
+                  ef.codice                                 AS emittente_fiscale_codice,
+                  -- Contesto utility
+                  o.utility_id,
+                  u.codice                                  AS utility_codice,
+                  u.descrizione                             AS utility_descrizione,
+                  -- Importi
+                  o.imponibile_tot,
+                  o.sconto_tot,
+                  o.iva_tot,
+                  o.totale_doc,
+                  -- Pagamento / valuta
+                  o.modalita_pagamento_id,
+                  mp.codice                                 AS modalita_pagamento_codice,
+                  o.termine_pagamento_id,
+                  tp.codice                                 AS termine_pagamento_codice,
+                  o.valuta_id,
+                  v_val.codice                              AS valuta_codice,
+                  o.tasso_cambio,
+                  -- Assi OdV-specifici
+                  o.fatturazione_trigger,
+                  o.canale_origine,
+                  -- Agente / venditore (E)
+                  o.agente_soggetto_ruolo_id,
+                  s_ag.ragione_sociale_completa             AS agente_denominazione,
+                  -- Documento di origine (A1): tipo + codice polimorfo
+                  o.documento_origine_tipo,
+                  o.documento_origine_id,
+                  CASE o.documento_origine_tipo
+                      WHEN 'PREVENTIVO' THEN pv.numero
+                      WHEN 'OFFERTA'    THEN oc.codice
+                  END                                       AS documento_origine_codice,
+                  -- Audit
+                  o.data_insert,
+                  o.user_insert,
+                  o.data_update,
+                  o.user_update
+              FROM vendite.ordini o
+              JOIN config.stati_doc_ordini sd
+                ON sd.id = o.stato_doc_ordine_id
+              -- Cliente (soggetto_ruolo_id NOT NULL): join diretto a soggetto
+              JOIN anagrafiche.soggetti_ruoli sr
+                ON sr.id = o.soggetto_ruolo_id
+              JOIN anagrafiche.soggetti s
+                ON s.id = sr.soggetto_id
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = o.billing_account_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.id = o.emittente_fiscale_id
+              LEFT JOIN config.utilities u
+                ON u.id = o.utility_id
+              LEFT JOIN config.modalita_pagamento mp
+                ON mp.id = o.modalita_pagamento_id
+              LEFT JOIN config.termini_pagamento tp
+                ON tp.id = o.termine_pagamento_id
+              LEFT JOIN config.valute v_val
+                ON v_val.id = o.valuta_id
+              -- Agente (nullable)
+              LEFT JOIN anagrafiche.soggetti_ruoli sr_ag
+                ON sr_ag.id = o.agente_soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s_ag
+                ON s_ag.id = sr_ag.soggetto_id
+              -- Origine polimorfa (A1): solo il ramo del tipo corrente matcha
+              LEFT JOIN vendite.preventivi pv
+                ON pv.id = o.documento_origine_id
+               AND o.documento_origine_tipo = 'PREVENTIVO'
+              LEFT JOIN vendite.offerte_commerciali oc
+                ON oc.id = o.documento_origine_id
+               AND o.documento_origine_tipo = 'OFFERTA';
+
+              COMMENT ON VIEW vendite.vw_ordini_lista IS
+                'Vista flat canonica e self-contained ordini di vendita per la lista '
+                'UI configurabile (vendite.ordini). Nomi canonici '
+                '(ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice). '
+                'Cliente via soggetto_ruolo diretto (anche prospect senza BA). Espone '
+                'agente_denominazione (E) e documento_origine_tipo/_codice (A1, codice '
+                'polimorfo preventivi.numero|offerte_commerciali.codice). Pura '
+                'denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_ordini_lista;

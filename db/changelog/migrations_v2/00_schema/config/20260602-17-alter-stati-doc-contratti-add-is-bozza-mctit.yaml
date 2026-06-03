@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Brief "Overlap contratti: escludere i DRAFT dal vincolo".
+# Aggiunge config.stati_doc_contratti.is_bozza, simmetrico a is_abortito:
+# marca gli stati NON vincolanti (bozza) che NON partecipano all'esclusivita'
+# anti-overlap. Lo legge il trigger snapshot (data-driven, niente magic-string
+# 'DRAFT' nella logica runtime).
+#
+# Il valore (DRAFT=true) e' settato QUI (00_schema) e non nel CSV di seed di
+# proposito: il CSV e' caricato in 80_data (dopo questa fase) via loadUpdateData
+# runOnChange; ri-triggerarlo resetterebbe meta={} (la UI meta e' ripristinata da
+# un changeset separato che NON ri-girerebbe). loadUpdateData non tocca is_bozza
+# (assente dal CSV), quindi questo UPDATE sopravvive. Inoltre serve qui perche' il
+# backfill di is_draft_snapshot (00_schema, migration successiva) lo legge.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260602-17-alter-stati-doc-contratti-add-is-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20260602-17-alter-stati-doc-contratti-add-is-bozza
+      author: mctit
+      comment: >
+        Aggiunge config.stati_doc_contratti.is_bozza (default false) e lo imposta
+        true per lo stato DRAFT. Flag data-driven per escludere i contratti in
+        bozza dal vincolo anti-overlap (simmetrico a is_abortito).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_contratti
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: stati_doc_contratti
+                    columnName: is_bozza
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_contratti
+                  ADD COLUMN is_bozza BOOLEAN NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN config.stati_doc_contratti.is_bozza IS
+                  'TRUE per gli stati non vincolanti (bozza) che NON partecipano '
+                  'all''esclusivita'' anti-overlap dei contratti. Letto dal trigger '
+                  'snapshot (NEW.is_draft_snapshot). Simmetrico a is_abortito. '
+                  'rev 2026-06-02.';
+
+              -- Seed del flag sullo stato DRAFT (one-time, qui per ordine fasi).
+              UPDATE config.stati_doc_contratti
+                 SET is_bozza = true
+               WHERE codice_interno = 'DRAFT';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_contratti
+                  DROP COLUMN IF EXISTS is_bozza;

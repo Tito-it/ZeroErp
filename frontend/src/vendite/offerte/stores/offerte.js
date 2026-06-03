@@ -15,6 +15,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useTabEvents } from '../../../core/composables/useTabEvents'
+import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
 import { TAB_ENTITIES } from '../../../core/constants'
 import {
   annullaOfferta,
@@ -37,11 +38,6 @@ import {
 
 export const useOfferteStore = defineStore('vendite-offerte', () => {
   const { emitDataChanged } = useTabEvents()
-
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-  const hasSearched = ref(false)
 
   // Default data_da: 1 gennaio anno corrente - 1. Coerente con frontend-standards
   // "Filtro data standard" — la lista parte popolata sull'ultimo anno+anno corrente.
@@ -71,37 +67,18 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     order_dir: 'desc',
   })
 
-  // Scopo: Carica lista paginata offerte con filtri standard. Empty-state
-  //        guard: senza filtri attivi e senza search non si chiama il BE.
-  //        `data_da` default-anno-1 conta come filtro: la lista si popola al mount.
-  async function fetchList() {
-    const f = filters.value
-    const searchTerm = (f.search || '').trim()
-    const hasFilters = f.stato_codice_interno != null
+  // Lista paginata offerte con guardia empty-state standard (BB
+  // useListaEmptyStateFetch). `data_da` default-anno-1 conta come filtro attivo:
+  // la lista si popola al mount. Offerte usa limit/offset + filtri validita_dal_*.
+  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
+    filters,
+    hasActiveFilters: (f) => f.stato_codice_interno != null
       || f.billing_account_id != null
       || f.utility_id != null
       || f.listino_id != null
       || f.data_a != null
-      || f.data_da != null
-
-    if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
-      if (hasSearched.value) {
-        items.value = []
-        totalRecords.value = 0
-        hasSearched.value = false
-      }
-      return
-    }
-    if (!searchTerm && !hasFilters && !hasSearched.value) return
-    if (!searchTerm && !hasFilters) {
-      items.value = []
-      totalRecords.value = 0
-      hasSearched.value = false
-      return
-    }
-
-    loading.value = true
-    try {
+      || f.data_da != null,
+    buildParams: (f, searchTerm) => {
       const params = {}
       if (searchTerm.length >= 3) params.search = searchTerm
       if (f.stato_codice_interno != null) params.stato_codice_interno = f.stato_codice_interno
@@ -122,14 +99,10 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
         params.order_by = f.order_by
         params.order_dir = f.order_dir || 'desc'
       }
-      const res = await listOfferte(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-      hasSearched.value = true
-    } finally {
-      loading.value = false
-    }
-  }
+      return params
+    },
+    fetchPage: listOfferte,
+  })
 
   // Scopo: Dettaglio completo offerta (testata + eccezioni + utility 1:1).
   async function fetchDetail(id) {

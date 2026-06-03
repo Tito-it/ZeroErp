@@ -3,6 +3,7 @@
 //        Drawer UoM + sub-drawer conversioni apribile dalla lista.
 import { ref } from 'vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useDrawerSavedListRefresh } from '../../core/composables/useDrawerSavedListRefresh'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { useUnitaMisuraStore } from '../stores/unitaMisura'
@@ -12,22 +13,13 @@ import UomConversioniDrawer from '../components/UomConversioniDrawer.vue'
 
 const drawer = useDrawerState()
 const store = useUnitaMisuraStore()
+const { onDrawerSaved } = useDrawerSavedListRefresh(store, drawer)
 useReadonlyMode(READONLY_DOMAINS.CATALOGO, READONLY_MODELS.UNITA_MISURA)
 
 // Sub-drawer conversioni
 const convDrawerVisible = ref(false)
 const convUomId = ref(null)
 const convUomCodice = ref('')
-
-async function onDrawerSaved(result) {
-  store.filters.offset = 0
-  await store.fetchList()
-  if (result && result.id && drawer.state.mode === 'create') {
-    drawer.editRow({ id: result.id }, 'id')
-  } else {
-    drawer.close()
-  }
-}
 
 function onManageConversioni(data) {
   convUomId.value = data.id

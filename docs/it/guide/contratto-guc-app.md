@@ -342,8 +342,14 @@ Sequenza di verifica:
 4. Verifica policy RLS: `SELECT * FROM pg_policies WHERE tablename = 'fatture'` —
    policy con USING clause coerente
 5. Verifica che le RLS siano ENABLE: `SELECT relrowsecurity, relforcerowsecurity
-   FROM pg_class WHERE relname = 'fatture'`. Se `false/false`, le policy sono
-   dormienti, tutte le righe sono visibili (caso DRY-RUN attuale)
+   FROM pg_class WHERE relname = 'fatture'`. Dal giugno 2026 le tabelle dello
+   scope emittente OPERATORI (fatture/scadenze/lotti/ordini/preventivi/contratti/
+   offerte/documenti_generati/pratiche/billing_account) hanno
+   `relrowsecurity = true` (Ondata 1+2; `FORCE` non usato → owner/BYPASSRLS
+   esenti). Se su quelle tabelle è `false`, la RLS **non** è attiva lì (problema
+   di migrazione/auto-guarigione del framework `automazione_overlap`/runner). Le
+   tabelle delle branch **portale/shop** restano invece `false` (dry-run). Vedi
+   `dev/work-done/analisi-attivazione-rls-operatori.md`.
 
 ### 8.2 "Login riuscito ma prima request autenticata restituisce 401"
 

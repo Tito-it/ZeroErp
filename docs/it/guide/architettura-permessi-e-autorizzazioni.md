@@ -29,11 +29,18 @@
 >   `fornitore_ownership`, `ef_whitelist`) sono `LANGUAGE sql STABLE`
 >   inlineable. `SELF_OWNERSHIP` unificato con `BA_OWNERSHIP` (il
 >   ruolo anagrafico CL e' condiviso tra CLIENTE_PORTALE e SHOP_CUSTOMER).
-> * **Row Level Security** — policy create (dry-run) sulle 6 tabelle
->   sensibili (fatture, ordini, fatture_scadenze, acquisti.ordini,
->   acquisti.ddt, billing_account). Attivazione (`ENABLE ROW LEVEL
->   SECURITY + FORCE`) rinviata a PR-C per sincronia col backend
->   portali. GUC `app.current_identita_id`, `app.ruolo_applicativo`,
+> * **Row Level Security** — **due velocità (giugno 2026)**: la branch
+>   **scope emittente OPERATORI** è **ATTIVA (`ENABLE`)** su
+>   fatture/fatture_scadenze/fatturazione_lotti/ordini/preventivi/contratti/
+>   offerte_commerciali/documenti_generati/pratiche/billing_account (Ondata
+>   1+2, no `FORCE`; vedi `dev/work-done/analisi-attivazione-rls-operatori.md`).
+>   Dal **2026-06-03** le `ef_whitelist` sono **`FOR ALL` con `WITH CHECK`**
+>   (copertura **scrittura** oltre lettura; `billing_account` ha policy `_ins`
+>   gate-only): senza, su tabella `ENABLE`d ogni INSERT/UPDATE operatore andava
+>   in deny-all. I batch girano come `postgres` (superuser) → esenti.
+>   Le branch **portale/shop** (`BA_OWNERSHIP`, CLIENTE_PORTALE/SHOP_CUSTOMER)
+>   restano **dry-run** in attesa delle API portale/shop. GUC
+>   `app.current_identita_id`, `app.ruolo_applicativo`,
 >   `app.soggetto_ruolo_id` popolati da `JwtAuditAuthentication`.
 > * **SUPER_ADMIN** — profilo dedicato id=9100 (ex `ruolo_sistema=ADMIN`)
 >   bindato via `profili_accesso_bindings` AD_HOC a singole identita.
@@ -1008,7 +1015,7 @@ coerente con la filosofia di Zero ERP.
 
 ## 12. Evoluzioni future
 
-- **Row-Level Security (RLS):** policy predisposte (dry-run) su 6 tabelle sensibili (fatture, ordini, fatture_scadenze, acquisti.ordini, acquisti.ddt, billing_account). Attivazione differita a quando le API portale/shop di dominio saranno sviluppate.
+- **Row-Level Security (RLS):** ✅ **scope emittente OPERATORI ATTIVO** (giugno 2026, Ondata 1+2 su fatture/scadenze/lotti/ordini/preventivi/contratti/offerte/documenti_generati/pratiche/billing_account — vedi `dev/work-done/analisi-attivazione-rls-operatori.md`). Resta **dry-run** la branch **portale/shop**, differita a quando le relative API di dominio saranno sviluppate.
 - **Permessi sotto-oggetti (v3):** oggi i model sono flat. La v3 aggiunge gerarchia padre/figlio (es. "TUTTO su cliente, BLOCCATO sugli indirizzi del cliente") con UX ad albero. Evoluzione prevista ma non ancora rilasciata.
 - **Ambito per unita' organizzativa su dati:** limitare la visibilita' dati per reparto.
 - **Workflow permissions:** stati avanzati (es. transizione BOZZA -> EMESSA) come azioni di processo.

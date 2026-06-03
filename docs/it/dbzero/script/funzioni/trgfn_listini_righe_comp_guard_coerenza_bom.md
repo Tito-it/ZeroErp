@@ -12,10 +12,12 @@ CREATE OR REPLACE FUNCTION script.trgfn_listini_righe_comp_guard_coerenza_bom()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: BEFORE INS/UPD su listini_righe_componenti — guards 1-5 + 7 coerenza BoM.
---   Lettura in unica query: JOIN ac+articoli padre/figlio + LEFT JOIN listini_versioni.
+-- Scopo: BEFORE INS/UPD su listini_righe_componenti — guards 1-4 + 7 coerenza BoM.
+--   Lettura in unica query: JOIN ac+articoli padre + LEFT JOIN listini_versioni.
 --   LEFT JOIN per lv: preserva NOT FOUND di guard 1 (ac mancante), e gestisce
 --   lv mancante via v_lv_validita IS NULL in guard 7.
+--   Guard 5 (IVA padre=figlio) rimosso: enforcement a punto unico alla sorgente
+--   articoli_componenti (20260603-01/-02 + 20260513-34 + 20260514-09).
 --   Guard 6 rimosso: temporal FK fk_listrighe_comp_articoli_comp_temporal (20260514-12).
 --   v_new_validita: daterange(COALESCE(valido_dal,'-infinity'), COALESCE(valido_al,'infinity'), '[]')
 --   — match STORED expression su listini_versioni.validita per evitare mismatch
@@ -25,8 +27,6 @@ DECLARE
     v_ac_componente_id catalogo.articoli_componenti.componente_id%TYPE;
     v_ac_attivo        catalogo.articoli_componenti.attivo%TYPE;
     v_padre_is_comp    catalogo.articoli.is_composito%TYPE;
-    v_padre_iva_id     catalogo.articoli.iva_id%TYPE;
-    v_figlio_iva_id    catalogo.articoli.iva_id%TYPE;
     v_lv_validita      vendite.listini_versioni.validita%TYPE;
     v_new_validita     vendite.listini_righe_componenti.validita%TYPE;
 BEGIN
@@ -40,18 +40,17 @@ BEGIN
         '[]'
     );
 
-    -- Lettura in unica query: BoM + articoli + versione listino
+    -- Lettura in unica query: BoM + articolo padre + versione listino.
+    -- a_figlio non serve piu' (Guard 5 rimosso): componente_id e' FK verso
+    -- articoli, quindi Guard 1 (NOT FOUND) resta garantito da ac.
     SELECT ac.prodotto_id, ac.componente_id, ac.attivo,
-           a_padre.is_composito, a_padre.iva_id,
-           a_figlio.iva_id,
+           a_padre.is_composito,
            lv.validita
       INTO v_ac_prodotto_id, v_ac_componente_id, v_ac_attivo,
-           v_padre_is_comp, v_padre_iva_id,
-           v_figlio_iva_id,
+           v_padre_is_comp,
            v_lv_validita
       FROM catalogo.articoli_componenti ac
-      JOIN catalogo.articoli a_padre  ON a_padre.id  = ac.prodotto_id
-      JOIN catalogo.articoli a_figlio ON a_figlio.id = ac.componente_id
+      JOIN catalogo.articoli a_padre ON a_padre.id = ac.prodotto_id
       LEFT JOIN vendite.listini_versioni lv ON lv.id = NEW.listino_versione_id
      WHERE ac.id = NEW.articolo_componente_id;
 
@@ -113,20 +112,8 @@ BEGIN
         );
     END IF;
 
-    -- Guard 5: IVA figlio = IVA padre
-    IF v_padre_iva_id IS DISTINCT FROM v_figlio_iva_id THEN
-        PERFORM script.fn_log_and_raise_error(
-            'script', TG_NAME, 'E_LISTINO_COMPONENTE_COERENZA_BOM',
-            jsonb_build_object(
-                'causa', 'IVA padre != IVA figlio',
-                'iva_padre', v_padre_iva_id,
-                'iva_figlio', v_figlio_iva_id
-            ),
-            NULL::uuid,
-            format('IVA padre=%s != figlio=%s',
-                   v_padre_iva_id, v_figlio_iva_id)
-        );
-    END IF;
+    -- Guard 5 RIMOSSO (2026-06-03): IVA padre=figlio garantito alla sorgente
+    -- articoli_componenti (guard IVA INSERT+riattivazione, guard B, freeze struttura).
 
     -- Guard 6 RIMOSSO: temporal FK fk_listrighe_comp_articoli_comp_temporal.
 
@@ -151,7 +138,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_listini_righe_comp_guard_coerenza_bom()
-IS 'Trigger BEFORE INS/UPD su listini_righe_componenti: guards 1-5 + 7 coerenza BoM. Unica query con LEFT JOIN listini_versioni (no round-trip extra). (1) ac esiste+attivo, (2) padre_id coerente, (3) figlio_id coerente, (4) padre composito, (5) IVA padre=figlio, (6) RIMOSSO: temporal FK fk_listrighe_comp_articoli_comp_temporal, (7) daterange(COALESCE(valido_dal,''-infinity''),COALESCE(valido_al,''infinity'')) ⊆ versione listino. Fix COALESCE simmetrico vs STORED listini_versioni.validita: evita mismatch upper_inf=true [d,) vs upper=infinity [d,infinity] in @> (rev 2026-05-15). Raise E_LISTINO_COMPONENTE_COERENZA_BOM (447). rev 2026-05-15.';
+IS 'Trigger BEFORE INS/UPD su listini_righe_componenti: guards 1-4 + 7 coerenza BoM. Unica query con JOIN articoli padre + LEFT JOIN listini_versioni (no round-trip extra). (1) ac esiste+attivo, (2) padre_id coerente, (3) figlio_id coerente, (4) padre composito, (5) RIMOSSO: IVA padre=figlio ora a punto unico alla sorgente articoli_componenti, (6) RIMOSSO: temporal FK fk_listrighe_comp_articoli_comp_temporal, (7) daterange(COALESCE(valido_dal,''-infinity''),COALESCE(valido_al,''infinity'')) ⊆ versione listino. Fix COALESCE simmetrico vs STORED listini_versioni.validita: evita mismatch upper_inf=true [d,) vs upper=infinity [d,infinity] in @> (rev 2026-05-15). Raise E_LISTINO_COMPONENTE_COERENZA_BOM (447). rev 2026-06-03.';
 ```
 
 ---

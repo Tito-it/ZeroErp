@@ -52,6 +52,7 @@ E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
 E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_FK = "E_VENDITE_FK"
 E_VENDITE_LISTINO_VERSIONE_OVERLAP = "E_VENDITE_LISTINO_VERSIONE_OVERLAP"
+E_VENDITE_LISTINO_RIGA_COMP_OVERLAP = "E_VENDITE_LISTINO_RIGA_COMP_OVERLAP"
 E_LISTINO_RIGA_COMP_BOM_INCOERENTE = "E_LISTINO_RIGA_COMP_BOM_INCOERENTE"
 
 # Validator modulo-level: log_to_db=True per telemetria pipeline vendite,
@@ -630,6 +631,20 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
                 "Chiudi la vecchia (valido_al = nuova_valido_dal - 1) e poi "
                 "attiva la nuova: la nuova decorrenza deve essere almeno 1 "
                 "giorno dopo l'inizio della precedente.",
+            ),
+            # EXCLUDE GIST parziale WHERE attivo=TRUE (ripristino enforcement
+            # 2026-06-02, migration 20260602-01; governato dal framework
+            # automazione_overlap). Blocca due righe bundle ATTIVE sovrapposte
+            # sullo stesso (versione, padre, componente). Match nominale via
+            # map_integrity_error (cerca il nome nel msg, qualsiasi sia il tipo).
+            # Pattern simmetrico a E_VENDITE_PROMO_OVERLAP / E_VENDITE_LISTINO_VERSIONE_OVERLAP.
+            "ex_listini_righe_comp_no_overlap": (
+                E_VENDITE_LISTINO_RIGA_COMP_OVERLAP,
+                # Testo allineato a error_policies (error_translator preferisce
+                # ServiceError.message su policy.user_message: devono coincidere).
+                "Esiste gia' un prezzo bundle attivo sovrapposto per questo "
+                "componente nel periodo indicato. Disattiva o chiudi quello "
+                "esistente prima di salvare il nuovo prezzo.",
             ),
         },
         fk_constraints={

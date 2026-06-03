@@ -15,7 +15,7 @@ import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
-import { listUtilitiesPerBillingAccount, listSoggettoIndirizzi } from '../api/anagrafiche'
+import { listUtilitiesPerBillingAccount } from '../api/anagrafiche'
 import { lookupUtilitiesPerEmittente } from '../../core/apiCore'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -131,7 +131,6 @@ const detail = ref(null) // dati extra solo per visualizzazione
 // SoggettoResolver (solo creazione)
 const resolverVisible = ref(false)
 const soggettoSelezionato = ref(null)
-const indirizziSoggetto = ref([])
 
 // Scopo: Valori default per un nuovo cliente.
 function defaultForm() {
@@ -150,7 +149,6 @@ function defaultForm() {
 
 function resetForm() {
   soggettoSelezionato.value = null
-  indirizziSoggetto.value = []
   detail.value = null
   form.value = defaultForm()
   contatto.reset()
@@ -185,17 +183,6 @@ function populateFormFromDetail(d) {
   }
 }
 
-async function loadIndirizziSoggetto(soggettoId) {
-  try {
-    const res = await listSoggettoIndirizzi(soggettoId)
-    const results = res.data.data?.results || res.data.data || []
-    indirizziSoggetto.value = results.map(r => ({
-      value: r.indirizzo_dettaglio_id,
-      label: `${r.tipo_indirizzo_codice} — ${r.indirizzo_normalizzato || ''} ${r.civico || ''}`
-    }))
-  } catch { indirizziSoggetto.value = [] }
-}
-
 // Scopo: estrae soggetto_ruolo_id CLIENTE dal soggetto selezionato (se ha gia il ruolo)
 const previewRuoloId = computed(() => {
   const ruoli = soggettoSelezionato.value?.ruoli || []
@@ -205,15 +192,12 @@ const previewRuoloId = computed(() => {
 
 function onSoggettoSelezionato(data) {
   soggettoSelezionato.value = data
-  loadIndirizziSoggetto(data.id)
 }
 function onSoggettoCreato(data) {
   soggettoSelezionato.value = data
-  loadIndirizziSoggetto(data.id)
 }
 function clearSoggetto() {
   soggettoSelezionato.value = null
-  indirizziSoggetto.value = []
 }
 
 // Versione per invalidare risposte async stantie: se il drawer si chiude

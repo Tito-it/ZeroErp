@@ -107,15 +107,23 @@ def _build_update(
 
 # Whitelist ORDER BY per la lista offerte (SQL injection safe).
 _ORDER_COLS_OFFERTE: dict[str, str] = {
-    # Whitelist colonne sortable LISTA. Mappate sulla vista
-    # `vendite.vw_offerte_commerciali_list` (alias `v`) post brief 2026-05-27.
+    # Whitelist colonne sortable LISTA (SQL injection safe). Mappate sulla vista
+    # canonica `vendite.vw_offerte_commerciali_lista` (alias `v`, DEF-8). Le
+    # chiavi sono i `campo_sorgente` del catalogo 'vendite.offerte' che il FE
+    # invia come sortField (`<ListaConfigurabile>` usa `:field="campo_sorgente"`).
+    # `revisione_numero` volutamente ASSENTE: non ordinabile (decisione §7.3).
     "codice": "v.codice",
+    "ragione_sociale_completa": "v.ragione_sociale_completa",
+    "ba_codice": "v.ba_codice",
+    "id_fiscale_univoco_cf_piva": "v.id_fiscale_univoco_cf_piva",
+    "utility_codice": "v.utility_codice",
+    "utility_descrizione": "v.utility_descrizione",
+    "listino_codice": "v.listino_codice",
     "validita_dal": "v.validita_dal",
     "validita_al": "v.validita_al",
     "data_emissione": "v.data_emissione",
-    # Alias coerente col display field del SELECT (rinominato 2026-05-26).
-    "billing_account_display": "v.cliente_denominazione",
-    "stato_codice": "v.stato_codice_interno",
+    "stato_descrizione": "v.stato_descrizione",
+    "stato_codice_interno": "v.stato_codice_interno",
     "data_insert": "v.data_insert",
     # data_update non e' esposta nella vista lista (non serve in lista). Resta
     # nel detail. Mappato a data_insert come fallback safe per backward compat
@@ -124,65 +132,15 @@ _ORDER_COLS_OFFERTE: dict[str, str] = {
 }
 
 
-# === Costanti LISTA (post brief vista 2026-05-27) ===
-# La lista paginata legge da `vendite.vw_offerte_commerciali_list`, che espone
-# `is_attiva` + `has_next_revisione` calcolati e i campi denormalizzati gia'
-# pronti per il FE. Aliasing sui nomi che il FE consuma da prima
-# (`billing_account_display`, `ba_codice`, `utility_display`) per evitare
-# churn lato Vue. `listino_codice` non e' in vista: LEFT JOIN su `vendite.listini`
-# nel FROM. Il detail (`get_offerta`) continua a usare `_SELECT_COLS_OFFERTA`
-# + `_FROM_JOINS_OFFERTA` con tutti i campi (motivazione, meta, contratto, EF
-# denormalizzato, listino_versione_codice, ...): la vista lista e' un sub-set
-# pensato per la sola lista.
-_SELECT_COLS_OFFERTA_LIST = """
-    v.id,
-    v.uid,
-    v.codice,
-    v.revisione_numero,
-    v.revisione_padre_id,
-    v.is_attiva,
-    v.has_next_revisione,
-    v.stato_doc_offerta_id,
-    v.stato_codice,
-    v.stato_codice_interno,
-    v.stato_descrizione,
-    v.emittente_fiscale_id,
-    v.billing_account_id,
-    v.billing_account_codice          AS ba_codice,
-    v.cliente_denominazione           AS billing_account_display,
-    v.id_fiscale,
-    v.istanza_utility_id,
-    v.istanza_utility_codice,
-    v.utility_id,
-    v.utility_codice,
-    v.utility_descrizione             AS utility_display,
-    v.listino_id,
-    l.codice                          AS listino_codice,
-    v.listino_versione_id,
-    oc.valuta_id,
-    v_val.codice                      AS valuta_codice,
-    v.valore_variazione_globale,
-    v.tipo_variazione_globale,
-    v.validita_dal,
-    v.validita_al,
-    v.data_emissione,
-    v.data_accettazione,
-    v.data_rifiuto,
-    v.data_annullamento,
-    v.data_insert,
-    v.user_insert
-"""
-
-
-_FROM_JOINS_OFFERTA_LIST = """
-    FROM vendite.vw_offerte_commerciali_list v
-    LEFT JOIN vendite.listini l ON l.id = v.listino_id
-    -- JOIN by PK su tabella sottostante per recuperare `valuta_id`: la
-    -- vw_offerte_commerciali_list non lo espone direttamente. Costo
-    -- trascurabile (PK lookup); evita una nuova migration sulla vista.
-    LEFT JOIN vendite.offerte_commerciali oc ON oc.id = v.id
-    LEFT JOIN config.valute v_val ON v_val.id = oc.valuta_id
-"""
+# === Costante LISTA (vista canonica DEF-8, 2026-06-03) ===
+# La lista paginata legge dalla vista canonica self-contained
+# `vendite.vw_offerte_commerciali_lista`, che espone i nomi CANONICI senza alias
+# (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice) richiesti dal
+# catalogo liste 'vendite.offerte', e materializza listino_codice,
+# listino_versione_codice, valuta_codice, is_scaduta (prima JOIN/derivati nel
+# repository). Nessun JOIN ulteriore qui: la vista basta. Il detail
+# (`get_offerta`) usa la propria proiezione `_SELECT_COLS_OFFERTA` + JOIN.
+_FROM_LISTA_OFFERTE = "FROM vendite.vw_offerte_commerciali_lista v"
 
 
 _SELECT_COLS_OFFERTA = """
@@ -397,7 +355,7 @@ class OfferteRepository(ComponentiRepositoryMixin):
         search: str | None,
         solo_attiva: bool = True,
     ) -> tuple[str, list[Any]]:
-        # Filtri sulla vista lista `vw_offerte_commerciali_list` (alias `v`).
+        # Filtri sulla vista canonica `vw_offerte_commerciali_lista` (alias `v`).
         # Tutti i campi consumati qui sono esposti dalla vista — nessun JOIN
         # ulteriore nel filter builder.
         wheres: list[str] = []
@@ -421,8 +379,9 @@ class OfferteRepository(ComponentiRepositoryMixin):
             wheres.append("v.validita_dal <= %s")
             params.append(validita_dal_max)
         if search:
-            # Search ILIKE su codice + denominazione cliente. L'API impone >=3 char.
-            wheres.append("(v.codice ILIKE %s OR v.cliente_denominazione ILIKE %s)")
+            # Search ILIKE su codice + ragione sociale (nome canonico del
+            # soggetto). L'API impone >=3 char.
+            wheres.append("(v.codice ILIKE %s OR v.ragione_sociale_completa ILIKE %s)")
             params.extend([f"%{search}%", f"%{search}%"])
         # Filtro revisione attiva (mirror preventivi `solo_attiva`): di default
         # mostra solo l'ultima revisione "viva" per lineage. `is_attiva` e'
@@ -464,8 +423,8 @@ class OfferteRepository(ComponentiRepositoryMixin):
             solo_attiva=solo_attiva,
         )
         sql = f"""
-            SELECT {_SELECT_COLS_OFFERTA_LIST}
-              {_FROM_JOINS_OFFERTA_LIST}
+            SELECT v.*
+              {_FROM_LISTA_OFFERTE}
               {where_clause}
              ORDER BY {order_col} {order_dir_safe}, v.id DESC
              LIMIT %s OFFSET %s
@@ -500,7 +459,7 @@ class OfferteRepository(ComponentiRepositoryMixin):
         )
         sql = f"""
             SELECT COUNT(*)
-              {_FROM_JOINS_OFFERTA_LIST}
+              {_FROM_LISTA_OFFERTE}
               {where_clause}
         """  # noqa: S608
         with connection.cursor() as cursor:

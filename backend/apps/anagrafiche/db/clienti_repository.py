@@ -13,7 +13,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.anagrafiche.db._helpers import extract_paginated
+from apps.anagrafiche.db._helpers import extract_paginated, get_or_create_soggetto_ruolo
 from apps.core.db._helpers import row_to_dict, rows_to_list
 
 
@@ -52,12 +52,7 @@ class ClientiRepository:
     # Scopo: Ottiene o crea il ruolo CLIENTE per un soggetto.
     #        Delega alla funzione DB script.fn_get_or_create_soggetto_ruolo.
     def get_or_create_ruolo_cliente(self, soggetto_id: str) -> int:
-        sql = "SELECT script.fn_get_or_create_soggetto_ruolo(%s, 'CL') AS ruolo_id"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_id])
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+        return get_or_create_soggetto_ruolo(soggetto_id, 'CL')
 
     # Scopo: Crea istanza utility fittizia (senza PDP).
     #        Nota: istanze_utilities non ha utility_id; l'utility viene propagata

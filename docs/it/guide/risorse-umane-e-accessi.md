@@ -42,9 +42,13 @@
 >   `app.soggetto_ruolo_id` propagati da `JwtAuditAuthentication`
 > * Scope policy generalizzato (`BA_OWNERSHIP`, `FORNITORE_OWNERSHIP`,
 >   `EF_WHITELIST`) con fn `script.fn_scope_*` inlineable
-> * Policy RLS predisposte su 6 tabelle sensibili (dry-run completato;
->   attivazione `ENABLE ROW LEVEL SECURITY` differita a quando le API
->   portale/shop di dominio saranno sviluppate)
+> * Policy RLS **a due velocità** (giugno 2026): branch **scope emittente
+>   OPERATORI ATTIVA** (`ENABLE`, Ondata 1+2 su fatture/scadenze/lotti/ordini/
+>   preventivi/contratti/offerte/documenti_generati/pratiche/billing_account —
+>   vedi `dev/work-done/analisi-attivazione-rls-operatori.md`; dal **2026-06-03**
+>   `FOR ALL` + `WITH CHECK` → copertura **scrittura**, no `FORCE`, batch come
+>   `postgres` esenti); branch
+>   **portale/shop** ancora **dry-run**, differita alle relative API di dominio
 >
 > Dettagli:
 >

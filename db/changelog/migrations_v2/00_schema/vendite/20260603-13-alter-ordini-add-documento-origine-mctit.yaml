@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-ORD (db-brief-ordini-vendita §6.A, estensione A -- variante A1 ratificata):
+# link tipizzato al documento commerciale di origine (preventivo/offerta) da cui
+# l'ordine nasce. Provenienza/tracciabilita' della conversione upstream.
+#
+# RATIFICA A1 (vs A2): NON si riusano sorgente_tipo_id/sorgente_uid (FK
+# config.sorgenti) perche' l'UNIQUE uq_ordini_v_sorgente_fk imporrebbe l'invariante
+# "1 origine -> 1 ordine" (bloccando riordini/consegne parziali) e lo scope PUSH_*
+# di config.sorgenti ha altra semantica. Si usano due colonne dedicate SENZA UNIQUE.
+#
+# Design tipo (regola del 2): stesso idioma di vendite.ordini.fatturazione_trigger
+# (varchar + CHECK su vocabolario chiuso), NON un enum/lookup separato. Vocabolario
+# interno {PREVENTIVO, OFFERTA}, estendibile via nuovo changeset.
+#
+# documento_origine_id e' un riferimento POLIMORFO (preventivi.id se tipo=PREVENTIVO,
+# offerte_commerciali.id se tipo=OFFERTA): niente FK fisica unica (punterebbe a due
+# tabelle). L'integrita' e' garantita alla VALORIZZAZIONE (service di conversione,
+# analisi §7.4); lo scheletro lista+CRUD non valorizza mai queste colonne -> additivo
+# puro, entrambe NULL. CHECK di co-presenza tipo <-> id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260603-13-alter-ordini-add-documento-origine-mctit.yaml
+
+  - changeSet:
+      id: 20260603-13-alter-ordini-add-documento-origine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ADD COLUMN documento_origine_tipo (varchar + CHECK PREVENTIVO/OFFERTA) e
+        documento_origine_id (bigint, riferimento polimorfo, SENZA UNIQUE) su
+        vendite.ordini. Link tipizzato al documento commerciale di origine (A1).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: ordini }
+          - not:
+              - columnExists:
+                  schemaName: vendite
+                  tableName: ordini
+                  columnName: documento_origine_tipo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- ADD COLUMN documento_origine_tipo / documento_origine_id
+              -- Link tipizzato (A1) al preventivo/offerta di origine.
+              -- ==========================================================
+              ALTER TABLE vendite.ordini
+                  ADD COLUMN documento_origine_tipo VARCHAR(20) NULL,
+                  ADD COLUMN documento_origine_id   BIGINT      NULL;
+
+              -- Vocabolario chiuso (stesso pattern di fatturazione_trigger).
+              ALTER TABLE vendite.ordini
+                  ADD CONSTRAINT chk_ordini_documento_origine_tipo
+                  CHECK (
+                      documento_origine_tipo IS NULL
+                      OR documento_origine_tipo IN ('PREVENTIVO', 'OFFERTA')
+                  );
+
+              -- Co-presenza tipo <-> id: o entrambi valorizzati o entrambi NULL
+              -- (NESSUNA UNIQUE: piu' ordini possono nascere dalla stessa origine).
+              ALTER TABLE vendite.ordini
+                  ADD CONSTRAINT chk_ordini_documento_origine_copres
+                  CHECK ((documento_origine_tipo IS NULL) = (documento_origine_id IS NULL));
+
+              COMMENT ON COLUMN vendite.ordini.documento_origine_tipo
+              IS 'Tipo del documento commerciale di origine (A1): PREVENTIVO|OFFERTA. '
+                 'NULL = ordine diretto (non nato da upstream). Vocabolario chiuso via '
+                 'CHECK (idioma di fatturazione_trigger).';
+              COMMENT ON COLUMN vendite.ordini.documento_origine_id
+              IS 'Id del documento di origine (A1): preventivi.id se tipo=PREVENTIVO, '
+                 'offerte_commerciali.id se tipo=OFFERTA. Riferimento POLIMORFO, niente '
+                 'FK fisica unica e NESSUNA UNIQUE (piu'' ordini da una stessa origine). '
+                 'Valorizzato dal service di conversione (analisi §7.4), non dallo '
+                 'scheletro. Display in vista: documento_origine_codice (CASE per tipo).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ordini
+                  DROP CONSTRAINT IF EXISTS chk_ordini_documento_origine_copres;
+              ALTER TABLE vendite.ordini
+                  DROP CONSTRAINT IF EXISTS chk_ordini_documento_origine_tipo;
+              ALTER TABLE vendite.ordini
+                  DROP COLUMN IF EXISTS documento_origine_id;
+              ALTER TABLE vendite.ordini
+                  DROP COLUMN IF EXISTS documento_origine_tipo;

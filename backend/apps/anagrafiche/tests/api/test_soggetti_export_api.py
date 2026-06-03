@@ -26,9 +26,11 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _SVC = "apps.anagrafiche.api.views_soggetti.SoggettiService"
 _PERM = "apps.anagrafiche.api.views_soggetti.PermissionResolver"
-_UI_SVC = "apps.anagrafiche.api.views_soggetti.UiService"
-_UI_REPO = "apps.anagrafiche.api.views_soggetti.UiRepository"
-_RENDER = "apps.anagrafiche.api.views_soggetti.ListaExportService"
+# Coda export estratta in apps.ui.api.export_helpers.build_export_response
+# (regola del 2, 2026-06-02): i mock UI vanno puntati li', non al modulo view.
+_UI_SVC = "apps.ui.api.export_helpers.UiService"
+_UI_REPO = "apps.ui.api.export_helpers.UiRepository"
+_RENDER = "apps.ui.api.export_helpers.ListaExportService"
 
 
 class TestSoggettiExportApi(JwtMockedApiTest):

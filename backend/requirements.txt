@@ -45,7 +45,7 @@ django==6.0.5
     #   djangorestframework
     #   djangorestframework-simplejwt
     #   drf-spectacular
-django-redis==6.0.0
+django-redis==7.0.0
     # via -r ../requirements.in
 djangorestframework==3.17.1
     # via
@@ -70,7 +70,7 @@ httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via anthropic
-idna==3.17
+idna==3.18
     # via
     #   anyio
     #   httpx

@@ -319,6 +319,16 @@ CREATE POLICY rls_fatture_scope ON vendite.fatture
     );
 ```
 
+**Lettura e scrittura.** Una policy `FOR SELECT` filtra solo le *letture*. Sulle
+tabelle dove il ruolo **scrive** (es. l'operatore che crea preventivi/ordini), la
+policy va dichiarata **`FOR ALL` con `WITH CHECK`** (di norma identico alla
+`USING`): su una tabella con RLS attiva una policy di sola lettura manda in
+**deny-all** ogni `INSERT`/`UPDATE` (`new row violates row-level security policy`).
+È quanto accaduto nell'Ondata 2 operatore e risolto estendendo le `ef_whitelist` a
+`FOR ALL` (vedi `dev/work-done/db-brief-rls-ondata2-insert-bloccati.md`). I
+job batch non sono toccati: girano come `postgres` (superuser) e — non essendoci
+`FORCE` — bypassano la RLS.
+
 ### 6.2 Come si alimentano le RLS
 
 Il middleware esistente [JwtAuditAuthentication](/guide/risorse-umane-e-accessi#propagazione-identita-utente-al-database-guc-app)
@@ -341,7 +351,8 @@ non si sovrappongono:
 | --- | --- |
 | Se l'utente puo' chiamare l'endpoint | Django (`ZeroERPPermission`) |
 | Se l'utente puo' eseguire quell'azione | Django (capability dal profilo) |
-| Quali righe vede nelle query | DB (RLS policy) |
+| Quali righe **vede** nelle query | DB (RLS `USING`) |
+| Quali righe puo' **creare/modificare** | DB (RLS `WITH CHECK`, policy `FOR ALL`) |
 
 ### 6.4 Tracciabilita' canale sui dati transazionali
 
@@ -761,9 +772,19 @@ erDiagram
 
 ## 14. Stato portale e shop (aprile 2026)
 
+> **Aggiornamento giugno 2026 — RLS a due velocità.** La RLS è stata
+> **attivata (`ENABLE`) per lo scope emittente fiscale degli OPERATORI
+> interni** su fatture/fatture_scadenze/fatturazione_lotti/ordini/preventivi/
+> contratti/offerte_commerciali/documenti_generati/pratiche/billing_account
+> (vedi `dev/work-done/analisi-attivazione-rls-operatori.md`). Si è potuta
+> attivare **prima del portale** perché il consumatore (backend interno come
+> OPERATORE) e i GUC esistono già. Restano **dry-run/dormienti** solo le
+> branch **portale/shop** (`BA_OWNERSHIP`, CLIENTE_PORTALE/SHOP_CUSTOMER),
+> in attesa delle API di dominio descritte sotto.
+
 L'**infrastruttura auth e' completamente predisposta** per tutte le vesti:
 invito, attivazione, login, refresh, `/me/`, GUC JWT, scope policy, RLS
-policy (dry-run). Un operatore puo' gia' invitare un cliente come utente
+policy (operatori ATTIVE, portale/shop dry-run). Un operatore puo' gia' invitare un cliente come utente
 portale o shop; l'utente riceve l'email, attiva l'account, fa login sul
 canale corretto e ottiene un JWT con la veste giusta.
 
@@ -776,8 +797,9 @@ e saranno affrontate quando il business le richiedera'.
 Il vantaggio del modello attuale: aggiungere le API portale/shop non
 richiede nessun refactor auth — si aggiungono endpoint sotto
 `/api/v1/portale/` o `/api/v1/shop/`, si usa `PortaleBasePermission` /
-`ShopPermission`, e la RLS si attiva con `ENABLE ROW LEVEL SECURITY` sulle
-tabelle gia' predisposte. Zero breaking change sugli operatori interni.
+`ShopPermission`, e la RLS portale/shop si attiva con `ENABLE ROW LEVEL SECURITY`
+sulle tabelle gia' predisposte (la branch operatori/EF è già attiva, vedi nota
+sopra). Zero breaking change sugli operatori interni.
 
 ---
 

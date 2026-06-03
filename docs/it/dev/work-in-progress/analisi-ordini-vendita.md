@@ -1,0 +1,806 @@
+# Analisi — Ordine di vendita (OdV): scheletro CRUD + lista configurabile + chiusura giro
+
+> **Branch lavoro**: `dev/backend-tid` (BE/FE) + brief DB → `dev/db-tid`.
+> **Natura**: documento di analisi operativo. La **strada implementativa DB**
+> (changeset, vista, seed catalogo, ordine seed) la sceglie il team DB nel
+> rispetto dei pattern già rodati (memoria `feedback_db_actions_passaggio_team`);
+> BE/FE partono **solo** a DB consegnato (`feedback_be_fe_attende_prerequisiti_db`).
+> **Origine**: richiesta Tid 2026-06-03 — dopo preventivi/listini/offerte/contratti
+> si passa agli **ordini di vendita**, riusando al massimo le skill replicabili.
+> **Template 1:1**: famiglia vendite già atterrata —
+> [offerte](../../../../frontend/src/vendite/offerte/) (più recente, testata+righe),
+> [preventivi](../../../../frontend/src/vendite/preventivi/) (righe+componenti BoM+integrazione),
+> [lista-offerte-comm.md](../work-done/lista-offerte-comm.md) / [lista-preventivi.md](../work-done/lista-preventivi.md)
+> (DEF-8 lista configurabile).
+
+---
+
+## 0. Obiettivo in una frase
+
+Portare l'**ordine di vendita** da «schema DB pronto, zero applicativo» a
+**dominio gestibile end-to-end**: scheletro CRUD (testata + righe + componenti
+BoM + note), **lista configurabile DEF-8 costruita direttamente responsive**
+(niente lista grezza da rifattorizzare dopo — inutile), e **chiusura del giro**
+fino alla fattura riusando la pipeline esistente. Tutto clonando i building block
+della famiglia vendite — **regola del 2** a tappeto (memoria
+`feedback_regola_del_2_estrai_bb`).
+
+---
+
+## 1. Stato di partenza — cosa esiste e cosa manca
+
+### ✅ DB — sostanzialmente COMPLETO (schema `vendite`)
+Modello quasi pronto: serve la vista lista (§3) **+ una piccola estensione
+additiva di 2 colonne** ratificata il 2026-06-03 (link documento di origine +
+agente — §1.bis). Già presenti e operativi:
+
+| Oggetto | Note |
+| --- | --- |
+| [vendite.ordini](../../../dbzero/vendite/manual/ordini.md) (testata) | identità `(anno,serie,numero)`+`uid`, stato `config.stati_doc_ordini`, totali, `fatturazione_trigger`, `canale_origine`, `utility_id`, `emittente_fiscale_id` NOT NULL |
+| `vendite.ordini_righe` | articolo+qta+prezzo+sconto+iva, `qta_operativa`/`uom_operativa_id`, propagazione qta componenti |
+| `vendite.ordini_righe_componenti` | BoM compositi (modello unificato 13-05, `fn_ordine_riga_componenti_init`/`preview` già a DB) |
+| `vendite.ordini_righe_fulfillment` | tracciamento evadibilità (downstream DDT — **fuori scope scheletro**) |
+| `vendite.ordini_indirizzi` | snapshot indirizzi consegna (downstream — fuori scope scheletro) |
+| `vendite.note_ordini` | partizione note (pattern `PartitionedNoteRepository`) |
+| Trigger testata | default emittente, normalize, gen codice, guard emittente↔BA, guard scope, lock `numero`, immutabilità `canale_origine`, sync canali |
+| RLS 3 facce | `rls_ordini_ef_whitelist` (OPERATORE) / `rls_ordini_cliente_ownership` (PORTALE) / `rls_ordini_shop` (SHOP) — già attiva |
+| **Push a commessa** | `fn_list_ordini_da_pushare` (batch + singolo `p_ordine_id`) + `HandlerOrdini` (sorgente `ORDINE_VENDITA`) in [commesse_source_handlers.py:509](../../../../backend/apps/vendite/services/commesse_source_handlers.py) — **già testato** |
+| PDF | tipo documento `ORDINE_CLIENTE` configurato |
+
+### ❌ Backend applicativo — QUASI NULLA
+Esiste solo l'aggancio commesse (push). **Mancano**: `ordini_repository.py`,
+`ordini_service.py`, `views_ordini.py`/`urls_ordini.py`, serializer/validator,
+istanza note ordini in [note_views.py](../../../../backend/apps/vendite/api/note_views.py)
+(il commento in quel file dichiara già «aggiungere ordini si riduce a clonare 3 righe»).
+
+### ❌ Frontend — ZERO
+Nessuna `src/vendite/ordini/`. **Vantaggio**: non c'è lista grezza pregressa →
+la lista nasce **direttamente** `<ListaConfigurabile>` (vedi §6.1), saltando lo
+step grezza→refactor che è costato a contratti/preventivi/offerte.
+
+### Specificità OdV vs preventivi/offerte (rilevanti per il design)
+1. **Niente revisioni** (`rev`) né **storico revisioni**: più semplice di
+   preventivi/offerte. Niente toggle «mostra storico».
+2. **Niente listino in testata** (l'ordine fissa i prezzi alla conferma sulle
+   righe, non eredita una versione listino come offerta/contratto). Niente colonna
+   listino composita.
+3. **`numero` valorizzato già all'INSERT in BOZZA** (verificato sul DDL reale,
+   2026-06-03): il trigger BEFORE INSERT `trgfn_ordini_gen_codice` genera
+   `numero` via `script.fn_generate_codice('ordine')` se NULL/vuoto → **mai NULL**.
+   Il lock (`trg_ordini_a10_lock_columns_upd` su `numero`) lo rende immutabile dopo.
+   → lista espone `numero` nudo, nessun fallback (decisione §8.1). *(Il manuale
+   `manual/ordini.md` afferma erroneamente «numerazione durante la conferma» →
+   stale, da allineare, vedi §1.ter.)*
+4. **`fatturazione_trigger`** (CONFERMATO/SPEDITO/CONSEGNATO): nuovo asse, governa
+   **quando** scatta il push a commessa. Ereditato da `billing_account.fatturazione_ordini`.
+5. **`canale_origine`** (ADMIN/PORTALE/SHOP): immutabile post-INSERT; in
+   back-office è sempre ADMIN.
+6. **Logistica/trasporto NON è in testata ordine** — non per omissione ma per
+   **scelta di modello già attuata**: la migration `20251027-01-ordini-refactor-testata`
+   ha **droppato** (`dropColumn`) `causale_trasporto_id`, `aspetto_bene_id`,
+   `vettore_soggetto_ruolo_id`, `modalita_addebito_trasporto_id` dalla testata
+   ordine (vivono/vivranno sul DDT a valle). → **fuori scope scheletro**, nessun
+   campo trasporto nel drawer. *(Il manuale `manual/ordini.md` elenca ancora quei
+   campi tra FK e «vedi anche» → stale, da allineare, §1.ter.)*
+7. **Pagamento/valuta testata snella**: la stessa migration ha droppato anche
+   `giorni_pagamento` e `fine_mese` (ora derivati da `billing_account`). Restano
+   in testata `modalita_pagamento_id`, `termine_pagamento_id`, `valuta_id`,
+   `tasso_cambio` (default 1). → drawer espone modalità/termine/valuta; **`tasso_cambio`
+   fuori dal drawer** (default 1, non gestito in UI scheletro — decisione Tid).
+
+---
+
+## 1.bis. Estensioni di modello ratificate (2026-06-03)
+
+Analisi del modello (richiesta Tid): la testata ordine ha **due lacune** che
+conviene chiudere **prima** dello scheletro, perché aggiungerle dopo significa
+rifare vista lista + serializer + drawer + test (lavoro doppio — memoria
+`feedback_simmetria_modello_no_meta_scope` + `feedback_no_quick_fix_soluzione_assoluta`).
+Ratificate per l'integrazione **A** e **E**; B/C/D/F rimandate (vedi §8.bis).
+
+### A — Link documento di origine (preventivo/offerta → ordine) ✅ RATIFICATO
+Oggi `vendite.ordini` ha solo `sorgente_tipo_id`/`sorgente_uid` (meccanismo
+**generico pensato per import CRM esterno**, FK `config.sorgenti`): **non** è un
+link interno tipizzato al documento commerciale da cui l'ordine nasce. Senza,
+l'ordine «nasce dal nulla» e la conversione preventivo/offerta→ordine perde
+provenienza/tracciabilità.
+
+- **Requisito**: link **interrogabile** documento commerciale upstream → ordine.
+  Due strade valutate:
+  - **(A1) — RATIFICATA (Tid, 2026-06-03)**: FK tipizzata dedicata
+    `documento_origine_tipo` (lookup/enum `PREVENTIVO`/`OFFERTA`/…) +
+    `documento_origine_id bigint`, **senza UNIQUE**.
+  - **(A2) — SCARTATA**: riuso di `sorgente_tipo_id`/`sorgente_uid` come link
+    interno, estendendo `config.sorgenti` con i tipi documento interni.
+- **Perché A1 e non A2** (rettifica post-verifica DDL 2026-06-03, vedi
+  [db-brief-ordini-vendita.md §1.A](./db-brief-ordini-vendita.md)): A2 sembrava più
+  «simmetrica» con le righe (che usano `sorgente_*` con UQ di idempotenza import), ma
+  la verifica ha scoperto che quella simmetria è **fuorviante**. ① L'UQ
+  `uq_ordini_v_sorgente_fk` su `(sorgente_tipo_id, sorgente_uid)` imporrebbe in testata
+  l'invariante **«1 preventivo/offerta → 1 ordine»**, bloccando riordini e consegne
+  parziali (regola di dominio implicita, non voluta). ② `config.sorgenti` ha già
+  `PREVENTIVO`/`OFFERTA_COMMERCIALE` con `scope=PUSH_*` (registry handler), semantica
+  **diversa** dalla provenienza → riusarli sovraccarica la colonna. A1 modella la
+  provenienza in modo esplicito, senza UNIQUE → **più ordini da una stessa origine**;
+  costo equivalente (memoria `feedback_no_quick_fix_soluzione_assoluta` +
+  `feedback_simmetria_modello_no_meta_scope`).
+- **Nota di confine**: A *abilita* la conversione preventivo/offerta→ordine (oggi
+  inesistente) ma **non** la implementa in questo scheletro — la conversione è uno
+  step successivo (§7.4). Qui si predispone solo la colonna + la valorizzazione in
+  CREATE quando l'ordine arriva da un upstream.
+
+### E — Agente/venditore ✅ RATIFICATO
+Colonna `agente_soggetto_ruolo_id bigint NULL` FK `anagrafiche.soggetti_ruoli`
+(ruolo agente/commerciale), per provvigioni e reporting commerciale. Display in
+vista: `agente_denominazione` (via SR). Nullable (non tutti gli ordini hanno
+agente).
+
+> Entrambe sono **azioni DDL** → entrano nel **brief DB-ORD** (§3.0) come
+> prerequisito; BE/FE attendono la consegna (memoria
+> `feedback_be_fe_attende_prerequisiti_db`). Sono additive e nullable → nessun
+> impatto sui trigger/RLS esistenti.
+
+---
+
+## 1.ter. Allineamento documentazione stale (verifiche 2026-06-03)
+
+Verifica su DDL/trigger reali → il manuale **`manual/ordini.md`** descrive uno
+stato **pre-refactor** e va corretto per coerenza (richiesta Tid). Disallineamenti:
+
+| Punto manuale stale | Realtà DDL/trigger | Azione |
+| --- | --- | --- |
+| «Aggiornamento numerazione possibile solo da trigger durante la **conferma**» | `trgfn_ordini_gen_codice` genera `numero` **all'INSERT** (BOZZA) se NULL | correggere prosa numerazione |
+| Sezione «Trasporto e consegna» + FK `causale_trasporto_id`/`aspetto_bene_id`/`vettore_soggetto_ruolo_id`/`modalita_addebito_trasporto_id` + link «vedi anche» | colonne **droppate** da `20251027-01-ordini-refactor-testata` | rimuovere sezione/FK/link trasporto |
+| `giorni_pagamento`/`fine_mese` tra i campi pagamento | **droppati** (ora da BA) | rimuovere dai campi pagamento |
+
+E **`manual/ordini_righe.md`** già autodocumenta il **bug del check** (`chk_ordini_v_r_qta_pos`
+replica `prezzo` invece di `quantita > 0`) → la correzione va nel brief (§3.0).
+
+> Nota perimetro: la correzione del **manuale dbzero** è documentazione (la faccio
+> contestualmente); la correzione del **check DDL** è azione DB (brief, team DB).
+
+---
+
+## 2. Standard e building block governanti (vincolanti)
+
+Il lavoro NON inventa pattern: applica quelli già scritti (CLAUDE.md). In sintesi
+(dettaglio identico a [lista-preventivi.md §1](../work-done/lista-preventivi.md)):
+
+- **Backend** — [api.md](../../api.md): `DomainAPIView` (`area_funzionale='vendite'`),
+  `parse_list_params`, envelope `success_response`+`paginated_envelope`, tiebreaker
+  `id`, `is_search_endpoint=True` su list+export, scope emittente
+  `get_scope_user_id`→`script.fn_get_emittenti_scope_pk_ids` (**PK reale**, non
+  sr_id — memoria `feedback_emittente_pk_vs_soggetto_ruolo`), `ServiceError`/
+  `ErrorManager` (mai `try/except Exception` in view), `handle_post_json`,
+  `PayloadValidator` + `map_integrity_error` (memoria `feedback_payload_helpers_duplicati`),
+  pricing via `PricingService` (memoria `feedback_pricing_centralizzato`), export
+  via `apps.ui.api.export_helpers` + `ListaExportService` (param `formato`, mai
+  `format` — memoria `feedback_drf_format_magic_param`; rispetta ordine/visibilità/
+  permessi — `feedback_export_lista_rispetta_preferenza`).
+- **Frontend** — [frontend-standards.md](../../frontend/frontend-standards.md):
+  toolbar UNICA caller (memoria `feedback_lista_pattern_standard`),
+  `<ListaConfigurabile>` + `useListaConfigurabilePage` + `CellaConfigurabile`
+  (formatter built-in `currency_eur`/`date_short`/`datetime_short`),
+  `useResponsiveColumns` (ritiro dinamico, ereditato), `RowActionsMenu` (memoria
+  `feedback_row_actions_menu`), drawer autonomi + readonly (`feedback_drawer_readonly`),
+  `if (result !== null)` (`feedback_drawer_result_check`), store `userScoped:true`
+  (`feedback_pinia_userscoped`), blob fuori da `useApiHandler`
+  (`feedback_blob_download_no_useapihandler`), i18n `$t()` namespace `vendite.ordini.*`.
+- **Building block riusati** (cataloghi BB BE/FE): `PartitionedNoteRepository`,
+  `PricingService`, `ListaExportService`, `UiService.get_lista_config`;
+  `ListaConfigurabile`, `useListaConfigurabilePage`, `CellaConfigurabile`,
+  `PageActionsBar`, `ReadonlyBadge`, `AccessoBloccatoPanel`, `ExportDialog`,
+  `LookupSelect`, `UtilityPerRuoloSelect`, `RowActionsMenu`, componenti
+  ComponentiPanel/Dialog (da preventivi).
+
+---
+
+## 3. Workstream DB (input per il team DB su `dev/db-tid`) — attende delivery
+
+> **Nota di processo (Tid, 2026-06-03)**: non si scrive un brief separato.
+> **Questa analisi è l'input**: il team DB ne deriva il proprio changeset/brief
+> (vista, seed, DDL A+E, fix check) scegliendo la strada implementativa nel
+> rispetto dei pattern (memoria `feedback_db_actions_passaggio_team`). Le voci §3.x
+> descrivono il *cosa serve*, non il *come* (changelog/ordine seed = scelta DB).
+
+`priorita` (DB-A) **già atterrato** con i refactor lista contratti/preventivi →
+qui serve il workstream **DB-ORD**: **estensione modello A+E** (§3.0) + vista lista
++ definizione + catalogo + preset. Righe/componenti/note già esistono.
+
+### 3.0 Estensione modello testata (A+E) — DDL additivo
+
+Changeset additivo/correttivo (additive+nullable → no impatto trigger/RLS):
+- **A — link origine (A1 ratificata, §1.bis)**: FK tipizzata dedicata
+  `documento_origine_tipo` (vocabolario PREVENTIVO/OFFERTA — enum o lookup, scelta DB)
+  + `documento_origine_id bigint`, **entrambe nullable, senza UNIQUE** (più ordini da
+  una stessa origine). **NON** riusare `config.sorgenti`/`sorgente_*` (A2 scartata:
+  l'UQ `uq_ordini_v_sorgente_fk` imporrebbe l'1:1 e lo `scope` PUSH_* ha altra
+  semantica — vedi [db-brief §1.A](./db-brief-ordini-vendita.md)). Riferimento
+  polimorfo (preventivo *o* offerta secondo il tipo): integrità garantita alla
+  valorizzazione (conversione §7.4), non con FK fisica unica.
+- **E — agente**: `agente_soggetto_ruolo_id bigint NULL` FK
+  `anagrafiche.soggetti_ruoli` (+ guard `child_requires_active_parent` coerente
+  con gli altri FK della testata).
+- **FIX check riga (punto verificato 2026-06-03)**: `chk_ordini_v_r_qta_pos` oggi
+  replica `prezzo_unitario >= 0` → **correggere a `quantita > 0`** (su un ordine la
+  riga a quantità 0 non ha senso; l'omaggio è `quantita > 0` + `prezzo 0`).
+  Valutare anche il CHECK di co-presenza `(uom_operativa_id IS NULL) =
+  (qta_operativa IS NULL)` raccomandato da `manual/ordini_righe.md`. Additivo/
+  correttivo, basso rischio → incluso nel lotto per evitare un giro di ritorno.
+- pgTAP: presenza colonne A+E + FK + nullability; `quantita > 0` rifiutato; co-presenza UoM.
+
+### 3.1 Vista canonica `vendite.vw_ordini_lista` (NUOVA)
+
+Non esiste alcuna vista lista per ordini → si crea **da zero** già canonica
+(convenzione `vw_<entita>_lista`, `security_invoker=on`, self-contained), con i
+nomi **canonici** richiesti da DEF-8 (combaciano col `campo_sorgente` del catalogo,
+trigger B2). Espone:
+
+- `ragione_sociale_completa` (cliente via istanza/SR — stessa logica
+  soggetto-via-istanza delle altre liste vendite, 1 join, valorizzato anche per
+  prospect; memoria `feedback_display_fields_backend` + `feedback_cliente_billing_account`)
+- `id_fiscale_univoco_cf_piva`
+- `ba_codice` (alias legittimo per evitare collisione `codice`)
+- `stato_descrizione`, `stato_codice_interno` (per Tag severity FE)
+- `numero`, `serie`, `anno`, `data`, `totale_doc` (+ `imponibile_tot`, `iva_tot`,
+  `sconto_tot`), `utility_codice`, `utility_descrizione`,
+  `fatturazione_trigger`, `canale_origine`, `modalita_pagamento_codice`,
+  `termine_pagamento_codice`, `valuta_codice`, `emittente_fiscale_id`/`_codice`,
+  `data_insert`, `billing_account_id`, `soggetto_ruolo_id`, `id`, `uid`
+- **`documento_origine_tipo`/`documento_origine_codice`** (A — provenienza
+  upstream, es. `PREVENTIVO · P-2026/123`) e **`agente_denominazione`** (E — via
+  SR agente)
+- `numero` esposto **nudo** (sempre valorizzato dal trigger gen codice, anche in
+  BOZZA — decisione §8.1; niente `numero_display`).
+
+> Lezione DEF-8 (ripetuta perché è il punto che si sbaglia sempre): nomi
+> cliente/id.fiscale **canonici** in vista, `sensibile=false` su tutte le colonne,
+> ogni `campo_sorgente` esiste come colonna della vista (anti-typo, trigger B2 + pgTAP).
+
+### 3.2 Entry `ui.lista_definizione` (seed CSV)
+
+```
+id=7, codice='vendite.ordini', descrizione='Ordini di vendita',
+schema_dati='vendite', vista_sql='vw_ordini_lista', attivo=t
+```
+(id progressivo dopo `vendite.offerte`=6; il trigger `valida_vista_sql` richiede
+la vista già esistente al seed → vista prima della definizione.)
+
+### 3.3 Catalogo colonne `ui.lista_colonna` (lista_id=7) + preset di sistema
+
+Catalogo §4. Seed gemello offerte/preventivi:
+- `ui.lista_colonna` — preset + extra opt-in (`priorita` + `larghezza_default`).
+- `ui.lista_preset` — `ordini_default`, `ambito='sistema'`, `is_default=t`,
+  `pagina_dimensione=25`, `ordinamento_default=[{"col":"data","dir":"desc"}]`.
+- `ui.lista_preset_colonna` — colonne visibili di default (§4 «Preset ✓»); extra
+  con `visibile=false`.
+- `priorita` seedata via changelog dedicato (pattern `20260602-16`).
+- Resync sequenze IDENTITY `ui.*` già risolto a monte da `20260602-17` (`runAlways`).
+
+### 3.4 (Eventuale) note ordini
+Lo schema `vendite.note_ordini` esiste già: nessun lavoro DB. L'aggancio è solo
+backend (§5.4, istanza `PartitionedNoteRepository`).
+
+---
+
+## 4. Catalogo colonne proposto (`vendite.ordini`, lista_id=7)
+
+> Due assi (come famiglia): `ordine_default` = ordine visivo; `priorita` = peso di
+> permanenza nel ritiro dinamico (più alto = si ritira per ultima); `largh_def` =
+> `larghezza_default` (standard + soglia packing-a-somma).
+
+**Colonne preset (visibili):**
+
+| ord | codice | campo_sorgente | tipo_colonna | tipo_dato | formato | largh | priorita | gruppo |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10 | numero | numero | identificatore | string | — | 130 | 100 (max) | Identificazione |
+| 20 | data | data | informazione | date | date_short | 110 | 60 | Identificazione |
+| 30 | ragione_sociale_completa | ragione_sociale_completa | informazione | string | — | 200 | 95 | Cliente |
+| 40 | ba_codice | ba_codice | informazione | string | — | 120 | 40 | Cliente |
+| 50 | id_fiscale | id_fiscale_univoco_cf_piva | informazione | string | — | 140 | 75 | Cliente |
+| 60 | utility_codice | utility_codice | informazione | string | — | 100 | 70 | Fornitura |
+| 70 | totale_doc | totale_doc | informazione | numeric | currency_eur | 130 | 80 | Importi |
+| 80 | fatturazione_trigger | fatturazione_trigger | informazione | string | — | 120 | 30 | Ciclo vita |
+| 90 | stato | stato_descrizione | informazione | string | — | 130 | 90 | Stato |
+| 100 | azioni | (NULL) | azione | string | — | 60 | 100 (max) | — |
+
+**Colonne tecniche nascoste (preset ✗, servono al FE):**
+
+| ord | codice | campo_sorgente | note |
+| --- | --- | --- | --- |
+| 110 | stato_codice_interno | stato_codice_interno | severity Tag (`statoOrdineSeverity`); `ordinabile=f` `ricercabile_full=f` |
+
+**Colonne extra opt-in (`visibile=false` nel preset):**
+
+| ord | codice | campo_sorgente | tipo_dato | formato | priorita | gruppo |
+| --- | --- | --- | --- | --- | --- | --- |
+| 120 | utility_descrizione | utility_descrizione | string | — | 10 | Fornitura |
+| 130 | canale_origine | canale_origine | string | — | 12 | Ciclo vita |
+| 140 | imponibile_tot | imponibile_tot | numeric | currency_eur | 18 | Importi |
+| 150 | iva_tot | iva_tot | numeric | currency_eur | 18 | Importi |
+| 160 | modalita_pagamento | modalita_pagamento_codice | string | — | 15 | Pagamento |
+| 170 | termine_pagamento | termine_pagamento_codice | string | — | 12 | Pagamento |
+| 180 | valuta | valuta_codice | string | — | 12 | Importi |
+| 190 | emittente_fiscale_codice | emittente_fiscale_codice | string | — | 15 | Emittente |
+| 200 | anno | anno | integer | — | 10 | Identificazione |
+| 210 | serie | serie | string | — | 10 | Identificazione |
+| 215 | documento_origine | documento_origine_codice | string | — | 22 | Origine |
+| 218 | agente | agente_denominazione | string | — | 20 | Commerciale |
+| 220 | data_insert | data_insert | datetime | datetime_short | 5 | Audit |
+
+**Note di dominio:**
+- `numero` = unico `identificatore` (frozen). **Sempre valorizzato** dal trigger
+  gen codice, anche in BOZZA (decisione §8.1) → nessun fallback. Niente colonna
+  `rev` (gli ordini non hanno revisioni).
+- `ricercabile_full=t` su `numero`, `ragione_sociale_completa`, `ba_codice`,
+  `id_fiscale` (allineato alla ricerca repo).
+- `stato` reso via slot `#cell-stato` (Tag severity) — **niente badge scaduta**
+  (concetto offerta-specifico, non applicabile a ordini).
+- `fatturazione_trigger` in preset perché è l'asse OdV-specifico che spiega il
+  comportamento di fatturazione (CONFERMATO/SPEDITO/CONSEGNATO); priorità bassa
+  (30) → si ritira presto se manca spazio.
+- `totale_doc` e date via formatter built-in `CellaConfigurabile`.
+
+---
+
+## 5. Workstream Backend (`apps/vendite/` + `apps/ui/`) — attende DB
+
+Gemello `offerte_*`/`preventivi_*`. Differenze: **niente revisioni** (più
+semplice), **niente listino testata**, **+`fatturazione_trigger`**.
+
+### 5.1 Repository — `ordini_repository.py` (NUOVO)
+Clone strutturale di [offerte_repository.py](../../../../backend/apps/vendite/repositories/offerte_repository.py)
+/ [preventivi_repository.py](../../../../backend/apps/vendite/repositories/preventivi_repository.py):
+- `list_ordini(...)`: legge da **`vw_ordini_lista`**; filtri stato/utility/data
+  (`data_da` default anno-1, memoria `feedback_filtro_data_liste`), scope emittente
+  `fn_get_emittenti_scope_pk_ids`, ricerca ILIKE su `numero`/`ragione_sociale_completa`
+  (+ `ba_codice`/`id_fiscale`). `order_by`/`order_dir` con whitelist
+  `_ORDER_COLS_ORDINI` = `numero | data | ragione_sociale_completa | ba_codice |
+  utility_codice | totale_doc | stato_codice_interno`. Tiebreaker `v.id` SEMPRE.
+  **Niente `solo_attiva`** (non c'è storico revisioni).
+- `get_ordine(id)` + `_SELECT_COLS_ORDINE` (testata completa per il detail).
+- CRUD testata+righe: `upsert_ordine`, `upsert_riga`, `delete_riga`,
+  componenti via `fn_ordine_riga_componenti_init`/`_preview` (clone preventivi).
+- **Doppia quantità operativa/base** (verificato: `ordini_righe` ha
+  `qta_operativa`/`uom_operativa_id`, `quantita` derivata via `factor_to_base`,
+  trigger `trgfn_qta_from_operativa`): **riusare la logica standard già fatta in
+  preventivi/contratti** (clone 1:1) — input con **priorità all'operativa**, GET
+  restituisce **entrambe**, pricing/totali girano su `quantita` base. Verificare
+  che `OrdiniRigaForm`/`upsert_riga` siano allineati al pattern esistente, non
+  reinventati (regola del 2).
+- Guard post-`fetchone()` (`if not row: raise ServiceError`).
+
+### 5.2 Service — `ordini_service.py` (NUOVO)
+Clone di [offerte_service.py](../../../../backend/apps/vendite/services/offerte_service.py)
+/ `preventivi_service.py`:
+- `list_ordini(...)` propaga `order_by`/`order_dir`.
+- CRUD testata (`create_ordine`/`update_ordine`) con `PayloadValidator`
+  (validazione campi, `null_vs_empty`→NULL memoria `feedback_null_vs_empty`),
+  default emittente/utility/valuta via resolver esistenti (memoria
+  `feedback_utility_da_istanza`), pricing righe via `PricingService.resolve_prezzo`.
+- `resolve_filtri_export_label(...)` per la riga «filtri applicati» dell'export.
+- **`fatturazione_trigger`**: default ereditato da BA (già fa il trigger DB
+  `trgfn_ordini_normalize`); il service espone override esplicito sul payload.
+- **`agente_soggetto_ruolo_id`** (E): campo opzionale sul payload testata, lookup
+  SR ruolo agente.
+- **`documento_origine_*`** (A): valorizzato dal service quando l'ordine nasce da
+  un upstream (predisposto ora; la conversione vera è §7.4). In CREATE diretto
+  resta NULL.
+
+### 5.3 View/API — `views_ordini.py` + `urls_ordini.py` (NUOVI)
+Clone di [views_offerte.py](../../../../backend/apps/vendite/api/views_offerte.py)
+/ [urls_offerte.py](../../../../backend/apps/vendite/api/urls_offerte.py):
+- `GET /api/v1/vendite/ordini/` (list, `is_search_endpoint`, `order_by`/`order_dir`,
+  default `data`), `GET /{id}/` (detail), `POST /` (create), `PUT/PATCH /{id}/`,
+  `DELETE /{id}/` (vietato se confermato/collegato a DDT — guard DB già presente).
+- Righe: `POST/PUT/DELETE /{id}/righe/...` + componenti (clone preventivi).
+- **`ApiOrdiniExportView`** → `GET /api/v1/vendite/ordini/export/?formato=csv|xlsx`:
+  `DomainAPIView`, `is_search_endpoint=True`, `parse_export_format`,
+  `ListaExportService` con `lista_codice='vendite.ordini'`, cap `EXPORT_MAX_ROWS`,
+  `build_export_response`, `@extend_schema`.
+- `_LISTA_CODICE_ORDINI = 'vendite.ordini'`.
+- Azioni di stato (§7): `POST /{id}/conferma/` (+ eventuale `POST /{id}/push/`).
+
+### 5.4 Note ordini — 3 righe in `note_views.py`
+Aggiungere l'istanza `_ORDINI_REPO = PartitionedNoteRepository(schema='vendite',
+tabella='note_ordini', target_col='ordine_id', ...)` e cablare le rotte note
+ordini, esattamente come PREVENTIVO/CONTRATTO/OFFERTA (il file lo dichiara già).
+
+### 5.5 Test BE
+- `tests/api/test_ordini_api.py`: list (scope, filtri, ordinamento whitelist),
+  CRUD testata+righe, componenti, export (csv/xlsx, cap, magic param `formato`),
+  conferma+push (§7). Mock DB (regole CI AGENTS.md).
+- Verde `./manage-test.sh apps.vendite.tests -v 2` + `apps.ui.tests`.
+
+---
+
+## 6. Workstream Frontend (`src/vendite/ordini/` — NUOVO albero) — attende DB
+
+Clone dell'albero [preventivi/](../../../../frontend/src/vendite/preventivi/)
+(ha righe+componenti+integrazione) con la **lista già DEF-8** (niente grezza).
+
+### 6.1 Lista — `OrdiniSearchTable.vue` direttamente `<ListaConfigurabile>`
+**Nessuna lista grezza intermedia** (richiesta Tid: il refactor successivo è
+inutile). Si nasce gemelli di
+[ContrattiSearchTable.vue](../../../../frontend/src/vendite/components/ContrattiSearchTable.vue):
+- `<ListaConfigurabile codice="vendite.ordini">` + scaffolding
+  **`useListaConfigurabilePage(store, {...})`**: `exportFn: exportOrdini`,
+  `getExportParams: buildExportParams`, `newTooltipKey:'vendite.ordini.nuovo_ordine'`,
+  `onNew: () => emit('new')`, `searchTableOptions:{ defaultSortField:'data',
+  defaultSortOrder:'desc' }`.
+- **Toolbar caller** (UNICA esterna): filtri stato (`LookupSelect` su
+  `config.stati_doc_ordini`, value `codice_interno`) + utility (`UtilityPerRuoloSelect`)
+  + data Dal/Al. **Niente toggle storico revisioni** (non esiste per ordini).
+  `PageActionsBar` con suffix Tag dirty/salvata + `ReadonlyBadge`.
+- **Slot `#cell-stato`**: `<Tag :value="data.stato_descrizione"
+  :severity="statoOrdineSeverity(data.stato_codice_interno)" />`.
+- **Slot `#actions`**: `RowActionsMenu` → PDF (`ORDINE_CLIENTE`, disabilitato in
+  BOZZA via `stato_codice_interno`) + gestisci note (`OrdineNoteDrawer`) +
+  **conferma/push** (§7) come azione di riga condizionale. `:force-compact`.
+- `totale_doc` e date: formatter built-in. `numero` plain (sempre valorizzato,
+  decisione §8.1). `AccessoBloccatoPanel` + `useInjectBlocked`.
+
+### 6.2 Drawer — `OrdiniDrawer.vue` (testata + righe + componenti + note)
+Clone di `PreventiviDrawer.vue`:
+- Tab **Testata**: cliente (`billing_account` lookup ricco, memoria
+  `feedback_billing_account_lookup` + `feedback_autocomplete_restore`), utility,
+  emittente fiscale (default), data, valuta, modalità/termine pagamento,
+  **`fatturazione_trigger`** (select CONFERMATO/SPEDITO/CONSEGNATO, default da BA),
+  **agente** (E — lookup SR agente, opzionale), `canale_origine` read-only (ADMIN
+  in back-office). Se l'ordine ha provenienza (A), banner/chip read-only
+  «origine: {documento_origine_codice}». `useInjectReadonly`.
+- **Fuori dal drawer** (decisione Tid 2026-06-03): `tasso_cambio` (default 1, non
+  gestito in UI scheletro); `giorni_pagamento`/`fine_mese` **non esistono in
+  testata** (droppati, §1.7) → derivano da `billing_account`, nessun campo.
+- Tab **Righe**: `OrdiniRigheTable` + `OrdiniRigaForm` (master-detail inline,
+  memoria `feedback_master_detail_inline`) + `OrdiniRigaComponentiPanel` (BoM,
+  clone preventivi).
+- Pattern create auto-save BOZZA (memoria `feedback_drawer_create_autosave_bozza`)
+  se Tid lo conferma per gli ordini; altrimenti CREATE classico.
+- `if (result !== null)` su save; `DrawerFooter`.
+
+### 6.3 Store + API FE
+- `stores/ordini.js` (`userScoped:true`): `fetchList` con `order_by`/`order_dir`/
+  filtri; `fetch/create/update/remove`, righe, componenti, `conferma`/`push`.
+- `api/ordiniApi.js`: CRUD + `exportOrdini(params)` →
+  `api.get('${BASE}/export/', { params, responseType:'blob' })` (blob fuori da
+  `useApiHandler`, memoria `feedback_blob_download_no_useapihandler`).
+- `views/OrdiniView.vue` (caller lista+drawer), `constants.js` (severity stato,
+  costanti fatturazione_trigger), eventuale `OrdineNoteDrawer.vue`.
+
+### 6.4 i18n
+Namespace `vendite.ordini.*`; chiavi colonne `vendite.ordini.col_*` da
+`etichetta_i18n_key` del catalogo; export/dialog da `lista_config.*` + `common.*`.
+Verificare assenza orfane. Attenzione `@` letterale → `{'@'}` (memoria
+`feedback_vue_i18n_linked_escape`).
+
+### 6.5 Build FE verde
+`./node_modules/.bin/vite build` (via nvm).
+
+---
+
+## 6.bis. Pricing e articoli compositi — RIUSO BB obbligatorio (regola del 2)
+
+Punto critico (richiesta Tid): preventivi/offerte/contratti hanno **già** un
+metodo condiviso sia per il **pricing** sia per gli **articoli compositi (BoM)**.
+Ordini **non reinventa nulla** — consuma gli stessi building block (memoria
+`feedback_regola_del_2_estrai_bb` + `feedback_pricing_centralizzato`).
+
+### 6.bis.1 Pricing — `PricingService` + `_pricing_gate_helpers` (BE)
+- **`PricingService.resolve_prezzo()`** ([pricing_service.py](../../../../backend/apps/vendite/services/pricing_service.py)):
+  wrapper 1:1 su `fn_resolve_prezzo_listino_v2`, gestisce anche il **prezzo del
+  componente nel contesto del padre composito** via `p_articolo_padre_contesto`.
+  **Mai** lookup diretto su `listini_righe`/contratti (memoria
+  `feedback_pricing_centralizzato`).
+- **`_pricing_gate_helpers.py`** ([_pricing_gate_helpers.py](../../../../backend/apps/vendite/services/_pricing_gate_helpers.py)):
+  orchestratore gate prezzi (L1/L2/L3, override/check) condiviso da
+  preventivi/offerte/contratti. Il pattern `resolve_or_check_override_prezzo_riga_*`
+  + `_apply_pricing_gate_riga` (vedi `contratti_service.py`/`offerte_service.py`)
+  si **clona** per ordini → `resolve_or_check_override_prezzo_riga_ordine`, **non**
+  si riscrive la logica.
+- **Livello gate applicabile agli ordini — da allineare alla famiglia**: l'ordine
+  fissa i prezzi alle righe (no listino in testata, §1.2). Va deciso se l'ordine
+  usa il pricing **stile preventivo** (resolve + override semplice) o eredita anche
+  il gate L2/L3 stile contratti. In ogni caso **passa dai BB sopra**, non da query
+  dirette. *(Decisione di dominio da chiudere prima del BE — §8.bis.)*
+
+### 6.bis.2 Articoli compositi (BoM) — BB già estratti
+**Backend**:
+- DB già pronto: `fn_ordine_riga_componenti_init` / `_preview` (gemelli
+  `fn_preventivo_*`/`fn_contratto_*`), modello unificato componenti 13-05 (3 livelli:
+  struttura/listino/documento — memoria `feedback_listini_immutabilita`).
+- Prezzo componenti via `PricingService.resolve_prezzo(p_articolo_padre_contesto=…)`
+  (sopra). Espansione per il push commessa via `BoMComponentExpander`
+  ([commesse_source_handlers.py](../../../../backend/apps/vendite/services/commesse_source_handlers.py)),
+  già usata da `HandlerOrdini`.
+
+**Frontend — NON creare nuovi componenti**: i BB compositi sono **già estratti** in
+[src/vendite/_shared/componenti/](../../../../frontend/src/vendite/_shared/componenti/):
+- `ComponentiPanel.vue`, `ComponentiDialog.vue`, `ComponentiCreateActionsPanel.vue`,
+  `useComponentiDialog.js`, `rowComponenti.js`.
+- composable core: [useRigaComponenti.js](../../../../frontend/src/core/composables/useRigaComponenti.js)
+  + api [componentiBom.js](../../../../frontend/src/core/api/componentiBom.js).
+- `PreventiviRigaComponentiPanel.vue` è solo un **thin wrapper** sul BB condiviso →
+  per ordini al massimo un `OrdiniRigaComponentiPanel.vue` analogo (poche righe),
+  **non** una nuova implementazione. Pattern auto-open CREATE + expansion lista già
+  rodato (handoff `20260527_offerta_componenti_bom`).
+
+> In sintesi: per pricing e compositi il lavoro ordini è **cablaggio del doc-type
+> «ordine» sui BB esistenti**, non sviluppo. Se durante il clone emerge la
+> tentazione di copiare logica invece di riusare il BB, è il segnale (regola del 2)
+> di fermarsi e riusare.
+
+---
+
+## 6.ter. FE scheletro — stato consegnato + scelte deliberate (2026-06-03)
+
+Albero `src/vendite/ordini/` creato e **build FE verde** (clone famiglia
+vendite, lista DEF-8 diretta). File: `api/ordiniApi.js`, `stores/ordini.js`
+(`userScoped`), `constants.js`, `views/OrdiniView.vue`, `components/`
+(`OrdiniSearchTable`, `OrdiniDrawer`, `OrdiniForm`, `OrdiniRigheTable`,
+`OrdiniRigaForm`, `OrdiniRigaComponentiPanel`, `OrdineNoteDrawer`). Wiring core:
+`severity.statoOrdineSeverity`, `READONLY_MODELS.ORDINE`, `TAB_ENTITIES.ORDINE`,
+`MANAGE_ICONS.SEND`, `NAV_ICONS.ORDINI` + voce menu + rotta, i18n `it/en`
+(`vendite.ordini.*` + `col_*` allineate al catalogo `lista_id=7`).
+
+**Riuso BB (regola del 2)**: `useListaConfigurabilePage`, `ListaConfigurabile`,
+`makeComponentiBomApi`, `ComponentiPanel`, `useArticoloUomOptions`,
+`VenditeNoteDrawer`, `RowActionsMenu`, `PageActionsBar`, `EmittenteFiscaleField`,
+`BillingAccountLookup`. Nessuna logica nuova per pricing/componenti/note.
+
+### Scelte deliberate / cose mancanti (scheletro)
+
+1. **Agente (E) omesso dal form drawer.** Non esiste un picker per
+   `soggetti_ruoli` ruolo agente né un endpoint lookup dedicato: la colonna è
+   nullable/predisposta. Si aggiunge quando arriva il picker (o con la
+   conversione upstream §7.4). Sviluppo concentrico, non YAGNI
+   (`feedback_concentrico_no_yagni`). La colonna `agente_denominazione` resta
+   comunque opt-in nella lista (catalogo).
+2. **PDF in lista omesso.** Non c'è generazione documenti `ORDINE_CLIENTE` nello
+   scheletro BE (nessun `/emetti/`): la lista resta consultazione + note. Si
+   aggancia `EntityPdfButton`/`PdfDocumentiSorgenteDialog` quando esisterà
+   l'emissione documenti ordini.
+3. **`documento_origine` (A1)**: chip read-only nell'header del drawer quando
+   valorizzato; lo scheletro non lo scrive (lo farà la conversione §7.4).
+4. **Prezzo riga senza endpoint "suggerisci"**: gli ordini non hanno
+   `/suggerisci-prezzo/`. Il campo prezzo è opzionale: se lasciato vuoto (e
+   articolo non composito) il BE lo risolve via `PricingService` in
+   `gestisci_riga`. Niente badge origine prezzo / banner L2 (pricing stile
+   preventivo, gate L2/L3 = decisione aperta §8.bis).
+5. **Componenti compositi: niente `ComponentiDialog` pre-save in CREATE.** Il BE
+   `gestisci_riga` **non** accetta `componenti_overrides` (whitelist
+   `_CREATE_KEYS_RIGA` priva del campo): inizializza i componenti ai prezzi
+   risolti. L'editing dei prezzi componente avviene **in EDIT** via
+   `OrdiniRigaComponentiPanel` (PATCH per componente). Divergenza voluta da
+   preventivi/contratti (che usano la dialog pre-save), coerente con ciò che il
+   BE supporta.
+6. **Conferma/push via `useConfirmAction`** (no `AppDialog`): sono sì/no puri →
+   lo standard preferisce `useConfirmAction`. Push singolo con toast
+   differenziato per `report.stato` (gemello `PreventiviIntegrazione`).
+7. **Cliente immutabile post-creazione** (lock FE `billing_account_id` quando
+   `hasDetail`): vedi bug BE sotto.
+
+### ⚠️ Bug logico BE da chiudere (priorità, `feedback_bug_logici_modello`)
+
+`ordini_service.aggiorna_ordine` ha `billing_account_id` nella whitelist
+`_UPDATE_KEYS_ORDINE` ma **non ri-deriva `soggetto_ruolo_id`** (lo fa solo
+`crea_ordine`). Cambiare BA in update lascerebbe `soggetto_ruolo_id` stantio →
+**incoerenza cliente↔soggetto**. Difesa FE applicata (lock del campo cliente
+post-create, come `PreventiviDrawer`). Fix BE consigliato — una delle tre:
+(a) rimuovere `billing_account_id` da `_UPDATE_KEYS_ORDINE` (cliente immutabile,
+allineato all'UX); (b) ri-derivare `soggetto_ruolo_id` dal nuovo BA in
+`aggiorna_ordine`; (c) rifiutare con `E_ORD_VALIDAZIONE` se il BA cambia.
+Opzione (a) è la più semplice e coerente con "cambiare cliente = nuovo ordine".
+
+### BB guardia empty-state estratto + adottato (regola del 2, OK Tid 2026-06-03)
+
+La guardia empty-state di `fetchList` (search<3, no-filtri→vuoto, svuota→reset)
+era **identica in 3 store** (`offerte`, `preventivi`, `ordini`). Estratta in
+[`useListaEmptyStateFetch`](../../../../frontend/src/core/composables/useListaEmptyStateFetch.js):
+stato lista + guardia + orchestrazione loading/response nel BB; `hasActiveFilters`,
+`buildParams` (la mappatura filtri→query, che **diverge** legittimamente: vedi
+paginazione sotto), `fetchPage` iniettati. Adottato nei 3 store. Build verde.
+
+**Convergenza con `createCrudListStore`** (factory store CRUD-semplice, adottata
+da clienti/fornitori/soggetti/articoli): a refactor factory concluso (OK Tid), la
+factory ora **delega la guardia a `useListaEmptyStateFetch`** → gate
+**single-source** per entrambe le famiglie. Layering: `useListaEmptyStateFetch`
+= primitiva gate; la factory ci costruisce sopra (param-builder generico 1:1 +
+`limit/offset` + `extraActions: fn(id)`) per il CRUD-semplice; i 3 store-documento
+vendite (offerte/preventivi/ordini), "ricchi" (transizioni + righe + componenti +
+push; param non-1:1: offerte rinomina `data_da`→`validita_dal_min`, preventivi usa
+`page/page_size`; azioni righe multi-arg), usano il composable **direttamente**.
+Build verde su entrambe le famiglie.
+
+### Paginazione FE↔BE riallineata allo standard (RISOLTO 2026-06-03)
+
+Lo **standard** è `limit`/`offset`: l'helper BE `parse_list_params`
+(`apps/core/api/payload_validators.py`) legge `limit`/`offset` e calcola `page`
+internamente. Lo usano clienti, soggetti, categorie_clienti, contratti,
+**offerte**, **ordini**. **`preventivi` era l'unico outlier** (BE leggeva
+`page`/`page_size`, FE convertiva `offset`→`page`). **Riallineato (OK Tid)**:
+- **BE** `preventivi_views.py::get` ora usa `parse_list_params` + chiama
+  direttamente `list_preventivi_rows` (limit/offset, primitiva già esistente,
+  gemella di `list_ordini_rows`) + `paginated_envelope` — mirror esatto della
+  view ordini. `order_dir` mantiene il default di dominio `desc`. Schema
+  OpenAPI: `page`/`page_size` → `limit`/`offset`.
+- **FE** `stores/preventivi.js` invia `limit`/`offset` (rimossa la conversione).
+- **Wrapper interno** `preventivi_service.list_preventivi(page, page_size)`
+  **invariato** (lo usano AI tool `vendite_tools` + 3 test service, paging-based
+  legittimo): il riallineamento tocca solo la superficie HTTP, non il contratto
+  Python interno.
+- Verifica: 129 test `apps.vendite.tests.*preventiv*` verdi, build FE verde.
+  Nota: il test API lista è uno smoke di route (401/403, non esercita la logica);
+  la logica limit/offset è coperta da `list_preventivi_rows` (test service) +
+  parità costruttiva con la view ordini testata.
+
+---
+
+## 7. Chiudere il giro — ordine → commessa → fattura
+
+Il valore di filiera: a valle dell'ordine **è già tutto cablato e collaudato**.
+L'unico applicativo nuovo è **conferma + push UI**; il resto è riuso puro.
+
+```
+Ordine BOZZA ──[CONFERMA]──► (stato CONFERMATO)
+            └─ fatturazione_trigger = CONFERMATO ──► push a commessa
+                                                      (fn_list_ordini_da_pushare
+                                                       + HandlerOrdini, già testato)
+                                                          └─► attivita_fatturabili
+                                                                  └─► pipeline lotto
+                                                                       (LottoPipelineRunner,
+                                                                        DRAFT→EMESSA→DEFINITIVA)
+                                                                          └─► Fattura
+            └─ fatturazione_trigger = SPEDITO/CONSEGNATO ──► l'ordine NON pusha;
+                                                              pusha il DDT (fn_list_ddt_da_pushare)
+                                                              [fase DDT, fuori scope scheletro]
+```
+
+### 7.1 Conferma ordine (applicativo NUOVO, minimo)
+- **BE**: `POST /api/v1/vendite/ordini/{id}/conferma/` → service cambia stato a
+  CONFERMATO (il trigger DB gen codice valorizza `numero`, lock su `numero`).
+  Guard data-driven sullo stato (le transizioni ammesse le decide il DB; il BE
+  non hardcoda — memoria `feedback_no_hardcoded_ids`).
+- **FE**: azione di riga/drawer «Conferma ordine» (eventuale dialog di conferma
+  semplice). Gemello del pattern azione-stato già usato in offerte/contratti
+  (memoria `feedback_stato_terminale_con_data` per la struttura pulsante+dialog,
+  qui senza data).
+
+### 7.2 Push a commessa — singolo on-demand (riuso, INCLUSO nello scheletro)
+Decisione §8.3: **stesso pattern attuale di preventivi/offerte = push singolo**
+(non batch). Incluso nello scheletro, non rimandato.
+- **BE**: endpoint `POST /api/v1/vendite/ordini/{id}/push/` che invoca
+  `HandlerOrdini`/orchestratore con `sorgente_uid` del singolo ordine, su
+  `fn_list_ordini_da_pushare(p_ordine_id := ...)` (già esistente, precedente
+  [sviluppo-push-singolo-preventivo.md](sviluppo-push-singolo-preventivo.md)).
+- **FE**: dialog «push a commessa» clone 1:1 di
+  [OffertaPushDialog.vue](../../../../frontend/src/vendite/offerte/components/dialogs/OffertaPushDialog.vue)
+  (pattern idempotenza: seconda push fallisce con errore controllato).
+- **Nota architetturale** (tensione segnalata da Tid): la capacità **batch**
+  resta a DB (`fn_list_ordini_da_pushare` senza `p_ordine_id` +
+  `fatturazione_trigger`), ma la UX adottata in tutta la famiglia è il **push
+  singolo manuale**. «Per ora si fa lo stesso»; un eventuale ripensamento
+  batch-vs-singolo riguarderebbe l'intera famiglia, non solo ordini.
+
+### 7.3 A valle — nessun lavoro
+`attivita_fatturabili` → pipeline lotto → fatture → PDF/SDI: **interamente
+esistente e collaudato** (PROJECT_CONTEXT «Pipeline fatturazione»). Lo scheletro
+ordine + conferma chiude quindi un **giro vendita→fattura end-to-end** riusando
+~90% di codice.
+
+### 7.4 A monte — conversione preventivo/offerta → ordine (step successivo)
+La colonna **A (documento_origine)** *predispone* il giro a monte ma la
+conversione vera (genera ordine da preventivo accettato / offerta) è uno **step
+immediatamente successivo allo scheletro**, non parte di esso (sviluppo
+concentrico — memoria `feedback_concentrico_no_yagni`). Quando si farà: service
+`crea_ordine_da_preventivo(preventivo_id)`/`_da_offerta(...)` che copia testata+
+righe+componenti e valorizza `documento_origine_*`; FE = azione «genera ordine»
+sul documento upstream. Lo scheletro deve solo **non chiudere la porta** (colonna
++ valorizzazione in CREATE già pronte).
+
+---
+
+## 8. Decisioni RATIFICATE (Tid, 2026-06-03)
+
+1. **`numero` sempre presente** ✅: la numerazione è valorizzata dal trigger DB
+   (`trgfn_ordini_gen_codice`) **già in BOZZA** → `numero` non è mai NULL. Niente
+   `numero_display`/fallback `(bozza)`: la vista espone `numero` nudo, il FE lo
+   rende plain. *(Nota: l'indice `uq_ordini_v_anno_serie_numero` è parziale su
+   `numero IS NOT NULL`, ma di fatto la colonna è sempre valorizzata.)*
+2. **Auto-save BOZZA in CREATE** ✅ (memoria `feedback_drawer_create_autosave_bozza`):
+   **stesso pattern di offerte/preventivi** — create auto-save al primo set di campi
+   minimi → «edit-evolved» interno, abbandono con confirm + DELETE.
+3. **Push singolo on-demand** ✅: **stesso pattern attuale di preventivi/offerte**
+   (oggi il push è fatto singolo, non batch). → dialog push singolo clone di
+   `OffertaPushDialog` incluso nello scheletro (§7.2), non rimandato. *(Tensione
+   segnalata da Tid: la capacità batch resta a livello DB via
+   `fn_list_ordini_da_pushare`/`fatturazione_trigger`, ma la UX adottata è il push
+   singolo per coerenza con la famiglia. «Per ora si fa lo stesso».)*
+4. **`fatturazione_trigger` colonna visibile** ✅ (provvisorio): resta nel preset
+   con priorità bassa (30) → visibile ma si ritira presto. Spiegazione semantica
+   fornita a Tid (CONFERMATO=fattura alla conferma / SPEDITO/CONSEGNATO=fattura al
+   DDT, default ereditato da `billing_account.fatturazione_ordini`). Tid può
+   spostarla in opt-in se la ritiene troppo di nicchia.
+5. **Ricerca estesa** ✅: `ba_codice`/`id_fiscale` inclusi in `ricercabile_full`
+   (oltre `numero`/`ragione_sociale_completa`).
+
+### Estensioni di modello — esito ratifica (2026-06-03)
+
+✅ **Integrate ora** (brief DB-ORD §3.0): **A** link documento di origine
+(**variante A1** — FK dedicata senza UNIQUE, ratificata dopo verifica DDL; A2
+scartata, §1.bis), **E** agente/venditore.
+
+### 8.bis. Rimandate (registrate, basso costo futuro)
+
+Non integrate ora per non gonfiare lo scheletro; **additive e nullable** → si
+aggiungono in futuro senza churn dei trigger/RLS (la vista/serializer vanno scritti
+lasciando spazio, memoria `feedback_concentrico_no_yagni`):
+
+- **B — Riferimento ordine cliente** (`numero_ordine_cliente` + `data_ordine_cliente`):
+  da stampare su DDT/fattura. Quando emergerà il fabbisogno fiscale a valle.
+- **C — Date di consegna** (`data_consegna_richiesta`/`_confermata`, probabilmente
+  a livello **riga**): da affrontare con la fase **fulfillment/DDT** (è lì che ha
+  senso pieno).
+- **D — Revisione ordine** (`numero`+`rev` come preventivi/offerte): **solo se** il
+  business ri-emette la conferma d'ordine al cliente dopo modifica (altrimenti
+  `storico` copre l'audit). Decisione di dominio aperta.
+- **F — Tipo/causale ordine** (enum `tipo_ordine` default STANDARD): quando entrano
+  reso/RMA, campione, conto-deposito.
+
+**Decisione di dominio APERTA (non rimandata — da chiudere all'avvio del BE):**
+
+- **Livello pricing dell'ordine** (§6.bis.1): l'ordine usa il pricing **stile
+  preventivo** (`PricingService.resolve_prezzo` + override semplice) oppure eredita
+  anche il **gate L2/L3 stile contratti** (`_pricing_gate_helpers`)? In entrambi i
+  casi passa dai BB condivisi (mai query dirette); cambia solo *quanto* gate
+  riusare. Da sciogliere prima di scrivere `*_service.py` ordini.
+
+---
+
+## 9. Sequenza consigliata
+
+1. **Ratifica decisioni §8** (Tid).
+2. **Consegna al team DB** (`dev/db-tid`): il brief eseguibile è
+   [db-brief-ordini-vendita.md](./db-brief-ordini-vendita.md) (derivato da questa
+   analisi + verifica DDL) — **estensione modello A+E** (§3.0: link origine
+   **A1** FK dedicata + `agente_soggetto_ruolo_id`), **fix check** `chk_ordini_v_r_qta_pos` →
+   `quantita > 0`, vista `vw_ordini_lista` canonica (espone origine/agente),
+   `ui.lista_definizione` id=7 + catalogo lista_id=7 + preset `ordini_default` +
+   `priorita` + pgTAP. DB-A (`priorita`) già atterrato.
+3. **Attendere consegna DB** (memoria `feedback_be_fe_attende_prerequisiti_db`).
+4. **BE scheletro** (§5): repository (list+CRUD+componenti) + service + view/urls +
+   export + note (3 righe) + conferma/push + test verdi.
+5. **FE scheletro** (§6): albero `src/vendite/ordini/` con lista DEF-8 diretta +
+   drawer (testata+righe+componenti) + store/api + i18n; build verde.
+6. **Chiusura giro** (§7): conferma ordine end-to-end + (push singolo se §8.3 sì);
+   smoke ordine→commessa→fattura.
+7. **Smoke E2E**: lista carica/filtri/ritiro colonne/personalizzazione/export
+   CSV-XLSX rispetta ordine-visibilità, CRUD testata+righe+componenti, note,
+   PDF `ORDINE_CLIENTE`, conferma→push→attività fatturabile generata.
+8. Riepilogo a video + attesa OK Tid (memoria `feedback_memoria_solo_su_richiesta`).
+
+---
+
+## 10. Test (cosa verificare)
+
+- **pgTAP**: vista `vw_ordini_lista` espone tutti i `campo_sorgente` del catalogo
+  (incl. `stato_codice_interno`); `lista_definizione` `vendite.ordini` risolve via
+  `fn_resolve_lista_config`; preset di sistema ritorna le colonne visibili
+  nell'ordine atteso + tecniche nascoste; extra opt-in `visibile=false`; nessuna
+  colonna filtrata per SUPER_ADMIN (`sensibile=false`).
+- **BE Django**: list (scope emittente, filtri, ordinamento whitelist, tiebreaker),
+  CRUD testata+righe+componenti, export csv/xlsx + cap + magic param `formato`,
+  note, conferma (transizione stato + gen numero), push (idempotenza), guard delete
+  su ordine confermato.
+- **FE**: build verde + smoke §9.7.
+
+---
+
+## 11. Stato famiglia liste/domini vendite
+
+| Dominio | Lista DEF-8 | CRUD/drawer | Doc |
+| --- | --- | --- | --- |
+| `vendite.contratti` | ✅ atterrato (`1cc906377`) | ✅ | [refactor-lista-contratti.md](../work-done/refactor-lista-contratti.md) |
+| `vendite.preventivi` | ✅ completato 2026-06-03 | ✅ | [lista-preventivi.md](../work-done/lista-preventivi.md) |
+| `vendite.offerte` | ✅ completato 2026-06-03 | ✅ | [lista-offerte-comm.md](../work-done/lista-offerte-comm.md) |
+| **`vendite.ordini`** | ✅ **BE+FE scheletro 2026-06-03** (lista DEF-8 + CRUD + conferma + push) | ✅ (vedi §6.ter scelte deliberate + bug BE BA-update) | questo doc |

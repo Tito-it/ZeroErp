@@ -186,6 +186,20 @@ class ErrorPolicyRegistry:
                 "giorno dopo l'inizio della precedente."
             ),
         ),
+        # Ripristino enforcement EXCLUDE parziale su listini_righe_componenti
+        # (migration 20260602-01). Pattern simmetrico a E_VENDITE_PROMO_OVERLAP /
+        # E_VENDITE_LISTINO_VERSIONE_OVERLAP: due righe bundle ATTIVE sovrapposte
+        # sullo stesso (versione, padre, componente) nel periodo di validita'.
+        "E_VENDITE_LISTINO_RIGA_COMP_OVERLAP": ErrorPolicy(
+            code="E_VENDITE_LISTINO_RIGA_COMP_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Esiste gia' un prezzo bundle attivo sovrapposto per questo "
+                "componente nel periodo indicato. Disattiva o chiudi quello "
+                "esistente prima di salvare il nuovo prezzo."
+            ),
+        ),
         # Guard Profilo A promo data-driven (vendite.promo_articoli):
         # le date governano lo stato (FUTURA / INIZIATA / SCADUTA) e vincolano
         # i campi modificabili. Pattern simmetrico a Profilo A contratti
@@ -1517,6 +1531,33 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Transizione di stato preventivo non ammessa.",
         ),
+        # Ordini di vendita (scheletro CRUD + conferma + push singolo). Famiglia
+        # speculare a E_PREV_*. I codici trigger DB (E_ORDINE_*) passano invece
+        # via regex in ordini_service._db_errors.
+        "E_ORD_NOT_FOUND": ErrorPolicy(
+            code="E_ORD_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Ordine non trovato.",
+        ),
+        "E_ORD_VALIDAZIONE": ErrorPolicy(
+            code="E_ORD_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri ordine non validi.",
+        ),
+        "E_ORD_STATO_TRANSIZIONE": ErrorPolicy(
+            code="E_ORD_STATO_TRANSIZIONE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Operazione non ammessa nello stato corrente dell'ordine.",
+        ),
+        "E_ORD_NESSUNA_RIGA": ErrorPolicy(
+            code="E_ORD_NESSUNA_RIGA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="L'ordine non ha righe eleggibili per l'operazione.",
+        ),
         # Codice sollevato da vendite.fn_crea_revisione_preventivo quando esiste
         # gia' una revisione in DRAFT per lo stesso numero. Conflitto di stato:
         # l'utente deve completare/annullare la DRAFT esistente prima di crearne
@@ -1740,6 +1781,20 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_error_banner",
             user_message="Eliminazione versione non consentita: stato non BOZZA o gia' usata da documenti generati.",
+        ),
+        # EXCLUDE GIST parziale WHERE attivo+stato=PUBBLICATA (ripristino
+        # enforcement 2026-06-02, migration 20260602-05). Pattern simmetrico agli
+        # altri overlap (E_VENDITE_PROMO_OVERLAP / E_VENDITE_LISTINO_VERSIONE_OVERLAP):
+        # codice 409 dedicato invece del generico E_DOCUMENTI_VALIDATION (400).
+        "E_DOCUMENTI_VERSIONE_OVERLAP": ErrorPolicy(
+            code="E_DOCUMENTI_VERSIONE_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Le date di validita' si sovrappongono con un'altra versione "
+                "PUBBLICATA attiva del template. Chiudi quella esistente prima "
+                "di pubblicare la nuova."
+            ),
         ),
         # ── Documenti — guard asset (Tranche G) ──
         # Sollevati dai trigger DB Fase A

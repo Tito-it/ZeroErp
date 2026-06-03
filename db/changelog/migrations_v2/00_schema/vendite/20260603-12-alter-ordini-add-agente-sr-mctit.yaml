@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-ORD (db-brief-ordini-vendita §6, estensione E): agente/venditore sulla
+# testata ordine, per provvigioni e reporting commerciale.
+#
+# Colonna agente_soggetto_ruolo_id BIGINT NULL, FK ad anagrafiche.soggetti_ruoli
+# (il ruolo agente del soggetto), simmetrica al FK cliente fk_ordini_v_cliente_ruolo.
+# Additiva e nullable (non tutti gli ordini hanno agente): nessun backfill, nessun
+# impatto su trigger/RLS esistenti.
+#
+# Coerenza guard (regola del 2): il FK cliente soggetto_ruolo (fk_ordini_v_cliente_ruolo)
+# NON ha un trigger child_requires_active_parent sulla testata; per simmetria
+# nemmeno l'agente lo aggiunge (l'attivo del soggetto e' gia' garantito a monte da
+# trg_soggetti_ruoli_a10_soggetti_require_attivo). FK semplice, niente guard extra.
+#
+# Indice FK: NON creato a mano -> delegato a dbops.apply_fk_index_policy() (90_end),
+# come per ix_ordini_emittente_fiscale_id (FK aggiunto da 20260601-19 senza indice
+# manuale).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260603-12-alter-ordini-add-agente-sr-mctit.yaml
+
+  - changeSet:
+      id: 20260603-12-alter-ordini-add-agente-sr
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ADD COLUMN agente_soggetto_ruolo_id BIGINT NULL con FK ad
+        anagrafiche.soggetti_ruoli (ruolo agente). Additiva, nullable.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: ordini }
+          - tableExists: { schemaName: anagrafiche, tableName: soggetti_ruoli }
+          - not:
+              - columnExists:
+                  schemaName: vendite
+                  tableName: ordini
+                  columnName: agente_soggetto_ruolo_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- ADD COLUMN vendite.ordini.agente_soggetto_ruolo_id
+              -- Agente/venditore (ruolo anagrafico) dell'ordine. Nullable.
+              -- ==========================================================
+              ALTER TABLE vendite.ordini
+                  ADD COLUMN agente_soggetto_ruolo_id BIGINT NULL
+                  CONSTRAINT fk_ordini_v_agente_ruolo
+                      REFERENCES anagrafiche.soggetti_ruoli(id)
+                      ON DELETE NO ACTION
+                      ON UPDATE CASCADE;
+
+              COMMENT ON COLUMN vendite.ordini.agente_soggetto_ruolo_id
+              IS 'Agente/venditore dell''ordine (FK anagrafiche.soggetti_ruoli, '
+                 'ruolo agente). Nullable: non tutti gli ordini hanno agente. Per '
+                 'provvigioni e reporting commerciale. Display in vista: '
+                 'agente_denominazione (via soggetti_ruoli -> soggetti). Indice FK '
+                 'delegato a dbops.apply_fk_index_policy().';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ordini DROP COLUMN IF EXISTS agente_soggetto_ruolo_id;

@@ -29,11 +29,13 @@
 | data_update | timestamp without time zone | YES |  |
 | user_update | character varying | YES |  |
 | etichetta_i18n_key | character varying | YES |  |
+| priorita | smallint | NO | 50 |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ui_lista_colonna_azione_non_esportabile |  |
+| CHECK | chk_ui_lista_colonna_priorita_non_negativa |  |
 | FOREIGN KEY | fk_lista_colonna_lista_definizione | lista_id |
 | PRIMARY KEY | lista_colonna_pkey | id |
 | UNIQUE | uq_ui_lista_colonna_lista_codice | lista_id, codice |

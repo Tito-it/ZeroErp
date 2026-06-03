@@ -42,18 +42,33 @@ def _ph_and_val(col: str, value: Any) -> tuple[str, Any]:
 
 
 # Scopo: Whitelist colonne ORDER BY per la lista contratti (SQL injection safe).
+#        La lista legge dalla vista `vendite.vw_contratti_lista` (alias `v`),
+#        quindi le chiavi sono i `campo_sorgente` del catalogo liste
+#        (`ui.lista_colonna` di 'vendite.contratti') che il FE invia come
+#        sortField della DataTable. Niente alias `ba_*` su cliente/id_fiscale
+#        (nomi canonici del soggetto, lezione DEF-8).
 _ORDER_COLS_CONTRATTI: dict[str, str] = {
-    "numero": "c.numero",
-    "data": "c.data",
-    "valido_dal": "c.valido_dal",
-    "valido_al": "c.valido_al",
-    "ba_codice": "ba.codice",
-    "ba_ragione_sociale": "ba.ragione_sociale",
-    "id_fiscale": "srd.id_fiscale_univoco_cf_piva",
-    "stato_codice": "sd.codice_interno",
-    "categoria_cliente_snapshot_codice": "cc_snap.codice",
-    "data_insert": "c.data_insert",
-    "data_update": "c.data_update",
+    "numero": "v.numero",
+    "data": "v.data",
+    "valido_dal": "v.valido_dal",
+    "valido_al": "v.valido_al",
+    "ba_codice": "v.ba_codice",
+    "ragione_sociale_completa": "v.ragione_sociale_completa",
+    "id_fiscale_univoco_cf_piva": "v.id_fiscale_univoco_cf_piva",
+    "utility_codice": "v.utility_codice",
+    "utility_descrizione": "v.utility_descrizione",
+    "ambito": "v.ambito",
+    "listino_codice": "v.listino_codice",
+    "listino_versione_codice": "v.listino_versione_codice",
+    "tipo_variazione_globale": "v.tipo_variazione_globale",
+    "valore_variazione_globale": "v.valore_variazione_globale",
+    "valuta_codice": "v.valuta_codice",
+    "emittente_fiscale_codice": "v.emittente_fiscale_codice",
+    "stato_descrizione": "v.stato_descrizione",
+    "stato_codice": "v.stato_codice",
+    "categoria_cliente_snapshot_codice": "v.categoria_cliente_snapshot_codice",
+    "data_insert": "v.data_insert",
+    "data_update": "v.data_update",
 }
 
 
@@ -291,58 +306,64 @@ class ContrattiRepository(ComponentiRepositoryMixin):
         params: list[Any] = []
 
         if billing_account_id is not None:
-            conditions.append("c.billing_account_id = %s")
+            conditions.append("v.billing_account_id = %s")
             params.append(billing_account_id)
         if stato_doc_contratto_id is not None:
-            conditions.append("c.stato_doc_contratto_id = %s")
+            conditions.append("v.stato_doc_contratto_id = %s")
             params.append(stato_doc_contratto_id)
         if utility_id is not None:
-            conditions.append("c.utility_id = %s")
+            conditions.append("v.utility_id = %s")
             params.append(utility_id)
         if ambito is not None:
-            conditions.append("c.ambito = %s")
+            conditions.append("v.ambito = %s")
             params.append(ambito)
         if listino_id is not None:
-            conditions.append("c.listino_id = %s")
+            conditions.append("v.listino_id = %s")
             params.append(listino_id)
-        # Filtro validita': un contratto e' nel periodo se il suo daterange
-        # overlappa con [data_da, data_a]. Usiamo il tipo daterange nativo.
+        # Filtro validita': un contratto e' nel periodo se [valido_dal,
+        # valido_al] overlappa [data_da, data_a]. La vista non espone il
+        # daterange `validita` (colonna generata sulla tabella base): il
+        # predicato e' ricostruito in modo equivalente da valido_dal/al.
+        # (valido_al NULL = validita' aperta verso il futuro.)
         if data_da is not None and data_a is not None:
-            conditions.append("c.validita && daterange(%s::date, %s::date, '[]')")
-            params.extend([data_da, data_a])
+            conditions.append(
+                "(v.valido_dal <= %s::date"
+                " AND (v.valido_al IS NULL OR v.valido_al >= %s::date))"
+            )
+            params.extend([data_a, data_da])
         elif data_da is not None:
-            conditions.append("(upper(c.validita) IS NULL OR upper(c.validita) > %s::date)")
+            conditions.append("(v.valido_al IS NULL OR v.valido_al >= %s::date)")
             params.append(data_da)
         elif data_a is not None:
-            conditions.append("lower(c.validita) <= %s::date")
+            conditions.append("v.valido_dal <= %s::date")
             params.append(data_a)
         # Filtro scadenza mese: contratti il cui ultimo giorno di validita'
-        # cade nel mese indicato (formato YYYY-MM). PostgreSQL daterange
-        # upper() ritorna il bound ESCLUSIVO (giorno dopo l'ultimo incluso):
-        # per [2026-01-01, 2026-12-31] il DB salva [2026-01-01, 2027-01-01)
-        # e upper() = 2027-01-01. Il giorno effettivo e' upper()-1.
+        # (`valido_al`) cade nel mese indicato (formato YYYY-MM).
         if scadenza_mese is not None:
             conditions.append(
-                "(upper(c.validita) IS NOT NULL"
-                " AND (upper(c.validita) - 1) >= %s::date"
-                " AND (upper(c.validita) - 1) < (%s::date + interval '1 month')::date)"
+                "(v.valido_al IS NOT NULL"
+                " AND v.valido_al >= %s::date"
+                " AND v.valido_al < (%s::date + interval '1 month')::date)"
             )
             primo_mese = f"{scadenza_mese}-01"
             params.extend([primo_mese, primo_mese])
         if search:
-            conditions.append("(c.numero ILIKE %s OR srd.ragione_sociale_completa ILIKE %s)")
+            conditions.append("(v.numero ILIKE %s OR v.ragione_sociale_completa ILIKE %s)")
             like = f"%{search.strip()}%"
             params.extend([like, like])
 
-        # Scope emittente: la tabella espone `emittente_fiscale_id` come PK
-        # reale di `anagrafiche.emittenti_fiscali.id` (post brief simmetria
-        # 2026-05-26). Usa `fn_get_emittenti_scope_pk_ids` (NON `_sr_ids`,
-        # che mappa a soggetto_ruolo_id). Pattern duale documentato nella
-        # memoria `feedback_emittente_pk_vs_soggetto_ruolo`.
+        # Scope emittente (defense-in-depth applicativa). La vista
+        # `vw_contratti_lista` e' `security_invoker=on`: la RLS della tabella
+        # base `vendite.contratti` filtra gia' per emittente in scope a
+        # livello DB. Questo filtro applicativo si somma (api.md §"Scope
+        # emittente"). `fn_get_emittenti_scope_pk_ids` mappa su PK reale
+        # `emittenti_fiscali.id` (NON `_sr_ids` = soggetto_ruolo_id);
+        # `v.emittente_fiscale_id` e' la PK (memoria
+        # `feedback_emittente_pk_vs_soggetto_ruolo`).
         if auth_user_id is not None:
             conditions.append(
                 "(script.fn_get_emittenti_scope_pk_ids(%s) IS NULL "
-                "OR c.emittente_fiscale_id = ANY("
+                "OR v.emittente_fiscale_id = ANY("
                 "script.fn_get_emittenti_scope_pk_ids(%s)))"
             )
             params.extend([auth_user_id, auth_user_id])
@@ -353,7 +374,7 @@ class ContrattiRepository(ComponentiRepositoryMixin):
             cursor.execute(
                 f"""
                 SELECT COUNT(*)
-                  {_FROM_JOINS_CONTRATTO}
+                  FROM vendite.vw_contratti_lista v
                 {where_clause}
                 """,  # noqa: S608
                 params,
@@ -364,10 +385,10 @@ class ContrattiRepository(ComponentiRepositoryMixin):
 
             cursor.execute(
                 f"""
-                SELECT {_SELECT_COLS_CONTRATTO}
-                  {_FROM_JOINS_CONTRATTO}
+                SELECT v.*
+                  FROM vendite.vw_contratti_lista v
                 {where_clause}
-                 ORDER BY {order_column} {direction}, c.id ASC
+                 ORDER BY {order_column} {direction}, v.id ASC
                  LIMIT %s OFFSET %s
                 """,  # noqa: S608
                 params + [safe_limit, safe_offset],
@@ -712,6 +733,43 @@ class ContrattiRepository(ComponentiRepositoryMixin):
                 [stato_doc_contratto_id, contratto_id],
             )
             return cursor.rowcount > 0
+
+    # Scopo: Pre-check applicativo overlap per l'attivazione manuale del
+    #        contratto (guard §3.3 brief refactor-overlap). Delega alla fn di
+    #        dominio `vendite.fn_contratto_sovrapposto` (firma invariata,
+    #        semantica DRAFT-escluso dal 2026-06-02) passando gli attributi del
+    #        contratto STESSO. Ritorna l'incumbent ATTIVO sovrapposto
+    #        (id + numero + validita') o None. Read-only: non tenta l'INSERT/
+    #        UPDATE, serve solo a dare un messaggio che NOMINA il contratto in
+    #        conflitto prima che l'EXCLUDE `ex_contratti_no_overlap` sollevi
+    #        all'attivazione (defense-in-depth, l'EXCLUDE resta la difesa dura).
+    #        Il contratto stesso (DRAFT in attivazione) non si auto-conflitta:
+    #        la fn ignora i DRAFT.
+    def get_contratto_sovrapposto(self, contratto_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT inc.id, inc.numero, inc.valido_dal, inc.valido_al
+                  FROM vendite.contratti c
+                  JOIN vendite.contratti inc
+                    ON inc.id = vendite.fn_contratto_sovrapposto(
+                           c.billing_account_id,
+                           c.istanza_utility_id,
+                           c.utility_id,
+                           c.ambito,
+                           c.valido_dal,
+                           c.valido_al
+                       )
+                   -- Safeguard: se emetti() fosse invocato su un contratto gia'
+                   -- ATTIVO (re-emit), la fn potrebbe restituire se stesso ->
+                   -- escludo l'auto-match. Nel caso normale (contratto DRAFT in
+                   -- attivazione) la fn ignora gia' i DRAFT, quindi e' un no-op.
+                   AND inc.id <> c.id
+                 WHERE c.id = %s
+                """,
+                [contratto_id],
+            )
+            return row_to_dict(cursor)
 
     # =================================================================
     # Contratti_righe

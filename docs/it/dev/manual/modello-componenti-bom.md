@@ -34,15 +34,15 @@ con `valido_dal` successivo). Garantisce ricostruzione storica e audit.
 
 Colonne strutturali (immutabili):
 
-| Colonna | Significato |
-|---|---|
-| `prodotto_id` | articolo padre composito |
-| `componente_id` | articolo figlio (puo' essere a sua volta composito? No, vedi §9) |
-| `coeff_qta` | quantita' del figlio per unita' di padre |
-| `obbligatorio` | TRUE = sempre incluso, FALSE = opzionale |
-| `esposto_in_fattura` | TRUE = riga descrittiva in fattura, FALSE = invisibile in fattura |
-| `valido_dal`, `valido_al`, `validita` (range) | versionamento daterange |
-| `attivo` | soft-delete logico |
+| Colonna                                       | Significato                                                       |
+| --------------------------------------------- | ----------------------------------------------------------------- |
+| `prodotto_id`                                 | articolo padre composito                                          |
+| `componente_id`                               | articolo figlio (puo' essere a sua volta composito? No, vedi §9)  |
+| `coeff_qta`                                   | quantita' del figlio per unita' di padre                          |
+| `obbligatorio`                                | TRUE = sempre incluso, FALSE = opzionale                          |
+| `esposto_in_fattura`                          | TRUE = riga descrittiva in fattura, FALSE = invisibile in fattura |
+| `valido_dal`, `valido_al`, `validita` (range) | versionamento daterange                                           |
+| `attivo`                                      | soft-delete logico                                                |
 
 Colonne `partecipa_qta` e `determina_qta_padre`: scheletro per logiche
 future di calcolo quantita', non lette runtime dalle fn attuali.
@@ -95,11 +95,11 @@ deriva dalla somma figli.
 
 ## 5. Regole sui prezzi
 
-| Soggetto | NULL | 0 | Negativo |
-|---|---|---|---|
-| Figlio `obbligatorio=TRUE` | NO | NO (`<> 0`) | si' |
-| Figlio `obbligatorio=FALSE` | NO | si' | si' |
-| Padre composito (calcolato) | NO | si' | si' |
+| Soggetto                    | NULL | 0           | Negativo |
+| --------------------------- | ---- | ----------- | -------- |
+| Figlio `obbligatorio=TRUE`  | NO   | NO (`<> 0`) | si'      |
+| Figlio `obbligatorio=FALSE` | NO   | si'         | si'      |
+| Padre composito (calcolato) | NO   | si'         | si'      |
 
 Razionale:
 
@@ -116,15 +116,59 @@ condividono la **stessa aliquota IVA**.
 
 Trigger `catalogo.trgfn_articoli_componenti_guard_iva`:
 
-- BEFORE INSERT/UPDATE su `catalogo.articoli_componenti`: NEW.componente
-  deve avere `iva_id` uguale al padre
-- BEFORE UPDATE su `catalogo.articoli.iva_id`: se l'articolo e' padre
+- BEFORE INSERT OR UPDATE OF `attivo` su `catalogo.articoli_componenti`:
+  per un legame attivo, NEW.componente deve avere `iva_id` uguale al
+  padre. Il fronte `UPDATE OF attivo` copre la **riattivazione** del
+  legame (FALSE→TRUE), chiudendo il percorso *spegni → cambia IVA →
+  riaccendi* (vedi sotto)
+- BEFORE UPDATE su `catalogo.articoli.iva_id`
+  (`trgfn_articoli_guard_iva_bom_attiva`): se l'articolo e' padre
   composito di righe BoM attive → tutti i figli devono avere stessa
   IVA; se l'articolo e' figlio in BoM attive → il padre deve avere
   stessa IVA
 
+Questi due trigger (+ il freeze struttura che rende `componente_id`
+immutabile) sono il **punto unico di enforcement** dell'invariante: una
+BoM attiva non puo' avere padre e figlio a IVA diversa. Per questo il
+listino non ri-controlla piu' l'IVA (Guard 5 di
+`trgfn_listini_righe_comp_guard_coerenza_bom` rimosso il 2026-06-03).
+
 Conseguenza: il riepilogo IVA del documento e' indistintamente
 calcolabile da padre o da figli (stessa aliquota).
+
+### 6.1 Enforcement a punto unico (decisione 2026-06-03)
+
+L'invariante e' garantito **solo alla sorgente** (i due trigger su
+`catalogo` sopra). I consumatori a valle che materializzano i componenti
+— listino bundle (`listini_righe_componenti`) e righe documento
+(`*_righe_componenti`) — **NON ri-verificano l'IVA**: si fidano della
+sorgente.
+
+Motivazione: con i guard catalogo attivi e' **impossibile** creare/
+mantenere una BoM attiva con padre e figlio a IVA diversa. Due percorsi
+potevano aggirare l'invariante, entrambi chiusi:
+
+- **stato NULL/NULL**: padre+figlio entrambi senza IVA passano l'INSERT
+  (`NULL = NULL`), ma restano bloccati in popolamento perche' assegnare
+  l'IVA a un solo lato fallisce (`NULL IS DISTINCT FROM <valore>` = TRUE).
+- **spegni → cambia IVA → riaccendi**: deattivando il legame, il guard
+  su `articoli.iva_id` lo ignora (controlla solo `attivo = TRUE`), quindi
+  si potrebbe cambiare l'IVA del figlio e riattivare. Chiuso il 2026-06-03
+  estendendo `trgfn_articoli_componenti_guard_iva` a `BEFORE INSERT OR
+  UPDATE OF attivo`: l'IVA e' ri-verificata a ogni riaccensione
+  (`FALSE→TRUE`).
+
+Un ri-controllo a valle sarebbe quindi ridondante e — se presente solo su
+alcuni consumatori — introdurrebbe un'asimmetria confusiva (un punto
+rifiuta, gli altri accettano).
+
+> **Nota per chi mantiene il codice**: NON aggiungere check IVA sui guard
+> a valle. Se in futuro serve difesa in profondita' (es. import massivi con
+> `session_replication_role = replica` che bypassano i trigger), va aggiunta
+> in modo **simmetrico su tutti** i `*_righe_componenti` + listino, non su
+> uno solo. Storia: in origine il listino aveva un proprio "Guard 5" IVA,
+> rimosso il 2026-06-03 proprio per togliere l'asimmetria (vedi brief
+> `work-done/brief-db-listini-rimozione-guard5-iva.md`).
 
 ## 7. Esposto in fattura = flag di presentazione (non di pricing)
 
@@ -161,7 +205,8 @@ Vincoli (trigger guard):
 
 - `articolo_componente_id` punta a riga BoM esistente e attiva
 - `padre.is_composito = TRUE`
-- IVA figlio = IVA padre (estensione regola §6)
+- IVA figlio = IVA padre: **non** verificata qui (Guard 5 rimosso il
+  2026-06-03), gia' garantita alla sorgente dai trigger del §6
 - `validita` listino ⊆ `validita` BoM ⊆ `validita` versione listino
 - Immutabilita' v5: INSERT solo in versione non-attiva; UPDATE prezzo
   bloccato in versione attiva (pattern listini v5 esistente)
@@ -251,14 +296,14 @@ report) legge runtime via JOIN su `articoli_componenti`.
 
 Codici errore di dominio (registrati in `config.messaggi_errore`):
 
-| Codice | Quando |
-|---|---|
-| `E_DOC_COMPOSITO_BOM_VUOTA` | `_init` su composito senza BoM valida alla data |
-| `E_DOC_COMPONENTE_OBBLIGATORIO` | UPDATE `attivo=FALSE` su figlio obbligatorio |
-| `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | Figlio obbligatorio con prezzo 0 |
-| `E_BOM_IVA_DISCORDANTE` | INSERT/UPDATE BoM o `articoli.iva_id` con IVA padre-figlio diversa |
-| `E_LISTINO_RIGA_COMPOSITO_VIETATO` | INSERT `listini_righe` per `is_composito=TRUE` |
-| `E_LISTINO_COMPONENTE_COERENZA_BOM` | INSERT/UPDATE `listini_righe_componenti` con BoM/IVA/validita' incoerente |
+| Codice                                      | Quando                                                                                    |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `E_DOC_COMPOSITO_BOM_VUOTA`                 | `_init` su composito senza BoM valida alla data                                           |
+| `E_DOC_COMPONENTE_OBBLIGATORIO`             | UPDATE `attivo=FALSE` su figlio obbligatorio                                              |
+| `E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO` | Figlio obbligatorio con prezzo 0                                                          |
+| `E_BOM_IVA_DISCORDANTE`                     | INSERT BoM, riattivazione legame, o UPDATE `articoli.iva_id` con IVA padre-figlio diversa |
+| `E_LISTINO_RIGA_COMPOSITO_VIETATO`          | INSERT `listini_righe` per `is_composito=TRUE`                                            |
+| `E_LISTINO_COMPONENTE_COERENZA_BOM`         | INSERT/UPDATE `listini_righe_componenti` con BoM/IVA/validita' incoerente                 |
 
 ## 12. Building block riusabili
 
