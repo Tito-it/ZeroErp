@@ -27,6 +27,36 @@ from apps.vendite.types import (
 )
 
 
+# Scopo: Whitelist colonne ORDER BY per la lista preventivi (SQL injection safe).
+#        La lista legge dalla vista canonica `vendite.vw_preventivi_lista`
+#        (alias `v`); le chiavi sono i `campo_sorgente` del catalogo liste
+#        ('vendite.preventivi') che il FE invia come sortField della DataTable
+#        (`<ListaConfigurabile>` usa `:field="col.campo_sorgente"`). Nomi
+#        canonici del soggetto (no alias `ba_*` su cliente/id.fiscale, lezione
+#        DEF-8). `rev` volutamente ASSENTE: non ordinabile (decisione §7.3).
+_ORDER_COLS_PREVENTIVI: dict[str, str] = {
+    "numero": "v.numero",
+    "data": "v.data",
+    "ragione_sociale_completa": "v.ragione_sociale_completa",
+    "ba_codice": "v.ba_codice",
+    "id_fiscale_univoco_cf_piva": "v.id_fiscale_univoco_cf_piva",
+    "utility_codice": "v.utility_codice",
+    "utility_descrizione": "v.utility_descrizione",
+    "istanza_utility_codice": "v.istanza_utility_codice",
+    "totale_documento": "v.totale_documento",
+    "totale_imponibile": "v.totale_imponibile",
+    "totale_iva": "v.totale_iva",
+    "validita_al": "v.validita_al",
+    "validita_dal": "v.validita_dal",
+    "stato_descrizione": "v.stato_descrizione",
+    "stato_codice_interno": "v.stato_codice_interno",
+    "valuta_codice": "v.valuta_codice",
+    "emittente_fiscale_codice": "v.emittente_fiscale_codice",
+    "competenza_mese": "v.competenza_mese",
+    "data_insert": "v.data_insert",
+}
+
+
 class PreventiviRepository(ComponentiRepositoryMixin):
     """Repository preventivi.
 
@@ -42,11 +72,15 @@ class PreventiviRepository(ComponentiRepositoryMixin):
     _componenti_fk_riga = "riga_preventivo_id"
 
     # ══════════════════════════════════════════════════════════
-    #  LETTURE — Testata (via vista vw_preventivi_list)
+    #  LETTURE — Testata (via vista canonica vw_preventivi_lista)
     # ══════════════════════════════════════════════════════════
 
-    # Scopo: Restituisce elenco preventivi paginato dalla vista denormalizzata.
-    # La vista include emittente_fiscale_id per scope permessi.
+    # Scopo: Restituisce elenco preventivi paginato dalla vista canonica
+    #        `vendite.vw_preventivi_lista` (DEF-8, lista configurabile). La
+    #        vista espone i nomi CANONICI senza alias (ragione_sociale_completa,
+    #        id_fiscale_univoco_cf_piva, ba_codice) richiesti dal catalogo
+    #        `ui.lista_colonna` di 'vendite.preventivi', `stato_codice_interno`
+    #        per la severity del Tag FE, e `emittente_fiscale_id` per lo scope.
     # Perimetro: sola lettura; nessun side-effect.
     # Risultato: tuple (lista PreventivoListRow, conteggio totale).
     def list_preventivi(
@@ -62,16 +96,22 @@ class PreventiviRepository(ComponentiRepositoryMixin):
         auth_user_id: int | None = None,
         limit: int,
         offset: int,
+        order_by: str = "data",
+        order_dir: str = "desc",
     ) -> tuple[list[PreventivoListRow], int]:
+        order_column = _ORDER_COLS_PREVENTIVI.get(order_by, _ORDER_COLS_PREVENTIVI["data"])
+        direction = "DESC" if order_dir and order_dir.lower() == "desc" else "ASC"
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
 
         conditions: list[str] = []
         params: list[Any] = []
 
-        # Filtri dinamici parametrizzati
+        # Filtri dinamici parametrizzati. `stato_codice` arriva dal FE come
+        # `codice_interno` dello stato (LookupSelect value-field): nella vista
+        # canonica la colonna e' `stato_codice_interno`.
         if stato_codice is not None:
-            conditions.append("v.stato_codice = %s")
+            conditions.append("v.stato_codice_interno = %s")
             params.append(stato_codice)
         if billing_account_id is not None:
             conditions.append("v.billing_account_id = %s")
@@ -86,26 +126,28 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             conditions.append("v.data <= %s")
             params.append(data_al)
         if search and len(search) >= 3:
-            conditions.append("(v.numero ILIKE %s OR v.cliente_denominazione ILIKE %s)")
-            # cliente_denominazione nella vista e' ragione_sociale_completa
+            # Ricerca su numero e ragione sociale (nome canonico del soggetto).
+            conditions.append("(v.numero ILIKE %s OR v.ragione_sociale_completa ILIKE %s)")
             like = f"%{search}%"
             params.extend([like, like])
         # Filtro revisione attiva: di default mostra solo l'ultima revisione
-        # "viva" per numero. La condizione e' `is_attiva IS TRUE` calcolata
-        # dalla vista `vw_preventivi_list` (predicato derivato post-refactor
+        # "viva" per numero. La condizione e' `is_attiva IS TRUE` derivata
+        # dalla vista sorgente `vw_preventivi` (predicato post-refactor
         # 2026-05-15): "non esiste una rev superiore non-abortita per lo
-        # stesso numero". Una rev annullata (`is_abortito=TRUE` su stato)
-        # NON oscura il predecessore, che ricompare in lista come attiva.
-        # Quando l'operatore vuole vedere lo storico completo (incluse rev
-        # annullate e superseded), il FE passa solo_attiva=false.
+        # stesso numero". Una rev annullata NON oscura il predecessore, che
+        # ricompare in lista come attiva. Quando l'operatore vuole vedere lo
+        # storico completo (toggle "Mostra storico"), il FE passa
+        # solo_attiva=false.
         if solo_attiva:
             conditions.append("v.is_attiva IS TRUE")
 
-        # Scope emittente: la vista espone emittente_fiscale_id (PK reale di
-        # anagrafiche.emittenti_fiscali.id, post brief preventivi rev2). Usa
-        # quindi fn_get_emittenti_scope_pk_ids (NON _sr_ids che mappa a
-        # soggetto_ruolo_id). Vedi guida soggetti-e-ruoli §5b + memoria
-        # feedback_emittente_pk_vs_soggetto_ruolo per il pattern duale SR vs PK.
+        # Scope emittente (defense-in-depth applicativa). La vista
+        # `vw_preventivi_lista` e' `security_invoker=on`: la RLS della tabella
+        # base filtra gia' per emittente in scope. Questo filtro si somma
+        # (api.md §"Scope emittente"). `fn_get_emittenti_scope_pk_ids` mappa su
+        # PK reale `emittenti_fiscali.id` (NON `_sr_ids` = soggetto_ruolo_id);
+        # `v.emittente_fiscale_id` e' la PK (memoria
+        # feedback_emittente_pk_vs_soggetto_ruolo).
         if auth_user_id is not None:
             conditions.append(
                 "(script.fn_get_emittenti_scope_pk_ids(%s) IS NULL "
@@ -116,17 +158,17 @@ class PreventiviRepository(ComponentiRepositoryMixin):
 
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
-        count_sql = f"SELECT COUNT(*) FROM vendite.vw_preventivi_list v {where}"
+        count_sql = f"SELECT COUNT(*) FROM vendite.vw_preventivi_lista v {where}"  # noqa: S608
         # Tiebreaker v.id obbligatorio per paginazione deterministica
         # (frontend-standards "REGOLA CRITICA: Paginazione deterministica").
         # Senza id, righe con stessa data/numero (es. revisioni) possono
         # comparire duplicate o sparire fra pagine consecutive.
         data_sql = f"""
-            SELECT * FROM vendite.vw_preventivi_list v
+            SELECT v.* FROM vendite.vw_preventivi_lista v
             {where}
-            ORDER BY v.data DESC, v.numero DESC, v.id
+            ORDER BY {order_column} {direction}, v.id ASC
             LIMIT %s OFFSET %s
-        """
+        """  # noqa: S608
 
         with connection.cursor() as cursor:
             cursor.execute(count_sql, params)
@@ -560,15 +602,17 @@ class PreventiviRepository(ComponentiRepositoryMixin):
     #        preventivo passato. Diverso dal modello offerte (catenate via
     #        `revisione_padre_id`): qui le revisioni hanno tutte stesso
     #        `numero` e si distinguono per la colonna `rev` (intero, 0 = prima).
-    #        Output ordinato per `rev` ASC. Legge da `vw_preventivi_list` per
-    #        avere `is_attiva` + i campi denormalizzati gia' pronti per il FE
-    #        (stato_descrizione, ecc.) — la vista del filtro lista riusata.
+    #        Output ordinato per `rev` ASC. Legge dalla vista canonica
+    #        `vw_preventivi_lista` per avere `is_attiva` + i campi
+    #        denormalizzati gia' pronti per il FE (rev, data,
+    #        stato_codice_interno, stato_descrizione, totale_documento — i soli
+    #        consumati dal tab Revisioni) — la vista del filtro lista riusata.
     def list_revisioni(self, preventivo_id: int) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT v.*
-                  FROM vendite.vw_preventivi_list v
+                  FROM vendite.vw_preventivi_lista v
                  WHERE v.numero = (
                      SELECT numero FROM vendite.preventivi WHERE id = %s
                  )

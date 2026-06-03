@@ -66,6 +66,43 @@ _FN = "vendite.preventivi_service"
 
 
 # Scopo: Lista preventivi paginata con filtri e scope emittente.
+# Scopo: Letture grezze (righe + totale) della lista preventivi. Estratta da
+#        `list_preventivi` (regola del 2) per condividere la query tra la lista
+#        paginata (envelope) e l'export (DEF-1, che fetcha fino a
+#        EXPORT_MAX_ROWS+1 senza paginazione). order_by/order_dir guidano
+#        l'ordinamento configurabile (whitelist SQL-safe nel repository).
+def list_preventivi_rows(
+    *,
+    stato_codice: str | None = None,
+    billing_account_id: int | None = None,
+    utility_id: int | None = None,
+    data_da: date | None = None,
+    data_al: date | None = None,
+    search: str | None = None,
+    solo_attiva: bool = True,
+    auth_user_id: int | None = None,
+    limit: int,
+    offset: int,
+    order_by: str = "data",
+    order_dir: str = "desc",
+) -> tuple[list[Any], int]:
+    repo = PreventiviRepository()
+    return repo.list_preventivi(
+        stato_codice=stato_codice,
+        billing_account_id=billing_account_id,
+        utility_id=utility_id,
+        data_da=data_da,
+        data_al=data_al,
+        search=search,
+        solo_attiva=solo_attiva,
+        auth_user_id=auth_user_id,
+        limit=limit,
+        offset=offset,
+        order_by=order_by,
+        order_dir=order_dir,
+    )
+
+
 def list_preventivi(
     *,
     stato_codice: str | None = None,
@@ -78,6 +115,8 @@ def list_preventivi(
     auth_user_id: int | None = None,
     page: int = 1,
     page_size: int = 50,
+    order_by: str = "data",
+    order_dir: str = "desc",
 ) -> dict[str, object]:
     ErrorManager.require(
         page >= 1 and 1 <= page_size <= 200,
@@ -86,8 +125,7 @@ def list_preventivi(
         function_name=f"{_FN}.list_preventivi",
     )
     offset = (page - 1) * page_size
-    repo = PreventiviRepository()
-    results, total_count = repo.list_preventivi(
+    results, total_count = list_preventivi_rows(
         stato_codice=stato_codice,
         billing_account_id=billing_account_id,
         utility_id=utility_id,
@@ -98,8 +136,42 @@ def list_preventivi(
         auth_user_id=auth_user_id,
         limit=page_size,
         offset=offset,
+        order_by=order_by,
+        order_dir=order_dir,
     )
     return paginated_envelope(results, total_count, page, page_size)
+
+
+# Scopo: Etichette leggibili dei filtri attivi, incluse come metadato nel file
+#        di export (DEF-1 §6: un file filtrato deve dichiararsi sottoinsieme).
+#        Gemello di ContrattiService.resolve_filtri_export_label.
+def resolve_filtri_export_label(
+    *,
+    search: str | None = None,
+    stato_codice: str | None = None,
+    billing_account_id: int | None = None,
+    utility_id: int | None = None,
+    data_da: date | None = None,
+    data_al: date | None = None,
+    solo_attiva: bool = True,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    if search:
+        out["Ricerca"] = search
+    if stato_codice:
+        out["Stato"] = stato_codice
+    if billing_account_id is not None:
+        out["Cliente BA (id)"] = billing_account_id
+    if utility_id is not None:
+        out["Utility (id)"] = utility_id
+    if data_da is not None:
+        out["Dal"] = str(data_da)
+    if data_al is not None:
+        out["Al"] = str(data_al)
+    # solo_attiva=False = storico revisioni incluso (informazione utile nel file)
+    if not solo_attiva:
+        out["Storico revisioni"] = "incluso"
+    return out
 
 
 # Scopo: Dettaglio preventivo testata + summary + indirizzi + capabilities.

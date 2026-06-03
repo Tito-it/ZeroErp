@@ -16,18 +16,31 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
 
 ### 1. Lista preventivi
 
+> **DEF-8 (2026-06-03)**: la lista legge dalla vista canonica
+> `vendite.vw_preventivi_lista` (`security_invoker=on`, sorgente `vw_preventivi`
+> per `is_attiva` derivata) — lista configurabile `vendite.preventivi`, ritiro
+> dinamico colonne lato FE. I campi display usano i **nomi canonici della
+> vista**: cliente = `ragione_sociale_completa`, id. fiscale =
+> `id_fiscale_univoco_cf_piva`, codice account = `ba_codice`, stato =
+> `stato_descrizione` + `stato_codice_interno`. Il **dettaglio** (`GET .../<id>/`)
+> conserva i nomi storici (`cliente_denominazione`): è una fonte diversa (JOIN
+> diretto, non la vista). Anche `list_revisioni` legge dalla vista canonica.
+
 - Metodo: `GET`
 - Path: `/api/v1/vendite/preventivi/`
 - Auth: JWT, `area_funzionale = "vendite"`, `is_search_endpoint = True`
 - Query param (tutti opzionali):
-  - `stato` (string) — codice stato (es. `BOZZA`, `EMESSO`, `ACCETTATO`)
+  - `stato` (string) — `codice_interno` stato (es. `DRAFT`, `EMESSO`, `ACCETTATO`); filtro su `stato_codice_interno`
   - `billing_account_id` (int) — filtro per BA/cliente
   - `utility_id` (int) — filtro per utility
-  - `data_da` (date ISO) — data minima
+  - `data_da` (date ISO) — data minima (su `data` preventivo). **Default: 1 gennaio anno-1** (regola standard liste con date, lato frontend)
   - `data_al` (date ISO) — data massima
-  - `search` (string, min 3 char) — ricerca su numero e denominazione cliente
+  - `search` (string, min 3 char) — ILIKE su `numero` e `ragione_sociale_completa`
+  - `solo_attiva` (bool, default `true`) — solo l'ultima revisione viva per numero (`is_attiva`); `false` = storico revisioni completo (toggle "Mostra storico")
   - `page` (int, default 1) — pagina
   - `page_size` (int, default 50, max 200) — righe per pagina
+  - `order_by` (string, default `data`) — `campo_sorgente` colonna catalogo `vendite.preventivi`: `numero` `data` `ragione_sociale_completa` `ba_codice` `id_fiscale_univoco_cf_piva` `utility_codice` `utility_descrizione` `istanza_utility_codice` `totale_documento` `totale_imponibile` `totale_iva` `validita_al` `validita_dal` `stato_descrizione` `stato_codice_interno` `valuta_codice` `emittente_fiscale_codice` `competenza_mese` `data_insert`. `rev` **non ordinabile**. Valore fuori whitelist → fallback `data`
+  - `order_dir` (string, default `desc`) — `asc` o `desc`
 - Output `200`:
 ```json
 {
@@ -44,18 +57,24 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
         "rev": 0,
         "is_attiva": true,
         "data": "2026-04-03",
-        "stato_codice": "BOZZA",
+        "stato_codice_interno": "DRAFT",
         "stato_descrizione": "Bozza",
-        "cliente_denominazione": "Azienda Esempio S.r.l.",
+        "ragione_sociale_completa": "Azienda Esempio S.r.l.",
+        "id_fiscale_univoco_cf_piva": "01234567890",
         "billing_account_id": 10,
+        "ba_codice": "BA-0010",
         "utility_id": 1,
+        "utility_codice": "EE",
+        "utility_descrizione": "Energia elettrica",
+        "istanza_utility_codice": "POD-0001",
         "totale_imponibile": "1000.00",
         "totale_iva": "220.00",
         "totale_documento": "1220.00",
         "validita_dal": "2026-04-01",
         "validita_al": "2026-06-30",
         "competenza_mese": "2026-04-01",
-        "fatturazione_immediata": false,
+        "valuta_codice": "EUR",
+        "emittente_fiscale_codice": "EF-01",
         "data_insert": "2026-04-03T10:00:00+02:00"
       }
     ]
@@ -63,7 +82,28 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
   "meta": { "request_id": "..." }
 }
 ```
-- Regole: scope emittente DB-first (`_add_scope_emittente`), filtro data obbligatorio consigliato (default anno-1 nel frontend)
+- Regole: scope emittente DB-first (RLS `security_invoker` sulla vista) + filtro
+  applicativo `fn_get_emittenti_scope_pk_ids` (defense-in-depth); filtro data
+  consigliato (default anno-1 nel frontend).
+
+---
+
+### 1b. Export lista preventivi `GET /api/v1/vendite/preventivi/export/`
+
+Genera un file **CSV** o **Excel** con i preventivi filtrati (stessi parametri
+della lista). Renderer generico DEF-1 (`ListaExportService`); le colonne sono
+coerenti con la DataTable a video (config runtime: preferenza + preset +
+permessi — colonne nascoste escluse, ordine utente rispettato).
+
+| Parametro | Tipo | Descrizione |
+|---|---|---|
+| `formato` | string | `csv` (default) o `xlsx`. **NB**: parametro `formato` (italiano), NON `format` (magic param DRF) |
+| `search`, `stato`, `billing_account_id`, `utility_id`, `data_da`, `data_al`, `solo_attiva`, `order_by`, `order_dir` | — | stessi della lista |
+
+- Hard cap **10.000 righe**: oltre → `422 E_UI_EXPORT_LIMIT_EXCEEDED`.
+- `formato` non valido → `400 E_UI_EXPORT_FORMAT_INVALID`.
+- Risposta binaria: `Content-Disposition: attachment; filename="preventivi.csv|xlsx"`; i filtri attivi sono inclusi come metadato nel file.
+- Coda condivisa: `apps.ui.api.export_helpers.{parse_export_format,build_export_response}` (building block DEF-1, gemello contratti/clienti/soggetti/fornitori).
 
 ---
 

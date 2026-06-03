@@ -161,6 +161,20 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
 ### Lista offerte `GET /api/v1/vendite/offerte/`
 
+> **DEF-8 (2026-06-03)**: la lista legge dalla vista canonica self-contained
+> `vendite.vw_offerte_commerciali_lista` (`security_invoker=on`) — lista
+> configurabile `vendite.offerte`, ritiro dinamico colonne lato FE. La vista
+> **assorbe** i JOIN prima nel repository (`listino_codice`,
+> `listino_versione_codice`, `valuta_codice`) e **materializza `is_scaduta`**
+> (`validita_al < CURRENT_DATE`; il gating per stato
+> `STATI_OFFERTA_SEGNALA_SCADENZA` resta lato FE). Campi display con i **nomi
+> canonici**: cliente = `ragione_sociale_completa`, id. fiscale =
+> `id_fiscale_univoco_cf_piva`, codice account = `ba_codice`, stato =
+> `stato_descrizione` + `stato_codice_interno`. Il **dettaglio** (`GET .../<id>/`)
+> conserva i nomi storici (`billing_account_display`, `utility_display`): fonte
+> diversa (JOIN su tabelle base). `vw_offerte_commerciali_list` deprecata (drop
+> differito post-BE).
+
 | Parametro              | Tipo     | Descrizione                                                                                |
 | ---------------------- | -------- | ------------------------------------------------------------------------------------------ |
 | `search`               | string   | ILIKE su `codice` offerta e `ragione_sociale_completa` BA (minimo 3 char se valorizzato)    |
@@ -170,14 +184,30 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 | `listino_id`           | int      | Filtro listino di riferimento                                                               |
 | `validita_dal_min`     | ISO date | Filtro su `validita_dal` (range minimo). Nessun default backend                             |
 | `validita_dal_max`     | ISO date | Filtro su `validita_dal` (range massimo)                                                    |
-| `solo_attiva`          | bool     | Default `true`: solo l'ultima revisione viva per lineage (`vw_offerte_commerciali_list.is_attiva`). `false` = storico revisioni completo (2026-05-28) |
+| `solo_attiva`          | bool     | Default `true`: solo l'ultima revisione viva per lineage (`vw_offerte_commerciali_lista.is_attiva`). `false` = storico revisioni completo (2026-05-28) |
 | `limit`                | int      | Default 25                                                                                  |
 | `offset`               | int      | Default 0                                                                                   |
-| `order_by`             | string   | `codice` \| `validita_dal` \| `validita_al` \| `data_emissione` \| `ba_ragione_sociale` \| `stato_codice` \| `data_insert` \| `data_update` |
+| `order_by`             | string   | `campo_sorgente` catalogo `vendite.offerte`: `codice` \| `ragione_sociale_completa` \| `ba_codice` \| `id_fiscale_univoco_cf_piva` \| `utility_codice` \| `utility_descrizione` \| `listino_codice` \| `validita_dal` \| `validita_al` \| `data_emissione` \| `stato_descrizione` \| `stato_codice_interno` \| `data_insert`. `revisione_numero` **non ordinabile** |
 | `order_dir`            | string   | `asc` o `desc` (default)                                                                    |
 
 > **`search` vuoto**: stringa vuota o whitespace-only trattato come "no filter"
 > (non solleva 422). Il minimo 3 char si applica solo a `search` non-vuota.
+
+### Export lista offerte `GET /api/v1/vendite/offerte/export/`
+
+Genera un file **CSV** o **Excel** con le offerte filtrate (stessi parametri
+della lista). Renderer generico DEF-1 (`ListaExportService`); colonne coerenti
+con la DataTable a video (config runtime: preferenza + preset + permessi).
+
+| Parametro | Tipo | Descrizione |
+|---|---|---|
+| `formato` | string | `csv` (default) o `xlsx`. **NB**: `formato` (italiano), NON `format` (magic param DRF) |
+| `search`, `billing_account_id`, `stato_codice_interno`, `utility_id`, `listino_id`, `validita_dal_min`, `validita_dal_max`, `solo_attiva`, `order_by`, `order_dir` | — | stessi della lista |
+
+- Hard cap **10.000 righe**: oltre → `422 E_UI_EXPORT_LIMIT_EXCEEDED`.
+- `formato` non valido → `400 E_UI_EXPORT_FORMAT_INVALID`.
+- Risposta binaria: `Content-Disposition: attachment; filename="offerte.csv|xlsx"`; i filtri attivi sono metadato nel file.
+- Coda condivisa: `apps.ui.api.export_helpers.{parse_export_format,build_export_response}` (building block DEF-1).
 
 ### Create testata `POST /api/v1/vendite/offerte/`
 

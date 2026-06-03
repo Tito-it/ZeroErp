@@ -32,9 +32,24 @@ verdi. Dettaglio e brief consolidato (preventivi + offerte):
 - Nota correzione vs §4: `rev` seedata `tipo_dato=numeric` (l'ENUM `ui.tipo_dato`
   non ha `integer`).
 
-**Resta da fare**: §5 (BE), §6 (FE) — partono ora che il DB è consegnato. Il
-**drop di `vw_preventivi_list`** (deprecata, ancora letta da `list_preventivi` +
-`list_revisioni`) è rinviato a cleanup post-BE (brief §6 ⚠️ NOTA).
+### ✅ BE + FE ATTERRATI (2026-06-03)
+
+- **BE**: `preventivi_repository.list_preventivi` + `list_revisioni` commutati su
+  `vw_preventivi_lista` (nomi canonici, filtro stato su `stato_codice_interno`,
+  ricerca su `ragione_sociale_completa`); whitelist `_ORDER_COLS_PREVENTIVI` +
+  `order_by`/`order_dir`; split `list_preventivi_rows` (riuso lista+export);
+  endpoint `GET /vendite/preventivi/export/` (`ApiPreventiviExportView`, DEF-1) +
+  `resolve_filtri_export_label`. Test: `test_preventivi_export_api` 4/4 + suite
+  preventivi 129/129 verdi.
+- **FE**: `PreventiviList.vue` → `<ListaConfigurabile codice="vendite.preventivi">`
+  via `useListaConfigurabilePage`; filtri custom preservati (stato, utility, data,
+  **toggle storico revisioni**); slot `#cell-stato` (Tag severity) + `#actions`
+  (PDF disabilitato DRAFT + note); totale/date via formatter built-in
+  (`currency_eur`/`date_short`). `exportPreventivi` in `preventiviApi.js`. Chiavi
+  i18n `preventivi.col_*` aggiunte (it/en). Build FE verde.
+- **Drop `vw_preventivi_list` SBLOCCATO**: nessun consumer attivo residuo (solo
+  commenti in `permissions_resolver.py`). Resta da creare il changeset di cleanup
+  DB (brief §6 ⚠️ NOTA) — azione DB, da passare al team DB.
 
 ---
 

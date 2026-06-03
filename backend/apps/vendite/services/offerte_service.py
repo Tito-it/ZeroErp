@@ -111,16 +111,23 @@ _ESITI_AMMESSI_DA_EMESSA: frozenset[str] = frozenset(
 )
 
 
+# Whitelist order_by ammessi dal service (gate prima del repository). Allineata
+# ai `campo_sorgente` del catalogo lista 'vendite.offerte' (DEF-8): la lista
+# configurabile invia il campo_sorgente canonico come sortField.
+# `revisione_numero` ASSENTE: non ordinabile (decisione §7.3).
 _ORDER_BY_OFFERTE: frozenset[str] = frozenset({
     "codice",
+    "ragione_sociale_completa",
+    "ba_codice",
+    "id_fiscale_univoco_cf_piva",
+    "utility_codice",
+    "utility_descrizione",
+    "listino_codice",
     "validita_dal",
     "validita_al",
     "data_emissione",
-    # Allineato al display field del SELECT (alias `billing_account_display`,
-    # rinominato 2026-05-26 per coerenza col piano FE+BE). Il FE invia
-    # `order_by=billing_account_display` per il sort cliente alfabetico.
-    "billing_account_display",
-    "stato_codice",
+    "stato_descrizione",
+    "stato_codice_interno",
     "data_insert",
     "data_update",
 })
@@ -417,6 +424,41 @@ class OfferteService:
         )
         total = self._repo.count_offerte(**filters)
         return rows, total
+
+    # Scopo: Etichette leggibili dei filtri attivi, incluse come metadato nel
+    #        file di export (DEF-1 §6: un file filtrato deve dichiararsi
+    #        sottoinsieme). Gemello di ContrattiService.resolve_filtri_export_label.
+    def resolve_filtri_export_label(
+        self,
+        *,
+        search: str | None = None,
+        stato_codice_interno: str | None = None,
+        billing_account_id: int | None = None,
+        utility_id: int | None = None,
+        listino_id: int | None = None,
+        validita_dal_min: str | None = None,
+        validita_dal_max: str | None = None,
+        solo_attiva: bool = True,
+    ) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        if search:
+            out["Ricerca"] = search
+        if stato_codice_interno:
+            out["Stato"] = stato_codice_interno
+        if billing_account_id is not None:
+            out["Cliente BA (id)"] = billing_account_id
+        if utility_id is not None:
+            out["Utility (id)"] = utility_id
+        if listino_id is not None:
+            out["Listino (id)"] = listino_id
+        if validita_dal_min:
+            out["Dal"] = str(validita_dal_min)
+        if validita_dal_max:
+            out["Al"] = str(validita_dal_max)
+        # solo_attiva=False = storico revisioni incluso.
+        if not solo_attiva:
+            out["Storico revisioni"] = "incluso"
+        return out
 
     # Scopo: Dettaglio offerta + eccezioni + utility 1:1 + blob capability
     #        (refactor data-driven 2026-05-26). Lo stato della macchina e

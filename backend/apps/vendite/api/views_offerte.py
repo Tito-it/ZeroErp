@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -31,7 +31,13 @@ from apps.core.api.payload_validators import (
     qp_str,
 )
 from apps.core.api.success_responses import success_response
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.services.offerte_service import OfferteService
+
+# Codice lista configurabile (catalogo ui.lista_definizione id=6). Usato
+# dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
+_LISTA_CODICE_OFFERTE = "vendite.offerte"
 
 
 # Scopo: Converte un query param intero opzionale (None se assente o vuoto).
@@ -229,14 +235,17 @@ class ApiOfferteList(DomainAPIView):
             OpenApiParameter(name="validita_dal_max", type=str, required=False),
             OpenApiParameter(name="solo_attiva", type=bool, required=False,
                              description="Default true: solo l'ultima revisione viva per "
-                                         "lineage (vw_offerte_commerciali_list.is_attiva). "
+                                         "lineage (vw_offerte_commerciali_lista.is_attiva). "
                                          "Passa false per vedere lo storico completo delle "
                                          "revisioni (superate/annullate incluse)."),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False,
-                             description="codice | validita_dal | validita_al | data_emissione | "
-                                         "billing_account_display | stato_codice | data_insert | data_update"),
+                             description="campo_sorgente colonna catalogo 'vendite.offerte' "
+                                         "(es. codice | ragione_sociale_completa | ba_codice | "
+                                         "utility_codice | listino_codice | validita_dal | "
+                                         "validita_al | data_emissione | stato_descrizione | "
+                                         "data_insert). 'revisione_numero' non ordinabile."),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: inline_serializer(
@@ -276,6 +285,95 @@ class ApiOfferteList(DomainAPIView):
     #        finche' il team DB non chiude step 5 (sistema_codici).
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=OfferteService().crea_offerta)
+
+
+class ApiOfferteExportView(DomainAPIView):
+    """GET /api/v1/vendite/offerte/export/?formato=csv|xlsx
+
+    Genera un file CSV o Excel con le offerte commerciali filtrate dalla query
+    string (stessi parametri del list endpoint). Hard cap EXPORT_MAX_ROWS righe —
+    sopra solleva E_UI_EXPORT_LIMIT_EXCEEDED (422). Usa il renderer generico
+    `ListaExportService` (DEF-1) e il catalogo colonne `vendite.offerte` per
+    coerenza con la DataTable a video (colonne nascoste escluse, ordine utente
+    rispettato).
+
+    NB: il parametro si chiama `formato` (italiano), NON `format` — magic
+    parameter DRF (memoria feedback_drf_format_magic_param).
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_offerte_export",
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="search", type=str, required=False),
+            OpenApiParameter(name="billing_account_id", type=int, required=False),
+            OpenApiParameter(name="stato_codice_interno", type=str, required=False),
+            OpenApiParameter(name="utility_id", type=int, required=False),
+            OpenApiParameter(name="listino_id", type=int, required=False),
+            OpenApiParameter(name="validita_dal_min", type=str, required=False),
+            OpenApiParameter(name="validita_dal_max", type=str, required=False),
+            OpenApiParameter(name="solo_attiva", type=bool, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Export CSV/XLSX della lista offerte. Riusa la coda invariante
+    #        `build_export_response` (DEF-1). Filtri identici al list endpoint;
+    #        fetcha fino a EXPORT_MAX_ROWS+1 per intercettare l'overflow.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        fmt = parse_export_format(request)
+        p = parse_list_params(qp, default_order="data_insert")
+
+        billing_account_id = _qp_int_optional(qp.get("billing_account_id"), "billing_account_id")
+        stato_codice_interno = qp_str(qp.get("stato_codice_interno"))
+        utility_id = _qp_int_optional(qp.get("utility_id"), "utility_id")
+        listino_id = _qp_int_optional(qp.get("listino_id"), "listino_id")
+        validita_dal_min = qp_str(qp.get("validita_dal_min"))
+        validita_dal_max = qp_str(qp.get("validita_dal_max"))
+        solo_attiva = qp_bool(qp.get("solo_attiva"), default=True)
+
+        svc = OfferteService()
+        results, total = svc.list_offerte(
+            search=p["search"],
+            billing_account_id=billing_account_id,
+            stato_codice_interno=stato_codice_interno,
+            utility_id=utility_id,
+            listino_id=listino_id,
+            validita_dal_min=validita_dal_min,
+            validita_dal_max=validita_dal_max,
+            solo_attiva=solo_attiva,
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+        )
+        filtri_applicati = svc.resolve_filtri_export_label(
+            search=p["search"],
+            stato_codice_interno=stato_codice_interno,
+            billing_account_id=billing_account_id,
+            utility_id=utility_id,
+            listino_id=listino_id,
+            validita_dal_min=validita_dal_min,
+            validita_dal_max=validita_dal_max,
+            solo_attiva=solo_attiva,
+        )
+        return build_export_response(
+            request,
+            lista_codice=_LISTA_CODICE_OFFERTE,
+            results=results,
+            total=total,
+            filtri_applicati=filtri_applicati,
+            fmt=fmt,
+        )
 
 
 # =================================================================

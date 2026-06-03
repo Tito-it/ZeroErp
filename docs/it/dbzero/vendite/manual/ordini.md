@@ -9,9 +9,6 @@
 > • [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento)   
 > • [config.valute](/dbzero/config/tabelle/valute)  
 > • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)  
-> • [config.causali_trasporto](/dbzero/config/tabelle/causali_trasporto)  
-> • [config.aspetti_beni](/dbzero/config/tabelle/aspetti_beni)  
-> • [config.modalita_addebito_trasporto](/dbzero/config/tabelle/modalita_addebito_trasporto)  
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)    
 
@@ -99,8 +96,11 @@ viceversa). RLS attivata con `ALTER TABLE … ENABLE ROW LEVEL SECURITY`
 
 * **Serie / Numero / Anno** costituiscono la chiave logica per la numerazione manuale o automatica.  
   L’indice univoco `uq_ordini_v_anno_serie_numero` assicura l’unicità solo se `numero IS NOT NULL`.
-* **Trigger di protezione**:  
-  `trg_ordini_a10_upd_v_protect_num` → impedisce modifiche a campi di numerazione dopo conferma.  
+* **Generazione numero**: il trigger `trgfn_ordini_gen_codice` (BEFORE INSERT)
+  assegna `numero` via `script.fn_generate_codice('ordine')` se NULL/vuoto →
+  **valorizzato già all'INSERT, anche in BOZZA** (in pratica mai NULL; l'indice
+  parziale `WHERE numero IS NOT NULL` è difensivo). La colonna è poi **immutabile**
+  (lock colonne su `numero`).  
 * **UID** (`uuid`) – identificatore universale per import/export o sincronizzazione API.
 
 > *Gli ordini possono essere generati anche da sistemi esterni (CRM, portali clienti, configuratori) e successivamente importati nel gestionale tramite `sorgente_tipo_id` + `sorgente_uid`.*
@@ -110,9 +110,13 @@ viceversa). RLS attivata con `ALTER TABLE … ENABLE ROW LEVEL SECURITY`
 ### Stato, logistica e pagamenti
 
 * **Stato documento**: `stato_doc_ordine_id` → `config.stati_doc_ordini`, determina le regole operative (bozza, confermato, spedito, fatturato, annullato).  
-* **Trasporto e consegna**: collegamenti a `causale_trasporto_id`, `aspetto_bene_id`, `modalita_addebito_trasporto_id`, `vettore_soggetto_ruolo_id`.  
-  Questi valori consentono la generazione diretta dei DDT con parametri coerenti.  
-* **Pagamento**: `modalita_pagamento_id`, `termine_pagamento_id`, `giorni_pagamento`, `fine_mese` definiscono le condizioni economiche.  
+* **Trasporto e consegna**: gestiti sul **DDT a valle**, non sulla testata. Le
+  colonne trasporto (`causale_trasporto_id`, `aspetto_bene_id`,
+  `modalita_addebito_trasporto_id`, `vettore_soggetto_ruolo_id`) sono state
+  **rimosse** dalla testata (refactor `20251027-01-ordini-refactor-testata`).  
+* **Pagamento**: `modalita_pagamento_id`, `termine_pagamento_id` definiscono le
+  condizioni economiche. `giorni_pagamento`/`fine_mese` **non sono più in testata**
+  (rimossi nello stesso refactor): derivano da `billing_account`.  
 * **Valuta e cambio**: `valuta_id`, `tasso_cambio` (default = 1).  
 
 ---
@@ -144,7 +148,6 @@ I campi di sintesi (`imponibile_tot`, `sconto_tot`, `iva_tot`, `totale_doc`) rap
   * Stato → `config.stati_doc_ordini`
   * Valuta → `config.valute`
   * Pagamento e termini → `config.modalita_pagamento`, `config.termini_pagamento`
-  * Aspetto, causale e modalità trasporto → `config.aspetti_beni`, `config.causali_trasporto`, `config.modalita_addebito_trasporto`
   * Sorgente → `config.sorgenti`
 
 * **Indici**:
@@ -175,7 +178,7 @@ manualmente per singolo ordine.
 ### Regole di gestione
 
 1. **Creazione** – ammessi solo stati iniziali (*bozza*).
-2. **Aggiornamento numerazione** – possibile solo da trigger di sistema durante conferma ordine.
+2. **Numerazione** – assegnata dal trigger `trgfn_ordini_gen_codice` all'INSERT (anche in BOZZA) se `numero` è NULL; immutabile dopo (lock colonne).
 3. **Cancellazione** – vietata se ordine gia` confermato o collegato a DDT/fatture (vincolo logico).
 4. **Cambio valuta** – ammesso solo finche` non esistono righe evase.
 5. **Sorgente esterna** – se popolata, blocca rinumerazione automatica e update su `serie/numero`.  

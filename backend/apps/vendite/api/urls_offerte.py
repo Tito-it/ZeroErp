@@ -39,6 +39,7 @@ from apps.vendite.api.views_offerte import (
     ApiOffertaRevisioni,
     ApiOffertaUtility,
     ApiOffertaUtilityDetail,
+    ApiOfferteExportView,
     ApiOfferteList,
 )
 
@@ -49,6 +50,13 @@ urlpatterns = [
         "form-defaults/",
         ApiOffertaFormDefaults.as_view(),
         name="vendite-offerta-form-defaults",
+    ),
+    # Export CSV/XLSX lista configurabile (DEF-1). Prima della rotta lista ""
+    # per matchare il path dedicato.
+    path(
+        "export/",
+        ApiOfferteExportView.as_view(),
+        name="vendite-offerte-export",
     ),
     # Lista + creazione testata.
     path("", ApiOfferteList.as_view(), name="vendite-offerte-list"),

@@ -12,6 +12,13 @@ export function listOfferte(params = {}) {
   return api.get(`${BASE}/`, { params })
 }
 
+// Export CSV/XLSX lista configurabile (DEF-1). responseType blob: NON passare
+// da useApiHandler (unwrap envelope perde header/data). Vedi memoria
+// feedback_blob_download_no_useapihandler.
+export function exportOfferte(params = {}) {
+  return api.get(`${BASE}/export/`, { params, responseType: 'blob' })
+}
+
 export function getOfferta(id) {
   return api.get(`${BASE}/${id}/`)
 }
