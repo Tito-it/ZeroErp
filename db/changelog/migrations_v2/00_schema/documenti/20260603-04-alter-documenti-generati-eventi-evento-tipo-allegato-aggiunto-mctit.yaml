@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Estende il set chiuso evento_tipo su documenti.documenti_generati_eventi
+# con 'ALLEGATO_AGGIUNTO' (modalita' append post-emissione: aggiungi_allegati).
+#
+# Motivo: il CHECK v1 limitava evento_tipo a {GENERATO, SCARICATO,
+# STORAGE_ORPHAN}, quindi l'aggiunta di allegati a un documento gia' generato
+# non poteva essere registrata sulla timeline (lacuna audit "quando e da chi
+# e' stato aggiunto un allegato"). L'emissione iniziale resta coperta da
+# GENERATO; il nuovo evento serve solo all'append post-emissione.
+#
+# Migration nuova (non si modifica 20260503-06 gia' pushata). Lato BE: emit
+# evento ALLEGATO_AGGIUNTO in aggiungi_allegati, da aggiungere post-merge DB.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20260603-04-alter-documenti-generati-eventi-evento-tipo-allegato-aggiunto-mctit.yaml
+
+  - changeSet:
+      id: 20260603-04-alter-documenti-generati-eventi-evento-tipo-allegato-aggiunto
+      author: mctit
+      comment: >
+        Estende il CHECK chk_documenti_generati_eventi_evento_tipo con
+        'ALLEGATO_AGGIUNTO' per registrare in timeline l'aggiunta di allegati
+        a un documento gia' generato (flusso append aggiungi_allegati).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: documenti
+              tableName: documenti_generati_eventi
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_constraint c
+                  JOIN pg_class t     ON t.oid = c.conrelid
+                  JOIN pg_namespace n ON n.oid = t.relnamespace
+                 WHERE n.nspname = 'documenti'
+                   AND t.relname = 'documenti_generati_eventi'
+                   AND c.conname = 'chk_documenti_generati_eventi_evento_tipo'
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.documenti_generati_eventi
+                  DROP CONSTRAINT IF EXISTS chk_documenti_generati_eventi_evento_tipo;
+
+              ALTER TABLE documenti.documenti_generati_eventi
+                  ADD CONSTRAINT chk_documenti_generati_eventi_evento_tipo
+                  CHECK (evento_tipo IN (
+                      'GENERATO',
+                      'SCARICATO',
+                      'STORAGE_ORPHAN',
+                      'ALLEGATO_AGGIUNTO'
+                  ));
+
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.evento_tipo IS
+                  'Tipo evento applicativo. Set chiuso via CHECK: GENERATO, SCARICATO, STORAGE_ORPHAN, ALLEGATO_AGGIUNTO (append post-emissione, 2026-06-03). Estensioni future via migration.';
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE documenti.documenti_generati_eventi
+                  DROP CONSTRAINT IF EXISTS chk_documenti_generati_eventi_evento_tipo;
+
+              ALTER TABLE documenti.documenti_generati_eventi
+                  ADD CONSTRAINT chk_documenti_generati_eventi_evento_tipo
+                  CHECK (evento_tipo IN ('GENERATO', 'SCARICATO', 'STORAGE_ORPHAN'));

@@ -12,8 +12,11 @@ CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_guard_iva()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: BEFORE INSERT su articoli_componenti — verifica che iva_id del
---   componente coincida con iva_id del padre composito. NULL = NULL = coerente.
+-- Scopo: BEFORE INSERT OR UPDATE OF attivo su articoli_componenti —
+--   verifica che iva_id del componente coincida con iva_id del padre
+--   composito. NULL = NULL = coerente. Si applica su INSERT e ogni volta
+--   che il legame resta/diventa attivo: la riattivazione (attivo FALSE->TRUE)
+--   e' il percorso che poteva introdurre incoerenza aggirando guard B.
 --   Messaggio parlante: mostra aliquota % invece dell''id numerico interno.
 DECLARE
     v_iva_padre      catalogo.articoli.iva_id%TYPE;
@@ -23,6 +26,13 @@ DECLARE
     v_iva_padre_pct  text;
     v_iva_figlio_pct text;
 BEGIN
+    -- Il guard vale solo per un legame attivo. Su INSERT attivo default TRUE;
+    -- su UPDATE OF attivo intercetta la riaccensione (FALSE->TRUE) e ignora la
+    -- deattivazione (un legame spento non e' parte della BoM attiva).
+    IF NOT COALESCE(NEW.attivo, FALSE) THEN
+        RETURN NEW;
+    END IF;
+
     -- Legge iva_id, codice e aliquota % di padre e figlio in unica query
     SELECT a_padre.iva_id,  a_padre.codice,
            COALESCE(iva_p.aliquota_iva::text, '—'),
@@ -62,7 +72,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_iva()
-IS 'Trigger BEFORE INSERT su articoli_componenti: verifica iva_id figlio = iva_id padre composito. NULL = NULL = coerente. Messaggio mostra aliquota % (non id numerico). Raise E_BOM_IVA_DISCORDANTE (445). rev 2026-05-13.';
+IS 'Trigger BEFORE INSERT OR UPDATE OF attivo su articoli_componenti: verifica iva_id figlio = iva_id padre composito quando il legame e'' attivo. NULL = NULL = coerente. Copre INSERT e riattivazione (attivo FALSE->TRUE), percorso che aggirava guard B (filtra ac.attivo=TRUE). Messaggio mostra aliquota % (non id numerico). Raise E_BOM_IVA_DISCORDANTE (445). rev 2026-06-03.';
 ```
 
 ---
