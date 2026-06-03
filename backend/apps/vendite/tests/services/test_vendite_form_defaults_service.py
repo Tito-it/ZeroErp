@@ -32,6 +32,7 @@ from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.vendite_form_defaults_service import (
     fn_get_contratto_form_defaults,
     fn_get_offerta_form_defaults,
+    fn_get_ordine_form_defaults,
     fn_get_preventivo_form_defaults,
     fn_get_versione_clone_defaults,
     fn_get_versione_close_defaults,
@@ -189,6 +190,54 @@ class TestOffertaFormDefaults(TestCase):
         mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             fn_get_offerta_form_defaults(billing_account_id=999)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+
+class TestOrdineFormDefaults(TestCase):
+
+    @patch(_RESOLVER_CONN)
+    def test_ordine_no_ba_no_user_payload_vuoto(self, mock_resolver_conn):
+        # Scopo: nessun BA + nessun user + nessun gestore -> payload con
+        #        utility/valuta a None (utility globale la risolve il FE).
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        mock_resolver_conn.cursor.return_value.__enter__.return_value = cur
+        result = fn_get_ordine_form_defaults(billing_account_id=None)
+        self.assertEqual(result["billing_account_id"], None)
+        self.assertEqual(result["valuta_id"], None)
+        self.assertEqual(result["utility_id"], None)
+
+    @patch(_BA_REPO)
+    def test_ordine_con_ba_popola_utility_valuta_e_pagamento(self, mock_ba_repo_cls):
+        # Scopo: BA con valuta -> popola utility/istanza + valuta (resolver L1) +
+        #        termine/modalita pagamento dall'anagrafica cliente del BA.
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = _ba_lookup_row(
+            ba_id=10, categoria_id=7, valuta_id=1,
+        )
+        mock_ba_repo_cls.return_value.get_cliente_defaults.return_value = {
+            "termine_pagamento_id": 3,
+            "termine_pagamento_codice": "30GG",
+            "modalita_pagamento_id": 5,
+            "modalita_pagamento_codice": "BB",
+            "iva_id": 99,  # l'ordine NON ha iva in testata: deve essere ignorata
+        }
+        result = fn_get_ordine_form_defaults(billing_account_id=10)
+        self.assertEqual(result["billing_account_id"], 10)
+        self.assertEqual(result["utility_id"], 1)
+        self.assertEqual(result["istanza_utility_id"], 100)
+        self.assertEqual(result["valuta_id"], 1)
+        self.assertEqual(result["valuta_codice"], "EUR")
+        self.assertEqual(result["termine_pagamento_id"], 3)
+        self.assertEqual(result["modalita_pagamento_id"], 5)
+        # iva non e' una chiave del payload ordine (testata senza IVA).
+        self.assertNotIn("iva_id", result)
+
+    @patch(_BA_REPO)
+    def test_ordine_ba_inesistente_404(self, mock_ba_repo_cls):
+        # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            fn_get_ordine_form_defaults(billing_account_id=999)
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
 
 

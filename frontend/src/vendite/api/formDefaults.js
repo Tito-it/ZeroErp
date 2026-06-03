@@ -23,6 +23,15 @@ export function getPreventivoFormDefaults(billingAccountId = null) {
   return api.get('/vendite/preventivi/form-defaults/', { params })
 }
 
+// Scopo: Defaults form ordine di vendita. Senza BA ritorna valuta_id dalla
+//        catena EF utente → gestore (BB resolve_valuta_default); con BA aggiunge
+//        utility BA-derived. La utility di default globale (DEFAULT_UTILITY) la
+//        risolve il FE via useUtilityDefaultId, come negli altri drawer.
+export function getOrdineFormDefaults(billingAccountId = null) {
+  const params = billingAccountId ? { billing_account_id: billingAccountId } : {}
+  return api.get('/vendite/ordini/form-defaults/', { params })
+}
+
 // Scopo: Defaults form offerta commerciale. Se billingAccountId presente,
 //        popola categoria_cliente_id_snapshot + utility/istanza + valuta_id
 //        dal BA. Senza BA, la valuta arriva comunque dalla catena

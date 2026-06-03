@@ -20,6 +20,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useTabEvents } from '../composables/useTabEvents'
+import { useListaEmptyStateFetch } from '../composables/useListaEmptyStateFetch'
 import { PAGINATION } from '../constants'
 
 // Scopo: costruisce un useXxxStore per il pattern lista+CRUD parametrizzato.
@@ -45,11 +46,6 @@ export function createCrudListStore(storeId, {
   return defineStore(storeId, () => {
     const { emitDataChanged } = useTabEvents()
 
-    const items = ref([])
-    const totalRecords = ref(0)
-    const loading = ref(false)
-    const hasSearched = ref(false)
-
     const filters = ref({
       search: '',
       ...filterDefaults,
@@ -59,36 +55,16 @@ export function createCrudListStore(storeId, {
       order_dir: orderDir,
     })
 
-    // Scopo: Carica lista paginata con filtri.
-    // La lista parte vuota: richiede search (min 3 car) o un filtro gate attivo.
-    async function fetchList() {
-      const f = filters.value
-      const searchTerm = (f.search || '').trim()
-      const hasFilters = gateKeys.some((k) => f[k] != null)
-
-      // Search < 3 caratteri e nessun filtro gate → svuota i risultati
-      // precedenti (coerenza UX: niente dati obsoleti visibili).
-      if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
-        if (hasSearched.value) {
-          items.value = []
-          totalRecords.value = 0
-          hasSearched.value = false
-        }
-        return
-      }
-      if (!searchTerm && !hasFilters && !hasSearched.value) {
-        return
-      }
-      // Search svuotata senza filtri → torna a stato vuoto
-      if (!searchTerm && !hasFilters) {
-        items.value = []
-        totalRecords.value = 0
-        hasSearched.value = false
-        return
-      }
-
-      loading.value = true
-      try {
+    // Stato lista + fetchList delegati al BB `useListaEmptyStateFetch` (gate
+    // empty-state single-source, 2026-06-03): la guardia "lista parte vuota,
+    // richiede search >= 3 o filtro gate attivo" e' identica al composable usato
+    // dai 3 store-documento vendite (offerte/preventivi/ordini). Qui restano
+    // caller-owned solo `hasActiveFilters` (gateKeys) e `buildParams` (mapping
+    // generico 1:1 filtri→query + limit/offset, standard CRUD-semplice).
+    const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
+      filters,
+      hasActiveFilters: (f) => gateKeys.some((k) => f[k] != null),
+      buildParams: (f, searchTerm) => {
         const params = {}
         if (searchTerm.length >= 3) params.search = searchTerm
         // Invia ogni filtro di dominio valorizzato (anche quelli non-gate, es.
@@ -102,14 +78,10 @@ export function createCrudListStore(storeId, {
           params.order_by = f.order_by
           params.order_dir = f.order_dir || 'asc'
         }
-        const res = await api.list(params)
-        items.value = res.data.data.results
-        totalRecords.value = res.data.data.count
-        hasSearched.value = true
-      } finally {
-        loading.value = false
-      }
-    }
+        return params
+      },
+      fetchPage: api.list,
+    })
 
     // Scopo: Dettaglio completo dell'entita.
     async function fetchDetail(id) {

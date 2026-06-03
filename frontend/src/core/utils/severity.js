@@ -266,3 +266,20 @@ export const STATO_OFFERTA_MAP = {
 export function statoOffertaSeverity(codice) {
   return resolveSeverity(STATO_OFFERTA_MAP, codice)
 }
+
+// --- Mappa stati ordine di vendita ---
+// DRAFT=grigio (bozza), CONFERMATO/ALLOCATO/SPEDITO=azzurro (ciclo in corso),
+// CONSEGNATO/FATTURATO=verde (concluso), ANNULLATO=rosso.
+// Allineato a config.stati_doc_ordini.codice_interno.
+export const STATO_ORDINE_MAP = {
+  DRAFT: 'secondary',
+  CONFERMATO: 'info',
+  ALLOCATO: 'info',
+  SPEDITO: 'info',
+  CONSEGNATO: 'success',
+  FATTURATO: 'success',
+  ANNULLATO: 'danger',
+}
+export function statoOrdineSeverity(codice) {
+  return resolveSeverity(STATO_ORDINE_MAP, codice)
+}

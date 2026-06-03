@@ -258,6 +258,10 @@ export const MANAGE_ICONS = {
   BACK: 'pi pi-arrow-left',
   PLAY: 'pi pi-play',
   PUBLISH: 'pi pi-check-circle',
+  // Invio/push verso valle (push a commessa). Centralizzata: usata
+  // dall'azione "Invia a commessa" del drawer ordini; stessa semantica del
+  // pulsante push di PreventiviIntegrazione (oggi ancora `pi pi-send` inline).
+  SEND: 'pi pi-send',
   CLONE: 'pi pi-copy',
   CLOSE: 'pi pi-lock',
   CLOSE_DATE: 'pi pi-calendar-times',
@@ -312,6 +316,7 @@ export const READONLY_MODELS = {
   CONTRATTO: 'contratto',
   FORNITORE: 'fornitore',
   OFFERTA_COMMERCIALE: 'offerta_commerciale',
+  ORDINE: 'ordine',
   PROMO_ARTICOLO: 'promo_articolo',
   SOGGETTO: 'soggetto',
   UOM_TIPI: 'uom_tipi',
@@ -349,6 +354,7 @@ export const TAB_ENTITIES = {
   LISTINO: 'listino',
   OFFERTA_COMMERCIALE: 'offerta_commerciale',
   OPERATORE: 'operatore',
+  ORDINE: 'ordine',
   PRATICA: 'pratica',
   PREVENTIVO: 'preventivo',
   PROFILO_REPARTO: 'profilo-reparto',
