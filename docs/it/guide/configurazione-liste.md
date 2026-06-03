@@ -1,7 +1,11 @@
-# Guida — Configurazione e Personalizzazione delle Liste
+# Guida — Configurazione, Personalizzazione e Responsività delle Liste
 
-> **Ultima revisione**: 10 maggio 2026 — Blocco F Fase 2 (DEF-5b) atterrato:
-> CRUD `lista_definizione` + `lista_colonna` via UI per SUPER_ADMIN.
+> **Ultima revisione**: 3 giugno 2026 — aggiunta la **responsività** (§7): le
+> liste configurabili si adattano da sole allo spazio disponibile (ritiro
+> dinamico delle colonne). Migrazione della lista contratti + estrazione dei
+> building block frontend riusabili.
+> Revisione precedente: 10 maggio 2026 — Blocco F Fase 2 (DEF-5b): CRUD
+> `lista_definizione` + `lista_colonna` via UI per SUPER_ADMIN.
 >
 > **Destinatari**: amministratori del sistema (SUPER_ADMIN), tenant admin
 > con azioni `ui_preset_manage` / `ui_permesso_manage`, operatori finali
@@ -46,6 +50,7 @@ Tutto questo senza richiedere modifiche al codice o nuove release.
 * Come l'admin tecnico registra una nuova lista o aggiunge una colonna
 * Come l'admin operativo prepara preset e permessi colonna
 * Come l'operatore finale personalizza la propria vista
+* Come le liste si **adattano da sole allo spazio** (responsività) e chi decide quale colonna scende
 * Permessi e visibilità: chi vede cosa
 * Esempi pratici end-to-end
 
@@ -88,7 +93,9 @@ Per ogni lista, l'insieme delle **colonne disponibili**. Ogni colonna ha:
 * il **tipo di dato** (testo, numero, data, booleano, enumerato)
 * il campo sorgente nella vista SQL (può essere vuoto per colonne
   composte calcolate lato frontend)
-* parametri di layout (ordine, larghezza, allineamento, gruppo)
+* parametri di layout (ordine, larghezza, **priorità di ritiro**,
+  allineamento, gruppo) — la *priorità* governa la responsività: decide
+  quale colonna scende per prima quando lo spazio si stringe (vedi §7)
 * flag di comportamento (filtrabile, ordinabile, esportabile, ricercabile,
   sensibile)
 
@@ -321,7 +328,107 @@ toolbar:
 
 ---
 
-## 7. Esempio end-to-end — Lista Clienti
+## 7. Liste responsive — adattamento automatico allo spazio
+
+Una lista con molte colonne (i contratti ne hanno una dozzina) non sempre
+entra nello schermo: basta aprire la sidebar di navigazione, o usare un
+portatile o un tablet, e lo spazio si stringe. La vecchia soluzione era la
+**barra di scorrimento orizzontale** — scomoda: per leggere lo stato di un
+contratto dovevi trascinare la lista di lato.
+
+Oggi le liste configurabili si **adattano da sole** allo spazio disponibile,
+in tempo reale. Quando lo spazio non basta non compare lo scroll: la lista si
+**compatta**, seguendo un ordine di priorità ben preciso.
+
+### 7.1 I tre gradini di compattazione
+
+Il sistema cerca di tenere visibili più dati possibile, agendo per gradini:
+
+1. **Spazio sufficiente** → tutto normale: colonne affiancate, pulsanti azione
+   (modifica, PDF, gestisci righe…) in fila.
+2. **Spazio stretto** → i **pulsanti azione si raccolgono in un menù "⋮"**
+   (kebab): un piccolo menù a tendina al posto di 3-4 iconcine. Recupera
+   spazio **senza nascondere alcun dato**. È la prima mossa, perché un click
+   in più sulle azioni dà meno fastidio di una colonna che sparisce.
+3. **Spazio ancora insufficiente** → le **colonne meno importanti scendono**
+   in una riga di dettaglio espandibile (la freccetta "›" a inizio riga).
+   Nessun dato è perso: aprendo la freccetta vedi le colonne ritirate, con la
+   stessa formattazione (un Tag di stato resta un Tag colorato).
+
+Tutto è fluido: allargando di nuovo la finestra — o richiudendo la sidebar —
+le colonne **ritornano** al loro posto.
+
+### 7.2 Chi decide quale colonna scende? La priorità
+
+Quando si arriva al terzo gradino, **quale** colonna scende per prima non è
+casuale: lo decide un valore chiamato **priorità**, impostato per ogni colonna
+nel catalogo (è il fratello di "ordine" e "larghezza" che già conosci dal §2.2).
+
+Regola semplice: **priorità più bassa = scende per prima**. A parità di
+priorità, scende prima la colonna più a destra.
+
+Esempio sulla lista contratti — l'ordine con cui le colonne si ritirano man
+mano che lo spazio cala:
+
+| Ordine di ritiro | Colonna | Priorità |
+| --- | --- | --- |
+| 1ª a scendere | Data | 25 (bassa) |
+| 2ª | Categoria cliente | 30 |
+| 3ª | Codice account | 40 |
+| poi… | Listino, Ambito, Valido dal/al, Utility, Id. fiscale | 45–75 |
+| (quasi mai) | Stato | 90 (alta) |
+| **mai** | Numero, Cliente, Azioni | — (identificatore / azione) |
+
+Così le informazioni che servono sempre (numero, cliente, stato) restano
+visibili fino all'ultimo, mentre quelle accessorie (data, categoria) scendono
+per prime. Le colonne **identificatore** e **azione** (vedi §2.2) non scendono
+**mai**: una lista contratti senza il numero, o senza i pulsanti, sarebbe
+inutile.
+
+### 7.3 Come cambiare l'ordine di ritiro
+
+La priorità è un dato di catalogo, quindi si regola come gli altri attributi
+della colonna (oggi via seed/changeset DB; in prospettiva dal drawer "Colonna"
+della pagina tecnica, tab Layout — §5.2). Se vuoi che una colonna scenda prima
+o dopo, le dai una priorità più bassa o più alta. Non serve toccare codice né
+fare una release.
+
+> **Importante**: la priorità è una **scelta di progetto** della lista, uguale
+> per tutti gli operatori — non una preferenza personale. La personalizzazione
+> individuale del §6 (quali colonne mostrare, in che ordine) agisce **prima**:
+> il ritiro dinamico lavora poi sull'insieme di colonne effettivamente
+> visibili per quell'operatore.
+
+### 7.4 Il regalo per i dispositivi piccoli
+
+Lo stesso meccanismo sistema "gratis" le liste su **tablet e mobile**: lì lo
+spazio è poco per definizione, quindi le colonne si compattano e si raccolgono
+nell'espansione in automatico. Non c'è un layout mobile separato da costruire e
+mantenere: la lista è **una sola** e si adatta da sé.
+
+### 7.5 Per chi sviluppa (in breve)
+
+Il comportamento vive in **building block riusabili**: una nuova lista lo
+eredita senza scrivere logica responsive.
+
+* **`<ListaConfigurabile>`** — il componente che disegna la lista a partire
+  dalla configurazione risolta dal backend; ospita il ritiro dinamico.
+* **`useResponsiveColumns`** — il "cervello": misura lo spazio **reale** del
+  contenitore (non la larghezza della finestra — così reagisce anche
+  all'apertura della sidebar, che la finestra non vede) e decide compattazione
+  e ritiro applicando le priorità di catalogo.
+* **`useListaConfigurabilePage`** — lo "scheletro" della pagina lista (ricerca,
+  paginazione, export, azioni di toolbar): il componente di dominio resta
+  minimale, con solo i propri filtri e azioni di riga.
+
+Dettagli tecnici e regole di stile: [standard frontend](/dev/frontend/frontend-standards)
+(sezione "Ritiro dinamico colonne — `useResponsiveColumns`") e i cataloghi
+building block [frontend](/dev/frontend/catalogo-building-block-frontend) e
+[backend](/dev/backend/catalogo-building-block-backend).
+
+---
+
+## 8. Esempio end-to-end — Lista Clienti
 
 Scenario: l'azienda ha un emittente fiscale "Acme S.p.A." e tre
 profili accesso (Amministrativo, Commerciale, Tecnico). Vogliamo che:
@@ -410,7 +517,7 @@ Luca (profilo "Tecnico") apre la stessa lista:
 
 ---
 
-## 8. Permessi e visibilità — chi vede cosa
+## 9. Permessi e visibilità — chi vede cosa
 
 | Ruolo | Pagina admin operativa | Pagina admin tecnica | Personalizzazione personale |
 | --- | --- | --- | --- |
@@ -429,9 +536,9 @@ modifica tutto.
 
 ---
 
-## 9. Casi d'uso comuni
+## 10. Casi d'uso comuni
 
-### 9.1 Aggiungere una colonna a una lista esistente
+### 10.1 Aggiungere una colonna a una lista esistente
 
 1. SUPER_ADMIN: pagina tecnica → tab "Catalogo colonne" → **Nuova**
 2. Compila i 3 sotto-tab (Generale / Comportamento / Layout)
@@ -441,13 +548,13 @@ modifica tutto.
    per default, ma l'operatore può aggiungerla manualmente dalla modale)
 5. Opzionale: aggiornare i preset di base per includerla (admin operativo)
 
-### 9.2 Nascondere una colonna sensibile per un profilo
+### 10.2 Nascondere una colonna sensibile per un profilo
 
 1. Tenant admin: pagina operativa → tab "Permessi colonne" → **Nuovo**
 2. Seleziona colonna + profilo accesso + livello `BLOCCATO`
 3. Salva. Effetto immediato al prossimo refresh delle liste.
 
-### 9.3 Creare una vista preconfigurata per un ruolo
+### 10.3 Creare una vista preconfigurata per un ruolo
 
 1. Tenant admin: pagina operativa → tab "Preset" → **Nuovo**
 2. Compila codice, descrizione, **ambito="ruolo"**, profilo target
@@ -457,14 +564,14 @@ modifica tutto.
 5. Marca il preset come `is_default=true`. Sarà applicato
    automaticamente al primo accesso degli operatori con quel ruolo.
 
-### 9.4 Disattivare temporaneamente una lista
+### 10.4 Disattivare temporaneamente una lista
 
 1. SUPER_ADMIN: pagina tecnica → tab "Definizioni" → modifica la lista
 2. Imposta `attivo=false` → Salva
 3. La lista scompare dal runtime. Preset, colonne e preferenze
    sopravvivono in DB e tornano disponibili al riattivare.
 
-### 9.5 Riallineare una preferenza dopo modifica del preset
+### 10.5 Riallineare una preferenza dopo modifica del preset
 
 Quando l'admin modifica un preset di base (aggiunge una colonna,
 cambia l'ordine), gli utenti che hanno una preferenza salvata da quel
@@ -474,12 +581,12 @@ adottare la modifica (un click) o ignorarla.
 
 ---
 
-## 10. Comportamenti speciali e fallback
+## 11. Comportamenti speciali e fallback
 
 Alcune scelte di design pensate per evitare situazioni di blocco
 all'utente o configurazioni stale silenziose.
 
-### 10.1 Combo "Utility" — fallback matrice vuota
+### 11.1 Combo "Utility" — fallback matrice vuota
 
 La combo "Utility" presente nei drawer (clienti, contratti, preventivi,
 filtri lista) è popolata da `/api/v1/core/lookup/utilities-per-emittente/`
@@ -501,7 +608,7 @@ user → group → emittente → sistema) viene risolto sul set già filtrato:
 l'operatore non riceve come default un'utility che non avrebbe potuto
 selezionare.
 
-### 10.2 Workflow "lista in fase di sviluppo"
+### 11.2 Workflow "lista in fase di sviluppo"
 
 Il trigger `trgfn_ui_lista_definizione_a10_valida_vista_sql` valida
 l'esistenza della vista SQL in `pg_catalog`, ma **salta** se:
@@ -513,7 +620,7 @@ Questo permette al SUPER_ADMIN di registrare una lista in modalità
 "draft" prima che il team DB abbia rilasciato la view. Una volta
 deployata la view, basta editare il record (impostare la vista, attivare).
 
-### 10.3 Cancellazioni protette dal sistema
+### 11.3 Cancellazioni protette dal sistema
 
 Per evitare configurazioni stale silenziose, alcune cancellazioni
 sono bloccate dal database e ribattute con messaggio parlante:
@@ -528,7 +635,7 @@ In compenso, alcune cancellazioni sono **CASCADE intenzionali**:
   `lista_colonna_permesso` (permessi).
 * Cancellare un `lista_preset` rimuove la composizione (`lista_preset_colonna` CASCADE) ma le preferenze utente che lo referenziavano sopravvivono con `preset_base_id = NULL` (ON DELETE SET NULL): l'operatore continua a vedere la propria configurazione personale, indipendente dal preset originario.
 
-### 10.4 Vincolo automatico — colonne `azione` non esportabili
+### 11.4 Vincolo automatico — colonne `azione` non esportabili
 
 Il database garantisce con CHECK constraint che le colonne di tipo
 `azione` (pulsanti UI) non possano essere marcate `esportabile=true`.
@@ -537,7 +644,7 @@ Il drawer UX collabora: se selezioni `tipo_colonna='azione'` il toggle
 una colonna esistente da `informazione` a `azione`: il sistema riallinea
 automaticamente il flag senza sollevare errori.
 
-### 10.5 Etichette i18n con cascata fallback
+### 11.5 Etichette i18n con cascata fallback
 
 La risoluzione frontend dell'etichetta colonna è sempre **safe**:
 
@@ -552,7 +659,7 @@ t(etichetta_i18n_key) || etichetta || codice
 Così aggiungere un locale nuovo non richiede mai un'operazione DB —
 basta aggiornare i file di traduzione.
 
-### 10.6 Identificatori e azioni — sempre visibili
+### 11.6 Identificatori e azioni — sempre visibili
 
 Le colonne con `tipo_colonna IN ('identificatore', 'azione')` non sono
 nascondibili dall'operatore nella modale di personalizzazione (toggle
@@ -567,7 +674,7 @@ nascosta lato UI.
 
 ---
 
-## 11. Roadmap — funzionalità in sviluppo
+## 12. Roadmap — funzionalità in sviluppo
 
 > **Nota**: questa sezione descrive funzionalità **previste ma non
 > ancora rilasciate**. Sono tracciate nel piano operativo
@@ -575,7 +682,7 @@ nascosta lato UI.
 > stato, sforzo e decisioni operative aperte. Il riferimento `DEF-N`
 > nei punti seguenti rimanda all'item del piano.
 
-### 11.1 Notifica "Preset aggiornato" (DEF-2)
+### 12.1 Notifica "Preset aggiornato" (DEF-2)
 
 > **Stato**: 🟡 Parziale — DB pronto, manca BE + FE. Sforzo S. **Da completare**.
 
@@ -590,7 +697,7 @@ automatico al cambio di preset). Manca: backend espone il flag
 `preset_aggiornato` nella response config, frontend renderizza il
 banner.
 
-### 11.2 Export CSV/Excel con metadati filtri (DEF-1)
+### 12.2 Export CSV/Excel con metadati filtri (DEF-1)
 
 > **Stato**: 🟢 Done — atterrata 2026-05-10 sulla lista clienti.
 
@@ -626,7 +733,7 @@ generico `apps.ui.services.lista_export_service.ListaExportService`.
 Lato FE 2 azioni `kind: 'utility'` nel `PageActionsBar` con il
 composable riusabile `useFileDownload`.
 
-### 11.3 Viste nominate multiple per utente (DEF-3)
+### 12.3 Viste nominate multiple per utente (DEF-3)
 
 > **Stato**: 🔴 Todo. Sforzo L. **Da completare**.
 
@@ -638,7 +745,7 @@ Richiede schema migration su `lista_preferenza_utente` (aggiunta
 colonne `nome` + `is_attiva`, sostituzione UNIQUE) e UI nuova
 (`ListaViewSelect`).
 
-### 11.4 Condivisione viste tra utenti (DEF-4)
+### 12.4 Condivisione viste tra utenti (DEF-4)
 
 > **Stato**: 🔴 Todo. Sforzo M. Dipende da DEF-3. **Da completare**.
 
@@ -647,18 +754,19 @@ colleghi del reparto. I colleghi possono "adottarla" (copia personale
 modificabile) o lasciare che si aggiorni automaticamente quando
 l'autore la modifica.
 
-### 11.5 Layout mobile / card list responsive (DEF-6)
+### 12.5 Layout mobile / card list responsive (DEF-6)
 
-> **Stato**: 🔴 Todo. Sforzo M. **Da completare**.
+> **Stato**: 🟢 In gran parte risolto dalla §7 (ritiro dinamico colonne, 2026-06-03). Card list dedicata: 🔴 non più prioritaria.
 
-Su viewport stretto (mobile/tablet portrait) una DataTable con 8+
-colonne è inutilizzabile. La roadmap prevede una modalità "card list"
-attivata automaticamente sotto un breakpoint configurabile. Mostra le
-colonne `identificatore` + le prime N `informazione` come card
-verticali; la personalizzazione resta solo a toggle visibilità (no
-riordino drag&drop su touch).
+Su viewport stretto (mobile/tablet portrait) la lista resta usabile grazie al
+**ritiro dinamico delle colonne** (§7): le colonne meno prioritarie scendono
+nella riga di espansione e le azioni si raccolgono nel kebab, in automatico,
+sulla stessa lista desktop. Non serve più un layout "card list" separato da
+costruire e mantenere. Una vera modalità a card (una card per riga al posto
+dell'espansione) resta un'opzione futura solo se emergesse un'esigenza
+estetica; oggi non è prioritaria.
 
-### 11.6 Colonne calcolate / composte (DEF-7 + DEF-10)
+### 12.6 Colonne calcolate / composte (DEF-7 + DEF-10)
 
 > **Stato**: 🔴 Todo per DEF-7, 🟡 Parziale per DEF-10. Sforzo L. **Da completare**.
 
@@ -676,27 +784,28 @@ Due pattern sovrapposti:
 Da decidere se fondere DEF-7+10 in un unico item con sotto-categorie
 (`'calcolata'` vs `'composta'`) o tenerli distinti.
 
-### 11.7 Estensione ad altre liste (DEF-8)
+### 12.7 Estensione ad altre liste (DEF-8)
 
-> **Stato**: 🟡 Parziale — 1/13 liste migrate. Sforzo S per lista, incrementale. **Da completare**.
+> **Stato**: 🟡 Parziale — 4/13 liste migrate. Sforzo S per lista, incrementale. **Da completare**.
 
-Solo `anagrafiche.clienti` è oggi servita dal motore di personalizzazione.
-Per ogni altra lista del frontend serve: seed catalogo colonne, seed
-preset di sistema, eventuali nuovi campi nel SELECT del repository,
-refactor del componente Vue da `<DataTable>` statico a
-`<ListaConfigurabile>`. Pattern rodato, tempi prevedibili.
+Oggi sono servite dal motore di personalizzazione: `anagrafiche.clienti`,
+`anagrafiche.soggetti`, `anagrafiche.fornitori` e `vendite.contratti` (prima
+lista non-anagrafiche, 2026-06-03). Per ogni altra lista del frontend serve:
+seed catalogo colonne, seed preset di sistema, eventuali nuovi campi nel SELECT
+del repository, refactor del componente Vue da `<DataTable>` statico a
+`<ListaConfigurabile>` (oggi semplificato dal composable
+`useListaConfigurabilePage`). Pattern rodato, tempi prevedibili.
 
 Liste residue (in ordine di priorità suggerita):
 
-1. `anagrafiche.fornitori` (gemello clienti, codice già rodato)
-2. `catalogo.articoli` (lista molto frequente)
-3. `vendite.contratti`, `vendite.preventivi`
-4. `vendite.listini`, `vendite.promo-articoli`, `vendite.approvazioni-prezzo`
-5. `anagrafiche.soggetti`, `anagrafiche.indirizzi`
-6. `catalogo.unita-misura`
-7. `pratiche` (dashboard 3 livelli, caso speciale)
+1. `catalogo.articoli` (lista molto frequente)
+2. `vendite.preventivi`
+3. `vendite.listini`, `vendite.promo-articoli`, `vendite.approvazioni-prezzo`
+4. `anagrafiche.indirizzi`
+5. `catalogo.unita-misura`
+6. `pratiche` (dashboard 3 livelli, caso speciale)
 
-### 11.8 Autocomplete chiavi i18n nel form colonna (DEF-9)
+### 12.8 Autocomplete chiavi i18n nel form colonna (DEF-9)
 
 > **Stato**: 🔴 Todo. Sforzo S. **Da completare**.
 
@@ -707,7 +816,7 @@ le offre con autocomplete. Riduce errori di battitura e drift.
 
 ---
 
-## 12. Note finali
+## 13. Note finali
 
 * **Le definizioni e le colonne hanno valore di catalogo**: il loro
   codice rimane stabile tra ambienti (dev → staging → produzione). Gli

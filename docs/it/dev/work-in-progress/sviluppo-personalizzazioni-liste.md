@@ -598,9 +598,12 @@ Se `preset_base_id === null` il preset di riferimento non esiste più (è stato 
 
 **Brief originale**: [brief-db-ui-personalizzazioni-liste.md](brief-db-ui-personalizzazioni-liste.md) (con stato LANDED in cima).
 
-### 10.2-bis Brief DB-5 (rilevato post-E5, smoke test) — TODO
+### 10.2-bis Brief DB-5 (rilevato post-E5, smoke test) — ✅ RISOLTO
 
-> ⚠️ **Bloccante** per smoke test E end-to-end e per Blocco F.
+> ✅ **Applicato**: `scripts/sql/provision_db_roles.sql` ora include gli
+> schemi `ui`, `documenti`, `pratiche` nelle whitelist GRANT. Lo sblocco di
+> smoke test E / Blocco F è infatti avvenuto (Blocchi A→F atterrati).
+> Voce mantenuta come storia; era bloccante per smoke test E e Blocco F.
 
 **Sintomo**: il backend Django solleva `ProgrammingError: permesso negato per lo schema ui` quando tenta di leggere `ui.lista_definizione`. Il ruolo runtime `zeroerp_app` non ha `USAGE` sullo schema `ui` né privilegi sulle tabelle. Verificato 2026-05-07 lanciando una query test via Django ORM.
 

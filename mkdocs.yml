@@ -138,6 +138,7 @@ nav:
                   - Implementazione Transaction ID: it/guide/tx_id_implementation_guide.md
                   - Storicizzazione Tabelle: it/guide/storicizzazione-tabelle.md
                   - Configurazione e gestione parametri: it/guide/configurazione-e-gestione-parametri.md
+                  - Configurazione e responsività delle liste: it/guide/configurazione-liste.md
                   - Automazione DB: it/guide/automazione-db.md
                   - Processi-pgagent: it/guide/processi-pgagent-funzionali.md
                   - Log:

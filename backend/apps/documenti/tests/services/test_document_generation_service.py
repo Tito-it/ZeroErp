@@ -47,7 +47,7 @@
 #  21. genera_documento_con_allegati_persiste_file_secondari
 #  22. genera_documento_allegato_mime_non_ammesso_raises
 #  23. genera_documento_allegato_troppo_grande_raises
-#  24. aggiungi_allegati_append_persiste_file
+#  24. aggiungi_allegati_append_persiste_file (+ evento ALLEGATO_AGGIUNTO)
 #  25. aggiungi_allegati_documento_inesistente_raises_not_found
 #  26. aggiungi_allegati_lista_vuota_raises_validation
 # ------------------------------------------------------------
@@ -927,6 +927,13 @@ class AggiungiAllegatiTests(SimpleTestCase):
         self.assertEqual(file_data["is_principale"], False)
         self.assertEqual(file_data["ordinamento"], 2)
         storage.write.assert_called_once()
+        # Evento timeline ALLEGATO_AGGIUNTO emesso nella stessa transazione.
+        repo.emit_evento_documento.assert_called_once()
+        evento = repo.emit_evento_documento.call_args.args[0]
+        self.assertEqual(evento["evento_tipo"], "ALLEGATO_AGGIUNTO")
+        self.assertEqual(evento["documento_generato_id"], 99)
+        self.assertEqual(evento["esito"], "OK")
+        self.assertEqual(evento["detail"]["n_allegati"], 1)
 
     # 25. documento inesistente / fuori scope -> NOT_FOUND, no persist.
     def test_aggiungi_allegati_documento_inesistente_raises_not_found(self) -> None:

@@ -223,7 +223,7 @@ stima originale 1.5 grazie all'anticipo BE.
 | 7 | **Fase G** replicazione 4 sorgenti (ordini/contratti/ddt) | io | ⏸️ parziale: preventivi+contratti done 2026-05-14; ordini+ddt rinviati (moduli BE/FE inesistenti — sotto-progetto autonomo) |
 | 8 | DROP `fn_resolve_prezzo_composito` + cleanup `pricing_repository.resolve_prezzo_composito` + `pricing_service.resolve_prezzo_composito` + path legacy `BoMComponentExpander._resolve_cached` + path BE dormiente `componenti_attivazioni` | Tid + team DB, post Fase G completa | bloccata da #7 (ordini+ddt) |
 | 9 | **Fase H** building block (BE mixin/helper, FE `ComponentiPanel` + `useTokenedFetch` + `useRigaComponenti`) | io | ✅ done 2026-05-14 (BE + FE atterrati nel commit `b8068878f`) |
-| 10 | Esporre `is_composito` denormalizzato in proiezione `contratti_righe` (BE) per consentire detection FE in EDIT senza round-trip extra | io | aperta (rilevata in review FE 2026-05-14) |
+| 10 | Esporre `is_composito` denormalizzato in proiezione `contratti_righe` (BE) per consentire detection FE in EDIT senza round-trip extra | io | ✅ done (proiettato in `contratti_repository`, `a.is_composito AS is_composito`) |
 | 11 | Estrarre `is_articolo_composito` + `get_emittente_sr_id_by_fiscale_id` in helper cross-dominio (`catalogo_repository`/`anagrafiche_repository`) | io | aperta (cleanup Fase H residue) |
 | 12 | Rimozione ~20 aliases backward-compat `_normalize_*` / `_resolve_emittente_sr_id_safe` in preventivi/contratti service + refactor mock test verso `_componenti_service_helpers` | io | aperta (cleanup Fase H residue) |
 | 13 | Fix #2 (`_load_componente_for_modification`: 3 query → 1 JOIN) | io | rinviato — beneficio basso, non hot path |
