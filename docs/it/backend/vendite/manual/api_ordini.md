@@ -218,6 +218,6 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
 ## Riferimenti
 
 - Analisi BE/FE: [analisi-ordini-vendita.md](../../../dev/work-in-progress/analisi-ordini-vendita.md)
-- Brief DB: [db-brief-ordini-vendita.md](../../../dev/work-in-progress/db-brief-ordini-vendita.md)
+- Brief DB: [db-brief-ordini-vendita.md](../../../dev/work-done/db-brief-ordini-vendita.md)
 - Tabella testata: [vendite.ordini](../../../dbzero/vendite/manual/ordini.md)
 - Linee guida API: [api.md](../../../dev/api.md)

@@ -113,7 +113,7 @@ provenienza/tracciabilità.
   - **(A2) — SCARTATA**: riuso di `sorgente_tipo_id`/`sorgente_uid` come link
     interno, estendendo `config.sorgenti` con i tipi documento interni.
 - **Perché A1 e non A2** (rettifica post-verifica DDL 2026-06-03, vedi
-  [db-brief-ordini-vendita.md §1.A](./db-brief-ordini-vendita.md)): A2 sembrava più
+  [db-brief-ordini-vendita.md §1.A](../work-done/db-brief-ordini-vendita.md)): A2 sembrava più
   «simmetrica» con le righe (che usano `sorgente_*` con UQ di idempotenza import), ma
   la verifica ha scoperto che quella simmetria è **fuorviante**. ① L'UQ
   `uq_ordini_v_sorgente_fk` su `(sorgente_tipo_id, sorgente_uid)` imporrebbe in testata
@@ -215,7 +215,7 @@ Changeset additivo/correttivo (additive+nullable → no impatto trigger/RLS):
   + `documento_origine_id bigint`, **entrambe nullable, senza UNIQUE** (più ordini da
   una stessa origine). **NON** riusare `config.sorgenti`/`sorgente_*` (A2 scartata:
   l'UQ `uq_ordini_v_sorgente_fk` imporrebbe l'1:1 e lo `scope` PUSH_* ha altra
-  semantica — vedi [db-brief §1.A](./db-brief-ordini-vendita.md)). Riferimento
+  semantica — vedi [db-brief §1.A](../work-done/db-brief-ordini-vendita.md)). Riferimento
   polimorfo (preventivo *o* offerta secondo il tipo): integrità garantita alla
   valorizzazione (conversione §7.4), non con FK fisica unica.
 - **E — agente**: `agente_soggetto_ruolo_id bigint NULL` FK
@@ -761,7 +761,7 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 
 1. **Ratifica decisioni §8** (Tid).
 2. **Consegna al team DB** (`dev/db-tid`): il brief eseguibile è
-   [db-brief-ordini-vendita.md](./db-brief-ordini-vendita.md) (derivato da questa
+   [db-brief-ordini-vendita.md](../work-done/db-brief-ordini-vendita.md) (derivato da questa
    analisi + verifica DDL) — **estensione modello A+E** (§3.0: link origine
    **A1** FK dedicata + `agente_soggetto_ruolo_id`), **fix check** `chk_ordini_v_r_qta_pos` →
    `quantita > 0`, vista `vw_ordini_lista` canonica (espone origine/agente),
