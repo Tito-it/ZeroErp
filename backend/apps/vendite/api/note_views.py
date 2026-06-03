@@ -90,3 +90,30 @@ ApiOffertaNoteList, ApiOffertaNoteDetail = make_note_views(
     target_tipo="OFFERTA",
     model_permission=("vendite", "offerta_commerciale"),
 )
+
+
+# Scopo: Factory dei service note ordine di vendita. Partizione 'ORDINE'
+#        (target_tipo varchar(16): 'ORDINE' = 6 char, ok). Il child_table
+#        `vendite.ordini_righe` collega le note di RIGA via FK `ordine_id`
+#        (note_ordini.target_riga_id → ordini_righe.id).
+_ORDINE_REPO = PartitionedNoteRepository(
+    partition_table="vendite.note_ordini",
+    target_tipo="ORDINE",
+    parent_table="vendite.ordini",
+    parent_pk="id",
+    child_table="vendite.ordini_righe",
+    child_parent_fk="ordine_id",
+)
+
+
+def _ordine_service_factory() -> PartitionedNoteService:
+    return PartitionedNoteService(repo=_ORDINE_REPO)
+
+
+ApiOrdineNoteList, ApiOrdineNoteDetail = make_note_views(
+    area_funzionale="vendite",
+    parent_path_param="ordine_id",
+    service_factory=_ordine_service_factory,
+    target_tipo="ORDINE",
+    model_permission=("vendite", "ordine"),
+)
