@@ -16,7 +16,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params
+from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params, qp_bool_optional
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.fornitori_service import FornitoriService
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
@@ -56,12 +56,8 @@ class FornitoriView(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="ragione_sociale_completa")
         stato_id = optional_int({"v": request.query_params.get("stato_fornitore_id")}, "v")
-        # optional_bool ha default=False: non usabile per filtri opzionali.
-        # Quando il parametro manca serve None (nessun filtro), non False.
-        raw_attivo = request.query_params.get("attivo")
-        attivo: bool | None = None
-        if raw_attivo is not None:
-            attivo = raw_attivo.strip().lower() in {"1", "true", "yes", "y", "on"}
+        # Filtro opzionale: None quando il parametro manca (nessun filtro), non False.
+        attivo = qp_bool_optional(request.query_params.get("attivo"))
         svc = FornitoriService()
         results, total = svc.list_fornitori(
             search=p["search"],

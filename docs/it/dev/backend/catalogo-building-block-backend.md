@@ -12,6 +12,7 @@
 | Building Block | File | Descrizione |
 |---|---|---|
 | `handle_post_json` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Handler unificato POST JSON con supporto idempotency |
+| `handle_detail_patch` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Handler standard PATCH di dettaglio: `return handle_detail_patch(request, Service().update_X, pk)`. Wrappa `handle_post_json` delegando a `update_fn(pk, payload)`; si passa il metodo bound (no magic string). Estratto 2026-06-03 (regola del 2). Adottato dalle view geo: regioni/province/indirizzi. |
 | `get_scope_user_id` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Restituisce auth_user_id per scope filtering (None per superuser) |
 | `get_risorsa_umana_id` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Risolve risorsa_umana_id dall'utente con cache per-request |
 | `DomainAPIView` | [base_views.py](../../../../backend/apps/core/api/base_views.py) | Base view per endpoint dominio con JWT + ZeroERPPermission. Supporta `model_permission = ("app_label", "model_name")` per attivare livello oggetto (v2 permessi). |
@@ -261,6 +262,18 @@ delle operazioni eccezione OVERRIDE/AGGIUNTA.
 | `ClientiRepository.check_user_can_create_ba` | [clienti_repository.py](../../../../backend/apps/anagrafiche/db/clienti_repository.py) | Wrapper `script.fn_check_user_can_create_ba`. Vedi WIP refactor operatore-emittenti Q6 (la motivazione di dominio sta nel service) |
 | `ClientiService.crea_cliente` (param `auth_user_id`) | [clienti_service.py](../../../../backend/apps/anagrafiche/services/clienti_service.py) | Orchestratore creazione cliente completa (istanza + BA + cliente in transazione atomica). **Refactor operatore-emittenti**: param `auth_user_id` opzionale; se valorizzato e si crea un nuovo BA (no `billing_account_id` in payload), chiama `_guard_can_create_ba` che blocca admin globale + emittenti con `ServiceError(E_BA_ADMIN_GLOBALE_VIETATO)`. Defense-in-depth: il trigger DB `trgfn_billing_account_guard_admin_globale` e' la difesa finale |
 | `ClientiInvitaPortaleView` / `ClientiInvitaShopView` / `FornitoriInvitaPortaleView` | [views_invito_portale.py](../../../../backend/apps/anagrafiche/api/views_invito_portale.py) | View admin per `POST /api/v1/anagrafiche/{clienti\|fornitori}/<id>/invita-{portale\|shop}/`. Body `{email, reinvio?}`. Delegano a `InvitoPortaleService` (fornitori solo portale; shop = B2C, non per fornitori). |
+
+---
+
+## Anagrafiche — Helper condivisi soggetto_ruolo + contatto inline (`apps/anagrafiche/`)
+
+Estratti 2026-06-03 (regola del 2) per de-duplicare codice identico tra
+service/repository di clienti, fornitori, emittenti.
+
+| Building Block | File | Descrizione |
+| --- | --- | --- |
+| `get_or_create_soggetto_ruolo(soggetto_id, ruolo_codice)` | [db/_helpers.py](../../../../backend/apps/anagrafiche/db/_helpers.py) | Wrapper su `script.fn_get_or_create_soggetto_ruolo`; il codice ruolo (`'CL'`/`'FO'`/`'EF'`) passa come parametro `%s`. I tre `get_or_create_ruolo_*` dei repository (clienti/fornitori/emittenti) sono wrapper di una riga su questo helper. |
+| `crea_contatto_inline_se_valido(sogg_repo, soggetto_id, soggetto_ruolo_id, contatto_data)` | [services/contatti_service.py](../../../../backend/apps/anagrafiche/services/contatti_service.py) | Orchestratore contatto inline opzionale: `classify_contatto_payload` → EMPTY skip / PARTIAL `E_CONTATTO_INCOMPLETO` / VALID crea via repository. Usato in `crea_cliente` + crea fornitore. Vive in `contatti_service.py`, già single-source-of-truth della regola contatto (`feedback_classify_payload_three_state`). |
 
 ---
 

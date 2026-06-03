@@ -1531,6 +1531,33 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Transizione di stato preventivo non ammessa.",
         ),
+        # Ordini di vendita (scheletro CRUD + conferma + push singolo). Famiglia
+        # speculare a E_PREV_*. I codici trigger DB (E_ORDINE_*) passano invece
+        # via regex in ordini_service._db_errors.
+        "E_ORD_NOT_FOUND": ErrorPolicy(
+            code="E_ORD_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Ordine non trovato.",
+        ),
+        "E_ORD_VALIDAZIONE": ErrorPolicy(
+            code="E_ORD_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri ordine non validi.",
+        ),
+        "E_ORD_STATO_TRANSIZIONE": ErrorPolicy(
+            code="E_ORD_STATO_TRANSIZIONE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Operazione non ammessa nello stato corrente dell'ordine.",
+        ),
+        "E_ORD_NESSUNA_RIGA": ErrorPolicy(
+            code="E_ORD_NESSUNA_RIGA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="L'ordine non ha righe eleggibili per l'operazione.",
+        ),
         # Codice sollevato da vendite.fn_crea_revisione_preventivo quando esiste
         # gia' una revisione in DRAFT per lo stesso numero. Conflitto di stato:
         # l'utente deve completare/annullare la DRAFT esistente prima di crearne

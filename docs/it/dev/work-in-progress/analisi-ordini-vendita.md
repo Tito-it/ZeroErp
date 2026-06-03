@@ -10,7 +10,7 @@
 > **Template 1:1**: famiglia vendite già atterrata —
 > [offerte](../../../../frontend/src/vendite/offerte/) (più recente, testata+righe),
 > [preventivi](../../../../frontend/src/vendite/preventivi/) (righe+componenti BoM+integrazione),
-> [lista-offerte-comm.md](lista-offerte-comm.md) / [lista-preventivi.md](lista-preventivi.md)
+> [lista-offerte-comm.md](../work-done/lista-offerte-comm.md) / [lista-preventivi.md](../work-done/lista-preventivi.md)
 > (DEF-8 lista configurabile).
 
 ---
@@ -164,7 +164,7 @@ replica `prezzo` invece di `quantita > 0`) → la correzione va nel brief (§3.0
 ## 2. Standard e building block governanti (vincolanti)
 
 Il lavoro NON inventa pattern: applica quelli già scritti (CLAUDE.md). In sintesi
-(dettaglio identico a [lista-preventivi.md §1](lista-preventivi.md)):
+(dettaglio identico a [lista-preventivi.md §1](../work-done/lista-preventivi.md)):
 
 - **Backend** — [api.md](../../api.md): `DomainAPIView` (`area_funzionale='vendite'`),
   `parse_list_params`, envelope `success_response`+`paginated_envelope`, tiebreaker
@@ -697,6 +697,6 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 | Dominio | Lista DEF-8 | CRUD/drawer | Doc |
 | --- | --- | --- | --- |
 | `vendite.contratti` | ✅ atterrato (`1cc906377`) | ✅ | [refactor-lista-contratti.md](../work-done/refactor-lista-contratti.md) |
-| `vendite.preventivi` | 📋 piano | ✅ | [lista-preventivi.md](lista-preventivi.md) |
-| `vendite.offerte` | 📋 piano | ✅ | [lista-offerte-comm.md](lista-offerte-comm.md) |
+| `vendite.preventivi` | ✅ completato 2026-06-03 | ✅ | [lista-preventivi.md](../work-done/lista-preventivi.md) |
+| `vendite.offerte` | ✅ completato 2026-06-03 | ✅ | [lista-offerte-comm.md](../work-done/lista-offerte-comm.md) |
 | **`vendite.ordini`** | 📋 **questo doc (lista + CRUD da zero)** | 📋 **questo doc** | — |

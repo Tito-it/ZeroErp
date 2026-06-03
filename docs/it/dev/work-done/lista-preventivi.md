@@ -8,16 +8,23 @@
 > fatto per contratti e renderla configurabile, con la stessa attenzione: nel
 > refactor non si devono perdere colonne / funzionalità».
 > **Precedente di riferimento (template 1:1)**: lista contratti DEF-8, brief
-> [refactor-lista-contratti.md](../work-done/refactor-lista-contratti.md)
+> [refactor-lista-contratti.md](refactor-lista-contratti.md)
 > (DB+BE/FE atterrati 2026-06-02/03, commit `1cc906377`).
 
 ---
+
+## ✅✅ ATTIVITÀ COMPLETATA (2026-06-03) — DB + BE + FE + cleanup viste
+
+Lista preventivi configurabile (DEF-8) **chiusa end-to-end**: vista canonica +
+catalogo/preset (DB), repository/export/order_by (BE), migrazione
+`<ListaConfigurabile>` (FE), drop della vista deprecata `vw_preventivi_list`
+(DB). Test BE verdi, build FE verde. Doc API aggiornata. Nessun residuo.
 
 ## ✅ Stato DB — ATTERRATO (2026-06-03)
 
 Il **workstream DB (§3) è completato e migrato** su `dev/db-tid`, test pgTAP
 verdi. Dettaglio e brief consolidato (preventivi + offerte):
-[db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md).
+[db-brief-lista-preventivi-offerte.md](db-brief-lista-preventivi-offerte.md).
 
 - Vista canonica **`vendite.vw_preventivi_lista`** (`20260603-05`,
   `security_invoker=on`). ⚠️ sorgente **`vendite.vw_preventivi`** (non la tabella):
@@ -47,9 +54,9 @@ verdi. Dettaglio e brief consolidato (preventivi + offerte):
   (PDF disabilitato DRAFT + note); totale/date via formatter built-in
   (`currency_eur`/`date_short`). `exportPreventivi` in `preventiviApi.js`. Chiavi
   i18n `preventivi.col_*` aggiunte (it/en). Build FE verde.
-- **Drop `vw_preventivi_list` SBLOCCATO**: nessun consumer attivo residuo (solo
-  commenti in `permissions_resolver.py`). Resta da creare il changeset di cleanup
-  DB (brief §6 ⚠️ NOTA) — azione DB, da passare al team DB.
+- **Drop `vw_preventivi_list` ✅ COMPLETATO**: vista deprecata rimossa dal DB
+  (2026-06-03). Nessun consumer attivo residuo (i riferimenti in
+  `permissions_resolver.py` erano solo commenti). Cleanup chiuso.
 
 ---
 
@@ -75,7 +82,7 @@ duplicare**; se emerge un terzo punto di duplicazione lo si estrae a monte.
 Il refactor NON inventa pattern: applica quelli già scritti. Riferimenti
 obbligatori (CLAUDE.md):
 
-### Backend — [docs/it/dev/api.md](../../api.md)
+### Backend — [docs/it/dev/api.md](../api.md)
 - §«Base classes per view»: `DomainAPIView` (`area_funzionale='vendite'`).
 - §«Endpoint GET / Paginazione»: helper `parse_list_params`, envelope
   `success_response` + `paginated_envelope`; tiebreaker `id` nell'ORDER BY
@@ -94,7 +101,7 @@ obbligatori (CLAUDE.md):
   rispettano ordine/visibilità/permessi utente (memoria
   `feedback_export_lista_rispetta_preferenza`).
 
-### Frontend — [frontend-standards.md](../../frontend/frontend-standards.md)
+### Frontend — [frontend-standards.md](../frontend/frontend-standards.md)
 - §«Pattern lista standard» + memoria `feedback_lista_pattern_standard`: toolbar
   UNICA esterna del caller (filtri sx + `PageActionsBar` dx), paginator top.
 - §«Ritiro dinamico colonne — `useResponsiveColumns`»: deroga ResizeObserver
@@ -109,7 +116,7 @@ obbligatori (CLAUDE.md):
   `UtilityPerRuoloSelect`, `SearchHint`. i18n via `$t()`, mai hardcoded.
 
 ### Brief DB di riferimento
-- [refactor-lista-contratti.md](../work-done/refactor-lista-contratti.md) §0-bis
+- [refactor-lista-contratti.md](refactor-lista-contratti.md) §0-bis
   (8 decisioni ratificate) + §3-§4 (vista/catalogo/preset). **Tutte le decisioni
   di principio valgono identiche qui** (priorita globale di catalogo, no
   `larghezza_min`, packing a somma, `sensibile=false`, nomi canonici cliente/
@@ -407,7 +414,7 @@ a `<ListaConfigurabile>`, gemello di
 2. ✅ **DB-B preventivi ATTERRATO (2026-06-03)**: vista canonica
    `vw_preventivi_lista` + definizione + catalogo (id 58-78) + preset + priorita
    + pgTAP 14/14 su `dev/db-tid`. DB-A (`priorita`) già atterrato. Brief:
-   [db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md).
+   [db-brief-lista-preventivi-offerte.md](db-brief-lista-preventivi-offerte.md).
 3. ✅ **DB consegnato** → BE/FE sbloccati.
 4. **BE** (§5): repository su vista canonica + order_by whitelist + export
    endpoint + test. Vista + consumer BE commutati insieme al rename.
