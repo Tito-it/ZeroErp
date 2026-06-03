@@ -13,7 +13,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.anagrafiche.db._helpers import extract_paginated
+from apps.anagrafiche.db._helpers import extract_paginated, get_or_create_soggetto_ruolo
 from apps.core.db._helpers import row_to_dict, rows_to_list
 
 
@@ -55,12 +55,7 @@ class EmittentiFiscaliRepository:
     # Scopo: Ottiene o crea il ruolo EMITTENTE FISCALE per un soggetto.
     #        Delega alla funzione DB script.fn_get_or_create_soggetto_ruolo con codice 'EF'.
     def get_or_create_ruolo_emittente(self, soggetto_id: str) -> int:
-        sql = "SELECT script.fn_get_or_create_soggetto_ruolo(%s, 'EF') AS ruolo_id"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_id])
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+        return get_or_create_soggetto_ruolo(soggetto_id, 'EF')
 
     # Scopo: Crea record emittente fiscale.
     #        I trigger DB gestiscono: guard ruolo EF, normalize, audit, tx_id, storicizzazione,

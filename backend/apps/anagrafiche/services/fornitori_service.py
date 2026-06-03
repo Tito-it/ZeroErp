@@ -20,16 +20,11 @@ from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
     E_ANAG_VALIDAZIONE,
-    E_CONTATTO_INCOMPLETO,
 )
 from apps.anagrafiche.services._validators import create_with_dedup, optional_str
-from apps.anagrafiche.services.contatti_service import (
-    classify_contatto_payload,
-    missing_required_fields,
-)
+from apps.anagrafiche.services.contatti_service import crea_contatto_inline_se_valido
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.service_errors import ServiceError
 
 
 class FornitoriService:
@@ -131,31 +126,9 @@ class FornitoriService:
                 duplicate_message="Esiste gia' un fornitore per questo soggetto.",
             )
 
-            # Step 3: Contatto ruolo (se fornito).
-            # Regola unificata via classify_contatto_payload (Fase 5):
-            #   EMPTY   → skip (no contatto)
-            #   PARTIAL → errore esplicito (sostituisce vecchio silent skip)
-            #   VALID   → crea
-            contatto_status = classify_contatto_payload(contatto_data)
-            if contatto_status == "PARTIAL":
-                raise ServiceError(
-                    code=E_CONTATTO_INCOMPLETO,
-                    message="Contatto incompleto: completa o svuota tutti i campi.",
-                    context={"missing": missing_required_fields(contatto_data)},
-                )
-            if contatto_status == "VALID":
-                assert contatto_data is not None
-                self._sogg_repo.crea_contatto(
-                    soggetto_id,
-                    nominativo=contatto_data["nominativo"],
-                    email=optional_str(contatto_data, "email"),
-                    telefono=optional_str(contatto_data, "telefono"),
-                    cellulare=optional_str(contatto_data, "cellulare"),
-                    pec=optional_str(contatto_data, "pec"),
-                    tipo_contatto_id=optional_int(contatto_data, "tipo_contatto_id"),
-                    note=optional_str(contatto_data, "note"),
-                    soggetto_ruolo_id=soggetto_ruolo_id,
-                )
+            # Step 3: Contatto ruolo inline opzionale (EMPTY→skip, PARTIAL→errore, VALID→crea).
+            crea_contatto_inline_se_valido(
+                self._sogg_repo, soggetto_id, soggetto_ruolo_id, contatto_data)
 
             # Step 4: Indirizzi ruolo (se forniti — obbligatori per trigger DEFERRED)
             #         Il frontend manda tipo_indirizzo_codice + stradario/libero.

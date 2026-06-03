@@ -4,6 +4,7 @@
 import { ref, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useDrawerSavedListRefresh } from '../../core/composables/useDrawerSavedListRefresh'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { useContextStore } from '../../stores/context'
@@ -16,6 +17,7 @@ import ArticoloNoteDrawer from '../components/ArticoloNoteDrawer.vue'
 
 const drawer = useDrawerState()
 const store = useArticoliStore()
+const { onDrawerSaved } = useDrawerSavedListRefresh(store, drawer)
 const ctx = useContextStore()
 const route = useRoute()
 useReadonlyMode(READONLY_DOMAINS.CATALOGO, READONLY_MODELS.ARTICOLO)
@@ -33,16 +35,6 @@ watch(() => route.fullPath, () => {
     nextTick(() => drawer.editRow({ id: ctx.entitaId }, 'id'))
   }
 }, { immediate: true })
-
-async function onDrawerSaved(result) {
-  store.filters.offset = 0
-  await store.fetchList()
-  if (result && result.id && drawer.state.mode === 'create') {
-    drawer.editRow({ id: result.id }, 'id')
-  } else {
-    drawer.close()
-  }
-}
 
 function onManageUom(data) {
   uomArticoloId.value = data.id

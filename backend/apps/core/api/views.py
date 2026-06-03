@@ -6,7 +6,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.error_responses import exception_to_error_response
-from apps.core.api.payload_validators import qp_int_strict
+from apps.core.api.payload_validators import qp_bool, qp_int_strict
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.services.lookup_service import fn_list_lookup_codici
@@ -112,8 +112,7 @@ class ApiLookupCodici(DomainAPIView):
         order_col = request.query_params.get("order_col", "descrizione").strip() or "descrizione"
         order_dir = request.query_params.get("order_dir", "asc").strip() or "asc"
 
-        raw_attivo = request.query_params.get("attivo_only", "true").strip().lower()
-        attivo_only = raw_attivo not in {"0", "false", "no", "n", "off"}
+        attivo_only = qp_bool(request.query_params.get("attivo_only"))
 
         page = qp_int_strict(request.query_params.get("page"), "page", 1)
         page_size = qp_int_strict(request.query_params.get("page_size"), "page_size", 50)

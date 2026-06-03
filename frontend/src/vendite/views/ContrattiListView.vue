@@ -3,6 +3,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useDrawerSavedListRefresh } from '../../core/composables/useDrawerSavedListRefresh'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { useContrattiStore } from '../stores/contratti'
@@ -12,6 +13,7 @@ import ContrattoRigheDrawer from '../components/ContrattoRigheDrawer.vue'
 
 const drawer = useDrawerState()
 const store = useContrattiStore()
+const { onDrawerSaved } = useDrawerSavedListRefresh(store, drawer)
 const route = useRoute()
 const router = useRouter()
 
@@ -51,16 +53,6 @@ const righeDrawer = ref({
   statoCodice: '',
   statoDescrizione: '',
 })
-
-async function onDrawerSaved(result) {
-  store.filters.offset = 0
-  await store.fetchList()
-  if (result && result.id && drawer.state.mode === 'create') {
-    drawer.editRow({ id: result.id }, 'id')
-  } else {
-    drawer.close()
-  }
-}
 
 // Scopo: Apre il drawer righe direttamente dalla lista.
 // Carica il dettaglio per avere righe + contesto completo.

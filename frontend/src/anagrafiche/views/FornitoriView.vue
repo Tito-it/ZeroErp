@@ -4,6 +4,7 @@
 import { ref, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useDrawerSavedListRefresh } from '../../core/composables/useDrawerSavedListRefresh'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useContextStore } from '../../stores/context'
 import { useFornitoriStore } from '../stores/fornitori'
@@ -19,6 +20,7 @@ const drawer = useDrawerState()
 const store = useFornitoriStore()
 const ctx = useContextStore()
 const route = useRoute()
+const { onDrawerSaved } = useDrawerSavedListRefresh(store, drawer)
 useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.FORNITORE)
 
 watch(() => route.fullPath, () => {
@@ -50,15 +52,6 @@ function onContiBancari(data) {
   }
 }
 
-async function onDrawerSaved(result) {
-  store.filters.offset = 0
-  await store.fetchList()
-  if (result && result.id && drawer.state.mode === 'create') {
-    drawer.editRow({ id: result.id }, 'id')
-  } else {
-    drawer.close()
-  }
-}
 </script>
 
 <template>

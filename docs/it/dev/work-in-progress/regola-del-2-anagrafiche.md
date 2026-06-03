@@ -30,8 +30,8 @@ Come per vendite, il dato importante non è solo "cosa estrarre" ma soprattutto
 di drawer, stesso skeleton di lista paginata) ma risolvono problemi diversi, e
 unificarli peggiorerebbe la leggibilità.
 
-| | Conteggio |
-|---|---|
+| Esito | Conteggio |
+| --- | --- |
 | Candidati grezzi | 36 |
 | Verificati (dopo dedup) | 35 |
 | **Confermati duplicazione reale** (al netto delle ri-segnalazioni dello stesso candidato) | **9** |
@@ -52,25 +52,33 @@ unificarli peggiorerebbe la leggibilità.
 Occorrenze quasi identiche, differenze trascurabili. È qui che la regola del 2
 si applica nel modo più netto.
 
-### V1. Contatto inline (validazione + creazione) — clienti vs fornitori
+### V1. Contatto inline (validazione + creazione) — clienti vs fornitori — ✅ FATTO (2026-06-03)
 
 Lo stesso blocco "classifica payload contatto → se PARTIAL solleva
 `E_CONTATTO_INCOMPLETO` → se VALID crea via `crea_contatto` con gli stessi 8
-parametri nominativi" è **byte-identico** in due service:
+parametri nominativi" era **byte-identico** in due service (ex
+clienti_service.py:342-365 e fornitori_service.py:135-158). Riconducibile al
+pattern documentato `feedback_classify_payload_three_state`.
 
-- [clienti_service.py:342-365](../../../../backend/apps/anagrafiche/services/clienti_service.py#L342-L365)
-- [fornitori_service.py:135-158](../../../../backend/apps/anagrafiche/services/fornitori_service.py#L135-L158)
+> **Estratto** in [`contatti_service.py`](../../../../backend/apps/anagrafiche/services/contatti_service.py)
+> → `crea_contatto_inline_se_valido(sogg_repo, soggetto_id, soggetto_ruolo_id, contatto_data)`
+> (EMPTY→skip, PARTIAL→`E_CONTATTO_INCOMPLETO`, VALID→crea). Aggiunto al modulo
+> **esistente** che è già il single-source-of-truth della regola contatto
+> (`classify_contatto_payload`), invece di creare `contatti_inline_service.py` —
+> stessa logica anti-frammentazione di V2. I due service sostituiscono ~20 righe
+> con una chiamata; import orfani rimossi (`classify_contatto_payload`,
+> `missing_required_fields`, `E_CONTATTO_INCOMPLETO`, e `ServiceError` in
+> fornitori). `SoggettiRepository` tipizzato via `TYPE_CHECKING` per non
+> appesantire il modulo. 393 test anagrafiche verdi.
 
-Stesso `classify_contatto_payload`, stesso error code, stessa signature. Unica
-differenza: il service proprietario. Riconducibile al pattern documentato
-`feedback_classify_payload_three_state`.
+### V2. `get_or_create_ruolo_*` — clienti / fornitori / emittenti (repository) — ✅ FATTO (2026-06-03)
 
-**Idea di estrazione:** helper condiviso
-`anagrafiche/services/contatti_inline_service.py` →
-`process_contatto_inline_and_validate(soggetto_id, soggetto_ruolo_id, contatto_data, sogg_repo)`
-(EMPTY→noop, PARTIAL→errore, VALID→crea). Sostituisce ~20 righe in entrambi.
-
-### V2. `get_or_create_ruolo_*` — clienti / fornitori / emittenti (repository)
+> **Estratto** in [`_helpers.py`](../../../../backend/apps/anagrafiche/db/_helpers.py)
+> → `get_or_create_soggetto_ruolo(soggetto_id, ruolo_codice)` (riusato il modulo
+> helper db **esistente** invece di crearne uno nuovo, per non frammentare). Il
+> codice ruolo passa come secondo placeholder `%s` (non più hardcoded nella
+> stringa SQL). I tre metodi repository sono ridotti a wrapper di una riga che
+> delegano. 393 test anagrafiche verdi.
 
 Tre metodi con firma identica che delegano alla **stessa** funzione DB
 `script.fn_get_or_create_soggetto_ruolo`, variando solo il codice ruolo
@@ -88,30 +96,36 @@ ritorno identici.
 `get_or_create_soggetto_ruolo(soggetto_id, ruolo_codice)`; i tre repository
 diventano wrapper di una riga.
 
-### V3. PATCH di dettaglio con `handle_post_json` + lambda — geo views
+### V3. PATCH di dettaglio con `handle_post_json` + lambda — geo views — ✅ FATTO (2026-06-03)
 
 Pattern identico `handle_post_json(request, handler=lambda p: GeoService().update_*(pk, p))`,
-puramente generico (la lambda cattura `pk` dal closure e delega):
+puramente generico (la lambda cattura `pk` dal closure e delega), in
+views_indirizzi / views_regioni / views_province.
 
-- [views_indirizzi.py:89-90](../../../../backend/apps/anagrafiche/api/views_indirizzi.py#L89-L90)
-- [views_regioni.py:75-76](../../../../backend/apps/anagrafiche/api/views_regioni.py#L75-L76)
-- [views_province.py:77-78](../../../../backend/apps/anagrafiche/api/views_province.py#L77-L78)
+> **Estratto** `handle_detail_patch(request, update_fn, pk)` in
+> [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py).
+> Scelta di design: passa il **metodo bound** (`GeoService().update_regione`),
+> non una magic string del nome metodo → niente perdita di leggibilità/analisi
+> statica. I 3 `patch` diventano `return handle_detail_patch(request, GeoService().update_X, pk)`.
+> 972 test (anagrafiche+core) verdi. Helper registrato nel
+> [catalogo BB backend](../backend/catalogo-building-block-backend.md).
 
-**Idea di estrazione:** helper in `apps/core/api/endpoint_helpers.py` →
-`generic_detail_patch_handler(service_instance, method_name, pk)` che ritorna
-l'handler. Da valutare se il guadagno (3 lambda → 1 chiamata) vale il livello
-d'indirezione: candidato netto ma marginale.
-
-### V4. `onDrawerSaved` — ClientiView vs FornitoriView (FE)
+### V4. `onDrawerSaved` — ClientiView vs FornitoriView (FE) — ✅ FATTO (2026-06-03)
 
 Handler identico al 100%: reset offset → `await fetchList` → se create+id apri
 edit, altrimenti chiudi.
 
-- [ClientiView.vue:93-102](../../../../frontend/src/anagrafiche/views/ClientiView.vue#L93-L102)
-- [FornitoriView.vue:53-61](../../../../frontend/src/anagrafiche/views/FornitoriView.vue#L53-L61)
-
-**Idea di estrazione:** composable
-`frontend/src/core/composables/useDrawerSavedListRefresh.js`.
+> **Estratto** il composable
+> [`useDrawerSavedListRefresh(store, drawer)`](../../../../frontend/src/core/composables/useDrawerSavedListRefresh.js)
+> in `core/composables/`; ClientiView e FornitoriView lo usano via
+> `const { onDrawerSaved } = useDrawerSavedListRefresh(store, drawer)`. Build FE
+> verde.
+>
+> **⚠️ Scoperta durante l'estrazione (vedi sezione dedicata sotto):** lo stesso
+> handler non era in 2 file ma in **~25** sparsi su tutti i domini. La verifica
+> cross-dominio ha trovato **5 altre viste byte-identiche** al composante appena
+> creato → candidate all'adozione, ma cross-dominio (catalogo/vendite) → decisione
+> separata.
 
 ---
 
@@ -261,37 +275,126 @@ confermato la divergenza.
 Emerse durante lo sweep, **verificate a mano**. Non sono duplicazioni tra due
 siti, ma vale la pena annotarle:
 
-1. **`views_fornitori.py` reinventa un BB core già esistente.** Il parsing inline
-   di `attivo` in [views_fornitori.py:61-64](../../../../backend/apps/anagrafiche/api/views_fornitori.py#L61-L64)
-   è **byte-identico** a `qp_bool_optional`
-   ([core/api/payload_validators.py:25-28](../../../../backend/apps/core/api/payload_validators.py#L25-L28)).
-   Il commento nel codice cita `optional_bool` (che ha `default=False`) senza
-   accorgersi che `qp_bool_optional` esiste e fa esattamente quello che serve.
-   **Fix:** importare e usare `qp_bool_optional`. Debito a basso rischio, alto
-   valore di pulizia.
+1. **✅ FATTO (2026-06-03) — `views_fornitori.py` reinventava un BB core.** Il
+   parsing inline di `attivo` (ex righe 61-64) era **byte-identico** a
+   `qp_bool_optional` ([core/api/payload_validators.py:25-28](../../../../backend/apps/core/api/payload_validators.py#L25-L28)),
+   con commento che citava `optional_bool` ignorando l'esistenza del BB giusto.
+   Sostituito con `qp_bool_optional` in
+   [views_fornitori.py](../../../../backend/apps/anagrafiche/api/views_fornitori.py)
+   (6 righe → 1). 115 test API anagrafiche verdi.
 
-2. **Caricamento "fantasma" in ClienteDrawer.** `indirizziSoggetto` /
-   `loadIndirizziSoggetto` ([ClienteDrawer.vue:188-197](../../../../frontend/src/anagrafiche/components/ClienteDrawer.vue#L188-L197))
-   è dichiarato e caricato via API ma **non usato nel template** (nessun `Select`
-   lo consuma): residuo di un refactor precedente. Da verificare e rimuovere se
-   confermato morto.
+2. **✅ FATTO (2026-06-03) — codice "fantasma" in ClienteDrawer rimosso.** Il ref
+   `indirizziSoggetto` + `loadIndirizziSoggetto` era solo **scritto e mai letto**
+   (nessun consumer nel template, verificato a mano). Rimossa l'intera catena
+   (ref, funzione, chiamate in `onSoggettoSelezionato`/`onSoggettoCreato`/
+   `clearSoggetto`, import morto di `listSoggettoIndirizzi`). L'export
+   `listSoggettoIndirizzi` resta — è ancora usato da `IndirizziSoggettoDrawer.vue`
+   e `SoggettoPreviewBadges.vue`. Build FE verde.
 
 ---
 
 ## Come procedere (proposta)
 
-Nessuna estrazione è stata fatta. Per ogni candidato vale il protocollo della
-regola del 2 (`feedback_regola_del_2_estrai_bb`): **dichiarare a chat il disegno
-del BB e attendere l'OK di Tid** prima di scrivere codice astratto.
+Per ogni candidato vale il protocollo della regola del 2
+(`feedback_regola_del_2_estrai_bb`): **dichiarare a chat il disegno del BB e
+attendere l'OK di Tid** prima di scrivere codice astratto.
 
-Ordine suggerito per rischio/valore crescente:
+Ordine suggerito per rischio/valore crescente (stato aggiornato 2026-06-03):
 
-1. **Debito #1** (`qp_bool_optional`) — fix immediato, zero controindicazioni.
-2. **V2** (`get_or_create_ruolo_*`) e **V1** (contatto inline) — 🟢 netti.
-3. **V4** (`onDrawerSaved`) — 🟢 FE netto.
-4. **G1** (store factory) — 🟡 ma **gravità alta** per impatto: gestire
+1. ✅ **Debito #1** (`qp_bool_optional`) — fatto. + bonus `core/api/views.py`
+   (`qp_bool`) e debito #2 (codice morto ClienteDrawer).
+2. ✅ **V2** (`get_or_create_ruolo_*`) e ✅ **V1** (contatto inline) — fatti, 🟢 netti.
+3. ✅ **V4** (`onDrawerSaved`) — fatto (2 viste anagrafiche). Composable in core
+   con **5 adottanti cross-dominio** verificati — vedi sezione dedicata. ← **next: decidere adozione cross-dominio**
+4. ⬜ **G1** (store factory) — 🟡 ma **gravità alta** per impatto: gestire
    l'esclusione di `indirizzi.js` (variante senza `fetchDetail`).
-5. **G4** (IntegrityError) — prima **decidere** sul bug di mascheramento, poi
+5. ⬜ **G4** (IntegrityError) — prima **decidere** sul bug di mascheramento, poi
    estrarre.
-6. **G2/G3/G5** — caso per caso, attenzione ai caveat di astrazione prematura.
-7. **V3** (PATCH lambda) — marginale, valutare se il guadagno vale l'indirezione.
+6. ⬜ **G2/G3/G5** — caso per caso, attenzione ai caveat di astrazione prematura.
+7. ✅ **V3** (PATCH lambda) — fatto: `handle_detail_patch` in core.
+
+---
+
+## 🌐 Verifica cross-dominio di `onDrawerSaved` (richiesta da Tid, 2026-06-03)
+
+Estraendo V4 è emerso che `onDrawerSaved` esiste in **~25 viste** su tutti i
+domini. Classificazione per shape (corpo letto e confrontato uno a uno):
+
+### Gruppo A — byte-identici al composable `useDrawerSavedListRefresh` (reopen-on-create)
+
+`offset=0 → await fetchList → if create+id reopen edit, else close`. Adottabili
+**senza modifiche di comportamento** (basta `const { onDrawerSaved } = useDrawerSavedListRefresh(store, drawer)`):
+
+- ✅ `anagrafiche/views/ClientiView.vue` — fatto (V4)
+- ✅ `anagrafiche/views/FornitoriView.vue` — fatto (V4)
+- ✅ `catalogo/views/ArticoliView.vue` — fatto (sweep cross-dominio, 2026-06-03)
+- ✅ `catalogo/views/UnitaMisuraView.vue` — fatto
+- ✅ `catalogo/views/UomTipiView.vue` — fatto
+- ✅ `vendite/views/ContrattiListView.vue` — fatto
+- ✅ `vendite/views/ListiniView.vue` — fatto
+
+→ **Sweep cross-dominio completato (2026-06-03):** 7 viste totali ora usano
+`useDrawerSavedListRefresh`. Build FE verde. Composable registrato nel
+[catalogo BB frontend](../frontend/catalogo-building-block-frontend.md).
+
+- 📝 **NOTA — `catalogo/views/ConversioniUomView.vue`**: quasi identico, ma
+  **manca** la riga `store.filters.offset = 0`. Adottare il composable
+  *aggiungerebbe* il reset pagina al save (micro-cambio di comportamento,
+  probabilmente desiderabile per coerenza). **Lasciato fuori dallo sweep**: da
+  confermare con Tid prima di toccarlo.
+
+### Gruppo B — variante "refresh + close" (NIENTE reopen)
+
+`offset=0 → await fetchList → close`. Stesso scheletro **senza** il ramo reopen.
+Sono un *secondo* schema ricorrente (6 file): candidato a una variante del
+composable (es. opzione `reopenOnCreate: false`) — **decisione separata**, non
+coperta dal composable attuale.
+
+- `pratiche/views/PraticheView.vue`
+- `amministrazione/views/CategorieClientiListView.vue`
+- `amministrazione/views/CategorieClientiListiniListView.vue`
+- `amministrazione/views/UtilitiesTipiRuoloListView.vue`
+- `config/views/ModelliDocumentiAssetView.vue`
+- `vendite/views/PromoArticoliListView.vue`
+
+### Gruppo C — varianti genuinamente diverse (NON unificare)
+
+Logica specifica per dominio, falsa duplicazione:
+
+- `vendite/offerte/views/OfferteView.vue` — gestione revisione N+1 + guard `hasSearched`
+- `vendite/preventivi/views/PreventiviView.vue` — guard `hasSearched`, no reopen
+- `config/views/ModelliDocumentiTemplatesView.vue` — resta aperto in edit settando `mode/itemId` a mano
+- `pratiche/views/PraticheDashboard.vue` — extra `loadCodaLavoro` + `loadFlussiForPratica`
+- `amministrazione/views/OperatoriListView.vue` — `onDrawerSavedWithStatus` + `loadSetupStatus`
+- `config/views/ImpostazioniView.vue` — `drawerVisible.value=false`, no offset/reopen
+- `amministrazione/views/EmittentiFiscaliListView.vue` — solo close + fetchList (sync)
+- `ui/components/Lista*Panel.vue` (4 file) — `close + await reload()` (panel-level, shape diversa)
+
+**Proposta:** estendere l'adozione del composable ai **5 del Gruppo A** (sweep
+cross-dominio a rischio nullo) in un intervento dedicato; valutare a parte una
+variante per il Gruppo B. In attesa dell'OK di Tid.
+
+---
+
+## 📌 Promemoria per la verifica core dei query-param bool (fuori perimetro anagrafiche)
+
+> Emerso a margine durante i fix delle scoperte collaterali. Da rivedere quando
+> si farà la passata di verifica sul core dei validatori query-param.
+
+- **✅ FATTO contestualmente** — [core/api/views.py:115-116](../../../../backend/apps/core/api/views.py#L115-L116)
+  reinventava `qp_bool(raw, default=True)` (BB core già esistente, e il file già
+  importava `qp_int_strict` dallo stesso modulo). Sostituito con
+  `qp_bool(request.query_params.get("attivo_only"))`.
+
+- **⏳ DA VALUTARE — promuovere `qp_bool_optional_strict` al core.**
+  [vendite/api/views_listini.py:51-60](../../../../backend/apps/vendite/api/views_listini.py#L51-L60)
+  ha l'helper privato `_optional_qp_bool_strict` (bool opzionale che **solleva
+  `ValueError`** sui valori non riconosciuti, a differenza del `qp_bool_optional`
+  core che li tratta come `False`). **NON è da togliere**: comportamento
+  legittimamente diverso, e già deduplicato localmente (2 chiamanti, righe 222 e
+  434). Però è un concetto core mancante: `apps/core/api/payload_validators.py`
+  ha `qp_int_strict` ma non l'equivalente bool. **Proposta:** aggiungere
+  `qp_bool_optional_strict` al core (simmetria con `qp_int_strict`) e far
+  delegare `views_listini` ad esso. Regola del 2 soddisfatta (concetto strict già
+  presente per gli int), ma è estrazione deliberata vendite+core → dichiarare e
+  attendere OK prima di scrivere.
