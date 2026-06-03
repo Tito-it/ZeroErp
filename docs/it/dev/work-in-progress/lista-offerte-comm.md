@@ -34,9 +34,26 @@ verdi. Dettaglio e brief consolidato (preventivi + offerte):
 - Nota correzione vs §4: `revisione_numero` seedata `tipo_dato=numeric` (l'ENUM
   `ui.tipo_dato` non ha `integer`); `is_scaduta` `tipo_dato=boolean`.
 
-**Resta da fare**: §5 (BE — rimuove alias + LEFT JOIN ora in vista), §6 (FE). Il
-**drop di `vw_offerte_commerciali_list`** (deprecata, ancora letta da
-`list_offerte`) è rinviato a cleanup post-BE (brief §6 ⚠️ NOTA).
+### ✅ BE + FE ATTERRATI (2026-06-03)
+
+- **BE**: `offerte_repository.list_offerte` + `count_offerte` commutati su
+  `vw_offerte_commerciali_lista` (rimossi alias `billing_account_display`/
+  `utility_display` e i LEFT JOIN `listini`/`offerte_commerciali`/`valute`: ora
+  in vista); search su `ragione_sociale_completa`; whitelist `_ORDER_COLS_OFFERTE`
+  + `_ORDER_BY_OFFERTE` (service) ai nomi canonici; endpoint
+  `GET /vendite/offerte/export/` (`ApiOfferteExportView`, DEF-1) +
+  `resolve_filtri_export_label`. Test: `test_offerte_export_api` 4/4 + service
+  offerte 59/59 verdi.
+- **FE**: `OfferteSearchTable.vue` → `<ListaConfigurabile codice="vendite.offerte">`
+  via `useListaConfigurabilePage`; filtri custom preservati (stato, utility, data,
+  **toggle storico revisioni**); slot `#cell-listino_codice` (codice ·
+  v{versione}), `#cell-stato` (Tag severity + **badge scaduta** via `is_scaduta`),
+  `#actions` (PDF disabilitato BOZZA + note); date via formatter built-in.
+  `exportOfferte` in `offerteApi.js`. Chiavi i18n `vendite.offerte.col_*`
+  aggiunte (it/en). Build FE verde.
+- **Doc API**: `api_offerte.md` aggiornata (lista DEF-8 + export).
+- **Drop `vw_offerte_commerciali_list`**: nessun consumer attivo residuo →
+  changeset di cleanup DB da creare (brief §6 ⚠️ NOTA), azione team DB.
 
 ---
 

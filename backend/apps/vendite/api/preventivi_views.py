@@ -5,7 +5,7 @@
 # Scopo: API views per preventivi vendita (lista, dettaglio, righe, stato, integrazione).
 # ------------------------------------------------------------
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -21,7 +21,13 @@ from apps.core.api.payload_validators import (
     qp_str,
 )
 from apps.core.api.success_responses import success_response
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.services import preventivi_service
+
+# Codice lista configurabile (catalogo ui.lista_definizione id=5). Usato
+# dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
+_LISTA_CODICE_PREVENTIVI = "vendite.preventivi"
 
 
 # ── Lista + Creazione ──
@@ -46,6 +52,10 @@ class ApiPreventiviList(DomainAPIView):
             ),
             OpenApiParameter(name="page", type=int, required=False),
             OpenApiParameter(name="page_size", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False,
+                             description="campo_sorgente colonna (default 'data')"),
+            OpenApiParameter(name="order_dir", type=str, required=False,
+                             description="asc | desc (default desc)"),
         ],
         responses={200: inline_serializer(
             name="PreventiviListResponse",
@@ -69,6 +79,8 @@ class ApiPreventiviList(DomainAPIView):
             auth_user_id=auth_user_id,
             page=qp_int(qp.get("page"), 1),
             page_size=qp_int(qp.get("page_size"), 50),
+            order_by=qp_str(qp.get("order_by")) or "data",
+            order_dir=qp_str(qp.get("order_dir")) or "desc",
         )
         return success_response(data)
 
@@ -103,6 +115,93 @@ class ApiPreventiviList(DomainAPIView):
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             return preventivi_service.crea_preventivo(payload)
         return handle_post_json(request, handler=_handler)
+
+
+class ApiPreventiviExportView(DomainAPIView):
+    """GET /api/v1/vendite/preventivi/export/?formato=csv|xlsx
+
+    Genera un file CSV o Excel con i preventivi filtrati dalla query string
+    (stessi parametri del list endpoint). Hard cap EXPORT_MAX_ROWS righe — sopra
+    solleva E_UI_EXPORT_LIMIT_EXCEEDED (422). Usa il renderer generico
+    `ListaExportService` (DEF-1) e il catalogo colonne `vendite.preventivi` per
+    coerenza con la DataTable a video (colonne nascoste escluse, ordine utente
+    rispettato).
+
+    NB: il parametro si chiama `formato` (italiano), NON `format` — magic
+    parameter DRF (content-negotiation) che intercetterebbe la chiamata prima
+    della view (memoria feedback_drf_format_magic_param).
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="search", type=str, required=False),
+            OpenApiParameter(name="stato", type=str, required=False),
+            OpenApiParameter(name="billing_account_id", type=int, required=False),
+            OpenApiParameter(name="utility_id", type=int, required=False),
+            OpenApiParameter(name="data_da", type=str, required=False),
+            OpenApiParameter(name="data_al", type=str, required=False),
+            OpenApiParameter(name="solo_attiva", type=bool, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Export CSV/XLSX della lista preventivi. Riusa la coda invariante
+    #        `build_export_response` (DEF-1). Scope emittente + filtri identici
+    #        al list endpoint; fetcha fino a EXPORT_MAX_ROWS+1 per intercettare
+    #        l'overflow.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        fmt = parse_export_format(request)
+        auth_user_id = get_scope_user_id(request)
+
+        stato_codice = qp_str(qp.get("stato"))
+        billing_account_id = optional_int({"v": qp.get("billing_account_id")}, "v")
+        utility_id = optional_int({"v": qp.get("utility_id")}, "v")
+        data_da = optional_iso_date({"v": qp.get("data_da")}, "v")
+        data_al = optional_iso_date({"v": qp.get("data_al")}, "v")
+        search = qp_str(qp.get("search"))
+        solo_attiva = qp_bool(qp.get("solo_attiva"), default=True)
+
+        results, total = preventivi_service.list_preventivi_rows(
+            stato_codice=stato_codice,
+            billing_account_id=billing_account_id,
+            utility_id=utility_id,
+            data_da=data_da,
+            data_al=data_al,
+            search=search,
+            solo_attiva=solo_attiva,
+            auth_user_id=auth_user_id,
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=qp_str(qp.get("order_by")) or "data",
+            order_dir=qp_str(qp.get("order_dir")) or "desc",
+        )
+        filtri_applicati = preventivi_service.resolve_filtri_export_label(
+            search=search,
+            stato_codice=stato_codice,
+            billing_account_id=billing_account_id,
+            utility_id=utility_id,
+            data_da=data_da,
+            data_al=data_al,
+            solo_attiva=solo_attiva,
+        )
+        return build_export_response(
+            request,
+            lista_codice=_LISTA_CODICE_PREVENTIVI,
+            results=results,
+            total=total,
+            filtri_applicati=filtri_applicati,
+            fmt=fmt,
+        )
 
 
 # ── Dettaglio + Aggiornamento ──
