@@ -11,7 +11,7 @@
 > [vendite.trgfn_offerte_commerciali_guard_transizione](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_guard_transizione)
 >
 > Contesto di sviluppo:
-> [Brief DB offerte commerciali — Step 6](/dev/work-in-progress/analisi-offerta-commerciale-db)
+> [Brief DB offerte commerciali — Step 6](/dev/work-done/analisi-offerta-commerciale-db)
 
 ---
 

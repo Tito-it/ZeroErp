@@ -30,7 +30,7 @@
 > **Guide:**
 >
 > • [Gestione Listini v5 §5.2](/guide/gestione-listini) — BoM CASO A vs CASO B
-> • [Analisi offerte commerciali — §A](/dev/work-in-progress/analisi-offerta-commerciale-db)
+> • [Analisi offerte commerciali — §A](/dev/work-done/analisi-offerta-commerciale-db)
 
 ---
 

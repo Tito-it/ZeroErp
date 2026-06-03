@@ -17,7 +17,7 @@
 > [vendite.fn_push_offerta_a_contratto](/dbzero/vendite/funzioni/fn_push_offerta_a_contratto)
 >
 > Contesto di sviluppo:
-> [Brief DB offerte commerciali — Step 7](/dev/work-in-progress/analisi-offerta-commerciale-db)
+> [Brief DB offerte commerciali — Step 7](/dev/work-done/analisi-offerta-commerciale-db)
 
 ---
 
