@@ -3,14 +3,22 @@
 > **Branch**: `dev/db-tid`. **Destinatario**: team DB.
 > **Natura**: brief di **logica e requisiti**, NON specifica implementativa. Qui c'è *cosa* serve e *perché*; la **strada implementativa (struttura changeset, ordine seed, nomi changelog) la sceglie il team DB**, nel rispetto del pattern liste già rodato.
 > **Origine**: refactor UX "niente scrollbar orizzontale quando si apre la sidebar". Decisione Tid 2026-06-02: la riduzione dinamica delle colonne deve passare dalla migrazione della lista contratti nel sistema liste configurabili (no logica ad-hoc su `<DataTable>` grezza) + **un solo attributo nuovo** (`priorita`) nel catalogo colonne (la larghezza riusa lo standard `larghezza_default` già esistente).
-> **Architettura di riferimento**: [sviluppo-personalizzazioni-liste.md](sviluppo-personalizzazioni-liste.md) (modello a 3 livelli, tabelle `ui.*`, `fn_resolve_lista_config`), [sviluppo-personalizzazioni-liste_def.md](sviluppo-personalizzazioni-liste_def.md) (DEF-8 — pattern di migrazione di una lista, precedente più vicino: **fornitori** 2026-05-24).
+> **Architettura di riferimento**: [sviluppo-personalizzazioni-liste.md](../work-in-progress/sviluppo-personalizzazioni-liste.md) (modello a 3 livelli, tabelle `ui.*`, `fn_resolve_lista_config`), [sviluppo-personalizzazioni-liste_def.md](../work-in-progress/sviluppo-personalizzazioni-liste_def.md) (DEF-8 — pattern di migrazione di una lista, precedente più vicino: **fornitori** 2026-05-24).
 > **Vincolo**: ZeroErp NON in produzione → breaking change ammessi, niente migrazione dati su tabella popolata in prod. Convenzione: `[VERIFICATO]` su codice attuale; `[DA VERIFICARE SU DB]` = introspezione runtime non disponibile dall'analisi.
 
 ---
 
-## ✅ STATO: DB ATTERRATO (2026-06-02, `dev/db-tid`)
+## ✅ STATO: COMPLETATO — DB + BE/FE ATTERRATI (archiviato in `work-done`)
 
-DB-A + DB-B implementati e verificati su DB dev. **BE/FE (§5) ancora da fare** (attendono questa consegna).
+- **DB** (DB-A + DB-B) atterrato 2026-06-02 su `dev/db-tid` (dettaglio changeset sotto).
+- **BE/FE** (§5) atterrato 2026-06-03, commit `1cc906377` su `dev/backend-tid`:
+  lista contratti su `vw_contratti_lista` + endpoint export, composable
+  `useResponsiveColumns` (ritiro dinamico colonne — packing a 3 livelli:
+  azioni inline → azioni kebab → ritiro nell'expansion), migrazione
+  `ContrattiSearchTable` a `<ListaConfigurabile>`. Estratti 3 building block
+  (`apps.ui.api.export_helpers`, `useListaConfigurabilePage`, `CellaConfigurabile`).
+  Doc API (`api_contratti.md`, `api.md`) + cataloghi BB + `frontend-standards`
+  (deroga ResizeObserver) aggiornati. Test BE verdi, build FE verde.
 
 | Changeset                     | Cosa                                                                                |
 | ----------------------------- | ----------------------------------------------------------------------------------- |
@@ -130,7 +138,7 @@ Oggi i dati lista vengono da una SELECT con JOIN in `ContrattiRepository.list_co
 
 JOIN esatti già noti (riportati nel repository sopra). `parent_contratto_id` e `meta` non servono in lista.
 
-> **Nota forward-compat RLS** (allineamento col workstream parallelo [analisi-attivazione-rls-db.md](../work-done/analisi-attivazione-rls-db.md) §8): se possibile creare la vista già con `security_invoker=on`, così è pronta per la futura RLS sulla tabella base senza essere "RLS cosmetica". Decisione finale al team DB.
+> **Nota forward-compat RLS** (allineamento col workstream parallelo [analisi-attivazione-rls-db.md](analisi-attivazione-rls-db.md) §8): se possibile creare la vista già con `security_invoker=on`, così è pronta per la futura RLS sulla tabella base senza essere "RLS cosmetica". Decisione finale al team DB.
 
 ### 3.2 Entry `ui.lista_definizione`
 
@@ -153,7 +161,7 @@ Proposta di catalogo in §4 (con `priorita` valorizzata; `larghezza_default` com
 
 ### 3.4 Lezioni DEF-8 da applicare da subito
 
-Dalle note smoke soggetti/fornitori ([_def.md §DEF-8](sviluppo-personalizzazioni-liste_def.md)):
+Dalle note smoke soggetti/fornitori ([_def.md §DEF-8](../work-in-progress/sviluppo-personalizzazioni-liste_def.md)):
 
 1. **Nomi campo cliente / id.fiscale — copiati ALLA LETTERA da fornitori** (è il punto che si sbaglia ogni volta). Righe seed di riferimento `ui.lista_colonna` per `anagrafiche.fornitori` (`lista_id=3`):
    - cliente → `codice='ragione_sociale_completa'`, `campo_sorgente='ragione_sociale_completa'`, `tipo_colonna='informazione'`
