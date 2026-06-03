@@ -407,7 +407,7 @@ Regola pratica: **mai** leggere direttamente `listini_righe.prezzo` o `categorie
 
 ## Vendite — Successione contratti su overlap (`vendite` DB + `apps/vendite/`)
 
-Meccanismo **generico di dominio contratti** per gestire la sovrapposizione temporale (`ex_contratti_no_overlap`) su qualunque percorso di creazione contratto. Oggi consumato dal push offerta→contratto; progettato per essere riusato da creazione manuale contratto e futuri push da altre sorgenti (un aggancio, non una riscrittura). Vedi [brief](../work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md).
+Meccanismo **generico di dominio contratti** per gestire la sovrapposizione temporale (`ex_contratti_no_overlap`) su qualunque percorso di creazione contratto. Oggi consumato dal push offerta→contratto; progettato per essere riusato da creazione manuale contratto e futuri push da altre sorgenti (un aggancio, non una riscrittura). Vedi [brief](../work-done/brief-db-offerta-push-successione-contratto-overlap.md).
 
 | Building Block | File | Descrizione |
 |---|---|---|

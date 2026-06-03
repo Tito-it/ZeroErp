@@ -921,7 +921,7 @@ diverso da "transizione non ammessa generica").
   `E_CONTRATTO_OVERLAP_ESISTENTE` / `E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA`.
   FE: `OffertaSuccessioneDialog` con conferma esplicita; il push si re-invoca
   con `chiudi_esistente=true`. Vedi
-  [brief](../../../dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md).
+  [brief](../../../dev/work-done/brief-db-offerta-push-successione-contratto-overlap.md).
 
 Dominio offerta commerciale: **completo lato BE + FE**. Niente cantieri
 aperti.
@@ -929,7 +929,7 @@ aperti.
 ## Riferimenti
 
 - Modello: [analisi-offerta-commerciale](/dev/work-in-progress/analisi-offerta-commerciale)
-- Brief DB: [analisi-offerta-commerciale-db](/dev/work-in-progress/analisi-offerta-commerciale-db)
+- Brief DB: [analisi-offerta-commerciale-db](/dev/work-done/analisi-offerta-commerciale-db)
 - Piano BE+FE: [analisi-offerta-commerciale-be-fe](/dev/work-in-progress/analisi-offerta-commerciale-be-fe)
 - Manuale service: [offerte_service](/backend/vendite/manual/offerte_service)
 - API contratto (specchio strutturale): [api_contratti](/backend/vendite/manual/api_contratti)

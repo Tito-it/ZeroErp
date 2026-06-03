@@ -1,6 +1,11 @@
 # Sviluppo — Preferiti utente (HOME + sidebar)
 
-> **Stato**: brief WIP per estensione del sistema preferiti esistente.
+> **Stato**: ✅ IMPLEMENTATO (2026-05-25) — feature atterrata nel codice:
+> store `navigation.js` multi-preferito (`favorites` mappa di array +
+> `addFavorite`/`removeFavorite`/`toggleFavorite`/`reorderFavorites`, cap 4),
+> `FavoriteItem.vue`, composable `useNavigationFavorites.js`, kebab topbar
+> `TieredMenu` in `AppTopbar.vue`, `HomeView.vue`. Restano da spuntare solo
+> le caselle smoke/accettazione manuali (step 10), non implementazione.
 > **Branch di lavoro**: `dev/backend-tid` (interamente frontend, nessun
 > intervento DB o BE).
 > **Autore**: backend agent (sessione 2026-05-25).

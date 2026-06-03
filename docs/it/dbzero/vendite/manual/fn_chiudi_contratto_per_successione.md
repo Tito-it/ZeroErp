@@ -10,7 +10,7 @@
 > [vendite.fn_push_offerta_a_contratto](/dbzero/vendite/funzioni/fn_push_offerta_a_contratto)
 >
 > Contesto di sviluppo:
-> [Brief DB — successione contratti su overlap](/dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap)
+> [Brief DB — successione contratti su overlap](/dev/work-done/brief-db-offerta-push-successione-contratto-overlap)
 
 ---
 

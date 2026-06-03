@@ -23,9 +23,9 @@
 > [vendite.fn_chiudi_contratto_per_successione](/dbzero/vendite/funzioni/fn_chiudi_contratto_per_successione)
 >
 > Contesto di sviluppo:
-> [Brief DB offerte commerciali — Step 8](/dev/work-in-progress/analisi-offerta-commerciale-db)
+> [Brief DB offerte commerciali — Step 8](/dev/work-done/analisi-offerta-commerciale-db)
 > [analisi-pratiche-domini-anello3.md §6.9.3 — Pattern A idempotenza](/dev/work-in-progress/analisi-pratiche-domini-anello3)
-> [Brief DB — successione contratti su overlap](/dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap)
+> [Brief DB — successione contratti su overlap](/dev/work-done/brief-db-offerta-push-successione-contratto-overlap)
 
 ---
 

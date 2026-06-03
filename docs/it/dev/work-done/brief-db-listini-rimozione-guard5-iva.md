@@ -3,6 +3,10 @@
 > Destinatario: team DB (`dev/db-tid`).
 > Data: 2026-06-03. Autore: backend (mctit).
 > Tipo: modifica trigger/funzione DB (runOnChange). **Non** eseguita dal backend.
+>
+> **STATO: APPLICATO** (commit DB `e1192fadf`). Migrazioni:
+> `20260603-03` (rimozione Guard 5 listino) + `20260603-01`/`20260603-02`
+> (hardening sorgente, vedi nota sotto) + pgTAP `test-guard-iva-reactivation-v1.sql`.
 
 ## Decisione
 
@@ -16,11 +20,21 @@ compositi (padre composito e figli BoM stessa aliquota). L'invariante è
   `articoli.iva_id`): blocca ogni modifica che renda incoerente una BoM
   attiva (sia lato padre sia lato figlio).
 
-Verifica fatta sul sorgente reale (migrazioni `20260513-33` / `20260513-34`):
-con entrambi i guard attivi è **impossibile** portare una BoM attiva ad
-avere padre e figlio con IVA diversa (l'unico stato lasco — padre+figlio
-entrambi NULL — è bloccato in popolamento perché `NULL IS DISTINCT FROM
-<valore>` = TRUE). Quindi il ri-controllo IVA fatto a valle dal listino è
+Verifica fatta sul sorgente reale (migrazioni `20260513-33` / `20260513-34`).
+Con entrambi i guard attivi una BoM attiva non può avere padre e figlio
+con IVA diversa, **ma due percorsi potevano aggirarlo**:
+
+1. stato padre+figlio entrambi NULL — passa l'INSERT (`NULL = NULL`) ma è
+   bloccato in popolamento (`NULL IS DISTINCT FROM <valore>` = TRUE);
+2. **spegni → cambia IVA → riaccendi** — deattivando il legame il guard su
+   `articoli.iva_id` lo ignora (`attivo = TRUE` only), quindi si poteva
+   cambiare l'IVA del figlio e riattivare con IVA incoerente. **Questo
+   secondo buco è stato chiuso dal team DB** (migrazioni `20260603-01`/`02`:
+   `trgfn_articoli_componenti_guard_iva` ora su `BEFORE INSERT OR UPDATE OF
+   attivo`, re-check IVA sulla riaccensione). Con questo, la sorgente è
+   ora davvero airtight.
+
+Quindi il ri-controllo IVA fatto a valle dal listino è
 ridondante e crea un'**asimmetria** confusiva: il listino rifiuta dati
 incoerenti mentre i guard documento (`trgfn_componenti_guard_coerenza_bom`
 su contratti/preventivi/ordini/ddt) **non** controllano l'IVA.

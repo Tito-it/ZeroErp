@@ -144,12 +144,23 @@ L'invariante e' garantito **solo alla sorgente** (i due trigger su
 (`*_righe_componenti`) — **NON ri-verificano l'IVA**: si fidano della
 sorgente.
 
-Motivazione: con i due guard catalogo attivi e' **impossibile** creare/
-mantenere una BoM attiva con padre e figlio a IVA diversa (l'unico stato
-lasco, padre+figlio entrambi `NULL`, e' bloccato in popolamento perche'
-`NULL IS DISTINCT FROM <valore>` = TRUE). Un ri-controllo a valle sarebbe
-ridondante e — se presente solo su alcuni consumatori — introdurrebbe
-un'asimmetria confusiva (un punto rifiuta, gli altri accettano).
+Motivazione: con i guard catalogo attivi e' **impossibile** creare/
+mantenere una BoM attiva con padre e figlio a IVA diversa. Due percorsi
+potevano aggirare l'invariante, entrambi chiusi:
+
+- **stato NULL/NULL**: padre+figlio entrambi senza IVA passano l'INSERT
+  (`NULL = NULL`), ma restano bloccati in popolamento perche' assegnare
+  l'IVA a un solo lato fallisce (`NULL IS DISTINCT FROM <valore>` = TRUE).
+- **spegni → cambia IVA → riaccendi**: deattivando il legame, il guard
+  su `articoli.iva_id` lo ignora (controlla solo `attivo = TRUE`), quindi
+  si potrebbe cambiare l'IVA del figlio e riattivare. Chiuso il 2026-06-03
+  estendendo `trgfn_articoli_componenti_guard_iva` a `BEFORE INSERT OR
+  UPDATE OF attivo`: l'IVA e' ri-verificata a ogni riaccensione
+  (`FALSE→TRUE`).
+
+Un ri-controllo a valle sarebbe quindi ridondante e — se presente solo su
+alcuni consumatori — introdurrebbe un'asimmetria confusiva (un punto
+rifiuta, gli altri accettano).
 
 > **Nota per chi mantiene il codice**: NON aggiungere check IVA sui guard
 > a valle. Se in futuro serve difesa in profondita' (es. import massivi con
@@ -157,7 +168,7 @@ un'asimmetria confusiva (un punto rifiuta, gli altri accettano).
 > in modo **simmetrico su tutti** i `*_righe_componenti` + listino, non su
 > uno solo. Storia: in origine il listino aveva un proprio "Guard 5" IVA,
 > rimosso il 2026-06-03 proprio per togliere l'asimmetria (vedi brief
-> `work-in-progress/brief-db-listini-rimozione-guard5-iva.md`).
+> `work-done/brief-db-listini-rimozione-guard5-iva.md`).
 
 ## 7. Esposto in fattura = flag di presentazione (non di pricing)
 
