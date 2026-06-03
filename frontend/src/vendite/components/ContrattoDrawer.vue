@@ -53,6 +53,7 @@ import { useParameterDefaults } from '../../core/composables/useParameterDefault
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { getContrattoFormDefaults } from '../api/formDefaults'
+import { useBaFormDefaults } from '../_shared/baDefaults/useBaFormDefaults'
 import Drawer from 'primevue/drawer'
 import AppDialog from '../../core/components/AppDialog.vue'
 import InputText from 'primevue/inputtext'
@@ -363,26 +364,10 @@ function onBaSelected(item) {
   form.value.categoria_cliente_id_snapshot = item.categoria_cliente_id || null
 }
 
-// Auto-fill valuta dal form-defaults BE (BB resolve_valuta_default).
-// In CREATE: al cambio BA il BE risolve la catena BA→EF→gestore e ritorna
-// valuta_id. Sovrascriviamo SEMPRE col valore BA-resolved (regola di
-// coerenza dominio "valuta del BA wins se specificata"). Skippiamo in
-// EDIT: la valuta è snapshot immutabile post-CREATE.
-// Pattern mirror di PreventiviDrawer.onBaSelected.
-watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
-  if (isEdit.value) return
-  if (newBaId === oldBaId) return
-  try {
-    const res = await getContrattoFormDefaults(newBaId)
-    const data = res?.data?.data
-    if (data && data.valuta_id != null) {
-      form.value.valuta_id = data.valuta_id
-    }
-  } catch {
-    // Best-effort: errore form-defaults non blocca il flusso CREATE.
-    // Il trigger DB risolverà la valuta al save.
-  }
-})
+// Auto-fill valuta dal form-defaults BE (BB resolve_valuta_default), al cambio
+// BA in CREATE: la valuta del BA vince (regola di coerenza dominio). Watcher
+// condiviso `useBaFormDefaults` con guard latest-wins inclusa.
+useBaFormDefaults({ form, isEdit, fetchDefaults: getContrattoFormDefaults })
 
 // Validazione FE (refactor modalita 2026-05-15: niente piu' check su modalita).
 // Vincolo strutturale unico sulla coppia variazione globale: tipo e valore

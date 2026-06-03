@@ -27,6 +27,7 @@ import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefault
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
+import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
 import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
@@ -492,27 +493,17 @@ watch(
 // valuta dell'EF utente caricata al mount (regola di coerenza dominio:
 // "valuta del BA wins se specificata"). Skippiamo in edit (campi gia'
 // persistiti dal payload preventivo).
-let _baDefaultsToken = 0
-watch(() => form.value.billing_account_id, async (newBaId, oldBaId) => {
-  if (isEdit.value) return
-  if (!newBaId || newBaId === oldBaId) return
-  const tk = ++_baDefaultsToken
-  let res
-  try {
-    res = await getPreventivoFormDefaults(newBaId)
-  } catch {
-    return  // Best-effort: il fallback resta "form vuoto, l'operatore valorizza".
-  }
-  if (tk !== _baDefaultsToken) return  // Apertura/chiusura veloce: scarta stantio.
-  const data = res?.data?.data
-  if (!data) return
-  // Valuta: il BA (o il suo EF) vince sempre sull'EF utente caricato al mount.
-  if (data.valuta_id != null) {
-    form.value.valuta_id = data.valuta_id
-  }
-  if (form.value.termine_pagamento_id == null && data.termine_pagamento_id != null) {
-    form.value.termine_pagamento_id = data.termine_pagamento_id
-  }
+// Watcher BA→defaults condiviso (guard token + valuta BA-wins nel composable).
+// Extra preventivo: termine pagamento (solo se l'operatore non l'ha scelto).
+useBaFormDefaults({
+  form,
+  isEdit,
+  fetchDefaults: getPreventivoFormDefaults,
+  apply: (data, f) => {
+    if (f.termine_pagamento_id == null && data.termine_pagamento_id != null) {
+      f.termine_pagamento_id = data.termine_pagamento_id
+    }
+  },
 })
 
 // In CREATE servono utility e istanza (regola di dominio post brief DB rev2:
