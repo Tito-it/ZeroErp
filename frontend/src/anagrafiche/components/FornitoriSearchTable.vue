@@ -17,6 +17,7 @@ import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
@@ -32,7 +33,7 @@ const isBlocked = useInjectBlocked()
 
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
-  listaRef, dirty, configReady,
+  listaRef, dirty,
   exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded, pageActions,
 } = useListaConfigurabilePage(store, {
   exportFn: exportFornitori,
@@ -123,17 +124,7 @@ onMounted(() => {
         </div>
         <PageActionsBar :actions="pageActions">
           <template #suffix>
-            <Tag
-              v-if="dirty"
-              :value="t('lista_config.stato_temporanea')"
-              severity="warn"
-              v-tooltip.bottom="t('lista_config.stato_temporanea_tooltip')"
-            />
-            <Tag
-              v-else-if="configReady"
-              :value="t('lista_config.stato_salvata')"
-              severity="success"
-            />
+            <ListaConfigStatusTag :dirty="dirty" />
             <ReadonlyBadge />
           </template>
         </PageActionsBar>
