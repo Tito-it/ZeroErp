@@ -10,14 +10,11 @@ import {
   pushCommessa, statoFatturazione, generaPratica, listPratiche,
 } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
+import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
 import { TAB_ENTITIES } from '../../../core/constants'
 
 export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   const { emitDataChanged } = useTabEvents()
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-  const hasSearched = ref(false)
 
   // Default data_da: 1 gennaio anno corrente - 1
   const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
@@ -39,39 +36,16 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     order_dir: 'desc'
   })
 
-  // Scopo: Carica lista paginata preventivi con filtri.
-  // Il backend usa page/page_size; il composable useSearchTable usa offset/limit.
-  async function fetchList() {
-    const f = filters.value
-    const searchTerm = (f.search || '').trim()
-    // data_da conta come filtro attivo (default anno-1 garantisce l'auto-load
-    // della lista all'apertura, coerente con frontend-standards "Filtro data
-    // standard"). Senza questo l'empty-state guard sotto bloccherebbe il
-    // primo fetch e l'operatore vedrebbe la lista vuota.
-    const hasFilters = f.stato != null || f.billing_account_id != null
-      || f.utility_id != null || f.data_a != null || f.data_da != null
-
-    // Search con meno di 3 caratteri e nessun filtro attivo → svuota i
-    // risultati precedenti (coerenza UX: niente dati obsoleti visibili).
-    if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
-      if (hasSearched.value) {
-        items.value = []
-        totalRecords.value = 0
-        hasSearched.value = false
-      }
-      return
-    }
-    if (!searchTerm && !hasFilters && !hasSearched.value) return
-    // Search svuotata senza filtri → torna a stato vuoto
-    if (!searchTerm && !hasFilters) {
-      items.value = []
-      totalRecords.value = 0
-      hasSearched.value = false
-      return
-    }
-
-    loading.value = true
-    try {
+  // Lista paginata preventivi con guardia empty-state standard (BB
+  // useListaEmptyStateFetch). `data_da` default-anno-1 conta come filtro attivo:
+  // garantisce l'auto-load all'apertura (frontend-standards "Filtro data standard").
+  // Paginazione limit/offset standard (riallineata 2026-06-03: il BE usa ora
+  // parse_list_params, era l'unico dominio su page/page_size).
+  const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
+    filters,
+    hasActiveFilters: (f) => f.stato != null || f.billing_account_id != null
+      || f.utility_id != null || f.data_a != null || f.data_da != null,
+    buildParams: (f, searchTerm) => {
       const params = {}
       if (searchTerm.length >= 3) params.search = searchTerm
       if (f.stato != null) params.stato = f.stato
@@ -79,26 +53,21 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
       if (f.utility_id != null) params.utility_id = f.utility_id
       if (f.data_da) params.data_da = f.data_da
       if (f.data_a) params.data_al = f.data_a
-      // Passa solo_attiva sempre esplicito: se l'operatore vuole
-      // lo storico (toggle ON => filtro OFF) il BE deve riceverlo come 'false'.
+      // Passa solo_attiva sempre esplicito: se l'operatore vuole lo storico
+      // (toggle ON => filtro OFF) il BE deve riceverlo come 'false'.
       params.solo_attiva = f.solo_attiva ? 'true' : 'false'
-      // Conversione offset/limit → page/page_size per il backend
-      const pageSize = f.limit || 25
-      const page = Math.floor((f.offset || 0) / pageSize) + 1
-      params.page = page
-      params.page_size = pageSize
+      // Paginazione standard limit/offset (allineata a offerte/ordini/clienti;
+      // la view BE ora usa parse_list_params, 2026-06-03).
+      params.limit = f.limit || 25
+      params.offset = f.offset || 0
       if (f.order_by) {
         params.order_by = f.order_by
         params.order_dir = f.order_dir || 'desc'
       }
-      const res = await listPreventivi(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-      hasSearched.value = true
-    } finally {
-      loading.value = false
-    }
-  }
+      return params
+    },
+    fetchPage: listPreventivi,
+  })
 
   // Scopo: Dettaglio completo preventivo.
   async function fetchDetail(id) {

@@ -25,6 +25,7 @@ from apps.core.api.success_responses import success_response
 from apps.vendite.services.vendite_form_defaults_service import (
     fn_get_contratto_form_defaults,
     fn_get_offerta_form_defaults,
+    fn_get_ordine_form_defaults,
     fn_get_preventivo_form_defaults,
     fn_get_versione_clone_defaults,
     fn_get_versione_close_defaults,
@@ -107,6 +108,39 @@ class ApiOffertaFormDefaults(DomainAPIView):
         auth_user_id = get_scope_user_id(request)
         return success_response(
             fn_get_offerta_form_defaults(
+                billing_account_id=ba_id,
+                auth_user_id=auth_user_id,
+            )
+        )
+
+
+class ApiOrdineFormDefaults(DomainAPIView):
+    # Scopo: Defaults form ordine di vendita contestuali al BA (utility, valuta).
+    #        Allinea ordini alla famiglia: senza BA ritorna valuta dalla catena
+    #        EF utente → gestore globale; con BA aggiunge utility BA-derived. La
+    #        utility di default globale (DEFAULT_UTILITY) la risolve il FE.
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="billing_account_id",
+                type=int,
+                required=False,
+                description=(
+                    "Se presente, popola utility BA-derived + valuta. Se assente, "
+                    "ritorna valuta da EF utente o gestore globale."
+                ),
+            ),
+        ],
+        responses=_ba_aware_response_schema("VenditeOrdineFormDefaultsResponse"),
+    )
+    # Scopo: GET form-defaults ordine.
+    def get(self, request: Request) -> JsonResponse:
+        ba_id = optional_int({"v": request.query_params.get("billing_account_id")}, "v")
+        auth_user_id = get_scope_user_id(request)
+        return success_response(
+            fn_get_ordine_form_defaults(
                 billing_account_id=ba_id,
                 auth_user_id=auth_user_id,
             )

@@ -19,7 +19,14 @@ from apps.anagrafiche.db.emittenti_fiscali_repository import (
     EmittentiFiscaliUtilitiesRepository,
 )
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
-from apps.anagrafiche.services._validators import create_with_dedup, optional_str, require_str
+from apps.anagrafiche.services._validators import (
+    create_with_constraint_mapping,
+    create_with_dedup,
+    extract_optional_fields,
+    optional_str,
+    require_found,
+    require_str,
+)
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_uuid
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.non_editable_fields_helper import (
@@ -52,13 +59,8 @@ class EmittentiFiscaliService:
     #        il FE costruisce il drawer di edit usando questi metadata,
     #        coerente con altre matrici amm-software.
     def get_emittente(self, emittente_id: int) -> dict[str, Any]:
-        emittente = self._repo.get_emittente(emittente_id)
-        ErrorManager.require(
-            emittente is not None,
-            code=E_ANAG_NOT_FOUND,
-            message="Emittente fiscale non trovato.",
-        )
-        assert emittente is not None
+        emittente = require_found(
+            self._repo.get_emittente(emittente_id), "Emittente fiscale non trovato.")
         emittente["non_editable_fields"] = self.get_non_editable_fields()
         return emittente
 
@@ -110,14 +112,17 @@ class EmittentiFiscaliService:
         # l'insert dopo aver creato il ruolo, il rollback evita ruoli orfani.
         with transaction.atomic():
             soggetto_ruolo_id = self._repo.get_or_create_ruolo_emittente(soggetto_id)
-            result = create_with_dedup(
+            result = create_with_constraint_mapping(
                 lambda: {"id": self._repo.create_emittente(
                     soggetto_ruolo_id=soggetto_ruolo_id,
                     codice=codice,
                     descrizione=descrizione,
                     **emittente_data,
                 )},
-                duplicate_message="Esiste gia' un emittente fiscale per questo soggetto o codice.",
+                {
+                    "uq_emittenti_fiscali_ruolo": "Esiste gia' un emittente fiscale per questo soggetto.",
+                    "uq:codice": "Esiste gia' un emittente fiscale con questo codice.",
+                },
             )
 
         return {
@@ -127,30 +132,14 @@ class EmittentiFiscaliService:
 
     # Scopo: Estrae i campi opzionali dell'emittente dal payload.
     def _extract_emittente_data(self, payload: dict[str, Any]) -> dict[str, Any]:
-        data: dict[str, Any] = {}
-
-        # FK / int
-        for key in ["valuta_id"]:
-            val = optional_int(payload, key)
-            if val is not None:
-                data[key] = val
-
-        # Boolean (None nel payload = "non fornito", lasciar usare il default DB)
-        for key in ["attivo", "bollo_auto"]:
-            if key in payload and payload[key] is not None:
-                data[key] = optional_bool(payload, key)
-
-        # Stringhe
-        for key in ["regime_fiscale_rf", "rounding_policy"]:
-            val = optional_str(payload, key)
-            if val is not None:
-                data[key] = val
-
-        # Numeric (bollo_soglia puo' essere float/decimal)
-        if "bollo_soglia" in payload and payload["bollo_soglia"] is not None:
-            data["bollo_soglia"] = payload["bollo_soglia"]
-
-        return data
+        # bool a None = "non fornito" → lasciar usare il default DB.
+        return extract_optional_fields(
+            payload,
+            ints=("valuta_id",),
+            bools=("attivo", "bollo_auto"),
+            strings=("regime_fiscale_rf", "rounding_policy"),
+            numeric=("bollo_soglia",),
+        )
 
     # =================================================================
     # Aggiornamento

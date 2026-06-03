@@ -8,6 +8,7 @@
 from django.urls import path
 
 from apps.vendite.api.note_views import ApiOrdineNoteDetail, ApiOrdineNoteList
+from apps.vendite.api.views_form_defaults import ApiOrdineFormDefaults
 from apps.vendite.api.views_ordini import (
     ApiOrdineConferma,
     ApiOrdineDetail,
@@ -24,6 +25,10 @@ from apps.vendite.api.views_ordini import (
 urlpatterns = [
     # Export (prima di <int:ordine_id>/ per chiarezza).
     path("export/", ApiOrdiniExportView.as_view(), name="vendite-ordini-export"),
+
+    # Form-defaults BA-aware (utility/valuta) per il drawer.
+    path("form-defaults/", ApiOrdineFormDefaults.as_view(),
+         name="vendite-ordine-form-defaults"),
 
     # Lista + create
     path("", ApiOrdiniList.as_view(), name="vendite-ordini-list"),

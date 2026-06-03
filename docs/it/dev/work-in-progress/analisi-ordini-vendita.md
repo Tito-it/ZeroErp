@@ -532,6 +532,110 @@ Ordini **non reinventa nulla** — consuma gli stessi building block (memoria
 
 ---
 
+## 6.ter. FE scheletro — stato consegnato + scelte deliberate (2026-06-03)
+
+Albero `src/vendite/ordini/` creato e **build FE verde** (clone famiglia
+vendite, lista DEF-8 diretta). File: `api/ordiniApi.js`, `stores/ordini.js`
+(`userScoped`), `constants.js`, `views/OrdiniView.vue`, `components/`
+(`OrdiniSearchTable`, `OrdiniDrawer`, `OrdiniForm`, `OrdiniRigheTable`,
+`OrdiniRigaForm`, `OrdiniRigaComponentiPanel`, `OrdineNoteDrawer`). Wiring core:
+`severity.statoOrdineSeverity`, `READONLY_MODELS.ORDINE`, `TAB_ENTITIES.ORDINE`,
+`MANAGE_ICONS.SEND`, `NAV_ICONS.ORDINI` + voce menu + rotta, i18n `it/en`
+(`vendite.ordini.*` + `col_*` allineate al catalogo `lista_id=7`).
+
+**Riuso BB (regola del 2)**: `useListaConfigurabilePage`, `ListaConfigurabile`,
+`makeComponentiBomApi`, `ComponentiPanel`, `useArticoloUomOptions`,
+`VenditeNoteDrawer`, `RowActionsMenu`, `PageActionsBar`, `EmittenteFiscaleField`,
+`BillingAccountLookup`. Nessuna logica nuova per pricing/componenti/note.
+
+### Scelte deliberate / cose mancanti (scheletro)
+
+1. **Agente (E) omesso dal form drawer.** Non esiste un picker per
+   `soggetti_ruoli` ruolo agente né un endpoint lookup dedicato: la colonna è
+   nullable/predisposta. Si aggiunge quando arriva il picker (o con la
+   conversione upstream §7.4). Sviluppo concentrico, non YAGNI
+   (`feedback_concentrico_no_yagni`). La colonna `agente_denominazione` resta
+   comunque opt-in nella lista (catalogo).
+2. **PDF in lista omesso.** Non c'è generazione documenti `ORDINE_CLIENTE` nello
+   scheletro BE (nessun `/emetti/`): la lista resta consultazione + note. Si
+   aggancia `EntityPdfButton`/`PdfDocumentiSorgenteDialog` quando esisterà
+   l'emissione documenti ordini.
+3. **`documento_origine` (A1)**: chip read-only nell'header del drawer quando
+   valorizzato; lo scheletro non lo scrive (lo farà la conversione §7.4).
+4. **Prezzo riga senza endpoint "suggerisci"**: gli ordini non hanno
+   `/suggerisci-prezzo/`. Il campo prezzo è opzionale: se lasciato vuoto (e
+   articolo non composito) il BE lo risolve via `PricingService` in
+   `gestisci_riga`. Niente badge origine prezzo / banner L2 (pricing stile
+   preventivo, gate L2/L3 = decisione aperta §8.bis).
+5. **Componenti compositi: niente `ComponentiDialog` pre-save in CREATE.** Il BE
+   `gestisci_riga` **non** accetta `componenti_overrides` (whitelist
+   `_CREATE_KEYS_RIGA` priva del campo): inizializza i componenti ai prezzi
+   risolti. L'editing dei prezzi componente avviene **in EDIT** via
+   `OrdiniRigaComponentiPanel` (PATCH per componente). Divergenza voluta da
+   preventivi/contratti (che usano la dialog pre-save), coerente con ciò che il
+   BE supporta.
+6. **Conferma/push via `useConfirmAction`** (no `AppDialog`): sono sì/no puri →
+   lo standard preferisce `useConfirmAction`. Push singolo con toast
+   differenziato per `report.stato` (gemello `PreventiviIntegrazione`).
+7. **Cliente immutabile post-creazione** (lock FE `billing_account_id` quando
+   `hasDetail`): vedi bug BE sotto.
+
+### ⚠️ Bug logico BE da chiudere (priorità, `feedback_bug_logici_modello`)
+
+`ordini_service.aggiorna_ordine` ha `billing_account_id` nella whitelist
+`_UPDATE_KEYS_ORDINE` ma **non ri-deriva `soggetto_ruolo_id`** (lo fa solo
+`crea_ordine`). Cambiare BA in update lascerebbe `soggetto_ruolo_id` stantio →
+**incoerenza cliente↔soggetto**. Difesa FE applicata (lock del campo cliente
+post-create, come `PreventiviDrawer`). Fix BE consigliato — una delle tre:
+(a) rimuovere `billing_account_id` da `_UPDATE_KEYS_ORDINE` (cliente immutabile,
+allineato all'UX); (b) ri-derivare `soggetto_ruolo_id` dal nuovo BA in
+`aggiorna_ordine`; (c) rifiutare con `E_ORD_VALIDAZIONE` se il BA cambia.
+Opzione (a) è la più semplice e coerente con "cambiare cliente = nuovo ordine".
+
+### BB guardia empty-state estratto + adottato (regola del 2, OK Tid 2026-06-03)
+
+La guardia empty-state di `fetchList` (search<3, no-filtri→vuoto, svuota→reset)
+era **identica in 3 store** (`offerte`, `preventivi`, `ordini`). Estratta in
+[`useListaEmptyStateFetch`](../../../../frontend/src/core/composables/useListaEmptyStateFetch.js):
+stato lista + guardia + orchestrazione loading/response nel BB; `hasActiveFilters`,
+`buildParams` (la mappatura filtri→query, che **diverge** legittimamente: vedi
+paginazione sotto), `fetchPage` iniettati. Adottato nei 3 store. Build verde.
+
+**Convergenza con `createCrudListStore`** (factory store CRUD-semplice, adottata
+da clienti/fornitori/soggetti/articoli): a refactor factory concluso (OK Tid), la
+factory ora **delega la guardia a `useListaEmptyStateFetch`** → gate
+**single-source** per entrambe le famiglie. Layering: `useListaEmptyStateFetch`
+= primitiva gate; la factory ci costruisce sopra (param-builder generico 1:1 +
+`limit/offset` + `extraActions: fn(id)`) per il CRUD-semplice; i 3 store-documento
+vendite (offerte/preventivi/ordini), "ricchi" (transizioni + righe + componenti +
+push; param non-1:1: offerte rinomina `data_da`→`validita_dal_min`, preventivi usa
+`page/page_size`; azioni righe multi-arg), usano il composable **direttamente**.
+Build verde su entrambe le famiglie.
+
+### Paginazione FE↔BE riallineata allo standard (RISOLTO 2026-06-03)
+
+Lo **standard** è `limit`/`offset`: l'helper BE `parse_list_params`
+(`apps/core/api/payload_validators.py`) legge `limit`/`offset` e calcola `page`
+internamente. Lo usano clienti, soggetti, categorie_clienti, contratti,
+**offerte**, **ordini**. **`preventivi` era l'unico outlier** (BE leggeva
+`page`/`page_size`, FE convertiva `offset`→`page`). **Riallineato (OK Tid)**:
+- **BE** `preventivi_views.py::get` ora usa `parse_list_params` + chiama
+  direttamente `list_preventivi_rows` (limit/offset, primitiva già esistente,
+  gemella di `list_ordini_rows`) + `paginated_envelope` — mirror esatto della
+  view ordini. `order_dir` mantiene il default di dominio `desc`. Schema
+  OpenAPI: `page`/`page_size` → `limit`/`offset`.
+- **FE** `stores/preventivi.js` invia `limit`/`offset` (rimossa la conversione).
+- **Wrapper interno** `preventivi_service.list_preventivi(page, page_size)`
+  **invariato** (lo usano AI tool `vendite_tools` + 3 test service, paging-based
+  legittimo): il riallineamento tocca solo la superficie HTTP, non il contratto
+  Python interno.
+- Verifica: 129 test `apps.vendite.tests.*preventiv*` verdi, build FE verde.
+  Nota: il test API lista è uno smoke di route (401/403, non esercita la logica);
+  la logica limit/offset è coperta da `list_preventivi_rows` (test service) +
+  parità costruttiva con la view ordini testata.
+
+---
+
 ## 7. Chiudere il giro — ordine → commessa → fattura
 
 Il valore di filiera: a valle dell'ordine **è già tutto cablato e collaudato**.
@@ -699,4 +803,4 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 | `vendite.contratti` | ✅ atterrato (`1cc906377`) | ✅ | [refactor-lista-contratti.md](../work-done/refactor-lista-contratti.md) |
 | `vendite.preventivi` | ✅ completato 2026-06-03 | ✅ | [lista-preventivi.md](../work-done/lista-preventivi.md) |
 | `vendite.offerte` | ✅ completato 2026-06-03 | ✅ | [lista-offerte-comm.md](../work-done/lista-offerte-comm.md) |
-| **`vendite.ordini`** | 📋 **questo doc (lista + CRUD da zero)** | 📋 **questo doc** | — |
+| **`vendite.ordini`** | ✅ **BE+FE scheletro 2026-06-03** (lista DEF-8 + CRUD + conferma + push) | ✅ (vedi §6.ter scelte deliberate + bug BE BA-update) | questo doc |

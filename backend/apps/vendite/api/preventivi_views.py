@@ -16,8 +16,9 @@ from apps.core.api.payload_validators import (
     optional_bool,
     optional_int,
     optional_iso_date,
+    paginated_envelope,
+    parse_list_params,
     qp_bool,
-    qp_int,
     qp_str,
 )
 from apps.core.api.success_responses import success_response
@@ -50,8 +51,8 @@ class ApiPreventiviList(DomainAPIView):
                 description="Default true: mostra solo l'ultima revisione per numero. "
                             "Passare false per includere lo storico revisioni superseded.",
             ),
-            OpenApiParameter(name="page", type=int, required=False),
-            OpenApiParameter(name="page_size", type=int, required=False),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False,
                              description="campo_sorgente colonna (default 'data')"),
             OpenApiParameter(name="order_dir", type=str, required=False,
@@ -63,10 +64,18 @@ class ApiPreventiviList(DomainAPIView):
         )},
     )
     # Scopo: Restituisce via GET l'elenco paginato dei preventivi vendita.
+    #        Paginazione standard limit/offset via parse_list_params (allineata
+    #        a clienti/contratti/offerte/ordini; il vecchio page/page_size era
+    #        l'unico outlier del dominio). order_dir mantiene il default 'desc'
+    #        di dominio (parse_list_params defaulta 'asc'). Usa direttamente
+    #        list_preventivi_rows + paginated_envelope (mirror views_ordini); il
+    #        wrapper list_preventivi(page/page_size) resta per AI tool + test.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         auth_user_id = get_scope_user_id(request)
-        data = preventivi_service.list_preventivi(
+        p = parse_list_params(qp, default_order="data")
+        order_dir = qp_str(qp.get("order_dir")) or "desc"
+        results, total = preventivi_service.list_preventivi_rows(
             stato_codice=qp_str(qp.get("stato")),
             billing_account_id=optional_int({"v": qp.get("billing_account_id")}, "v"),
             utility_id=optional_int({"v": qp.get("utility_id")}, "v"),
@@ -77,12 +86,12 @@ class ApiPreventiviList(DomainAPIView):
             # passa "false" esplicito col toggle "Mostra storico".
             solo_attiva=qp_bool(qp.get("solo_attiva"), default=True),
             auth_user_id=auth_user_id,
-            page=qp_int(qp.get("page"), 1),
-            page_size=qp_int(qp.get("page_size"), 50),
-            order_by=qp_str(qp.get("order_by")) or "data",
-            order_dir=qp_str(qp.get("order_dir")) or "desc",
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=order_dir,
         )
-        return success_response(data)
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=inline_serializer(
