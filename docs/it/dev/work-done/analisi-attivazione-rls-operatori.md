@@ -123,7 +123,33 @@ Convenzione colonna EF (asimmetria di modello da segnalare, §6/R-modello):
 
 ### 5.1 Decisione write-side: SELECT in RLS + trigger (NON `FOR ALL`) `[VERIFICATO + raccomandazione]`
 
-**Raccomandazione: mantenere RLS `FOR SELECT` ed estendere i trigger guard per la scrittura. NON estendere la policy a `FOR ALL`/`WITH CHECK`.** Motivi tecnici dirimenti:
+> **⚠️ SUPERATA il 2026-06-03** — vedi brief
+> [`db-brief-rls-ondata2-insert-bloccati.md`](db-brief-rls-ondata2-insert-bloccati.md)
+> e migration `20260603-16..25`. Le policy operatore sono state estese a
+> **`FOR ALL` con `WITH CHECK`**. La raccomandazione qui sotto si è rivelata
+> non praticabile:
+>
+> - **Era basata su una premessa errata.** Con `ENABLE` attivo, una policy `FOR
+>   SELECT`-only manda in **deny-all OGNI scrittura** (operatore incluso): i
+>   trigger guard girano *dopo* che la RLS ha già negato, quindi non sbloccano la
+>   scrittura in-scope dell'operatore. È esattamente il bug "insert bloccati".
+>   Senza policy di write, la RLS attiva blocca a monte — il trigger non basta.
+> - **Il motivo "dirimente" #2 (batch) non regge.** Il demone pgAgent gira come
+>   superuser **`postgres`** (BYPASSRLS) → **esente dalla RLS** anche con funzioni
+>   `SECURITY INVOKER`: già verificato in
+>   [`analisi-attivazione-rls-db.md`](analisi-attivazione-rls-db.md) (item **R4
+>   RISOLTO 2026-06-01**, `chiusura_scadenze_daily`). Non essendoci `FORCE` (§5.3),
+>   la `WITH CHECK` non viene mai valutata per i batch. Il gate fail-closed colpisce
+>   solo i ruoli *soggetti* a RLS (`zeroerp_app` = operatore), che è l'intento.
+> - **Il motivo #1 (logica duplicata) non si applica:** la `WITH CHECK` riusa gli
+>   stessi adapter `script.fn_scope_*` della `USING` (PK / SR / via_fattura /
+>   via_efba) — zero logica nuova. `billing_account` è l'unica eccezione (policy
+>   `_ins` gate-only, perché il mapping efba nasce da trigger `AFTER INSERT`).
+>
+> I trigger guard `trgfn_guard_emittente_scope` **restano** come difesa in
+> profondità (errore strutturato `E_SCOPE_EMITTENTE`, motivo #3) accanto alla RLS.
+
+**Raccomandazione (storica, superata): mantenere RLS `FOR SELECT` ed estendere i trigger guard per la scrittura. NON estendere la policy a `FOR ALL`/`WITH CHECK`.** Motivi tecnici dirimenti:
 
 1. **Doppia convenzione = doppia logica `WITH CHECK` duplicata** (SR vs PK) — viola la regola del 2; i trigger già lo fanno mode-driven.
 2. **Il GUC d'identità non è garantito sui batch.** `trgfn_guard_emittente_scope` ha lo skip esplicito `IF v_auth_user_id IS NULL THEN RETURN NEW` per i job notturni. Una `FOR ALL WITH CHECK` con `app.current_identita_id=''` cadrebbe nel gate fail-closed della fn → **bloccherebbe i batch in scrittura**. Questo è il motivo dirimente.

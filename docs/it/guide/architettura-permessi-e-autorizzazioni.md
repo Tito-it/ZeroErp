@@ -33,8 +33,12 @@
 >   **scope emittente OPERATORI** è **ATTIVA (`ENABLE`)** su
 >   fatture/fatture_scadenze/fatturazione_lotti/ordini/preventivi/contratti/
 >   offerte_commerciali/documenti_generati/pratiche/billing_account (Ondata
->   1+2, no `FORCE`; vedi `dev/work-done/analisi-attivazione-rls-operatori.md`);
->   le branch **portale/shop** (`BA_OWNERSHIP`, CLIENTE_PORTALE/SHOP_CUSTOMER)
+>   1+2, no `FORCE`; vedi `dev/work-done/analisi-attivazione-rls-operatori.md`).
+>   Dal **2026-06-03** le `ef_whitelist` sono **`FOR ALL` con `WITH CHECK`**
+>   (copertura **scrittura** oltre lettura; `billing_account` ha policy `_ins`
+>   gate-only): senza, su tabella `ENABLE`d ogni INSERT/UPDATE operatore andava
+>   in deny-all. I batch girano come `postgres` (superuser) → esenti.
+>   Le branch **portale/shop** (`BA_OWNERSHIP`, CLIENTE_PORTALE/SHOP_CUSTOMER)
 >   restano **dry-run** in attesa delle API portale/shop. GUC
 >   `app.current_identita_id`, `app.ruolo_applicativo`,
 >   `app.soggetto_ruolo_id` popolati da `JwtAuditAuthentication`.

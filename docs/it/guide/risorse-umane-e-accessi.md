@@ -45,7 +45,9 @@
 > * Policy RLS **a due velocità** (giugno 2026): branch **scope emittente
 >   OPERATORI ATTIVA** (`ENABLE`, Ondata 1+2 su fatture/scadenze/lotti/ordini/
 >   preventivi/contratti/offerte/documenti_generati/pratiche/billing_account —
->   vedi `dev/work-done/analisi-attivazione-rls-operatori.md`); branch
+>   vedi `dev/work-done/analisi-attivazione-rls-operatori.md`; dal **2026-06-03**
+>   `FOR ALL` + `WITH CHECK` → copertura **scrittura**, no `FORCE`, batch come
+>   `postgres` esenti); branch
 >   **portale/shop** ancora **dry-run**, differita alle relative API di dominio
 >
 > Dettagli:

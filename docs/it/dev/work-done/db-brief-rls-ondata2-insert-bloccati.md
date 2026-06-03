@@ -1,9 +1,13 @@
 # Brief DB — Completare la RLS per la faccia OPERATORE (ERP classico)
 
+> **✅ CHIUSO (team DB, `dev/db-tid`, 2026-06-03)** — migration `20260603-16..25`
+> applicate, pgTAP verdi, documentazione allineata. Dettaglio in
+> [§ RISOLTO](#risolto-team-db-2026-06-03). Documento spostato in `work-done`.
+>
 > **Per**: team DB (`dev/db-tid`). **Da**: BE/FE agent (`dev/backend-tid`), 2026-06-03.
-> **Severità**: ALTA — blocca ogni scrittura del ciclo attivo per l'operatore.
+> **Severità**: ALTA — bloccava ogni scrittura del ciclo attivo per l'operatore.
 > Azione DB (DDL/policy) — il BE NON esegue, passa il brief
-> (`feedback_db_actions_passaggio_team`). Bug logico di modello da chiudere
+> (`feedback_db_actions_passaggio_team`). Bug logico di modello chiuso
 > proattivamente (`feedback_bug_logici_modello`).
 
 ## Sintomo
@@ -138,3 +142,56 @@ usare solo come tampone temporaneo, non come chiusura.
 Il BE/FE di ordini (e preventivi/offerte) è corretto: stesso payload/flusso,
 falliscono identicamente. Il gap è esclusivamente nella **copertura policy RLS in
 scrittura** (DDL).
+
+---
+
+## RISOLTO (team DB, 2026-06-03)
+
+Migration `20260603-16..25` (00_schema): ogni `rls_<t>_ef_whitelist` estesa da
+`FOR SELECT` a **`FOR ALL` con `WITH CHECK` = `USING`** (nome invariato →
+registry `config.scope_policy` valido).
+
+**File prodotti:**
+
+- Migration `00_schema`: `20260603-16` preventivi, `-17` offerte_commerciali,
+  `-18` ordini, `-19` contratti, `-20` pratiche, `-21` documenti_generati,
+  `-22` fatture, `-23` fatture_scadenze, `-24` fatturazione_lotti,
+  `-25` billing_account (caso speciale, vedi punto 1).
+- pgTAP (`db/pgtap/rls/`): `test-rls-write-policies-structure.sql` (strutturale,
+  33 assert: tutte e 10 `FOR ALL`+`WITH CHECK` + policy `_ins`),
+  `test-rls-preventivi-ef-whitelist-write.sql` (funzionale, UPDATE in-scope=1 /
+  off-scope=0 / no-ruolo=0 / kill-switch=1, due operatori distinti),
+  `test-rls-policies-structure.sql` aggiornato (`rls_fatture_ef_whitelist` ora `ALL`).
+- Doc allineati: `postgresql/row-level-security.md` (ownership/`FORCE`),
+  `guide/architettura-multi-face-auth.md` §6, `guide/architettura-permessi-e-autorizzazioni.md`,
+  `guide/risorse-umane-e-accessi.md`, e nota **SUPERATA** su
+  `dev/work-done/analisi-attivazione-rls-operatori.md` §5.1.
+
+**Verifica esito:** stato DB confermato (10 policy `cmd=ALL` + `with_check`, più
+`rls_billing_account_ef_whitelist_ins` `INSERT`); **suite RLS 8/8 PASS**. Batch
+**non impattati**: pgAgent gira come `postgres` superuser (BYPASSRLS) → esente
+anche con funzioni `SECURITY INVOKER` (R4 in `analisi-attivazione-rls-db.md`).
+
+Tre scoperte rispetto al brief:
+
+1. **`billing_account` — NON `WITH CHECK = USING`** (gotcha #2 confermato come bug
+   reale). Il mapping efba che definisce lo scope è creato da un trigger **`AFTER
+   INSERT`** (`trg_billing_account_z90_link_ef_ins`), mentre la `WITH CHECK` è
+   valutata *durante* l'INSERT → `via_efba` rifiuterebbe ogni BA nuovo di operatore
+   con scope ristretto. Soluzione (migration `-25`): policy principale `FOR ALL`
+   `via_efba` (SELECT/UPDATE/DELETE) **+ policy gemella `_ins` `FOR INSERT`
+   gate-only** (`ruolo=OPERATORE`). Chi può creare è già imposto dal guard BEFORE
+   `guard_admin_globale`; lo scope post-insert lo stabilisce il trigger AFTER.
+
+2. **Disallineamento nella GUIDA, non nel codice** (`row-level-security.md`
+   corretto). La guida diceva "tabelle owned da `zeroerp_app` → `FORCE`
+   obbligatorio": falso. `zeroerp_app` è **non-owner `NOBYPASSRLS`** → `ENABLE` da
+   solo basta, `FORCE` non serve (e seguirlo avrebbe assoggettato i percorsi
+   owner/batch). Il punto del brief (niente `FORCE`/`BYPASSRLS`) è corretto.
+
+3. **Gap latente acquisti/shop** (fuori dalle 10, ma stesso schema). `acquisti.ordini`,
+   `acquisti.ddt`, `shop.shop_ricevute` hanno policy `FOR SELECT` ma **non sono
+   `ENABLE`d**: nessun blocco oggi. Inoltre su `ordini`/`billing_account`/`fatture*`
+   le policy **portale/shop sono solo SELECT**: quando arriverà il write-path shop
+   (checkout come `SHOP_CUSTOMER`), servirà la stessa copertura `WITH CHECK` per
+   quel ruolo, altrimenti l'INSERT shop sarà bloccato identicamente.

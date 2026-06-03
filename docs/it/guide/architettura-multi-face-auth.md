@@ -319,6 +319,16 @@ CREATE POLICY rls_fatture_scope ON vendite.fatture
     );
 ```
 
+**Lettura e scrittura.** Una policy `FOR SELECT` filtra solo le *letture*. Sulle
+tabelle dove il ruolo **scrive** (es. l'operatore che crea preventivi/ordini), la
+policy va dichiarata **`FOR ALL` con `WITH CHECK`** (di norma identico alla
+`USING`): su una tabella con RLS attiva una policy di sola lettura manda in
+**deny-all** ogni `INSERT`/`UPDATE` (`new row violates row-level security policy`).
+È quanto accaduto nell'Ondata 2 operatore e risolto estendendo le `ef_whitelist` a
+`FOR ALL` (vedi `dev/work-done/db-brief-rls-ondata2-insert-bloccati.md`). I
+job batch non sono toccati: girano come `postgres` (superuser) e — non essendoci
+`FORCE` — bypassano la RLS.
+
 ### 6.2 Come si alimentano le RLS
 
 Il middleware esistente [JwtAuditAuthentication](/guide/risorse-umane-e-accessi#propagazione-identita-utente-al-database-guc-app)
@@ -341,7 +351,8 @@ non si sovrappongono:
 | --- | --- |
 | Se l'utente puo' chiamare l'endpoint | Django (`ZeroERPPermission`) |
 | Se l'utente puo' eseguire quell'azione | Django (capability dal profilo) |
-| Quali righe vede nelle query | DB (RLS policy) |
+| Quali righe **vede** nelle query | DB (RLS `USING`) |
+| Quali righe puo' **creare/modificare** | DB (RLS `WITH CHECK`, policy `FOR ALL`) |
 
 ### 6.4 Tracciabilita' canale sui dati transazionali
 
