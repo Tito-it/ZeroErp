@@ -20,7 +20,6 @@
 >
 > * [gestione-commesse-v2.md](../work-in-progress/gestione-commesse-v2.md) — architettura commesse e pipeline fatturazione
 > * [../work-done/gestione-articoli.md](gestione-articoli.md) — dominio catalogo completato (articoli, UoM, BoM, note)
-> * [sviluppo-listini.md](sviluppo-listini.md) — backend+frontend listini + architettura pricing + resolver
 > * [docs/it/guide/gestione-commesse.md](../../guide/gestione-commesse.md) — API commesse DB layer
 > * [docs/it/guide/fatturazione.md](../../guide/fatturazione.md) — pipeline fatturazione
 > * [docs/it/dev/api.md](../api.md) — linee guida API
@@ -571,7 +570,7 @@ Il lookup articoli e' cross-dominio (§5.1).
 
 ### FASE 1 — DB: tabelle, viste, funzioni — COMPLETATA
 
-> Completata il 3 aprile 2026. Dettagli completi in [sviluppo-preventivi-fase1-db.md](sviluppo-preventivi-fase1-db.md).
+> Completata il 3 aprile 2026.
 
 #### Decisioni architetturali prese in FASE 1
 
