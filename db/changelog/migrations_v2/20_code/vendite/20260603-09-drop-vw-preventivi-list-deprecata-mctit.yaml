@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Cleanup DEF-8 (db-brief-lista-preventivi-offerte §6 NOTA): DROP della vista
+# deprecata vendite.vw_preventivi_list, sostituita dalla canonica
+# vendite.vw_preventivi_lista (20260603-05).
+#
+# Pre-requisito (VERIFICATO 2026-06-03): il backend ha commutato i consumer
+# sulla vista canonica (commit BE su dev/backend-tid, PR #763):
+#   - preventivi_repository.list_preventivi  -> vw_preventivi_lista
+#   - preventivi_repository.list_revisioni   -> vw_preventivi_lista
+# Nessun altro oggetto DB dipende dalla vista (le occorrenze in 20260601-26 sono
+# ALTER ... IF EXISTS idempotenti; in 20260501-15 / 20260502-01 sono commenti).
+# Il pgTAP test-rls-viste-security-invoker.sql e' aggiornato in lockstep
+# (asserzione ripuntata su vw_preventivi_lista).
+#
+# DROP semplice (no CASCADE): nessun dipendente. Rollback ricrea la vista nella
+# sua ultima definizione (FROM vw_preventivi, security_invoker=on).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260603-09-drop-vw-preventivi-list-deprecata-mctit.yaml
+
+  - changeSet:
+      id: 20260603-09-drop-vw-preventivi-list-deprecata
+      author: mctit
+      failOnError: true
+      comment: >
+        Cleanup DEF-8: DROP vendite.vw_preventivi_list (deprecata), sostituita
+        da vw_preventivi_lista. BE gia' commutato (PR #763). Rollback ricrea la
+        vista.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_preventivi_list;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_list
+              WITH (security_invoker = on) AS
+              SELECT
+                  p.id,
+                  p.uid,
+                  p.numero,
+                  p.rev,
+                  p.is_attiva,
+                  p.data,
+                  p.stato_doc_preventivo_id,
+                  sdp.codice                   AS stato_codice,
+                  sdp.codice_interno           AS stato_codice_interno,
+                  sdp.descrizione              AS stato_descrizione,
+                  p.billing_account_id,
+                  ba.codice                    AS billing_account_codice,
+                  ba.utility_id                AS ba_utility_id,
+                  s.id                         AS soggetto_id,
+                  s.ragione_sociale_completa   AS cliente_denominazione,
+                  s.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  p.emittente_fiscale_id,
+                  p.utility_id,
+                  u.codice                     AS utility_codice,
+                  u.descrizione                AS utility_descrizione,
+                  p.istanza_utility_id,
+                  iu.codice                    AS istanza_utility_codice,
+                  p.totale_imponibile,
+                  p.totale_iva,
+                  p.totale_documento,
+                  p.valuta_id,
+                  v.codice                     AS valuta_codice,
+                  p.termine_pagamento_id,
+                  tp.descrizione               AS termine_pagamento_descrizione,
+                  p.validita_dal,
+                  p.validita_al,
+                  p.competenza_mese,
+                  p.fatturazione_immediata,
+                  p.storicizza,
+                  p.data_insert
+              FROM vendite.vw_preventivi p
+              JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+              LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+              LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+              LEFT JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
+              LEFT JOIN config.utilities u ON u.id = p.utility_id
+              LEFT JOIN config.valute v ON v.id = p.valuta_id
+              LEFT JOIN config.termini_pagamento tp ON tp.id = p.termine_pagamento_id
+              ORDER BY p.data DESC, p.numero DESC, p.id;

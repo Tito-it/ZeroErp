@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-ORD (db-brief-ordini-vendita §5): correzione del CHECK errato su
+# vendite.ordini_righe.
+#
+# BUG (verificato 2026-06-03, doc manual/ordini_righe.md): il vincolo
+# chk_ordini_v_r_qta_pos -- nato per garantire la quantita' positiva -- replica
+# per errore l'espressione del prezzo (prezzo_unitario >= 0), gia' coperta dal
+# vincolo gemello chk_ordini_v_r_prezzo_pos. Il guard sulla QUANTITA' base manca
+# quindi del tutto: una riga ordine con quantita' 0 (o negativa) e' oggi ammessa.
+# Si corregge a (quantita > 0). L'omaggio resta esprimibile: quantita > 0 +
+# prezzo_unitario = 0.
+#
+# Il vincolo originale vive in un changelog gia' mergiato (00_bootstrap/
+# 20250907-02): NON si modifica (si romperebbe la sequenza checksum). Si fa
+# DROP + ADD in un nuovo changeset (regola AGENTS.md "mai modificare changelog
+# pushati").
+#
+# In aggiunta (raccomandazione manual/ordini_righe.md): CHECK di co-presenza
+# UoM operativa <-> qta operativa, oggi garantita solo dal trigger
+# trgfn_qta_from_operativa. Additivo: una preCondition verifica che nessuna riga
+# esistente violi la co-presenza (in dev, se fallisce, correggere il dato a mano
+# -- AGENTS.md Workflow Safety -- non aggiungere codice di fix).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260603-11-fix-chk-ordini-righe-qta-pos-mctit.yaml
+
+  - changeSet:
+      id: 20260603-11-fix-chk-ordini-righe-qta-pos
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Corregge chk_ordini_v_r_qta_pos su vendite.ordini_righe da
+        (prezzo_unitario >= 0) a (quantita > 0) e aggiunge il CHECK di
+        co-presenza UoM operativa <-> qta operativa.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: vendite
+              tableName: ordini_righe
+              columnName: quantita
+          # Nessuna riga deve avere quantita <= 0 (altrimenti il nuovo CHECK
+          # fallirebbe la validazione): in dev correggere/cancellare il dato.
+          - sqlCheck:
+              expectedResult: "0"
+              sql: SELECT COUNT(*) FROM vendite.ordini_righe WHERE quantita IS NULL OR quantita <= 0
+          # Nessuna riga deve violare la co-presenza UoM operativa <-> qta operativa.
+          - sqlCheck:
+              expectedResult: "0"
+              sql: >
+                SELECT COUNT(*) FROM vendite.ordini_righe
+                 WHERE (uom_operativa_id IS NULL) <> (qta_operativa IS NULL)
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- FIX: chk_ordini_v_r_qta_pos doveva vincolare la QUANTITA',
+              -- non il prezzo (gia' coperto da chk_ordini_v_r_prezzo_pos).
+              -- ==========================================================
+              ALTER TABLE vendite.ordini_righe
+                  DROP CONSTRAINT IF EXISTS chk_ordini_v_r_qta_pos;
+              ALTER TABLE vendite.ordini_righe
+                  ADD CONSTRAINT chk_ordini_v_r_qta_pos
+                  CHECK (quantita > 0);
+
+              -- Co-presenza UoM operativa: o entrambe valorizzate o entrambe
+              -- NULL (la base quantita deriva dall'operativa via trigger
+              -- trgfn_qta_from_operativa; il CHECK rende esplicito l'invariante).
+              ALTER TABLE vendite.ordini_righe
+                  ADD CONSTRAINT chk_ordini_v_r_uom_qta_operativa_copres
+                  CHECK ((uom_operativa_id IS NULL) = (qta_operativa IS NULL));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ordini_righe
+                  DROP CONSTRAINT IF EXISTS chk_ordini_v_r_uom_qta_operativa_copres;
+              ALTER TABLE vendite.ordini_righe
+                  DROP CONSTRAINT IF EXISTS chk_ordini_v_r_qta_pos;
+              ALTER TABLE vendite.ordini_righe
+                  ADD CONSTRAINT chk_ordini_v_r_qta_pos
+                  CHECK (prezzo_unitario >= 0);

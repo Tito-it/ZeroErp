@@ -49,9 +49,9 @@ dal trigger `trgfn_ui_lista_colonna_a10_valida_campo_sorgente`):
 In più la vista è `WITH (security_invoker = on)` (standard liste DEF-8,
 RLS-ready) e **non** espone `termine_pagamento_*` (non serve alla lista).
 
-> La `vw_preventivi_list` resta viva (deprecata) finché il backend non commuta
-> `list_preventivi` e `list_revisioni` sulla vista canonica; poi verrà droppata
-> con un changeset di cleanup dedicato.
+> La vista precedente `vw_preventivi_list` è stata **rimossa** (DROP changeset
+> `20260603-09`) dopo la commutazione del backend (`list_preventivi`,
+> `list_revisioni`) sulla vista canonica.
 
 ---
 
@@ -61,8 +61,8 @@ La vista legge **`FROM vendite.vw_preventivi p`**, non dalla tabella
 `vendite.preventivi`. Motivo: la colonna fisica `is_revision_attiva` è stata
 **droppata** e `is_attiva` è ora **derivata** in `vw_preventivi` (`TRUE` se non
 esiste una revisione successiva non-abortita). Leggendo dalla vista base si
-riusa quella derivazione senza duplicare logica — stesso pattern di
-`vw_preventivi_list` corrente.
+riusa quella derivazione senza duplicare logica — stesso pattern adottato dalla
+precedente `vw_preventivi_list` (ora rimossa).
 
 ---
 

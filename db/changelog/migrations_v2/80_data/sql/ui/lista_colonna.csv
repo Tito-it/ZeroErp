@@ -102,3 +102,27 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 101,6,data_rifiuto,Rifiutata,Data di rifiuto,data_rifiuto,informazione,date,date_short,110,230,center,Ciclo vita,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_data_rifiuto
 102,6,data_annullamento,Annullata,Data di annullamento,data_annullamento,informazione,date,date_short,110,240,center,Ciclo vita,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_data_annullamento
 103,6,data_insert,Creazione,Data di inserimento dell offerta,data_insert,informazione,datetime,datetime_short,150,250,center,Audit,9,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_data_insert
+104,7,numero,Numero,Numero dell ordine,numero,identificatore,string,,130,10,left,Identificazione,1,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_numero
+105,7,data,Data,Data dell ordine,data,informazione,date,date_short,110,20,center,Identificazione,1,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_data
+106,7,ragione_sociale_completa,Cliente,Ragione sociale completa del cliente,ragione_sociale_completa,informazione,string,,200,30,left,Cliente,2,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_ragione_sociale
+107,7,ba_codice,Cd. Account,Codice del billing account,ba_codice,informazione,string,,120,40,left,Cliente,2,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_ba_codice
+108,7,id_fiscale,Id. Fiscale,Identificativo fiscale univoco (CF o P.IVA),id_fiscale_univoco_cf_piva,informazione,string,,140,50,left,Cliente,2,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_id_fiscale
+109,7,utility_codice,Utility,Codice del servizio o commodity,utility_codice,informazione,string,,100,60,left,Fornitura,3,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_utility
+110,7,totale_doc,Totale,Totale del documento,totale_doc,informazione,numeric,currency_eur,130,70,right,Importi,4,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_totale
+111,7,fatturazione_trigger,Trigger fatt.,Evento che innesca la fatturazione (CONFERMATO/SPEDITO/CONSEGNATO),fatturazione_trigger,informazione,string,,120,80,left,Ciclo vita,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_fatturazione_trigger
+112,7,stato,Stato,Stato corrente dell ordine,stato_descrizione,informazione,string,,130,90,center,Stato,7,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_stato
+113,7,azioni,Azioni,,,azione,string,,60,999,center,,99,f,f,f,f,f,t,2026-06-03 00:00:00,mctit,common.col_azioni
+114,7,stato_codice_interno,Cod. Stato,Codice interno dello stato per la severita del Tag FE,stato_codice_interno,informazione,string,,80,130,left,Stato,7,f,f,f,f,f,t,2026-06-03 00:00:00,mctit,
+115,7,utility_descrizione,Descr. Utility,Descrizione del servizio o commodity,utility_descrizione,informazione,string,,160,140,left,Fornitura,3,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_utility_descrizione
+116,7,canale_origine,Canale,Canale di origine dell ordine (ADMIN/PORTALE/SHOP),canale_origine,informazione,string,,120,150,left,Ciclo vita,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_canale_origine
+117,7,imponibile_tot,Imponibile,Totale imponibile,imponibile_tot,informazione,numeric,currency_eur,120,160,right,Importi,4,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_totale_imponibile
+118,7,iva_tot,IVA,Totale IVA,iva_tot,informazione,numeric,currency_eur,120,170,right,Importi,4,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_totale_iva
+119,7,modalita_pagamento,Mod. pagamento,Modalita di pagamento,modalita_pagamento_codice,informazione,string,,150,180,left,Pagamento,5,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_modalita_pagamento
+120,7,termine_pagamento,Termine pag.,Termine di pagamento,termine_pagamento_codice,informazione,string,,150,190,left,Pagamento,5,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_termine_pagamento
+121,7,valuta,Valuta,Codice valuta dell ordine,valuta_codice,informazione,string,,90,200,left,Importi,4,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_valuta
+122,7,emittente_fiscale_codice,Emittente,Codice dell emittente fiscale,emittente_fiscale_codice,informazione,string,,120,210,left,Emittente,8,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_emittente
+123,7,anno,Anno,Anno dell ordine,anno,informazione,numeric,,80,220,center,Identificazione,1,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_anno
+124,7,serie,Serie,Serie dell ordine,serie,informazione,string,,90,230,left,Identificazione,1,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_serie
+125,7,documento_origine,Origine,Documento commerciale di origine (preventivo/offerta),documento_origine_codice,informazione,string,,160,240,left,Origine,10,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_documento_origine
+126,7,agente,Agente,Agente o venditore dell ordine,agente_denominazione,informazione,string,,180,250,left,Commerciale,9,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_agente
+127,7,data_insert,Creazione,Data di inserimento dell ordine,data_insert,informazione,datetime,datetime_short,150,260,center,Audit,11,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_data_insert

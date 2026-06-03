@@ -106,20 +106,24 @@ l'ordine «nasce dal nulla» e la conversione preventivo/offerta→ordine perde
 provenienza/tracciabilità.
 
 - **Requisito**: link **interrogabile** documento commerciale upstream → ordine.
-  Due strade:
-  - **(A1)** FK tipizzata dedicata: `documento_origine_tipo` (lookup/enum
-    `PREVENTIVO`/`OFFERTA`/…) + `documento_origine_id bigint`.
-  - **(A2) — RACCOMANDATA**: riuso di `sorgente_tipo_id`/`sorgente_uid` (già
-    presenti in testata) come link interno, estendendo `config.sorgenti` con i
-    tipi documento **interni** (PREVENTIVO/OFFERTA).
-- **Perché A2** (memoria `feedback_simmetria_modello_no_meta_scope`): le **righe**
-  ordine hanno **già** `sorgente_tipo_id`/`sorgente_uid` (con UQ di idempotenza
-  import) per tracciare la riga-preventivo d'origine. Con A1 la testata userebbe un
-  meccanismo diverso dalle righe per la **stessa** conversione → asimmetria
-  testata/riga. A2 le tiene sulla **stessa lingua**. Unico vincolo da confermare al
-  team DB (memoria `feedback_db_actions_passaggio_team`): `config.sorgenti` può
-  ospitare tipi **interni** senza collidere con l'idempotenza import (UQ
-  `uq_ordini_v_sorgente_fk` / `uq_ordini_righe_v_sorgente_fk`).
+  Due strade valutate:
+  - **(A1) — RATIFICATA (Tid, 2026-06-03)**: FK tipizzata dedicata
+    `documento_origine_tipo` (lookup/enum `PREVENTIVO`/`OFFERTA`/…) +
+    `documento_origine_id bigint`, **senza UNIQUE**.
+  - **(A2) — SCARTATA**: riuso di `sorgente_tipo_id`/`sorgente_uid` come link
+    interno, estendendo `config.sorgenti` con i tipi documento interni.
+- **Perché A1 e non A2** (rettifica post-verifica DDL 2026-06-03, vedi
+  [db-brief-ordini-vendita.md §1.A](./db-brief-ordini-vendita.md)): A2 sembrava più
+  «simmetrica» con le righe (che usano `sorgente_*` con UQ di idempotenza import), ma
+  la verifica ha scoperto che quella simmetria è **fuorviante**. ① L'UQ
+  `uq_ordini_v_sorgente_fk` su `(sorgente_tipo_id, sorgente_uid)` imporrebbe in testata
+  l'invariante **«1 preventivo/offerta → 1 ordine»**, bloccando riordini e consegne
+  parziali (regola di dominio implicita, non voluta). ② `config.sorgenti` ha già
+  `PREVENTIVO`/`OFFERTA_COMMERCIALE` con `scope=PUSH_*` (registry handler), semantica
+  **diversa** dalla provenienza → riusarli sovraccarica la colonna. A1 modella la
+  provenienza in modo esplicito, senza UNIQUE → **più ordini da una stessa origine**;
+  costo equivalente (memoria `feedback_no_quick_fix_soluzione_assoluta` +
+  `feedback_simmetria_modello_no_meta_scope`).
 - **Nota di confine**: A *abilita* la conversione preventivo/offerta→ordine (oggi
   inesistente) ma **non** la implementa in questo scheletro — la conversione è uno
   step successivo (§7.4). Qui si predispone solo la colonna + la valorizzazione in
@@ -206,11 +210,14 @@ qui serve il workstream **DB-ORD**: **estensione modello A+E** (§3.0) + vista l
 ### 3.0 Estensione modello testata (A+E) — DDL additivo
 
 Changeset additivo/correttivo (additive+nullable → no impatto trigger/RLS):
-- **A — link origine (A2 raccomandata, §1.bis)**: estendere `config.sorgenti` con
-  i tipi documento **interni** (PREVENTIVO/OFFERTA) e usare `sorgente_tipo_id`/
-  `sorgente_uid` (già in testata) come link interno — simmetrico con le righe.
-  Fallback A1 (FK dedicata `documento_origine_*`) solo se l'idempotenza import non
-  è conciliabile. **Scelta finale al team DB**.
+- **A — link origine (A1 ratificata, §1.bis)**: FK tipizzata dedicata
+  `documento_origine_tipo` (vocabolario PREVENTIVO/OFFERTA — enum o lookup, scelta DB)
+  + `documento_origine_id bigint`, **entrambe nullable, senza UNIQUE** (più ordini da
+  una stessa origine). **NON** riusare `config.sorgenti`/`sorgente_*` (A2 scartata:
+  l'UQ `uq_ordini_v_sorgente_fk` imporrebbe l'1:1 e lo `scope` PUSH_* ha altra
+  semantica — vedi [db-brief §1.A](./db-brief-ordini-vendita.md)). Riferimento
+  polimorfo (preventivo *o* offerta secondo il tipo): integrità garantita alla
+  valorizzazione (conversione §7.4), non con FK fisica unica.
 - **E — agente**: `agente_soggetto_ruolo_id bigint NULL` FK
   `anagrafiche.soggetti_ruoli` (+ guard `child_requires_active_parent` coerente
   con gli altri FK della testata).
@@ -615,8 +622,9 @@ sul documento upstream. Lo scheletro deve solo **non chiudere la porta** (colonn
 
 ### Estensioni di modello — esito ratifica (2026-06-03)
 
-✅ **Integrate ora** (brief DB-ORD §3.0): **A** link documento di origine, **E**
-agente/venditore.
+✅ **Integrate ora** (brief DB-ORD §3.0): **A** link documento di origine
+(**variante A1** — FK dedicata senza UNIQUE, ratificata dopo verifica DDL; A2
+scartata, §1.bis), **E** agente/venditore.
 
 ### 8.bis. Rimandate (registrate, basso costo futuro)
 
@@ -648,9 +656,10 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 ## 9. Sequenza consigliata
 
 1. **Ratifica decisioni §8** (Tid).
-2. **Consegna analisi al team DB** (`dev/db-tid`): questa analisi è l'input, il
-   team DB ne deriva il changeset — **estensione modello A+E** (§3.0: link origine
-   A2 + `agente_soggetto_ruolo_id`), **fix check** `chk_ordini_v_r_qta_pos` →
+2. **Consegna al team DB** (`dev/db-tid`): il brief eseguibile è
+   [db-brief-ordini-vendita.md](./db-brief-ordini-vendita.md) (derivato da questa
+   analisi + verifica DDL) — **estensione modello A+E** (§3.0: link origine
+   **A1** FK dedicata + `agente_soggetto_ruolo_id`), **fix check** `chk_ordini_v_r_qta_pos` →
    `quantita > 0`, vista `vw_ordini_lista` canonica (espone origine/agente),
    `ui.lista_definizione` id=7 + catalogo lista_id=7 + preset `ordini_default` +
    `priorita` + pgTAP. DB-A (`priorita`) già atterrato.

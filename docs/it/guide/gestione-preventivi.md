@@ -10,7 +10,7 @@
 >
 > * [vendite.preventivi](/dbzero/vendite/tabelle/preventivi) / [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe) / [vendite.preventivi_righe_componenti](/dbzero/vendite/tabelle/preventivi_righe_componenti)
 > * [vendite.preventivi_indirizzi](/dbzero/vendite/tabelle/preventivi_indirizzi)
-> * [vendite.vw_preventivi](/dbzero/vendite/manual/vw_preventivi) / [vendite.vw_preventivi_list](/dbzero/vendite/manual/vw_preventivi_list)
+> * [vendite.vw_preventivi](/dbzero/vendite/manual/vw_preventivi) / [vendite.vw_preventivi_lista](/dbzero/vendite/manual/vw_preventivi_lista)
 > * [config.stati_doc_preventivi](/dbzero/config/tabelle/stati_doc_preventivi) / [config.transizioni_stati_preventivi](/dbzero/config/tabelle/transizioni_stati_preventivi)
 > * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — BoM versionata immutabile
 >

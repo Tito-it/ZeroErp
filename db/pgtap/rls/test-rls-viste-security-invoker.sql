@@ -33,16 +33,16 @@ $$;
 
 SELECT ok(pg_temp.is_invoker('vendite','vw_preventivi'),
     '1. vendite.vw_preventivi -> security_invoker=on');
-SELECT ok(pg_temp.is_invoker('vendite','vw_preventivi_list'),
-    '2. vendite.vw_preventivi_list -> security_invoker=on');
+SELECT ok(pg_temp.is_invoker('vendite','vw_preventivi_lista'),
+    '2. vendite.vw_preventivi_lista -> security_invoker=on');
 SELECT ok(pg_temp.is_invoker('vendite','vw_preventivi_pratiche'),
     '3. vendite.vw_preventivi_pratiche -> security_invoker=on');
 SELECT ok(pg_temp.is_invoker('vendite','vw_preventivi_stato_fatturazione'),
     '4. vendite.vw_preventivi_stato_fatturazione -> security_invoker=on');
 SELECT ok(pg_temp.is_invoker('vendite','vw_preventivi_stato_fatturazione_righe'),
     '5. vendite.vw_preventivi_stato_fatturazione_righe -> security_invoker=on');
-SELECT ok(pg_temp.is_invoker('vendite','vw_offerte_commerciali_list'),
-    '6. vendite.vw_offerte_commerciali_list -> security_invoker=on');
+SELECT ok(pg_temp.is_invoker('vendite','vw_offerte_commerciali_lista'),
+    '6. vendite.vw_offerte_commerciali_lista -> security_invoker=on');
 SELECT ok(pg_temp.is_invoker('anagrafiche','vw_clienti_lista'),
     '7. anagrafiche.vw_clienti_lista -> security_invoker=on');
 SELECT ok(pg_temp.is_invoker('anagrafiche','vw_clienti_codice_ba'),

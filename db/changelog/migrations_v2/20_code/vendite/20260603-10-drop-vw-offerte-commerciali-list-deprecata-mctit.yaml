@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Cleanup DEF-8 (db-brief-lista-preventivi-offerte §6 NOTA): DROP della vista
+# deprecata vendite.vw_offerte_commerciali_list, sostituita dalla canonica
+# self-contained vendite.vw_offerte_commerciali_lista (20260603-06).
+#
+# Pre-requisito (VERIFICATO 2026-06-03): il backend ha commutato il consumer
+# sulla vista canonica (commit BE su dev/backend-tid, PR #763):
+#   - offerte_repository.list_offerte -> vw_offerte_commerciali_lista
+#     (_FROM_LISTA_OFFERTE = "FROM vendite.vw_offerte_commerciali_lista v")
+# Nessun altro oggetto DB dipende dalla vista (occorrenze in 20260601-26 sono
+# ALTER ... IF EXISTS idempotenti). Il pgTAP test-rls-viste-security-invoker.sql
+# e' aggiornato in lockstep (asserzione ripuntata su vw_offerte_commerciali_lista).
+#
+# DROP semplice (no CASCADE): nessun dipendente. Rollback ricrea la vista nella
+# sua ultima definizione (security_invoker=on).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260603-10-drop-vw-offerte-commerciali-list-deprecata-mctit.yaml
+
+  - changeSet:
+      id: 20260603-10-drop-vw-offerte-commerciali-list-deprecata
+      author: mctit
+      failOnError: true
+      comment: >
+        Cleanup DEF-8: DROP vendite.vw_offerte_commerciali_list (deprecata),
+        sostituita da vw_offerte_commerciali_lista. BE gia' commutato (PR #763).
+        Rollback ricrea la vista.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_offerte_commerciali_list;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_offerte_commerciali_list
+              WITH (security_invoker = on) AS
+              SELECT
+                  o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  sdo.codice_interno NOT IN ('SUPERATA', 'ANNULLATA') AS is_attiva,
+                  EXISTS (
+                      SELECT 1 FROM vendite.offerte_commerciali figlio
+                       WHERE figlio.revisione_padre_id = o.id
+                  )                            AS has_next_revisione,
+                  o.stato_doc_offerta_id,
+                  sdo.codice                   AS stato_codice,
+                  sdo.codice_interno           AS stato_codice_interno,
+                  sdo.descrizione              AS stato_descrizione,
+                  o.billing_account_id,
+                  ba.codice                    AS billing_account_codice,
+                  s.id                         AS soggetto_id,
+                  s.ragione_sociale_completa   AS cliente_denominazione,
+                  s.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  o.emittente_fiscale_id,
+                  o.utility_id,
+                  u.codice                     AS utility_codice,
+                  u.descrizione                AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice                    AS istanza_utility_codice,
+                  o.listino_id,
+                  o.listino_versione_id,
+                  o.valore_variazione_globale,
+                  o.tipo_variazione_globale,
+                  o.validita_dal,
+                  o.validita_al,
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  o.data_insert,
+                  o.user_insert
+              FROM vendite.offerte_commerciali o
+              JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
+              LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = o.istanza_utility_id
+              LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+              LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+              LEFT JOIN config.utilities u ON u.id = o.utility_id
+              ORDER BY o.data_insert DESC, o.id DESC;

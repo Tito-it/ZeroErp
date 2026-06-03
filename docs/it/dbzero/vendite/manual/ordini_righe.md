@@ -25,20 +25,19 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 
 * **Sorgente**: `qta_operativa` + `uom_operativa_id`.
 * **Derivazione**: `quantita = qta_operativa * factor_to_base` (scala 6). `factor_to_base` è lo **snapshot** della regola valida al momento dell’inserimento (o update coerente).
-* **Co‑presenza**: o **entrambi NULL** (non ammesso in produzione) o **entrambi valorizzati**; la validazione è demandata alla trigger `script.trgfn_qta_from_operativa(...)`.
+* **Co‑presenza**: o **entrambi NULL** o **entrambi valorizzati**; ora garantita sia dalla trigger `script.trgfn_qta_from_operativa(...)` sia dal `CHECK chk_ordini_v_r_uom_qta_operativa_copres` (`20260603-11`).
 * **Aggiornamenti**: se cambia `qta_operativa` o `uom_operativa_id`, ricalcola `quantita` e aggiorna `factor_to_base`. Aggiornare direttamente `quantita` non è previsto: eventuali tentativi vanno normalizzati o rifiutati dalla trigger.
 
 ---
 
 ### Vincoli
 
-* `chk_ordini_v_r_qta_pos` → (da correggere nel DDL: oggi ripete prezzo) **deve validare `quantita > 0`**.
+* `chk_ordini_v_r_qta_pos` → **`quantita > 0`** ✅ corretto in `20260603-11` (in precedenza replicava per errore `prezzo_unitario >= 0`, guard sulla quantità mancante).
+* `chk_ordini_v_r_uom_qta_operativa_copres` → `(uom_operativa_id IS NULL) = (qta_operativa IS NULL)` ✅ aggiunto in `20260603-11` (co‑presenza operativa).
 * `check_ordini_righe_qta_operativa_pos` → `qta_operativa > 0` (consente `NULL`).
-* `chk_ordini_v_r_prezzo_pos` → `prezzo_unitario >= 0`.
+* `chk_ordini_v_r_prezzo_pos` → `prezzo_unitario >= 0` (l'omaggio è `quantita > 0` + `prezzo_unitario = 0`).
 * `chk_ordini_v_r_sconto_perc` → tra 0 e 100.
 * **UQ**: `(ordine_id, riga_nr)`; **UQ idempotenza**: `(sorgente_tipo_id, sorgente_uid)` filtro `WHERE sorgente_tipo_id IS NOT NULL`.
-
-> *Suggerimento schema*: aggiungere un `CHECK` di co‑presenza operativa: `(uom_operativa_id IS NULL) = (qta_operativa IS NULL)`.
 
 ---
 
@@ -60,10 +59,10 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 
 ### Tabella note migliorie (dal DDL ricevuto)
 
-1. **BUG vincolo quantità**: `chk_ordini_v_r_qta_pos` oggi replica `prezzo_unitario >= 0` → **correggere** a `quantita > 0`.
-2. **Co‑presenza operativa**: aggiungere `CHECK ((uom_operativa_id IS NULL) = (qta_operativa IS NULL))` per impedire stati ibridi.
-3. **Chiarezza `qta_operativa > 0`**: il `CHECK` attuale passa con `NULL` (comportamento desiderato). Per leggibilità, si può rendere esplicito: `CHECK (qta_operativa IS NULL OR qta_operativa > 0)`.
-4. **Deduplicate items**: uniformare `deduplicate_items=True` → `true` (stile SQL coerente con il resto del progetto).
+1. ✅ **RISOLTO (`20260603-11`)** — BUG vincolo quantità: `chk_ordini_v_r_qta_pos` replicava `prezzo_unitario >= 0`; corretto a `quantita > 0`.
+2. ✅ **RISOLTO (`20260603-11`)** — Co‑presenza operativa: aggiunto `CHECK ((uom_operativa_id IS NULL) = (qta_operativa IS NULL))` (`chk_ordini_v_r_uom_qta_operativa_copres`) per impedire stati ibridi.
+3. **Chiarezza `qta_operativa > 0`** (aperto): il `CHECK` attuale passa con `NULL` (comportamento desiderato). Per leggibilità si può rendere esplicito: `CHECK (qta_operativa IS NULL OR qta_operativa > 0)`.
+4. **Deduplicate items** (aperto): uniformare `deduplicate_items=True` → `true` (stile SQL coerente con il resto del progetto).
 
 ---
 
@@ -95,11 +94,11 @@ GROUP BY r.id;
 
 * [ ] Trigger **delete‑block** attiva.
 * [ ] Trigger **qta_from_operativa** attiva e copre INSERT/UPDATE.
-* [ ] `chk_ordini_v_r_qta_pos` **corretto** a `quantita > 0`.
+* [x] `chk_ordini_v_r_qta_pos` **corretto** a `quantita > 0` (`20260603-11`).
 * [ ] `factor_to_base` aggiornato a ogni variazione UoM/quantità.
 * [ ] UQ progressivo riga per testata.
 * [ ] UQ idempotenza import attiva.
-* [ ] Co‑presenza operativa garantita.
+* [x] Co‑presenza operativa garantita (CHECK `chk_ordini_v_r_uom_qta_operativa_copres`, `20260603-11`).
 
 ---
 

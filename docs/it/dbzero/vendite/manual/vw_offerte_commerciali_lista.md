@@ -54,9 +54,9 @@ Due salti rispetto alla vista list precedente:
 
 In più è `WITH (security_invoker = on)` (RLS-ready).
 
-> La `vw_offerte_commerciali_list` resta viva (deprecata) finché il backend non
-> commuta `list_offerte` sulla vista canonica; poi verrà droppata con un
-> changeset di cleanup dedicato.
+> La vista precedente `vw_offerte_commerciali_list` è stata **rimossa** (DROP
+> changeset `20260603-10`) dopo la commutazione del backend (`list_offerte`)
+> sulla vista canonica.
 
 ---
 

@@ -228,10 +228,9 @@
 - [trgfn_promo_articoli_guard_data_driven](manual/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
 
 ## 🔍 Views (manuale)
-- [vw_offerte_commerciali_list](manual/vw_offerte_commerciali_list.md) — (rev 2026-05-27 — rev1)
 - [vw_offerte_commerciali_lista](manual/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
+- [vw_ordini_lista](manual/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_preventivi](manual/vw_preventivi.md) — (rev 15-05-2026)
-- [vw_preventivi_list](manual/vw_preventivi_list.md) — (latest review 15-05-2026 — rev4)
 - [vw_preventivi_lista](manual/vw_preventivi_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_preventivi_pratiche](manual/vw_preventivi_pratiche.md) — (latest review 03-04-2026) `vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita** tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
 - [vw_preventivi_righe_dettaglio](manual/vw_preventivi_righe_dettaglio.md) — (latest review 02-05-2026)

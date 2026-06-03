@@ -34,13 +34,19 @@
 | canale_origine | USER-DEFINED | NO | 'ADMIN'::config.canale_origine |
 | utility_id | integer | YES |  |
 | emittente_fiscale_id | bigint | NO |  |
+| agente_soggetto_ruolo_id | bigint | YES |  |
+| documento_origine_tipo | character varying | YES |  |
+| documento_origine_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_ordini_documento_origine_copres |  |
+| CHECK | chk_ordini_documento_origine_tipo |  |
 | CHECK | chk_ordini_fatturazione_trigger |  |
 | FOREIGN KEY | fk_ordini_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_ordini_termini_pagamento | termine_pagamento_id |
+| FOREIGN KEY | fk_ordini_v_agente_ruolo | agente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_ordini_v_billing_account | billing_account_id |
 | FOREIGN KEY | fk_ordini_v_cliente_ruolo | soggetto_ruolo_id |
 | FOREIGN KEY | fk_ordini_v_modpag | modalita_pagamento_id |
