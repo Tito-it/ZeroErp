@@ -31,7 +31,6 @@ RETURNS TABLE (
     prezzo_unitario   vendite.ordini_righe.prezzo_unitario%TYPE,
     sconto_perc       vendite.ordini_righe.sconto_perc%TYPE,
     iva_id            vendite.ordini_righe.iva_id%TYPE,
-    iva_perc          vendite.ordini_righe.iva_perc%TYPE,
     tipo_eccezione    vendite.tipo_eccezione_contratto,
     origine           varchar,
     componenti        jsonb
@@ -48,9 +47,9 @@ LANGUAGE plpgsql STABLE
 ## Differenze rispetto a fn_contratto_righe_preview
 
 | Aspetto | preview contratti (drawer) | offerta espansa (ordine) |
-|---|---|---|
+| --- | --- | --- |
 | ESCLUSIONE | riga mostrata, `prezzo_finale` NULL | **riga rimossa** |
-| IVA | non risolta | `iva_id` (da articolo) + `iva_perc` (da `config.iva.aliquota_iva`) |
+| IVA | non risolta | `iva_id` (da articolo); l'aliquota si deriva da `iva_id` (no `iva_perc`) |
 | Sconto | n/d | `sconto_perc` = NULL (lo sconto è già nel prezzo override) |
 | UoM | `uom_id` listino | `uom_operativa_id`/`qta_operativa`/`factor_to_base` mappati su `ordini_righe` |
 | Quantità da-listino | NULL | **default 1** |

@@ -9,15 +9,16 @@ CREATE FUNCTION fn_offerta_righe_espanse(p_offerta_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
- RETURNS TABLE(articolo_id uuid, articolo_codice character varying, descrizione character varying, is_composito boolean, quantita numeric, uom_operativa_id bigint, qta_operativa numeric, factor_to_base numeric, prezzo_unitario numeric, sconto_perc numeric, iva_id integer, iva_perc numeric, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, componenti jsonb)
+ RETURNS TABLE(articolo_id uuid, articolo_codice character varying, descrizione character varying, is_composito boolean, quantita numeric, uom_operativa_id bigint, qta_operativa numeric, factor_to_base numeric, prezzo_unitario numeric, sconto_perc numeric, iva_id integer, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, componenti jsonb)
  LANGUAGE plpgsql
  STABLE
 AS $function$
 -- Scopo: righe effettive ordine-ready di un'offerta (listino + variazione
 --   globale + eccezioni). Parte 1 dal core fn_espandi_listino_versione +
 --   overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle.
---   iva risolta dall'articolo (listino non porta iva). sconto NULL: lo sconto
---   e' espresso come prezzo override (prezzo_unitario = prezzo finale netto).
+--   iva_id risolta dall'articolo (listino non porta iva; iva_perc non esiste
+--   su ordini_righe: la percentuale si deriva da iva_id). sconto NULL: lo
+--   sconto e' espresso come prezzo override (prezzo_unitario = prezzo netto).
 --   quantita default 1 per righe da-listino senza eccezione.
 DECLARE
     v_listino_id          vendite.offerte_commerciali.listino_id%TYPE;
@@ -66,7 +67,6 @@ BEGIN
         END,
         NULL::numeric,
         a.iva_id::integer,
-        iv.aliquota_iva,
         ecc.tipo_eccezione,
         CASE
             WHEN ecc.tipo_eccezione = 'OVERRIDE' THEN 'OVERRIDE'
@@ -77,7 +77,6 @@ BEGIN
                v_listino_versione_id, v_tipo_var, v_valore_var
            ) base
       JOIN catalogo.articoli a ON a.id = base.articolo_id
-      LEFT JOIN config.iva iv   ON iv.id = a.iva_id
       LEFT JOIN vendite.offerte_commerciali_eccezioni ecc
              ON ecc.offerta_id            = p_offerta_id
             AND ecc.articolo_id           = base.articolo_id
@@ -99,14 +98,12 @@ BEGIN
         ecc.prezzo_unitario,
         NULL::numeric,
         a.iva_id::integer,
-        iv.aliquota_iva,
         ecc.tipo_eccezione,
         'AGGIUNTA'::varchar,
         NULL::jsonb
       FROM vendite.offerte_commerciali_eccezioni ecc
       JOIN catalogo.articoli a
         ON a.id = ecc.articolo_id AND a.is_composito = FALSE AND a.attivo = TRUE
-      LEFT JOIN config.iva iv ON iv.id = a.iva_id
      WHERE ecc.offerta_id           = p_offerta_id
        AND ecc.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
        AND COALESCE(ecc.attivo, TRUE) = TRUE;
@@ -122,7 +119,6 @@ BEGIN
         ecc.prezzo_unitario,
         NULL::numeric,
         a.iva_id::integer,
-        iv.aliquota_iva,
         ecc.tipo_eccezione,
         'AGGIUNTA'::varchar,
         (
@@ -148,7 +144,6 @@ BEGIN
       FROM vendite.offerte_commerciali_eccezioni ecc
       JOIN catalogo.articoli a
         ON a.id = ecc.articolo_id AND a.is_composito = TRUE AND a.attivo = TRUE
-      LEFT JOIN config.iva iv ON iv.id = a.iva_id
      WHERE ecc.offerta_id           = p_offerta_id
        AND ecc.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
        AND COALESCE(ecc.attivo, TRUE) = TRUE;
@@ -156,7 +151,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
-IS 'Righe effettive ordine-ready di un''offerta (listino + variazione globale + eccezioni) per la conversione offerta->ordine. Parte 1 dal core fn_espandi_listino_versione + overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle. iva da articolo; sconto NULL (prezzo gia'' netto); quantita default 1 per righe da-listino. listino_id NOT NULL: nessun ramo senza listino.';
+IS 'Righe effettive ordine-ready di un''offerta (listino + variazione globale + eccezioni) per la conversione offerta->ordine. Parte 1 dal core fn_espandi_listino_versione + overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle. iva_id da articolo (iva_perc non esiste su ordini_righe: si deriva da iva_id); sconto NULL (prezzo gia'' netto); quantita default 1 per righe da-listino. listino_id NOT NULL: nessun ramo senza listino.';
 ```
 
 ---
