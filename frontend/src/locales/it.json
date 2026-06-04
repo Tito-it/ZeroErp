@@ -2209,6 +2209,8 @@
   "preventivi": {
     "note_titolo": "Note preventivo",
     "gestisci_note": "Gestisci note",
+    "azione_genera_ordine": "Genera ordine",
+    "ordine_generato": "Ordine {numero} generato dal preventivo.",
     "pdf": {
       "label_anteprima": "Anteprima",
       "tooltip_anteprima": "Anteprima PDF (non viene salvata)",

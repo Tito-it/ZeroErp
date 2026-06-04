@@ -36,8 +36,12 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 - **Estensioni modello 2026-06-03**: **agente** (`agente_soggetto_ruolo_id`,
   nullable) ed **origine documento** (A1: `documento_origine_tipo` ∈
   {`PREVENTIVO`,`OFFERTA`} + `documento_origine_id`, **senza UNIQUE** → una
-  origine può generare più ordini). Lo scheletro **non valorizza** le colonne
-  origine (le userà la conversione upstream, step successivo).
+  origine può generare più ordini). Valorizzate dalla **conversione upstream**:
+  `documento_origine = ('PREVENTIVO', id)` impostato da
+  `ordini_service.crea_ordine_da_preventivo` (vedi
+  [api_preventivi.md §6c](api_preventivi.md), endpoint `genera-ordine`, fatto
+  2026-06-04). La variante offerta è bloccata da un prerequisito DB (brief
+  `db-brief-offerta-righe-espanse.md`). La CREATE diretta lascia le colonne NULL.
 - **Pagamento/valuta**: `modalita_pagamento_id`, `termine_pagamento_id`,
   `valuta_id`, `tasso_cambio` (default 1). `giorni_pagamento`/`fine_mese` e i
   campi trasporto **non sono in testata** (droppati `20251027-01`; vivono su
@@ -121,11 +125,18 @@ aggiornabili: `utility_id`, `valuta_id`, `modalita_pagamento_id`,
 **Cliente immutabile post-creazione** (2026-06-04): `billing_account_id` **non**
 è aggiornabile (a differenza del create, dove deriva `soggetto_ruolo_id`).
 `vendite.ordini` denormalizza `soggetto_ruolo_id` (NOT NULL) accanto a
-`billing_account_id` e nessun trigger li ri-sincronizza su UPDATE → cambiare il
-BA lascerebbe il soggetto stantio. Un PATCH che **cambia** `billing_account_id` è
-rifiutato con `E_ORD_VALIDAZIONE`; lo stesso BA reinviato **invariato** è tollerato
-(il form FE lo può rimandare). Regola «cambiare cliente = nuovo ordine». Difesa DB
-autoritativa (lock-columns) nel brief
+`billing_account_id`. Un PATCH che **cambia** `billing_account_id` è rifiutato con
+`E_ORD_CLIENTE_IMMUTABILE`; lo stesso BA reinviato **invariato** è tollerato (il
+form FE lo può rimandare). Regola «cambiare cliente = nuovo ordine».
+
+**Difesa DB autoritativa atterrata** (DB-ORD-LOCK, 2026-06-04): `billing_account_id`
+**e** `soggetto_ruolo_id` sono immutabili su UPDATE via lock-columns data-driven
+(registro `dbops.automation_lock_columns`, non trigger a mano), che solleva lo
+**stesso** codice `E_ORD_CLIENTE_IMMUTABILE` (estratto da `_db_errors` su UPDATE
+diretta che bypassa il service). Conseguenza correlata: `trgfn_ordini_normalize`
+ora ri-eredita `fatturazione_trigger` dal BA **solo su INSERT** (il ramo UPDATE era
+diventato logica morta). Override straordinario:
+`SET LOCAL zeroerp.allow_lock_columns_override = 'on'`. Brief:
 [db-brief-ordini-lock-cliente.md](../../../dev/work-in-progress/db-brief-ordini-lock-cliente.md).
 
 ### Delete `DELETE /api/v1/vendite/ordini/<id>/`
@@ -213,7 +224,8 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
   scelta ratificata (analisi §8.bis) — pricing **stile preventivo** (resolve +
   prezzo dal caller).
 - **Cliente immutabile in update**: `billing_account_id` fuori dalla whitelist
-  PATCH; cambio rifiutato con `E_ORD_VALIDAZIONE` (vedi Update testata).
+  PATCH; cambio rifiutato con `E_ORD_CLIENTE_IMMUTABILE` (guard BE + lock-columns
+  DB autoritativo, vedi Update testata).
 - **Scope emittente**: la vista è `security_invoker=on` (RLS attiva sulla tabella
   base); il filtro applicativo `fn_get_emittenti_scope_pk_ids` si somma
   (defense-in-depth). Un detail fuori scope torna **404**.
@@ -224,7 +236,8 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | Codice | HTTP | Quando |
 | --- | --- | --- |
 | `E_ORD_NOT_FOUND` | 404 | ordine/riga/componente inesistente o fuori scope |
-| `E_ORD_VALIDAZIONE` | 400 | payload non valido (cliente mancante, campi vuoti, ecc.) |
+| `E_ORD_VALIDAZIONE` | 400 | payload non valido (cliente mancante, campi vuoti, `billing_account_id` non numerico, ecc.) |
+| `E_ORD_CLIENTE_IMMUTABILE` | 400 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (guard BE + lock-columns DB) |
 | `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato corrente |
 | `E_ORD_NESSUNA_RIGA` | 409 | conferma/push senza righe eleggibili |
 | `E_VENDITE_DUPLICATO` / `E_VENDITE_FK` | 409 / 400 | violazione UNIQUE/FK (via `map_integrity_error`) |
@@ -250,6 +263,11 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
 - Modello esteso: `agente_soggetto_ruolo_id` (`20260603-12`),
   `documento_origine_tipo`/`_id` (`20260603-13`), fix `chk_ordini_v_r_qta_pos`
   → `quantita > 0` (`20260603-11`).
+- Immutabilità cliente (DB-ORD-LOCK, 2026-06-04): `billing_account_id` +
+  `soggetto_ruolo_id` lockati su UPDATE via registro `dbops.automation_lock_columns`
+  (2 righe → trigger `trg_ordini_a10_lock_columns_upd` con codice
+  `E_ORD_CLIENTE_IMMUTABILE`, convive col lock `numero`). `trgfn_ordini_normalize`
+  ripulito: eredità `fatturazione_trigger` solo su INSERT (`20260604-01`).
 - RLS: 3 policy (`rls_ordini_ef_whitelist` / `_cliente_ownership` / `_shop`).
 - Stampa: tipo documento `documenti.tipi_documento_output` `ORDINE_VENDITA`
   (seed, applicato al DB di lavoro 2026-06-04). Template + versione PUBBLICATA =

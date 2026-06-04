@@ -2203,6 +2203,8 @@
   "preventivi": {
     "note_titolo": "Quote notes",
     "gestisci_note": "Manage notes",
+    "azione_genera_ordine": "Generate order",
+    "ordine_generato": "Order {numero} generated from the quote.",
     "pdf": {
       "label_anteprima": "Preview",
       "tooltip_anteprima": "Preview PDF (not saved)",

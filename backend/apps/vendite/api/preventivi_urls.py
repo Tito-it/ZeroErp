@@ -24,6 +24,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventiviList,
     ApiPreventivoContestoPricing,
     ApiPreventivoDetail,
+    ApiPreventivoGeneraOrdine,
     ApiPreventivoGeneraPratica,
     ApiPreventivoIndirizzi,
     ApiPreventivoPratiche,
@@ -77,6 +78,12 @@ urlpatterns = [
         "<int:preventivo_id>/emetti/",
         ApiPreventivoEmetti.as_view(),
         name="vendite-preventivi-emetti",
+    ),
+    # Conversione upstream → ordine (§7.4)
+    path(
+        "<int:preventivo_id>/genera-ordine/",
+        ApiPreventivoGeneraOrdine.as_view(),
+        name="vendite-preventivi-genera-ordine",
     ),
     # Revisione
     path(

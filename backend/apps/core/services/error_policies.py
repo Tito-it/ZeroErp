@@ -1546,6 +1546,19 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri ordine non validi.",
         ),
+        # Cliente (billing_account_id/soggetto_ruolo_id) immutabile post-create.
+        # Sollevato sia dal guard BE (ordini_service.aggiorna_ordine) sia, come
+        # difesa finale, dal lock-columns DB (automation_lock_columns,
+        # DB-ORD-LOCK 2026-06-04, codice DB messaggi_errore id 469).
+        "E_ORD_CLIENTE_IMMUTABILE": ErrorPolicy(
+            code="E_ORD_CLIENTE_IMMUTABILE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message=(
+                "Cliente immutabile dopo la creazione: per cambiare cliente "
+                "crea un nuovo ordine."
+            ),
+        ),
         "E_ORD_STATO_TRANSIZIONE": ErrorPolicy(
             code="E_ORD_STATO_TRANSIZIONE",
             http_status=409,
@@ -1557,6 +1570,18 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_error_banner",
             user_message="L'ordine non ha righe eleggibili per l'operazione.",
+        ),
+        # Conversione upstream (preventivo/offerta → ordine, §7.4): il documento
+        # di origine non è in uno stato che ammette la generazione di un ordine
+        # (es. preventivo non ancora ACCETTATO).
+        "E_ORD_ORIGINE_NON_CONVERTIBILE": ErrorPolicy(
+            code="E_ORD_ORIGINE_NON_CONVERTIBILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il documento di origine non è in uno stato che consente di "
+                "generare un ordine."
+            ),
         ),
         # Codice sollevato da vendite.fn_crea_revisione_preventivo quando esiste
         # gia' una revisione in DRAFT per lo stesso numero. Conflitto di stato:

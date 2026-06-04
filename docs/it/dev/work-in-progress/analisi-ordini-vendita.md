@@ -558,12 +558,13 @@ vendite, lista DEF-8 diretta). File: `api/ordiniApi.js`, `stores/ordini.js`
 
 ### Scelte deliberate / cose mancanti (scheletro)
 
-1. **Agente (E) omesso dal form drawer.** Non esiste un picker per
-   `soggetti_ruoli` ruolo agente né un endpoint lookup dedicato: la colonna è
-   nullable/predisposta. Si aggiunge quando arriva il picker (o con la
-   conversione upstream §7.4). Sviluppo concentrico, non YAGNI
-   (`feedback_concentrico_no_yagni`). La colonna `agente_denominazione` resta
-   comunque opt-in nella lista (catalogo).
+1. **Agente (E) omesso dal form drawer — blocco di modello, non solo UI.**
+   Verifica 2026-06-04: manca l'intero sottosistema agente (il ruolo `VENDITORE`
+   esiste ma non ci sono soggetti, né flusso di creazione, né lookup, né guard sul
+   FK). La colonna `agente_soggetto_ruolo_id` **resta nullable e non gestita**
+   (decisione Tid). Tema rinviato a sviluppo dedicato →
+   [analisi-ruolo-agente.md](analisi-ruolo-agente.md). La colonna
+   `agente_denominazione` resta opt-in nella lista (catalogo), di fatto vuota.
 2. **PDF in lista omesso.** Non c'è generazione documenti `ORDINE_VENDITA` nello
    scheletro BE (nessun endpoint `/documenti/`): la lista resta consultazione +
    note. Si aggancia `EntityPdfButton`/`PdfDocumentiSorgenteDialog` quando esisterà
@@ -608,13 +609,23 @@ trattano cliente/utility come immutabili post-create) e con il lock FE già
 presente. Test: `test_ordini_service.py` (cambio BA rifiutato / BA invariato
 tollerato / payload senza BA aggiorna) — 12/12 verdi + `test_ordini_api` 9/9.
 
-**Difesa DB autoritativa (DB-first, pendente)**: il guard BE è solo metà del
-pattern canonico ZeroErp (guard applicativo + trigger DB come difesa finale). Il
-lock immutabilità a livello DB (estensione di `trg_ordini_a10_lock_columns_upd` a
-`billing_account_id` + `soggetto_ruolo_id`) è descritto nel brief
-[db-brief-ordini-lock-cliente.md](db-brief-ordini-lock-cliente.md) → consegnato al
-team DB (`dev/db-tid`); il guard BE resta come defense-in-depth + messaggio
-parlante.
+**Difesa DB autoritativa — ✅ ATTERRATA (DB-ORD-LOCK, 2026-06-04)**, con
+**scostamenti dal brief iniziale** (brief
+[db-brief-ordini-lock-cliente.md](db-brief-ordini-lock-cliente.md)):
+
+- meccanismo via **registro data-driven** `dbops.automation_lock_columns` (2
+  righe → trigger generato `trg_ordini_a10_lock_columns_upd`), **non** trigger
+  scritti a mano come ipotizzato nella prima stesura;
+- codice errore **dedicato `E_ORD_CLIENTE_IMMUTABILE`** (id DB 469), scartato il
+  generico `CODICE_NON_MODIFICABILE`;
+- **deliverable extra non previsto**: cleanup di `trgfn_ordini_normalize` →
+  eredità `fatturazione_trigger` ora **solo su INSERT** (il ramo UPDATE era logica
+  morta, contraddittoria col lock). Cambio di comportamento esplicito ratificato.
+
+**Hand-off BE completato (2026-06-04)**: `E_ORD_CLIENTE_IMMUTABILE` registrato in
+`error_policies.py` (400); il guard BE `aggiorna_ordine` ora solleva **lo stesso
+codice** (unificato service↔DB — estratto da `_db_errors` su UPDATE diretta che
+bypassa il service). Guard BE = defense-in-depth + messaggio parlante.
 
 ### BB guardia empty-state estratto + adottato (regola del 2, OK Tid 2026-06-03)
 
@@ -712,15 +723,42 @@ esistente e collaudato** (PROJECT_CONTEXT «Pipeline fatturazione»). Lo schelet
 ordine + conferma chiude quindi un **giro vendita→fattura end-to-end** riusando
 ~90% di codice.
 
-### 7.4 A monte — conversione preventivo/offerta → ordine (step successivo)
-La colonna **A (documento_origine)** *predispone* il giro a monte ma la
-conversione vera (genera ordine da preventivo accettato / offerta) è uno **step
-immediatamente successivo allo scheletro**, non parte di esso (sviluppo
-concentrico — memoria `feedback_concentrico_no_yagni`). Quando si farà: service
-`crea_ordine_da_preventivo(preventivo_id)`/`_da_offerta(...)` che copia testata+
-righe+componenti e valorizza `documento_origine_*`; FE = azione «genera ordine»
-sul documento upstream. Lo scheletro deve solo **non chiudere la porta** (colonna
-+ valorizzazione in CREATE già pronte).
+### 7.4 A monte — conversione preventivo/offerta → ordine
+
+**Preventivo → ordine: ✅ FATTO (2026-06-04).**
+
+- **BE**: `ordini_service.crea_ordine_da_preventivo(preventivo_id)` — guard stato
+  `ACCETTATO` (`E_ORD_ORIGINE_NON_CONVERTIBILE` se no, `E_PREV_NOT_FOUND` se
+  inesistente), copia testata (BA/utility/valuta/termine/emittente) + righe 1:1
+  (prezzi **congelati**; rename `sconto_percentuale`→`sconto_perc`) + componenti
+  BoM (struttura ri-inizializzata ai prezzi correnti — vedi caveat sotto), e
+  valorizza `documento_origine = ('PREVENTIVO', preventivo_id)` via
+  `repo.set_documento_origine` (UPDATE mirato, non tocca le colonne lockate dal
+  DB-ORD-LOCK). Orchestrazione Python riusando `crea_ordine` + `gestisci_riga` in
+  una transazione. Provenienza senza UNIQUE (A1) → più ordini da uno stesso
+  preventivo (riordini). Endpoint `POST /api/v1/vendite/preventivi/<id>/genera-ordine/`
+  (`ApiPreventivoGeneraOrdine`). Test 3/3 (ok/stato/not-found).
+- **FE**: azione statica «Genera ordine» in `PreventiviDrawer` (gated su
+  `ACCETTATO`, nascosta in readonly) → `generaOrdineFromPreventivo` + toast col
+  numero ordine + `emitDataChanged(ORDINE)`.
+- **Caveat componenti** (v1): per le righe composite la struttura BoM è copiata
+  ma i prezzi componente sono **ri-risolti all'ordine** (`gestisci_riga` re-init),
+  non congelati dal preventivo. Coerente con "ordine a prezzi correnti"; copia
+  fedele dei prezzi componente = enhancement futuro (l'override-map di
+  `init_componenti_riga` chiavia per id sorgente↔target in modo non banale).
+
+**Offerta → ordine: ⛔ BLOCCATO (prerequisito DB mancante).** L'offerta **non ha
+righe d'ordine materializzate**: il suo modello documentale è listino + **eccezioni**
+(OVERRIDE/ESCLUSIONE/AGGIUNTA come delta sul listino), senza una `list_righe`
+piatta (a DB non esiste una preview listino offerta analoga a
+`ContrattiRepository.list_righe_preview` — è la stessa "fase 2" già nota al builder
+documenti offerta). Generare le righe ordine richiederebbe **risolvere il listino
+base + applicare le eccezioni** → serve una funzione DB di espansione
+(`fn_offerta_righe_espanse` o simili). Brief:
+[db-brief-offerta-righe-espanse.md](db-brief-offerta-righe-espanse.md). Implementare
+una conversione parziale (solo eccezioni AGGIUNTA/OVERRIDE) sarebbe scorretto
+(perderebbe il listino base, ignorerebbe ESCLUSIONE) → non fatto (memoria
+`feedback_no_quick_fix_soluzione_assoluta` + `feedback_be_fe_attende_prerequisiti_db`).
 
 ---
 
@@ -815,17 +853,26 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 Cosa resta **davvero da fare** dopo lo scheletro BE+FE:
 
 1. ✅ **Bug BE BA-update** — **CHIUSO 2026-06-04** (§"Bug logico BE — CHIUSO"):
-   `billing_account_id` rimosso dalla whitelist update + guard che rifiuta il
-   cambio BA (cliente immutabile). Test verdi.
+   `billing_account_id` rimosso dalla whitelist update + guard cambio BA. **Difesa
+   DB lock-columns atterrata** (DB-ORD-LOCK, con scostamenti dal brief: registro
+   `automation_lock_columns`, codice dedicato `E_ORD_CLIENTE_IMMUTABILE`, cleanup
+   `trgfn_ordini_normalize` INSERT-only). Codice **unificato service↔DB**. Test verdi.
 2. ✅ **Stampa PDF** (§12) — **BE+FE FATTI 2026-06-04** (anteprima on-demand,
    §12.4a): tipo documento `ORDINE_VENDITA` seedato (DB), context builder + view
    documenti + route (BE), `EntityPdfButton` nel drawer + client/costanti/i18n
    (FE), build verde. **Resta**: creazione **manuale** del template HTML +
    versione PUBBLICATA (senza, l'anteprima dà errore template non risolto).
-3. 🟡 **Picker agente (E)** nel drawer FE (§6.ter.1): colonna/whitelist/service
-   pronti, manca solo il campo UI (attende picker SR ruolo agente).
-4. 🟡 **Conversione upstream** preventivo/offerta → ordine (§7.4): `documento_origine`
-   predisposto, conversione non implementata (step successivo).
+3. ⛔ **Agente (E)** (§6.ter.1): **NON è solo un picker mancante** — manca l'intero
+   sottosistema. Il ruolo `VENDITORE` esiste in tassonomia, ma non ci sono soggetti
+   con quel ruolo, né flusso di creazione, né lookup, né guard sul FK (accetta
+   qualsiasi ruolo — difetto logico). **Decisione Tid 2026-06-04**: colonna
+   `agente_soggetto_ruolo_id` **resta nullable e non gestita**; il tema è oggetto
+   di analisi/sviluppo dedicato → [analisi-ruolo-agente.md](analisi-ruolo-agente.md).
+4. 🟢/⛔ **Conversione upstream** (§7.4): **preventivo → ordine FATTO 2026-06-04**
+   (BE service + endpoint `genera-ordine` + 3 test, FE azione su `PreventiviDrawer`,
+   `documento_origine` valorizzato). **Offerta → ordine BLOCCATO**: serve una fn DB
+   di espansione listino+eccezioni (brief
+   [db-brief-offerta-righe-espanse.md](db-brief-offerta-righe-espanse.md)).
 5. 🟡 **Smoke E2E** (passo 7) non ancora eseguito.
 
 ---

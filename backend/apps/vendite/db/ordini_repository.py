@@ -378,6 +378,25 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             assert result is not None
             return result
 
+    # Scopo: Valorizza la provenienza upstream (documento_origine) di un ordine
+    #        appena creato dalla conversione preventivo/offerta → ordine. UPDATE
+    #        mirato sulle sole colonne `documento_origine_*` (NON lockate dal
+    #        trigger immutabilità cliente, che intercetta solo
+    #        billing_account_id/numero/soggetto_ruolo_id) → nessuna interferenza.
+    #        Il CHECK di co-presenza richiede entrambe valorizzate insieme.
+    def set_documento_origine(
+        self, ordine_id: int, tipo: str, origine_id: int,
+    ) -> bool:
+        sql = """
+            UPDATE vendite.ordini
+               SET documento_origine_tipo = %s,
+                   documento_origine_id   = %s
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo, int(origine_id), int(ordine_id)])
+            return cursor.rowcount > 0
+
     # Scopo: Aggiorna campi modificabili della testata ordine. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.
     def update_ordine(self, ordine_id: int, **kwargs: Any) -> bool:
