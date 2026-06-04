@@ -94,4 +94,4 @@ export const useUtilitiesTipiRuoloStore = defineStore('amministrazione-utilities
     items, totalRecords, loading, hasSearched, filters,
     fetchList, fetchDetail, create, update, fetchUsage
   }
-})
+}, { userScoped: true })

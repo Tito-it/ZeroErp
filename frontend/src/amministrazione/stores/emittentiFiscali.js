@@ -151,4 +151,4 @@ export const useEmittentiFiscaliStore = defineStore('amm-emittenti-fiscali', () 
     patchUtilityRecord,
     removeUtilityRecord
   }
-})
+}, { userScoped: true })

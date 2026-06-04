@@ -1,73 +1,27 @@
 <script setup>
-// Scopo: componente riutilizzabile — DataTable comuni con ricerca e creazione.
+// Scopo: DataTable comuni (sola creazione, no row-click). Wrapper su GeoSearchTable.
 // Riusabile da: tab Comuni in IndirizziView, futuro filtri clienti/fornitori.
-import { computed, onMounted } from 'vue'
-import { useI18n } from 'vue-i18n'
+import GeoSearchTable from './GeoSearchTable.vue'
 import { useComuniStore } from '../../anagrafiche/stores/comuni'
-import { useSearchTable } from '../composables/useSearchTable'
-import { useTabFreshness } from '../composables/useTabFreshness'
-import { MANAGE_ICONS, TAB_ENTITIES } from '../constants'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
-import InputText from 'primevue/inputtext'
-import PageActionsBar from './PageActionsBar.vue'
+import { TAB_ENTITIES } from '../constants'
 
 const emit = defineEmits(['new'])
-const { t } = useI18n()
 const store = useComuniStore()
-const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('indirizzi.nuovo_comune'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
-])
-
-useTabFreshness(store, TAB_ENTITIES.COMUNE)
-onMounted(() => { store.fetchList() })
+const columns = [
+  { field: 'descrizione', headerKey: 'indirizzi.col_comune' },
+  { field: 'provincia_sigla', headerKey: 'indirizzi.col_provincia' },
+  { field: 'regione_descrizione', headerKey: 'indirizzi.col_regione' },
+]
 </script>
 
 <template>
-  <div class="app-tab-content">
-    <div class="app-page-toolbar">
-      <div class="app-page-filters">
-        <InputText
-          v-model="searchText"
-          :placeholder="t('indirizzi.search_comune')"
-        />
-      </div>
-      <PageActionsBar :actions="pageActions" />
-    </div>
-
-    <DataTable
-      :value="store.items"
-      :loading="store.loading"
-      v-bind="paginatorProps"
-      lazy
-      removable-sort
-      striped-rows
-      scrollable
-      scrollHeight="flex"
-      class="app-datatable"
-      @page="onPage"
-      @sort="onSort"
-      data-key="id"
-    >
-      <Column field="descrizione" :header="t('indirizzi.col_comune')" sortable />
-      <Column field="provincia_sigla" :header="t('indirizzi.col_provincia')" sortable />
-      <Column field="regione_descrizione" :header="t('indirizzi.col_regione')" sortable />
-    </DataTable>
-  </div>
+  <GeoSearchTable
+    :store="store"
+    :columns="columns"
+    :tab-entity="TAB_ENTITIES.COMUNE"
+    search-placeholder-key="indirizzi.search_comune"
+    new-tooltip-key="indirizzi.nuovo_comune"
+    :row-clickable="false"
+    @new="emit('new')"
+  />
 </template>

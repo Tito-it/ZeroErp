@@ -64,4 +64,4 @@ export const useEmailLogsStore = defineStore('amm-email-logs', () => {
     items, totalRecords, loading, filters, fetchList,
     currentLog, loadingDetail, fetchDetail
   }
-})
+}, { userScoped: true })

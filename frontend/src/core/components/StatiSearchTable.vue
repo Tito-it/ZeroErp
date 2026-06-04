@@ -1,63 +1,27 @@
 <script setup>
-// Scopo: DataTable stati (nazioni) con ricerca e CRUD.
-import { computed, onMounted } from 'vue'
-import { useI18n } from 'vue-i18n'
+// Scopo: DataTable stati (nazioni). Wrapper su GeoSearchTable.
+import GeoSearchTable from './GeoSearchTable.vue'
 import { useStatiStore } from '../../anagrafiche/stores/stati'
-import { useSearchTable } from '../composables/useSearchTable'
-import { useTabFreshness } from '../composables/useTabFreshness'
-import { MANAGE_ICONS, TAB_ENTITIES } from '../constants'
-import PageActionsBar from './PageActionsBar.vue'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
-import InputText from 'primevue/inputtext'
+import { TAB_ENTITIES } from '../constants'
 
 const emit = defineEmits(['row-click', 'new'])
-const { t } = useI18n()
 const store = useStatiStore()
-const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('geo.nuovo_stato'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
-])
-
-useTabFreshness(store, TAB_ENTITIES.STATO)
-onMounted(() => { store.fetchList() })
-
-function onRowClick(event) { emit('row-click', event.data) }
+const columns = [
+  { field: 'descrizione', headerKey: 'geo.col_descrizione' },
+  { field: 'codice_iso2', headerKey: 'geo.col_iso2' },
+  { field: 'codice_iso3', headerKey: 'geo.col_iso3' },
+  { field: 'continente', headerKey: 'geo.col_continente' },
+]
 </script>
 
 <template>
-  <div class="app-tab-content">
-    <div class="app-page-toolbar">
-      <div class="app-page-filters">
-        <InputText v-model="searchText" :placeholder="t('geo.search_stato')" />
-      </div>
-      <PageActionsBar :actions="pageActions" />
-    </div>
-    <DataTable
-      :value="store.items" :loading="store.loading" v-bind="paginatorProps"
-      lazy removable-sort striped-rows scrollable scrollHeight="flex"
-      class="app-datatable" @page="onPage" @sort="onSort"
-      @row-click="onRowClick" selection-mode="single" data-key="id"
-    >
-      <Column field="descrizione" :header="t('geo.col_descrizione')" sortable />
-      <Column field="codice_iso2" :header="t('geo.col_iso2')" sortable />
-      <Column field="codice_iso3" :header="t('geo.col_iso3')" sortable />
-      <Column field="continente" :header="t('geo.col_continente')" sortable />
-    </DataTable>
-  </div>
+  <GeoSearchTable
+    :store="store"
+    :columns="columns"
+    :tab-entity="TAB_ENTITIES.STATO"
+    search-placeholder-key="geo.search_stato"
+    new-tooltip-key="geo.nuovo_stato"
+    @row-click="emit('row-click', $event)"
+    @new="emit('new')"
+  />
 </template>

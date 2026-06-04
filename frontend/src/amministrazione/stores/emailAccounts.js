@@ -76,4 +76,4 @@ export const useEmailAccountsStore = defineStore('amm-email-accounts', () => {
     currentAccount, loadingDetail, fetchDetail,
     create, update
   }
-})
+}, { userScoped: true })

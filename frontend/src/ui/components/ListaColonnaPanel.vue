@@ -10,6 +10,7 @@ import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import Message from 'primevue/message'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
@@ -165,10 +166,7 @@ function severityForTipoColonna(tipo) {
       </Column>
       <Column :header="t('common.col_attivo')" style="width: 90px">
         <template #body="{ data }">
-          <Tag
-            :value="data.attivo ? t('common.yes') : t('common.no')"
-            :severity="data.attivo ? 'success' : 'warn'"
-          />
+          <AttivoTag :active="data.attivo" :active-label="t('common.yes')" :inactive-label="t('common.no')" />
         </template>
       </Column>
       <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">

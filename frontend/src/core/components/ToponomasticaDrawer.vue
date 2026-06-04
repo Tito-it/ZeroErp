@@ -1,98 +1,38 @@
 <script setup>
-// Scopo: drawer CRUD per toponomastica (tipi strada).
+// Scopo: drawer CRUD toponomastica (tipi strada). Wrapper su EntityFormDrawer.
 // Riusabile da: tab Toponomastica, futuro gestione stradario.
-import { ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useInjectReadonly } from '../composables/useReadonlyMode'
+// Il toggle `attivo` e' editOnly: mostrato/inviato solo in edit (in create
+// l'entita' nasce attiva via default DB).
+import EntityFormDrawer from './EntityFormDrawer.vue'
 import { useToponomasticaStore } from '../../anagrafiche/stores/toponomastica'
-import { useApiHandler } from '../composables/useApiHandler'
-import { DRAWER_WIDTH } from '../constants'
 import { NAV_ICONS } from '../navigation'
-import FormFooter from './FormFooter.vue'
-import DrawerTitle from './DrawerTitle.vue'
-import Drawer from 'primevue/drawer'
-import InputText from 'primevue/inputtext'
-import ToggleSwitch from 'primevue/toggleswitch'
 
-const props = defineProps({
+defineProps({
   visible: { type: Boolean, default: false },
-  mode: { type: String, default: 'create' }, // 'create' | 'edit'
-  item: { type: Object, default: null }
+  mode: { type: String, default: 'create' },
+  item: { type: Object, default: null },
 })
-
 const emit = defineEmits(['update:visible', 'saved'])
 
-const { t } = useI18n()
-const isReadonly = useInjectReadonly()
 const store = useToponomasticaStore()
-const { execute, loading } = useApiHandler()
-
-const form = ref({ descrizione: '', attivo: true })
-
-watch(() => props.visible, (val) => {
-  if (val) {
-    if (props.mode === 'edit' && props.item) {
-      form.value = { descrizione: props.item.descrizione || '', attivo: props.item.attivo ?? true }
-    } else {
-      form.value = { descrizione: '', attivo: true }
-    }
-  }
-})
-
-async function handleSave() {
-  if (!form.value.descrizione.trim()) return
-
-  const successMsg = props.mode === 'create'
-    ? t('indirizzi.toponomastica_creata')
-    : t('indirizzi.toponomastica_salvata')
-
-  const result = await execute(
-    () => props.mode === 'create'
-      ? store.create({ descrizione: form.value.descrizione.trim() })
-      : store.update(props.item.id, {
-          descrizione: form.value.descrizione.trim(),
-          attivo: form.value.attivo
-        }),
-    { successMessage: successMsg }
-  )
-
-  if (result !== null) {
-    emit('saved')
-    emit('update:visible', false)
-    store.fetchList()
-  }
-}
+const fields = [
+  { name: 'descrizione', type: 'text', labelKey: 'indirizzi.campo_descrizione', required: true },
+  { name: 'attivo', type: 'toggle', labelKey: 'indirizzi.campo_attivo', editOnly: true },
+]
 </script>
 
 <template>
-  <Drawer
+  <EntityFormDrawer
     :visible="visible"
+    :mode="mode"
+    :item="item"
+    :store="store"
+    :fields="fields"
+    title-key="indirizzi.toponomastica"
+    :icon="NAV_ICONS.TOPONOMASTICA"
+    :refresh-on-save="false"
+    :success-keys="{ create: 'indirizzi.toponomastica_creata', update: 'indirizzi.toponomastica_salvata' }"
     @update:visible="emit('update:visible', $event)"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.SIMPLE }"
-  >
-    <template #header>
-      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('indirizzi.toponomastica')" :icon="NAV_ICONS.TOPONOMASTICA" />
-    </template>
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div class="form-grid">
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_descrizione') }} *</label>
-          <InputText v-model="form.descrizione" />
-        </div>
-
-        <div v-if="mode === 'edit'" class="form-field">
-          <label>{{ t('indirizzi.campo_attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" />
-        </div>
-      </div>
-
-      <FormFooter
-        :loading="loading"
-        :disabled="!form.descrizione.trim()"
-        @save="handleSave"
-        @cancel="emit('update:visible', false)"
-      />
-    </div>
-  </Drawer>
+    @saved="emit('saved')"
+  />
 </template>
