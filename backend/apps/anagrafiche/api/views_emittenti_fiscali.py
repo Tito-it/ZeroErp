@@ -56,7 +56,7 @@ class EmittentiFiscaliView(AdminAPIView):
         svc = EmittentiFiscaliService()
         results, total = svc.list_emittenti_fiscali(
             search=p["search"],
-            attivo=qp_bool_optional(request.query_params.get("attivo")),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )

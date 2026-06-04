@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -20,12 +21,22 @@ def qp_bool(raw: str | None, default: bool = True) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "n", "off"}
 
 
-# Scopo: Parametro booleano OPZIONALE da query string: None se assente.
-#        Per filtri lista che devono distinguere "non passato" da true/false.
-def qp_bool_optional(raw: str | None) -> bool | None:
+# Scopo: Parametro booleano OPZIONALE e RIGOROSO da query string.
+#        None se assente o vuoto; True/False sui token riconosciuti;
+#        ValueError(f"{name}_invalid") su valore non riconosciuto (no coercion
+#        silenziosa). Simmetrico a qp_int_optional. NB: `?x=` (vuoto) -> None,
+#        come chiave assente.
+def qp_bool_optional(raw: str | None, name: str) -> bool | None:
     if raw is None:
         return None
-    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+    val = raw.strip().lower()
+    if val == "":
+        return None
+    if val in {"1", "true", "yes", "y", "on"}:
+        return True
+    if val in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"{name}_invalid")
 
 
 # Scopo: Normalizza parametro intero da query string con default configurabile.
@@ -46,6 +57,36 @@ def qp_int_strict(raw: str | None, name: str, default: int) -> int:
         return int(raw.strip())
     except (ValueError, AttributeError):
         raise ValueError(f"{name}_invalid")
+
+
+# Scopo: Parametro intero OPZIONALE da query string: None se assente o vuoto;
+#        solleva ValueError(f"{name}_invalid") se presente ma non numerico.
+#        Variante "optional" di qp_int_strict (che invece richiede un default).
+def qp_int_optional(raw: str | None, name: str) -> int | None:
+    if raw is None:
+        return None
+    cleaned = raw.strip()
+    if cleaned == "":
+        return None
+    try:
+        return int(cleaned)
+    except ValueError as exc:
+        raise ValueError(f"{name}_invalid") from exc
+
+
+# Scopo: Data ISO OPZIONALE da query string: None se assente o vuota;
+#        date.fromisoformat altrimenti, ValueError(f"{name}_invalid") se
+#        malformata. Simmetrico a qp_int_optional per i filtri data.
+def qp_iso_date_optional(raw: str | None, name: str) -> date | None:
+    if raw is None:
+        return None
+    cleaned = raw.strip()
+    if cleaned == "":
+        return None
+    try:
+        return date.fromisoformat(cleaned)
+    except ValueError as exc:
+        raise ValueError(f"{name}_invalid") from exc
 
 
 # Scopo: Normalizza parametro stringa da query string (strip + None se vuoto).

@@ -22,17 +22,9 @@ from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
-    qp_int_strict,
+    qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
-
-
-# Scopo: Estrae un intero opzionale dai query params con validazione strict.
-def _optional_qp_int_strict(request: Request, key: str) -> int | None:
-    raw = request.query_params.get(key)
-    if raw is None or raw == "":
-        return None
-    return qp_int_strict(raw, key, 0)
 
 
 class TipiRuoloTipiIndirizzoView(AdminAPIView):
@@ -66,9 +58,9 @@ class TipiRuoloTipiIndirizzoView(AdminAPIView):
         svc = TipiRuoloTipiIndirizzoService()
         results, total = svc.list_matrice(
             search=p["search"],
-            attivo=qp_bool_optional(request.query_params.get("attivo")),
-            tipo_ruolo_id=_optional_qp_int_strict(request, "tipo_ruolo_id"),
-            tipo_indirizzo_id=_optional_qp_int_strict(request, "tipo_indirizzo_id"),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
+            tipo_ruolo_id=qp_int_optional(request.query_params.get("tipo_ruolo_id"), "tipo_ruolo_id"),
+            tipo_indirizzo_id=qp_int_optional(request.query_params.get("tipo_indirizzo_id"), "tipo_indirizzo_id"),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],

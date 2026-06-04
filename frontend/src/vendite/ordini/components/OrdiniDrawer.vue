@@ -19,7 +19,13 @@ import { useEmittenteFiscaleField } from '../../../core/composables/useEmittente
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
-import { STATO_ORDINE } from '../constants'
+import {
+  STATO_ORDINE,
+  STATI_ORDINE_ANTEPRIMA_PDF,
+  STATI_ORDINE_CON_DOCUMENTO,
+} from '../constants'
+import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 import { displayDate, toDateString } from '../../../core/utils/date'
 import { getOrdineFormDefaults } from '../../api/formDefaults'
 import { createOrdine } from '../api/ordiniApi'
@@ -482,7 +488,23 @@ const drawerActions = computed(() => {
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" />
+        <DrawerActionsBar :actions="drawerActions">
+          <template #suffix>
+            <!-- Stampa conferma d'ordine: anteprima PDF on-demand
+                 (ristampabile, §12.4(a)). BB EntityPdfButton riusato 1:1. -->
+            <EntityPdfButton
+              :sorgente-code="SORGENTE_CODES.ORDINE_VENDITA"
+              :entity-id="effectiveOrdineId"
+              :stato-codice="detail.stato_codice_interno"
+              :stati-preview="STATI_ORDINE_ANTEPRIMA_PDF"
+              :stati-con-documento="STATI_ORDINE_CON_DOCUMENTO"
+              i18n-prefix="vendite.ordini.pdf"
+              :dialog-title="detail.numero
+                ? t('vendite.ordini.pdf.dialog_title', { numero: detail.numero })
+                : ''"
+            />
+          </template>
+        </DrawerActionsBar>
       </template>
 
       <Divider v-if="hasDetail" />

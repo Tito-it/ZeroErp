@@ -55,36 +55,17 @@ from apps.catalogo.services.catalogo_service import (
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
-    optional_iso_date,
     paginated_envelope,
     parse_list_params,
     qp_bool,
+    qp_bool_optional,
+    qp_int_optional,
     qp_int_strict,
+    qp_iso_date_optional,
     qp_str,
 )
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
-
-
-# Scopo: Estrae un bool opzionale da query string, preservando None se assente.
-def _optional_qp_bool(request: Request, key: str) -> bool | None:
-    raw_value = request.query_params.get(key)
-    if raw_value is None:
-        return None
-    return qp_bool(raw_value, True)
-
-
-# Scopo: Estrae un intero opzionale da query string con validazione rigorosa.
-def _optional_qp_int_strict(request: Request, key: str) -> int | None:
-    raw_value = request.query_params.get(key)
-    if raw_value is None:
-        return None
-    return qp_int_strict(raw_value, key, 0)
-
-
-# Scopo: Estrae una data ISO opzionale da query string.
-def _optional_qp_iso_date(request: Request, key: str):
-    return optional_iso_date({key: request.query_params.get(key)}, key)
 
 
 # Scopo: Definisce in un solo punto i campi write articolo per schema API.
@@ -245,14 +226,14 @@ class ApiArticoliList(DomainAPIView):
         require_min_search_length(p["search"], field_name="search")
 
         results, total = fn_list_articoli(
-            attivo=_optional_qp_bool(request, "attivo"),
-            is_composito=_optional_qp_bool(request, "is_composito"),
-            tipo_voce_id=_optional_qp_int_strict(request, "tipo_voce_id"),
-            gruppo_voce_id=_optional_qp_int_strict(request, "gruppo_voce_id"),
-            listino_tipologia_id=_optional_qp_int_strict(request, "listino_tipologia_id"),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
+            is_composito=qp_bool_optional(request.query_params.get("is_composito"), "is_composito"),
+            tipo_voce_id=qp_int_optional(request.query_params.get("tipo_voce_id"), "tipo_voce_id"),
+            gruppo_voce_id=qp_int_optional(request.query_params.get("gruppo_voce_id"), "gruppo_voce_id"),
+            listino_tipologia_id=qp_int_optional(request.query_params.get("listino_tipologia_id"), "listino_tipologia_id"),
             search=p["search"],
-            data_da=_optional_qp_iso_date(request, "data_da"),
-            data_a=_optional_qp_iso_date(request, "data_a"),
+            data_da=qp_iso_date_optional(request.query_params.get("data_da"), "data_da"),
+            data_a=qp_iso_date_optional(request.query_params.get("data_a"), "data_a"),
             order_by=p["order_by"],
             order_dir=p["order_dir"],
             limit=p["limit"],
@@ -641,8 +622,8 @@ class ApiArticoliLookup(DomainAPIView):
         data = fn_lookup_articoli(
             search=search,
             attivo=qp_bool(qp.get("attivo"), True),
-            is_composito=_optional_qp_bool(request, "is_composito"),
-            is_solo_componente=_optional_qp_bool(request, "is_solo_componente"),
+            is_composito=qp_bool_optional(request.query_params.get("is_composito"), "is_composito"),
+            is_solo_componente=qp_bool_optional(request.query_params.get("is_solo_componente"), "is_solo_componente"),
             limit=qp_int_strict(qp.get("limit"), "limit", 20),
         )
         return success_response(data)
@@ -678,7 +659,7 @@ class ApiUomTipiList(DomainAPIView):
         p = parse_list_params(request.query_params, default_order="descrizione")
         require_min_search_length(p["search"], field_name="search")
         results, total = fn_list_uom_tipi(
-            attivo=_optional_qp_bool(request, "attivo"),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             search=p["search"],
             order_by=p["order_by"],
             order_dir=p["order_dir"],
@@ -766,7 +747,7 @@ class ApiUnitaMisuraList(DomainAPIView):
         p = parse_list_params(request.query_params, default_order="codice")
         require_min_search_length(p["search"], field_name="search")
         results, total = fn_list_unita_misura(
-            attivo=_optional_qp_bool(request, "attivo"),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             search=p["search"],
             order_by=p["order_by"],
             order_dir=p["order_dir"],

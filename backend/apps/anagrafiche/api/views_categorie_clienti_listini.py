@@ -25,20 +25,10 @@ from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
+    qp_int_optional,
 )
 from apps.core.api.request_parsers import parse_iso_date
 from apps.core.api.success_responses import success_response
-
-
-# Scopo: Converte un query param intero opzionale (None se assente o vuoto).
-#        Solleva ValueError con nome campo se non numerico.
-def _qp_int_optional(raw: str | None, name: str) -> int | None:
-    if raw is None or raw.strip() == "":
-        return None
-    try:
-        return int(raw.strip())
-    except ValueError as exc:
-        raise ValueError(f"{name}_invalid") from exc
 
 
 # =================================================================
@@ -88,18 +78,18 @@ class CategorieClientiListiniView(AdminAPIView):
         svc = CategorieClientiListiniService()
         results, total = svc.list_matrice(
             search=p["search"],
-            attivo=qp_bool_optional(request.query_params.get("attivo")),
-            categoria_cliente_id=_qp_int_optional(
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
+            categoria_cliente_id=qp_int_optional(
                 request.query_params.get("categoria_cliente_id"), "categoria_cliente_id"
             ),
-            utility_id=_qp_int_optional(
+            utility_id=qp_int_optional(
                 request.query_params.get("utility_id"), "utility_id"
             ),
-            emittente_soggetto_ruolo_id=_qp_int_optional(
+            emittente_soggetto_ruolo_id=qp_int_optional(
                 request.query_params.get("emittente_soggetto_ruolo_id"),
                 "emittente_soggetto_ruolo_id",
             ),
-            listino_id=_qp_int_optional(
+            listino_id=qp_int_optional(
                 request.query_params.get("listino_id"), "listino_id"
             ),
             valid_at=valid_at,

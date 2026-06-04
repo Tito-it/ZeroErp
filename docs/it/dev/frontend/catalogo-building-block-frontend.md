@@ -477,6 +477,36 @@ Famiglia di 3 building block riusabili dalle 4 sorgenti documento composito (pre
 
 ---
 
+## Documenti / Stampa (`src/documenti/`)
+
+Building block trasversali per la **stampa PDF** di qualunque entità documentale
+(motore `documenti` lato BE). Oggi consumati da preventivi, offerte commerciali,
+contratti e **ordini di vendita** (sorgente `ORDINE_VENDITA`, 2026-06-04). Per
+cablare un nuovo dominio sorgente bastano 3 mosse, **senza nuovi componenti**:
+(1) aggiungere il codice a `SORGENTE_CODES`; (2) creare un client con
+`buildSorgenteClient(basePathFn)` + entry in `SORGENTE_CLIENT_MAP`; (3) montare
+`EntityPdfButton` nel drawer. Regola del 2 (memoria
+`feedback_regola_del_2_estrai_bb`): il pulsante è stato estratto dall'unione dei
+tre cloni `*PdfButton.vue`.
+
+### Componenti (`src/documenti/components/`)
+
+| Componente | File | Scopo |
+| --- | --- | --- |
+| `EntityPdfButton` | [EntityPdfButton.vue](../../../../frontend/src/documenti/components/EntityPdfButton.vue) | Pulsante PDF **stato-aware**. Props: `sorgenteCode`, `entityId`, `statoCodice`, `statiPreview` (→ modalità *preview*: anteprima on-the-fly via `store.anteprima`, no persist), `statiConDocumento` (→ modalità *scarica*: apre `PdfDocumentiSorgenteDialog` con l'archivio), `statiAppendAllegati` (abilita append nel dialog), `i18nPrefix` (es. `'vendite.ordini.pdf'` → risolve `label_anteprima`/`tooltip_anteprima`/`label_scarica`/`tooltip_scarica`), `dialogTitle` (già t-formattato). Stato fuori dai due set → bottone *disabled*. Blob via `downloadBlob` (fuori da `useApiHandler`). |
+| `PdfDocumentiSorgenteDialog` | [PdfDocumentiSorgenteDialog.vue](../../../../frontend/src/documenti/components/PdfDocumentiSorgenteDialog.vue) | Wrapper `AppDialog` attorno a `DocumentiGeneratiSorgenteList` (con `defaultExpanded`). Props: `visible` (v-model), `sorgenteCode`, `sorgenteId`, `title` (default `documenti.lista.title`), `allowAllegati`. UX picker: mostra subito principale + allegati. |
+| `DocumentiGeneratiSorgenteList` | [DocumentiGeneratiSorgenteList.vue](../../../../frontend/src/documenti/components/DocumentiGeneratiSorgenteList.vue) | Lista timeline documenti generati (`generato_at DESC`). Azioni di riga via `RowActionsMenu`: download PDF; append allegati se `allowAllegati`. Row-expand lazy → file (principale + allegati) con cache `filesPerDoc`. Props: `sorgenteCode`, `sorgenteId`, `autoFetch` (def true), `hideHeaderWhenEmpty`, `allowAllegati`, `defaultExpanded`. v1: niente azioni stato/eliminazione (trigger DB block_delete). |
+
+### Store, API, costanti (`src/documenti/`)
+
+| BB | File | Scopo |
+| --- | --- | --- |
+| `useDocumentiPerSorgenteStore` | [stores/documentiPerSorgente.js](../../../../frontend/src/documenti/stores/documentiPerSorgente.js) | Store Pinia **`userScoped: true`** (PDF/progressivi legati a una sorgente, no leak al cambio account). Stato scoped alla coppia `(sorgenteCode, sorgenteId)`: il caller chiama `setSorgente(code,id)` al cambio. Azioni: `fetchList`, `genera` (persiste + `emitDataChanged` + refetch), `anteprima`/`download`/`downloadFile` (ritornano `{blob, fileName}` da Content-Disposition), `listFiles`, `aggiungiAllegati`. `getClient()` risolve via `SORGENTE_CLIENT_MAP` (throw sincrono se il codice non è mappato — bug FE). |
+| `buildSorgenteClient` + client per sorgente | [api/documentiPerSorgente.js](../../../../frontend/src/documenti/api/documentiPerSorgente.js) | Factory client API su path nidificato `basePathFn(id)` (es. `/vendite/ordini/<id>/documenti`). Metodi: `list`, `genera`, `anteprima`/`download`/`downloadFile` (`responseType:'blob'`), `listFiles`, `aggiungiAllegati` (multipart). Istanze esportate: `preventivoDocumenti`, `contrattoDocumenti`, `offertaDocumenti`, `ordineDocumenti`. |
+| `SORGENTE_CODES` | [constants.js](../../../../frontend/src/documenti/constants.js) | Enum codici sorgente documentale (`PREVENTIVO`/`CONTRATTO`/`OFFERTA_COMMERCIALE`/`ORDINE_VENDITA`), allineati al registry BE e a `config/constants/documentiContextBuilders.js` (whitelist editor template, voci `registered:true`). |
+
+---
+
 ## Componenti Dominio UI (`src/ui/components/`)
 
 Personalizzazioni liste — admin (Blocco F). I componenti runtime FE

@@ -1,13 +1,13 @@
 # Brief DB — Lista configurabile + estensione modello `vendite.ordini` (DB-ORD)
 
 > **Branch**: `dev/db-tid`. **Destinatario**: team DB.
-> **Natura**: brief DB derivato dall'analisi [analisi-ordini-vendita.md](./analisi-ordini-vendita.md)
+> **Natura**: brief DB derivato dall'analisi [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md)
 > (l'analisi è l'input; questo brief ne è il **changeset eseguibile** lato DB —
 > memoria `feedback_db_actions_passaggio_team`). Precede l'**analisi critica di
 > verifica** (§1, condotta sul DDL/trigger/seed reali il 2026-06-03): l'analisi è
 > solida ma ha **tre punti da correggere** prima di toccare il DB.
-> **Template DB 1:1**: [db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md)
-> (DEF-8, atterrato 2026-06-03) + [refactor-lista-contratti.md](../work-done/refactor-lista-contratti.md).
+> **Template DB 1:1**: [db-brief-lista-preventivi-offerte.md](./db-brief-lista-preventivi-offerte.md)
+> (DEF-8, atterrato 2026-06-03) + [refactor-lista-contratti.md](./refactor-lista-contratti.md).
 > **Vincolo**: ZeroErp NON in produzione → breaking ammessi, ma la consegna DB
 > resta **non-breaking** verso il BE (BE/FE partono a DB consegnato — memoria
 > `feedback_be_fe_attende_prerequisiti_db`).
@@ -437,7 +437,7 @@ sovraccaricherebbe lo `scope` di `config.sorgenti`. A1 entra in **questo** lotto
 
 | Dominio | DB lista | BE/FE | Doc |
 | --- | --- | --- | --- |
-| `vendite.contratti` | ✅ (`1cc906377`) | ✅ | [refactor-lista-contratti.md](../work-done/refactor-lista-contratti.md) |
-| `vendite.preventivi` | ✅ 2026-06-03 | ⏳ attende | [db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md) |
-| `vendite.offerte` | ✅ 2026-06-03 | ⏳ attende | [db-brief-lista-preventivi-offerte.md](../work-done/db-brief-lista-preventivi-offerte.md) |
-| **`vendite.ordini`** | ✅ atterrato 2026-06-03 (`20260603-11..15`) | ⏳ attende (analisi §5/§6) | [analisi-ordini-vendita.md](./analisi-ordini-vendita.md) |
+| `vendite.contratti` | ✅ (`1cc906377`) | ✅ | [refactor-lista-contratti.md](./refactor-lista-contratti.md) |
+| `vendite.preventivi` | ✅ 2026-06-03 | ⏳ attende | [db-brief-lista-preventivi-offerte.md](./db-brief-lista-preventivi-offerte.md) |
+| `vendite.offerte` | ✅ 2026-06-03 | ⏳ attende | [db-brief-lista-preventivi-offerte.md](./db-brief-lista-preventivi-offerte.md) |
+| **`vendite.ordini`** | ✅ atterrato 2026-06-03 (`20260603-11..15`) | ⏳ attende (analisi §5/§6) | [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md) |

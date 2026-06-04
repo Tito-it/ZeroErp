@@ -12,8 +12,6 @@
 
 from __future__ import annotations
 
-from datetime import date
-
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -25,6 +23,8 @@ from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
+    qp_int_optional,
+    qp_iso_date_optional,
     qp_str,
 )
 from apps.core.api.request_parsers import parse_iso_date
@@ -35,20 +35,6 @@ from apps.vendite.services.contratti_service import ContrattiService
 
 # Codice lista configurabile (ui.lista_definizione) per contratti.
 _LISTA_CODICE_CONTRATTI = "vendite.contratti"
-
-
-# Scopo: Converte un query param intero opzionale (None se assente o vuoto).
-def _qp_int_optional(raw: str | None, name: str) -> int | None:
-    if raw is None or raw.strip() == "":
-        return None
-    try:
-        return int(raw.strip())
-    except ValueError as exc:
-        raise ValueError(f"{name}_invalid") from exc
-
-
-def _qp_iso_date(raw: str | None) -> date | None:
-    return parse_iso_date(raw) if raw else None
 
 
 # =================================================================
@@ -147,13 +133,13 @@ class ApiContrattiExportView(DomainAPIView):
         fmt = parse_export_format(request)
 
         p = parse_list_params(qp, default_order="data")
-        stato_id = _qp_int_optional(qp.get("stato_doc_contratto_id"), "stato_doc_contratto_id")
-        utility_id = _qp_int_optional(qp.get("utility_id"), "utility_id")
-        listino_id = _qp_int_optional(qp.get("listino_id"), "listino_id")
-        ba_id = _qp_int_optional(qp.get("billing_account_id"), "billing_account_id")
+        stato_id = qp_int_optional(qp.get("stato_doc_contratto_id"), "stato_doc_contratto_id")
+        utility_id = qp_int_optional(qp.get("utility_id"), "utility_id")
+        listino_id = qp_int_optional(qp.get("listino_id"), "listino_id")
+        ba_id = qp_int_optional(qp.get("billing_account_id"), "billing_account_id")
         ambito = qp_str(qp.get("ambito"))
-        data_da = _qp_iso_date(qp.get("data_da"))
-        data_a = _qp_iso_date(qp.get("data_a"))
+        data_da = qp_iso_date_optional(qp.get("data_da"), "data_da")
+        data_a = qp_iso_date_optional(qp.get("data_a"), "data_a")
         scadenza_mese = qp_str(qp.get("scadenza_mese"))
 
         svc = ContrattiService()
@@ -232,13 +218,13 @@ class ApiContrattiList(DomainAPIView):
         svc = ContrattiService()
         results, total = svc.list_contratti(
             search=p["search"],
-            billing_account_id=_qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
-            stato_doc_contratto_id=_qp_int_optional(qp.get("stato_doc_contratto_id"), "stato_doc_contratto_id"),
-            utility_id=_qp_int_optional(qp.get("utility_id"), "utility_id"),
+            billing_account_id=qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
+            stato_doc_contratto_id=qp_int_optional(qp.get("stato_doc_contratto_id"), "stato_doc_contratto_id"),
+            utility_id=qp_int_optional(qp.get("utility_id"), "utility_id"),
             ambito=qp_str(qp.get("ambito")),
-            listino_id=_qp_int_optional(qp.get("listino_id"), "listino_id"),
-            data_da=_qp_iso_date(qp.get("data_da")),
-            data_a=_qp_iso_date(qp.get("data_a")),
+            listino_id=qp_int_optional(qp.get("listino_id"), "listino_id"),
+            data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
+            data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             scadenza_mese=qp_str(qp.get("scadenza_mese")),
             auth_user_id=get_scope_user_id(request),
             limit=p["limit"],

@@ -92,3 +92,11 @@ export const contrattoDocumenti = buildSorgenteClient(
 export const offertaDocumenti = buildSorgenteClient(
   (offertaId) => `/vendite/offerte/${offertaId}/documenti`,
 )
+
+// Client per documenti di un ORDINE_VENDITA. Path coerente con
+// `apps/vendite/api/urls_ordini.py`. La stampa conferma d'ordine usa
+// `anteprima` on-demand (Decisione §12.4(a): stampa disaccoppiata dallo
+// stato, ristampabile); `genera`/lista/download restano per l'archivio.
+export const ordineDocumenti = buildSorgenteClient(
+  (ordineId) => `/vendite/ordini/${ordineId}/documenti`,
+)

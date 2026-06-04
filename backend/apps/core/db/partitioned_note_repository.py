@@ -16,7 +16,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import fetchone_scalar, row_to_dict, rows_to_list
 
 # Regex per validare SQL identifier dotted (schema.tabella). I parametri del
 # constructor sono governati dal codice applicativo, ma il guard intercetta
@@ -240,9 +240,7 @@ class PartitionedNoteRepository:
         )
         with connection.cursor() as cursor:
             cursor.execute(count_sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            total = int(row[0])
+            total = int(fetchone_scalar(cursor))
             if total == 0:
                 return [], 0
             cursor.execute(list_sql, [*params, page_size, offset])
@@ -271,9 +269,7 @@ class PartitionedNoteRepository:
         )
         with connection.cursor() as cursor:
             cursor.execute(sql, [self._target_tipo, target_id])
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+            return int(fetchone_scalar(cursor))
 
     # Scopo: INSERT su partizione. `payload` filtrato sulla whitelist;
     #        `target_tipo`/`target_id` sono governati dal repository.
@@ -295,9 +291,7 @@ class PartitionedNoteRepository:
         )
         with connection.cursor() as cursor:
             cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+            return int(fetchone_scalar(cursor))
 
     # Scopo: UPDATE su partizione con pk composita (target_tipo, id) + target_id
     #        difensivo. `patch` filtrato sulla whitelist. Restituisce True se la

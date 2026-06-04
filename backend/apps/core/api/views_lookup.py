@@ -15,7 +15,12 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
-from apps.core.api.payload_validators import optional_int, qp_int
+from apps.core.api.payload_validators import (
+    optional_int,
+    parse_list_params,
+    qp_int,
+    qp_str,
+)
 from apps.core.api.success_responses import success_response
 from apps.core.db.lookup_repository import LookupRepository
 
@@ -296,14 +301,11 @@ class LookupComuniView(DomainAPIView):
     # Scopo: Ricerca comuni per autocomplete. Accetta search ILIKE su denominazione.
     # Restituisce id, descrizione, provincia_sigla con paginazione.
     def get(self, request: Request) -> JsonResponse:
-        qp = request.query_params
-        search = (qp.get("search") or "").strip() or None
-        limit = min(qp_int(qp.get("limit"), 20), 100)
-        offset = qp_int(qp.get("offset"), 0)
+        p = parse_list_params(request.query_params, default_limit=20, max_limit=100)
 
         repo = LookupRepository()
         results, total_count = repo.search_comuni(
-            search=search, limit=limit, offset=offset,
+            search=p["search"], limit=p["limit"], offset=p["offset"],
         )
         return success_response({"count": total_count, "results": results})
 
@@ -333,7 +335,7 @@ class SearchStradarioView(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         comune_id = optional_int(qp, "comune_id")
-        search = (qp.get("search") or "").strip() or None
+        search = qp_str(qp.get("search"))
         limit = min(qp_int(qp.get("limit"), 30), 100)
 
         repo = LookupRepository()
@@ -366,7 +368,7 @@ class SearchStradarioGeneraleView(DomainAPIView):
     # L'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        search = (qp.get("search") or "").strip() or None
+        search = qp_str(qp.get("search"))
         toponomastica_id = optional_int(qp, "toponomastica_id")
         limit = min(qp_int(qp.get("limit"), 30), 100)
 

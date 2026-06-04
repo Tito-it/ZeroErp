@@ -85,6 +85,37 @@ viceversa). RLS attivata con `ALTER TABLE … ENABLE ROW LEVEL SECURITY`
 
 ---
 
+### Immutabilità cliente (DB-ORD-LOCK, 2026-06-04)
+
+Le colonne che identificano il **cliente dell'ordine** sono **immutabili dopo la
+creazione**:
+
+| Colonna | Note |
+| --- | --- |
+| `billing_account_id` | aggancio billing (nullable; valorizzato alla creazione) |
+| `soggetto_ruolo_id` | cliente logico (NOT NULL) — identifica il cliente anche per ordini con BA NULL |
+
+* **Decisione di dominio**: *«cambiare cliente = nuovo ordine»*. La relazione
+  `billing_account → soggetto_ruolo` è 1:1 deterministica e viene fissata alla
+  creazione (`crea_ordine` deriva il soggetto dal BA); un `UPDATE` che cambiasse
+  il BA lascerebbe il soggetto stantio → incoerenza cliente↔soggetto.
+* **Difesa DB autoritativa**: lock su `UPDATE` via il registro
+  `dbops.automation_lock_columns` → trigger generato
+  `trg_ordini_a10_lock_columns_upd` (`script.trgfn_lock_columns`), codice errore
+  **`E_ORD_CLIENTE_IMMUTABILE`** (id 469). Lo stesso trigger continua a lockare
+  `numero` (`CODICE_NON_MODIFICABILE`). L'`INSERT` resta libero.
+* Si lockano **entrambe** le colonne: il solo BA non basterebbe perché gli ordini
+  con `billing_account_id` NULL sono identificati dal solo `soggetto_ruolo_id`.
+* **Via di manutenzione**: override straordinario
+  `SET LOCAL zeroerp.allow_lock_columns_override = 'on'`.
+* Difesa simmetrica al fix applicativo (`ordini_service.aggiorna_ordine` esclude
+  `billing_account_id` dalla whitelist update): il guard BE intercetta a monte, il
+  trigger è la difesa finale su `UPDATE` diretta che bypassa il service.
+* Pattern allineato a `preventivi.emittente_fiscale_id`
+  (`EMITTENTE_NON_MODIFICABILE`).
+
+---
+
 ### Collocazione nel flusso documentale
 
 1. **Creazione ordine** – avvio processo commerciale; definizione di cliente, condizioni economiche e pagamento.  

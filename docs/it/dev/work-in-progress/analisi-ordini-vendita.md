@@ -45,7 +45,7 @@ agente — §1.bis). Già presenti e operativi:
 | Trigger testata | default emittente, normalize, gen codice, guard emittente↔BA, guard scope, lock `numero`, immutabilità `canale_origine`, sync canali |
 | RLS 3 facce | `rls_ordini_ef_whitelist` (OPERATORE) / `rls_ordini_cliente_ownership` (PORTALE) / `rls_ordini_shop` (SHOP) — già attiva |
 | **Push a commessa** | `fn_list_ordini_da_pushare` (batch + singolo `p_ordine_id`) + `HandlerOrdini` (sorgente `ORDINE_VENDITA`) in [commesse_source_handlers.py:509](../../../../backend/apps/vendite/services/commesse_source_handlers.py) — **già testato** |
-| PDF | tipo documento `ORDINE_CLIENTE` configurato |
+| PDF | tipo documento `ORDINE_VENDITA` seedato 2026-06-04 (vedi §12; la dicitura `ORDINE_CLIENTE` era stale) |
 
 ### ❌ Backend applicativo — QUASI NULLA
 Esiste solo l'aggancio commesse (push). **Mancano**: `ordini_repository.py`,
@@ -113,7 +113,7 @@ provenienza/tracciabilità.
   - **(A2) — SCARTATA**: riuso di `sorgente_tipo_id`/`sorgente_uid` come link
     interno, estendendo `config.sorgenti` con i tipi documento interni.
 - **Perché A1 e non A2** (rettifica post-verifica DDL 2026-06-03, vedi
-  [db-brief-ordini-vendita.md §1.A](./db-brief-ordini-vendita.md)): A2 sembrava più
+  [db-brief-ordini-vendita.md §1.A](../work-done/db-brief-ordini-vendita.md)): A2 sembrava più
   «simmetrica» con le righe (che usano `sorgente_*` con UQ di idempotenza import), ma
   la verifica ha scoperto che quella simmetria è **fuorviante**. ① L'UQ
   `uq_ordini_v_sorgente_fk` su `(sorgente_tipo_id, sorgente_uid)` imporrebbe in testata
@@ -142,10 +142,18 @@ agente).
 
 ---
 
-## 1.ter. Allineamento documentazione stale (verifiche 2026-06-03)
+## 1.ter. Allineamento documentazione stale (verifiche 2026-06-03) — ✅ CHIUSO
 
-Verifica su DDL/trigger reali → il manuale **`manual/ordini.md`** descrive uno
-stato **pre-refactor** e va corretto per coerenza (richiesta Tid). Disallineamenti:
+> **✅ RISOLTO (verifica 2026-06-04)**: i disallineamenti sotto sono **già stati
+> corretti** dal team DB nella consegna DB-ORD. `manual/ordini.md` ora descrive
+> correttamente colonne trasporto rimosse, numerazione all'INSERT, agente (E) +
+> documento_origine (A1); `manual/ordini_righe.md` marca il check
+> `chk_ordini_v_r_qta_pos` come **corretto** (`20260603-11`). La tabella sotto è
+> ormai **storia** (cosa era stale e cosa si è corretto), non un TODO aperto.
+
+Verifica su DDL/trigger reali → il manuale **`manual/ordini.md`** descriveva uno
+stato **pre-refactor**, corretto per coerenza (richiesta Tid). Disallineamenti
+(tutti sanati):
 
 | Punto manuale stale | Realtà DDL/trigger | Azione |
 | --- | --- | --- |
@@ -215,7 +223,7 @@ Changeset additivo/correttivo (additive+nullable → no impatto trigger/RLS):
   + `documento_origine_id bigint`, **entrambe nullable, senza UNIQUE** (più ordini da
   una stessa origine). **NON** riusare `config.sorgenti`/`sorgente_*` (A2 scartata:
   l'UQ `uq_ordini_v_sorgente_fk` imporrebbe l'1:1 e lo `scope` PUSH_* ha altra
-  semantica — vedi [db-brief §1.A](./db-brief-ordini-vendita.md)). Riferimento
+  semantica — vedi [db-brief §1.A](../work-done/db-brief-ordini-vendita.md)). Riferimento
   polimorfo (preventivo *o* offerta secondo il tipo): integrità garantita alla
   valorizzazione (conversione §7.4), non con FK fisica unica.
 - **E — agente**: `agente_soggetto_ruolo_id bigint NULL` FK
@@ -434,7 +442,7 @@ inutile). Si nasce gemelli di
   `PageActionsBar` con suffix Tag dirty/salvata + `ReadonlyBadge`.
 - **Slot `#cell-stato`**: `<Tag :value="data.stato_descrizione"
   :severity="statoOrdineSeverity(data.stato_codice_interno)" />`.
-- **Slot `#actions`**: `RowActionsMenu` → PDF (`ORDINE_CLIENTE`, disabilitato in
+- **Slot `#actions`**: `RowActionsMenu` → PDF (tipo `ORDINE_VENDITA`, disabilitato in
   BOZZA via `stato_codice_interno`) + gestisci note (`OrdineNoteDrawer`) +
   **conferma/push** (§7) come azione di riga condizionale. `:force-compact`.
 - `totale_doc` e date: formatter built-in. `numero` plain (sempre valorizzato,
@@ -556,10 +564,11 @@ vendite, lista DEF-8 diretta). File: `api/ordiniApi.js`, `stores/ordini.js`
    conversione upstream §7.4). Sviluppo concentrico, non YAGNI
    (`feedback_concentrico_no_yagni`). La colonna `agente_denominazione` resta
    comunque opt-in nella lista (catalogo).
-2. **PDF in lista omesso.** Non c'è generazione documenti `ORDINE_CLIENTE` nello
-   scheletro BE (nessun `/emetti/`): la lista resta consultazione + note. Si
-   aggancia `EntityPdfButton`/`PdfDocumentiSorgenteDialog` quando esisterà
-   l'emissione documenti ordini.
+2. **PDF in lista omesso.** Non c'è generazione documenti `ORDINE_VENDITA` nello
+   scheletro BE (nessun endpoint `/documenti/`): la lista resta consultazione +
+   note. Si aggancia `EntityPdfButton`/`PdfDocumentiSorgenteDialog` quando esisterà
+   l'emissione documenti ordini → **dettaglio operativo DB/BE/FE in §12 (stampa
+   ordine)**, sezione aggiunta su richiesta Tid 2026-06-04.
 3. **`documento_origine` (A1)**: chip read-only nell'header del drawer quando
    valorizzato; lo scheletro non lo scrive (lo farà la conversione §7.4).
 4. **Prezzo riga senza endpoint "suggerisci"**: gli ordini non hanno
@@ -580,17 +589,32 @@ vendite, lista DEF-8 diretta). File: `api/ordiniApi.js`, `stores/ordini.js`
 7. **Cliente immutabile post-creazione** (lock FE `billing_account_id` quando
    `hasDetail`): vedi bug BE sotto.
 
-### ⚠️ Bug logico BE da chiudere (priorità, `feedback_bug_logici_modello`)
+### ✅ Bug logico BE — CHIUSO (2026-06-04, `feedback_bug_logici_modello`)
 
-`ordini_service.aggiorna_ordine` ha `billing_account_id` nella whitelist
-`_UPDATE_KEYS_ORDINE` ma **non ri-deriva `soggetto_ruolo_id`** (lo fa solo
-`crea_ordine`). Cambiare BA in update lascerebbe `soggetto_ruolo_id` stantio →
-**incoerenza cliente↔soggetto**. Difesa FE applicata (lock del campo cliente
-post-create, come `PreventiviDrawer`). Fix BE consigliato — una delle tre:
-(a) rimuovere `billing_account_id` da `_UPDATE_KEYS_ORDINE` (cliente immutabile,
-allineato all'UX); (b) ri-derivare `soggetto_ruolo_id` dal nuovo BA in
-`aggiorna_ordine`; (c) rifiutare con `E_ORD_VALIDAZIONE` se il BA cambia.
-Opzione (a) è la più semplice e coerente con "cambiare cliente = nuovo ordine".
+**Era**: `ordini_service.aggiorna_ordine` aveva `billing_account_id` nella whitelist
+`_UPDATE_KEYS_ORDINE` ma **non ri-derivava `soggetto_ruolo_id`** (lo fa solo
+`crea_ordine`) → cambiare BA in update lasciava `soggetto_ruolo_id` stantio,
+**incoerenza cliente↔soggetto** (verificato: `vendite.ordini` denormalizza sia
+`billing_account_id` sia `soggetto_ruolo_id` NOT NULL, e **nessun trigger DB li
+ri-sincronizza** su UPDATE — `trgfn_ordini_normalize` tocca solo
+`fatturazione_trigger`).
+
+**Fix applicato — opzione (a) "cliente immutabile"**: `billing_account_id`
+**rimosso** da `_UPDATE_KEYS_ORDINE` + guard in `aggiorna_ordine` che **rifiuta
+esplicitamente** (`E_ORD_VALIDAZIONE`) un tentativo di *cambiare* il BA, mentre
+**tollera** il BA invariato re-inviato dal form FE (no silent-ignore). Scelta
+coerente con preventivi/offerte (che NON denormalizzano `soggetto_ruolo_id` e
+trattano cliente/utility come immutabili post-create) e con il lock FE già
+presente. Test: `test_ordini_service.py` (cambio BA rifiutato / BA invariato
+tollerato / payload senza BA aggiorna) — 12/12 verdi + `test_ordini_api` 9/9.
+
+**Difesa DB autoritativa (DB-first, pendente)**: il guard BE è solo metà del
+pattern canonico ZeroErp (guard applicativo + trigger DB come difesa finale). Il
+lock immutabilità a livello DB (estensione di `trg_ordini_a10_lock_columns_upd` a
+`billing_account_id` + `soggetto_ruolo_id`) è descritto nel brief
+[db-brief-ordini-lock-cliente.md](db-brief-ordini-lock-cliente.md) → consegnato al
+team DB (`dev/db-tid`); il guard BE resta come defense-in-depth + messaggio
+parlante.
 
 ### BB guardia empty-state estratto + adottato (regola del 2, OK Tid 2026-06-03)
 
@@ -747,37 +771,62 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 - **F — Tipo/causale ordine** (enum `tipo_ordine` default STANDARD): quando entrano
   reso/RMA, campione, conto-deposito.
 
-**Decisione di dominio APERTA (non rimandata — da chiudere all'avvio del BE):**
+**Decisione di dominio — ✅ CHIUSA (di fatto presa allo scheletro BE):**
 
-- **Livello pricing dell'ordine** (§6.bis.1): l'ordine usa il pricing **stile
-  preventivo** (`PricingService.resolve_prezzo` + override semplice) oppure eredita
-  anche il **gate L2/L3 stile contratti** (`_pricing_gate_helpers`)? In entrambi i
-  casi passa dai BB condivisi (mai query dirette); cambia solo *quanto* gate
-  riusare. Da sciogliere prima di scrivere `*_service.py` ordini.
+- **Livello pricing dell'ordine** (§6.bis.1): **adottato il pricing stile
+  preventivo** — `ordini_service._resolve_prezzo_riga` usa
+  `PricingService.resolve_prezzo` (resolve semplice via BB condiviso, mai query
+  dirette), **senza** gate L2/L3 stile contratti (`_pricing_gate_helpers`). Niente
+  banner L2 / badge origine prezzo (coerente con §6.ter punto 4). Scelta ratificata
+  a posteriori sul codice scritto (verifica 2026-06-04); un eventuale upgrade al
+  gate L2/L3 resterebbe additivo e passerebbe comunque dagli stessi BB.
 
 ---
 
 ## 9. Sequenza consigliata
 
-1. **Ratifica decisioni §8** (Tid).
-2. **Consegna al team DB** (`dev/db-tid`): il brief eseguibile è
-   [db-brief-ordini-vendita.md](./db-brief-ordini-vendita.md) (derivato da questa
-   analisi + verifica DDL) — **estensione modello A+E** (§3.0: link origine
-   **A1** FK dedicata + `agente_soggetto_ruolo_id`), **fix check** `chk_ordini_v_r_qta_pos` →
-   `quantita > 0`, vista `vw_ordini_lista` canonica (espone origine/agente),
-   `ui.lista_definizione` id=7 + catalogo lista_id=7 + preset `ordini_default` +
-   `priorita` + pgTAP. DB-A (`priorita`) già atterrato.
-3. **Attendere consegna DB** (memoria `feedback_be_fe_attende_prerequisiti_db`).
-4. **BE scheletro** (§5): repository (list+CRUD+componenti) + service + view/urls +
-   export + note (3 righe) + conferma/push + test verdi.
-5. **FE scheletro** (§6): albero `src/vendite/ordini/` con lista DEF-8 diretta +
-   drawer (testata+righe+componenti) + store/api + i18n; build verde.
-6. **Chiusura giro** (§7): conferma ordine end-to-end + (push singolo se §8.3 sì);
+> **Stato avanzamento (verifica 2026-06-04)**: passi 1-5 ✅ **FATTI**; restano
+> aperti la chiusura-giro/smoke (6-7) e gli item residui raccolti in §9.bis.
+
+1. ✅ **Ratifica decisioni §8** (Tid).
+2. ✅ **Consegna al team DB** (`dev/db-tid`): brief eseguibile
+   [db-brief-ordini-vendita.md](../work-done/db-brief-ordini-vendita.md) —
+   **estensione modello A+E**, **fix check** `chk_ordini_v_r_qta_pos` →
+   `quantita > 0`, vista `vw_ordini_lista` canonica, `ui.lista_definizione` id=7 +
+   catalogo + preset `ordini_default` + `priorita` + pgTAP. **DB ATTERRATO + pgTAP
+   verdi** (changeset `20260603-11..15`).
+3. ✅ **Attendere consegna DB** (memoria `feedback_be_fe_attende_prerequisiti_db`).
+4. ✅ **BE scheletro** (§5): repository (list+CRUD+componenti) + service + view/urls
+   (`ordini_repository.py`/`ordini_service.py`/`views_ordini.py`/`urls_ordini.py`) +
+   export + note (istanza `PartitionedNoteRepository` in `note_views.py`) +
+   conferma/push. *(Resta il bug BA-update §9.bis #1.)*
+5. ✅ **FE scheletro** (§6): albero `src/vendite/ordini/` con lista DEF-8 diretta +
+   drawer (testata+righe+componenti) + store/api + i18n; build verde. *(Picker
+   agente E omesso, §6.ter.1.)*
+6. ⏳ **Chiusura giro** (§7): conferma ordine end-to-end + push singolo;
    smoke ordine→commessa→fattura.
-7. **Smoke E2E**: lista carica/filtri/ritiro colonne/personalizzazione/export
+7. ⏳ **Smoke E2E**: lista carica/filtri/ritiro colonne/personalizzazione/export
    CSV-XLSX rispetta ordine-visibilità, CRUD testata+righe+componenti, note,
-   PDF `ORDINE_CLIENTE`, conferma→push→attività fatturabile generata.
+   PDF `ORDINE_VENDITA` (§12 — da fare), conferma→push→attività fatturabile generata.
 8. Riepilogo a video + attesa OK Tid (memoria `feedback_memoria_solo_su_richiesta`).
+
+## 9.bis. Item residui aperti (verifica 2026-06-04)
+
+Cosa resta **davvero da fare** dopo lo scheletro BE+FE:
+
+1. ✅ **Bug BE BA-update** — **CHIUSO 2026-06-04** (§"Bug logico BE — CHIUSO"):
+   `billing_account_id` rimosso dalla whitelist update + guard che rifiuta il
+   cambio BA (cliente immutabile). Test verdi.
+2. ✅ **Stampa PDF** (§12) — **BE+FE FATTI 2026-06-04** (anteprima on-demand,
+   §12.4a): tipo documento `ORDINE_VENDITA` seedato (DB), context builder + view
+   documenti + route (BE), `EntityPdfButton` nel drawer + client/costanti/i18n
+   (FE), build verde. **Resta**: creazione **manuale** del template HTML +
+   versione PUBBLICATA (senza, l'anteprima dà errore template non risolto).
+3. 🟡 **Picker agente (E)** nel drawer FE (§6.ter.1): colonna/whitelist/service
+   pronti, manca solo il campo UI (attende picker SR ruolo agente).
+4. 🟡 **Conversione upstream** preventivo/offerta → ordine (§7.4): `documento_origine`
+   predisposto, conversione non implementata (step successivo).
+5. 🟡 **Smoke E2E** (passo 7) non ancora eseguito.
 
 ---
 
@@ -804,3 +853,238 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 | `vendite.preventivi` | ✅ completato 2026-06-03 | ✅ | [lista-preventivi.md](../work-done/lista-preventivi.md) |
 | `vendite.offerte` | ✅ completato 2026-06-03 | ✅ | [lista-offerte-comm.md](../work-done/lista-offerte-comm.md) |
 | **`vendite.ordini`** | ✅ **BE+FE scheletro 2026-06-03** (lista DEF-8 + CRUD + conferma + push) | ✅ (vedi §6.ter scelte deliberate + bug BE BA-update) | questo doc |
+
+---
+
+## 12. Stampa documento ordine (PDF) — DB / BE / FE
+
+> **Origine**: richiesta Tid 2026-06-04 — la stampa non era stata prevista nello
+> scheletro (§6.ter punto 2). Si usa **lo stesso sistema** del modulo `documenti`
+> ([guide/documenti-e-stampe.md](../../guide/documenti-e-stampe.md)) già adottato
+> da **preventivi**, **offerte commerciali** e **contratti**: tipo documento →
+> template versionato (HTML/CSS) → context builder per dominio → render WeasyPrint
+> → `documenti_generati` + file archiviato. **Niente nuovo motore, niente nuova
+> infrastruttura**: ordini è il **quarto dominio cablato** sugli stessi BB (regola
+> del 2 — memoria `feedback_regola_del_2_estrai_bb`). Il lavoro è clone +
+> wiring, non sviluppo.
+
+### 12.0 Modello già rodato — i due codici che devono allinearsi
+
+La generazione passa per **due lookup per codice** (mai ID hardcoded, memoria
+`feedback_no_hardcoded_ids`) che il seed DB deve far combaciare con BE:
+
+1. **`config.sorgenti.codice`** → risolto a runtime da
+   [`resolve_contesto_documentale`](../../../../backend/apps/documenti/api/contesto_helpers.py)
+   (`DocumentiRepository.get_sorgente_tipo_id_by_codice`). Per gli ordini **esiste
+   già**: `ORDINE_VENDITA` (usato da `HandlerOrdini` push, canali
+   `trgfn_documenti_sync_canali`, `fn_resolve_termini_pagamento`). → la view ordini
+   userà `_CODICE_SORGENTE_ORDINE = "ORDINE_VENDITA"`.
+2. **`documenti.template_documenti.context_builder_code`** (colonna NOT NULL) →
+   dispatch del builder via
+   [`registry.get_builder(code)`](../../../../backend/apps/documenti/services/context_builders/registry.py)
+   dentro `document_generation_service._build_context_for_sorgente`. Il seed del
+   **template** ordine deve impostare `context_builder_code = "ORDINE_VENDITA"`,
+   uguale al `CODE` del builder BE (§12.2). *(Convenzione famiglia: preventivo usa
+   `PREVENTIVO`, offerta `OFFERTA_COMMERCIALE`, contratto `CONTRATTO` — per ordini
+   il codice naturale è `ORDINE_VENDITA`, **ratificato dal team DB 2026-06-04**.)*
+
+> **⚠️ Rettifica 2026-06-04 (verifica team DB)**: il tipo documento per ordini è
+> **`ORDINE_VENDITA`**, *non* `ORDINE_CLIENTE` (codice scelto coerente con la
+> sorgente `config.sorgenti='ORDINE_VENDITA'` e col `context_builder_code` — tutta
+> la famiglia usa `tipo documento = nome sorgente`). La voce §1 «tipo documento
+> `ORDINE_CLIENTE` configurato» era **stale**: la verifica ha trovato
+> `documenti.tipi_documento_output` con solo PREVENTIVO/CONTRATTO/OFFERTA_COMMERCIALE
+> (nessuna riga ordine). Il team DB ha **seedato** `ORDINE_VENDITA` (id=4) →
+> §12.1. Resta il **template + versione PUBBLICATA** con l'HTML del layout, che
+> per scelta Tid si crea **manualmente** (non via seed Liquibase, come per gli
+> altri tre domini): senza versione PUBBLICATA la generazione fallisce
+> (`documenti-e-stampe.md` §2.3).
+
+### 12.1 Workstream DB — ✅ EVASO (team DB, 2026-06-04, brief dedicato)
+
+> **Brief DB**: «Brief DB — Stampa documento ordine (PDF)» (team DB, `dev/db-tid`).
+> Esito: il workstream DB si riduce a **un solo seed di lookup** (il tipo
+> documento), **già fatto e pgTAP verde**; i template sono gestione manuale.
+
+Decisioni team DB (ratificate Tid 2026-06-04):
+
+1. **Tipo documento → seedato.** Riga `ORDINE_VENDITA` (id=4) aggiunta a
+   `documenti.tipi_documento_output` (`codice=codice_interno=ORDINE_VENDITA`,
+   attivo). Era **assente** (il CSV aveva solo PREVENTIVO/CONTRATTO/OFFERTA). Seed
+   via il changeset base `20260429-58-upsert-documenti-seed-base` (`runOnChange`+
+   `loadUpdateData` upsert per `id`, progettato per la crescita del lookup). pgTAP
+   `test-documenti-tipo-ordine-vendita.sql` verde (presenza+attivo+sorgente+no
+   duplicati). **EVASO**, resta solo commit/PR su `dev/db-tid`.
+2. **Sorgente → riuso.** `config.sorgenti` `codice='ORDINE_VENDITA'` (id=6) già
+   presente e attiva (push/canali) → nessuna nuova riga.
+3. **Template + versione PUBBLICATA → gestione MANUALE** (decisione Tid): si
+   creano a mano (`documenti.template_documenti` + `template_documenti_versioni`,
+   `context_builder_code='ORDINE_VENDITA'`, `is_default=true` per
+   `(ORDINE_VENDITA, sorgente, emittente)`), **non** via seed Liquibase — come già
+   fatto per preventivo/offerta/contratto. HTML conferma d'ordine: clone layout
+   preventivo/offerta, adattato (niente revisioni, niente listino testata,
+   **+`fatturazione_trigger`**, eventuali chip `documento_origine`/`agente`).
+   `BOZZA` → `PUBBLICATA` via `fn_pubblica_template_documento_versione`. → **fuori
+   dal workstream DB seed**, è un passo di configurazione operativa.
+4. **Asset** — riuso degli asset emittente già caricati (logo/carta intestata/
+   firma): nessun nuovo asset se il layout usa i codici stabili esistenti.
+
+> **Nota**: tutto §12.1 è **configurazione/seed dati**, non modello (le tabelle
+> `documenti.*` esistono e sono collaudate da preventivi/offerte/contratti). È
+> indipendente dall'estensione modello A+E (§3.0). **Prerequisito BE/FE
+> soddisfatto** dal seed del tipo documento; la creazione del template manuale può
+> avvenire in parallelo allo sviluppo BE/FE (serve per il primo render reale).
+
+### 12.2 Workstream Backend (`apps/vendite/` + `apps/documenti/`) — attende DB
+
+Clone 1:1 della catena preventivi
+([preventivi_documenti_views.py](../../../../backend/apps/vendite/api/preventivi_documenti_views.py),
+[preventivo_document_context_builder.py](../../../../backend/apps/vendite/services/preventivo_document_context_builder.py)).
+Nessuna logica nuova nel servizio centrale
+[document_generation_service.py](../../../../backend/apps/documenti/services/document_generation_service.py):
+ordini si limita a fornire **builder + view + route + repo-getters**.
+
+1. **Context builder (NUOVO)** —
+   `apps/vendite/services/ordine_document_context_builder.py`, clone di
+   `preventivo_document_context_builder.py`:
+   - `class OrdineDocumentContextBuilder(DocumentContextBuilder)` con
+     `CODE = "ORDINE_VENDITA"` (= `context_builder_code` del template, §12.0).
+   - `build_context(sorgente_id, *, auth_user_id=None, locale="it-IT")` legge da
+     `ordini_repository` testata + righe + riepilogo IVA + indirizzi e restituisce
+     il dict `{ordine, cliente, righe, riepilogo_iva, indirizzi, _meta}`. Il
+     template **non interroga mai il DB** (`documenti-e-stampe.md` §3) — il builder
+     è single source del contesto.
+   - **Registrazione** in
+     [apps/vendite/apps.py](../../../../backend/apps/vendite/apps.py) `ready()`:
+     aggiungere l'import `ordine_document_context_builder` accanto agli altri 3
+     (side-effect `register_builder()`).
+2. **Repo getters** — assicurare in `ordini_repository.py` i metodi che il builder
+   consuma (clone preventivi): `get_for_documento_generation(ordine_id)` (ritorna
+   `id`/`uid`/`emittente_fiscale_id`/`stato` — usato da
+   `resolve_contesto_documentale`), `get_ordine`, `list_righe`, `list_indirizzi`,
+   `list_riepilogo_iva`. Molti esistono già dallo scheletro CRUD (§5.1) → aggiungere
+   solo i mancanti.
+3. **View documenti (NUOVO)** — `apps/vendite/api/ordini_documenti_views.py`, clone
+   di `preventivi_documenti_views.py`. Classi `DomainAPIView`
+   (`area_funzionale='vendite'`), `_CODICE_SORGENTE_ORDINE = "ORDINE_VENDITA"`,
+   helper `_resolve_contesto_ordine(ordine_id)` →
+   `resolve_contesto_documentale(...)`:
+   - `ApiOrdineDocumentoGenera` — `POST .../documenti/genera/` (genera + persiste).
+   - `ApiOrdineDocumentoAnteprima` — `POST .../documenti/anteprima/` (render senza
+     persist; tipicamente in BOZZA).
+   - `ApiOrdineDocumentiList` — `GET .../documenti/` (lista paginata generati per
+     sorgente).
+   - `ApiOrdineDocumentoFile` — `GET .../documenti/{documento_id}/file/`
+     (download PDF + evento `SCARICATO`).
+   - `ApiOrdineDocumentoAllegati` — `GET/POST .../documenti/{documento_id}/allegati/`
+     (lista/append allegati — opzionale per lo scheletro stampa).
+   - *(Eventuale)* `ApiOrdineEmetti` — `POST .../emetti/` se si vuole la transizione
+     di stato atomica + generazione, come preventivi/offerte. **Per la sola stampa
+     può bastare `genera` on-demand** senza nuova transizione di stato (l'ordine ha
+     già `numero` in BOZZA, §8.1). Decisione di processo §12.4.
+4. **Route** — in
+   [urls_ordini.py](../../../../backend/apps/vendite/api/urls_ordini.py) aggiungere
+   le 5 path `documenti/...` (clone di
+   [preventivi_urls.py](../../../../backend/apps/vendite/api/preventivi_urls.py)
+   §172-200), nomi route `vendite-ordini-documenti-*`.
+5. **Test BE** — `tests/api/test_ordini_documenti.py` (clone preventivi):
+   genera (template default risolto, context builder invocato, record
+   `documenti_generati` + file), anteprima (no persist), list, download (evento
+   SCARICATO), guardia sorgente non attiva / emittente mancante. Mock DB (CI
+   AGENTS.md). Verde `./manage-test.sh apps.vendite.tests` + `apps.documenti.tests`.
+
+### 12.3 Workstream Frontend (`src/vendite/ordini/` + `src/documenti/`) — attende BE
+
+Riuso **totale** dei BB documenti già estratti (regola del 2): **nessun nuovo
+componente di stampa**. Si registra solo il nuovo sorgente.
+
+1. **Costante sorgente** — in
+   [src/documenti/constants.js](../../../../frontend/src/documenti/constants.js)
+   aggiungere `SORGENTE_CODES.ORDINE_VENDITA = 'ORDINE_VENDITA'` (= codice DB/BE).
+2. **Client API sorgente** — in
+   [src/documenti/api/documentiPerSorgente.js](../../../../frontend/src/documenti/api/documentiPerSorgente.js)
+   aggiungere il client `ordineDocumenti = buildSorgenteClient((id) =>
+   `/vendite/ordini/${id}/documenti`)` e registrarlo nella
+   `SORGENTE_CLIENT_MAP` accanto a preventivo/offerta/contratto. Download/anteprima
+   già `responseType:'blob'` nel factory (memoria
+   `feedback_blob_download_no_useapihandler` — il blob NON passa da
+   `useApiHandler`). Lo store
+   [stores/documentiPerSorgente.js](../../../../frontend/src/documenti/stores/documentiPerSorgente.js)
+   è generico: nessuna modifica oltre la entry in mappa.
+3. **Wiring drawer** — in
+   [OrdiniDrawer.vue](../../../../frontend/src/vendite/ordini/components/OrdiniDrawer.vue)
+   (header) montare
+   [`EntityPdfButton`](../../../../frontend/src/documenti/components/EntityPdfButton.vue),
+   gemello di `PreventiviDrawer`/`OffertaDrawer`:
+
+   ```vue
+   <EntityPdfButton
+     :sorgente-code="SORGENTE_CODES.ORDINE_VENDITA"
+     :entity-id="effectiveOrdineId"
+     :stato-codice="detail.stato_codice_interno"
+     :stati-preview="STATI_ORDINE_ANTEPRIMA_PDF"
+     :stati-con-documento="STATI_ORDINE_CON_DOCUMENTO"
+     i18n-prefix="vendite.ordini.pdf"
+   />
+   ```
+
+   Il bottone è **state-aware**: in BOZZA → modalità anteprima; in stati
+   "con documento" → apre
+   [`PdfDocumentiSorgenteDialog`](../../../../frontend/src/documenti/components/PdfDocumentiSorgenteDialog.vue)
+   (lista generati + download). Costanti stato in
+   `src/vendite/ordini/constants.js` (`STATI_ORDINE_ANTEPRIMA_PDF`,
+   `STATI_ORDINE_CON_DOCUMENTO`) — gli stati ammessi li detta il modello stati
+   ordine, **data-driven**, non hardcodati a casaccio (memoria
+   `feedback_no_hardcoded_ids`).
+4. **Wiring lista (azione di riga)** — opzionale ma coerente con la famiglia: voce
+   `RowActionsMenu` (memoria `feedback_row_actions_menu`) «Stampa/Documenti» che
+   apre lo stesso `PdfDocumentiSorgenteDialog` per la riga, disabilitata in BOZZA
+   via `stato_codice_interno` (la colonna tecnica è già nel catalogo §4). Rimuove la
+   limitazione registrata in §6.ter punto 2.
+5. **i18n** — chiavi `vendite.ordini.pdf.*` (label/tooltip anteprima/scarica) in
+   `it`/`en`; verifica assenza orfane. `@` letterale → `{'@'}` (memoria
+   `feedback_vue_i18n_linked_escape`).
+6. **Build FE verde** — `./node_modules/.bin/vite build`.
+
+### 12.4 Decisione di processo — ✅ CHIUSA: adottata (a) anteprima on-demand
+
+- **`genera` on-demand vs `emetti` con transizione di stato.** Preventivi/offerte
+  legano la prima generazione a una transizione (BOZZA→EMESSO/A) atomica
+  (render+stato+allegati). L'ordine ha già `numero` in BOZZA (§8.1) e la sua
+  transizione chiave è **CONFERMA** (§7.1, che governa il push commessa). Due
+  strade:
+  - **(a)** Stampa **disaccoppiata** dallo stato: `genera`/`anteprima` on-demand a
+    qualsiasi stato consultabile, senza nuova transizione. Più semplice, allineato
+    al fatto che la conferma d'ordine è già un PDF ristampabile.
+  - **(b)** Generazione **agganciata alla CONFERMA** (`POST .../conferma/` produce
+    anche il PDF conferma d'ordine in transazione atomica, stile `emetti`).
+  → **Adottata (a)** (2026-06-04). Implementazione: `EntityPdfButton` nel drawer
+  usa **solo** l'anteprima on-demand (`STATI_ORDINE_ANTEPRIMA_PDF` = tutti gli
+  stati consultabili; `STATI_ORDINE_CON_DOCUMENTO` = `[]`). Il BB non ha un
+  trigger `genera`: usare la modalità "scarica dall'archivio" senza un punto di
+  persistenza darebbe un dialog vuoto → si parte anteprima-only. Gli endpoint BE
+  `genera`/lista/download/allegati **esistono già** (pronti per l'archivio): quando
+  servirà l'aggancio (b) (conferma = atto formale che archivia il PDF), basta
+  abilitare gli stati `con-documento` + un trigger di generazione. La (a) non
+  preclude la (b) (`feedback_no_quick_fix_soluzione_assoluta`).
+
+### 12.5 Sintesi effort
+
+| Layer | Cosa | Clone da | Effort | Stato |
+| --- | --- | --- | --- | --- |
+| DB | seed tipo documento `ORDINE_VENDITA` + pgTAP | seed-base documenti | banale | ✅ **fatto** (applicato al DB di lavoro 2026-06-04; commit/PR su `dev/db-tid`) |
+| DB/config | template + versione PUBBLICATA (HTML) — **manuale** | template preventivo/offerta | **medio** (layout HTML) | ⏳ da creare a mano |
+| BE | context builder + registrazione `ready()` | `preventivo_document_context_builder.py` | basso | ✅ **fatto** (`ordine_document_context_builder.py`, CODE=ORDINE_VENDITA) |
+| BE | view documenti (4 classi) + route | `preventivi_documenti_views.py` / `preventivi_urls.py` | basso | ✅ **fatto** (`ordini_documenti_views.py`; no `emetti`, §12.4a) |
+| BE | repo getter `get_for_documento_generation` | `preventivi_repository.py` | basso | ✅ **fatto** |
+| BE | test documenti ordine | `test` preventivi documenti | basso | ✅ **fatto** (`test_ordine_document_context_builder.py` 5/5; suite ordini 17/17 + api 9/9) |
+| FE | costante + client API + entry mappa | `documentiPerSorgente.js` | banale | ✅ **fatto** (`ordineDocumenti` + `SORGENTE_CODES.ORDINE_VENDITA`) |
+| FE | `EntityPdfButton` nel drawer | `PreventiviDrawer.vue` | basso | ✅ **fatto** (drawer; azione lista omessa, opzionale) |
+| FE | i18n `vendite.ordini.pdf.*` + context_builder | preventivi | banale | ✅ **fatto** (it/en; `ORDINE` placeholder → `ORDINE_VENDITA` registered) |
+
+> **BE+FE stampa COMPLETI 2026-06-04** (anteprima on-demand, §12.4a). Build FE
+> verde. Resta solo il **layout HTML del template + versione PUBBLICATA**
+> (creazione manuale, §12.1.3): senza, l'anteprima risponde con errore template
+> non risolto. Tutto il resto è cablaggio del doc-type «ordine»
+> sull'infrastruttura documenti esistente. Stampa = **quarto giro** sullo stesso
+> BB, **zero infrastruttura nuova**.

@@ -170,6 +170,26 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, [ordine_id])
             return row_to_dict(cursor)
 
+    # Scopo: Contesto minimo per la generazione documento (stampa PDF). Mirror
+    #        di `PreventiviRepository.get_for_documento_generation`: ritorna
+    #        id + uid + emittente_fiscale_id, i campi che
+    #        `resolve_contesto_documentale` usa per il guard NOT_FOUND/emittente
+    #        e l'orchestrator per scope/snapshot. None se id inesistente.
+    def get_for_documento_generation(
+        self, ordine_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                id,
+                uid::text AS uid,
+                emittente_fiscale_id
+              FROM vendite.ordini
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(ordine_id)])
+            return row_to_dict(cursor)
+
     # Scopo: Stato corrente (codice_interno) dell'ordine. Usato dal service
     #        come guard pre-operazione (es. modifica ammessa solo in DRAFT).
     def get_stato_codice(self, ordine_id: int) -> str | None:
