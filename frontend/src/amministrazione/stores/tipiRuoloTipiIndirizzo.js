@@ -87,4 +87,4 @@ export const useTipiRuoloTipiIndirizzoStore = defineStore('amministrazione-tipi-
     items, totalRecords, loading, hasSearched, filters,
     fetchList, fetchDetail, create, update
   }
-})
+}, { userScoped: true })

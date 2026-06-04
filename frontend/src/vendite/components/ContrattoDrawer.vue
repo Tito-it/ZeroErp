@@ -52,6 +52,7 @@ import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
+import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { getContrattoFormDefaults } from '../api/formDefaults'
 import { useBaFormDefaults } from '../_shared/baDefaults/useBaFormDefaults'
 import Drawer from 'primevue/drawer'
@@ -147,8 +148,8 @@ function formatListinoOption(item) {
 const righeVisible = ref(false)
 const noteDrawerVisible = ref(false)
 
-// fgVersion: invalida fetch stantii su apertura/chiusura rapide.
-let fgVersion = 0
+// Guard di versione: invalida fetch stantii su apertura/chiusura rapide.
+const fgFv = useFetchVersion()
 
 // Defaults non-BA da config.parameters (Fase 2 refactor frontend vendite).
 // Caricati on-open drawer prima di resetForm; cache modulo `useParameterDefaults`.
@@ -290,11 +291,11 @@ function toIsoDate(d) {
 }
 
 // Carica dati all'apertura. Il reset di `contentReady` alla chiusura e' gestito
-// dal composable useDrawerContentReady — qui resta solo l'invalidation fgVersion
-// per scartare fetch stantii in caso di apertura/chiusura rapide.
+// dal composable useDrawerContentReady — qui resta solo l'invalidation del guard
+// di versione per scartare fetch stantii in caso di apertura/chiusura rapide.
 watch(() => props.visible, async (val) => {
-  if (!val) { fgVersion++; return }
-  const v = ++fgVersion
+  if (!val) { fgFv.invalidate(); return }
+  const v = fgFv.tag()
 
   // loadParamDefaults serve sia in EDIT (onModalitaChange usa
   // VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE) sia in CREATE.
@@ -302,15 +303,15 @@ watch(() => props.visible, async (val) => {
   // dal detail BE). In CREATE le carichiamo in parallelo.
   if (isEdit.value && props.contrattoId) {
     await loadParamDefaults()
-    if (v !== fgVersion) return
+    if (!fgFv.isCurrent(v)) return
     const d = await loadDetailOrClose(() => store.fetchDetail(props.contrattoId))
-    if (v !== fgVersion) return
+    if (!fgFv.isCurrent(v)) return
     if (d == null) return  // dettaglio non accessibile → drawer già chiuso
     detail.value = d
     populateFromDetail(d)
   } else {
     await Promise.all([loadParamDefaults(), loadUtilityDefault()])
-    if (v !== fgVersion) return
+    if (!fgFv.isCurrent(v)) return
     resetForm()
     // Prefill BA se aperto da contesto cliente.
     if (props.initialBillingAccount?.id) {
@@ -322,7 +323,7 @@ watch(() => props.visible, async (val) => {
       // billing_account_id sovrascrive col valore BA-resolved.
       try {
         const res = await getContrattoFormDefaults(null)
-        if (v !== fgVersion) return
+        if (!fgFv.isCurrent(v)) return
         const data = res?.data?.data
         if (data && form.value.valuta_id == null && data.valuta_id != null) {
           form.value.valuta_id = data.valuta_id

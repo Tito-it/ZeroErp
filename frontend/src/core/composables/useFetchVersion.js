@@ -1,16 +1,26 @@
-// Scopo: building block "guard di versione" per fetch asincroni fire-and-forget.
+// Scopo: building block "guard di versione" (token monotono) per scartare le
+//        risposte asincrone stantie quando il contesto cambia piu' in fretta
+//        del ritorno delle fetch. Unica primitiva per due scenari fino al
+//        2026-06-05 biforcati in due composable gemelli (`useTokenedFetch`,
+//        ritirato e fuso qui — regola del 2):
 //
-// Problema risolto: quando un drawer/lista lancia una `api.fetch().then(...)`
-// senza await e l'utente cambia entita' (es. chiude/riapre il drawer su un
-// id diverso) prima che la prima risposta arrivi, le due Promise possono
-// risolversi in ordine inverso al lancio → la risposta "stantia" sovrascrive
-// lo stato fresco. Risultato visibile: dati del record precedente in quello
-// nuovo per il tempo che intercorre fino al ritorno della seconda risposta.
+//   1. Drawer/lista fire-and-forget: una `api.fetch().then(...)` senza await
+//      e l'utente cambia entita' (chiude/riapre il drawer su un id diverso)
+//      prima che la prima risposta arrivi → le due Promise possono risolversi
+//      in ordine inverso al lancio e la risposta "stantia" sovrascrive lo
+//      stato fresco. Consumer: OffertaDrawer, PreventiviDrawer (via
+//      `useRevisioniTab`).
+//   2. Switch rapido di contesto su lookup/preview/list: cambio articolo o
+//      cambio riga espansa mentre una fetch lenta e' ancora in volo. Consumer:
+//      `useRigaComponenti` (lista componenti BoM), `useArticoloUomOptions`
+//      (lookup UoM) e i drawer riga (preview).
 //
-// Pattern duplicato in OffertaDrawer (fgVersion), ContrattoRigheDrawer
-// (fgVersion) e introdotto su PreventiviDrawer per la tab Revisioni. La
-// regola del 2 (`feedback_regola_del_2_estrai_bb`) richiede l'estrazione
-// alla seconda occorrenza: questo composable la centralizza.
+// Pattern: ogni fetch cattura un tag monotono (`tag()`) prima dell'await; al
+// ritorno il caller confronta col valore corrente (`isCurrent(tag)`) — se
+// diverso e' partita una fetch piu' nuova nel frattempo, la risposta va
+// scartata. `invalidate()` bumpa il contatore senza emettere una nuova fetch
+// (reset/cleanup: es. cambio riga padre svuota la lista e impedisce a risposte
+// vecchie di ripopolarla).
 //
 // Uso tipico in un drawer/lista:
 //
@@ -26,6 +36,9 @@
 //   watch(visible, v => {
 //     if (!v) fv.invalidate()           // invalidate cancella tutte le call
 //   })                                  // in volo (qualunque tag !== current)
+//
+// Chi preferisce il nome `nextToken` (semantica scenario 2) puo' aliasare in
+// destructuring: `const { tag: nextToken, isCurrent, invalidate } = useFetchVersion()`.
 //
 // Nota: non e' un ref reattivo. Il valore vive in una closure `let` e serve
 // solo per il confronto async (no rendering). Volutamente piu' snello di

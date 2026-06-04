@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
-import Tag from 'primevue/tag'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS, READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
 import { useEmailAccountsStore } from '../stores/emailAccounts'
@@ -82,8 +82,7 @@ function onRowClick({ data }) {
       <Column field="unita_organizzativa_descrizione" :header="t('amm.email_uo')" style="width: 180px;" />
       <Column field="attivo" :header="t('amm.email_attivo')" style="width: 80px;">
         <template #body="{ data }">
-          <Tag :value="data.attivo ? t('amm.email_attivo') : t('amm.email_non_attivo')"
-               :severity="data.attivo ? 'success' : 'warn'" />
+          <AttivoTag :active="data.attivo" :active-label="t('amm.email_attivo')" :inactive-label="t('amm.email_non_attivo')" />
         </template>
       </Column>
     </DataTable>

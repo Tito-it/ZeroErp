@@ -28,6 +28,7 @@ import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 
 const { t } = useI18n()
 const store = useArticoliStore()
@@ -334,10 +335,7 @@ const drawerActions = computed(() => {
           <DrawerEntityHeader>
             <Tag :value="detail.codice" severity="secondary" />
             <template #status>
-              <Tag
-                :value="detail.attivo ? t('common.active') : t('common.inactive')"
-                :severity="detail.attivo ? 'success' : 'warn'"
-              />
+              <AttivoTag :active="detail.attivo" />
             </template>
           </DrawerEntityHeader>
 

@@ -14,6 +14,7 @@ import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
 import { useDatiSocietariForm } from '../../core/composables/useDatiSocietariForm'
 import { useLookup } from '../../core/composables/useLookup'
+import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { lookupFormeGiuridiche } from '../../core/apiCore'
 import { lookupProvince } from '../api/anagrafiche'
 import { DRAWER_WIDTH } from '../../core/constants'
@@ -86,18 +87,18 @@ const isEdit = computed(() => props.mode === 'edit')
 // Carica forme giuridiche filtrate al cambio tipo soggetto.
 // Versione per evitare race condition: se il tipo cambia durante il fetch,
 // la risposta della richiesta precedente viene scartata.
-let fgVersion = 0
+const fgFv = useFetchVersion()
 watch(() => soggetto.form.tipo_soggetto_dettaglio_id, async (tipoId) => {
   if (!tipoId || !soggetto.showDatiSocietari.value) {
     formeGiuridicheLookup.value = []
     return
   }
-  const v = ++fgVersion
+  const v = fgFv.tag()
   try {
     const res = await lookupFormeGiuridiche(tipoId)
-    if (v === fgVersion) formeGiuridicheLookup.value = res.data.data.results
+    if (fgFv.isCurrent(v)) formeGiuridicheLookup.value = res.data.data.results
   } catch {
-    if (v === fgVersion) formeGiuridicheLookup.value = []
+    if (fgFv.isCurrent(v)) formeGiuridicheLookup.value = []
   }
 })
 
@@ -220,7 +221,7 @@ async function onContiBancariSaved() {
 // Carica dati quando il drawer si apre.
 // Quando si chiude, invalida versioni async per scartare risposte in volo.
 watch(() => props.visible, async (val) => {
-  if (!val) { fgVersion++; return }
+  if (!val) { fgFv.invalidate(); return }
 
   if (isEdit.value && props.itemId) {
     try {
