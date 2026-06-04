@@ -12,17 +12,16 @@
 //         2) entry qui;
 //         3) chiave i18n `documenti.context_builders.<CODE>`.
 //
-//        v1: PREVENTIVO e CONTRATTO sono registrati lato BE.
-//        ORDINE resta placeholder per coerenza UX (la
-//        creazione template con builder non registrato sara' rifiutata
-//        dal BE alla generazione documento, Decisione 18+74).
+//        PREVENTIVO, CONTRATTO, OFFERTA_COMMERCIALE e ORDINE_VENDITA sono
+//        registrati lato BE (VenditeConfig.ready()). Aggiungere un builder
+//        concreto richiede: registro BE + entry qui + chiave i18n.
 // ------------------------------------------------------------
 
 export const CONTEXT_BUILDER_CODES = [
   { code: 'PREVENTIVO',         i18nKey: 'documenti.context_builders.PREVENTIVO',         registered: true },
   { code: 'CONTRATTO',          i18nKey: 'documenti.context_builders.CONTRATTO',          registered: true },
   { code: 'OFFERTA_COMMERCIALE', i18nKey: 'documenti.context_builders.OFFERTA_COMMERCIALE', registered: true },
-  { code: 'ORDINE',             i18nKey: 'documenti.context_builders.ORDINE',             registered: false },
+  { code: 'ORDINE_VENDITA',     i18nKey: 'documenti.context_builders.ORDINE_VENDITA',     registered: true },
 ]
 
 // Scopo: Helper per il dropdown PrimeVue Select. Ritorna un array di

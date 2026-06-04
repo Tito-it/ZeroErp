@@ -75,6 +75,50 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
             ordini_service.crea_ordine({"utility_id": 1})
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
 
+    @patch(_REPO)
+    def test_aggiorna_ordine_cambio_ba_rifiutato(self, repo_cls) -> None:
+        # Cliente immutabile: cambiare billing_account_id su un ordine esistente
+        # e' rifiutato (lascerebbe soggetto_ruolo_id stantio).
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_ordine.return_value = {"id": 7, "billing_account_id": 3}
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.aggiorna_ordine(7, {"billing_account_id": 99})
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        repo.update_ordine.assert_not_called()
+
+    @patch(_REPO)
+    def test_aggiorna_ordine_ba_invariato_tollerato(self, repo_cls) -> None:
+        # Il form FE puo' reinviare il BA invariato: tollerato, ma escluso
+        # dall'UPDATE (non e' nella whitelist). Aggiorna solo gli altri campi.
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_ordine.return_value = {"id": 7, "billing_account_id": 3}
+        ordini_service.aggiorna_ordine(7, {"billing_account_id": 3, "utility_id": 9})
+        kwargs = repo.update_ordine.call_args.kwargs
+        self.assertNotIn("billing_account_id", kwargs)
+        self.assertEqual(kwargs["utility_id"], 9)
+
+    @patch(_REPO)
+    def test_aggiorna_ordine_ba_non_numerico_rifiutato(self, repo_cls) -> None:
+        # Input malformato: billing_account_id non numerico -> 422 parlante
+        # (E_ORD_VALIDAZIONE), non 500 da int() non gestito.
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.aggiorna_ordine(7, {"billing_account_id": "abc"})
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        repo.update_ordine.assert_not_called()
+
+    @patch(_REPO)
+    def test_aggiorna_ordine_senza_ba_aggiorna(self, repo_cls) -> None:
+        # Payload senza billing_account_id: nessun confronto, update diretto.
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        ordini_service.aggiorna_ordine(7, {"utility_id": 9})
+        repo.get_ordine.assert_not_called()
+        repo.update_ordine.assert_called_once()
+
 
 class OrdiniDbErrorsTests(SimpleTestCase):
     """Traduzione errori DB di _db_errors (il bug originale crashava qui)."""

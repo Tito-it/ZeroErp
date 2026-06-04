@@ -18,12 +18,15 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.documenti.services.context_builders._date_formatting import (
+    format_date_it,
+    format_date_iso,
+)
 from apps.documenti.services.context_builders.base import (
     DocumentContextBuilder,
 )
@@ -114,12 +117,12 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
             "id": testata.get("id"),
             "uid": testata.get("uid"),
             "numero": testata.get("numero"),
-            "data": _format_date_it(testata.get("data")),
-            "data_iso": _format_date_iso(testata.get("data")),
-            "valido_dal": _format_date_it(testata.get("valido_dal")),
-            "valido_dal_iso": _format_date_iso(testata.get("valido_dal")),
-            "valido_al": _format_date_it(testata.get("valido_al")),
-            "valido_al_iso": _format_date_iso(testata.get("valido_al")),
+            "data": format_date_it(testata.get("data")),
+            "data_iso": format_date_iso(testata.get("data")),
+            "valido_dal": format_date_it(testata.get("valido_dal")),
+            "valido_dal_iso": format_date_iso(testata.get("valido_dal")),
+            "valido_al": format_date_it(testata.get("valido_al")),
+            "valido_al_iso": format_date_iso(testata.get("valido_al")),
             "ambito": testata.get("ambito"),
             "parent_contratto_id": testata.get("parent_contratto_id"),
             "stato": {
@@ -178,37 +181,6 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
                     r[field] = _format_decimal_6(r.get(field))
             shaped.append(r)
         return shaped
-
-
-def _format_date_it(value: Any) -> str | None:
-    parsed = _parse_date(value)
-    if parsed is None:
-        return None if value is None else str(value)
-    return parsed.strftime("%d-%m-%Y")
-
-
-def _format_date_iso(value: Any) -> str | None:
-    parsed = _parse_date(value)
-    if parsed is None:
-        return None if value is None else str(value)
-    return parsed.isoformat()
-
-
-def _parse_date(value: Any) -> date | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str):
-        raw = value.strip()
-        if len(raw) >= 10:
-            try:
-                return date.fromisoformat(raw[:10])
-            except ValueError:
-                return None
-    return None
 
 
 def _format_decimal_6(value: Any) -> str | None:

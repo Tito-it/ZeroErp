@@ -20,6 +20,7 @@ import { useTabEvents } from '../../core/composables/useTabEvents'
 import {
   contrattoDocumenti,
   offertaDocumenti,
+  ordineDocumenti,
   preventivoDocumenti,
 } from '../api/documentiPerSorgente'
 import { SORGENTE_CODES } from '../constants'
@@ -35,6 +36,7 @@ const SORGENTE_CLIENT_MAP = {
   [SORGENTE_CODES.PREVENTIVO]: preventivoDocumenti,
   [SORGENTE_CODES.CONTRATTO]: contrattoDocumenti,
   [SORGENTE_CODES.OFFERTA_COMMERCIALE]: offertaDocumenti,
+  [SORGENTE_CODES.ORDINE_VENDITA]: ordineDocumenti,
 }
 
 export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {
