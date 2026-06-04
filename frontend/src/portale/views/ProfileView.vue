@@ -16,7 +16,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Card from 'primevue/card'
-import Tag from 'primevue/tag'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import { useAuthStore } from '../../stores/auth'
 import AttivaAccessoShopButton from '../components/AttivaAccessoShopButton.vue'
 
@@ -89,11 +89,11 @@ const shopAttivo = computed(
           <span class="portale-profile__accesso-label">
             {{ t(row.labelKey) }}
           </span>
-          <Tag
-            :severity="row.attivo ? 'success' : 'secondary'"
-            :value="t(row.attivo
-              ? 'portale.profile.stato_attivo'
-              : 'portale.profile.stato_non_attivo')"
+          <AttivoTag
+            :active="row.attivo"
+            :active-label="t('portale.profile.stato_attivo')"
+            :inactive-label="t('portale.profile.stato_non_attivo')"
+            inactive-severity="secondary"
           />
         </div>
 

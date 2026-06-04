@@ -208,4 +208,4 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     fetchEmittentiScope,
     saveEmittentiScope
   }
-})
+}, { userScoped: true })

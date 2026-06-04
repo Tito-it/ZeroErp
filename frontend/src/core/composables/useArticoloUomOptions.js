@@ -9,6 +9,7 @@
 //        qui la fetch e' pura, il caller decide quando applicare il base id.
 import { ref } from 'vue'
 import { lookupArticoloUom } from '../../catalogo/api/catalogo'
+import { useFetchVersion } from './useFetchVersion'
 
 /**
  * Pattern caricamento UoM operative dell'articolo selezionato.
@@ -36,14 +37,15 @@ import { lookupArticoloUom } from '../../catalogo/api/catalogo'
 export function useArticoloUomOptions() {
   const uomOptions = ref([])
   const uomLoading = ref(false)
-  // Token monotono per scartare risposte stantie: due chiamate concorrenti
-  // (es. articolo cambiato 2 volte di fila in modo veloce) non devono
-  // sovrascrivere `uomOptions` col risultato della prima fetch (lenta) dopo
-  // la seconda (veloce). Pattern coerente con PreventiviDrawer._baDefaultsToken.
-  let _fetchToken = 0
+  // Guard di versione (BB core useFetchVersion) per scartare risposte stantie:
+  // due chiamate concorrenti (es. articolo cambiato 2 volte di fila in modo
+  // veloce) non devono sovrascrivere `uomOptions` col risultato della prima
+  // fetch (lenta) dopo la seconda (veloce). La logica di loading resta qui:
+  // il BB copre solo il confronto tag/isCurrent/invalidate.
+  const fv = useFetchVersion()
 
   async function loadUomPerArticolo(articoloId) {
-    const tk = ++_fetchToken
+    const tk = fv.tag()
     uomOptions.value = []
     if (!articoloId) return []
     uomLoading.value = true
@@ -52,7 +54,7 @@ export function useArticoloUomOptions() {
       // Endpoint puo' rispondere paginated `{results: [...]}` o lista diretta.
       const list = res.data.data?.results || res.data.data || []
       // Risposta stantia (un'altra fetch e' partita nel frattempo): scarta.
-      if (tk !== _fetchToken) return []
+      if (!fv.isCurrent(tk)) return []
       uomOptions.value = list
       return list
     } catch (err) {
@@ -60,12 +62,12 @@ export function useArticoloUomOptions() {
       // puo' propagarlo se serve). Log per debug: senza questo, una combo che
       // resta vuota in produzione non lascia traccia in console.
       console.warn('[useArticoloUomOptions] loadUomPerArticolo failed', { articoloId, err })
-      if (tk === _fetchToken) uomOptions.value = []
+      if (fv.isCurrent(tk)) uomOptions.value = []
       return []
     } finally {
       // Spegni loading solo se questa e' l'ultima fetch: una stantia
       // non deve azzerare lo spinner di una piu' recente ancora in corso.
-      if (tk === _fetchToken) uomLoading.value = false
+      if (fv.isCurrent(tk)) uomLoading.value = false
     }
   }
 
@@ -78,8 +80,8 @@ export function useArticoloUomOptions() {
   }
 
   function resetUomOptions() {
-    // Bumping token: una fetch in corso non sovrascrive mai dopo reset.
-    _fetchToken++
+    // Invalida: una fetch in corso non sovrascrive mai dopo reset.
+    fv.invalidate()
     uomOptions.value = []
   }
 

@@ -1,87 +1,43 @@
 <script setup>
-// Scopo: drawer CRUD province.
-import { ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useInjectReadonly } from '../composables/useReadonlyMode'
+// Scopo: drawer CRUD province. Wrapper su EntityFormDrawer (schema-driven).
+import EntityFormDrawer from './EntityFormDrawer.vue'
 import { useProvinceStore } from '../../anagrafiche/stores/province'
-import { useApiHandler } from '../composables/useApiHandler'
-import { useLookup } from '../composables/useLookup'
 import { lookupRegioni } from '../../anagrafiche/api/anagrafiche'
-import { DRAWER_WIDTH } from '../constants'
 import { NAV_ICONS } from '../navigation'
-import FormFooter from './FormFooter.vue'
-import DrawerTitle from './DrawerTitle.vue'
-import Drawer from 'primevue/drawer'
-import InputText from 'primevue/inputtext'
-import Select from 'primevue/select'
 
-const props = defineProps({
+defineProps({
   visible: { type: Boolean, default: false },
   mode: { type: String, default: 'create' },
-  item: { type: Object, default: null }
+  item: { type: Object, default: null },
 })
 const emit = defineEmits(['update:visible', 'saved'])
-const { t } = useI18n()
-const isReadonly = useInjectReadonly()
+
 const store = useProvinceStore()
-const { execute, loading } = useApiHandler()
-const regioniLookup = useLookup(() => lookupRegioni())
-
-const form = ref({ descrizione: '', sigla: '', regione_id: null })
-
-watch(() => props.visible, (val) => {
-  if (val) {
-    if (!regioniLookup.loaded.value) regioniLookup.load()
-    if (props.mode === 'edit' && props.item) {
-      form.value = {
-        descrizione: (props.item.descrizione || '').trim(),
-        sigla: (props.item.sigla || '').trim(),
-        regione_id: props.item.regione_id
-      }
-    } else {
-      form.value = { descrizione: '', sigla: '', regione_id: null }
-    }
-  }
-})
-
-async function handleSave() {
-  if (!form.value.descrizione.trim() || !form.value.sigla.trim()) return
-  const msg = props.mode === 'create' ? t('geo.provincia_creata') : t('geo.provincia_salvata')
-  const result = await execute(
-    () => props.mode === 'create'
-      ? store.create({ descrizione: form.value.descrizione.trim(), sigla: form.value.sigla.trim(), regione_id: form.value.regione_id })
-      : store.update(props.item.id, { descrizione: form.value.descrizione.trim(), sigla: form.value.sigla.trim(), regione_id: form.value.regione_id }),
-    { successMessage: msg }
-  )
-  if (result !== null) { emit('saved'); emit('update:visible', false); store.fetchList() }
-}
+const fields = [
+  { name: 'descrizione', type: 'text', labelKey: 'geo.col_descrizione', required: true },
+  { name: 'sigla', type: 'text', labelKey: 'geo.col_sigla', required: true, maxlength: 10 },
+  {
+    name: 'regione_id',
+    type: 'select',
+    labelKey: 'geo.col_regione',
+    lookupFn: lookupRegioni,
+    placeholderKey: 'geo.select_regione',
+  },
+]
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="emit('update:visible', $event)" position="right"
-    :style="{ width: DRAWER_WIDTH.SIMPLE }">
-    <template #header>
-      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('geo.provincia')" :icon="NAV_ICONS.PROVINCIA" />
-    </template>
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div class="form-grid">
-        <div class="form-field">
-          <label>{{ t('geo.col_descrizione') }} *</label>
-          <InputText v-model="form.descrizione" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('geo.col_sigla') }} *</label>
-          <InputText v-model="form.sigla" maxlength="10" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('geo.col_regione') }}</label>
-          <Select v-model="form.regione_id" :options="regioniLookup.items.value"
-            option-label="descrizione" option-value="id"
-            :placeholder="t('geo.select_regione')" :loading="regioniLookup.loading.value" filter />
-        </div>
-      </div>
-      <FormFooter :loading="loading" :disabled="!form.descrizione.trim() || !form.sigla.trim()"
-        @save="handleSave" @cancel="emit('update:visible', false)" />
-    </div>
-  </Drawer>
+  <EntityFormDrawer
+    :visible="visible"
+    :mode="mode"
+    :item="item"
+    :store="store"
+    :fields="fields"
+    title-key="geo.provincia"
+    :icon="NAV_ICONS.PROVINCIA"
+    :refresh-on-save="false"
+    :success-keys="{ create: 'geo.provincia_creata', update: 'geo.provincia_salvata' }"
+    @update:visible="emit('update:visible', $event)"
+    @saved="emit('saved')"
+  />
 </template>

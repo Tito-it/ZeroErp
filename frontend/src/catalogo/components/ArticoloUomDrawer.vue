@@ -25,6 +25,7 @@ import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -339,7 +340,7 @@ const onClose = useDrawerClose(emit)
           </Column>
           <Column :header="t('catalogo.col_attivo')" style="width: 50px;">
             <template #body="{ data }">
-              <Tag :value="data.attivo ? t('common.active') : t('common.inactive')" :severity="data.attivo ? 'success' : 'warn'" />
+              <AttivoTag :active="data.attivo" />
             </template>
           </Column>
           <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">

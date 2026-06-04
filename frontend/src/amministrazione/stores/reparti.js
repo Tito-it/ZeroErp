@@ -54,4 +54,4 @@ export const useRepartiStore = defineStore('amm-reparti', () => {
     fetchProfilo,
     saveProfilo
   }
-})
+}, { userScoped: true })

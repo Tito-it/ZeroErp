@@ -10,6 +10,7 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
@@ -171,7 +172,7 @@ onMounted(() => {
       </Column>
       <Column field="attivo" :header="t('catalogo.col_attivo')" style="width: 80px;">
         <template #body="{ data }">
-          <Tag :value="data.attivo ? t('common.active') : t('common.inactive')" :severity="data.attivo ? 'success' : 'warn'" />
+          <AttivoTag :active="data.attivo" />
         </template>
       </Column>
       <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">

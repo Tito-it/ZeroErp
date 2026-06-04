@@ -13,7 +13,7 @@ import PageActionsBar from './PageActionsBar.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
-import Tag from 'primevue/tag'
+import AttivoTag from './AttivoTag.vue'
 import api from '../api'
 
 const { t } = useI18n()
@@ -218,10 +218,7 @@ function selectTable(rel) {
           <Column field="descrizione" :header="t('config_panel.col_descrizione')" sortable />
           <Column v-if="hasAttivo" field="attivo" :header="t('config_panel.col_attivo')">
             <template #body="{ data }">
-              <Tag
-                :value="data.attivo ? t('config_panel.attivo') : t('config_panel.non_attivo')"
-                :severity="data.attivo ? 'success' : 'warn'"
-              />
+              <AttivoTag :active="data.attivo" :active-label="t('config_panel.attivo')" :inactive-label="t('config_panel.non_attivo')" />
             </template>
           </Column>
         </DataTable>

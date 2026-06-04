@@ -1,73 +1,45 @@
 <script setup>
-// Scopo: drawer CRUD codici postali (CAP).
-import { ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useInjectReadonly } from '../composables/useReadonlyMode'
-import { useCodiciPostaliStore } from '../../anagrafiche/stores/codiciPostali'
-import { useApiHandler } from '../composables/useApiHandler'
+// Scopo: drawer CRUD codici postali (CAP). Wrapper su EntityFormDrawer.
+// NB refresh-on-save=false: il refresh lista e' coperto da useTabFreshness
+// (emitDataChanged dello store) — niente fetchList esplicito ridondante.
+import EntityFormDrawer from './EntityFormDrawer.vue'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
-import FormFooter from './FormFooter.vue'
-import DrawerTitle from './DrawerTitle.vue'
-import { DRAWER_WIDTH } from '../constants'
+import { useCodiciPostaliStore } from '../../anagrafiche/stores/codiciPostali'
 import { NAV_ICONS } from '../navigation'
-import Drawer from 'primevue/drawer'
-import InputText from 'primevue/inputtext'
 
-const props = defineProps({
+defineProps({
   visible: { type: Boolean, default: false },
   mode: { type: String, default: 'create' },
-  item: { type: Object, default: null }
+  item: { type: Object, default: null },
 })
 const emit = defineEmits(['update:visible', 'saved'])
-const { t } = useI18n()
-const isReadonly = useInjectReadonly()
+
 const store = useCodiciPostaliStore()
-const { execute, loading } = useApiHandler()
-
-const form = ref({ codice: '', comune_id: null })
-
-watch(() => props.visible, (val) => {
-  if (val) {
-    if (props.mode === 'edit' && props.item) {
-      form.value = { codice: props.item.codice || '', comune_id: props.item.comune_id }
-    } else {
-      form.value = { codice: '', comune_id: null }
-    }
-  }
-})
-
-async function handleSave() {
-  if (!form.value.codice.trim() || !form.value.comune_id) return
-  const msg = props.mode === 'create' ? t('indirizzi.cap_creato') : t('indirizzi.cap_salvato')
-  const result = await execute(
-    () => props.mode === 'create'
-      ? store.create({ codice: form.value.codice.trim(), comune_id: form.value.comune_id })
-      : store.update(props.item.id, { codice: form.value.codice.trim(), comune_id: form.value.comune_id }),
-    { successMessage: msg }
-  )
-  if (result !== null) { emit('saved'); emit('update:visible', false) }
-}
+const fields = [
+  { name: 'codice', type: 'text', labelKey: 'indirizzi.col_cap', required: true, maxlength: 5 },
+  {
+    name: 'comune_id',
+    type: 'autocomplete',
+    labelKey: 'indirizzi.campo_comune',
+    required: true,
+    component: ComuneAutocomplete,
+    disabledInEdit: true,
+  },
+]
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="emit('update:visible', $event)" position="right"
-    :style="{ width: DRAWER_WIDTH.SIMPLE }">
-    <template #header>
-      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('indirizzi.cap')" :icon="NAV_ICONS.CAP" />
-    </template>
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div class="form-grid">
-        <div class="form-field">
-          <label>{{ t('indirizzi.col_cap') }} *</label>
-          <InputText v-model="form.codice" maxlength="5" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_comune') }} *</label>
-          <ComuneAutocomplete v-model="form.comune_id" :disabled="mode === 'edit'" />
-        </div>
-      </div>
-      <FormFooter :loading="loading" :disabled="!form.codice.trim() || !form.comune_id"
-        @save="handleSave" @cancel="emit('update:visible', false)" />
-    </div>
-  </Drawer>
+  <EntityFormDrawer
+    :visible="visible"
+    :mode="mode"
+    :item="item"
+    :store="store"
+    :fields="fields"
+    title-key="indirizzi.cap"
+    :icon="NAV_ICONS.CAP"
+    :refresh-on-save="false"
+    :success-keys="{ create: 'indirizzi.cap_creato', update: 'indirizzi.cap_salvato' }"
+    @update:visible="emit('update:visible', $event)"
+    @saved="emit('saved')"
+  />
 </template>

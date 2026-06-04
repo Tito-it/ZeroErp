@@ -649,3 +649,203 @@ Poi il builder `ORDINE_VENDITA` aggiunge:
 
 Il backend deve solo leggere la view; nessun calcolo IVA in Python e nessuna
 formula nei template.
+
+## 12. Decisione 2026-06-05 - totalizzazione ordine via trigger (totali in testata) + riepilogo IVA live nel drawer
+
+> Estensione richiesta da Tid dopo analisi delle due domande: (1) la scelta di
+> NON storicizzare il riepilogo IVA dell'ordine (vista derivata vs tabella fisica
+> dei preventivi); (2) mostrare nel drawer di gestione righe il riepilogo IVA
+> aggiornato in tempo reale, come sui preventivi. L'analisi ha fatto emergere un
+> nodo a monte (i totali di testata ordine non sono gestiti): le due cose si
+> chiudono insieme.
+>
+> **Iter decisionale**: una prima ipotesi «tutto derivato» (drop colonne `*_tot`,
+> totali calcolati in vista) e' stata **scartata dopo verifica dei consumer e del
+> pattern di famiglia** (12.2bis). Decisione finale ratificata (Tid, 2026-06-05):
+> **niente drop; vista riepilogo IVA come single source del breakdown + trigger di
+> ricalcolo che persiste i totali in testata** (clone del pattern preventivi).
+
+### 12.1 Esito verifica - i totali di testata ordine oggi NON sono gestiti
+
+Verifica statica (doc dbzero + codice BE) su come `vendite.ordini` popola
+`imponibile_tot`, `sconto_tot`, `iva_tot`, `totale_doc`:
+
+- **non esiste** `vendite.fn_ricalcola_totali_ordine` (a differenza di
+  `fn_ricalcola_totali_preventivo`);
+- **non esiste** alcun trigger su `vendite.ordini_righe` che ricalcoli i totali di
+  testata (i trigger presenti coprono check parent, qta-da-operativa, propagazione
+  qta componenti, storico - nessun ricalcolo totali);
+- il **service Python non calcola** i totali;
+- il commento in `backend/apps/vendite/db/ordini_repository.py` dichiara «il
+  ricalcolo totali e' gestito da trigger DB su ordini_righe» - **inaccurato**: quel
+  trigger non c'e'.
+
+Conseguenza: le colonne `*_tot` sono di fatto **NULL** in testata ordine; la vista
+lista (`vw_ordini_lista`, legge `o.imponibile_tot/iva_tot/totale_doc/sconto_tot`
+diretti dalla testata) le espone vuote, e il context builder PDF
+(`ordine_document_context_builder.py`, blocco `"totali"`) propaga NULL.
+**Va confermato sul DB di lavoro** prima del brief, ma il segnale e' netto. E' una
+**lacuna di modello** (`feedback_bug_logici_modello`): le colonne esistono e i
+consumer le leggono, ma nessuno le valorizza.
+
+### 12.2 Principio dei preventivi da preservare (la single source, non la tabella)
+
+Il valore del modello preventivi non e' la tabella fisica
+`preventivi_riepiloghi_iva`, ma il fatto che **una sola funzione produce sia il
+riepilogo IVA sia i totali di testata**: `fn_ricalcola_totali_preventivo` invoca
+`fn_ricalcola_riepilogo_iva_preventivo` e poi **somma il riepilogo** per scrivere i
+totali. Riepilogo e testata sono **coerenti per costruzione** (stessa fonte, stesso
+rounding per gruppo aliquota). Un trigger statement-level
+(`trgfn_preventivi_righe_ricalcola_totali`) lo invoca a ogni mutazione riga.
+
+La tabella fisica preventivi si giustifica solo perche' il preventivo e' **sorgente
+fiscale per processo** (-> fattura, consistenza al centesimo persistita nel tempo).
+L'ordine non ha questo requisito (la sorgente fiscale e' la fattura a valle; lo
+snapshot al momento della stampa e' gia' coperto dal context salvato in
+`documenti_generati`, cfr. 9.5). Quindi: **niente tabella fisica del riepilogo**,
+ma i **totali aggregati restano persistiti in testata** (denormalizzazione di
+servizio), mantenuti coerenti dal trigger - esattamente come i preventivi.
+
+### 12.2bis Perche' NON si droppano le colonne `*_tot` (verifica consumer + famiglia)
+
+L'ipotesi iniziale «drop colonne, tutto derivato in vista» e' stata **scartata** su
+base fattuale.
+
+**Pattern della famiglia vendite** (verificato su tabelle + viste lista dbzero): tra
+i documenti che HANNO totali, la denormalizzazione in testata e' la **norma al
+100%**:
+
+| Documento | Totali in testata | Ricalcolo | Vista lista |
+| --- | --- | --- | --- |
+| Preventivi | si (`totale_imponibile/iva/documento`) | **trigger automatico** su righe | legge la colonna |
+| Fatture | si (`imponibile_tot/imposta_tot/totale_doc`) | esplicito (pipeline pre-numerazione) | legge la colonna |
+| Ordini | si (`imponibile_tot/sconto_tot/iva_tot/totale_doc`) | **mancante** (la lacuna 12.1) | legge la colonna |
+| Offerte / Contratti | **no** | - | - (modello listino+eccezioni, niente totali) |
+
+Offerte/contratti non fanno testo (non hanno totali del tutto). Droppando, l'ordine
+sarebbe **l'unico documento con totali senza totali in testata** - outlier. Inoltre
+il manuale dbzero `manual/ordini.md` **documenta gia'** la persistenza: «i totali
+sono memorizzati per prestazioni e confronti di audit».
+
+**Consumer delle colonne `*_tot` ordine** (blast radius del drop):
+
+- *Impatto reale*: `vw_ordini_lista` (legge `o.*_tot`), `OrdiniRepository`
+  (whitelist `order_by=totale_doc` + `get_ordine`/`list_ordini`), context builder
+  PDF (`testata.get("*_tot")`), catalogo `ui.lista_colonna` (`totale_doc` priorita'
+  80, `imponibile_tot/iva_tot` opt-in). Il drop costringerebbe **tutti** questi a
+  cambiare (vista lista da rifare con join, `order_by` da colonna a espressione
+  derivata, ecc.).
+- *Nessun impatto*: il **push a commessa** (`fn_list_ordini_da_pushare` +
+  `HandlerOrdini`) lavora **sulle righe**, non sui totali; il **DDT** a valle
+  (`vendite.ddt_ordini`) e' un link N:N con totali propri; il **FE** non legge i
+  totali direttamente.
+
+Tenere le colonne -> **blast radius zero** su quei consumer; basta aggiungere il
+pezzo mancante (il trigger). Droppare comprava solo «niente colonne» (estetico),
+contro il modello documentato e la famiglia. Decisione: **tenere e valorizzare**.
+
+### 12.3 Decisione ratificata (Tid, 2026-06-05): totali in testata via trigger, clone preventivi
+
+La **vista riepilogo IVA** e' la single source del breakdown per aliquota; i
+**totali di testata restano colonne persistite**, valorizzate da un trigger che
+**somma la vista** (mai una formula parallela). Modello = gemello dei preventivi,
+ma **senza tabella fisica del riepilogo** (la vista ricalcola dalle righe al volo;
+il trigger persiste solo i 3-4 totali aggregati in testata).
+
+- **Nessun drop** di `imponibile_tot/sconto_tot/iva_tot/totale_doc`.
+- Rounding **non negoziabile**: per gruppo aliquota (`ROUND(SUM(imponibile_riga))`
+  poi imposta sul gruppo), mai per riga - identico ai preventivi.
+- Coerenza per costruzione: testata, lista, PDF e pannello drawer derivano tutti
+  dalla **stessa vista**.
+
+### 12.4 Impatto DB (azione team DB -> brief su `dev/db-tid`)
+
+Tutte azioni DB (DDL + viste + funzioni + trigger): brief al team DB, BE/FE
+attendono la consegna (`feedback_db_actions_passaggio_team` +
+`feedback_be_fe_attende_prerequisiti_db`).
+
+1. **Vista sorgente normalizzata** `vendite.vw_ordini_righe_iva_base` (Fase 1, 8.x):
+   righe attive `quantita > 0`, imponibile riga a precisione piena, IVA effettiva
+   via `config.fn_get_aliquota_iva(iva_id, stato_emittente_id)`, **solo riga padre
+   ordine** (componenti BoM esclusi - alimentano il prezzo del padre, non sono
+   righe IVA autonome).
+2. **Vista riepilogo IVA** `vendite.vw_ordini_riepilogo_iva_dettaglio` (11.1):
+   aggregazione per aliquota con la formula 11.2, shape allineata a
+   `vw_preventivi_riepilogo_iva_dettaglio` (natura/esigibilita/split = NULL per
+   ordini). E' la single source del breakdown.
+3. **Funzione `vendite.fn_ricalcola_totali_ordine(p_ordine_id)`** (NUOVA, clone di
+   `fn_ricalcola_totali_preventivo`): **somma la vista riepilogo** e fa UPDATE di
+   `imponibile_tot`, `iva_tot`, `totale_doc` sulla testata. Lo **sconto totale**
+   non e' derivabile dalla sola somma imponibili (l'imponibile incorpora gia' lo
+   sconto riga): la funzione calcola `sconto_tot = SUM(quantita*prezzo) - imponibile`
+   (lordo - imponibile) dalle righe, per valorizzare anche quella colonna.
+4. **Trigger statement-level su `vendite.ordini_righe`** (AFTER INS/UPD/DLT, clone
+   di `trgfn_preventivi_righe_ricalcola_totali`) che invoca
+   `fn_ricalcola_totali_ordine` per gli ordini coinvolti (UNION new/old su UPDATE).
+   **Dettaglio fine**: l'aliquota effettiva dipende dallo stato dell'emittente
+   (`fn_get_aliquota_iva`), quindi il ricalcolo deve scattare **anche su
+   `UPDATE OF emittente_fiscale_id`** della testata `vendite.ordini`, non solo sulle
+   righe (altrimenti cambiare emittente lascia l'IVA testata stantia). Verificare se
+   i preventivi coprono gia' questo caso e replicare/estendere.
+5. **`vw_ordini_lista` INVARIATA**: continua a leggere `o.*_tot` dalla testata, ora
+   valorizzate dal trigger. Nessun refactor, nessun churn catalogo.
+6. **Nessun drop colonne**, nessun DDL distruttivo.
+7. **pgTAP**: vista riepilogo (nessuna riga -> nessun riepilogo; stessa IVA -> una
+   riga; IVA diverse -> N righe; caso centesimi `ROUND(SUM)` vince su `SUM(ROUND)`;
+   riga inattiva esclusa; componente BoM -> nessun doppio conteggio) **+** trigger
+   totali (dopo INS/UPD/DLT riga la testata e' coerente con la somma del riepilogo;
+   cambio emittente ricalcola l'IVA testata).
+
+### 12.5 Impatto BE (a landing DB)
+
+- `OrdiniRepository.list_riepilogo_iva(ordine_id)` (clone preventivi, lettura pura
+  dalla vista - 11.4) per il pannello drawer e il PDF;
+- `OrdiniRepository.get_ordine` / `list_ordini`: **invariati** - i totali restano
+  colonne di testata/vista lista, gia' selezionate;
+- context builder `ORDINE_VENDITA`: aggiungere solo `"riepilogo_iva"`; il blocco
+  `"totali"` resta da `testata.get("*_tot")` (ora valorizzate) - **nessuna modifica
+  alla derivazione totali**;
+- **endpoint** `GET /api/v1/vendite/ordini/<id>/riepilogo-iva/`
+  (`ApiOrdineRiepilogoIva`, clone di `ApiPreventivoRiepilogoIva`) per alimentare il
+  pannello live nel drawer;
+- nessun calcolo IVA/totali in Python (filosofia DB-first): il BE legge vista +
+  colonne;
+- **correggere** (rendere vero) il commento sul «trigger DB ricalcolo totali» in
+  `ordini_repository.py`: ora il trigger esiste davvero.
+
+### 12.6 Drawer FE - riepilogo IVA live (riuso BB, regola del 2)
+
+- **Nessun componente nuovo**: `RiepilogoIvaTable.vue` e' gia' un BB generico in
+  `src/core/components/` (cross-dominio, gia' usato dai preventivi). Si monta in
+  `OrdiniDrawer` sotto le righe, gemello di `PreventiviDrawer`.
+- **API/store**: `getRiepilogoIva(ordineId)` in `ordiniApi.js` + action
+  `loadRiepilogoIva` nello store ordini + ref reactive nel drawer (clone 1:1
+  preventivi).
+- **Refresh live**: ricarica del riepilogo sull'evento `@changed` di
+  `OrdiniRigheTable` (gia' presente la catena `changed -> loadDetail`). Dopo il save
+  riga il trigger DB ha gia' aggiornato testata e la vista riflette le righe
+  correnti -> riepilogo e totale documento freschi e coerenti.
+- **Vincolo**: serve `effectiveOrdineId` (ordine gia' in BOZZA) -> coerente con
+  l'auto-save BOZZA gia' adottato.
+- **Coerenza UX**: pannello riepilogo e totale documento del drawer coincidono per
+  costruzione, perche' entrambi derivano dalla stessa vista (12.3) - e' il motivo
+  per cui 12.3 e 12.6 sono lo stesso lavoro.
+
+### 12.7 La vista riepilogo IVA fa triplo servizio
+
+Una sola vista alimenta: (a) il `riepilogo_iva` del PDF ordine e del pannello
+drawer; (b) il pannello live nel drawer; (c) - via `fn_ricalcola_totali_ordine` -
+i totali persistiti in testata (lista/detail/PDF). Single source piena, zero
+formule duplicate, totali in testata come tutta la famiglia.
+
+### 12.8 Sequenza aggiornata `ORDINE_VENDITA`
+
+1. (DB) `vw_ordini_righe_iva_base` -> `vw_ordini_riepilogo_iva_dettaglio` ->
+   `fn_ricalcola_totali_ordine` (somma la vista) -> trigger su `ordini_righe`
+   (+ `UPDATE OF emittente_fiscale_id`); `vw_ordini_lista` **invariata**; pgTAP
+   riepilogo + trigger totali.
+2. (BE) repo `list_riepilogo_iva` + context builder `riepilogo_iva` + endpoint
+   `riepilogo-iva`; `get_ordine`/totali invariati; correggere il commento repo.
+3. (FE) `RiepilogoIvaTable` nel drawer + api/store + refresh su `@changed`.
+
+Prerequisito DB (1) prima di BE (2) e FE (3).

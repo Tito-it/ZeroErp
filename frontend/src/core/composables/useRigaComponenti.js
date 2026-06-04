@@ -3,7 +3,7 @@
 //        Parametrico sulla sorgente documento (preventivo/contratto/ordine/
 //        ddt) via callback API + chiave TAB_ENTITIES per emit cross-tab.
 //
-//        Pattern token "scarta risposte stantie" (via useTokenedFetch) per
+//        Pattern token "scarta risposte stantie" (via useFetchVersion) per
 //        switch rapido tra righe espanse. Reload automatico post update/
 //        delete: il prezzo padre e' calcolato dai trigger DB e cambia a
 //        ogni mutazione del componente — meglio avere lo snapshot
@@ -16,7 +16,7 @@
 
 import { ref, toValue } from 'vue'
 
-import { useTokenedFetch } from './useTokenedFetch'
+import { useFetchVersion } from './useFetchVersion'
 import { useTabEvents } from './useTabEvents'
 
 // Scopo: Factory generica componenti riga padre.
@@ -53,7 +53,8 @@ export function useRigaComponenti(
   }
 
   const { emitDataChanged } = useTabEvents()
-  const { nextToken, isCurrent, invalidate } = useTokenedFetch()
+  // `tag` aliasato a `nextToken` per leggibilita' locale (semantica identica).
+  const { tag: nextToken, isCurrent, invalidate } = useFetchVersion()
 
   const componenti = ref([])
   const loading = ref(false)
