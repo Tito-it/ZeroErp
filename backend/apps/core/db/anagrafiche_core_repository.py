@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from django.db import connection
 
+from apps.core.db._helpers import fetchone_scalar
+
 
 class AnagraficheCoreRepository:
     """Building block: operazioni atomiche su soggetti."""
@@ -48,6 +50,4 @@ class AnagraficheCoreRepository:
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            return str(row[0])
+            return str(fetchone_scalar(cursor))

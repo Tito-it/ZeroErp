@@ -12,6 +12,7 @@ import math
 from datetime import date
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_pagination
 from apps.vendite.db.vendite_repository import VenditeRepository
 from apps.vendite.types import LottoFattureRow, LottoListRow
 
@@ -22,25 +23,9 @@ _SORT_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
 # Scopo: Valida page/page_size con E_VENDITE_VALIDATION e restituisce l'offset calcolato.
 # Riutilizzabile da tutte le funzioni di lista dello schema vendite.
 def _validate_pagination(page: int, page_size: int, function_name: str) -> int:
-    ErrorManager.require(
-        page >= 1,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail="page deve essere >= 1",
-        context={"page": page},
-        function_name=function_name,
-        log_to_db=True,
+    return validate_pagination(
+        page, page_size, error_code="E_VENDITE_VALIDATION", function_name=function_name,
     )
-    ErrorManager.require(
-        1 <= page_size <= 200,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail="page_size deve essere compreso tra 1 e 200",
-        context={"page_size": page_size},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return (page - 1) * page_size
 
 
 # Scopo: Costruisce l'envelope di risposta paginata standard.

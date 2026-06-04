@@ -299,6 +299,38 @@ class ApiLottiList(APIView):
         return success_response(data)
 ```
 
+### Query params (filtri lista)
+
+I filtri opzionali da query string si normalizzano con gli helper di
+`apps.core.api.payload_validators` (passati **per valore**, es.
+`qp_bool_optional(qp.get("attivo"), "attivo")`):
+
+| Funzione                            | Scopo                                                                                  |
+| ----------------------------------- | -------------------------------------------------------------------------------------- |
+| `qp_str(raw)`                       | stringa o `None` se assente/vuota (strip)                                               |
+| `qp_int(raw, default)`              | int con default; fallback silenzioso al default se non numerico                        |
+| `qp_int_strict(raw, name, default)` | int con default; **400** se presente ma non numerico                                   |
+| `qp_int_optional(raw, name)`        | int **opzionale strict**: `None` se assente/vuoto, **400** se non numerico             |
+| `qp_bool(raw, default=True)`        | bool con default (False solo su `0/false/no/n/off`)                                     |
+| `qp_bool_optional(raw, name)`       | bool **opzionale strict**: `None` se assente/vuoto, `True/False` sui token, **400** se non riconosciuto |
+| `qp_iso_date_optional(raw, name)`   | `date` **opzionale strict**: `None` se assente/vuoto, **400** se malformata             |
+| `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir/page` per liste **offset-based** |
+
+**Contratto degli helper `*_optional` (dal 2026-06-04):**
+
+* **valore vuoto** (`?attivo=`) ⇒ trattato come **assente** → `None` (nessun filtro).
+  Per omettere un filtro è equivalente non inviare la chiave.
+* **valore non riconosciuto / non valido** (`?attivo=banana`, `?utility_id=abc`) ⇒
+  **`400` `E_VALIDATION_INPUT`** (niente coercion silenziosa: prima alcuni filtri
+  bool accettavano il garbage come `True`/`False`).
+* token bool riconosciuti: `1/true/yes/y/on` → `True`, `0/false/no/n/off` → `False`.
+
+> **Paginazione page-based** (`page`/`page_size`, alternativa a `limit`/`offset`):
+> validala nel service con
+> `validate_pagination(page, page_size, *, error_code, function_name)`
+> (`apps.core.services.list_helpers`), che valida e ritorna l'offset. Per
+> l'ordinamento: `validate_order_params(order_by, order_dir, *, allowed_columns, error_code, function_name)`.
+
 ### Paginazione
 
 | Parametro   | Default | Max |

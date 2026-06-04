@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from django.db import connection
 
+from apps.core.db._helpers import fetchone_scalar
+
 # Firma fn_get_parameter_full estesa (2026-05-15): aggiunto in coda
 # p_categoria_cliente_id (smallint) per gating soglie commerciali per
 # categoria cliente del BA destinatario.
@@ -134,26 +136,27 @@ class ParameterRepository:
             rows = cursor.fetchall()
         return [dict(zip(columns, row)) for row in rows]
 
-    # Scopo: Crea o aggiorna un override personale dell'utente per un parametro.
-    #        Usa CTE-based upsert con IS NULL esplicito per le colonne scope
-    #        nullable — il classico ON CONFLICT ON CONSTRAINT non funziona
-    #        perche' PostgreSQL tratta NULL != NULL nei UNIQUE constraint.
-    def upsert_user_override(
+    # Scopo: CTE-based upsert generico per config.parameter_overrides. Il classico
+    #        ON CONFLICT ON CONSTRAINT non funziona: PostgreSQL tratta NULL != NULL
+    #        nei UNIQUE constraint con colonne scope nullable, quindi serve il match
+    #        esplicito IS NULL sulle dimensioni non usate. `scope_col`/`null_cols`
+    #        sono nomi colonna HARDCODED dai chiamanti (nessun input utente).
+    def _upsert_override_cte(
         self,
         parameter_code: str,
-        django_user_id: int,
+        scope_col: str,
+        scope_value: int,
         value: str,
+        *,
+        null_cols: list[str],
     ) -> int:
-        sql = """
+        null_clause = "".join(f"                   AND {c} IS NULL\n" for c in null_cols)
+        sql = f"""
             WITH target AS (
                 SELECT id FROM config.parameter_overrides
                  WHERE parameter_id = (SELECT id FROM config.parameters WHERE code = %s)
-                   AND django_user_id = %s
-                   AND emittente_fiscale_id IS NULL
-                   AND django_group_id      IS NULL
-                   AND session_key          IS NULL
-                   AND function_name        IS NULL
-            ),
+                   AND {scope_col} = %s
+{null_clause}            ),
             updated AS (
                 UPDATE config.parameter_overrides po
                    SET overridden_value = %s, data_update = now()
@@ -163,7 +166,7 @@ class ParameterRepository:
             ),
             inserted AS (
                 INSERT INTO config.parameter_overrides
-                       (parameter_id, django_user_id, overridden_value)
+                       (parameter_id, {scope_col}, overridden_value)
                 SELECT (SELECT id FROM config.parameters WHERE code = %s),
                        %s, %s
                  WHERE NOT EXISTS (SELECT 1 FROM target)
@@ -172,15 +175,29 @@ class ParameterRepository:
             SELECT id FROM updated
             UNION ALL
             SELECT id FROM inserted
-        """
+        """  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, [
-                parameter_code, django_user_id, value,
-                parameter_code, django_user_id, value,
+                parameter_code, scope_value, value,
+                parameter_code, scope_value, value,
             ])
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+            return fetchone_scalar(cursor)
+
+    # Scopo: Crea o aggiorna un override personale dell'utente per un parametro.
+    #        Cascata user > categoria_cliente > group > emittente > default.
+    def upsert_user_override(
+        self,
+        parameter_code: str,
+        django_user_id: int,
+        value: str,
+    ) -> int:
+        return self._upsert_override_cte(
+            parameter_code, "django_user_id", django_user_id, value,
+            null_cols=[
+                "emittente_fiscale_id", "django_group_id",
+                "session_key", "function_name",
+            ],
+        )
 
     # Scopo: Rimuove un override personale dell'utente.
     #        Verifica che l'override appartenga all'utente specificato.
@@ -209,43 +226,13 @@ class ParameterRepository:
         emittente_fiscale_id: int,
         value: str,
     ) -> int:
-        sql = """
-            WITH target AS (
-                SELECT id FROM config.parameter_overrides
-                 WHERE parameter_id = (SELECT id FROM config.parameters WHERE code = %s)
-                   AND emittente_fiscale_id = %s
-                   AND django_user_id  IS NULL
-                   AND django_group_id IS NULL
-                   AND session_key     IS NULL
-                   AND function_name   IS NULL
-            ),
-            updated AS (
-                UPDATE config.parameter_overrides po
-                   SET overridden_value = %s, data_update = now()
-                  FROM target t
-                 WHERE po.id = t.id
-                RETURNING po.id
-            ),
-            inserted AS (
-                INSERT INTO config.parameter_overrides
-                       (parameter_id, emittente_fiscale_id, overridden_value)
-                SELECT (SELECT id FROM config.parameters WHERE code = %s),
-                       %s, %s
-                 WHERE NOT EXISTS (SELECT 1 FROM target)
-                RETURNING id
-            )
-            SELECT id FROM updated
-            UNION ALL
-            SELECT id FROM inserted
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                parameter_code, emittente_fiscale_id, value,
-                parameter_code, emittente_fiscale_id, value,
-            ])
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+        return self._upsert_override_cte(
+            parameter_code, "emittente_fiscale_id", emittente_fiscale_id, value,
+            null_cols=[
+                "django_user_id", "django_group_id",
+                "session_key", "function_name",
+            ],
+        )
 
     # Scopo: Rimuove un override a livello emittente.
     #        Verifica che l'override sia effettivamente di quell'emittente
@@ -279,44 +266,13 @@ class ParameterRepository:
         categoria_cliente_id: int,
         value: str,
     ) -> int:
-        sql = """
-            WITH target AS (
-                SELECT id FROM config.parameter_overrides
-                 WHERE parameter_id = (SELECT id FROM config.parameters WHERE code = %s)
-                   AND categoria_cliente_id = %s
-                   AND django_user_id       IS NULL
-                   AND django_group_id      IS NULL
-                   AND emittente_fiscale_id IS NULL
-                   AND session_key          IS NULL
-                   AND function_name        IS NULL
-            ),
-            updated AS (
-                UPDATE config.parameter_overrides po
-                   SET overridden_value = %s, data_update = now()
-                  FROM target t
-                 WHERE po.id = t.id
-                RETURNING po.id
-            ),
-            inserted AS (
-                INSERT INTO config.parameter_overrides
-                       (parameter_id, categoria_cliente_id, overridden_value)
-                SELECT (SELECT id FROM config.parameters WHERE code = %s),
-                       %s, %s
-                 WHERE NOT EXISTS (SELECT 1 FROM target)
-                RETURNING id
-            )
-            SELECT id FROM updated
-            UNION ALL
-            SELECT id FROM inserted
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                parameter_code, categoria_cliente_id, value,
-                parameter_code, categoria_cliente_id, value,
-            ])
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+        return self._upsert_override_cte(
+            parameter_code, "categoria_cliente_id", categoria_cliente_id, value,
+            null_cols=[
+                "django_user_id", "django_group_id", "emittente_fiscale_id",
+                "session_key", "function_name",
+            ],
+        )
 
     # Scopo: Rimuove un override a livello categoria_cliente.
     #        Filtra `IS NULL` su user/group/emittente per evitare di

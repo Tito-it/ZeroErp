@@ -24,21 +24,12 @@ from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
+    qp_int_optional,
     qp_str,
 )
 from apps.core.api.request_parsers import parse_iso_date
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.promo_articoli_service import PromoArticoliService
-
-
-# Scopo: Converte un query param intero opzionale (None se assente o vuoto).
-def _qp_int_optional(raw: str | None, name: str) -> int | None:
-    if raw is None or raw.strip() == "":
-        return None
-    try:
-        return int(raw.strip())
-    except ValueError as exc:
-        raise ValueError(f"{name}_invalid") from exc
 
 
 # =================================================================
@@ -92,9 +83,9 @@ class PromoArticoliView(DomainAPIView):
         svc = PromoArticoliService()
         results, total = svc.list_promo(
             search=p["search"],
-            attivo=qp_bool_optional(request.query_params.get("attivo")),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             articolo_id=qp_str(request.query_params.get("articolo_id")),
-            uom_id=_qp_int_optional(request.query_params.get("uom_id"), "uom_id"),
+            uom_id=qp_int_optional(request.query_params.get("uom_id"), "uom_id"),
             tipo_variazione=qp_str(request.query_params.get("tipo_variazione")),
             valid_at=valid_at,
             limit=p["limit"],

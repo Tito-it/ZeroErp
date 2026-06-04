@@ -14,7 +14,6 @@ Funzioni esposte:
 - fn_list_commessa_attivita — lista paginata attività di una commessa (read)
 """
 
-import json
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -22,6 +21,7 @@ from typing import Any
 from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.services.commesse_push_orchestrator import CommessaPushOrchestrator
@@ -294,13 +294,13 @@ _STATI_COMMESSA_MODIFICABILI: frozenset[str] = frozenset({"LIBERO", "CONFERMATO"
 _MOTIVO_MAX_LENGTH = 500
 
 
-# Scopo: Normalizza il campo meta da stringa JSON o dict a dict. Gestisce None, str, dict.
-def _parse_meta_json(meta_raw: Any) -> dict[str, Any]:
-    if not meta_raw:
-        return {}
-    if isinstance(meta_raw, str):
-        return json.loads(meta_raw)
-    return meta_raw if isinstance(meta_raw, dict) else {}
+E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
+
+# Validator modulo-level per l'estrazione del campo meta (JSONB). log_to_db=True
+# per telemetria pipeline vendite; function_name override per-chiamata. Delega a
+# PayloadValidator.optional_meta del core (review X1: la versione locale
+# permissiva bubble-ava ValueError -> 500 e scartava silenziosamente l'audit).
+_V = PayloadValidator(validation_code=E_VENDITE_VALIDATION, log_to_db=True)
 
 
 # Scopo: Helper — carica attivita` con dati pricing e applica guard standard.
@@ -477,7 +477,7 @@ def fn_riallinea_prezzo(
     nuovo_prezzo = str(resolver_result["prezzo"])
     repo = CommesseRepository()
 
-    meta = _parse_meta_json(att.get("meta"))
+    meta = _V.optional_meta(att, "meta", function_name="commesse_service.fn_riallinea_prezzo") or {}
     riallineamenti = list(meta.get("riallineamenti", []))
     riallineamenti.append({
         "data": datetime.now(timezone.utc).isoformat(),
@@ -525,7 +525,7 @@ def fn_variazione_prezzo_eccezionale(
 
     repo = CommesseRepository()
 
-    meta = _parse_meta_json(att.get("meta"))
+    meta = _V.optional_meta(att, "meta", function_name="commesse_service.fn_variazione_prezzo_eccezionale") or {}
     variazioni = list(meta.get("variazioni_eccezionali", []))
     variazioni.append({
         "data": datetime.now(timezone.utc).isoformat(),
@@ -595,7 +595,7 @@ def fn_sblocca_prezzo(
     nuovo_prezzo = str(resolver_result["prezzo"])
     repo = CommesseRepository()
 
-    meta = _parse_meta_json(att.get("meta"))
+    meta = _V.optional_meta(att, "meta", function_name="commesse_service.fn_sblocca_prezzo") or {}
     sblocchi = list(meta.get("sblocchi_prezzo", []))
     sblocchi.append({
         "data": datetime.now(timezone.utc).isoformat(),

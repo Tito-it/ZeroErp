@@ -482,6 +482,23 @@ class CommesseServiceTests(TestCase):
             fn_variazione_prezzo_eccezionale(10, 501, {"prezzo": "42.00", "motivo": ""})
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
 
+    # Scopo: X1 regressione - meta JSON malformato sulla riga -> 400
+    #        E_VENDITE_VALIDATION, non un 500. Prima del fix il
+    #        _parse_meta_json locale faceva json.loads bubble-ando il ValueError.
+    @patch("apps.vendite.services.commesse_service.transaction.atomic")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_variazione_eccezionale_meta_malformato_rifiutata(self, mock_repo_cls, mock_atomic):
+        from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
+
+        repo = mock_repo_cls.return_value
+        att = dict(self._ATT_BASE)
+        att["meta"] = "{non-json"
+        repo.get_attivita_pricing.return_value = att
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_variazione_prezzo_eccezionale(10, 501, {"prezzo": "42.00", "motivo": "sconto"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
     # --- N7 sblocco ---
 
     # Scopo: N7 sblocco - sblocco prezzo bloccato OK.

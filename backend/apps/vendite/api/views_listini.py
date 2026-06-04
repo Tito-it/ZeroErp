@@ -16,7 +16,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import paginated_envelope, parse_list_params, qp_bool, qp_int_strict, qp_str
+from apps.core.api.payload_validators import paginated_envelope, parse_list_params, qp_bool_optional, qp_int_strict, qp_str
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.listini_service import (
@@ -45,19 +45,6 @@ from apps.vendite.services.listini_service import (
     fn_update_riga,
     fn_update_versione,
 )
-
-
-# Scopo: Estrae un bool opzionale da query string con validazione rigorosa.
-def _optional_qp_bool_strict(request: Request, key: str) -> bool | None:
-    raw_value = request.query_params.get(key)
-    if raw_value is None:
-        return None
-    normalized = raw_value.strip().lower()
-    if normalized in {"1", "true", "yes", "y", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "n", "off"}:
-        return False
-    raise ValueError(f"{key}_invalid")
 
 
 # Scopo: Definisce i campi write listino per lo schema OpenAPI.
@@ -219,7 +206,7 @@ class ApiListiniList(DomainAPIView):
         results, total = fn_list_listini(
             utility_id=qp_int_strict(raw_utility_id, "utility_id", 0) if raw_utility_id else None,
             tipologia_id=qp_int_strict(raw_tipologia_id, "tipologia_id", 0) if raw_tipologia_id else None,
-            attivo=_optional_qp_bool_strict(request, "attivo"),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             search=p["search"],
             order_by=p["order_by"],
             order_dir=p["order_dir"],
@@ -431,7 +418,7 @@ class ApiListinoVersioneRigheList(DomainAPIView):
             search=p["search"],
             billing_account_id=qp_int_strict(qp.get("billing_account_id"), "billing_account_id", 0) if qp.get("billing_account_id") else None,
             utility_id=qp_int_strict(qp.get("utility_id"), "utility_id", 0) if qp.get("utility_id") else None,
-            attivo=_optional_qp_bool_strict(request, "attivo"),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             order_by=p["order_by"],
             order_dir=p["order_dir"],
             limit=p["limit"],

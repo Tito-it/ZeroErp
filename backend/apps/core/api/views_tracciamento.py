@@ -25,6 +25,13 @@ from apps.core.services.tracciamento_service import (
 )
 
 
+# Scopo: page_size (page-based) da query string con default e cap a 200. Helper
+#        LOCALE: solo le liste di tracciamento usano la convenzione page/page_size
+#        a livello view (le liste offset-based usano core.parse_list_params).
+def _parse_page_size(qp, default: int) -> int:
+    return min(qp_int(qp.get("page_size"), default), 200)
+
+
 # ---- Parametri OpenAPI comuni riusabili ----
 
 _PAGE_PARAM = OpenApiParameter(
@@ -105,7 +112,7 @@ class ApiAuditLog(DomainAPIView):
             date_to=qp_str(qp.get("date_to")),
             search=qp_str(qp.get("search")),
             page=qp_int(qp.get("page"), 1),
-            page_size=min(qp_int(qp.get("page_size"), 50), 200),
+            page_size=_parse_page_size(qp, 50),
         )
         return success_response(data)
 
@@ -146,7 +153,7 @@ class ApiDominiTask(DomainAPIView):
             attivo_only=qp_bool(qp.get("attivo_only")),
             search=qp_str(qp.get("search")),
             page=qp_int(qp.get("page"), 1),
-            page_size=min(qp_int(qp.get("page_size"), 50), 200),
+            page_size=_parse_page_size(qp, 50),
         )
         return success_response(data)
 
@@ -196,7 +203,7 @@ class ApiTaskRegistry(DomainAPIView):
             attivo_only=qp_bool(qp.get("attivo_only")),
             search=qp_str(qp.get("search")),
             page=qp_int(qp.get("page"), 1),
-            page_size=min(qp_int(qp.get("page_size"), 100), 200),
+            page_size=_parse_page_size(qp, 100),
         )
         return success_response(data)
 
@@ -250,7 +257,7 @@ class ApiTaskImplementations(DomainAPIView):
             dominio_codice=raw_dominio.upper() if raw_dominio else None,
             attivo_only=qp_bool(qp.get("attivo_only")),
             page=qp_int(qp.get("page"), 1),
-            page_size=min(qp_int(qp.get("page_size"), 100), 200),
+            page_size=_parse_page_size(qp, 100),
         )
         return success_response(data)
 
@@ -318,7 +325,7 @@ class ApiJobRuns(DomainAPIView):
             date_to=qp_str(qp.get("date_to")),
             search=qp_str(qp.get("search")),
             page=qp_int(qp.get("page"), 1),
-            page_size=min(qp_int(qp.get("page_size"), 50), 200),
+            page_size=_parse_page_size(qp, 50),
         )
         return success_response(data)
 
@@ -356,7 +363,7 @@ class ApiJobSummary(DomainAPIView):
         qp = request.query_params
         data = fn_list_job_summary(
             page=qp_int(qp.get("page"), 1),
-            page_size=min(qp_int(qp.get("page_size"), 50), 200),
+            page_size=_parse_page_size(qp, 50),
         )
         return success_response(data)
 

@@ -18,6 +18,8 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import fetchone_scalar
+
 
 class AuthRepository:
     """Building block: operazioni atomiche su auth_user."""
@@ -45,9 +47,7 @@ class AuthRepository:
         params = [username, email, password_hash, first_name, last_name]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+            return fetchone_scalar(cursor)
 
     # Scopo: Verifica se l'utente e' bloccato per tentativi falliti.
     # Lancia errore DB (E_UTENTE_BLOCCATO) se blocco attivo.

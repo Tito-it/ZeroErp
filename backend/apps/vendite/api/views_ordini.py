@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 from typing import Any
 
 from django.http import HttpResponse, JsonResponse
@@ -25,6 +24,8 @@ from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
     qp_bool,
+    qp_int_optional,
+    qp_iso_date_optional,
     qp_str,
 )
 from apps.core.api.success_responses import success_response
@@ -37,26 +38,6 @@ from apps.vendite.services import ordini_service
 _LISTA_CODICE_ORDINI = "vendite.ordini"
 
 
-# Scopo: Converte un query param intero opzionale (None se assente o vuoto).
-def _qp_int_optional(raw: str | None, name: str) -> int | None:
-    if raw is None or raw.strip() == "":
-        return None
-    try:
-        return int(raw.strip())
-    except ValueError as exc:
-        raise ValueError(f"{name}_invalid") from exc
-
-
-# Scopo: Parse data ISO opzionale (None se assente/vuota).
-def _qp_date_optional(raw: str | None, name: str) -> date | None:
-    if raw is None or raw.strip() == "":
-        return None
-    try:
-        return date.fromisoformat(raw.strip())
-    except ValueError as exc:
-        raise ValueError(f"{name}_invalid") from exc
-
-
 # Scopo: Estrae i filtri lista comuni (list + export) dalla query string. NESSUN
 #        default temporale backend: il default `data_da` (anno-1) lo applica la UI
 #        (allineato a preventivi/offerte; evita non-determinismo `date.today()`
@@ -64,10 +45,10 @@ def _qp_date_optional(raw: str | None, name: str) -> date | None:
 def _extract_list_filters(qp) -> dict[str, Any]:
     return {
         "stato_codice": qp_str(qp.get("stato_codice_interno")),
-        "billing_account_id": _qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
-        "utility_id": _qp_int_optional(qp.get("utility_id"), "utility_id"),
-        "data_da": _qp_date_optional(qp.get("data_da"), "data_da"),
-        "data_al": _qp_date_optional(qp.get("data_a"), "data_a"),
+        "billing_account_id": qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
+        "utility_id": qp_int_optional(qp.get("utility_id"), "utility_id"),
+        "data_da": qp_iso_date_optional(qp.get("data_da"), "data_da"),
+        "data_al": qp_iso_date_optional(qp.get("data_a"), "data_a"),
     }
 
 
