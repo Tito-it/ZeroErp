@@ -8,6 +8,14 @@
 from django.urls import path
 
 from apps.vendite.api.note_views import ApiOrdineNoteDetail, ApiOrdineNoteList
+from apps.vendite.api.ordini_documenti_views import (
+    ApiOrdineDocumentiList,
+    ApiOrdineDocumentoAllegati,
+    ApiOrdineDocumentoAnteprima,
+    ApiOrdineDocumentoFile,
+    ApiOrdineDocumentoFileDownload,
+    ApiOrdineDocumentoGenera,
+)
 from apps.vendite.api.views_form_defaults import ApiOrdineFormDefaults
 from apps.vendite.api.views_ordini import (
     ApiOrdineConferma,
@@ -56,6 +64,24 @@ urlpatterns = [
     path("<int:ordine_id>/righe/<int:riga_id>/componenti/<int:componente_id>/",
          ApiOrdineRigaComponenteDetail.as_view(),
          name="vendite-ordine-riga-componente-detail"),
+
+    # Documenti generati (stampa PDF) — motore `documenti`, sorgente
+    # ORDINE_VENDITA. Clone della catena preventivi/offerte. §12 analisi.
+    path("<int:ordine_id>/documenti/", ApiOrdineDocumentiList.as_view(),
+         name="vendite-ordine-documenti-list"),
+    path("<int:ordine_id>/documenti/genera/", ApiOrdineDocumentoGenera.as_view(),
+         name="vendite-ordine-documenti-genera"),
+    path("<int:ordine_id>/documenti/anteprima/", ApiOrdineDocumentoAnteprima.as_view(),
+         name="vendite-ordine-documenti-anteprima"),
+    path("<int:ordine_id>/documenti/<int:documento_id>/file/",
+         ApiOrdineDocumentoFile.as_view(),
+         name="vendite-ordine-documenti-file"),
+    path("<int:ordine_id>/documenti/<int:documento_id>/allegati/",
+         ApiOrdineDocumentoAllegati.as_view(),
+         name="vendite-ordine-documenti-allegati"),
+    path("<int:ordine_id>/documenti/<int:documento_id>/file/<int:file_id>/",
+         ApiOrdineDocumentoFileDownload.as_view(),
+         name="vendite-ordine-documenti-file-download"),
 
     # Note partizionate (target_tipo='ORDINE'). Building block
     # PartitionedNoteRepository: 3 righe di cablaggio + view generata.

@@ -66,8 +66,10 @@ _CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
     "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
     "data", "meta",
 })
+# NB: billing_account_id NON e' aggiornabile (cliente immutabile post-creazione,
+# vedi aggiorna_ordine): a differenza di create, dove deriva soggetto_ruolo_id.
 _UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
-    "billing_account_id", "utility_id", "valuta_id", "modalita_pagamento_id",
+    "utility_id", "valuta_id", "modalita_pagamento_id",
     "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
     "data", "meta",
 })
@@ -260,9 +262,49 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 # Scopo: Aggiorna testata ordine (solo in DRAFT).
+#
+# Cliente immutabile post-creazione: billing_account_id NON e' nella whitelist
+# _UPDATE_KEYS_ORDINE. vendite.ordini denormalizza soggetto_ruolo_id (NOT NULL)
+# accanto a billing_account_id, ma nessun trigger DB li ri-sincronizza su UPDATE
+# (trgfn_ordini_normalize tocca solo fatturazione_trigger): cambiare il BA
+# lascerebbe soggetto_ruolo_id stantio -> incoerenza cliente<->soggetto. Regola
+# "cambiare cliente = nuovo ordine" (come utility immutabile in preventivi).
+# Un tentativo ESPLICITO di cambiare BA e' rifiutato (non ignorato in silenzio);
+# un BA invariato nel payload e' tollerato (il form FE puo' reinviarlo).
 def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = OrdiniRepository()
     _assert_stato(repo, ordine_id, _STATI_MODIFICABILI, op="aggiorna_ordine")
+
+    if "billing_account_id" in payload:
+        raw_ba = empty_to_none(payload["billing_account_id"])
+        # Coercion difensiva: un billing_account_id non numerico e' input
+        # invalido -> 422 parlante, non 500 (int() su garbage solleverebbe
+        # ValueError non gestito). attuale_ba dal DB e' gia' bigint.
+        try:
+            nuovo_ba = int(raw_ba) if raw_ba is not None else None
+        except (TypeError, ValueError):
+            nuovo_ba = None
+            ErrorManager.require(
+                False,
+                code="E_ORD_VALIDAZIONE",
+                message="billing_account_id non valido.",
+                detail=f"billing_account_id={payload['billing_account_id']!r}",
+                function_name=f"{_FN}.aggiorna_ordine",
+            )
+        testata = repo.get_ordine(ordine_id)
+        attuale_ba = (testata or {}).get("billing_account_id")
+        attuale_ba = int(attuale_ba) if attuale_ba is not None else None
+        ErrorManager.require(
+            nuovo_ba == attuale_ba,
+            code="E_ORD_VALIDAZIONE",
+            message=(
+                "Cliente (billing_account_id) immutabile dopo la creazione. "
+                "Per cambiare cliente crea un nuovo ordine."
+            ),
+            detail=f"attuale={attuale_ba} richiesto={nuovo_ba}",
+            function_name=f"{_FN}.aggiorna_ordine",
+        )
+
     data = {k: empty_to_none(v) for k, v in payload.items() if k in _UPDATE_KEYS_ORDINE}
     ErrorManager.require(
         len(data) > 0,

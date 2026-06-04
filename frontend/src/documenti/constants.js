@@ -14,10 +14,11 @@
 
 // Codici sorgente documentale registrati lato BE
 // (`apps.documenti.services.context_builders.registry`).
-// Allineati alle 3 voci `registered: true` di
+// Allineati alle voci `registered: true` di
 // `config/constants/documentiContextBuilders.js`.
 export const SORGENTE_CODES = Object.freeze({
   PREVENTIVO: 'PREVENTIVO',
   CONTRATTO: 'CONTRATTO',
   OFFERTA_COMMERCIALE: 'OFFERTA_COMMERCIALE',
+  ORDINE_VENDITA: 'ORDINE_VENDITA',
 })

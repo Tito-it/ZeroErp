@@ -1687,6 +1687,13 @@
   },
   "vendite": {
     "ordini": {
+      "pdf": {
+        "label_anteprima": "Anteprima PDF",
+        "tooltip_anteprima": "Anteprima della conferma d'ordine (non salvata)",
+        "label_scarica": "Documenti PDF",
+        "tooltip_scarica": "Documenti generati per l'ordine",
+        "dialog_title": "Ordine {numero} — Documenti"
+      },
       "titolo": "Ordini di vendita",
       "ordine": "Ordine di vendita",
       "nuovo_ordine": "Nuovo ordine",
@@ -2667,7 +2674,7 @@
       "PREVENTIVO": "Preventivo",
       "CONTRATTO": "Contratto",
       "OFFERTA_COMMERCIALE": "Offerta commerciale",
-      "ORDINE": "Ordine (non disponibile)"
+      "ORDINE_VENDITA": "Ordine di vendita"
     },
     "genera_pdf": {
       "label": "Genera PDF",

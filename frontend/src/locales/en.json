@@ -1682,6 +1682,13 @@
   },
   "vendite": {
     "ordini": {
+      "pdf": {
+        "label_anteprima": "PDF preview",
+        "tooltip_anteprima": "Order confirmation preview (not saved)",
+        "label_scarica": "PDF documents",
+        "tooltip_scarica": "Documents generated for the order",
+        "dialog_title": "Order {numero} — Documents"
+      },
       "titolo": "Sales orders",
       "ordine": "Sales order",
       "nuovo_ordine": "New order",
@@ -2661,7 +2668,7 @@
       "PREVENTIVO": "Quote",
       "CONTRATTO": "Contract",
       "OFFERTA_COMMERCIALE": "Commercial offer",
-      "ORDINE": "Order (not available)"
+      "ORDINE_VENDITA": "Sales order"
     },
     "genera_pdf": {
       "label": "Generate PDF",

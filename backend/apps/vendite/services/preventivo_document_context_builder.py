@@ -26,11 +26,14 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.documenti.services.context_builders._date_formatting import (
+    format_date_it,
+    format_date_iso,
+)
 from apps.documenti.services.context_builders.base import (
     DocumentContextBuilder,
 )
@@ -120,14 +123,14 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
             "rev": testata.get("rev"),
             "is_attiva": testata.get("is_attiva"),
             "has_next_revision": testata.get("has_next_revision"),
-            "data": _format_date_it(testata.get("data")),
-            "data_iso": _format_date_iso(testata.get("data")),
-            "validita_dal": _format_date_it(testata.get("validita_dal")),
-            "validita_dal_iso": _format_date_iso(testata.get("validita_dal")),
-            "validita_al": _format_date_it(testata.get("validita_al")),
-            "validita_al_iso": _format_date_iso(testata.get("validita_al")),
-            "competenza_mese": _format_date_it(testata.get("competenza_mese")),
-            "competenza_mese_iso": _format_date_iso(testata.get("competenza_mese")),
+            "data": format_date_it(testata.get("data")),
+            "data_iso": format_date_iso(testata.get("data")),
+            "validita_dal": format_date_it(testata.get("validita_dal")),
+            "validita_dal_iso": format_date_iso(testata.get("validita_dal")),
+            "validita_al": format_date_it(testata.get("validita_al")),
+            "validita_al_iso": format_date_iso(testata.get("validita_al")),
+            "competenza_mese": format_date_it(testata.get("competenza_mese")),
+            "competenza_mese_iso": format_date_iso(testata.get("competenza_mese")),
             "fatturazione_immediata": testata.get("fatturazione_immediata"),
             "stato": {
                 "id": testata.get("stato_doc_preventivo_id"),
@@ -162,37 +165,6 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
             "billing_account_id": testata.get("billing_account_id"),
             "denominazione": testata.get("cliente_denominazione"),
         }
-
-
-def _format_date_it(value: Any) -> str | None:
-    parsed = _parse_date(value)
-    if parsed is None:
-        return None if value is None else str(value)
-    return parsed.strftime("%d-%m-%Y")
-
-
-def _format_date_iso(value: Any) -> str | None:
-    parsed = _parse_date(value)
-    if parsed is None:
-        return None if value is None else str(value)
-    return parsed.isoformat()
-
-
-def _parse_date(value: Any) -> date | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str):
-        raw = value.strip()
-        if len(raw) >= 10:
-            try:
-                return date.fromisoformat(raw[:10])
-            except ValueError:
-                return None
-    return None
 
 
 # Registrazione esplicita: l'import del modulo (triggerato da

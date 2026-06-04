@@ -26,12 +26,15 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.documenti.services.context_builders._date_formatting import (
+    format_date_it,
+    format_date_iso,
+)
 from apps.documenti.services.context_builders.base import (
     DocumentContextBuilder,
 )
@@ -108,14 +111,14 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
             "id": testata.get("id"),
             "uid": testata.get("uid"),
             "codice": testata.get("codice"),
-            "validita_dal": _format_date_it(testata.get("validita_dal")),
-            "validita_dal_iso": _format_date_iso(testata.get("validita_dal")),
-            "validita_al": _format_date_it(testata.get("validita_al")),
-            "validita_al_iso": _format_date_iso(testata.get("validita_al")),
-            "data_emissione": _format_date_it(testata.get("data_emissione")),
-            "data_emissione_iso": _format_date_iso(testata.get("data_emissione")),
-            "data_accettazione": _format_date_it(testata.get("data_accettazione")),
-            "data_rifiuto": _format_date_it(testata.get("data_rifiuto")),
+            "validita_dal": format_date_it(testata.get("validita_dal")),
+            "validita_dal_iso": format_date_iso(testata.get("validita_dal")),
+            "validita_al": format_date_it(testata.get("validita_al")),
+            "validita_al_iso": format_date_iso(testata.get("validita_al")),
+            "data_emissione": format_date_it(testata.get("data_emissione")),
+            "data_emissione_iso": format_date_iso(testata.get("data_emissione")),
+            "data_accettazione": format_date_it(testata.get("data_accettazione")),
+            "data_rifiuto": format_date_it(testata.get("data_rifiuto")),
             "motivazione_rifiuto": testata.get("motivazione_rifiuto"),
             "revisione_numero": testata.get("revisione_numero"),
             "revisione_padre_id": testata.get("revisione_padre_id"),
@@ -219,37 +222,6 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
             if field in comp:
                 comp[field] = _format_decimal_6(comp.get(field))
         return comp
-
-
-def _format_date_it(value: Any) -> str | None:
-    parsed = _parse_date(value)
-    if parsed is None:
-        return None if value is None else str(value)
-    return parsed.strftime("%d-%m-%Y")
-
-
-def _format_date_iso(value: Any) -> str | None:
-    parsed = _parse_date(value)
-    if parsed is None:
-        return None if value is None else str(value)
-    return parsed.isoformat()
-
-
-def _parse_date(value: Any) -> date | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str):
-        raw = value.strip()
-        if len(raw) >= 10:
-            try:
-                return date.fromisoformat(raw[:10])
-            except ValueError:
-                return None
-    return None
 
 
 def _format_decimal_6(value: Any) -> str | None:

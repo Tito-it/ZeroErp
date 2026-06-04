@@ -114,9 +114,19 @@ Testata (dalla vista + `meta`/`storicizza`) + capability data-driven:
 ### Update testata `PATCH /api/v1/vendite/ordini/<id>/`
 
 Solo in `DRAFT`. `request.data` (non `handle_post_json`, api.md). Campi
-aggiornabili: `billing_account_id`, `utility_id`, `valuta_id`,
-`modalita_pagamento_id`, `termine_pagamento_id`, `fatturazione_trigger`,
-`agente_soggetto_ruolo_id`, `data`, `meta`.
+aggiornabili: `utility_id`, `valuta_id`, `modalita_pagamento_id`,
+`termine_pagamento_id`, `fatturazione_trigger`, `agente_soggetto_ruolo_id`,
+`data`, `meta`.
+
+**Cliente immutabile post-creazione** (2026-06-04): `billing_account_id` **non**
+è aggiornabile (a differenza del create, dove deriva `soggetto_ruolo_id`).
+`vendite.ordini` denormalizza `soggetto_ruolo_id` (NOT NULL) accanto a
+`billing_account_id` e nessun trigger li ri-sincronizza su UPDATE → cambiare il
+BA lascerebbe il soggetto stantio. Un PATCH che **cambia** `billing_account_id` è
+rifiutato con `E_ORD_VALIDAZIONE`; lo stesso BA reinviato **invariato** è tollerato
+(il form FE lo può rimandare). Regola «cambiare cliente = nuovo ordine». Difesa DB
+autoritativa (lock-columns) nel brief
+[db-brief-ordini-lock-cliente.md](../../../dev/work-in-progress/db-brief-ordini-lock-cliente.md).
 
 ### Delete `DELETE /api/v1/vendite/ordini/<id>/`
 
@@ -164,6 +174,30 @@ Note partizionate (`vendite.note_ordini`, `target_tipo='ORDINE'`) via building
 block `PartitionedNoteRepository` + `make_note_views`. Contratto identico alle
 note preventivo/contratto/offerta (testata + riga via `target_riga_id`).
 
+### Documenti / Stampa `…/<id>/documenti/…`
+
+Stampa conferma d'ordine via motore `documenti` (sorgente `ORDINE_VENDITA`,
+quarto dominio dopo preventivo/offerta/contratto). Stampa **disaccoppiata dallo
+stato** (anteprima on-demand, ristampabile): **niente** transizione `emetti`.
+
+| Metodo / Path | Scopo |
+| --- | --- |
+| `POST /<id>/documenti/genera/` | Genera e persiste un PDF (`documenti_generati` + evento `GENERATO`). Body opzionale: `template_documento_id`, `tipo_documento_output_id` |
+| `POST /<id>/documenti/anteprima/` | Anteprima PDF temporanea (no persist, no evento). Risposta binaria `application/pdf` inline |
+| `GET /<id>/documenti/` | Lista paginata documenti generati per l'ordine (scope emittente, `page`/`page_size`) |
+| `GET /<id>/documenti/<documento_id>/file/` | Download PDF principale + evento `SCARICATO` |
+| `GET/POST /<id>/documenti/<documento_id>/allegati/` | Lista file (principale + allegati) / append allegati (multipart) |
+| `GET /<id>/documenti/<documento_id>/file/<file_id>/` | Download di uno specifico file (principale o allegato) + evento `SCARICATO` |
+
+Risoluzione: `_CODICE_SORGENTE_ORDINE = "ORDINE_VENDITA"` →
+`resolve_contesto_documentale` risolve `sorgente_tipo_id`; il context è prodotto da
+`OrdineDocumentContextBuilder` (`CODE='ORDINE_VENDITA'`). Orchestrazione, scope e
+render restano in `DocumentGenerationService` (invariato). Permessi: area `vendite`
+(lettura) — la generazione è riproduzione PDF di un dato già visibile, non modifica
+dell'ordine. **Prerequisito**: template `ORDINE_VENDITA` con versione **PUBBLICATA**
+(creazione manuale, vedi [documenti-e-stampe.md](../../../guide/documenti-e-stampe.md)):
+senza, `genera`/`anteprima` falliscono con `E_DOCUMENTI_*`.
+
 ## Output
 
 Envelope standard `success_response` (`{"data": …, "meta": {request_id}}`).
@@ -175,9 +209,11 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 - **Modifiche** (testata/righe/componenti) ammesse **solo in `DRAFT`**
   (`E_ORD_STATO_TRANSIZIONE`).
 - **Pricing** sempre via `PricingService.resolve_prezzo` (BB condiviso, mai query
-  dirette su listini). Il gate prezzi L2/L3 stile contratti è una decisione di
-  dominio **aperta** (analisi §8.bis): lo scheletro usa il pricing stile
-  preventivo (resolve + prezzo dal caller).
+  dirette su listini). Il gate prezzi L2/L3 stile contratti **non** è applicato:
+  scelta ratificata (analisi §8.bis) — pricing **stile preventivo** (resolve +
+  prezzo dal caller).
+- **Cliente immutabile in update**: `billing_account_id` fuori dalla whitelist
+  PATCH; cambio rifiutato con `E_ORD_VALIDAZIONE` (vedi Update testata).
 - **Scope emittente**: la vista è `security_invoker=on` (RLS attiva sulla tabella
   base); il filtro applicativo `fn_get_emittenti_scope_pk_ids` si somma
   (defense-in-depth). Un detail fuori scope torna **404**.
@@ -194,6 +230,7 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | `E_VENDITE_DUPLICATO` / `E_VENDITE_FK` | 409 / 400 | violazione UNIQUE/FK (via `map_integrity_error`) |
 | `E_ORDINE_*` | varia | codici sollevati dai trigger DB (estratti via regex) |
 | `E_UI_EXPORT_FORMAT_INVALID` / `E_UI_EXPORT_LIMIT_EXCEEDED` | 400 / 422 | export |
+| `E_DOCUMENTI_NOT_FOUND` / `E_DOCUMENTI_VALIDATION` / `E_DOCUMENTI_RENDER_FAILED` | 404 / 400 / 422 | stampa: ordine o template/versione non risolti, input invalido, render fallito |
 
 Tutti registrati in `error_policies.py` (gli `E_VENDITE_*` e gli `E_UI_*`
 preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
@@ -214,10 +251,17 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
   `documento_origine_tipo`/`_id` (`20260603-13`), fix `chk_ordini_v_r_qta_pos`
   → `quantita > 0` (`20260603-11`).
 - RLS: 3 policy (`rls_ordini_ef_whitelist` / `_cliente_ownership` / `_shop`).
+- Stampa: tipo documento `documenti.tipi_documento_output` `ORDINE_VENDITA`
+  (seed, applicato al DB di lavoro 2026-06-04). Template + versione PUBBLICATA =
+  creazione manuale (non seed). Tabelle motore `documenti.*` invariate.
 
 ## Riferimenti
 
 - Analisi BE/FE: [analisi-ordini-vendita.md](../../../dev/work-in-progress/analisi-ordini-vendita.md)
+  (§12 stampa, §8 decisioni)
 - Brief DB: [db-brief-ordini-vendita.md](../../../dev/work-done/db-brief-ordini-vendita.md)
+  e [db-brief-ordini-lock-cliente.md](../../../dev/work-in-progress/db-brief-ordini-lock-cliente.md)
+  (lock cliente)
+- Stampa/documenti: [documenti-e-stampe.md](../../../guide/documenti-e-stampe.md)
 - Tabella testata: [vendite.ordini](../../../dbzero/vendite/manual/ordini.md)
 - Linee guida API: [api.md](../../../dev/api.md)
