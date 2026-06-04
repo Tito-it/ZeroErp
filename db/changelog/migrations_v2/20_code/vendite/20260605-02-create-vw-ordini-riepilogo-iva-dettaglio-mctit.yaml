@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Vista vendite.vw_ordini_riepilogo_iva_dettaglio.
+#
+# Why: contratto DB per leggere il riepilogo IVA di un ordine vendita.
+# Replica la logica fiscale dei preventivi: imponibili sommati a
+# precisione piena per aliquota, ROUND sull'imponibile aggregato e IVA
+# calcolata sull'imponibile aggregato arrotondato.
+#
+# La vista deriva da vendite.vw_ordini_righe_iva_base, che normalizza le
+# righe ordine attive e applica l'aliquota effettiva tramite
+# config.fn_get_aliquota_iva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260605-02-create-vw-ordini-riepilogo-iva-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260605-02-create-vw-ordini-riepilogo-iva-dettaglio
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea vendite.vw_ordini_riepilogo_iva_dettaglio (security_invoker=on)
+        come riepilogo IVA derivato per ordine. Aggrega le righe base per
+        ordine, iva_id e aliquota effettiva; arrotonda l'imponibile dopo la
+        SUM e calcola l'imposta sull'imponibile aggregato arrotondato.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: iva
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_class c
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'vendite'
+                   AND c.relname = 'vw_ordini_righe_iva_base'
+                   AND c.relkind IN ('v', 'm');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_ordini_riepilogo_iva_dettaglio;
+
+              CREATE VIEW vendite.vw_ordini_riepilogo_iva_dettaglio
+              WITH (security_invoker = on) AS
+              WITH imponibili AS (
+                SELECT
+                  b.ordine_id,
+                  b.iva_id,
+                  b.aliquota_effettiva,
+                  SUM(b.imponibile_riga_full) AS imponibile_full
+                FROM vendite.vw_ordini_righe_iva_base b
+                GROUP BY
+                  b.ordine_id,
+                  b.iva_id,
+                  b.aliquota_effettiva
+              ),
+              aggregati AS (
+                SELECT
+                  i.ordine_id,
+                  i.iva_id,
+                  i.aliquota_effettiva,
+                  ROUND(i.imponibile_full, 2) AS imponibile,
+                  (
+                    i.imponibile_full
+                    - ROUND(i.imponibile_full, 2)
+                  ) AS arrotondamento
+                FROM imponibili i
+              ),
+              riepilogo AS (
+                SELECT
+                  a.ordine_id,
+                  a.iva_id,
+                  a.aliquota_effettiva,
+                  a.imponibile,
+                  ROUND(
+                    a.imponibile * COALESCE(a.aliquota_effettiva, 0) / 100,
+                    2
+                  ) AS imposta,
+                  a.arrotondamento
+                FROM aggregati a
+              )
+              SELECT
+                r.ordine_id,
+                r.iva_id,
+                iva.codice                       AS iva_codice,
+                iva.descrizione                  AS iva_descrizione,
+                r.aliquota_effettiva             AS iva_aliquota,
+                NULL::integer                    AS natura_id,
+                NULL::text                       AS natura_codice,
+                NULL::char(1)                    AS esigibilita,
+                NULL::boolean                    AS split_payment,
+                r.imponibile,
+                r.imposta,
+                r.arrotondamento,
+                r.imponibile + r.imposta         AS totale_riga
+              FROM riepilogo r
+              LEFT JOIN config.iva iva
+                ON iva.id = r.iva_id;
+
+              COMMENT ON VIEW vendite.vw_ordini_riepilogo_iva_dettaglio IS
+                'Riepilogo IVA per ordine vendita derivato dalle righe ordine '
+                'attive. Aggrega per ordine, iva_id e aliquota effettiva; '
+                'arrotonda l''imponibile dopo la SUM e calcola l''imposta '
+                'sull''imponibile aggregato arrotondato. Natura, esigibilita '
+                'e split_payment sono NULL per ordini finche'' non esiste uno '
+                'snapshot dedicato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP VIEW IF EXISTS vendite.vw_ordini_riepilogo_iva_dettaglio;

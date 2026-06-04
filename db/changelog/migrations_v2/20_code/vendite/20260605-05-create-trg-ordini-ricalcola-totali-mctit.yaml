@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger AFTER UPDATE su vendite.ordini per ricalcolo totali ordine.
+#
+# Why: il cambio di emittente_fiscale_id puo' cambiare lo stato emittente
+# usato da config.fn_get_aliquota_iva e quindi l'aliquota effettiva del
+# riepilogo IVA. Dopo il cambio va ricalcolata la testata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260605-05-create-trg-ordini-ricalcola-totali-mctit.yaml
+
+  - changeSet:
+      id: 20260605-05-create-trg-ordini-ricalcola-totali
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea trigger _z90_ su vendite.ordini: dopo UPDATE OF
+        emittente_fiscale_id ricalcola i totali ordine tramite
+        vendite.fn_ricalcola_totali_ordine(NEW.id). L'emittente fiscale e'
+        l'unico campo testata ordine che impatta l'aliquota effettiva.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ordini
+          - columnExists:
+              schemaName: vendite
+              tableName: ordini
+              columnName: emittente_fiscale_id
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'vendite'
+                   AND p.proname = 'fn_ricalcola_totali_ordine';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Trigger function: vendite.trgfn_ordini_ricalcola_totali
+              --
+              -- Scopo: dopo cambio emittente fiscale ricalcolare i totali
+              --        ordine, perche' l'aliquota effettiva puo' cambiare
+              --        in base allo stato del soggetto emittente.
+              --
+              -- Regole:
+              --   - solo UPDATE OF emittente_fiscale_id
+              --   - skip se il valore non cambia realmente
+              --   - nessuna ricorsione: fn_ricalcola_totali_ordine aggiorna
+              --     solo i totali, non emittente_fiscale_id
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_ricalcola_totali()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_ordine_id vendite.ordini.id%TYPE;
+              BEGIN
+                  IF NEW.emittente_fiscale_id IS DISTINCT FROM OLD.emittente_fiscale_id THEN
+                      v_ordine_id := NEW.id;
+                      PERFORM vendite.fn_ricalcola_totali_ordine(v_ordine_id);
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_ricalcola_totali() IS
+                'Trigger function _z90_: ricalcola i totali ordine dopo cambio '
+                'di ordini.emittente_fiscale_id, campo che puo'' cambiare '
+                'l''aliquota effettiva via config.fn_get_aliquota_iva.';
+
+              DROP TRIGGER IF EXISTS trg_ordini_z90_ricalcola_totali_upd
+                ON vendite.ordini;
+
+              CREATE TRIGGER trg_ordini_z90_ricalcola_totali_upd
+                AFTER UPDATE OF emittente_fiscale_id
+                ON vendite.ordini
+                FOR EACH ROW
+                WHEN (OLD.emittente_fiscale_id IS DISTINCT FROM NEW.emittente_fiscale_id)
+                EXECUTE FUNCTION vendite.trgfn_ordini_ricalcola_totali();
+
+              COMMENT ON TRIGGER trg_ordini_z90_ricalcola_totali_upd
+                ON vendite.ordini
+                IS 'Ricalcola i totali ordine dopo cambio emittente_fiscale_id, per riallineare eventuali override aliquota da stato emittente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_z90_ricalcola_totali_upd
+                ON vendite.ordini;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ordini_ricalcola_totali();

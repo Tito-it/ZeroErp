@@ -715,12 +715,12 @@ base fattuale.
 i documenti che HANNO totali, la denormalizzazione in testata e' la **norma al
 100%**:
 
-| Documento | Totali in testata | Ricalcolo | Vista lista |
-| --- | --- | --- | --- |
-| Preventivi | si (`totale_imponibile/iva/documento`) | **trigger automatico** su righe | legge la colonna |
-| Fatture | si (`imponibile_tot/imposta_tot/totale_doc`) | esplicito (pipeline pre-numerazione) | legge la colonna |
-| Ordini | si (`imponibile_tot/sconto_tot/iva_tot/totale_doc`) | **mancante** (la lacuna 12.1) | legge la colonna |
-| Offerte / Contratti | **no** | - | - (modello listino+eccezioni, niente totali) |
+| Documento           | Totali in testata                                   | Ricalcolo                            | Vista lista                                  |
+| ------------------- | --------------------------------------------------- | ------------------------------------ | -------------------------------------------- |
+| Preventivi          | si (`totale_imponibile/iva/documento`)              | **trigger automatico** su righe      | legge la colonna                             |
+| Fatture             | si (`imponibile_tot/imposta_tot/totale_doc`)        | esplicito (pipeline pre-numerazione) | legge la colonna                             |
+| Ordini              | si (`imponibile_tot/sconto_tot/iva_tot/totale_doc`) | **mancante** (la lacuna 12.1)        | legge la colonna                             |
+| Offerte / Contratti | **no**                                              | -                                    | - (modello listino+eccezioni, niente totali) |
 
 Offerte/contratti non fanno testo (non hanno totali del tutto). Droppando, l'ordine
 sarebbe **l'unico documento con totali senza totali in testata** - outlier. Inoltre
@@ -849,3 +849,258 @@ formule duplicate, totali in testata come tutta la famiglia.
 3. (FE) `RiepilogoIvaTable` nel drawer + api/store + refresh su `@changed`.
 
 Prerequisito DB (1) prima di BE (2) e FE (3).
+
+### 12.9 Checklist esecutiva step-by-step
+
+Usare questa checklist come ordine operativo. Ogni step deve essere chiuso e
+validato prima di passare al successivo.
+
+#### Step 0 - Verifica preliminare
+
+- confermare su DB di lavoro che `vendite.ordini.imponibile_tot`,
+  `sconto_tot`, `iva_tot`, `totale_doc` siano oggi non valorizzate o stantie;
+- verificare trigger esistenti su `vendite.ordini_righe` e
+  `vendite.ordini`, per evitare doppioni;
+- confermare che `vendite.ordini_righe.iva_id`, `quantita`,
+  `prezzo_unitario`, `sconto_perc`, `attivo` siano la sorgente corretta.
+
+#### Step 1 - View base righe IVA ordine
+
+Creare migration `20_code/vendite` per:
+
+```text
+vendite.vw_ordini_righe_iva_base
+```
+
+Regole:
+
+- solo `ordini_righe` attive con `quantita > 0`;
+- imponibile riga a precisione piena;
+- aliquota effettiva via `config.fn_get_aliquota_iva(...)`;
+- `CASE` su `iva_id IS NULL`, per non invocare la funzione con parametro nullo;
+- nessun join diretto a `ordini_righe_componenti`;
+- `WITH (security_invoker=on)` se coerente con RLS ordini.
+
+#### Step 2 - View riepilogo IVA ordine
+
+Creare migration `20_code/vendite` per:
+
+```text
+vendite.vw_ordini_riepilogo_iva_dettaglio
+```
+
+Regole:
+
+- aggregare `vw_ordini_righe_iva_base` per `ordine_id`, `iva_id`,
+  `aliquota_effettiva`;
+- `imponibile = ROUND(SUM(imponibile_riga_full), 2)`;
+- `imposta = ROUND(imponibile * aliquota_effettiva / 100, 2)`;
+- `totale_riga = imponibile + imposta`;
+- shape compatibile col BE e simile a `vw_preventivi_riepilogo_iva_dettaglio`.
+
+#### Step 3 - Funzione totali testata ordine
+
+Creare migration `20_code/vendite` per:
+
+```text
+vendite.fn_ricalcola_totali_ordine(
+  p_ordine_id vendite.ordini.id%TYPE
+)
+```
+
+Regole:
+
+- usare `%TYPE` in firma, `RETURNS TABLE` e variabili `DECLARE`;
+- guard: `p_ordine_id IS NULL OR p_ordine_id <= 0` deve sollevare errore;
+- sommare la view riepilogo IVA per `imponibile_tot`, `iva_tot`,
+  `totale_doc`;
+- calcolare `sconto_tot` come lordo righe meno imponibile aggregato;
+- aggiornare `vendite.ordini`;
+- ritornare i totali aggiornati.
+
+#### Step 4 - Trigger ricalcolo da righe ordine
+
+Creare migration `20_code/vendite` per trigger function e trigger:
+
+```text
+vendite.trgfn_ordini_righe_ricalcola_totali()
+trg_ordini_righe_z90_ricalcola_totali_ins
+trg_ordini_righe_z90_ricalcola_totali_upd
+trg_ordini_righe_z90_ricalcola_totali_dlt
+```
+
+Regole:
+
+- clone del pattern `trgfn_preventivi_righe_ricalcola_totali`;
+- statement-level con transition tables;
+- ricalcolo per `DISTINCT ordine_id`;
+- su UPDATE ricalcolare sia `old_rows` sia `new_rows`.
+
+#### Step 5 - Trigger ricalcolo da testata ordine
+
+Creare migration `20_code/vendite` per ricalcolo su cambio campi testata che
+impattano l'aliquota effettiva o il perimetro fiscale:
+
+```text
+trg_ordini_z90_ricalcola_totali_upd
+```
+
+Regole:
+
+- almeno `UPDATE OF emittente_fiscale_id`;
+- valutare se includere anche altri campi testata che impattano la catena
+  emittente/stato;
+- invocare `vendite.fn_ricalcola_totali_ordine(NEW.id)`.
+
+#### Step 6 - pgTAP DB
+
+Creare test DB dedicati per:
+
+- view riepilogo IVA;
+- funzione totali;
+- trigger su righe;
+- trigger su cambio emittente.
+
+Casi obbligatori:
+
+- stessa IVA -> una riga riepilogo;
+- IVA diverse -> piu' righe;
+- caso centesimi `ROUND(SUM)` vs `SUM(ROUND)`;
+- riga inattiva esclusa;
+- componente BoM senza doppio conteggio;
+- testata coerente dopo INSERT/UPDATE riga;
+- trigger DELETE riga verificato strutturalmente: l'hard-delete di
+  `vendite.ordini_righe` e' bloccato dal guard `trg_ordini_righe_a10_block_dlt`;
+- testata ricalcolata dopo cambio emittente.
+
+#### Step 7 - Validazione DB
+
+Eseguire:
+
+```text
+cd db
+../scripts/liquibase5.sh --defaultsFile=liquibase.properties validate
+```
+
+Non eseguire `update` senza conferma esplicita.
+
+### 12.10 Attivita' DB svolte - chiusura esecutiva 2026-06-05
+
+Esecuzione completata sul perimetro **solo DB**. BE e FE restano fuori scope di
+questa tranche.
+
+#### Migration create
+
+Sono state create 5 migration in `db/changelog/migrations_v2/20_code/vendite`:
+
+| Step | File | Oggetto |
+| --- | --- | --- |
+| 1 | `20260605-01-create-vw-ordini-righe-iva-base-mctit.yaml` | `vendite.vw_ordini_righe_iva_base` |
+| 2 | `20260605-02-create-vw-ordini-riepilogo-iva-dettaglio-mctit.yaml` | `vendite.vw_ordini_riepilogo_iva_dettaglio` |
+| 3 | `20260605-03-create-fn-ricalcola-totali-ordine-mctit.yaml` | `vendite.fn_ricalcola_totali_ordine(p_ordine_id)` |
+| 4 | `20260605-04-create-trg-ordini-righe-ricalcola-totali-mctit.yaml` | trigger function e trigger `_z90_` su `vendite.ordini_righe` |
+| 5 | `20260605-05-create-trg-ordini-ricalcola-totali-mctit.yaml` | trigger function e trigger `_z90_` su `vendite.ordini` |
+
+#### Oggetti DB consegnati
+
+- `vendite.vw_ordini_righe_iva_base`
+  - righe ordine attive (`attivo IS TRUE`) e `quantita > 0`;
+  - imponibile lordo, sconto e imponibile netto a precisione piena;
+  - aliquota effettiva via `config.fn_get_aliquota_iva(iva_id, stato_emittente_id)`;
+  - nessun join diretto a `vendite.ordini_righe_componenti`, per evitare doppio
+    conteggio BoM.
+- `vendite.vw_ordini_riepilogo_iva_dettaglio`
+  - aggregazione per `ordine_id`, `iva_id`, `aliquota_effettiva`;
+  - `imponibile = ROUND(SUM(imponibile_riga_full), 2)`;
+  - `imposta = ROUND(imponibile * aliquota_effettiva / 100, 2)`;
+  - nessun `id` tecnico derivato;
+  - shape pronta per BE/PDF/drawer.
+- `vendite.fn_ricalcola_totali_ordine`
+  - firma, `RETURNS TABLE` e variabili allineate a `%TYPE`;
+  - guard su `p_ordine_id IS NULL OR <= 0`;
+  - aggiorna `vendite.ordini.imponibile_tot`, `sconto_tot`, `iva_tot`,
+    `totale_doc`;
+  - `sconto_tot = lordo righe arrotondato - imponibile aggregato`.
+- `vendite.trgfn_ordini_righe_ricalcola_totali`
+  - trigger statement-level con transition tables;
+  - ricalcolo per `DISTINCT ordine_id`;
+  - su UPDATE considera sia `old_rows` sia `new_rows`;
+  - trigger DELETE registrato, ma il caso funzionale di hard-delete righe resta
+    bloccato dal guard esistente `trg_ordini_righe_a10_block_dlt`.
+- `vendite.trgfn_ordini_ricalcola_totali`
+  - trigger `AFTER UPDATE OF emittente_fiscale_id`;
+  - ricalcola la testata se cambia l'emittente fiscale, per riallineare eventuali
+    override aliquota da stato emittente.
+
+#### pgTAP
+
+Creato test dedicato:
+
+```text
+db/pgtap/vendite/test-ordini-riepilogo-iva-totali.sql
+```
+
+Casi coperti:
+
+- presenza delle due view e della funzione;
+- presenza trigger su righe e testata;
+- ordine senza righe -> totali zero;
+- stessa IVA -> una sola riga riepilogo;
+- IVA diverse -> piu' righe riepilogo;
+- centesimi: `ROUND(SUM(...), 2)` e non `SUM(ROUND(..., 2))`;
+- riga con `attivo = false` esclusa dal riepilogo;
+- trigger UPDATE riga riallinea i totali testata;
+- trigger DELETE verificato strutturalmente, perche' l'hard-delete di
+  `vendite.ordini_righe` e' vietato dal guard `_a10_`;
+- cambio `emittente_fiscale_id` ricalcola i totali;
+- BoM senza doppio conteggio: la view base non legge
+  `ordini_righe_componenti`;
+- guard funzione su parametro nullo.
+
+Esito test comunicato da shell DB:
+
+```text
+scripts/testpgtap.sh db/pgtap/vendite/test-ordini-riepilogo-iva-totali.sql
+```
+
+verde dopo gli aggiustamenti fixture:
+
+- righe ordine create con `qta_operativa` e `uom_operativa_id`, coerenti col
+  trigger `script.trgfn_qta_from_operativa`;
+- caso DELETE convertito da test funzionale a verifica strutturale, perche'
+  `vendite.ordini_righe` non ammette hard-delete.
+
+#### Validazioni
+
+Eseguite:
+
+```text
+git diff --check
+cd db
+../scripts/liquibase5.sh --defaultsFile=liquibase.properties validate
+```
+
+Esito: nessun errore di validazione Liquibase.
+
+Non e' stato eseguito `liquibase update` in questa sessione senza conferma
+esplicita.
+
+#### Documentazione
+
+Create/aggiornate le documentazioni manuali:
+
+```text
+docs/it/dbzero/vendite/manual/vw_ordini_righe_iva_base.md
+docs/it/dbzero/vendite/manual/vw_ordini_riepilogo_iva_dettaglio.md
+docs/it/dbzero/vendite/manual/fn_ricalcola_totali_ordine.md
+docs/it/dbzero/vendite/manual/trgfn_ordini_righe_ricalcola_totali.md
+docs/it/dbzero/vendite/manual/trgfn_ordini_ricalcola_totali.md
+```
+
+Sono stati inoltre generati/aggiornati i corrispondenti file di documentazione
+tecnica DB (`views/`, `funzioni/`, indici/tabelle) tramite tooling docs.
+
+#### Fuori scope di questa esecuzione DB
+
+BE e FE non sono parte di questa esecuzione. Restano come note di impatto nei
+punti 12.5 e 12.6, ma la checklist operativa qui si chiude con la validazione DB.
