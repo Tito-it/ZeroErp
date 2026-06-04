@@ -64,6 +64,12 @@ export function creaRevisione(id) {
   return api.post(`${BASE}/${id}/revisione/`, {})
 }
 
+// Conversione upstream (§7.4): genera un ordine di vendita DRAFT da un
+// preventivo ACCETTATO (copia testata+righe+componenti + documento_origine).
+export function generaOrdineFromPreventivo(id) {
+  return api.post(`${BASE}/${id}/genera-ordine/`, {})
+}
+
 export function listRevisioni(id) {
   return api.get(`${BASE}/${id}/revisioni/`)
 }

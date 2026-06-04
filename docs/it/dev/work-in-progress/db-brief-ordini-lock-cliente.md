@@ -2,8 +2,9 @@
 
 > ✅ **COMPLETATO (DB) — 2026-06-04.** Seed registro + codice errore (469) +
 > cleanup `trgfn_ordini_normalize` + trigger materializzato (drift §5.4) + pgTAP
-> 8/8 verde + doc manuale aggiornata. Resta solo il **commit/PR** (S8, attende
-> "procedi") e l'**hand-off BE** (S9, fuori scope DB).
+> 8/8 verde + doc manuale aggiornata. **Hand-off BE (S9) ✅ fatto** (`E_ORD_CLIENTE_IMMUTABILE`
+> in `error_policies.py` + guard BE unificato). Resta solo il **commit/PR** (S8,
+> attende "procedi").
 
 > **Branch**: `dev/db-tid`. **Destinatario**: team DB.
 > **Natura**: difesa DB autoritativa a complemento del fix BE «cliente immutabile»
@@ -265,7 +266,11 @@ normalize usa `NN=01`. I due seed sono append a CSV già caricati da changeset
 - [x] **S7** — pgTAP `test-ordini-lock-cliente.sql` eseguito: **8/8 verde** (2026-06-04).
 - [x] **Doc manuale** aggiornata: `trgfn_ordini_normalize.md` (eredità solo INSERT) + `ordini.md` (§"Immutabilità cliente").
 - [ ] **S8** — commit / PR → **attende "procedi"** (`feedback_no_commit_autonomo`).
-- [ ] **S9** — hand-off BE (`error_policies.py` + `_db_errors`).
+- [x] **S9** — hand-off BE **fatto (2026-06-04)**: `E_ORD_CLIENTE_IMMUTABILE`
+  registrato in `error_policies.py` (400, `show_error_banner`); estrazione già
+  garantita da `ordini_service._db_errors` (regex `E_[A-Z…]`); il guard BE
+  `aggiorna_ordine` unificato sullo stesso codice (prima `E_ORD_VALIDAZIONE`).
+  Test `test_ordini_service` 13/13 verdi. Doc `api_ordini.md` + analisi allineate.
 
 ### Decisioni — risolte (2026-06-04)
 

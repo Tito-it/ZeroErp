@@ -346,6 +346,28 @@ class ApiPreventivoRevisione(DomainAPIView):
         return handle_post_json(request, handler=_handler)
 
 
+class ApiPreventivoGeneraOrdine(DomainAPIView):
+    """`POST /api/v1/vendite/preventivi/<id>/genera-ordine/` (conversione §7.4)."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PreventivoGeneraOrdineResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Genera un ordine di vendita DRAFT da un preventivo ACCETTATO
+    #        (copia testata+righe+componenti + documento_origine). Delega a
+    #        ordini_service (stesso app vendite). Ritorna {ordine_id, numero, ...}.
+    def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        from apps.vendite.services import ordini_service
+
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return ordini_service.crea_ordine_da_preventivo(preventivo_id)
+        return handle_post_json(request, handler=_handler)
+
+
 class ApiPreventivoRevisioniList(DomainAPIView):
     area_funzionale = "vendite"
 

@@ -294,9 +294,12 @@ def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         testata = repo.get_ordine(ordine_id)
         attuale_ba = (testata or {}).get("billing_account_id")
         attuale_ba = int(attuale_ba) if attuale_ba is not None else None
+        # Stesso codice della difesa DB (lock-columns, DB-ORD-LOCK): un solo
+        # codice user-facing per "cliente immutabile", indipendente dal layer
+        # che lo intercetta (service vs UPDATE diretta su DB).
         ErrorManager.require(
             nuovo_ba == attuale_ba,
-            code="E_ORD_VALIDAZIONE",
+            code="E_ORD_CLIENTE_IMMUTABILE",
             message=(
                 "Cliente (billing_account_id) immutabile dopo la creazione. "
                 "Per cambiare cliente crea un nuovo ordine."
@@ -315,6 +318,98 @@ def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     with _db_errors("aggiorna_ordine"):
         repo.update_ordine(ordine_id, **data)
     return {"ordine_id": ordine_id, "updated": True}
+
+
+# ══════════════════════════════════════════════════════════
+#  CONVERSIONE UPSTREAM — preventivo/offerta → ordine (§7.4)
+# ══════════════════════════════════════════════════════════
+
+# Stati del documento di origine che ammettono la generazione di un ordine.
+_STATI_PREVENTIVO_CONVERTIBILI: frozenset[str] = frozenset({"ACCETTATO"})
+
+
+# Scopo: Mappa una riga preventivo nel payload riga ordine (whitelist
+#        _CREATE_KEYS_RIGA). Nota rename: preventivo usa `sconto_percentuale`,
+#        ordine usa `sconto_perc`. Il prezzo unitario è copiato "congelato"
+#        (la riga non-composita non viene ri-prezzata); per le righe composite
+#        gestisci_riga re-inizializza i componenti ai prezzi correnti (la
+#        struttura BoM è copiata, i prezzi componente sono risolti all'ordine —
+#        scelta v1 documentata, vedi analisi §7.4).
+def _riga_payload_da_preventivo(r: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "articolo_id": r.get("articolo_id"),
+        "descrizione": r.get("descrizione"),
+        "quantita": r.get("quantita"),
+        "qta_operativa": r.get("qta_operativa"),
+        "uom_operativa_id": r.get("uom_operativa_id"),
+        "factor_to_base": r.get("factor_to_base"),
+        "prezzo_unitario": r.get("prezzo_unitario"),
+        "sconto_perc": r.get("sconto_percentuale"),
+        "iva_id": r.get("iva_id"),
+        "meta": r.get("meta") if isinstance(r.get("meta"), dict) else None,
+    }
+
+
+# Scopo: Genera un nuovo ordine in DRAFT da un preventivo ACCETTATO, copiando
+#        testata (cliente/utility/valuta/termine/emittente) + righe (1:1, prezzi
+#        congelati) + componenti BoM (struttura, ri-prezzati), e valorizzando
+#        documento_origine = (PREVENTIVO, preventivo_id). Predisposto da A1: il
+#        link non ha UNIQUE → da uno stesso preventivo si possono generare più
+#        ordini (riordini). Orchestrazione Python (riusa crea_ordine + gestisci_riga
+#        come il normale flusso di creazione ordine), tutto in una transazione.
+def crea_ordine_da_preventivo(preventivo_id: int) -> dict[str, Any]:
+    # Import locale: evita accoppiamento a livello di modulo tra i due domini
+    # (entrambi in apps.vendite) e qualunque rischio di import circolare.
+    from apps.vendite.db.preventivi_repository import PreventiviRepository
+
+    prev_repo = PreventiviRepository()
+    testata = prev_repo.get_preventivo(preventivo_id)
+    ErrorManager.require(
+        testata is not None,
+        code="E_PREV_NOT_FOUND",
+        message="Preventivo non trovato.",
+        detail=f"preventivo_id={preventivo_id}",
+        function_name=f"{_FN}.crea_ordine_da_preventivo",
+    )
+    assert testata is not None
+    ErrorManager.require(
+        testata.get("stato_codice_interno") in _STATI_PREVENTIVO_CONVERTIBILI,
+        code="E_ORD_ORIGINE_NON_CONVERTIBILE",
+        message="Il preventivo deve essere ACCETTATO per generare un ordine.",
+        detail=f"stato={testata.get('stato_codice_interno')}",
+        function_name=f"{_FN}.crea_ordine_da_preventivo",
+    )
+
+    righe = [r for r in prev_repo.list_righe(preventivo_id) if r.get("attivo", True)]
+
+    header = {
+        "billing_account_id": testata.get("billing_account_id"),
+        "utility_id": testata.get("utility_id"),
+        "emittente_fiscale_id": testata.get("emittente_fiscale_id"),
+        "valuta_id": testata.get("valuta_id"),
+        "termine_pagamento_id": testata.get("termine_pagamento_id"),
+        "data": date.today().isoformat(),
+    }
+
+    with transaction.atomic():
+        creato = crea_ordine(header)
+        ordine_id = int(creato["id"])
+        # Coerenza con le altre scritture del modulo: errori DB tradotti in
+        # ServiceError parlante (es. CHECK vocabolario/co-presenza documento
+        # origine) invece di propagare un 500 grezzo.
+        with _db_errors("crea_ordine_da_preventivo"):
+            OrdiniRepository().set_documento_origine(
+                ordine_id, "PREVENTIVO", int(preventivo_id),
+            )
+        for r in righe:
+            gestisci_riga(ordine_id, _riga_payload_da_preventivo(r))
+
+    return {
+        "ordine_id": ordine_id,
+        "numero": creato.get("numero"),
+        "righe_create": len(righe),
+        "documento_origine": {"tipo": "PREVENTIVO", "id": int(preventivo_id)},
+    }
 
 
 # Scopo: Hard-delete ordine (abbandono bozza). Solo DRAFT.
