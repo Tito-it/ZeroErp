@@ -13,7 +13,6 @@
 | prezzo_unitario | numeric | NO |  |
 | sconto_perc | numeric | YES |  |
 | iva_id | integer | YES |  |
-| iva_perc | numeric | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |

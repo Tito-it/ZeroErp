@@ -15,12 +15,16 @@
 # offerte_commerciali_eccezioni (mirror di contratti_righe).
 #
 # Differenze rispetto a fn_contratto_righe_preview (che serve il DRAWER):
-#   - output ORDINE-READY: include iva_id/iva_perc (da articolo), sconto_perc,
+#   - output ORDINE-READY: include iva_id (da articolo), sconto_perc,
 #     uom_operativa_id/qta_operativa/factor_to_base mappati su ordini_righe;
 #   - le righe ESCLUSIONE sono RIMOSSE (non si copiano in ordine), non mostrate;
 #   - quantita default 1 per le righe da-listino senza eccezione (decisione brief);
 #   - niente ramo "listino NULL": offerte_commerciali.listino_id e' NOT NULL.
 # Read-only / STABLE: stato-agnostica (il guard ACCETTATA sta nella conversione BE).
+#
+# NB iva: si restituisce SOLO iva_id (da catalogo.articoli.iva_id). La percentuale
+# (iva_perc) NON e' in output: ordini_righe NON ha la colonna iva_perc (allineata a
+# preventivi_righe/fatture_righe; l'aliquota si deriva da iva_id via config.iva).
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -66,7 +70,6 @@ databaseChangeLog:
                   prezzo_unitario      vendite.ordini_righe.prezzo_unitario%TYPE,
                   sconto_perc          vendite.ordini_righe.sconto_perc%TYPE,
                   iva_id               vendite.ordini_righe.iva_id%TYPE,
-                  iva_perc             vendite.ordini_righe.iva_perc%TYPE,
                   tipo_eccezione       vendite.tipo_eccezione_contratto,
                   origine              varchar,
                   componenti           jsonb
@@ -77,8 +80,9 @@ databaseChangeLog:
               -- Scopo: righe effettive ordine-ready di un'offerta (listino + variazione
               --   globale + eccezioni). Parte 1 dal core fn_espandi_listino_versione +
               --   overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle.
-              --   iva risolta dall'articolo (listino non porta iva). sconto NULL: lo sconto
-              --   e' espresso come prezzo override (prezzo_unitario = prezzo finale netto).
+              --   iva_id risolta dall'articolo (listino non porta iva; iva_perc non esiste
+              --   su ordini_righe: la percentuale si deriva da iva_id). sconto NULL: lo
+              --   sconto e' espresso come prezzo override (prezzo_unitario = prezzo netto).
               --   quantita default 1 per righe da-listino senza eccezione.
               DECLARE
                   v_listino_id          vendite.offerte_commerciali.listino_id%TYPE;
@@ -127,7 +131,6 @@ databaseChangeLog:
                       END,
                       NULL::numeric,
                       a.iva_id::integer,
-                      iv.aliquota_iva,
                       ecc.tipo_eccezione,
                       CASE
                           WHEN ecc.tipo_eccezione = 'OVERRIDE' THEN 'OVERRIDE'
@@ -138,7 +141,6 @@ databaseChangeLog:
                              v_listino_versione_id, v_tipo_var, v_valore_var
                          ) base
                     JOIN catalogo.articoli a ON a.id = base.articolo_id
-                    LEFT JOIN config.iva iv   ON iv.id = a.iva_id
                     LEFT JOIN vendite.offerte_commerciali_eccezioni ecc
                            ON ecc.offerta_id            = p_offerta_id
                           AND ecc.articolo_id           = base.articolo_id
@@ -160,14 +162,12 @@ databaseChangeLog:
                       ecc.prezzo_unitario,
                       NULL::numeric,
                       a.iva_id::integer,
-                      iv.aliquota_iva,
                       ecc.tipo_eccezione,
                       'AGGIUNTA'::varchar,
                       NULL::jsonb
                     FROM vendite.offerte_commerciali_eccezioni ecc
                     JOIN catalogo.articoli a
                       ON a.id = ecc.articolo_id AND a.is_composito = FALSE AND a.attivo = TRUE
-                    LEFT JOIN config.iva iv ON iv.id = a.iva_id
                    WHERE ecc.offerta_id           = p_offerta_id
                      AND ecc.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
                      AND COALESCE(ecc.attivo, TRUE) = TRUE;
@@ -183,7 +183,6 @@ databaseChangeLog:
                       ecc.prezzo_unitario,
                       NULL::numeric,
                       a.iva_id::integer,
-                      iv.aliquota_iva,
                       ecc.tipo_eccezione,
                       'AGGIUNTA'::varchar,
                       (
@@ -209,7 +208,6 @@ databaseChangeLog:
                     FROM vendite.offerte_commerciali_eccezioni ecc
                     JOIN catalogo.articoli a
                       ON a.id = ecc.articolo_id AND a.is_composito = TRUE AND a.attivo = TRUE
-                    LEFT JOIN config.iva iv ON iv.id = a.iva_id
                    WHERE ecc.offerta_id           = p_offerta_id
                      AND ecc.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
                      AND COALESCE(ecc.attivo, TRUE) = TRUE;
@@ -220,7 +218,8 @@ databaseChangeLog:
                   'Righe effettive ordine-ready di un''offerta (listino + variazione globale + '
                   'eccezioni) per la conversione offerta->ordine. Parte 1 dal core '
                   'fn_espandi_listino_versione + overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 '
-                  'AGGIUNTA standalone+bundle. iva da articolo; sconto NULL (prezzo gia'' netto); '
+                  'AGGIUNTA standalone+bundle. iva_id da articolo (iva_perc non esiste su '
+                  'ordini_righe: si deriva da iva_id); sconto NULL (prezzo gia'' netto); '
                   'quantita default 1 per righe da-listino. listino_id NOT NULL: nessun ramo senza listino.';
       rollback:
         - sql:
