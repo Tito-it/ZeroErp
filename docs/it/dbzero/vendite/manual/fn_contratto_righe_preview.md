@@ -4,6 +4,8 @@
 
 Preview completa delle righe per il drawer `ContrattoRigheDrawer`: ritorna tutti gli articoli visibili nel contesto del contratto — articoli dal listino con overlay eccezioni, e articoli AGGIUNTA fuori-listino. Sostituisce lo SQL inline di `contratti_repository.list_righe_preview`. Il BE diventa thin wrapper.
 
+**Nota architetturale (DB-ORD, 2026-06-04)**: la Parte 1 (espansione listino standalone + bundle, variazione globale, aggregazione BoM) è stata estratta nel core condiviso [vendite.fn_espandi_listino_versione](/dbzero/vendite/manual/fn_espandi_listino_versione), riusato anche da [vendite.fn_offerta_righe_espanse](/dbzero/vendite/manual/fn_offerta_righe_espanse) (regola del 2: una sola implementazione della logica listino+BoM). L'output di questa funzione **non cambia** (stesse 19 colonne, stessa semantica drawer); cambia solo l'organizzazione interna: Parte 1 = core + overlay OVERRIDE/ESCLUSIONE, Parte 2 (AGGIUNTA) invariata.
+
 > **Vedi anche**
 >
 > - [vendite.contratti](/dbzero/vendite/tabelle/contratti) — testata contratto, `listino_versione_id`
@@ -101,6 +103,7 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 
 ```json
 {
+  "articolo_componente_id": "uuid",
   "componente_id":          "uuid",
   "componente_codice":      "varchar",
   "componente_descrizione": "varchar",
