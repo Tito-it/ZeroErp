@@ -44,7 +44,7 @@ La denormalizzazione `is_composito` (Fase G done 2026-05-14, working tree) la es
 
 ### 3.1 BE deriva modalità dai dati invece che dalla testata — BUG PRIORITÀ MASSIMA
 
-[`contratti_service.list_righe_preview`](../../../backend/apps/vendite/services/contratti_service.py#L780-L788):
+[`contratti_service.list_righe_preview`](../../../../backend/apps/vendite/services/contratti_service.py#L780-L788):
 
 ```python
 listino_id = contratto.get("listino_id")
@@ -65,7 +65,7 @@ appena entra in gioco un composito.
 **Sintomo riportato da Tid** ("ho selezionato A ma vedo B nella gestione righe"):
 il banner contesto del `ContrattoRigheDrawer` mostra `previewMeta.modalita = 'B'` ricevuto
 dal BE, sovrascrivendo `props.contrattoModalita = 'A'` derivato correttamente dalla testata
-in `ContrattoDrawer.deriveModalita` ([`ContrattoDrawer.vue:199-202`](../../../frontend/src/vendite/components/ContrattoDrawer.vue#L199-L202)).
+in `ContrattoDrawer.deriveModalita` ([`ContrattoDrawer.vue:199-202`](../../../../frontend/src/vendite/components/ContrattoDrawer.vue#L199-L202)).
 
 **Fix**: derivare la modalità in `list_righe_preview` come fa il FE, leggendo
 `contratto.tipo_variazione_globale`:
@@ -83,8 +83,8 @@ Drop completo del check sui dati: si elimina anche la query di conteggio overrid
 
 ### 3.2 FE: row actions "modifica/elimina" visibili solo su composito — SINTOMO 3.1
 
-[`ContrattoRigheDrawer.vue:484-500`](../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L484-L500) (`buildRigaActions`)
-e [:319-371](../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L319-L371) (`onRowSelect`):
+[`ContrattoRigheDrawer.vue:484-500`](../../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L484-L500) (`buildRigaActions`)
+e [:319-371](../../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L319-L371) (`onRowSelect`):
 
 Entrambi gatecheckano su `data.origine === 'DA_LISTINO' → return []/return` (read-only).
 **Per design coerente**: le righe DA_LISTINO sono preview pure (no record contratti_righe
@@ -101,7 +101,7 @@ listino in override".
 
 ### 3.3 FE: default prop `contrattoModalita: 'B'` mascherante
 
-[`ContrattoRigheDrawer.vue:52`](../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L52):
+[`ContrattoRigheDrawer.vue:52`](../../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L52):
 
 ```js
 contrattoModalita: { type: String, default: 'B' },
@@ -113,7 +113,7 @@ ma è una time-bomb. Meglio `default: null` e fallback esplicito dopo fetch prev
 
 ### 3.4 FE: `rowClass` blocca DA_LISTINO anche post-fix 3.1
 
-[`ContrattoRigheDrawer.vue:134-138`](../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L134-L138):
+[`ContrattoRigheDrawer.vue:134-138`](../../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L134-L138):
 
 ```js
 function rowClass(data) {

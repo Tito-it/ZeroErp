@@ -35,7 +35,7 @@
 > **Convenzioni**: Liquibase 5 / PostgreSQL 18. Naming changeSet
 > `YYYYMMDD-NN-<tipo>-<descrizione>.yaml` in `db/changelog/migrations_v2/`.
 > Trigger naming `trg_<schema>_<tabella>_<fase>_<descrizione>_<eventi>` per
-> [`linee-guida-trigger.md`](../../../linee-guida-trigger.md). Errori sempre
+> [`linee-guida-trigger.md`](../../linee-guida-trigger.md). Errori sempre
 > via `script.fn_log_and_raise_error`.
 
 ---

@@ -4,15 +4,15 @@
 >
 > **File modificati**:
 >
-> - [`apps/vendite/services/listini_service.py`](../../../backend/apps/vendite/services/listini_service.py)
+> - [`apps/vendite/services/listini_service.py`](../../../../backend/apps/vendite/services/listini_service.py)
 >   - `_plan_versione_state_change`: rimosso il blocco `for row in candidates: ErrorManager.require(nuova_valido_al > prec_valido_dal, ...)` (righe 1474-1496) — codice morto post-drop.
 >   - Commento `_plan_versione_state_change` (righe 1422-1430) aggiornato con riferimento al drop CHECK + chiarimento che gap=0 non arriva qui per via del filtro strict `<` in `find_versioni_per_autoclose` e che `ex_listini_versioni_no_overlap` lo gestisce con messaggio user-friendly.
 >   - `constraint_map` di `_translate_integrity_error`: rimossa la tupla `("chk_listini_versioni_date", ...)` (codice morto).
 >   - Detail di `ex_listini_versioni_no_overlap`: aggiornato da "decorrenza minima 2 giorni dopo" a "almeno 1 giorno dopo l'inizio della precedente".
-> - [`apps/vendite/tests/services/test_listini_service.py`](../../../backend/apps/vendite/tests/services/test_listini_service.py)
+> - [`apps/vendite/tests/services/test_listini_service.py`](../../../../backend/apps/vendite/tests/services/test_listini_service.py)
 >   - Eliminato `test_change_state_attiva_blocked_when_autoclose_violates_chk` (invariante non più esistente).
 >
-> **Decisione presa durante l'allineamento**: il backend agent ha inizialmente proposto una controproposta (allentare il guard da `>` a `>=` invece di rimuoverlo) per preservare un messaggio applicativo su gap=0. Verificando la query `find_versioni_per_autoclose` ([listini_repository.py:529](../../../backend/apps/vendite/db/listini_repository.py#L529)) si è confermato che il filtro `valido_dal < %s` strict esclude gap=0 a monte: il guard era utile **solo** per gap=1 (caso ora lecito post-drop). Controproposta caduta, brief seguito alla lettera.
+> **Decisione presa durante l'allineamento**: il backend agent ha inizialmente proposto una controproposta (allentare il guard da `>` a `>=` invece di rimuoverlo) per preservare un messaggio applicativo su gap=0. Verificando la query `find_versioni_per_autoclose` ([listini_repository.py:529](../../../../backend/apps/vendite/db/listini_repository.py#L529)) si è confermato che il filtro `valido_dal < %s` strict esclude gap=0 a monte: il guard era utile **solo** per gap=1 (caso ora lecito post-drop). Controproposta caduta, brief seguito alla lettera.
 >
 > **Lezione operativa annotata**: prima di proporre allentamenti su CHECK constraint sovrapposti semanticamente al `daterange validita`, verificare quale dei due lavora *prima* nel BEFORE INS/UPD. `trgfn_set_validita()` rifiuta range invalidi via SQLSTATE 22000 e questo rende ridondanti i CHECK strict `valid_to > valid_from` dovunque `valido_al = valido_dal` debba essere ammesso semanticamente.
 >
@@ -46,7 +46,7 @@ Pattern identico al precedente `20260414-22-drop-check-date-redundant` che dropp
 
 ### 2.1 Rimuovere guard "gap >= 2 giorni" in `_plan_versione_state_change`
 
-[`apps/vendite/services/listini_service.py:1422-1498`](../../../backend/apps/vendite/services/listini_service.py#L1422-L1498) — la guard intera nasce da:
+[`apps/vendite/services/listini_service.py:1422-1498`](../../../../backend/apps/vendite/services/listini_service.py#L1422-L1498) — la guard intera nasce da:
 
 > Guard critico (CHK constraint vendite.chk_listini_versioni_date richiede `valido_al > valido_dal` STRETTAMENTE): se una precedente ha `valido_dal >= nuova.valido_dal - 1` (cioe' gap < 2 giorni), l'autoclose produrrebbe `valido_al <= valido_dal` e violerebbe il CHECK.
 
@@ -62,7 +62,7 @@ Aggiornare anche:
 
 ### 2.2 Rimuovere mapping `chk_listini_versioni_date`
 
-[`apps/vendite/services/listini_service.py:617-621`](../../../backend/apps/vendite/services/listini_service.py#L617-L621) — entry nella `constraint_map`:
+[`apps/vendite/services/listini_service.py:617-621`](../../../../backend/apps/vendite/services/listini_service.py#L617-L621) — entry nella `constraint_map`:
 
 ```python
 (
@@ -78,7 +78,7 @@ In sostituzione, se serve preservare un messaggio user-friendly per `valido_al <
 
 ### 2.3 Aggiornare test `test_change_state_attiva_blocked_when_autoclose_violates_chk`
 
-[`apps/vendite/tests/services/test_listini_service.py:717-754`](../../../backend/apps/vendite/tests/services/test_listini_service.py#L717-L754) testa esattamente lo scenario "gap=1 giorno -> guard fail-fast". Dopo la rimozione di 2.1 il test diventa **logicamente obsoleto** (l'invariante non esiste piu').
+[`apps/vendite/tests/services/test_listini_service.py:717-754`](../../../../backend/apps/vendite/tests/services/test_listini_service.py#L717-L754) testa esattamente lo scenario "gap=1 giorno -> guard fail-fast". Dopo la rimozione di 2.1 il test diventa **logicamente obsoleto** (l'invariante non esiste piu').
 
 **Azione**: eliminare il test. **Non** sostituirlo con uno equivalente "gap=0 -> guard fail-fast" — il drop CHECK ammette anche quel caso (versione di durata 0 giorni *non* ha senso applicativo, ma se serve un guard e' un'invariante di dominio nuova da definire, non un porting del test esistente).
 
@@ -86,7 +86,7 @@ Se vuoi conservare la copertura "il service NON tocca il DB quando la transizion
 
 ### 2.4 Cleanup commento riga 1506-1508
 
-[`listini_service.py:1506`](../../../backend/apps/vendite/services/listini_service.py#L1506) cita "valido_al = nuova.valido_dal - 1 sulle precedenti" come pattern per non urtare `ex_listini_versioni_no_overlap`. Resta corretto: l'EXCLUDE GIST e' indipendente dal CHECK droppato. **Nessuna azione**, segnalo solo per chiarezza.
+[`listini_service.py:1506`](../../../../backend/apps/vendite/services/listini_service.py#L1506) cita "valido_al = nuova.valido_dal - 1 sulle precedenti" come pattern per non urtare `ex_listini_versioni_no_overlap`. Resta corretto: l'EXCLUDE GIST e' indipendente dal CHECK droppato. **Nessuna azione**, segnalo solo per chiarezza.
 
 ## 3. Rischio runtime durante la finestra DB-merged / BE-non-allineato
 
@@ -102,8 +102,8 @@ Una volta mergiato il fix BE:
 
 ## 5. Riferimenti
 
-- DB migration: [20260427-02-drop-chk-valid-dates-redundant-data-driven-mctit.yaml](../../../db/changelog/migrations_v2/00_schema/catalogo/20260427-02-drop-chk-valid-dates-redundant-data-driven-mctit.yaml)
-- DB pgTAP esteso: [test-articoli-componenti-immutabilita.sql](../../../db/pgtap/catalogo/test-articoli-componenti-immutabilita.sql) — casi 17-18 (regressione same-day)
-- Precedente analogo (drop su altre tabelle): [20260414-22-drop-check-date-redundant-mctit.yaml](../../../db/changelog/migrations_v2/00_schema/vendite/20260414-22-drop-check-date-redundant-mctit.yaml)
-- Trigger trgfn_set_validita: [20260412-05-create-trgfn-set-validita-mctit.yaml](../../../db/changelog/migrations_v2/20_code/script/20260412-05-create-trgfn-set-validita-mctit.yaml)
+- DB migration: [20260427-02-drop-chk-valid-dates-redundant-data-driven-mctit.yaml](../../../../db/changelog/migrations_v2/00_schema/catalogo/20260427-02-drop-chk-valid-dates-redundant-data-driven-mctit.yaml)
+- DB pgTAP esteso: [test-articoli-componenti-immutabilita.sql](../../../../db/pgtap/catalogo/test-articoli-componenti-immutabilita.sql) — casi 17-18 (regressione same-day)
+- Precedente analogo (drop su altre tabelle): [20260414-22-drop-check-date-redundant-mctit.yaml](../../../../db/changelog/migrations_v2/00_schema/vendite/20260414-22-drop-check-date-redundant-mctit.yaml)
+- Trigger trgfn_set_validita: [20260412-05-create-trgfn-set-validita-mctit.yaml](../../../../db/changelog/migrations_v2/20_code/script/20260412-05-create-trgfn-set-validita-mctit.yaml)
 - Brief originario BE -> DB (BoM relax): [brief-db-articoli-componenti-chk-valid-dates-relax.md](brief-db-articoli-componenti-chk-valid-dates-relax.md) — la richiesta era `>` -> `>=`, il team DB ha scelto drop (allineamento al precedente 20260414-22) e ampliato il perimetro alle 4 tabelle outlier.

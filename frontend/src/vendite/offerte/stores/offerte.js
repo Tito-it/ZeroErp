@@ -25,6 +25,7 @@ import {
   deleteEccezione,
   deleteOfferta,
   emettiOfferta,
+  generaOrdineFromOfferta,
   getContrattoSovrapposto,
   getOfferta,
   listEccezioni,
@@ -172,6 +173,18 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     return res.data.data
   }
 
+  // ACCETTATA -> ordine DRAFT (conversione §7.4). Ritorna
+  // { ordine_id, numero, righe_create, documento_origine }. Emette per il
+  // nuovo ordine (apre/refresh tab ordini). Provenienza senza UNIQUE → più
+  // ordini dalla stessa offerta.
+  async function generaOrdine(id) {
+    const res = await generaOrdineFromOfferta(id)
+    if (res.data.data?.ordine_id != null) {
+      emitDataChanged(TAB_ENTITIES.ORDINE, res.data.data.ordine_id)
+    }
+    return res.data.data
+  }
+
   // ACCETTATA -> contratto DRAFT (idempotente). Ritorna
   // { contratto_id, contratto_codice, sorgente_uid }.
   // `chiudiEsistente`: successione su overlap (chiude il contratto
@@ -228,6 +241,7 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     fetchList, fetchDetail, create, update, elimina,
     // transizioni
     emetti, registraEsito, annulla, creaRevisione, loadRevisioni, pushAContratto,
+    generaOrdine,
     loadContrattoSovrapposto,
     // eccezioni
     loadEccezioni, addEccezione, aggiornaEccezione, eliminaEccezione,

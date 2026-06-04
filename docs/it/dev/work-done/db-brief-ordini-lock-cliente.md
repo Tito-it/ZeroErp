@@ -8,7 +8,7 @@
 
 > **Branch**: `dev/db-tid`. **Destinatario**: team DB.
 > **Natura**: difesa DB autoritativa a complemento del fix BE «cliente immutabile»
-> (chiuso 2026-06-04, vedi [analisi-ordini-vendita.md](analisi-ordini-vendita.md)).
+> (chiuso 2026-06-04, vedi [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md)).
 > Il BE è solo metà del pattern ZeroErp (guard applicativo + trigger DB come
 > difesa finale, api.md principio DB-first).
 > **Vincolo**: ZeroErp non in produzione → breaking ammessi, ma la consegna è
@@ -51,7 +51,7 @@ creazione le valorizza normalmente).
 > ⚠️ **Non è solo "difesa di un bug": è un cambio di comportamento esplicito.**
 > Oggi `trgfn_ordini_normalize` ha un ramo *progettato* per gestire il **cambio di
 > `billing_account_id` su UPDATE** (ri-eredita `fatturazione_trigger` dal nuovo
-> BA, vedi [20260225-34](../../../db/changelog/migrations_v2/20_code/vendite/20260225-34-trgfn-ordini-normalize-fatturazione-trigger-mctit.yaml)).
+> BA, vedi [20260225-34](../../../../db/changelog/migrations_v2/20_code/vendite/20260225-34-trgfn-ordini-normalize-fatturazione-trigger-mctit.yaml)).
 > Bloccare il BA **revoca quella capacità**. La decisione la conferma: ma va
 > registrata come scelta, e quel ramo va rimosso (§5.3), altrimenti resta logica
 > morta e contraddittoria.
@@ -75,7 +75,7 @@ assente nella bozza precedente, qui esplicitato.)
 ## 4. Meccanismo canonico — registro `automation_lock_columns`, NON trigger a mano
 
 ZeroErp **non** scrive i lock-trigger a mano: c'è un registro data-driven
-`dbops.automation_lock_columns` ([CSV](../../../db/changelog/migrations_v2/80_data/sql/dbops/automation_lock_columns.csv))
+`dbops.automation_lock_columns` ([CSV](../../../../db/changelog/migrations_v2/80_data/sql/dbops/automation_lock_columns.csv))
 e un'automazione (`dbops.fn_run_automations_lock_columns` → proc
 `maintenance.proc_automations_lock_columns_job()`, schedulata pgAgent) che
 **genera** i trigger dalle righe del registro. I trigger usano
@@ -113,14 +113,14 @@ vendite,ordini,soggetto_ruolo_id,E_ORD_CLIENTE_IMMUTABILE,AUTO,t,"Cliente immuta
 ### 5.1 Registro lock (seed)
 
 Due righe in `automation_lock_columns.csv` (§4). Il CSV è caricato dal changeset
-[20260110-15](../../../db/changelog/migrations_v2/80_data/changelog/20260110-15-upsert-dbops-automation-lock-columns-table.yaml)
+[20260110-15](../../../../db/changelog/migrations_v2/80_data/changelog/20260110-15-upsert-dbops-automation-lock-columns-table.yaml)
 (`runOnChange: true` + `validCheckSums: ANY`, upsert su PK
 `target_schema,target_table,column_name`): aggiungendo le righe, alla prossima
 migrazione il registro cresce. **Nessun nuovo changeset** per il seed.
 
 ### 5.2 Codice errore dedicato (seed)
 
-Una riga in [messaggi_errore.csv](../../../db/changelog/migrations_v2/80_data/sql/config/messaggi_errore.csv)
+Una riga in [messaggi_errore.csv](../../../../db/changelog/migrations_v2/80_data/sql/config/messaggi_errore.csv)
 (header `codice,lingua,messaggio,id,causa,soluzione`; max id attuale **468** →
 usare **469** o prossimo libero, `feedback_error_codes_messaggi_errore`):
 
@@ -224,12 +224,12 @@ bypassa il service.
 
 ## 10. Riferimenti
 
-- Analisi + bug BE chiuso: [analisi-ordini-vendita.md](analisi-ordini-vendita.md).
+- Analisi + bug BE chiuso: [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md).
 - Funzione lock: `script.trgfn_lock_columns` ([doc](../../dbzero/script/funzioni/trgfn_lock_columns.md)).
 - Registro + automazione: `dbops.automation_lock_columns`,
   `dbops.fn_run_automations_lock_columns`, `maintenance.proc_automations_lock_columns_job`.
 - Precedente identico: `vendite,preventivi,emittente_fiscale_id` → `EMITTENTE_NON_MODIFICABILE` (id 421).
-- Normalize da ripulire: [20260225-34](../../../db/changelog/migrations_v2/20_code/vendite/20260225-34-trgfn-ordini-normalize-fatturazione-trigger-mctit.yaml).
+- Normalize da ripulire: [20260225-34](../../../../db/changelog/migrations_v2/20_code/vendite/20260225-34-trgfn-ordini-normalize-fatturazione-trigger-mctit.yaml).
 
 ---
 

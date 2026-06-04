@@ -1968,6 +1968,8 @@
       "azione_rifiuta": "Rifiuta",
       "azione_crea_revisione": "Crea revisione",
       "azione_push_contratto": "Push verso contratto",
+      "azione_genera_ordine": "Genera ordine",
+      "ordine_generato": "Ordine {numero} generato dall'offerta.",
       "gestisci_eccezioni": "Gestisci eccezioni",
       "gestisci_note": "Gestisci note",
       "note_titolo": "Offerta — Note",

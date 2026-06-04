@@ -151,7 +151,7 @@ Vantaggi:
 
 ### 5.3 Verifiche pre-implementazione (gia' completate in sessione)
 
-* Source di `fn_get_emittenti_scope_sr_ids` letto: confermato che **non filtra `ef.attivo`** (vedi [migration 20260419-15](../../../db/changelog/migrations_v2/20_code/script/20260419-15-update-fn-get-emittenti-scope-sr-ids-mctit.yaml)). Motivazione: per costruzione un EF in `user_emittenti_fiscali` e' sempre attivo (trigger `dbops.trgfn_child_requires_active_parent` blocca INSERT/UPDATE su EF non attivo + `dbops.trgfn_prevent_deactivate_if_children` blocca disattivazione). Quindi `_pk_ids` non deve aggiungere il filtro: per parita'.
+* Source di `fn_get_emittenti_scope_sr_ids` letto: confermato che **non filtra `ef.attivo`** (vedi [migration 20260419-15](../../../../db/changelog/migrations_v2/20_code/script/20260419-15-update-fn-get-emittenti-scope-sr-ids-mctit.yaml)). Motivazione: per costruzione un EF in `user_emittenti_fiscali` e' sempre attivo (trigger `dbops.trgfn_child_requires_active_parent` blocca INSERT/UPDATE su EF non attivo + `dbops.trgfn_prevent_deactivate_if_children` blocca disattivazione). Quindi `_pk_ids` non deve aggiungere il filtro: per parita'.
 * Helper `script.fn_has_identita_attiva` e `script.fn_is_super_admin` gia' esistenti — riusati senza modifiche.
 
 ## 6. Lavoro DB da fare (questo brief)
@@ -199,7 +199,7 @@ Tutto in una PR su `dev/db-tid`.
 Per completezza, il BE deve poi:
 
 1. Aggiungere `PermissionResolver.get_emittenti_pk_ids` simmetrico a `get_emittenti_sr_ids` (wrapper sulla nuova fn)
-2. Sostituire i filtri PK-vs-SR in [`preventivi_repository.py:81-87`](../../../backend/apps/vendite/db/preventivi_repository.py#L81-L87) e [`vendite_repository.py:39-41`](../../../backend/apps/vendite/db/vendite_repository.py#L39-L41) con `_pk_ids`
+2. Sostituire i filtri PK-vs-SR in [`preventivi_repository.py:81-87`](../../../../backend/apps/vendite/db/preventivi_repository.py#L81-L87) e [`vendite_repository.py:39-41`](../../../../backend/apps/vendite/db/vendite_repository.py#L39-L41) con `_pk_ids`
 3. Verificare che gli altri caller di `_sr_ids` siano filtri SR id (i.e. `efba.emittente_soggetto_ruolo_id`, `vendite.fatture.emittente_soggetto_ruolo_id`, ecc.) — se si', restano invariati
 
 DB lato non ha altre azioni dopo l'implementazione di questo brief.

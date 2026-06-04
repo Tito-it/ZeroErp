@@ -36,7 +36,7 @@ Scartate **A** (is_default colonna, troppo rigida con N ruoli) e **C** (mini-tab
 
 ### 3.1 Repository — query default + risoluzione id
 
-[`apps/anagrafiche/db/soggetti_repository.py::get_config_resolver()`](../../../backend/apps/anagrafiche/db/soggetti_repository.py):
+[`apps/anagrafiche/db/soggetti_repository.py::get_config_resolver()`](../../../../backend/apps/anagrafiche/db/soggetti_repository.py):
 
 - Aggiunta firma opzionale `emittente_fiscale_id: int | None = None`
 - Aggiunta query 4: `SELECT script.fn_get_parameter_full(:code, :emittente, NULL, NULL::bigint[], NULL, NULL)`
@@ -56,11 +56,11 @@ return {
 
 ### 3.2 View — schema DRF aggiornato
 
-[`apps/anagrafiche/api/views_ruoli_config.py`](../../../backend/apps/anagrafiche/api/views_ruoli_config.py): aggiunti i 2 campi al `extend_schema` con descrizione operativa per OpenAPI.
+[`apps/anagrafiche/api/views_ruoli_config.py`](../../../../backend/apps/anagrafiche/api/views_ruoli_config.py): aggiunti i 2 campi al `extend_schema` con descrizione operativa per OpenAPI.
 
 ### 3.3 Test — 4 nuovi casi
 
-[`apps/anagrafiche/tests/api/test_config_resolver.py`](../../../backend/apps/anagrafiche/tests/api/test_config_resolver.py):
+[`apps/anagrafiche/tests/api/test_config_resolver.py`](../../../../backend/apps/anagrafiche/tests/api/test_config_resolver.py):
 
 - `test_config_resolver_default_present` — `'PR'` configurato → id risolto correttamente
 - `test_config_resolver_default_codice_orfano` — codice non tra dettagli → `default_id None`, no errore
@@ -73,7 +73,7 @@ Aggiornati anche i 3 test esistenti per gestire la 4° query (chiamano fetchone 
 
 ## 4. Cosa ha fatto il FE
 
-[`frontend/src/core/components/SoggettoResolver.vue`](../../../frontend/src/core/components/SoggettoResolver.vue):
+[`frontend/src/core/components/SoggettoResolver.vue`](../../../../frontend/src/core/components/SoggettoResolver.vue):
 
 ```diff
 - const privato = dettagli.find(d => d.codice_interno === 'PR')
@@ -112,6 +112,6 @@ L'API repository accetta `emittente_fiscale_id: int | None = None` ma la view og
 ## 7. Riferimenti
 
 - [analisi-refactor.frontend-anagrafiche.md](analisi-refactor.frontend-anagrafiche.md) — Fase 3 sezione del piano (LANDED 27-04)
-- Pattern simmetrico: `DEFAULT_IVA_ID` ([clienti_repository.py:34](../../../backend/apps/anagrafiche/db/clienti_repository.py#L34))
+- Pattern simmetrico: `DEFAULT_IVA_ID` ([clienti_repository.py:34](../../../../backend/apps/anagrafiche/db/clienti_repository.py#L34))
 - DB doc concettuale: `docs/it/dbzero/config/manual/trgfn_parameters_guard_default_tipo_soggetto_dettaglio.md` (creata dal team DB)
 - Tabella: [`config.parameters`](../../dbzero/config/tabelle/parameters.md)

@@ -502,6 +502,30 @@ class ApiOffertaCreaRevisione(DomainAPIView):
         )
 
 
+class ApiOffertaGeneraOrdine(DomainAPIView):
+    """`POST /api/v1/vendite/offerte/<id>/genera-ordine/` (conversione §7.4)."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=None,
+        responses={200: inline_serializer(
+            name="VenditeOffertaGeneraOrdineResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Genera un ordine DRAFT da un'offerta ACCETTATA (copia testata +
+    #        righe espanse listino+eccezioni + componenti BoM, prezzi negoziati
+    #        preservati + documento_origine). Delega a ordini_service (stesso app
+    #        vendite, righe da `fn_offerta_righe_espanse`).
+    def post(self, request: Request, offerta_id: int) -> JsonResponse:
+        from apps.vendite.services import ordini_service
+
+        return success_response(
+            ordini_service.crea_ordine_da_offerta(offerta_id)
+        )
+
+
 _PUSH_CONTRATTO_REQUEST = inline_serializer(
     name="VenditeOffertaPushContrattoReq",
     fields={

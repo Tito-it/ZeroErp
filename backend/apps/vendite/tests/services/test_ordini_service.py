@@ -9,6 +9,7 @@
 # ------------------------------------------------------------
 
 from contextlib import nullcontext
+from datetime import date
 from unittest.mock import patch
 
 from django.db import DatabaseError, IntegrityError
@@ -148,7 +149,9 @@ class OrdiniDbErrorsTests(SimpleTestCase):
 
 
 _PREV_REPO = "apps.vendite.db.preventivi_repository.PreventiviRepository"
+_OFF_REPO = "apps.vendite.db.offerte_repository.OfferteRepository"
 _ATOMIC = "apps.vendite.services.ordini_service.transaction.atomic"
+_SVC = "apps.vendite.services.ordini_service"
 
 
 class OrdiniConversioneUpstreamTests(SimpleTestCase):
@@ -209,3 +212,98 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             ordini_service.crea_ordine_da_preventivo(99)
         self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+
+
+class OrdiniConversioneOffertaTests(SimpleTestCase):
+    """crea_ordine_da_offerta (§7.4): orchestrazione, override componenti, guard."""
+
+    @patch(f"{_SVC}._copia_riga_offerta_espansa")
+    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 4))
+    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_SVC}._get_testata_or_raise",
+           return_value={"id": 7, "emittente_fiscale_id": 3})
+    @patch(f"{_SVC}._crea_testata_ordine_da_origine", return_value=(7, "ORD7"))
+    @patch(_REPO)
+    @patch(_OFF_REPO)
+    def test_crea_ordine_da_offerta_ok(
+        self, off_cls, ord_cls, crea_testata, get_testata, resolve_em,
+        data_rif, copia_riga,
+    ) -> None:
+        off_cls.return_value.get_offerta.return_value = {
+            "stato_codice_interno": "ACCETTATA",
+            "billing_account_id": 10, "utility_id": 5,
+            "emittente_fiscale_id": 3, "valuta_id": 1,
+        }
+        off_cls.return_value.list_righe_espanse.return_value = [
+            {"articolo_id": "A1"}, {"articolo_id": "A2"},
+        ]
+
+        with patch(_ATOMIC, return_value=nullcontext()):
+            out = ordini_service.crea_ordine_da_offerta(55)
+
+        self.assertEqual(out["ordine_id"], 7)
+        self.assertEqual(out["numero"], "ORD7")
+        self.assertEqual(out["righe_create"], 2)
+        self.assertEqual(out["documento_origine"], {"tipo": "OFFERTA", "id": 55})
+        # testata creata via helper condiviso con tipo/origine corretti
+        header, tipo, origine_id = crea_testata.call_args.args
+        self.assertEqual(tipo, "OFFERTA")
+        self.assertEqual(origine_id, 55)
+        self.assertEqual(header["billing_account_id"], 10)
+        # offerta non ha termine/modalita pagamento → non nel header
+        self.assertNotIn("termine_pagamento_id", header)
+        # una copia riga per riga espansa
+        self.assertEqual(copia_riga.call_count, 2)
+
+    @patch(_OFF_REPO)
+    def test_crea_ordine_da_offerta_stato_non_convertibile(self, off_cls) -> None:
+        off_cls.return_value.get_offerta.return_value = {
+            "stato_codice_interno": "EMESSA",
+        }
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_offerta(55)
+        self.assertEqual(cm.exception.code, "E_ORD_ORIGINE_NON_CONVERTIBILE")
+
+    @patch(_OFF_REPO)
+    def test_crea_ordine_da_offerta_non_trovata(self, off_cls) -> None:
+        off_cls.return_value.get_offerta.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_offerta(55)
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+
+    def test_overrides_da_componenti_coercion(self) -> None:
+        from apps.vendite.services.ordini_service import _overrides_da_componenti
+        # lista di dict (jsonb già parsato da psycopg)
+        self.assertEqual(
+            _overrides_da_componenti(
+                [{"componente_id": "u1", "prezzo": "5"},
+                 {"componente_id": "u2", "prezzo": "3"}],
+            ),
+            {"u1": "5", "u2": "3"},
+        )
+        # stringa jsonb (psycopg non parsato) → coerce
+        self.assertEqual(
+            _overrides_da_componenti('[{"componente_id": "u1", "prezzo": "5"}]'),
+            {"u1": "5"},
+        )
+        # None / json invalido / non-lista → {}
+        self.assertEqual(_overrides_da_componenti(None), {})
+        self.assertEqual(_overrides_da_componenti("non-json-{"), {})
+        # entry senza id o senza prezzo → saltate
+        self.assertEqual(
+            _overrides_da_componenti(
+                [{"componente_id": "u1"}, {"prezzo": "5"}],
+            ),
+            {},
+        )
+        # prezzo 0 escluso (la fn DB rifiuta override 0 → ricade sul resolver);
+        # prezzo non numerico escluso
+        self.assertEqual(
+            _overrides_da_componenti(
+                [{"componente_id": "u1", "prezzo": "0"},
+                 {"componente_id": "u2", "prezzo": "0.00"},
+                 {"componente_id": "u3", "prezzo": "xx"},
+                 {"componente_id": "u4", "prezzo": "7"}],
+            ),
+            {"u4": "7"},
+        )

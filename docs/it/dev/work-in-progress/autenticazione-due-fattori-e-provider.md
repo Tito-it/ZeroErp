@@ -48,14 +48,14 @@ Campi rilevanti **per auth** presenti su entrambe le tabelle a seguito del refac
 - `POST /api/portale/token/` → `CLIENTE_PORTALE`, `FORNITORE_PORTALE`
 - `POST /api/shop/token/` → `SHOP_CUSTOMER`
 
-Tutti generati da `SidTokenObtainPairSerializer` ([token_serializers.py](../../../backend/apps/core/api/token_serializers.py)) con claim JWT:
+Tutti generati da `SidTokenObtainPairSerializer` ([token_serializers.py](../../../../backend/apps/core/api/token_serializers.py)) con claim JWT:
 
 - `user_id` (SimpleJWT standard)
 - `identita_id` (§8.3.2 — obbligatorio, altrimenti `E_JWT_SENZA_IDENTITA`)
 - `ruolo_applicativo`
 - `sid` (session ID stabile, persiste al refresh rotation)
 
-Propagazione DB via `set_jwt_gucs()` in [jwt_audit_authentication.py](../../../backend/apps/core/api/jwt_audit_authentication.py): 5 GUC `app.*` session-scoped popolate in singola query CTE dopo ogni `authenticate()` riuscito. Vedi `risorse-umane-e-accessi.md` §"Propagazione identità utente al database (GUC)".
+Propagazione DB via `set_jwt_gucs()` in [jwt_audit_authentication.py](../../../../backend/apps/core/api/jwt_audit_authentication.py): 5 GUC `app.*` session-scoped popolate in singola query CTE dopo ogni `authenticate()` riuscito. Vedi `risorse-umane-e-accessi.md` §"Propagazione identità utente al database (GUC)".
 
 ### 0.4 Cosa ancora NON c'è
 

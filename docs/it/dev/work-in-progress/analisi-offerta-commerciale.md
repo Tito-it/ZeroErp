@@ -33,7 +33,7 @@
 
 - **Preventivo** (`vendite.preventivi` + `preventivi_righe`): proposta puntuale al cliente
   per articoli/prezzi specifici. Stato BOZZA → EMESSO → ACCETTATO. L'accettato genera una
-  **commessa** via `push_a_commessa` ([preventivi_service.py:1910](../../../backend/apps/vendite/services/preventivi_service.py#L1910)),
+  **commessa** via `push_a_commessa` ([preventivi_service.py:1910](../../../../backend/apps/vendite/services/preventivi_service.py#L1910)),
   che entra nella pipeline fatturazione.
 - **Contratto** (`vendite.contratti` + `contratti_righe` + `contratti_utilities`): relazione
   duratura cliente↔listino con eventuali variazioni/eccezioni. Stato DRAFT → ATTIVO →
@@ -464,7 +464,7 @@ separazione dei due assi ribadita in §2.1 e §4.
 - [`recap-contratti-post-componenti.md`](../work-done/recap-contratti-post-componenti.md) — recap
   bug contratti post-componenti, contesto operativo.
 - `api_preventivi.md` — modello preventivi esistente, riferimento per pattern riusabile.
-- `push_a_commessa` ([preventivi_service.py:1910](../../../backend/apps/vendite/services/preventivi_service.py#L1910)) —
+- `push_a_commessa` ([preventivi_service.py:1910](../../../../backend/apps/vendite/services/preventivi_service.py#L1910)) —
   flusso accettazione che ispira `push_a_contratto`.
 
 ---

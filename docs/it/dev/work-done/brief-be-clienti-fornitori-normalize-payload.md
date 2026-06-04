@@ -29,7 +29,7 @@ pgTAP `test-clienti-normalize-giorni-scadenza-v1.sql` plan(10) verde.
 
 ### 2.1 Mapping policy errori
 
-[`apps/core/services/error_policies.py`](../../../backend/apps/core/services/error_policies.py) — aggiunte 2 policy nella sezione "Clienti / Fornitori — normalize+guard payload pagamento/fiscali":
+[`apps/core/services/error_policies.py`](../../../../backend/apps/core/services/error_policies.py) — aggiunte 2 policy nella sezione "Clienti / Fornitori — normalize+guard payload pagamento/fiscali":
 
 ```python
 "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI": ErrorPolicy(
@@ -50,7 +50,7 @@ Il trigger DB raise via `script.fn_log_and_raise_error` include il codice nel me
 
 ### 2.2 Verifica payload INSERT cliente
 
-[`apps/anagrafiche/db/clienti_repository.py`](../../../backend/apps/anagrafiche/db/clienti_repository.py) gia' usa colonne opzionali con `if val is not None: cols.append(col)`. Quindi:
+[`apps/anagrafiche/db/clienti_repository.py`](../../../../backend/apps/anagrafiche/db/clienti_repository.py) gia' usa colonne opzionali con `if val is not None: cols.append(col)`. Quindi:
 
 - payload senza `nr_giorni_scadenza` → la colonna non e' inclusa nell'INSERT → DB applica default (ora NULL post DROP DEFAULT).
 - payload `tipo='G'` senza `nr_giorni_scadenza` → INSERT con tipo='G' e default NULL → trigger solleva `E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI` ✅
@@ -60,20 +60,20 @@ Nessuna modifica ai service necessaria.
 
 ### 2.3 CHECK constraint dominio
 
-Il dropdown UI [ClienteDrawer.vue:59-64](../../../frontend/src/anagrafiche/components/ClienteDrawer.vue#L59-L64) chiude gia' i valori a `N/G/M/F`. Il CHECK e' defense-in-depth contro abuso API. Caso edge gestito implicitamente: cade su `E_DATABASE` (500 tecnico) — accettabile perche' irragiungibile via UI.
+Il dropdown UI [ClienteDrawer.vue:59-64](../../../../frontend/src/anagrafiche/components/ClienteDrawer.vue#L59-L64) chiude gia' i valori a `N/G/M/F`. Il CHECK e' defense-in-depth contro abuso API. Caso edge gestito implicitamente: cade su `E_DATABASE` (500 tecnico) — accettabile perche' irragiungibile via UI.
 
 ## 3. Cosa ha fatto il FE (questo brief)
 
 ### 3.1 Rimozione pre-clean payload
 
-[`ClienteDrawer.vue:286`](../../../frontend/src/anagrafiche/components/ClienteDrawer.vue#L286):
+[`ClienteDrawer.vue:286`](../../../../frontend/src/anagrafiche/components/ClienteDrawer.vue#L286):
 
 ```diff
 - nr_giorni_scadenza: ['G', 'F'].includes(f.tipo_gg_scadenza_ft) ? (f.nr_giorni_scadenza || 0) : null,
 + nr_giorni_scadenza: f.nr_giorni_scadenza,
 ```
 
-[`FornitoreDrawer.vue:135`](../../../frontend/src/anagrafiche/components/FornitoreDrawer.vue#L135):
+[`FornitoreDrawer.vue:135`](../../../../frontend/src/anagrafiche/components/FornitoreDrawer.vue#L135):
 
 ```diff
 - ritenuta_aliquota: f.ritenuta_acconto ? f.ritenuta_aliquota : null,

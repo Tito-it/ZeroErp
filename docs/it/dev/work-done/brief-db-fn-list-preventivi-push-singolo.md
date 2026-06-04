@@ -147,9 +147,9 @@ unico punto di accesso. Vedi WIP gemello
   esegue DDL, sempre brief al team DB).
 * Memoria progetto: `feedback_concentrico_no_yagni` (estensione minima
   ma progettata per generalizzazione futura ad altre sorgenti).
-* Guida: [docs/it/guide/fatturazione.md](../../../guide/fatturazione.md)
+* Guida: [docs/it/guide/fatturazione.md](../../guide/fatturazione.md)
   §"Fase 1 - Push sorgenti su commesse" e
-  [docs/it/guide/gestione-commesse.md](../../../guide/gestione-commesse.md)
+  [docs/it/guide/gestione-commesse.md](../../guide/gestione-commesse.md)
   §"Flusso tipo - Push sorgente -> commessa".
 * WIP architetturale:
   [gestione-commesse-v2.md](gestione-commesse-v2.md) §6.3 "Come una

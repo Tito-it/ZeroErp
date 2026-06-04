@@ -33,7 +33,7 @@ mostra storico completo quando `false`.
 ## Motivazione
 
 Oggi la lista offerte legge direttamente da `vendite.offerte_commerciali`
-([offerte_repository.py:381](../../../backend/apps/vendite/db/offerte_repository.py))
+([offerte_repository.py:381](../../../../backend/apps/vendite/db/offerte_repository.py))
 senza calcolo `is_attiva` → mostra sempre tutte le revisioni, comportamento
 opposto rispetto ai preventivi. Allineamento simmetrico richiesto.
 

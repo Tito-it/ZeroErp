@@ -9,7 +9,7 @@
 
 ### 1.1 Clienti — package unico (5 componenti)
 
-Migration schema: [`db/changelog/migrations_v2/00_schema/anagrafiche/20260427-03-clienti-norm-giorni-scadenza-pkg-mctit.yaml`](../../../db/changelog/migrations_v2/00_schema/anagrafiche/20260427-03-clienti-norm-giorni-scadenza-pkg-mctit.yaml) — 3 changeSet sequenziali:
+Migration schema: [`db/changelog/migrations_v2/00_schema/anagrafiche/20260427-03-clienti-norm-giorni-scadenza-pkg-mctit.yaml`](../../../../db/changelog/migrations_v2/00_schema/anagrafiche/20260427-03-clienti-norm-giorni-scadenza-pkg-mctit.yaml) — 3 changeSet sequenziali:
 
 1. **Backfill** record incoerenti
    ```sql
@@ -34,7 +34,7 @@ La regola `ritenuta_acconto = false -> ritenuta_aliquota = NULL` e' gia' applica
 
 ### 1.3 Seed errori (CSV `config.messaggi_errore`)
 
-[`db/changelog/migrations_v2/80_data/sql/config/messaggi_errore.csv`](../../../db/changelog/migrations_v2/80_data/sql/config/messaggi_errore.csv) — 2 nuove righe IT (loader esistente `runOnChange: true`):
+[`db/changelog/migrations_v2/80_data/sql/config/messaggi_errore.csv`](../../../../db/changelog/migrations_v2/80_data/sql/config/messaggi_errore.csv) — 2 nuove righe IT (loader esistente `runOnChange: true`):
 
 | ID | Codice | Note |
 |----|--------|------|
@@ -45,7 +45,7 @@ Entrambi solo IT, coerenti con la convenzione del progetto (fallback EN→IT com
 
 ### 1.4 pgTAP
 
-[`db/pgtap/anagrafiche/test-clienti-normalize-giorni-scadenza-v1.sql`](../../../db/pgtap/anagrafiche/test-clienti-normalize-giorni-scadenza-v1.sql) — `plan(10)`. Strategia UPDATE su cliente esistente in `BEGIN/ROLLBACK` (no fixture INSERT). Casi:
+[`db/pgtap/anagrafiche/test-clienti-normalize-giorni-scadenza-v1.sql`](../../../../db/pgtap/anagrafiche/test-clienti-normalize-giorni-scadenza-v1.sql) — `plan(10)`. Strategia UPDATE su cliente esistente in `BEGIN/ROLLBACK` (no fixture INSERT). Casi:
 
 * `('G',30) ('F',60)` → ammessi
 * `('N',5) ('M',10)` → normalize silenzioso a NULL (verifica con `SELECT`)

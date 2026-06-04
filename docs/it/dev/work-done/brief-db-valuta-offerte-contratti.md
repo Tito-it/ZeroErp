@@ -46,7 +46,7 @@ Oggi su `offerte_commerciali` e `contratti` la valuta non è persistita. Consegu
 
 ## Bug noto (BE) da fixare in parallelo
 
-Il BB `resolve_valuta_default` ([backend/apps/anagrafiche/services/valuta_resolver.py:46](../../../backend/apps/anagrafiche/services/valuta_resolver.py)) ha solo 3 livelli (BA → EF del BA → EF utente). **Manca il livello 4 = lookup parameter** (es. `VENDITE_VALUTA_DEFAULT`): se nessuno dei 3 livelli risolve la valuta, ritorna `{}` e la UI preventivi resta vuota. Il fix BE va fatto contestualmente alla fn DB `fn_resolve_valuta_default` (entrambi vanno allineati sui 4 livelli, decisione coerente cross-layer).
+Il BB `resolve_valuta_default` ([backend/apps/anagrafiche/services/valuta_resolver.py:46](../../../../backend/apps/anagrafiche/services/valuta_resolver.py)) ha solo 3 livelli (BA → EF del BA → EF utente). **Manca il livello 4 = lookup parameter** (es. `VENDITE_VALUTA_DEFAULT`): se nessuno dei 3 livelli risolve la valuta, ritorna `{}` e la UI preventivi resta vuota. Il fix BE va fatto contestualmente alla fn DB `fn_resolve_valuta_default` (entrambi vanno allineati sui 4 livelli, decisione coerente cross-layer).
 
 ---
 
@@ -90,7 +90,7 @@ Catena BE risultante:
 
 ### Stato lato BE
 
-- [x] Livello 4 BE = fallback gestore applicato ([apps/anagrafiche/services/valuta_resolver.py](../../../backend/apps/anagrafiche/services/valuta_resolver.py))
+- [x] Livello 4 BE = fallback gestore applicato ([apps/anagrafiche/services/valuta_resolver.py](../../../../backend/apps/anagrafiche/services/valuta_resolver.py))
 - [x] Test resolver aggiornati (10 test, livello 4 mockato via `connection.cursor`)
 - [x] Test downstream `vendite_form_defaults_service` aggiornati
 - [ ] Repository/service `offerte`+`contratti` per persistere/leggere `valuta_id` (work in progress)

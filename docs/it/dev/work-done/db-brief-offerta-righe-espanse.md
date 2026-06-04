@@ -8,7 +8,7 @@
 >
 > **Branch**: `dev/db-tid`. **Destinatario**: team DB.
 > **Natura**: prerequisito DB per la **conversione offerta → ordine** (§7.4
-> [analisi-ordini-vendita.md](analisi-ordini-vendita.md)). BE/FE attendono
+> [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md)). BE/FE attendono
 > (`feedback_be_fe_attende_prerequisiti_db`). Consegna **additiva, sola lettura**.
 > ZeroErp non in produzione.
 >
@@ -171,9 +171,9 @@ espanse + componenti, `documento_origine = ('OFFERTA', offerta_id)`), endpoint
 
 ## 8. Riferimenti
 
-- Analisi: [analisi-ordini-vendita.md §7.4](analisi-ordini-vendita.md).
+- Analisi: [analisi-ordini-vendita.md §7.4](../work-in-progress/analisi-ordini-vendita.md).
 - Preview contratti (target riuso): `vendite.fn_contratto_righe_preview`
-  ([migration](../../../db/changelog/migrations_v2/20_code/vendite/20260519-07-update-fn-contratto-righe-preview-add-qta-tipo-fonte-mctit.yaml)),
+  ([migration](../../../../db/changelog/migrations_v2/20_code/vendite/20260519-07-update-fn-contratto-righe-preview-add-qta-tipo-fonte-mctit.yaml)),
   wrapper `ContrattiRepository.list_righe_preview`
   (`backend/apps/vendite/db/contratti_repository.py`).
 - Modello offerta: [offerte_commerciali](../../dbzero/vendite/tabelle/offerte_commerciali.md),
@@ -197,7 +197,15 @@ espanse + componenti, `documento_origine = ('OFFERTA', offerta_id)`), endpoint
 | S6 | Doc manuale (core + offerta + nota preview contratti) | docs | ✅ scritto |
 | S7 | **Migrate + pgTAP** + validazione regressione drawer contratti | run | ✅ eseguito, verde (2026-06-04) |
 | S8 | Commit / PR | git | ⏳ **attende "procedi"** |
-| S9 | Hand-off BE (`list_righe_espanse` + crea ordine da offerta + endpoint + FE) | coordinamento | fuori scope DB |
+| S9 | Hand-off BE (`list_righe_espanse` + crea ordine da offerta + endpoint + FE) | coordinamento | ✅ **fatto 2026-06-04** |
+
+> ✅ **S9 — hand-off BE fatto (2026-06-04)**: `OfferteRepository.list_righe_espanse`
+> (wrapper su `fn_offerta_righe_espanse`) + `ordini_service.crea_ordine_da_offerta`
+> (guard `ACCETTATA`, prezzi negoziati preservati anche per i componenti via
+> `componenti_overrides` → trigger ricompone il padre) + endpoint
+> `POST /vendite/offerte/<id>/genera-ordine/` + azione FE su `OffertaDrawer`. Test
+> BE 4/4, build FE verde. Caveat preventivo (componenti ri-prezzati) **non** si
+> applica all'offerta: l'offerta accettata preserva i prezzi.
 
 **Numerazione `NN`**: `20260604-02/03/04` (dopo `-01` del lock cliente, stesso giorno).
 

@@ -161,7 +161,7 @@ INSERT INTO vendite.listini_righe_componenti (
 
 Una volta atterrato il fix DB, il backend potrà rimuovere il workaround
 nel CASE WHEN di `clone_versione` step 3 + `upsert_bundle_componenti`
-([`backend/apps/vendite/db/listini_repository.py`](../../../backend/apps/vendite/db/listini_repository.py) righe 546-550 e
+([`backend/apps/vendite/db/listini_repository.py`](../../../../backend/apps/vendite/db/listini_repository.py) righe 546-550 e
 1347-1351) e tornare a una formula più semplice:
 
 ```sql
