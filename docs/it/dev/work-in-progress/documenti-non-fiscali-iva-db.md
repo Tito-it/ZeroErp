@@ -1,6 +1,7 @@
 # Documenti non fiscali - riepilogo IVA DB
 
-> Stato: WIP - analisi critica e piano preliminare DB.
+> Stato: WIP - decisione aggiornata 2026-06-04: pilot DB solo
+> `ORDINE_VENDITA`.
 >
 > Obiettivo: definire una base DB coerente per esporre il riepilogo IVA nei
 > context dei documenti commerciali non fiscali generati dal motore
@@ -20,11 +21,15 @@ Il builder ordini dichiara esplicitamente il confine v1:
 - il backend non deve calcolare il riepilogo in Python per non duplicare formule
   e arrotondamenti DB.
 
-La stessa mancanza va analizzata su:
+La stessa mancanza e' stata considerata su:
 
 - `OFFERTA_COMMERCIALE`;
 - `CONTRATTO`;
 - `ORDINE_VENDITA`.
+
+Decisione di perimetro: procedere solo su `ORDINE_VENDITA`. `CONTRATTO` e
+`OFFERTA_COMMERCIALE` ragionano su sorgenti righe diverse e non hanno oggi una
+base fiscalmente normalizzata unica per un riepilogo IVA non ambiguo.
 
 `PREVENTIVO` resta il riferimento tecnico da copiare come regola di calcolo,
 non come scelta di persistenza.
@@ -65,19 +70,21 @@ Decisione aggiornata:
 
 - `PREVENTIVO`: non modificare in questo intervento; mantiene tabella
   `preventivi_riepiloghi_iva` per coerenza con il flusso preventivo -> fattura.
-- `ORDINE_VENDITA`: sospeso. E' il candidato tecnicamente piu' vicino ai
-  preventivi, ma va prima chiusa la semantica bundle/componenti per evitare
-  doppio conteggio o riepiloghi parziali.
-- `CONTRATTO`: sospeso. Il documento usa preview/listino o righe native a
+- `ORDINE_VENDITA`: in scope come pilot. Creare viste DB derivate dalle righe
+  ordine attive, applicando la stessa formula dei preventivi: sommare gli
+  imponibili delle righe con la stessa aliquota e calcolare l'IVA sul totale
+  del gruppo, non sulla singola riga.
+- `CONTRATTO`: fuori scope. Il documento usa preview/listino o righe native a
   seconda della modalita'; senza una sorgente righe fiscalmente normalizzata il
   riepilogo IVA sarebbe ambiguo.
-- `OFFERTA_COMMERCIALE`: sospeso. Il documento v1 mostra solo eccezioni, non
-  l'offerta economica completa; un riepilogo IVA su sole eccezioni rischia di
-  essere letto come totale IVA dell'offerta.
+- `OFFERTA_COMMERCIALE`: fuori scope. Il documento v1 mostra solo eccezioni,
+  non l'offerta economica completa; un riepilogo IVA su sole eccezioni rischia
+  di essere letto come totale IVA dell'offerta.
 
-Conclusione operativa: per ora **non creare viste di riepilogo IVA** per
-`ORDINE_VENDITA`, `CONTRATTO` e `OFFERTA_COMMERCIALE`. Questo documento conserva
-l'analisi e il piano condizionale da usare se il requisito viene riaperto.
+Conclusione operativa: implementare il riepilogo IVA DB solo per
+`ORDINE_VENDITA`. Non creare viste di riepilogo IVA per `CONTRATTO` e
+`OFFERTA_COMMERCIALE` finche' non cambia la loro semantica documentale o non
+viene introdotta una sorgente righe normalizzata.
 
 ## 4. Analisi critica per sorgente
 
@@ -114,20 +121,15 @@ imponibile_riga_full =
   quantita * prezzo_unitario * (1 - COALESCE(sconto_perc, 0) / 100)
 ```
 
-Punto critico: gli ordini supportano componenti BoM in
-`vendite.ordini_righe_componenti`, e anche i componenti hanno `iva_id`,
-`quantita`, `prezzo_unitario`, `attivo`.
+Gli ordini supportano componenti BoM in `vendite.ordini_righe_componenti`, e
+anche i componenti hanno `iva_id`, `quantita`, `prezzo_unitario`, `attivo`.
 
-Serve decidere se il riepilogo IVA dell'ordine deve usare:
-
-- solo `ordini_righe`, assumendo che il padre composito abbia gia' prezzo/IVA
-  documentale completa;
-- oppure una sorgente normalizzata che, per i bundle, includa i componenti
-  esposti e non il padre per evitare doppio conteggio.
-
-Questa decisione e' bloccante: una vista "semplice" su `ordini_righe` puo'
-essere corretta per righe standalone ma sbagliata per bundle, se il prezzo
-documentale vive sui componenti.
+Decisione per il pilot ordini: il riepilogo IVA usa **solo `ordini_righe`**.
+I componenti non entrano direttamente nel riepilogo per evitare doppio conteggio:
+il pattern BoM CASO A ricalcola il `prezzo_unitario` della riga padre dai figli
+attivi, mentre l'IVA documentale resta sulla riga ordine. Se in futuro il
+documento ordine dovesse esporre componenti come righe fiscalmente autonome, la
+vista va riprogettata prima di cambiare il riepilogo.
 
 ### 4.3 Contratti
 
@@ -260,12 +262,10 @@ Note:
 
 ### Opzione A - viste separate per sorgente
 
-Creare viste dedicate:
+Creare viste dedicate, ma solo per le sorgenti abilitate:
 
 ```text
 vendite.vw_ordini_riepilogo_iva
-vendite.vw_contratti_riepilogo_iva
-vendite.vw_offerte_commerciali_riepilogo_iva
 ```
 
 Vantaggi:
@@ -306,46 +306,46 @@ Svantaggi:
 
 ### Preferenza iniziale
 
-Preferenza WIP: **Opzione A con normalizzazione esplicita per sorgente**.
+Preferenza WIP: **Opzione A con normalizzazione esplicita per sorgente**,
+applicata ora solo a `ORDINE_VENDITA`.
 
-Motivo: le sorgenti non sono omogenee. Ordini, contratti e offerte hanno
-modelli righe diversi; forzare subito una funzione dispatcher rischia di
-nascondere decisioni ancora aperte su bundle, componenti, listini e righe
-documentali effettive.
+Motivo: le sorgenti non sono omogenee. Gli ordini hanno righe con IVA gia'
+utilizzabili; contratti e offerte hanno modelli righe/listino diversi. Forzare
+subito una funzione dispatcher rischia di nascondere decisioni ancora aperte su
+listini, preview e righe documentali effettive.
 
-## 8. Piano DB condizionale
+## 8. Piano DB ordini
 
-Questo piano non e' da eseguire ora. Serve come traccia tecnica se in futuro si
-decide di aggiungere il riepilogo IVA a uno o piu' documenti non fiscali.
+Questo piano riguarda solo `ORDINE_VENDITA`. Per `CONTRATTO` e
+`OFFERTA_COMMERCIALE` resta una traccia futura separata, da riaprire solo dopo
+aver definito una sorgente righe fiscalmente normalizzata.
 
 ### Fase 0 - Conferma semantica righe
 
-Definire per ogni sorgente quali righe entrano nel documento e quindi nel
-riepilogo IVA:
+Decisione gia' presa per il pilot:
 
-- ordini: solo `ordini_righe` oppure componenti BoM quando presenti;
-- contratti A/B: righe da `fn_contratto_righe_preview`, includendo IVA;
-- contratti C: righe `contratti_righe` e componenti;
-- offerte: solo eccezioni stampate nel context v1 oppure futuro listino completo.
+- ordini: solo `ordini_righe` attive;
+- componenti BoM: non sommati direttamente; contribuiscono solo tramite il
+  prezzo ricalcolato della riga padre;
+- contratti/offerte: fuori scope.
 
-Esito atteso: una tabella decisionale "sorgente -> righe imponibili".
+Esito atteso: una tabella decisionale "sorgente -> righe imponibili" con una
+sola sorgente attiva (`ORDINE_VENDITA`).
 
 ### Fase 1 - Vista sorgente normalizzata
 
-Solo dopo la Fase 0, creare una vista/funzione per sorgente che espone righe
-imponibili a precisione piena:
+Creare una vista/funzione per ordini che espone righe imponibili a precisione
+piena:
 
 ```text
 vendite.vw_ordini_righe_iva_base
-vendite.vw_contratti_righe_iva_base
-vendite.vw_offerte_commerciali_righe_iva_base
 ```
 
-Queste viste devono gia' risolvere:
+Questa vista deve gia' risolvere:
 
 - righe attive;
 - esclusioni;
-- bundle/componenti;
+- bundle/componenti secondo decisione Fase 0: solo padre ordine;
 - prezzo effettivo;
 - quantita effettiva;
 - IVA effettiva;
@@ -353,27 +353,26 @@ Queste viste devono gia' risolvere:
 
 ### Fase 2 - Viste riepilogo IVA
 
-Solo dopo la Fase 1, creare le viste finali:
+Solo dopo la Fase 1, creare la vista finale:
 
 ```text
 vendite.vw_ordini_riepilogo_iva
-vendite.vw_contratti_riepilogo_iva
-vendite.vw_offerte_commerciali_riepilogo_iva
 ```
 
-Queste viste applicano solo aggregazione e rounding per aliquota, sul modello
+Questa vista applica solo aggregazione e rounding per aliquota, sul modello
 preventivi.
 
 ### Fase 3 - Test pgTAP
 
-Test minimi per ogni sorgente:
+Test minimi per ordini:
 
 - nessuna riga attiva -> nessun riepilogo;
 - due righe stessa IVA -> una riga riepilogo;
 - due IVA diverse -> due righe riepilogo;
 - caso centesimi: IVA calcolata sul totale gruppo, non per riga;
 - righe inattive/escluse -> fuori dal riepilogo;
-- bundle/componenti -> nessun doppio conteggio;
+- componente BoM presente -> nessun doppio conteggio, perche' si somma solo la
+  riga padre ordine;
 - coerenza con totale testata quando la testata ha gia' totali.
 
 Test specifico anti-regressione:
@@ -387,12 +386,10 @@ Il test deve confermare che vince `ROUND(SUM(...), 2)`.
 
 ### Fase 4 - Backend successivo
 
-Dopo un eventuale landing DB, aggiungere nei repository:
+Dopo il landing DB, aggiungere nel repository ordini:
 
 ```text
 OrdiniRepository.list_riepilogo_iva(ordine_id)
-ContrattiRepository.list_riepilogo_iva(contratto_id)
-OfferteRepository.list_riepilogo_iva(offerta_id)
 ```
 
 Poi aggiornare i builder:
@@ -410,8 +407,9 @@ I template devono continuare a presentare dati gia' pronti, senza calcolare.
 Se una riga padre composita ha prezzo e IVA e i componenti hanno a loro volta
 prezzo e IVA, sommare entrambi duplica imponibile e imposta.
 
-Decisione richiesta: per ogni sorgente, stabilire se il documento fiscale
-logico si basa sul padre, sui componenti esposti o su una preview gia' aggregata.
+Decisione ordini: per il riepilogo IVA si somma solo la riga padre
+`ordini_righe`. I componenti sono dettaglio tecnico/prezzo del padre, non righe
+IVA autonome del documento ordine.
 
 ### 9.2 IVA mancante su contratti/offerte righe principali
 
@@ -420,16 +418,17 @@ riga principale. Se una riga senza componenti deve produrre IVA, la vista deve
 risolvere l'IVA dall'articolo/listino/prezzo resolver oppure va introdotto uno
 snapshot IVA.
 
-Decisione richiesta: confermare la fonte autorevole dell'IVA per righe
-contratto/offerta standalone.
+Decisione: contratti/offerte fuori scope. La fonte autorevole dell'IVA per righe
+contratto/offerta standalone va definita in un'analisi dedicata prima di
+implementare un riepilogo.
 
 ### 9.3 Contratti preview senza IVA
 
 `fn_contratto_righe_preview` e' la sorgente corretta per il documento contratto
 A/B, ma oggi non sembra esporre una IVA normalizzata per ogni riga preview.
 
-Decisione richiesta: estendere la preview oppure creare una funzione parallela
-dedicata al calcolo IVA.
+Decisione: fuori scope. Estendere la preview o creare una funzione parallela
+resta requisito futuro, non parte del pilot ordini.
 
 ### 9.4 Offerte in modalita' A/B
 
@@ -448,11 +447,13 @@ di riepilogo.
 
 ## 10. Raccomandazione
 
-Non implementare ora il riepilogo IVA per i documenti non fiscali.
+Procedere in modo incrementale con il riepilogo IVA solo per
+`ORDINE_VENDITA`.
 
 Motivi:
 
-- `ORDINE_VENDITA` richiede una decisione preventiva su bundle/componenti;
+- `ORDINE_VENDITA` ha righe con `iva_id`, quantita, prezzo, sconto e stato
+  `attivo`; la decisione bundle/componenti e' chiusa usando solo la riga padre;
 - `CONTRATTO` non ha una sorgente righe fiscalmente uniforme tra modalita' A/B/C;
 - `OFFERTA_COMMERCIALE` oggi stampa solo eccezioni, quindi un riepilogo IVA
   sarebbe semanticamente parziale;
@@ -460,13 +461,191 @@ Motivi:
   snapshot IVA dedicato come per fatture o, per continuita' di processo,
   preventivi.
 
-Se il requisito viene riaperto, procedere in modo incrementale:
+Sequenza consigliata:
 
-1. chiudere prima la tabella decisionale "sorgente -> righe imponibili";
-2. implementare una sola sorgente pilota;
+1. creare `vendite.vw_ordini_righe_iva_base`;
+2. creare `vendite.vw_ordini_riepilogo_iva`;
 3. applicare la formula dei preventivi senza arrotondamento per riga;
-4. aggiungere test pgTAP sui centesimi e sui bundle;
-5. cablare il backend solo dopo il landing DB.
+4. aggiungere test pgTAP sui centesimi e sui componenti BoM;
+5. cablare `OrdiniRepository.list_riepilogo_iva`;
+6. aggiungere `riepilogo_iva` al context `ORDINE_VENDITA`.
 
 La regola non negoziabile e' il rounding: prima totalizzazione per aliquota, poi
 calcolo IVA sul gruppo, come nei preventivi.
+
+## 11. Piano esecutivo DB - `ORDINE_VENDITA`
+
+Obiettivo operativo: predisporre una vista DB da cui il backend possa estrarre
+il riepilogo IVA di un ordine, replicando la logica fiscale gia' applicata ai
+preventivi ma senza introdurre una tabella fisica `ordini_riepiloghi_iva`.
+
+### 11.1 Oggetto DB da creare
+
+Creare una migration Liquibase v2 in:
+
+```text
+db/changelog/migrations_v2/20_code/vendite/YYYYMMDD-NN-create-vw-ordini-riepilogo-iva-dettaglio-mctit.yaml
+```
+
+Oggetto:
+
+```text
+vendite.vw_ordini_riepilogo_iva_dettaglio
+```
+
+La vista deve essere il contratto DB letto dal backend. Shape consigliata,
+allineata a `vw_preventivi_riepilogo_iva_dettaglio` dove applicabile:
+
+```text
+ordine_id
+iva_id
+iva_codice
+iva_descrizione
+iva_aliquota
+natura_id          -- NULL per ordini, finche' non esiste snapshot natura
+natura_codice      -- NULL per ordini
+esigibilita        -- NULL per ordini
+split_payment      -- NULL per ordini
+imponibile
+imposta
+arrotondamento
+totale_riga
+```
+
+Non serve un `id` tecnico persistente: il riepilogo e' derivato e la chiave
+logica della riga e' `(ordine_id, iva_id, iva_aliquota)`.
+
+### 11.2 Formula SQL da usare
+
+La vista deve calcolare direttamente da `vendite.ordini_righe` attive:
+
+```sql
+WITH ordine_stato AS (
+  SELECT
+    o.id AS ordine_id,
+    s.stato_id AS stato_emittente_id
+  FROM vendite.ordini o
+  LEFT JOIN anagrafiche.emittenti_fiscali ef
+    ON ef.id = o.emittente_fiscale_id
+  LEFT JOIN anagrafiche.soggetti_ruoli sr
+    ON sr.id = ef.soggetto_ruolo_id
+  LEFT JOIN anagrafiche.soggetti s
+    ON s.id = sr.soggetto_id
+),
+righe AS (
+  SELECT
+    r.ordine_id,
+    r.iva_id,
+    CASE
+      WHEN r.iva_id IS NOT NULL
+      THEN config.fn_get_aliquota_iva(r.iva_id, os.stato_emittente_id)
+      ELSE NULL::numeric
+    END AS aliquota_effettiva,
+    r.quantita * r.prezzo_unitario
+      * (1 - COALESCE(r.sconto_perc, 0) / 100) AS imponibile_riga_full
+  FROM vendite.ordini_righe r
+  JOIN ordine_stato os
+    ON os.ordine_id = r.ordine_id
+  WHERE r.attivo IS TRUE
+    AND r.quantita > 0
+),
+aggregati AS (
+  SELECT
+    ordine_id,
+    iva_id,
+    aliquota_effettiva,
+    ROUND(SUM(imponibile_riga_full), 2) AS imponibile,
+    ROUND(
+      ROUND(SUM(imponibile_riga_full), 2)
+      * COALESCE(aliquota_effettiva, 0) / 100,
+      2
+    ) AS imposta,
+    SUM(imponibile_riga_full) - ROUND(SUM(imponibile_riga_full), 2)
+      AS arrotondamento
+  FROM righe
+  GROUP BY ordine_id, iva_id, aliquota_effettiva
+)
+SELECT
+  a.ordine_id,
+  a.iva_id,
+  i.codice AS iva_codice,
+  i.descrizione AS iva_descrizione,
+  a.aliquota_effettiva AS iva_aliquota,
+  NULL::integer AS natura_id,
+  NULL::text AS natura_codice,
+  NULL::char(1) AS esigibilita,
+  NULL::boolean AS split_payment,
+  a.imponibile,
+  a.imposta,
+  a.arrotondamento,
+  a.imponibile + a.imposta AS totale_riga
+FROM aggregati a
+LEFT JOIN config.iva i
+  ON i.id = a.iva_id;
+```
+
+Regole da mantenere:
+
+- non usare `ROUND(imponibile_riga_full, 2)` prima della `SUM`;
+- calcolare `imposta` sull'imponibile aggregato e arrotondato del gruppo IVA;
+- usare `config.fn_get_aliquota_iva(...)` come nei preventivi, per mantenere
+  l'override aliquota da stato emittente;
+- non sommare `ordini_righe_componenti`: i componenti alimentano il prezzo della
+  riga padre tramite trigger, ma non sono righe IVA autonome nel riepilogo
+  ordine;
+- non filtrare silenziosamente righe con `iva_id IS NULL`: il `CASE` evita di
+  invocare `config.fn_get_aliquota_iva(NULL, ...)`, ma la riga aggregata con
+  IVA nulla resta visibile come problema dati/configurazione.
+
+Se la RLS sugli ordini e' attiva nel perimetro interessato, creare la view con
+`WITH (security_invoker=on)` seguendo il pattern delle viste lista recenti.
+
+### 11.3 Test pgTAP
+
+Creare un test dedicato, ad esempio:
+
+```text
+db/pgtap/vendite/test-vw-ordini-riepilogo-iva-dettaglio.sql
+```
+
+Casi minimi:
+
+- ordine senza righe attive -> nessuna riga riepilogo;
+- due righe attive con stessa IVA -> una sola riga riepilogo;
+- due aliquote diverse -> due righe riepilogo;
+- caso centesimi -> vince `ROUND(SUM(imponibile_riga_full), 2)`, non
+  `SUM(ROUND(imponibile_riga_full, 2))`;
+- riga inattiva esclusa;
+- riga con componenti BoM -> nessun doppio conteggio, il riepilogo somma solo
+  `ordini_righe`;
+- override aliquota da stato emittente, se fixture disponibili.
+
+### 11.4 Contratto backend
+
+Dopo il landing DB, aggiungere in `OrdiniRepository`:
+
+```python
+def list_riepilogo_iva(self, ordine_id: int) -> list[dict[str, Any]]:
+    ...
+```
+
+Query prevista:
+
+```sql
+SELECT ordine_id, iva_id, iva_codice, iva_descrizione,
+       iva_aliquota, natura_id, natura_codice,
+       esigibilita, split_payment,
+       imponibile, imposta, arrotondamento, totale_riga
+FROM vendite.vw_ordini_riepilogo_iva_dettaglio
+WHERE ordine_id = %s
+ORDER BY iva_aliquota NULLS LAST, iva_id NULLS LAST;
+```
+
+Poi il builder `ORDINE_VENDITA` aggiunge:
+
+```python
+"riepilogo_iva": self._repo.list_riepilogo_iva(sorgente_id)
+```
+
+Il backend deve solo leggere la view; nessun calcolo IVA in Python e nessuna
+formula nei template.
