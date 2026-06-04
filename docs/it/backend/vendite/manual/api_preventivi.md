@@ -284,7 +284,7 @@ DRAFT** dal preventivo, copiando testata + righe + componenti BoM e valorizzando
 
 > **Offerta → ordine**: non disponibile (l'offerta non ha righe materializzate,
 > solo eccezioni su listino). Prerequisito DB: brief
-> [db-brief-offerta-righe-espanse.md](../../../dev/work-in-progress/db-brief-offerta-righe-espanse.md).
+> [db-brief-offerta-righe-espanse.md](../../../dev/work-done/db-brief-offerta-righe-espanse.md).
 
 ---
 

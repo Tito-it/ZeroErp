@@ -10,7 +10,7 @@
 # scritture dirette su tabelle, chiamate a funzioni DB per i componenti BoM.
 # Il ricalcolo totali e' gestito da trigger DB su ordini_righe; il backend
 # non lo orchestra. Clone strutturale di `preventivi_repository` adattato alle
-# colonne reali della testata/riga ordine (riga_nr, sconto_perc, iva_perc) e
+# colonne reali della testata/riga ordine (riga_nr, sconto_perc, iva_id) e
 # senza revisioni (gli ordini non hanno `rev`).
 
 import json
@@ -233,7 +233,6 @@ class OrdiniRepository(ComponentiRepositoryMixin):
                 iva.codice              AS iva_codice,
                 iva.descrizione         AS iva_descrizione,
                 iva.aliquota_iva        AS iva_aliquota,
-                r.iva_perc,
                 ROUND(
                     (r.quantita * COALESCE(r.prezzo_unitario, 0::numeric)) *
                     (1::numeric - COALESCE(r.sconto_perc, 0::numeric) / 100::numeric),
@@ -282,7 +281,6 @@ class OrdiniRepository(ComponentiRepositoryMixin):
                 r.sconto_perc,
                 r.iva_id,
                 iva.codice              AS iva_codice,
-                r.iva_perc,
                 r.meta,
                 EXISTS (
                     SELECT 1

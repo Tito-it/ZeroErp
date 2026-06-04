@@ -47,17 +47,17 @@ Helper `_is_filled()` interno per coerenza: stringhe vuote / spaziature / `0` / 
 
 ### 3.2 Refactor 3 service
 
-- [`clienti_service.py:307`](../../../backend/apps/anagrafiche/services/clienti_service.py#L307): EMPTY → skip; PARTIAL → raise; VALID → crea.
-- [`fornitori_service.py:100`](../../../backend/apps/anagrafiche/services/fornitori_service.py#L100): stesso pattern. **Fix bug originale**: prima ignorava email/telefono se senza nominativo.
-- [`soggetti_service.py`](../../../backend/apps/anagrafiche/services/soggetti_service.py): nuovo helper privato `_require_contatto_valid(contatto)` che richiede sempre VALID (contatto obbligatorio per soggetto). Usato in `_create_pf` e `_create_pg` al posto del vecchio `require_str(contatto, "nominativo")`.
+- [`clienti_service.py:307`](../../../../backend/apps/anagrafiche/services/clienti_service.py#L307): EMPTY → skip; PARTIAL → raise; VALID → crea.
+- [`fornitori_service.py:100`](../../../../backend/apps/anagrafiche/services/fornitori_service.py#L100): stesso pattern. **Fix bug originale**: prima ignorava email/telefono se senza nominativo.
+- [`soggetti_service.py`](../../../../backend/apps/anagrafiche/services/soggetti_service.py): nuovo helper privato `_require_contatto_valid(contatto)` che richiede sempre VALID (contatto obbligatorio per soggetto). Usato in `_create_pf` e `_create_pg` al posto del vecchio `require_str(contatto, "nominativo")`.
 
 ### 3.3 Error code mapping
 
-[`apps/core/services/error_policies.py`](../../../backend/apps/core/services/error_policies.py): nuova policy `E_CONTATTO_INCOMPLETO` (HTTP 400 + `highlight_form_fields`) con messaggio user-friendly. [`apps/anagrafiche/error_codes.py`](../../../backend/apps/anagrafiche/error_codes.py): costante esportata.
+[`apps/core/services/error_policies.py`](../../../../backend/apps/core/services/error_policies.py): nuova policy `E_CONTATTO_INCOMPLETO` (HTTP 400 + `highlight_form_fields`) con messaggio user-friendly. [`apps/anagrafiche/error_codes.py`](../../../../backend/apps/anagrafiche/error_codes.py): costante esportata.
 
 ### 3.4 Test
 
-[`apps/anagrafiche/tests/services/test_contatti_service.py`](../../../backend/apps/anagrafiche/tests/services/test_contatti_service.py): 14 test unit per `classify_contatto_payload` + `missing_required_fields`. Coprono:
+[`apps/anagrafiche/tests/services/test_contatti_service.py`](../../../../backend/apps/anagrafiche/tests/services/test_contatti_service.py): 14 test unit per `classify_contatto_payload` + `missing_required_fields`. Coprono:
 
 - None / `{}` / tutti vuoti → EMPTY
 - email/telefono/nominativo/tipo singoli → PARTIAL (regressione esplicita per bug fornitore)
@@ -73,7 +73,7 @@ Test esistenti soggetti aggiornati per fornire `tipo_contatto_id` nelle fixture 
 
 ### 4.1 Estensione `useContattoForm`
 
-[`frontend/src/core/composables/useContattoForm.js`](../../../frontend/src/core/composables/useContattoForm.js): aggiunti tre metodi mirror del backend:
+[`frontend/src/core/composables/useContattoForm.js`](../../../../frontend/src/core/composables/useContattoForm.js): aggiunti tre metodi mirror del backend:
 
 ```js
 function classify()  // 'EMPTY' | 'PARTIAL' | 'VALID'
@@ -85,8 +85,8 @@ Stessa regola del backend (defense-in-depth UX). Helper `_isFilled` interno coer
 
 ### 4.2 Aggiornamento drawer
 
-- [`ClienteDrawer.vue:309-329`](../../../frontend/src/anagrafiche/components/ClienteDrawer.vue#L309): rimosso check `hasAnyContatto` inline (7 righe → uso di `contatto.isFilled()`).
-- [`FornitoreDrawer.vue:161-168`](../../../frontend/src/anagrafiche/components/FornitoreDrawer.vue#L161): rimosso check "solo nominativo" (bug fix end-to-end).
+- [`ClienteDrawer.vue:309-329`](../../../../frontend/src/anagrafiche/components/ClienteDrawer.vue#L309): rimosso check `hasAnyContatto` inline (7 righe → uso di `contatto.isFilled()`).
+- [`FornitoreDrawer.vue:161-168`](../../../../frontend/src/anagrafiche/components/FornitoreDrawer.vue#L161): rimosso check "solo nominativo" (bug fix end-to-end).
 - `SoggettoDrawer.vue`: nessun cambio FE necessario — il `canSave` esistente gia' richiede `contatto.validate().length === 0` (cioe' VALID), pattern allineato. Il backend ora protegge anche il caso edge (cancellazione manuale post auto-fill).
 
 ### 4.3 Pulsante "pulisci contatto" (rinviato)
@@ -117,4 +117,4 @@ Pattern **A2 defense-in-depth** (regola unica scritta backend, mirror frontend) 
 
 - [analisi-refactor.frontend-anagrafiche.md](analisi-refactor.frontend-anagrafiche.md) — sezione C1 (LANDED 28-04)
 - Pattern simmetrici: [brief-be-clienti-fornitori-normalize-payload.md](brief-be-clienti-fornitori-normalize-payload.md) (Fase 2)
-- Modulo: [`contatti_service.py`](../../../backend/apps/anagrafiche/services/contatti_service.py)
+- Modulo: [`contatti_service.py`](../../../../backend/apps/anagrafiche/services/contatti_service.py)

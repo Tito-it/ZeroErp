@@ -21,7 +21,7 @@
 
 ## 1. Stato attuale
 
-### 1.1 Componente FE — [ArticoloLookup.vue](../../../frontend/src/core/components/ArticoloLookup.vue)
+### 1.1 Componente FE — [ArticoloLookup.vue](../../../../frontend/src/core/components/ArticoloLookup.vue)
 
 Espone 2 prop sui filtri:
 
@@ -32,7 +32,7 @@ Espone 2 prop sui filtri:
 
 Nessuna prop su `is_composito` benché supportata dal BE.
 
-### 1.2 Endpoint BE — [lookup_articoli](../../../backend/apps/catalogo/services/catalogo_service.py)
+### 1.2 Endpoint BE — [lookup_articoli](../../../../backend/apps/catalogo/services/catalogo_service.py)
 
 `fn_lookup_articoli` accetta già 4 filtri:
 
@@ -181,7 +181,7 @@ già nella riga del listino).
   alla lista, non dal lookup riga.
 
 **Conseguenza implementativa**: il blocco di intercettazione in
-`VersioneDrawer.onArticoloSelected` ([VersioneDrawer.vue:216-223](../../../frontend/src/vendite/components/VersioneDrawer.vue#L216))
+`VersioneDrawer.onArticoloSelected` ([VersioneDrawer.vue:216-223](../../../../frontend/src/vendite/components/VersioneDrawer.vue#L216))
 diventa dead-code e può essere rimosso. Tenere come safety net per ora
 oppure rimuovere subito? Proposta: rimuovere (è dead-code, niente
 ridondanza difensiva).
@@ -311,8 +311,8 @@ futuro, casi minimi:
 
 ## 8. Riferimenti
 
-- [ArticoloLookup.vue](../../../frontend/src/core/components/ArticoloLookup.vue) — componente target
-- [lookup_articoli BE](../../../backend/apps/catalogo/services/catalogo_service.py) `fn_lookup_articoli`
+- [ArticoloLookup.vue](../../../../frontend/src/core/components/ArticoloLookup.vue) — componente target
+- [lookup_articoli BE](../../../../backend/apps/catalogo/services/catalogo_service.py) `fn_lookup_articoli`
 - [modello-componenti-bom.md](../../backend/vendite/manual/modello-componenti-bom.md) — regole BoM, ruolo `is_solo_componente`
 - [catalogo-building-block-frontend.md](../frontend/catalogo-building-block-frontend.md) — catalogo BB FE
 - [gestione-listini.md §5.1](../../guide/gestione-listini.md) — tipologie articolo (futuro filtro `tipologiaId`)
@@ -323,7 +323,7 @@ futuro, casi minimi:
 
 ### 9.1 Modifiche al componente
 
-- [ArticoloLookup.vue](../../../frontend/src/core/components/ArticoloLookup.vue):
+- [ArticoloLookup.vue](../../../../frontend/src/core/components/ArticoloLookup.vue):
   - Aggiunta prop `filtri: Object` (default `{}`)
   - Rimossa prop legacy `soloComponenti: Boolean` (breaking change, no compat — dev project)
   - Aggiunti helper interni `_normalizzaTriStato`, `_enumAQueryBool`, `_buildLookupParams`
@@ -335,13 +335,13 @@ futuro, casi minimi:
 
 | Caller | File | Filtri |
 | --- | --- | --- |
-| `PreventiviRigaForm` | [PreventiviRigaForm.vue:561](../../../frontend/src/vendite/preventivi/components/PreventiviRigaForm.vue#L561) | `{ soloComponenti: 'escludi' }` |
-| `ContrattoRigheDrawer` (AGGIUNTA) | [ContrattoRigheDrawer.vue:1011](../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L1011) | `{ soloComponenti: 'escludi' }` |
-| `VersioneDrawer` (riga listino) | [VersioneDrawer.vue:556](../../../frontend/src/vendite/components/VersioneDrawer.vue#L556) | `{ soloComponenti: 'escludi', compositi: 'escludi' }` |
-| `PromoArticoloDrawer` | [PromoArticoloDrawer.vue:351](../../../frontend/src/vendite/components/PromoArticoloDrawer.vue#L351) | `{ soloComponenti: 'escludi' }` |
-| `ArticoloBomDrawer` (figlio BoM) | [ArticoloBomDrawer.vue:620](../../../frontend/src/catalogo/components/ArticoloBomDrawer.vue#L620) | `{ compositi: 'escludi' }` |
-| `TestResolverDialog` (target) | [TestResolverDialog.vue:193](../../../frontend/src/vendite/components/TestResolverDialog.vue#L193) | nessun filtro (admin tool) |
-| `TestResolverDialog` (padre contesto) | [TestResolverDialog.vue:240](../../../frontend/src/vendite/components/TestResolverDialog.vue#L240) | `{ compositi: 'solo' }` |
+| `PreventiviRigaForm` | [PreventiviRigaForm.vue:561](../../../../frontend/src/vendite/preventivi/components/PreventiviRigaForm.vue#L561) | `{ soloComponenti: 'escludi' }` |
+| `ContrattoRigheDrawer` (AGGIUNTA) | [ContrattoRigheDrawer.vue:1011](../../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L1011) | `{ soloComponenti: 'escludi' }` |
+| `VersioneDrawer` (riga listino) | [VersioneDrawer.vue:556](../../../../frontend/src/vendite/components/VersioneDrawer.vue#L556) | `{ soloComponenti: 'escludi', compositi: 'escludi' }` |
+| `PromoArticoloDrawer` | [PromoArticoloDrawer.vue:351](../../../../frontend/src/vendite/components/PromoArticoloDrawer.vue#L351) | `{ soloComponenti: 'escludi' }` |
+| `ArticoloBomDrawer` (figlio BoM) | [ArticoloBomDrawer.vue:620](../../../../frontend/src/catalogo/components/ArticoloBomDrawer.vue#L620) | `{ compositi: 'escludi' }` |
+| `TestResolverDialog` (target) | [TestResolverDialog.vue:193](../../../../frontend/src/vendite/components/TestResolverDialog.vue#L193) | nessun filtro (admin tool) |
+| `TestResolverDialog` (padre contesto) | [TestResolverDialog.vue:240](../../../../frontend/src/vendite/components/TestResolverDialog.vue#L240) | `{ compositi: 'solo' }` |
 
 ### 9.3 Cleanup
 

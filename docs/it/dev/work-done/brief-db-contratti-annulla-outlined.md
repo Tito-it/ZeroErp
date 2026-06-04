@@ -14,7 +14,7 @@ Allineare il meta JSON dell'azione `annulla` nella tabella
 `config.transizioni_stati_contratti` rimuovendo `outlined: true`
 (o impostandolo a `false`).
 
-File: [transizioni_stati_contratti.csv](../../../db/changelog/migrations_v2/80_data/sql/config/transizioni_stati_contratti.csv)
+File: [transizioni_stati_contratti.csv](../../../../db/changelog/migrations_v2/80_data/sql/config/transizioni_stati_contratti.csv)
 riga 2 — `id=2, stato_da_id=1 (DRAFT), stato_a_id=8 (ANNULLATO)`.
 
 **Diff atteso**:

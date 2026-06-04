@@ -312,8 +312,8 @@ Dopo il deploy DB+BE+FE, riabilitare lo scenario §3.4 in
   generica progettata per altre sorgenti future.
 * Memoria progetto: `feedback_db_actions_passaggio_team` — DDL/fn DB via
   brief al team DB.
-* Guida: [fatturazione.md §Fase 1](../../../guide/fatturazione.md#fase-1---push-sorgenti-su-commesse).
-* Guida: [gestione-commesse.md §Flusso push](../../../guide/gestione-commesse.md).
+* Guida: [fatturazione.md §Fase 1](../../guide/fatturazione.md#fase-1---push-sorgenti-su-commesse).
+* Guida: [gestione-commesse.md §Flusso push](../../guide/gestione-commesse.md).
 * WIP architetturale: [gestione-commesse-v2.md §6.3](gestione-commesse-v2.md).
 
 ## 9) Prossimo step — PR2: servizio "emissione immediata" (Fase 3 puntuale)

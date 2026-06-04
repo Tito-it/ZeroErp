@@ -637,6 +637,31 @@ Implementazione: CTE ricorsiva in due passi (risale via `revisione_padre_id`
 fino al root, poi ridiscende a tutti i discendenti). Una query, indici
 gia' presenti su `revisione_padre_id`.
 
+### Genera ordine `POST /api/v1/vendite/offerte/<id>/genera-ordine/`
+
+Conversione upstream (§7.4 analisi-ordini-vendita, 2026-06-04): crea un **ordine
+di vendita DRAFT** dall'offerta, copiando testata + righe + componenti BoM e
+valorizzando `documento_origine = ('OFFERTA', offerta_id)` sull'ordine.
+
+- View `ApiOffertaGeneraOrdine` (area `vendite`) → delega a
+  `ordini_service.crea_ordine_da_offerta(offerta_id)` (stesso app vendite).
+- **Precondizione**: offerta in stato **`ACCETTATA`**.
+- **Righe**: l'offerta non ha righe materializzate → le righe «effettive» sono
+  prodotte dalla fn DB **`fn_offerta_righe_espanse`** (listino base + variazione
+  globale + eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA, con BoM, IVA/uom risolte).
+  **Prezzi negoziati preservati** (offerta accettata): non-composito = prezzo
+  congelato; composito = componenti via `componenti_overrides` → il trigger DB
+  ricompone il prezzo padre dai prezzi negoziati.
+- **Testata**: BA, utility, emittente, valuta (l'offerta non ha termine/modalità
+  pagamento). Provenienza senza UNIQUE → **più ordini** da una stessa offerta.
+- Output `200`: `{ "ordine_id": int, "numero": str, "righe_create": int,
+  "documento_origine": {"tipo": "OFFERTA", "id": int} }`.
+- Errori: `E_VENDITE_NOT_FOUND` (404) se inesistente; `E_ORD_ORIGINE_NON_CONVERTIBILE`
+  (409) se non `ACCETTATA`.
+- FE: azione «Genera ordine» su `OffertaDrawer` (gated su `ACCETTATA`).
+- Prerequisito DB atterrato: brief
+  [db-brief-offerta-righe-espanse.md](../../../dev/work-done/db-brief-offerta-righe-espanse.md).
+
 ### Eccezioni
 
 #### Lista `GET /api/v1/vendite/offerte/<id>/eccezioni/`

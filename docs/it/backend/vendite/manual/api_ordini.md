@@ -16,8 +16,9 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 
 > Stato: **scheletro BE** (analisi
 > [analisi-ordini-vendita.md](../../../dev/work-in-progress/analisi-ordini-vendita.md)
-> §5). Fuori scope per ora: fulfillment/DDT, indirizzi, conversione
-> preventivo/offerta→ordine (che *userà* le colonne origine A1 già predisposte).
+> §5) + stampa PDF (§Documenti) + **conversione preventivo/offerta→ordine**
+> (2026-06-04, endpoint `genera-ordine` sui domini upstream — valorizza
+> `documento_origine` A1). Fuori scope per ora: fulfillment/DDT, indirizzi.
 
 ### Modello
 
@@ -36,12 +37,13 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 - **Estensioni modello 2026-06-03**: **agente** (`agente_soggetto_ruolo_id`,
   nullable) ed **origine documento** (A1: `documento_origine_tipo` ∈
   {`PREVENTIVO`,`OFFERTA`} + `documento_origine_id`, **senza UNIQUE** → una
-  origine può generare più ordini). Valorizzate dalla **conversione upstream**:
-  `documento_origine = ('PREVENTIVO', id)` impostato da
-  `ordini_service.crea_ordine_da_preventivo` (vedi
-  [api_preventivi.md §6c](api_preventivi.md), endpoint `genera-ordine`, fatto
-  2026-06-04). La variante offerta è bloccata da un prerequisito DB (brief
-  `db-brief-offerta-righe-espanse.md`). La CREATE diretta lascia le colonne NULL.
+  origine può generare più ordini). Valorizzate dalla **conversione upstream**
+  (fatte 2026-06-04): `documento_origine = ('PREVENTIVO', id)` da
+  `ordini_service.crea_ordine_da_preventivo` (copia 1:1 righe piatte) e
+  `('OFFERTA', id)` da `crea_ordine_da_offerta` (righe espanse via fn DB
+  `fn_offerta_righe_espanse`, prezzi negoziati preservati). Endpoint sui domini
+  upstream (vedi [api_preventivi.md §6c](api_preventivi.md) e api_offerte). La
+  CREATE diretta lascia le colonne NULL.
 - **Pagamento/valuta**: `modalita_pagamento_id`, `termine_pagamento_id`,
   `valuta_id`, `tasso_cambio` (default 1). `giorni_pagamento`/`fine_mese` e i
   campi trasporto **non sono in testata** (droppati `20251027-01`; vivono su
@@ -137,7 +139,7 @@ diretta che bypassa il service). Conseguenza correlata: `trgfn_ordini_normalize`
 ora ri-eredita `fatturazione_trigger` dal BA **solo su INSERT** (il ramo UPDATE era
 diventato logica morta). Override straordinario:
 `SET LOCAL zeroerp.allow_lock_columns_override = 'on'`. Brief:
-[db-brief-ordini-lock-cliente.md](../../../dev/work-in-progress/db-brief-ordini-lock-cliente.md).
+[db-brief-ordini-lock-cliente.md](../../../dev/work-done/db-brief-ordini-lock-cliente.md).
 
 ### Delete `DELETE /api/v1/vendite/ordini/<id>/`
 
@@ -278,7 +280,7 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
 - Analisi BE/FE: [analisi-ordini-vendita.md](../../../dev/work-in-progress/analisi-ordini-vendita.md)
   (§12 stampa, §8 decisioni)
 - Brief DB: [db-brief-ordini-vendita.md](../../../dev/work-done/db-brief-ordini-vendita.md)
-  e [db-brief-ordini-lock-cliente.md](../../../dev/work-in-progress/db-brief-ordini-lock-cliente.md)
+  e [db-brief-ordini-lock-cliente.md](../../../dev/work-done/db-brief-ordini-lock-cliente.md)
   (lock cliente)
 - Stampa/documenti: [documenti-e-stampe.md](../../../guide/documenti-e-stampe.md)
 - Tabella testata: [vendite.ordini](../../../dbzero/vendite/manual/ordini.md)

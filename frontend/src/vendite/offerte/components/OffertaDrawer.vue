@@ -66,6 +66,7 @@ import {
   STATI_OFFERTA_CON_DOCUMENTO,
   STATI_OFFERTA_SEGNALA_SCADENZA,
   STATI_OFFERTA_TERMINALI,
+  STATO_OFFERTA,
 } from '../constants'
 import { useOfferteStore } from '../stores/offerte'
 import OffertaEccezioniDrawer from './OffertaEccezioniDrawer.vue'
@@ -690,19 +691,48 @@ async function runPush({ praticaId, chiudiEsistente }) {
   }
 }
 
+// Conversione upstream (§7.4): genera un ordine DRAFT dall'offerta ACCETTATA
+// (BE espande listino+eccezioni via fn DB, preserva i prezzi negoziati). Chiamata
+// store diretta (azione gia'-unwrappata, memoria feedback_useapihandler_solo_axios)
+// con gestione errore manuale; lo store emette l'evento tab ordini.
+async function onGeneraOrdine() {
+  try {
+    const result = await store.generaOrdine(props.offertaId)
+    notify.success(
+      t('vendite.offerte.ordine_generato', { numero: result.numero }),
+    )
+  } catch (err) {
+    notify.error(extractApiError(err, t('vendite.offerte.errore_generico')))
+  }
+}
+
 // Barra azioni del drawer: composizione di
 //   1) Transizioni di stato data-driven dal BE
 //      (script.fn_available_actions_offerta, mapped 1:1 in azioni
 //      `kind:'state'` con label/icona/severity dal jsonb).
-//   2) Manage action `manage-eccezioni` per il sub-drawer eccezioni
+//   2) Azione statica `genera-ordine` su offerta ACCETTATA (conversione §7.4).
+//   3) Manage action `manage-eccezioni` per il sub-drawer eccezioni
 //      (master-detail inline). Allineato al pattern ContrattoDrawer:
 //      l'eccezione vive in un sub-drawer dedicato col proprio CRUD, non
 //      in una tab del drawer principale (UX UI 2026-05-26).
-//   3) Manage action `manage-note` per il sub-drawer note partizionate.
+//   4) Manage action `manage-note` per il sub-drawer note partizionate.
 const drawerActions = computed(() => {
   if (!isEdit.value || !detail.value) return []
   const eccCount = detail.value.eccezioni?.length ?? 0
+  const generaOrdineAction = (
+    !parentReadonly.value && stato.value === STATO_OFFERTA.ACCETTATA
+      ? [{
+          key: 'genera-ordine',
+          kind: 'state',
+          label: t('vendite.offerte.azione_genera_ordine'),
+          icon: NAV_ICONS.ORDINI,
+          severity: 'info',
+          command: onGeneraOrdine,
+        }]
+      : []
+  )
   return [
+    ...generaOrdineAction,
     // Read-only puro (permesso LETTURA / pannello split): niente azioni di
     // stato (emetti/accetta/rifiuta/push/revisione). Restano i pannelli
     // gestisci-eccezioni/note (sub-drawer in sola lettura).

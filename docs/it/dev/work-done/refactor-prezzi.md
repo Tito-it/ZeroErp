@@ -75,15 +75,15 @@ La guida dichiara l'offerta gemella in proposta del contratto:
 
 - `offerte_service` **non importava** `_pricing_gate_helpers` e non chiamava
   `resolve_or_check_override_prezzo`. Persisteva `prezzo_unitario` così com'è
-  ([offerte_service.py:895-930](../../../backend/apps/vendite/services/offerte_service.py#L895-L930)).
+  ([offerte_service.py:895-930](../../../../backend/apps/vendite/services/offerte_service.py#L895-L930)).
 - L'orchestratore dei 3 gate, `resolve_or_check_override_prezzo`
-  ([_pricing_gate_helpers.py:392-525](../../../backend/apps/vendite/services/_pricing_gate_helpers.py#L392-L525)),
+  ([_pricing_gate_helpers.py:392-525](../../../../backend/apps/vendite/services/_pricing_gate_helpers.py#L392-L525)),
   era cablato solo da `preventivi_service` e `contratti_service`.
 - `contratti_service.create_riga` normalizza i `componenti_overrides`
-  ([:1157-1159](../../../backend/apps/vendite/services/contratti_service.py#L1157-L1159))
+  ([:1157-1159](../../../../backend/apps/vendite/services/contratti_service.py#L1157-L1159))
   ma **non** valida l'L1, a differenza di preventivi
-  ([preventivi_service.py:617](../../../backend/apps/vendite/services/preventivi_service.py#L617)).
-- FE [OffertaEccezioniDrawer.vue](../../../frontend/src/vendite/offerte/components/OffertaEccezioniDrawer.vue)
+  ([preventivi_service.py:617](../../../../backend/apps/vendite/services/preventivi_service.py#L617)).
+- FE [OffertaEccezioniDrawer.vue](../../../../frontend/src/vendite/offerte/components/OffertaEccezioniDrawer.vue)
   salvava con `useApiHandler.execute()` standard: niente `l2Error`, niente CTA.
 
 ---
@@ -196,7 +196,7 @@ una revisione superata è decisione del dominio approvazioni (BE).
 ### 4.2 Workflow approvazioni — `approvazioni_prezzo_service.py`
 
 Il dispatcher è già sorgente-agnostico via `_SORGENTE_CONFIG`
-([:115-138](../../../backend/apps/vendite/services/approvazioni_prezzo_service.py#L115-L138)).
+([:115-138](../../../../backend/apps/vendite/services/approvazioni_prezzo_service.py#L115-L138)).
 Aggiungere una entry, niente modifiche al dispatcher ([[feedback_concentrico_no_yagni]]):
 
 - adapter `_update_riga_offerta(riga_id, fields)` → `OfferteRepository().update_eccezione(...)`;
@@ -211,7 +211,7 @@ Aggiungere una entry, niente modifiche al dispatcher ([[feedback_concentrico_no_
 ### 4.3 Resolver prezzo riga offerta — `offerte_service.py`
 
 Non esiste un `offerta_suggerisci_prezzo_riga`. Mirror di
-[contratti_suggerisci_prezzo_riga](../../../backend/apps/vendite/services/contratti_service.py#L2584-L2628):
+[contratti_suggerisci_prezzo_riga](../../../../backend/apps/vendite/services/contratti_service.py#L2584-L2628):
 
 - `_load_offerta_context_for_pricing(offerta_id, auth_user_id)` → `ba_id`,
   `utility_id`, `data_riferimento (validita_dal)`, `emittente_sr_id` (riuso
@@ -222,16 +222,16 @@ Non esiste un `offerta_suggerisci_prezzo_riga`. Mirror di
 ### 4.4 Wrapper gate + wiring create/update eccezione
 
 - `resolve_or_check_override_prezzo_riga_offerta(...)` — mirror di
-  [resolve_or_check_override_prezzo_riga_contratto](../../../backend/apps/vendite/services/contratti_service.py#L2643-L2681)
+  [resolve_or_check_override_prezzo_riga_contratto](../../../../backend/apps/vendite/services/contratti_service.py#L2643-L2681)
   (`resolver_fn=offerta_suggerisci_prezzo_riga`, `error_code_validazione=E_VENDITE_VALIDATION`,
   alias `data`←`validita_dal`, skip gate se `listino_id` None).
 - `_apply_pricing_gate_riga_offerta(...)` — mirror di
-  [_apply_pricing_gate_riga](../../../backend/apps/vendite/services/contratti_service.py#L1299-L1362):
+  [_apply_pricing_gate_riga](../../../../backend/apps/vendite/services/contratti_service.py#L1299-L1362):
   invoca il wrapper, normalizza `prezzo_unitario`, merge `meta`, e se
   `richiesta_approvazione_pending` orchestra la pratica + popola
   `stato_approvazione_prezzo=PENDING` + `pratica_approvazione_prezzo_id`.
 - `_orchestrate_l3_request_offerta(...)` — mirror di
-  [_orchestrate_l3_request_contratto](../../../backend/apps/vendite/services/contratti_service.py#L2690-L2721)
+  [_orchestrate_l3_request_contratto](../../../../backend/apps/vendite/services/contratti_service.py#L2690-L2721)
   (`crea_richiesta_approvazione_offerta` + `link_riga_a_pratica(sorgente=SORGENTE_OFFERTA)`).
 - Cablare il gate in `crea_eccezione` e `aggiorna_eccezione` di `offerte_service`,
   accettando `richiesta_approvazione` nel payload. Gate attivo solo su
@@ -246,7 +246,7 @@ forzi NULL o si aspetti il vecchio comportamento sulle righe contratto generate.
 
 > **Bug di modello** emerso dall'analisi DB ([[feedback_bug_logici_modello]]):
 > `preventivi_service` valida l'L1 sugli override dei componenti BoM
-> ([:617](../../../backend/apps/vendite/services/preventivi_service.py#L617)),
+> ([:617](../../../../backend/apps/vendite/services/preventivi_service.py#L617)),
 > `contratti_service.create_riga` **no**. La decisione 3 ("compositi → allineare a
 > contratti") va **rettificata**: per questa specifica validazione contratti è il
 > riferimento *sbagliato* (è bucato); il riferimento corretto è **preventivi**.
@@ -285,8 +285,8 @@ il gate base; tracciato come voce a sé.
 ### 5.1 Disegno building block #4 (banner L2)
 
 Banner L2 duplicato ~95% tra
-[PreventiviRigaForm.vue](../../../frontend/src/vendite/preventivi/components/PreventiviRigaForm.vue)
-e [ContrattoRigheDrawer.vue](../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue).
+[PreventiviRigaForm.vue](../../../../frontend/src/vendite/preventivi/components/PreventiviRigaForm.vue)
+e [ContrattoRigheDrawer.vue](../../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue).
 Con l'offerta come terzo consumer si **estrae** ([[feedback_regola_del_2_estrai_bb]]).
 Modello canonico (come #3): caller-side le differenze di dominio (handler, ref,
 watch); nel BB solo l'identico (markup + classificazione). Due pezzi in
@@ -348,8 +348,8 @@ const ctaLabel = computed(() => (props.loading ? props.labelLoading : props.labe
 </template>
 ```
 
-Sostituisce: PreventiviRigaForm [613-629](../../../frontend/src/vendite/preventivi/components/PreventiviRigaForm.vue#L613-L629)
-· ContrattoRigheDrawer [1375-1393](../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L1375-L1393).
+Sostituisce: PreventiviRigaForm [613-629](../../../../frontend/src/vendite/preventivi/components/PreventiviRigaForm.vue#L613-L629)
+· ContrattoRigheDrawer [1375-1393](../../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L1375-L1393).
 
 #### 5.1.b Helper `classifyL2Error.js`
 
@@ -371,8 +371,8 @@ export function classifyL2Error(err, { fallbackMessage, l2ErrorCodes }) {
 }
 ```
 
-Sostituisce: PreventiviRigaForm [480-491](../../../frontend/src/vendite/preventivi/components/PreventiviRigaForm.vue#L480-L491)
-· ContrattoRigheDrawer [845-854](../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L845-L854).
+Sostituisce: PreventiviRigaForm [480-491](../../../../frontend/src/vendite/preventivi/components/PreventiviRigaForm.vue#L480-L491)
+· ContrattoRigheDrawer [845-854](../../../../frontend/src/vendite/components/ContrattoRigheDrawer.vue#L845-L854).
 
 #### 5.1.c Cosa NON estrarre
 

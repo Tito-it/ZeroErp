@@ -141,8 +141,8 @@ Già fatto:
 
 - Pattern listini-versioni speculare: [`brief-db-listini-stato-chiusa-sync.md`](brief-db-listini-stato-chiusa-sync.md) (chiuso, già in produzione)
 - Standard FE pattern: [`docs/it/dev/frontend/frontend-standards.md`](../frontend/frontend-standards.md) sezione "Transizione a stato terminale con data"
-- Service BE: [`backend/apps/vendite/services/contratti_service.py:cambia_stato`](../../../backend/apps/vendite/services/contratti_service.py)
-- Dialog FE: [`frontend/src/vendite/components/ContrattoDrawer.vue`](../../../frontend/src/vendite/components/ContrattoDrawer.vue)
+- Service BE: [`backend/apps/vendite/services/contratti_service.py:cambia_stato`](../../../../backend/apps/vendite/services/contratti_service.py)
+- Dialog FE: [`frontend/src/vendite/components/ContrattoDrawer.vue`](../../../../frontend/src/vendite/components/ContrattoDrawer.vue)
 
 ---
 

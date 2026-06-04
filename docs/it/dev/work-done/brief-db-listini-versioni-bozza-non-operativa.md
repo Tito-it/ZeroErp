@@ -328,7 +328,7 @@ END IF;
 | `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA`  | 422  | "L'articolo è un componente di un bundle: l'esclusione si applica al bundle padre, non al singolo componente."        | Aggiungere anche EN |
 
 Allineare la voce in
-[`apps/core/services/error_policies.py`](../../../backend/apps/core/services/error_policies.py)
+[`apps/core/services/error_policies.py`](../../../../backend/apps/core/services/error_policies.py)
 nel mapping codice → HTTP → UI action (lato BE viene fatto post-DB).
 
 **Edge case da decidere**: cosa fare se un articolo è figlio in un
@@ -413,7 +413,7 @@ inserite, TRUE anche per le BOZZA in lavorazione, gestito dai trigger
 **non** discrimina lo stato del ciclo vita.
 
 L'index parziale `ex_listini_versioni_no_overlap`
-(fix [`20260409-01`](../../../db/changelog/migrations_v2/00_schema/vendite/20260409-01-fix-listini-versioni-overlap-stato-mctit.yaml))
+(fix [`20260409-01`](../../../../db/changelog/migrations_v2/00_schema/vendite/20260409-01-fix-listini-versioni-overlap-stato-mctit.yaml))
 vieta overlap **solo** quando `attivo IS TRUE AND stato = 'ATTIVA'`.
 Quindi:
 

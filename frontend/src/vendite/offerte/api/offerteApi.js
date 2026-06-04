@@ -84,6 +84,12 @@ export function creaRevisioneOfferta(id) {
   return api.post(`${BASE}/${id}/crea-revisione/`, {})
 }
 
+// Conversione upstream (§7.4): genera un ordine di vendita DRAFT da un'offerta
+// ACCETTATA (righe espanse listino+eccezioni + componenti + documento_origine).
+export function generaOrdineFromOfferta(id) {
+  return api.post(`${BASE}/${id}/genera-ordine/`, {})
+}
+
 // Catena revisioni che condividono il root. Lettura libera in ogni stato.
 export function listRevisioniOfferta(id) {
   return api.get(`${BASE}/${id}/revisioni/`)

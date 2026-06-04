@@ -23,7 +23,7 @@ Output `tipo_evento`: `'SOSPENSIONE' | 'RIATTIVAZIONE' | NULL`.
 
 ### 2.1 Repository — LATERAL JOIN nel detail
 
-[`apps/anagrafiche/db/clienti_repository.py::get_cliente()`](../../../backend/apps/anagrafiche/db/clienti_repository.py): aggiunto `LEFT JOIN LATERAL anagrafiche.fn_get_evento_stato_corrente_cliente(cl.id) AS evt(data_evento_stato, tipo_evento_stato) ON TRUE` nella query del dettaglio.
+[`apps/anagrafiche/db/clienti_repository.py::get_cliente()`](../../../../backend/apps/anagrafiche/db/clienti_repository.py): aggiunto `LEFT JOIN LATERAL anagrafiche.fn_get_evento_stato_corrente_cliente(cl.id) AS evt(data_evento_stato, tipo_evento_stato) ON TRUE` nella query del dettaglio.
 
 ```sql
 LEFT JOIN LATERAL anagrafiche.fn_get_evento_stato_corrente_cliente(cl.id)
@@ -40,7 +40,7 @@ Niente modifica a `list_clienti` (lista non mostra il computed, non serve).
 
 ### 2.2 Test
 
-[`apps/anagrafiche/tests/services/test_clienti_service.py`](../../../backend/apps/anagrafiche/tests/services/test_clienti_service.py): 2 nuovi test:
+[`apps/anagrafiche/tests/services/test_clienti_service.py`](../../../../backend/apps/anagrafiche/tests/services/test_clienti_service.py): 2 nuovi test:
 
 - `test_get_cliente_propagates_evento_stato_corrente` — mock con `data_evento_stato='2026-04-05'`, `tipo_evento_stato='RIATTIVAZIONE'` → verifica propagazione
 - `test_get_cliente_evento_stato_null_when_no_dates` — mock con NULL → verifica passaggio NULL al frontend
@@ -51,7 +51,7 @@ I test esistenti (33) non hanno richiesto modifiche.
 
 ## 3. Cosa ha fatto il FE
 
-[`frontend/src/anagrafiche/components/ClienteDrawer.vue`](../../../frontend/src/anagrafiche/components/ClienteDrawer.vue): rimosso il computed `dataSospRiattDetail` con la logica `sosp > riatt`. Sostituito con lookup diretto sui campi backend:
+[`frontend/src/anagrafiche/components/ClienteDrawer.vue`](../../../../frontend/src/anagrafiche/components/ClienteDrawer.vue): rimosso il computed `dataSospRiattDetail` con la logica `sosp > riatt`. Sostituito con lookup diretto sui campi backend:
 
 ```diff
 - // Calcola data sospensione/riattivazione da mostrare.
