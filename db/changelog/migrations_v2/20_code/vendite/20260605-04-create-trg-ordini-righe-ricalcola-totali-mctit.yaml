@@ -1,0 +1,167 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger AFTER STATEMENT su vendite.ordini_righe per ricalcolo totali ordine.
+#
+# Why: ricalcola i totali testata ordine dopo variazioni alle righe, una sola
+# volta per ogni ordine coinvolto anche in bulk DML. Usa transition tables,
+# come il pattern preventivi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260605-04-create-trg-ordini-righe-ricalcola-totali-mctit.yaml
+
+  - changeSet:
+      id: 20260605-04-create-trg-ordini-righe-ricalcola-totali
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea trigger function e trigger AFTER STATEMENT con transition tables
+        su vendite.ordini_righe. Ricalcola i totali una sola volta per ogni
+        ordine coinvolto; su UPDATE considera sia old_rows sia new_rows.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ordini_righe
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini_righe
+                columnName: ordine_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_ricalcola_totali_ordine';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Trigger function: vendite.trgfn_ordini_righe_ricalcola_totali
+              --
+              -- Scopo: invocare fn_ricalcola_totali_ordine una sola volta
+              --        per ogni ordine_id coinvolto dall'operazione DML.
+              --
+              -- Regole:
+              --   - FOR EACH STATEMENT con transition tables
+              --   - INSERT: usa new_rows
+              --   - DELETE: usa old_rows
+              --   - UPDATE: usa UNION old_rows/new_rows per coprire anche
+              --     eventuali spostamenti di righe tra ordini
+              --
+              -- Nota: PostgreSQL non ammette UPDATE OF <colonne> quando si
+              -- usano transition tables, quindi il trigger UPDATE e' generale.
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_righe_ricalcola_totali()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_ordine_id vendite.ordini_righe.ordine_id%TYPE;
+                  v_sql       text;
+              BEGIN
+                  IF TG_OP = 'INSERT' THEN
+                      v_sql := 'SELECT DISTINCT ordine_id FROM new_rows WHERE ordine_id IS NOT NULL';
+                  ELSIF TG_OP = 'DELETE' THEN
+                      v_sql := 'SELECT DISTINCT ordine_id FROM old_rows WHERE ordine_id IS NOT NULL';
+                  ELSE
+                      v_sql := 'SELECT DISTINCT ordine_id FROM new_rows WHERE ordine_id IS NOT NULL '
+                            || 'UNION '
+                            || 'SELECT DISTINCT ordine_id FROM old_rows WHERE ordine_id IS NOT NULL';
+                  END IF;
+
+                  FOR v_ordine_id IN EXECUTE v_sql
+                  LOOP
+                      PERFORM vendite.fn_ricalcola_totali_ordine(v_ordine_id);
+                  END LOOP;
+
+                  RETURN NULL;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_righe_ricalcola_totali() IS
+                'Trigger function STATEMENT-level: ricalcola i totali testata '
+                'per ogni ordine coinvolto da INSERT/UPDATE/DELETE su '
+                'vendite.ordini_righe. Usa transition tables PG 18.';
+
+              -- Cleanup eventuale vecchio trigger cumulativo.
+              DROP TRIGGER IF EXISTS trg_ordini_righe_z90_ricalcola_totali_ins_upd_dlt
+                ON vendite.ordini_righe;
+
+              -- ==========================================================
+              -- Trigger INSERT: AFTER STATEMENT con REFERENCING NEW TABLE
+              -- ==========================================================
+              DROP TRIGGER IF EXISTS trg_ordini_righe_z90_ricalcola_totali_ins
+                ON vendite.ordini_righe;
+
+              CREATE TRIGGER trg_ordini_righe_z90_ricalcola_totali_ins
+                AFTER INSERT ON vendite.ordini_righe
+                REFERENCING NEW TABLE AS new_rows
+                FOR EACH STATEMENT
+                EXECUTE FUNCTION vendite.trgfn_ordini_righe_ricalcola_totali();
+
+              COMMENT ON TRIGGER trg_ordini_righe_z90_ricalcola_totali_ins
+                ON vendite.ordini_righe
+                IS 'Ricalcola totali testata ordine dopo INSERT righe (statement-level, transition table).';
+
+              -- ==========================================================
+              -- Trigger UPDATE: AFTER STATEMENT con REFERENCING OLD + NEW
+              -- ==========================================================
+              DROP TRIGGER IF EXISTS trg_ordini_righe_z90_ricalcola_totali_upd
+                ON vendite.ordini_righe;
+
+              CREATE TRIGGER trg_ordini_righe_z90_ricalcola_totali_upd
+                AFTER UPDATE ON vendite.ordini_righe
+                REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows
+                FOR EACH STATEMENT
+                EXECUTE FUNCTION vendite.trgfn_ordini_righe_ricalcola_totali();
+
+              COMMENT ON TRIGGER trg_ordini_righe_z90_ricalcola_totali_upd
+                ON vendite.ordini_righe
+                IS 'Ricalcola totali testata ordine dopo UPDATE righe (statement-level, transition tables old/new).';
+
+              -- ==========================================================
+              -- Trigger DELETE: AFTER STATEMENT con REFERENCING OLD TABLE
+              -- ==========================================================
+              DROP TRIGGER IF EXISTS trg_ordini_righe_z90_ricalcola_totali_dlt
+                ON vendite.ordini_righe;
+
+              CREATE TRIGGER trg_ordini_righe_z90_ricalcola_totali_dlt
+                AFTER DELETE ON vendite.ordini_righe
+                REFERENCING OLD TABLE AS old_rows
+                FOR EACH STATEMENT
+                EXECUTE FUNCTION vendite.trgfn_ordini_righe_ricalcola_totali();
+
+              COMMENT ON TRIGGER trg_ordini_righe_z90_ricalcola_totali_dlt
+                ON vendite.ordini_righe
+                IS 'Ricalcola totali testata ordine dopo DELETE righe (statement-level, transition table).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_z90_ricalcola_totali_dlt
+                ON vendite.ordini_righe;
+              DROP TRIGGER IF EXISTS trg_ordini_righe_z90_ricalcola_totali_upd
+                ON vendite.ordini_righe;
+              DROP TRIGGER IF EXISTS trg_ordini_righe_z90_ricalcola_totali_ins
+                ON vendite.ordini_righe;
+              DROP TRIGGER IF EXISTS trg_ordini_righe_z90_ricalcola_totali_ins_upd_dlt
+                ON vendite.ordini_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ordini_righe_ricalcola_totali();

@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Vista vendite.vw_ordini_righe_iva_base.
+#
+# Why: sorgente normalizzata per calcolo riepilogo IVA ordini vendita.
+# Replica il principio preventivi: imponibile riga a precisione piena,
+# aliquota effettiva via config.fn_get_aliquota_iva, nessun calcolo IVA
+# arrotondato per riga. I componenti BoM non sono sommati direttamente:
+# alimentano il prezzo della riga padre tramite trigger dedicati.
+#
+# La vista e' pensata come base per:
+#   - vendite.vw_ordini_riepilogo_iva_dettaglio
+#   - vendite.fn_ricalcola_totali_ordine
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260605-01-create-vw-ordini-righe-iva-base-mctit.yaml
+
+  - changeSet:
+      id: 20260605-01-create-vw-ordini-righe-iva-base
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea vendite.vw_ordini_righe_iva_base (security_invoker=on) come
+        sorgente normalizzata per riepilogo IVA e totali ordine. Solo righe
+        ordine attive, quantita > 0, imponibili full precision, aliquota
+        effettiva da config.fn_get_aliquota_iva. Componenti BoM esclusi per
+        evitare doppio conteggio.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ordini
+          - tableExists:
+              schemaName: vendite
+              tableName: ordini_righe
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: emittenti_fiscali
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: soggetti_ruoli
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: soggetti
+          - tableExists:
+              schemaName: config
+              tableName: iva
+          - columnExists:
+              schemaName: vendite
+              tableName: ordini
+              columnName: emittente_fiscale_id
+          - columnExists:
+              schemaName: vendite
+              tableName: ordini_righe
+              columnName: iva_id
+          - columnExists:
+              schemaName: vendite
+              tableName: ordini_righe
+              columnName: sconto_perc
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'config'
+                   AND p.proname = 'fn_get_aliquota_iva';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_ordini_righe_iva_base;
+
+              CREATE VIEW vendite.vw_ordini_righe_iva_base
+              WITH (security_invoker = on) AS
+              SELECT
+                  r.ordine_id,
+                  r.id                                                AS riga_id,
+                  r.riga_nr,
+                  o.emittente_fiscale_id,
+                  s.stato_id                                          AS stato_emittente_id,
+                  r.iva_id,
+                  CASE
+                    WHEN r.iva_id IS NOT NULL
+                    THEN config.fn_get_aliquota_iva(r.iva_id, s.stato_id)
+                    ELSE NULL::numeric
+                  END                                                 AS aliquota_effettiva,
+                  r.quantita,
+                  r.prezzo_unitario,
+                  r.sconto_perc,
+                  (r.quantita * r.prezzo_unitario)                    AS imponibile_lordo_full,
+                  (
+                    r.quantita * r.prezzo_unitario
+                    * COALESCE(r.sconto_perc, 0) / 100
+                  )                                                   AS sconto_riga_full,
+                  (
+                    r.quantita * r.prezzo_unitario
+                    * (1 - COALESCE(r.sconto_perc, 0) / 100)
+                  )                                                   AS imponibile_riga_full,
+                  r.attivo,
+                  r.data_insert,
+                  r.data_update
+              FROM vendite.ordini_righe r
+              JOIN vendite.ordini o
+                ON o.id = r.ordine_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.id = o.emittente_fiscale_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr
+                ON sr.id = ef.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = sr.soggetto_id
+              WHERE r.attivo IS TRUE
+                AND r.quantita > 0;
+
+              COMMENT ON VIEW vendite.vw_ordini_righe_iva_base IS
+                'Vista base righe IVA ordini vendita. Espone righe ordine attive '
+                'con quantita > 0, imponibile lordo/sconto/imponibile netto a '
+                'precisione piena e aliquota effettiva via config.fn_get_aliquota_iva '
+                '(override stato emittente). Non somma direttamente i componenti BoM: '
+                'il prezzo dei componenti confluisce nella riga padre tramite trigger, '
+                'evitando doppio conteggio nel riepilogo IVA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP VIEW IF EXISTS vendite.vw_ordini_righe_iva_base;
