@@ -4,13 +4,16 @@
 > **Ambito:** **solo backend** del dominio `core` (`backend/apps/core/`) **+ caccia
 > ai BB mancanti** che gli altri domini reinventano e che dovrebbero vivere in core.
 > **Profondità:** media
-> **Stato:** 🟡 **APERTO — report / mappa di lavoro.** Nessuna estrazione è stata
-> fatta. Il documento serve a decidere *se* e *cosa* estrarre/promuovere, un pezzo
-> alla volta, secondo la "regola del 2".
+> **Stato:** ✅ **COMPLETATO (2026-06-04).** Tutti i candidati azionabili sono stati
+> estratti/promossi: X1 (bug), A1–A6, A2/B1/B2/D1 (famiglia query-param), D2/D3, B3.
+> Restano fuori solo le voci **deliberatamente non estratte**, con motivo: 🔴 falsi
+> positivi (`dynamic_update`/JSONB in `email_repository`) e 🟡 **B4**
+> (`INSERT…RETURNING`, parcheggiato wait-and-accumulate). Committato e spostato in
+> `work-done`. Le singole voci sotto riportano lo stato ✅ FATTO con i dettagli.
 
 Terzo capitolo dopo
-[regola-del-2-vendite.md](../work-done/regola-del-2-vendite.md) e
-[regola-del-2-anagrafiche.md](regola-del-2-anagrafiche.md). Qui il dominio è
+[regola-del-2-vendite.md](regola-del-2-vendite.md) e
+[regola-del-2-anagrafiche.md](../work-in-progress/regola-del-2-anagrafiche.md). Qui il dominio è
 particolare: **core è la casa dei building block**, quindi la regola del 2 ha
 **due facce**, ed entrambe sono coperte:
 
@@ -379,7 +382,7 @@ unificata**.
 
 **Proposta:** promuovere `qp_bool_optional_strict(raw, name) -> bool | None` al core
 per simmetria, far delegare `views_listini`. Priorità bassa (1 sito reale), ma
-chiude la famiglia. **Già descritto in [regola-del-2-anagrafiche.md](regola-del-2-anagrafiche.md#L462)
+chiude la famiglia. **Già descritto in [regola-del-2-anagrafiche.md](../work-in-progress/regola-del-2-anagrafiche.md#L462)
 come promemoria** — qui ratificato nel contesto core.
 
 ### D2. 3 view di `views_lookup` ignorano il BB `parse_list_params` — ✅ FATTO (2026-06-04)
