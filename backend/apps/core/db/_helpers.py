@@ -26,6 +26,19 @@ def rows_to_list(cursor) -> list[dict[str, Any]]:
     return [dict(zip(cols, row)) for row in cursor.fetchall()]
 
 
+def fetchone_scalar(cursor) -> Any:
+    """Ritorna il primo valore della riga corrente (fetchone), riga garantita.
+
+    Pattern per query `INSERT/UPDATE ... RETURNING <col>` e SELECT scalari dove
+    il contesto garantisce esattamente una riga. L'`assert` e' un invariante (e
+    type-narrowing per il checker): se la query non produce righe e' un bug di
+    programmazione, non un input utente da validare.
+    """
+    row = cursor.fetchone()
+    assert row is not None
+    return row[0]
+
+
 def call_jsonb_fn(fn_name: str, *args: Any) -> dict[str, Any]:
     """Chiama una funzione PostgreSQL che ritorna jsonb e la mappa a dict.
 

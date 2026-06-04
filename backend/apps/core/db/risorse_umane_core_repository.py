@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from django.db import connection
 
+from apps.core.db._helpers import fetchone_scalar
+
 
 class RisorseUmaneCoreRepository:
     """Building block: operazioni atomiche su risorse umane."""
@@ -55,6 +57,4 @@ class RisorseUmaneCoreRepository:
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+            return fetchone_scalar(cursor)

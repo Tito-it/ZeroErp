@@ -28,6 +28,7 @@ from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
     qp_bool,
+    qp_int_optional,
     qp_str,
 )
 from apps.core.api.success_responses import success_response
@@ -38,16 +39,6 @@ from apps.vendite.services.offerte_service import OfferteService
 # Codice lista configurabile (catalogo ui.lista_definizione id=6). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
 _LISTA_CODICE_OFFERTE = "vendite.offerte"
-
-
-# Scopo: Converte un query param intero opzionale (None se assente o vuoto).
-def _qp_int_optional(raw: str | None, name: str) -> int | None:
-    if raw is None or raw.strip() == "":
-        return None
-    try:
-        return int(raw.strip())
-    except ValueError as exc:
-        raise ValueError(f"{name}_invalid") from exc
 
 
 # =================================================================
@@ -260,10 +251,10 @@ class ApiOfferteList(DomainAPIView):
         svc = OfferteService()
         results, total = svc.list_offerte(
             search=p["search"],
-            billing_account_id=_qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
+            billing_account_id=qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
             stato_codice_interno=qp_str(qp.get("stato_codice_interno")),
-            utility_id=_qp_int_optional(qp.get("utility_id"), "utility_id"),
-            listino_id=_qp_int_optional(qp.get("listino_id"), "listino_id"),
+            utility_id=qp_int_optional(qp.get("utility_id"), "utility_id"),
+            listino_id=qp_int_optional(qp.get("listino_id"), "listino_id"),
             validita_dal_min=qp_str(qp.get("validita_dal_min")),
             validita_dal_max=qp_str(qp.get("validita_dal_max")),
             solo_attiva=qp_bool(qp.get("solo_attiva"), default=True),
@@ -333,10 +324,10 @@ class ApiOfferteExportView(DomainAPIView):
         fmt = parse_export_format(request)
         p = parse_list_params(qp, default_order="data_insert")
 
-        billing_account_id = _qp_int_optional(qp.get("billing_account_id"), "billing_account_id")
+        billing_account_id = qp_int_optional(qp.get("billing_account_id"), "billing_account_id")
         stato_codice_interno = qp_str(qp.get("stato_codice_interno"))
-        utility_id = _qp_int_optional(qp.get("utility_id"), "utility_id")
-        listino_id = _qp_int_optional(qp.get("listino_id"), "listino_id")
+        utility_id = qp_int_optional(qp.get("utility_id"), "utility_id")
+        listino_id = qp_int_optional(qp.get("listino_id"), "listino_id")
         validita_dal_min = qp_str(qp.get("validita_dal_min"))
         validita_dal_max = qp_str(qp.get("validita_dal_max"))
         solo_attiva = qp_bool(qp.get("solo_attiva"), default=True)

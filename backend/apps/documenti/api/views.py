@@ -23,8 +23,8 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
-    qp_bool,
-    qp_int_strict,
+    qp_bool_optional,
+    qp_int_optional,
 )
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
@@ -39,22 +39,6 @@ from apps.documenti.services.template_service import TemplateService
 from apps.documenti.services.template_versioni_admin_service import (
     TemplateVersioniAdminService,
 )
-
-
-# Scopo: Estrae un bool opzionale dalla query string preservando None.
-def _optional_qp_bool(request: Request, key: str) -> bool | None:
-    raw = request.query_params.get(key)
-    if raw is None:
-        return None
-    return qp_bool(raw, True)
-
-
-# Scopo: Estrae un int opzionale dalla query string con validazione rigorosa.
-def _optional_qp_int_strict(request: Request, key: str) -> int | None:
-    raw = request.query_params.get(key)
-    if raw is None:
-        return None
-    return qp_int_strict(raw, key, 0)
 
 
 class ApiTemplateList(DomainAPIView):
@@ -113,10 +97,10 @@ class ApiTemplateList(DomainAPIView):
 
         result = TemplateService().list_templates(
             request.user,
-            attivo=_optional_qp_bool(request, "attivo"),
-            tipo_documento_output_id=_optional_qp_int_strict(request, "tipo_documento_output_id"),
-            sorgente_tipo_id=_optional_qp_int_strict(request, "sorgente_tipo_id"),
-            emittente_fiscale_id=_optional_qp_int_strict(request, "emittente_fiscale_id"),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
+            tipo_documento_output_id=qp_int_optional(request.query_params.get("tipo_documento_output_id"), "tipo_documento_output_id"),
+            sorgente_tipo_id=qp_int_optional(request.query_params.get("sorgente_tipo_id"), "sorgente_tipo_id"),
+            emittente_fiscale_id=qp_int_optional(request.query_params.get("emittente_fiscale_id"), "emittente_fiscale_id"),
             search=params["search"],
             order_by=params["order_by"],
             order_dir=params["order_dir"],
@@ -251,7 +235,7 @@ class ApiTemplateVersioniList(DomainAPIView):
         result = TemplateService().list_versioni(
             request.user,
             int(template_id),
-            attivo=_optional_qp_bool(request, "attivo"),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             stato=stato.strip().upper() if stato else None,
         )
         return success_response(result)
@@ -515,9 +499,9 @@ class ApiAssetList(DomainAPIView):
 
         result = TemplateService().list_asset(
             request.user,
-            attivo=_optional_qp_bool(request, "attivo"),
-            asset_tipo_id=_optional_qp_int_strict(request, "asset_tipo_id"),
-            emittente_fiscale_id=_optional_qp_int_strict(request, "emittente_fiscale_id"),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
+            asset_tipo_id=qp_int_optional(request.query_params.get("asset_tipo_id"), "asset_tipo_id"),
+            emittente_fiscale_id=qp_int_optional(request.query_params.get("emittente_fiscale_id"), "emittente_fiscale_id"),
             search=params["search"],
             order_by=params["order_by"],
             order_dir=params["order_dir"],

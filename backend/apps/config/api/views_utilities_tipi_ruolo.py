@@ -24,19 +24,9 @@ from apps.core.api.payload_validators import (
     parse_list_params,
     qp_bool_optional,
     qp_int,
-    qp_int_strict,
+    qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
-
-
-# Scopo: Estrae un intero opzionale dai query params con validazione strict.
-#        Se il valore non e' un intero valido, solleva ValueError -> 400 con
-#        messaggio parlante (no fallback silenzioso).
-def _optional_qp_int_strict(request: Request, key: str) -> int | None:
-    raw = request.query_params.get(key)
-    if raw is None or raw == "":
-        return None
-    return qp_int_strict(raw, key, 0)
 
 
 # =================================================================
@@ -72,9 +62,9 @@ class UtilitiesTipiRuoloView(AdminAPIView):
         svc = UtilitiesTipiRuoloService()
         results, total = svc.list_matrice(
             search=p["search"],
-            attivo=qp_bool_optional(request.query_params.get("attivo")),
-            utility_id=_optional_qp_int_strict(request, "utility_id"),
-            tipo_ruolo_id=_optional_qp_int_strict(request, "tipo_ruolo_id"),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
+            utility_id=qp_int_optional(request.query_params.get("utility_id"), "utility_id"),
+            tipo_ruolo_id=qp_int_optional(request.query_params.get("tipo_ruolo_id"), "tipo_ruolo_id"),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],

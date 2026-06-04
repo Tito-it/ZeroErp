@@ -12,29 +12,15 @@ from apps.core.api.payload_validators import paginated_envelope
 from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.db.maintenance_repository import MaintenanceRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_pagination
 
 _STATUS_VALIDI: frozenset[str] = frozenset({"SUCCESS", "FAILED", "WARNING"})
 
 
-def _validate_pagination(page: int, page_size: int, fn_name: str) -> None:
-    # Scopo: Valida parametri paginazione comuni a tutte le funzioni del service.
-    ErrorManager.require(
-        page >= 1,
-        code="E_CORE_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail="page deve essere >= 1",
-        context={"page": page},
-        function_name=fn_name,
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        1 <= page_size <= 200,
-        code="E_CORE_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail="page_size deve essere compreso tra 1 e 200",
-        context={"page_size": page_size},
-        function_name=fn_name,
-        log_to_db=True,
+def _validate_pagination(page: int, page_size: int, fn_name: str) -> int:
+    # Scopo: Valida la paginazione page-based e ritorna l'offset. Delega al BB core.
+    return validate_pagination(
+        page, page_size, error_code="E_CORE_VALIDATION", function_name=fn_name,
     )
 
 
@@ -56,7 +42,7 @@ def fn_list_audit_logs(
     page_size: int = 50,
 ) -> dict:
     fn = "core.tracciamento_service.fn_list_audit_logs"
-    _validate_pagination(page, page_size, fn)
+    offset = _validate_pagination(page, page_size, fn)
 
     if status is not None:
         ErrorManager.require(
@@ -69,7 +55,6 @@ def fn_list_audit_logs(
             log_to_db=True,
         )
 
-    offset = (page - 1) * page_size
     repo = DbopsRepository()
     results, total_count = repo.list_audit_logs(
         status=status,
@@ -96,8 +81,7 @@ def fn_list_domini_task(
     page_size: int = 50,
 ) -> dict:
     fn = "core.tracciamento_service.fn_list_domini_task"
-    _validate_pagination(page, page_size, fn)
-    offset = (page - 1) * page_size
+    offset = _validate_pagination(page, page_size, fn)
     repo = DbopsRepository()
     results, total_count = repo.list_domini_task(
         attivo_only=attivo_only, search=search, limit=page_size, offset=offset,
@@ -115,8 +99,7 @@ def fn_list_task_registry(
     page_size: int = 100,
 ) -> dict:
     fn = "core.tracciamento_service.fn_list_task_registry"
-    _validate_pagination(page, page_size, fn)
-    offset = (page - 1) * page_size
+    offset = _validate_pagination(page, page_size, fn)
     repo = DbopsRepository()
     results, total_count = repo.list_task_registry(
         dominio_codice=dominio_codice, attivo_only=attivo_only,
@@ -135,8 +118,7 @@ def fn_list_task_implementations(
     page_size: int = 100,
 ) -> dict:
     fn = "core.tracciamento_service.fn_list_task_implementations"
-    _validate_pagination(page, page_size, fn)
-    offset = (page - 1) * page_size
+    offset = _validate_pagination(page, page_size, fn)
     repo = DbopsRepository()
     results, total_count = repo.list_task_implementations(
         task_code=task_code, dominio_codice=dominio_codice,
@@ -161,8 +143,7 @@ def fn_list_job_runs(
     page_size: int = 50,
 ) -> dict:
     fn = "core.tracciamento_service.fn_list_job_runs"
-    _validate_pagination(page, page_size, fn)
-    offset = (page - 1) * page_size
+    offset = _validate_pagination(page, page_size, fn)
     repo = MaintenanceRepository()
     results, total_count = repo.list_job_runs(
         jobname=jobname, ok=ok, date_from=date_from, date_to=date_to,
@@ -178,8 +159,7 @@ def fn_list_job_summary(
     page_size: int = 50,
 ) -> dict:
     fn = "core.tracciamento_service.fn_list_job_summary"
-    _validate_pagination(page, page_size, fn)
-    offset = (page - 1) * page_size
+    offset = _validate_pagination(page, page_size, fn)
     repo = MaintenanceRepository()
     results, total_count = repo.list_job_summary(
         limit=page_size, offset=offset,

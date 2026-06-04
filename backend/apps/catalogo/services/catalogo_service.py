@@ -32,10 +32,15 @@ from apps.catalogo.db.catalogo_uom_repository import (
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.parameter_service import ParameterService
+from apps.core.services.payload_helpers import (
+    MISSING as _MISSING,
+    MissingType as _MissingType,
+    PayloadValidator,
+)
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset(ARTICOLI_ORDER_COLUMNS.keys())
-_ORDER_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
 _ARTICOLO_FLAG_FIELDS: tuple[str, ...] = (
     "is_composito",
     "is_solo_componente",
@@ -130,34 +135,7 @@ def _apply_valido_dal_default(valido_dal, *, for_create: bool):
     return valido_dal
 
 
-class _MissingType:
-    pass
-
-
-_MISSING = _MissingType()
-
-
-# Scopo: Valida paginazione e restituisce offset calcolato in modo uniforme.
-def _validate_pagination(page: int, page_size: int, function_name: str) -> int:
-    ErrorManager.require(
-        page >= 1,
-        code="E_CATALOGO_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail="page deve essere >= 1",
-        context={"page": page},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        1 <= page_size <= 200,
-        code="E_CATALOGO_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail="page_size deve essere compreso tra 1 e 200",
-        context={"page_size": page_size},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return (page - 1) * page_size
+_V = PayloadValidator(validation_code="E_CATALOGO_VALIDATION", log_to_db=True)
 
 
 # Scopo: Valida il limite dei lookup con messaggio uniforme e massimo configurabile.
@@ -175,28 +153,13 @@ def _validate_lookup_limit(limit: int, *, max_limit: int, function_name: str) ->
 
 # Scopo: Normalizza e valida ordinamento lista articoli contro whitelist locale.
 def _validate_order(order_by: str, order_dir: str, function_name: str) -> tuple[str, str]:
-    ErrorManager.require(
-        order_by in _ORDER_BY_VALIDI,
-        code="E_CATALOGO_VALIDATION",
-        message="Parametri ordinamento non validi.",
-        detail=(
-            "order_by deve essere uno tra: "
-            f"{', '.join(sorted(_ORDER_BY_VALIDI))}"
-        ),
-        context={"order_by": order_by},
+    return validate_order_params(
+        order_by,
+        order_dir,
+        allowed_columns=_ORDER_BY_VALIDI,
+        error_code="E_CATALOGO_VALIDATION",
         function_name=function_name,
-        log_to_db=True,
     )
-    ErrorManager.require(
-        order_dir in _ORDER_DIR_VALIDI,
-        code="E_CATALOGO_VALIDATION",
-        message="Parametri ordinamento non validi.",
-        detail="order_dir deve essere 'asc' o 'desc'",
-        context={"order_dir": order_dir},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return order_by, order_dir
 
 
 # Scopo: Restituisce envelope uniforme count/results per lookup e liste figlie.
@@ -258,42 +221,14 @@ def _extract_string(
     nullable: bool,
     message: str = "Payload articolo non valido.",
 ) -> str | None | _MissingType:
-    if key not in payload:
-        return _MISSING
-    value = payload.get(key)
-    if value is None:
-        ErrorManager.require(
-            nullable,
-            code="E_CATALOGO_VALIDATION",
-            message=message,
-            detail=f"{key} non puo' essere null.",
-            context={"field": key},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        return None
-    ErrorManager.require(
-        isinstance(value, str),
-        code="E_CATALOGO_VALIDATION",
+    return _V.extract_optional_string(
+        payload,
+        key,
+        nullable=nullable,
         message=message,
-        detail=f"{key} deve essere una stringa.",
-        context={"field": key},
         function_name=function_name,
         log_to_db=True,
     )
-    cleaned = value.strip()
-    if nullable and cleaned == "":
-        return None
-    ErrorManager.require(
-        bool(cleaned),
-        code="E_CATALOGO_VALIDATION",
-        message=message,
-        detail=f"{key} non puo' essere vuoto.",
-        context={"field": key},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return cleaned
 
 
 # Scopo: Estrae FK/interi opzionali consentendo NULL esplicito o stringa vuota.
@@ -1854,25 +1789,13 @@ def _validate_uom_order(
     allowed: frozenset[str],
     function_name: str,
 ) -> tuple[str, str]:
-    ErrorManager.require(
-        order_by in allowed,
-        code="E_CATALOGO_VALIDATION",
-        message="Parametri ordinamento non validi.",
-        detail=f"order_by deve essere uno tra: {', '.join(sorted(allowed))}",
-        context={"order_by": order_by},
+    return validate_order_params(
+        order_by,
+        order_dir,
+        allowed_columns=allowed,
+        error_code="E_CATALOGO_VALIDATION",
         function_name=function_name,
-        log_to_db=True,
     )
-    ErrorManager.require(
-        order_dir in _ORDER_DIR_VALIDI,
-        code="E_CATALOGO_VALIDATION",
-        message="Parametri ordinamento non validi.",
-        detail="order_dir deve essere 'asc' o 'desc'",
-        context={"order_dir": order_dir},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return order_by, order_dir
 
 
 # Scopo: Traduce errori DB attesi nella scrittura UoM in ServiceError leggibili.

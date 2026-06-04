@@ -57,7 +57,7 @@ class FornitoriView(DomainAPIView):
         p = parse_list_params(request.query_params, default_order="ragione_sociale_completa")
         stato_id = optional_int({"v": request.query_params.get("stato_fornitore_id")}, "v")
         # Filtro opzionale: None quando il parametro manca (nessun filtro), non False.
-        attivo = qp_bool_optional(request.query_params.get("attivo"))
+        attivo = qp_bool_optional(request.query_params.get("attivo"), "attivo")
         svc = FornitoriService()
         results, total = svc.list_fornitori(
             search=p["search"],

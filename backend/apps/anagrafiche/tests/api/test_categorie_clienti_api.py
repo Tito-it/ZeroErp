@@ -232,17 +232,26 @@ class TestCategorieClientiBoolFilterParsing(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)
     @patch(_SVC)
-    def test_filter_attivo_vuoto_passa_come_false(self, mock_svc_cls, _perm, _auth):
-        # Contratto di apps.core.api.payload_validators.qp_bool_optional:
-        # - raw is None (chiave assente) -> None
-        # - raw = "" o qualsiasi stringa non in {"1","true","yes","y","on"} -> False
-        # Questo blinda il comportamento: ?attivo= NON e' equivalente a non
-        # passare il filtro. Per omettere il filtro, NON inviare la chiave.
+    def test_filter_attivo_vuoto_passa_come_none(self, mock_svc_cls, _perm, _auth):
+        # Contratto STRICT di apps.core.api.payload_validators.qp_bool_optional:
+        # - chiave assente o valore vuoto ("") -> None (filtro non applicato)
+        # - token riconosciuti (1/true/yes/on, 0/false/no/off) -> bool
+        # - valore non riconosciuto -> ValueError -> 400 (no coercion silenziosa)
         mock_svc_cls.return_value.list_categorie.return_value = ([], 0)
         resp = self.client.get(_BASE + "?attivo=")
         self.assertEqual(resp.status_code, 200)
         kwargs = mock_svc_cls.return_value.list_categorie.call_args.kwargs
-        self.assertIs(kwargs["attivo"], False)
+        self.assertIsNone(kwargs["attivo"])
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM, return_value=True)
+    @patch(_SVC)
+    def test_filter_attivo_garbage_rifiutato_400(self, mock_svc_cls, _perm, _auth):
+        # Strict: un valore non riconosciuto e' un errore client (400), non una
+        # coercion silenziosa (regola del 2 core-be: famiglia qp_* opzionale strict).
+        mock_svc_cls.return_value.list_categorie.return_value = ([], 0)
+        resp = self.client.get(_BASE + "?attivo=banana")
+        self.assertEqual(resp.status_code, 400)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)

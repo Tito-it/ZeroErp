@@ -14,7 +14,7 @@ from typing import Any
 
 from django.db import connection, transaction
 
-from apps.core.db._helpers import row_to_dict
+from apps.core.db._helpers import fetchone_scalar, row_to_dict
 
 
 class TokenRepository:
@@ -42,9 +42,7 @@ class TokenRepository:
                    RETURNING id""",
                 [token_hash, tipo, auth_user_id, scadenza_iso, json.dumps(meta or {})],
             )
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+            return fetchone_scalar(cursor)
 
     # Scopo: Cerca un token valido (non utilizzato, non scaduto) per hash e tipo.
     #        Ritorna il record o None.

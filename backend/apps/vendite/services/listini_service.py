@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -16,7 +15,13 @@ from uuid import UUID
 from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import PayloadValidator, map_integrity_error
+from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.payload_helpers import (
+    MISSING as _MISSING,
+    MissingType as _MissingType,
+    PayloadValidator,
+    map_integrity_error,
+)
 from apps.vendite.db.listini_repository import (
     LISTINI_ORDER_COLUMNS,
     LISTINO_CREATE_COLUMNS,
@@ -31,7 +36,6 @@ from apps.vendite.db.listini_repository import (
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset(LISTINI_ORDER_COLUMNS.keys())
 _RIGHE_ORDER_BY_VALIDI: frozenset[str] = frozenset(RIGHE_ORDER_COLUMNS.keys())
-_ORDER_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
 _STATI_VERSIONE_VALIDI: frozenset[str] = frozenset({"BOZZA", "ATTIVA", "CHIUSA"})
 _LISTINO_NULLABLE_FIELDS: frozenset[str] = frozenset({"meta"})
 _VERSIONE_NULLABLE_FIELDS: frozenset[str] = frozenset({"valido_al", "meta"})
@@ -64,113 +68,26 @@ _V = PayloadValidator(
 )
 
 
-# Scopo: Normalizza il campo meta da stringa JSON o dict a dict. Stringa
-#        JSON non valida o non-oggetto -> ServiceError E_VENDITE_VALIDATION
-#        (review: prima bubble-ava ValueError non mappato -> 500).
-def _parse_meta_json(meta_raw: Any) -> dict[str, Any]:
-    if not meta_raw:
-        return {}
-    if isinstance(meta_raw, dict):
-        return meta_raw
-    if isinstance(meta_raw, str):
-        try:
-            parsed = json.loads(meta_raw)
-        except (ValueError, TypeError) as exc:
-            ErrorManager.raise_error(
-                code="E_VENDITE_VALIDATION",
-                message="Il campo 'meta' contiene JSON non valido.",
-                context={"meta_raw": meta_raw},
-                log_to_db=True,
-                function_name="listini_service._parse_meta_json",
-                cause=exc,
-            )
-            raise AssertionError("unreachable") from exc  # pragma: no cover
-        if isinstance(parsed, dict):
-            return parsed
-    ErrorManager.raise_error(
-        code="E_VENDITE_VALIDATION",
-        message="Il campo 'meta' deve essere un oggetto JSON.",
-        context={"meta_type": type(meta_raw).__name__},
-        log_to_db=True,
-        function_name="listini_service._parse_meta_json",
-    )
-    raise AssertionError("unreachable")  # pragma: no cover
-
-
-class _MissingType:
-    pass
-
-
-_MISSING = _MissingType()
-
-
-# Scopo: Valida paginazione e restituisce offset calcolato con codice errore vendite uniforme.
-def _validate_pagination(page: int, page_size: int, function_name: str) -> int:
-    ErrorManager.require(
-        page >= 1,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail="page deve essere >= 1",
-        context={"page": page},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        1 <= page_size <= 200,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri paginazione non validi.",
-        detail="page_size deve essere compreso tra 1 e 200",
-        context={"page_size": page_size},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return (page - 1) * page_size
-
-
 # Scopo: Valida ordinamento lista listini contro whitelist locale.
 def _validate_order(order_by: str, order_dir: str, function_name: str) -> tuple[str, str]:
-    ErrorManager.require(
-        order_by in _ORDER_BY_VALIDI,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri ordinamento non validi.",
-        detail="order_by deve essere uno tra: " + ", ".join(sorted(_ORDER_BY_VALIDI)),
-        context={"order_by": order_by},
+    return validate_order_params(
+        order_by,
+        order_dir,
+        allowed_columns=_ORDER_BY_VALIDI,
+        error_code="E_VENDITE_VALIDATION",
         function_name=function_name,
-        log_to_db=True,
     )
-    ErrorManager.require(
-        order_dir in _ORDER_DIR_VALIDI,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri ordinamento non validi.",
-        detail="order_dir deve essere 'asc' o 'desc'",
-        context={"order_dir": order_dir},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return order_by, order_dir
 
 
 # Scopo: Valida ordinamento lista righe listino contro whitelist locale.
 def _validate_righe_order(order_by: str, order_dir: str, function_name: str) -> tuple[str, str]:
-    ErrorManager.require(
-        order_by in _RIGHE_ORDER_BY_VALIDI,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri ordinamento non validi.",
-        detail="order_by deve essere uno tra: " + ", ".join(sorted(_RIGHE_ORDER_BY_VALIDI)),
-        context={"order_by": order_by},
+    return validate_order_params(
+        order_by,
+        order_dir,
+        allowed_columns=_RIGHE_ORDER_BY_VALIDI,
+        error_code="E_VENDITE_VALIDATION",
         function_name=function_name,
-        log_to_db=True,
     )
-    ErrorManager.require(
-        order_dir in _ORDER_DIR_VALIDI,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri ordinamento non validi.",
-        detail="order_dir deve essere 'asc' o 'desc'",
-        context={"order_dir": order_dir},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return order_by, order_dir
 
 
 # Scopo: Costruisce envelope uniforme count/results per collezioni figlie non paginate.
@@ -223,42 +140,14 @@ def _extract_string(
     nullable: bool,
     message: str,
 ) -> str | None | _MissingType:
-    if key not in payload:
-        return _MISSING
-    value = payload.get(key)
-    if value is None:
-        ErrorManager.require(
-            nullable,
-            code="E_VENDITE_VALIDATION",
-            message=message,
-            detail=f"{key} non puo' essere null.",
-            context={"field": key},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        return None
-    ErrorManager.require(
-        isinstance(value, str),
-        code="E_VENDITE_VALIDATION",
+    return _V.extract_optional_string(
+        payload,
+        key,
+        nullable=nullable,
         message=message,
-        detail=f"{key} deve essere una stringa.",
-        context={"field": key},
         function_name=function_name,
         log_to_db=True,
     )
-    cleaned = value.strip()
-    if nullable and cleaned == "":
-        return None
-    ErrorManager.require(
-        bool(cleaned),
-        code="E_VENDITE_VALIDATION",
-        message=message,
-        detail=f"{key} non puo' essere vuoto.",
-        context={"field": key},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return cleaned
 
 
 # Scopo: Estrae intero opzionale supportando NULL esplicito o stringa vuota.
@@ -1891,7 +1780,9 @@ def fn_rettifica_controllata_riga(
         )
 
         # --- Audit in meta ---
-        meta_corrente = _parse_meta_json(riga.get("meta"))
+        meta_corrente = _V.optional_meta(
+            riga, "meta", function_name="listini_service.fn_rettifica_controllata_riga"
+        ) or {}
         rettifiche = list(meta_corrente.get("rettifiche_controllate", []))
         rettifiche.append({
             "data": datetime.now(timezone.utc).isoformat(),
@@ -2059,7 +1950,9 @@ def fn_applica_variazione_percentuale(
             dry_run=False,
         )
         # Audit sulla meta della versione
-        meta_versione = _parse_meta_json(versione.get("meta"))
+        meta_versione = _V.optional_meta(
+            versione, "meta", function_name="listini_service.fn_applica_variazione_percentuale"
+        ) or {}
         variazioni_pct = list(meta_versione.get("variazioni_percentuali", []))
         variazioni_pct.append({
             "data": datetime.now(timezone.utc).isoformat(),

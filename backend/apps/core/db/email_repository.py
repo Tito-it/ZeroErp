@@ -24,7 +24,7 @@ def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
         except (json.JSONDecodeError, TypeError):
             pass
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import fetchone_scalar, row_to_dict, rows_to_list
 from apps.core.services import crypto_service
 
 
@@ -152,9 +152,7 @@ class EmailRepository:
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+            return fetchone_scalar(cursor)
 
     # Colonne aggiornabili — whitelist per prevenire SQL injection da kwargs
     _ACCOUNT_UPDATE_COLS = frozenset({
@@ -342,9 +340,7 @@ class EmailRepository:
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+            return fetchone_scalar(cursor)
 
     _TEMPLATE_UPDATE_COLS = frozenset({
         "codice", "oggetto", "corpo_html", "corpo_testo", "lingua",
@@ -442,9 +438,7 @@ class EmailRepository:
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+            return fetchone_scalar(cursor)
 
     # Scopo: Aggiorna stato di un record log email (SENT, FAILED, RETRY).
     def update_log_stato(
@@ -599,9 +593,7 @@ class EmailRepository:
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+            return fetchone_scalar(cursor)
 
     # Scopo: Dettaglio bozza outbox per ID con allegati.
     def get_outbox(self, outbox_id: int) -> dict[str, Any] | None:
@@ -744,9 +736,7 @@ class EmailRepository:
                   dimensione_bytes, file_path, origine]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+            return fetchone_scalar(cursor)
 
     # Scopo: Lista allegati per una bozza outbox.
     def list_allegati_by_outbox(self, outbox_id: int) -> list[dict[str, Any]]:

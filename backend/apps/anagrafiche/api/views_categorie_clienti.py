@@ -61,8 +61,8 @@ class CategorieClientiView(AdminAPIView):
         svc = CategorieClientiService()
         results, total = svc.list_categorie(
             search=p["search"],
-            attivo=qp_bool_optional(request.query_params.get("attivo")),
-            partecipa_promo=qp_bool_optional(request.query_params.get("partecipa_promo")),
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
+            partecipa_promo=qp_bool_optional(request.query_params.get("partecipa_promo"), "partecipa_promo"),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],

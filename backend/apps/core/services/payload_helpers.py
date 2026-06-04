@@ -44,6 +44,19 @@ SMALLINT_UNSIGNED_MIN = 0
 INTEGER_MAX = 2_147_483_647
 
 
+# Sentinel per distinguere "chiave assente" (non aggiornare) da "valore None
+# esplicito" (reset) nei PATCH parziali. Oggetto unico modulo-level: i chiamanti
+# fanno `is MISSING`, quindi va condiviso (no istanze per-modulo divergenti).
+class MissingType:
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return "<MISSING>"
+
+
+MISSING = MissingType()
+
+
 class PayloadValidator:
     """Validator parametrizzato per `validation_code` di dominio.
 
@@ -627,6 +640,57 @@ class PayloadValidator:
             return None
         em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
         return self._coerce_date(payload[key], field=key, message=message, em=em)
+
+    # Scopo: Estrae una stringa opzionale distinguendo 3 stati (per i PATCH):
+    #          - chiave assente   -> MISSING (campo non aggiornato)
+    #          - valore None      -> None se nullable, altrimenti errore
+    #          - stringa          -> strip; vuota+nullable -> None;
+    #                                vuota+non nullable -> errore
+    def extract_optional_string(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        nullable: bool = False,
+        message: str | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> str | None | MissingType:
+        if key not in payload:
+            return MISSING
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        msg = message or f"Campo '{key}' non valido."
+        value = payload.get(key)
+        if value is None:
+            ErrorManager.require(
+                nullable,
+                code=self._code,
+                message=msg,
+                detail=f"{key} non puo' essere null.",
+                context={"field": key},
+                **em,
+            )
+            return None
+        ErrorManager.require(
+            isinstance(value, str),
+            code=self._code,
+            message=msg,
+            detail=f"{key} deve essere una stringa.",
+            context={"field": key},
+            **em,
+        )
+        cleaned = value.strip()
+        if nullable and cleaned == "":
+            return None
+        ErrorManager.require(
+            bool(cleaned),
+            code=self._code,
+            message=msg,
+            detail=f"{key} non puo' essere vuoto.",
+            context={"field": key},
+            **em,
+        )
+        return cleaned
 
     # =================================================================
     # Estrazione meta (JSONB)
