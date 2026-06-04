@@ -33,6 +33,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_stati_doc_offerte_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
 | trg_stati_doc_offerte_a10_offerte_commerciali_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali', 'stato_doc_offerta_id', 'id', 'attivo')` |
 | trg_stati_doc_offerte_a10_stati_doc_offerte_transizioni__3acc96 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_offerte_transizioni', 'stato_a_id', 'id', 'attivo')` |
 | trg_stati_doc_offerte_a10_stati_doc_offerte_transizioni__89db14 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_offerte_transizioni', 'stato_da_id', 'id', 'attivo')` |

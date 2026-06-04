@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-ORD-LOCK (2026-06-04): con billing_account_id reso immutabile su UPDATE
+# (automation_lock_columns -> script.trgfn_lock_columns, codice
+# E_ORD_CLIENTE_IMMUTABILE), il ramo UPDATE di trgfn_ordini_normalize che
+# ri-ereditava fatturazione_trigger sul cambio di billing_account_id diventa
+# IRRAGGIUNGIBILE: il trigger trg_ordini_a10_lock_columns_* (fase a10) scatta
+# prima di trg_ordini_normalize_ins_upd e solleva l'errore. Si rimuove il ramo
+# morto: l'eredita di fatturazione_trigger resta solo su INSERT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260604-01-update-trgfn-ordini-normalize-insert-only-mctit.yaml
+
+  - changeSet:
+      id: 20260604-01-update-trgfn-ordini-normalize-insert-only
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Restringe l'eredita di fatturazione_trigger da billing_account a INSERT.
+        Rimuove il ramo UPDATE su cambio billing_account_id, ora morto perche'
+        billing_account_id e' immutabile post-create (DB-ORD-LOCK).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_fatturazione_ordini anagrafiche.billing_account.fatturazione_ordini%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Normalizzazione campi ordine su INSERT.
+                --
+                -- Regole:
+                --   1. Imposta anno/data se numero presente e valori mancanti.
+                --   2. Eredita fatturazione_trigger da billing_account.fatturazione_ordini
+                --      SOLO su INSERT.
+                --
+                -- Nota (DB-ORD-LOCK 2026-06-04): billing_account_id e'
+                --   immutabile su UPDATE (automation_lock_columns ->
+                --   script.trgfn_lock_columns, codice E_ORD_CLIENTE_IMMUTABILE).
+                --   Non esiste piu' un "cambio BA su UPDATE" da propagare, quindi
+                --   il vecchio ramo UPDATE e' stato rimosso (era irraggiungibile:
+                --   il lock in fase a10 scatta prima di questo trigger).
+                -- =========================================================
+
+                IF TG_OP = 'INSERT' THEN
+                  ----------------------------------------------------------------
+                  -- 1. Imposta anno/data se numero e' presente e anno/data mancanti
+                  IF NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '' THEN
+                    IF NEW.anno IS NULL OR NEW.anno = 0 THEN
+                      NEW.anno := EXTRACT(YEAR FROM CURRENT_DATE)::smallint;
+                    END IF;
+                    IF NEW.data IS NULL THEN
+                      NEW.data := CURRENT_DATE;
+                    END IF;
+                  END IF;
+
+                  ----------------------------------------------------------------
+                  -- 2. Eredita fatturazione_trigger da billing_account (solo INSERT)
+                  IF NEW.billing_account_id IS NOT NULL THEN
+                    SELECT ba.fatturazione_ordini
+                      INTO v_fatturazione_ordini
+                      FROM anagrafiche.billing_account ba
+                     WHERE ba.id = NEW.billing_account_id;
+
+                    IF v_fatturazione_ordini IS NOT NULL THEN
+                      NEW.fatturazione_trigger := v_fatturazione_ordini;
+                    END IF;
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_normalize()
+                IS 'Normalize: imposta anno/data se numero presente ed eredita fatturazione_trigger da billing_account.fatturazione_ordini, entrambe SOLO su INSERT. Il cambio BA su UPDATE non e'' piu'' supportato (billing_account_id immutabile - DB-ORD-LOCK).';

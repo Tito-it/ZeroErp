@@ -234,7 +234,7 @@
 - [trgfn_ordini_gen_codice](funzioni/trgfn_ordini_gen_codice.md) — La trigger function `vendite.trgfn_ordini_gen_codice()` genera automaticamente `numero` ordine quando il campo non viene fornito.
 - [trgfn_ordini_guard_emittente_ba](funzioni/trgfn_ordini_guard_emittente_ba.md) — (rev 2026-06-01)
 - [trgfn_ordini_guard_transizione_approvazione](funzioni/trgfn_ordini_guard_transizione_approvazione.md)
-- [trgfn_ordini_normalize](funzioni/trgfn_ordini_normalize.md) — La trigger function `vendite.trgfn_ordini_normalize()` completa i campi temporali minimi dell’ordine quando il `numero` e` presente in insert.
+- [trgfn_ordini_normalize](funzioni/trgfn_ordini_normalize.md) — La trigger function `vendite.trgfn_ordini_normalize()` normalizza i campi minimi dell’ordine **in fase di creazione**: completa anno/data quando il `numero` è presente ed eredita il `fatturazione_trigger` dal billing account.
 - [trgfn_ordini_righe_componenti_guard_pending](funzioni/trgfn_ordini_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga ordine ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. Cambi strutturali durante la fase di approvazione renderebbero la decisione ambigua. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ordini_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_preventivi_default_emittente](funzioni/trgfn_preventivi_default_emittente.md)
 - [trgfn_preventivi_default_valuta](funzioni/trgfn_preventivi_default_valuta.md)
