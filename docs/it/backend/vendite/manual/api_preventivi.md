@@ -262,6 +262,32 @@ Nuovo endpoint 2026-05-28. Mirror di `GET /api/v1/vendite/offerte/<id>/revisioni
 
 ---
 
+### 6c. Genera ordine da preventivo `POST /api/v1/vendite/preventivi/{id}/genera-ordine/`
+
+Conversione upstream (§7.4 analisi-ordini-vendita): crea un **ordine di vendita
+DRAFT** dal preventivo, copiando testata + righe + componenti BoM e valorizzando
+`documento_origine = ('PREVENTIVO', preventivo_id)` sull'ordine.
+
+- View `ApiPreventivoGeneraOrdine` (area `vendite`) → delega a
+  `ordini_service.crea_ordine_da_preventivo(preventivo_id)` (stesso app vendite).
+- **Precondizione**: preventivo in stato **`ACCETTATO`**.
+- **Copia**: testata (BA, utility, valuta, termine pagamento, emittente);
+  righe 1:1 con **prezzi congelati** (`sconto_percentuale`→`sconto_perc`);
+  componenti compositi **ri-inizializzati ai prezzi correnti** (struttura copiata,
+  prezzi risolti all'ordine — caveat v1). Provenienza senza UNIQUE → **più ordini**
+  da uno stesso preventivo (riordini).
+- Output `200`: `{ "ordine_id": int, "numero": str, "righe_create": int,
+  "documento_origine": {"tipo": "PREVENTIVO", "id": int} }`.
+- Errori: `E_PREV_NOT_FOUND` (404) se inesistente; `E_ORD_ORIGINE_NON_CONVERTIBILE`
+  (409) se non `ACCETTATO`.
+- FE: azione «Genera ordine» su `PreventiviDrawer` (gated su `ACCETTATO`).
+
+> **Offerta → ordine**: non disponibile (l'offerta non ha righe materializzate,
+> solo eccezioni su listino). Prerequisito DB: brief
+> [db-brief-offerta-righe-espanse.md](../../../dev/work-done/db-brief-offerta-righe-espanse.md).
+
+---
+
 ### 7. Lista righe
 
 - Metodo: `GET`

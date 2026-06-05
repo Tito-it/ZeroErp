@@ -15,6 +15,7 @@ import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
+import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { listUtilitiesPerBillingAccount } from '../api/anagrafiche'
 import { lookupUtilitiesPerEmittente } from '../../core/apiCore'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
@@ -203,7 +204,7 @@ function clearSoggetto() {
 // Versione per invalidare risposte async stantie: se il drawer si chiude
 // (o si riapre) prima che fetchDetail/loadUtilities atterrino, la risposta
 // vecchia viene scartata invece di popolare il form attuale.
-let fgVersion = 0
+const fgFv = useFetchVersion()
 
 // Gate rendering: il contenuto del drawer appare solo quando i dati chiave
 // sono pronti. Evita il "flash" di sezioni vuote che si popolano a tempi
@@ -212,8 +213,8 @@ const ready = ref(false)
 
 // Carica dati
 watch(() => props.visible, async (val) => {
-  if (!val) { fgVersion++; ready.value = false; return }
-  const v = ++fgVersion
+  if (!val) { fgFv.invalidate(); ready.value = false; return }
+  const v = fgFv.tag()
   ready.value = false
 
   // Lazy load dei lookup: partono solo all'apertura effettiva del drawer,
@@ -226,7 +227,7 @@ watch(() => props.visible, async (val) => {
   }
   if (isEdit.value && props.clienteId) {
     const d = await store.fetchDetail(props.clienteId)
-    if (v !== fgVersion) return
+    if (!fgFv.isCurrent(v)) return
     detail.value = d
     // Refactor operatore-emittenti: in edit le utility vengono dal BA
     // (filtrate per emittente associato + parametri override). Attendiamo
@@ -235,7 +236,7 @@ watch(() => props.visible, async (val) => {
     // e non lo riconcilia quando le options arrivano.
     if (d.billing_account_id) {
       await loadUtilitiesBaDriven(d.billing_account_id)
-      if (v !== fgVersion) return
+      if (!fgFv.isCurrent(v)) return
     }
     // Difensivo: se la matrice BA-driven non include l'utility corrente del
     // BA (matrice/emittente variati dopo la creazione, oppure endpoint che
@@ -259,7 +260,7 @@ watch(() => props.visible, async (val) => {
     // gia' presenti al primo render → niente flash da null a valore.
     // utilityDefault risolve codice_interno -> id via lookup utilities-per-emittente.
     await Promise.all([loadDefaults(), loadUtilityDefault()])
-    if (v !== fgVersion) return
+    if (!fgFv.isCurrent(v)) return
     if (paramDefaults.value.DEFAULT_IVA_ID) {
       form.value.iva_id = Number(paramDefaults.value.DEFAULT_IVA_ID)
     }

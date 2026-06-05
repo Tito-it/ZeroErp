@@ -3,7 +3,7 @@
 > Data: 2026-05-18
 > Owner: team DB (`dev/db-tid`)
 > Stato: pronto per applicazione
-> Backend: predisposto. Il BB orchestratore `resolve_or_check_override_prezzo_riga_contratto` esiste già in [`contratti_service.py`](../../../backend/apps/vendite/services/contratti_service.py) e attende il wiring `create_riga`/`update_riga`, bloccato sui campi DB qui richiesti.
+> Backend: predisposto. Il BB orchestratore `resolve_or_check_override_prezzo_riga_contratto` esiste già in [`contratti_service.py`](../../../../backend/apps/vendite/services/contratti_service.py) e attende il wiring `create_riga`/`update_riga`, bloccato sui campi DB qui richiesti.
 
 ## Contesto
 
@@ -151,7 +151,7 @@ Una volta atterrato il DB, il backend completa la chiusura del debito tecnico do
 ## Riferimenti
 
 - Refactor contratti modalità: [`refactor-contratti-modalita.md`](refactor-contratti-modalita.md) §6 + §7.6 (debito tecnico residuo aperto)
-- Modello componenti unificato: [`modello-componenti-bom.md`](../../../docs/it/dev/manual/modello-componenti-bom.md)
+- Modello componenti unificato: [`modello-componenti-bom.md`](../../../../docs/it/dev/manual/modello-componenti-bom.md)
 - Pattern simmetrico preventivi (riferimento di adattamento):
   - DDL: `db/changelog/migrations_v2/00_schema/vendite/20260422-04-alter-preventivi-righe-add-approvazione-prezzo-mctit.yaml`
   - Trigger guard: `db/changelog/migrations_v2/20_code/vendite/20260422-07-create-trgfn-preventivi-righe-guard-pending-mctit.yaml`

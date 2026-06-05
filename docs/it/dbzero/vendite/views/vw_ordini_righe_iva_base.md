@@ -1,0 +1,35 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_ordini_righe_iva_base.md" %}
+# 🔍 View `vw_ordini_righe_iva_base`
+
+```sql
+CREATE OR REPLACE VIEW vendite.vw_ordini_righe_iva_base AS
+SELECT r.ordine_id,
+    r.id AS riga_id,
+    r.riga_nr,
+    o.emittente_fiscale_id,
+    s.stato_id AS stato_emittente_id,
+    r.iva_id,
+        CASE
+            WHEN (r.iva_id IS NOT NULL) THEN config.fn_get_aliquota_iva(r.iva_id, s.stato_id)
+            ELSE NULL::numeric
+        END AS aliquota_effettiva,
+    r.quantita,
+    r.prezzo_unitario,
+    r.sconto_perc,
+    (r.quantita * r.prezzo_unitario) AS imponibile_lordo_full,
+    (((r.quantita * r.prezzo_unitario) * COALESCE(r.sconto_perc, (0)::numeric)) / (100)::numeric) AS sconto_riga_full,
+    ((r.quantita * r.prezzo_unitario) * ((1)::numeric - (COALESCE(r.sconto_perc, (0)::numeric) / (100)::numeric))) AS imponibile_riga_full,
+    r.attivo,
+    r.data_insert,
+    r.data_update
+   FROM ((((vendite.ordini_righe r
+     JOIN vendite.ordini o ON ((o.id = r.ordine_id)))
+     LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = o.emittente_fiscale_id)))
+     LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ef.soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+  WHERE ((r.attivo IS TRUE) AND (r.quantita > (0)::numeric));
+```
+
+
+---
+{% include-markdown "signature-core.md" %}

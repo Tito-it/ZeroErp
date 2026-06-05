@@ -16,8 +16,9 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 
 > Stato: **scheletro BE** (analisi
 > [analisi-ordini-vendita.md](../../../dev/work-in-progress/analisi-ordini-vendita.md)
-> §5). Fuori scope per ora: fulfillment/DDT, indirizzi, conversione
-> preventivo/offerta→ordine (che *userà* le colonne origine A1 già predisposte).
+> §5) + stampa PDF (§Documenti) + **conversione preventivo/offerta→ordine**
+> (2026-06-04, endpoint `genera-ordine` sui domini upstream — valorizza
+> `documento_origine` A1). Fuori scope per ora: fulfillment/DDT, indirizzi.
 
 ### Modello
 
@@ -36,8 +37,13 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 - **Estensioni modello 2026-06-03**: **agente** (`agente_soggetto_ruolo_id`,
   nullable) ed **origine documento** (A1: `documento_origine_tipo` ∈
   {`PREVENTIVO`,`OFFERTA`} + `documento_origine_id`, **senza UNIQUE** → una
-  origine può generare più ordini). Lo scheletro **non valorizza** le colonne
-  origine (le userà la conversione upstream, step successivo).
+  origine può generare più ordini). Valorizzate dalla **conversione upstream**
+  (fatte 2026-06-04): `documento_origine = ('PREVENTIVO', id)` da
+  `ordini_service.crea_ordine_da_preventivo` (copia 1:1 righe piatte) e
+  `('OFFERTA', id)` da `crea_ordine_da_offerta` (righe espanse via fn DB
+  `fn_offerta_righe_espanse`, prezzi negoziati preservati). Endpoint sui domini
+  upstream (vedi [api_preventivi.md §6c](api_preventivi.md) e api_offerte). La
+  CREATE diretta lascia le colonne NULL.
 - **Pagamento/valuta**: `modalita_pagamento_id`, `termine_pagamento_id`,
   `valuta_id`, `tasso_cambio` (default 1). `giorni_pagamento`/`fine_mese` e i
   campi trasporto **non sono in testata** (droppati `20251027-01`; vivono su
@@ -111,6 +117,21 @@ Testata (dalla vista + `meta`/`storicizza`) + capability data-driven:
 `righe_count`, `can_edit_testata`, `can_edit_righe`, `can_conferma`,
 `can_push_commessa`. 404 (`E_ORD_NOT_FOUND`) se inesistente o fuori scope (RLS).
 
+### Riepilogo IVA `GET /api/v1/vendite/ordini/<id>/riepilogo-iva/`
+
+Riepilogo IVA aggregato dell'ordine: **una riga per aliquota** con `imponibile`,
+`imposta`, `arrotondamento`, `totale_riga` (più decodifiche `iva_codice`/
+`iva_descrizione`/`iva_aliquota`; `natura_id`/`esigibilita`/`split_payment` sempre
+`NULL` per gli ordini). Lettura pura dalla vista derivata
+`vendite.vw_ordini_riepilogo_iva_dettaglio`: l'IVA è calcolata **per gruppo
+aliquota** (`ROUND(SUM(imponibile_riga))`, poi imposta sul gruppo — regola DPR
+633/72 art. 21 + DM 24/12/93, identica ai preventivi); nessun calcolo Python. La
+vista riflette le righe attive correnti e i totali di testata (`*_tot`) sono
+mantenuti coerenti dal trigger `fn_ricalcola_totali_ordine`. Ordinamento
+`iva_aliquota NULLS LAST, iva_id NULLS LAST`. Scope/visibilità via
+`security_invoker=on` + RLS su `vendite.ordini` (ordine fuori perimetro → lista
+vuota). Usato dal pannello "Riepilogo IVA" del drawer e dal context builder PDF.
+
 ### Update testata `PATCH /api/v1/vendite/ordini/<id>/`
 
 Solo in `DRAFT`. `request.data` (non `handle_post_json`, api.md). Campi
@@ -121,12 +142,19 @@ aggiornabili: `utility_id`, `valuta_id`, `modalita_pagamento_id`,
 **Cliente immutabile post-creazione** (2026-06-04): `billing_account_id` **non**
 è aggiornabile (a differenza del create, dove deriva `soggetto_ruolo_id`).
 `vendite.ordini` denormalizza `soggetto_ruolo_id` (NOT NULL) accanto a
-`billing_account_id` e nessun trigger li ri-sincronizza su UPDATE → cambiare il
-BA lascerebbe il soggetto stantio. Un PATCH che **cambia** `billing_account_id` è
-rifiutato con `E_ORD_VALIDAZIONE`; lo stesso BA reinviato **invariato** è tollerato
-(il form FE lo può rimandare). Regola «cambiare cliente = nuovo ordine». Difesa DB
-autoritativa (lock-columns) nel brief
-[db-brief-ordini-lock-cliente.md](../../../dev/work-in-progress/db-brief-ordini-lock-cliente.md).
+`billing_account_id`. Un PATCH che **cambia** `billing_account_id` è rifiutato con
+`E_ORD_CLIENTE_IMMUTABILE`; lo stesso BA reinviato **invariato** è tollerato (il
+form FE lo può rimandare). Regola «cambiare cliente = nuovo ordine».
+
+**Difesa DB autoritativa atterrata** (DB-ORD-LOCK, 2026-06-04): `billing_account_id`
+**e** `soggetto_ruolo_id` sono immutabili su UPDATE via lock-columns data-driven
+(registro `dbops.automation_lock_columns`, non trigger a mano), che solleva lo
+**stesso** codice `E_ORD_CLIENTE_IMMUTABILE` (estratto da `_db_errors` su UPDATE
+diretta che bypassa il service). Conseguenza correlata: `trgfn_ordini_normalize`
+ora ri-eredita `fatturazione_trigger` dal BA **solo su INSERT** (il ramo UPDATE era
+diventato logica morta). Override straordinario:
+`SET LOCAL zeroerp.allow_lock_columns_override = 'on'`. Brief:
+[db-brief-ordini-lock-cliente.md](../../../dev/work-done/db-brief-ordini-lock-cliente.md).
 
 ### Delete `DELETE /api/v1/vendite/ordini/<id>/`
 
@@ -149,7 +177,7 @@ Push del singolo ordine `CONFERMATO` via `fn_list_ordini_da_pushare(…, p_ordin
 | Metodo / Path | Scopo |
 | --- | --- |
 | `GET /<id>/righe/` | Lista righe attive (decodifiche articolo/uom/iva + `importo_riga` + `is_composito_caso_a`) |
-| `POST /<id>/righe/` | Aggiunge una riga (solo DRAFT). `riga_nr` autoassegnato. Pricing auto-fill via `PricingService` se prezzo assente e articolo non composito; per articolo composito init componenti BoM |
+| `POST /<id>/righe/` | Aggiunge una riga (solo DRAFT). `riga_nr` autoassegnato. Pricing auto-fill via `PricingService` se prezzo assente e articolo non composito; per articolo composito init componenti BoM con override prezzi opzionali (`componenti_overrides`, vedi sotto) |
 | `PATCH /<id>/righe/<riga_id>/` | Aggiorna riga (solo DRAFT). `request.data` |
 | `DELETE /<id>/righe/<riga_id>/` | Hard-delete riga (solo DRAFT) |
 
@@ -167,6 +195,17 @@ trigger `trgfn_qta_from_operativa`). I totali testata sono ricalcolati da trigge
 | `GET /<id>/righe/<riga_id>/componenti/` | Lista componenti persistiti (`?solo_attivi=true`) |
 | `PATCH /<id>/righe/<riga_id>/componenti/<componente_id>/` | Aggiorna componente (solo DRAFT): `prezzo_unitario`, `attivo`, `esposto_in_fattura`, `meta` |
 | `DELETE /<id>/righe/<riga_id>/componenti/<componente_id>/` | Soft-delete componente (`attivo=FALSE`, solo DRAFT) |
+
+**Override prezzi componente pre-save** (CREATE riga composita, simmetria
+preventivi/contratti): il `POST /<id>/righe/` accetta `componenti_overrides`
+(mappa `{componente_id: prezzo}`) dal dialog FE. È normalizzato
+(`normalize_componenti_overrides`) e passato a `fn_ordine_riga_componenti_init`;
+i componenti senza override ricadono sul pricing risolto. L'override manuale
+richiede il permesso `prezzo_override_manuale` (gate L1
+`validate_componenti_overrides_authorization` → `E_PRICING_OVERRIDE_NON_AUTORIZZATO`
+se assente). La fn DB rifiuta override prezzo 0 su componente obbligatorio
+(`E_PARAMETRO_INVALIDO`). In assenza di `componenti_overrides` l'init usa i prezzi
+del resolver (comportamento storico).
 
 ### Note `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/`
 
@@ -213,7 +252,8 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
   scelta ratificata (analisi §8.bis) — pricing **stile preventivo** (resolve +
   prezzo dal caller).
 - **Cliente immutabile in update**: `billing_account_id` fuori dalla whitelist
-  PATCH; cambio rifiutato con `E_ORD_VALIDAZIONE` (vedi Update testata).
+  PATCH; cambio rifiutato con `E_ORD_CLIENTE_IMMUTABILE` (guard BE + lock-columns
+  DB autoritativo, vedi Update testata).
 - **Scope emittente**: la vista è `security_invoker=on` (RLS attiva sulla tabella
   base); il filtro applicativo `fn_get_emittenti_scope_pk_ids` si somma
   (defense-in-depth). Un detail fuori scope torna **404**.
@@ -224,7 +264,8 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | Codice | HTTP | Quando |
 | --- | --- | --- |
 | `E_ORD_NOT_FOUND` | 404 | ordine/riga/componente inesistente o fuori scope |
-| `E_ORD_VALIDAZIONE` | 400 | payload non valido (cliente mancante, campi vuoti, ecc.) |
+| `E_ORD_VALIDAZIONE` | 400 | payload non valido (cliente mancante, campi vuoti, `billing_account_id` non numerico, ecc.) |
+| `E_ORD_CLIENTE_IMMUTABILE` | 400 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (guard BE + lock-columns DB) |
 | `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato corrente |
 | `E_ORD_NESSUNA_RIGA` | 409 | conferma/push senza righe eleggibili |
 | `E_VENDITE_DUPLICATO` / `E_VENDITE_FK` | 409 / 400 | violazione UNIQUE/FK (via `map_integrity_error`) |
@@ -243,6 +284,12 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
   (`20260603-15` + seed).
 - Funzioni: `fn_ordine_riga_componenti_init` / `_preview` (BoM),
   `fn_list_ordini_da_pushare(…, p_ordine_id)` (push singolo).
+- Riepilogo IVA / totali (`20260605-01..05`): viste derivate
+  `vendite.vw_ordini_righe_iva_base` → `vendite.vw_ordini_riepilogo_iva_dettaglio`
+  (entrambe `security_invoker=on`); `fn_ricalcola_totali_ordine` (somma il
+  riepilogo, scrive `*_tot` in testata); trigger `trgfn_ordini_righe_ricalcola_totali`
+  (statement-level su `ordini_righe` INS/UPD/DLT) e `trgfn_ordini_ricalcola_totali`
+  (`UPDATE OF emittente_fiscale_id`, l'aliquota dipende dallo stato emittente).
 - Trigger testata: `trgfn_ordini_gen_codice`, `trgfn_ordini_normalize`,
   `trgfn_ordini_default_emittente`, `trgfn_ordini_guard_emittente_ba`,
   `trgfn_ordini_guard_transizione_approvazione`, lock numero, immutabilità
@@ -250,6 +297,11 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
 - Modello esteso: `agente_soggetto_ruolo_id` (`20260603-12`),
   `documento_origine_tipo`/`_id` (`20260603-13`), fix `chk_ordini_v_r_qta_pos`
   → `quantita > 0` (`20260603-11`).
+- Immutabilità cliente (DB-ORD-LOCK, 2026-06-04): `billing_account_id` +
+  `soggetto_ruolo_id` lockati su UPDATE via registro `dbops.automation_lock_columns`
+  (2 righe → trigger `trg_ordini_a10_lock_columns_upd` con codice
+  `E_ORD_CLIENTE_IMMUTABILE`, convive col lock `numero`). `trgfn_ordini_normalize`
+  ripulito: eredità `fatturazione_trigger` solo su INSERT (`20260604-01`).
 - RLS: 3 policy (`rls_ordini_ef_whitelist` / `_cliente_ownership` / `_shop`).
 - Stampa: tipo documento `documenti.tipi_documento_output` `ORDINE_VENDITA`
   (seed, applicato al DB di lavoro 2026-06-04). Template + versione PUBBLICATA =
@@ -260,8 +312,10 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
 - Analisi BE/FE: [analisi-ordini-vendita.md](../../../dev/work-in-progress/analisi-ordini-vendita.md)
   (§12 stampa, §8 decisioni)
 - Brief DB: [db-brief-ordini-vendita.md](../../../dev/work-done/db-brief-ordini-vendita.md)
-  e [db-brief-ordini-lock-cliente.md](../../../dev/work-in-progress/db-brief-ordini-lock-cliente.md)
+  e [db-brief-ordini-lock-cliente.md](../../../dev/work-done/db-brief-ordini-lock-cliente.md)
   (lock cliente)
 - Stampa/documenti: [documenti-e-stampe.md](../../../guide/documenti-e-stampe.md)
+- Riepilogo IVA ordine (DB + BE + FE): [documenti-non-fiscali-iva-db.md](../../../dev/work-done/documenti-non-fiscali-iva-db.md)
+  (§12 modello, §13 sviluppo BE/FE)
 - Tabella testata: [vendite.ordini](../../../dbzero/vendite/manual/ordini.md)
 - Linee guida API: [api.md](../../../dev/api.md)

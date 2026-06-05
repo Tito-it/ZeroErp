@@ -18,7 +18,7 @@
 ## Contratto col repo BE (per allineamento)
 
 Il repository `apps.anagrafiche.db.fornitori_repository.FornitoriRepository.list_fornitori`
-([backend/apps/anagrafiche/db/fornitori_repository.py:95](../../../backend/apps/anagrafiche/db/fornitori_repository.py))
+([backend/apps/anagrafiche/db/fornitori_repository.py:95](../../../../backend/apps/anagrafiche/db/fornitori_repository.py))
 legge dalla vista `anagrafiche.vw_fornitori_dettaglio`. La vista oggi
 espone questi campi (verifica `information_schema.columns`):
 
@@ -197,5 +197,5 @@ commit successivi del backend agent.
 - Lezioni cross-DEF-8 (sensibile=false + campo GENERATED) documentate in
   [sviluppo-personalizzazioni-liste_def.md](../work-in-progress/sviluppo-personalizzazioni-liste_def.md)
   sezione DEF-8 "Lezioni dallo smoke soggetti".
-- Repository: [backend/apps/anagrafiche/db/fornitori_repository.py](../../../backend/apps/anagrafiche/db/fornitori_repository.py).
-- FE attuale: [frontend/src/anagrafiche/components/FornitoriSearchTable.vue](../../../frontend/src/anagrafiche/components/FornitoriSearchTable.vue).
+- Repository: [backend/apps/anagrafiche/db/fornitori_repository.py](../../../../backend/apps/anagrafiche/db/fornitori_repository.py).
+- FE attuale: [frontend/src/anagrafiche/components/FornitoriSearchTable.vue](../../../../frontend/src/anagrafiche/components/FornitoriSearchTable.vue).

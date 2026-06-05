@@ -813,7 +813,7 @@ Da [catalogo-building-block-backend.md](../backend/catalogo-building-block-backe
 - `script.fn_log_and_raise_error` lato DB per gli errori della fn
 - `EmittenteFiscaleScopeMixin` non serve qui (la fn applica già lo scope)
 
-Test in `apps/ui/tests/api/` e `apps/ui/tests/services/` con `unittest.TestCase` + cursor DB mockato (vincoli CI senza DB — vedi [AGENTS.md §Test](../../../.codex/AGENTS.md)).
+Test in `apps/ui/tests/api/` e `apps/ui/tests/services/` con `unittest.TestCase` + cursor DB mockato (vincoli CI senza DB — vedi [AGENTS.md §Test](../../../../.codex/AGENTS.md)).
 
 ---
 
@@ -882,7 +882,7 @@ Scopo: validare l'intera catena su un caso reale prima di replicare. Lista candi
 | E3 | `80_data/sql/ui/lista_preset.csv` + YAML changelog | ✅ |
 | E4 | `80_data/sql/ui/lista_preset_colonna.csv` + YAML changelog | ✅ |
 
-Convenzione naming YAML (cfr. [AGENTS.md §Liquibase v2 Workflow](../../../.codex/AGENTS.md)): `YYYYMMDD-NN-seed-ui-<descrizione>-mctit.yaml` in `80_data/changelog/`.
+Convenzione naming YAML (cfr. [AGENTS.md §Liquibase v2 Workflow](../../../../.codex/AGENTS.md)): `YYYYMMDD-NN-seed-ui-<descrizione>-mctit.yaml` in `80_data/changelog/`.
 
 **Migrazione componente** ✅ atterrato 2026-05-07:
 

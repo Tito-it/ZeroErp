@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed config.transizioni_stati_ordini: 3 transizioni.
+#
+# id 1 | DRAFT(1)      -> CONFERMATO(2) | conferma — info,   pi pi-check   attivo=true
+# id 2 | DRAFT(1)      -> ANNULLATO(6)  | annulla  — danger, pi pi-times   attivo=true  (outlined)
+# id 3 | CONFERMATO(2) -> ANNULLATO(6)  | annulla  — danger, pi pi-times   attivo=FALSE (documenta il grafo)
+#
+# Decisioni di dominio ratificate Tid 2026-06-05 (brief §7.3 / §8 Fase 0):
+#   - CONFERMATO->ANNULLATO presente ma attivo=false: riabilitabile in futuro
+#     con regola "annullabile se non evaso/fatturato a valle".
+#   - Stati a valle (ALLOCATO/SPEDITO/CONSEGNATO/FATTURATO) FUORI matrice:
+#     nessun driver oggi (vivono negli stati DDT e nel fatturazione_trigger).
+#
+# Dipendenza: config.transizioni_stati_ordini (20260605-08).
+#   stato_da_id/stato_a_id referenziano config.stati_doc_ordini (seed 20250912-02).
+# Letta da script.fn_available_actions_ordine (20260605-09) e
+#   vendite.trgfn_ordini_guard_transizione (20260605-10).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260605-11-seed-transizioni-stati-ordini-mctit.yaml
+
+  - changeSet:
+      id: 20260605-11-seed-transizioni-stati-ordini
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: transizioni_stati_ordini
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/transizioni_stati_ordini.csv
+            tableName: transizioni_stati_ordini
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: stato_da_id, type: STRING }
+              - column: { name: stato_a_id, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }

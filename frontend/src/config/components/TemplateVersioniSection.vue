@@ -36,10 +36,12 @@ import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Tag from 'primevue/tag'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import Button from 'primevue/button'
 import AppDialog from '../../core/components/AppDialog.vue'
 import Message from 'primevue/message'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const props = defineProps({
@@ -291,11 +293,9 @@ async function confirmPubblica() {
   <div class="template-versioni-section">
     <div class="section-header">
       <h3>{{ t('config.modelli_documenti.versioni.title') }}</h3>
-      <Button
+      <NewButton
         v-if="!props.readonly && !editing"
-        :label="t('config.modelli_documenti.versioni.new')"
-        :icon="MANAGE_ICONS.ADD"
-        size="small"
+        :tooltip="t('config.modelli_documenti.versioni.new')"
         @click="openCreate"
       />
     </div>
@@ -325,10 +325,7 @@ async function confirmPubblica() {
       <Column field="valido_al" :header="t('config.modelli_documenti.versioni.col_valido_al')" style="width: 100px;" />
       <Column field="attivo" :header="t('common.attivo')" style="width: 80px;">
         <template #body="{ data }">
-          <Tag
-            :value="data.attivo ? t('common.active') : t('common.inactive')"
-            :severity="data.attivo ? 'success' : 'warn'"
-          />
+          <AttivoTag :active="data.attivo" />
         </template>
       </Column>
       <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" style="width: 64px;">

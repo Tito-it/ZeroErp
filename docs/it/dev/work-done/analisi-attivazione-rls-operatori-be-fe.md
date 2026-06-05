@@ -34,7 +34,7 @@ Ordine logico: **A subito** (sblocca l'`ENABLE` lato DB) → **B** quando la can
 
 ### 1.1 Modifiche
 
-**File**: [backend/apps/core/middleware/jwt_audit_middleware.py](../../../backend/apps/core/middleware/jwt_audit_middleware.py) (reset oggi in `process_response`) + [backend/apps/core/api/jwt_audit_authentication.py](../../../backend/apps/core/api/jwt_audit_authentication.py) (`set_jwt_gucs`, scrive i valori reali a `authenticate()`).
+**File**: [backend/apps/core/middleware/jwt_audit_middleware.py](../../../../backend/apps/core/middleware/jwt_audit_middleware.py) (reset oggi in `process_response`) + [backend/apps/core/api/jwt_audit_authentication.py](../../../../backend/apps/core/api/jwt_audit_authentication.py) (`set_jwt_gucs`, scrive i valori reali a `authenticate()`).
 
 1. **Reset all'inizio**: azzerare i 5 GUC (`app.jwt_user`, `app.current_user_id`, `app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id`) in `process_request` del middleware (gira nei Django middleware, **prima** del dispatch DRF dove `authenticate()` imposta i valori reali). Ordine garantito: reset (vuoto) → auth (valori reali per gli autenticati) → query della view.
 2. **Incondizionato**: il reset NON deve dipendere dal marker `_zeroerp_jwt_guc_set`. Oggi le richieste **anonime** non toccano i GUC → ereditano quelli della richiesta precedente sulla stessa connessione. Con il reset incondizionato l'anonimo riparte sempre da vuoto (→ fail-closed).
@@ -57,7 +57,7 @@ Ordine logico: **A subito** (sblocca l'`ENABLE` lato DB) → **B** quando la can
 
 > **✅ IMPLEMENTATO 2026-06-02** (`dev/backend-tid`). `get_emittenti_ids` delega a `get_emittenti_pk_ids`; `parameter_repository.get_emittente_fiscale_id_for_user` legge la whitelist diretta (soluzione 3). Zero lettori Python della legacy. Il testo sotto resta come spec di riferimento.
 
-**Problema** (B5, §2.3 `[VERIFICATO]`): `PermissionResolver.get_emittenti_ids` ([backend/apps/core/services/permissions_resolver.py](../../../backend/apps/core/services/permissions_resolver.py) `[DA CONFERMARE riga ~183]`) avvolge la funzione **legacy senza guard** `script.fn_get_emittenti_scope` — non fa fail-closed su identità OPERATORE disattivata e non ha il bypass SUPER_ADMIN coerente. È ancora usata da `documenti`, `ai_assistant`, `parameter_repository.py` `[DA CONFERMARE riga ~353]`.
+**Problema** (B5, §2.3 `[VERIFICATO]`): `PermissionResolver.get_emittenti_ids` ([backend/apps/core/services/permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) `[DA CONFERMARE riga ~183]`) avvolge la funzione **legacy senza guard** `script.fn_get_emittenti_scope` — non fa fail-closed su identità OPERATORE disattivata e non ha il bypass SUPER_ADMIN coerente. È ancora usata da `documenti`, `ai_assistant`, `parameter_repository.py` `[DA CONFERMARE riga ~353]`.
 
 ### 2.1 Modifiche
 1. **`get_emittenti_ids` → canonica guarded**: puntarlo alla famiglia guarded (`fn_get_emittenti_scope_pk_ids`/`_sr_ids`, o la canonica consegnata dal DB), eliminando l'uso della legacy no-guard. Semantica invariata per i chiamanti: `None` = nessuna restrizione, `[]` = nessun accesso, array = whitelist.

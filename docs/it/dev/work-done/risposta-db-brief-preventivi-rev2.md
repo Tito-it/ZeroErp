@@ -196,7 +196,7 @@ Implementazione DB (migration `20260502-01` e `-02`) + test pgTAP parity + manua
 Lavoro BE residuo (gestito su `dev/backend-tid`):
 
 * Aggiungere `PermissionResolver.get_emittenti_pk_ids` simmetrico a `get_emittenti_sr_ids`
-* Sostituire i filtri PK-vs-SR in [`preventivi_repository.py:81-87`](../../../backend/apps/vendite/db/preventivi_repository.py#L81-L87) e [`vendite_repository.py:39-41`](../../../backend/apps/vendite/db/vendite_repository.py#L39-L41) con `_pk_ids`
+* Sostituire i filtri PK-vs-SR in [`preventivi_repository.py:81-87`](../../../../backend/apps/vendite/db/preventivi_repository.py#L81-L87) e [`vendite_repository.py:39-41`](../../../../backend/apps/vendite/db/vendite_repository.py#L39-L41) con `_pk_ids`
 
 ### 4.2 Coerenza post-DELETE BA (out of scope)
 

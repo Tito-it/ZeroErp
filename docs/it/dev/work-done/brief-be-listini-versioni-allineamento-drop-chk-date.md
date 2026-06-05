@@ -82,8 +82,8 @@ Una volta mergiato il fix BE:
 
 ## 5. Riferimenti
 
-- DB migration: [20260427-02-drop-chk-valid-dates-redundant-data-driven-mctit.yaml](../../../db/changelog/migrations_v2/00_schema/catalogo/20260427-02-drop-chk-valid-dates-redundant-data-driven-mctit.yaml)
-- DB pgTAP esteso: [test-articoli-componenti-immutabilita.sql](../../../db/pgtap/catalogo/test-articoli-componenti-immutabilita.sql) — casi 17-18 (regressione same-day)
-- Precedente analogo (drop su altre tabelle): [20260414-22-drop-check-date-redundant-mctit.yaml](../../../db/changelog/migrations_v2/00_schema/vendite/20260414-22-drop-check-date-redundant-mctit.yaml)
-- Trigger trgfn_set_validita: [20260412-05-create-trgfn-set-validita-mctit.yaml](../../../db/changelog/migrations_v2/20_code/script/20260412-05-create-trgfn-set-validita-mctit.yaml)
+- DB migration: [20260427-02-drop-chk-valid-dates-redundant-data-driven-mctit.yaml](../../../../db/changelog/migrations_v2/00_schema/catalogo/20260427-02-drop-chk-valid-dates-redundant-data-driven-mctit.yaml)
+- DB pgTAP esteso: [test-articoli-componenti-immutabilita.sql](../../../../db/pgtap/catalogo/test-articoli-componenti-immutabilita.sql) — casi 17-18 (regressione same-day)
+- Precedente analogo (drop su altre tabelle): [20260414-22-drop-check-date-redundant-mctit.yaml](../../../../db/changelog/migrations_v2/00_schema/vendite/20260414-22-drop-check-date-redundant-mctit.yaml)
+- Trigger trgfn_set_validita: [20260412-05-create-trgfn-set-validita-mctit.yaml](../../../../db/changelog/migrations_v2/20_code/script/20260412-05-create-trgfn-set-validita-mctit.yaml)
 - Brief originario BE -> DB (BoM relax): contesto sessione 27-04-2026; la richiesta era `>` -> `>=`, abbiamo scelto drop (allineamento al precedente 20260414-22) e ampliato il perimetro alle 4 tabelle outlier.

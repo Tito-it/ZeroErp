@@ -13,7 +13,7 @@
 
 Terzo capitolo dopo
 [regola-del-2-vendite.md](regola-del-2-vendite.md) e
-[regola-del-2-anagrafiche.md](../work-in-progress/regola-del-2-anagrafiche.md). Qui il dominio è
+[regola-del-2-anagrafiche.md](regola-del-2-anagrafiche.md). Qui il dominio è
 particolare: **core è la casa dei building block**, quindi la regola del 2 ha
 **due facce**, ed entrambe sono coperte:
 
@@ -382,7 +382,7 @@ unificata**.
 
 **Proposta:** promuovere `qp_bool_optional_strict(raw, name) -> bool | None` al core
 per simmetria, far delegare `views_listini`. Priorità bassa (1 sito reale), ma
-chiude la famiglia. **Già descritto in [regola-del-2-anagrafiche.md](../work-in-progress/regola-del-2-anagrafiche.md#L462)
+chiude la famiglia. **Già descritto in [regola-del-2-anagrafiche.md](regola-del-2-anagrafiche.md)
 come promemoria** — qui ratificato nel contesto core.
 
 ### D2. 3 view di `views_lookup` ignorano il BB `parse_list_params` — ✅ FATTO (2026-06-04)

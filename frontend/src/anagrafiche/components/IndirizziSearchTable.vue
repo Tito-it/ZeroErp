@@ -9,7 +9,7 @@ import ComuneAutocomplete from '../../core/components/ComuneAutocomplete.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
-import Tag from 'primevue/tag'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
@@ -111,10 +111,7 @@ function onRowClick(event) {
       <Column field="cap" :header="t('indirizzi.col_cap')" sortable />
       <Column field="attivo" :header="t('indirizzi.col_attivo')" sortable>
         <template #body="{ data }">
-          <Tag
-            :value="data.attivo ? t('indirizzi.attivo') : t('indirizzi.non_attivo')"
-            :severity="data.attivo ? 'success' : 'warn'"
-          />
+          <AttivoTag :active="data.attivo" :active-label="t('indirizzi.attivo')" :inactive-label="t('indirizzi.non_attivo')" />
         </template>
       </Column>
     </DataTable>

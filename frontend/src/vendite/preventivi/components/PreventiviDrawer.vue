@@ -28,7 +28,8 @@ import { useEmittenteFiscaleField } from '../../../core/composables/useEmittente
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
-import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
+import { createPreventivo, getContestoPricing, generaOrdineFromPreventivo } from '../api/preventiviApi'
+import { useNotify } from '../../../core/composables/useNotify'
 import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
@@ -67,6 +68,7 @@ const store = usePreventiviStore()
 const { execute, loading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const { emitDataChanged } = useTabEvents()
+const notify = useNotify()
 
 const props = defineProps({
   visible: Boolean,
@@ -783,6 +785,18 @@ function onNuovaRevisione() {
 // NON su `isReadonly`: quest'ultimo include il lock-di-stato post-DRAFT, ma in
 // stato post-DRAFT con operatore abilitato le transizioni devono restare
 // visibili. Il BE resta come difesa (defense-in-depth).
+// Conversione upstream (§7.4): genera un ordine DRAFT dal preventivo ACCETTATO
+// (BE copia testata+righe+componenti + documento_origine). Notifica col numero
+// ordine e segnala il cambiamento alla lista ordini (se aperta in un tab).
+async function onGeneraOrdine() {
+  const result = await execute(
+    () => generaOrdineFromPreventivo(effectivePreventivoId.value),
+  )
+  if (result === null) return
+  notify.success(t('preventivi.ordine_generato', { numero: result.numero }))
+  emitDataChanged(TAB_ENTITIES.ORDINE, result.ordine_id)
+}
+
 const drawerActions = computed(() => {
   if (!hasDetail.value) return []
   // Azioni di stato data-driven dal BE (`script.fn_available_actions_preventivo`,
@@ -799,6 +813,20 @@ const drawerActions = computed(() => {
     onAction: onCambiaStato,
     readonly: props.readonly || parentReadonly.value,
   })
+  // Conversione upstream → ordine (§7.4): azione statica (non data-driven),
+  // disponibile su preventivo ACCETTATO, nascosta in readonly puro.
+  const readonlyPuro = props.readonly || parentReadonly.value
+  if (!readonlyPuro
+      && detail.value?.stato_codice_interno === STATO_PREVENTIVO.ACCETTATO) {
+    list.push({
+      key: 'genera-ordine',
+      kind: 'state',
+      label: t('preventivi.azione_genera_ordine'),
+      icon: NAV_ICONS.ORDINI,
+      severity: 'info',
+      command: onGeneraOrdine,
+    })
+  }
   list.push({
     key: 'manage-note',
     kind: 'manage',

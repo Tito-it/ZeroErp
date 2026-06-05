@@ -18,8 +18,9 @@ import Column from 'primevue/column'
 const { t } = useI18n()
 
 const props = defineProps({
-  // Array di righe riepilogo IVA. Shape attesa per ogni elemento:
-  //   { id, iva_id, iva_codice, iva_descrizione, iva_aliquota,
+  // Array di righe riepilogo IVA. Shape attesa per ogni elemento (`id`
+  // opzionale: presente sui preventivi, assente sulla vista derivata ordini):
+  //   { iva_id, iva_codice, iva_descrizione, iva_aliquota,
   //     natura_id, natura_codice, esigibilita, split_payment,
   //     imponibile, imposta, arrotondamento, totale_riga }
   items: { type: Array, default: () => [] },
@@ -61,8 +62,12 @@ function aliquotaLabel(row) {
       </small>
     </div>
 
+    <!-- Tabella read-only: nessun data-key. Le shape riepilogo IVA non hanno
+         tutte un `id` univoco (la vista ordini deriva senza id tecnico; le
+         fatture useranno la chiave composita iva+natura+esigibilita+split):
+         per una tabella senza selezione/espansione PrimeVue usa l'indice di
+         riga, evitando key duplicate quando id e' assente. -->
     <DataTable :value="items" size="small" striped-rows show-gridlines class="app-datatable"
-      data-key="id"
       :pt="{ table: { style: 'table-layout: fixed;' } }">
       <template #empty>
         <span style="color: var(--text-color-secondary);">

@@ -16,6 +16,7 @@ import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
+import AttivoTag from '../../../core/components/AttivoTag.vue'
 import ToggleSwitch from 'primevue/toggleswitch'
 
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
@@ -152,8 +153,13 @@ const {
 } = useComponentiDialog({
   form,
   isCreate: () => formMode.value === 'create',
-  isComposito: () => form.value?.articolo_obj?.is_composito === true,
-  isPadreComposito: () => form.value?.articolo_obj?.is_composito === true,
+  // ESCLUSIONE escluso: un articolo escluso non ha prezzo (il DB impone
+  // prezzo_unitario NULL) ne' senso di negoziarne i componenti BoM. Niente
+  // ComponentiDialog ne' invio `componenti_overrides` per le ESCLUSIONI.
+  isComposito: () => form.value?.articolo_obj?.is_composito === true
+    && form.value?.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE,
+  isPadreComposito: () => form.value?.articolo_obj?.is_composito === true
+    && form.value?.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE,
   qtaValida: () => true,
 })
 
@@ -645,10 +651,7 @@ const onClose = useDrawerClose(emit)
             style="width: 90px;"
           >
             <template #body="{ data }">
-              <Tag
-                :value="data.attivo ? t('common.active') : t('common.inactive')"
-                :severity="data.attivo ? 'success' : 'warn'"
-              />
+              <AttivoTag :active="data.attivo" />
             </template>
           </Column>
           <Column

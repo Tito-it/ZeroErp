@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
+import AttivoTag from '../AttivoTag.vue'
 import { useSearchDetail } from '../../composables/useSearchDetail'
 import { STATO_CLIENTE_MAP } from '../../utils/severity'
 import DetailActions from './DetailActions.vue'
@@ -49,10 +50,7 @@ const { detailRows, loading } = useSearchDetail(props)
       </Column>
       <Column v-else-if="variant === 'fornitore'" field="stato_descrizione" :header="t('search.detail_status')" style="width: 130px">
         <template #body="{ data }">
-          <Tag
-            :value="data.attivo ? t('search.status_active') : t('search.status_inactive')"
-            :severity="data.attivo ? 'success' : 'danger'"
-          />
+          <AttivoTag :active="data.attivo" :active-label="t('search.status_active')" :inactive-label="t('search.status_inactive')" inactive-severity="danger" />
         </template>
       </Column>
 

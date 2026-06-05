@@ -8,6 +8,8 @@
 #        DatabaseError trigger -> estrazione codice E_*).
 # ------------------------------------------------------------
 
+from contextlib import nullcontext
+from datetime import date
 from unittest.mock import patch
 
 from django.db import DatabaseError, IntegrityError
@@ -84,7 +86,8 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         repo.get_ordine.return_value = {"id": 7, "billing_account_id": 3}
         with self.assertRaises(ServiceError) as cm:
             ordini_service.aggiorna_ordine(7, {"billing_account_id": 99})
-        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        # Codice dedicato, allineato alla difesa DB lock-columns (DB-ORD-LOCK).
+        self.assertEqual(cm.exception.code, "E_ORD_CLIENTE_IMMUTABILE")
         repo.update_ordine.assert_not_called()
 
     @patch(_REPO)
@@ -120,6 +123,71 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         repo.update_ordine.assert_called_once()
 
 
+_SVC = "apps.vendite.services.ordini_service"
+
+
+class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
+    """gestisci_riga: override prezzi componenti BoM pre-save (dialog).
+
+    Simmetria con preventivi: gate autorizzazione + override normalizzati
+    passati a init_componenti_riga per articolo composito.
+    """
+
+    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
+    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_SVC}.validate_componenti_overrides_authorization")
+    @patch(f"{_SVC}.transaction")
+    @patch(_REPO)
+    def test_gestisci_riga_composito_passa_overrides(
+        self, repo_cls, mock_tx, mock_gate, _sr, _dr,
+    ) -> None:
+        mock_tx.atomic.return_value = nullcontext()
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.is_articolo_composito.return_value = True
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 50}
+
+        payload = {
+            "articolo_id": "ART1", "qta_operativa": 2, "iva_id": 1,
+            "uom_operativa_id": 3,
+            "componenti_overrides": {"10": "5.50"},
+        }
+        out = ordini_service.gestisci_riga(7, payload, auth_user_id=42)
+
+        # Gate L1 autorizzazione invocato col payload + utente.
+        mock_gate.assert_called_once()
+        # Override normalizzati passati all'init componenti (articolo composito).
+        _, kwargs = repo.init_componenti_riga.call_args
+        self.assertEqual(kwargs["componenti_overrides"], {"10": "5.50"})
+        self.assertTrue(out["is_composito"])
+
+    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
+    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_SVC}.validate_componenti_overrides_authorization")
+    @patch(f"{_SVC}.transaction")
+    @patch(_REPO)
+    def test_gestisci_riga_composito_senza_overrides(
+        self, repo_cls, mock_tx, mock_gate, _sr, _dr,
+    ) -> None:
+        # Articolo composito senza override: init con componenti_overrides=None
+        # (la fn DB risolve i prezzi dal pricing corrente).
+        mock_tx.atomic.return_value = nullcontext()
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.is_articolo_composito.return_value = True
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 51}
+
+        ordini_service.gestisci_riga(
+            7, {"articolo_id": "ART1", "qta_operativa": 1, "iva_id": 1,
+                "uom_operativa_id": 3},
+            auth_user_id=42,
+        )
+        _, kwargs = repo.init_componenti_riga.call_args
+        self.assertIsNone(kwargs["componenti_overrides"])
+
+
 class OrdiniDbErrorsTests(SimpleTestCase):
     """Traduzione errori DB di _db_errors (il bug originale crashava qui)."""
 
@@ -143,3 +211,164 @@ class OrdiniDbErrorsTests(SimpleTestCase):
             with _db_errors("test"):
                 raise DatabaseError("E_ORDINE_TRANSIZIONE_NON_AMMESSA: dettaglio")
         self.assertEqual(cm.exception.code, "E_ORDINE_TRANSIZIONE_NON_AMMESSA")
+
+
+_PREV_REPO = "apps.vendite.db.preventivi_repository.PreventiviRepository"
+_OFF_REPO = "apps.vendite.db.offerte_repository.OfferteRepository"
+_ATOMIC = "apps.vendite.services.ordini_service.transaction.atomic"
+_SVC = "apps.vendite.services.ordini_service"
+
+
+class OrdiniConversioneUpstreamTests(SimpleTestCase):
+    """crea_ordine_da_preventivo (§7.4): orchestrazione, mapping, guard."""
+
+    @patch("apps.vendite.services.ordini_service.gestisci_riga")
+    @patch("apps.vendite.services.ordini_service.crea_ordine")
+    @patch(_REPO)
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_ok(
+        self, prev_cls, ord_cls, crea_mock, gestisci_mock,
+    ) -> None:
+        prev_cls.return_value.get_preventivo.return_value = {
+            "stato_codice_interno": "ACCETTATO",
+            "billing_account_id": 10, "utility_id": 5,
+            "emittente_fiscale_id": 3, "valuta_id": 1, "termine_pagamento_id": 2,
+        }
+        prev_cls.return_value.list_righe.return_value = [
+            {"attivo": True, "articolo_id": "A1", "quantita": "2",
+             "prezzo_unitario": "10", "sconto_percentuale": "5", "iva_id": 1},
+            {"attivo": False, "articolo_id": "A2"},  # riga inattiva → saltata
+        ]
+        crea_mock.return_value = {"id": 7, "uid": "u", "numero": "ORD7"}
+
+        with patch(_ATOMIC, return_value=nullcontext()):
+            out = ordini_service.crea_ordine_da_preventivo(99)
+
+        self.assertEqual(out["ordine_id"], 7)
+        self.assertEqual(out["numero"], "ORD7")
+        self.assertEqual(out["righe_create"], 1)
+        self.assertEqual(out["documento_origine"], {"tipo": "PREVENTIVO", "id": 99})
+        # header mappato da preventivo
+        header = crea_mock.call_args.args[0]
+        self.assertEqual(header["billing_account_id"], 10)
+        self.assertEqual(header["termine_pagamento_id"], 2)
+        # provenienza valorizzata
+        ord_cls.return_value.set_documento_origine.assert_called_once_with(
+            7, "PREVENTIVO", 99,
+        )
+        # solo la riga attiva → 1 gestisci_riga; sconto_percentuale → sconto_perc
+        self.assertEqual(gestisci_mock.call_count, 1)
+        riga_payload = gestisci_mock.call_args.args[1]
+        self.assertEqual(riga_payload["articolo_id"], "A1")
+        self.assertEqual(riga_payload["sconto_perc"], "5")
+
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_stato_non_convertibile(self, prev_cls) -> None:
+        prev_cls.return_value.get_preventivo.return_value = {
+            "stato_codice_interno": "EMESSO",
+        }
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_preventivo(99)
+        self.assertEqual(cm.exception.code, "E_ORD_ORIGINE_NON_CONVERTIBILE")
+
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_non_trovato(self, prev_cls) -> None:
+        prev_cls.return_value.get_preventivo.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_preventivo(99)
+        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+
+
+class OrdiniConversioneOffertaTests(SimpleTestCase):
+    """crea_ordine_da_offerta (§7.4): orchestrazione, override componenti, guard."""
+
+    @patch(f"{_SVC}._copia_riga_offerta_espansa")
+    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 4))
+    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_SVC}._get_testata_or_raise",
+           return_value={"id": 7, "emittente_fiscale_id": 3})
+    @patch(f"{_SVC}._crea_testata_ordine_da_origine", return_value=(7, "ORD7"))
+    @patch(_REPO)
+    @patch(_OFF_REPO)
+    def test_crea_ordine_da_offerta_ok(
+        self, off_cls, ord_cls, crea_testata, get_testata, resolve_em,
+        data_rif, copia_riga,
+    ) -> None:
+        off_cls.return_value.get_offerta.return_value = {
+            "stato_codice_interno": "ACCETTATA",
+            "billing_account_id": 10, "utility_id": 5,
+            "emittente_fiscale_id": 3, "valuta_id": 1,
+        }
+        off_cls.return_value.list_righe_espanse.return_value = [
+            {"articolo_id": "A1"}, {"articolo_id": "A2"},
+        ]
+
+        with patch(_ATOMIC, return_value=nullcontext()):
+            out = ordini_service.crea_ordine_da_offerta(55)
+
+        self.assertEqual(out["ordine_id"], 7)
+        self.assertEqual(out["numero"], "ORD7")
+        self.assertEqual(out["righe_create"], 2)
+        self.assertEqual(out["documento_origine"], {"tipo": "OFFERTA", "id": 55})
+        # testata creata via helper condiviso con tipo/origine corretti
+        header, tipo, origine_id = crea_testata.call_args.args
+        self.assertEqual(tipo, "OFFERTA")
+        self.assertEqual(origine_id, 55)
+        self.assertEqual(header["billing_account_id"], 10)
+        # offerta non ha termine/modalita pagamento → non nel header
+        self.assertNotIn("termine_pagamento_id", header)
+        # una copia riga per riga espansa
+        self.assertEqual(copia_riga.call_count, 2)
+
+    @patch(_OFF_REPO)
+    def test_crea_ordine_da_offerta_stato_non_convertibile(self, off_cls) -> None:
+        off_cls.return_value.get_offerta.return_value = {
+            "stato_codice_interno": "EMESSA",
+        }
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_offerta(55)
+        self.assertEqual(cm.exception.code, "E_ORD_ORIGINE_NON_CONVERTIBILE")
+
+    @patch(_OFF_REPO)
+    def test_crea_ordine_da_offerta_non_trovata(self, off_cls) -> None:
+        off_cls.return_value.get_offerta.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_offerta(55)
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+
+    def test_overrides_da_componenti_coercion(self) -> None:
+        from apps.vendite.services.ordini_service import _overrides_da_componenti
+        # lista di dict (jsonb già parsato da psycopg)
+        self.assertEqual(
+            _overrides_da_componenti(
+                [{"componente_id": "u1", "prezzo": "5"},
+                 {"componente_id": "u2", "prezzo": "3"}],
+            ),
+            {"u1": "5", "u2": "3"},
+        )
+        # stringa jsonb (psycopg non parsato) → coerce
+        self.assertEqual(
+            _overrides_da_componenti('[{"componente_id": "u1", "prezzo": "5"}]'),
+            {"u1": "5"},
+        )
+        # None / json invalido / non-lista → {}
+        self.assertEqual(_overrides_da_componenti(None), {})
+        self.assertEqual(_overrides_da_componenti("non-json-{"), {})
+        # entry senza id o senza prezzo → saltate
+        self.assertEqual(
+            _overrides_da_componenti(
+                [{"componente_id": "u1"}, {"prezzo": "5"}],
+            ),
+            {},
+        )
+        # prezzo 0 escluso (la fn DB rifiuta override 0 → ricade sul resolver);
+        # prezzo non numerico escluso
+        self.assertEqual(
+            _overrides_da_componenti(
+                [{"componente_id": "u1", "prezzo": "0"},
+                 {"componente_id": "u2", "prezzo": "0.00"},
+                 {"componente_id": "u3", "prezzo": "xx"},
+                 {"componente_id": "u4", "prezzo": "7"}],
+            ),
+            {"u4": "7"},
+        )

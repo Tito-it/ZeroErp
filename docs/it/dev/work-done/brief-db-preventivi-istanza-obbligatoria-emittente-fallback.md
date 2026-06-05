@@ -31,7 +31,7 @@
 
 ### Evidenze (codice landed)
 
-`JwtAuditAuthentication` ([jwt_audit_authentication.py:122-141](../../../backend/apps/core/api/jwt_audit_authentication.py)) setta 5 GUC post-auth con un'unica CTE:
+`JwtAuditAuthentication` ([jwt_audit_authentication.py:122-141](../../../../backend/apps/core/api/jwt_audit_authentication.py)) setta 5 GUC post-auth con un'unica CTE:
 
 ```python
 WITH id_row AS (
@@ -48,7 +48,7 @@ SELECT
     (SELECT COUNT(*) FROM id_row) AS identita_count
 ```
 
-`JwtAuditMiddleware.process_response` ([jwt_audit_middleware.py:130-134](../../../backend/apps/core/middleware/jwt_audit_middleware.py)) resetta tutte e 5 le GUC simmetricamente quando la response esce.
+`JwtAuditMiddleware.process_response` ([jwt_audit_middleware.py:130-134](../../../../backend/apps/core/middleware/jwt_audit_middleware.py)) resetta tutte e 5 le GUC simmetricamente quando la response esce.
 
 ### Naming GUC esatte (per il trigger DB)
 
@@ -673,7 +673,7 @@ Nessuna di queste azioni richiede attendere il landing dei changeset DB — il b
 
 ## 9. Osservazione di passaggio (fuori scope, da verificare)
 
-Mentre verificavo lo scope filter, ho notato un possibile mismatch in [`preventivi_repository.py:81-87`](../../../backend/apps/vendite/db/preventivi_repository.py#L81-L87):
+Mentre verificavo lo scope filter, ho notato un possibile mismatch in [`preventivi_repository.py:81-87`](../../../../backend/apps/vendite/db/preventivi_repository.py#L81-L87):
 
 ```python
 "(script.fn_get_emittenti_scope_sr_ids(%s) IS NULL "

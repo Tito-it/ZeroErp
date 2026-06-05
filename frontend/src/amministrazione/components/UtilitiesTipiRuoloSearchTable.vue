@@ -13,7 +13,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import Tag from 'primevue/tag'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
@@ -165,10 +165,7 @@ onMounted(() => store.fetchList())
         style="width: 100px;"
       >
         <template #body="{ data }">
-          <Tag
-            :value="data.attivo ? t('common.active') : t('common.inactive')"
-            :severity="data.attivo ? 'success' : 'warn'"
-          />
+          <AttivoTag :active="data.attivo" />
         </template>
       </Column>
     </DataTable>

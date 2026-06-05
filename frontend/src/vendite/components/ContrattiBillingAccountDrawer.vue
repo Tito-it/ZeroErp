@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useContrattiStore } from '../stores/contratti'
 import { listContratti } from '../api/contratti'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
@@ -84,11 +85,11 @@ const righeDrawer = ref({
   statoDescrizione: '',
 })
 
-let fgVersion = 0
+const fv = useFetchVersion()
 
 async function fetchList() {
   if (!props.billingAccountId) return
-  const v = ++fgVersion
+  const v = fv.tag()
   loading.value = true
   try {
     const res = await listContratti({
@@ -97,17 +98,17 @@ async function fetchList() {
       order_by: 'valido_dal',
       order_dir: 'desc',
     })
-    if (v !== fgVersion) return
+    if (!fv.isCurrent(v)) return
     items.value = res.data?.data?.results || []
   } catch {
-    if (v === fgVersion) items.value = []
+    if (fv.isCurrent(v)) items.value = []
   } finally {
-    if (v === fgVersion) loading.value = false
+    if (fv.isCurrent(v)) loading.value = false
   }
 }
 
 watch(() => props.visible, (val) => {
-  if (!val) { fgVersion++; items.value = []; statoFilter.value = null; return }
+  if (!val) { fv.invalidate(); items.value = []; statoFilter.value = null; return }
   fetchList()
 })
 

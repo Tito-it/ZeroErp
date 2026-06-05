@@ -69,4 +69,4 @@ export const useEmailTemplatesStore = defineStore('amm-email-templates', () => {
     currentTemplate, loadingDetail, fetchDetail,
     update
   }
-})
+}, { userScoped: true })

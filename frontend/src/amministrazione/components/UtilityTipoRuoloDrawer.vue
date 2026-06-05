@@ -23,7 +23,7 @@ import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import Message from 'primevue/message'
 
 const { t } = useI18n()
@@ -242,10 +242,7 @@ function close() {
                 style="width: 100px;"
               >
                 <template #body="{ data }">
-                  <Tag
-                    :value="data.emittente_attivo ? t('common.active') : t('common.inactive')"
-                    :severity="data.emittente_attivo ? 'success' : 'warn'"
-                  />
+                  <AttivoTag :active="data.emittente_attivo" />
                 </template>
               </Column>
             </DataTable>

@@ -19,15 +19,15 @@ Il codice oggi gestisce un solo "preferito" per dominio, salvato in
 localStorage e usato unicamente come pagina di atterraggio quando l'utente
 clicca l'icona del dominio in sidebar HOME.
 
-- Store: [`stores/navigation.js`](../../../frontend/src/stores/navigation.js)
+- Store: [`stores/navigation.js`](../../../../frontend/src/stores/navigation.js)
   — `favorites: { [domainKey]: routePath }`, funzioni `setFavorite`,
   `clearFavorite`, `isFavorite`, `getDefaultRoute`.
 - Persistenza: localStorage con chiave `domainFavoriteKey(<domain>)`,
   scope per-utente (store ha `userScoped: true` → reset al logout).
 - UI:
-  [`SidebarDomain.vue`](../../../frontend/src/core/components/SidebarDomain.vue)
+  [`SidebarDomain.vue`](../../../../frontend/src/core/components/SidebarDomain.vue)
   espone una stella accanto a ogni voce L2 (`pi-star` / `pi-star-fill`);
-  [`SidebarHome.vue`](../../../frontend/src/core/components/SidebarHome.vue)
+  [`SidebarHome.vue`](../../../../frontend/src/core/components/SidebarHome.vue)
   consuma `getDefaultRoute` per l'atterraggio dominio.
 - Doc: una riga in
   [`frontend-standards.md`](frontend/frontend-standards.md) ("voci L2 +
@@ -148,7 +148,7 @@ dell'utente corrente e poi rimossa dalla chiave legacy.
 
 ### Sidebar DOMINIO — stella su voce L2
 
-Comportamento attuale ([`SidebarDomain.vue:155-162`](../../../frontend/src/core/components/SidebarDomain.vue)):
+Comportamento attuale ([`SidebarDomain.vue:155-162`](../../../../frontend/src/core/components/SidebarDomain.vue)):
 toggle = overwrite della preferita unica.
 
 Nuovo comportamento:
@@ -172,7 +172,7 @@ shortcut) sono concettualmente "personali" e stanno meglio raggruppate in
 topbar — coerente con dove l'utente già trova il proprio badge identità e
 il logout.
 
-Nuovo kebab in [`AppTopbar.vue`](../../../frontend/src/core/components/AppTopbar.vue),
+Nuovo kebab in [`AppTopbar.vue`](../../../../frontend/src/core/components/AppTopbar.vue),
 posizionato **subito prima del pulsante logout**, sempre visibile (non solo
 mobile). Implementazione PrimeVue 4 `TieredMenu` (variante di `Menu` che
 supporta submenu nested). Stile coerente col kebab standard di lista via
@@ -279,7 +279,7 @@ Implementazione:
 - `nav.getDomainFavorites(domainKey)` non filtra (restituisce raw).
 - I componenti che renderizzano (SidebarHome, HomeView) applicano lo stesso
   filter di `visibleMenu` in
-  [`SidebarDomain.vue:35-45`](../../../frontend/src/core/components/SidebarDomain.vue#L35-L45):
+  [`SidebarDomain.vue:35-45`](../../../../frontend/src/core/components/SidebarDomain.vue#L35-L45):
   per ogni preferito risolvere la voce in `DOMAIN_MENUS`, scartare se
   `requireArea` BLOCCATA o `requireAnyAction` non soddisfatto.
 - Voce ammessa in lista solo se trovata in `DOMAIN_MENUS` (un preferito
@@ -356,11 +356,11 @@ restano invariate.
 
 ### 2. Mappatura codice corrente
 
-- [x] Ispezionare [`stores/navigation.js`](../../../frontend/src/stores/navigation.js)
-- [x] Ispezionare [`core/storage.js`](../../../frontend/src/core/storage.js) (funzione `domainFavoriteKey`, helper `local.get/set`)
-- [x] Ispezionare [`core/navigation.js`](../../../frontend/src/core/navigation.js) (`DOMAINS`, `DOMAIN_MENUS`, `resolveNavigationLabel`)
-- [x] Ispezionare [`SidebarDomain.vue`](../../../frontend/src/core/components/SidebarDomain.vue) (logica `visibleMenu`, `handleLeafClick`, `handleToggleFavorite`)
-- [x] Ispezionare [`SidebarHome.vue`](../../../frontend/src/core/components/SidebarHome.vue) (`handleDomainClick`, `getDefaultRoute`)
+- [x] Ispezionare [`stores/navigation.js`](../../../../frontend/src/stores/navigation.js)
+- [x] Ispezionare [`core/storage.js`](../../../../frontend/src/core/storage.js) (funzione `domainFavoriteKey`, helper `local.get/set`)
+- [x] Ispezionare [`core/navigation.js`](../../../../frontend/src/core/navigation.js) (`DOMAINS`, `DOMAIN_MENUS`, `resolveNavigationLabel`)
+- [x] Ispezionare [`SidebarDomain.vue`](../../../../frontend/src/core/components/SidebarDomain.vue) (logica `visibleMenu`, `handleLeafClick`, `handleToggleFavorite`)
+- [x] Ispezionare [`SidebarHome.vue`](../../../../frontend/src/core/components/SidebarHome.vue) (`handleDomainClick`, `getDefaultRoute`)
 - [x] Identificare la HomeView reale (cercare la route `/` o `/home`) e verificare contenuti esistenti
 - [x] Verificare se `vuedraggable` è già in `package.json` (deps)
 - [x] Verificare pattern test FE esistenti (se nessuno → MVP solo smoke manuale, lo dichiariamo allo step 9)
@@ -369,7 +369,7 @@ restano invariate.
 
 - [x] Composable `useNavigationFavorites` in `src/core/composables/useNavigationFavorites.js`
   - risoluzione `(domain, path)` → `{ item, label, icon, tooltip }` via `DOMAIN_MENUS` + `resolveNavigationLabel`
-  - filtro permessi runtime (estratto dalla logica oggi inline in [`SidebarDomain.vue:35-45`](../../../frontend/src/core/components/SidebarDomain.vue))
+  - filtro permessi runtime (estratto dalla logica oggi inline in [`SidebarDomain.vue:35-45`](../../../../frontend/src/core/components/SidebarDomain.vue))
   - helper `navigateToFavorite({ domain, path })` → `tabs.openTab` + `nav.setDomain` + `router.push`
   - getter reattivo `visibleFavorites` (computed che applica il filtro permessi su `nav.getAllFavorites()`)
 - [x] Componente atomico `FavoriteItem.vue` in `src/core/components/`
@@ -485,12 +485,12 @@ L'MVP si considera **completato** quando:
 
 ## Riferimenti
 
-- Store esistente: [`stores/navigation.js`](../../../frontend/src/stores/navigation.js)
-- Storage helper: [`core/storage.js`](../../../frontend/src/core/storage.js)
+- Store esistente: [`stores/navigation.js`](../../../../frontend/src/stores/navigation.js)
+- Storage helper: [`core/storage.js`](../../../../frontend/src/core/storage.js)
   (funzione `domainFavoriteKey`)
-- Sidebar dominio: [`SidebarDomain.vue`](../../../frontend/src/core/components/SidebarDomain.vue)
-- Sidebar home: [`SidebarHome.vue`](../../../frontend/src/core/components/SidebarHome.vue)
-- Navigation config: [`core/navigation.js`](../../../frontend/src/core/navigation.js)
+- Sidebar dominio: [`SidebarDomain.vue`](../../../../frontend/src/core/components/SidebarDomain.vue)
+- Sidebar home: [`SidebarHome.vue`](../../../../frontend/src/core/components/SidebarHome.vue)
+- Navigation config: [`core/navigation.js`](../../../../frontend/src/core/navigation.js)
   (`DOMAINS`, `DOMAIN_MENUS`, `resolveNavigationLabel`, `HOME_ITEM`)
 - Doc standard esistente:
   [`frontend-standards.md`](frontend/frontend-standards.md) §"Catalogo

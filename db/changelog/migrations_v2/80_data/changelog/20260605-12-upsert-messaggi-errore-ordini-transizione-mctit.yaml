@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Aggiunge a config.messaggi_errore i codici per il guard transizioni
+# stato ordine:
+#   E_ORDINE_TRANSIZIONE_NON_AMMESSA (id=470)
+#   E_ORDINE_CONFERMA_SENZA_RIGHE    (id=471)
+#
+# Usati da:
+#   - vendite.trgfn_ordini_guard_transizione (20260605-10)
+# Pattern simmetrico a 20260601-20 (ordini emittente) e agli analoghi
+# codici di offerte/contratti (E_OFFERTA_TRANSIZIONE_NON_AMMESSA id=459,
+# E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA id=392).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260605-12-upsert-messaggi-errore-ordini-transizione-mctit.yaml
+
+  - changeSet:
+      id: 20260605-12-upsert-messaggi-errore-ordini-transizione
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: messaggi_errore
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/messaggi_errore.csv
+            tableName: messaggi_errore
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: codice,    type: STRING }
+              - column: { name: lingua,    type: STRING }
+              - column: { name: messaggio, type: STRING }
+              - column: { name: id,        type: NUMERIC }
+              - column: { name: causa,     type: STRING }
+              - column: { name: soluzione, type: STRING }

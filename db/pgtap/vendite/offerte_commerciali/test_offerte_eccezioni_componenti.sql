@@ -35,10 +35,12 @@
 --     (nessun filtro esposto_in_fattura)              [skip se no composito valido]
 -- 25) fn_preview quantita_componente = coeff_qta * quantita_padre [skip se no composito valido]
 -- 26) fn_preview include componenti esposto=FALSE     [skip se nessun componente non-esposto]
+-- 27) fn_init guard ESCLUSIONE composito → 0, nessun componente,
+--     padre conserva prezzo_unitario NULL                [skip se no composito]
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(26);
+SELECT plan(27);
 
 -- ============================================================
 -- Contesto dati-dipendenti (skip se assenti)
@@ -153,11 +155,13 @@ BEGIN
            DATE '2082-01-01', v_ctx.stato_accettata_id
     RETURNING id INTO v_off_id;
 
-    -- Eccezione con articolo semplice (test 15)
+    -- Eccezione con articolo semplice (test 15).
+    -- fonte=FISSA richiede qta_operativa NOT NULL (trigger a10 qta_from_operativa,
+    -- bind 20260531-11): si valorizza qta_operativa e il trigger deriva quantita.
     IF v_ctx.articolo_semplice_id IS NOT NULL THEN
         INSERT INTO vendite.offerte_commerciali_eccezioni (
             offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, quantita
+            prezzo_unitario, qta_operativa
         )
         VALUES (v_off_id, v_ctx.articolo_semplice_id, 'OVERRIDE', 'FISSA', 10.00, 1)
         RETURNING id INTO v_ecc_id;
@@ -198,6 +202,31 @@ BEGIN
                 'LETTURE', 0.00, NULL)
         RETURNING id INTO v_ecc_id;
         INSERT INTO tmp_oce_ids VALUES ('CONSUMO', v_off_consumo, v_ecc_id);
+    END IF;
+
+    -- Eccezione ESCLUSIONE su articolo composito con quantita NOT NULL (test 27).
+    -- Offerta separata: l'unique parziale uq_offerte_eccezioni_one_eccezione_per_articolo
+    -- ammette al piu' 1 riga OVERRIDE/ESCLUSIONE per (offerta, articolo) e la COMPOSITA
+    -- ha gia' un OVERRIDE sullo stesso articolo. prezzo_unitario NULL (CHECK ESCLUSIONE).
+    IF v_ctx.articolo_composito_id IS NOT NULL THEN
+        INSERT INTO vendite.offerte_commerciali (
+            emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+            listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
+        )
+        SELECT v_ctx.emittente_fiscale_id, v_ctx.billing_account_id,
+               v_ctx.istanza_utility_id, v_ctx.utility_id,
+               v_ctx.listino_id, v_ctx.listino_versione_id,
+               DATE '2082-01-01', v_ctx.stato_accettata_id
+        RETURNING id INTO v_off_consumo;
+
+        INSERT INTO vendite.offerte_commerciali_eccezioni (
+            offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
+            prezzo_unitario, quantita
+        )
+        VALUES (v_off_consumo, v_ctx.articolo_composito_id, 'ESCLUSIONE',
+                'DERIVATA_COMPONENTI', NULL, 2)
+        RETURNING id INTO v_ecc_id;
+        INSERT INTO tmp_oce_ids VALUES ('ESCLUSIONE', v_off_consumo, v_ecc_id);
     END IF;
 END;
 $$;
@@ -652,6 +681,37 @@ SELECT CASE
         '26) fn_preview include componenti con esposto_in_fattura=FALSE (filtro AND esposto=TRUE rimosso)'
     )
     ELSE skip('26) skip: nessun componente con esposto_in_fattura=FALSE valido per CURRENT_DATE')
+END;
+
+-- ============================================================
+-- TEST 27) fn_init guard difensivo: ESCLUSIONE su articolo composito
+--          → ritorna 0, NESSUN componente inserito, e la riga padre
+--          conserva prezzo_unitario IS NULL (nessuna violazione del
+--          CHECK chk_offerte_eccezioni_prezzo_per_tipo_eccezione).
+-- ============================================================
+SELECT CASE
+    WHEN (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'ESCLUSIONE') IS NOT NULL
+    THEN is(
+        (
+            -- la fn deve ritornare 0 (no-op) senza sollevare il CHECK
+            SELECT vendite.fn_offerta_eccezione_componenti_init(
+                (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'ESCLUSIONE'),
+                (SELECT emittente_sr_id FROM tmp_oce_ctx),
+                DATE '2082-01-01'
+            )
+        )
+        -- 0 componenti inseriti
+        + (SELECT COUNT(*)::integer FROM vendite.offerte_commerciali_eccezioni_componenti
+            WHERE eccezione_offerta_id =
+                  (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'ESCLUSIONE'))
+        -- prezzo padre ancora NULL → +0; se non NULL questo termine sarebbe 1000
+        + (SELECT CASE WHEN prezzo_unitario IS NULL THEN 0 ELSE 1000 END
+             FROM vendite.offerte_commerciali_eccezioni
+            WHERE id = (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'ESCLUSIONE')),
+        0,
+        '27) fn_init ESCLUSIONE composito → 0, nessun componente, prezzo padre NULL'
+    )
+    ELSE skip('27) skip: nessuna eccezione ESCLUSIONE composita disponibile')
 END;
 
 SELECT * FROM finish();

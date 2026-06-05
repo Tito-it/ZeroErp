@@ -23,6 +23,7 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
+import AttivoTag from '../../core/components/AttivoTag.vue'
 import Button from 'primevue/button'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
@@ -389,7 +390,7 @@ onMounted(() => store.fetchList())
       <Column field="versioni_count" :header="t('listini.col_versioni')" style="width: 80px;" />
       <Column field="attivo" :header="t('listini.col_attivo')" style="width: 80px;">
         <template #body="{ data }">
-          <Tag :value="data.attivo ? t('common.active') : t('common.inactive')" :severity="data.attivo ? 'success' : 'warn'" />
+          <AttivoTag :active="data.attivo" />
         </template>
       </Column>
       <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">

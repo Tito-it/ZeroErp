@@ -101,4 +101,4 @@ export const useEmittentiFiscaliBAStore = defineStore('amm-emittenti-fiscali-ba'
     hasDefaultMapping, countSpecifici,
     fetchList, fetchSummary, addMapping, removeMapping, reset
   }
-})
+}, { userScoped: true })

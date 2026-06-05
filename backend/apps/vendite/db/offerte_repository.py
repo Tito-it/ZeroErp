@@ -642,6 +642,22 @@ class OfferteRepository(ComponentiRepositoryMixin):
             )
             return rows_to_list(cursor)
 
+    # Scopo: Righe effettive «ordine-ready» dell'offerta = listino base risolto
+    #        + variazione globale + eccezioni (OVERRIDE/ESCLUSIONE/AGGIUNTA),
+    #        con BoM per i compositi. Wrapper sottile su
+    #        `vendite.fn_offerta_righe_espanse` (DB-ORD: espansione, core condiviso
+    #        con la preview contratti). Usato dalla conversione offerta → ordine
+    #        (`ordini_service.crea_ordine_da_offerta`): ritorna già IVA/uom/prezzo
+    #        netto, copiabili in `ordini_righe` senza arricchimenti BE (DB-first).
+    #        `componenti` è jsonb (lista) per le righe composite.
+    def list_righe_espanse(self, offerta_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vendite.fn_offerta_righe_espanse(%s)",
+                [offerta_id],
+            )
+            return rows_to_list(cursor)
+
     # Scopo: Dettaglio singola eccezione (read-after-write).
     def get_eccezione(self, eccezione_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:

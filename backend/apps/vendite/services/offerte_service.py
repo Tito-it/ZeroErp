@@ -1032,7 +1032,12 @@ class OfferteService:
                 # Auto-init componenti BoM su articolo composito (mirror del
                 # flow contratti: la fn DB e' idempotente, no-op se gia'
                 # presenti o articolo non composito).
-                if is_composito:
+                # ESCLUSIONE escluso: un articolo escluso non ha prezzo
+                # (CHECK chk_offerte_eccezioni_prezzo_per_tipo_eccezione impone
+                # prezzo_unitario NULL) ne' senso di negoziare i suoi componenti.
+                # Inizializzarli farebbe scattare trgfn_componenti_ricalcola_padre
+                # che scriverebbe SUM(figli) sul padre ESCLUSIONE -> violazione.
+                if is_composito and tipo_eccezione != "ESCLUSIONE":
                     testata = testata_gate or self._repo.get_offerta(offerta_id) or {}
                     emittente_sr_id = self._resolve_emittente_sr_id_for_offerta(
                         offerta_id=offerta_id,

@@ -36,7 +36,7 @@ agente — §1.bis). Già presenti e operativi:
 
 | Oggetto | Note |
 | --- | --- |
-| [vendite.ordini](../../../dbzero/vendite/manual/ordini.md) (testata) | identità `(anno,serie,numero)`+`uid`, stato `config.stati_doc_ordini`, totali, `fatturazione_trigger`, `canale_origine`, `utility_id`, `emittente_fiscale_id` NOT NULL |
+| [vendite.ordini](../../dbzero/vendite/manual/ordini.md) (testata) | identità `(anno,serie,numero)`+`uid`, stato `config.stati_doc_ordini`, totali, `fatturazione_trigger`, `canale_origine`, `utility_id`, `emittente_fiscale_id` NOT NULL |
 | `vendite.ordini_righe` | articolo+qta+prezzo+sconto+iva, `qta_operativa`/`uom_operativa_id`, propagazione qta componenti |
 | `vendite.ordini_righe_componenti` | BoM compositi (modello unificato 13-05, `fn_ordine_riga_componenti_init`/`preview` già a DB) |
 | `vendite.ordini_righe_fulfillment` | tracciamento evadibilità (downstream DDT — **fuori scope scheletro**) |
@@ -174,7 +174,7 @@ replica `prezzo` invece di `quantita > 0`) → la correzione va nel brief (§3.0
 Il lavoro NON inventa pattern: applica quelli già scritti (CLAUDE.md). In sintesi
 (dettaglio identico a [lista-preventivi.md §1](../work-done/lista-preventivi.md)):
 
-- **Backend** — [api.md](../../api.md): `DomainAPIView` (`area_funzionale='vendite'`),
+- **Backend** — [api.md](../api.md): `DomainAPIView` (`area_funzionale='vendite'`),
   `parse_list_params`, envelope `success_response`+`paginated_envelope`, tiebreaker
   `id`, `is_search_endpoint=True` su list+export, scope emittente
   `get_scope_user_id`→`script.fn_get_emittenti_scope_pk_ids` (**PK reale**, non
@@ -185,7 +185,7 @@ Il lavoro NON inventa pattern: applica quelli già scritti (CLAUDE.md). In sinte
   via `apps.ui.api.export_helpers` + `ListaExportService` (param `formato`, mai
   `format` — memoria `feedback_drf_format_magic_param`; rispetta ordine/visibilità/
   permessi — `feedback_export_lista_rispetta_preferenza`).
-- **Frontend** — [frontend-standards.md](../../frontend/frontend-standards.md):
+- **Frontend** — [frontend-standards.md](../frontend/frontend-standards.md):
   toolbar UNICA caller (memoria `feedback_lista_pattern_standard`),
   `<ListaConfigurabile>` + `useListaConfigurabilePage` + `CellaConfigurabile`
   (formatter built-in `currency_eur`/`date_short`/`datetime_short`),
@@ -357,8 +357,8 @@ Gemello `offerte_*`/`preventivi_*`. Differenze: **niente revisioni** (più
 semplice), **niente listino testata**, **+`fatturazione_trigger`**.
 
 ### 5.1 Repository — `ordini_repository.py` (NUOVO)
-Clone strutturale di [offerte_repository.py](../../../../backend/apps/vendite/repositories/offerte_repository.py)
-/ [preventivi_repository.py](../../../../backend/apps/vendite/repositories/preventivi_repository.py):
+Clone strutturale di [offerte_repository.py](../../../../backend/apps/vendite/db/offerte_repository.py)
+/ [preventivi_repository.py](../../../../backend/apps/vendite/db/preventivi_repository.py):
 - `list_ordini(...)`: legge da **`vw_ordini_lista`**; filtri stato/utility/data
   (`data_da` default anno-1, memoria `feedback_filtro_data_liste`), scope emittente
   `fn_get_emittenti_scope_pk_ids`, ricerca ILIKE su `numero`/`ragione_sociale_completa`
@@ -558,12 +558,13 @@ vendite, lista DEF-8 diretta). File: `api/ordiniApi.js`, `stores/ordini.js`
 
 ### Scelte deliberate / cose mancanti (scheletro)
 
-1. **Agente (E) omesso dal form drawer.** Non esiste un picker per
-   `soggetti_ruoli` ruolo agente né un endpoint lookup dedicato: la colonna è
-   nullable/predisposta. Si aggiunge quando arriva il picker (o con la
-   conversione upstream §7.4). Sviluppo concentrico, non YAGNI
-   (`feedback_concentrico_no_yagni`). La colonna `agente_denominazione` resta
-   comunque opt-in nella lista (catalogo).
+1. **Agente (E) omesso dal form drawer — blocco di modello, non solo UI.**
+   Verifica 2026-06-04: manca l'intero sottosistema agente (il ruolo `VENDITORE`
+   esiste ma non ci sono soggetti, né flusso di creazione, né lookup, né guard sul
+   FK). La colonna `agente_soggetto_ruolo_id` **resta nullable e non gestita**
+   (decisione Tid). Tema rinviato a sviluppo dedicato →
+   [analisi-ruolo-agente.md](analisi-ruolo-agente.md). La colonna
+   `agente_denominazione` resta opt-in nella lista (catalogo), di fatto vuota.
 2. **PDF in lista omesso.** Non c'è generazione documenti `ORDINE_VENDITA` nello
    scheletro BE (nessun endpoint `/documenti/`): la lista resta consultazione +
    note. Si aggancia `EntityPdfButton`/`PdfDocumentiSorgenteDialog` quando esisterà
@@ -576,13 +577,19 @@ vendite, lista DEF-8 diretta). File: `api/ordiniApi.js`, `stores/ordini.js`
    articolo non composito) il BE lo risolve via `PricingService` in
    `gestisci_riga`. Niente badge origine prezzo / banner L2 (pricing stile
    preventivo, gate L2/L3 = decisione aperta §8.bis).
-5. **Componenti compositi: niente `ComponentiDialog` pre-save in CREATE.** Il BE
-   `gestisci_riga` **non** accetta `componenti_overrides` (whitelist
-   `_CREATE_KEYS_RIGA` priva del campo): inizializza i componenti ai prezzi
-   risolti. L'editing dei prezzi componente avviene **in EDIT** via
-   `OrdiniRigaComponentiPanel` (PATCH per componente). Divergenza voluta da
-   preventivi/contratti (che usano la dialog pre-save), coerente con ciò che il
-   BE supporta.
+5. **Componenti compositi: ~~niente `ComponentiDialog` pre-save in CREATE~~ →
+   ECCEZIONE RIMOSSA (2026-06-05).** *(Stato iniziale scheletro: `gestisci_riga`
+   non accettava `componenti_overrides`, componenti inizializzati ai prezzi
+   risolti, editabili solo in EDIT — divergenza voluta da preventivi/contratti.)*
+   Su richiesta Tid l'ordine è stato **allineato al pattern famiglia**:
+   `gestisci_riga` ora accetta `componenti_overrides` (gate L1
+   `validate_componenti_overrides_authorization` + `normalize_componenti_overrides`
+   → `fn_ordine_riga_componenti_init`, lo stesso path già usato dalla conversione
+   offerta→ordine) e `OrdiniRigaForm` apre la `ComponentiDialog` pre-save riusando
+   i BB `useComponentiDialog`/`ComponentiDialog`/`ComponentiCreateActionsPanel`
+   (regola del 2, zero componenti nuovi). L'editing in EDIT via
+   `OrdiniRigaComponentiPanel` resta. Override prezzo richiede permesso
+   `prezzo_override_manuale`; la fn DB rifiuta prezzo 0 su componente obbligatorio.
 6. **Conferma/push via `useConfirmAction`** (no `AppDialog`): sono sì/no puri →
    lo standard preferisce `useConfirmAction`. Push singolo con toast
    differenziato per `report.stato` (gemello `PreventiviIntegrazione`).
@@ -608,13 +615,23 @@ trattano cliente/utility come immutabili post-create) e con il lock FE già
 presente. Test: `test_ordini_service.py` (cambio BA rifiutato / BA invariato
 tollerato / payload senza BA aggiorna) — 12/12 verdi + `test_ordini_api` 9/9.
 
-**Difesa DB autoritativa (DB-first, pendente)**: il guard BE è solo metà del
-pattern canonico ZeroErp (guard applicativo + trigger DB come difesa finale). Il
-lock immutabilità a livello DB (estensione di `trg_ordini_a10_lock_columns_upd` a
-`billing_account_id` + `soggetto_ruolo_id`) è descritto nel brief
-[db-brief-ordini-lock-cliente.md](db-brief-ordini-lock-cliente.md) → consegnato al
-team DB (`dev/db-tid`); il guard BE resta come defense-in-depth + messaggio
-parlante.
+**Difesa DB autoritativa — ✅ ATTERRATA (DB-ORD-LOCK, 2026-06-04)**, con
+**scostamenti dal brief iniziale** (brief
+[db-brief-ordini-lock-cliente.md](../work-done/db-brief-ordini-lock-cliente.md)):
+
+- meccanismo via **registro data-driven** `dbops.automation_lock_columns` (2
+  righe → trigger generato `trg_ordini_a10_lock_columns_upd`), **non** trigger
+  scritti a mano come ipotizzato nella prima stesura;
+- codice errore **dedicato `E_ORD_CLIENTE_IMMUTABILE`** (id DB 469), scartato il
+  generico `CODICE_NON_MODIFICABILE`;
+- **deliverable extra non previsto**: cleanup di `trgfn_ordini_normalize` →
+  eredità `fatturazione_trigger` ora **solo su INSERT** (il ramo UPDATE era logica
+  morta, contraddittoria col lock). Cambio di comportamento esplicito ratificato.
+
+**Hand-off BE completato (2026-06-04)**: `E_ORD_CLIENTE_IMMUTABILE` registrato in
+`error_policies.py` (400); il guard BE `aggiorna_ordine` ora solleva **lo stesso
+codice** (unificato service↔DB — estratto da `_db_errors` su UPDATE diretta che
+bypassa il service). Guard BE = defense-in-depth + messaggio parlante.
 
 ### BB guardia empty-state estratto + adottato (regola del 2, OK Tid 2026-06-03)
 
@@ -712,15 +729,56 @@ esistente e collaudato** (PROJECT_CONTEXT «Pipeline fatturazione»). Lo schelet
 ordine + conferma chiude quindi un **giro vendita→fattura end-to-end** riusando
 ~90% di codice.
 
-### 7.4 A monte — conversione preventivo/offerta → ordine (step successivo)
-La colonna **A (documento_origine)** *predispone* il giro a monte ma la
-conversione vera (genera ordine da preventivo accettato / offerta) è uno **step
-immediatamente successivo allo scheletro**, non parte di esso (sviluppo
-concentrico — memoria `feedback_concentrico_no_yagni`). Quando si farà: service
-`crea_ordine_da_preventivo(preventivo_id)`/`_da_offerta(...)` che copia testata+
-righe+componenti e valorizza `documento_origine_*`; FE = azione «genera ordine»
-sul documento upstream. Lo scheletro deve solo **non chiudere la porta** (colonna
-+ valorizzazione in CREATE già pronte).
+### 7.4 A monte — conversione preventivo/offerta → ordine
+
+**Preventivo → ordine: ✅ FATTO (2026-06-04).**
+
+- **BE**: `ordini_service.crea_ordine_da_preventivo(preventivo_id)` — guard stato
+  `ACCETTATO` (`E_ORD_ORIGINE_NON_CONVERTIBILE` se no, `E_PREV_NOT_FOUND` se
+  inesistente), copia testata (BA/utility/valuta/termine/emittente) + righe 1:1
+  (prezzi **congelati**; rename `sconto_percentuale`→`sconto_perc`) + componenti
+  BoM (struttura ri-inizializzata ai prezzi correnti — vedi caveat sotto), e
+  valorizza `documento_origine = ('PREVENTIVO', preventivo_id)` via
+  `repo.set_documento_origine` (UPDATE mirato, non tocca le colonne lockate dal
+  DB-ORD-LOCK). Orchestrazione Python riusando `crea_ordine` + `gestisci_riga` in
+  una transazione. Provenienza senza UNIQUE (A1) → più ordini da uno stesso
+  preventivo (riordini). Endpoint `POST /api/v1/vendite/preventivi/<id>/genera-ordine/`
+  (`ApiPreventivoGeneraOrdine`). Test 3/3 (ok/stato/not-found).
+- **FE**: azione statica «Genera ordine» in `PreventiviDrawer` (gated su
+  `ACCETTATO`, nascosta in readonly) → `generaOrdineFromPreventivo` + toast col
+  numero ordine + `emitDataChanged(ORDINE)`.
+- **Caveat componenti** (v1): per le righe composite la struttura BoM è copiata
+  ma i prezzi componente sono **ri-risolti all'ordine** (`gestisci_riga` re-init),
+  non congelati dal preventivo. Coerente con "ordine a prezzi correnti"; copia
+  fedele dei prezzi componente = enhancement futuro (l'override-map di
+  `init_componenti_riga` chiavia per id sorgente↔target in modo non banale).
+
+**Offerta → ordine: ✅ FATTO (2026-06-04, prerequisito DB atterrato).** L'offerta
+non ha righe materializzate (listino + eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA): le
+righe «effettive» sono prodotte dalla **fn DB `fn_offerta_righe_espanse`**
+(ordine-ready: listino + variazione + eccezioni, con BoM, IVA/uom risolte; core
+condiviso `fn_espandi_listino_versione`, refactor preview contratti senza
+regressione). Brief atterrato:
+[db-brief-offerta-righe-espanse.md](../work-done/db-brief-offerta-righe-espanse.md).
+
+- **BE**: `OfferteRepository.list_righe_espanse` (wrapper fn) +
+  `ordini_service.crea_ordine_da_offerta` (guard `ACCETTATA` →
+  `E_ORD_ORIGINE_NON_CONVERTIBILE`; not-found `E_VENDITE_NOT_FOUND`). **Prezzi
+  negoziati PRESERVATI** (l'offerta è accettata): non-composito = prezzo congelato;
+  composito = componenti via `componenti_overrides` dal jsonb della fn → il trigger
+  `trgfn_componenti_ricalcola_padre` ricompone il prezzo padre dai prezzi negoziati.
+  *(Caveat: la fn DB `fn_ordine_riga_componenti_init` rifiuta un override prezzo 0;
+  un componente negoziato a 0 è escluso dagli override e ricade sul resolver
+  corrente — limitazione nota del vincolo override DB, raro nei bundle.)*
+  *(Asimmetria voluta col preventivo, che ri-prezza i componenti correnti — vedi
+  caveat sopra; l'offerta accettata richiede fedeltà.)* Testata: BA/utility/
+  emittente/valuta (offerta non ha termine/modalità pagamento). Helper testata
+  condiviso `_crea_testata_ordine_da_origine` (regola del 2 con preventivo).
+  Endpoint `POST /api/v1/vendite/offerte/<id>/genera-ordine/`
+  (`ApiOffertaGeneraOrdine`). Test 4/4 (ok/stato/not-found/override-coercion).
+- **FE**: azione statica «Genera ordine» su `OffertaDrawer` (gated su `ACCETTATA`,
+  nascosta in readonly) → store `generaOrdine` (emette evento tab ordini) +
+  `generaOrdineFromOfferta` api + toast col numero. Build verde.
 
 ---
 
@@ -815,17 +873,25 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 Cosa resta **davvero da fare** dopo lo scheletro BE+FE:
 
 1. ✅ **Bug BE BA-update** — **CHIUSO 2026-06-04** (§"Bug logico BE — CHIUSO"):
-   `billing_account_id` rimosso dalla whitelist update + guard che rifiuta il
-   cambio BA (cliente immutabile). Test verdi.
-2. ✅ **Stampa PDF** (§12) — **BE+FE FATTI 2026-06-04** (anteprima on-demand,
+   `billing_account_id` rimosso dalla whitelist update + guard cambio BA. **Difesa
+   DB lock-columns atterrata** (DB-ORD-LOCK, con scostamenti dal brief: registro
+   `automation_lock_columns`, codice dedicato `E_ORD_CLIENTE_IMMUTABILE`, cleanup
+   `trgfn_ordini_normalize` INSERT-only). Codice **unificato service↔DB**. Test verdi.
+2. ✅ **Stampa PDF** (§12) — **COMPLETA 2026-06-04** (anteprima on-demand,
    §12.4a): tipo documento `ORDINE_VENDITA` seedato (DB), context builder + view
    documenti + route (BE), `EntityPdfButton` nel drawer + client/costanti/i18n
-   (FE), build verde. **Resta**: creazione **manuale** del template HTML +
-   versione PUBBLICATA (senza, l'anteprima dà errore template non risolto).
-3. 🟡 **Picker agente (E)** nel drawer FE (§6.ter.1): colonna/whitelist/service
-   pronti, manca solo il campo UI (attende picker SR ruolo agente).
-4. 🟡 **Conversione upstream** preventivo/offerta → ordine (§7.4): `documento_origine`
-   predisposto, conversione non implementata (step successivo).
+   (FE). **Template HTML + versione PUBBLICATA creati** → stampa end-to-end
+   (l'anteprima rende il PDF).
+3. ⛔ **Agente (E)** (§6.ter.1): **NON è solo un picker mancante** — manca l'intero
+   sottosistema. Il ruolo `VENDITORE` esiste in tassonomia, ma non ci sono soggetti
+   con quel ruolo, né flusso di creazione, né lookup, né guard sul FK (accetta
+   qualsiasi ruolo — difetto logico). **Decisione Tid 2026-06-04**: colonna
+   `agente_soggetto_ruolo_id` **resta nullable e non gestita**; il tema è oggetto
+   di analisi/sviluppo dedicato → [analisi-ruolo-agente.md](analisi-ruolo-agente.md).
+4. 🟢 **Conversione upstream** (§7.4): **preventivo → ordine** e **offerta → ordine**
+   entrambe **FATTE 2026-06-04** (BE service + endpoint `genera-ordine` + test, FE
+   azione sui rispettivi drawer, `documento_origine` valorizzato). L'offerta usa la
+   fn DB `fn_offerta_righe_espanse` (atterrata) con prezzi negoziati preservati.
 5. 🟡 **Smoke E2E** (passo 7) non ancora eseguito.
 
 ---
@@ -917,7 +983,7 @@ Decisioni team DB (ratificate Tid 2026-06-04):
    duplicati). **EVASO**, resta solo commit/PR su `dev/db-tid`.
 2. **Sorgente → riuso.** `config.sorgenti` `codice='ORDINE_VENDITA'` (id=6) già
    presente e attiva (push/canali) → nessuna nuova riga.
-3. **Template + versione PUBBLICATA → gestione MANUALE** (decisione Tid): si
+3. **Template + versione PUBBLICATA → gestione MANUALE** ✅ **FATTO 2026-06-04**: si
    creano a mano (`documenti.template_documenti` + `template_documenti_versioni`,
    `context_builder_code='ORDINE_VENDITA'`, `is_default=true` per
    `(ORDINE_VENDITA, sorgente, emittente)`), **non** via seed Liquibase — come già
@@ -1073,7 +1139,7 @@ componente di stampa**. Si registra solo il nuovo sorgente.
 | Layer | Cosa | Clone da | Effort | Stato |
 | --- | --- | --- | --- | --- |
 | DB | seed tipo documento `ORDINE_VENDITA` + pgTAP | seed-base documenti | banale | ✅ **fatto** (applicato al DB di lavoro 2026-06-04; commit/PR su `dev/db-tid`) |
-| DB/config | template + versione PUBBLICATA (HTML) — **manuale** | template preventivo/offerta | **medio** (layout HTML) | ⏳ da creare a mano |
+| DB/config | template + versione PUBBLICATA (HTML) — **manuale** | template preventivo/offerta | **medio** (layout HTML) | ✅ **fatto 2026-06-04** |
 | BE | context builder + registrazione `ready()` | `preventivo_document_context_builder.py` | basso | ✅ **fatto** (`ordine_document_context_builder.py`, CODE=ORDINE_VENDITA) |
 | BE | view documenti (4 classi) + route | `preventivi_documenti_views.py` / `preventivi_urls.py` | basso | ✅ **fatto** (`ordini_documenti_views.py`; no `emetti`, §12.4a) |
 | BE | repo getter `get_for_documento_generation` | `preventivi_repository.py` | basso | ✅ **fatto** |
@@ -1082,9 +1148,7 @@ componente di stampa**. Si registra solo il nuovo sorgente.
 | FE | `EntityPdfButton` nel drawer | `PreventiviDrawer.vue` | basso | ✅ **fatto** (drawer; azione lista omessa, opzionale) |
 | FE | i18n `vendite.ordini.pdf.*` + context_builder | preventivi | banale | ✅ **fatto** (it/en; `ORDINE` placeholder → `ORDINE_VENDITA` registered) |
 
-> **BE+FE stampa COMPLETI 2026-06-04** (anteprima on-demand, §12.4a). Build FE
-> verde. Resta solo il **layout HTML del template + versione PUBBLICATA**
-> (creazione manuale, §12.1.3): senza, l'anteprima risponde con errore template
-> non risolto. Tutto il resto è cablaggio del doc-type «ordine»
-> sull'infrastruttura documenti esistente. Stampa = **quarto giro** sullo stesso
-> BB, **zero infrastruttura nuova**.
+> **Stampa COMPLETA end-to-end 2026-06-04** (anteprima on-demand, §12.4a): BE+FE
+> con **template HTML/versione PUBBLICATA creati** (§12.1.3). Build FE verde. Tutto
+> cablaggio del doc-type «ordine» sull'infrastruttura documenti esistente. Stampa
+> = **quarto giro** sullo stesso BB, **zero infrastruttura nuova**.

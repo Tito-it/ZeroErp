@@ -82,11 +82,11 @@ CONSTRAINT ... EXCLUDE ... WHERE` esplicito per tabella, come fatto per
 
 L'unica protezione applicativa è `vendite.fn_contratto_sovrapposto` (predicato
 corretto: tutti i non-abortiti, `&&` su `validita`), ma è cablata **solo nel
-push offerta→contratto** ([offerte_repository.py:1089](../../../backend/apps/vendite/db/offerte_repository.py#L1089)).
+push offerta→contratto** ([offerte_repository.py:1089](../../../../backend/apps/vendite/db/offerte_repository.py#L1089)).
 La **creazione/modifica/attivazione manuale** di un contratto **non la chiama**.
 Quindi, senza un vincolo DB, le altre strade non hanno alcun controllo. Il
 backend mappa già l'IntegrityError di `ex_contratti_no_overlap` su un messaggio
-parlante ([contratti_service.py:383](../../../backend/apps/vendite/services/contratti_service.py#L383)):
+parlante ([contratti_service.py:383](../../../../backend/apps/vendite/services/contratti_service.py#L383)):
 era previsto che il vincolo DB sollevasse — dove l'oggetto è un indice, quella
 mappatura è **codice morto**.
 

@@ -10,7 +10,7 @@
 # scritture dirette su tabelle, chiamate a funzioni DB per i componenti BoM.
 # Il ricalcolo totali e' gestito da trigger DB su ordini_righe; il backend
 # non lo orchestra. Clone strutturale di `preventivi_repository` adattato alle
-# colonne reali della testata/riga ordine (riga_nr, sconto_perc, iva_perc) e
+# colonne reali della testata/riga ordine (riga_nr, sconto_perc, iva_id) e
 # senza revisioni (gli ordini non hanno `rev`).
 
 import json
@@ -233,7 +233,6 @@ class OrdiniRepository(ComponentiRepositoryMixin):
                 iva.codice              AS iva_codice,
                 iva.descrizione         AS iva_descrizione,
                 iva.aliquota_iva        AS iva_aliquota,
-                r.iva_perc,
                 ROUND(
                     (r.quantita * COALESCE(r.prezzo_unitario, 0::numeric)) *
                     (1::numeric - COALESCE(r.sconto_perc, 0::numeric) / 100::numeric),
@@ -282,7 +281,6 @@ class OrdiniRepository(ComponentiRepositoryMixin):
                 r.sconto_perc,
                 r.iva_id,
                 iva.codice              AS iva_codice,
-                r.iva_perc,
                 r.meta,
                 EXISTS (
                     SELECT 1
@@ -299,6 +297,30 @@ class OrdiniRepository(ComponentiRepositoryMixin):
         with connection.cursor() as cursor:
             cursor.execute(sql, [riga_id])
             return row_to_dict(cursor)
+
+    # Scopo: Restituisce il riepilogo IVA aggregato dell'ordine dalla view
+    #        derivata `vendite.vw_ordini_riepilogo_iva_dettaglio`. Una riga per
+    #        gruppo aliquota; natura/esigibilita/split sono sempre NULL (shape
+    #        allineata a vw_preventivi_riepilogo_iva_dettaglio). Imponibile e
+    #        imposta sono ROUND 2 sull'aggregato per aliquota (regola fiscale
+    #        DPR 633/72 art. 21 + DM 24/12/93, identica ai preventivi). La view
+    #        ricalcola dalle righe attive: il chiamante legge solo lo stato
+    #        corrente, non orchestra alcun ricalcolo. A differenza dei
+    #        preventivi la view ordini non espone un `id` tecnico (chiave logica
+    #        ordine_id + iva_id).
+    def list_riepilogo_iva(self, ordine_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT ordine_id, iva_id, iva_codice, iva_descrizione,
+                   iva_aliquota, natura_id, natura_codice,
+                   esigibilita, split_payment,
+                   imponibile, imposta, arrotondamento, totale_riga
+              FROM vendite.vw_ordini_riepilogo_iva_dettaglio
+             WHERE ordine_id = %s
+             ORDER BY iva_aliquota NULLS LAST, iva_id NULLS LAST
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [ordine_id])
+            return rows_to_list(cursor)
 
     # Scopo: Load atomico di un componente con scope completo (componente →
     #        riga → ordine) in un'unica query JOIN, per i guard del service.
@@ -377,6 +399,25 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             result = row_to_dict(cursor)
             assert result is not None
             return result
+
+    # Scopo: Valorizza la provenienza upstream (documento_origine) di un ordine
+    #        appena creato dalla conversione preventivo/offerta → ordine. UPDATE
+    #        mirato sulle sole colonne `documento_origine_*` (NON lockate dal
+    #        trigger immutabilità cliente, che intercetta solo
+    #        billing_account_id/numero/soggetto_ruolo_id) → nessuna interferenza.
+    #        Il CHECK di co-presenza richiede entrambe valorizzate insieme.
+    def set_documento_origine(
+        self, ordine_id: int, tipo: str, origine_id: int,
+    ) -> bool:
+        sql = """
+            UPDATE vendite.ordini
+               SET documento_origine_tipo = %s,
+                   documento_origine_id   = %s
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo, int(origine_id), int(ordine_id)])
+            return cursor.rowcount > 0
 
     # Scopo: Aggiorna campi modificabili della testata ordine. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.

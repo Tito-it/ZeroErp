@@ -34,6 +34,7 @@ from apps.vendite.api.views_offerte import (
     ApiOffertaEccezioneDetail,
     ApiOffertaEccezioni,
     ApiOffertaEccezionePreviewComponenti,
+    ApiOffertaGeneraOrdine,
     ApiOffertaPushContratto,
     ApiOffertaRegistraEsito,
     ApiOffertaRevisioni,
@@ -91,6 +92,12 @@ urlpatterns = [
         "<int:offerta_id>/revisioni/",
         ApiOffertaRevisioni.as_view(),
         name="vendite-offerta-revisioni-list",
+    ),
+    # Conversione upstream → ordine (§7.4): righe espanse via fn DB.
+    path(
+        "<int:offerta_id>/genera-ordine/",
+        ApiOffertaGeneraOrdine.as_view(),
+        name="vendite-offerta-genera-ordine",
     ),
     # Push a contratto (Step 8 brief DB, atterrato 2026-05-25).
     path(
