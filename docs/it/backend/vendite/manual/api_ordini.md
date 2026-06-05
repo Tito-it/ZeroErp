@@ -315,7 +315,7 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
   e [db-brief-ordini-lock-cliente.md](../../../dev/work-done/db-brief-ordini-lock-cliente.md)
   (lock cliente)
 - Stampa/documenti: [documenti-e-stampe.md](../../../guide/documenti-e-stampe.md)
-- Riepilogo IVA ordine (DB + BE + FE): [documenti-non-fiscali-iva-db.md](../../../dev/work-in-progress/documenti-non-fiscali-iva-db.md)
+- Riepilogo IVA ordine (DB + BE + FE): [documenti-non-fiscali-iva-db.md](../../../dev/work-done/documenti-non-fiscali-iva-db.md)
   (§12 modello, §13 sviluppo BE/FE)
 - Tabella testata: [vendite.ordini](../../../dbzero/vendite/manual/ordini.md)
 - Linee guida API: [api.md](../../../dev/api.md)

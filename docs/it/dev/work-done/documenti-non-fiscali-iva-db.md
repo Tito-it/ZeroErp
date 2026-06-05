@@ -1,6 +1,8 @@
 # Documenti non fiscali - riepilogo IVA DB
 
-> Stato: pilot `ORDINE_VENDITA` **COMPLETO end-to-end** (DB + BE + FE).
+> Stato: **CHIUSO** (2026-06-05, committato) — pilot `ORDINE_VENDITA` completo
+> end-to-end (DB + BE + FE). Documento spostato in `work-done`. Unico residuo non
+> bloccante: template HTML PDF (manuale, 13.8).
 >
 > - **DB CONSEGNATO** (2026-06-05, PR #785, commit `0aa6cdf07`): viste + funzione
 >   totali + 2 trigger + pgTAP verde (esito in 12.10). Modello: totali in testata
