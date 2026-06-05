@@ -153,8 +153,13 @@ const {
 } = useComponentiDialog({
   form,
   isCreate: () => formMode.value === 'create',
-  isComposito: () => form.value?.articolo_obj?.is_composito === true,
-  isPadreComposito: () => form.value?.articolo_obj?.is_composito === true,
+  // ESCLUSIONE escluso: un articolo escluso non ha prezzo (il DB impone
+  // prezzo_unitario NULL) ne' senso di negoziarne i componenti BoM. Niente
+  // ComponentiDialog ne' invio `componenti_overrides` per le ESCLUSIONI.
+  isComposito: () => form.value?.articolo_obj?.is_composito === true
+    && form.value?.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE,
+  isPadreComposito: () => form.value?.articolo_obj?.is_composito === true
+    && form.value?.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE,
   qtaValida: () => true,
 })
 
