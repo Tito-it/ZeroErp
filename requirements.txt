@@ -7,7 +7,7 @@ colorama==0.4.6
 deepmerge==2.0
 distlib==0.4.1
 EditorConfig==0.17.1
-filelock==3.29.0
+filelock==3.29.1
 hjson==3.1.0
 identify==2.6.19
 idna==3.18
@@ -39,4 +39,4 @@ typing_extensions==4.15.0
 urllib3==2.7.0
 virtualenv==21.4.2
 wcmatch==10.1
-zensical==0.0.43
+zensical==0.0.44
