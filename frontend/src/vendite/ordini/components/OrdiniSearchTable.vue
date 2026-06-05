@@ -24,19 +24,26 @@ import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelec
 import ListaConfigurabile from '../../../core/components/ListaConfigurabile.vue'
 import ExportDialog from '../../../core/components/ExportDialog.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
+import { SORGENTE_CODES } from '../../../documenti/constants'
+import { useDocumentiPerSorgenteStore } from '../../../documenti/stores/documentiPerSorgente'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
+import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import { toDateString } from '../../../core/utils/date'
+import { downloadBlob } from '../../../core/utils/download'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
 import { exportOrdini } from '../api/ordiniApi'
+import { STATI_ORDINE_ANTEPRIMA_PDF } from '../constants'
 import { useOrdiniStore } from '../stores/ordini'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useOrdiniStore()
+const docStore = useDocumentiPerSorgenteStore()
 const isBlocked = useInjectBlocked()
+const { execute } = useApiHandler()
 
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
@@ -91,6 +98,14 @@ function onRowClick(data) { emit('row-click', data) }
 const noteDrawerVisible = ref(false)
 const noteDrawerOrdine = ref(null)
 
+async function onPdfClick(row) {
+  if (!row?.id) return
+  docStore.setSorgente(SORGENTE_CODES.ORDINE_VENDITA, row.id)
+  const result = await execute(() => docStore.anteprima({}))
+  if (!result) return
+  downloadBlob(result.blob, result.fileName)
+}
+
 function onNoteClick(row) {
   if (!row?.id) return
   noteDrawerOrdine.value = row
@@ -99,11 +114,18 @@ function onNoteClick(row) {
 
 // Scopo: costruisce le azioni contestuali di riga. Modifica = click riga.
 // Conferma/push vivono nel drawer (dove sono caricate le capability), non in
-// lista: la lista resta consultazione + note (scheletro). Il PDF (tipo doc
-// ORDINE_CLIENTE) sara' agganciato quando esistera' la generazione documenti
-// ordini (fuori scope scheletro).
+// lista: la lista resta consultazione + stampa ordine + note.
 function buildRowActions(data) {
   return [
+    {
+      key: 'stampa-ordine',
+      label: t('vendite.ordini.pdf.label_anteprima'),
+      icon: MANAGE_ICONS.PDF,
+      severity: 'primary',
+      disabled: !STATI_ORDINE_ANTEPRIMA_PDF.includes(data.stato_codice_interno),
+      tooltip: t('vendite.ordini.pdf.tooltip_anteprima'),
+      command: () => onPdfClick(data),
+    },
     {
       key: 'gestisci-note',
       label: t('vendite.ordini.gestisci_note'),

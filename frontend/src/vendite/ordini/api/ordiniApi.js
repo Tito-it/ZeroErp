@@ -81,6 +81,18 @@ export function deleteRiga(ordineId, rigaId) {
   return api.delete(`${BASE}/${ordineId}/righe/${rigaId}/`)
 }
 
+// --- Riepilogo IVA ---
+
+// Riepilogo IVA aggregato dell'ordine (una riga per aliquota, regola fiscale
+// DPR 633/72 art. 21). Calcolo gia' eseguito in DB dalla vista derivata
+// vw_ordini_riepilogo_iva_dettaglio (stessa formula dei preventivi): il FE
+// legge solo lo stato corrente, sempre coerente con le righe attive.
+// Risposta: array di { iva_id, iva_codice, iva_descrizione, iva_aliquota,
+//   imponibile, imposta, arrotondamento, totale_riga }.
+export function getRiepilogoIva(ordineId) {
+  return api.get(`${BASE}/${ordineId}/riepilogo-iva/`)
+}
+
 // --- Componenti BoM CASO A ---
 // Schema REST identico a preventivi/contratti: i 4 metodi vengono dal building
 // block `makeComponentiBomApi` (core/api/componentiBom.js), qui solo bindati al

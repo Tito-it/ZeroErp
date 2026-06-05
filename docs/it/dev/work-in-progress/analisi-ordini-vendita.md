@@ -577,13 +577,19 @@ vendite, lista DEF-8 diretta). File: `api/ordiniApi.js`, `stores/ordini.js`
    articolo non composito) il BE lo risolve via `PricingService` in
    `gestisci_riga`. Niente badge origine prezzo / banner L2 (pricing stile
    preventivo, gate L2/L3 = decisione aperta §8.bis).
-5. **Componenti compositi: niente `ComponentiDialog` pre-save in CREATE.** Il BE
-   `gestisci_riga` **non** accetta `componenti_overrides` (whitelist
-   `_CREATE_KEYS_RIGA` priva del campo): inizializza i componenti ai prezzi
-   risolti. L'editing dei prezzi componente avviene **in EDIT** via
-   `OrdiniRigaComponentiPanel` (PATCH per componente). Divergenza voluta da
-   preventivi/contratti (che usano la dialog pre-save), coerente con ciò che il
-   BE supporta.
+5. **Componenti compositi: ~~niente `ComponentiDialog` pre-save in CREATE~~ →
+   ECCEZIONE RIMOSSA (2026-06-05).** *(Stato iniziale scheletro: `gestisci_riga`
+   non accettava `componenti_overrides`, componenti inizializzati ai prezzi
+   risolti, editabili solo in EDIT — divergenza voluta da preventivi/contratti.)*
+   Su richiesta Tid l'ordine è stato **allineato al pattern famiglia**:
+   `gestisci_riga` ora accetta `componenti_overrides` (gate L1
+   `validate_componenti_overrides_authorization` + `normalize_componenti_overrides`
+   → `fn_ordine_riga_componenti_init`, lo stesso path già usato dalla conversione
+   offerta→ordine) e `OrdiniRigaForm` apre la `ComponentiDialog` pre-save riusando
+   i BB `useComponentiDialog`/`ComponentiDialog`/`ComponentiCreateActionsPanel`
+   (regola del 2, zero componenti nuovi). L'editing in EDIT via
+   `OrdiniRigaComponentiPanel` resta. Override prezzo richiede permesso
+   `prezzo_override_manuale`; la fn DB rifiuta prezzo 0 su componente obbligatorio.
 6. **Conferma/push via `useConfirmAction`** (no `AppDialog`): sono sì/no puri →
    lo standard preferisce `useConfirmAction`. Push singolo con toast
    differenziato per `report.stato` (gemello `PreventiviIntegrazione`).

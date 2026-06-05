@@ -116,3 +116,125 @@ Esecuzione: `scripts/testpgtap.sh db/pgtap/documenti/test-documenti-tipo-ordine-
     `+fatturazione_trigger`, eventuali chip `documento_origine`/`agente`);
   - azione FE "Stampa" sul dominio ordini.
   - BE/FE **attendono** la delivery di questo seed.
+
+---
+
+## 6. Piano di completamento — rettifica flusso documentale ordine
+
+> **Rettifica 2026-06-05**: la scelta descritta in
+> `analisi-ordini-vendita.md` §12.4 come "stampa disaccoppiata dallo stato"
+> non è allineata al pattern già usato da preventivi, contratti e offerte.
+> Il comportamento target per gli ordini deve seguire lo stesso schema:
+> in `DRAFT` solo anteprima; nel passaggio `DRAFT -> CONFERMATO` generazione
+> automatica del documento con possibilità di allegare file; dalla lista,
+> icona documenti disabilitata in bozza e abilitata dopo bozza per aprire la
+> gestione documentale dei documenti già generati.
+>
+> **Perché si cambia (contesto)**: la modalità (a) "anteprima on-demand" non era
+> una dimenticanza né legata alla provenienza da offerte/preventivi
+> (`documento_origine`, tracciabilità — tema indipendente dalla stampa). Era una
+> scelta MVP **deliberata** (analisi §12.4): l'ordine ha già `numero` in BOZZA e
+> senza un punto di persistenza il dialog "documenti generati" sarebbe stato
+> vuoto, quindi si era partiti anteprima-only — **lasciando esplicitamente la
+> porta aperta al caso (b)** (gli endpoint BE genera/lista/download/allegati erano
+> già stati predisposti). Questa §6 adotta il caso (b), che è la soluzione
+> migliore sul merito (`feedback_no_quick_fix_soluzione_assoluta`): la conferma
+> d'ordine è l'atto formale verso il cliente (ed è il trigger del push a
+> commessa), quindi è il momento naturale in cui il PDF va generato e archiviato.
+
+### 6.1 DB — nessuna modifica, solo una verifica di configurazione
+
+> **Esito analisi 2026-06-05**: la §6 **non richiede sviluppo DB** (niente
+> migration, seed, DDL o pgTAP nuovi). Verificato contro il codice attuale:
+
+- **Stati**: `config.stati_doc_ordini` contiene **già tutti** gli stati richiesti
+  (`DRAFT, CONFERMATO, ALLOCATO, SPEDITO, CONSEGNATO, ANNULLATO, FATTURATO`).
+  `STATI_ORDINE_CON_DOCUMENTO` (post-bozza) usa stati esistenti → **niente seed**.
+- **Azioni/transizioni — qui ordini diverge dalla famiglia**: preventivi/offerte
+  modellano `emetti` con un sistema **data-driven a DB** (`fn_available_actions_*`,
+  tabelle transizioni, `azioni_processo.csv`), ed è per quello che il *loro*
+  emetti ha toccato il DB. Gli **ordini NON usano quel modello**: `get_ordine`
+  calcola le capability (`can_conferma`/`can_push`) **in BE Python**
+  (commento esplicito «niente `fn_available_actions_ordine`»). → la nuova
+  capability `can_emetti` è **codice BE**, **nessun seed di azioni/transizioni**.
+- **Tipo documento + motore**: `documenti.tipi_documento_output.ORDINE_VENDITA`
+  già seedato (questo brief §3) e collegato a `config.sorgenti.ORDINE_VENDITA`;
+  tabelle `documenti.*` già collaudate. Nessuna modifica.
+- **Unica verifica al team DB** (configurazione/dati, **non** migration): che
+  esista una **versione template `ORDINE_VENDITA` PUBBLICATA** e `is_default` per
+  la tripla (tipo documento, sorgente, emittente). Creata manualmente il
+  2026-06-04 → confermare che è ancora pubblicata: senza versione PUBBLICATA
+  l'`emetti` fallisce (come per gli altri domini, `documenti-e-stampe.md` §2.3).
+- **Vincolo "no CONFERMATO senza documento" → NON serve** (chiuso): l'atomicità è
+  garantita dal **savepoint BE** dell'`emetti` (generazione fallita → rollback
+  della conferma, §6.2), coerente con la famiglia (preventivi/offerte non hanno un
+  vincolo DB equivalente). Il DB resta sui guard esistenti.
+
+> **Nota di simmetria — PREREQUISITO (aggiornato 2026-06-05)**: gli ordini sono
+> l'unico documento vendite senza modello azioni data-driven
+> (`fn_available_actions` + transizioni). Decisione Tid: si **uniforma prima** il
+> modello, **poi** si realizza questa stampa, così l'emissione/conferma nasce come
+> azione data-driven anziché cablata a mano. → brief dedicato
+> [brief-ordini-azioni-data-driven.md](brief-ordini-azioni-data-driven.md). Di
+> conseguenza la §6.2/§6.3 andranno riallineate al modello data-driven (l'azione
+> `emetti` come transizione `DRAFT→CONFERMATO`, non capability hardcoded) una volta
+> consegnato.
+
+### 6.2 BE
+
+- **Aggiungere `ApiOrdineEmetti`** (`POST /api/v1/vendite/ordini/{id}/emetti/`,
+  multipart) — **clone di `ApiPreventivoEmetti`** (`preventivi_documenti_views.py`).
+  Orchestra in **transazione atomica con savepoint annidato**:
+  1. `ordini_service.conferma(id)` — transizione `DRAFT -> CONFERMATO` (riusa il
+     **punto di dominio esistente**, che governa anche il push a commessa: NON si
+     duplica né si sposta la logica di stato);
+  2. `DocumentGenerationService().genera_documento(...)` sullo stato CONFERMATO
+     (lo snapshot del context riflette il nuovo stato);
+  3. allegati multipart opzionali.
+  Se la generazione fallisce, il savepoint **annulla la conferma** (come
+  preventivi). → l'endpoint vive in `ordini_documenti_views.py` (view documentale),
+  `ordini_service.conferma` resta il service di dominio.
+- **Riuso, non riscrittura**: gli altri endpoint documentali ordini **esistono
+  già** in `ordini_documenti_views.py` (`genera`, `anteprima`, lista, `file`,
+  `file-download`, `allegati`) — allineati alla famiglia. Il delta è il solo
+  `emetti` + la rotta in `urls_ordini.py`. Aggiornare anche il commento di testata
+  di `ordini_documenti_views.py` (oggi dichiara "stampa DISACCOPPIATA dallo stato.
+  Niente emetti").
+- **Decisione da chiudere — endpoint `/conferma/` semplice**: oggi esiste
+  `POST /conferma/` (sola transizione). Con `emetti` come flusso target, valutare
+  se (i) il FE smette di usare `/conferma/` e passa a `/emetti/` (conferma =
+  emissione documento, allineato alla famiglia) lasciando `/conferma/` come API di
+  servizio, oppure (ii) si deprecia `/conferma/` lato HTTP. Il **service**
+  `conferma` resta comunque, riusato da `emetti`.
+- Aggiornare client API e test (mock DB): emetti ok → CONFERMATO + documento
+  generato + allegati associati; **fallimento generazione → rollback della
+  conferma** (stato resta DRAFT); bozza senza righe resta bloccata
+  (`E_ORD_NESSUNA_RIGA`, guard già in `conferma`); senza versione template
+  PUBBLICATA l'emetti fallisce (§6.1); download/lista documenti coerenti.
+
+### 6.3 FE
+
+- **`OrdineEmissioneDialog`**: clone del wrapper di dominio
+  `PreventivoEmissioneDialog.vue` (gli altri sono `OffertaEmissioneDialog`,
+  `ContrattoEmissioneDialog`), che monta il BB core
+  `src/documenti/components/DocumentoEmissioneDialog.vue` (anteprima PDF, allegati
+  e conferma finale verso l'endpoint multipart `/emetti/`). **Non** creare un nuovo
+  dialog: solo il thin wrapper di dominio (regola del 2).
+- Nel drawer ordine, l'azione "Conferma" apre `OrdineEmissioneDialog` (emissione =
+  conferma + documento) invece della `useConfirmAction` semplice attuale.
+- Aggiornare le costanti PDF ordine in `src/vendite/ordini/constants.js`:
+  `STATI_ORDINE_ANTEPRIMA_PDF = [DRAFT]` e
+  `STATI_ORDINE_CON_DOCUMENTO = [CONFERMATO, ...stati post-bozza ammessi dal
+  dominio]` (oggi `STATI_ORDINE_CON_DOCUMENTO = []`). Gli stati ammessi li detta il
+  modello `config.stati_doc_ordini`, **data-driven**, non hardcodati a casaccio
+  (`feedback_no_hardcoded_ids`).
+- Nella lista ordini, non fare anteprima/download diretto. Usare
+  `PdfDocumentiSorgenteDialog` come preventivi/contratti/offerte, con azione di riga
+  `documenti-pdf` disabilitata in `DRAFT` e abilitata negli stati post-bozza
+  (la colonna tecnica `stato_codice_interno` è già nel catalogo lista).
+- Aggiornare i18n `vendite.ordini.pdf.*` con tooltip specifici lista/drawer:
+  bozza = solo anteprima nel drawer; lista disabilitata finché l'ordine non è
+  confermato; stati post-bozza = gestione documenti generati.
+- Verificare manualmente il flusso UI: bozza mostra solo anteprima nel drawer,
+  conferma apre il dialog con allegati, ordine confermato espone il documento
+  dalla lista e dal drawer tramite gestione documentale.

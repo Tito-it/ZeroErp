@@ -22,11 +22,12 @@
 #           caller (orchestrator + view di dominio con permessi `vendite_*`);
 #         - il builder NON conosce il template HTML: fornisce solo dati
 #           strutturati formattabili lato Jinja;
-#         - niente `riepilogo_iva` aggregato (non esiste una vista IVA per
-#           ordini): le righe portano l'IVA per riga + i totali di testata
-#           (`imponibile`/`iva`/`documento`). Se servira' un breakdown IVA
-#           aggregato, si aggiungera' una vista DB dedicata (no calcolo
-#           Python che duplicherebbe l'arrotondamento DB).
+#         - `riepilogo_iva` aggregato esposto via la vista DB derivata
+#           `vw_ordini_riepilogo_iva_dettaglio` (stessa formula dei preventivi:
+#           imponibile/imposta ROUND 2 per gruppo aliquota): il builder legge,
+#           nessun calcolo IVA in Python. I totali di testata (`*_tot`) sono
+#           mantenuti dal trigger DB via fn_ricalcola_totali_ordine e coincidono
+#           per costruzione con la somma del riepilogo.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -65,7 +66,7 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
     #        Pipeline:
     #         1. guard id positivo;
     #         2. testata via `get_ordine` (None -> NOT_FOUND);
-    #         3. righe;
+    #         3. righe + riepilogo IVA aggregato (vista derivata DB);
     #         4. compone shape stabile (versione 1) usata dai template HTML.
     def build_context(
         self,
@@ -86,11 +87,13 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
         assert testata is not None
 
         righe = self._repo.list_righe(sorgente_id)
+        riepilogo_iva = self._repo.list_riepilogo_iva(sorgente_id)
 
         return {
             "ordine": self._shape_ordine(testata),
             "cliente": self._shape_cliente(testata),
             "righe": righe,
+            "riepilogo_iva": riepilogo_iva,
             # `_meta`: parametri di rendering stabili a parita' di chiamata
             # (locale, utente). NON inserire qui timestamp/random: il
             # `context_hash` deve restare deterministico per il dedup logico

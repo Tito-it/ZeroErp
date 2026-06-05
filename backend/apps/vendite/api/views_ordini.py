@@ -207,6 +207,34 @@ class ApiOrdinePush(DomainAPIView):
         return success_response(ordini_service.push_a_commessa(int(ordine_id)))
 
 
+class ApiOrdineRiepilogoIva(DomainAPIView):
+    """GET /api/v1/vendite/ordini/<id>/riepilogo-iva/
+
+    Restituisce il riepilogo IVA dell'ordine: una riga per gruppo aliquota
+    (natura/esigibilita/split sempre NULL) con imponibile e imposta aggregati
+    e arrotondati a 2 decimali sull'aggregato per aliquota (regola fiscale:
+    DPR 633/72 art. 21 + DM 24/12/93, identica ai preventivi). Lettura pura
+    dalla view derivata `vendite.vw_ordini_riepilogo_iva_dettaglio`, nessun
+    side-effect: i totali di testata sono mantenuti dal trigger su ordini_righe
+    via fn_ricalcola_totali_ordine.
+
+    Area `vendite` livello LETTURA sufficiente.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="OrdineRiepilogoIvaResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Restituisce via GET il riepilogo IVA aggregato dell'ordine.
+    def get(self, request: Request, ordine_id: int) -> JsonResponse:
+        data = ordini_service.list_riepilogo_iva(int(ordine_id))
+        return success_response(data)
+
+
 class ApiOrdineRighe(DomainAPIView):
     """GET/POST /api/v1/vendite/ordini/<ordine_id>/righe/."""
 

@@ -123,6 +123,71 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         repo.update_ordine.assert_called_once()
 
 
+_SVC = "apps.vendite.services.ordini_service"
+
+
+class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
+    """gestisci_riga: override prezzi componenti BoM pre-save (dialog).
+
+    Simmetria con preventivi: gate autorizzazione + override normalizzati
+    passati a init_componenti_riga per articolo composito.
+    """
+
+    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
+    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_SVC}.validate_componenti_overrides_authorization")
+    @patch(f"{_SVC}.transaction")
+    @patch(_REPO)
+    def test_gestisci_riga_composito_passa_overrides(
+        self, repo_cls, mock_tx, mock_gate, _sr, _dr,
+    ) -> None:
+        mock_tx.atomic.return_value = nullcontext()
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.is_articolo_composito.return_value = True
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 50}
+
+        payload = {
+            "articolo_id": "ART1", "qta_operativa": 2, "iva_id": 1,
+            "uom_operativa_id": 3,
+            "componenti_overrides": {"10": "5.50"},
+        }
+        out = ordini_service.gestisci_riga(7, payload, auth_user_id=42)
+
+        # Gate L1 autorizzazione invocato col payload + utente.
+        mock_gate.assert_called_once()
+        # Override normalizzati passati all'init componenti (articolo composito).
+        _, kwargs = repo.init_componenti_riga.call_args
+        self.assertEqual(kwargs["componenti_overrides"], {"10": "5.50"})
+        self.assertTrue(out["is_composito"])
+
+    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
+    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_SVC}.validate_componenti_overrides_authorization")
+    @patch(f"{_SVC}.transaction")
+    @patch(_REPO)
+    def test_gestisci_riga_composito_senza_overrides(
+        self, repo_cls, mock_tx, mock_gate, _sr, _dr,
+    ) -> None:
+        # Articolo composito senza override: init con componenti_overrides=None
+        # (la fn DB risolve i prezzi dal pricing corrente).
+        mock_tx.atomic.return_value = nullcontext()
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.is_articolo_composito.return_value = True
+        repo.next_riga_nr.return_value = 1
+        repo.create_riga.return_value = {"id": 51}
+
+        ordini_service.gestisci_riga(
+            7, {"articolo_id": "ART1", "qta_operativa": 1, "iva_id": 1,
+                "uom_operativa_id": 3},
+            auth_user_id=42,
+        )
+        _, kwargs = repo.init_componenti_riga.call_args
+        self.assertIsNone(kwargs["componenti_overrides"])
+
+
 class OrdiniDbErrorsTests(SimpleTestCase):
     """Traduzione errori DB di _db_errors (il bug originale crashava qui)."""
 

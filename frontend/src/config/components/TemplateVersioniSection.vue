@@ -41,6 +41,7 @@ import Button from 'primevue/button'
 import AppDialog from '../../core/components/AppDialog.vue'
 import Message from 'primevue/message'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const props = defineProps({
@@ -292,11 +293,9 @@ async function confirmPubblica() {
   <div class="template-versioni-section">
     <div class="section-header">
       <h3>{{ t('config.modelli_documenti.versioni.title') }}</h3>
-      <Button
+      <NewButton
         v-if="!props.readonly && !editing"
-        :label="t('config.modelli_documenti.versioni.new')"
-        :icon="MANAGE_ICONS.ADD"
-        size="small"
+        :tooltip="t('config.modelli_documenti.versioni.new')"
         @click="openCreate"
       />
     </div>

@@ -117,6 +117,21 @@ Testata (dalla vista + `meta`/`storicizza`) + capability data-driven:
 `righe_count`, `can_edit_testata`, `can_edit_righe`, `can_conferma`,
 `can_push_commessa`. 404 (`E_ORD_NOT_FOUND`) se inesistente o fuori scope (RLS).
 
+### Riepilogo IVA `GET /api/v1/vendite/ordini/<id>/riepilogo-iva/`
+
+Riepilogo IVA aggregato dell'ordine: **una riga per aliquota** con `imponibile`,
+`imposta`, `arrotondamento`, `totale_riga` (più decodifiche `iva_codice`/
+`iva_descrizione`/`iva_aliquota`; `natura_id`/`esigibilita`/`split_payment` sempre
+`NULL` per gli ordini). Lettura pura dalla vista derivata
+`vendite.vw_ordini_riepilogo_iva_dettaglio`: l'IVA è calcolata **per gruppo
+aliquota** (`ROUND(SUM(imponibile_riga))`, poi imposta sul gruppo — regola DPR
+633/72 art. 21 + DM 24/12/93, identica ai preventivi); nessun calcolo Python. La
+vista riflette le righe attive correnti e i totali di testata (`*_tot`) sono
+mantenuti coerenti dal trigger `fn_ricalcola_totali_ordine`. Ordinamento
+`iva_aliquota NULLS LAST, iva_id NULLS LAST`. Scope/visibilità via
+`security_invoker=on` + RLS su `vendite.ordini` (ordine fuori perimetro → lista
+vuota). Usato dal pannello "Riepilogo IVA" del drawer e dal context builder PDF.
+
 ### Update testata `PATCH /api/v1/vendite/ordini/<id>/`
 
 Solo in `DRAFT`. `request.data` (non `handle_post_json`, api.md). Campi
@@ -162,7 +177,7 @@ Push del singolo ordine `CONFERMATO` via `fn_list_ordini_da_pushare(…, p_ordin
 | Metodo / Path | Scopo |
 | --- | --- |
 | `GET /<id>/righe/` | Lista righe attive (decodifiche articolo/uom/iva + `importo_riga` + `is_composito_caso_a`) |
-| `POST /<id>/righe/` | Aggiunge una riga (solo DRAFT). `riga_nr` autoassegnato. Pricing auto-fill via `PricingService` se prezzo assente e articolo non composito; per articolo composito init componenti BoM |
+| `POST /<id>/righe/` | Aggiunge una riga (solo DRAFT). `riga_nr` autoassegnato. Pricing auto-fill via `PricingService` se prezzo assente e articolo non composito; per articolo composito init componenti BoM con override prezzi opzionali (`componenti_overrides`, vedi sotto) |
 | `PATCH /<id>/righe/<riga_id>/` | Aggiorna riga (solo DRAFT). `request.data` |
 | `DELETE /<id>/righe/<riga_id>/` | Hard-delete riga (solo DRAFT) |
 
@@ -180,6 +195,17 @@ trigger `trgfn_qta_from_operativa`). I totali testata sono ricalcolati da trigge
 | `GET /<id>/righe/<riga_id>/componenti/` | Lista componenti persistiti (`?solo_attivi=true`) |
 | `PATCH /<id>/righe/<riga_id>/componenti/<componente_id>/` | Aggiorna componente (solo DRAFT): `prezzo_unitario`, `attivo`, `esposto_in_fattura`, `meta` |
 | `DELETE /<id>/righe/<riga_id>/componenti/<componente_id>/` | Soft-delete componente (`attivo=FALSE`, solo DRAFT) |
+
+**Override prezzi componente pre-save** (CREATE riga composita, simmetria
+preventivi/contratti): il `POST /<id>/righe/` accetta `componenti_overrides`
+(mappa `{componente_id: prezzo}`) dal dialog FE. È normalizzato
+(`normalize_componenti_overrides`) e passato a `fn_ordine_riga_componenti_init`;
+i componenti senza override ricadono sul pricing risolto. L'override manuale
+richiede il permesso `prezzo_override_manuale` (gate L1
+`validate_componenti_overrides_authorization` → `E_PRICING_OVERRIDE_NON_AUTORIZZATO`
+se assente). La fn DB rifiuta override prezzo 0 su componente obbligatorio
+(`E_PARAMETRO_INVALIDO`). In assenza di `componenti_overrides` l'init usa i prezzi
+del resolver (comportamento storico).
 
 ### Note `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/`
 
@@ -258,6 +284,12 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
   (`20260603-15` + seed).
 - Funzioni: `fn_ordine_riga_componenti_init` / `_preview` (BoM),
   `fn_list_ordini_da_pushare(…, p_ordine_id)` (push singolo).
+- Riepilogo IVA / totali (`20260605-01..05`): viste derivate
+  `vendite.vw_ordini_righe_iva_base` → `vendite.vw_ordini_riepilogo_iva_dettaglio`
+  (entrambe `security_invoker=on`); `fn_ricalcola_totali_ordine` (somma il
+  riepilogo, scrive `*_tot` in testata); trigger `trgfn_ordini_righe_ricalcola_totali`
+  (statement-level su `ordini_righe` INS/UPD/DLT) e `trgfn_ordini_ricalcola_totali`
+  (`UPDATE OF emittente_fiscale_id`, l'aliquota dipende dallo stato emittente).
 - Trigger testata: `trgfn_ordini_gen_codice`, `trgfn_ordini_normalize`,
   `trgfn_ordini_default_emittente`, `trgfn_ordini_guard_emittente_ba`,
   `trgfn_ordini_guard_transizione_approvazione`, lock numero, immutabilità
@@ -283,5 +315,7 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
   e [db-brief-ordini-lock-cliente.md](../../../dev/work-done/db-brief-ordini-lock-cliente.md)
   (lock cliente)
 - Stampa/documenti: [documenti-e-stampe.md](../../../guide/documenti-e-stampe.md)
+- Riepilogo IVA ordine (DB + BE + FE): [documenti-non-fiscali-iva-db.md](../../../dev/work-done/documenti-non-fiscali-iva-db.md)
+  (§12 modello, §13 sviluppo BE/FE)
 - Tabella testata: [vendite.ordini](../../../dbzero/vendite/manual/ordini.md)
 - Linee guida API: [api.md](../../../dev/api.md)
