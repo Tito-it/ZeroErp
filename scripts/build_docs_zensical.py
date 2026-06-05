@@ -58,6 +58,9 @@ DEFAULT_EXCLUDED_DOC_DIRS = {
     "work-in-progress",
     "work-done",
 }
+EXTERNAL_REPO_DOC_LINKS = {
+    ".codex/AGENTS.md",
+}
 
 
 # Scopo: risolvere il path del file incluso con fallback robusto.
@@ -143,6 +146,100 @@ def normalize_source_file_links(text: str) -> str:
         return f"`{display}`"
 
     return FULL_MARKDOWN_LINK_RE.sub(repl, text)
+
+
+# Scopo: evitare link navigabili verso documenti esclusi dal sito statico.
+def normalize_excluded_doc_links(
+    text: str, docs_root: Path, current_file: Path, excluded_dirs: set[str]
+) -> str:
+    docs_root = docs_root.resolve()
+    current_dir = current_file.parent.resolve()
+
+    def split_target(raw_target: str) -> tuple[str, str]:
+        path_part = raw_target.strip()
+        suffix = ""
+        for sep in ("#", "?"):
+            if sep in path_part:
+                idx = path_part.find(sep)
+                suffix = path_part[idx:] + suffix
+                path_part = path_part[:idx]
+        return path_part, suffix
+
+    def repo_path_for_target(raw_target: str) -> str | None:
+        path_part, suffix = split_target(raw_target)
+        if not path_part or path_part.startswith("#") or URI_SCHEME_RE.match(path_part):
+            return None
+
+        if any(path_part.endswith(repo_doc) for repo_doc in EXTERNAL_REPO_DOC_LINKS):
+            repo_doc = next(
+                repo_doc
+                for repo_doc in EXTERNAL_REPO_DOC_LINKS
+                if path_part.endswith(repo_doc)
+            )
+            return f"{repo_doc}{suffix}"
+
+        if path_part.startswith("/"):
+            normalized = path_part.lstrip("/")
+            if normalized.startswith(("it/", "en/")):
+                rel_path = Path(normalized)
+            else:
+                rel_path = Path("it") / normalized
+        else:
+            resolved = (current_dir / path_part).resolve()
+            try:
+                rel_path = resolved.relative_to(docs_root)
+            except ValueError:
+                return None
+
+        if not any(part in excluded_dirs for part in rel_path.parts):
+            return None
+        return f"docs/{rel_path.as_posix()}{suffix}"
+
+    def repl(match: re.Match[str]) -> str:
+        label = match.group(1)
+        target = match.group(2)
+        repo_path = repo_path_for_target(target)
+        if repo_path is None:
+            return match.group(0)
+        display = label
+        if display.startswith("`") and display.endswith("`") and len(display) >= 2:
+            display = display[1:-1]
+        return f"{display} (`{repo_path}`)"
+
+    return FULL_MARKDOWN_LINK_RE.sub(repl, text)
+
+
+# Scopo: impedire che parentesi quadre dentro inline-code diventino link reference.
+def normalize_inline_code_with_brackets(text: str) -> str:
+    normalized_parts: list[str] = []
+    cursor = 0
+
+    for match in re.finditer(r"`([^`\n]*)`", text):
+        code = match.group(1)
+        is_link_label = (
+            match.start() > 0
+            and text[match.start() - 1] == "["
+            and text[match.end() : match.end() + 2] == "]("
+        )
+        if is_link_label or ("[" not in code and "]" not in code):
+            continue
+
+        normalized_parts.append(text[cursor : match.start()])
+        escaped = (
+            code.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("[", "&#91;")
+            .replace("]", "&#93;")
+        )
+        normalized_parts.append(f"<code>{escaped}</code>")
+        cursor = match.end()
+
+    if not normalized_parts:
+        return text
+
+    normalized_parts.append(text[cursor:])
+    return "".join(normalized_parts)
 
 
 # Scopo: espandere ricorsivamente i tag include-markdown evitando loop.
@@ -242,8 +339,14 @@ def rewrite_root_links(text: str, docs_root: Path, current_file: Path) -> tuple[
 
 
 # Scopo: neutralizzare marker checklist testuali che Zensical interpreta come reference link.
-def normalize_ambiguous_markdown(text: str) -> str:
+def normalize_ambiguous_markdown(
+    text: str, docs_root: Path, current_file: Path, excluded_dirs: set[str]
+) -> str:
     normalized = normalize_source_file_links(text)
+    normalized = normalize_excluded_doc_links(
+        normalized, docs_root, current_file, excluded_dirs
+    )
+    normalized = normalize_inline_code_with_brackets(normalized)
     normalized = CHECKLIST_STATUS_RE.sub(r"\1\\[\2\\]", normalized)
     normalized = IDENTIFIER_EMPTY_BRACKETS_RE.sub(r"\1\\[\\]", normalized)
     normalized = IDENTIFIER_INDEX_RE.sub(r"\1\\[\2\\]", normalized)
@@ -289,7 +392,7 @@ def preprocess_docs(
             text, dst_docs, md, (md.resolve(),), warnings, source_texts
         )
         rewritten, link_count = rewrite_root_links(expanded, dst_docs, md)
-        normalized = normalize_ambiguous_markdown(rewritten)
+        normalized = normalize_ambiguous_markdown(rewritten, dst_docs, md, excluded_dirs)
         md.write_text(normalized, encoding="utf-8")
 
         processed_files += 1

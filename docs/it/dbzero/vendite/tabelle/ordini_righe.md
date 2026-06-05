@@ -11,7 +11,7 @@
 | descrizione | character varying | NO |  |
 | quantita | numeric | NO |  |
 | prezzo_unitario | numeric | NO |  |
-| sconto_perc | numeric | YES |  |
+| sconto_percentuale | numeric | YES | 0 |
 | iva_id | integer | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |
@@ -34,7 +34,7 @@
 |------|------|---------|
 | CHECK | check_ordini_righe_qta_operativa_pos |  |
 | CHECK | chk_ordini_v_r_qta_pos |  |
-| CHECK | chk_ordini_v_r_sconto_perc |  |
+| CHECK | chk_ordini_v_r_sconto |  |
 | CHECK | chk_ordini_v_r_uom_qta_operativa_copres |  |
 | FOREIGN KEY | fk_ordini_vendita_r_uom_operativa | uom_operativa_id |
 | FOREIGN KEY | fk_ordrig_articolo | articolo_id |

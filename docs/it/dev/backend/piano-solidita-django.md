@@ -12,7 +12,7 @@ Per sviluppare o modificare API Django seguire prima questi documenti:
   error envelope, idempotenza, permessi e test API.
 - [`docs/it/dev/backend/catalogo-building-block-backend.md`](catalogo-building-block-backend.md):
   inventario vivo dei building block disponibili in `apps/core` e nei domini.
-- [`.codex/AGENTS.md`](../../../../.codex/AGENTS.md): regole operative per agenti,
+- `.codex/AGENTS.md`: regole operative per agenti,
   naming, commenti, test, DB-first e workflow di sicurezza.
 
 Questo piano non duplica quelle regole: le usa come baseline e traccia cosa

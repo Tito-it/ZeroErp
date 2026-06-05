@@ -709,7 +709,7 @@ Endpoint del motore documentale parametrico per la sorgente `CONTRATTO`.
 Risolvono il contesto comune (contratto + emittente fiscale + sorgente
 attiva) via helper condiviso
 `apps.documenti.api.contesto_helpers.resolve_contesto_documentale` (vedi
-[api_documenti_helpers](../../../documenti/manual/api_documenti_helpers.md)).
+[api_documenti_helpers](../../documenti/manual/api_documenti_helpers.md)).
 
 | Metodo | Path | Effetto |
 | --- | --- | --- |

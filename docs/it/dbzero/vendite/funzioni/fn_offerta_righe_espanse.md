@@ -9,7 +9,7 @@ CREATE FUNCTION fn_offerta_righe_espanse(p_offerta_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
- RETURNS TABLE(articolo_id uuid, articolo_codice character varying, descrizione character varying, is_composito boolean, quantita numeric, uom_operativa_id bigint, qta_operativa numeric, factor_to_base numeric, prezzo_unitario numeric, sconto_perc numeric, iva_id integer, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, componenti jsonb)
+ RETURNS TABLE(articolo_id uuid, articolo_codice character varying, descrizione character varying, is_composito boolean, quantita numeric, uom_operativa_id bigint, qta_operativa numeric, factor_to_base numeric, prezzo_unitario numeric, sconto_percentuale numeric, iva_id integer, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, componenti jsonb)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -151,7 +151,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
-IS 'Righe effettive ordine-ready di un''offerta (listino + variazione globale + eccezioni) per la conversione offerta->ordine. Parte 1 dal core fn_espandi_listino_versione + overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle. iva_id da articolo (iva_perc non esiste su ordini_righe: si deriva da iva_id); sconto NULL (prezzo gia'' netto); quantita default 1 per righe da-listino. listino_id NOT NULL: nessun ramo senza listino.';
+IS 'Righe effettive ordine-ready di un''offerta (listino + variazione globale + eccezioni) per la conversione offerta->ordine. Parte 1 dal core fn_espandi_listino_versione + overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle. iva_id da articolo (iva_perc non esiste su ordini_righe: si deriva da iva_id); sconto_percentuale NULL (prezzo gia'' netto); quantita default 1 per righe da-listino. listino_id NOT NULL: nessun ramo senza listino.';
 ```
 
 ---

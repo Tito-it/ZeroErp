@@ -30,5 +30,15 @@
 | pk_transizioni_stati_ordini | `CREATE UNIQUE INDEX pk_transizioni_stati_ordini ON config.transizioni_stati_ordini USING btree (id)` |
 | uq_transizioni_stati_ordini | `CREATE UNIQUE INDEX uq_transizioni_stati_ordini ON config.transizioni_stati_ordini USING btree (stato_da_id, stato_a_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_transizioni_stati_ordini_a10_stati_doc_ordini_requir_705aa8 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_da_id', 'id')` |
+| trg_transizioni_stati_ordini_a10_stati_doc_ordini_requir_705aa8 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_da_id', 'id')` |
+| trg_transizioni_stati_ordini_a10_stati_doc_ordini_requir_ee5148 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_a_id', 'id')` |
+| trg_transizioni_stati_ordini_a10_stati_doc_ordini_requir_ee5148 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_a_id', 'id')` |
+| trg_transizioni_stati_ordini_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_transizioni_stati_ordini_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}
