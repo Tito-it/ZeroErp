@@ -114,6 +114,11 @@ Constraint DB:
 - Guard: una AGGIUNTA è bloccata se l'articolo è già nel listino fissato al contratto
   (si deve usare OVERRIDE)
 
+Per gli **articoli compositi** (distinta base): una riga ESCLUSIONE **non genera
+componenti**. L'esclusione toglie l'articolo per intero, quindi non ha prezzo né
+pezzi da dettagliare — coerente con il vincolo "ESCLUSIONE ⇒ prezzo NULL". I
+componenti si inizializzano solo per OVERRIDE e AGGIUNTA su articolo composito.
+
 **Quantità e unità di misura operativa**: la quantità segue lo **stesso meccanismo**
 di preventivi e offerte (vedi [Gestione preventivi §2.2](gestione-preventivi.md)).
 L'operatore la inserisce **nell'unità di misura operativa scelta** (`qta_operativa`);

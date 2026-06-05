@@ -16,12 +16,15 @@ AS $function$
 --   Modello unificato: tutti i componenti attivi inseriti con attivo=TRUE.
 --   BoM = contratto immutabile: l'operatore non sceglie quali includere.
 --   No-op su quantita IS NULL (riga a consumo).
+--   rev 2026-06-05: guard difensivo — no-op su tipo_eccezione = 'ESCLUSIONE'
+--   (articolo escluso interamente, nessun componente; protegge il CHECK prezzo NULL).
 DECLARE
     v_articolo_id      catalogo.articoli.id%TYPE;
     v_codice_articolo  catalogo.articoli.codice%TYPE;
     v_uom_id           catalogo.unita_misura.id%TYPE;
     v_qta_padre        vendite.contratti_righe.quantita%TYPE;
     v_contratto_id     vendite.contratti.id%TYPE;
+    v_tipo_eccezione   vendite.contratti_righe.tipo_eccezione%TYPE;
     v_is_composito     catalogo.articoli.is_composito%TYPE;
     v_ba_id            anagrafiche.billing_account.id%TYPE;
     v_utility_id       vendite.contratti.utility_id%TYPE;
@@ -49,9 +52,9 @@ BEGIN
     END IF;
 
     SELECT cr.articolo_id, cr.uom_operativa_id, cr.quantita, cr.contratto_id,
-           a.is_composito, a.codice
+           cr.tipo_eccezione, a.is_composito, a.codice
       INTO v_articolo_id, v_uom_id, v_qta_padre, v_contratto_id,
-           v_is_composito, v_codice_articolo
+           v_tipo_eccezione, v_is_composito, v_codice_articolo
       FROM vendite.contratti_righe cr
       JOIN catalogo.articoli a ON a.id = cr.articolo_id
      WHERE cr.id = p_riga_id;
@@ -63,6 +66,13 @@ BEGIN
             NULL::uuid, 'riga contratto non trovata');
     END IF;
     IF NOT COALESCE(v_is_composito, FALSE) THEN RETURN 0; END IF;
+
+    -- Guard difensivo: ESCLUSIONE = articolo escluso interamente,
+    -- nessun prezzo (CHECK chk_contrighe_prezzo_per_tipo_eccezione
+    -- impone prezzo_unitario IS NULL) e quindi nessun componente BoM.
+    -- Inizializzare i componenti scatenerebbe il ricalcolo del prezzo padre
+    -- (trigger _z90_ricalcola_padre -> SUM figli) in violazione del CHECK.
+    IF v_tipo_eccezione = 'ESCLUSIONE' THEN RETURN 0; END IF;
 
     -- No-op su riga a consumo senza quantita fissa
     IF v_qta_padre IS NULL THEN RETURN 0; END IF;
@@ -180,7 +190,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_contratto_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
-IS 'Inizializza componenti BoM per riga contratto. Tutti i componenti attivi inseriti con attivo=TRUE (BoM = contratto immutabile). Guard prezzo=0 solo su obbligatori. No-op su quantita IS NULL. Fix ?? -> ?. Rev 2026-05-13.';
+IS 'Inizializza componenti BoM per riga contratto. Tutti i componenti attivi inseriti con attivo=TRUE (BoM = contratto immutabile). Guard prezzo=0 solo su obbligatori. No-op su quantita IS NULL. rev 2026-06-05: guard difensivo no-op su tipo_eccezione = ESCLUSIONE. Fix ?? -> ?.';
 ```
 
 ---

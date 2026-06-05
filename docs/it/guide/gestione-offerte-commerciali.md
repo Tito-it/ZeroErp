@@ -122,6 +122,11 @@ Constraint principali:
 - CHECK di coerenza prezzo per tipo: `prezzo_unitario` obbligatorio se OVERRIDE o
   AGGIUNTA, NULL se ESCLUSIONE
 
+Per gli **articoli compositi** (distinta base): un'eccezione ESCLUSIONE **non genera
+componenti**. L'esclusione toglie l'articolo per intero, quindi non ha prezzo né
+pezzi da dettagliare — coerente con il vincolo "ESCLUSIONE ⇒ prezzo NULL". I
+componenti si inizializzano solo per OVERRIDE e AGGIUNTA su articolo composito.
+
 Oltre al prezzo, l'eccezione porta i **parametri di fornitura** che serviranno al
 contratto e alla fatturazione ricorrente: `tipo_erogazione`, `fonte_quantita_attesa`,
 `periodicita`, `generazione_canone`, `competenza_canone`, e la quantità.

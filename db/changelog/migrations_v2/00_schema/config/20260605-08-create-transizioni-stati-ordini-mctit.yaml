@@ -1,0 +1,220 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea config.transizioni_stati_ordini: matrice delle transizioni
+# ammesse tra stati dell'ordine di vendita.
+#
+# Chiude l'outlier documentale: ordini era l'unico documento vendite
+# senza matrice transizioni (preventivi/offerte/contratti la hanno).
+# Vedi docs/it/dev/work-in-progress/brief-ordini-azioni-data-driven.md.
+#
+# Transizioni MANUALI seedate (Fase 1, brief §8). Decisioni di dominio
+# ratificate Tid 2026-06-05:
+#   DRAFT(1)     -> CONFERMATO(2) | conferma (manuale)              attivo=true
+#   DRAFT(1)     -> ANNULLATO(6)  | annulla  (manuale, ritiro bozza) attivo=true
+#   CONFERMATO(2)-> ANNULLATO(6)  | annulla  (manuale)               attivo=FALSE
+#
+# Note di dominio (D-1/D-2):
+#   - CONFERMATO->ANNULLATO riga presente ma attivo=false: documenta il
+#     grafo, riabilitabile in futuro con regola "annullabile se non evaso/
+#     fatturato a valle" (analogo al cross-domain check di
+#     fn_cambia_stato_preventivo). Per ora un ordine confermato non si annulla.
+#   - Gli stati a valle (ALLOCATO/SPEDITO/CONSEGNATO/FATTURATO) restano FUORI
+#     dalla matrice: nessun processo li valorizza oggi (vivono solo negli stati
+#     DDT e nel fatturazione_trigger). Verranno aggiunti quando magazzino/DDT
+#     ne saranno i driver.
+#
+# Enforcement (D-3): il grafo e' validato a runtime dal trigger
+#   vendite.trgfn_ordini_guard_transizione (20260605-10), che legge questa
+#   matrice. Pattern identico a offerte/contratti.
+#
+# Letta dal lato lettura da script.fn_available_actions_ordine (20260605-09).
+# Seed (3 righe) in 80_data/changelog/20260605-11.
+#
+# Naming: config.transizioni_stati_ordini (convenzione transizioni_stati_*
+#   di preventivi/contratti; offerte usa stati_doc_offerte_transizioni,
+#   l'outlier — non replicato).
+#
+# Dipendenza: config.stati_doc_ordini (migration 20250906-01).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260605-08-create-transizioni-stati-ordini-mctit.yaml
+
+  - changeSet:
+      id: 20260605-08-create-transizioni-stati-ordini
+      author: mctit
+      comment: >
+        Crea config.transizioni_stati_ordini: matrice transizioni stato
+        ordine di vendita (DRAFT->CONFERMATO, DRAFT->ANNULLATO attive;
+        CONFERMATO->ANNULLATO presente ma attivo=false). Chiude l'outlier
+        documentale (ordini era l'unico senza matrice). Simmetria con
+        transizioni_stati_preventivi / transizioni_stati_contratti.
+        Lettura: fn_available_actions_ordine (20260605-09).
+        Enforcement: trgfn_ordini_guard_transizione (20260605-10).
+        Seed in 20260605-11.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: config
+                    tableName: transizioni_stati_ordini
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_ordini
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: transizioni_stati_ordini
+            remarks: >-
+              Matrice delle transizioni ammesse tra stati ordine di vendita.
+              Consultata da script.fn_available_actions_ordine per costruire
+              available_actions[] (metadati UI: label_key, severity, icon, ecc.)
+              e dal trigger vendite.trgfn_ordini_guard_transizione per
+              l'enforcement del grafo. Pattern identico a
+              config.transizioni_stati_preventivi / _contratti.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_transizioni_stati_ordini
+                    nullable: false
+
+              - column:
+                  name: stato_da_id
+                  type: bigint
+                  remarks: "FK -> config.stati_doc_ordini.id (stato origine)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: stato_a_id
+                  type: bigint
+                  remarks: "FK -> config.stati_doc_ordini.id (stato destinazione)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: >-
+                    Se true, la transizione e' ammessa dal guard ed esposta
+                    in available_actions. Se false, riga documentale (grafo)
+                    ma transizione bloccata (es. CONFERMATO->ANNULLATO).
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: >-
+                    Metadati UI (action_key, label_key, severity, icon,
+                    requires_confirm, outlined, manuale). manuale=false per
+                    transizioni automatiche/di processo (escluse da
+                    available_actions). Per le manuali action_key+label_key
+                    sono obbligatori (vedi ck_transizioni_stati_ord_meta_ui).
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: transizioni_stati_ordini
+            columnNames: stato_da_id, stato_a_id
+            constraintName: uq_transizioni_stati_ordini
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: transizioni_stati_ordini
+            baseColumnNames: stato_da_id
+            constraintName: fk_tso_da
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_ordini
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: transizioni_stati_ordini
+            baseColumnNames: stato_a_id
+            constraintName: fk_tso_a
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_ordini
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.transizioni_stati_ordini
+                ADD CONSTRAINT ck_transizioni_stati_ord_da_diverso_a
+                CHECK (stato_da_id <> stato_a_id);
+
+              -- Defense-in-depth: ogni transizione manuale deve avere i metadati
+              -- minimi per renderizzare il pulsante (action_key + label_key).
+              -- Le automatiche (manuale=false) ne sono esonerate. Simmetrico al
+              -- guard meta-keys della fn_available_actions_*.
+              ALTER TABLE config.transizioni_stati_ordini
+                ADD CONSTRAINT ck_transizioni_stati_ord_meta_ui
+                CHECK (
+                    COALESCE((meta->>'manuale')::boolean, true) = false
+                    OR (meta ?? 'action_key' AND meta ?? 'label_key')
+                );
+
+              COMMENT ON TABLE config.transizioni_stati_ordini IS
+                  'Matrice transizioni ammesse tra stati ordine di vendita. '
+                  'Fonte metadati UI per script.fn_available_actions_ordine e '
+                  'grafo per vendite.trgfn_ordini_guard_transizione. '
+                  'Manuali attive: DRAFT->CONFERMATO, DRAFT->ANNULLATO. '
+                  'CONFERMATO->ANNULLATO presente ma attivo=false (riabilitabile). '
+                  'Stati a valle (ALLOCATO/SPEDITO/CONSEGNATO/FATTURATO) fuori matrice. '
+                  'rev 2026-06-05.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: transizioni_stati_ordini
