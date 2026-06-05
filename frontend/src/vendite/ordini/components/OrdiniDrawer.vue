@@ -36,6 +36,7 @@ import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
+import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import OrdiniForm from './OrdiniForm.vue'
 import OrdiniRigheTable from './OrdiniRigheTable.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
@@ -64,6 +65,15 @@ const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
 const noteDrawerVisible = ref(false)
+// Riepilogo IVA aggregato per aliquota (lettura da `vw_ordini_riepilogo_iva_dettaglio`).
+// Auto-popolato a ogni loadDetail e ogni `@changed` delle righe: la vista DB
+// e' la single source dei totali documento (regola fiscale DPR 633/72 art. 21).
+const riepilogoIva = ref([])
+// Pannello visibile quando c'e' almeno una riga aggregata. Il footer della
+// RiepilogoIvaTable mostra gia' totale imponibile + imposta + totale documento.
+const showRiepilogoIva = computed(
+  () => Array.isArray(riepilogoIva.value) && riepilogoIva.value.length > 0,
+)
 
 // Auto-save bozza: in CREATE, appena il cliente (BA) e' valorizzato, il drawer
 // crea l'ordine in BOZZA e si comporta da "edit-evolved" (righe + azioni stato).
@@ -141,6 +151,20 @@ function resetForm() {
   form.value = defaultForm()
   detail.value = null
   createdId.value = null
+  riepilogoIva.value = []
+}
+
+// Scopo: Carica il riepilogo IVA aggregato dell'ordine. Best-effort: in caso
+//        di errore il pannello resta vuoto, i totali in testata restano
+//        comunque visibili (il trigger DB li mantiene coerenti).
+async function loadRiepilogoIva(targetId = null) {
+  const id = targetId ?? effectiveOrdineId.value
+  if (!id) return
+  try {
+    riepilogoIva.value = await store.loadRiepilogoIva(id)
+  } catch {
+    riepilogoIva.value = []
+  }
 }
 
 async function loadDetail(id = null) {
@@ -171,6 +195,9 @@ async function loadDetail(id = null) {
       // Resto: l'autocomplete parte vuoto, l'operatore puo' ri-selezionare.
     }
   }
+  // Riepilogo IVA: il trigger DB mantiene i totali in sync con le righe a ogni
+  // mutazione; qui leggiamo lo stato corrente (best-effort).
+  await loadRiepilogoIva(targetId)
 }
 
 watch(() => props.visible, async (v) => {
@@ -524,6 +551,15 @@ const drawerActions = computed(() => {
           :is-modificabile="canEditRighe && !isReadonly"
           @changed="loadDetail()"
           @form-aperto="(v) => { formRigaAperto = v }" />
+
+        <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
+             Visibile con almeno una riga. Il footer mostra gia' totale
+             imponibile + imposta + totale documento. Componente riusabile
+             cross-dominio condiviso con preventivi (regola del 2). -->
+        <template v-if="showRiepilogoIva">
+          <Divider />
+          <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
+        </template>
       </template>
 
       <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"

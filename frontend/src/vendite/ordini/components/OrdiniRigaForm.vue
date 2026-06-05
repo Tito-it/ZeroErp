@@ -3,19 +3,23 @@
 // prezzo, sconto, IVA. Pricing stile preventivo gestito lato BE: se il prezzo
 // resta vuoto e l'articolo NON e' composito, gestisci_riga lo risolve via
 // PricingService. Per articolo composito il prezzo padre e' SUM(componenti)
-// (trigger DB): il campo prezzo e' nascosto e i componenti vengono inizializzati
-// dal BE al create; i prezzi dei singoli componenti si editano DOPO, in EDIT,
-// via OrdiniRigaComponentiPanel (il create BE non accetta override pre-save →
-// nessuna ComponentiDialog qui, a differenza di preventivi/contratti).
+// (trigger DB): il campo prezzo e' nascosto. In CREATE, su articolo composito,
+// si apre la ComponentiDialog pre-save per editare i prezzi componente (come
+// preventivi/contratti): gli override viaggiano in `componenti_overrides`. In
+// EDIT i prezzi componente si modificano via OrdiniRigaComponentiPanel.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError } from '../../../core/utils/apiError'
 import { useOrdiniStore } from '../stores/ordini'
+import { previewRigaComponenti } from '../api/ordiniApi'
 import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import OrdiniRigaComponentiPanel from './OrdiniRigaComponentiPanel.vue'
+import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCreateActionsPanel.vue'
+import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
+import { useComponentiDialog } from '../../_shared/componenti/useComponentiDialog'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -57,6 +61,23 @@ const articoloObj = ref(null)
 const isPadreComposito = computed(
   () => isCasoA.value || articoloObj.value?.is_composito === true,
 )
+
+// Dialog componenti BoM pre-save (CREATE composito): auto-open al primo set
+// articolo+UoM+qta validi; raccoglie gli override prezzi componente. BB
+// condiviso con preventivi/contratti (regola del 2). In EDIT lo stato componenti
+// viaggia via OrdiniRigaComponentiPanel.
+const {
+  componentiDialogVisible,
+  componentiPayload,
+  showComponentiDialog,
+  apriComponentiDialog,
+  onComponentiConfirm,
+} = useComponentiDialog({
+  form,
+  isCreate: () => !isEdit.value,
+  isComposito: () => articoloObj.value?.is_composito === true,
+  isPadreComposito: () => isPadreComposito.value,
+})
 
 // UoM operative dell'articolo (BB centralizzato Fase 4.F1): solo quelle definite
 // a livello articolo, non l'intero catalogo.
@@ -124,6 +145,9 @@ const canSave = computed(() => {
   if (!f.uom_operativa_id) return false
   if (f.qta_operativa == null || Number(f.qta_operativa) === 0) return false
   if (!f.iva_id) return false
+  // CREATE su articolo composito: blocca il save finche' la ComponentiDialog
+  // non e' stata confermata almeno una volta (componentiPayload valorizzato).
+  if (showComponentiDialog.value && componentiPayload.value == null) return false
   return true
 })
 
@@ -155,6 +179,10 @@ function buildRigaPayload() {
   // (vuoto → il BE risolve via PricingService).
   if (!isPadreComposito.value && f.prezzo_unitario != null) {
     payload.prezzo_unitario = f.prezzo_unitario
+  }
+  // Override prezzi componente dal dialog pre-save (se confermato).
+  if (showComponentiDialog.value && componentiPayload.value?.overrides) {
+    payload.componenti_overrides = componentiPayload.value.overrides
   }
   return payload
 }
@@ -242,6 +270,30 @@ async function handleSave() {
             : t('vendite.ordini.riga_uom_articolo_first')" />
       </div>
     </div>
+
+    <!-- Componenti BoM CREATE (articolo composito): dialog pre-save per editare
+         i prezzi componente. BB condiviso con preventivi/contratti. Gli override
+         confermati viaggiano in `componenti_overrides` nel payload. -->
+    <ComponentiCreateActionsPanel
+      v-if="!isEdit && articoloObj?.is_composito"
+      section-title-key="vendite.ordini.componenti_section_title"
+      :disabled="!form.articolo_id || !form.uom_operativa_id
+        || ((form.qta_operativa || 0) <= 0)"
+      :componenti-payload="componentiPayload"
+      @apri-dialog="apriComponentiDialog"
+    />
+
+    <ComponentiDialog
+      v-if="showComponentiDialog"
+      v-model:visible="componentiDialogVisible"
+      :articolo="articoloObj"
+      :documento-id="ordineId"
+      :uom-operativa-id="form.uom_operativa_id"
+      :quantita="form.qta_operativa"
+      :api-preview="previewRigaComponenti"
+      :initial-payload="componentiPayload"
+      @confirm="onComponentiConfirm"
+    />
 
     <!-- Componenti BoM CASO A (solo EDIT): pannello componenti persistiti,
          modifica prezzo per singolo componente via PATCH. In CREATE i componenti

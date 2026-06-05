@@ -10,9 +10,10 @@
 # Indice test (0..N):
 #   0. build_context_shape_e_campi
 #   1. build_context_righe_propagate
-#   2. build_context_id_non_valido_raises_validation
-#   3. build_context_ordine_inesistente_raises_not_found
-#   4. registry_contiene_ordine_vendita_dopo_import_modulo
+#   2. build_context_riepilogo_iva_propagate
+#   3. build_context_id_non_valido_raises_validation
+#   4. build_context_ordine_inesistente_raises_not_found
+#   5. registry_contiene_ordine_vendita_dopo_import_modulo
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -77,13 +78,15 @@ class BuildContextOrdineTests(SimpleTestCase):
         repo = MagicMock()
         repo.get_ordine.return_value = _testata_row()
         repo.list_righe.return_value = []
+        repo.list_riepilogo_iva.return_value = []
 
         ctx = OrdineDocumentContextBuilder(repo=repo).build_context(
             7, auth_user_id=9,
         )
 
         self.assertEqual(
-            set(ctx.keys()), {"ordine", "cliente", "righe", "_meta"},
+            set(ctx.keys()),
+            {"ordine", "cliente", "righe", "riepilogo_iva", "_meta"},
         )
         ordine = ctx["ordine"]
         self.assertEqual(ordine["numero"], "ORD0000007")
@@ -121,6 +124,7 @@ class BuildContextOrdineTests(SimpleTestCase):
             {"id": 1, "articolo_descrizione": "Art A", "quantita": "2"},
             {"id": 2, "articolo_descrizione": "Art B", "quantita": "1"},
         ]
+        repo.list_riepilogo_iva.return_value = []
 
         ctx = OrdineDocumentContextBuilder(repo=repo).build_context(7)
 
@@ -128,11 +132,31 @@ class BuildContextOrdineTests(SimpleTestCase):
         self.assertEqual(ctx["righe"][0]["articolo_descrizione"], "Art A")
         repo.list_righe.assert_called_once_with(7)
 
+    # 2. Il riepilogo IVA (vista derivata) passa intatto nel context.
+    def test_build_context_riepilogo_iva_propagate(self) -> None:
+        repo = MagicMock()
+        repo.get_ordine.return_value = _testata_row()
+        repo.list_righe.return_value = []
+        repo.list_riepilogo_iva.return_value = [
+            {
+                "ordine_id": 7, "iva_id": 1, "iva_codice": "22",
+                "iva_aliquota": "22.00", "imponibile": "100.00",
+                "imposta": "22.00", "totale_riga": "122.00",
+            },
+        ]
+
+        ctx = OrdineDocumentContextBuilder(repo=repo).build_context(7)
+
+        self.assertEqual(len(ctx["riepilogo_iva"]), 1)
+        self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22.00")
+        self.assertEqual(ctx["riepilogo_iva"][0]["imposta"], "22.00")
+        repo.list_riepilogo_iva.assert_called_once_with(7)
+
 
 class BuildContextOrdineGuardTests(SimpleTestCase):
     """Guard input + 404."""
 
-    # 2. id non valido -> VALIDATION, no DB.
+    # 3. id non valido -> VALIDATION, no DB.
     def test_build_context_id_non_valido_raises_validation(self) -> None:
         repo = MagicMock()
         builder = OrdineDocumentContextBuilder(repo=repo)
@@ -143,7 +167,7 @@ class BuildContextOrdineGuardTests(SimpleTestCase):
                 self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.get_ordine.assert_not_called()
 
-    # 3. ordine inesistente -> NOT_FOUND, niente list_righe.
+    # 4. ordine inesistente -> NOT_FOUND, niente list_righe/riepilogo.
     def test_build_context_ordine_inesistente_raises_not_found(self) -> None:
         repo = MagicMock()
         repo.get_ordine.return_value = None
@@ -152,12 +176,13 @@ class BuildContextOrdineGuardTests(SimpleTestCase):
             builder.build_context(999)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         repo.list_righe.assert_not_called()
+        repo.list_riepilogo_iva.assert_not_called()
 
 
 class BuilderCodeAndRegistryTests(SimpleTestCase):
     """Costante CODE + registrazione al boot Django."""
 
-    # 4. Dopo l'import del modulo, il registry contiene 'ORDINE_VENDITA'.
+    # 5. Dopo l'import del modulo, il registry contiene 'ORDINE_VENDITA'.
     def test_registry_contiene_ordine_vendita_dopo_import_modulo(self) -> None:
         import apps.vendite.services.ordine_document_context_builder  # noqa: F401
         from apps.documenti.services.context_builders.registry import (

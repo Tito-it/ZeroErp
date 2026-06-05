@@ -21,6 +21,7 @@ from apps.vendite.api.views_ordini import (
     ApiOrdineConferma,
     ApiOrdineDetail,
     ApiOrdinePush,
+    ApiOrdineRiepilogoIva,
     ApiOrdineRigaComponenteDetail,
     ApiOrdineRigaComponentiList,
     ApiOrdineRigaDetail,
@@ -41,6 +42,10 @@ urlpatterns = [
     # Lista + create
     path("", ApiOrdiniList.as_view(), name="vendite-ordini-list"),
     path("<int:ordine_id>/", ApiOrdineDetail.as_view(), name="vendite-ordine-detail"),
+
+    # Riepilogo IVA aggregato (regola fiscale art. 21 DPR 633/72) — view derivata
+    path("<int:ordine_id>/riepilogo-iva/", ApiOrdineRiepilogoIva.as_view(),
+         name="vendite-ordine-riepilogo-iva"),
 
     # Transizioni / integrazione
     path("<int:ordine_id>/conferma/", ApiOrdineConferma.as_view(),

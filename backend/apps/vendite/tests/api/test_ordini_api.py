@@ -15,8 +15,9 @@ Indice test eseguiti:
  3) test_create_ok — 200 create ordine (mock service)
  4) test_conferma_ok — 200 conferma (mock service)
  5) test_push_ok — 200 push singolo a commessa (mock service)
- 6) test_export_formato_invalido — 400 E_UI_EXPORT_FORMAT_INVALID
- 7) test_export_overflow_cap — 422 E_UI_EXPORT_LIMIT_EXCEEDED su >cap righe
+ 6) test_riepilogo_iva_ok — 200 riepilogo IVA aggregato (mock service)
+ 7) test_export_formato_invalido — 400 E_UI_EXPORT_FORMAT_INVALID
+ 8) test_export_overflow_cap — 422 E_UI_EXPORT_LIMIT_EXCEEDED su >cap righe
 """
 
 from unittest.mock import Mock, patch
@@ -85,6 +86,21 @@ class TestOrdiniApi(JwtMockedApiTest):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["stato"], "COMPLETATO")
         mock_push.assert_called_once_with(7)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.list_riepilogo_iva")
+    def test_riepilogo_iva_ok(self, mock_riep, _auth) -> None:
+        mock_riep.return_value = [
+            {"ordine_id": 7, "iva_id": 1, "iva_codice": "22",
+             "iva_aliquota": "22.00", "imponibile": "100.00",
+             "imposta": "22.00", "totale_riga": "122.00"},
+        ]
+        resp = self.client.get(f"{_BASE}7/riepilogo-iva/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()["data"]
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["iva_aliquota"], "22.00")
+        mock_riep.assert_called_once_with(7)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.aggiorna_ordine")

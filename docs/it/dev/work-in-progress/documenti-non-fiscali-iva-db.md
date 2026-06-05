@@ -1,7 +1,14 @@
 # Documenti non fiscali - riepilogo IVA DB
 
-> Stato: WIP - decisione aggiornata 2026-06-04: pilot DB solo
-> `ORDINE_VENDITA`.
+> Stato: pilot `ORDINE_VENDITA` **COMPLETO end-to-end** (DB + BE + FE).
+>
+> - **DB CONSEGNATO** (2026-06-05, PR #785, commit `0aa6cdf07`): viste + funzione
+>   totali + 2 trigger + pgTAP verde (esito in 12.10). Modello: totali in testata
+>   via trigger (12.3, opzione b), non drop colonne.
+> - **BE + FE ESEGUITI** (2026-06-05): riepilogo IVA nel drawer ordini + nel
+>   context stampa, clone catena preventivi. Test BE verdi, build FE verde, review
+>   critica passata (esito in 13.11). **Resta solo** il template HTML PDF (manuale,
+>   13.8). Piano in 13, esito in 13.11.
 >
 > Obiettivo: definire una base DB coerente per esporre il riepilogo IVA nei
 > context dei documenti commerciali non fiscali generati dal motore
@@ -1104,3 +1111,188 @@ tecnica DB (`views/`, `funzioni/`, indici/tabelle) tramite tooling docs.
 
 BE e FE non sono parte di questa esecuzione. Restano come note di impatto nei
 punti 12.5 e 12.6, ma la checklist operativa qui si chiude con la validazione DB.
+
+---
+
+## 13. Piano di sviluppo BE + FE (post-consegna DB, 2026-06-05)
+
+> Aggiornato dopo la consegna DB (12.10). Obiettivo: portare nel **drawer ordini**
+> e nella **stampa PDF** un riepilogo IVA *simil-preventivi*, consumando gli oggetti
+> DB gia' atterrati. Tutto **clone della catena preventivi** (regola del 2,
+> `feedback_regola_del_2_estrai_bb`); zero logica fiscale in Python o nei template
+> (DB-first). Branch `dev/backend-tid`.
+
+### 13.0 Stato di partenza e prerequisiti
+
+**Oggetti DB consegnati e utilizzabili** (12.10):
+
+- `vendite.vw_ordini_riepilogo_iva_dettaglio` - breakdown per aliquota. **Shape
+  identica a `vw_preventivi_riepilogo_iva_dettaglio`** salvo: chiave
+  `ordine_id` (non `preventivo_id`) e **nessun `id` tecnico**, nessun
+  `data_insert/_update`. Colonne: `ordine_id, iva_id, iva_codice, iva_descrizione,
+  iva_aliquota, natura_id, natura_codice, esigibilita, split_payment, imponibile,
+  imposta, arrotondamento, totale_riga`.
+- `vendite.vw_ordini_righe_iva_base` - sorgente normalizzata (uso interno della
+  funzione totali; il BE non la consuma direttamente).
+- `vendite.fn_ricalcola_totali_ordine(p_ordine_id)` - scrive
+  `imponibile_tot/sconto_tot/iva_tot/totale_doc` in `vendite.ordini`.
+- trigger `_z90_` su `ordini_righe` (INS/UPD/DLT) e su `ordini`
+  (`UPDATE OF emittente_fiscale_id`).
+
+**Prerequisiti da chiudere PRIMA del BE** (azione DB / OK Tid - non li esegue il BE,
+`feedback_db_actions_passaggio_team` + `feedback_be_fe_attende_prerequisiti_db`):
+
+1. ✅ **Applicare le migration** al DB di lavoro — **FATTO** (Tid, 2026-06-05:
+   «apply migration fatto, c'e' tutto»). Viste/funzione/trigger runtime disponibili.
+2. ✅ **Backfill totali ordini esistenti** — **NON NECESSARIO** (Tid: un solo ordine
+   di test). Resta valido per ambienti con storico ordini: ricalcolo una-tantum
+   `SELECT vendite.fn_ricalcola_totali_ordine(id) FROM vendite.ordini`.
+
+### 13.1 BE - Repository (`apps/vendite/db/ordini_repository.py`)
+
+Clone di `PreventiviRepository.list_riepilogo_iva` (preventivi_repository.py:431-443):
+
+- `list_riepilogo_iva(self, ordine_id: int) -> list[dict]` - lettura pura da
+  `vendite.vw_ordini_riepilogo_iva_dettaglio WHERE ordine_id = %s`,
+  `ORDER BY iva_aliquota NULLS LAST, iva_id NULLS LAST`.
+- **Differenze dalla versione preventivi**: SELECT **senza `id`** (la vista ordini
+  non lo espone) e `ordine_id` al posto di `preventivo_id`. Colonne selezionate:
+  `ordine_id, iva_id, iva_codice, iva_descrizione, iva_aliquota, natura_id,
+  natura_codice, esigibilita, split_payment, imponibile, imposta, arrotondamento,
+  totale_riga`.
+- Guard standard post-cursor (`rows_to_list`).
+- **Correggere** il commento fuorviante in testa al repo («ricalcolo totali gestito
+  da trigger DB»): ora e' **vero** (12.5) - aggiornare il testo, non rimuoverlo.
+- `get_ordine` / `list_ordini`: **invariati** - i `*_tot` restano colonne di
+  testata/vista lista, ora valorizzate dal trigger.
+
+### 13.2 BE - Service (`apps/vendite/services/ordini_service.py`)
+
+Wrapper sottile, clone di `preventivi_service.list_riepilogo_iva` (:263-265):
+
+```text
+def list_riepilogo_iva(ordine_id): return OrdiniRepository().list_riepilogo_iva(ordine_id)
+```
+
+### 13.3 BE - Endpoint (`apps/vendite/api/views_ordini.py` + `urls_ordini.py`)
+
+Clone di `ApiPreventivoRiepilogoIva` (preventivi_views.py:763-788) +
+rotta (preventivi_urls.py:137-141):
+
+- `class ApiOrdineRiepilogoIva(DomainAPIView)`, `area_funzionale = "vendite"`
+  (livello LETTURA), `@extend_schema` sul `get`.
+- `GET /api/v1/vendite/ordini/<int:ordine_id>/riepilogo-iva/` ->
+  `success_response(ordini_service.list_riepilogo_iva(ordine_id))`.
+- nome rotta `vendite-ordini-riepilogo-iva`.
+
+### 13.4 BE - Context builder PDF (`apps/vendite/services/ordine_document_context_builder.py`)
+
+- aggiungere `"riepilogo_iva": self._repo.list_riepilogo_iva(sorgente_id)` al dict
+  di `build_context` (clone preventivo_document_context_builder.py:84/92);
+- **rimuovere il commento di confine v1** «niente riepilogo_iva ... (non esiste una
+  vista IVA per ordini)»: ora la vista c'e';
+- il blocco `"totali"` resta da `testata.get("*_tot")` (ora valorizzate dal
+  trigger) - **nessuna modifica alla derivazione totali**.
+
+### 13.5 BE - Test (`apps/vendite/tests/`)
+
+- `test_ordini_api`: smoke route `riepilogo-iva` (auth/area) + shape della response;
+- `test_ordine_document_context_builder`: il context include ora `riepilogo_iva`
+  (mock repo che ritorna 1-2 gruppi aliquota);
+- mock DB (regole CI AGENTS.md, niente DB reale);
+- verde `./manage-test.sh apps.vendite.tests -v 2`.
+
+### 13.6 FE - API + store (`src/vendite/ordini/`)
+
+- `api/ordiniApi.js`: `getRiepilogoIva(ordineId)` -> `api.get('${BASE}/${id}/riepilogo-iva/')`
+  (clone preventiviApi.js:104-111);
+- `stores/ordini.js`: action `loadRiepilogoIva(ordineId)` (clone preventivi.js:169-172).
+
+### 13.7 FE - Drawer con riepilogo IVA live (`OrdiniDrawer.vue`)
+
+Clone del pattern preventivi (PreventiviDrawer.vue:1001-1003 + computed
+`showRiepilogoIva` :137-139 + load :374-387). **Nessun componente nuovo**:
+`RiepilogoIvaTable.vue` e' gia' BB generico in `src/core/components/`.
+
+- ref `riepilogoIva = ref([])` + computed `showRiepilogoIva` (almeno 1 riga);
+- montare `<RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />` sotto
+  la sezione righe (con `<Divider/>`), nel tab Testata;
+- `loadRiepilogoIva(targetId)` best-effort (catch -> `[]`) chiamata in `loadDetail`;
+- **refresh live**: agganciare la ricarica all'evento `@changed` di
+  `OrdiniRigheTable` (la catena `changed -> loadDetail` esiste gia' nello scheletro;
+  **verificare** che `OrdiniRigheTable` emetta `changed` su save/delete riga e su
+  modifica componenti, come `PreventiviRigheTable`);
+- vincolo `effectiveOrdineId` (ordine gia' in BOZZA) - coerente con l'auto-save
+  BOZZA gia' adottato. Build verde `./node_modules/.bin/vite build`.
+
+### 13.8 Stampa PDF - estendere il template HTML (gestione manuale)
+
+Aggiungere `riepilogo_iva` al context (13.4) **non** lo fa apparire nel PDF finche'
+il **template HTML ordine** non lo renderizza. Il template e' gestione **manuale**
+(come la sua creazione, 12.1.3): clonare la sezione «Riepilogo IVA» dal template
+preventivo nel template `ORDINE_VENDITA`, ripubblicare la versione
+(`fn_pubblica_template_documento_versione`). Passo di configurazione operativa, non
+codice BE/FE.
+
+### 13.9 Sequenza esecutiva
+
+1. **(DB / OK Tid)** apply migration + backfill totali ordini esistenti (13.0).
+2. **(BE)** repo `list_riepilogo_iva` + service + endpoint + context builder +
+   test verdi. Commit.
+3. **(FE)** api/store + `RiepilogoIvaTable` nel drawer + refresh `@changed` + build
+   verde. Commit.
+4. **(Config)** estendere + ripubblicare il template PDF ordine (13.8).
+5. **Smoke**: drawer carica riepilogo, si aggiorna dopo add/del riga; totali testata
+   coerenti col riepilogo; PDF rende la tabella IVA.
+
+### 13.10 Punti di attenzione
+
+- **Coerenza per costruzione** drawer/lista/PDF: tutti derivano dalla stessa vista
+  e dalla stessa funzione (12.7) - nessuna formula FE/Python.
+- **Ordini vecchi senza backfill** = totali NULL finche' non si tocca una riga: il
+  backfill 13.0.2 e' la differenza tra «funziona sui nuovi» e «funziona su tutti».
+- **`riga_nr`/righe inattive**: la vista base filtra `attivo IS TRUE AND quantita > 0`
+  -> coerente col fatto che il riepilogo segue le righe effettive del documento.
+- **Componenti BoM**: esclusi dal riepilogo per design (confluiti nel prezzo padre,
+  12.10) - non aggiungere componenti al breakdown lato BE/FE.
+
+### 13.11 Esito esecuzione BE + FE - 2026-06-05
+
+Steps 13.1-13.7 **eseguiti** (branch `dev/backend-tid`). Test BE verdi, build FE
+verde, review critica passata. Resta solo 13.8 (template PDF, manuale).
+
+**Backend** (`apps/vendite/`):
+
+- `db/ordini_repository.py` — `list_riepilogo_iva(ordine_id)`: lettura pura da
+  `vw_ordini_riepilogo_iva_dettaglio` (SELECT senza `id`, chiave `ordine_id`).
+- `services/ordini_service.py` — wrapper `list_riepilogo_iva`.
+- `api/views_ordini.py` + `api/urls_ordini.py` — `ApiOrdineRiepilogoIva`
+  (`GET /api/v1/vendite/ordini/<id>/riepilogo-iva/`, `area_funzionale='vendite'`,
+  `@extend_schema`+`inline_serializer`, rotta `vendite-ordine-riepilogo-iva`).
+- `services/ordine_document_context_builder.py` — aggiunto `riepilogo_iva` al
+  context; rimosso il commento «confine v1 / niente vista IVA».
+- Test: `tests/api/test_ordini_api.py` (smoke endpoint) +
+  `tests/services/test_ordine_document_context_builder.py` (context include
+  `riepilogo_iva`). **Suite vendite: 866 test verdi.**
+
+**Frontend** (`src/vendite/ordini/` + BB core):
+
+- `api/ordiniApi.js` — `getRiepilogoIva`.
+- `stores/ordini.js` — action `loadRiepilogoIva` (store `userScoped`).
+- `components/OrdiniDrawer.vue` — montato `RiepilogoIvaTable` (BB core, **zero
+  componenti nuovi**) sotto le righe; ref + computed `showRiepilogoIva`; load in
+  `loadDetail` + refresh live sull'evento `@changed` delle righe; reset in
+  `resetForm`. **Build FE verde.**
+
+**Fix da review critica**: `src/core/components/RiepilogoIvaTable.vue` usava
+`data-key="id"`, ma la vista ordini non espone `id` → key duplicate PrimeVue con
+≥2 aliquote. Rimosso `data-key` (tabella read-only → indice di riga): il BB e' ora
+shape-agnostic (preventivi/ordini/fatture-future), nessuna regressione preventivi.
+
+**Sicurezza** (verificata, nessuna modifica): l'endpoint e' protetto DB-side
+(`security_invoker=on` sulle viste + RLS `rls_ordini_ef_whitelist` su
+`vendite.ordini`); ordine fuori perimetro → lista vuota, nessun leak di importi.
+Simmetrico al gemello `ApiPreventivoRiepilogoIva`.
+
+**Doc API aggiornata**: `docs/it/backend/vendite/manual/api_ordini.md` (endpoint
+`riepilogo-iva` + dipendenze DB viste/funzione/trigger).

@@ -298,6 +298,30 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, [riga_id])
             return row_to_dict(cursor)
 
+    # Scopo: Restituisce il riepilogo IVA aggregato dell'ordine dalla view
+    #        derivata `vendite.vw_ordini_riepilogo_iva_dettaglio`. Una riga per
+    #        gruppo aliquota; natura/esigibilita/split sono sempre NULL (shape
+    #        allineata a vw_preventivi_riepilogo_iva_dettaglio). Imponibile e
+    #        imposta sono ROUND 2 sull'aggregato per aliquota (regola fiscale
+    #        DPR 633/72 art. 21 + DM 24/12/93, identica ai preventivi). La view
+    #        ricalcola dalle righe attive: il chiamante legge solo lo stato
+    #        corrente, non orchestra alcun ricalcolo. A differenza dei
+    #        preventivi la view ordini non espone un `id` tecnico (chiave logica
+    #        ordine_id + iva_id).
+    def list_riepilogo_iva(self, ordine_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT ordine_id, iva_id, iva_codice, iva_descrizione,
+                   iva_aliquota, natura_id, natura_codice,
+                   esigibilita, split_payment,
+                   imponibile, imposta, arrotondamento, totale_riga
+              FROM vendite.vw_ordini_riepilogo_iva_dettaglio
+             WHERE ordine_id = %s
+             ORDER BY iva_aliquota NULLS LAST, iva_id NULLS LAST
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [ordine_id])
+            return rows_to_list(cursor)
+
     # Scopo: Load atomico di un componente con scope completo (componente →
     #        riga → ordine) in un'unica query JOIN, per i guard del service.
     def load_componente_with_scope(

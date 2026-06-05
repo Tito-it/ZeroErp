@@ -21,6 +21,7 @@ import {
   deleteOrdine,
   deleteRiga,
   getOrdine,
+  getRiepilogoIva,
   listOrdini,
   listRighe,
   pushOrdineACommessa,
@@ -148,6 +149,16 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     return res.data.data
   }
 
+  // --- Riepilogo IVA ---
+
+  // Scopo: Carica il riepilogo IVA aggregato dell'ordine (una entry per
+  //        aliquota, regola fiscale DPR 633/72 art. 21). Calcolo derivato lato
+  //        DB dalle righe attive: il FE legge solo lo stato corrente.
+  async function loadRiepilogoIva(ordineId) {
+    const res = await getRiepilogoIva(ordineId)
+    return res.data.data
+  }
+
   return {
     // state
     items, totalRecords, loading, hasSearched, filters,
@@ -157,6 +168,8 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     conferma, push,
     // righe
     loadRighe, addRiga, aggiornaRiga, eliminaRiga,
+    // riepilogo IVA
+    loadRiepilogoIva,
   }
 }, {
   userScoped: true,

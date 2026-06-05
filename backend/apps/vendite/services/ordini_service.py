@@ -31,6 +31,12 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import map_integrity_error
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ordini_repository import OrdiniRepository
+from apps.vendite.services._componenti_service_helpers import (
+    normalize_componenti_overrides,
+)
+from apps.vendite.services._pricing_gate_helpers import (
+    validate_componenti_overrides_authorization,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +219,15 @@ def get_ordine(ordine_id: int) -> dict[str, object]:
 # Scopo: Lista righe di un ordine.
 def list_righe(ordine_id: int) -> list[dict[str, Any]]:
     return OrdiniRepository().list_righe(ordine_id)
+
+
+# Scopo: Riepilogo IVA aggregato dell'ordine (una riga per aliquota). Calcolo
+#        fiscalmente corretto gia' applicato in DB via la view derivata
+#        vw_ordini_riepilogo_iva_dettaglio (stessa formula dei preventivi): il
+#        service legge, nessun ricalcolo Python. Usato dal FE per il pannello
+#        "Riepilogo IVA" del drawer ordine e dal context builder della stampa.
+def list_riepilogo_iva(ordine_id: int) -> list[dict[str, Any]]:
+    return OrdiniRepository().list_riepilogo_iva(ordine_id)
 
 
 # ══════════════════════════════════════════════════════════
@@ -622,6 +637,19 @@ def gestisci_riga(
         function_name=f"{_FN}.gestisci_riga",
     )
 
+    # Override prezzi componenti BoM (dialog pre-save, simmetria preventivi).
+    # Gate L1: l'override manuale richiede il permesso dedicato. Poi normalizza
+    # la mappa {componente_id: prezzo} (None se assente). Applicata solo per
+    # articolo composito (vedi init componenti sotto).
+    validate_componenti_overrides_authorization(
+        payload, auth_user_id, function_name=f"{_FN}.gestisci_riga",
+    )
+    componenti_overrides = normalize_componenti_overrides(
+        payload.get("componenti_overrides"),
+        function_name=f"{_FN}.gestisci_riga",
+        error_code="E_ORD_VALIDAZIONE",
+    )
+
     data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_RIGA}
     articolo_id = data.get("articolo_id")
     ErrorManager.require(
@@ -664,7 +692,9 @@ def gestisci_riga(
         )
         riga_id = int(created["id"])
 
-        # Auto-init componenti BoM per articolo composito.
+        # Auto-init componenti BoM per articolo composito. Con override prezzi
+        # dal dialog pre-save (se presenti); altrimenti la fn DB risolve i
+        # prezzi componente dal pricing corrente.
         if is_composito:
             emittente_sr_id = _resolve_emittente_sr_id(repo, testata)
             data_rif = _data_riferimento(testata)
@@ -672,6 +702,7 @@ def gestisci_riga(
                 riga_id=riga_id,
                 emittente_soggetto_ruolo_id=emittente_sr_id,
                 data_riferimento=data_rif,
+                componenti_overrides=componenti_overrides,
             )
 
     return {"ordine_id": ordine_id, "riga_id": riga_id, "is_composito": is_composito}

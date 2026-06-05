@@ -4,13 +4,12 @@
 > **Ambito:** **backend + frontend** del dominio `anagrafiche`
 > (`backend/apps/anagrafiche/` + `frontend/src/anagrafiche/`)
 > **Profondità:** media
-> **Stato:** 🟡 **APERTO — report / mappa di lavoro.** Nessuna estrazione è
-> stata fatta. Il documento serve a decidere *se* e *cosa* estrarre, un pezzo
-> alla volta, secondo la "regola del 2" (alla seconda occorrenza di uno schema
-> si estrae un building block invece di duplicare).
+> **Stato:** ✅ **CHIUSO — completamente evaso.** Tutti i candidati del report
+> (V1–V4, G1–G5) sono stati lavorati; le note residue sono fuori perimetro
+> anagrafiche o sono state chiuse da lavori core successivi.
 
 Replica del controllo già fatto su vendite
-([regola-del-2-vendite.md](../work-done/regola-del-2-vendite.md)), questa volta
+([regola-del-2-vendite.md](regola-del-2-vendite.md)), questa volta
 esteso anche al backend perché qui è la superficie maggiore (service /
 repository / api) e la regola del 2 morde su helper inline, validator e
 resolver — non solo su componenti FE.
@@ -357,13 +356,9 @@ siti, ma vale la pena annotarle:
 
 ---
 
-## Come procedere (proposta)
+## Chiusura operativa
 
-Per ogni candidato vale il protocollo della regola del 2
-(`feedback_regola_del_2_estrai_bb`): **dichiarare a chat il disegno del BB e
-attendere l'OK di Tid** prima di scrivere codice astratto.
-
-Ordine suggerito per rischio/valore crescente (stato aggiornato 2026-06-03):
+Ordine di lavorazione eseguito (stato aggiornato 2026-06-03):
 
 1. ✅ **Debito #1** (`qp_bool_optional`) — fatto. + bonus `core/api/views.py`
    (`qp_bool`) e debito #2 (codice morto ClienteDrawer).
@@ -382,9 +377,10 @@ Ordine suggerito per rischio/valore crescente (stato aggiornato 2026-06-03):
 > debiti collaterali + bonus core. Review critica finale eseguita su tutti i G*:
 > corretti fragile (G5 mutazione input), hardcoded (G1 `limit` → `PAGINATION.DEFAULT_ROWS`),
 > doc stale (`_validators`), import orfani. **2628 test BE + eslint/build FE verdi.**
-> Restano solo le **note parcheggiate** (variante Gruppo B `reopenOnCreate`,
-> ConversioniUom, audit `userScoped` su store non-G1, promemoria core
-> `qp_bool_optional_strict`).
+> Restano solo note parcheggiate **fuori perimetro anagrafiche**: variante
+> Gruppo B `reopenOnCreate`, `ConversioniUom`, audit `userScoped` su store non-G1.
+> Il promemoria core su `qp_bool_optional_strict` è stato chiuso dal refactor
+> core-be del 2026-06-04: `qp_bool_optional(raw, name)` è ora opzionale strict.
 
 ---
 
@@ -443,31 +439,24 @@ Logica specifica per dominio, falsa duplicazione:
 - `amministrazione/views/EmittentiFiscaliListView.vue` — solo close + fetchList (sync)
 - `ui/components/Lista*Panel.vue` (4 file) — `close + await reload()` (panel-level, shape diversa)
 
-**Proposta:** estendere l'adozione del composable ai **5 del Gruppo A** (sweep
-cross-dominio a rischio nullo) in un intervento dedicato; valutare a parte una
-variante per il Gruppo B. In attesa dell'OK di Tid.
+**Esito:** Gruppo A completato nello sweep cross-dominio. Gruppo B e varianti
+genuine restano fuori da questo report e vanno trattati in passate dedicate, se
+necessario.
 
 ---
 
-## 📌 Promemoria per la verifica core dei query-param bool (fuori perimetro anagrafiche)
+## 📌 Nota storica sui query-param bool core
 
-> Emerso a margine durante i fix delle scoperte collaterali. Da rivedere quando
-> si farà la passata di verifica sul core dei validatori query-param.
+> Emerso a margine durante i fix delle scoperte collaterali. La verifica core è
+> stata poi completata nel lavoro `regola-del-due-core-be` del 2026-06-04.
 
 - **✅ FATTO contestualmente** — [core/api/views.py:115-116](../../../../backend/apps/core/api/views.py#L115-L116)
   reinventava `qp_bool(raw, default=True)` (BB core già esistente, e il file già
   importava `qp_int_strict` dallo stesso modulo). Sostituito con
   `qp_bool(request.query_params.get("attivo_only"))`.
 
-- **⏳ DA VALUTARE — promuovere `qp_bool_optional_strict` al core.**
-  [vendite/api/views_listini.py:51-60](../../../../backend/apps/vendite/api/views_listini.py#L51-L60)
-  ha l'helper privato `_optional_qp_bool_strict` (bool opzionale che **solleva
-  `ValueError`** sui valori non riconosciuti, a differenza del `qp_bool_optional`
-  core che li tratta come `False`). **NON è da togliere**: comportamento
-  legittimamente diverso, e già deduplicato localmente (2 chiamanti, righe 222 e
-  434). Però è un concetto core mancante: `apps/core/api/payload_validators.py`
-  ha `qp_int_strict` ma non l'equivalente bool. **Proposta:** aggiungere
-  `qp_bool_optional_strict` al core (simmetria con `qp_int_strict`) e far
-  delegare `views_listini` ad esso. Regola del 2 soddisfatta (concetto strict già
-  presente per gli int), ma è estrazione deliberata vendite+core → dichiarare e
-  attendere OK prima di scrivere.
+- **✅ FATTO successivamente (2026-06-04) — bool opzionale strict nel core.**
+  Il lavoro core-be ha risolto il promemoria senza introdurre un nuovo suffisso:
+  `qp_bool_optional(raw, name)` è ora l'helper opzionale strict. L'helper privato
+  `_optional_qp_bool_strict` di `vendite/views_listini.py` è stato rimosso e le
+  view usano il BB core.
