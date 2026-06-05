@@ -549,7 +549,7 @@ DRAFT** dal preventivo, copiando testata + righe + componenti BoM e valorizzando
 Endpoint del motore documentale parametrico per la sorgente `PREVENTIVO`.
 Risolvono il contesto comune (preventivo + emittente fiscale + sorgente
 attiva) via helper condiviso `apps.documenti.api.contesto_helpers.resolve_contesto_documentale`
-(vedi [api_documenti_helpers](../../../documenti/manual/api_documenti_helpers.md)).
+(vedi [api_documenti_helpers](../../documenti/manual/api_documenti_helpers.md)).
 
 | Metodo | Path | Effetto |
 | --- | --- | --- |
