@@ -12,7 +12,7 @@
 | uom_id | bigint | YES |  |
 | qta | numeric | NO |  |
 | prezzo_unitario | numeric | NO |  |
-| sconto_perc | numeric | YES |  |
+| sconto_percentuale | numeric | YES | 0 |
 | iva_id | integer | YES |  |
 | esigibilita | character | YES |  |
 | split_payment | boolean | YES |  |
@@ -35,7 +35,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_fatture_righe_sconto_perc |  |
+| CHECK | chk_fatture_righe_sconto |  |
 | FOREIGN KEY | fk_fatture_righe_art | articolo_id |
 | FOREIGN KEY | fk_fatture_righe_ba_dest | dest_billing_account_id |
 | FOREIGN KEY | fk_fatture_righe_fat | fattura_id |

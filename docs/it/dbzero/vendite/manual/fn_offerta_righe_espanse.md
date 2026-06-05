@@ -29,7 +29,7 @@ RETURNS TABLE (
     qta_operativa     vendite.ordini_righe.qta_operativa%TYPE,
     factor_to_base    vendite.ordini_righe.factor_to_base%TYPE,
     prezzo_unitario   vendite.ordini_righe.prezzo_unitario%TYPE,
-    sconto_perc       vendite.ordini_righe.sconto_perc%TYPE,
+    sconto_percentuale  vendite.ordini_righe.sconto_percentuale%TYPE,
     iva_id            vendite.ordini_righe.iva_id%TYPE,
     tipo_eccezione    vendite.tipo_eccezione_contratto,
     origine           varchar,
@@ -50,7 +50,7 @@ LANGUAGE plpgsql STABLE
 | --- | --- | --- |
 | ESCLUSIONE | riga mostrata, `prezzo_finale` NULL | **riga rimossa** |
 | IVA | non risolta | `iva_id` (da articolo); l'aliquota si deriva da `iva_id` (no `iva_perc`) |
-| Sconto | n/d | `sconto_perc` = NULL (lo sconto è già nel prezzo override) |
+| Sconto | n/d | `sconto_percentuale` = NULL (lo sconto è già nel prezzo override) |
 | UoM | `uom_id` listino | `uom_operativa_id`/`qta_operativa`/`factor_to_base` mappati su `ordini_righe` |
 | Quantità da-listino | NULL | **default 1** |
 

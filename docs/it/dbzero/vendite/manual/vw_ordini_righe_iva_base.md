@@ -61,8 +61,8 @@ La vista non produce il riepilogo finale: prepara i dati per
 | Campo | Formula | Note |
 | --- | --- | --- |
 | `imponibile_lordo_full` | `quantita * prezzo_unitario` | Lordo riga, senza sconto |
-| `sconto_riga_full` | `quantita * prezzo_unitario * COALESCE(sconto_perc, 0) / 100` | Sconto riga full precision |
-| `imponibile_riga_full` | `quantita * prezzo_unitario * (1 - COALESCE(sconto_perc, 0) / 100)` | Imponibile netto full precision |
+| `sconto_riga_full` | `quantita * prezzo_unitario * COALESCE(sconto_percentuale, 0) / 100` | Sconto riga full precision |
+| `imponibile_riga_full` | `quantita * prezzo_unitario * (1 - COALESCE(sconto_percentuale, 0) / 100)` | Imponibile netto full precision |
 | `aliquota_effettiva` | `config.fn_get_aliquota_iva(iva_id, stato_emittente_id)` | Override aliquota da stato emittente |
 
 ---

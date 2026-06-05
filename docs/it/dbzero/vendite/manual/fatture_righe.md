@@ -36,7 +36,7 @@ Obiettivi principali:
 ### Campi chiave (semantica)
 
 * **Identità e collegamenti**: `fattura_id` (testata), `riga_nr` (ordine), `articolo_id` (opzionale), `uom_id` (unità misura), `dest_billing_account_id` (attribuzione economica a BA figlio).
-* **Dati merce/servizio**: `descrizione`, `qta` , `prezzo_unitario` , `sconto_perc` (0–100). Per q.ta e prezzo leggere le note contenute nel documento
+* **Dati merce/servizio**: `descrizione`, `qta` , `prezzo_unitario` , `sconto_percentuale` (0–100, default 0). Per q.ta e prezzo leggere le note contenute nel documento
 * **IVA e fiscali**: `iva_id` (aliquota), `iva_perc`, `iva_natura` (snapshot), `esigibilita` (I|D|S), `split_payment`.
 * **Importi congelati**: `imponibile_riga`, `imposta_riga`, `totale_riga` (sempre valorizzati al closing della riga).
 * **Governance**: `meta` (JSONB, NOT NULL), `storicizza`, `tx_id`, audit `data_*`/`user_*`.
@@ -49,7 +49,7 @@ Obiettivi principali:
 * **FK**: fattura, articolo (opz.), UoM, IVA, BA destinatario (opz.), sorgente tipo.
 * **CHECK**:
 
-  * `chk_fatture_righe_sconto_perc` → sconto 0..100.
+  * `chk_fatture_righe_sconto` → `sconto_percentuale` 0..100 (rinominato da `chk_fatture_righe_sconto_perc`, unificazione 2026-06-05).
   * `chk_fatr_iva_perc` → iva_perc 0..100 (se valorizzato).
 * **UNIQUE**:
 
@@ -62,7 +62,7 @@ Obiettivi principali:
 ### Logiche di calcolo (indicative)
 
 * **Base**:
-  `imponibile_riga = round(qta * prezzo_unitario * (1 - sconto_perc/100), dec_importi)`
+  `imponibile_riga = round(qta * prezzo_unitario * (1 - sconto_percentuale/100), dec_importi)`
   `imposta_riga    = round(imponibile_riga * (iva_perc/100), dec_importi)`
   `totale_riga     = imponibile_riga + imposta_riga`
 * **Rounding**: usare le funzioni centralizzate del modulo vendite (decimali/metodo) per coerenza con testata e policy articolo.

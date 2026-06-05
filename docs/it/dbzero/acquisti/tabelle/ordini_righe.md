@@ -11,7 +11,7 @@
 | uom_id | bigint | YES |  |
 | qta | numeric | NO |  |
 | prezzo_unitario | numeric | NO |  |
-| sconto_perc | numeric | YES |  |
+| sconto_percentuale | numeric | YES | 0 |
 | iva_id | integer | YES |  |
 | stato_doc_ordine_id | bigint | YES |  |
 | sorgente_tipo_id | bigint | YES |  |
@@ -31,7 +31,7 @@
 |------|------|---------|
 | CHECK | chk_ordini_ao_r_przz_pos |  |
 | CHECK | chk_ordini_ao_r_qta_pos |  |
-| CHECK | chk_ordini_ao_r_sconto_perc |  |
+| CHECK | chk_ordini_ao_r_sconto |  |
 | FOREIGN KEY | fk_ao_r_articolo | articolo_id |
 | FOREIGN KEY | fk_ao_r_iva | iva_id |
 | FOREIGN KEY | fk_ao_r_sorgente_tipo | sorgente_tipo_id |

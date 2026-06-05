@@ -36,7 +36,7 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 * `chk_ordini_v_r_uom_qta_operativa_copres` → `(uom_operativa_id IS NULL) = (qta_operativa IS NULL)` ✅ aggiunto in `20260603-11` (co‑presenza operativa).
 * `check_ordini_righe_qta_operativa_pos` → `qta_operativa > 0` (consente `NULL`).
 * `chk_ordini_v_r_prezzo_pos` → `prezzo_unitario >= 0` (l'omaggio è `quantita > 0` + `prezzo_unitario = 0`).
-* `chk_ordini_v_r_sconto_perc` → tra 0 e 100.
+* `chk_ordini_v_r_sconto` → `sconto_percentuale` tra 0 e 100 (rinominato da `chk_ordini_v_r_sconto_perc`, unificazione 2026-06-05).
 * **UQ**: `(ordine_id, riga_nr)`; **UQ idempotenza**: `(sorgente_tipo_id, sorgente_uid)` filtro `WHERE sorgente_tipo_id IS NOT NULL`.
 
 ---
@@ -71,7 +71,7 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 * Righe di un ordine, con totale base:
 
 ```sql
-SELECT r.*, (r.quantita * r.prezzo_unitario) * (1 - COALESCE(r.sconto_perc,0)/100.0) AS imponibile_riga
+SELECT r.*, (r.quantita * r.prezzo_unitario) * (1 - COALESCE(r.sconto_percentuale,0)/100.0) AS imponibile_riga
 FROM vendite.ordini_righe r
 WHERE r.ordine_id = :ordine_id
 ORDER BY r.riga_nr;

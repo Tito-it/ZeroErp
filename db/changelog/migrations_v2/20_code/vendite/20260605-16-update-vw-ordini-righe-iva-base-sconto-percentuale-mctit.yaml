@@ -1,0 +1,186 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ricrea vendite.vw_ordini_righe_iva_base dopo il rename sconto_perc ->
+# sconto_percentuale (20260605-13). Il RENAME COLUMN propaga il riferimento
+# interno ma l'alias di OUTPUT della vista resta `sconto_perc`: per esporre
+# `sconto_percentuale` la vista va ricreata (CREATE OR REPLACE non puo'
+# rinominare colonne).
+#
+# Dipendenza: vendite.vw_ordini_riepilogo_iva_dettaglio (20260605-02) dipende
+# da questa vista, quindi il DROP la richiede gia' eliminata. La riepilogo NON
+# usa la colonna sconto (aggrega su imponibile_riga_full), percio' la sua
+# definizione e' INVARIATA: la si droppa e ricrea identica alla 20260605-02 nello
+# stesso changeSet, in modo atomico (un'unica transazione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260605-16-update-vw-ordini-righe-iva-base-sconto-percentuale-mctit.yaml
+
+  - changeSet:
+      id: 20260605-16-update-vw-ordini-righe-iva-base-sconto-percentuale
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ricrea vendite.vw_ordini_righe_iva_base con colonna sconto_percentuale
+        (post rename 20260605-13) + ricrea la dipendente
+        vw_ordini_riepilogo_iva_dettaglio (def invariata da 20260605-02).
+        Logica invariata.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ordini_righe
+          - columnExists:
+              schemaName: vendite
+              tableName: ordini_righe
+              columnName: sconto_percentuale
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'config'
+                   AND p.proname = 'fn_get_aliquota_iva';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Drop in ordine di dipendenza: prima la derivata, poi la base.
+              DROP VIEW IF EXISTS vendite.vw_ordini_riepilogo_iva_dettaglio;
+              DROP VIEW IF EXISTS vendite.vw_ordini_righe_iva_base;
+
+              CREATE VIEW vendite.vw_ordini_righe_iva_base
+              WITH (security_invoker = on) AS
+              SELECT
+                  r.ordine_id,
+                  r.id                                                AS riga_id,
+                  r.riga_nr,
+                  o.emittente_fiscale_id,
+                  s.stato_id                                          AS stato_emittente_id,
+                  r.iva_id,
+                  CASE
+                    WHEN r.iva_id IS NOT NULL
+                    THEN config.fn_get_aliquota_iva(r.iva_id, s.stato_id)
+                    ELSE NULL::numeric
+                  END                                                 AS aliquota_effettiva,
+                  r.quantita,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  (r.quantita * r.prezzo_unitario)                    AS imponibile_lordo_full,
+                  (
+                    r.quantita * r.prezzo_unitario
+                    * COALESCE(r.sconto_percentuale, 0) / 100
+                  )                                                   AS sconto_riga_full,
+                  (
+                    r.quantita * r.prezzo_unitario
+                    * (1 - COALESCE(r.sconto_percentuale, 0) / 100)
+                  )                                                   AS imponibile_riga_full,
+                  r.attivo,
+                  r.data_insert,
+                  r.data_update
+              FROM vendite.ordini_righe r
+              JOIN vendite.ordini o
+                ON o.id = r.ordine_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.id = o.emittente_fiscale_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr
+                ON sr.id = ef.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = sr.soggetto_id
+              WHERE r.attivo IS TRUE
+                AND r.quantita > 0;
+
+              COMMENT ON VIEW vendite.vw_ordini_righe_iva_base IS
+                'Vista base righe IVA ordini vendita. Espone righe ordine attive '
+                'con quantita > 0, imponibile lordo/sconto/imponibile netto a '
+                'precisione piena e aliquota effettiva via config.fn_get_aliquota_iva '
+                '(override stato emittente). Non somma direttamente i componenti BoM: '
+                'il prezzo dei componenti confluisce nella riga padre tramite trigger, '
+                'evitando doppio conteggio nel riepilogo IVA. Colonna sconto_percentuale '
+                '(unificata 2026-06-05).';
+
+              -- Ricrea la derivata invariata (def identica a 20260605-02): dipende
+              -- dalla base appena ricreata e non usa la colonna sconto.
+              CREATE VIEW vendite.vw_ordini_riepilogo_iva_dettaglio
+              WITH (security_invoker = on) AS
+              WITH imponibili AS (
+                SELECT
+                  b.ordine_id,
+                  b.iva_id,
+                  b.aliquota_effettiva,
+                  SUM(b.imponibile_riga_full) AS imponibile_full
+                FROM vendite.vw_ordini_righe_iva_base b
+                GROUP BY
+                  b.ordine_id,
+                  b.iva_id,
+                  b.aliquota_effettiva
+              ),
+              aggregati AS (
+                SELECT
+                  i.ordine_id,
+                  i.iva_id,
+                  i.aliquota_effettiva,
+                  ROUND(i.imponibile_full, 2) AS imponibile,
+                  (
+                    i.imponibile_full
+                    - ROUND(i.imponibile_full, 2)
+                  ) AS arrotondamento
+                FROM imponibili i
+              ),
+              riepilogo AS (
+                SELECT
+                  a.ordine_id,
+                  a.iva_id,
+                  a.aliquota_effettiva,
+                  a.imponibile,
+                  ROUND(
+                    a.imponibile * COALESCE(a.aliquota_effettiva, 0) / 100,
+                    2
+                  ) AS imposta,
+                  a.arrotondamento
+                FROM aggregati a
+              )
+              SELECT
+                r.ordine_id,
+                r.iva_id,
+                iva.codice                       AS iva_codice,
+                iva.descrizione                  AS iva_descrizione,
+                r.aliquota_effettiva             AS iva_aliquota,
+                NULL::integer                    AS natura_id,
+                NULL::text                       AS natura_codice,
+                NULL::char(1)                    AS esigibilita,
+                NULL::boolean                    AS split_payment,
+                r.imponibile,
+                r.imposta,
+                r.arrotondamento,
+                r.imponibile + r.imposta         AS totale_riga
+              FROM riepilogo r
+              LEFT JOIN config.iva iva
+                ON iva.id = r.iva_id;
+
+              COMMENT ON VIEW vendite.vw_ordini_riepilogo_iva_dettaglio IS
+                'Riepilogo IVA per ordine vendita derivato dalle righe ordine '
+                'attive. Aggrega per ordine, iva_id e aliquota effettiva; '
+                'arrotonda l''imponibile dopo la SUM e calcola l''imposta '
+                'sull''imponibile aggregato arrotondato. Natura, esigibilita '
+                'e split_payment sono NULL per ordini finche'' non esiste uno '
+                'snapshot dedicato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_ordini_riepilogo_iva_dettaglio;
+              DROP VIEW IF EXISTS vendite.vw_ordini_righe_iva_base;
