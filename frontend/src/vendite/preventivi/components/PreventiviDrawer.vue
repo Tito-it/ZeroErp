@@ -29,6 +29,7 @@ import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { createPreventivo, getContestoPricing, generaOrdineFromPreventivo } from '../api/preventiviApi'
+import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { useNotify } from '../../../core/composables/useNotify'
 import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
@@ -427,65 +428,49 @@ watch(() => props.visible, async (v) => {
   }
 })
 
-// Auto-save bozza in CREATE quando utility + istanza sono entrambi valorizzati.
-// Pattern master-detail inline: il drawer crea automaticamente la BOZZA cosi'
-// l'operatore puo' iniziare subito a inserire righe senza click intermedi.
-// Le successive modifiche alla testata diventano UPDATE (vedi handleSave).
-//
-// Skipped:
-// - in EDIT classico (gia' c'e' il preventivo)
-// - se createdId gia' valorizzato (auto-save gia' avvenuto)
-// - se contentReady=false (drawer ancora in animazione apertura)
-// - se loading=true (race con un'altra operazione)
-async function autoSaveBozza() {
-  const f = form.value
-  const payload = {
-    utility_id: f.utility_id,
-    // Opzionale per BE: se omesso (operatore) il trigger DB lo deriva da
-    // app.current_user_id. Per admin globale serve esplicito (no GUC EF).
-    emittente_fiscale_id: f.emittente_fiscale_id || null,
-    billing_account_id: f.billing_account_id || null,
-    istanza_utility_id: f.istanza_utility_id || null,
-    valuta_id: f.valuta_id || null,
-    termine_pagamento_id: f.termine_pagamento_id || null,
-    validita_dal: f.validita_dal ? toDateString(f.validita_dal) : null,
-    validita_al: f.validita_al ? toDateString(f.validita_al) : null,
-    competenza_mese: f.competenza_mese ? toDateString(f.competenza_mese) : null,
-    fatturazione_immediata: f.fatturazione_immediata,
-  }
-  // useApiHandler.execute esegue l'unwrap dell'envelope axios { data, meta }.
-  // Va chiamato con la fn axios diretta (NON con store.create che ritorna gia'
-  // il valore unwrappato → execute riapplicherebbe .data e ritornerebbe undefined,
-  // memoria progetto `feedback_useapihandler_solo_axios`).
-  const result = await execute(
-    () => createPreventivo(payload),
-    { successMessage: t('preventivi.bozza_creata') }
-  )
-  if (result && result.id) {
-    createdId.value = result.id
-    // Notifica le altre tab del progetto del nuovo preventivo (allineato a
-    // store.create che lo fa via emitDataChanged: chiamando createPreventivo
-    // direttamente l'avremmo perso).
-    emitDataChanged(TAB_ENTITIES.PREVENTIVO, result.id)
-    await loadDetail(result.id)
-    // NON emettiamo 'saved': la transizione CREATE → "edit-evolved" e' un
-    // dettaglio interno del drawer (createdId + hasDetail). Il padre non
-    // deve passare a mode='edit' ne' chiudere/riaprire. Il prossimo emit
-    // 'saved' parte da handleSave su click manuale dell'utente.
-  }
-}
-
-watch(
-  () => [form.value.utility_id, form.value.istanza_utility_id],
-  async ([utility, istanza]) => {
-    if (isEdit.value) return
-    if (createdId.value !== null) return
-    if (utility == null || istanza == null) return
-    if (!contentReady.value) return
-    if (loading.value) return
-    await autoSaveBozza()
+// Auto-save bozza + abbandono bozza orfana via BB condiviso (B13, regola del 2).
+// Trigger: utility + istanza entrambi valorizzati in CREATE → crea la BOZZA così
+// l'operatore inserisce subito le righe. `close`/`onVisibleChange` usati dal
+// template; createdId resta ref del drawer. (I default BA-derived sono gestiti
+// separatamente da useBaFormDefaults qui sotto.)
+const { close, onVisibleChange } = useDrawerAutosaveBozza({
+  emit,
+  execute,
+  loading,
+  createdId,
+  isEdit: () => isEdit.value,
+  contentReady: () => contentReady.value,
+  triggerSources: () => [form.value.utility_id, form.value.istanza_utility_id],
+  isReady: ([utility, istanza]) => utility != null && istanza != null,
+  createDraftApi: createPreventivo,
+  buildDraftPayload: () => {
+    const f = form.value
+    return {
+      utility_id: f.utility_id,
+      // Opzionale per BE: trigger DB da app.current_user_id; admin globale esplicito.
+      emittente_fiscale_id: f.emittente_fiscale_id || null,
+      billing_account_id: f.billing_account_id || null,
+      istanza_utility_id: f.istanza_utility_id || null,
+      valuta_id: f.valuta_id || null,
+      termine_pagamento_id: f.termine_pagamento_id || null,
+      validita_dal: f.validita_dal ? toDateString(f.validita_dal) : null,
+      validita_al: f.validita_al ? toDateString(f.validita_al) : null,
+      competenza_mese: f.competenza_mese ? toDateString(f.competenza_mese) : null,
+      fatturazione_immediata: f.fatturazione_immediata,
+    }
   },
-)
+  tabEntity: TAB_ENTITIES.PREVENTIVO,
+  fetchDetail: (id) => loadDetail(id),
+  deleteDraft: (id) => store.elimina(id),
+  righeCountGetter: () => detail.value?.righe_count ?? 0,
+  messages: {
+    bozzaCreata: t('preventivi.bozza_creata'),
+    abbandonoTitolo: t('preventivi.abbandono_bozza_titolo'),
+    abbandonoMessage: t('preventivi.conferma_abbandono_bozza'),
+    abbandonoConferma: t('preventivi.abbandono_bozza_conferma'),
+    bozzaEliminata: t('preventivi.bozza_eliminata'),
+  },
+})
 
 // Fase 2.B4 + 2.F6: quando l'operatore valorizza/cambia il BA in create,
 // chiediamo al BE i defaults BA-derived (valuta_id, termine_pagamento_id,
@@ -576,62 +561,6 @@ async function handleSave() {
     )
     if (result !== null) emit('saved', result)
   }
-}
-
-// hasOrphanedDraft = bozza creata in CREATE via auto-save ma rimasta vuota.
-// Quando il drawer viene chiuso senza aver inserito righe, chiediamo conferma
-// e cancelliamo la bozza con DELETE preventivo (guard BE: solo BOZZA + 0 righe
-// + 0 pratiche). Per bozze gia' con righe il drawer si chiude direttamente: il
-// preventivo resta in lista e l'operatore puo' riprenderlo o cambiare stato a
-// ANNULLATO esplicitamente.
-const hasOrphanedDraft = computed(() => {
-  if (createdId.value === null) return false
-  const count = detail.value?.righe_count ?? 0
-  return count === 0
-})
-
-function close() {
-  attemptClose()
-}
-
-// Intercetta tutti i tipi di chiusura (Annulla, ESC, click outside, X header):
-// se la bozza e' orfana mostra conferma; in caso di ok cancella la bozza, in
-// caso di reject lascia il drawer aperto (NON emette update:visible(false) al
-// parent → visible resta true → drawer riaperto da PrimeVue).
-function attemptClose() {
-  if (!hasOrphanedDraft.value) {
-    emit('update:visible', false)
-    emit('cancelled')
-    return
-  }
-  confirmAction({
-    title: t('preventivi.abbandono_bozza_titolo'),
-    message: t('preventivi.conferma_abbandono_bozza'),
-    acceptLabel: t('preventivi.abbandono_bozza_conferma'),
-    danger: true,
-    onAccept: async () => {
-      const id = createdId.value
-      const result = await execute(
-        () => store.elimina(id),
-        { successMessage: t('preventivi.bozza_eliminata') }
-      )
-      if (result !== null) {
-        emit('update:visible', false)
-        emit('cancelled')
-      }
-    },
-  })
-}
-
-// Wrapper per l'evento update:visible del Drawer PrimeVue. In apertura passa
-// al parent senza domande; in chiusura delega a attemptClose (che decide se
-// chiedere conferma o chiudere direttamente).
-function onVisibleChange(v) {
-  if (v) {
-    emit('update:visible', true)
-    return
-  }
-  attemptClose()
 }
 
 // --- Azioni stato (data-driven da detail.available_actions) ---

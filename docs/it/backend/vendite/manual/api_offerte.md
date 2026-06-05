@@ -493,7 +493,7 @@ Helper condivisi: `apps.documenti.api.contesto_helpers.resolve_contesto_document
 (resolve entity + emittente + sorgente_tipo) e
 `apps.documenti.api.multipart_helpers.extract_allegati` (estrazione files
 multipart neutra). Vedi
-[api_documenti_helpers](../../../documenti/manual/api_documenti_helpers.md).
+[api_documenti_helpers](../../documenti/manual/api_documenti_helpers.md).
 
 ### Cambio stato EMESSA -> ACCETTATA/RIFIUTATA `POST /api/v1/vendite/offerte/<id>/registra-esito/`
 

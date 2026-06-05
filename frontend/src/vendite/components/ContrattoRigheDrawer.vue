@@ -13,14 +13,12 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useNotify } from '../../core/composables/useNotify'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 import { useLimitiPricing } from '../composables/useLimitiPricing'
 import { FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE } from '../constants'
-import { extractApiError } from '../../core/utils/apiError'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency, formatNumber } from '../../core/utils/format'
@@ -43,7 +41,7 @@ import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
 import { useComponentiDialog } from '../_shared/componenti/useComponentiDialog'
 import ComponentiPanel from '../_shared/componenti/ComponentiPanel.vue'
 import L2ErrorBanner from '../_shared/pricing/L2ErrorBanner.vue'
-import { classifyL2Error } from '../_shared/pricing/classifyL2Error'
+import { useL2SaveFlow } from '../_shared/pricing/useL2SaveFlow'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -59,7 +57,6 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 const { t } = useI18n()
 const store = useContrattiStore()
 const { execute, loading } = useApiHandler()
-const notify = useNotify()
 const { confirmDelete, confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
 
@@ -831,54 +828,25 @@ function submitRiga(payload) {
     : store.updateRiga(props.contrattoId, rigaEditId.value, payload)
 }
 
-// Scopo: salva riga intercettando specificamente i codici L2
-//        (E_PRICING_SCONTO_ECCESSIVO / E_PRICING_MAGGIORAZIONE_ECCESSIVA)
-//        per mostrare un banner inline con CTA "Richiedi approvazione"
-//        (workflow L3 cablato 2026-05-19) invece del toast standard.
-//        Tutti gli altri errori passano per il pattern standard.
-async function onSave() {
-  l2Error.value = null
-  const successMessage = formMode.value === 'create'
-    ? t('contratti.riga_creata') : t('contratti.riga_salvata')
-
-  loading.value = true
-  try {
-    await submitRiga(buildRigaPayload())
-    notify.success(successMessage)
+// Save + richiedi-approvazione con gate L2 via BB condiviso (B12, regola del 2).
+// Side-effect di successo: refresh preview (forma con listino) + changed + close.
+const { save: onSave, richiediApprovazione: onRichiediApprovazione } = useL2SaveFlow({
+  persist: submitRiga,
+  buildPayload: buildRigaPayload,
+  onSuccess: async () => {
     if (!isSenzaListino.value) await loadPreview()
     emit('changed')
     closeForm()
-  } catch (err) {
-    // Banner inline su violazione L2 (BB condiviso); altrimenti toast standard.
-    const l2 = classifyL2Error(err, {
-      fallbackMessage: t('contratti.errore_generico'),
-      l2ErrorCodes: L2_ERROR_CODES,
-    })
-    if (l2) l2Error.value = l2
-    else notify.error(extractApiError(err, t('contratti.errore_generico')))
-  } finally {
-    loading.value = false
-  }
-}
-
-// Scopo: ri-tenta il save aggiungendo flag richiesta_approvazione=true
-//        (workflow L3). Il BE crea pratica APPROVAZIONE_PREZZO e salva la
-//        riga in PENDING invece di sollevare. Toast esplicito.
-async function onRichiediApprovazione() {
-  l2Error.value = null
-  loading.value = true
-  try {
-    await submitRiga(buildRigaPayload({ richiesta_approvazione: true }))
-    notify.success(t('contratti.richiesta_approvazione_inviata'))
-    if (!isSenzaListino.value) await loadPreview()
-    emit('changed')
-    closeForm()
-  } catch (err) {
-    notify.error(extractApiError(err, t('contratti.errore_generico')))
-  } finally {
-    loading.value = false
-  }
-}
+  },
+  messages: {
+    success: () => (formMode.value === 'create' ? t('contratti.riga_creata') : t('contratti.riga_salvata')),
+    approvalRequested: t('contratti.richiesta_approvazione_inviata'),
+    error: t('contratti.errore_generico'),
+  },
+  l2Error,
+  loading,
+  l2ErrorCodes: L2_ERROR_CODES,
+})
 
 function onDelete(r) {
   // ID contratti_righe: in C sta in r.id, in B (preview) sta in r.override_riga_id.

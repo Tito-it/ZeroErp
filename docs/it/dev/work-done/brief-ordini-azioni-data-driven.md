@@ -1,5 +1,13 @@
 # Brief DB — Modello azioni/transizioni data-driven per gli ordini di vendita
 
+> **✅ ESEGUITO (2026-06-05).** DB: matrice
+> `config.transizioni_stati_ordini`, `script.fn_available_actions_ordine`, guard
+> `vendite.trgfn_ordini_guard_transizione`, seed/errori e pgTAP creati. BE:
+> `get_ordine` legge le capability dal DB e `can_conferma` è sostituito da
+> `available_actions[]`. FE: `OrdiniDrawer` consuma `useEntityCapabilities` +
+> `mapAvailableActionsToDrawerActions`. La stampa ordini può quindi appoggiarsi
+> all'azione data-driven `conferma`.
+>
 > **Origine**: richiesta Tid 2026-06-05, emersa mentre si pianificava la stampa
 > documentale ordini (`brief-ordini-stampa.md` §6). Leggendo il piano si è notato
 > che gli ordini, a differenza degli altri documenti vendite, **non hanno un
@@ -251,14 +259,12 @@ BE e FE partono a consegna DB avvenuta. Numerazione changeSet `YYYYMMDD-NN` da a
 - [x] **D-2** Stati a valle (ALLOCATO/SPEDITO/CONSEGNATO/FATTURATO) **fuori matrice**
       finché privi di driver: **RATIFICATO 2026-06-05** (§7.2).
 
-### Fase 1 — DB (prerequisito unico) — ✅ FILE CREATI 2026-06-05 (non ancora applicati/committati)
+### Fase 1 — DB (prerequisito unico) — ✅ EVASA 2026-06-05
 
-> **Stato:** tutti i file della Fase 1 sono stati scritti (numerazione globale `20260605-08..12`,
-> ultimo NN del giorno precedente era `-07`). Validati: YAML/CSV/JSON parse OK, error code
-> registrati (id 470-471), nessun pgTAP esistente tocca `stato_doc_ordine_id` (guard safe).
-> **Resta da fare prima dell'apply:** rigenerare `migrations_v2/changelog-autogen.yaml` via
-> `gen_master_autogen.py` (file AUTOGENERATO — i nuovi `00_schema`/`20_code` vanno inclusi dal
-> generatore, **non a mano**); poi `liquibase update` + run pgTAP. **No commit autonomo.**
+> **Stato:** tutti i file della Fase 1 sono stati scritti (numerazione globale
+> `20260605-08..12`), validati e integrati nel flusso DB. Error code registrati
+> (id 470-471), pgTAP creati e guard safe rispetto ai test esistenti su
+> `stato_doc_ordine_id`.
 >
 > File creati:
 >
@@ -318,50 +324,49 @@ Liquibase, memoria `feedback_liquibase_phase_ordering_preconditions`):
    + test guard transizione (transizione non ammessa → errore; conferma senza righe → errore).
    Pattern fixture da memoria `feedback_pgtap_patterns`.
 
-> A fine Fase 1: aggiornare `docs/it/dev/backend/catalogo-building-block-backend.md` (nuova fn)
-> e la doc struttura DB. **No commit autonomo**: attendere "procedi" esplicito
-> (memoria `feedback_no_commit_autonomo`).
+> Fase 1 chiusa: il modello DB è disponibile per BE/FE e per la stampa §6.
 
-### Fase 2 — Backend (a consegna DB avvenuta)
+### Fase 2 — Backend — ✅ EVASA 2026-06-05
 
 File: [ordini_service.py](../../../../backend/apps/vendite/services/ordini_service.py),
 [ordini_repository.py](../../../../backend/apps/vendite/db/ordini_repository.py),
 [views_ordini.py](../../../../backend/apps/vendite/api/views_ordini.py).
 
-- [ ] **B-1** `get_ordine()`: sostituire il blocco capability hardcoded
+- [x] **B-1** `get_ordine()`: sostituire il blocco capability hardcoded
    ([righe 204-216](../../../../backend/apps/vendite/services/ordini_service.py#L204)) con la lettura
    di `script.fn_available_actions_ordine` (pattern di `contratti_repository.call_jsonb_fn`).
    Rimuovere le costanti `_STATI_MODIFICABILI`/`_STATI_PUSHABILI`/`_STATO_*` ora che la verità è in DB.
-- [ ] **B-2** Eliminare il flag `can_conferma` dal payload (§7.4): l'azione conferma arriva in
+- [x] **B-2** Eliminare il flag `can_conferma` dal payload (§7.4): l'azione conferma arriva in
    `available_actions[]`. Verificare che il serializer/contratto API esponga `available_actions`,
    `non_editable_fields`, `stato_codice` come per i gemelli.
-- [ ] **B-3** `conferma()`/`push_a_commessa()`/`elimina_ordine()`/`aggiorna_*`/`gestisci_riga()`:
+- [x] **B-3** `conferma()`/`push_a_commessa()`/`elimina_ordine()`/`aggiorna_*`/`gestisci_riga()`:
    togliere i guard di stato calcolati in Python dove ora li garantisce il trigger DB (mantenere
    solo la gestione errori `_db_errors` + mappatura codici). La precondizione "righe>0" non va più
    duplicata in `conferma()` (§7.5).
-- [ ] **B-4** Test BE (pytest) su detail capabilities e su conferma/annulla/push per stato.
+- [x] **B-4** Test BE su detail capabilities e su conferma/annulla/push per stato.
 
-### Fase 3 — Frontend (a consegna BE avvenuta)
+### Fase 3 — Frontend — ✅ EVASA 2026-06-05
 
 File: [OrdiniDrawer.vue](../../../../frontend/src/vendite/ordini/components/OrdiniDrawer.vue).
 I building block **esistono già** — la modifica *rimuove* codice:
 
-- [ ] **F-1** Adottare `useEntityCapabilities(detail)` per `availableActions` / `nonEditableFields` /
+- [x] **F-1** Adottare `useEntityCapabilities(detail)` per `availableActions` / `nonEditableFields` /
    `canEdit` / `flag(...)` (come PreventiviDrawer/ContrattoDrawer), eliminando i computed manuali
    `canConferma`/`canEditTestata`/`canEditRighe`
    ([OrdiniDrawer.vue:104-118](../../../../frontend/src/vendite/ordini/components/OrdiniDrawer.vue#L104)).
-- [ ] **F-2** Costruire le azioni con `mapAvailableActionsToDrawerActions({availableActions, t, onAction, readonly})`
+- [x] **F-2** Costruire le azioni con `mapAvailableActionsToDrawerActions({availableActions, t, onAction, readonly})`
    + `DrawerActionsBar`, eliminando il `drawerActions.push({key:'conferma'...})` /
    `push({key:'push'...})` cablato a mano ([OrdiniDrawer.vue:438-464](../../../../frontend/src/vendite/ordini/components/OrdiniDrawer.vue#L438)).
    L'handler `onAction(action)` smista per `action.key` (conferma/annulla) i dialog di conferma
    già presenti; `push_commessa` resta azione applicativa dedicata (con la sua reason→tooltip).
-- [ ] **F-3** i18n: chiavi azioni/reason. Verifica readonly "puro" (split/LETTURA) per la barra azioni.
+- [x] **F-3** i18n: chiavi azioni/reason. Verifica readonly "puro" (split/LETTURA) per la barra azioni.
 
-### Fase 4 — Sblocco stampa §6
+### Fase 4 — Sblocco stampa §6 — ✅ EVASA 2026-06-05
 
-A modello consegnato e BE/FE migrati, l'emissione/conferma è già un'azione data-driven:
-procedere con `brief-ordini-stampa.md` §6 appoggiando la generazione documento sull'azione
-`conferma` (DRAFT→CONFERMATO) invece di un caso speciale cablato.
+A modello consegnato e BE/FE migrati, l'emissione/conferma è un'azione
+data-driven: la generazione documento è stata agganciata all'azione `conferma`
+(`DRAFT→CONFERMATO`) tramite il flusso documentale descritto in
+`brief-ordini-stampa.md` §6.
 
 ### Dipendenze e parallelizzabilità
 

@@ -150,13 +150,16 @@ Esecuzione: `scripts/testpgtap.sh db/pgtap/documenti/test-documenti-tipo-ordine-
 - **Stati**: `config.stati_doc_ordini` contiene **già tutti** gli stati richiesti
   (`DRAFT, CONFERMATO, ALLOCATO, SPEDITO, CONSEGNATO, ANNULLATO, FATTURATO`).
   `STATI_ORDINE_CON_DOCUMENTO` (post-bozza) usa stati esistenti → **niente seed**.
-- **Azioni/transizioni — qui ordini diverge dalla famiglia**: preventivi/offerte
-  modellano `emetti` con un sistema **data-driven a DB** (`fn_available_actions_*`,
-  tabelle transizioni, `azioni_processo.csv`), ed è per quello che il *loro*
-  emetti ha toccato il DB. Gli **ordini NON usano quel modello**: `get_ordine`
-  calcola le capability (`can_conferma`/`can_push`) **in BE Python**
-  (commento esplicito «niente `fn_available_actions_ordine`»). → la nuova
-  capability `can_emetti` è **codice BE**, **nessun seed di azioni/transizioni**.
+- **Azioni/transizioni — ora allineate alla famiglia** (aggiornato 2026-06-05):
+  preventivi/offerte modellano le azioni con un sistema **data-driven a DB**
+  (`fn_available_actions_*` + matrici transizioni). Gli ordini, che ne erano privi,
+  sono stati **uniformati** (brief
+  [brief-ordini-azioni-data-driven.md](brief-ordini-azioni-data-driven.md),
+  consegnato): esiste `script.fn_available_actions_ordine` + matrice
+  `config.transizioni_stati_ordini` + guard `trgfn_ordini_guard_transizione`, e
+  `get_ordine` legge le capability dal DB. → l'azione di emissione **non sarà una
+  `can_emetti` hardcoded** ma l'azione `conferma` (transizione `DRAFT→CONFERMATO`)
+  già presente in matrice: la §6 la aggancia alla generazione documento.
 - **Tipo documento + motore**: `documenti.tipi_documento_output.ORDINE_VENDITA`
   già seedato (questo brief §3) e collegato a `config.sorgenti.ORDINE_VENDITA`;
   tabelle `documenti.*` già collaudate. Nessuna modifica.
@@ -170,17 +173,45 @@ Esecuzione: `scripts/testpgtap.sh db/pgtap/documenti/test-documenti-tipo-ordine-
   della conferma, §6.2), coerente con la famiglia (preventivi/offerte non hanno un
   vincolo DB equivalente). Il DB resta sui guard esistenti.
 
-> **Nota di simmetria — PREREQUISITO (aggiornato 2026-06-05)**: gli ordini sono
-> l'unico documento vendite senza modello azioni data-driven
-> (`fn_available_actions` + transizioni). Decisione Tid: si **uniforma prima** il
-> modello, **poi** si realizza questa stampa, così l'emissione/conferma nasce come
-> azione data-driven anziché cablata a mano. → brief dedicato
-> [brief-ordini-azioni-data-driven.md](brief-ordini-azioni-data-driven.md). Di
-> conseguenza la §6.2/§6.3 andranno riallineate al modello data-driven (l'azione
-> `emetti` come transizione `DRAFT→CONFERMATO`, non capability hardcoded) una volta
-> consegnato.
+> **Nota di simmetria — PREREQUISITO EVASO (aggiornato 2026-06-05)**: gli ordini
+> erano l'unico documento vendite senza modello azioni data-driven. Il
+> prerequisito è stato **realizzato** (DB + BE + FE): matrice
+> `config.transizioni_stati_ordini`, `script.fn_available_actions_ordine`, guard
+> `trgfn_ordini_guard_transizione`; `get_ordine` espone `available_actions` e il
+> drawer le consuma via `useEntityCapabilities` + `mapAvailableActionsToDrawerActions`.
+> Brief: [brief-ordini-azioni-data-driven.md](brief-ordini-azioni-data-driven.md).
+> → quando si realizza la §6, l'azione `conferma` (`DRAFT→CONFERMATO`) è **già**
+> data-driven: la §6.2/§6.3 vanno scritte appoggiando l'emissione su quell'azione
+> (non su una capability hardcoded).
 
-### 6.2 BE
+### 6.2 BE — ✅ EVASO (2026-06-05)
+
+> **Stato consegna BE (2026-06-05)**: implementato e verde (13/13 test
+> `test_ordini_api.py`). Delta applicato su `dev/backend-tid`:
+>
+> - `ApiOrdineEmetti` aggiunta in `ordini_documenti_views.py` (clone di
+>   `ApiPreventivoEmetti`): orchestra `ordini_service.conferma(id)` +
+>   `DocumentGenerationService().genera_documento(...)` + allegati multipart in
+>   `transaction.atomic()`. Fallimento generazione → rollback della conferma
+>   (stato resta `DRAFT`). Niente `post_permission` (coerente con
+>   `ApiOrdineConferma`/`ApiOffertaEmetti`: i guard vivono in `conferma`).
+> - Rotta `vendite-ordine-emetti` (`POST /<id>/emetti/`) in `urls_ordini.py`,
+>   prima di `/conferma/`.
+> - Commento di testata di `ordini_documenti_views.py` riscritto (rimosso
+>   "stampa DISACCOPPIATA dallo stato / niente emetti").
+> - Test: classe `TestOrdineEmissione` (smoke route + integration atomica
+>   conferma+genera+allegati).
+> - Doc manuale `api_ordini.md` aggiornato (sezione Emetti, state machine,
+>   tabella documenti).
+>
+> **Decisione `/conferma/` chiusa → opzione (i)**: `/emetti/` è il flusso utente
+> (conferma + documento); `POST /<id>/conferma/` **resta** come API di sola
+> transizione di servizio (riusata internamente da `emetti`), **non** depreciata
+> lato HTTP. Il service `conferma` resta il punto di dominio.
+>
+> **Residuo**: §6.3 FE (`OrdineEmissioneDialog`, costanti PDF, lista, i18n) +
+> verifica al team DB che la versione template `ORDINE_VENDITA` sia ancora
+> PUBBLICATA (§6.1).
 
 - **Aggiungere `ApiOrdineEmetti`** (`POST /api/v1/vendite/ordini/{id}/emetti/`,
   multipart) — **clone di `ApiPreventivoEmetti`** (`preventivi_documenti_views.py`).
@@ -212,7 +243,31 @@ Esecuzione: `scripts/testpgtap.sh db/pgtap/documenti/test-documenti-tipo-ordine-
   (`E_ORD_NESSUNA_RIGA`, guard già in `conferma`); senza versione template
   PUBBLICATA l'emetti fallisce (§6.1); download/lista documenti coerenti.
 
-### 6.3 FE
+### 6.3 FE — ✅ EVASO (2026-06-05)
+
+> **Stato consegna FE (2026-06-05)**: implementato e verde (ESLint pulito +
+> `vite build` ok). Delta applicato su `dev/backend-tid`:
+>
+> - `OrdineEmissioneDialog.vue` (nuovo, in `ordini/components/dialogs/`): thin
+>   wrapper di dominio sul BB `DocumentoEmissioneDialog` (`advances-state`,
+>   sorgente `ORDINE_VENDITA`), clone di `PreventivoEmissioneDialog`.
+> - `OrdiniDrawer.vue`: l'azione `conferma` (`onAction`) apre il dialog invece
+>   della `useConfirmAction` semplice; `handleEmissioneConferma({files})` →
+>   `store.emetti` (POST multipart `/emetti/`) + `loadDetail` + `emit('saved')`.
+> - `constants.js`: `STATI_ORDINE_ANTEPRIMA_PDF = [DRAFT]`,
+>   `STATI_ORDINE_CON_DOCUMENTO = [CONFERMATO, ALLOCATO, SPEDITO, CONSEGNATO,
+>   FATTURATO]` (ANNULLATO escluso). Il drawer `EntityPdfButton` ne deriva
+>   preview (DRAFT) vs gestione documenti (post-bozza).
+> - `ordiniApi.js`: `emettiOrdine(id, {allegati, templateId})` (multipart);
+>   store `ordini.js`: action `emetti`.
+> - `OrdiniSearchTable.vue` (lista): rimosso anteprima/download diretto; ora usa
+>   `PdfDocumentiSorgenteDialog` con azione di riga `documenti-pdf` disabilitata
+>   in DRAFT, abilitata post-bozza (tooltip dedicati).
+> - i18n `vendite.ordini.*` (it+en): `emissione_titolo/_conferma/_messaggio`,
+>   `pdf.tooltip_lista/_lista_disabilitato`.
+>
+> **Prerequisito §6.1 verificato**: template `ORDINE_VENDITA` (id 75,
+> `is_default`) ha versione 1 **PUBBLICATA** → l'emissione funziona end-to-end.
 
 - **`OrdineEmissioneDialog`**: clone del wrapper di dominio
   `PreventivoEmissioneDialog.vue` (gli altri sono `OffertaEmissioneDialog`,

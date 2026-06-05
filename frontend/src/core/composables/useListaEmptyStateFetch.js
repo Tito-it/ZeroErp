@@ -19,6 +19,10 @@
 //    trimmato: il caller decide se/come passarlo (tipicamente se length >= 3).
 //  - `fetchPage(params)` → Promise di una response axios con envelope standard
 //    `{ data: { data: { results, count } } }` (paginated_envelope BE).
+//  - `alwaysFetch` (default false): se true salta i guard empty-state e carica
+//    SEMPRE (liste che partono piene: admin, geo). Il search < 3 char resta
+//    ignorato da `buildParams`, quindi la lista resta piena mentre si digita
+//    (no flash vuoto). Usato dalla factory `createCrudStore` con startsEmpty:false.
 //
 // Ritorna lo stato reattivo (items/totalRecords/loading/hasSearched) + fetchList.
 // Lo store espone questi ref nel proprio `return` insieme a `filters` e alle
@@ -26,7 +30,7 @@
 
 import { ref } from 'vue'
 
-export function useListaEmptyStateFetch({ filters, hasActiveFilters, buildParams, fetchPage }) {
+export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => false, buildParams, fetchPage, alwaysFetch = false }) {
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
@@ -35,26 +39,30 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters, buildParams
   async function fetchList() {
     const f = filters.value
     const searchTerm = (f.search || '').trim()
-    const hasFilters = hasActiveFilters(f)
 
-    // Search con meno di 3 caratteri e nessun filtro attivo → ignora (ed
-    // eventualmente svuota se prima c'era un risultato).
-    if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
-      if (hasSearched.value) {
+    // Guard empty-state: SOLO in modo "starts-empty" (default). In `alwaysFetch`
+    // (liste che partono piene) si salta tutto e si carica sempre.
+    if (!alwaysFetch) {
+      const hasFilters = hasActiveFilters(f)
+      // Search con meno di 3 caratteri e nessun filtro attivo → ignora (ed
+      // eventualmente svuota se prima c'era un risultato).
+      if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
+        if (hasSearched.value) {
+          items.value = []
+          totalRecords.value = 0
+          hasSearched.value = false
+        }
+        return
+      }
+      // Primo caricamento senza filtri → resta vuoto.
+      if (!searchTerm && !hasFilters && !hasSearched.value) return
+      // Search svuotata senza filtri → torna a stato vuoto.
+      if (!searchTerm && !hasFilters) {
         items.value = []
         totalRecords.value = 0
         hasSearched.value = false
+        return
       }
-      return
-    }
-    // Primo caricamento senza filtri → resta vuoto.
-    if (!searchTerm && !hasFilters && !hasSearched.value) return
-    // Search svuotata senza filtri → torna a stato vuoto.
-    if (!searchTerm && !hasFilters) {
-      items.value = []
-      totalRecords.value = 0
-      hasSearched.value = false
-      return
     }
 
     loading.value = true

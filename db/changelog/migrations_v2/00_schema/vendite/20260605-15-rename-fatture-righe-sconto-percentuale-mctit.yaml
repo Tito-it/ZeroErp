@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Unificazione nome colonna sconto di riga (3/3): vendite.fatture_righe.
+# Specchio di 20260605-13: rename sconto_perc -> sconto_percentuale, DEFAULT 0,
+# rename CHECK chk_fatture_righe_sconto_perc -> chk_fatture_righe_sconto.
+# Tabella non citata nel brief originale ma terzo outlier dello stesso modello:
+# inclusa per non lasciare disallineamenti residui. Nessun dipendente di codice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260605-15-rename-fatture-righe-sconto-percentuale-mctit.yaml
+
+  - changeSet:
+      id: 20260605-15-rename-fatture-righe-sconto-percentuale
+      author: mctit
+      comment: >
+        vendite.fatture_righe: RENAME sconto_perc -> sconto_percentuale,
+        SET DEFAULT 0, RENAME CONSTRAINT chk_fatture_righe_sconto_perc ->
+        chk_fatture_righe_sconto. Unificazione nome/default sconto di riga.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: vendite
+            tableName: fatture_righe
+            columnName: sconto_perc
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE vendite.fatture_righe
+                  RENAME COLUMN sconto_perc TO sconto_percentuale;
+
+              ALTER TABLE vendite.fatture_righe
+                  ALTER COLUMN sconto_percentuale SET DEFAULT 0;
+
+              ALTER TABLE vendite.fatture_righe
+                  RENAME CONSTRAINT chk_fatture_righe_sconto_perc TO chk_fatture_righe_sconto;
+
+              COMMENT ON COLUMN vendite.fatture_righe.sconto_percentuale
+                  IS 'Sconto percentuale di riga (0-100). Default 0. Unificato 2026-06-05.';
+      rollback:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE vendite.fatture_righe
+                  RENAME CONSTRAINT chk_fatture_righe_sconto TO chk_fatture_righe_sconto_perc;
+              ALTER TABLE vendite.fatture_righe
+                  ALTER COLUMN sconto_percentuale DROP DEFAULT;
+              ALTER TABLE vendite.fatture_righe
+                  RENAME COLUMN sconto_percentuale TO sconto_perc;

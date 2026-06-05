@@ -249,7 +249,7 @@ WITH ins AS (
   INSERT INTO vendite.ordini_righe (
     ordine_id, riga_nr, articolo_id, descrizione,
     qta_operativa, uom_operativa_id, quantita,
-    prezzo_unitario, sconto_perc, iva_id,
+    prezzo_unitario, sconto_percentuale, iva_id,
     attivo, meta
   )
   SELECT
@@ -311,7 +311,7 @@ END;
 INSERT INTO vendite.ordini_righe (
   ordine_id, riga_nr, articolo_id, descrizione,
   qta_operativa, uom_operativa_id, quantita,
-  prezzo_unitario, sconto_perc, iva_id,
+  prezzo_unitario, sconto_percentuale, iva_id,
   attivo, meta
 )
 SELECT
@@ -340,7 +340,7 @@ END;
 INSERT INTO vendite.ordini_righe (
   ordine_id, riga_nr, articolo_id, descrizione,
   qta_operativa, uom_operativa_id, quantita,
-  prezzo_unitario, sconto_perc, iva_id,
+  prezzo_unitario, sconto_percentuale, iva_id,
   attivo, meta
 )
 SELECT

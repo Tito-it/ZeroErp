@@ -27,6 +27,7 @@
 
 import { ref } from 'vue'
 import { useNotify } from './useNotify'
+import { downloadBlob } from '../utils/download'
 
 // Scopo: feature detection FS Access API. Disponibile su Chrome/Edge
 //        moderni con HTTPS o localhost. Esposto come export per i
@@ -91,7 +92,7 @@ export function useFileDownload() {
         // result === 'error': cadi nel fallback standard.
       }
       // Path 2: fallback classico download via <a download>.
-      triggerBrowserDownload(response.data, filename)
+      downloadBlob(response.data, filename)
       if (opts.successMessage) notify.success(opts.successMessage)
       return response
     } catch (err) {
@@ -200,20 +201,4 @@ function extractFileName(response) {
   const m2 = /filename="?([^";]+)"?/i.exec(cd)
   if (m2) return m2[1].trim()
   return null
-}
-
-// Scopo: Triggera il download del Blob nel browser via tag <a> + click
-//        sintetico. Rilascia l'object URL dopo un tick per non perdere
-//        il riferimento prima del download (Safari edge case).
-function triggerBrowserDownload(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  // Rilascio differito: alcuni browser (Safari) hanno bisogno che l'URL
-  // resti vivo per il click handler.
-  setTimeout(() => URL.revokeObjectURL(url), 0)
 }

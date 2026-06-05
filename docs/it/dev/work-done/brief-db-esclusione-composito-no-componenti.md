@@ -1,5 +1,15 @@
 # Brief DB — Guard difensivo: ESCLUSIONE composita non inizializza componenti BoM
 
+> **✅ CHIUSO 2026-06-05** — Consegnato dal team DB e mergiato (commit `75054a765`,
+> PR #787 → #788). Guard `IF v_tipo_eccezione = 'ESCLUSIONE' THEN RETURN 0`
+> aggiunto subito dopo il check `is_composito` in **entrambe** le fn init:
+> - `20260605-06-update-fn-offerta-eccezione-componenti-init-guard-esclusione`
+> - `20260605-07-update-fn-contratto-riga-componenti-init-guard-esclusione`
+>   (incluso fix collaterale operatore jsonb `??` → `?`).
+> pgTAP estesi: `test_offerte_eccezioni_componenti.sql`,
+> `test-contratti-righe-componenti-v1.sql`. Allineato con BE (commit `879b5193b`)
+> e FE. Suite servizi vendite verde (687). Implementazione conforme al brief.
+>
 > **Origine**: bug riscontrato da Tid il 2026-06-05 caricando su un'**offerta**
 > un articolo **composito** con eccezione **ESCLUSIONE**. Errore
 > `E_VENDITE_VALIDATION` → violazione `chk_offerte_eccezioni_prezzo_per_tipo_eccezione`.

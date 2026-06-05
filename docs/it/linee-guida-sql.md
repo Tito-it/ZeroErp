@@ -367,7 +367,7 @@ ALTER TABLE schema.figlio
 
 Per la gestione automatizzata degli EXCLUDE con WHERE: `dbops.automazione_overlap` e `dbops.fn_apply_automazione_overlap`.
 
-> Riferimento: [piano-miglioramenti-db-pg18.md](/dev/work-done/piano-miglioramenti-db-pg18) per verifica empirica (STORED generated, temporal UNIQUE/FK) e piano di migrazione.
+> Riferimento: `docs/it/dev/work-done/piano-miglioramenti-db-pg18.md` per verifica empirica (STORED generated, temporal UNIQUE/FK) e piano di migrazione.
 >
 > ⚠️ **Non usare quel piano come modello per i vincoli anti-overlap.** Il suo
 > Step 2b ha ricreato gli `ex_*_no_overlap` parziali come `CREATE INDEX` (non
@@ -432,7 +432,7 @@ La generalizzazione del guard transizione e' rinviata: serviranno almeno tre cas
 * `vendite.listini_versioni` (VARCHAR, ciclo `BOZZA -> ATTIVA -> CHIUSA`)
 * `vendite.contratti` (FK, ciclo `DRAFT -> ATTIVO -> CESSATO`; `SOSPESO` esiste come codice ma fuori scope)
 
-**Riferimento**: [WIP automazione-chiusure-scadenze.md](dev/work-in-progress/automazione-chiusure-scadenze.md).
+**Riferimento**: `docs/it/dev/work-done/automazione-chiusure-scadenze.md`.
 
 ---
 

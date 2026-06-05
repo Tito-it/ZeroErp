@@ -21,7 +21,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 // usare destructured + nome callback `onAccept` (non `accept`) per
 // evitare dialog silente.
 import { MANAGE_ICONS } from '../../core/constants'
-import { isoToLocalDate, localDateToIso } from '../../core/utils/dateHelpers'
+import { parseIsoDate, toDateString } from '../../core/utils/date'
 import {
   FORMATI_TEMPLATE,
   PAGE_FORMATS,
@@ -176,10 +176,10 @@ async function openEdit(row) {
     margin_right_mm: data.margin_right_mm ?? 15,
     margin_bottom_mm: data.margin_bottom_mm ?? 15,
     margin_left_mm: data.margin_left_mm ?? 15,
-    // Helper condivisi `dateHelpers` per evitare timezone shift su
-    // stringhe ISO date-only.
-    valido_dal: isoToLocalDate(data.valido_dal),
-    valido_al: isoToLocalDate(data.valido_al),
+    // Helper condivisi `date.js` (parseIsoDate) per evitare timezone shift
+    // su stringhe ISO date-only.
+    valido_dal: parseIsoDate(data.valido_dal),
+    valido_al: parseIsoDate(data.valido_al),
     attivo: data.attivo ?? true,
   }
   editing.value = true
@@ -220,8 +220,8 @@ async function saveForm() {
     margin_right_mm: toNumberOrNull(f.margin_right_mm),
     margin_bottom_mm: toNumberOrNull(f.margin_bottom_mm),
     margin_left_mm: toNumberOrNull(f.margin_left_mm),
-    valido_dal: localDateToIso(f.valido_dal),
-    valido_al: localDateToIso(f.valido_al),
+    valido_dal: toDateString(f.valido_dal),
+    valido_al: toDateString(f.valido_al),
     attivo: f.attivo,
   }
   const result = await execute(
@@ -266,8 +266,8 @@ function confirmDeleteVersione(row) {
 function openPubblicaDialog(row) {
   pubblicaTargetId.value = row.id
   pubblicaForm.value = {
-    valido_dal: isoToLocalDate(row.valido_dal) || new Date(),
-    valido_al: isoToLocalDate(row.valido_al),
+    valido_dal: parseIsoDate(row.valido_dal) || new Date(),
+    valido_al: parseIsoDate(row.valido_al),
   }
   pubblicaDialog.value = true
 }
@@ -275,8 +275,8 @@ function openPubblicaDialog(row) {
 async function confirmPubblica() {
   if (!pubblicaForm.value.valido_dal) return
   const payload = {
-    valido_dal: localDateToIso(pubblicaForm.value.valido_dal),
-    valido_al: localDateToIso(pubblicaForm.value.valido_al),
+    valido_dal: toDateString(pubblicaForm.value.valido_dal),
+    valido_al: toDateString(pubblicaForm.value.valido_al),
   }
   const result = await execute(
     () => store.pubblica(props.templateId, pubblicaTargetId.value, payload),

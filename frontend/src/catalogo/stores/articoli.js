@@ -1,14 +1,14 @@
 // Store Pinia per la gestione articoli catalogo.
-// Pattern lista+CRUD via createCrudListStore (regola del 2) + azioni disattiva/riattiva.
+// Pattern lista+CRUD via createCrudStore (regola del 2) + azioni disattiva/riattiva.
 
 import {
   listArticoli, getArticolo, createArticolo, updateArticolo,
   disattivaArticolo, riattivaArticolo,
 } from '../api/catalogo'
-import { createCrudListStore } from '../../core/stores/createCrudListStore'
+import { createCrudStore } from '../../core/stores/createCrudStore'
 import { TAB_ENTITIES } from '../../core/constants'
 
-export const useArticoliStore = createCrudListStore('catalogo-articoli', {
+export const useArticoliStore = createCrudStore('catalogo-articoli', {
   api: { list: listArticoli, detail: getArticolo, create: createArticolo, update: updateArticolo },
   tabEntity: TAB_ENTITIES.ARTICOLO,
   // attivo: default true, inviato sempre ma NON conta per il gate lista-vuota

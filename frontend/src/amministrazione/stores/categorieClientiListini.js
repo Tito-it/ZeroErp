@@ -1,6 +1,7 @@
 // Store Pinia admin per la matrice anagrafiche.categorie_clienti_listini.
-// Pattern: factory `createCrudAdminStore` (v. core/composables).
-import { createCrudAdminStore } from '../../core/composables/createCrudAdminStore'
+// Pattern lista+CRUD via createCrudStore (regola del 2) — lista parte piena.
+import { createCrudStore } from '../../core/stores/createCrudStore'
+import { TAB_ENTITIES } from '../../core/constants'
 import {
   listCategorieClientiListini,
   getCategoriaClienteListino,
@@ -8,21 +9,22 @@ import {
   updateCategoriaClienteListino
 } from '../api/categorieClientiListini'
 
-export const useCategorieClientiListiniStore = createCrudAdminStore({
-  storeName: 'amministrazione-categorie-clienti-listini',
+export const useCategorieClientiListiniStore = createCrudStore('amministrazione-categorie-clienti-listini', {
   api: {
     list: listCategorieClientiListini,
-    get: getCategoriaClienteListino,
+    detail: getCategoriaClienteListino,
     create: createCategoriaClienteListino,
     update: updateCategoriaClienteListino
   },
-  defaultOrderBy: 'valido_dal',
-  defaultOrderDir: 'desc',
-  emitKey: 'categorie_clienti_listini',
-  extraFilters: {
-    categoria_cliente_id: 'categoria_cliente_id',
-    utility_id: 'utility_id',
-    emittente_soggetto_ruolo_id: 'emittente_soggetto_ruolo_id',
-    listino_id: 'listino_id'
-  }
+  tabEntity: TAB_ENTITIES.CATEGORIE_CLIENTI_LISTINI,
+  orderBy: 'valido_dal',
+  orderDir: 'desc',
+  startsEmpty: false,
+  filterDefaults: {
+    attivo: true,
+    categoria_cliente_id: null,
+    utility_id: null,
+    emittente_soggetto_ruolo_id: null,
+    listino_id: null,
+  },
 })

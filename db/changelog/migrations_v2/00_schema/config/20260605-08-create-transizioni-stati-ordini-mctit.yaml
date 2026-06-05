@@ -11,7 +11,7 @@
 #
 # Chiude l'outlier documentale: ordini era l'unico documento vendite
 # senza matrice transizioni (preventivi/offerte/contratti la hanno).
-# Vedi docs/it/dev/work-in-progress/brief-ordini-azioni-data-driven.md.
+# Vedi docs/it/dev/work-done/brief-ordini-azioni-data-driven.md.
 #
 # Transizioni MANUALI seedate (Fase 1, brief §8). Decisioni di dominio
 # ratificate Tid 2026-06-05:

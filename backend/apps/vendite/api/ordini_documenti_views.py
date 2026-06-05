@@ -6,6 +6,9 @@
 #        conferma d'ordine). Quarto dominio cablato sul motore `documenti`
 #        dopo preventivo/offerta/contratto. Endpoint sotto
 #        `/api/v1/vendite/ordini/<id>/`:
+#         - `POST emetti/`:                  multipart: DRAFT->CONFERMATO +
+#           genera documento + allegati in transazione atomica (mirror del
+#           flusso preventivo `ApiPreventivoEmetti` / offerta `ApiOffertaEmetti`);
 #         - `POST documenti/genera/`:        persiste un documento generato
 #           (PDF + record DB + evento `GENERATO`);
 #         - `POST documenti/anteprima/`:     streaming PDF temporaneo, no
@@ -16,23 +19,29 @@
 #           evento `SCARICATO`;
 #         - `GET/POST documenti/<doc_id>/allegati/`: lista file / append allegati.
 #
-#        Decisione §12.4(a) (analisi-ordini-vendita.md): la stampa e'
-#        DISACCOPPIATA dallo stato. Niente `emetti/` (transizione atomica
-#        stato+PDF come preventivi/offerte): l'ordine ha gia' `numero` in BOZZA
-#        e la sua transizione chiave e' CONFERMA (che governa il push commessa,
-#        non la stampa). La conferma d'ordine PDF e' ristampabile on-demand a
-#        qualsiasi stato consultabile.
+#        Flusso documentale (§6 brief-ordini-stampa.md, rettifica 2026-06-05):
+#        allineato alla famiglia (preventivi/offerte/contratti). In DRAFT solo
+#        anteprima on-demand; nel passaggio DRAFT->CONFERMATO (`emetti/`) il
+#        documento viene generato e archiviato in transazione atomica con
+#        allegati opzionali. La conferma d'ordine e' l'atto formale verso il
+#        cliente (ed e' il trigger del push a commessa): e' il momento naturale
+#        in cui il PDF va generato e persistito. Supera la scelta MVP §12.4(a)
+#        "stampa disaccoppiata dallo stato" (gli endpoint genera/anteprima/lista/
+#        file/allegati restano per ristampa e gestione documentale post-bozza).
 #
 #        Permessi del dominio sorgente: `area_funzionale = "vendite"` ->
 #        permission default lettura ordini. La generazione documento non e'
 #        modifica dell'ordine ma riproduzione in PDF di un dato gia' visibile
-#        all'operatore (mirror della scelta preventivi/offerte).
+#        all'operatore (mirror della scelta preventivi/offerte). `emetti/`
+#        transita lo stato -> si appoggia al service `conferma` che applica i
+#        guard di dominio (righe presenti, stato DRAFT, push a commessa).
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 from typing import Any
 
+from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -49,6 +58,7 @@ from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
 from apps.vendite.db.ordini_repository import OrdiniRepository
+from apps.vendite.services import ordini_service
 
 # Codice sorgente ORDINE_VENDITA -> id risolto runtime via repo (memoria
 # feedback_no_hardcoded_ids: lookup per codice, non ID numerici). Allineato a
@@ -68,6 +78,67 @@ def _resolve_contesto_ordine(ordine_id: int) -> tuple[dict[str, Any], int]:
         emittente_message="Emittente fiscale non risolto per l'ordine.",
         sorgente_codice=_CODICE_SORGENTE_ORDINE,
     )
+
+
+class ApiOrdineEmetti(DomainAPIView):
+    """`POST /api/v1/vendite/ordini/<id>/emetti/` (multipart)."""
+
+    area_funzionale = "vendite"
+    # Override del default DRF (solo JSONParser) per consentire upload
+    # multipart degli allegati assieme ai campi scalari template/tipo_output.
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        request={
+            "multipart/form-data": inline_serializer(
+                name="VenditeOrdineEmettiReq",
+                fields={
+                    "template_documento_id": serializers.IntegerField(required=False, allow_null=True),
+                    "tipo_documento_output_id": serializers.IntegerField(required=False, allow_null=True),
+                    "allegati": serializers.ListField(
+                        child=serializers.FileField(), required=False,
+                    ),
+                },
+            ),
+        },
+        responses={200: inline_serializer(
+            name="VenditeOrdineEmettiResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: DRAFT -> CONFERMATO con generazione+persistenza del documento e
+    #        degli allegati in UNA transazione atomica. Ordine: prima
+    #        `conferma` (cosi' lo snapshot del context riflette stato
+    #        CONFERMATO), poi `genera_documento` (che apre il proprio savepoint
+    #        annidato). Se la generazione fallisce, la `conferma` viene annullata
+    #        dal rollback dell'atomic esterno -> stato resta DRAFT, niente
+    #        record documentale orfano. Mirror del flusso preventivo/offerta.
+    #        `conferma` resta il punto di dominio (guard righe presenti + stato
+    #        DRAFT, push a commessa): qui si riusa, non si duplica.
+    def post(self, request: Request, ordine_id: int) -> JsonResponse:
+        payload = request.data if isinstance(request.data, dict) else {}
+        template_id = optional_int(payload, "template_documento_id")
+        tipo_output_id = optional_int(payload, "tipo_documento_output_id")
+        allegati = extract_allegati(request)
+
+        with transaction.atomic():
+            conferma_result = ordini_service.conferma(int(ordine_id))
+            ordine, sorgente_tipo_id = _resolve_contesto_ordine(int(ordine_id))
+            documento = DocumentGenerationService().genera_documento(
+                request.user,
+                emittente_fiscale_id=int(ordine["emittente_fiscale_id"]),
+                sorgente_tipo_id=sorgente_tipo_id,
+                sorgente_id=int(ordine["id"]),
+                sorgente_uid=str(ordine["uid"]),
+                template_documento_id=template_id,
+                tipo_documento_output_id=tipo_output_id,
+                allegati=allegati,
+            )
+
+        return success_response({
+            "ordine": conferma_result,
+            "documento": documento,
+        })
 
 
 class ApiOrdineDocumentoGenera(DomainAPIView):

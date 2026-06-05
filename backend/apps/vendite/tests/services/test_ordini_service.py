@@ -122,6 +122,71 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         repo.get_ordine.assert_not_called()
         repo.update_ordine.assert_called_once()
 
+    @patch(_REPO)
+    def test_get_ordine_merge_capabilities_data_driven(self, repo_cls) -> None:
+        # get_ordine fonde le capability da fn_available_actions_ordine
+        # (available_actions, can_edit_*, ...). `can_conferma` non e' piu' un flag.
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
+        repo.list_righe.return_value = [{"id": 1}]
+        repo.get_capabilities.return_value = {
+            "available_actions": [{"key": "conferma", "target_state": "CONFERMATO"}],
+            "can_edit_testata": True,
+            "can_push_commessa": False,
+            "stato_codice": "DRAFT",
+        }
+        out = ordini_service.get_ordine(7)
+        self.assertEqual(out["available_actions"][0]["key"], "conferma")
+        self.assertEqual(out["righe_count"], 1)
+        self.assertEqual(out["stato_codice"], "DRAFT")
+        self.assertNotIn("can_conferma", out)
+
+    @patch(_REPO)
+    def test_cambia_stato_ok(self, repo_cls) -> None:
+        # Transizione generica (es. annulla): risolve il codice stato e delega
+        # l'enforcement al trigger DB.
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.get_stato_id_by_codice.return_value = 6
+        out = ordini_service.cambia_stato(7, "ANNULLATO")
+        self.assertEqual(out["stato"], "ANNULLATO")
+        self.assertEqual(out["stato_precedente"], "DRAFT")
+        repo.update_stato.assert_called_once_with(7, 6)
+
+    @patch(_REPO)
+    def test_cambia_stato_codice_inesistente(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.get_stato_id_by_codice.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_stato(7, "INESISTENTE")
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        repo.update_stato.assert_not_called()
+
+    @patch(_REPO)
+    def test_elimina_ordine_con_righe_rifiutato(self, repo_cls) -> None:
+        # Niente hard-delete di dati reali (allineato a preventivi): un ordine
+        # in bozza CON righe non si cancella, si annulla.
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.list_righe.return_value = [{"id": 1}]
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.elimina_ordine(7)
+        self.assertEqual(cm.exception.code, "E_ORD_STATO_TRANSIZIONE")
+        repo.delete_ordine.assert_not_called()
+
+    @patch(_REPO)
+    def test_elimina_ordine_bozza_orfana_ok(self, repo_cls) -> None:
+        # Bozza orfana (DRAFT, zero righe): hard-delete ammesso (cleanup
+        # abbandono auto-save).
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.list_righe.return_value = []
+        repo.delete_ordine.return_value = True
+        out = ordini_service.elimina_ordine(7)
+        self.assertTrue(out["deleted"])
+        repo.delete_ordine.assert_called_once_with(7)
+
 
 _SVC = "apps.vendite.services.ordini_service"
 
@@ -256,11 +321,11 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
         ord_cls.return_value.set_documento_origine.assert_called_once_with(
             7, "PREVENTIVO", 99,
         )
-        # solo la riga attiva → 1 gestisci_riga; sconto_percentuale → sconto_perc
+        # solo la riga attiva → 1 gestisci_riga; sconto_percentuale propagato 1:1
         self.assertEqual(gestisci_mock.call_count, 1)
         riga_payload = gestisci_mock.call_args.args[1]
         self.assertEqual(riga_payload["articolo_id"], "A1")
-        self.assertEqual(riga_payload["sconto_perc"], "5")
+        self.assertEqual(riga_payload["sconto_percentuale"], "5")
 
     @patch(_PREV_REPO)
     def test_crea_ordine_da_preventivo_stato_non_convertibile(self, prev_cls) -> None:

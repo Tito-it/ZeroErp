@@ -7,20 +7,20 @@ import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError } from '../../../core/utils/apiError'
 import { usePreventiviStore } from '../stores/preventivi'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
-import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
+import { useRigaArticoloComposito } from '../../_shared/righe/useRigaArticoloComposito'
 import { useAuthStore } from '../../../stores/auth'
 import { suggerisciPrezzoRiga, previewRigaComponenti } from '../api/preventiviApi'
 import { pricingOrigineSeverity, pricingOrigineLabelKey } from '../../../core/utils/severity'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
+import { formatCurrency } from '../../../core/utils/format'
 import { PRICING_ACTIONS } from '../../constants'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import PreventiviRigaComponentiPanel from './PreventiviRigaComponentiPanel.vue'
 import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
-import { useComponentiDialog } from '../../_shared/componenti/useComponentiDialog'
 import L2ErrorBanner from '../../_shared/pricing/L2ErrorBanner.vue'
-import { classifyL2Error } from '../../_shared/pricing/classifyL2Error'
+import { useL2SaveFlow } from '../../_shared/pricing/useL2SaveFlow'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -47,15 +47,6 @@ const props = defineProps({
 // al primo mount (cache modulo-level dedupa per BA in useLimitiPricing).
 watch(() => props.billingAccountId, (baId) => loadLimiti(baId), { immediate: true })
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
-
-const isEdit = computed(() => props.riga != null)
-
-// Refactor componenti 2026-05-11: rilevamento riga padre CASO A. Flag derivato
-// dal BE list_righe (EXISTS subquery su preventivi_righe_componenti attivi).
-// In create il flag e' undefined: la sezione componenti compare solo in edit
-// (form atomic 2026-05-12: in CREATE i componenti sono raccolti via preview
-// + tabella editabile pre-save, gestiti separatamente — TODO Fase 6).
-const isCasoA = computed(() => isEdit.value && !!props.riga?.is_composito_caso_a)
 
 const form = ref({
   articolo_id: null,
@@ -124,13 +115,13 @@ const prezzoBaseResolverNum = computed(() => {
   const n = Number(raw)
   return Number.isFinite(n) ? n : null
 })
-const formatCurrencyBaseListino = computed(() => {
-  const n = prezzoBaseResolverNum.value
-  if (n == null) return '—'
-  return new Intl.NumberFormat('it-IT',
-    { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 6 }
-  ).format(n)
-})
+const formatCurrencyBaseListino = computed(() =>
+  formatCurrency(prezzoBaseResolverNum.value, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+    placeholder: '—',
+  }),
+)
 // Mostra "Usa prezzo listino" solo se: c'e' un valore di riferimento, non
 // coincide gia' col campo prezzo, e l'operatore puo' modificare il prezzo
 // (override autorizzato — non ha senso il bottone se il campo e' bloccato).
@@ -168,66 +159,22 @@ watch(
 // Articolo selezionato (per restore autocomplete)
 const articoloObj = ref(null)
 
-// Unifica EDIT CASO A (riga padre composita persistita) e CREATE composito
-// (lookup ritorna is_composito=true): in entrambi i casi il prezzo padre
-// non e' rappresentativo (e' SUM(componenti × coeff_qta) calcolato dai
-// trigger DB) e il resolver del singolo articolo non va chiamato — per
-// admin globali solleverebbe E_PREV_VALIDAZIONE su emittente mancante.
-const isPadreComposito = computed(
-  () => isCasoA.value || articoloObj.value?.is_composito === true,
-)
-
-// UoM operative dell'articolo (pattern VersioneDrawer/ContrattoRigheDrawer):
-// le UoM ammesse per la riga sono solo quelle definite a livello articolo,
-// non l'intero catalogo.unita_misura. Caricate al cambio articolo.
-// Composable centralizzato (Fase 4.F1).
+// Cuore riga articolo/composito condiviso con OrdiniRigaForm (B11, regola del
+// 2): isEdit/isCasoA/isPadreComposito + wiring UoM + ComponentiDialog +
+// submitRiga. Lo strato resolver listino + gate L2 + cella prezzo-listino +
+// campo `ordine` qui sotto sono il superset specifico del preventivo.
 const {
-  uomOptions, uomLoading, loadUomPerArticolo, pickBaseUomId, resetUomOptions,
-} = useArticoloUomOptions()
-
-function uomLabel(uom) {
-  const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
-  return `${uom.uom_codice} — ${uom.uom_descrizione}${base}`
-}
-
-// Scopo: carica le UoM dell'articolo e, in create, pre-seleziona la base.
-async function caricaUomConPickBase(articoloId) {
-  const list = await loadUomPerArticolo(articoloId)
-  if (!isEdit.value && !form.value.uom_operativa_id) {
-    form.value.uom_operativa_id = pickBaseUomId(list)
-  }
-}
-
-// Fase C 2026-05-13: integrazione ComponentiDialog (modello unificato).
-// Sostituisce la tabella inline preview del form atomic precedente. La
-// Dialog e' un building block riusabile in vendite/_shared/componenti/
-// che riceve la callback fetch come prop (apiPreview) e ritorna un
-// payload delta { overrides, attivazioni, summary } da inglobare nel
-// Save della riga padre.
-//
-// Apertura: automatica al primo cambio (articolo composito, UoM, qta)
-//   con valori validi; manuale via bottone "Modifica componenti" per
-//   revisioni successive.
-// Stato: il payload Dialog viene memorizzato in `componentiPayload`
-//   finche' l'operatore non cambia un parametro chiave (articolo/UoM/qta)
-//   -> reset implicito + auto-riapertura per nuova valorizzazione.
-// Orchestrazione ComponentiDialog centralizzata nel BB `useComponentiDialog`
-// (estrazione regola-del-2 2026-05-31). La quantità sorgente è `qta_operativa`.
-// Differenze di dominio passate come getter: in CREATE l'auto-open scatta;
-// il prezzo padre composito si calcola da `isPadreComposito` (CASO A o
-// is_composito). La dialog è l'unico entry point CREATE; in EDIT lo stato
-// viaggia via `PreventiviRigaComponentiPanel`.
-const {
-  componentiDialogVisible,
-  componentiPayload,
-  showComponentiDialog,
-  apriComponentiDialog,
-  onComponentiConfirm,
-} = useComponentiDialog({
+  isEdit, isCasoA, isPadreComposito,
+  uomOptions, uomLoading, uomLabel, caricaUomConPickBase, resetUomOptions,
+  componentiDialogVisible, componentiPayload, showComponentiDialog,
+  apriComponentiDialog, onComponentiConfirm,
+  submitRiga,
+} = useRigaArticoloComposito({
+  store,
+  parentId: () => props.preventivoId,
+  riga: () => props.riga,
+  articoloObj,
   form,
-  isCreate: () => !isEdit.value,
-  isComposito: () => articoloObj.value?.is_composito === true,
-  isPadreComposito: () => isPadreComposito.value,
 })
 
 // State usato da suggerisciPrezzo(): DEVE stare prima del watch `immediate`
@@ -454,59 +401,21 @@ function buildRigaPayload(extras = {}) {
   return payload
 }
 
-// Scopo: invia il payload riga al backend, gestendo edit vs create.
-//        Le action dello store sono gia' unwrappate (ritornano res.data.data
-//        direttamente, vedi memoria feedback_useapihandler_solo_axios), quindi
-//        non serve nessun ulteriore unwrap qui.
-function submitRiga(payload) {
-  return isEdit.value
-    ? store.aggiornaRiga(props.preventivoId, props.riga.id, payload)
-    : store.addRiga(props.preventivoId, payload)
-}
-
-// Scopo: Salva riga intercettando specificamente i codici L2
-//        (E_PRICING_SCONTO_ECCESSIVO / E_PRICING_MAGGIORAZIONE_ECCESSIVA) per
-//        mostrare un banner inline invece del toast standard. Tutti gli
-//        altri errori passano per il pattern standard useApiHandler.
-async function handleSave() {
-  l2Error.value = null
-  const successMessage = isEdit.value ? t('preventivi.riga_salvata') : t('preventivi.riga_aggiunta')
-
-  loading.value = true
-  try {
-    const result = await submitRiga(buildRigaPayload())
-    notify.success(successMessage)
-    emit('saved', result)
-  } catch (err) {
-    // Banner inline su violazione L2 (BB condiviso); altrimenti toast standard.
-    const l2 = classifyL2Error(err, {
-      fallbackMessage: t('preventivi.errore_generico'),
-      l2ErrorCodes: L2_ERROR_CODES,
-    })
-    if (l2) l2Error.value = l2
-    else notify.error(extractApiError(err, t('preventivi.errore_generico')))
-  } finally {
-    loading.value = false
-  }
-}
-
-// Scopo: ri-tenta il save aggiungendo flag richiesta_approvazione=true
-//        (workflow L3 Sprint E). Il backend, in caso di violazione L2,
-//        crea una pratica di approvazione e salva la riga in PENDING
-//        invece di sollevare. Toast esplicito per dare feedback chiaro.
-async function handleRichiediApprovazione() {
-  l2Error.value = null
-  loading.value = true
-  try {
-    const result = await submitRiga(buildRigaPayload({ richiesta_approvazione: true }))
-    notify.success(t('preventivi.richiesta_approvazione_inviata'))
-    emit('saved', result)
-  } catch (err) {
-    notify.error(extractApiError(err, t('preventivi.errore_generico')))
-  } finally {
-    loading.value = false
-  }
-}
+// Save + richiedi-approvazione con gate L2 via BB condiviso (B12, regola del 2).
+// Banner inline su violazione L2; side-effect di successo (emit 'saved') iniettato.
+const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = useL2SaveFlow({
+  persist: submitRiga,
+  buildPayload: buildRigaPayload,
+  onSuccess: (result) => emit('saved', result),
+  messages: {
+    success: () => (isEdit.value ? t('preventivi.riga_salvata') : t('preventivi.riga_aggiunta')),
+    approvalRequested: t('preventivi.richiesta_approvazione_inviata'),
+    error: t('preventivi.errore_generico'),
+  },
+  l2Error,
+  loading,
+  l2ErrorCodes: L2_ERROR_CODES,
+})
 </script>
 
 <template>

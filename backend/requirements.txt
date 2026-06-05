@@ -6,7 +6,7 @@
 #
 annotated-types==0.7.0
     # via pydantic
-anthropic==0.105.2
+anthropic==0.106.0
     # via -r ../requirements.in
 anyio==4.13.0
     # via
@@ -20,7 +20,7 @@ attrs==26.1.0
     # via
     #   jsonschema
     #   referencing
-bleach==6.3.0
+bleach==6.4.0
     # via -r ../requirements.in
 brotli==1.2.0
     # via fonttools
@@ -38,7 +38,7 @@ cssselect2==0.9.0
     # via weasyprint
 distro==1.9.0
     # via anthropic
-django==6.0.5
+django==6.0.6
     # via
     #   -r ../requirements.in
     #   django-redis

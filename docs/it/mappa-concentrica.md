@@ -6,7 +6,7 @@
 
 *Ultimo aggiornamento: 29 maggio 2026 — Anello 3 (vendite): contratti passati al modello unificato (drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino all'attivazione, lock post-attivazione, stato ANNULLATO); nuovo documento **offerte commerciali** (proposta di condizioni quadro → push 1:1 a contratto) sviluppato DB+BE+FE con generazione PDF e allegati; componenti BoM compositi estesi a offerte; valuta su documenti vendite. Vedi [Gestione Offerte commerciali](guide/gestione-offerte-commerciali.md) e [Gestione Contratti](guide/gestione-contratti.md).*
 >
-> *Aggiornamento precedente: 6 maggio 2026 — aggiunto componente `ui` in Anello 1 (metadato di presentazione: liste configurabili, personalizzazione colonne, preset per profilo/emittente). Stato allora: Da fare → **ora Operativo** (vedi tabelle Anello 1). Architettura completa in [sviluppo-personalizzazioni-liste.md](dev/work-in-progress/sviluppo-personalizzazioni-liste.md).*
+> *Aggiornamento precedente: 6 maggio 2026 — aggiunto componente `ui` in Anello 1 (metadato di presentazione: liste configurabili, personalizzazione colonne, preset per profilo/emittente). Stato allora: Da fare → **ora Operativo** (vedi tabelle Anello 1). Architettura completa in `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste.md`.*
 
 ---
 
@@ -112,7 +112,7 @@ Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinz
 
 ### Audit sessioni, request logging e token blacklist
 
-Implementato il 6 marzo 2026 (vedi [Audit-logging-sessionii-request-token.md](dev/work-done/Audit-logging-sessionii-request-token.md)):
+Implementato il 6 marzo 2026 (vedi `docs/it/dev/work-done/Audit-logging-sessionii-request-token.md`):
 
 | Capacita'                         | Componente DB               | Componente Backend                                                             | Stato     |
 | --------------------------------- | --------------------------- | ------------------------------------------------------------------------------ | --------- |
@@ -140,7 +140,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | `amm-software` | App Django | Operativo | Operativo | Operativo | Gestione operatori, permessi riepilogo, profili reparto, audit log (solo ADMIN), drawer dedicato gestione permessi         |
 | `ui`           | App Django | Operativo | Operativo | Operativo | Metadato di presentazione: liste configurabili, preset per profilo/emittente/sistema, preferenze utente. Di servizio. Schema, app Django e componenti FE implementati (primi consumatori: liste clienti/fornitori). |
 
-> **Multi-Face Auth — COMPLETATO (22-04-2026):** `anagrafiche` usa il bridge generalizzato `identita_digitali` (SSO multi-veste, cutover 19-04-2026). `amm-software` supporta operatori, portale clienti/fornitori e shop B2C. **Infrastruttura auth predisposta per tutte le vesti; le API di dominio portale/shop (fatture, ordini, catalogo B2C) non sono ancora sviluppate e saranno affrontate quando il business lo richiedera'.** Dettaglio: [pr-b-shop-b2c-cambio-modello.md](dev/work-done/pr-b-shop-b2c-cambio-modello.md). Guida: [architettura-multi-face-auth v2.0](guide/architettura-multi-face-auth.md).
+> **Multi-Face Auth — COMPLETATO (22-04-2026):** `anagrafiche` usa il bridge generalizzato `identita_digitali` (SSO multi-veste, cutover 19-04-2026). `amm-software` supporta operatori, portale clienti/fornitori e shop B2C. **Infrastruttura auth predisposta per tutte le vesti; le API di dominio portale/shop (fatture, ordini, catalogo B2C) non sono ancora sviluppate e saranno affrontate quando il business lo richiedera'.** Dettaglio: `docs/it/dev/work-done/pr-b-shop-b2c-cambio-modello.md`. Guida: [architettura-multi-face-auth v2.0](guide/architettura-multi-face-auth.md).
 
 ### Frontend Anello 1 — Stato dettagliato
 
@@ -189,7 +189,7 @@ Una tabella appartiene alla seconda categoria se: (a) non descrive un'entita' di
 
 E' classificato **di servizio** all'interno di Anello 1: il suo end-to-end richiedeva almeno un consumatore reale (prima lista migrata a `<ListaConfigurabile>`). Questo è avvenuto: le liste clienti e fornitori usano il componente configurabile, quindi il nucleo è stato **validato su casi reali** e si considera operativo. La lezione metodologica del caso pratiche (non completare prima della validazione su un caso reale) è stata rispettata.
 
-Riferimento architetturale: [sviluppo-personalizzazioni-liste.md](dev/work-in-progress/sviluppo-personalizzazioni-liste.md). Sviluppi differiti: [sviluppo-personalizzazioni-liste_def.md](dev/work-in-progress/sviluppo-personalizzazioni-liste_def.md).
+Riferimento architetturale: `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste.md`. Sviluppi differiti: `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste_def.md`.
 
 ### Stabilita'
 
@@ -263,9 +263,9 @@ Non e' un processo di business specifico (come vendite o acquisti). E' l'**infra
 | FE: tab giornale               | FATTO | Timeline audit con icone/severity per tipo azione                                 |
 | Test totali                    | 115   | 105 Django (mock CI) + 25 smoke test bash                                         |
 
-Documentazione: [gestione-pratiche-v2.md](dev/work-in-progress/gestione-pratiche-v2.md) | API: [api_pratiche_list](backend/pratiche/manual/api_pratiche_list) | [api_pratiche_note](backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati](backend/pratiche/manual/api_pratiche_allegati)
+Documentazione: `docs/it/dev/work-in-progress/gestione-pratiche-v2.md` | API: [api_pratiche_list](backend/pratiche/manual/api_pratiche_list) | [api_pratiche_note](backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati](backend/pratiche/manual/api_pratiche_allegati)
 
-Piano v1 (storico): [work-done/piano-gestione-pratiche.md](dev/work-done/piano-gestione-pratiche.md)
+Piano v1 (storico): `docs/it/dev/work-done/piano-gestione-pratiche.md`
 
 ---
 
@@ -438,7 +438,7 @@ Il caso pratiche e' istruttivo perche' mostra cosa succede applicando il manifes
 
 > **La differenza non sta nel "se astrarre", ma nel "quando".** Astrarre prima di vedere e' progetto; astrarre dopo aver visto e' sintesi. Il manifesto §7 codifica questa distinzione perche' la prima e' debito travestito da architettura, la seconda e' architettura genuina.
 
-Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-done/automazione-chiusure-scadenze.md).
+Riferimento implementazione: `docs/it/dev/work-done/automazione-chiusure-scadenze.md`.
 
 ---
 
@@ -555,11 +555,11 @@ Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-don
 ### Completato (5-7 aprile 2026)
 
 - ~~Catalogo Articoli~~ — **COMPLETATO E TESTATO** (5 aprile 2026)
-  - Backend + frontend chiusi, 49 test verdi, doc consolidata in [work-done/gestione-articoli.md](dev/work-done/gestione-articoli.md)
+  - Backend + frontend chiusi, 49 test verdi, doc consolidata in `docs/it/dev/work-done/gestione-articoli.md`
   - Building block prodotti: `ArticoloLookup.vue` cross-dominio + endpoint lookup
 - ~~Consolidamento WIP listini~~ — **FATTO** (6 aprile 2026)
-  - I due vecchi WIP `gestione-articoli-listini.md` + `gestione-listini.md` consolidati in sviluppo-listini.md (ora in [work-done](dev/work-done/sviluppo-listini-v1.md), superseded da [sviluppo-listini-v3.md](dev/work-done/sviluppo-listini-v3.md))
-  - Estratte rettifiche prezzi (DB-L4) in [sviluppo-rettifiche.md](dev/work-in-progress/sviluppo-rettifiche.md)
+  - I due vecchi WIP `gestione-articoli-listini.md` + `gestione-listini.md` consolidati in sviluppo-listini.md (ora in `docs/it/dev/work-done/sviluppo-listini-v1.md`, superseded da `docs/it/dev/work-done/sviluppo-listini-v3.md`)
+  - Estratte rettifiche prezzi (DB-L4) in `docs/it/dev/work-in-progress/sviluppo-rettifiche.md`
 - ~~Drawer dedicato gestione permessi operatore~~ — **FATTO** (6 aprile 2026)
   - `OperatorePermessiTab` reso riutilizzabile (watch su `authUserId`)
   - Nuovo `OperatorePermessiDrawer.vue` richiamabile dalla riga lista operatori
@@ -585,7 +585,7 @@ Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-don
   - Fase 3: 2 tabelle pratiche con `tstzrange`
   - Backend: ottimizzazione query repository (`validita @>` al posto dei doppi confronti)
   - Linee guida SQL: sezione 7b aggiunta
-  - Analisi: [migrazione-daterange.md](dev/work-done/migrazione-daterange.md)
+  - Analisi: `docs/it/dev/work-done/migrazione-daterange.md`
 - ~~Listini v3 — Sprint B completo~~ — **FATTO** (12 aprile 2026)
   - **N8a** Variazione % massa su BOZZA (backend + frontend dialog + 9 test)
   - **N2** Alert scadenze versioni (backend + frontend widget badge + 2 test)
@@ -595,7 +595,7 @@ Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-don
   - Avviso UX programmazione chiusura versione ATTIVA (`ProgrammaChiusuraDialog.vue`)
   - Documentazione: N3 lifecycle preventivo→commessa, N4 nota match_level 3, N8b guida "listino post-it"
   - 2 doc API create/aggiornate, error policies registrate, 1231 test totali
-  - Analisi: [sviluppo-listini-v3.md](dev/work-done/sviluppo-listini-v3.md)
+  - Analisi: `docs/it/dev/work-done/sviluppo-listini-v3.md`
 - ~~Emittenti fiscali CRUD + BA mapping + Utilities~~ — **FATTO** (8 aprile 2026)
   - Admin CRUD + sub-resource mapping BA + matrice utilities slot/override
   - BB `list_entity_utility_matrix` + `UtilityPerRuoloSelect`, validazione P.IVA

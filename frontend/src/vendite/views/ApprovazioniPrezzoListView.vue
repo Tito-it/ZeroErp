@@ -10,6 +10,7 @@ import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../core/composables/useNotify'
 import { extractApiError } from '../../core/utils/apiError'
 import { coerceJsonbToObject } from '../../core/utils/meta'
+import { displayTimestamp } from '../../core/utils/date'
 import { MANAGE_ICONS, PAGINATION } from '../../core/constants'
 import {
   listCodaApprovazioni,
@@ -261,7 +262,7 @@ const pageActions = computed(() => [
       <Column field="id" :header="t('approvazioni_prezzo.col_pratica')" sortable style="width: 100px;" />
       <Column field="data_insert" :header="t('approvazioni_prezzo.col_data')" sortable style="width: 160px;">
         <template #body="{ data }">
-          {{ data.data_insert ? new Date(data.data_insert).toLocaleString() : '—' }}
+          {{ displayTimestamp(data.data_insert) || '—' }}
         </template>
       </Column>
       <Column field="descrizione" :header="t('approvazioni_prezzo.col_descrizione')" sortable />

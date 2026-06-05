@@ -20,6 +20,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'
+import { useLookupDisplayModel } from '../composables/useLookupDisplayModel'
 import { lookupArticoli } from '../../catalogo/api/catalogo'
 import AutoComplete from 'primevue/autocomplete'
 
@@ -103,16 +104,9 @@ function buildDisplay(r) {
   return r.codice || r.descrizione || `#${r.id}`
 }
 
-// Normalizza il modelValue garantendo `_display` letto da AutoComplete
-// (optionLabel="_display"). Quando l'articolo arriva da loadDetail in edit
-// (o da restore lato chiamante con sole {id, codice, descrizione}), `_display`
-// non c'e' e AutoComplete cade sul toString → "[object Object]".
-const displayedModel = computed(() => {
-  const v = props.modelValue
-  if (!v) return null
-  if (v._display) return v
-  return { ...v, _display: buildDisplay(v) }
-})
+// Normalizza il modelValue garantendo `_display` (anti "[object Object]" sui
+// restore con sole {id, codice, descrizione}). BB condiviso (B6).
+const displayedModel = useLookupDisplayModel(() => props.modelValue, buildDisplay)
 
 function onSelect(event) {
   emit('update:modelValue', event.value)

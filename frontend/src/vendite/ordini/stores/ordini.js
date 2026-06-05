@@ -15,11 +15,13 @@ import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
 import { TAB_ENTITIES } from '../../../core/constants'
 import {
+  cambiaStatoOrdine,
   confermaOrdine,
   createOrdine,
   createRiga,
   deleteOrdine,
   deleteRiga,
+  emettiOrdine,
   getOrdine,
   getRiepilogoIva,
   listOrdini,
@@ -110,9 +112,20 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
 
   // --- Transizioni / integrazione ---
 
-  // DRAFT -> CONFERMATO.
+  // DRAFT -> CONFERMATO (sola transizione). Resta come API di servizio: il
+  // flusso utente usa `emetti()` (apertura OrdineEmissioneDialog).
   async function conferma(id) {
     const res = await confermaOrdine(id)
+    emitDataChanged(TAB_ENTITIES.ORDINE, id)
+    return res.data.data
+  }
+
+  // DRAFT -> CONFERMATO (multipart): conferma + genera documento + allegati in
+  // transazione atomica lato BE. Invocata da OrdineEmissioneDialog (il drawer
+  // intercetta l'action 'conferma' e apre il dialog invece di chiamare conferma).
+  // Mirror del flusso emissione preventivo/offerta.
+  async function emetti(id, { allegati = [], templateId = null } = {}) {
+    const res = await emettiOrdine(id, { allegati, templateId })
     emitDataChanged(TAB_ENTITIES.ORDINE, id)
     return res.data.data
   }
@@ -120,6 +133,14 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
   // Push singolo a commessa (ordine CONFERMATO). Ritorna il report orchestrator.
   async function push(id) {
     const res = await pushOrdineACommessa(id)
+    emitDataChanged(TAB_ENTITIES.ORDINE, id)
+    return res.data.data
+  }
+
+  // Transizione di stato generica data-driven (es. annulla). `statoCodice` =
+  // target_state dell'azione; il trigger DB valida l'ammissibilita'.
+  async function cambiaStato(id, statoCodice) {
+    const res = await cambiaStatoOrdine(id, statoCodice)
     emitDataChanged(TAB_ENTITIES.ORDINE, id)
     return res.data.data
   }
@@ -165,7 +186,7 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     // testata
     fetchList, fetchDetail, create, update, elimina,
     // transizioni
-    conferma, push,
+    conferma, emetti, push, cambiaStato,
     // righe
     loadRighe, addRiga, aggiornaRiga, eliminaRiga,
     // riepilogo IVA

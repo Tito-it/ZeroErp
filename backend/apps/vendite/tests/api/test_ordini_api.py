@@ -15,19 +15,33 @@ Indice test eseguiti:
  3) test_create_ok — 200 create ordine (mock service)
  4) test_conferma_ok — 200 conferma (mock service)
  5) test_push_ok — 200 push singolo a commessa (mock service)
+ 5b) test_cambia_stato_ok — 200 transizione generica (mock service)
  6) test_riepilogo_iva_ok — 200 riepilogo IVA aggregato (mock service)
  7) test_export_formato_invalido — 400 E_UI_EXPORT_FORMAT_INVALID
  8) test_export_overflow_cap — 422 E_UI_EXPORT_LIMIT_EXCEEDED su >cap righe
+ 9) test_emetti_route_ok — POST emetti (multipart) DRAFT->CONFERMATO route OK
+10) test_emetti_integration_atomic_conferma_genera_allegati — POST emetti
+    orchestra conferma + genera_documento(allegati=...) in transazione atomica
 """
 
 from unittest.mock import Mock, patch
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _SVC = "apps.vendite.services.ordini_service"
+
+# Patch path per il flusso emissione documentale ordini (§6 brief-ordini-stampa).
+# DocumentiRepository vive nel helper condiviso `contesto_helpers`; le altre
+# dipendenze sono importate nel modulo della view documentale.
+_DOC_VIEW_SVC = "apps.vendite.api.ordini_documenti_views.ordini_service"
+_DOC_GEN_SVC = "apps.vendite.api.ordini_documenti_views.DocumentGenerationService"
+_DOC_REPO = "apps.documenti.api.contesto_helpers.DocumentiRepository"
+_ORD_REPO = "apps.vendite.api.ordini_documenti_views.OrdiniRepository"
+_VIEW_ATOMIC = "apps.vendite.api.ordini_documenti_views.transaction.atomic"
 
 _BASE = "/api/v1/vendite/ordini/"
 
@@ -88,6 +102,18 @@ class TestOrdiniApi(JwtMockedApiTest):
         mock_push.assert_called_once_with(7)
 
     @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.cambia_stato")
+    def test_cambia_stato_ok(self, mock_cs, _auth) -> None:
+        mock_cs.return_value = {"ordine_id": 7, "stato": "ANNULLATO"}
+        resp = self.client.post(
+            f"{_BASE}7/cambia-stato/", data={"stato_codice": "ANNULLATO"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["data"]["stato"], "ANNULLATO")
+        mock_cs.assert_called_once_with(7, "ANNULLATO")
+
+    @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.list_riepilogo_iva")
     def test_riepilogo_iva_ok(self, mock_riep, _auth) -> None:
         mock_riep.return_value = [
@@ -146,3 +172,102 @@ class TestOrdiniApi(JwtMockedApiTest):
         self.assertEqual(
             resp.json()["error"]["code"], "E_UI_EXPORT_LIMIT_EXCEEDED",
         )
+
+
+class TestOrdineEmissione(JwtMockedApiTest):
+    """Test flusso emissione ordine (DRAFT->CONFERMATO + genera PDF + allegati).
+
+    Mirror di `TestPreventivoEmissioneAllegati`: l'endpoint `emetti/` clona
+    `ApiPreventivoEmetti` riusando il service di dominio `ordini_service.conferma`
+    al posto di `preventivi_service.emetti`.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.client = Client()
+        # Patch request_log middleware: SimpleTestCase non ammette DB queries.
+        self._req_log_patcher = patch(
+            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log",
+            return_value=None,
+        )
+        self._req_log_patcher.start()
+        self.addCleanup(self._req_log_patcher.stop)
+
+    # Scopo: smoke test route emissione (multipart). Verifica che la route
+    # `emetti/` sia registrata e accetti un payload multipart vuoto.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_VIEW_ATOMIC)
+    @patch(_DOC_GEN_SVC)
+    @patch(_DOC_REPO)
+    @patch(_ORD_REPO)
+    @patch(_DOC_VIEW_SVC)
+    def test_emetti_route_ok(
+        self, svc_mod, repo_cls, doc_repo_cls, doc_svc_cls, _atomic, _auth,
+    ) -> None:
+        svc_mod.conferma.return_value = {"ordine_id": 7, "stato": "CONFERMATO"}
+        repo_cls.return_value.get_for_documento_generation.return_value = {
+            "id": 7,
+            "uid": "0190b000-0000-0000-0000-000000000007",
+            "emittente_fiscale_id": 11,
+        }
+        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+            "id": 4, "codice": "ORDINE_VENDITA", "attivo": True,
+        }
+        doc_svc_cls.return_value.genera_documento.return_value = {
+            "id": 100, "uid": "doc-uid-100", "nome_file": "ordine.pdf",
+        }
+        resp = self.client.post(f"{_BASE}7/emetti/", data={})
+        self.assertEqual(resp.status_code, 200)
+
+    # Scopo: integration test ApiOrdineEmetti. Verifica che la view orchestri
+    # conferma() + genera_documento(allegati=...) passando i parametri estratti
+    # dall'ordine + sorgente_tipo_id risolto. Mock di transaction.atomic per non
+    # aprire una vera transazione DB.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_VIEW_ATOMIC)
+    @patch(_DOC_GEN_SVC)
+    @patch(_DOC_REPO)
+    @patch(_ORD_REPO)
+    @patch(_DOC_VIEW_SVC)
+    def test_emetti_integration_atomic_conferma_genera_allegati(
+        self, svc_mod, repo_cls, doc_repo_cls, doc_svc_cls, _atomic, _auth,
+    ) -> None:
+        svc_mod.conferma.return_value = {
+            "ordine_id": 7, "stato_precedente": "DRAFT", "stato": "CONFERMATO",
+        }
+        repo_cls.return_value.get_for_documento_generation.return_value = {
+            "id": 7,
+            "uid": "0190b000-0000-0000-0000-000000000007",
+            "emittente_fiscale_id": 11,
+        }
+        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+            "id": 4, "codice": "ORDINE_VENDITA", "attivo": True,
+        }
+        doc_svc_cls.return_value.genera_documento.return_value = {
+            "id": 100, "uid": "doc-uid-100", "nome_file": "ordine.pdf",
+        }
+
+        pdf_file = SimpleUploadedFile(
+            "allegato.pdf", b"%PDF-1.4 fake", content_type="application/pdf",
+        )
+        resp = self.client.post(
+            f"{_BASE}7/emetti/", data={"allegati": [pdf_file]},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()["data"]
+        self.assertEqual(body["ordine"]["stato"], "CONFERMATO")
+        self.assertEqual(body["documento"]["nome_file"], "ordine.pdf")
+        # conferma chiamata una sola volta con l'ordine_id corretto
+        svc_mod.conferma.assert_called_once_with(7)
+        # genera_documento riceve i parametri estratti dall'ordine + l'allegato
+        kwargs = doc_svc_cls.return_value.genera_documento.call_args.kwargs
+        self.assertEqual(kwargs["emittente_fiscale_id"], 11)
+        self.assertEqual(kwargs["sorgente_tipo_id"], 4)
+        self.assertEqual(kwargs["sorgente_id"], 7)
+        self.assertEqual(
+            kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000007",
+        )
+        self.assertEqual(len(kwargs["allegati"]), 1)
+        self.assertEqual(kwargs["allegati"][0]["mime_type"], "application/pdf")
+        self.assertEqual(kwargs["allegati"][0]["file_name"], "allegato.pdf")

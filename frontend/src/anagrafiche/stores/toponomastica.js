@@ -1,60 +1,12 @@
 // Pinia store per la gestione toponomastica (tipi strada).
+// Pattern lista+CRUD via createCrudStore (regola del 2) — lista parte piena.
 
-import { defineStore } from 'pinia'
-import { ref } from 'vue'
 import { listToponomastica, createToponomastica, updateToponomastica } from '../api/anagrafiche'
-import { useTabEvents } from '../../core/composables/useTabEvents'
+import { createCrudStore } from '../../core/stores/createCrudStore'
 import { TAB_ENTITIES } from '../../core/constants'
 
-export const useToponomasticaStore = defineStore('anagrafiche-toponomastica', () => {
-  const { emitDataChanged } = useTabEvents()
-  const items = ref([])
-  const totalRecords = ref(0)
-  const loading = ref(false)
-
-  const filters = ref({
-    search: '',
-    limit: 25,
-    offset: 0,
-    order_by: null,
-    order_dir: null
-  })
-
-  async function fetchList() {
-    loading.value = true
-    try {
-      const params = {}
-      const f = filters.value
-      if (f.search) params.search = f.search
-      params.limit = f.limit
-      params.offset = f.offset
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'asc'
-      }
-
-      const res = await listToponomastica(params)
-      items.value = res.data.data.results
-      totalRecords.value = res.data.data.count
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function create(payload) {
-    const res = await createToponomastica(payload)
-    emitDataChanged(TAB_ENTITIES.TOPONOMASTICA, res.data.data.id)
-    return res.data.data
-  }
-
-  async function update(id, payload) {
-    const res = await updateToponomastica(id, payload)
-    emitDataChanged(TAB_ENTITIES.TOPONOMASTICA, id)
-    return res.data.data
-  }
-
-  return {
-    items, totalRecords, loading, filters,
-    fetchList, create, update
-  }
+export const useToponomasticaStore = createCrudStore('anagrafiche-toponomastica', {
+  api: { list: listToponomastica, create: createToponomastica, update: updateToponomastica },
+  tabEntity: TAB_ENTITIES.TOPONOMASTICA,
+  startsEmpty: false,
 })

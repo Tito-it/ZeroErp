@@ -33,6 +33,8 @@
 | trg_stati_doc_ordini_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
 | trg_stati_doc_ordini_a10_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini', 'stato_doc_ordine_id', 'id', 'attivo')` |
 | trg_stati_doc_ordini_a10_ordini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini_righe', 'stato_doc_ordine_id', 'id', 'attivo')` |
+| trg_stati_doc_ordini_a10_transizioni_stati_ordini_block__46935b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_ordini', 'stato_a_id', 'id', 'attivo')` |
+| trg_stati_doc_ordini_a10_transizioni_stati_ordini_block__ad7ffa | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_ordini', 'stato_da_id', 'id', 'attivo')` |
 
 ---
 {% include-markdown "signature-core.md" %}

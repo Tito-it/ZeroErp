@@ -5,9 +5,11 @@
 // id fiscale + PDP (meta). Utility (se presente) come tag nella riga primary.
 // Scope emittente fiscale applicato automaticamente lato backend.
 // Usato da: righe listini, righe preventivi, ordini, fatture, pratiche.
-import { ref, watch, computed } from 'vue'
+import { watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'
+import { useLookupDisplayModel } from '../composables/useLookupDisplayModel'
+import { useAutocompleteRefineHint } from '../composables/useAutocompleteRefineHint'
 import { lookupBillingAccount } from '../apiCore'
 import AutoComplete from 'primevue/autocomplete'
 
@@ -28,11 +30,8 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'select', 'clear'])
 
-// Tiene traccia del total_count ritornato dall'ultima ricerca
-// per mostrare il messaggio "affina la ricerca" quando total > limit.
-// Entrambi 0 finche' non arriva una response dal backend.
-const totalCount = ref(0)
-const limitShown = ref(0)
+// Hint "affina la ricerca" (total_count > limit). BB condiviso (B6).
+const { totalCount, limitShown, onResponse } = useAutocompleteRefineHint()
 
 const ac = useServerAutocomplete(async (query) => {
   const params = {
@@ -54,31 +53,12 @@ const ac = useServerAutocomplete(async (query) => {
       _display: buildDisplay(r)
     }))
   },
-  onResponse: (res) => {
-    // res null = query troppo corta o cancellata: azzera i metadati per
-    // evitare che il footer "affina la ricerca" mostri valori stale.
-    if (!res) {
-      totalCount.value = 0
-      limitShown.value = 0
-      return
-    }
-    const data = res.data.data || {}
-    totalCount.value = data.total_count || 0
-    limitShown.value = data.limit || 0
-  }
+  onResponse,
 })
 
-// Normalizza il modelValue garantendo la chiave `_display` letta da AutoComplete
-// (optionLabel="_display"). Quando il BA arriva da getBillingAccountLookupById
-// per il restore in EDIT (o post auto-save bozza), l'oggetto e' ricco ma manca
-// `_display` (calcolato solo lato `transform` delle suggestions): senza questa
-// normalizzazione AutoComplete cade sul toString → "[object Object]".
-const displayedModel = computed(() => {
-  const v = props.modelValue
-  if (!v) return null
-  if (v._display) return v
-  return { ...v, _display: buildDisplay(v) }
-})
+// Normalizza il modelValue garantendo `_display` (anti "[object Object]" sui
+// restore by-id). BB condiviso (B6); buildDisplay resta caller-side.
+const displayedModel = useLookupDisplayModel(() => props.modelValue, buildDisplay)
 
 function buildDisplay(r) {
   const parts = []

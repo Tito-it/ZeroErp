@@ -10,7 +10,7 @@
 # scritture dirette su tabelle, chiamate a funzioni DB per i componenti BoM.
 # Il ricalcolo totali e' gestito da trigger DB su ordini_righe; il backend
 # non lo orchestra. Clone strutturale di `preventivi_repository` adattato alle
-# colonne reali della testata/riga ordine (riga_nr, sconto_perc, iva_id) e
+# colonne reali della testata/riga ordine (riga_nr, sconto_percentuale, iva_id) e
 # senza revisioni (gli ordini non hanno `rev`).
 
 import json
@@ -19,7 +19,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 
 
@@ -190,6 +190,17 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, [int(ordine_id)])
             return row_to_dict(cursor)
 
+    # Scopo: Capability data-driven dell'ordine per il detail API. Wrapper su
+    #        `script.fn_available_actions_ordine` (matrice transizioni
+    #        `config.transizioni_stati_ordini`): ritorna jsonb con
+    #        available_actions, can_change_state, can_edit_testata/righe,
+    #        can_push_commessa(+reason/_reason_key), non_editable_fields,
+    #        stato_codice. Blob opaco lato Python (passato intatto al FE).
+    #        Pattern gemello di preventivi/offerte/contratti. {} se la fn
+    #        ritorna NULL (ordine inesistente — il caller verifica a monte).
+    def get_capabilities(self, ordine_id: int) -> dict[str, Any]:
+        return call_jsonb_fn("script.fn_available_actions_ordine", ordine_id)
+
     # Scopo: Stato corrente (codice_interno) dell'ordine. Usato dal service
     #        come guard pre-operazione (es. modifica ammessa solo in DRAFT).
     def get_stato_codice(self, ordine_id: int) -> str | None:
@@ -228,14 +239,14 @@ class OrdiniRepository(ComponentiRepositoryMixin):
                 r.uom_operativa_id,
                 um.codice               AS uom_codice,
                 r.prezzo_unitario,
-                r.sconto_perc,
+                r.sconto_percentuale,
                 r.iva_id,
                 iva.codice              AS iva_codice,
                 iva.descrizione         AS iva_descrizione,
                 iva.aliquota_iva        AS iva_aliquota,
                 ROUND(
                     (r.quantita * COALESCE(r.prezzo_unitario, 0::numeric)) *
-                    (1::numeric - COALESCE(r.sconto_perc, 0::numeric) / 100::numeric),
+                    (1::numeric - COALESCE(r.sconto_percentuale, 0::numeric) / 100::numeric),
                     2
                 ) AS importo_riga,
                 r.meta,
@@ -278,7 +289,7 @@ class OrdiniRepository(ComponentiRepositoryMixin):
                 r.uom_operativa_id,
                 um.codice               AS uom_codice,
                 r.prezzo_unitario,
-                r.sconto_perc,
+                r.sconto_percentuale,
                 r.iva_id,
                 iva.codice              AS iva_codice,
                 r.meta,
@@ -502,7 +513,7 @@ class OrdiniRepository(ComponentiRepositoryMixin):
         uom_operativa_id: int | None = None,
         factor_to_base: str | None = None,
         prezzo_unitario: str | None = None,
-        sconto_perc: str | None = None,
+        sconto_percentuale: str | None = None,
         iva_id: int | None = None,
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -510,7 +521,7 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             INSERT INTO vendite.ordini_righe (
                 ordine_id, riga_nr, articolo_id, descrizione,
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
-                prezzo_unitario, sconto_perc, iva_id, meta
+                prezzo_unitario, sconto_percentuale, iva_id, meta
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
             )
@@ -520,7 +531,7 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, [
                 ordine_id, riga_nr, articolo_id, descrizione,
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
-                prezzo_unitario, sconto_perc, iva_id,
+                prezzo_unitario, sconto_percentuale, iva_id,
                 json.dumps(meta or {}),
             ])
             result = row_to_dict(cursor)

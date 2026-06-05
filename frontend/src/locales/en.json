@@ -1684,11 +1684,16 @@
     "ordini": {
       "pdf": {
         "label_anteprima": "PDF preview",
-        "tooltip_anteprima": "Order confirmation preview (not saved)",
+        "tooltip_anteprima": "Order confirmation preview (draft, not saved)",
         "label_scarica": "PDF documents",
         "tooltip_scarica": "Documents generated for the order",
+        "tooltip_lista": "Open the documents generated for the order",
+        "tooltip_lista_disabilitato": "Available after order confirmation",
         "dialog_title": "Order {numero} — Documents"
       },
+      "emissione_titolo": "Confirm order",
+      "emissione_conferma": "Confirm",
+      "emissione_messaggio": "Confirming the order generates the confirmation document and the lines can no longer be edited. You can attach files to the document.",
       "titolo": "Sales orders",
       "ordine": "Sales order",
       "nuovo_ordine": "New order",
@@ -1743,7 +1748,10 @@
       "conferma_abbandono_bozza": "The draft has no lines and will be deleted. Continue?",
       "abbandono_bozza_conferma": "Delete draft",
       "azione_conferma": "Confirm order",
+      "azione_annulla": "Cancel order",
       "azione_push_commessa": "Send to job",
+      "conferma_cambio_stato": "Move the order to state {stato}?",
+      "stato_cambiato": "Order status updated",
       "conferma_ordine_messaggio": "Confirm the order? After confirmation the lines can no longer be edited.",
       "ordine_confermato": "Order confirmed",
       "push_commessa_messaggio": "Send the order to job for billing?",

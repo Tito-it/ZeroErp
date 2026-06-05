@@ -24,26 +24,22 @@ import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelec
 import ListaConfigurabile from '../../../core/components/ListaConfigurabile.vue'
 import ExportDialog from '../../../core/components/ExportDialog.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
+import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
-import { useDocumentiPerSorgenteStore } from '../../../documenti/stores/documentiPerSorgente'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
-import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
+import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
-import { toDateString } from '../../../core/utils/date'
-import { downloadBlob } from '../../../core/utils/download'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
 import { exportOrdini } from '../api/ordiniApi'
-import { STATI_ORDINE_ANTEPRIMA_PDF } from '../constants'
+import { STATI_ORDINE_CON_DOCUMENTO } from '../constants'
 import { useOrdiniStore } from '../stores/ordini'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useOrdiniStore()
-const docStore = useDocumentiPerSorgenteStore()
 const isBlocked = useInjectBlocked()
-const { execute } = useApiHandler()
 
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
@@ -57,11 +53,12 @@ const {
   searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
 
-// --- Filtri custom (toolbar caller) ---
-const statoFilter = ref(store.filters.stato_codice_interno ?? null)
-const utilityFilter = ref(store.filters.utility_id ?? null)
-const dataDaFilter = ref(store.filters.data_da ? new Date(`${store.filters.data_da}T00:00:00`) : null)
-const dataAlFilter = ref(store.filters.data_a ? new Date(`${store.filters.data_a}T00:00:00`) : null)
+// --- Filtri custom (toolbar caller) — binding store via BB (B14) ---
+const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_codice_interno')
+const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
+const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
+const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
 
 // Params export: i filtri vivono in store.filters; `search` dal ref immediato.
 // I filtri data BE sono data_da/data_a (sul campo `data` della testata).
@@ -80,30 +77,23 @@ function buildExportParams(format) {
   return p
 }
 
-function onStatoChange() { store.filters.stato_codice_interno = statoFilter.value; applyFilters() }
-function onUtilityChange() { store.filters.utility_id = utilityFilter.value; applyFilters() }
-function onDataDaChange() {
-  store.filters.data_da = dataDaFilter.value ? toDateString(dataDaFilter.value) : null
-  applyFilters()
-}
-function onDataAlChange() {
-  store.filters.data_a = dataAlFilter.value ? toDateString(dataAlFilter.value) : null
-  applyFilters()
-}
-
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
 
-// ── Drawer note (azione di riga) ──
+// ── Sub-dialog PDF documenti generati + drawer note (azioni di riga) ──
+const pdfDialogVisible = ref(false)
+const pdfDialogOrdine = ref(null)
 const noteDrawerVisible = ref(false)
 const noteDrawerOrdine = ref(null)
 
-async function onPdfClick(row) {
-  if (!row?.id) return
-  docStore.setSorgente(SORGENTE_CODES.ORDINE_VENDITA, row.id)
-  const result = await execute(() => docStore.anteprima({}))
-  if (!result) return
-  downloadBlob(result.blob, result.fileName)
+// Flusso allineato a preventivi/contratti/offerte (§6 brief-ordini-stampa.md):
+// dalla lista NON si fa anteprima/download diretto. In DRAFT l'azione e'
+// disabilitata (anteprima solo dal drawer); dagli stati post-bozza apre
+// `PdfDocumentiSorgenteDialog` con i documenti gia' generati alla conferma.
+function onPdfClick(row) {
+  if (!row?.id || !STATI_ORDINE_CON_DOCUMENTO.includes(row.stato_codice_interno)) return
+  pdfDialogOrdine.value = row
+  pdfDialogVisible.value = true
 }
 
 function onNoteClick(row) {
@@ -114,16 +104,19 @@ function onNoteClick(row) {
 
 // Scopo: costruisce le azioni contestuali di riga. Modifica = click riga.
 // Conferma/push vivono nel drawer (dove sono caricate le capability), non in
-// lista: la lista resta consultazione + stampa ordine + note.
+// lista: la lista resta consultazione + gestione documenti generati + note.
 function buildRowActions(data) {
+  const conDocumento = STATI_ORDINE_CON_DOCUMENTO.includes(data.stato_codice_interno)
   return [
     {
-      key: 'stampa-ordine',
-      label: t('vendite.ordini.pdf.label_anteprima'),
+      key: 'documenti-pdf',
+      label: t('vendite.ordini.pdf.label_scarica'),
       icon: MANAGE_ICONS.PDF,
       severity: 'primary',
-      disabled: !STATI_ORDINE_ANTEPRIMA_PDF.includes(data.stato_codice_interno),
-      tooltip: t('vendite.ordini.pdf.tooltip_anteprima'),
+      disabled: !conDocumento,
+      tooltip: conDocumento
+        ? t('vendite.ordini.pdf.tooltip_lista')
+        : t('vendite.ordini.pdf.tooltip_lista_disabilitato'),
       command: () => onPdfClick(data),
     },
     {
@@ -219,6 +212,17 @@ onMounted(() => store.fetchList())
       v-if="noteDrawerOrdine?.id"
       v-model:visible="noteDrawerVisible"
       :ordine-id="noteDrawerOrdine.id"
+    />
+
+    <!-- Dialog lista PDF documenti generati per l'ordine selezionato. Riusa il
+         building block `PdfDocumentiSorgenteDialog` (come preventivi/offerte). -->
+    <PdfDocumentiSorgenteDialog
+      v-model:visible="pdfDialogVisible"
+      :sorgente-code="SORGENTE_CODES.ORDINE_VENDITA"
+      :sorgente-id="pdfDialogOrdine?.id ?? null"
+      :title="pdfDialogOrdine
+        ? t('vendite.ordini.pdf.dialog_title', { numero: pdfDialogOrdine.numero })
+        : ''"
     />
   </div>
 </template>
