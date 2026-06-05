@@ -4,6 +4,7 @@
 - [fn_audit_summary](manual/fn_audit_summary.md)
 - [fn_available_actions_contratto](manual/fn_available_actions_contratto.md)
 - [fn_available_actions_offerta](manual/fn_available_actions_offerta.md)
+- [fn_available_actions_ordine](manual/fn_available_actions_ordine.md)
 - [fn_available_actions_preventivo](manual/fn_available_actions_preventivo.md)
 - [fn_capability_promo_articolo](manual/fn_capability_promo_articolo.md)
 - [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md)

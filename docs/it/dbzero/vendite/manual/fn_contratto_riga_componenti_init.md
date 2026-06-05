@@ -2,7 +2,7 @@
 
 ### Scopo
 
-Inizializza i componenti BoM (modello unificato) per una riga contratto composita. Per ogni componente attivo della BoM: se presente un override in `p_componenti_overrides`, usa quel prezzo; altrimenti chiama `fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto = v_articolo_id` per attivare il pricing bundle — se il resolver fallisce, solleva `E_DOC_COMPONENTE_LISTINO_MANCANTE`. Idempotente. No-op se `quantita IS NULL` (riga a consumo senza quantità fissa).
+Inizializza i componenti BoM (modello unificato) per una riga contratto composita. Per ogni componente attivo della BoM: se presente un override in `p_componenti_overrides`, usa quel prezzo; altrimenti chiama `fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto = v_articolo_id` per attivare il pricing bundle — se il resolver fallisce, solleva `E_DOC_COMPONENTE_LISTINO_MANCANTE`. Idempotente. No-op se `quantita IS NULL` (riga a consumo senza quantità fissa) **o se `tipo_eccezione = 'ESCLUSIONE'`** (articolo escluso interamente: nessun prezzo, nessun componente).
 
 > **Vedi anche**
 >
@@ -42,23 +42,24 @@ vendite.fn_contratto_riga_componenti_init(
 
 | Valore | Significato |
 |---|---|
-| `0` | No-op: articolo non composito, componenti già presenti, oppure `quantita IS NULL`. |
+| `0` | No-op: articolo non composito, `tipo_eccezione = 'ESCLUSIONE'`, componenti già presenti, oppure `quantita IS NULL`. |
 | `> 0` | Componenti inseriti con successo. |
 
 ## Logica
 
 1. **Guard input** — valida `p_riga_id` e `p_emittente_sr_id`.
-2. **Lettura riga padre** — un'unica query JOIN tra `contratti_righe` e `catalogo.articoli` recupera in un solo round-trip: `articolo_id`, `codice`, `uom_operativa_id`, `quantita`, `contratto_id` e `is_composito`.
+2. **Lettura riga padre** — un'unica query JOIN tra `contratti_righe` e `catalogo.articoli` recupera in un solo round-trip: `articolo_id`, `codice`, `uom_operativa_id`, `quantita`, `contratto_id`, `tipo_eccezione` e `is_composito`.
 3. **No-op CASO B** — se `articoli.is_composito = FALSE`, ritorna 0.
-4. **No-op quantita NULL** — se `contratti_righe.quantita IS NULL` (riga a consumo), ritorna 0. Non è possibile calcolare `coeff_qta × NULL`.
-5. **Idempotenza** — se esistono già righe in `contratti_righe_componenti`, ritorna 0.
-6. **Lettura parametri contratto** — `billing_account_id`, `utility_id`, `istanza_utility_id` da `contratti`.
-7. **Loop per-componente** — per ogni componente attivo della BoM (`attivo = TRUE`, `validita @> p_data_riferimento`), senza filtro su `esposto_in_fattura`:
+4. **No-op ESCLUSIONE (guard difensivo)** — se `tipo_eccezione = 'ESCLUSIONE'`, ritorna 0. Una riga di esclusione rimuove l'articolo per intero: per il CHECK `chk_contrighe_prezzo_per_tipo_eccezione` il prezzo padre deve restare NULL, quindi non vanno creati componenti. Inizializzarli scatenerebbe il ricalcolo del prezzo padre (`_z90_ricalcola_padre → SUM(figli)`) in violazione del CHECK. Vedi [§nota sul modello](#modello-esclusione-nessun-componente).
+5. **No-op quantita NULL** — se `contratti_righe.quantita IS NULL` (riga a consumo), ritorna 0. Non è possibile calcolare `coeff_qta × NULL`.
+6. **Idempotenza** — se esistono già righe in `contratti_righe_componenti`, ritorna 0.
+7. **Lettura parametri contratto** — `billing_account_id`, `utility_id`, `istanza_utility_id` da `contratti`.
+8. **Loop per-componente** — per ogni componente attivo della BoM (`attivo = TRUE`, `validita @> p_data_riferimento`), senza filtro su `esposto_in_fattura`:
    - **Path override**: se `p_componenti_overrides ? componente_id::text` → prezzo = valore della mappa, `origine_prezzo = 'MANUALE'`. Prezzo = 0 → raise `E_PARAMETRO_INVALIDO` **solo** se `v_comp.obbligatorio = TRUE`; per i componenti opzionali, prezzo = 0 è ammesso.
    - **Path resolver**: chiama `fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto := v_articolo_id`. Se esiste una riga in `vendite.listini_righe_componenti` per (listino_versione, padre, figlio, data), il resolver ritorna `origine = 'LISTINO_BUNDLE'`. Se fallisce → raise `E_DOC_COMPONENTE_LISTINO_MANCANTE`.
-   - **INSERT**: `attivo` = `v_comp.obbligatorio` — TRUE per i componenti obbligatori, FALSE per i componenti opzionali.
-8. **INSERT componente** — `prezzo_unitario` NOT NULL, `origine_prezzo`, `prezzo_resolver_context` JSONB (include `istanza_utility_id`, `listino_riga_id`, `contratto_id`).
-9. **Check BoM vuota** — se `v_inserted = 0` dopo il loop → raise `E_DOC_COMPOSITO_BOM_VUOTA` (442). Non scatta in caso di idempotenza (intercettata al passo 5).
+   - **INSERT**: `attivo = TRUE` per tutti i componenti (BoM = contratto immutabile: l'operatore non sceglie quali includere).
+9. **INSERT componente** — `prezzo_unitario` NOT NULL, `origine_prezzo`, `prezzo_resolver_context` JSONB (include `istanza_utility_id`, `listino_riga_id`, `contratto_id`).
+10. **Check BoM vuota** — se `v_inserted = 0` dopo il loop → raise `E_DOC_COMPOSITO_BOM_VUOTA` (442). Non scatta in caso di idempotenza (intercettata al passo 6).
 
 ## Differenze rispetto alle altre fn_init
 
@@ -68,7 +69,8 @@ vendite.fn_contratto_riga_componenti_init(
 | `istanza_utility_id` | — | — | — | incluso nel context JSONB |
 | No-op `quantita IS NULL` | — | — | — | ✅ (righe a consumo) |
 | Loop BoM | tutti i componenti attivi (modello unificato) | identico | identico | identico |
-| `attivo` INSERT | `v_comp.obbligatorio` | identico | identico | identico |
+| `attivo` INSERT | `TRUE` (BoM immutabile) | identico | identico | identico |
+| Guard ESCLUSIONE | — | — | — | ✅ no-op `RETURN 0` |
 | Context JSONB extra | — | — | — | `listino_riga_id`, `contratto_id` sempre inclusi |
 
 ## `prezzo_resolver_context` JSONB
@@ -122,11 +124,28 @@ Struttura via override:
 | `E_DOC_COMPONENTE_LISTINO_MANCANTE` (id 440) | Resolver fallisce per un componente senza override |
 | `E_DOC_COMPOSITO_BOM_VUOTA` (442) | Articolo composito senza componenti attivi e validi alla data di riferimento |
 
+## Modello: ESCLUSIONE = nessun componente
+
+Sulla riga contratto `tipo_eccezione` governa il prezzo (CHECK
+`chk_contrighe_prezzo_per_tipo_eccezione`):
+
+- **OVERRIDE / AGGIUNTA** → l'articolo **ha un prezzo** (`prezzo_unitario NOT NULL`);
+- **ESCLUSIONE** → l'articolo è **escluso interamente**, **non ha prezzo**
+  (`prezzo_unitario IS NULL`).
+
+Per coerenza con questo invariante, **una riga ESCLUSIONE non ha componenti BoM**:
+non ha senso negoziare il prezzo dei pezzi di qualcosa che stai togliendo. Il
+guard al passo 4 è la rete di sicurezza a DB (single source of truth): rende la
+funzione corretta per qualunque chiamante (BE, FE, script, fix dati), anche se
+oggi BE e FE già saltano l'auto-init per le ESCLUSIONI. Specchio simmetrico in
+[`fn_offerta_eccezione_componenti_init`](/dbzero/vendite/funzioni/fn_offerta_eccezione_componenti_init).
+
 ## Note operative
 
 - **`p_data_riferimento`**: il BE deve passare `COALESCE(contratti.valido_dal, contratti.data)` come convenzione, allineata a `fn_list_contratti_da_pushare`.
+- **Righe ESCLUSIONE**: la funzione ritorna 0 senza creare componenti (passo 4). Il FE/BE evitano comunque di chiamarla per le ESCLUSIONI; il guard a DB protegge gli altri chiamanti.
 - **Righe a consumo**: se `contratti_righe.quantita IS NULL` la funzione ritorna 0 silenziosamente. Il BE deve gestire il caso in UI prima di chiamare la init.
 - **`prezzo_unitario` sempre NOT NULL**: con form atomic, ogni INSERT ha prezzo valorizzato. Il check prezzo ≠ 0 è condizionale: obbligatori non possono avere prezzo = 0 (`E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO`), opzionali ammettono qualsiasi valore incluso 0.
-- **Componenti opzionali** (`obbligatorio = FALSE`): vengono inseriti con `attivo = FALSE` — l'operatore può attivarli nel drawer.
+- **Campo `attivo`**: tutti i componenti sono inseriti con `attivo = TRUE` (BoM = contratto immutabile per documento). Il guard prezzo = 0 sui soli obbligatori resta l'unico vincolo differenziato per `obbligatorio`.
 - **Trigger attivati**: INSERT in `contratti_righe_componenti` attiva `_a10_guard_bom_coerenza`, `_m50_calcola_quantita`, audit, tx_id e `_z90_ricalcola_padre`.
 - **Non STABLE**: VOLATILE per default.

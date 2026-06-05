@@ -19,12 +19,15 @@ AS $function$
 --   Guard override=0 solo su obbligatori. Check BOM vuota post-loop.
 --   Fallback resolver P0001: prezzo=0/MANUALE (offerta permissiva vs contratto strict).
 --   No-op su quantita IS NULL (eccezione a consumo). Idempotente.
+--   rev 2026-06-05: guard difensivo — no-op su tipo_eccezione = 'ESCLUSIONE'
+--   (articolo escluso interamente, nessun componente; protegge il CHECK prezzo NULL).
 DECLARE
     v_articolo_id     catalogo.articoli.id%TYPE;
     v_codice_articolo catalogo.articoli.codice%TYPE;
     v_uom_id          catalogo.unita_misura.id%TYPE;
     v_qta_padre       vendite.offerte_commerciali_eccezioni.quantita%TYPE;
     v_offerta_id      vendite.offerte_commerciali.id%TYPE;
+    v_tipo_eccezione  vendite.offerte_commerciali_eccezioni.tipo_eccezione%TYPE;
     v_is_composito    catalogo.articoli.is_composito%TYPE;
     v_ba_id           anagrafiche.billing_account.id%TYPE;
     v_utility_id      vendite.offerte_commerciali.utility_id%TYPE;
@@ -58,8 +61,9 @@ BEGIN
     SELECT oce.articolo_id,
            oce.uom_operativa_id,
            oce.quantita,
-           oce.offerta_id
-      INTO v_articolo_id, v_uom_id, v_qta_padre, v_offerta_id
+           oce.offerta_id,
+           oce.tipo_eccezione
+      INTO v_articolo_id, v_uom_id, v_qta_padre, v_offerta_id, v_tipo_eccezione
       FROM vendite.offerte_commerciali_eccezioni oce
      WHERE oce.id = p_eccezione_id;
 
@@ -78,6 +82,15 @@ BEGIN
       FROM catalogo.articoli a WHERE a.id = v_articolo_id;
 
     IF NOT COALESCE(v_is_composito, FALSE) THEN
+        RETURN 0;
+    END IF;
+
+    -- Guard difensivo: ESCLUSIONE = articolo escluso interamente,
+    -- nessun prezzo (CHECK chk_offerte_eccezioni_prezzo_per_tipo_eccezione
+    -- impone prezzo_unitario IS NULL) e quindi nessun componente BoM.
+    -- Inizializzare i componenti scatenerebbe il ricalcolo del prezzo padre
+    -- (trigger _z90_ricalcola_padre -> SUM figli) in violazione del CHECK.
+    IF v_tipo_eccezione = 'ESCLUSIONE' THEN
         RETURN 0;
     END IF;
 
@@ -275,7 +288,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_offerta_eccezione_componenti_init(p_eccezione_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
-IS 'Inizializza componenti BoM CASO A per un''eccezione offerta composita. Modello unificato rev 2026-05-27: tutti i componenti attivi inseriti con attivo=TRUE (no filtro esposto_in_fattura). Chiave overrides: componente_id::text. Guard override=0 solo su obbligatori. Check BOM vuota post-loop. Fallback resolver P0001: prezzo=0/MANUALE (permissivo). Idempotente. No-op su quantita IS NULL. Ritorna n. componenti inseriti.';
+IS 'Inizializza componenti BoM CASO A per un''eccezione offerta composita. Modello unificato rev 2026-05-27: tutti i componenti attivi inseriti con attivo=TRUE (no filtro esposto_in_fattura). Chiave overrides: componente_id::text. Guard override=0 solo su obbligatori. Check BOM vuota post-loop. Fallback resolver P0001: prezzo=0/MANUALE (permissivo). rev 2026-06-05: guard difensivo no-op su tipo_eccezione = ESCLUSIONE. Idempotente. No-op su quantita IS NULL. Ritorna n. componenti inseriti.';
 ```
 
 ---

@@ -1,0 +1,155 @@
+{% include-markdown "it/dbzero/script/manual/fn_available_actions_ordine.md" %}
+# ⚙️ Funzione `fn_available_actions_ordine`
+
+```sql
+CREATE FUNCTION fn_available_actions_ordine(p_ordine_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+-- Scopo:
+--   Capability dell'ordine di vendita per il detail API. Allineato
+--   al pattern data-driven di fn_available_actions_preventivo /
+--   _offerta / _contratto: legge le transizioni manuali disponibili
+--   da config.transizioni_stati_ordini (matrice 20260605-08).
+--
+--   Grafo transizioni manuali (enforcement: trgfn_ordini_guard_transizione):
+--     DRAFT      -> CONFERMATO (conferma, manuale)   attivo=true
+--     DRAFT      -> ANNULLATO  (annulla,  manuale)   attivo=true
+--     CONFERMATO -> ANNULLATO  (annulla,  manuale)   attivo=FALSE (non esposta)
+--     Stati a valle (ALLOCATO/SPEDITO/...) fuori matrice (no driver).
+--
+--   push_commessa: azione applicativa (NON transizione di stato:
+--     l'ordine resta CONFERMATO). Appesa a mano come push_commessa
+--     dei preventivi. Eleggibile se stato=CONFERMATO e almeno una
+--     riga risulta pushabile (riuso fn_list_ordini_da_pushare).
+--     Quando off, valorizza can_push_commessa_reason/_reason_key.
+--
+--   Editabilita':
+--     DRAFT: testata + righe (can_edit_*=true). non_editable solo
+--            cliente (billing_account_id, soggetto_ruolo_id: lock
+--            columns, immutabili anche in bozza).
+--     CONFERMATO/terminali: nulla (can_edit_*=false), tutta la
+--            testata bloccata.
+--
+--   Fallback sicuro: NULL se l'ordine non esiste.
+DECLARE
+    v_stato_id   vendite.ordini.stato_doc_ordine_id%TYPE;
+    v_stato_cod  config.stati_doc_ordini.codice_interno%TYPE;
+    v_actions    jsonb;
+    v_can_change boolean := false;
+    v_push_ok    boolean := false;
+    v_push_reason     text := NULL;
+    v_push_reason_key text := NULL;
+    -- Cliente immutabile anche in DRAFT (script.trgfn_lock_columns,
+    -- E_ORD_CLIENTE_IMMUTABILE). Allineato a _CREATE/_UPDATE_KEYS_ORDINE.
+    c_non_edit_cliente CONSTANT jsonb :=
+        '["billing_account_id","soggetto_ruolo_id"]'::jsonb;
+    -- Tutti i campi testata aggiornabili (oltre al cliente) bloccati
+    -- fuori da DRAFT. Allineato a _UPDATE_KEYS_ORDINE (ordini_service.py).
+    c_non_edit_tutti CONSTANT jsonb :=
+        '["billing_account_id","soggetto_ruolo_id","utility_id",'
+        '"valuta_id","modalita_pagamento_id","termine_pagamento_id",'
+        '"fatturazione_trigger","agente_soggetto_ruolo_id","data","meta"]'::jsonb;
+BEGIN
+    -- Stato corrente.
+    SELECT o.stato_doc_ordine_id, sdo.codice_interno
+      INTO v_stato_id, v_stato_cod
+      FROM vendite.ordini o
+      JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
+     WHERE o.id = p_ordine_id;
+
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+
+    -- Transizioni manuali disponibili per lo stato corrente.
+    -- Pattern identico a fn_available_actions_preventivo/offerta/contratto.
+    -- Filtri: attivo, manuale (default true se assente), guard meta keys.
+    SELECT COALESCE(
+        jsonb_agg(
+            jsonb_build_object(
+                'key',              t.meta->>'action_key',
+                'target_state',     sa.codice_interno,
+                'label_key',        t.meta->>'label_key',
+                'severity',         t.meta->>'severity',
+                'icon',             t.meta->>'icon',
+                'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                'outlined',         COALESCE((t.meta->>'outlined')::boolean, false)
+            )
+            ORDER BY sa.ordine
+        ),
+        '[]'::jsonb
+    )
+    INTO v_actions
+    FROM config.transizioni_stati_ordini t
+    JOIN config.stati_doc_ordini sa ON sa.id = t.stato_a_id
+    WHERE t.stato_da_id = v_stato_id
+      AND t.attivo IS TRUE
+      AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+      AND t.meta ? 'action_key'
+      AND t.meta ? 'label_key';
+
+    -- can_change_state riflette le SOLE transizioni di stato
+    -- (calcolato prima di appendere push_commessa, che non e' una
+    -- transizione: l'ordine resta CONFERMATO).
+    v_can_change := jsonb_array_length(v_actions) > 0;
+
+    -- push_commessa: azione applicativa (non transizione).
+    -- Eleggibile solo da CONFERMATO con almeno una riga pushabile.
+    -- Riuso della fn canonica per non duplicare la logica pushable.
+    IF v_stato_cod = 'CONFERMATO' THEN
+        IF EXISTS (SELECT 1
+                     FROM vendite.fn_list_ordini_da_pushare(p_ordine_id := p_ordine_id)) THEN
+            v_push_ok := true;
+        ELSE
+            v_push_reason     := 'ORDINE_NESSUNA_RIGA_PUSHABILE';
+            v_push_reason_key := 'ordini.push_commessa_reason.nessuna_riga_pushabile';
+        END IF;
+    ELSE
+        v_push_reason     := 'ORDINE_NON_CONFERMATO';
+        v_push_reason_key := 'ordini.push_commessa_reason.non_confermato';
+    END IF;
+
+    IF v_push_ok THEN
+        v_actions := v_actions || jsonb_build_array(
+            jsonb_build_object(
+                'key',              'push_commessa',
+                'target_state',     NULL,
+                'label_key',        'vendite.ordini.azione_push_commessa',
+                'severity',         'success',
+                'icon',             'pi pi-arrow-right',
+                'requires_confirm', true,
+                'outlined',         false
+            )
+        );
+    END IF;
+
+    RETURN jsonb_build_object(
+        'available_actions',           v_actions,
+        'can_change_state',            v_can_change,
+        'can_edit_testata',            (v_stato_cod = 'DRAFT'),
+        'can_edit_righe',              (v_stato_cod = 'DRAFT'),
+        'can_push_commessa',           v_push_ok,
+        'can_push_commessa_reason',    v_push_reason,
+        'can_push_commessa_reason_key', v_push_reason_key,
+        'non_editable_fields',         CASE WHEN v_stato_cod = 'DRAFT'
+                                            THEN c_non_edit_cliente
+                                            ELSE c_non_edit_tutti END,
+        'stato_codice',                v_stato_cod
+    );
+END;
+$function$
+
+COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
+IS 'Capability ordine di vendita per detail API: available_actions (da config.transizioni_stati_ordini, pattern data-driven) + push_commessa (azione applicativa hardcoded, riuso fn_list_ordini_da_pushare), can_change_state, can_edit_testata/righe, can_push_commessa(+reason/_reason_key), non_editable_fields, stato_codice. Sostituisce il calcolo hardcoded in ordini_service.py. rev 2026-06-05.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

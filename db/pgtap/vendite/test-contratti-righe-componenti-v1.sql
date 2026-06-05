@@ -34,10 +34,13 @@
 --   25) Guard pending: UPDATE struttura su PENDING -> raise
 --   26) Invariante post-fix: righe FISSA con qta_operativa NOT NULL hanno quantita NOT NULL
 --   27) trgfn_qta_from_operativa: short-circuit limitato a UPDATE (fix INSERT FISSA)
+--   28) fn_contratto_riga_componenti_init: guard ESCLUSIONE composito -> 0,
+--       nessun componente, riga padre conserva prezzo_unitario NULL
+--       [skip se nessuna riga composito+ESCLUSIONE con quantita NOT NULL]
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(36);
+SELECT plan(37);
 
 -- =========================================================
 -- 1) Tabella esiste
@@ -370,6 +373,61 @@ SELECT ok(
     LIKE '%TG_OP%',
     '27) trgfn_qta_from_operativa: short-circuit contiene controllo TG_OP (fix INSERT FISSA)'
 );
+
+-- =========================================================
+-- 28) Guard difensivo ESCLUSIONE: una riga contratto composita con
+--     tipo_eccezione = ESCLUSIONE e quantita NOT NULL deve dare RETURN 0
+--     (no-op), senza inserire componenti e senza violare il CHECK
+--     chk_contrighe_prezzo_per_tipo_eccezione (prezzo padre resta NULL).
+--     Senza il guard, l'init entrerebbe nel loop e il ricalcolo padre
+--     (SUM figli) farebbe scattare il CHECK -> errore.
+--     Data-dependent: skip se nessuna riga composito+ESCLUSIONE valida.
+-- =========================================================
+SELECT CASE
+    WHEN NOT EXISTS (
+        SELECT 1 FROM vendite.contratti_righe cr
+          JOIN catalogo.articoli a ON a.id = cr.articolo_id
+         WHERE COALESCE(a.is_composito, FALSE)
+           AND cr.tipo_eccezione = 'ESCLUSIONE'
+           AND cr.quantita IS NOT NULL
+         LIMIT 1
+    )
+    THEN skip('28) nessuna riga composito+ESCLUSIONE con quantita NOT NULL disponibile')
+    ELSE is(
+        (
+            -- RETURN 0 senza sollevare il CHECK
+            SELECT vendite.fn_contratto_riga_componenti_init(
+                (SELECT cr.id FROM vendite.contratti_righe cr
+                   JOIN catalogo.articoli a ON a.id = cr.articolo_id
+                  WHERE COALESCE(a.is_composito, FALSE)
+                    AND cr.tipo_eccezione = 'ESCLUSIONE'
+                    AND cr.quantita IS NOT NULL
+                  LIMIT 1),
+                1,
+                current_date
+            )
+        )
+        -- nessun componente inserito per quella riga
+        + (SELECT COUNT(*)::integer FROM vendite.contratti_righe_componenti crc
+            WHERE crc.riga_contratto_id = (
+                SELECT cr.id FROM vendite.contratti_righe cr
+                  JOIN catalogo.articoli a ON a.id = cr.articolo_id
+                 WHERE COALESCE(a.is_composito, FALSE)
+                   AND cr.tipo_eccezione = 'ESCLUSIONE'
+                   AND cr.quantita IS NOT NULL
+                 LIMIT 1))
+        -- prezzo padre ancora NULL -> +0; altrimenti +1000 (fa fallire il test)
+        + (SELECT CASE WHEN cr.prezzo_unitario IS NULL THEN 0 ELSE 1000 END
+             FROM vendite.contratti_righe cr
+             JOIN catalogo.articoli a ON a.id = cr.articolo_id
+            WHERE COALESCE(a.is_composito, FALSE)
+              AND cr.tipo_eccezione = 'ESCLUSIONE'
+              AND cr.quantita IS NOT NULL
+            LIMIT 1),
+        0,
+        '28) fn_contratto_riga_componenti_init: ESCLUSIONE composito -> 0, nessun componente, prezzo padre NULL'
+    )
+END;
 
 SELECT * FROM finish();
 ROLLBACK;
