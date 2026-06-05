@@ -10,7 +10,7 @@
 # scritture dirette su tabelle, chiamate a funzioni DB per i componenti BoM.
 # Il ricalcolo totali e' gestito da trigger DB su ordini_righe; il backend
 # non lo orchestra. Clone strutturale di `preventivi_repository` adattato alle
-# colonne reali della testata/riga ordine (riga_nr, sconto_perc, iva_id) e
+# colonne reali della testata/riga ordine (riga_nr, sconto_percentuale, iva_id) e
 # senza revisioni (gli ordini non hanno `rev`).
 
 import json
@@ -239,14 +239,14 @@ class OrdiniRepository(ComponentiRepositoryMixin):
                 r.uom_operativa_id,
                 um.codice               AS uom_codice,
                 r.prezzo_unitario,
-                r.sconto_perc,
+                r.sconto_percentuale,
                 r.iva_id,
                 iva.codice              AS iva_codice,
                 iva.descrizione         AS iva_descrizione,
                 iva.aliquota_iva        AS iva_aliquota,
                 ROUND(
                     (r.quantita * COALESCE(r.prezzo_unitario, 0::numeric)) *
-                    (1::numeric - COALESCE(r.sconto_perc, 0::numeric) / 100::numeric),
+                    (1::numeric - COALESCE(r.sconto_percentuale, 0::numeric) / 100::numeric),
                     2
                 ) AS importo_riga,
                 r.meta,
@@ -289,7 +289,7 @@ class OrdiniRepository(ComponentiRepositoryMixin):
                 r.uom_operativa_id,
                 um.codice               AS uom_codice,
                 r.prezzo_unitario,
-                r.sconto_perc,
+                r.sconto_percentuale,
                 r.iva_id,
                 iva.codice              AS iva_codice,
                 r.meta,
@@ -513,7 +513,7 @@ class OrdiniRepository(ComponentiRepositoryMixin):
         uom_operativa_id: int | None = None,
         factor_to_base: str | None = None,
         prezzo_unitario: str | None = None,
-        sconto_perc: str | None = None,
+        sconto_percentuale: str | None = None,
         iva_id: int | None = None,
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -521,7 +521,7 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             INSERT INTO vendite.ordini_righe (
                 ordine_id, riga_nr, articolo_id, descrizione,
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
-                prezzo_unitario, sconto_perc, iva_id, meta
+                prezzo_unitario, sconto_percentuale, iva_id, meta
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
             )
@@ -531,7 +531,7 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, [
                 ordine_id, riga_nr, articolo_id, descrizione,
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
-                prezzo_unitario, sconto_perc, iva_id,
+                prezzo_unitario, sconto_percentuale, iva_id,
                 json.dumps(meta or {}),
             ])
             result = row_to_dict(cursor)

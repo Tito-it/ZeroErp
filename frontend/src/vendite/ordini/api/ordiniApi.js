@@ -51,9 +51,25 @@ export function deleteOrdine(id) {
 
 // --- Transizioni / integrazione ---
 
-// DRAFT -> CONFERMATO. Guard BE: origine DRAFT + almeno una riga.
+// DRAFT -> CONFERMATO. Guard BE: origine DRAFT + almeno una riga. Endpoint di
+// sola transizione: il flusso utente passa da `emettiOrdine` (/emetti/), questo
+// resta come API di servizio.
 export function confermaOrdine(id) {
   return api.post(`${BASE}/${id}/conferma/`, {})
+}
+
+// DRAFT -> CONFERMATO (multipart). L'endpoint `/emetti/` orchestra conferma +
+// genera documento + persiste eventuali allegati in transazione atomica lato BE
+// (ApiOrdineEmetti, §6 brief-ordini-stampa.md, mirror di emettiPreventivo). La
+// conferma da UI passa da qui via OrdineEmissioneDialog; se la generazione
+// fallisce il BE annulla la conferma (stato resta DRAFT).
+export function emettiOrdine(id, { allegati = [], templateId = null } = {}) {
+  const formData = new FormData()
+  if (templateId != null) formData.append('template_documento_id', templateId)
+  for (const file of allegati) formData.append('allegati', file)
+  return api.post(`${BASE}/${id}/emetti/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
 
 // Transizione di stato generica data-driven (es. annulla DRAFT->ANNULLATO).

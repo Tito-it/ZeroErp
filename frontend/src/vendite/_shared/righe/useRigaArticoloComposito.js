@@ -6,8 +6,9 @@
 //
 // DELIBERATAMENTE thin: lo strato resolver listino + gate L2 + cella
 // prezzo-listino + campo `ordine` di PreventiviRigaForm (superset), il `form`
-// stesso (i nomi campo divergono — vedi drift `sconto_perc`/`sconto_percentuale`,
-// brief DB) e `canSave`/`buildPayload`/`handleSave` restano nei form di dominio.
+// stesso (campo `ordine` solo preventivi; il drift sconto_perc/sconto_percentuale
+// è stato sanato col rename DB 2026-06-05 → ora `sconto_percentuale` ovunque) e
+// `canSave`/`buildPayload`/`handleSave` restano nei form di dominio.
 // Un composable che possedesse tutto sarebbe un mega-config leaky
 // (cfr. feedback_concentrico_no_yagni).
 //

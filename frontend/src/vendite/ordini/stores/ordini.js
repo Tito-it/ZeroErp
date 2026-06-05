@@ -21,6 +21,7 @@ import {
   createRiga,
   deleteOrdine,
   deleteRiga,
+  emettiOrdine,
   getOrdine,
   getRiepilogoIva,
   listOrdini,
@@ -111,9 +112,20 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
 
   // --- Transizioni / integrazione ---
 
-  // DRAFT -> CONFERMATO.
+  // DRAFT -> CONFERMATO (sola transizione). Resta come API di servizio: il
+  // flusso utente usa `emetti()` (apertura OrdineEmissioneDialog).
   async function conferma(id) {
     const res = await confermaOrdine(id)
+    emitDataChanged(TAB_ENTITIES.ORDINE, id)
+    return res.data.data
+  }
+
+  // DRAFT -> CONFERMATO (multipart): conferma + genera documento + allegati in
+  // transazione atomica lato BE. Invocata da OrdineEmissioneDialog (il drawer
+  // intercetta l'action 'conferma' e apre il dialog invece di chiamare conferma).
+  // Mirror del flusso emissione preventivo/offerta.
+  async function emetti(id, { allegati = [], templateId = null } = {}) {
+    const res = await emettiOrdine(id, { allegati, templateId })
     emitDataChanged(TAB_ENTITIES.ORDINE, id)
     return res.data.data
   }
@@ -174,7 +186,7 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     // testata
     fetchList, fetchDetail, create, update, elimina,
     // transizioni
-    conferma, push, cambiaStato,
+    conferma, emetti, push, cambiaStato,
     // righe
     loadRighe, addRiga, aggiornaRiga, eliminaRiga,
     // riepilogo IVA

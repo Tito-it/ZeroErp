@@ -83,12 +83,12 @@ _UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
 })
 _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
-    "uom_operativa_id", "factor_to_base", "prezzo_unitario", "sconto_perc",
+    "uom_operativa_id", "factor_to_base", "prezzo_unitario", "sconto_percentuale",
     "iva_id", "meta",
 })
 _UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
-    "factor_to_base", "prezzo_unitario", "sconto_perc", "iva_id", "meta",
+    "factor_to_base", "prezzo_unitario", "sconto_percentuale", "iva_id", "meta",
 })
 
 
@@ -366,8 +366,8 @@ def _crea_testata_ordine_da_origine(
 
 
 # Scopo: Mappa una riga preventivo nel payload riga ordine (whitelist
-#        _CREATE_KEYS_RIGA). Nota rename: preventivo usa `sconto_percentuale`,
-#        ordine usa `sconto_perc`. Il prezzo unitario è copiato "congelato"
+#        _CREATE_KEYS_RIGA). Dal rename 2026-06-05 entrambi usano
+#        `sconto_percentuale` (mapping ora identità). Il prezzo unitario è copiato "congelato"
 #        (la riga non-composita non viene ri-prezzata); per le righe composite
 #        gestisci_riga re-inizializza i componenti ai prezzi correnti (la
 #        struttura BoM è copiata, i prezzi componente sono risolti all'ordine —
@@ -381,7 +381,7 @@ def _riga_payload_da_preventivo(r: dict[str, Any]) -> dict[str, Any]:
         "uom_operativa_id": r.get("uom_operativa_id"),
         "factor_to_base": r.get("factor_to_base"),
         "prezzo_unitario": r.get("prezzo_unitario"),
-        "sconto_perc": r.get("sconto_percentuale"),
+        "sconto_percentuale": r.get("sconto_percentuale"),
         "iva_id": r.get("iva_id"),
         "meta": r.get("meta") if isinstance(r.get("meta"), dict) else None,
     }
@@ -504,7 +504,7 @@ def _copia_riga_offerta_espansa(
         factor_to_base=_as_str(r.get("factor_to_base")),
         # Padre composito: 0 placeholder, il trigger ricalcola da SUM(componenti).
         prezzo_unitario="0" if is_composito else _as_str(r.get("prezzo_unitario")),
-        sconto_perc=_as_str(r.get("sconto_perc")),
+        sconto_percentuale=_as_str(r.get("sconto_percentuale")),
         iva_id=r.get("iva_id"),
     )
     if not is_composito:
@@ -738,7 +738,7 @@ def gestisci_riga(
             uom_operativa_id=data.get("uom_operativa_id"),
             factor_to_base=data.get("factor_to_base"),
             prezzo_unitario=prezzo_unitario,
-            sconto_perc=data.get("sconto_perc"),
+            sconto_percentuale=data.get("sconto_percentuale"),
             iva_id=data.get("iva_id"),
             meta=data.get("meta") if isinstance(data.get("meta"), dict) else None,
         )

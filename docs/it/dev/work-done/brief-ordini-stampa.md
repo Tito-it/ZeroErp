@@ -243,7 +243,31 @@ Esecuzione: `scripts/testpgtap.sh db/pgtap/documenti/test-documenti-tipo-ordine-
   (`E_ORD_NESSUNA_RIGA`, guard già in `conferma`); senza versione template
   PUBBLICATA l'emetti fallisce (§6.1); download/lista documenti coerenti.
 
-### 6.3 FE
+### 6.3 FE — ✅ EVASO (2026-06-05)
+
+> **Stato consegna FE (2026-06-05)**: implementato e verde (ESLint pulito +
+> `vite build` ok). Delta applicato su `dev/backend-tid`:
+>
+> - `OrdineEmissioneDialog.vue` (nuovo, in `ordini/components/dialogs/`): thin
+>   wrapper di dominio sul BB `DocumentoEmissioneDialog` (`advances-state`,
+>   sorgente `ORDINE_VENDITA`), clone di `PreventivoEmissioneDialog`.
+> - `OrdiniDrawer.vue`: l'azione `conferma` (`onAction`) apre il dialog invece
+>   della `useConfirmAction` semplice; `handleEmissioneConferma({files})` →
+>   `store.emetti` (POST multipart `/emetti/`) + `loadDetail` + `emit('saved')`.
+> - `constants.js`: `STATI_ORDINE_ANTEPRIMA_PDF = [DRAFT]`,
+>   `STATI_ORDINE_CON_DOCUMENTO = [CONFERMATO, ALLOCATO, SPEDITO, CONSEGNATO,
+>   FATTURATO]` (ANNULLATO escluso). Il drawer `EntityPdfButton` ne deriva
+>   preview (DRAFT) vs gestione documenti (post-bozza).
+> - `ordiniApi.js`: `emettiOrdine(id, {allegati, templateId})` (multipart);
+>   store `ordini.js`: action `emetti`.
+> - `OrdiniSearchTable.vue` (lista): rimosso anteprima/download diretto; ora usa
+>   `PdfDocumentiSorgenteDialog` con azione di riga `documenti-pdf` disabilitata
+>   in DRAFT, abilitata post-bozza (tooltip dedicati).
+> - i18n `vendite.ordini.*` (it+en): `emissione_titolo/_conferma/_messaggio`,
+>   `pdf.tooltip_lista/_lista_disabilitato`.
+>
+> **Prerequisito §6.1 verificato**: template `ORDINE_VENDITA` (id 75,
+> `is_default`) ha versione 1 **PUBBLICATA** → l'emissione funziona end-to-end.
 
 - **`OrdineEmissioneDialog`**: clone del wrapper di dominio
   `PreventivoEmissioneDialog.vue` (gli altri sono `OffertaEmissioneDialog`,

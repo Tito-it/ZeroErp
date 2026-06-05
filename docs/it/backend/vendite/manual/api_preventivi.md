@@ -272,7 +272,8 @@ DRAFT** dal preventivo, copiando testata + righe + componenti BoM e valorizzando
   `ordini_service.crea_ordine_da_preventivo(preventivo_id)` (stesso app vendite).
 - **Precondizione**: preventivo in stato **`ACCETTATO`**.
 - **Copia**: testata (BA, utility, valuta, termine pagamento, emittente);
-  righe 1:1 con **prezzi congelati** (`sconto_percentuale`→`sconto_perc`);
+  righe 1:1 con **prezzi congelati** (`sconto_percentuale` propagato 1:1 — dal
+  rename DB 2026-06-05 anche l'ordine usa lo stesso nome colonna);
   componenti compositi **ri-inizializzati ai prezzi correnti** (struttura copiata,
   prezzi risolti all'ordine — caveat v1). Provenienza senza UNIQUE → **più ordini**
   da uno stesso preventivo (riordini).

@@ -13,7 +13,7 @@
 # _offerta / _contratto: legge le transizioni manuali disponibili da
 # config.transizioni_stati_ordini (matrice 20260605-08) invece del
 # calcolo hardcoded in ordini_service.py (Fase 2 BE rimuovera' quello).
-# Vedi docs/it/dev/work-in-progress/brief-ordini-azioni-data-driven.md.
+# Vedi docs/it/dev/work-done/brief-ordini-azioni-data-driven.md.
 #
 # Output (jsonb):
 #   available_actions[]  azioni di stato manuali (da matrice) + push_commessa

@@ -1689,11 +1689,16 @@
     "ordini": {
       "pdf": {
         "label_anteprima": "Anteprima PDF",
-        "tooltip_anteprima": "Anteprima della conferma d'ordine (non salvata)",
+        "tooltip_anteprima": "Anteprima della conferma d'ordine (bozza, non salvata)",
         "label_scarica": "Documenti PDF",
         "tooltip_scarica": "Documenti generati per l'ordine",
+        "tooltip_lista": "Apri i documenti generati per l'ordine",
+        "tooltip_lista_disabilitato": "Disponibile dopo la conferma dell'ordine",
         "dialog_title": "Ordine {numero} — Documenti"
       },
+      "emissione_titolo": "Conferma ordine",
+      "emissione_conferma": "Conferma",
+      "emissione_messaggio": "Confermando l'ordine viene generato il documento di conferma e le righe non saranno più modificabili. Puoi allegare file al documento.",
       "titolo": "Ordini di vendita",
       "ordine": "Ordine di vendita",
       "nuovo_ordine": "Nuovo ordine",
