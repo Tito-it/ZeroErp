@@ -21,8 +21,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { DRAWER_WIDTH } from '../../core/constants'
-import { isoToLocalDate, localDateToIso } from '../../core/utils/dateHelpers'
-import { addDaysToToday } from '../../core/utils/date'
+import { addDaysToToday, parseIsoDate, toDateString } from '../../core/utils/date'
 import { paramBool, paramInt } from '../../core/utils/parameterCast'
 import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
@@ -73,8 +72,8 @@ const statoTemporale = computed(() => detail.value?.stato_temporale || null)
 // In create detail=null -> can_update non e' valutato dal BE; lasciamo true.
 const canUpdate = computed(() => !isEdit.value || caps.canEdit.value)
 const canUpdateReason = computed(() => detail.value?.can_update_reason || null)
-const minValidoDalDetail = computed(() => isoToLocalDate(detail.value?.min_valido_dal))
-const minValidoAlDetail = computed(() => isoToLocalDate(detail.value?.min_valido_al))
+const minValidoDalDetail = computed(() => parseIsoDate(detail.value?.min_valido_dal))
+const minValidoAlDetail = computed(() => parseIsoDate(detail.value?.min_valido_al))
 
 // Helper: campo bloccato. In create niente locked (detail assente, l'utente
 // puo' valorizzare tutto); in edit applica isLocked del composable.
@@ -206,8 +205,8 @@ async function loadDetail() {
     valore_variazione: data.valore_variazione != null
       ? Number(data.valore_variazione)
       : null,
-    valido_dal: isoToLocalDate(data.valido_dal),
-    valido_al: isoToLocalDate(data.valido_al),
+    valido_dal: parseIsoDate(data.valido_dal),
+    valido_al: parseIsoDate(data.valido_al),
     attivo: data.attivo ?? true
   }
   // In edit carichiamo comunque l'elenco UoM dell'articolo per mostrare label
@@ -282,8 +281,8 @@ async function handleSave() {
     descrizione: form.value.descrizione.trim(),
     tipo_variazione: form.value.tipo_variazione,
     valore_variazione: String(form.value.valore_variazione),
-    valido_dal: localDateToIso(form.value.valido_dal),
-    valido_al: localDateToIso(form.value.valido_al),
+    valido_dal: toDateString(form.value.valido_dal),
+    valido_al: toDateString(form.value.valido_al),
     attivo: form.value.attivo
   }
   if (!isEdit.value) {

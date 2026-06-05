@@ -17,7 +17,8 @@ import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLo
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
-import { useTabEvents } from '../../../core/composables/useTabEvents'
+import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
 import {
   STATO_ORDINE,
@@ -29,6 +30,7 @@ import { SORGENTE_CODES } from '../../../documenti/constants'
 import { displayDate, toDateString } from '../../../core/utils/date'
 import { getOrdineFormDefaults } from '../../api/formDefaults'
 import { createOrdine } from '../api/ordiniApi'
+import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { getBillingAccountLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
@@ -49,7 +51,6 @@ const store = useOrdiniStore()
 const { execute, loading } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
-const { emitDataChanged } = useTabEvents()
 
 const props = defineProps({
   visible: Boolean,
@@ -100,11 +101,14 @@ const isReadonly = computed(
 )
 provide(READONLY_KEY, isReadonly)
 
-// Capability data-driven dal detail BE (get_ordine). Niente
-// fn_available_actions_ordine: flag booleani semplici.
-const canEditTestata = computed(() => !!detail.value?.can_edit_testata)
+// Capability data-driven dal detail BE (script.fn_available_actions_ordine):
+// availableActions + can_edit_testata + non_editable_fields. Composable
+// centralizzato, uniforme a Preventivi/Contratti (Fase 4.F2).
+const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const availableActions = caps.availableActions
+const canEditTestata = caps.canEdit
 const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
-const canEditRighe = computed(() => !!detail.value?.can_edit_righe)
+const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 
 // Campi bloccati lato UX. Una volta che l'ordine esiste (EDIT classico o CREATE
 // post auto-save), il cliente NON e' piu' modificabile: il BE deriva
@@ -114,8 +118,6 @@ const canEditRighe = computed(() => !!detail.value?.can_edit_righe)
 // PreventiviDrawer (che blocca billing_account_id post-create). Cambiare cliente
 // = nuovo ordine, non una modifica della testata.
 const nonEditableFields = computed(() => (hasDetail.value ? ['billing_account_id'] : []))
-const canConferma = computed(() => !!detail.value?.can_conferma)
-const canPushCommessa = computed(() => !!detail.value?.can_push_commessa)
 
 // Default emittente fiscale: operatore → id profilo; admin globale → null
 // (sceglie via EmittenteFiscaleField in modalita' Select).
@@ -245,49 +247,47 @@ async function applyBaDefaults(baId) {
   }
 }
 
-// Auto-save bozza in CREATE quando il cliente (BA) e' valorizzato. Il BE deriva
-// soggetto_ruolo_id dal billing_account. Pattern master-detail inline. Prima di
-// creare applica i default da anagrafica cliente (valuta/modalita/termine) cosi'
-// vengono persistiti nella bozza (e ricaricati coerentemente da loadDetail).
-async function autoSaveBozza() {
-  await applyBaDefaults(form.value.billing_account_id)
-  const f = form.value
-  const payload = {
-    billing_account_id: f.billing_account_id || null,
-    utility_id: f.utility_id || null,
-    // Opzionale per BE: se omesso (operatore) il trigger DB lo deriva da GUC.
-    // Per admin globale serve esplicito.
-    emittente_fiscale_id: f.emittente_fiscale_id || null,
-    valuta_id: f.valuta_id || null,
-    modalita_pagamento_id: f.modalita_pagamento_id || null,
-    termine_pagamento_id: f.termine_pagamento_id || null,
-    fatturazione_trigger: f.fatturazione_trigger || null,
-    data: f.data ? toDateString(f.data) : null,
-  }
-  // execute fa l'unwrap dell'envelope axios: chiamare la fn axios diretta
-  // (NON store.create che ritorna gia' unwrappato — feedback_useapihandler_solo_axios).
-  const result = await execute(
-    () => createOrdine(payload),
-    { successMessage: t('vendite.ordini.bozza_creata') }
-  )
-  if (result && result.id) {
-    createdId.value = result.id
-    emitDataChanged(TAB_ENTITIES.ORDINE, result.id)
-    await loadDetail(result.id)
-  }
-}
-
-watch(
-  () => form.value.billing_account_id,
-  async (baId) => {
-    if (isEdit.value) return
-    if (createdId.value !== null) return
-    if (baId == null) return
-    if (!contentReady.value) return
-    if (loading.value) return
-    await autoSaveBozza()
+// Auto-save bozza + abbandono bozza orfana via BB condiviso (B13, regola del 2).
+// Trigger: cliente (BA) valorizzato in CREATE. Prima di creare applica i default
+// da anagrafica cliente (valuta/modalita/termine). `close`/`onVisibleChange`
+// usati dal template; createdId resta ref del drawer.
+const { close, onVisibleChange } = useDrawerAutosaveBozza({
+  emit,
+  execute,
+  loading,
+  createdId,
+  isEdit: () => isEdit.value,
+  contentReady: () => contentReady.value,
+  triggerSources: () => form.value.billing_account_id,
+  isReady: (baId) => baId != null,
+  createDraftApi: createOrdine,
+  buildDraftPayload: async () => {
+    await applyBaDefaults(form.value.billing_account_id)
+    const f = form.value
+    return {
+      billing_account_id: f.billing_account_id || null,
+      utility_id: f.utility_id || null,
+      // Opzionale per BE: se omesso (operatore) il trigger DB lo deriva da GUC.
+      emittente_fiscale_id: f.emittente_fiscale_id || null,
+      valuta_id: f.valuta_id || null,
+      modalita_pagamento_id: f.modalita_pagamento_id || null,
+      termine_pagamento_id: f.termine_pagamento_id || null,
+      fatturazione_trigger: f.fatturazione_trigger || null,
+      data: f.data ? toDateString(f.data) : null,
+    }
   },
-)
+  tabEntity: TAB_ENTITIES.ORDINE,
+  fetchDetail: (id) => loadDetail(id),
+  deleteDraft: (id) => store.elimina(id),
+  righeCountGetter: () => detail.value?.righe_count ?? 0,
+  messages: {
+    bozzaCreata: t('vendite.ordini.bozza_creata'),
+    abbandonoTitolo: t('vendite.ordini.abbandono_bozza_titolo'),
+    abbandonoMessage: t('vendite.ordini.conferma_abbandono_bozza'),
+    abbandonoConferma: t('vendite.ordini.abbandono_bozza_conferma'),
+    bozzaEliminata: t('vendite.ordini.bozza_eliminata'),
+  },
+})
 
 const canSave = computed(() => {
   if (isReadonly.value) return false
@@ -334,49 +334,6 @@ async function handleSave() {
     )
     if (result !== null) emit('saved', result)
   }
-}
-
-// --- Chiusura con guard bozza orfana ---
-
-const hasOrphanedDraft = computed(() => {
-  if (createdId.value === null) return false
-  return (detail.value?.righe_count ?? 0) === 0
-})
-
-function close() {
-  attemptClose()
-}
-
-function attemptClose() {
-  if (!hasOrphanedDraft.value) {
-    emit('update:visible', false)
-    emit('cancelled')
-    return
-  }
-  confirmAction({
-    title: t('vendite.ordini.abbandono_bozza_titolo'),
-    message: t('vendite.ordini.conferma_abbandono_bozza'),
-    acceptLabel: t('vendite.ordini.abbandono_bozza_conferma'),
-    danger: true,
-    onAccept: async () => {
-      const result = await execute(
-        () => store.elimina(createdId.value),
-        { successMessage: t('vendite.ordini.bozza_eliminata') }
-      )
-      if (result !== null) {
-        emit('update:visible', false)
-        emit('cancelled')
-      }
-    },
-  })
-}
-
-function onVisibleChange(v) {
-  if (v) {
-    emit('update:visible', true)
-    return
-  }
-  attemptClose()
 }
 
 // --- Azioni stato ---
@@ -434,41 +391,57 @@ function onPush() {
   })
 }
 
-// Azioni del drawer ordine consumate da DrawerActionsBar. Build manuale dai
-// flag capability (no fn_available_actions_ordine). In readonly puro (LETTURA /
-// split) le transizioni vengono nascoste; il BE resta come difesa.
+// Smista le azioni data-driven (`available_actions`) ai relativi handler.
+// conferma/push hanno flussi dedicati (dialog/toast differenziati); le altre
+// transizioni (es. annulla) passano dal cambio stato generico.
+function onAction(action) {
+  if (action.key === 'conferma') { onConferma(); return }
+  if (action.key === 'push_commessa') { onPush(); return }
+  if (action.requires_confirm) {
+    confirmAction({
+      message: t('vendite.ordini.conferma_cambio_stato', { stato: t(action.label_key) }),
+      onAccept: () => eseguiCambioStato(action),
+    })
+  } else {
+    eseguiCambioStato(action)
+  }
+}
+
+// Transizione di stato generica (es. annulla DRAFT->ANNULLATO). Il trigger DB
+// valida l'ammissibilita'; qui orchestriamo chiamata + refresh detail.
+async function eseguiCambioStato(action) {
+  const result = await execute(
+    () => store.cambiaStato(effectiveOrdineId.value, action.target_state),
+    { successMessage: t('vendite.ordini.stato_cambiato') },
+  )
+  if (result !== null) {
+    await loadDetail()
+    emit('saved', result)
+  }
+}
+
+// Azioni del drawer ordine consumate da DrawerActionsBar. Le transizioni di
+// stato arrivano data-driven da fn_available_actions_ordine (mapper condiviso
+// con preventivi/contratti); in readonly puro (LETTURA/split) sono nascoste.
 const drawerActions = computed(() => {
   if (!hasDetail.value) return []
-  const list = []
   const readonlyPuro = props.readonly || parentReadonly.value
-  if (!readonlyPuro && canConferma.value) {
-    list.push({
-      key: 'conferma',
-      kind: 'state',
-      label: t('vendite.ordini.azione_conferma'),
-      icon: MANAGE_ICONS.CONFIRM,
-      severity: 'success',
-      command: onConferma,
-    })
-  }
-  if (!readonlyPuro && canPushCommessa.value) {
-    list.push({
-      key: 'push',
-      kind: 'state',
-      label: t('vendite.ordini.azione_push_commessa'),
-      icon: MANAGE_ICONS.SEND,
-      severity: 'info',
-      command: onPush,
-    })
-  }
-  list.push({
-    key: 'manage-note',
-    kind: 'manage',
-    label: t('vendite.ordini.gestisci_note'),
-    icon: MANAGE_ICONS.NOTE,
-    command: () => { noteDrawerVisible.value = true },
+  const stateActions = mapAvailableActionsToDrawerActions({
+    availableActions: availableActions.value,
+    t,
+    onAction,
+    readonly: readonlyPuro,
   })
-  return list
+  return [
+    ...stateActions,
+    {
+      key: 'manage-note',
+      kind: 'manage',
+      label: t('vendite.ordini.gestisci_note'),
+      icon: MANAGE_ICONS.NOTE,
+      command: () => { noteDrawerVisible.value = true },
+    },
+  ]
 })
 </script>
 

@@ -56,6 +56,13 @@ export function confermaOrdine(id) {
   return api.post(`${BASE}/${id}/conferma/`, {})
 }
 
+// Transizione di stato generica data-driven (es. annulla DRAFT->ANNULLATO).
+// `statoCodice` = `target_state` dell'azione da fn_available_actions_ordine.
+// L'ammissibilita' della transizione e' validata dal trigger guard DB.
+export function cambiaStatoOrdine(id, statoCodice) {
+  return api.post(`${BASE}/${id}/cambia-stato/`, { stato_codice: statoCodice })
+}
+
 // Push singolo dell'ordine CONFERMATO a commessa (chiusura giro). Ritorna un
 // report orchestrator { stato, push_log_id, durata_ms, handlers, righe_pushable,
 // fatturazione_trigger }. Pattern push singolo gemello preventivi/offerte.

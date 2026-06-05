@@ -49,14 +49,11 @@
 // severity: pass-through PrimeVue (`primary`/`success`/`warn`/`info`/`danger`/`secondary`).
 // outlined: default true per kind:'manage', false altrove. Override esplicito ammesso
 //   (es. kind:'state' severity:'danger' outlined:true per cessazione/annullamento).
-import { computed, ref } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { computed } from 'vue'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import { MANAGE_ICONS } from '../constants'
-import { menuItemClass } from '../utils/rowActions'
-import { useInjectReadonly } from '../composables/useReadonlyMode'
-import { useAuthStore } from '../../stores/auth'
+import { useActionBar } from '../composables/useActionBar'
 
 const props = defineProps({
   actions: { type: Array, default: () => [] },
@@ -64,22 +61,29 @@ const props = defineProps({
   menuTooltip: { type: String, default: '' },
 })
 
-const { t } = useI18n()
-const auth = useAuthStore()
-const isReadonly = useInjectReadonly()
-const desktopMenuRef = ref(null)
-const compactMenuRef = ref(null)
-
-// Scopo: filtra le azioni in base a visible/hideWhenReadonly/permessi.
-function isActionVisible(action) {
-  if (action.visible === false) return false
-  if (action.hideWhenReadonly && isReadonly.value) return false
-  if (action.action && !auth.isActionAllowed(action.action)) return false
-  return true
+// Scopo: per le voci dentro Menu popup, se l'azione ha un badge counter
+//   lo appendiamo alla label (es. "Gestisci righe (5)"). Pattern di lettura
+//   coerente con le liste lookup multi-riga.
+function menuItemLabel(action) {
+  if (action.badge != null && action.badge !== '') {
+    return `${action.label} (${action.badge})`
+  }
+  return action.label
 }
 
-const visibleActions = computed(() => props.actions.filter(isActionVisible))
-const primaryActions = computed(() => visibleActions.value.filter(a => a.kind === 'primary'))
+// Motore condiviso (B9): voci Menu default blu (manage) + label col counter.
+const {
+  visibleActions, primaryActions, isActionDisabled, buttonTooltip,
+  runAction, menuItems, menuTooltipText,
+  desktopMenuRef, compactMenuRef, toggleDesktopMenu, toggleCompactMenu,
+} = useActionBar(() => props.actions, {
+  disabled: () => props.disabled,
+  menuTooltip: () => props.menuTooltip,
+  defaultMenuItemClass: 'app-menu-item-manage',
+  menuLabel: menuItemLabel,
+})
+
+// Partizionamento per kind specifico della barra drawer.
 const inlineDesktopActions = computed(() =>
   visibleActions.value.filter(a => a.kind === 'state' || a.kind === 'manage'),
 )
@@ -89,14 +93,6 @@ const desktopMenuActions = computed(() =>
 const compactMenuActions = computed(() =>
   visibleActions.value.filter(a => a.kind !== 'primary'),
 )
-
-function isActionDisabled(action) {
-  return props.disabled || action.disabled === true
-}
-
-function buttonTooltip(action) {
-  return action.tooltip || action.label
-}
 
 // Scopo: classe pulsante inline. Per kind:'manage' usa il pattern blu standard
 //   (app-manage-btn) condiviso con le liste; per gli altri kind lascia la
@@ -124,34 +120,8 @@ function buttonOutlined(action) {
   return action.kind === 'manage'
 }
 
-// Scopo: per le voci dentro Menu popup, se l'azione ha un badge counter
-//   lo appendiamo alla label (es. "Gestisci righe (5)"). Pattern di lettura
-//   coerente con le liste lookup multi-riga.
-function menuLabel(action) {
-  if (action.badge != null && action.badge !== '') {
-    return `${action.label} (${action.badge})`
-  }
-  return action.label
-}
-
-// Scopo: voci PrimeVue Menu coerenti col colore inline. Default = manage (blu),
-//   come kind:'manage' inline che usa app-manage-btn. Severity esplicite (danger,
-//   primary, warn, ...) mappate via helper centralizzato.
-function menuItems(list) {
-  return list.map(a => ({
-    label: menuLabel(a),
-    icon: a.icon,
-    disabled: isActionDisabled(a),
-    class: menuItemClass(a.severity, 'app-menu-item-manage'),
-    command: () => {
-      if (!isActionDisabled(a)) a.command?.()
-    },
-  }))
-}
-
 const desktopMenuItems = computed(() => menuItems(desktopMenuActions.value))
 const compactMenuItems = computed(() => menuItems(compactMenuActions.value))
-const menuTooltipText = computed(() => props.menuTooltip || t('common.altre_azioni'))
 
 // Scopo: segnala con un dot la presenza di counter manage nel kebab compact,
 //   senza esporre il numero (sommare counter eterogenei sarebbe ambiguo).
@@ -159,22 +129,6 @@ const menuTooltipText = computed(() => props.menuTooltip || t('common.altre_azio
 const compactHasBadge = computed(() =>
   compactMenuActions.value.some(a => a.kind === 'manage' && a.badge != null && a.badge !== ''),
 )
-
-function runAction(action, event) {
-  event?.stopPropagation()
-  if (isActionDisabled(action)) return
-  action.command?.()
-}
-
-function toggleDesktopMenu(event) {
-  event.stopPropagation()
-  desktopMenuRef.value?.toggle(event)
-}
-
-function toggleCompactMenu(event) {
-  event.stopPropagation()
-  compactMenuRef.value?.toggle(event)
-}
 </script>
 
 <template>

@@ -13,7 +13,7 @@ import { useListaConfigurabilePage } from '../../../core/composables/useListaCon
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { exportPreventivi } from '../api/preventiviApi'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
-import { toDateString } from '../../../core/utils/date'
+import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
 import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
@@ -49,11 +49,12 @@ const {
   searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
 
-// --- Filtri custom (toolbar caller) ---
-const statoFilter = ref(store.filters.stato ?? null)
-const utilityFilter = ref(store.filters.utility_id ?? null)
-const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
-const dataAlFilter = ref(store.filters.data_a ? new Date(store.filters.data_a + 'T00:00:00') : null)
+// --- Filtri custom (toolbar caller) — binding store via BB (B14) ---
+const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato')
+const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
+const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
+const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
 // Toggle "mostra storico revisioni": negazione del filtro store
 // (mostraStorico=ON ⇔ solo_attiva=false). computed get/set per restare
 // allineato al filtro reale anche se cambia altrove (reset, logout,
@@ -81,16 +82,6 @@ function buildExportParams(format) {
   return p
 }
 
-function onStatoChange() { store.filters.stato = statoFilter.value; applyFilters() }
-function onUtilityChange() { store.filters.utility_id = utilityFilter.value; applyFilters() }
-function onDataDaChange() {
-  store.filters.data_da = dataDaFilter.value ? toDateString(dataDaFilter.value) : null
-  applyFilters()
-}
-function onDataAlChange() {
-  store.filters.data_a = dataAlFilter.value ? toDateString(dataAlFilter.value) : null
-  applyFilters()
-}
 // Il setter del computed scrive gia' lo store; qui basta triggerare la fetch.
 function onMostraStoricoChange() { applyFilters() }
 

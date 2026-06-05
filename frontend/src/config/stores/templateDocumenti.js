@@ -3,9 +3,9 @@
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
 // Scopo: Store Pinia admin per `documenti.template_documenti`
-//        (Tranche L). Pattern factory `createCrudAdminStore`. Lo
-//        store gestisce solo la testata template; il ciclo vita
-//        delle versioni vive in `templateVersioni.js` per coerenza
+//        (Tranche L). Pattern factory `createCrudStore` (startsEmpty:false,
+//        lista parte piena). Lo store gestisce solo la testata template; il
+//        ciclo vita delle versioni vive in `templateVersioni.js` per coerenza
 //        con le API multi-livello del backend.
 //
 //        `userScoped: true` di default sul factory (memoria
@@ -13,7 +13,8 @@
 //        operatore -> reset al logout obbligatorio).
 // ------------------------------------------------------------
 
-import { createCrudAdminStore } from '../../core/composables/createCrudAdminStore'
+import { createCrudStore } from '../../core/stores/createCrudStore'
+import { TAB_ENTITIES } from '../../core/constants'
 import {
   createTemplateDocumento,
   getTemplateDocumento,
@@ -21,21 +22,21 @@ import {
   updateTemplateDocumento,
 } from '../api/templateDocumenti'
 
-export const useTemplateDocumentiStore = createCrudAdminStore({
-  storeName: 'config-template-documenti',
+export const useTemplateDocumentiStore = createCrudStore('config-template-documenti', {
   api: {
     list: listTemplateDocumenti,
-    get: getTemplateDocumento,
+    detail: getTemplateDocumento,
     create: createTemplateDocumento,
     update: updateTemplateDocumento,
   },
-  defaultOrderBy: 'codice',
-  defaultOrderDir: 'asc',
-  emitKey: 'template_documenti',
-  // Filtri specifici lato BE (mappati da nome client a nome param server).
-  extraFilters: {
-    tipo_documento_output_id: 'tipo_documento_output_id',
-    sorgente_tipo_id: 'sorgente_tipo_id',
-    emittente_fiscale_id: 'emittente_fiscale_id',
+  tabEntity: TAB_ENTITIES.TEMPLATE_DOCUMENTI,
+  orderBy: 'codice',
+  orderDir: 'asc',
+  startsEmpty: false,
+  filterDefaults: {
+    attivo: true,
+    tipo_documento_output_id: null,
+    sorgente_tipo_id: null,
+    emittente_fiscale_id: null,
   },
 })

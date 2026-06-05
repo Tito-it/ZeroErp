@@ -15,6 +15,7 @@ import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
 import { TAB_ENTITIES } from '../../../core/constants'
 import {
+  cambiaStatoOrdine,
   confermaOrdine,
   createOrdine,
   createRiga,
@@ -124,6 +125,14 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     return res.data.data
   }
 
+  // Transizione di stato generica data-driven (es. annulla). `statoCodice` =
+  // target_state dell'azione; il trigger DB valida l'ammissibilita'.
+  async function cambiaStato(id, statoCodice) {
+    const res = await cambiaStatoOrdine(id, statoCodice)
+    emitDataChanged(TAB_ENTITIES.ORDINE, id)
+    return res.data.data
+  }
+
   // --- Righe ---
 
   async function loadRighe(ordineId) {
@@ -165,7 +174,7 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     // testata
     fetchList, fetchDetail, create, update, elimina,
     // transizioni
-    conferma, push,
+    conferma, push, cambiaStato,
     // righe
     loadRighe, addRiga, aggiornaRiga, eliminaRiga,
     // riepilogo IVA

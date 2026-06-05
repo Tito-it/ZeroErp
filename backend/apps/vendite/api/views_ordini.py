@@ -207,6 +207,22 @@ class ApiOrdinePush(DomainAPIView):
         return success_response(ordini_service.push_a_commessa(int(ordine_id)))
 
 
+class ApiOrdineCambiaStato(DomainAPIView):
+    """POST /api/v1/vendite/ordini/<ordine_id>/cambia-stato/ — transizione di
+    stato data-driven (es. annulla). Body: `stato_codice` (= `target_state`
+    dell'azione). L'ammissibilita' e' validata dal trigger guard DB."""
+
+    area_funzionale = "vendite"
+
+    def post(self, request: Request, ordine_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: ordini_service.cambia_stato(
+                int(ordine_id), payload.get("stato_codice"),
+            ),
+        )
+
+
 class ApiOrdineRiepilogoIva(DomainAPIView):
     """GET /api/v1/vendite/ordini/<id>/riepilogo-iva/
 

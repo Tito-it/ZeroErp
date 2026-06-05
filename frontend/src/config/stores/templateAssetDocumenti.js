@@ -3,10 +3,10 @@
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
 // Scopo: Store Pinia admin per `documenti.template_asset` (Tranche L).
-//        Pattern factory `createCrudAdminStore` esteso con upload
-//        multipart (factory non lo prevede: lo aggiungiamo come azione
-//        custom riusando il factory + `defineStore` extension via
-//        composizione).
+//        Store hand-rolled (NON usa la factory `createCrudStore`) perche'
+//        estende il pattern CRUD admin con upload multipart e azioni custom.
+//        Mantiene lo stesso comportamento "lista parte piena" + gate search
+//        min-3-char.
 //
 //        L'API upload lavora con FormData (multipart): il flusso del
 //        FE costruisce il FormData dal form drawer e chiama l'azione
@@ -49,7 +49,7 @@ export const useTemplateAssetDocumentiStore = defineStore(STORE_NAME, () => {
   })
 
   // Scopo: Lista paginata. Min 3 caratteri per la search (coerente con
-  //        `createCrudAdminStore`). Sotto soglia: clear silente.
+  //        la factory `createCrudStore`). Sotto soglia: clear silente.
   async function fetchList() {
     const f = filters.value
     const term = (f.search || '').trim()

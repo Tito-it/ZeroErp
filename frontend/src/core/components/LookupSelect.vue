@@ -3,10 +3,21 @@
 // Usa l'endpoint /api/v1/core/lookup/codici/?rel=<schema.tabella> tramite lookupCodici.
 // Riusabile ovunque serva un dropdown da tabella config/catalogo/vendite.
 //
+// Due modi di fetch (regola del 2, B5 2026-06-05 — assorbe i wrapper Select
+// su lookup statico per codice):
+//   1) `rel` (default storico): fetch via lookupCodici(rel), transform
+//      envelope paginato `r.data.data.results`.
+//   2) `fetcher` esterno: una funzione che ritorna una Promise axios (es.
+//      lookupTipiVariazioneContratto). Richiede `lookupKey` come chiave cache
+//      e tipicamente `transform` custom (es. lista nuda in `r.data.data`).
+// Esattamente UNO tra `rel` e `fetcher` va passato.
+//
 // Uso:
 //   <LookupSelect v-model="form.iva_id" rel="config.iva" />
 //   <LookupSelect v-model="form.uom_id" rel="catalogo.unita_misura" :label-field="'codice'" />
 //   <LookupSelect v-model="form.conto_id" rel="config.conti_contabili" show-code />
+//   <LookupSelect v-model="form.tipo" :fetcher="lookupX" lookup-key="vendite.x"
+//                 :transform="r => r.data.data" value-field="codice" show-code />
 import { computed } from 'vue'
 import { useGlobalLookup } from '../composables/useGlobalLookup'
 import { lookupCodici } from '../apiCore'
@@ -16,7 +27,15 @@ const props = defineProps({
   // `null` non e' un costruttore valido in defineProps: tipi supportati
   // [Number, String] + default null copre il caso "nessun valore".
   modelValue: { type: [Number, String], default: null },
-  rel: { type: String, required: true },
+  // `rel` non e' piu' required: in alternativa si passa `fetcher` + `lookupKey`.
+  rel: { type: String, default: '' },
+  // Fetcher esterno (Promise axios). Mutuamente esclusivo con `rel`.
+  fetcher: { type: Function, default: null },
+  // Chiave cache useGlobalLookup quando si usa `fetcher` (fallback a `rel`).
+  lookupKey: { type: String, default: '' },
+  // Transform risposta. Default (undefined) -> envelope paginato di useGlobalLookup
+  // (`r.data.data.results`). Passare `r => r.data.data` per liste nude.
+  transform: { type: Function, default: undefined },
   placeholder: { type: String, default: '' },
   labelField: { type: String, default: 'descrizione' },
   valueField: { type: String, default: 'id' },
@@ -29,22 +48,43 @@ const props = defineProps({
   filterField: { type: String, default: '' },
   filterValue: { type: [Number, String, Boolean], default: null },
   pageSize: { type: Number, default: 200 },
+  // Prepend di una voce "Tutti" (value=null) — per i Select usati come filtro
+  // lista (es. stato email log). Etichetta da `allLabel`.
+  includeAllOption: { type: Boolean, default: false },
+  allLabel: { type: String, default: '' },
 })
+
+if (import.meta.env.DEV && !props.rel === !props.fetcher) {
+  // Guard di sviluppo: esattamente uno tra rel/fetcher.
+  console.warn('[LookupSelect] passare esattamente uno tra `rel` e `fetcher`.')
+}
 
 const emit = defineEmits(['update:modelValue', 'change'])
 
-// Cache globale per-rel: tutte le istanze di LookupSelect con lo stesso rel
-// condividono la stessa fetch (evita N chiamate duplicate nei form con
-// piu' dropdown su tabelle config).
-const lookup = useGlobalLookup(
-  props.rel,
-  () => lookupCodici(props.rel, { page_size: props.pageSize }),
-  { immediate: true }
-)
+// Cache globale per-chiave: tutte le istanze con la stessa chiave condividono
+// la stessa fetch (evita N chiamate duplicate nei form con piu' dropdown).
+// Chiave = `rel` nel modo storico, `lookupKey` (fallback `rel`) col fetcher.
+const lookupKeyResolved = props.fetcher ? (props.lookupKey || props.rel) : props.rel
+const fetchFn = props.fetcher
+  ? props.fetcher
+  : () => lookupCodici(props.rel, { page_size: props.pageSize })
+const lookupOptions = { immediate: true }
+if (props.transform) lookupOptions.transform = props.transform
+const lookup = useGlobalLookup(lookupKeyResolved, fetchFn, lookupOptions)
 
-const visibleOptions = computed(() => {
+const filteredItems = computed(() => {
   if (!props.filterField || props.filterValue == null) return lookup.items.value
   return lookup.items.value.filter(item => item?.[props.filterField] === props.filterValue)
+})
+
+// Opzioni renderizzate: con includeAllOption prepende la voce "Tutti"
+// (value=null), usando gli stessi field-name del Select.
+const visibleOptions = computed(() => {
+  if (!props.includeAllOption) return filteredItems.value
+  return [
+    { [props.valueField]: null, [props.labelField]: props.allLabel },
+    ...filteredItems.value,
+  ]
 })
 
 // Scopo: Compone l'etichetta visualizzata per una riga del lookup.
@@ -60,8 +100,9 @@ function formatOption(item) {
 }
 
 // Scopo: Trova la riga selezionata dal modelValue corrente (per lo slot #value).
+// Cerca in visibleOptions cosi' la voce "Tutti" (includeAllOption) e' matchata.
 const selectedItem = computed(() =>
-  lookup.items.value.find(i => i[props.valueField] === props.modelValue) || null
+  visibleOptions.value.find(i => i[props.valueField] === props.modelValue) || null
 )
 
 function onChange(event) {

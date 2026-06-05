@@ -51,11 +51,13 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 
 ### State machine
 
-| Da    | A          | Chi la innesca           | Effetto |
-| ----- | ---------- | ------------------------ | ------- |
-| DRAFT | CONFERMATO | operatore (`/conferma/`) | Abilita il push a commessa (se `fatturazione_trigger=CONFERMATO`) |
+| Da    | A          | Chi la innesca         | Effetto                                                           |
+| ----- | ---------- | ---------------------- | ----------------------------------------------------------------- |
+| DRAFT | CONFERMATO | operatore (`/emetti/`) | Abilita il push a commessa (se `fatturazione_trigger=CONFERMATO`) |
 
-La transizione è **autoritativa lato DB** (trigger
+Il flusso utente innesca la transizione via `/emetti/` (conferma + generazione
+documento, vedi sezione Emetti); `/conferma/` resta come API di sola transizione,
+riusata internamente da `emetti`. La transizione è **autoritativa lato DB** (trigger
 `trgfn_ordini_guard_transizione_approvazione` sull'UPDATE di
 `stato_doc_ordine_id`): il service applica solo il guard applicativo «origine
 DRAFT + almeno una riga». I codici `E_ORDINE_*` sollevati dai trigger sono
@@ -113,9 +115,15 @@ Ritorna `{id, uid, numero}`.
 
 ### Detail `GET /api/v1/vendite/ordini/<id>/`
 
-Testata (dalla vista + `meta`/`storicizza`) + capability data-driven:
-`righe_count`, `can_edit_testata`, `can_edit_righe`, `can_conferma`,
-`can_push_commessa`. 404 (`E_ORD_NOT_FOUND`) se inesistente o fuori scope (RLS).
+Testata (dalla vista + `meta`/`storicizza`) + capability **data-driven** da
+`script.fn_available_actions_ordine` (matrice `config.transizioni_stati_ordini`):
+`available_actions[]` (azioni di stato con `key`/`target_state`/`label_key`/
+`severity`/`icon`/`requires_confirm` — incl. `conferma`, `annulla`, e
+`push_commessa` come azione applicativa), `can_edit_testata`, `can_edit_righe`,
+`can_push_commessa` (+ `can_push_commessa_reason`/`_reason_key`),
+`non_editable_fields`, `stato_codice`, più `righe_count`. *(`can_conferma` non è
+più un flag: la conferma è un'entry di `available_actions`.)* 404
+(`E_ORD_NOT_FOUND`) se inesistente o fuori scope (RLS).
 
 ### Riepilogo IVA `GET /api/v1/vendite/ordini/<id>/riepilogo-iva/`
 
@@ -158,13 +166,51 @@ diventato logica morta). Override straordinario:
 
 ### Delete `DELETE /api/v1/vendite/ordini/<id>/`
 
-Hard-delete (abbandono bozza), solo `DRAFT`. Le righe/componenti hanno
-ON DELETE CASCADE; il trigger DB blocca se collegato a DDT.
+Hard-delete **della sola bozza orfana** (supporto al pattern "abbandono bozza":
+il create auto-salva una BOZZA per abilitare le righe; se l'operatore esce senza
+inserirne, la bozza vuota va rimossa). Guard (allineato a `elimina_preventivo`,
+**niente hard-delete di dati reali**): stato `DRAFT` **e zero righe**. Un ordine
+con righe **non si cancella, si annulla** (`cambia-stato → ANNULLATO`):
+`E_ORD_STATO_TRANSIZIONE` con messaggio dedicato. Le righe/componenti della bozza
+vuota hanno ON DELETE CASCADE; il trigger DB blocca se collegato a DDT.
+
+### Emetti `POST /api/v1/vendite/ordini/<id>/emetti/` (multipart)
+
+**Flusso target della famiglia vendite** (§6 `brief-ordini-stampa.md`): emissione =
+conferma documentale. Clone di `ApiPreventivoEmetti`/`ApiOffertaEmetti`. Orchestra in
+**una transazione atomica** (savepoint annidato):
+
+1. `ordini_service.conferma(id)` — transizione `DRAFT → CONFERMATO` (riusa il punto di
+   dominio esistente, che governa anche il push a commessa: la logica di stato non è
+   duplicata né spostata);
+2. `DocumentGenerationService.genera_documento(...)` sullo stato `CONFERMATO` (lo
+   snapshot del context riflette il nuovo stato);
+3. allegati multipart opzionali (`allegati`).
+
+Se la generazione fallisce, il rollback dell'atomic **annulla la conferma** → lo stato
+resta `DRAFT`, niente record documentale orfano (come preventivi/offerte). Body
+multipart: `template_documento_id`, `tipo_documento_output_id`, `allegati` (tutti
+opzionali). Risposta: `{ "ordine": <esito conferma>, "documento": <documento generato> }`.
+Prerequisito: template `ORDINE_VENDITA` con versione **PUBBLICATA** (vedi Documenti).
 
 ### Conferma `POST /api/v1/vendite/ordini/<id>/conferma/`
 
-`DRAFT -> CONFERMATO`. Guard: origine DRAFT + almeno una riga
-(`E_ORD_NESSUNA_RIGA`). La transizione è validata dal trigger DB.
+`DRAFT -> CONFERMATO`. Endpoint di **sola transizione**: il flusso utente passa da
+`/emetti/` (conferma + documento), mentre `/conferma/` resta come API di servizio
+(riusata internamente da `emetti`). La transizione e la precondizione "≥1 riga" sono
+validate dal **trigger guard DB** `trgfn_ordini_guard_transizione`
+(`E_ORDINE_CONFERMA_SENZA_RIGHE`); il service mantiene anche il guard applicativo
+`E_ORD_NESSUNA_RIGA` (defense-in-depth + messaggio). Le altre transizioni manuali
+(es. annulla) passano da `cambia-stato`.
+
+### Cambia stato `POST /api/v1/vendite/ordini/<id>/cambia-stato/`
+
+Transizione di stato **generica data-driven** (es. annulla `DRAFT→ANNULLATO`).
+Body: `stato_codice` (= `target_state` dell'azione da `available_actions`).
+L'ammissibilità della transizione è validata dal trigger guard DB
+`trgfn_ordini_guard_transizione` (matrice `config.transizioni_stati_ordini`):
+transizione non ammessa → `E_ORDINE_TRANSIZIONE_NON_AMMESSA`. La conferma
+(`DRAFT→CONFERMATO`) ha l'endpoint dedicato `/conferma/` per le sue precondizioni.
 
 ### Push singolo a commessa `POST /api/v1/vendite/ordini/<id>/push/`
 
@@ -216,11 +262,14 @@ note preventivo/contratto/offerta (testata + riga via `target_riga_id`).
 ### Documenti / Stampa `…/<id>/documenti/…`
 
 Stampa conferma d'ordine via motore `documenti` (sorgente `ORDINE_VENDITA`,
-quarto dominio dopo preventivo/offerta/contratto). Stampa **disaccoppiata dallo
-stato** (anteprima on-demand, ristampabile): **niente** transizione `emetti`.
+quarto dominio dopo preventivo/offerta/contratto). Flusso **allineato alla famiglia**
+(§6 `brief-ordini-stampa.md`): in `DRAFT` solo anteprima on-demand; la generazione
+documentale avviene nel passaggio `DRAFT → CONFERMATO` via `POST /<id>/emetti/`
+(vedi sopra). Gli endpoint sotto coprono ristampa e gestione documentale post-bozza.
 
 | Metodo / Path | Scopo |
 | --- | --- |
+| `POST /<id>/emetti/` | **Emissione**: conferma + genera PDF + allegati, atomica (vedi sezione Emetti) |
 | `POST /<id>/documenti/genera/` | Genera e persiste un PDF (`documenti_generati` + evento `GENERATO`). Body opzionale: `template_documento_id`, `tipo_documento_output_id` |
 | `POST /<id>/documenti/anteprima/` | Anteprima PDF temporanea (no persist, no evento). Risposta binaria `application/pdf` inline |
 | `GET /<id>/documenti/` | Lista paginata documenti generati per l'ordine (scope emittente, `page`/`page_size`) |
@@ -266,10 +315,12 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | `E_ORD_NOT_FOUND` | 404 | ordine/riga/componente inesistente o fuori scope |
 | `E_ORD_VALIDAZIONE` | 400 | payload non valido (cliente mancante, campi vuoti, `billing_account_id` non numerico, ecc.) |
 | `E_ORD_CLIENTE_IMMUTABILE` | 400 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (guard BE + lock-columns DB) |
-| `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato corrente |
-| `E_ORD_NESSUNA_RIGA` | 409 | conferma/push senza righe eleggibili |
+| `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato (modifica fuori DRAFT; delete bozza con righe → annullare) |
+| `E_ORD_NESSUNA_RIGA` | 409 | conferma/push senza righe eleggibili (guard applicativo `conferma()`) |
+| `E_ORDINE_TRANSIZIONE_NON_AMMESSA` | varia | trigger guard: transizione di stato non presente/attiva in `config.transizioni_stati_ordini` (es. `cambia-stato` verso uno stato non ammesso) |
+| `E_ORDINE_CONFERMA_SENZA_RIGHE` | varia | trigger guard: `DRAFT→CONFERMATO` senza righe (precondizione DB, gemella di `E_ORD_NESSUNA_RIGA`) |
 | `E_VENDITE_DUPLICATO` / `E_VENDITE_FK` | 409 / 400 | violazione UNIQUE/FK (via `map_integrity_error`) |
-| `E_ORDINE_*` | varia | codici sollevati dai trigger DB (estratti via regex) |
+| `E_ORDINE_*` | varia | altri codici sollevati dai trigger DB (estratti via regex) |
 | `E_UI_EXPORT_FORMAT_INVALID` / `E_UI_EXPORT_LIMIT_EXCEEDED` | 400 / 422 | export |
 | `E_DOCUMENTI_NOT_FOUND` / `E_DOCUMENTI_VALIDATION` / `E_DOCUMENTI_RENDER_FAILED` | 404 / 400 / 422 | stampa: ordine o template/versione non risolti, input invalido, render fallito |
 
@@ -284,6 +335,14 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
   (`20260603-15` + seed).
 - Funzioni: `fn_ordine_riga_componenti_init` / `_preview` (BoM),
   `fn_list_ordini_da_pushare(…, p_ordine_id)` (push singolo).
+- Azioni/transizioni data-driven (`20260605-08..12`): matrice
+  `config.transizioni_stati_ordini` (DRAFT→CONFERMATO, DRAFT→ANNULLATO attive;
+  CONFERMATO→ANNULLATO seedata `attivo=false`); `script.fn_available_actions_ordine`
+  (capability del detail: `available_actions` + `can_edit_*` + `can_push_commessa`
+  +reason + `non_editable_fields` + `stato_codice`); guard
+  `trgfn_ordini_guard_transizione` (`BEFORE UPDATE OF stato_doc_ordine_id`:
+  enforce grafo + precondizione righe su conferma). Convive col guard approvazione
+  BoM (`20260512-20`).
 - Riepilogo IVA / totali (`20260605-01..05`): viste derivate
   `vendite.vw_ordini_righe_iva_base` → `vendite.vw_ordini_riepilogo_iva_dettaglio`
   (entrambe `security_invoker=on`); `fn_ricalcola_totali_ordine` (somma il

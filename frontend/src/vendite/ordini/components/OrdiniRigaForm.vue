@@ -13,13 +13,12 @@ import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError } from '../../../core/utils/apiError'
 import { useOrdiniStore } from '../stores/ordini'
 import { previewRigaComponenti } from '../api/ordiniApi'
-import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
+import { useRigaArticoloComposito } from '../../_shared/righe/useRigaArticoloComposito'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import OrdiniRigaComponentiPanel from './OrdiniRigaComponentiPanel.vue'
 import ComponentiCreateActionsPanel from '../../_shared/componenti/ComponentiCreateActionsPanel.vue'
 import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
-import { useComponentiDialog } from '../../_shared/componenti/useComponentiDialog'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -37,12 +36,6 @@ const props = defineProps({
 })
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 
-const isEdit = computed(() => props.riga != null)
-
-// Riga padre composita CASO A: flag derivato dal BE list_righe (EXISTS su
-// ordini_righe_componenti attivi). In create il flag e' undefined.
-const isCasoA = computed(() => isEdit.value && !!props.riga?.is_composito_caso_a)
-
 const form = ref({
   articolo_id: null,
   descrizione: '',
@@ -56,47 +49,22 @@ const form = ref({
 // Articolo selezionato (per restore autocomplete).
 const articoloObj = ref(null)
 
-// Unifica EDIT CASO A e CREATE composito: in entrambi i casi il prezzo padre
-// non e' rappresentativo (SUM componenti via trigger DB) → campo prezzo nascosto.
-const isPadreComposito = computed(
-  () => isCasoA.value || articoloObj.value?.is_composito === true,
-)
-
-// Dialog componenti BoM pre-save (CREATE composito): auto-open al primo set
-// articolo+UoM+qta validi; raccoglie gli override prezzi componente. BB
-// condiviso con preventivi/contratti (regola del 2). In EDIT lo stato componenti
-// viaggia via OrdiniRigaComponentiPanel.
+// Cuore riga articolo/composito condiviso con PreventiviRigaForm (B11, regola
+// del 2): flag composito + wiring UoM + ComponentiDialog + submitRiga. Resolver
+// listino e gate L2 (preventivi) restano fuori: l'ordine non li ha.
 const {
-  componentiDialogVisible,
-  componentiPayload,
-  showComponentiDialog,
-  apriComponentiDialog,
-  onComponentiConfirm,
-} = useComponentiDialog({
+  isEdit, isCasoA, isPadreComposito,
+  uomOptions, uomLoading, uomLabel, caricaUomConPickBase, resetUomOptions,
+  componentiDialogVisible, componentiPayload, showComponentiDialog,
+  apriComponentiDialog, onComponentiConfirm,
+  submitRiga,
+} = useRigaArticoloComposito({
+  store,
+  parentId: () => props.ordineId,
+  riga: () => props.riga,
+  articoloObj,
   form,
-  isCreate: () => !isEdit.value,
-  isComposito: () => articoloObj.value?.is_composito === true,
-  isPadreComposito: () => isPadreComposito.value,
 })
-
-// UoM operative dell'articolo (BB centralizzato Fase 4.F1): solo quelle definite
-// a livello articolo, non l'intero catalogo.
-const {
-  uomOptions, uomLoading, loadUomPerArticolo, pickBaseUomId, resetUomOptions,
-} = useArticoloUomOptions()
-
-function uomLabel(uom) {
-  const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
-  return `${uom.uom_codice} — ${uom.uom_descrizione}${base}`
-}
-
-// Scopo: carica le UoM dell'articolo e, in create, pre-seleziona la base.
-async function caricaUomConPickBase(articoloId) {
-  const list = await loadUomPerArticolo(articoloId)
-  if (!isEdit.value && !form.value.uom_operativa_id) {
-    form.value.uom_operativa_id = pickBaseUomId(list)
-  }
-}
 
 watch(() => props.riga, (riga) => {
   if (riga) {
@@ -185,14 +153,6 @@ function buildRigaPayload() {
     payload.componenti_overrides = componentiPayload.value.overrides
   }
   return payload
-}
-
-// Le action dello store sono gia' unwrappate (ritornano res.data.data); non
-// passare da useApiHandler.execute (memoria feedback_useapihandler_solo_axios).
-function submitRiga(payload) {
-  return isEdit.value
-    ? store.aggiornaRiga(props.ordineId, props.riga.id, payload)
-    : store.addRiga(props.ordineId, payload)
 }
 
 async function handleSave() {

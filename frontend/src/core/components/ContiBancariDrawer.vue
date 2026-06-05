@@ -4,13 +4,13 @@
 // Lista conti esistenti (click per modifica) + aggiungi nuovo.
 // Context 'soggetto' o 'ruolo' determina API chiamate.
 
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode, useInjectBlocked } from '../composables/useReadonlyMode'
-import { useApiHandler } from '../composables/useApiHandler'
 import { useDrawerClose } from '../composables/useDrawerClose'
 import { useContoBancarioForm } from '../composables/useContoBancarioForm'
 import { useConfirmAction } from '../composables/useConfirmAction'
+import { useSoggettoRuoloCollection } from '../composables/useSoggettoRuoloCollection'
 import {
   listSoggettoContiBancari, createSoggettoContoBancario,
   updateSoggettoContoBancario, deleteSoggettoContoBancario,
@@ -18,7 +18,6 @@ import {
   updateRuoloContoBancario, deleteRuoloContoBancario
 } from '../../anagrafiche/api/anagrafiche'
 import { DRAWER_WIDTH, MANAGE_ICONS, READONLY_DOMAINS, READONLY_MODELS } from '../constants'
-import { sortByFonte } from '../utils/string'
 import ContoBancarioForm from './ContoBancarioForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import FormFooter from './FormFooter.vue'
@@ -35,7 +34,6 @@ const { t } = useI18n()
 // readonly ereditato (se parent e' readonly, anche il drawer lo resta).
 const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.CONTO_BANCARIO)
 const isBlocked = useInjectBlocked()
-const { execute, loading } = useApiHandler()
 const conto = useContoBancarioForm()
 const { confirmDelete } = useConfirmAction()
 
@@ -49,26 +47,57 @@ const props = defineProps({
   istanzaUtilityId: { type: Number, default: null },
 })
 
-// Scopo: Risolve le funzioni API in base al context (soggetto o ruolo).
-function apiFor(action) {
-  if (props.context === 'ruolo') {
-    return { list: listRuoloContiBancari, create: createRuoloContoBancario,
-             update: updateRuoloContoBancario, remove: deleteRuoloContoBancario }[action]
-  }
-  return { list: listSoggettoContiBancari, create: createSoggettoContoBancario,
-           update: updateSoggettoContoBancario, remove: deleteSoggettoContoBancario }[action]
-}
-
 const emit = defineEmits(['update:visible', 'saved'])
 
-// Lista conti esistenti
-const contiList = ref([])
-const listLoading = ref(false)
+// Backbone master-detail soggetto/ruolo (B4, regola del 2): stato form +
+// load con split fonte + handler start/save/delete. La card list, il form,
+// readonly/blocked e la toolbar PageActionsBar restano nel drawer. Conti:
+// delete con conferma su IBAN mascherato; nessun side-effect allo start.
+const {
+  list: contiList,
+  listLoading,
+  saving,
+  formMode,
+  formErrors,
+  loadList: loadConti,
+  startNew: onStartNew,
+  startEdit: onStartEdit,
+  cancelForm: onCancelForm,
+  saveForm: onSaveForm,
+  deleteItem: onDelete,
+} = useSoggettoRuoloCollection({
+  visible: () => props.visible,
+  context: () => props.context,
+  ownerId: () => props.ownerId,
+  istanzaUtilityId: () => props.istanzaUtilityId,
+  apiMap: {
+    soggetto: { list: listSoggettoContiBancari, create: createSoggettoContoBancario,
+                update: updateSoggettoContoBancario, remove: deleteSoggettoContoBancario },
+    ruolo: { list: listRuoloContiBancari, create: createRuoloContoBancario,
+             update: updateRuoloContoBancario, remove: deleteRuoloContoBancario },
+  },
+  splitKeys: { propri: 'conti_ruolo', ereditati: 'conti_ereditati' },
+  flatSort: (a, b) => (a.uso || '').localeCompare(b.uso || ''),
+  resetForm: () => conto.reset(props.ownerName),
+  validateForm: () => conto.validate(),
+  populateForm: (item) => conto.populate(item),
+  buildCreatePayload: () => conto.toCreatePayload(),
+  buildUpdatePayload: () => conto.toUpdatePayload(),
+  // confirmDelete signature: (itemName, onAccept). Passare un oggetto
+  // {message, accept} fa cadere il dialog (onAccept undefined): il pulsante
+  // di conferma non triggera la delete (bug latente storico).
+  confirmDelete: (item, doDelete) => {
+    const itemName = `${item.uso} — ${maskIban(item.iban)}`
+    confirmDelete(itemName, doDelete)
+  },
+  messages: {
+    created: t('conti_bancari.conto_creato'),
+    saved: t('conti_bancari.conto_salvato'),
+    deleted: t('conti_bancari.conto_eliminato'),
+  },
+  onSaved: () => emit('saved'),
+})
 
-// Modalita' form: null = lista, 'new' = aggiungi, 'edit' = modifica
-const formMode = ref(null)
-const editId = ref(null)
-const formErrors = ref([])
 const pageActions = computed(() => [
   {
     key: 'reload',
@@ -86,117 +115,6 @@ const pageActions = computed(() => [
     command: onStartNew,
   },
 ])
-
-// Scopo: Carica lista conti bancari dal backend.
-//        In context 'ruolo' l'API ritorna conti_ruolo + conti_ereditati.
-async function loadConti() {
-  if (!props.ownerId) return
-  listLoading.value = true
-  try {
-    const listParams = props.context === 'ruolo' && props.istanzaUtilityId
-      ? { istanza_utility_id: props.istanzaUtilityId } : {}
-    const res = await apiFor('list')(props.ownerId, listParams)
-    const payload = res.data?.data
-    if (props.context === 'ruolo' && payload?.conti_ruolo) {
-      // Il backend gia' include 'fonte' (utility/ruolo/soggetto) nei dict
-      contiList.value = sortByFonte([
-        ...payload.conti_ruolo,
-        ...(payload.conti_ereditati || []),
-      ])
-    } else {
-      const items = payload?.results || payload || []
-      contiList.value = items.sort((a, b) =>
-        (a.uso || '').localeCompare(b.uso || '')
-      )
-    }
-  } catch {
-    contiList.value = []
-  } finally {
-    listLoading.value = false
-  }
-}
-
-// Carica dati quando drawer si apre
-watch(() => props.visible, async (val) => {
-  if (!val) return
-  formMode.value = null
-  editId.value = null
-  formErrors.value = []
-  conto.reset(props.ownerName)
-  await loadConti()
-})
-
-// === Azioni ===
-
-function onStartNew() {
-  formMode.value = 'new'
-  editId.value = null
-  formErrors.value = []
-  conto.reset(props.ownerName)
-}
-
-function onStartEdit(c) {
-  formMode.value = 'edit'
-  editId.value = c.id
-  formErrors.value = []
-  conto.populate(c)
-}
-
-function onCancelForm() {
-  formMode.value = null
-  editId.value = null
-  formErrors.value = []
-  conto.reset()
-}
-
-async function onSaveForm() {
-  formErrors.value = conto.validate()
-  if (formErrors.value.length > 0) return
-
-  if (formMode.value === 'edit' && editId.value) {
-    const result = await execute(
-      () => apiFor('update')(props.ownerId, editId.value, conto.toUpdatePayload()),
-      { successMessage: t('conti_bancari.conto_salvato') }
-    )
-    if (result === null) return
-  } else {
-    const payload = conto.toCreatePayload()
-    // In context ruolo, includi istanza_utility_id se presente
-    if (props.context === 'ruolo' && props.istanzaUtilityId) {
-      payload.istanza_utility_id = props.istanzaUtilityId
-    }
-    const result = await execute(
-      () => apiFor('create')(props.ownerId, payload),
-      { successMessage: t('conti_bancari.conto_creato') }
-    )
-    if (result === null) return
-  }
-
-  formMode.value = null
-  editId.value = null
-  formErrors.value = []
-  conto.reset()
-  await loadConti()
-  emit('saved')
-}
-
-async function onDelete(c) {
-  // confirmDelete signature: (itemName, onAccept). Passare un oggetto
-  // {message, accept} fa cadere il dialog (onAccept undefined): il pulsante
-  // di conferma non triggera la delete (bug latente storico).
-  const ibanShort = maskIban(c.iban)
-  const itemName = `${c.uso} — ${ibanShort}`
-  confirmDelete(itemName, async () => {
-    const result = await execute(
-      () => apiFor('remove')(props.ownerId, c.id),
-      { successMessage: t('conti_bancari.conto_eliminato') }
-    )
-    if (result !== null) {
-      await loadConti()
-      emit('saved')
-    }
-  })
-}
 
 // Scopo: Maschera IBAN per visualizzazione card (primi 4 + ultimi 4).
 function maskIban(iban) {
@@ -300,7 +218,7 @@ const onClose = useDrawerClose(emit)
         />
 
         <FormFooter
-          :loading="loading"
+          :loading="saving"
           :disabled="!conto.form.iban?.trim()"
           @save="onSaveForm"
           @cancel="onCancelForm"

@@ -22,6 +22,7 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import DocumentoEmissioneDialog from './DocumentoEmissioneDialog.vue'
 import { downloadBlob } from '../../core/utils/download'
 import { formatSize } from '../../core/utils/format'
+import { displayTimestamp } from '../../core/utils/date'
 import { MANAGE_ICONS } from '../../core/constants'
 
 const props = defineProps({
@@ -228,7 +229,7 @@ async function reload() {
       <Column field="progressivo_sorgente" :header="t('documenti.lista.col_progressivo')" style="width: 80px;" />
       <Column field="generato_at" :header="t('documenti.lista.col_generato_at')" style="width: 180px;">
         <template #body="{ data }">
-          {{ data.generato_at ? new Date(data.generato_at).toLocaleString('it-IT') : '' }}
+          {{ displayTimestamp(data.generato_at) }}
         </template>
       </Column>
       <Column field="titolo" :header="t('documenti.lista.col_titolo')" />

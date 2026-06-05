@@ -12,7 +12,7 @@ import { useContrattiStore } from '../stores/contratti'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { exportContratti } from '../api/contratti'
-import { toDateString } from '../../core/utils/date'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
@@ -49,12 +49,19 @@ const {
   searchTableOptions: { defaultSortField: 'valido_dal' },
 })
 
-// Filtri custom (toolbar caller).
-const statoFilter = ref(null)
-const utilityFilter = ref(null)
-const ambitoFilter = ref(null)
-const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da) : null)
-const dataAFilter = ref(null)
+// Filtri custom (toolbar caller) — binding store via BB (B14).
+const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_doc_contratto_id')
+const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
+const { value: ambitoFilter, onChange: onAmbitoChange } = bindSelect('ambito')
+// data_da: la lista vuole sempre un floor → clearTo ripristina anno-1
+// (sostituisce il ramo else custom; parseIsoDate local-safe sana il tz-shift
+// del vecchio `new Date(iso)`).
+const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da', {
+  clearTo: () => new Date(`${new Date().getFullYear() - 1}-01-01T00:00:00`),
+})
+const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
+// scadenza_mese: cast a YYYY-MM da Date → resta custom.
 const scadenzaMeseFilter = ref(null)
 
 const ambitoOptions = computed(() => [
@@ -78,24 +85,6 @@ function buildExportParams(format) {
   return p
 }
 
-function onStatoChange() { store.filters.stato_doc_contratto_id = statoFilter.value; applyFilters() }
-function onUtilityChange() { store.filters.utility_id = utilityFilter.value; applyFilters() }
-function onAmbitoChange() { store.filters.ambito = ambitoFilter.value; applyFilters() }
-function onDataDaChange(val) {
-  if (val) {
-    store.filters.data_da = toDateString(val)
-  } else {
-    // Ripristina default anno-1: la lista ha sempre bisogno di un floor.
-    const defaultVal = `${new Date().getFullYear() - 1}-01-01`
-    dataDaFilter.value = new Date(defaultVal)
-    store.filters.data_da = defaultVal
-  }
-  applyFilters()
-}
-function onDataAChange(val) {
-  store.filters.data_a = val ? toDateString(val) : null
-  applyFilters()
-}
 function onScadenzaMeseChange(val) {
   if (val) {
     const d = val instanceof Date ? val : new Date(val)
