@@ -15,7 +15,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
-import { isoToLocalDate, localDateToIso } from '../../core/utils/dateHelpers'
+import { parseIsoDate, toDateString } from '../../core/utils/date'
 import { downloadBlob } from '../../core/utils/download'
 import { ASSET_UPLOAD_MAX_BYTES } from '../constants/documentiVersioniWhitelists'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -89,8 +89,8 @@ async function loadDetail() {
     file_size_bytes: data.file_size_bytes ?? null,
     sha256: data.sha256 ?? null,
     storage_key: data.storage_key ?? null,
-    valido_dal: isoToLocalDate(data.valido_dal),
-    valido_al: isoToLocalDate(data.valido_al),
+    valido_dal: parseIsoDate(data.valido_dal),
+    valido_al: parseIsoDate(data.valido_al),
     attivo: data.attivo ?? true,
   }
 }
@@ -165,8 +165,8 @@ async function handleSave() {
   if (isEdit.value) {
     const payload = {
       descrizione: f.descrizione.trim(),
-      valido_dal: localDateToIso(f.valido_dal),
-      valido_al: localDateToIso(f.valido_al),
+      valido_dal: toDateString(f.valido_dal),
+      valido_al: toDateString(f.valido_al),
       attivo: f.attivo,
     }
     const result = await execute(
@@ -183,9 +183,9 @@ async function handleSave() {
     fd.append('descrizione', f.descrizione.trim())
     fd.append('asset_tipo_id', String(f.asset_tipo_id))
     fd.append('emittente_fiscale_id', String(f.emittente_fiscale_id))
-    const dalIso = localDateToIso(f.valido_dal)
+    const dalIso = toDateString(f.valido_dal)
     if (dalIso) fd.append('valido_dal', dalIso)
-    const alIso = localDateToIso(f.valido_al)
+    const alIso = toDateString(f.valido_al)
     if (alIso) fd.append('valido_al', alIso)
     fd.append('attivo', String(f.attivo))
     const result = await execute(

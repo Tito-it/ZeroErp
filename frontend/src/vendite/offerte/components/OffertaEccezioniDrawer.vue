@@ -29,10 +29,8 @@ import ComponentiDialog from '../../_shared/componenti/ComponentiDialog.vue'
 import { useComponentiDialog } from '../../_shared/componenti/useComponentiDialog'
 import ComponentiPanel from '../../_shared/componenti/ComponentiPanel.vue'
 import L2ErrorBanner from '../../_shared/pricing/L2ErrorBanner.vue'
-import { classifyL2Error } from '../../_shared/pricing/classifyL2Error'
+import { useL2SaveFlow } from '../../_shared/pricing/useL2SaveFlow'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
-import { useNotify } from '../../../core/composables/useNotify'
-import { extractApiError } from '../../../core/utils/apiError'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useArticoloUomOptions } from '../../../core/composables/useArticoloUomOptions'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
@@ -57,7 +55,6 @@ const store = useOfferteStore()
 const { execute, loading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const parentReadonly = useInjectReadonly()
-const notify = useNotify()
 // Codici L2 centralizzati (mirror contratti): il banner inline + CTA
 // "richiedi approvazione" sostituisce il toast standard sul gate prezzo.
 const { L2_ERROR_CODES } = useLimitiPricing()
@@ -439,50 +436,26 @@ function persistEccezione(payload) {
     : store.aggiornaEccezione(props.offertaId, editingId.value, payload)
 }
 
-// Scopo: salva l'eccezione intercettando i codici L2
-//        (E_PRICING_SCONTO_ECCESSIVO / E_PRICING_MAGGIORAZIONE_ECCESSIVA) per
-//        mostrare il banner inline + CTA invece del toast standard. Tutti gli
-//        altri errori passano per il toast. Mirror di ContrattoRigheDrawer.onSave.
-async function handleSave() {
-  l2Error.value = null
-  const successMessage = formMode.value === 'create'
-    ? t('vendite.offerte.eccezione_creata')
-    : t('vendite.offerte.eccezione_aggiornata')
-  saving.value = true
-  try {
-    await persistEccezione(buildFullPayload())
-    notify.success(successMessage)
+// Save + richiedi-approvazione con gate L2 via BB condiviso (B12, regola del 2).
+// Side-effect di successo: reload lista eccezioni + close. Mirror contratti.
+const { save: handleSave, richiediApprovazione: onRichiediApprovazione } = useL2SaveFlow({
+  persist: persistEccezione,
+  buildPayload: buildFullPayload,
+  onSuccess: async () => {
     await reload()
     closeForm()
-  } catch (err) {
-    const l2 = classifyL2Error(err, {
-      fallbackMessage: t('vendite.offerte.errore_generico'),
-      l2ErrorCodes: L2_ERROR_CODES,
-    })
-    if (l2) l2Error.value = l2
-    else notify.error(extractApiError(err, t('vendite.offerte.errore_generico')))
-  } finally {
-    saving.value = false
-  }
-}
-
-// Scopo: ri-tenta il save aggiungendo `richiesta_approvazione=true` (workflow
-//        L3). Il BE crea la pratica APPROVAZIONE_PREZZO e salva l'eccezione in
-//        PENDING invece di sollevare. Toast esplicito. Mirror contratti.
-async function onRichiediApprovazione() {
-  l2Error.value = null
-  saving.value = true
-  try {
-    await persistEccezione(buildFullPayload({ richiesta_approvazione: true }))
-    notify.success(t('vendite.offerte.richiesta_approvazione_inviata'))
-    await reload()
-    closeForm()
-  } catch (err) {
-    notify.error(extractApiError(err, t('vendite.offerte.errore_generico')))
-  } finally {
-    saving.value = false
-  }
-}
+  },
+  messages: {
+    success: () => (formMode.value === 'create'
+      ? t('vendite.offerte.eccezione_creata')
+      : t('vendite.offerte.eccezione_aggiornata')),
+    approvalRequested: t('vendite.offerte.richiesta_approvazione_inviata'),
+    error: t('vendite.offerte.errore_generico'),
+  },
+  l2Error,
+  loading: saving,
+  l2ErrorCodes: L2_ERROR_CODES,
+})
 
 function onDeleteRow(row, event) {
   event?.stopPropagation?.()

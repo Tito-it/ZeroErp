@@ -19,7 +19,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 
 
@@ -189,6 +189,17 @@ class OrdiniRepository(ComponentiRepositoryMixin):
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(ordine_id)])
             return row_to_dict(cursor)
+
+    # Scopo: Capability data-driven dell'ordine per il detail API. Wrapper su
+    #        `script.fn_available_actions_ordine` (matrice transizioni
+    #        `config.transizioni_stati_ordini`): ritorna jsonb con
+    #        available_actions, can_change_state, can_edit_testata/righe,
+    #        can_push_commessa(+reason/_reason_key), non_editable_fields,
+    #        stato_codice. Blob opaco lato Python (passato intatto al FE).
+    #        Pattern gemello di preventivi/offerte/contratti. {} se la fn
+    #        ritorna NULL (ordine inesistente — il caller verifica a monte).
+    def get_capabilities(self, ordine_id: int) -> dict[str, Any]:
+        return call_jsonb_fn("script.fn_available_actions_ordine", ordine_id)
 
     # Scopo: Stato corrente (codice_interno) dell'ordine. Usato dal service
     #        come guard pre-operazione (es. modifica ammessa solo in DRAFT).

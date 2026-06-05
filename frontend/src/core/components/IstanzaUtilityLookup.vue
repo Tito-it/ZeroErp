@@ -8,9 +8,11 @@
 //   secondary: codice istanza
 //   meta: indirizzo + (se BA) codice BA
 // Usato da: PreventiviForm (prospect senza BA), future utility-aware flows.
-import { ref, watch, computed } from 'vue'
+import { watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'
+import { useLookupDisplayModel } from '../composables/useLookupDisplayModel'
+import { useAutocompleteRefineHint } from '../composables/useAutocompleteRefineHint'
 import { lookupIstanzeUtility } from '../apiCore'
 import AutoComplete from 'primevue/autocomplete'
 
@@ -33,10 +35,8 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'select', 'clear'])
 
-// Tiene traccia del total_count ritornato dall'ultima ricerca
-// per mostrare il messaggio "affina la ricerca" quando total > limit.
-const totalCount = ref(0)
-const limitShown = ref(0)
+// Hint "affina la ricerca" (total_count > limit). BB condiviso (B6).
+const { totalCount, limitShown, onResponse } = useAutocompleteRefineHint()
 
 const ac = useServerAutocomplete(async (query) => {
   const params = { q: query }
@@ -53,16 +53,7 @@ const ac = useServerAutocomplete(async (query) => {
       _display: buildDisplay(r)
     }))
   },
-  onResponse: (res) => {
-    if (!res) {
-      totalCount.value = 0
-      limitShown.value = 0
-      return
-    }
-    const data = res.data.data || {}
-    totalCount.value = data.total_count || 0
-    limitShown.value = data.limit || 0
-  }
+  onResponse,
 })
 
 function buildDisplay(r) {
@@ -74,16 +65,9 @@ function buildDisplay(r) {
   return parts.join(' · ') || `#${r.id}`
 }
 
-// Normalizza il modelValue garantendo `_display` letto da AutoComplete
-// (optionLabel="_display"). Stesso pattern di BillingAccountLookup: i restore
-// via getIstanzaUtilityLookupById ritornano l'oggetto ricco senza `_display`,
-// senza questa normalizzazione AutoComplete cade sul toString → "[object Object]".
-const displayedModel = computed(() => {
-  const v = props.modelValue
-  if (!v) return null
-  if (v._display) return v
-  return { ...v, _display: buildDisplay(v) }
-})
+// Normalizza il modelValue garantendo `_display` (anti "[object Object]" sui
+// restore by-id). BB condiviso (B6); buildDisplay resta caller-side.
+const displayedModel = useLookupDisplayModel(() => props.modelValue, buildDisplay)
 
 function onSelect(event) {
   emit('update:modelValue', event.value)

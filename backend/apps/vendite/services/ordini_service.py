@@ -201,18 +201,18 @@ def get_ordine(ordine_id: int) -> dict[str, object]:
         function_name=f"{_FN}.get_ordine",
     )
     assert testata is not None
-    stato = testata.get("stato_codice_interno")
     righe = repo.list_righe(ordine_id)
-    # Capability minime data-driven (niente fn_available_actions_ordine):
-    # modifica solo in DRAFT, push solo da CONFERMATO con righe eleggibili.
-    can_push = stato in _STATI_PUSHABILI and repo.count_righe_pushable(ordine_id) > 0
+    # Capability data-driven da script.fn_available_actions_ordine (matrice
+    # config.transizioni_stati_ordini): available_actions (conferma/annulla/
+    # push), can_edit_testata/righe, can_push_commessa(+reason), non_editable_
+    # fields, stato_codice. Sostituisce il calcolo hardcoded: la verita' e' a DB
+    # (lettura) + trigger guard (enforcement). `can_conferma` non e' piu' un
+    # flag: la conferma e' un'entry di available_actions (key='conferma').
+    capabilities = repo.get_capabilities(ordine_id)
     return {
         **testata,
+        **capabilities,
         "righe_count": len(righe),
-        "can_edit_testata": stato in _STATI_MODIFICABILI,
-        "can_edit_righe": stato in _STATI_RIGHE_MODIFICABILI,
-        "can_conferma": stato == _STATO_BOZZA and len(righe) > 0,
-        "can_push_commessa": can_push,
     }
 
 
@@ -581,10 +581,28 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
     }
 
 
-# Scopo: Hard-delete ordine (abbandono bozza). Solo DRAFT.
+# Scopo: Hard-delete ordine BOZZA ORFANO (solo supporto al pattern "abbandono
+#        bozza" del drawer: create auto-salva una BOZZA per abilitare le righe;
+#        se l'operatore esce senza inserirne, la bozza vuota viene rimossa).
+#        NON e' un'azione di cancellazione di ordini reali: un ordine con righe
+#        o non in bozza NON si cancella, si ANNULLA (cambia_stato → ANNULLATO).
+#        Allineato a `elimina_preventivo` (niente hard-delete di dati reali).
+# Guard di dominio (defense-in-depth: il FE filtra gia' su righe_count=0):
+#  - ordine esistente, stato BOZZA (DRAFT), zero righe.
 def elimina_ordine(ordine_id: int) -> dict[str, Any]:
     repo = OrdiniRepository()
     _assert_stato(repo, ordine_id, _STATI_MODIFICABILI, op="elimina_ordine")
+    righe_count = len(repo.list_righe(ordine_id))
+    ErrorManager.require(
+        righe_count == 0,
+        code="E_ORD_STATO_TRANSIZIONE",
+        message=(
+            "Impossibile eliminare un ordine con righe: annullare l'ordine "
+            "(cambio stato → ANNULLATO) invece di cancellarlo."
+        ),
+        detail=f"righe_count={righe_count}",
+        function_name=f"{_FN}.elimina_ordine",
+    )
     with _db_errors("elimina_ordine"):
         deleted = repo.delete_ordine(ordine_id)
     return {"ordine_id": ordine_id, "deleted": deleted}
@@ -614,6 +632,40 @@ def conferma(ordine_id: int) -> dict[str, Any]:
     with _db_errors("conferma"):
         repo.update_stato(ordine_id, int(stato_conf_id))
     return {"ordine_id": ordine_id, "stato_precedente": stato, "stato": _STATO_CONFERMATO}
+
+
+# Scopo: Esegue una transizione di stato data-driven dell'ordine (es. annulla
+#        DRAFT->ANNULLATO). Generico: lo stato destinazione arriva dal codice
+#        interno (`available_actions[].target_state` della fn capabilities).
+#        L'ammissibilita' della transizione e' validata dal trigger DB
+#        `trgfn_ordini_guard_transizione` (matrice config.transizioni_stati_ordini):
+#        il service non duplica il grafo. La conferma (DRAFT->CONFERMATO) ha un
+#        endpoint dedicato (`conferma`) per le sue precondizioni; questa copre le
+#        altre transizioni manuali esposte.
+def cambia_stato(ordine_id: int, stato_codice: str) -> dict[str, Any]:
+    repo = OrdiniRepository()
+    testata = _get_testata_or_raise(repo, ordine_id, op="cambia_stato")
+    stato_prec = testata.get("stato_codice_interno")
+    target = (stato_codice or "").strip()
+    ErrorManager.require(
+        bool(target),
+        code="E_ORD_VALIDAZIONE",
+        message="stato_codice obbligatorio per il cambio stato.",
+        function_name=f"{_FN}.cambia_stato",
+    )
+    stato_id = repo.get_stato_id_by_codice(target)
+    ErrorManager.require(
+        stato_id is not None,
+        code="E_ORD_VALIDAZIONE",
+        message=f"Stato '{target}' non configurato in config.stati_doc_ordini.",
+        function_name=f"{_FN}.cambia_stato",
+    )
+    assert stato_id is not None
+    # La transizione (stato_prec -> target) e' validata dal trigger guard DB;
+    # eventuale errore tradotto da _db_errors (E_ORDINE_TRANSIZIONE_NON_AMMESSA).
+    with _db_errors("cambia_stato"):
+        repo.update_stato(ordine_id, int(stato_id))
+    return {"ordine_id": ordine_id, "stato_precedente": stato_prec, "stato": target}
 
 
 # ══════════════════════════════════════════════════════════

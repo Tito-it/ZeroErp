@@ -3,12 +3,11 @@
 // Riutilizzabile da: SoggettoDrawer (edit), futuro ClienteDrawer, FornitoreDrawer.
 // Lista contatti esistenti (click per modifica) + aggiungi nuovo.
 
-import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
-import { useApiHandler } from '../composables/useApiHandler'
 import { useDrawerClose } from '../composables/useDrawerClose'
 import { useContattoForm } from '../composables/useContattoForm'
+import { useSoggettoRuoloCollection } from '../composables/useSoggettoRuoloCollection'
 import {
   listSoggettoContatti, createSoggettoContatto,
   updateSoggettoContatto, deleteSoggettoContatto,
@@ -16,7 +15,6 @@ import {
   updateRuoloContatto, deleteRuoloContatto
 } from '../../anagrafiche/api/anagrafiche'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
-import { sortByFonte } from '../utils/string'
 import ContattoForm from './ContattoForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import FormFooter from './FormFooter.vue'
@@ -26,7 +24,6 @@ import Tag from 'primevue/tag'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
-const { execute, loading } = useApiHandler()
 const contatto = useContattoForm()
 
 // Context 'soggetto' (default) o 'ruolo': determina quale set di API usare.
@@ -39,131 +36,57 @@ const props = defineProps({
   istanzaUtilityId: { type: Number, default: null }
 })
 
-// Scopo: Risolve le funzioni API in base al context (soggetto o ruolo).
-function apiFor(action) {
-  if (props.context === 'ruolo') {
-    return { list: listRuoloContatti, create: createRuoloContatto,
-             update: updateRuoloContatto, remove: deleteRuoloContatto }[action]
-  }
-  return { list: listSoggettoContatti, create: createSoggettoContatto,
-           update: updateSoggettoContatto, remove: deleteSoggettoContatto }[action]
-}
-
 const emit = defineEmits(['update:visible', 'saved'])
 
-// Lista contatti: in context ruolo contiene sia ruolo (editabili) che soggetto (readonly)
-const contattiList = ref([])
-const listLoading = ref(false)
-
-// Modalita' form: null = lista, 'new' = aggiungi, 'edit' = modifica
-const formMode = ref(null)
-const editId = ref(null)
-const formErrors = ref([])
-
-// Scopo: Carica contatti. In context 'ruolo' l'API ritorna contatti_ruolo + contatti_soggetto
-//        con campo 'fonte'. In context 'soggetto' ritorna lista piatta.
-async function loadContatti() {
-  if (!props.soggettoId) return
-  listLoading.value = true
-  try {
-    const listParams = props.context === 'ruolo' && props.istanzaUtilityId
-      ? { istanza_utility_id: props.istanzaUtilityId } : {}
-    const res = await apiFor('list')(props.soggettoId, listParams)
-    const payload = res.data?.data
-    if (props.context === 'ruolo' && payload?.contatti_ruolo) {
-      // Il backend gia' include 'fonte' (utility/ruolo/soggetto) nei dict
-      contattiList.value = sortByFonte([
-        ...payload.contatti_ruolo,
-        ...(payload.contatti_soggetto || []),
-      ])
-    } else {
-      const items = payload?.results || payload || []
-      contattiList.value = items.sort((a, b) =>
-        (a.tipo_contatto_descrizione || '').localeCompare(b.tipo_contatto_descrizione || '')
-      )
-    }
-  } catch {
-    contattiList.value = []
-  } finally {
-    listLoading.value = false
-  }
-}
-
-// Carica dati quando drawer si apre
-watch(() => props.visible, async (val) => {
-  if (!val) return
-  formMode.value = null
-  editId.value = null
-  contatto.reset()
-  await loadContatti()
+// Backbone master-detail soggetto/ruolo (B4, regola del 2): stato form +
+// load con split fonte + handler start/save/delete. La card list e il form
+// restano nel template. Contatti: delete diretto (no confirmDelete), sub-lookup
+// tipiContatto/unitaOrganizzative caricati allo start.
+const {
+  list: contattiList,
+  listLoading,
+  saving,
+  formMode,
+  formErrors,
+  startNew: onStartNew,
+  startEdit: onStartEdit,
+  cancelForm: onCancelForm,
+  saveForm: onSaveForm,
+  deleteItem: onDelete,
+} = useSoggettoRuoloCollection({
+  visible: () => props.visible,
+  context: () => props.context,
+  ownerId: () => props.soggettoId,
+  istanzaUtilityId: () => props.istanzaUtilityId,
+  apiMap: {
+    soggetto: { list: listSoggettoContatti, create: createSoggettoContatto,
+                update: updateSoggettoContatto, remove: deleteSoggettoContatto },
+    ruolo: { list: listRuoloContatti, create: createRuoloContatto,
+             update: updateRuoloContatto, remove: deleteRuoloContatto },
+  },
+  splitKeys: { propri: 'contatti_ruolo', ereditati: 'contatti_soggetto' },
+  flatSort: (a, b) =>
+    (a.tipo_contatto_descrizione || '').localeCompare(b.tipo_contatto_descrizione || ''),
+  resetForm: () => contatto.reset(),
+  validateForm: () => contatto.validate(),
+  populateForm: (item) => contatto.populate(item),
+  buildCreatePayload: () => ({ ...contatto.form }),
+  buildUpdatePayload: () => ({ ...contatto.form }),
+  onAfterStartNew: () => {
+    contatto.tipiContatto.load()
+    contatto.unitaOrganizzative.load()
+  },
+  onAfterStartEdit: () => {
+    contatto.tipiContatto.load()
+    contatto.unitaOrganizzative.load()
+  },
+  messages: {
+    created: t('contatto.contatto_creato'),
+    saved: t('contatto.contatto_salvato'),
+    deleted: t('contatto.contatto_eliminato'),
+  },
+  onSaved: () => emit('saved'),
 })
-
-// === Azioni ===
-
-function onStartNew() {
-  formMode.value = 'new'
-  editId.value = null
-  formErrors.value = []
-  contatto.reset()
-  contatto.tipiContatto.load()
-  contatto.unitaOrganizzative.load()
-}
-
-function onStartEdit(c) {
-  formMode.value = 'edit'
-  editId.value = c.id
-  formErrors.value = []
-  contatto.populate(c)
-  contatto.tipiContatto.load()
-  contatto.unitaOrganizzative.load()
-}
-
-function onCancelForm() {
-  formMode.value = null
-  editId.value = null
-  formErrors.value = []
-  contatto.reset()
-}
-
-async function onSaveForm() {
-  formErrors.value = contatto.validate()
-  if (formErrors.value.length > 0) return
-
-  if (formMode.value === 'edit' && editId.value) {
-    const result = await execute(
-      () => apiFor('update')(props.soggettoId, editId.value, { ...contatto.form }),
-      { successMessage: t('contatto.contatto_salvato') }
-    )
-    if (result === null) return
-  } else {
-    const result = await execute(
-      () => apiFor('create')(props.soggettoId, {
-        ...contatto.form,
-        ...(props.context === 'ruolo' && props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId } : {})
-      }),
-      { successMessage: t('contatto.contatto_creato') }
-    )
-    if (result === null) return
-  }
-
-  formMode.value = null
-  editId.value = null
-  formErrors.value = []
-  contatto.reset()
-  await loadContatti()
-  emit('saved')
-}
-
-async function onDelete(c) {
-  const result = await execute(
-    () => apiFor('remove')(props.soggettoId, c.id),
-    { successMessage: t('contatto.contatto_eliminato') }
-  )
-  if (result !== null) {
-    await loadContatti()
-    emit('saved')
-  }
-}
 
 // Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
 const onClose = useDrawerClose(emit)
@@ -252,7 +175,7 @@ const onClose = useDrawerClose(emit)
         />
 
         <FormFooter
-          :loading="loading"
+          :loading="saving"
           :disabled="!contatto.form.nominativo?.trim()"
           @save="onSaveForm"
           @cancel="onCancelForm"

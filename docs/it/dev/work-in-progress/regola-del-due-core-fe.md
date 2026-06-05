@@ -4,16 +4,102 @@
 > **Ambito:** **solo frontend** del dominio `core` (`frontend/src/core/`) **+ caccia
 > ai BB mancanti** che gli altri domini reinventano e che dovrebbero vivere in core.
 > **Profondità:** media
-> **Stato:** 🟡 **MAPPATURA (2026-06-05).** Documento di analisi. **Eseguiti finora:**
-> ✅ **X1** (`userScoped` 9 store admin) · ✅ **famiglia guard di versione completa: A1**
-> (unificazione `useFetchVersion`/`useTokenedFetch`) **+ A2** (4 drawer `fgVersion`) **+
-> B3** (`useArticoloUomOptions`) · ✅ **A4** (`AttivoTag`, 26 siti migrati) · ✅ **A3**
-> (`EntityFormDrawer`/`EntityFormField` schema-driven, 6 drawer geo come wrapper) · ✅ **D2**
-> (rimosso il double-fetch ridondante nei 5 drawer geo) · ✅ **B1** (`GeoSearchTable`, 6
-> SearchTable geo come wrapper). Tutto il resto è ancora sola mappatura: per ogni
-> candidato vale il protocollo della regola del 2 (`feedback_regola_del_2_estrai_bb`) —
-> dichiarare a chat il disegno del BB e attendere l'OK di Tid prima di scrivere codice
-> astratto.
+> **Stato:** 🟢 **IN ESECUZIONE (2026-06-05).** Documento nato come mappatura, ora
+> **tracker attivo**: molti candidati netti + lo stack geografico + la convergenza factory
+> sono **eseguiti e verificati** (ESLint + `vite build` verdi, niente test FE). Vedi la
+> sezione **"Stato esecuzione e ripartenza"** sotto. Per i candidati ancora aperti vale il
+> protocollo della regola del 2 (`feedback_regola_del_2_estrai_bb`): dichiarare a chat il
+> disegno del BB e attendere l'OK di Tid prima di scrivere codice astratto.
+
+## Stato esecuzione e ripartenza (aggiornato 2026-06-05)
+
+> **Questo documento è il tracker autorevole.** Niente è committato: working tree molto
+> ampio (~80+ file) su `dev/backend-tid`. Tutti i pezzi ✅ sono ESLint + `vite build` verdi.
+
+### ✅ Eseguito (2026-06-05)
+
+- **🐛 X1** — `userScoped: true` su 9 store admin hand-rolled (chiuso leak cross-user).
+- **A1 + A2 + B3** — famiglia "guard di versione" unificata su `useFetchVersion`
+  (`useTokenedFetch` eliminato; 4 drawer `fgVersion` + `useArticoloUomOptions` migrati).
+- **A4** — `core/components/AttivoTag.vue` (26 siti migrati).
+- **A3** — `core/components/EntityFormDrawer.vue` + `EntityFormField.vue` (schema-driven),
+  6 drawer geo riscritti come wrapper.
+- **D2** — rimosso il double-fetch ridondante nei drawer geo (`refreshOnSave:false`).
+- **B1** — `core/components/GeoSearchTable.vue`, 6 SearchTable geo come wrapper.
+- **B7** — eliminato `dateHelpers.js` (ombra di `date.js`).
+- **B8** — de-dup primitiva download blob (`useFileDownload` usa `downloadBlob`).
+- **B19** — factory unica `core/stores/createCrudStore.js` (flag `startsEmpty`/`alwaysFetch`
+  su `useListaEmptyStateFetch` + escape-hatch `extend`); eliminate `createCrudListStore` +
+  `createCrudAdminStore`; 8 store migrati.
+- **B2** — 6 store geo → `createCrudStore` (`startsEmpty:false`).
+- **B17 (parziale 3/6)** — `tipiRuoloTipiIndirizzo` + `utilitiesTipiRuolo` + `emittentiFiscali`
+  migrati (via `extend`); review critica: rimosso dead-code BA-mapping + tabEntity admin
+  da letterali a `TAB_ENTITIES.X`.
+- **B5** — `LookupSelect` esteso (modo additivo `fetcher`+`lookupKey`+`transform` +
+  `includeAllOption`/`allLabel`; `rel` ora opzionale, default storico invariato → zero
+  regressione sui ~45 `rel` esistenti). I 5 wrapper Select su lookup statico per codice
+  (`TipoVariazione`/`Ambito`/`RoundingMode`/`EmittenteRoundingMode`/`EmailLogStato`) sono ora
+  thin (delegano render+logica al BB; `:filter="false"` preserva l'assenza di filtro sulle
+  liste enum corte).
+- **B4** — `core/composables/useSoggettoRuoloCollection.js` (macchina a stati master-detail
+  soggetto/ruolo: resolver API + load con split fonte + 5 handler start/save/delete).
+  `ContattiSoggettoDrawer` + `ContiBancariDrawer` rifattorizzati (card list + form + readonly/
+  blocked + toolbar `PageActionsBar` restano per-drawer). `IndirizziSoggettoDrawer` **escluso**
+  (falso positivo parziale).
+- **B6** — DUE composable: `useLookupDisplayModel` (re-inietta `_display` sui restore by-id,
+  anti `[object Object]`; 3 consumer) + `useAutocompleteRefineHint` (footer "affina ricerca",
+  2 consumer). `BillingAccountLookup`/`IstanzaUtilityLookup`/`ArticoloLookup` rifattorizzati.
+  `buildDisplay` + `watch(utilityId)` restano per-componente. Nessun `RichEntityLookup` base.
+- **B9** — `core/composables/useActionBar.js` (motore filtro/disabled/tooltip/dispatch + voci
+  Menu + toggle popup). `PageActionsBar` + `DrawerActionsBar` tengono solo partizionamento per
+  `kind` + `buttonClass`/`Severity`/`Outlined` + template. Divergenze via opzioni
+  (`defaultMenuItemClass`, `menuLabel` col counter).
+- **B14** — `core/composables/useStoreFilterBindings.js` (`bindSelect`/`bindDate` → `{value,
+  onChange}`, `value`=ref destrutturato coi nomi storici → template invariato; `bindDate`
+  local-safe + `clearTo` floor). 4 liste vendite rifattorizzate (`Ordini`/`Offerte`/`Contratti`/
+  `Preventivi`). `buildExportParams` + `mostraStorico` + `scadenza_mese` restano per-componente.
+  Bonus: sana il tz-shift di contratti (`new Date(iso)` → `parseIsoDate`).
+- **B10** — `core/components/RigheMasterDetailTable.vue` (macchina a stati master-detail +
+  toolbar + DataTable scaffold). `OrdiniRigheTable`/`PreventiviRigheTable` → thin wrapper
+  (colonne via slot `#columns`, form via slot `#form`; badge approvazione + `deleteDisabled`
+  PENDING restano in preventivi).
+- **B11** — `vendite/_shared/righe/useRigaArticoloComposito.js` (**thin core**, scelta Tid):
+  `isEdit`/`isCasoA`/`isPadreComposito` + wiring UoM + `useComponentiDialog` + `submitRiga`.
+  Composto in `OrdiniRigaForm`/`PreventiviRigaForm`; resolver/L2/canSave/buildPayload restano
+  per-form. Drift `sconto_perc`/`sconto_percentuale` → **brief DB** (scelta Tid):
+  [brief-db-unificazione-sconto-righe.md](brief-db-unificazione-sconto-righe.md).
+- **B12** — `vendite/_shared/pricing/useL2SaveFlow.js` (save+richiedi-approvazione, classify/
+  retry/reset). 3 siti rifattorizzati (`PreventiviRigaForm`/`ContrattoRigheDrawer`/
+  `OffertaEccezioniDrawer`); `onSuccess` inietta i side-effect divergenti. Rimossi import
+  `classifyL2Error`/`extractApiError`/`notify` ora morti nei 2 drawer.
+- **B13** — `core/composables/useDrawerAutosaveBozza.js` (auto-save bozza + edit-evolved +
+  abbandono orfana). `OrdiniDrawer`/`PreventiviDrawer` rifattorizzati; `createdId` resta ref
+  del drawer (passato in). Param-heavy ma onesto (payload/trigger/default per-drawer).
+
+### 🔜 RIPARTIRE DA QUI (prossimi passi, in ordine consigliato)
+
+1. **Decidere se committare** lo stato attuale (consigliato: raggruppare per tema) prima
+   di aprire nuovi cantieri. Niente è committato.
+2. **B17 — 3 store rinviati** (`operatori`, `emailAccounts`, `emailTemplates`): hanno
+   **detail-storato** (`currentX` + `fetchDetail`/`update` che salvano nello store). Serve
+   estendere `createCrudStore` con un **modo "detail-storato"** (override `fetchDetail`/
+   `update`) oppure lasciarli hand-rolled. Da decidere con Tid.
+3. **B15** (`unitaMisura`/`uomTipi`): adozione `createCrudStore` **+ nuovo hook `onMutate`/
+   `lookupRel`** sulla factory (chiama `invalidateLookup` post-mutazione, oggi assente).
+4. **B18** — factory **separata** `createScopedAdminStore` per gli store `ui.lista_*`
+   (non-paginata, fetch-by-key, idempotency-key). L'`extend` già aggiunto aiuta.
+5. ✅ **Tutti i 🟡 trasversali + stack righe vendite fatti** (B4/B5/B6/B9/B14/B10/B11/B12/B13,
+   2026-06-05). Resta in sospeso il solo **brief DB sconto** (B11) lato team DB.
+6. **⚠️ collaterali ancora aperti**: **D3** (asimmetria riattiva UoM — decisione dominio),
+   **D4** (BB formattazione ignorati: `displayTimestamp`/`formatCurrency` inline da
+   sostituire), **D5** (markup lookup, contingente a B6).
+
+### ⚠️ Note di comportamento da ricordare
+
+- **Search ≥3 char** ora vale anche per geo/admin liste (`alwaysFetch` + buildParams ≥3):
+  scelta **(b)** di Tid (lista resta piena <3 char, niente flash). Unico cambio osservabile.
+- 🔴 falsi positivi (form-builder, ContoContabile/UtilityPerRuolo, wrapper emit,
+  PraticaNoteTab) — **NON** toccare.
 
 Capitolo FE gemello di
 [regola-del-due-core-be.md](../work-done/regola-del-due-core-be.md) (che chiudeva la
@@ -319,7 +405,16 @@ includere:** tutte e 6 riscrivono l'oggetto `reload` invece di usare `reloadActi
 già esportato da `useSearchTable` (che porta in dote il disable su lista vuota, oggi
 mancante).
 
-### B2. 6 store Pinia geografici non adottano `createCrudListStore` — `interno_core` — 6 occorrenze
+### B2. 6 store Pinia geografici non adottano la factory CRUD-lista — `interno_core` — 6 occorrenze — ✅ FATTO (2026-06-05)
+
+> **Migrati i 6 store geo a `createCrudStore` con `startsEmpty:false`** (liste che
+> partono piene), abilitato da B19. ~80 righe/store → ~12. `comuni` (create-only) gestito
+> da una piccola estensione della factory: `update`/`fetchDetail` esposti **solo se
+> l'api esiste** (mirror del pattern esistente). **Conseguenza voluta di B19+(b):** il
+> search ora filtra da ≥3 char (prima ≥1) — coerente con l'app e col comportamento (b)
+> scelto per `alwaysFetch`; lo segnalo perché è l'unico cambio osservabile (es. ricerca
+> sigla provincia a 2 char mostra lista piena finché non arrivi a 3). ESLint + `vite build`
+> verdi.
 
 Copie a mano (~80 righe) della shape che
 [createCrudListStore.js](../../../../frontend/src/core/stores/createCrudListStore.js) già
@@ -363,7 +458,21 @@ tra i consumer — ma non importa nulla.
 che il BB non copre. Da fare **nello stesso changeset di A1** per non creare un terzo
 allineamento. Sotto-soglia da solo (1 occorrenza), ma è parte della famiglia.
 
-### B4. Backbone master-detail sotto-entità soggetto/ruolo ripetuto — `interno_core` — 2 occorrenze (+1 parziale)
+### B4. Backbone master-detail sotto-entità soggetto/ruolo ripetuto — `interno_core` — 2 occorrenze (+1 parziale) — ✅ FATTO (2026-06-05)
+
+> **Estratto `core/composables/useSoggettoRuoloCollection.js`.** Possiede SOLO la macchina
+> a stati: `apiFor` via `apiMap[context]`, `loadList` con split fonte (`splitKeys.propri`/
+> `.ereditati` + `sortByFonte`; fallback lista piatta `flatSort`), stato `formMode`/`editId`/
+> `formErrors`, i 5 handler `startNew`/`startEdit`/`cancelForm`/`saveForm`/`deleteItem`
+> (`execute`+`onSaved`+reload), e il `watch(visible)` di apertura. Espone anche `saving`
+> (loading di `useApiHandler` interno). Le 3 divergenze assorbite via callback:
+> `buildCreatePayload`/`buildUpdatePayload` (Contatti `{...form}` vs Conti `toCreatePayload()`),
+> `confirmDelete?` opzionale (Conti conferma con IBAN mascherato, Contatti delete diretto),
+> `onAfterStartNew`/`onAfterStartEdit` (Contatti carica `tipiContatto`/`unitaOrganizzative`).
+> I due drawer rifattorizzati: card list, form, `save-disabled`, readonly/blocked e toolbar
+> `PageActionsBar` (Conti) restano per-drawer. `IndirizziSoggettoDrawer` **non** toccato
+> (falso positivo). ESLint + `vite build` verdi. Entry aggiunta al
+> [catalogo BB FE](../frontend/catalogo-building-block-frontend.md).
 
 `ContattiSoggettoDrawer` e `ContiBancariDrawer` sono **gemelli pieni** (~120 righe):
 resolver `apiFor(context)` soggetto/ruolo, `loadXxx()` con split fonte + `sortByFonte`,
@@ -383,7 +492,22 @@ parziale su `IndirizziSoggettoDrawer`:** condivide solo `apiFor`+`loadList(split
 resto (matrice tipi, mode `replace`, multi-riga) diverge troppo, **non** forzarlo
 nell'astrazione. **Rischio medium**, dichiarare a Tid prima.
 
-### B5. Wrapper `<Select>` su lookup statico per codice — 5 copie quasi identiche — `bb_mancante_core` — 5 occorrenze
+### B5. Wrapper `<Select>` su lookup statico per codice — 5 copie quasi identiche — `bb_mancante_core` — 5 occorrenze — ✅ FATTO (2026-06-05)
+
+> **Esteso `LookupSelect.vue` (nessun BB nuovo).** 5 prop additivi: `fetcher` (Function;
+> mutuamente esclusivo con `rel`, ora opzionale), `lookupKey` (chiave cache col fetcher,
+> fallback `rel`), `transform` (default `undefined` → envelope paginato `r.data.data.results`
+> di `useGlobalLookup`), `includeAllOption` + `allLabel` (prepend voce "Tutti" value=null).
+> `selectedItem` cerca in `visibleOptions` (matcha la voce "Tutti"). Guard DEV: esattamente
+> uno tra `rel`/`fetcher`. **Zero regressione** sui ~45 `rel`: i path nuovi sono inattivi
+> quando i prop non sono passati. I 5 wrapper restano (binding di dominio: fetcher/key/
+> placeholder i18n/scope) ma diventano thin → delegano a `<LookupSelect :fetcher .. :transform
+> .. value-field="codice" show-code :filter="false" />`. `EmailLogStatoSelect` usa
+> `include-all-option` + niente `show-code` (mostra solo descrizione, come prima). `:filter="false"`
+> esplicito preserva l'assenza del filtro sulle liste enum corte (default `LookupSelect` è
+> `filter:true`). Superficie pubblica dei wrapper invariata → 8 consumer non toccati. ESLint
+> + `vite build` verdi. Entry [catalogo BB FE](../frontend/catalogo-building-block-frontend.md)
+> aggiornata.
 
 5 wrapper Select su whitelist statiche di codici condividono ~40 righe di **logica**
 identica: `useGlobalLookup(key, fetcher, { transform: r => r.data.data })`, `formatOption`
@@ -405,7 +529,18 @@ i18n restano prop del caller; `transform` esposto come prop **preservando** il d
 attuale `r.data.data.results` per i ~45 `rel` esistenti. **Rischio medium**: refactor di
 un BB core già largamente adottato → testare la non-regressione dei `rel`.
 
-### B6. Rich server-autocomplete: `_display`/refine-hint/utility-reset — 3 copie interne a core — `interno_core` — 3 occorrenze
+### B6. Rich server-autocomplete: `_display`/refine-hint/utility-reset — 3 copie interne a core — `interno_core` — 3 occorrenze — ✅ FATTO (2026-06-05)
+
+> **Estratti DUE composable (no componente base, come da analisi).**
+> `core/composables/useLookupDisplayModel.js` (`useLookupDisplayModel(getModelValue,
+> buildDisplay)` → `displayedModel`: re-inietta `_display` sui restore by-id, identico
+> byte-per-byte nei 3) + `useAutocompleteRefineHint.js` (`{ totalCount, limitShown,
+> onResponse }`: footer "affina ricerca" + reset su `res null`, 2 consumer BA+Istanza).
+> `BillingAccountLookup`/`IstanzaUtilityLookup` adottano entrambi; `ArticoloLookup` solo
+> `useLookupDisplayModel` (niente footer). `buildDisplay` (campi diversi) e il
+> `watch(utilityId)` di reset (2 occorrenze, ROI basso) restano per-componente. **Niente
+> `RichEntityLookup.vue` base** (template option divergenti). ESLint + `vite build` verdi.
+> Entry [catalogo BB FE](../frontend/catalogo-building-block-frontend.md) aggiunte.
 
 3 lookup ricchi condividono tre blocchi distinti (non scaffolding): (1) `displayedModel`
 computed che ri-inietta `_display` su un modelValue da restore (evita il bug AutoComplete
@@ -427,7 +562,15 @@ invece la macchina filtri tri-stato assente negli altri due. **Bonus:** esportar
 `buildDisplay` condiviso così i caller vendite (ContrattoRigheDrawer, PromoArticoloDrawer,
 VersioneDrawer) smettono di hardcodare inline `${codice} — ${descrizione}`.
 
-### B7. Util-ombra `dateHelpers.js` duplica `date.js` — `interno_core` — 2 moduli (4 file consumer)
+### B7. Util-ombra `dateHelpers.js` duplica `date.js` — `interno_core` — 2 moduli (4 file consumer) — ✅ FATTO (2026-06-05)
+
+> **Eliminato `dateHelpers.js`.** I 4 consumer (CategoriaClienteListinoDrawer,
+> TemplateAssetDrawer, TemplateVersioniSection, PromoArticoloDrawer) ora importano da
+> `core/utils/date.js` con rename 1:1 dei call-site: `isoToLocalDate`→`parseIsoDate`,
+> `localDateToIso`→`toDateString` (le versioni `date.js` sono superset più robusti — guard
+> `instanceof Date`, regex tollerante, pass-through stringa — e i consumer passano solo
+> Date/null e ISO date-only → zero perdita semantica). PromoArticoloDrawer: import fuso
+> con l'esistente `addDaysToToday`. Nessun riferimento residuo. ESLint + `vite build` verdi.
 
 [core/utils/dateHelpers.js](../../../../frontend/src/core/utils/dateHelpers.js)
 (`isoToLocalDate`/`localDateToIso`) reimplementa la **stessa** conversione locale-safe
@@ -443,7 +586,15 @@ PromoArticoloDrawer).
 tollerante; `toDateString` gestisce input già-stringa). Nei 4 consumer si passano sempre
 Date/null e stringhe date-only → sostituzione sicura.
 
-### B8. Primitiva download Blob duplicata tra `download.js` e `useFileDownload` — `interno_core` — 2 occorrenze
+### B8. Primitiva download Blob duplicata tra `download.js` e `useFileDownload` — `interno_core` — 2 occorrenze — ✅ FATTO (2026-06-05)
+
+> **De-duplicato.** [useFileDownload.js](../../../../frontend/src/core/composables/useFileDownload.js)
+> ora importa `downloadBlob` da `core/utils/download.js` e lo usa nel Path-2 fallback; la
+> primitiva privata `triggerBrowserDownload` è stata rimossa. I due delta sono
+> benigni/migliorativi: revoke 1000ms (più conservativo per l'edge Safari) vs 0ms; guard
+> `if (!blob)` + default filename innocui (il caller passa sempre un filename risolto). I
+> 5+ consumer di `downloadBlob` (documenti, TemplateAssetDrawer) restano invariati. ESLint
+> + `vite build` verdi.
 
 La primitiva blob-to-disk (`createObjectURL` → `<a download>` → click → `revokeObjectURL`,
 ~8 righe) è in [core/utils/download.js](../../../../frontend/src/core/utils/download.js#L1-L30)
@@ -456,7 +607,19 @@ La primitiva blob-to-disk (`createObjectURL` → `<a download>` → click → `r
 **più** conservativo per l'edge Safari, non una regressione); guard `if (!blob)` e default
 filename innocui (il caller passa sempre un filename risolto).
 
-### B9. `PageActionsBar` e `DrawerActionsBar`: ~7 helper JS identici sotto il mirror — `interno_core` — 2 occorrenze
+### B9. `PageActionsBar` e `DrawerActionsBar`: ~7 helper JS identici sotto il mirror — `interno_core` — 2 occorrenze — ✅ FATTO (2026-06-05)
+
+> **Estratto `core/composables/useActionBar.js`.** Motore filtro/dispatch/menu:
+> `isActionVisible` (include `useInjectReadonly`+`useAuthStore`), `visibleActions`,
+> `primaryActions`, `isActionDisabled`, `buttonTooltip`, `runAction`, `menuItems`,
+> `menuTooltipText`, `desktop/compactMenuRef` + i toggle. API
+> `useActionBar(() => props.actions, { disabled, menuTooltip, defaultMenuItemClass,
+> menuLabel })`. Le due barre tengono solo il partizionamento per `kind` (Page:
+> desktopInline/desktopMenu via `inline`/`secondary`; Drawer: state/manage/secondary +
+> compact) + `buttonClass`/`buttonSeverity`/`buttonOutlined` + `compactHasBadge` (Drawer) +
+> template. Divergenze assorbite: `defaultMenuItemClass` (`app-menu-item-action` vs
+> `app-menu-item-manage`), `menuLabel` (Drawer appende `(N)`). ESLint + `vite build` verdi.
+> Entry [catalogo BB FE](../frontend/catalogo-building-block-frontend.md) aggiunta.
 
 Il mirror è documentato a livello di **template** in frontend-standards (voluto), ma lo
 strato **logico** sotto è duplicato: `isActionVisible` (stesso triplo check
@@ -474,7 +637,15 @@ diverso). ⚠️ Parametrizzare `defaultMenuItemClass` (Page `app-menu-item-acti
 `app-menu-item-manage`) e `menuLabel` (Drawer appende il badge counter `(N)`). Ortogonale
 a `useDrawerActions` (che costruisce i dati, non filtra/dispatcha). **Rischio medium.**
 
-### B10. `OrdiniRigheTable` è un clone di `PreventiviRigheTable` (master-detail inline) — `bb_mancante_core` — 2 occorrenze
+### B10. `OrdiniRigheTable` è un clone di `PreventiviRigheTable` (master-detail inline) — `bb_mancante_core` — 2 occorrenze — ✅ FATTO (2026-06-05)
+
+> **Estratto `core/components/RigheMasterDetailTable.vue`.** Possiede la macchina a stati
+> (`formMode`/`rigaSelezionata`/`selezione`, load/new/edit/chiudi/saved/componentiChanged/
+> delete, toolbar reload+nuovo, DataTable scaffold + colonna azioni elimina). Colonne dati via
+> slot `#columns`, form via slot `#form="{ riga, onSaved, onComponentiChanged, onCancel }"`. I 2
+> wrapper → ~50 righe ciascuno (props + slot). Preventivi tiene il badge approvazione (colonna
+> prezzo) + `deleteDisabled` su PENDING. `ContrattoRigheDrawer` **non** forzato. ESLint +
+> `vite build` verdi. Entry [catalogo BB FE](../frontend/catalogo-building-block-frontend.md).
 
 Clone quasi byte-identico limitatamente alla logica master-detail inline (>40 righe):
 `pageActions`, `loadRighe`, `watch(parentId, immediate)`, `onNuovaRiga/onEditRiga/
@@ -492,7 +663,18 @@ DataTable inner + form inline.
 prematura. Lo standard oggi **prescrive** la copia (frontend-standards §"Master-Detail
 inline" rimanda a "copiare la struttura"): la duplicazione è addirittura indotta dalla doc.
 
-### B11. `OrdiniRigaForm` è un clone semplificato di `PreventiviRigaForm` — `bb_mancante_core` — 2 occorrenze
+### B11. `OrdiniRigaForm` è un clone semplificato di `PreventiviRigaForm` — `bb_mancante_core` — 2 occorrenze — ✅ FATTO (2026-06-05, thin core)
+
+> **Scelta Tid: thin core, non composable pieno** (evita config leaky). Estratto
+> `vendite/_shared/righe/useRigaArticoloComposito.js` col nucleo davvero identico:
+> `isEdit`/`isCasoA`/`isPadreComposito` + wiring UoM (`useArticoloUomOptions` + `uomLabel` +
+> autopick base) + `useComponentiDialog` + `submitRiga`. Composto nei 2 form; resolver listino
+> + gate L2 + cella prezzo-listino + campo `ordine` + `form`/`canSave`/`buildPayload`/`handleSave`
+> restano per-form. **Drift `sconto_perc`/`sconto_percentuale`** (incoerenza modello DB,
+> confermata: `ordini_righe.sconto_perc` no-default vs `preventivi_righe.sconto_percentuale`
+> default 0) → scelta Tid **brief DB unificazione**:
+> [brief-db-unificazione-sconto-righe.md](brief-db-unificazione-sconto-righe.md). ESLint +
+> `vite build` verdi.
 
 ~120 righe di "core riga articolo" duplicate: computeds `isEdit`/`isCasoA`/
 `isPadreComposito`, `uomLabel`+`caricaUomConPickBase` (byte-identici), `watch(riga)`,
@@ -513,7 +695,15 @@ di dominio compongono. Include (non sostituisce) `useArticoloUomOptions` già es
 (`useComponentiDialog`, `useLimitiPricing`, `L2ErrorBanner`) vivono già lì, è logica riga
 vendite-specifica. **Rischio medium.**
 
-### B12. Orchestrazione save + richiedi-approvazione L2 ripetuta inline — `bb_mancante_core` — 3 occorrenze
+### B12. Orchestrazione save + richiedi-approvazione L2 ripetuta inline — `bb_mancante_core` — 3 occorrenze — ✅ FATTO (2026-06-05)
+
+> **Estratto `vendite/_shared/pricing/useL2SaveFlow.js`.** Macchina reset→loading→
+> persist→success+onSuccess→catch(classify: banner L2 vs toast)→finally + retry
+> `richiesta_approvazione=true`. `l2Error`/`loading` ref del chiamante; side-effect di successo
+> iniettati via `onSuccess(result)` (emit 'saved' vs loadPreview+close vs reload+close);
+> `messages.success` è una funzione (dipende da create/edit). 3 siti rifattorizzati; rimossi
+> import ora morti (`classifyL2Error`/`extractApiError`/`notify`) in `ContrattoRigheDrawer` e
+> `OffertaEccezioniDrawer`. ESLint + `vite build` verdi.
 
 I pezzi atomici (`classifyL2Error`, `L2ErrorBanner`, `useLimitiPricing` con
 `L2_ERROR_CODES`) sono **già** condivisi in `vendite/_shared/pricing/`, ma
@@ -531,7 +721,16 @@ macchina classify/retry/reset+watch è condivisibile; i side-effect di successo 
 (emit vs loadPreview+closeForm vs reload+closeForm) → iniettati via `onSuccess(result)`
 opzionale; loading-ref e payload builder ricevuti, non posseduti.
 
-### B13. Auto-save BOZZA + "edit-evolved" + abbandono bozza orfana — `bb_mancante_core` — 2 occorrenze
+### B13. Auto-save BOZZA + "edit-evolved" + abbandono bozza orfana — `bb_mancante_core` — 2 occorrenze — ✅ FATTO (2026-06-05)
+
+> **Estratto `core/composables/useDrawerAutosaveBozza.js`.** Owns: `autoSaveBozza`
+> (buildDraftPayload→execute→createdId+emitDataChanged+fetchDetail), il `watch(triggerSources)`
+> con i 5 guard, `hasOrphanedDraft`, `close`/`attemptClose`/`onVisibleChange` (confirm danger →
+> deleteDraft). `createdId` resta ref del drawer (intrecciato in computed/handleSave/template) →
+> passato in, come `l2Error` in B12. Divergenze iniettate: `triggerSources`/`isReady` (Ordini
+> single `billing_account_id` vs Preventivi tupla `utility`+`istanza`), `buildDraftPayload`
+> (Ordini async con `applyBaDefaults`; Preventivi sync, default BA via `useBaFormDefaults` a
+> parte), `tabEntity`, `createDraftApi`, `deleteDraft`, `messages`. ESLint + `vite build` verdi.
 
 Pattern `feedback_drawer_create_autosave_bozza` (documentato in memoria ma mai estratto):
 4 blocchi quasi identici tra i due drawer testata — `autoSaveBozza()`, trigger watch con
@@ -548,7 +747,20 @@ Preventivi tuple); preambolo `applyBaDefaults()` caller-owned (non cablare i def
 BB); `createDraftApi` axios (non `store.create`, cfr. `feedback_useapihandler_solo_axios`);
 coordinare con `useBaFormDefaults` già estratto. Esattamente 2 occorrenze = soglia.
 
-### B14. Handler filtri toolbar lista vendite ripetuti — `bb_mancante_core` — 4 occorrenze
+### B14. Handler filtri toolbar lista vendite ripetuti — `bb_mancante_core` — 4 occorrenze — ✅ FATTO (2026-06-05)
+
+> **Estratto `core/composables/useStoreFilterBindings.js` — deviazione approvata dal
+> filterMap unico.** `useStoreFilterBindings(store, applyFilters)` → `{ bindSelect, bindDate }`.
+> Ogni binder ritorna `{ value, onChange }` con `value` = il **ref** (non unwrappato): il
+> consumer lo destruttura coi nomi storici (`const { value: statoFilter, onChange:
+> onStatoChange } = bindSelect('stato')`) → **template invariato, zero churn**. `bindDate` usa
+> `parseIsoDate`/`toDateString` local-safe → **sana il tz-shift latente** di contratti
+> (`new Date(iso)`); opzione `clearTo` per il floor anno-1 (falso positivo documentato).
+> **`buildExportParams` resta caller-side** (mappatura export divergente: rename
+> `data_a`→`data_al`/`validita_dal_max`, `solo_attiva` string-cast, `scadenza_mese` YYYY-MM),
+> così come `mostraStorico` (computed get/set, 2 occorrenze) e lo scadenza_mese di contratti.
+> 4 liste rifattorizzate (`Ordini`/`Offerte`/`Contratti`/`Preventivi`). ESLint + `vite build`
+> verdi. Entry [catalogo BB FE](../frontend/catalogo-building-block-frontend.md) aggiunta.
 
 Blocco "filtri custom" (~30-40 righe) ripetuto: refs locali da `store.filters`, handler
 one-liner `onXChange`, coppia data `onDataDaChange/onDataAlChange` con `toDateString`,
@@ -600,10 +812,29 @@ reset); il list-ref e il fallback `[]` restano al chiamante (cattura `non_editab
 diversi); `ContrattoRigheDrawer` è fit parziale (due fetch + ramo else su close). **NON**
 estrarre l'intero componente (form-body e regole di processo divergono profondamente).
 
-### B17. 8 store admin re-implementano il CRUD lista di `createCrudAdminStore` (+ leak X1) — `bb_mancante_core` — 6 occorrenze nette
+### B17. Store admin hand-rolled re-implementano il CRUD lista (+ leak X1) — `bb_mancante_core` — 6 occorrenze nette — 🟡 PARZIALE (2026-06-05)
 
-La factory [createCrudAdminStore.js](../../../../frontend/src/core/composables/createCrudAdminStore.js)
-(usata da categorieClienti/categorieClientiListini/promoArticoli) è ignorata da più store
+> **Migrati 3 su 6 a `createCrudStore` (`startsEmpty:false`); aggiunto l'escape-hatch
+> `extend` alla factory** (per stato/metodi custom, serve anche a B18). Migrati: ✅
+> `tipiRuoloTipiIndirizzo` (puro), ✅ `utilitiesTipiRuolo` (`extend` → `fetchUsage`), ✅
+> `emittentiFiscali` (`extend` → sotto-risorsa utilities; `fetchDetail` ritorna, niente
+> detail-storato). **Review critica (2026-06-05):** rimosso da `emittentiFiscali` il blocco
+> BA-mapping (`addBillingAccountMapping` ecc.) = **codice morto** (zero consumer — le
+> mappature BA usano lo store dedicato `emittentiFiscaliBA`); e i 4 store admin di B19
+> ora usano le costanti `TAB_ENTITIES.X` invece di stringhe letterali hardcoded (valori
+> identici, verificato vs `useTabFreshness` delle SearchTable). Il `userScoped:true`
+> manuale di X1 rimosso dai 3 migrati
+> (lo dà ora la factory). **🟡 Rinviati 3 — `operatori`, `emailAccounts`, `emailTemplates`:**
+> hanno **detail-storato** (`currentX` + `fetchDetail`/`update` che SALVANO nello store
+> invece di ritornare) → la factory andrebbe estesa con un modo "detail-storato" (override
+> di `fetchDetail`/`update`) oppure restano hand-rolled. Non forzati per non fare una
+> mezza-migrazione che sovrascrive metà dei metodi (`feedback_no_quick_fix`). **Fuori
+> scope:** `emittentiFiscaliBA` (api con path param), `emailLogs` (read-only), `reparti`
+> (list+profilo). I 3 rinviati mantengono il loro `userScoped` di X1. ESLint + `vite build`
+> verdi.
+
+La factory ~~`createCrudAdminStore.js`~~ (ora `createCrudStore`)
+(usata da categorieClienti/categorieClientiListini/promoArticoli) era ignorata da più store
 admin hand-rolled che ne ripetono il corpo (gate 3-char + fetchDetail + create/update +
 `emitDataChanged`). **Fit netto su 3:** `tipiRuoloTipiIndirizzo`, `utilitiesTipiRuolo`,
 `emittentiFiscali`. **Fit con caveat su 3:** `emailAccounts`/`emailTemplates` (no filtro
@@ -633,7 +864,24 @@ update?, destroy, upsert?}, emitKey, idempotentCreate=true })` in `core/stores/`
 rompe `lastListaId`); azioni custom (`upsert`, `replaceColonne`) richiedono un
 escape-hatch/`extend`, non una factory chiusa.
 
-### B19. Due factory CRUD parallele: `createCrudAdminStore` vs `createCrudListStore` — `interno_core` — 2 occorrenze
+### B19. Due factory CRUD parallele: `createCrudAdminStore` vs `createCrudListStore` — `interno_core` — 2 occorrenze — ✅ FATTO (2026-06-05)
+
+> **Convergute in `core/stores/createCrudStore.js`; entrambe le vecchie factory
+> eliminate.** Scelta di Tid: **Opzione B** — esteso il BB condiviso
+> [useListaEmptyStateFetch](../../../../frontend/src/core/composables/useListaEmptyStateFetch.js)
+> con un modo **`alwaysFetch`** (additivo, default `false` → i 7 consumer diretti +
+> i 4 store-list migrati eseguono il path identico di prima, zero regressione) e la
+> factory **delega sempre** il gate. L'unica vera divergenza era il gate empty-state →
+> parametro **`startsEmpty`** (true=parte vuota/list; false=parte piena/admin).
+> **Comportamento 1-2 char in `alwaysFetch`: opzione (b)** — la lista resta piena
+> (search ignorato finché <3), niente flash vuoto (cambio rispetto all'admin che
+> svuotava). Migrati gli **8 consumer**: 4 list (clienti/fornitori/soggetti/articoli,
+> `startsEmpty:true` = invariati) + 4 admin (categorieClienti/categorieClientiListini/
+> templateDocumenti/promoArticoli, `startsEmpty:false` + `attivo:true` in filterDefaults).
+> **Semplificazione confermata:** nessun `paramMap` (tutti gli `extraFilters` admin erano
+> identità → `filterDefaults`); `userScoped` già a posto; response shape identica;
+> `emitKey`→`tabEntity`, `api.get`→`api.detail` solo rinomine. `templateAssetDocumenti`
+> resta hand-rolled (commenti aggiornati). ESLint + `vite build` verdi. **Sblocca B2/B15/B17.**
 
 Stesso scheletro lista+CRUD in due cartelle (`composables/` vs `stores/`).
 `createCrudListStore` (più recente) **delega** il gate a `useListaEmptyStateFetch`
@@ -725,7 +973,16 @@ UoM disattivata è tecnicamente già riattivabile via `update({attivo:true})` (l
 (bottone dedicato vs flag in form), non un blocco. Decisione di dominio
 (`feedback_simmetria_modello_no_meta_scope`), non fix meccanico.
 
-### D4. BB formattazione ignorati: `displayTimestamp` / `formatCurrency` reinventati inline
+### D4. BB formattazione ignorati: `displayTimestamp` / `formatCurrency` reinventati inline — ✅ FATTO (2026-06-05)
+
+> **Sostituiti con i BB esistenti (nessun BB nuovo).** Valuta: `PreventiviRigaForm.
+> formatCurrencyBaseListino` → `formatCurrency(n, { min:2, max:6, placeholder:'—' })`
+> (output identico, nessun cambio visivo). Timestamp → `displayTimestamp` (`DD/MM/YYYY,
+> HH:mm:ss` deterministico) in `EmailAccountDrawer` (era `toLocaleString()` senza locale →
+> non-deterministico), `DocumentiGeneratiSorgenteList` (era `toLocaleString('it-IT')`),
+> `ApprovazioniPrezzoListView` (era `toLocaleString()` senza locale; placeholder `—`
+> preservato con `|| '—'`). ESLint + `vite build` verdi. **Cambio osservabile**: i timestamp
+> senza locale ora hanno formato fisso 24h zero-padded (uniformità voluta).
 
 Punti che bypassano util **già** centralizzati e censiti a catalogo:
 
@@ -774,11 +1031,16 @@ completare/unificare il BB esistente è stato sufficiente, niente nuove primitiv
 `vite build` verdi.
 
 > **Secondo filo: la famiglia "store factory".** B2 + B15 + B17 + B18 + B19 convergono su
-> un unico nodo architetturale — l'unificazione/estensione delle factory store
-> (`createCrudListStore`/`createCrudAdminStore` + il gate `useListaEmptyStateFetch`). **B19
-> è il prerequisito**: finché la factory unica non espone i flag `gated`/`alwaysFetch` +
-> hook `onMutate`, le adozioni B2/B15/B17 restano bloccate o regressive. Da progettare come
-> **un unico cantiere** prima di toccare i singoli store.
+> un unico nodo architetturale — l'unificazione/estensione delle factory store. **✅ B19
+> FATTO (2026-06-05)**: factory unica `createCrudStore` + flag `startsEmpty`/`alwaysFetch`
+> sul gate `useListaEmptyStateFetch` + escape-hatch `extend`; le 2 vecchie factory eliminate.
+> **Follow-on eseguiti:** ✅ **B2** (6 store geo → `startsEmpty:false`); 🟡 **B17 parz.**
+> (3/6 store admin migrati via `extend`; 3 rinviati per detail-storato). **Rimanenti:**
+> 🟡 **B15** (unitaMisura/uomTipi) richiede ancora un hook `onMutate`/`lookupRel` su
+> `createCrudStore` (invalidateLookup post-mutazione, oggi assente); 🟡 i 3 store admin
+> rinviati richiedono un modo "detail-storato"; **B18** resta una factory **diversa**
+> (`createScopedAdminStore`, non-paginata/idempotency), fuori da questo nodo — `extend`
+> già aggiunto la aiuterà.
 
 ---
 
@@ -794,10 +1056,13 @@ l'OK di Tid** prima di scrivere codice astratto. Ordine suggerito per gravità/v
    `useTokenedFetch` ritirato e consumer migrato (A1); 4 drawer `fgVersion` +
    `useArticoloUomOptions` migrati su `useFetchVersion` (A2/B3); catalogo aggiornato;
    ESLint + `vite build` verdi.
-3. ✅ **A4** (`AttivoTag`, 26 siti) — **FATTO (2026-06-05)**; 🟢 **B7/B8** (util-ombra
-   `dateHelpers`/`downloadBlob`) ancora da fare — netti, basso rischio.
-4. 🟡 **Cantiere factory store** (**B19** prerequisito → poi B2/B15/B17/B18) — progettare
-   la firma unica (`gated`/`alwaysFetch`/`onMutate`) **prima** di migrare i singoli store.
+3. ✅ **A4** (`AttivoTag`, 26 siti) + ✅ **B7/B8** (eliminato `dateHelpers.js`; de-dup
+   `downloadBlob` in `useFileDownload`) — **FATTI (2026-06-05)**, netti.
+4. **Cantiere factory store** — ✅ **B19 + B2 FATTI**, 🟡 **B17 parziale (2026-06-05)**:
+   firma unica `createCrudStore` (flag `startsEmpty`/`alwaysFetch` + escape-hatch `extend`),
+   2 vecchie factory eliminate; 8 store list/admin (B19) + 6 geo (B2) + 3 admin (B17)
+   migrati. Rimanenti: 🟡 **B17** restanti 3 (detail-storato), 🟡 **B15** (hook `onMutate`),
+   🟡 **B18** (factory separata `createScopedAdminStore`).
 5. ✅ **A3 + B1 + D2** (stack geografico drawer+tabelle) — **FATTI (2026-06-05)**:
    `EntityFormDrawer` schema-driven (6 drawer wrapper); `GeoSearchTable` (6 SearchTable
    wrapper); double-fetch ridondante rimosso (`refreshOnSave:false` su tutti e 6).

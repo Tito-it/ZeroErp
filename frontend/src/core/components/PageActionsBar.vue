@@ -2,14 +2,11 @@
 // Scopo: barra azioni pagina/lista responsive e riusabile.
 // Desktop: azione primaria + utility inline, azioni secondarie in menu.
 // Mobile/tablet: azione primaria visibile, tutte le altre nel kebab.
-import { computed, ref } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { computed } from 'vue'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import { MANAGE_ICONS } from '../constants'
-import { menuItemClass } from '../utils/rowActions'
-import { useInjectReadonly } from '../composables/useReadonlyMode'
-import { useAuthStore } from '../../stores/auth'
+import { useActionBar } from '../composables/useActionBar'
 
 const props = defineProps({
   actions: { type: Array, default: () => [] },
@@ -17,21 +14,18 @@ const props = defineProps({
   menuTooltip: { type: String, default: '' },
 })
 
-const { t } = useI18n()
-const auth = useAuthStore()
-const isReadonly = useInjectReadonly()
-const desktopMenuRef = ref(null)
-const compactMenuRef = ref(null)
+// Motore condiviso (B9): filtro visibilita'/disabled/tooltip/dispatch + voci Menu.
+const {
+  visibleActions, primaryActions, isActionDisabled, buttonTooltip,
+  runAction, menuItems, menuTooltipText,
+  desktopMenuRef, compactMenuRef, toggleDesktopMenu, toggleCompactMenu,
+} = useActionBar(() => props.actions, {
+  disabled: () => props.disabled,
+  menuTooltip: () => props.menuTooltip,
+  defaultMenuItemClass: 'app-menu-item-action',
+})
 
-function isActionVisible(action) {
-  if (action.visible === false) return false
-  if (action.hideWhenReadonly && isReadonly.value) return false
-  if (action.action && !auth.isActionAllowed(action.action)) return false
-  return true
-}
-
-const visibleActions = computed(() => props.actions.filter(isActionVisible))
-const primaryActions = computed(() => visibleActions.value.filter(a => a.kind === 'primary'))
+// Partizionamento per kind specifico della barra pagina.
 const nonPrimaryActions = computed(() => visibleActions.value.filter(a => a.kind !== 'primary'))
 const desktopInlineActions = computed(() =>
   nonPrimaryActions.value.filter(a => a.kind !== 'secondary' && a.inline !== false),
@@ -39,14 +33,6 @@ const desktopInlineActions = computed(() =>
 const desktopMenuActions = computed(() =>
   nonPrimaryActions.value.filter(a => a.kind === 'secondary' || a.inline === false),
 )
-
-function isActionDisabled(action) {
-  return props.disabled || action.disabled === true
-}
-
-function buttonTooltip(action) {
-  return action.tooltip || action.label
-}
 
 function buttonClass(action) {
   if (action.class) return action.class
@@ -62,41 +48,8 @@ function buttonSeverity(action) {
   return undefined
 }
 
-function runAction(action, event) {
-  event?.stopPropagation()
-  if (isActionDisabled(action)) return
-  action.command?.()
-}
-
-// Scopo: mappa le azioni nel formato PrimeVue Menu.
-// La classe della voce e' parallela al colore inline del bottone desktop:
-// default = action (verde, come app-reload-btn) — utility/secondarie nel kebab
-// mantengono lo stesso colore che avrebbero avute inline.
-function menuItems(actions) {
-  return actions.map(a => ({
-    label: a.label,
-    icon: a.icon,
-    disabled: isActionDisabled(a),
-    class: menuItemClass(a.severity, 'app-menu-item-action'),
-    command: () => {
-      if (!isActionDisabled(a)) a.command?.()
-    },
-  }))
-}
-
 const desktopMenuItems = computed(() => menuItems(desktopMenuActions.value))
 const compactMenuItems = computed(() => menuItems(nonPrimaryActions.value))
-const menuTooltipText = computed(() => props.menuTooltip || t('common.altre_azioni'))
-
-function toggleDesktopMenu(event) {
-  event.stopPropagation()
-  desktopMenuRef.value?.toggle(event)
-}
-
-function toggleCompactMenu(event) {
-  event.stopPropagation()
-  compactMenuRef.value?.toggle(event)
-}
 </script>
 
 <template>

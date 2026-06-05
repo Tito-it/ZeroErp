@@ -1,6 +1,7 @@
 // Store Pinia admin per anagrafiche.categorie_clienti.
-// Pattern: factory `createCrudAdminStore` (v. core/composables).
-import { createCrudAdminStore } from '../../core/composables/createCrudAdminStore'
+// Pattern lista+CRUD via createCrudStore (regola del 2) — lista parte piena.
+import { createCrudStore } from '../../core/stores/createCrudStore'
+import { TAB_ENTITIES } from '../../core/constants'
 import {
   listCategorieClienti,
   getCategoriaCliente,
@@ -8,18 +9,16 @@ import {
   updateCategoriaCliente
 } from '../api/categorieClienti'
 
-export const useCategorieClientiStore = createCrudAdminStore({
-  storeName: 'amministrazione-categorie-clienti',
+export const useCategorieClientiStore = createCrudStore('amministrazione-categorie-clienti', {
   api: {
     list: listCategorieClienti,
-    get: getCategoriaCliente,
+    detail: getCategoriaCliente,
     create: createCategoriaCliente,
     update: updateCategoriaCliente
   },
-  defaultOrderBy: 'ordinamento',
-  defaultOrderDir: 'asc',
-  emitKey: 'categorie_clienti',
-  extraFilters: {
-    partecipa_promo: 'partecipa_promo'
-  }
+  tabEntity: TAB_ENTITIES.CATEGORIE_CLIENTI,
+  orderBy: 'ordinamento',
+  orderDir: 'asc',
+  startsEmpty: false,
+  filterDefaults: { attivo: true, partecipa_promo: null },
 })

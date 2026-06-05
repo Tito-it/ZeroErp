@@ -1,176 +1,47 @@
 <script setup>
-// Scopo: Sezione master-detail inline righe preventivo (Fase 3.F3).
-//        Tabella sopra + form sotto nello stesso drawer, niente Dialog
-//        annidato (pattern coerente con ContrattoRigheDrawer / VersioneDrawer,
-//        frontend-standards §Master-detail inline).
-//        Le righe si caricano dall'endpoint /righe/ autonomo (Fase 3.F6:
-//        il detail preventivo non le embedda piu', solo righe_count).
-//        Modifica = click riga; azioni secondarie (elimina) in RowActionsMenu
-//        kebab.
-import { computed, ref, watch } from 'vue'
+// Scopo: righe preventivo master-detail inline. Thin wrapper su
+//        `core/components/RigheMasterDetailTable.vue` (B10, regola del 2): la
+//        macchina a stati vive nel BB, qui restano colonne (col badge
+//        approvazione prezzo), form di riga e il predicato "elimina bloccato
+//        su PENDING".
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useApiHandler } from '../../../core/composables/useApiHandler'
-import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { usePreventiviStore } from '../stores/preventivi'
-import { MANAGE_ICONS } from '../../../core/constants'
 import { formatCurrency, formatNumber } from '../../../core/utils/format'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
 import { STATO_APPROVAZIONE } from '../../constants'
+import RigheMasterDetailTable from '../../../core/components/RigheMasterDetailTable.vue'
 import PreventiviRigaForm from './PreventiviRigaForm.vue'
-import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
-import PageActionsBar from '../../../core/components/PageActionsBar.vue'
-import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 
 const { t } = useI18n()
 const store = usePreventiviStore()
-const { execute } = useApiHandler()
-const { confirmAction } = useConfirmAction()
 
-const props = defineProps({
+defineProps({
   preventivoId: { type: Number, required: true },
   // Refactor cascata 2026-05-15: propaga al PreventiviRigaForm per la
   // cascata soglie L2 con livello categoria_cliente del BA.
   billingAccountId: { type: Number, default: null },
-  isModificabile: { type: Boolean, default: true }
+  isModificabile: { type: Boolean, default: true },
 })
-
-// Eventi:
-//  - `changed`: dopo create/update/delete riga (parent ricarica detail).
-//  - `form-aperto`: emesso quando il form inline (master-detail) cambia
-//    stato. Il drawer parent (PreventiviDrawer) lo usa per nascondere
-//    il proprio FormFooter Salva/Annulla testata durante edit-riga,
-//    evitando duplicazione (stesso pattern distinta base BoM
-//    `ArticoloBomDrawer.isFormOpen`).
 const emit = defineEmits(['changed', 'form-aperto'])
 
-const righe = ref([])
-const loadingRighe = ref(false)
-// formMode: null (nessun form attivo), 'create', 'edit'. Pattern master-detail
-// inline (frontend-standards): governa visibilita' e comportamento del form
-// sottostante senza apertura di Dialog annidato.
-const formMode = ref(null)
-watch(formMode, (m) => emit('form-aperto', m !== null))
-const rigaSelezionata = ref(null)
-// Selezione riga DataTable: evidenzia visivamente la riga in edit (pattern
-// ContrattoRigheDrawer). Sincronizzata con rigaSelezionata.
-const selezione = ref(null)
-// Refactor 2026-05-19: rimossa expansion componenti BoM (chevron + sub-
-// tabella `PreventiviRigaComponentiPanel` readonly). Era retaggio
-// pre-modello-unificato BoM 2026-05-13: dopo l'unificazione, il form di
-// edit (`PreventiviRigaForm` → sezione "Componenti" editabile) copre
-// gia' la consultazione e l'editing. L'expansion readonly duplicava
-// senza valore aggiunto. Nei contratti la dualita' resta semantica
-// (expansion = preview righe DA_LISTINO non persistite, vedi
-// ContrattoRigheDrawer); qui no perche' tutte le righe preventivi sono
-// persistite.
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: loadRighe,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('preventivi.aggiungi_riga'),
-    icon: MANAGE_ICONS.ADD,
-    visible: props.isModificabile,
-    command: onNuovaRiga,
-  },
-])
+const tableRef = ref(null)
+defineExpose({ loadRighe: () => tableRef.value?.loadRighe() })
 
-// Scopo: Carica righe dal backend (endpoint /righe/ autonomo, Fase 3.F6).
-async function loadRighe() {
-  if (!props.preventivoId) return
-  loadingRighe.value = true
-  try {
-    righe.value = await store.loadRighe(props.preventivoId)
-  } finally {
-    loadingRighe.value = false
-  }
+// Elimina bloccata su righe con approvazione prezzo PENDING (lo blocca anche il
+// backend via guard, ma il FE evita il round-trip).
+function deleteDisabled(riga) {
+  return riga?.stato_approvazione_prezzo === STATO_APPROVAZIONE.PENDING
 }
 
-watch(() => props.preventivoId, loadRighe, { immediate: true })
-
-// Scopo: Attiva form in modalita' create (rimuove eventuale selezione corrente).
-function onNuovaRiga() {
-  rigaSelezionata.value = null
-  selezione.value = null
-  formMode.value = 'create'
-}
-
-// Scopo: Attiva form in modalita' edit per la riga passata.
-function onEditRiga(riga) {
-  rigaSelezionata.value = riga
-  selezione.value = riga
-  formMode.value = 'edit'
-}
-
-// Scopo: Chiude il form (annulla o post-save) e deseleziona la riga.
-function chiudiForm() {
-  formMode.value = null
-  rigaSelezionata.value = null
-  selezione.value = null
-}
-
-// Scopo: Salva riga (crea o aggiorna): chiude form + ricarica lista +
-//        notifica il parent (totale_* aggregato lato DB ricalcolato).
-async function onRigaSaved() {
-  chiudiForm()
-  await loadRighe()
-  emit('changed')
-}
-
-// Scopo: Mutation su un componente BoM CASO A (PATCH prezzo o DELETE):
-//        ricarica le righe per riflettere il nuovo prezzo padre calcolato
-//        dai trigger DB (SUM componenti × coeff_qta), MA NON chiude il form
-//        — l'operatore puo' continuare a editare altri componenti.
-//        Propaga `changed` al parent (drawer) per refresh totali aggregati.
-async function onComponentiChanged() {
-  await loadRighe()
-  // Risincronizza `rigaSelezionata` puntandola alla riga aggiornata
-  // (oggetto nuovo da loadRighe), così il watcher `props.riga` del
-  // PreventiviRigaForm scatta e ri-popola `form.prezzo_unitario` col
-  // SUM corrente. Senza questa ri-assegnazione, `rigaSelezionata`
-  // resta ancorata al vecchio oggetto (non più in `righe.value`) e
-  // il form mostra il prezzo stantio finché l'operatore non salva e
-  // riapre (simmetrico ai fix offerte/contratti 2026-05-29).
-  if (formMode.value === 'edit' && rigaSelezionata.value?.id != null) {
-    const id = rigaSelezionata.value.id
-    const refreshed = righe.value.find((r) => r.id === id)
-    if (refreshed) rigaSelezionata.value = refreshed
-  }
-  emit('changed')
-}
-
-// Scopo: Elimina riga con conferma. Se sto editando proprio questa riga,
-//        chiude il form. Notifica il parent post-reload riga.
-function onDeleteRiga(riga) {
-  confirmAction({
-    message: t('preventivi.conferma_elimina_riga'),
-    onAccept: async () => {
-      const result = await execute(
-        () => store.eliminaRiga(props.preventivoId, riga.id),
-        { successMessage: t('preventivi.riga_eliminata') }
-      )
-      if (rigaSelezionata.value?.id === riga.id) chiudiForm()
-      await loadRighe()
-      if (result !== null) emit('changed')
-    }
-  })
-}
-
-// Scopo: severity Tag per stato approvazione prezzo (workflow L3 Sprint E).
-// Mappa coerente: PENDING=warn (in corso), APPROVED=success, REJECTED=danger.
+// severity Tag per stato approvazione prezzo (workflow L3): PENDING=warn,
+// APPROVED=success, REJECTED=danger.
 function approvazioneSeverity(stato) {
   if (stato === STATO_APPROVAZIONE.APPROVED) return 'success'
   if (stato === STATO_APPROVAZIONE.REJECTED) return 'danger'
-  return 'warn'  // PENDING
+  return 'warn'
 }
 
 function approvazioneLabel(stato) {
@@ -179,22 +50,15 @@ function approvazioneLabel(stato) {
   return t('preventivi.badge_approvazione_pending')
 }
 
-// Tooltip contestuale al tag di stato approvazione. Per REJECTED leggiamo la
-// motivazione denormalizzata in `meta.approvazione_rifiuto.motivazione`
-// (popolata da approvazioni_prezzo_service.rifiuta()): cosi' l'operatore
-// vede subito *perche'* il responsabile ha rifiutato senza navigare alla
-// pratica. Per PENDING torna il riferimento alla pratica come prima.
+// Tooltip contestuale: per REJECTED legge la motivazione denormalizzata in
+// `meta.approvazione_rifiuto.motivazione`; per PENDING torna il riferimento
+// pratica.
 function approvazioneTooltip(data) {
   if (data.stato_approvazione_prezzo === STATO_APPROVAZIONE.REJECTED) {
-    // Coerce difensivo: meta puo' arrivare come stringa JSON (regressione
-    // adapter psycopg) → senza, il tooltip resta vuoto e l'operatore vede
-    // "Rifiutato" senza motivo.
     const meta = coerceJsonbToObject(data.meta)
     const rif = meta.approvazione_rifiuto || {}
     if (rif.motivazione) {
-      return t('preventivi.badge_approvazione_rejected_tooltip', {
-        motivazione: rif.motivazione,
-      })
+      return t('preventivi.badge_approvazione_rejected_tooltip', { motivazione: rif.motivazione })
     }
     return t('preventivi.badge_approvazione_rejected_no_motivo')
   }
@@ -205,57 +69,27 @@ function approvazioneTooltip(data) {
   }
   return ''
 }
-
-// Scopo: costruisce le azioni di riga (kebab) per RowActionsMenu. La modifica
-//        non e' qui: avviene via click riga (frontend-standards).
-//        Una riga con approvazione PENDING blocca elimina (lo blocca anche il
-//        backend via guard, ma il FE evita il round-trip).
-function buildRowActions(riga) {
-  return [
-    {
-      key: 'elimina',
-      label: t('common.delete'),
-      icon: MANAGE_ICONS.DELETE,
-      severity: 'danger',
-      visible: props.isModificabile,
-      disabled: riga?.stato_approvazione_prezzo === STATO_APPROVAZIONE.PENDING,
-      command: () => onDeleteRiga(riga),
-    },
-  ]
-}
-
-// Scopo: handler click riga -> apre dialog edit. Usa @row-click DataTable.
-function onRowClick(event) {
-  if (!props.isModificabile) return
-  onEditRiga(event.data)
-}
-
-defineExpose({ loadRighe })
 </script>
 
 <template>
-  <div>
-    <div class="app-page-toolbar">
-      <div class="app-page-filters">
-        <h4 style="margin: 0;">{{ t('preventivi.section_righe') }}</h4>
-      </div>
-      <PageActionsBar :actions="pageActions" />
-    </div>
-
-    <DataTable :value="righe" striped-rows size="small" class="app-datatable app-datatable--inner"
-      data-key="id"
-      :loading="loadingRighe"
-      :row-hover="isModificabile"
-      :selection-mode="isModificabile ? 'single' : null"
-      v-model:selection="selezione"
-      paginator
-      :rows="10"
-      :rows-per-page-options="[10, 25, 50]"
-      paginator-position="top"
-      sort-field="descrizione"
-      :sort-order="1"
-      removable-sort
-      @row-click="onRowClick">
+  <RigheMasterDetailTable
+    ref="tableRef"
+    :parent-id="preventivoId"
+    :rows-loader="(id) => store.loadRighe(id)"
+    :delete-action="(id, rigaId) => store.eliminaRiga(id, rigaId)"
+    :is-modificabile="isModificabile"
+    :delete-disabled="deleteDisabled"
+    title-key="preventivi.section_righe"
+    new-tooltip-key="preventivi.aggiungi_riga"
+    confirm-delete-key="preventivi.conferma_elimina_riga"
+    deleted-message-key="preventivi.riga_eliminata"
+    new-label-key="preventivi.nuova_riga"
+    edit-label-key="preventivi.modifica_riga"
+    sort-field="descrizione"
+    @changed="emit('changed')"
+    @form-aperto="emit('form-aperto', $event)"
+  >
+    <template #columns>
       <Column field="articolo_codice" :header="t('preventivi.riga_articolo')" sortable style="width: 120px;" />
       <Column field="descrizione" :header="t('preventivi.riga_descrizione')" sortable />
       <Column field="qta_operativa" :header="t('preventivi.riga_quantita')" sortable style="width: 90px;">
@@ -284,27 +118,17 @@ defineExpose({ loadRighe })
       <Column field="iva_descrizione" :header="t('preventivi.riga_iva')" sortable style="width: 80px;">
         <template #body="{ data }">{{ data.iva_descrizione || data.iva_codice || '' }}</template>
       </Column>
-      <Column v-if="isModificabile" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
-    </DataTable>
+    </template>
 
-    <!-- Form master-detail inline (Fase 3.F3): visibile SOLO quando attivo,
-         titolo dipende da formMode. PreventiviRigaForm gia' espone Salva/Annulla
-         interni nel proprio template (no FormFooter perche' e' una sezione,
-         non un drawer). -->
-    <div v-if="formMode" class="app-drawer-section" style="margin-top: 1rem;">
-      <h4>{{ formMode === 'edit' ? t('preventivi.modifica_riga') : t('preventivi.nuova_riga') }}</h4>
+    <template #form="{ riga, onSaved, onComponentiChanged, onCancel }">
       <PreventiviRigaForm
         :preventivo-id="preventivoId"
         :billing-account-id="billingAccountId"
-        :riga="rigaSelezionata"
-        @saved="onRigaSaved"
+        :riga="riga"
+        @saved="onSaved"
         @componenti-changed="onComponentiChanged"
-        @cancel="chiudiForm"
+        @cancel="onCancel"
       />
-    </div>
-  </div>
+    </template>
+  </RigheMasterDetailTable>
 </template>

@@ -29,9 +29,9 @@ import { useDocumentiPerSorgenteStore } from '../../../documenti/stores/document
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
+import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
-import { toDateString } from '../../../core/utils/date'
 import { downloadBlob } from '../../../core/utils/download'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
 import { exportOrdini } from '../api/ordiniApi'
@@ -57,11 +57,12 @@ const {
   searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
 
-// --- Filtri custom (toolbar caller) ---
-const statoFilter = ref(store.filters.stato_codice_interno ?? null)
-const utilityFilter = ref(store.filters.utility_id ?? null)
-const dataDaFilter = ref(store.filters.data_da ? new Date(`${store.filters.data_da}T00:00:00`) : null)
-const dataAlFilter = ref(store.filters.data_a ? new Date(`${store.filters.data_a}T00:00:00`) : null)
+// --- Filtri custom (toolbar caller) — binding store via BB (B14) ---
+const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
+const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_codice_interno')
+const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
+const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
+const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
 
 // Params export: i filtri vivono in store.filters; `search` dal ref immediato.
 // I filtri data BE sono data_da/data_a (sul campo `data` della testata).
@@ -78,17 +79,6 @@ function buildExportParams(format) {
     p.order_dir = store.filters.order_dir || 'desc'
   }
   return p
-}
-
-function onStatoChange() { store.filters.stato_codice_interno = statoFilter.value; applyFilters() }
-function onUtilityChange() { store.filters.utility_id = utilityFilter.value; applyFilters() }
-function onDataDaChange() {
-  store.filters.data_da = dataDaFilter.value ? toDateString(dataDaFilter.value) : null
-  applyFilters()
-}
-function onDataAlChange() {
-  store.filters.data_a = dataAlFilter.value ? toDateString(dataAlFilter.value) : null
-  applyFilters()
 }
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).

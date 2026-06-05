@@ -16,7 +16,7 @@ import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { listEmittentiFiscali } from '../api/amministrazione'
 import { lookupCategorieListiniTipiVariazione } from '../api/categorieClientiListini'
 import { DRAWER_WIDTH } from '../../core/constants'
-import { isoToLocalDate, localDateToIso } from '../../core/utils/dateHelpers'
+import { parseIsoDate, toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -115,8 +115,8 @@ async function loadDetail() {
     valore_variazione: data.valore_variazione != null
       ? Number(data.valore_variazione)
       : null,
-    valido_dal: isoToLocalDate(data.valido_dal),
-    valido_al: isoToLocalDate(data.valido_al),
+    valido_dal: parseIsoDate(data.valido_dal),
+    valido_al: parseIsoDate(data.valido_al),
     attivo: data.attivo ?? true
   }
   // Fase 4: popola lista campi immutabili dal BE detail (data-driven).
@@ -180,8 +180,8 @@ async function handleSave() {
     valore_variazione: form.value.valore_variazione != null
       ? String(form.value.valore_variazione)
       : null,
-    valido_dal: localDateToIso(form.value.valido_dal),
-    valido_al: localDateToIso(form.value.valido_al),
+    valido_dal: toDateString(form.value.valido_dal),
+    valido_al: toDateString(form.value.valido_al),
     attivo: form.value.attivo
   }
   if (!isEdit.value) {

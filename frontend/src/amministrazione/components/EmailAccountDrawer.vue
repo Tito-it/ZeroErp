@@ -7,6 +7,7 @@
 // re-inviata in edit se vuota (preserva quella corrente).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { displayTimestamp } from '../../core/utils/date'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -86,15 +87,8 @@ const lastTestLabel = computed(() => {
   return t('amm.email_last_test_never')
 })
 
-// Formattazione locale del timestamp ultimo test (solo se valorizzato).
-const lastTestAtFormatted = computed(() => {
-  if (!lastTestAt.value) return ''
-  try {
-    return new Date(lastTestAt.value).toLocaleString()
-  } catch {
-    return lastTestAt.value
-  }
-})
+// Formattazione timestamp ultimo test via BB centralizzato (DD/MM/YYYY, HH:mm:ss).
+const lastTestAtFormatted = computed(() => displayTimestamp(lastTestAt.value))
 
 watch(() => props.visible, async (vis) => {
   if (!vis) return
