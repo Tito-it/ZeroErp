@@ -42,6 +42,7 @@ import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import OrdiniForm from './OrdiniForm.vue'
 import OrdiniRigheTable from './OrdiniRigheTable.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
+import OrdineEmissioneDialog from './dialogs/OrdineEmissioneDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
@@ -338,20 +339,32 @@ async function handleSave() {
 
 // --- Azioni stato ---
 
+// Dialog emissione ordine: aperto quando l'azione di stato 'conferma' porta a
+// CONFERMATO. Sostituisce il confirmAction generico perche' la conferma
+// orchestra atomic state + genera documento + allegati lato BE (/emetti/,
+// ApiOrdineEmetti, §6 brief-ordini-stampa.md). Mirror del flusso preventivo.
+const emissioneDialogVisible = ref(false)
+const emissioneLoading = ref(false)
+
 function onConferma() {
-  confirmAction({
-    message: t('vendite.ordini.conferma_ordine_messaggio'),
-    onAccept: async () => {
-      const result = await execute(
-        () => store.conferma(effectiveOrdineId.value),
-        { successMessage: t('vendite.ordini.ordine_confermato') }
-      )
-      if (result !== null) {
-        await loadDetail()
-        emit('saved', result)
-      }
-    },
-  })
+  emissioneDialogVisible.value = true
+}
+
+// Scopo: callback @confirm di OrdineEmissioneDialog. Riceve i file staged
+// dall'utente e chiama store.emetti (POST multipart /emetti/). Se la
+// generazione fallisce il BE annulla la conferma (stato resta DRAFT).
+async function handleEmissioneConferma({ files }) {
+  emissioneLoading.value = true
+  const result = await execute(
+    () => store.emetti(effectiveOrdineId.value, { allegati: files || [] }),
+    { successMessage: t('vendite.ordini.ordine_confermato') },
+  )
+  emissioneLoading.value = false
+  if (result !== null) {
+    emissioneDialogVisible.value = false
+    await loadDetail()
+    emit('saved', result)
+  }
 }
 
 // Push singolo a commessa. Toast differenziato per `report.stato` (l'orchestrator
@@ -547,5 +560,15 @@ const drawerActions = computed(() => {
     v-if="effectiveOrdineId"
     v-model:visible="noteDrawerVisible"
     :ordine-id="effectiveOrdineId"
+  />
+
+  <!-- Dialog emissione ordine (transizione DRAFT → CONFERMATO). Wrapper sul
+       building block DocumentoEmissioneDialog: anteprima PDF + allegati,
+       conferma orchestra atomic state + genera + allegati via /emetti/. -->
+  <OrdineEmissioneDialog
+    v-model:visible="emissioneDialogVisible"
+    :ordine="detail"
+    :loading="emissioneLoading"
+    @confirm="handleEmissioneConferma"
   />
 </template>

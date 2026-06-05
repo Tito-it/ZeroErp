@@ -53,8 +53,8 @@ defineExpose({ loadRighe: () => tableRef.value?.loadRighe() })
           {{ formatCurrency(data.prezzo_unitario, { minimumFractionDigits: 6, maximumFractionDigits: 6 }) }}
         </template>
       </Column>
-      <Column field="sconto_perc" :header="t('vendite.ordini.riga_sconto')" sortable style="width: 80px;">
-        <template #body="{ data }">{{ data.sconto_perc ? `${data.sconto_perc}%` : '' }}</template>
+      <Column field="sconto_percentuale" :header="t('vendite.ordini.riga_sconto')" sortable style="width: 80px;">
+        <template #body="{ data }">{{ data.sconto_percentuale ? `${data.sconto_percentuale}%` : '' }}</template>
       </Column>
       <Column field="importo_riga" :header="t('vendite.ordini.riga_importo')" sortable style="width: 120px;">
         <template #body="{ data }">{{ formatCurrency(data.importo_riga) }}</template>

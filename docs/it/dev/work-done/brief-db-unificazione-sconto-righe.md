@@ -1,5 +1,14 @@
 # Brief DB — Unificazione nome colonna sconto sulle righe documento
 
+**✅ ESEGUITO (2026-06-05).** DB: rename consegnato dal team DB (commit
+`e65cc22e9` + migration `20260605-13/14/15` su `vendite.ordini_righe`,
+`vendite.fatture_righe`, `acquisti.ordini_righe` + viste `20260605-16/17`) →
+ora `sconto_percentuale` ovunque. BE+FE allineati e verificati (40 test ordini
+verdi, `vite build` verde): `ordini_repository`/`ordini_service`/test,
+`OrdiniRigaForm`/`OrdiniRigheTable`, doc API. **Residuo segnalato:** i doc
+dbzero `manual/ordini_righe.md` e `manual/fatture_righe.md` citano ancora il
+vecchio nome nella prosa (dominio team DB).
+
 > **Tipo:** azione DB (DDL rename colonna + CHECK + viste/funzioni che la citano)
 > → da eseguire dal **team DB** su `dev/db-tid` (cfr. `feedback_db_actions_passaggio_team`).
 > **Origine:** emerso dalla regola del 2 FE (candidato B11, `useRigaArticoloComposito`),
@@ -69,7 +78,7 @@ preventivi col default `0` sensato):
 
 ## Checklist consegna
 
-- [ ] DDL rename colonna + default su tutte le `*_righe` interessate
-- [ ] CHECK rinominato + condizione verificata
-- [ ] Viste/funzioni/trigger aggiornati e testati (pgTAP se presente)
-- [ ] Brief BE+FE di allineamento aperto dopo la consegna
+- [x] DDL rename colonna + default su tutte le `*_righe` interessate
+- [x] CHECK rinominato + condizione verificata
+- [x] Viste/funzioni/trigger aggiornati e testati (pgTAP se presente)
+- [x] BE+FE allineati dopo la consegna DB

@@ -176,7 +176,8 @@ vuota hanno ON DELETE CASCADE; il trigger DB blocca se collegato a DDT.
 
 ### Emetti `POST /api/v1/vendite/ordini/<id>/emetti/` (multipart)
 
-**Flusso target della famiglia vendite** (§6 `brief-ordini-stampa.md`): emissione =
+**Flusso target della famiglia vendite**
+([§6 brief-ordini-stampa.md](../../../dev/work-done/brief-ordini-stampa.md)): emissione =
 conferma documentale. Clone di `ApiPreventivoEmetti`/`ApiOffertaEmetti`. Orchestra in
 **una transazione atomica** (savepoint annidato):
 
@@ -229,7 +230,7 @@ Push del singolo ordine `CONFERMATO` via `fn_list_ordini_da_pushare(…, p_ordin
 
 Payload riga (create): `articolo_id` (obbligatorio), `descrizione`, `quantita`,
 `qta_operativa`, `uom_operativa_id`, `factor_to_base`, `prezzo_unitario`,
-`sconto_perc`, `iva_id`, `meta`. La doppia quantità operativa/base segue il
+`sconto_percentuale`, `iva_id`, `meta`. La doppia quantità operativa/base segue il
 pattern standard (input con priorità all'operativa; `quantita` base derivata dal
 trigger `trgfn_qta_from_operativa`). I totali testata sono ricalcolati da trigger DB.
 
@@ -263,7 +264,7 @@ note preventivo/contratto/offerta (testata + riga via `target_riga_id`).
 
 Stampa conferma d'ordine via motore `documenti` (sorgente `ORDINE_VENDITA`,
 quarto dominio dopo preventivo/offerta/contratto). Flusso **allineato alla famiglia**
-(§6 `brief-ordini-stampa.md`): in `DRAFT` solo anteprima on-demand; la generazione
+([§6 brief-ordini-stampa.md](../../../dev/work-done/brief-ordini-stampa.md)): in `DRAFT` solo anteprima on-demand; la generazione
 documentale avviene nel passaggio `DRAFT → CONFERMATO` via `POST /<id>/emetti/`
 (vedi sopra). Gli endpoint sotto coprono ristampa e gestione documentale post-bozza.
 

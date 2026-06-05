@@ -30,19 +30,21 @@ export const FATTURAZIONE_TRIGGER_CODES = Object.freeze([
 ])
 
 // Stampa conferma d'ordine (motore `documenti`, sorgente ORDINE_VENDITA).
-// Decisione §12.4(a) analisi-ordini-vendita.md: stampa DISACCOPPIATA dallo
-// stato → `EntityPdfButton` usa SEMPRE l'anteprima on-demand (ristampabile,
-// nessun archivio persistito in v1). Per questo passiamo tutti gli stati
-// consultabili come `stati-preview` e una lista vuota come `stati-con-documento`
-// (la modalita' "scarica dall'archivio" si attivera' quando esistera' un trigger
-// di generazione/persistenza, es. agganciato alla conferma — Decisione §12.4(b)).
+// Flusso allineato alla famiglia vendite (§6 brief-ordini-stampa.md, rettifica
+// 2026-06-05): in DRAFT solo anteprima on-demand; il documento definitivo si
+// genera alla CONFERMA (DRAFT→CONFERMATO via /emetti/, OrdineEmissioneDialog) e
+// dagli stati post-bozza `EntityPdfButton`/lista aprono la gestione documentale
+// (PDF gia' archiviati). ANNULLATO escluso: niente gestione documenti su un
+// ordine annullato. Detta gli stati il modello `config.stati_doc_ordini`
+// (data-driven), non valori hardcodati a casaccio (feedback_no_hardcoded_ids).
 export const STATI_ORDINE_ANTEPRIMA_PDF = Object.freeze([
   STATO_ORDINE.DRAFT,
+])
+
+export const STATI_ORDINE_CON_DOCUMENTO = Object.freeze([
   STATO_ORDINE.CONFERMATO,
   STATO_ORDINE.ALLOCATO,
   STATO_ORDINE.SPEDITO,
   STATO_ORDINE.CONSEGNATO,
   STATO_ORDINE.FATTURATO,
 ])
-
-export const STATI_ORDINE_CON_DOCUMENTO = Object.freeze([])

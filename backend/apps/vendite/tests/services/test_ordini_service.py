@@ -321,11 +321,11 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
         ord_cls.return_value.set_documento_origine.assert_called_once_with(
             7, "PREVENTIVO", 99,
         )
-        # solo la riga attiva → 1 gestisci_riga; sconto_percentuale → sconto_perc
+        # solo la riga attiva → 1 gestisci_riga; sconto_percentuale propagato 1:1
         self.assertEqual(gestisci_mock.call_count, 1)
         riga_payload = gestisci_mock.call_args.args[1]
         self.assertEqual(riga_payload["articolo_id"], "A1")
-        self.assertEqual(riga_payload["sconto_perc"], "5")
+        self.assertEqual(riga_payload["sconto_percentuale"], "5")
 
     @patch(_PREV_REPO)
     def test_crea_ordine_da_preventivo_stato_non_convertibile(self, prev_cls) -> None:

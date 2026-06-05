@@ -41,7 +41,7 @@ const form = ref({
   descrizione: '',
   qta_operativa: 1,
   prezzo_unitario: null,
-  sconto_perc: 0,
+  sconto_percentuale: 0,
   iva_id: null,
   uom_operativa_id: null,
 })
@@ -73,7 +73,7 @@ watch(() => props.riga, (riga) => {
       descrizione: riga.descrizione || '',
       qta_operativa: Number(riga.qta_operativa) || 1,
       prezzo_unitario: riga.prezzo_unitario != null ? Number(riga.prezzo_unitario) : null,
-      sconto_perc: Number(riga.sconto_perc) || 0,
+      sconto_percentuale: Number(riga.sconto_percentuale) || 0,
       iva_id: riga.iva_id || null,
       uom_operativa_id: riga.uom_operativa_id || null,
     }
@@ -83,7 +83,7 @@ watch(() => props.riga, (riga) => {
   } else {
     form.value = {
       articolo_id: null, descrizione: '', qta_operativa: 1, prezzo_unitario: null,
-      sconto_perc: 0, iva_id: null, uom_operativa_id: null,
+      sconto_percentuale: 0, iva_id: null, uom_operativa_id: null,
     }
     articoloObj.value = null
     resetUomOptions()
@@ -124,7 +124,7 @@ function buildRigaPayload() {
   if (isEdit.value) {
     const base = {
       qta_operativa: f.qta_operativa,
-      sconto_perc: f.sconto_perc,
+      sconto_percentuale: f.sconto_percentuale,
       descrizione: f.descrizione || null,
     }
     // Per riga CASO A il prezzo padre e' SUM(componenti) via trigger DB:
@@ -138,7 +138,7 @@ function buildRigaPayload() {
     articolo_id: f.articolo_id,
     descrizione: f.descrizione || null,
     qta_operativa: f.qta_operativa,
-    sconto_perc: f.sconto_perc,
+    sconto_percentuale: f.sconto_percentuale,
     iva_id: f.iva_id,
     uom_operativa_id: f.uom_operativa_id,
   }
@@ -208,7 +208,7 @@ async function handleSave() {
       </div>
       <div class="form-field">
         <label>{{ t('vendite.ordini.riga_sconto') }}</label>
-        <InputNumber v-model="form.sconto_perc" suffix="%" :min="0" :max="100"
+        <InputNumber v-model="form.sconto_percentuale" suffix="%" :min="0" :max="100"
           :min-fraction-digits="2" :max-fraction-digits="2" />
       </div>
     </div>
