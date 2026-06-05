@@ -371,8 +371,13 @@ const {
 } = useComponentiDialog({
   form,
   isCreate: () => formMode.value === 'create',
-  isComposito: () => articoloObj.value?.is_composito === true,
-  isPadreComposito: () => articoloObj.value?.is_composito === true,
+  // ESCLUSIONE escluso: un articolo escluso non ha prezzo (il DB impone
+  // prezzo_unitario NULL) ne' senso di negoziarne i componenti BoM. Niente
+  // ComponentiDialog ne' invio `componenti_overrides` per le ESCLUSIONI.
+  isComposito: () => articoloObj.value?.is_composito === true
+    && form.value?.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE,
+  isPadreComposito: () => articoloObj.value?.is_composito === true
+    && form.value?.tipo_eccezione !== TIPO_ECCEZIONE.ESCLUSIONE,
 })
 
 // Componenti della riga sorgente cliccata, in shape preview (jsonb dalla fn

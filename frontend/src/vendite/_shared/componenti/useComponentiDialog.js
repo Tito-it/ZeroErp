@@ -75,6 +75,19 @@ export function useComponentiDialog({
     },
   )
 
+  // Auto-chiusura: se il contesto rende la dialog non piu' pertinente (es.
+  // l'utente cambia tipo eccezione a ESCLUSIONE su un articolo composito dopo
+  // che la dialog si era aperta — `isComposito` torna false), chiudila e scarta
+  // il payload: non deve restare aperta ne' contribuire ai `componenti_overrides`
+  // del save. Generico: vale ogni volta che `showComponentiDialog` diventa false.
+  watch(showComponentiDialog, (pertinente) => {
+    if (!pertinente) {
+      componentiDialogVisible.value = false
+      componentiPayload.value = null
+      _autoOpenedFor = null
+    }
+  })
+
   // Riapertura manuale (CREATE): bottone "Modifica componenti" sotto il form,
   // per correggere gli override prima del save (l'auto-open scatta solo al
   // primo set valido).

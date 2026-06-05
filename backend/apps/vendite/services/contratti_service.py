@@ -1281,7 +1281,16 @@ class ContrattiService:
                     sorgente=SORGENTE_CONTRATTO,
                 )
 
-            if articolo_id and self._repo.is_articolo_composito(str(articolo_id)):
+            # ESCLUSIONE escluso dall'auto-init: un articolo escluso non ha
+            # prezzo (CHECK chk_contrighe_prezzo_per_tipo_eccezione impone
+            # prezzo_unitario NULL) ne' senso di negoziare i suoi componenti.
+            # Inizializzarli farebbe scattare trgfn_componenti_ricalcola_padre
+            # che scriverebbe SUM(figli) sul padre ESCLUSIONE -> violazione.
+            if (
+                articolo_id
+                and tipo_eccezione != "ESCLUSIONE"
+                and self._repo.is_articolo_composito(str(articolo_id))
+            ):
                 # Riusa la testata letta dal gate (sopra) se disponibile;
                 # altrimenti (gate skip per ESCLUSIONE) la carica adesso.
                 testata = testata_gate or self._repo.get_contratto(contratto_id)
