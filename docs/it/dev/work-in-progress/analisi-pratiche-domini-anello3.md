@@ -717,7 +717,7 @@ multipli analoghi per ciascuna destinazione):
 | Tempo | Evento giornale                                                                    | Note                                             |
 | ----- | ---------------------------------------------------------------------------------- | ------------------------------------------------ |
 | t0    | `PRATICA_CREATA` (`VENDITA_STANDARD`)                                              | Operatore avvia                                  |
-| t0+ε  | `FLUSSO_CREATO` x4                                                                 | Tutti i flussi 10-40 instanziati alla creazione  |
+| t0+ε  | `FLUSSO_CREATO` x4                                                                 | Flussi 10-40 instanziati (vedi nota ⚠ sotto)     |
 | t1    | `FLUSSO_STATO_CAMBIATO` su RICHIESTA_CLIENTE → COMPLETATO                          | Esito POSITIVO                                   |
 | t2    | `DOMINIO_PREVENTIVO_CREATO` (in `meta`: `preventivo_id`, `numero PRV-...`)         | Handler manuale o trigger derivato               |
 | t3    | `FLUSSO_STATO_CAMBIATO` su PREVENTIVAZIONE → COMPLETATO                            | Esito POSITIVO (preventivo EMESSO)               |
@@ -726,6 +726,31 @@ multipli analoghi per ciascuna destinazione):
 | t6    | `DOMINIO_ORDINE_CREATO` (in `meta`: `ordine_id`, `anno_serie_numero`, `righe_ids`) | Effetto handler ramo "ordine"                    |
 | t7    | `FLUSSO_STATO_CAMBIATO` su CONFERMA_VENDITA → COMPLETATO                           | Esito POSITIVO                                   |
 | t8    | `STATO_CAMBIATO` su pratica → CHIUSA                                               | Trigger su tutti i flussi obbligatori completati |
+
+> **⚠ Nota correttiva (2026-06-07)** — Il passo `t0+ε` (`FLUSSO_CREATO ×4` —
+> "tutti i flussi instanziati alla creazione") è **errato**, e per un motivo di
+> modello, non solo di implementazione. Materializzare tutti i flussi alla
+> creazione **non è il comportamento voluto**: un flusso può dipendere da una
+> scelta fatta (o no) in un flusso precedente → i percorsi sono **condizionali**,
+> quindi pre-crearli tutti confonderebbe l'operatore e sarebbe scorretto.
+>
+> **Modello corretto**: `template_flussi` descrive il **percorso suggerito** (gli
+> N step in ordine di esecuzione). All'operatore si mostra **visivamente quel
+> percorso** (roadmap/stepper ordinato), anche per gli step futuri; i flussi
+> concreti si **eseguono/istanziano progressivamente**, e le **regole di
+> prerequisito — già esistenti** (`trgfn_flussi_guard_prerequisiti` /
+> `fn_check_prerequisiti_flusso`, da `template_flussi_prerequisiti`) — bloccano
+> con errore il tentativo di eseguire uno step non ancora abilitato. La testata
+> pratica porta solo stati-contenitore (`BOZZA/APERTA → SOSPESA/CHIUSA/ANNULLATA`);
+> l'avanzamento reale lo raccontano i flussi e i loro stati. Coerente: il codice
+> attuale (`crea_pratica`) **non** materializza i flussi alla creazione, ed è
+> giusto così. Vedi stessa correzione in §11.1.7.
+>
+> Stessa cautela per il passo `t8` ("`pratica → CHIUSA` per trigger su tutti i
+> flussi obbligatori completati"): la guida (`gestione-pratiche.md`) descrive
+> `CHIUSA` come **transizione esplicita** da `APERTA`, e non risulta un trigger
+> di auto-chiusura su completamento dei flussi. Da verificare/realizzare se si
+> vuole la chiusura automatica.
 
 In un caso misto (preventivo 3+1+1 di §5.3.2), tra t5 e t7 compaiono
 multipli eventi di dominio:
@@ -1608,8 +1633,18 @@ distinte ma collegabili a livello cliente.
 | `canale_origine_id`       | TELEFONO                                                         |
 
 Trigger: codice pratica `PRA-0001234` assegnato; stato `BOZZA`; giornale registra
-`PRATICA_CREATA`. I 4 flussi vengono istanziati automaticamente in
-`pratiche.flussi` con stato `DA_ESEGUIRE`.
+`PRATICA_CREATA`. Il **percorso suggerito** dei 4 flussi (da `template_flussi`)
+viene mostrato all'operatore in ordine di esecuzione; i flussi concreti si
+istanziano/eseguono **progressivamente**, non tutti in blocco alla creazione.
+
+> **⚠ Nota correttiva (2026-06-07)** — "istanziati automaticamente alla
+> creazione" sarebbe **inesatto e indesiderato**: pre-creare tutti i flussi è
+> sbagliato perché un flusso può dipendere da scelte fatte nei flussi precedenti
+> (percorsi condizionali). Modello corretto: il `template_flussi` è la **mappa**
+> mostrata come roadmap; l'esecuzione è **progressiva**, governata dalle regole
+> di prerequisito già esistenti (`trgfn_flussi_guard_prerequisiti`). Il codice
+> attuale (`crea_pratica`) non materializza i flussi alla creazione, ed è
+> coerente con questo modello. Vedi §5.5.
 
 **t1 — Alice avanza alla stato APERTA**, e completa `RICHIESTA_CLIENTE`
 inserendo nota "richiesta perseguibile, prepariamo preventivo entro venerdì" →
