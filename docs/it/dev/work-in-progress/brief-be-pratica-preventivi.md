@@ -5,30 +5,17 @@
 > [brief-db-commesse-transizioni-stati.md](brief-db-commesse-transizioni-stati.md).
 > Coerente con [feedback_be_fe_attende_prerequisiti_db]: **non** anticipare codice
 > che dipende da oggetti DB non ancora consegnati.
+> [brief-db-pratica-preventivi.md](brief-db-pratica-preventivi.md) — **✅ CONSEGNATI
+> e applicati (2026-06-08)**: seed catalogo, `handler_params` (JSONB, **nessuna**
+> tabella `config.modalita_fatturazione`), `fn_log_evento_dominio`, GRANT, codici
+> errore, motore prerequisiti esito-aware, macchina transizioni commesse (V9). Il
+> contratto pronto per l'handler è in **§0**. Coerente con
+> [feedback_be_fe_attende_prerequisiti_db]: i prerequisiti DB ora ci sono, il BE può partire.
 >
-> **Data**: 2026-06-06 · **Rev. critica**: 2026-06-08 (allineamento allo split DB)
-> · **Stato**: pronto, riscontri di codice risolti
+> **Data**: 2026-06-06 · **Stato**: pronto, riscontri di codice risolti
 >
 > **Decisione di prodotto (Tid)**: politica immediata/differita **in
 > configurazione** (`handler_params`), non scelta dall'operatore al runtime.
->
-> **⚠ Allineamento allo split DB (2026-06-08)** — il team DB ha verificato e
-> diviso il piano. Conseguenze su questo brief, recepite sotto:
->
-> 1. **`config.modalita_fatturazione` RIMOSSA** → la validazione di
->    `modalita_fatturazione` è **in codice** (set `{IMMEDIATA, DIFFERITA}`), non
->    via lookup. (C4, pseudo-flow §5)
-> 2. **Commessa emittibile = IMPLEMENTATO** (brief commesse, changeset
->    `20260607-01..06`): l'handler **deve** chiamare `fn_approva_commessa_attivita`
->    + `fn_cambia_stato_commessa(...,'PRONTA_FATTURAZIONE', user)`. Non è più una
->    domanda aperta → nuovo deliverable **C8** + step espliciti in §5.
-> 3. **Prerequisiti esito-aware + `COMPLETATO ⇒ esito NOT NULL`** (B-PREREQ): ogni
->    `completa_flusso` deve passare un `esito`; `CONFERMA` si abilita solo dopo
->    `APPROVAZIONE_CLIENTE` `COMPLETATO`+`POSITIVO`. Vedi §8.
-> 4. **Giornale**: colonne reali `azione`/`dettaglio`/`origine`; `azione` passa
->    regex `^DOMINIO_*`. (C5)
-> 5. **Nuovi rischi di robustezza** (atomicità transazione, idempotenza
->    multi-step, accoppiamento accettazione↔flusso): **§8**.
 
 ---
 
@@ -54,18 +41,18 @@ perché non si riusa il wrapper). È un orchestratore sottile sopra il dominio.
 
 ## 2. Riscontri di codice (verificati)
 
-| Elemento | Stato reale | File |
-|---|---|---|
-| `BaseFlussoHandler` (Protocol) `execute(flusso_id, pratica_id, meta, handler_params)->dict` | **Esiste** | `apps/pratiche/services/handler_registry.py:14` |
-| `HANDLER_MAP` | **Esiste, vuoto** | `handler_registry.py:32` |
-| `dispatch_handler(flusso_id)` (lookup handler_key + params, instanzia, `execute`) | **Esiste, NON auto-wired** | `apps/pratiche/services/pratiche_service.py:338` |
-| Transizioni flusso (`avvia_flusso`, `completa_flusso`, `cambia_stato_flusso`) | **Esistono** | `pratiche_service.py:252-314` |
-| `push_a_commessa(preventivo_id)` → `pr_run_commesse_push_one(sorgente_codice='PREVENTIVO', sorgente_uid)` | **Esiste** | `apps/vendite/services/preventivi_service.py`, `commesse_service.py` |
-| Pattern RPC fn DB (`cursor.execute("SELECT vendite.fn_...(p_x => %s)")`) | **Esiste** | `apps/vendite/db/commesse_repository.py` |
-| `log_evento_dominio` / scrittura giornale da Python | **ASSENTE** (solo trigger) | — |
-| `apps/vendite/handlers/` | **NON esiste** (da creare) | — |
-| `ErrorManager.require(cond, code=, message=)` → `ServiceError` → envelope DRF | **Esiste** | `apps/core/services/error_manager.py:19`, `service_errors.py` |
-| `PayloadValidator` (whitelist chiavi, estrazione tipata) | **Esiste** | `apps/core/services/payload_helpers.py:60` |
+| Elemento                                                                                                  | Stato reale                                                                                    | File                                                                 |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `BaseFlussoHandler` (Protocol) `execute(flusso_id, pratica_id, meta, handler_params)->dict`               | **Esiste**                                                                                     | `apps/pratiche/services/handler_registry.py:14`                      |
+| `HANDLER_MAP`                                                                                             | **Esiste, vuoto**                                                                              | `handler_registry.py:32`                                             |
+| `dispatch_handler(flusso_id)` (lookup handler_key + params, instanzia, `execute`)                         | **Esiste, NON auto-wired**                                                                     | `apps/pratiche/services/pratiche_service.py:338`                     |
+| Transizioni flusso (`avvia_flusso`, `completa_flusso`, `cambia_stato_flusso`)                             | **Esistono**                                                                                   | `pratiche_service.py:252-314`                                        |
+| `push_a_commessa(preventivo_id)` → `pr_run_commesse_push_one(sorgente_codice='PREVENTIVO', sorgente_uid)` | **Esiste**                                                                                     | `apps/vendite/services/preventivi_service.py`, `commesse_service.py` |
+| Pattern RPC fn DB (`cursor.execute("SELECT vendite.fn_...(p_x => %s)")`)                                  | **Esiste**                                                                                     | `apps/vendite/db/commesse_repository.py`                             |
+| `log_evento_dominio` / scrittura giornale da Python                                                       | fn DB **CONSEGNATA** (`pratiche.fn_log_evento_dominio`, §0); wrapper Python **da creare** (C5) | DB ✅ / BE —                                                          |
+| `apps/vendite/handlers/`                                                                                  | **NON esiste** (da creare)                                                                     | —                                                                    |
+| `ErrorManager.require(cond, code=, message=)` → `ServiceError` → envelope DRF                             | **Esiste**                                                                                     | `apps/core/services/error_manager.py:19`, `service_errors.py`        |
+| `PayloadValidator` (whitelist chiavi, estrazione tipata)                                                  | **Esiste**                                                                                     | `apps/core/services/payload_helpers.py:60`                           |
 
 ---
 
@@ -106,12 +93,10 @@ trigger applicativo: quando il flusso `CONFERMA` entra in `IN_CORSO`, chiamare
 
 ### C4 — Validazione `handler_params` (D-f)
 
-Validare con `ErrorManager.require`: `modalita_fatturazione ∈ {IMMEDIATA,
-DIFFERITA}` — **set definito in codice nell'handler** (costante/enum Python),
-**non** lookup DB (la tabella `config.modalita_fatturazione` è stata rimossa,
-modeling 06-07). Fuori set o assente → `E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA`.
-Mai `KeyError` grezzo. Questa è esattamente la "validazione in codice dall'handler"
-prevista dalla decisione DB V10.
+Validare con `ErrorManager.require` / `PayloadValidator`:
+`modalita_fatturazione ∈ {IMMEDIATA, DIFFERITA}` (lookup su
+`config.modalita_fatturazione`) → altrimenti
+`E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA`. Mai `KeyError` grezzo.
 
 ### C5 — Wrapper scrittura giornale di dominio
 
@@ -200,7 +185,7 @@ execute(flusso_id, pratica_id, meta, handler_params):
   # TUTTO il corpo gira in UNA transazione atomica (vedi §8.1)
 
  1. modalita = handler_params["modalita_fatturazione"]
-    require modalita in {IMMEDIATA, DIFFERITA}   # set in codice, NO lookup DB
+    require modalita in lookup(config.modalita_fatturazione)
         else E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA
 
  2. preventivo_id = meta["preventivo_id"]
@@ -225,13 +210,7 @@ execute(flusso_id, pratica_id, meta, handler_params):
               competenza_mese=<step 3>)           # param DA AGGIUNGERE (§8.6)
     # destinazione FISSA = commessa diretta (no split natura in questo brief)
 
- 6. fn_approva_commessa_attivita(commessa_id, NULL, user)   # righe → APPROVATA (idemp.)
-
- 7. fn_cambia_stato_commessa(commessa_id, 'PRONTA_FATTURAZIONE', user)
-    # guard DB: ≥1 riga APPROVATA+NON_EMESSA (garantito da step 6)
-    # idempotenza: se già PRONTA, NON richiamare (PRONTA→PRONTA non in matrice → §8.2)
-
- 8. pratiche_sorgenti:
+ 6. pratiche_sorgenti:
       upsert (pratica_id, PREVENTIVO, preventivo.uid, ROOT)   # idempotente
       upsert (pratica_id, COMMESSA,  commessa_id,   COLLEGATO)
 
@@ -249,23 +228,23 @@ execute(flusso_id, pratica_id, meta, handler_params):
 
 A valle, senza altra logica: `fn_list_commesse_emittibili(p_competenza_mese)`
 includerà la commessa nel lotto giusto (mese corrente per IMMEDIATA, mese scelto
-per DIFFERITA): la commessa è ora `PRONTA_FATTURAZIONE` (step 7) con righe
-`APPROVATA`+`NON_EMESSA` (step 6) → soddisfa i requisiti di emittibilità.
+per DIFFERITA) — **a condizione** che la commessa risulti emittibile (vedi
+domanda DB V9: se serve un passo di approvazione, l'handler lo invoca tra 5 e 8).
 
 ---
 
 ## 6. Test (Django + smoke)
 
-| ID | Test | Atteso |
-|---|---|---|
-| BE-T1 | dispatch su `CONFERMA` `IMMEDIATA`, preventivo ACCETTATO | commessa con `fatturazione_immediata=true`, righe `competenza_mese=mese corrente`; sorgenti agganciate; preventivo `EVASO` |
-| BE-T2 | `DIFFERITA` con `meta.competenza_fatturazione` | commessa `fatturazione_immediata=false`, `competenza_mese=mese scelto` |
-| BE-T3 | `DIFFERITA` senza competenza | `E_VENDITA_COMPETENZA_RICHIESTA`, nessuna commessa |
-| BE-T4 | `handler_params.modalita_fatturazione` ignota | `E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA` |
-| BE-T5 | doppio dispatch sullo stesso preventivo | seconda volta `E_VENDITA_PREVENTIVO_GIA_PUSHATO`, **nessuna** commessa duplicata |
-| BE-T6 | giornale | `DOMINIO_COMMESSA_CREATA` + `DOMINIO_PREVENTIVO_EVASO` con meta corretto |
-| BE-T7 | wiring dispatch | entrando in `IN_CORSO` su flusso con `handler_id`, l'handler parte; su flusso senza handler, no-op |
-| BE-S1 | smoke E2E (idempotente, cleanup proattivo — [feedback_smoke_test_idempotenti]) | crea pratica → flussi → accetta preventivo → CONFERMA → commessa emittibile, pratica CHIUSA |
+| ID    | Test                                                                           | Atteso                                                                                                                     |
+| ----- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| BE-T1 | dispatch su `CONFERMA` `IMMEDIATA`, preventivo ACCETTATO                       | commessa con `fatturazione_immediata=true`, righe `competenza_mese=mese corrente`; sorgenti agganciate; preventivo `EVASO` |
+| BE-T2 | `DIFFERITA` con `meta.competenza_fatturazione`                                 | commessa `fatturazione_immediata=false`, `competenza_mese=mese scelto`                                                     |
+| BE-T3 | `DIFFERITA` senza competenza                                                   | `E_VENDITA_COMPETENZA_RICHIESTA`, nessuna commessa                                                                         |
+| BE-T4 | `handler_params.modalita_fatturazione` ignota                                  | `E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA`                                                                           |
+| BE-T5 | doppio dispatch sullo stesso preventivo                                        | seconda volta `E_VENDITA_PREVENTIVO_GIA_PUSHATO`, **nessuna** commessa duplicata                                           |
+| BE-T6 | giornale                                                                       | `DOMINIO_COMMESSA_CREATA` + `DOMINIO_PREVENTIVO_EVASO` con meta corretto                                                   |
+| BE-T7 | wiring dispatch                                                                | entrando in `IN_CORSO` su flusso con `handler_id`, l'handler parte; su flusso senza handler, no-op                         |
+| BE-S1 | smoke E2E (idempotente, cleanup proattivo — [feedback_smoke_test_idempotenti]) | crea pratica → flussi → accetta preventivo → CONFERMA → commessa emittibile, pratica CHIUSA                                |
 
 ---
 
@@ -397,11 +376,11 @@ di riga**: arrivano da `fetch_pushable_rows` → `fn_list_preventivi_da_pushare`
 come campi del `PushableRow`, e l'handler li consuma in
 [commesse_source_handlers.py](../../../backend/apps/vendite/services/commesse_source_handlers.py):
 
-| Valore | Letto da | Usato in | Livello |
-|---|---|---|---|
-| `row.fatturazione_immediata` | `fn_list_preventivi_da_pushare` | `cache_key` (L365) + `get_or_create_commessa(...)` (L379) | testata |
-| `row.competenza_dal` / `_al` | idem | `cache_key` (L367-368) + `get_or_create_commessa` (L381-382) | testata |
-| `row.competenza_mese` | idem | `_build_attivita_input(...)` (L449) | **riga** (manopola politica) |
+| Valore                       | Letto da                        | Usato in                                                     | Livello                      |
+| ---------------------------- | ------------------------------- | ------------------------------------------------------------ | ---------------------------- |
+| `row.fatturazione_immediata` | `fn_list_preventivi_da_pushare` | `cache_key` (L365) + `get_or_create_commessa(...)` (L379)    | testata                      |
+| `row.competenza_dal` / `_al` | idem                            | `cache_key` (L367-368) + `get_or_create_commessa` (L381-382) | testata                      |
+| `row.competenza_mese`        | idem                            | `_build_attivita_input(...)` (L449)                          | **riga** (manopola politica) |
 
 **Mappa injection per c7-1** (override uniforme su tutto il push del preventivo):
 
@@ -435,19 +414,8 @@ così da "lavoro da stimare" a **3 punti precisi** + threading kwargs. ✅ nodo 
    `pratiche→vendite` (lazy import in `vendite/apps.py:ready()`?).
 4. **§4**: comportamento attuale dell'orchestratore sul ri-push (per il mapping
    a errore semantico).
-5. ~~**§8.1 atomicità**~~ → **CHIUSO** (verificato): handler apre atomic esterno;
-   non riusare `push_a_commessa` (swallow-EVASO).
-6. ~~**§8.2 idempotenza**~~ → **CHIUSO** (Opz. 3+1): transazione unica
-   flusso+handler + guard "già fatto" + lock anti-race.
-7. ~~**§8.3**~~ → **CHIUSO**: completa `APPROVAZIONE_CLIENTE` il BE dell'azione
-   accetta-preventivo, atomico.
-8. ~~**§8.5**~~ → **CHIUSO**: `p_user` parametro esplicito sul dispatch.
-9. ~~**§8.6**~~ → **CHIUSO**: override policy in Python a `_process_rows` (3 punti).
-
-**Residuo aperto (non bloccante)**: C3 (dispatch automatico vs esplicito —
-raccomandato automatico, ora confluisce nella transazione unica §8.2), C2 (pattern
-registrazione handler cross-app), §4 (comportamento orchestratore sul ri-push, per
-il mapping errore). Decisioni minori, chiudibili in apertura piano.
+5. **DB V9** (eredita dal brief DB): se la commessa necessita approvazione per
+   diventare emittibile, l'handler deve invocare quella funzione (step 5–8).
 
 ---
 

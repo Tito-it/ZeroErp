@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B-GRANT — sanatoria privilegi runtime su pratiche.competenze_flussi.
+# La coda lavoro (pratiche.fn_coda_lavoro_operatore) legge competenze_flussi
+# ma lo smoke test 26 falliva "permesso negato": i grant runtime generici
+# (90_end/ci_apply/20260205-41) girano solo nel context 'ci_apply', quindi
+# fuori CI il ruolo applicativo non riceve i privilegi.
+# Qui un GRANT mirato e idempotente, difensivo (skip se il ruolo manca),
+# valido in ogni contesto. Non sostituisce il framework generico: lo integra
+# per la tabella flaggata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260608-12-grant-competenze-flussi-app-mctit.yaml
+
+  - changeSet:
+      id: 20260608-12-grant-competenze-flussi-app
+      author: mctit
+      runOnChange: true
+      comment: >
+        GRANT SELECT/INSERT/UPDATE/DELETE su pratiche.competenze_flussi (+ USAGE
+        sulla sequenza) al ruolo applicativo zeroerp_app. Idempotente e difensivo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+                v_seq      text;
+              BEGIN
+                -- Se il ruolo non esiste (es. bootstrap incompleto) non blocchiamo.
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  RAISE NOTICE 'Ruolo % assente: skip grant competenze_flussi.', v_app_role;
+                  RETURN;
+                END IF;
+
+                EXECUTE format('GRANT USAGE ON SCHEMA pratiche TO %I', v_app_role);
+                EXECUTE format(
+                  'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE pratiche.competenze_flussi TO %I',
+                  v_app_role
+                );
+
+                -- Sequenza della PK (necessaria per INSERT con id autoincrement).
+                v_seq := pg_get_serial_sequence('pratiche.competenze_flussi', 'id');
+                IF v_seq IS NOT NULL THEN
+                  EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO %I', v_seq, v_app_role);
+                END IF;
+              END;
+              $$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+              BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  EXECUTE format(
+                    'REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE pratiche.competenze_flussi FROM %I',
+                    v_app_role
+                  );
+                END IF;
+              END;
+              $$;

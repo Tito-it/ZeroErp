@@ -30,6 +30,12 @@ VALUES (
     true
   ),
   (
+    'IN_CORSO',
+    'IN_CORSO',
+    'In corso',
+    true
+  ),
+  (
     'COMPLETATO',
     'COMPLETATO',
     'Completato',
@@ -69,6 +75,13 @@ SELECT (
       AND attivo = true
     LIMIT 1
   ) AS stato_da_eseguire_id,
+  (
+    SELECT id
+    FROM config.stati_flussi_pratiche
+    WHERE codice_interno = 'IN_CORSO'
+      AND attivo = true
+    LIMIT 1
+  ) AS stato_in_corso_id,
   (
     SELECT id
     FROM config.stati_flussi_pratiche
@@ -247,11 +260,18 @@ SELECT lives_ok(
 -- =========================================================
 -- 4) Completamento flusso B (stato → COMPLETATO)
 -- =========================================================
+-- Percorso valido per la matrice transizioni: DA_ESEGUIRE -> IN_CORSO -> COMPLETATO.
+UPDATE pratiche.flussi
+SET stato_id = (SELECT stato_in_corso_id FROM tmp_tg_refs)
+WHERE pratica_id = (SELECT pratica_id FROM tmp_tg_pratica)
+  AND template_flusso_id = (SELECT tfb_id FROM tmp_tg_tfb);
+-- esito obbligatorio per COMPLETATO (guard trg_flussi_a10_guard_esito_completato).
 UPDATE pratiche.flussi
 SET stato_id = (
     SELECT stato_completato_id
     FROM tmp_tg_refs
-  )
+  ),
+  esito = 'POSITIVO'
 WHERE pratica_id = (
     SELECT pratica_id
     FROM tmp_tg_pratica

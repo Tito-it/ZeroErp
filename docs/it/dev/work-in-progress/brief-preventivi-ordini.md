@@ -1,11 +1,12 @@
 # Brief — `preventivo → ordine`: modello a split di riga (NON 1:1 di testata)
 
-> **Stato**: 🟠 **DA DECIDERE / IN ANALISI** — non pronto come singolo brief DB
-> "chiavi in mano": tocca il dominio `pratiche` (anello 3) ed è più grande di un
-> changeSet.
+> **Stato**: 🟡 **DECISIONI RATIFICATE — IMPLEMENTAZIONE NON AVVIATA**. Le scelte
+> aperte (modello idempotenza, natura di riga, accoppiamento pratica, EVASO,
+> link di riga, scope) sono chiuse: vedi §0. Resta da scrivere il changeSet DB.
+> Nessun codice BE/FE/DB toccato finora.
 >
 > **Owner concettuale**: Tid (Michele Carlo Titini).
-> **Data**: 2026-06-07.
+> **Data**: 2026-06-07 — decisioni ratificate 2026-06-08.
 >
 > **Perché esiste questo documento**: durante l'analisi dell'univocità
 > offerta→ordine ([brief-db-univocita-offerta-ordine.md](brief-db-univocita-offerta-ordine.md))
@@ -19,6 +20,37 @@
 > **Fonte autorevole del modello**:
 > [analisi-pratiche-domini-anello3.md §5.3](analisi-pratiche-domini-anello3.md)
 > (flusso `CONFERMA_VENDITA`).
+
+---
+
+## 0. Decisioni ratificate (Tid, 2026-06-08)
+
+Tutte verificate contro lo schema attuale: **niente** di quanto segue è ancora
+implementato a DB (`fn_push_preventivo_a_ordine`, colonna link di riga, UNIQUE
+parziale per `PREVENTIVO`, azione `genera_ordine` sulla fn preventivo, flusso
+`CONFERMA_VENDITA`). L'unico precedente a terra è la UNIQUE parziale **offerta**
+(`uq_ordini_v_documento_origine_offerta`), che è il modello *opposto* e **non**
+si replica sul preventivo.
+
+| # | Tema | Decisione |
+| --- | --- | --- |
+| **D1** | Livello idempotenza | **RIGA** (non testata): ogni riga di preventivo → max 1 ordine; un preventivo genera **0..N ordini** via smistamento incrementale. **Supera anello3 §5.3.3** (UNIQUE di testata su `sorgente_uid`), che è incoerente con §5.3.1/§5.3.2 della stessa anello3. |
+| **D2** | Tappabuchi attuale | **Disabilitare** il bottone copia-tutto `crea_ordine_da_preventivo` (modello sbagliato 1:1 di tutte le righe). Endpoint/servizio BE restano dormienti. *Non implementato in questo giro* (è un brief DB). **Nota design:** nella modalità split "copia tutto" torna come **utility UI** (preseleziona tutte le righe = `p_righe_ids` = tutte), non come azione separata. |
+| **D3 (A)** | Natura di riga | Nuova **`config.nature_vendita`** (`MERCE` / `SERVIZIO_UNA_TANTUM` / `SERVIZIO_RICORRENTE`), dedicata al routing — niente riuso di `listino_tipologia` (anello3 §5.3.2). La natura è **proprietà intrinseca dell'articolo**: `catalogo.articoli.natura_vendita_id` **obbligatoria** (NOT NULL + backfill articoli esistenti). La riga di preventivo la **eredita e congela** (snapshot all'inserimento, come i prezzi). **Nessun override operatore** (protezione da errore umano sullo smistamento). Articolo senza natura → non smistabile: la NOT NULL su articoli lo previene a monte. |
+| **D4 (B)** | Accoppiamento pratica | **`p_pratica_id` opzionale** (NULL ammesso): la fn crea ordine + link riga + idempotenza standalone, e aggancia `pratiche_sorgenti` **solo se** la pratica esiste. → ramo ordine **spedibile a DB subito**, prima dell'engine `CONFERMA_VENDITA`. |
+| **D5 (C)** | Riga già allocata | **Skip** silenzioso delle righe già allocate (l'ordine si crea con le sole residue); **errore semantico solo se TUTTE** già allocate. Più ergonomico del "errore propagato" di anello3 v1. |
+| **D6 (D)** | Stato `EVASO` | Ridefinito **"nessun residuo smistabile"** (qualunque destinazione), resta terminale. Correggere `push_a_commessa`: **non** evade più se restano righe-merce non portate a ordine (oggi lo fa — incoerenza da chiudere). |
+| **D7 (E)** | Link di riga | **FK tipizzata** `vendite.ordini_righe.preventivo_riga_id` → `vendite.preventivi_righe` + **UNIQUE parziale** (àncora hard dell'idempotenza). Testata resta polimorfica `documento_origine_*` per la provenienza. Asimmetria voluta: link di riga è solo-preventivo, testata è multi-sorgente. |
+| **D8 (F)** | Scope v1 | Solo **ramo ordine**. `push_a_commessa` esiste già; ramo **contratto** rimandato (handler futuro / smistamento manuale). |
+
+**Conseguenza sulla capability:** `genera_ordine` (o "smista vendita") appare su
+`fn_available_actions_preventivo` finché **restano righe di natura `MERCE` non
+ancora allocate** (residuo a livello riga, non "esiste un ordine").
+
+> anello3 §5.3.3 va marcata **deprecata** (idempotenza di riga, non di testata) e
+> il substrato colonne va allineato al reale `documento_origine_*` — non al
+> `sorgente_tipo_id`/`sorgente_uid` di anello3, mai implementato. Da riportare in
+> anello3 quando si riapre quel documento.
 
 ---
 

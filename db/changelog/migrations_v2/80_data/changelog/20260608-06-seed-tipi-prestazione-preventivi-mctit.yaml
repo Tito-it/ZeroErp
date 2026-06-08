@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B4 — seed pratiche.tipi_prestazione: pratica PREVENTIVI.
+#   9002 PREVENTIVI_IMMEDIATA  (fatturazione immediata)
+#   9003 PREVENTIVI_DIFFERITA  (fatturazione differita)
+# categoria='COMMERCIALE'; pre_attivazione=false, post_attivazione=false.
+# La politica immediata/differita NON e' una colonna del tipo: vive nel
+# handler_params del flusso CONFERMA (B6), validata dall'handler.
+# Pattern CSV + loadUpdateData (upsert per id) come 20260422-05.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260608-06-seed-tipi-prestazione-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260608-06-seed-tipi-prestazione-preventivi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: tipi_prestazione
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/tipi_prestazione.csv
+            tableName: tipi_prestazione
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: categoria, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: pre_attivazione, type: BOOLEAN }
+              - column: { name: post_attivazione, type: BOOLEAN }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Allineamento sequenza autoincrement post-seed (max id seed 9003).
+              SELECT setval(
+                  pg_get_serial_sequence('pratiche.tipi_prestazione', 'id'),
+                  GREATEST(COALESCE(MAX(id), 1), 1),
+                  true
+              ) FROM pratiche.tipi_prestazione;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM pratiche.tipi_prestazione
+               WHERE codice_interno IN ('PREVENTIVI_IMMEDIATA', 'PREVENTIVI_DIFFERITA');

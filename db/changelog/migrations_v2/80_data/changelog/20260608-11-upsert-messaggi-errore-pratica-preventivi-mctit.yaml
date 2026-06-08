@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B9 (+ codice guard B-PREREQ) — codici errore pratica PREVENTIVI.
+# Aggiunge a config.messaggi_errore:
+#   E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA (474) — handler_params
+#       modalita_fatturazione assente/fuori vocabolario (validato dall'handler).
+#   E_VENDITA_COMPETENZA_RICHIESTA (475) — politica DIFFERITA senza competenza.
+#   E_VENDITA_PREVENTIVO_GIA_PUSHATO (476) — push ripetuto (messaggio semantico;
+#       l'idempotenza fisica e' gia' garantita da commesse_sorgenti).
+#   FLUSSI_ESITO_OBBLIGATORIO (477) — usato dal guard
+#       pratiche.trgfn_flussi_guard_esito_completato (20260608-03).
+# I codici E_VENDITA_* sono consumati dall'handler BE (fuori scope DB):
+# qui se ne registra solo il messaggio (DB-first sui testi errore).
+# Pattern simmetrico a 20260607-06.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260608-11-upsert-messaggi-errore-pratica-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260608-11-upsert-messaggi-errore-pratica-preventivi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: messaggi_errore
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/messaggi_errore.csv
+            tableName: messaggi_errore
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: codice,    type: STRING }
+              - column: { name: lingua,    type: STRING }
+              - column: { name: messaggio, type: STRING }
+              - column: { name: id,        type: NUMERIC }
+              - column: { name: causa,     type: STRING }
+              - column: { name: soluzione, type: STRING }

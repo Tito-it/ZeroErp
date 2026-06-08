@@ -9,10 +9,12 @@
 | prerequisito_id | integer | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
+| esito_richiesto | character varying | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_template_flussi_prereq_esito |  |
 | CHECK | chk_template_flussi_prereq_no_self |  |
 | FOREIGN KEY | fk_template_flussi_prereq_flusso | template_flusso_id |
 | FOREIGN KEY | fk_template_flussi_prereq_prerequisito | prerequisito_id |
