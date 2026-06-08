@@ -202,7 +202,8 @@ SELECT throws_ok(
 -- =========================================================
 -- 4) Completamento prerequisito
 -- =========================================================
-INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
+-- esito obbligatorio per COMPLETATO (guard trg_flussi_a10_guard_esito_completato).
+INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id, esito)
 VALUES (
     (
       SELECT pratica_id
@@ -215,7 +216,8 @@ VALUES (
     (
       SELECT stato_completato_id
       FROM tmp_guard_refs
-    )
+    ),
+    'POSITIVO'
   );
 -- =========================================================
 -- 5) Guard con prerequisiti soddisfatti: lives

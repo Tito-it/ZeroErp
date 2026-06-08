@@ -1,0 +1,2 @@
+id,handler_key,codice,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
+9001,vendita.push_preventivo,VENDITA_PUSH_PREVENTIVO,Handler push del preventivo accettato verso commessa; la modalita' di fatturazione (IMMEDIATA/DIFFERITA) arriva da handler_params del flusso CONFERMA,t,{},2026-06-08 00:00:00+02,SEED,2026-06-08 00:00:00+02,SEED

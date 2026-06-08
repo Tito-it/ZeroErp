@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B5 + B6 — seed pratiche.template_flussi per le due pratiche PREVENTIVI.
+# 4 flussi per tipo (catena lineare):
+#   RICHIESTA_CLIENTE -> PREVENTIVAZIONE -> APPROVAZIONE_CLIENTE -> CONFERMA
+# Direzioni: RICHIESTA_CLIENTE/APPROVAZIONE_CLIENTE = ENTRATA (dal cliente),
+#            PREVENTIVAZIONE/CONFERMA = INTERNA.
+# CONFERMA porta handler_id=9001 (vendita.push_preventivo, B7) e
+# handler_params con la modalita' di fatturazione (B6):
+#   tipo 9002 -> IMMEDIATA, tipo 9003 -> DIFFERITA.
+# I prerequisiti (catena + esito) sono seedati in 20260608-09; i canali
+# sui flussi ENTRATA in 20260608-10.
+# FK: richiede tipi_prestazione (B4) e handler_flussi (B7) gia' caricati
+# (ordine NN: 06,07 < 08).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260608-08-seed-template-flussi-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260608-08-seed-template-flussi-preventivi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: template_flussi
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/template_flussi.csv
+            tableName: template_flussi
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: tipo_prestazione_id, type: NUMERIC }
+              - column: { name: handler_id, type: NUMERIC }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: sequenza, type: NUMERIC }
+              - column: { name: obbligatorio, type: BOOLEAN }
+              - column: { name: direzione, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column:
+                  name: handler_params
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Allineamento sequenza autoincrement post-seed (max id seed 9008).
+              SELECT setval(
+                  pg_get_serial_sequence('pratiche.template_flussi', 'id'),
+                  GREATEST(COALESCE(MAX(id), 1), 1),
+                  true
+              ) FROM pratiche.template_flussi;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM pratiche.template_flussi
+               WHERE tipo_prestazione_id IN (9002, 9003);

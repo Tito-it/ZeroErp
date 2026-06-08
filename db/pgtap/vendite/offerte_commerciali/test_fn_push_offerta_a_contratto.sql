@@ -5,8 +5,9 @@
 -- Test: vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id) (Step 8).
 --       Push 1:1 offerta ACCETTATA -> contratto DRAFT.
 --       Idempotenza obbligatoria: doppia invocazione -> E_OFFERTA_CONTRATTO_GIA_GENERATO.
+--       Mutua esclusivita' (rev6): se l'offerta ha gia' un ordine -> E_OFFERTA_ORDINE_GIA_GENERATO.
 --
--- Indice test (1..8):
+-- Indice test (1..9):
 --   1)  Funzione fn_push_offerta_a_contratto presente
 --   2)  Push da ACCETTATA: contratto DRAFT generato
 --   3)  contratto.offerta_id valorizzato e contratto.sorgente_uid = offerta.uid
@@ -15,10 +16,12 @@
 --   6)  Push da BOZZA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO
 --   7)  Push da EMESSA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO
 --   8)  Push da RIFIUTATA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO
+--   9)  Push da ACCETTATA con ordine gia' generato (mutua esclusivita') ->
+--       throws E_OFFERTA_ORDINE_GIA_GENERATO
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(8);
+SELECT plan(9);
 
 -- ============================================================
 -- Setup fixture
@@ -137,6 +140,43 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
+-- Offerta in ACCETTATA con ORDINE gia' generato (per test 9): INSERT diretto in
+-- ACCETTATA + ordine collegato via documento_origine ('OFFERTA', id).
+CREATE TEMP TABLE tmp_push_offerta_ord AS
+WITH ins AS (
+    INSERT INTO vendite.offerte_commerciali (
+        emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+        listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
+    )
+    SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
+           ctx.listino_id, ctx.listino_versione_id_attiva,
+           DATE '2102-01-01', ctx.stato_accettata_id
+      FROM tmp_push_ctx ctx
+    RETURNING id
+)
+SELECT id FROM ins;
+
+-- GUC vuota: l'INSERT su vendite.ordini supera i guard emittente/scope senza
+-- restrizione (stesso approccio del test fn_available_actions_offerta).
+SELECT set_config('app.current_user_id', '', true);
+
+-- Ordine collegato all'offerta (documento_origine OFFERTA). BA=NULL + emittente
+-- esplicito = niente guard emittente<->BA da soddisfare.
+INSERT INTO vendite.ordini (
+    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
+    stato_doc_ordine_id, valuta_id, data, storicizza,
+    documento_origine_tipo, documento_origine_id
+)
+SELECT
+    (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1),
+    NULL::bigint,
+    ctx.emittente_fiscale_id,
+    (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1),
+    (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
+    DATE '2102-01-02', false,
+    'OFFERTA', (SELECT id FROM tmp_push_offerta_ord)
+  FROM tmp_push_ctx ctx;
+
 -- ============================================================
 -- 1) Funzione presente
 -- ============================================================
@@ -241,6 +281,20 @@ SELECT throws_ok(
     ),
     'P0001', NULL,
     '8) Push da RIFIUTATA -> throws E_OFFERTA_PUSH_STATO_NON_AMMESSO'
+);
+
+-- ============================================================
+-- 9) Push da ACCETTATA con ordine gia' generato (mutua esclusivita') ->
+--    throws E_OFFERTA_ORDINE_GIA_GENERATO. Contratto e ordine sono alternativi:
+--    l'offerta ha gia' un ordine ('OFFERTA', id) -> il push a contratto fallisce.
+-- ============================================================
+SELECT throws_ok(
+    format(
+        $q$SELECT vendite.fn_push_offerta_a_contratto(%s, NULL::bigint)$q$,
+        (SELECT id FROM tmp_push_offerta_ord)
+    ),
+    'P0001', NULL,
+    '9) Push da ACCETTATA con ordine gia generato -> throws E_OFFERTA_ORDINE_GIA_GENERATO (mutua esclusivita)'
 );
 
 SELECT * FROM finish();

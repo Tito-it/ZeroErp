@@ -1,0 +1,63 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260608-46-alter-ordini-righe-add-preventivo-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260608-46-alter-ordini-righe-add-preventivo-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ADD COLUMN vendite.ordini_righe.preventivo_riga_id (FK
+        vendite.preventivi_righe) + UNIQUE PARZIALE
+        uq_ordini_righe_v_preventivo_riga. E' l'ancora HARD dell'idempotenza di
+        riga (modello a split, D7): ogni riga di preventivo puo' finire su AL
+        PIU' UN ordine. Il valore lo scrive fn_push_preventivo_a_ordine; una
+        seconda allocazione della stessa riga viola la UNIQUE. La testata ordini
+        resta polimorfica (documento_origine_*); qui il link e' tipizzato perche'
+        e' l'invariante di integrita'. Indice FK delegato a apply_fk_index_policy.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: ordini_righe }
+          - tableExists: { schemaName: vendite, tableName: preventivi_righe }
+          - not:
+              - columnExists:
+                  schemaName: vendite
+                  tableName: ordini_righe
+                  columnName: preventivo_riga_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini_righe
+                  ADD COLUMN preventivo_riga_id BIGINT NULL;
+
+              ALTER TABLE vendite.ordini_righe
+                  ADD CONSTRAINT fk_ordrig_preventivo_riga
+                  FOREIGN KEY (preventivo_riga_id)
+                  REFERENCES vendite.preventivi_righe (id)
+                  ON UPDATE CASCADE
+                  ON DELETE NO ACTION;
+
+              CREATE UNIQUE INDEX uq_ordini_righe_v_preventivo_riga
+                  ON vendite.ordini_righe (preventivo_riga_id)
+               WHERE preventivo_riga_id IS NOT NULL;
+
+              COMMENT ON COLUMN vendite.ordini_righe.preventivo_riga_id IS
+                  'Riga di preventivo (vendite.preventivi_righe) da cui questa riga '
+                  'd''ordine e'' stata smistata. NULL = riga d''ordine non nata da '
+                  'preventivo. UNIQUE parziale: ogni riga di preventivo -> al piu'' '
+                  'un ordine (idempotenza di riga, modello a split). Valorizzato da '
+                  'fn_push_preventivo_a_ordine.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_ordini_righe_v_preventivo_riga;
+              ALTER TABLE vendite.ordini_righe
+                  DROP CONSTRAINT IF EXISTS fk_ordrig_preventivo_riga;
+              ALTER TABLE vendite.ordini_righe
+                  DROP COLUMN IF EXISTS preventivo_riga_id;

@@ -229,9 +229,9 @@ SELECT lives_ok(
   '9. Flusso: DA_ESEGUIRE -> IN_CORSO ammessa'
 );
 
--- 10) IN_CORSO → COMPLETATO (ammessa)
+-- 10) IN_CORSO → COMPLETATO (ammessa) — esito obbligatorio per COMPLETATO
 SELECT lives_ok(
-  format('UPDATE pratiche.flussi SET stato_id = %s, data_fine = now() WHERE id = %s',
+  format('UPDATE pratiche.flussi SET stato_id = %s, esito = ''POSITIVO'', data_fine = now() WHERE id = %s',
     (SELECT sf_completato FROM tmp_tr_refs),
     (SELECT flusso_id FROM tmp_tr_flusso1)),
   '10. Flusso: IN_CORSO -> COMPLETATO ammessa'
@@ -258,9 +258,10 @@ WITH ins AS (
 )
 SELECT id AS flusso_id FROM ins;
 
--- 12) DA_ESEGUIRE → COMPLETATO (vietata)
+-- 12) DA_ESEGUIRE → COMPLETATO (vietata) — esito valorizzato cosi' a fallire
+--     e' il guard di transizione (intento del test), non quello di esito.
 SELECT throws_ok(
-  format('UPDATE pratiche.flussi SET stato_id = %s WHERE id = %s',
+  format('UPDATE pratiche.flussi SET stato_id = %s, esito = ''POSITIVO'' WHERE id = %s',
     (SELECT sf_completato FROM tmp_tr_refs),
     (SELECT flusso_id FROM tmp_tr_flusso2)),
   NULL, NULL,

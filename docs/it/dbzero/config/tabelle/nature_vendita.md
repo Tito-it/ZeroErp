@@ -1,0 +1,35 @@
+# 📚 Tabella `nature_vendita`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| codice_interno | character varying | NO |  |
+| codice | character varying | NO |  |
+| descrizione | character varying | YES |  |
+| destinazione_tipo | character varying | NO |  |
+| attivo | boolean | NO | true |
+| ordine | smallint | YES |  |
+| meta | jsonb | NO | '{}'::jsonb |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | YES | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | chk_nature_vendita_destinazione_tipo |  |
+| PRIMARY KEY | pk_nature_vendita | id |
+| UNIQUE | uq_nature_vendita_codice | codice |
+| UNIQUE | uq_nature_vendita_codice_interno | codice_interno |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_nature_vendita | `CREATE UNIQUE INDEX pk_nature_vendita ON config.nature_vendita USING btree (id)` |
+| uq_nature_vendita_codice | `CREATE UNIQUE INDEX uq_nature_vendita_codice ON config.nature_vendita USING btree (codice)` |
+| uq_nature_vendita_codice_interno | `CREATE UNIQUE INDEX uq_nature_vendita_codice_interno ON config.nature_vendita USING btree (codice_interno)` |
+
+---
+{% include-markdown "signature-core.md" %}

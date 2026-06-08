@@ -4,6 +4,12 @@
 > `dev/db-tid`. Resta il cablaggio **BE/FE** (§7), fuori scope DB.
 > Dettaglio in §9 «Stato avanzamento».
 >
+> ⚠️ **REVISIONE DI MODELLO (2026-06-08, post-consegna)**: `push_contratto` e
+> `genera_ordine` da **indipendenti** sono diventate **mutuamente esclusive** —
+> un'offerta ACCETTATA genera **al massimo UNO** tra contratto e ordine. Questo
+> **supera** la nota di indipendenza in §2.2/§4. Dettaglio, migration e test nel
+> nuovo **§10 «Addendum — mutua esclusività contratto/ordine»**.
+>
 > **Owner concettuale**: Tid (Michele Carlo Titini).
 > **Data brief**: 2026-06-07 — agg. 2026-06-08 (consegna DB).
 >
@@ -135,9 +141,12 @@ ELSE
 END IF;
 ```
 
-> `push_contratto` e `genera_ordine` sono **indipendenti**: un'offerta ACCETTATA
-> può esporre entrambe, ognuna con la propria idempotenza. Nessuna mutua
-> esclusione.
+> ⚠️ **SUPERATO dal §10 (2026-06-08)**. ~~`push_contratto` e `genera_ordine` sono
+> **indipendenti**: un'offerta ACCETTATA può esporre entrambe, ognuna con la
+> propria idempotenza. Nessuna mutua esclusione.~~ → Le due capability sono ora
+> **mutuamente esclusive**: stessa condizione di abilitazione (`ACCETTATA` +
+> nessun contratto + nessun ordine), e la generazione di una disabilita l'altra.
+> Vedi **§10**.
 
 **Estendere l'output `jsonb`** con i tre flag (mirror dei `can_push_contratto*`):
 
@@ -336,6 +345,95 @@ data-driven da `available_actions` + dialog, i18n
 
 ---
 
+## 10. Addendum — mutua esclusività contratto/ordine (2026-06-08, post-consegna)
+
+> **Revisione di modello ratificata (Tid, 2026-06-08)**: un'offerta commerciale
+> ACCETTATA genera **al massimo UNO** tra contratto e ordine, **mai entrambi**.
+> Questo **supera** la decisione di indipendenza del 2026-06-07 (§2.2/§4): la
+> generazione di uno dei due preclude permanentemente l'altro.
+
+### 10.1 Il «perché»
+
+L'offerta accettata o si materializza in un **contratto** (fornitura ricorrente,
+utility) o in un **ordine** (one-shot). Generarli entrambi dalla stessa offerta
+significherebbe impegnare due volte la stessa proposta commerciale → doppia
+fatturazione dello stesso oggetto. L'esclusività è quindi un invariante di
+dominio, non un vincolo tecnico.
+
+### 10.2 Semantica «both-or-neither»
+
+La condizione di abilitazione diventa **identica** per le due capability:
+
+```text
+ACCETTATA  AND  nessun contratto generato  AND  nessun ordine generato
+```
+
+Conseguenza: finché l'offerta è ACCETTATA e «vergine», **entrambe** le azioni
+sono esposte; appena se ne usa una, **entrambe** spariscono. «Mutuamente
+esclusive» non significa «esattamente una abilitata», ma «o tutte e due o
+nessuna», con la prima generazione che chiude la porta. «Esiste» = contratto/
+ordine in **qualsiasi** stato (anche ANNULLATA): l'esclusività è permanente.
+
+### 10.3 Livelli di difesa (DB)
+
+| Livello | Dove | Cosa garantisce | Stato |
+|---------|------|-----------------|-------|
+| **A. Capability** | `script.fn_available_actions_offerta` (`20260608-12`) | nasconde i bottoni: entrambe le azioni soppresse se esiste già contratto **o** ordine | ✅ fatto |
+| **B. Guard write-path contratto** | `vendite.fn_push_offerta_a_contratto` rev6 (`20260608-14`) | il push fallisce se esiste già un ordine → `E_OFFERTA_ORDINE_GIA_GENERATO` (id 478, `20260608-13`) | ✅ fatto |
+| **C. Guard write-path ordine** | BE `crea_ordine_da_offerta` | la generazione ordine fallisce se esiste già un contratto | ⏳ BE (fuori scope DB) |
+| **D. Trigger incrociato** | `contratti`/`ordini` INSERT | copre la race cross-tab in-transazione | ❌ **non fatto** (scelta esplicita) |
+
+**Su D — race scoperta, scelta esplicita**: gli UNIQUE esistenti sono *per-tipo*
+(`uq_contratti_offerta_id`, `uq_ordini_v_documento_origine_offerta`): nessuno
+impedisce la coesistenza contratto+ordine. La capability (A) + i guard di
+funzione (B/C) coprono il flusso normale e le chiamate dirette/stale; resta
+scoperta solo la **race cross-tab** (push + genera_ordine simultanei che passano
+i controlli prima del commit dell'altro). Intercettarla richiederebbe un trigger
+guard incrociato su entrambe le tabelle all'INSERT. Probabilità bassissima
+(back-office mono-utente) e blast radius non banale (un `BEFORE INSERT` cross-
+tabella rischia di rompere fixture pgTAP che creano contratto+ordine dalla stessa
+offerta → grep della suite obbligatorio *prima*). **Non introdotto**; resta scelta
+attivabile in futuro se l'invariante dovrà reggere alla concorrenza a livello DB.
+
+### 10.4 Capability — matrice reason aggiornata
+
+Le due capability condividono l'abilitazione; quando bloccate il `reason` segue
+una priorità **own-doc first** (la propria sorgente per prima), poi l'altra, poi
+lo stato. I `reason_key` i18n sono **riusati** (nessuna chiave nuova).
+
+| Stato offerta | contratto | ordine | `can_push_contratto` → reason | `can_genera_ordine` → reason |
+|---------------|-----------|--------|-------------------------------|------------------------------|
+| ACCETTATA | no | no | `true` (null) | `true` (null) |
+| ACCETTATA | sì | no | `false` `OFFERTA_CONTRATTO_GIA_GENERATO` | `false` `OFFERTA_CONTRATTO_GIA_GENERATO` |
+| ACCETTATA | no | sì | `false` `OFFERTA_ORDINE_GIA_GENERATO` | `false` `OFFERTA_ORDINE_GIA_GENERATO` |
+| ≠ ACCETTATA | — | — | `false` `OFFERTA_NON_ACCETTATA` | `false` `OFFERTA_NON_ACCETTATA` |
+
+Quando entrambe le azioni speciali sono soppresse, `available_actions = []`
+(ACCETTATA non ha transizioni manuali a matrice).
+
+### 10.5 Artefatti DB (rev. 2026-06-08)
+
+| # | Artefatto | Note |
+|---|-----------|------|
+| 1 | `20_code/script/20260608-12-update-fn-available-actions-offerta-mutua-esclusivita-mctit.yaml` | capability: abilitazione condivisa + reason own-doc first. Supersede `20260607-08`. |
+| 2 | `20_code/vendite/20260608-14-update-fn-push-offerta-a-contratto-guard-ordine-mctit.yaml` | rev6: guard mutua esclusività lato contratto. |
+| 3 | `80_data/sql/config/messaggi_errore.csv` + `80_data/changelog/20260608-13-upsert-messaggi-errore-offerta-ordine-gia-generato-mctit.yaml` | nuovo codice `E_OFFERTA_ORDINE_GIA_GENERATO` (id 478). |
+| 4 | `db/pgtap/script/test-fn-available-actions-offerta-v1.sql` | test 8 e 12 aggiornati: la presenza di un documento sopprime **entrambe** le azioni + `available_actions=[]`. |
+| 5 | `db/pgtap/vendite/offerte_commerciali/test_fn_push_offerta_a_contratto.sql` | nuovo test 9: push su offerta con ordine → `E_OFFERTA_ORDINE_GIA_GENERATO`. `plan(9)`. |
+
+### 10.6 Da fare (fuori scope DB)
+
+- **BE livello C**: guard in `crea_ordine_da_offerta` che fallisce se esiste già
+  un contratto dall'offerta (specchio di B). Mappare a un codice dedicato.
+- **FE**: i due bottoni già data-driven da `available_actions` spariscono
+  insieme a conversione avvenuta; dialog parlante sul reason cross
+  (push bloccato da ordine e viceversa).
+- **Doc auto-gen**: rigenerare `dbzero/script/funzioni/fn_available_actions_offerta.md`
+  e `dbzero/vendite/funzioni/fn_push_offerta_a_contratto.md` dopo l'apply.
+
+---
+
 *Brief DB — univocità offerta→ordine (1:1 permanente) + azione `genera_ordine`
-data-driven. **DB consegnato 2026-06-08 (pgTAP 15/15).** Il caso preventivo è in
+data-driven. **DB consegnato 2026-06-08 (pgTAP 15/15).** Mutua esclusività
+contratto/ordine in §10 (rev. 2026-06-08). Il caso preventivo è in
 [brief-preventivi-ordini.md](brief-preventivi-ordini.md). Resta BE/FE §7.*

@@ -1,0 +1,66 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260608-45-trgfn-preventivi-righe-set-natura-vendita-mctit.yaml
+
+  - changeSet:
+      id: 20260608-45-trgfn-preventivi-righe-set-natura-vendita
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        Trigger di derivazione/congelamento della natura di riga: alla INSERT
+        (e su cambio articolo_id) valorizza preventivi_righe.natura_vendita_id
+        dalla natura intrinseca dell'articolo. Sovrascrive sempre eventuali
+        valori forniti dal chiamante -> NESSUN override operatore. Fase a10
+        (BEFORE), coerente con gli altri set di riga (qta_from_operativa).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: vendite
+              tableName: preventivi_righe
+              columnName: natura_vendita_id
+          - columnExists:
+              schemaName: catalogo
+              tableName: articoli
+              columnName: natura_vendita_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Natura ereditata e CONGELATA dall'articolo: la riga non puo'
+                  -- discostarsi dalla classificazione dell'articolo. Qualunque
+                  -- valore fornito dal chiamante in NEW.natura_vendita_id viene
+                  -- sovrascritto (no override). Se l'articolo non e' ancora
+                  -- classificato (natura_vendita_id NULL, transitorio pre-backfill)
+                  -- la riga resta NULL e non e' smistabile finche' non si classifica.
+                  SELECT a.natura_vendita_id
+                    INTO NEW.natura_vendita_id
+                    FROM catalogo.articoli a
+                   WHERE a.id = NEW.articolo_id;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a10_set_natura_vendita_ins_upd
+                  ON vendite.preventivi_righe;
+              CREATE TRIGGER trg_preventivi_righe_a10_set_natura_vendita_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id
+                  ON vendite.preventivi_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a10_set_natura_vendita_ins_upd
+                  ON vendite.preventivi_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_preventivi_righe_set_natura_vendita();

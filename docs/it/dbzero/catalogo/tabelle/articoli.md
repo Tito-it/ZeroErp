@@ -29,6 +29,7 @@
 | note_id | bigint | YES |  |
 | is_solo_componente | boolean | NO | false |
 | listino_tipologia_id | smallint | YES |  |
+| natura_vendita_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -41,6 +42,7 @@
 | FOREIGN KEY | fk_articoli_conti_contabili_vendita | conto_contabile_vendita_id |
 | FOREIGN KEY | fk_articoli_iva | iva_id |
 | FOREIGN KEY | fk_articoli_listino_tipologia | listino_tipologia_id |
+| FOREIGN KEY | fk_articoli_nature_vendita | natura_vendita_id |
 | FOREIGN KEY | fk_articoli_note | note_target_tipo, note_id |
 | FOREIGN KEY | fk_articoli_note_1 | note_target_tipo, note_id |
 | FOREIGN KEY | fk_articoli_note_2 | note_target_tipo, note_id |

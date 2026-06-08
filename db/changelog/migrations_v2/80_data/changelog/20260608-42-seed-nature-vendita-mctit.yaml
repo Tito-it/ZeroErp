@@ -1,0 +1,36 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260608-42-seed-nature-vendita-mctit.yaml
+
+  - changeSet:
+      id: 20260608-42-seed-nature-vendita
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        Seed config.nature_vendita: le 3 nature di routing post-accettazione
+        (MERCE -> ORDINE, SERVIZIO_UNA_TANTUM -> COMMESSA,
+        SERVIZIO_RICORRENTE -> CONTRATTO). codice_interno = chiave naturale
+        stabile. Colonne audit lasciate ai default DB (now()/CURRENT_USER).
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: nature_vendita }
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/nature_vendita.csv
+            tableName: nature_vendita
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: destinazione_tipo, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: ordine, type: NUMERIC }
+              - column: { name: meta, type: JSON }

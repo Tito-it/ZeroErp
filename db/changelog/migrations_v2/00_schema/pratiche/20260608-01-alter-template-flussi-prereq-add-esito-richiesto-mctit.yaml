@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B-PREREQ (1/3) — motore prerequisiti esito-aware.
+# Aggiunge pratiche.template_flussi_prerequisiti.esito_richiesto:
+#   NULL  = qualsiasi esito (comportamento storico, retro-compatibile:
+#           nessun workflow esistente cambia comportamento)
+#   <esito> = il prerequisito e' soddisfatto solo se il flusso precedente
+#             e' COMPLETATO con quell'esito (consumato da
+#             fn_check_prerequisiti_flusso, 20260608-02).
+# CHECK sui valori dell'enum esito, coerente con pratiche.flussi.esito
+# (chk_flussi_esito). %TYPE non ammesso in ADD COLUMN DDL: tipo esplicito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260608-01-alter-template-flussi-prereq-add-esito-richiesto-mctit.yaml
+
+  - changeSet:
+      id: 20260608-01-alter-template-flussi-prereq-add-esito-richiesto
+      author: mctit
+      comment: >
+        Aggiunge esito_richiesto (varchar nullable) a
+        pratiche.template_flussi_prerequisiti per abilitare i prerequisiti
+        esito-aware. NULL = qualsiasi esito (retro-compatibile).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Colonna esito_richiesto: vincolo abilitazione passo successivo.
+              ALTER TABLE pratiche.template_flussi_prerequisiti
+                ADD COLUMN esito_richiesto character varying(20);
+
+              -- Stessi valori dell'enum esito su pratiche.flussi (chk_flussi_esito).
+              -- NULL ammesso = "qualsiasi esito" (comportamento storico).
+              ALTER TABLE pratiche.template_flussi_prerequisiti
+                ADD CONSTRAINT chk_template_flussi_prereq_esito
+                CHECK (
+                  esito_richiesto IS NULL
+                  OR esito_richiesto IN ('POSITIVO', 'NEGATIVO', 'PARZIALE', 'NON_APPLICABILE')
+                );
+
+              COMMENT ON COLUMN pratiche.template_flussi_prerequisiti.esito_richiesto IS
+                'Esito richiesto del flusso prerequisito per abilitare il passo successivo. NULL = qualsiasi esito (retro-compatibile). Valori: POSITIVO/NEGATIVO/PARZIALE/NON_APPLICABILE.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.template_flussi_prerequisiti
+                DROP CONSTRAINT IF EXISTS chk_template_flussi_prereq_esito;
+              ALTER TABLE pratiche.template_flussi_prerequisiti
+                DROP COLUMN IF EXISTS esito_richiesto;
