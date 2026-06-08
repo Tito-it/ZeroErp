@@ -173,6 +173,14 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_competenza_dal => DATE '2026-07-01',
   p_competenza_al => DATE '2026-07-31',
   p_prezzo_snapshot => 10.0000000000,
+  p_prezzo_base_snapshot => NULL,
+  p_origine_prezzo => NULL,
+  p_tipo_variazione_applicata => NULL,
+  p_valore_variazione_applicata => NULL,
+  p_promo_id => NULL,
+  p_contratto_id => NULL,
+  p_categoria_cliente_id_snapshot => NULL,
+  p_classe_utenza_id_snapshot => NULL,
   p_qta_operativa => 3.000000,
   p_uom_operativa_id => (SELECT uom_id FROM tmp_refs_sot),
   p_factor_to_base => 1,
@@ -197,7 +205,6 @@ FROM vendite.fn_upsert_commessa_attivita(
 CREATE TEMP TABLE tmp_emit_sot AS
 SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_sot),
-  p_lotto_attivita_id => NULL,
   p_only_approved => true,
   p_dry_run => false
 );

@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Univocita' offerta -> ordine (1:1 strutturale e permanente).
+# Brief: docs/it/dev/work-in-progress/brief-db-univocita-offerta-ordine.md
+#
+# Indice UNIQUE parziale su vendite.ordini (documento_origine_tipo,
+# documento_origine_id) limitato a tipo = 'OFFERTA': un'offerta commerciale
+# genera AL MASSIMO un ordine. E' la rete di sicurezza strutturale (anche contro
+# race concorrenti) della guard data-driven `genera_ordine` (migration 08).
+#
+# REVERSAL PARZIALE DI A1 (solo OFFERTA): la colonna documento_origine_* e' nata
+# SENZA UNIQUE (20260603-13, scelta A1: "piu' ordini da una stessa origine" per
+# consentire riordini). Per la sola origine OFFERTA questa scelta e' invertita
+# (ratificato Tid, 2026-06-07): l'offerta non ha righe materializzate (e' una
+# condizione quadro atomica, come offerta -> contratto §5.1) quindi 1:1 e' la sua
+# natura, non un ripiego. PREVENTIVO NON e' toccato: il suo modello e' lo split
+# per riga (brief-preventivi-ordini.md), quindi nessun vincolo qui.
+#
+# Indice PARZIALE: non vincola PREVENTIVO ne' gli ordini nativi
+# (documento_origine_tipo IS NULL). Il CHECK chk_ordini_documento_origine_copres
+# garantisce che con tipo='OFFERTA' l'id e' NOT NULL -> nessuna insidia sui NULL.
+#
+# NOTA OPERATIVA: su DB gia' usati possono esistere ordini OFFERTA duplicati
+# (bug del doppio click). La CREATE UNIQUE INDEX fallisce se presenti -> eseguire
+# prima la pulizia one-off (dati test) documentata nel brief §5.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260607-07-create-uq-ordini-documento-origine-offerta-mctit.yaml
+
+  - changeSet:
+      id: 20260607-07-create-uq-ordini-documento-origine-offerta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CREATE UNIQUE INDEX parziale uq_ordini_v_documento_origine_offerta su
+        vendite.ordini (documento_origine_tipo, documento_origine_id) WHERE
+        documento_origine_tipo = 'OFFERTA'. Vincolo 1:1 offerta -> ordine
+        (reversal parziale di A1, solo OFFERTA). PREVENTIVO e ordini nativi non
+        vincolati.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: ordini }
+          - columnExists:
+              schemaName: vendite
+              tableName: ordini
+              columnName: documento_origine_tipo
+          - columnExists:
+              schemaName: vendite
+              tableName: ordini
+              columnName: documento_origine_id
+          - not:
+              - indexExists:
+                  schemaName: vendite
+                  tableName: ordini
+                  indexName: uq_ordini_v_documento_origine_offerta
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1:1 offerta -> ordine: una offerta genera al massimo un ordine.
+              -- Parziale (solo OFFERTA): PREVENTIVO e ordini nativi (tipo NULL)
+              -- restano liberi. Specchio strutturale della guard data-driven
+              -- can_genera_ordine in script.fn_available_actions_offerta.
+              CREATE UNIQUE INDEX uq_ordini_v_documento_origine_offerta
+                  ON vendite.ordini (documento_origine_tipo, documento_origine_id)
+               WHERE documento_origine_tipo = 'OFFERTA';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_ordini_v_documento_origine_offerta;

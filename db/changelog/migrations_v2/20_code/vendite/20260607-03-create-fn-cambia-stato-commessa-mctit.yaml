@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CREATE vendite.fn_cambia_stato_commessa
+#   Entrypoint sanzionato (DB-first) per cambiare lo stato di una commessa.
+#   Risolve il codice stato in id, esegue l'UPDATE e ritorna da/a. La
+#   validazione del grafo (matrice) e il guard di dominio
+#   (->PRONTA_FATTURAZIONE richiede righe approvate) vivono nel trigger
+#   vendite.trgfn_commesse_guard_transizione (20260607-02), che scatta
+#   sull'UPDATE: la fn NON ri-valida la matrice (no logica duplicata).
+#
+#   L'handler vendita.push_preventivo la chiama con 'PRONTA_FATTURAZIONE'
+#   dopo aver approvato le righe (fn_approva_commessa_attivita, 20260607-04).
+#
+# Pattern: vendite.fn_cambia_stato_preventivo (20260403-08), semplificato
+#   (qui la matrice e' enforced dal trigger, non ri-controllata nella fn).
+# DROP+CREATE per consentire future modifiche al RETURNS TABLE (linea-guida:
+#   CREATE OR REPLACE non cambia la firma di un RETURNS TABLE).
+# Dipendenze: vendite.commesse, vendite.stati_commessa,
+#   script.fn_log_and_raise_error. Codici in 20260607-06.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260607-03-create-fn-cambia-stato-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20260607-03-create-fn-cambia-stato-commessa
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato,
+        p_user) RETURNS TABLE(commessa_id, stato_da, stato_a). Entrypoint
+        DB-first per il cambio stato commessa: risolve codice->id, UPDATE
+        (validato dal trigger guard 20260607-02), ritorna da/a. Chiamata
+        dall'handler push dopo l'approvazione righe.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: stati_commessa
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_cambia_stato_commessa(bigint, varchar, text);
+
+              CREATE FUNCTION vendite.fn_cambia_stato_commessa(
+                p_commessa_id  vendite.commesse.id%TYPE,
+                p_nuovo_stato  vendite.stati_commessa.codice_interno%TYPE,
+                p_user         vendite.commesse.user_update%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE(
+                commessa_id bigint,
+                stato_da    varchar,
+                stato_a     varchar
+              )
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: entrypoint sanzionato per il cambio stato commessa.
+              --   Valida parametri, risolve lo stato target, esegue l'UPDATE.
+              --   Matrice e guard di dominio sono enforced dal trigger
+              --   vendite.trgfn_commesse_guard_transizione sull'UPDATE.
+              DECLARE
+                v_stato_corrente_id   vendite.commesse.stato_commessa_id%TYPE;
+                v_stato_corrente_cod  vendite.stati_commessa.codice_interno%TYPE;
+                v_codice              vendite.commesse.codice%TYPE;
+                v_nuovo_stato_id      vendite.stati_commessa.id%TYPE;
+              BEGIN
+                -- Guard: parametri obbligatori
+                IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_commessa',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('p_commessa_id', p_commessa_id),
+                    NULL::uuid,
+                    'p_commessa_id'
+                  );
+                END IF;
+
+                -- Stato corrente + esistenza commessa
+                SELECT c.stato_commessa_id, sc.codice_interno, c.codice
+                  INTO v_stato_corrente_id, v_stato_corrente_cod, v_codice
+                  FROM vendite.commesse c
+                  JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
+                 WHERE c.id = p_commessa_id;
+
+                IF v_stato_corrente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_commessa',
+                    'E_COMMESSA_NON_TROVATA',
+                    jsonb_build_object('p_commessa_id', p_commessa_id),
+                    NULL::uuid,
+                    p_commessa_id::text
+                  );
+                END IF;
+
+                -- Stato target esiste ed e' attivo
+                SELECT id INTO v_nuovo_stato_id
+                  FROM vendite.stati_commessa
+                 WHERE codice_interno = p_nuovo_stato AND attivo IS TRUE;
+
+                IF v_nuovo_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_commessa',
+                    'E_STATO_SCONOSCIUTO',
+                    jsonb_build_object('p_nuovo_stato', p_nuovo_stato),
+                    NULL::uuid,
+                    coalesce(p_nuovo_stato, 'NULL')
+                  );
+                END IF;
+
+                -- Esecuzione: aggiorna stato. Il trigger
+                -- vendite.trgfn_commesse_guard_transizione valida matrice +
+                -- guard di dominio; solleva se non ammessa.
+                UPDATE vendite.commesse
+                   SET stato_commessa_id = v_nuovo_stato_id,
+                       user_update = COALESCE(p_user, CURRENT_USER)
+                 WHERE id = p_commessa_id;
+
+                RETURN QUERY
+                SELECT p_commessa_id, v_stato_corrente_cod, p_nuovo_stato;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_cambia_stato_commessa(bigint, varchar, text)
+              IS 'Entrypoint DB-first cambio stato commessa. Risolve codice->id e '
+                 'UPDATE; matrice + guard dominio (->PRONTA_FATTURAZIONE richiede righe '
+                 'approvate) enforced dal trigger trgfn_commesse_guard_transizione. '
+                 'rev 2026-06-07.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_cambia_stato_commessa(bigint, varchar, text);

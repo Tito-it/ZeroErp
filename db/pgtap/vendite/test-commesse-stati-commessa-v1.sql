@@ -322,6 +322,14 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_competenza_dal => DATE '2026-07-01',
   p_competenza_al => DATE '2026-07-31',
   p_prezzo_snapshot => 10.0000000000,
+  p_prezzo_base_snapshot => NULL,
+  p_origine_prezzo => NULL,
+  p_tipo_variazione_applicata => NULL,
+  p_valore_variazione_applicata => NULL,
+  p_promo_id => NULL,
+  p_contratto_id => NULL,
+  p_categoria_cliente_id_snapshot => NULL,
+  p_classe_utenza_id_snapshot => NULL,
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',
@@ -335,58 +343,16 @@ SELECT ok(
 );
 
 -- ============================================================
--- TEST: upsert bloccata su commessa CHIUSA (modificabile=false)
+-- TEST: porta in PRONTA_FATTURAZIONE e verifica emittibili
+--   BOZZA -> PRONTA_FATTURAZIONE: transizione valida (salto push), ammessa
+--   dal guard 20260607-02 perche' esiste una riga APPROVATA+NON_EMESSA
+--   (creata dal test upsert sopra). Usa la fn entrypoint sanzionata.
 -- ============================================================
 
--- Porta la commessa in stato CHIUSA (id=5, modificabile=false)
-UPDATE vendite.commesse
-SET stato_commessa_id = 5
-WHERE id = (SELECT commessa_id FROM tmp_commessa_sc);
-
-SELECT throws_ok(
-  $$
-    SELECT vendite.fn_upsert_commessa_attivita(
-      p_commessa_id => (SELECT commessa_id FROM tmp_commessa_sc),
-      p_segment_key => 'SEG-SC-BLOCKED',
-      p_articolo_id => (SELECT articolo_id FROM tmp_refs_sc),
-      p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_sc),
-      p_data_attivita => DATE '2026-07-15',
-      p_uom_id => (SELECT uom_id FROM tmp_refs_sc),
-      p_quantita => 1.000000,
-      p_competenza_mese => DATE '2026-07-01',
-      p_competenza_dal => DATE '2026-07-01',
-      p_competenza_al => DATE '2026-07-31',
-      p_prezzo_snapshot => 10.0000000000
-    );
-  $$,
-  'P0001',
-  NULL,
-  'fn_upsert_commessa_attivita bloccata su commessa non modificabile'
+SELECT * FROM vendite.fn_cambia_stato_commessa(
+  (SELECT commessa_id FROM tmp_commessa_sc),
+  'PRONTA_FATTURAZIONE'
 );
-
--- ============================================================
--- TEST: fn_list_commesse_emittibili esclude commesse non emittibili
--- ============================================================
-
--- CHIUSA non e` emittibile
-SELECT ok(
-  NOT EXISTS (
-    SELECT 1
-    FROM vendite.fn_list_commesse_emittibili() x
-    WHERE x.commessa_id = (SELECT commessa_id FROM tmp_commessa_sc)
-  ),
-  'fn_list_commesse_emittibili esclude commesse non emittibili'
-);
-
--- ============================================================
--- TEST: fn_list_commesse_emittibili include commesse emittibili
--- ============================================================
-
--- Porta in PRONTA_FATTURAZIONE (id=4, emittibile=true)
--- Prima riporta stato_emissione a NON_EMESSA (potrebbe essere stato cambiato)
-UPDATE vendite.commesse
-SET stato_commessa_id = 4
-WHERE id = (SELECT commessa_id FROM tmp_commessa_sc);
 
 SELECT ok(
   EXISTS (
@@ -397,10 +363,6 @@ SELECT ok(
   ),
   'fn_list_commesse_emittibili include commesse emittibili (senza filtro mese)'
 );
-
--- ============================================================
--- TEST: fn_list_commesse_emittibili filtra per competenza_mese
--- ============================================================
 
 -- L'attivita` ha competenza_mese = 2026-07-01, filtro con mese corrispondente
 SELECT ok(
@@ -424,6 +386,56 @@ SELECT ok(
     WHERE x.commessa_id = (SELECT commessa_id FROM tmp_commessa_sc)
   ),
   'fn_list_commesse_emittibili esclude mese non corrispondente'
+);
+
+-- ============================================================
+-- TEST: porta in CHIUSA e verifica esclusione + upsert bloccata
+--   PRONTA_FATTURAZIONE -> CHIUSA: transizione valida. CHIUSA ha
+--   emittibile=false e modificabile=false.
+-- ============================================================
+
+SELECT * FROM vendite.fn_cambia_stato_commessa(
+  (SELECT commessa_id FROM tmp_commessa_sc),
+  'CHIUSA'
+);
+
+-- CHIUSA non e` emittibile
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1
+    FROM vendite.fn_list_commesse_emittibili() x
+    WHERE x.commessa_id = (SELECT commessa_id FROM tmp_commessa_sc)
+  ),
+  'fn_list_commesse_emittibili esclude commesse non emittibili'
+);
+
+SELECT throws_ok(
+  $$
+    SELECT vendite.fn_upsert_commessa_attivita(
+      p_commessa_id => (SELECT commessa_id FROM tmp_commessa_sc),
+      p_segment_key => 'SEG-SC-BLOCKED',
+      p_articolo_id => (SELECT articolo_id FROM tmp_refs_sc),
+      p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_sc),
+      p_data_attivita => DATE '2026-07-15',
+      p_uom_id => (SELECT uom_id FROM tmp_refs_sc),
+      p_quantita => 1.000000,
+      p_competenza_mese => DATE '2026-07-01',
+      p_competenza_dal => DATE '2026-07-01',
+      p_competenza_al => DATE '2026-07-31',
+      p_prezzo_snapshot => 10.0000000000,
+      p_prezzo_base_snapshot => NULL,
+      p_origine_prezzo => NULL,
+      p_tipo_variazione_applicata => NULL,
+      p_valore_variazione_applicata => NULL,
+      p_promo_id => NULL,
+      p_contratto_id => NULL,
+      p_categoria_cliente_id_snapshot => NULL,
+      p_classe_utenza_id_snapshot => NULL
+    );
+  $$,
+  'P0001',
+  NULL,
+  'fn_upsert_commessa_attivita bloccata su commessa non modificabile'
 );
 
 SELECT * FROM finish();

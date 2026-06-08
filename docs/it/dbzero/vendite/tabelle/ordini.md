@@ -64,6 +64,7 @@
 | ix_vendite_ordini_stato_doc_ordine_id | `CREATE INDEX ix_vendite_ordini_stato_doc_ordine_id ON vendite.ordini USING btree (stato_doc_ordine_id)` |
 | pk_ordini | `CREATE UNIQUE INDEX pk_ordini ON vendite.ordini USING btree (id)` |
 | uq_ordini_v_anno_serie_numero | `CREATE UNIQUE INDEX uq_ordini_v_anno_serie_numero ON vendite.ordini USING btree (anno, serie, numero) WHERE (numero IS NOT NULL)` |
+| uq_ordini_v_documento_origine_offerta | `CREATE UNIQUE INDEX uq_ordini_v_documento_origine_offerta ON vendite.ordini USING btree (documento_origine_tipo, documento_origine_id) WHERE ((documento_origine_tipo)::text = 'OFFERTA'::text)` |
 | uq_ordini_v_sorgente_fk | `CREATE UNIQUE INDEX uq_ordini_v_sorgente_fk ON vendite.ordini USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 | uq_ordini_v_uid | `CREATE UNIQUE INDEX uq_ordini_v_uid ON vendite.ordini USING btree (uid)` |
 

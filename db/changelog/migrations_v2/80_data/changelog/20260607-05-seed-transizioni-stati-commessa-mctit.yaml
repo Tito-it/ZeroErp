@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed vendite.transizioni_stati_commessa: 11 transizioni.
+#
+# id 1  | BOZZA(1)               -> APERTA(2)               | avvio
+# id 2  | BOZZA(1)               -> PRONTA_FATTURAZIONE(4)  | salto push
+# id 3  | BOZZA(1)               -> ANNULLATA(6)            |
+# id 4  | APERTA(2)              -> IN_ESECUZIONE(3)        |
+# id 5  | APERTA(2)              -> PRONTA_FATTURAZIONE(4)  | salto push
+# id 6  | APERTA(2)              -> ANNULLATA(6)            |
+# id 7  | IN_ESECUZIONE(3)       -> PRONTA_FATTURAZIONE(4)  |
+# id 8  | IN_ESECUZIONE(3)       -> ANNULLATA(6)            |
+# id 9  | PRONTA_FATTURAZIONE(4) -> IN_ESECUZIONE(3)        | riapertura
+# id 10 | PRONTA_FATTURAZIONE(4) -> CHIUSA(5)               |
+# id 11 | PRONTA_FATTURAZIONE(4) -> ANNULLATA(6)            |
+#
+# I salti diretti BOZZA/APERTA -> PRONTA_FATTURAZIONE servono al percorso push
+# (commessa nata confermata dal preventivo accettato). Il guard di dominio
+# (20260607-02) richiede comunque >=1 riga APPROVATA+NON_EMESSA per la
+# transizione verso PRONTA_FATTURAZIONE.
+#
+# meta = {"manuale": false} per tutte: i metadati UI (action_key, label_key,
+# severity) sono rinviati a quando esistera' una UI/fn_available_actions_commessa
+# (oggi fuori scope). manuale=false soddisfa ck_transizioni_stati_comm_meta_ui.
+#
+# Dipendenza: vendite.transizioni_stati_commessa (20260607-01).
+#   stato_da_id/stato_a_id referenziano vendite.stati_commessa (seed 20260226-01).
+# Letta da vendite.trgfn_commesse_guard_transizione (20260607-02).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260607-05-seed-transizioni-stati-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20260607-05-seed-transizioni-stati-commessa
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: transizioni_stati_commessa
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/transizioni_stati_commessa.csv
+            tableName: transizioni_stati_commessa
+            schemaName: vendite
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: stato_da_id, type: STRING }
+              - column: { name: stato_a_id, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }
