@@ -288,6 +288,14 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_competenza_dal => DATE '2026-06-01',
   p_competenza_al => DATE '2026-06-30',
   p_prezzo_snapshot => 22.1000000000,
+  p_prezzo_base_snapshot => NULL,
+  p_origine_prezzo => NULL,
+  p_tipo_variazione_applicata => NULL,
+  p_valore_variazione_applicata => NULL,
+  p_promo_id => NULL,
+  p_contratto_id => NULL,
+  p_categoria_cliente_id_snapshot => NULL,
+  p_classe_utenza_id_snapshot => NULL,
   p_qta_operativa => 2.000000,
   p_uom_operativa_id => (SELECT uom_id FROM tmp_refs_commesse_core),
   p_factor_to_base => 1,
@@ -318,14 +326,22 @@ WITH codice AS (
   SELECT ('LRC_CORE_' || substr(md5(clock_timestamp()::text), 1, 12))::varchar(64) AS code
 ),
 lst AS (
-  INSERT INTO vendite.listini (codice, descrizione, dominio)
-  SELECT c.code, 'listino test override documento', 'COMMERCIO'
+  INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
+  SELECT c.code, 'listino test override documento',
+         l.utility_id, l.tipologia_id, l.emittente_soggetto_ruolo_id
   FROM codice c
+  CROSS JOIN LATERAL (
+    SELECT utility_id, tipologia_id, emittente_soggetto_ruolo_id
+    FROM vendite.listini
+    WHERE attivo = TRUE
+    ORDER BY id
+    LIMIT 1
+  ) l
   RETURNING id
 ),
 lst_v AS (
-  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, priorita, stato)
-  SELECT l.id, 'V1', DATE '2026-01-01', DATE '2026-12-31', 10, 'ATTIVA'
+  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, stato)
+  SELECT l.id, 'V1', DATE '2026-01-01', DATE '2026-12-31', 'ATTIVA'
   FROM lst l
   RETURNING id
 )
@@ -346,6 +362,14 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_competenza_dal => DATE '2026-06-01',
   p_competenza_al => DATE '2026-06-30',
   p_prezzo_snapshot => 22.1000000000,
+  p_prezzo_base_snapshot => NULL,
+  p_origine_prezzo => NULL,
+  p_tipo_variazione_applicata => NULL,
+  p_valore_variazione_applicata => NULL,
+  p_promo_id => NULL,
+  p_contratto_id => NULL,
+  p_categoria_cliente_id_snapshot => NULL,
+  p_classe_utenza_id_snapshot => NULL,
   p_qta_operativa => 3.000000,
   p_uom_operativa_id => (SELECT uom_id FROM tmp_refs_commesse_core),
   p_factor_to_base => 1,
@@ -391,7 +415,6 @@ CREATE TEMP TABLE tmp_emit_dry_core AS
 SELECT *
 FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
-  p_lotto_attivita_id => NULL,
   p_only_approved => true,
   p_dry_run => true
 );
@@ -410,7 +433,6 @@ CREATE TEMP TABLE tmp_emit_real_core AS
 SELECT *
 FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
-  p_lotto_attivita_id => NULL,
   p_only_approved => true,
   p_dry_run => false
 );
@@ -445,6 +467,14 @@ SELECT * FROM vendite.fn_upsert_commessa_attivita(
   p_competenza_dal => DATE '2026-06-01',
   p_competenza_al => DATE '2026-06-30',
   p_prezzo_snapshot => 23.1000000000,
+  p_prezzo_base_snapshot => NULL,
+  p_origine_prezzo => NULL,
+  p_tipo_variazione_applicata => NULL,
+  p_valore_variazione_applicata => NULL,
+  p_promo_id => NULL,
+  p_contratto_id => NULL,
+  p_categoria_cliente_id_snapshot => NULL,
+  p_classe_utenza_id_snapshot => NULL,
   p_qta_operativa => 3.000000,
   p_uom_operativa_id => (SELECT uom_id FROM tmp_refs_commesse_core),
   p_factor_to_base => 1,
@@ -473,7 +503,6 @@ CREATE TEMP TABLE tmp_emit_rerun_core AS
 SELECT *
 FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
-  p_lotto_attivita_id => NULL,
   p_only_approved => true,
   p_dry_run => false
 );

@@ -1,0 +1,170 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CREATE vendite.trgfn_commesse_guard_transizione (+ trigger)
+#   Enforcement DB-first del grafo transizioni stato commessa, letto da
+#   vendite.transizioni_stati_commessa (matrice 20260607-01). Intercetta
+#   OGNI chiamante (fn_cambia_stato_commessa, handler, UPDATE diretto),
+#   single source of truth. Pattern identico a
+#   trgfn_ordini_guard_transizione (20260605-10).
+#
+# Regole applicate (BEFORE UPDATE OF stato_commessa_id):
+#   1) Transizione ammessa <=> riga (stato_da, stato_a) in
+#      vendite.transizioni_stati_commessa con attivo=true.
+#      Altrimenti E_COMMESSA_STATO_TRANSIZIONE_INVALIDA.
+#   2) Precondizione ->PRONTA_FATTURAZIONE: la commessa deve avere almeno una
+#      riga commesse_attivita APPROVATA e NON_EMESSA (altrimenti la testata
+#      sarebbe "emittibile" ma non emetterebbe nulla -> i due livelli non
+#      possono divergere). Altrimenti E_COMMESSA_NESSUNA_RIGA_APPROVATA.
+#      Analoga alla regola DRAFT->CONFERMATO "almeno una riga" di
+#      trgfn_ordini_guard_transizione.
+#
+# No-op se lo stato non cambia (UPDATE su altre colonne dello stesso set).
+# L'INSERT NON e' vincolato (seed/import con stati diretti) -> guard solo su
+# UPDATE OF stato_commessa_id (linea-guida SQL 7c.6).
+# CREATE OR REPLACE FUNCTION + DROP/CREATE TRIGGER (idempotente, runOnChange).
+# Codici errore registrati in 20260607-06 (no E_GENERICO).
+# Dipendenze: vendite.commesse, vendite.commesse_attivita,
+#   vendite.stati_commessa, vendite.transizioni_stati_commessa (20260607-01),
+#   script.fn_log_and_raise_error.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260607-02-create-trgfn-commesse-guard-transizione-mctit.yaml
+
+  - changeSet:
+      id: 20260607-02-create-trgfn-commesse-guard-transizione
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vendite.trgfn_commesse_guard_transizione + trigger
+        trg_commesse_a10_guard_transizione_upd (BEFORE UPDATE OF
+        stato_commessa_id). Valida il grafo transizioni leggendo
+        vendite.transizioni_stati_commessa (E_COMMESSA_STATO_TRANSIZIONE_INVALIDA)
+        e la precondizione ->PRONTA_FATTURAZIONE con almeno una riga
+        APPROVATA+NON_EMESSA (E_COMMESSA_NESSUNA_RIGA_APPROVATA). Enforcement
+        DB-first del ciclo vita commessa (prerequisito V9 pratica-preventivi).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: transizioni_stati_commessa
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_guard_transizione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: enforcement DB-first del grafo transizioni stato commessa.
+              --   La transizione (OLD.stato -> NEW.stato) e' ammessa solo se
+              --   presente e attiva in vendite.transizioni_stati_commessa. In piu',
+              --   ->PRONTA_FATTURAZIONE richiede almeno una riga commesse_attivita
+              --   APPROVATA e NON_EMESSA. Letto dalla matrice (no grafo hardcodato).
+              DECLARE
+                  v_codice_da vendite.stati_commessa.codice_interno%TYPE;
+                  v_codice_a  vendite.stati_commessa.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
+                  IF NEW.stato_commessa_id IS NOT DISTINCT FROM OLD.stato_commessa_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_commessa_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_commessa_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM vendite.stati_commessa
+                   WHERE id IN (OLD.stato_commessa_id, NEW.stato_commessa_id);
+
+                  -- Regola 1: la transizione deve esistere ed essere attiva in matrice.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.transizioni_stati_commessa t
+                       WHERE t.stato_da_id = OLD.stato_commessa_id
+                         AND t.stato_a_id  = NEW.stato_commessa_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_COMMESSA_STATO_TRANSIZIONE_INVALIDA',
+                          jsonb_build_object(
+                              'commessa_id', NEW.id,
+                              'codice',      NEW.codice,
+                              'stato_da',    v_codice_da,
+                              'stato_a',     v_codice_a
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          coalesce(v_codice_da, 'NULL'),
+                          coalesce(v_codice_a,  'NULL')
+                      );
+                  END IF;
+
+                  -- Regola 2: ->PRONTA_FATTURAZIONE richiede almeno una riga
+                  -- approvata e non ancora emessa. Tiene allineati i due livelli
+                  -- (testata emittibile <-> esiste qualcosa da emettere).
+                  IF v_codice_a = 'PRONTA_FATTURAZIONE' THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM vendite.commesse_attivita ca
+                           WHERE ca.commessa_id = NEW.id
+                             AND ca.stato_approvazione = 'APPROVATA'
+                             AND ca.stato_emissione    = 'NON_EMESSA'
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_COMMESSA_NESSUNA_RIGA_APPROVATA',
+                              jsonb_build_object(
+                                  'commessa_id', NEW.id,
+                                  'codice',      NEW.codice
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text,
+                              coalesce(NEW.codice, 'NULL')
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_guard_transizione()
+              IS 'Trigger function: enforcement grafo transizioni stato commessa letto '
+                 'da vendite.transizioni_stati_commessa (E_COMMESSA_STATO_TRANSIZIONE_INVALIDA). '
+                 'Precondizione ->PRONTA_FATTURAZIONE: almeno una riga APPROVATA+NON_EMESSA '
+                 '(E_COMMESSA_NESSUNA_RIGA_APPROVATA). rev 2026-06-07.';
+
+              DROP TRIGGER IF EXISTS trg_commesse_a10_guard_transizione_upd
+                  ON vendite.commesse;
+
+              CREATE TRIGGER trg_commesse_a10_guard_transizione_upd
+                  BEFORE UPDATE OF stato_commessa_id
+                  ON vendite.commesse
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_commesse_guard_transizione();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_a10_guard_transizione_upd
+                  ON vendite.commesse;
+              DROP FUNCTION IF EXISTS vendite.trgfn_commesse_guard_transizione();

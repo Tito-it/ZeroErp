@@ -159,6 +159,14 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_competenza_dal => DATE '2026-06-01',
   p_competenza_al => DATE '2026-06-30',
   p_prezzo_snapshot => 10.0000000000,
+  p_prezzo_base_snapshot => NULL,
+  p_origine_prezzo => NULL,
+  p_tipo_variazione_applicata => NULL,
+  p_valore_variazione_applicata => NULL,
+  p_promo_id => NULL,
+  p_contratto_id => NULL,
+  p_categoria_cliente_id_snapshot => NULL,
+  p_classe_utenza_id_snapshot => NULL,
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_batch_refs),
   p_sorgente_uid => ('EXT-' || substr(md5(clock_timestamp()::text || 'a'), 1, 10))::text
 ) r;
@@ -186,6 +194,14 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_competenza_dal => DATE '2026-06-01',
   p_competenza_al => DATE '2026-06-30',
   p_prezzo_snapshot => 20.0000000000,
+  p_prezzo_base_snapshot => NULL,
+  p_origine_prezzo => NULL,
+  p_tipo_variazione_applicata => NULL,
+  p_valore_variazione_applicata => NULL,
+  p_promo_id => NULL,
+  p_contratto_id => NULL,
+  p_categoria_cliente_id_snapshot => NULL,
+  p_classe_utenza_id_snapshot => NULL,
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_batch_refs),
   p_sorgente_uid => (
     SELECT sorgente_uid FROM vendite.commesse_attivita

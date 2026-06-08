@@ -1,0 +1,34 @@
+{% include-markdown "it/dbzero/vendite/manual/transizioni_stati_commessa.md" %}
+# 📚 Tabella `transizioni_stati_commessa`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| stato_da_id | bigint | NO |  |
+| stato_a_id | bigint | NO |  |
+| attivo | boolean | NO | true |
+| meta | jsonb | NO | '{}'::jsonb |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | ck_transizioni_stati_comm_da_diverso_a |  |
+| CHECK | ck_transizioni_stati_comm_meta_ui |  |
+| FOREIGN KEY | fk_tsc_a | stato_a_id |
+| FOREIGN KEY | fk_tsc_da | stato_da_id |
+| PRIMARY KEY | pk_transizioni_stati_commessa | id |
+| UNIQUE | uq_transizioni_stati_commessa | stato_da_id, stato_a_id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_transizioni_stati_commessa | `CREATE UNIQUE INDEX pk_transizioni_stati_commessa ON vendite.transizioni_stati_commessa USING btree (id)` |
+| uq_transizioni_stati_commessa | `CREATE UNIQUE INDEX uq_transizioni_stati_commessa ON vendite.transizioni_stati_commessa USING btree (stato_da_id, stato_a_id)` |
+
+---
+{% include-markdown "signature-core.md" %}

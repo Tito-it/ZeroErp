@@ -2,16 +2,19 @@
 # ⚙️ Funzione `fn_emit_attivita_fatturabili_da_commessa`
 
 ```sql
-CREATE FUNCTION fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_lotto_attivita_id bigint, p_only_approved boolean, p_dry_run boolean)
+CREATE FUNCTION fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_lotto_attivita_id bigint DEFAULT NULL::bigint, p_only_approved boolean DEFAULT true, p_dry_run boolean DEFAULT false)
+CREATE OR REPLACE FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean DEFAULT true, p_dry_run boolean DEFAULT false)
  RETURNS TABLE(total_candidate integer, inserted_rows integer, updated_rows integer, skipped_rows integer)
  LANGUAGE plpgsql
 AS $function$
+-- Scopo: emette righe da commesse_attivita verso attivita_fatturabili
+--        in modalita' idempotente (sorgente COMMESSA + segment_key).
+-- Sottosistema lotto rimosso (deprecato 20260227-16).
 DECLARE
     v_commessa              vendite.commesse%ROWTYPE;
     v_root_id               vendite.commesse_sorgenti.id%TYPE;
@@ -35,14 +38,6 @@ BEGIN
         );
     END IF;
 
-    IF p_lotto_attivita_id IS NOT NULL AND p_lotto_attivita_id <= 0 THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_emit_attivita_fatturabili_da_commessa', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'p_lotto_attivita_id', 'valore', p_lotto_attivita_id),
-            NULL::uuid, 'p_lotto_attivita_id se fornito deve essere > 0'
-        );
-    END IF;
-
     -- Recupera commessa
     SELECT c.* INTO v_commessa
       FROM vendite.commesse c WHERE c.id = p_commessa_id;
@@ -52,17 +47,6 @@ BEGIN
             'vendite', 'fn_emit_attivita_fatturabili_da_commessa', 'E_VALORE_MANCANTE',
             jsonb_build_object('commessa_id', p_commessa_id),
             NULL::uuid, concat('commessa_id ', p_commessa_id)
-        );
-    END IF;
-
-    -- Verifica lotto attivita' se fornito
-    IF p_lotto_attivita_id IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM vendite.attivita_fatturabili_lotti l WHERE l.id = p_lotto_attivita_id
-    ) THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_emit_attivita_fatturabili_da_commessa', 'E_VALORE_MANCANTE',
-            jsonb_build_object('lotto_attivita_id', p_lotto_attivita_id),
-            NULL::uuid, concat('lotto_attivita_id ', p_lotto_attivita_id)
         );
     END IF;
 
@@ -138,7 +122,7 @@ BEGIN
                 quantita, competenza_mese, approvato, fatturato, meta, sorgente_riga,
                 posticipa_al, sorgente_tipo_id, sorgente_uid, uom_id, qta_operativa,
                 uom_operativa_id, factor_to_base, valuta_id, prezzo_unitario,
-                lotto_attivita_id, tipo_doc_fiscale_id, competenza_dal, competenza_al,
+                tipo_doc_fiscale_id, competenza_dal, competenza_al,
                 area_geografica_id, stato_esecuzione, prezzo_bloccato,
                 commessa_id, commessa_attivita_id, sorgente_origine_tipo_id
             )
@@ -152,7 +136,7 @@ BEGIN
                 ),
                 v_row.id, v_row.posticipa_al, v_commessa_source_id, v_sorgente_uid_uuid,
                 v_row.uom_id, v_row.qta_operativa, v_row.uom_operativa_id, v_row.factor_to_base,
-                v_row.valuta_id, v_row.prezzo_snapshot, p_lotto_attivita_id,
+                v_row.valuta_id, v_row.prezzo_snapshot,
                 v_row.tipo_doc_fiscale_id, v_row.competenza_dal, v_row.competenza_al,
                 v_row.area_geografica_id, 'PENDING', v_row.prezzo_bloccato,
                 p_commessa_id, v_row.id, v_row.ca_sorgente_tipo_id
@@ -188,7 +172,6 @@ BEGIN
                    factor_to_base = v_row.factor_to_base,
                    valuta_id = v_row.valuta_id,
                    prezzo_unitario = v_row.prezzo_snapshot,
-                   lotto_attivita_id = COALESCE(p_lotto_attivita_id, a.lotto_attivita_id),
                    tipo_doc_fiscale_id = v_row.tipo_doc_fiscale_id,
                    competenza_dal = v_row.competenza_dal,
                    competenza_al = v_row.competenza_al,
@@ -208,8 +191,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_lotto_attivita_id bigint, p_only_approved boolean, p_dry_run boolean)
-IS 'Pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza.';
+COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean)
+IS 'Pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza. Sottosistema lotto rimosso (deprecato 20260227-16). rev 2026-06-07.';
 ```
 
 ---
