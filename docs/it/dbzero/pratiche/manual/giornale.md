@@ -47,6 +47,32 @@ La tabella `pratiche.giornale` e' il **giornale di bordo (audit trail)** del mod
 | `NOTA_AGGIUNTA` | INSERT su note_pratiche/note_flussi | Aggiunta nota |
 | `ALLEGATO_AGGIUNTO` | INSERT su allegati_pratiche/allegati_flussi | Aggiunta allegato |
 | `PRATICA_GENERATA` | Generazione cross-pratica | Pratica generata da un flusso |
+| `SOSPENSIONE_REGISTRATA` | INSERT su sospensioni | Sospensione registrata |
+| `SOSPENSIONE_CHIUSA` | Riattivazione sospensione | Sospensione chiusa |
+| `DOMINIO_*` | `pratiche.fn_log_evento_dominio` (origine `HANDLER`) | Evento di dominio applicativo (es. `DOMINIO_COMMESSA_CREATA`, `DOMINIO_PREVENTIVO_EVASO`) |
+
+---
+
+### Eventi di dominio (`DOMINIO_*`) — da 2026-06-08
+
+Oltre agli eventi di **motore** (lista fissa sopra, alimentati dai trigger), il
+giornale accetta **eventi di dominio applicativi** con prefisso `DOMINIO_`. Il
+CHECK `chk_giornale_azione` ammette:
+
+```sql
+azione IN (<11 eventi di motore>) OR azione ~ '^DOMINIO_[A-Z][A-Z0-9_]*$'
+```
+
+Gli 11 eventi di motore restano blindati; i `DOMINIO_*` sono liberi (maiuscoli,
+nessun nuovo CHECK per evento). L'unico canale di scrittura consentito e' la
+funzione [`pratiche.fn_log_evento_dominio`](/dbzero/pratiche/funzioni/fn_log_evento_dominio)
+`(p_pratica_id, p_flusso_id, p_tipo_evento, p_meta)`, usata dagli handler
+applicativi (es. `vendita.push_preventivo`): mappa `p_tipo_evento -> azione`,
+`p_meta -> dettaglio`, forza `origine = 'HANDLER'` e correla via `tx_id` di
+sessione. Un nome non conforme (non `DOMINIO_*` e non in lista) viene rifiutato
+dal CHECK. Catalogo eventi `DOMINIO_*` in uso: vedi il catalogo building-block
+backend (mitigazione refusi; promozione a tabella `config` da rivalutare dopo
+3-4 eventi reali).
 
 ---
 

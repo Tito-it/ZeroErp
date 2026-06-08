@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B-PREREQ (3/3) — vincolo "COMPLETATO => esito NOT NULL".
+# Guard trigger fail-fast su pratiche.flussi: nessuna fase si chiude
+# senza verdetto. Un CHECK non basta (lo stato e' una FK a
+# config.stati_flussi_pratiche, non un valore on-row): serve il lookup
+# del codice_interno, quindi trigger.
+# Fase _a10_ (guard), BEFORE INSERT OR UPDATE OF stato_id: copre sia il
+# completamento via UPDATE (caso normale) sia l'INSERT diretto in
+# COMPLETATO (seed/import/generazione).
+# Codice errore: FLUSSI_ESITO_OBBLIGATORIO (seed 20260608-11).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260608-03-create-trgfn-flussi-guard-esito-completato-mctit.yaml
+
+  - changeSet:
+      id: 20260608-03-create-trgfn-flussi-guard-esito-completato
+      author: mctit
+      runOnChange: true
+      comment: >
+        Guard: blocca il passaggio di un flusso a stato COMPLETATO senza
+        esito valorizzato (COMPLETATO => esito NOT NULL).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_esito_completato()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: una fase (flusso) non puo' chiudersi senza verdetto.
+              -- Se il nuovo stato e' COMPLETATO l'esito e' obbligatorio.
+              -- BEFORE INSERT OR UPDATE OF stato_id su pratiche.flussi.
+              BEGIN
+                IF NEW.esito IS NULL
+                   AND EXISTS (
+                     SELECT 1
+                       FROM config.stati_flussi_pratiche sfp
+                      WHERE sfp.id = NEW.stato_id
+                        AND sfp.codice_interno = 'COMPLETATO'
+                   )
+                THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_flussi_guard_esito_completato',
+                    'FLUSSI_ESITO_OBBLIGATORIO',
+                    jsonb_build_object(
+                      'flusso_id', NEW.id,
+                      'pratica_id', NEW.pratica_id,
+                      'template_flusso_id', NEW.template_flusso_id
+                    ),
+                    NEW.tx_id,
+                    NEW.id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_esito_completato()
+                IS 'BEFORE INSERT OR UPDATE OF stato_id su flussi: COMPLETATO richiede esito NOT NULL (nessuna fase si chiude senza verdetto).';
+
+              -- Trigger idempotente (DROP+CREATE per compatibilita' runOnChange).
+              DROP TRIGGER IF EXISTS trg_flussi_a10_guard_esito_completato_ins_upd
+                ON pratiche.flussi;
+
+              CREATE TRIGGER trg_flussi_a10_guard_esito_completato_ins_upd
+                BEFORE INSERT OR UPDATE OF stato_id
+                ON pratiche.flussi
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_flussi_guard_esito_completato();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_flussi_a10_guard_esito_completato_ins_upd
+                ON pratiche.flussi;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_flussi_guard_esito_completato();

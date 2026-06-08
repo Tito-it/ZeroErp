@@ -10,16 +10,17 @@
 --  4) EMESSA: available_actions ha 3 azioni (accetta + rifiuta + crea_revisione)
 --  5) EMESSA: can_edit_testata=false, can_create_revisione=true
 --  6) EMESSA: azione rifiuta ha requires_motivazione=true (verifica meta update 20260526-01)
---  7) ACCETTATA senza contratto: can_push_contratto=true, push_contratto in available_actions
---  8) ACCETTATA con contratto generato: can_push_contratto=false,
---     reason='OFFERTA_CONTRATTO_GIA_GENERATO', push_contratto NON in available_actions
---     (NB: genera_ordine resta presente — ACCT-2 non ha ordini)
+--  7) ACCETTATA senza contratto ne' ordine: can_push_contratto=true, push_contratto presente
+--  8) ACCETTATA con contratto generato (mutua esclusivita'): can_push_contratto=false
+--     E can_genera_ordine=false, entrambi reason='OFFERTA_CONTRATTO_GIA_GENERATO',
+--     push_contratto E genera_ordine assenti -> available_actions=[]
 --  9) Terminale (RIFIUTATA): available_actions=[], can_edit_testata=false,
 --     can_push_contratto=false, non_editable_fields lista lunga
 -- 10) Tutte le label_key in available_actions iniziano per 'vendite.offerte.'
--- 11) ACCETTATA senza ordine: can_genera_ordine=true, reason null, genera_ordine presente
--- 12) ACCETTATA con ordine generato: can_genera_ordine=false,
---     reason='OFFERTA_ORDINE_GIA_GENERATO', genera_ordine assente
+-- 11) ACCETTATA senza ordine ne' contratto: can_genera_ordine=true, reason null, genera_ordine presente
+-- 12) ACCETTATA con ordine generato (mutua esclusivita'): can_genera_ordine=false
+--     E can_push_contratto=false, entrambi reason='OFFERTA_ORDINE_GIA_GENERATO',
+--     genera_ordine E push_contratto assenti -> available_actions=[]
 -- 13) non ACCETTATA (BOZZA): can_genera_ordine=false, reason='OFFERTA_NON_ACCETTATA'
 -- 14) Indice: secondo ordine ('OFFERTA', X) viola uq_ordini_v_documento_origine_offerta
 -- 15) Indice: due ordini ('PREVENTIVO', Y) consentiti (indice non li vincola)
@@ -289,26 +290,29 @@ SELECT ok(
 );
 
 -- ============================================================
--- TEST 8) ACCETTATA con contratto generato: can_push=false,
---         reason='OFFERTA_CONTRATTO_GIA_GENERATO', push_contratto NON in
---         available_actions. (genera_ordine resta presente: ACCT-2 non ha ordini
---         -> per questo non si verifica piu' available_actions=[], cfr. test 11.)
+-- TEST 8) ACCETTATA con contratto generato (mutua esclusivita'):
+--         contratto presente, NESSUN ordine. push_contratto bloccato dal proprio
+--         contratto; genera_ordine ANCHE bloccato (own-doc first -> reason del
+--         contratto). Entrambe le azioni speciali assenti e ACCETTATA non ha
+--         transizioni manuali -> available_actions=[].
 -- ============================================================
 SELECT ok(
     (SELECT
+         -- push_contratto: bloccato dal contratto gia' generato
          (script.fn_available_actions_offerta(o.offerta_id)->>'can_push_contratto')::boolean IS FALSE
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_push_contratto_reason')
              = 'OFFERTA_CONTRATTO_GIA_GENERATO'
-         AND NOT EXISTS (
-             SELECT 1
-               FROM jsonb_array_elements(
-                        script.fn_available_actions_offerta(o.offerta_id)->'available_actions'
-                    ) AS elem
-              WHERE elem->>'key' = 'push_contratto'
-         )
+         -- genera_ordine: ora ANCHE bloccato (mutua esclusivita'); reason = contratto
+         AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_genera_ordine')::boolean IS FALSE
+         AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_genera_ordine_reason')
+             = 'OFFERTA_CONTRATTO_GIA_GENERATO'
+         -- entrambe le azioni speciali assenti -> available_actions vuoto
+         AND jsonb_array_length(
+                 script.fn_available_actions_offerta(o.offerta_id)->'available_actions'
+             ) = 0
        FROM tmp_aa_ids o WHERE o.slot = 'ACCT-2'
     ),
-    '8) ACCETTATA con contratto generato: can_push=false, reason=OFFERTA_CONTRATTO_GIA_GENERATO, push_contratto assente'
+    '8) ACCETTATA con contratto (mutua esclusivita): push E ordine bloccati, reason=OFFERTA_CONTRATTO_GIA_GENERATO, available_actions=[]'
 );
 
 -- ============================================================
@@ -369,24 +373,29 @@ SELECT ok(
 );
 
 -- ============================================================
--- TEST 12) ACCETTATA con ordine generato: can_genera_ordine=false,
---          reason='OFFERTA_ORDINE_GIA_GENERATO', genera_ordine assente.
+-- TEST 12) ACCETTATA con ordine generato (mutua esclusivita'):
+--          ordine presente, NESSUN contratto. genera_ordine bloccato dal proprio
+--          ordine; push_contratto ANCHE bloccato (own-doc first -> reason
+--          dell'ordine). Entrambe le azioni speciali assenti e ACCETTATA non ha
+--          transizioni manuali -> available_actions=[].
 -- ============================================================
 SELECT ok(
     (SELECT
+         -- genera_ordine: bloccato dall'ordine gia' generato
          (script.fn_available_actions_offerta(o.offerta_id)->>'can_genera_ordine')::boolean IS FALSE
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_genera_ordine_reason')
              = 'OFFERTA_ORDINE_GIA_GENERATO'
-         AND NOT EXISTS (
-             SELECT 1
-               FROM jsonb_array_elements(
-                        script.fn_available_actions_offerta(o.offerta_id)->'available_actions'
-                    ) AS elem
-              WHERE elem->>'key' = 'genera_ordine'
-         )
+         -- push_contratto: ora ANCHE bloccato (mutua esclusivita'); reason = ordine
+         AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_push_contratto')::boolean IS FALSE
+         AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_push_contratto_reason')
+             = 'OFFERTA_ORDINE_GIA_GENERATO'
+         -- entrambe le azioni speciali assenti -> available_actions vuoto
+         AND jsonb_array_length(
+                 script.fn_available_actions_offerta(o.offerta_id)->'available_actions'
+             ) = 0
        FROM tmp_aa_ids o WHERE o.slot = 'ACCT-ORD'
     ),
-    '12) ACCETTATA con ordine generato: can_genera_ordine=false, reason=OFFERTA_ORDINE_GIA_GENERATO, genera_ordine assente'
+    '12) ACCETTATA con ordine (mutua esclusivita): ordine E push bloccati, reason=OFFERTA_ORDINE_GIA_GENERATO, available_actions=[]'
 );
 
 -- ============================================================

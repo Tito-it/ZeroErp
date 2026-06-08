@@ -14,13 +14,19 @@ Differenze rispetto al preventivo:
 
 - Le transizioni manuali vengono lette da `config.stati_doc_offerte_transizioni`
   (stesso schema di `config.transizioni_stati_preventivi`).
-- Il check `can_push_contratto` è **cross-dominio in v1** (controlla
-  `EXISTS` su `vendite.contratti.offerta_id`), a differenza di
-  `can_push_commessa` del preventivo che usa solo lo stato e rinvia il check
-  cross-dominio a Fase 3.
-- Le azioni speciali hardcoded sono `crea_revisione` (EMESSA) e
-  `push_contratto` (ACCETTATA senza contratto). Entrambe hanno
+- I check `can_push_contratto` e `can_genera_ordine` sono **cross-dominio**
+  (`EXISTS` su `vendite.contratti.offerta_id` e su
+  `vendite.ordini.documento_origine_*`), a differenza di `can_push_commessa`
+  del preventivo che usa solo lo stato e rinvia il check cross-dominio a Fase 3.
+- Le azioni speciali hardcoded sono `crea_revisione` (EMESSA),
+  `push_contratto` e `genera_ordine` (entrambe ACCETTATA). Tutte hanno
   `target_state: null` e appaiono in `available_actions` (non solo come flag).
+- **Mutua esclusività contratto/ordine (rev 2026-06-08)**: `push_contratto` e
+  `genera_ordine` hanno la **stessa** condizione di abilitazione (`ACCETTATA` +
+  nessun contratto + nessun ordine generati dall'offerta) e sono quindi
+  **mutuamente esclusive** — un'offerta ne genera al massimo una: la prima
+  generazione disabilita anche l'altra. Vedi
+  [brief-db-univocita-offerta-ordine §10](/dev/work-in-progress/brief-db-univocita-offerta-ordine).
 
 > **Vedi anche**
 >
@@ -54,12 +60,12 @@ script.fn_available_actions_offerta(
 ```jsonc
 {
     // Lista azioni manuali + speciali disponibili dallo stato corrente.
-    // Vuota ([]) per stati terminali (ACCETTATA con contratto, RIFIUTATA, ANNULLATA, SUPERATA).
+    // Vuota ([]) per stati terminali (ACCETTATA con contratto O ordine, RIFIUTATA, ANNULLATA, SUPERATA).
     // Costruita da config.stati_doc_offerte_transizioni.meta + azioni hardcoded.
     "available_actions": [
         {
             "key": "emetti",
-            "target_state": "EMESSA",          // null per azioni speciali (crea_revisione, push_contratto)
+            "target_state": "EMESSA",          // null per azioni speciali (crea_revisione, push_contratto, genera_ordine)
             "label_key": "offerte.azione_emetti",
             "severity": "success",
             "icon": "pi pi-send",
@@ -73,9 +79,14 @@ script.fn_available_actions_offerta(
     "can_edit_eccezioni":           true,    // true solo in BOZZA
     "can_edit_utility":             true,    // true solo in BOZZA (utility 1:1 inline)
     "can_create_revisione":         false,   // true solo in EMESSA
-    "can_push_contratto":           false,   // true solo in ACCETTATA senza contratto generato
+    // push_contratto e genera_ordine: MUTUAMENTE ESCLUSIVE — stessa abilitazione
+    // (ACCETTATA + nessun contratto + nessun ordine). can_push == can_genera sempre.
+    "can_push_contratto":           false,   // true solo in ACCETTATA senza contratto NE ordine
     "can_push_contratto_reason":    "OFFERTA_NON_ACCETTATA",  // null se can_push=true
     "can_push_contratto_reason_key": "offerte.push_reason.non_accettata", // null se can_push=true
+    "can_genera_ordine":            false,   // true solo in ACCETTATA senza ordine NE contratto
+    "can_genera_ordine_reason":     "OFFERTA_NON_ACCETTATA",  // null se can_genera=true
+    "can_genera_ordine_reason_key": "offerte.push_reason.non_accettata", // null se can_genera=true
     "non_editable_fields":          [...],   // vedi dettaglio sotto
     "stato_codice":                 "BOZZA"
 }
@@ -87,19 +98,29 @@ script.fn_available_actions_offerta(
 |---|---|---|
 | `BOZZA` | `emetti`, `annulla` | Da matrice transizioni |
 | `EMESSA` | `accetta`, `rifiuta`, `crea_revisione` | `crea_revisione` hardcoded |
-| `ACCETTATA` (senza contratto) | `push_contratto` | Hardcoded, condizionato a check cross-dominio |
-| `ACCETTATA` (con contratto) | `[]` | Terminale de-facto |
+| `ACCETTATA` (né contratto né ordine) | `push_contratto`, `genera_ordine` | Hardcoded, mutuamente esclusive: entrambe esposte finché l'offerta è «vergine» |
+| `ACCETTATA` (con contratto **o** ordine) | `[]` | Generata una delle due, **entrambe** spariscono (mutua esclusività) |
 | `RIFIUTATA` | `[]` | Terminale |
 | `ANNULLATA` | `[]` | Terminale |
 | `SUPERATA` | `[]` | Terminale tecnico (sostituita da revisione successiva) |
 
-### Coppia `can_push_contratto_reason` / `can_push_contratto_reason_key`
+### Reason di `can_push_contratto` / `can_genera_ordine`
 
-| Caso | `can_push_contratto` | `reason` | `reason_key` |
-|------|----------------------|----------|--------------|
-| ACCETTATA senza contratto | `true` | `null` | `null` |
-| ACCETTATA con contratto già generato | `false` | `OFFERTA_CONTRATTO_GIA_GENERATO` | `offerte.push_reason.gia_generato` |
-| Qualsiasi altro stato | `false` | `OFFERTA_NON_ACCETTATA` | `offerte.push_reason.non_accettata` |
+Le due capability condividono l'abilitazione (`ACCETTATA` + nessun contratto +
+nessun ordine), quindi `can_push_contratto == can_genera_ordine` **sempre**.
+Quando bloccate, il `reason` segue una priorità **own-doc first** (la propria
+sorgente prima dell'altra, poi lo stato). I `reason_key` i18n sono riusati.
+
+| Caso | `can_*` | `can_push_contratto_reason` | `can_genera_ordine_reason` |
+|------|:---:|---|---|
+| ACCETTATA, né contratto né ordine | `true` | `null` | `null` |
+| ACCETTATA, contratto già generato | `false` | `OFFERTA_CONTRATTO_GIA_GENERATO` | `OFFERTA_CONTRATTO_GIA_GENERATO` |
+| ACCETTATA, ordine già generato | `false` | `OFFERTA_ORDINE_GIA_GENERATO` | `OFFERTA_ORDINE_GIA_GENERATO` |
+| Qualsiasi altro stato | `false` | `OFFERTA_NON_ACCETTATA` | `OFFERTA_NON_ACCETTATA` |
+
+`reason_key`: `offerte.push_reason.gia_generato` (contratto),
+`offerte.push_reason.ordine_gia_generato` (ordine),
+`offerte.push_reason.non_accettata` (stato).
 
 ### Dettaglio `non_editable_fields`
 
@@ -127,15 +148,23 @@ Risultato per stato:
    I metadati UI (`label_key`, `severity`, `icon`, `requires_confirm`,
    `requires_motivazione`) vengono letti da `t.meta`. Ordine: `sa.ordine`.
    Filtro defense-in-depth: `AND t.meta ?? 'action_key' AND t.meta ?? 'label_key'`.
-3. **Azioni speciali** — aggiunte hardcoded in coda a `v_actions`:
+3. **Presenza documenti** — due `EXISTS` calcolati una volta:
+   - `v_has_contratto` = `EXISTS` contratto con `offerta_id = p_offerta_id`.
+   - `v_has_ordine` = `EXISTS` ordine con `documento_origine_tipo = 'OFFERTA'
+     AND documento_origine_id = p_offerta_id`.
+   «Esiste» = in qualsiasi stato (esclusività permanente).
+4. **Abilitazione condivisa** —
+   `v_enabled = (stato = 'ACCETTATA' AND NOT v_has_contratto AND NOT v_has_ordine)`.
+5. **Azioni speciali** — aggiunte hardcoded in coda a `v_actions`:
    - `crea_revisione` se `v_stato_cod = 'EMESSA'`.
-   - `push_contratto` se `v_stato_cod = 'ACCETTATA'` e `NOT EXISTS`
-     contratto con `offerta_id = p_offerta_id`.
-4. **Capability derivate** — calcolate da `v_stato_cod`:
+   - `push_contratto` **e** `genera_ordine` se `v_enabled` (entrambe o nessuna).
+6. **Capability derivate**:
    - `can_edit_*` = `(stato = 'BOZZA')`.
    - `can_create_revisione` = `(stato = 'EMESSA')`.
-   - `can_push_contratto` + reason come da tabella §2.4 del brief.
-5. **Build JSONB** — `jsonb_build_object` con tutte le chiavi.
+   - `can_push_contratto` = `can_genera_ordine` = `v_enabled`. Reason con priorità
+     own-doc first quando bloccate (contratto>ordine per push; ordine>contratto
+     per genera; poi `OFFERTA_NON_ACCETTATA`).
+7. **Build JSONB** — `jsonb_build_object` con tutte le chiavi.
 
 ## Dipendenze
 
@@ -144,9 +173,12 @@ Risultato per stato:
 | `vendite.offerte_commerciali` | tabella | sorgente stato e ID |
 | `config.stati_doc_offerte` | tabella | risoluzione `codice_interno` e `ordine` |
 | `config.stati_doc_offerte_transizioni` | tabella | matrice transizioni + meta UI |
-| `vendite.contratti` | tabella | check idempotenza `can_push_contratto` |
+| `vendite.contratti` | tabella | check `v_has_contratto` (`can_push_contratto`) |
+| `vendite.ordini` | tabella | check `v_has_ordine` su `documento_origine_*` (`can_genera_ordine`) |
 | `20260524-22-upsert-stati-doc-offerte-transizioni-mctit` | migration 80_data | seed iniziale meta transizioni |
 | `20260526-01-update-stati-doc-offerte-transizioni-meta-mctit` | migration 80_data | completa meta (requires_motivazione, severity, requires_confirm) |
+| `20260607-08-update-fn-available-actions-offerta-genera-ordine-mctit` | migration 20_code | aggiunge azione/flag `genera_ordine` (allora indipendente) |
+| `20260608-12-update-fn-available-actions-offerta-mutua-esclusivita-mctit` | migration 20_code | **mutua esclusività** contratto/ordine (rev corrente) |
 
 ## Note operative
 
@@ -160,9 +192,19 @@ Risultato per stato:
 - **Guard meta keys**: il WHERE esclude transizioni manuali senza
   `action_key` o `label_key` (defense-in-depth equivalente a
   `ck_transizioni_stati_prev_meta_ui` dei preventivi).
-- **Idempotenza push**: la guard reale risiede in
-  `vendite.fn_push_offerta_a_contratto` (errore `E_OFFERTA_CONTRATTO_GIA_GENERATO`
-  + `UNIQUE uq_contratti_offerta_id`). Qui si calcola solo l'abilitabilità UI.
+- **Idempotenza/esclusività reali a write-path**: questa funzione calcola solo
+  l'abilitabilità UI. Le guard reali risiedono nelle funzioni di scrittura:
+  - lato contratto, `vendite.fn_push_offerta_a_contratto` fallisce sia se esiste
+    già un contratto (`E_OFFERTA_CONTRATTO_GIA_GENERATO` + `UNIQUE
+    uq_contratti_offerta_id`) sia se esiste già un ordine
+    (`E_OFFERTA_ORDINE_GIA_GENERATO`, guard mutua esclusività rev6);
+  - lato ordine, il guard speculare (impedire l'ordine se esiste un contratto)
+    vive nel BE `crea_ordine_da_offerta` (fuori scope DB). L'indice
+    `uq_ordini_v_documento_origine_offerta` impedisce ordini duplicati dalla
+    stessa offerta.
+  - La **race cross-tab** (push + genera_ordine simultanei) non è coperta da
+    alcun vincolo strutturale: scelta esplicita (back-office mono-utente).
 - **Azioni speciali `target_state: null`**: il FE distingue queste azioni
-  dal `key` (`crea_revisione` e `push_contratto` usano routing speciale nel
-  drawer; le transizioni standard usano l'endpoint generico cambio-stato).
+  dal `key` (`crea_revisione`, `push_contratto` e `genera_ordine` usano routing
+  speciale nel drawer; le transizioni standard usano l'endpoint generico
+  cambio-stato).

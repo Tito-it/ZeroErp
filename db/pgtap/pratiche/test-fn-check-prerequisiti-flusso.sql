@@ -136,11 +136,14 @@ SELECT is(
 -- 5) Completamento flusso prerequisito (template B)
 -- =========================================================
 
-INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
+-- esito obbligatorio per COMPLETATO (guard trg_flussi_a10_guard_esito_completato).
+-- Il prerequisito ha esito_richiesto NULL: 'POSITIVO' soddisfa comunque.
+INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id, esito)
 VALUES (
   (SELECT pratica_id FROM tmp_test_pratica),
   (SELECT tfb_id FROM tmp_test_tfb),
-  (SELECT stato_completato_id FROM tmp_test_refs)
+  (SELECT stato_completato_id FROM tmp_test_refs),
+  'POSITIVO'
 );
 
 -- =========================================================

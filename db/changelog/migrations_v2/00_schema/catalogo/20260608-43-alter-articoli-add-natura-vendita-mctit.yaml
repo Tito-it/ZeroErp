@@ -1,0 +1,56 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260608-43-alter-articoli-add-natura-vendita-mctit.yaml
+
+  - changeSet:
+      id: 20260608-43-alter-articoli-add-natura-vendita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ADD COLUMN catalogo.articoli.natura_vendita_id (FK config.nature_vendita).
+        La natura commerciale e' proprieta' INTRINSECA dell'articolo: la riga di
+        preventivo la eredita e congela (nessun override operatore). Colonna
+        NULLABLE in questo step; diventera' NOT NULL dopo il backfill di
+        classificazione degli articoli esistenti (step separato, decisione di
+        business). Indice FK delegato a dbops.apply_fk_index_policy (90_end).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: catalogo, tableName: articoli }
+          - tableExists: { schemaName: config, tableName: nature_vendita }
+          - not:
+              - columnExists:
+                  schemaName: catalogo
+                  tableName: articoli
+                  columnName: natura_vendita_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.articoli
+                  ADD COLUMN natura_vendita_id BIGINT NULL;
+
+              ALTER TABLE catalogo.articoli
+                  ADD CONSTRAINT fk_articoli_nature_vendita
+                  FOREIGN KEY (natura_vendita_id)
+                  REFERENCES config.nature_vendita (id)
+                  ON UPDATE CASCADE
+                  ON DELETE NO ACTION;
+
+              COMMENT ON COLUMN catalogo.articoli.natura_vendita_id IS
+                  'Natura commerciale dell''articolo ai fini del routing '
+                  'post-accettazione preventivo (config.nature_vendita). '
+                  'Fonte di verita'' della natura: la riga di preventivo la eredita '
+                  'e congela. NULL = articolo non ancora classificato (transitorio '
+                  'pre-backfill); a regime NOT NULL.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli
+                  DROP CONSTRAINT IF EXISTS fk_articoli_nature_vendita;
+              ALTER TABLE catalogo.articoli
+                  DROP COLUMN IF EXISTS natura_vendita_id;
