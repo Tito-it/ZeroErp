@@ -341,6 +341,9 @@ non ancora compilato).
     "can_push_contratto": false,
     "can_push_contratto_reason": "OFFERTA_NON_ACCETTATA",
     "can_push_contratto_reason_key": "vendite.offerte.push_reason.non_accettata",
+    "can_genera_ordine": false,
+    "can_genera_ordine_reason": "OFFERTA_NON_ACCETTATA",
+    "can_genera_ordine_reason_key": "vendite.offerte.push_reason.non_accettata",
     "non_editable_fields": [
       "codice", "uid", "revisione_numero", "revisione_padre_id",
       "stato_doc_offerta_id", "data_emissione", "data_accettazione",
@@ -371,11 +374,15 @@ non ancora compilato).
   `mapAvailableActionsToDrawerActions`); `can_edit_testata` /
   `can_edit_eccezioni` / `can_edit_utility` flag editabilita';
   `can_change_state` true se almeno un'azione disponibile;
-  `can_create_revisione` / `can_push_contratto` flag per azioni
-  speciali non-cambio-stato; `can_push_contratto_reason` +
+  `can_create_revisione` / `can_push_contratto` / `can_genera_ordine`
+  flag per azioni speciali non-cambio-stato; `can_push_contratto_reason` +
   `can_push_contratto_reason_key` coppia stabile reason-code +
   chiave i18n quando il push non e' ammesso (`OFFERTA_NON_ACCETTATA`
-  o `OFFERTA_CONTRATTO_GIA_GENERATO`); `non_editable_fields[]` lista
+  o `OFFERTA_CONTRATTO_GIA_GENERATO`); analoga coppia
+  `can_genera_ordine_reason` + `can_genera_ordine_reason_key` per la
+  generazione ordine (`OFFERTA_NON_ACCETTATA` o `OFFERTA_ORDINE_GIA_GENERATO`,
+  idempotenza 1:1 — l'azione `genera_ordine` compare in `available_actions`
+  solo se `can_genera_ordine`); `non_editable_fields[]` lista
   immutabili (sempre + workflow-dipendenti, lista lunga fuori BOZZA);
   `stato_codice` discriminante macchina (equivalente a
   `stato_codice_interno`, esposto anche dalla fn DB).
@@ -653,14 +660,28 @@ valorizzando `documento_origine = ('OFFERTA', offerta_id)` sull'ordine.
   congelato; composito = componenti via `componenti_overrides` → il trigger DB
   ricompone il prezzo padre dai prezzi negoziati.
 - **Testata**: BA, utility, emittente, valuta (l'offerta non ha termine/modalità
-  pagamento). Provenienza senza UNIQUE → **più ordini** da una stessa offerta.
+  pagamento).
+- **Univocità 1:1 (rev. 2026-06-07)**: un'offerta genera **al massimo un ordine**
+  (l'offerta è una condizione quadro atomica, non ha righe selezionabili).
+  Guard BE fail-fast `E_ORD_OFFERTA_GIA_CONVERTITA` (409) + rete strutturale
+  UNIQUE parziale `uq_ordini_v_documento_origine_offerta` (mappata via
+  `map_integrity_error` allo stesso codice per la race concorrente). È il
+  **reversal parziale di A1** «senza UNIQUE», solo per `OFFERTA` (`PREVENTIVO`
+  resta 1:N). Specchio della guard data-driven `can_genera_ordine`.
 - Output `200`: `{ "ordine_id": int, "numero": str, "righe_create": int,
   "documento_origine": {"tipo": "OFFERTA", "id": int} }`.
 - Errori: `E_VENDITE_NOT_FOUND` (404) se inesistente; `E_ORD_ORIGINE_NON_CONVERTIBILE`
-  (409) se non `ACCETTATA`.
-- FE: azione «Genera ordine» su `OffertaDrawer` (gated su `ACCETTATA`).
-- Prerequisito DB atterrato: brief
-  [db-brief-offerta-righe-espanse.md](../../../dev/work-done/db-brief-offerta-righe-espanse.md).
+  (409) se non `ACCETTATA`; `E_ORD_OFFERTA_GIA_CONVERTITA` (409) se un ordine è
+  già stato generato da questa offerta.
+- FE: azione «Genera ordine» **data-driven** da `available_actions` (key
+  `genera_ordine`, esposta dalla fn solo se `can_genera_ordine`): compare in
+  `ACCETTATA` senza ordine e **sparisce a conversione avvenuta** (come
+  `push_contratto`); confirm prima della generazione (`requires_confirm`).
+- Prerequisiti DB atterrati: brief
+  [db-brief-offerta-righe-espanse.md](../../../dev/work-done/db-brief-offerta-righe-espanse.md)
+  (righe espanse) e
+  [brief-db-univocita-offerta-ordine.md](../../../dev/work-done/brief-db-univocita-offerta-ordine.md)
+  (univocità 1:1 + azione `genera_ordine`).
 
 ### Eccezioni
 

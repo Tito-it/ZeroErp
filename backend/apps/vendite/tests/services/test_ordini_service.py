@@ -367,6 +367,8 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
         off_cls.return_value.list_righe_espanse.return_value = [
             {"articolo_id": "A1"}, {"articolo_id": "A2"},
         ]
+        # Guard idempotenza 1:1: nessun ordine già nato da questa offerta.
+        ord_cls.return_value.get_ordine_by_documento_origine.return_value = None
 
         with patch(_ATOMIC, return_value=nullcontext()):
             out = ordini_service.crea_ordine_da_offerta(55)
@@ -400,6 +402,25 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             ordini_service.crea_ordine_da_offerta(55)
         self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+
+    @patch(_REPO)
+    @patch(_OFF_REPO)
+    def test_crea_ordine_da_offerta_gia_convertita(self, off_cls, ord_cls) -> None:
+        # Offerta ACCETTATA ma esiste già un ordine da questa offerta → guard
+        # fail-fast 1:1 (univocità offerta→ordine), prima di espandere le righe.
+        off_cls.return_value.get_offerta.return_value = {
+            "stato_codice_interno": "ACCETTATA",
+            "billing_account_id": 10, "utility_id": 5,
+            "emittente_fiscale_id": 3, "valuta_id": 1,
+        }
+        ord_cls.return_value.get_ordine_by_documento_origine.return_value = {
+            "id": 7, "numero": "ORD7",
+        }
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_offerta(55)
+        self.assertEqual(cm.exception.code, "E_ORD_OFFERTA_GIA_CONVERTITA")
+        # Guard prima del lavoro: nessuna espansione righe.
+        off_cls.return_value.list_righe_espanse.assert_not_called()
 
     def test_overrides_da_componenti_coercion(self) -> None:
         from apps.vendite.services.ordini_service import _overrides_da_componenti

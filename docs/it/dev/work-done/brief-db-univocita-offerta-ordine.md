@@ -1,15 +1,15 @@
 # Brief DB — Univocità `offerta → ordine` (1:1 permanente) + azione `genera_ordine` data-driven
 
-> **Stato**: 🟢 **DB FATTO (2026-06-08)** — migration + fn + pgTAP (15/15) su
-> `dev/db-tid`. Resta il cablaggio **BE/FE** (§7), fuori scope DB.
-> Dettaglio in §9 «Stato avanzamento».
+> **Stato**: ✅ **CHIUSO (2026-06-08)** — DB (migration + fn + pgTAP 15/15 su
+> `dev/db-tid`) **e** cablaggio **BE/FE** completati e verdi (BE 28+579 test,
+> FE ESLint+build). Dettaglio in §9 «Stato avanzamento».
 >
 > **Owner concettuale**: Tid (Michele Carlo Titini).
 > **Data brief**: 2026-06-07 — agg. 2026-06-08 (consegna DB).
 >
 > **Ambito**: **solo offerta commerciale**. Il caso `preventivo → ordine` ha un
 > modello *diverso* (split per natura di riga, orchestrato dalla pratica) ed è
-> trattato in un documento dedicato: [brief-preventivi-ordini.md](brief-preventivi-ordini.md).
+> trattato in un documento dedicato: [brief-preventivi-ordini.md](../work-in-progress/brief-preventivi-ordini.md).
 > **Non** applicare nulla di questo brief al preventivo.
 >
 > **Origine**: bug operativo segnalato da Tid. Da un'offerta `ACCETTATA`,
@@ -33,7 +33,7 @@
 
 `vendite.ordini` traccia l'origine via `documento_origine_tipo`
 (`'PREVENTIVO'`/`'OFFERTA'`) + `documento_origine_id`, **senza UNIQUE** (scelta
-A1 in [analisi-ordini-vendita.md §1.bis](analisi-ordini-vendita.md)). Verificato
+A1 in [analisi-ordini-vendita.md §1.bis](../work-in-progress/analisi-ordini-vendita.md)). Verificato
 su [`vendite/tabelle/ordini.md`](../../dbzero/vendite/tabelle/ordini.md): gli
 unici CHECK sono `chk_ordini_documento_origine_tipo` (vocabolario) e
 `chk_ordini_documento_origine_copres` (co-presenza `(tipo IS NULL) = (id IS
@@ -182,7 +182,7 @@ L'offerta **resta `ACCETTATA`**. Il FE distingue l'azione dal `key`.
 L'offerta commerciale **non ha righe materializzate**: le sue righe "effettive"
 sono *calcolate al volo* da `fn_offerta_righe_espanse` (intero listino +
 variazione + eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA — vedi
-[analisi-ordini-vendita.md §7.4](analisi-ordini-vendita.md)). L'offerta non è un
+[analisi-ordini-vendita.md §7.4](../work-in-progress/analisi-ordini-vendita.md)). L'offerta non è un
 carrello di articoli da pescare uno alla volta: è **una proposta commerciale
 unica** ("ecco le condizioni che ti propongo, in blocco").
 
@@ -205,7 +205,7 @@ mai senso.
 **Reversal di A1 (solo OFFERTA)**: l'indice §2.1 inverte, per la sola origine
 `OFFERTA`, la scelta A1 "documento_origine senza UNIQUE". Voluto e ratificato
 (Tid, 2026-06-07). `PREVENTIVO` non è toccato qui (modello diverso → brief
-dedicato). L'agente BE aggiornerà [analisi-ordini-vendita.md §1.bis](analisi-ordini-vendita.md)
+dedicato). L'agente BE aggiornerà [analisi-ordini-vendita.md §1.bis](../work-in-progress/analisi-ordini-vendita.md)
 con l'addendum (non competenza del team DB).
 
 ## 5. Pulizia dati preesistenti (PRE-migration, obbligatoria)
@@ -327,15 +327,36 @@ entrambi non sono su `dev/db-tid`.
   argomenti `throws_ok(sql, '23505', NULL, descrizione)` (con 3 arg il terzo è
   interpretato come messaggio atteso).
 
-### ⏳ Prossimo (fuori scope DB) — cablaggio BE/FE §7
+### ✅ Fatto (cablaggio BE/FE — 2026-06-08)
 
-`get_ordine_by_documento_origine` + guard in `crea_ordine_da_offerta`, codice
-`E_ORD_OFFERTA_GIA_CONVERTITA` (error_policies + messaggi_errore.csv), FE
-data-driven da `available_actions` + dialog, i18n
-`offerte.push_reason.ordine_gia_generato`.
+| # | Artefatto | Note |
+| --- | --- | --- |
+| 1 | `OrdiniRepository.get_ordine_by_documento_origine(tipo, id)` | Nuovo metodo (SELECT id+numero, `ORDER BY id LIMIT 1`). |
+| 2 | `ordini_service.crea_ordine_da_offerta` | Guard fail-fast `E_ORD_OFFERTA_GIA_CONVERTITA` dopo il check `ACCETTATA`, prima dell'espansione righe. `repo` unificato (una sola istanza). |
+| 3 | `ordini_service._UNIQUE_CONSTRAINTS` | Map `uq_ordini_v_documento_origine_offerta` → `E_ORD_OFFERTA_GIA_CONVERTITA` (rete sulla race, via `map_integrity_error` in `_db_errors`). |
+| 4 | `error_policies.py` | Registrato `E_ORD_OFFERTA_GIA_CONVERTITA` (409, `show_error_banner`). |
+| 5 | `OffertaDrawer.vue` | Azione `genera_ordine` **data-driven** da `available_actions` (rimosso il bottone hardcoded `stato===ACCETTATA` + import `STATO_OFFERTA`); confirm via `confirmAction` (`requires_confirm`); `refreshDetail()` post-successo → il bottone sparisce. |
+| 6 | i18n `it.json`/`en.json` | `vendite.offerte.genera_ordine_titolo`/`_messaggio`/`_conferma` per il confirm. |
+| 7 | Doc API | `api_ordini.md` (modello univocità + tabella errori) e `api_offerte.md` (endpoint genera-ordine + capability blob `can_genera_ordine*`). |
+| 8 | Test | BE `test_ordini_service` 28/28 (+ caso «già convertita»), `apps.core.tests` 579/579; FE ESLint pulito + `vite build` ok. |
+
+### ℹ️ Divergenze consapevoli dal §7 (annotate)
+
+- **`messaggi_errore.csv` non toccato**: `E_ORD_OFFERTA_GIA_CONVERTITA` è
+  **sollevato dal BE** (`ErrorManager` + `map_integrity_error`), non da un RAISE
+  di trigger DB. Quella tabella serve solo ai codici emessi dal DB → nessuna riga
+  necessaria. `user_message` parlante vive in `error_policies.py`.
+- **Dialog deep-link → ordine esistente non implementato** (semplificato a toast
+  parlante). Il caso normale è già coperto dalla guard data-driven (il bottone
+  sparisce). Resta solo la **race cross-tab**, in cui il 409
+  `E_ORD_OFFERTA_GIA_CONVERTITA` viene mostrato come toast con `user_message`.
+  Il mirror completo del dialog `gia_generato` richiederebbe di esporre il link
+  all'ordine sul dettaglio offerta (LEFT JOIN `vendite.ordini` su
+  `documento_origine`, gemello di `contratto_id`): **follow-up opzionale** se si
+  vuole simmetria piena con `push_contratto`.
 
 ---
 
 *Brief DB — univocità offerta→ordine (1:1 permanente) + azione `genera_ordine`
-data-driven. **DB consegnato 2026-06-08 (pgTAP 15/15).** Il caso preventivo è in
-[brief-preventivi-ordini.md](brief-preventivi-ordini.md). Resta BE/FE §7.*
+data-driven. **CHIUSO 2026-06-08**: DB (pgTAP 15/15) + BE/FE cablati e verdi. Il
+caso preventivo è in [brief-preventivi-ordini.md](../work-in-progress/brief-preventivi-ordini.md).*

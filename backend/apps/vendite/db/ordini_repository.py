@@ -430,6 +430,27 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, [tipo, int(origine_id), int(ordine_id)])
             return cursor.rowcount > 0
 
+    # Scopo: Idempotenza 1:1 della conversione upstream → ordine. Ritorna il
+    #        primo ordine già nato da (tipo, origine_id) o None. Specchio
+    #        applicativo dell'UNIQUE parziale uq_ordini_v_documento_origine_offerta
+    #        (per OFFERTA): il guard BE in crea_ordine_da_offerta lo usa per
+    #        fallire fast con E_ORD_OFFERTA_GIA_CONVERTITA prima di lavorare,
+    #        lasciando l'UNIQUE come rete sulla race concorrente.
+    def get_ordine_by_documento_origine(
+        self, tipo: str, origine_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT id, numero
+              FROM vendite.ordini
+             WHERE documento_origine_tipo = %s
+               AND documento_origine_id   = %s
+             ORDER BY id
+             LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo, int(origine_id)])
+            return row_to_dict(cursor)
+
     # Scopo: Aggiorna campi modificabili della testata ordine. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.
     def update_ordine(self, ordine_id: int, **kwargs: Any) -> bool:

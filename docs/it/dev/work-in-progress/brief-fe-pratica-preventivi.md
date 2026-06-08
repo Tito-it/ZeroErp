@@ -4,7 +4,9 @@
 > deliverable DB applicati e BE dell'handler funzionante
 > ([brief-be-pratica-preventivi.md](brief-be-pratica-preventivi.md)).
 >
-> **Data**: 2026-06-06 · **Stato**: pronto, riscontri FE risolti
+> **Data**: 2026-06-06 · **Rev. critica**: 2026-06-08 (allineamento split DB:
+> accoppiamento accettazione↔flusso F1, abilitazione esito-aware §6) · **Stato**:
+> pronto, riscontri FE risolti
 >
 > **Tesi centrale**: il FE è **quasi tutto già pronto**. La dashboard pratiche,
 > il `FlussoDrawer`, il giornale, l'API client e il tab "Pratiche collegate" sul
@@ -63,6 +65,23 @@ se esiste una pratica collegata di tipo `PREVENTIVI_*`, sopprimere i campi.
 
 > Questa è la traduzione UX della decisione di prodotto. Non rinegozia nulla: è
 > la conseguenza diretta di "la politica vive in configurazione".
+
+**⚠ Aggiunta critica (2026-06-08) — accoppiamento accettazione ↔ flusso.** Dopo
+lo split DB, i prerequisiti sono **esito-aware**: `CONFERMA` si abilita solo se
+`APPROVAZIONE_CLIENTE` è `COMPLETATO` con `esito='POSITIVO'`. La decisione DB V15
+sancisce che accettare il preventivo **è** completare `APPROVAZIONE_CLIENTE`
+POSITIVO (stessa azione). Quindi, sul percorso pratica, l'accettazione del
+preventivo deve **anche** chiudere il flusso `APPROVAZIONE_CLIENTE` con esito
+`POSITIVO` (e `NEGATIVO` su rifiuto). Senza, il preventivo risulta `ACCETTATO`
+ma il flusso resta aperto e `CONFERMA` non parte.
+
+**✅ Deciso (Tid 2026-06-08)**: lo fa il **BE**, nella stessa azione di
+accettazione e in transazione (brief BE §8.3). Conseguenza FE: **nessun lavoro di
+orchestrazione** — il FE mostra il dialog esistente e chiama **un** endpoint
+("accetta preventivo"); il completamento del flusso `APPROVAZIONE_CLIENTE` avviene
+lato BE. Il FE non deve completare il flusso da sé (eviterebbe la desync ma è
+proprio ciò che spostiamo nel BE). Resta solo l'eventuale refresh della pratica
+in vista per riflettere lo stato aggiornato.
 
 ### F2 — `FlussoDrawer`: esito handler + stato `IN_CORSO`/`ERRORE`/`SOSPESO`
 
@@ -166,6 +185,14 @@ dal `template_flussi` del `tipo_prestazione`, non solo dai flussi già istanziat
   / `fn_check_prerequisiti_flusso`, da `template_flussi_prerequisiti`): cliccare
   uno step non ancora abilitato → **errore parlante** (da mostrare in UI, non da
   reimplementare lato FE).
+- **Abilitazione esito-aware (dopo split DB, B-PREREQ)**: un prerequisito non è
+  più solo "precedente `COMPLETATO`", ma "precedente `COMPLETATO` con
+  `esito='POSITIVO'`" (es. `CONFERMA` resta bloccato se `APPROVAZIONE_CLIENTE` è
+  chiuso `NEGATIVO`). Il calcolo dello stato visivo "eseguibile-ora" deve quindi
+  riflettere l'esito del passo precedente, non il solo completamento. Inoltre il
+  completamento di **ogni** flusso ora richiede un `esito` (vincolo DB
+  `COMPLETATO ⇒ esito NOT NULL`): il `FlussoDrawer` non deve mai consentire
+  "Completa" senza esito (già così oggi, ora è anche blindato a DB).
 
 Oggi `PraticaFlussiPanel` mostra colonne "Da fare/Completati" sulle **istanze**.
 Verifica/deliverable FE: arricchirlo (o affiancarlo) con la **vista percorso da

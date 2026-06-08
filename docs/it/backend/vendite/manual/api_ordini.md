@@ -36,12 +36,15 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
   back-office sempre `ADMIN`.
 - **Estensioni modello 2026-06-03**: **agente** (`agente_soggetto_ruolo_id`,
   nullable) ed **origine documento** (A1: `documento_origine_tipo` ∈
-  {`PREVENTIVO`,`OFFERTA`} + `documento_origine_id`, **senza UNIQUE** → una
-  origine può generare più ordini). Valorizzate dalla **conversione upstream**
-  (fatte 2026-06-04): `documento_origine = ('PREVENTIVO', id)` da
-  `ordini_service.crea_ordine_da_preventivo` (copia 1:1 righe piatte) e
+  {`PREVENTIVO`,`OFFERTA`} + `documento_origine_id`). Valorizzate dalla
+  **conversione upstream** (fatte 2026-06-04): `documento_origine = ('PREVENTIVO',
+  id)` da `ordini_service.crea_ordine_da_preventivo` (copia 1:1 righe piatte) e
   `('OFFERTA', id)` da `crea_ordine_da_offerta` (righe espanse via fn DB
-  `fn_offerta_righe_espanse`, prezzi negoziati preservati). Endpoint sui domini
+  `fn_offerta_righe_espanse`, prezzi negoziati preservati). **Univocità (rev.
+  2026-06-07)**: per `OFFERTA` vale **1:1** — un'offerta genera al massimo un
+  ordine (UNIQUE parziale `uq_ordini_v_documento_origine_offerta` + guard BE
+  `E_ORD_OFFERTA_GIA_CONVERTITA`, **reversal parziale di A1** «senza UNIQUE»);
+  `PREVENTIVO` resta **1:N** (split per riga, nessun vincolo). Endpoint sui domini
   upstream (vedi [api_preventivi.md §6c](api_preventivi.md) e api_offerte). La
   CREATE diretta lascia le colonne NULL.
 - **Pagamento/valuta**: `modalita_pagamento_id`, `termine_pagamento_id`,
@@ -318,6 +321,7 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | `E_ORD_CLIENTE_IMMUTABILE` | 400 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (guard BE + lock-columns DB) |
 | `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato (modifica fuori DRAFT; delete bozza con righe → annullare) |
 | `E_ORD_NESSUNA_RIGA` | 409 | conferma/push senza righe eleggibili (guard applicativo `conferma()`) |
+| `E_ORD_OFFERTA_GIA_CONVERTITA` | 409 | conversione offerta→ordine già avvenuta (univocità 1:1): guard BE fail-fast + rete UNIQUE parziale `uq_ordini_v_documento_origine_offerta` (via `map_integrity_error`) |
 | `E_ORDINE_TRANSIZIONE_NON_AMMESSA` | varia | trigger guard: transizione di stato non presente/attiva in `config.transizioni_stati_ordini` (es. `cambia-stato` verso uno stato non ammesso) |
 | `E_ORDINE_CONFERMA_SENZA_RIGHE` | varia | trigger guard: `DRAFT→CONFERMATO` senza righe (precondizione DB, gemella di `E_ORD_NESSUNA_RIGA`) |
 | `E_VENDITE_DUPLICATO` / `E_VENDITE_FK` | 409 / 400 | violazione UNIQUE/FK (via `map_integrity_error`) |

@@ -52,6 +52,13 @@ _DB_ERROR_CODE_RE = re.compile(r"\b(E_[A-Z][A-Z0-9_]+)\b")
 _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "uq_ordrig_riga_nr": (E_VENDITE_DUPLICATO, "Numero riga duplicato sull'ordine."),
     "uq_ordini_v_anno_serie_numero": (E_VENDITE_DUPLICATO, "Numero ordine duplicato."),
+    # Univocità 1:1 offerta→ordine: la violazione dell'indice parziale (race con
+    # un'altra generazione concorrente) diventa lo stesso errore parlante del
+    # guard fail-fast in crea_ordine_da_offerta.
+    "uq_ordini_v_documento_origine_offerta": (
+        "E_ORD_OFFERTA_GIA_CONVERTITA",
+        "Un ordine è già stato generato da questa offerta.",
+    ),
 }
 _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "fk_ordrig_articolo": (E_VENDITE_FK, "Articolo non valido."),
@@ -544,6 +551,27 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
         function_name=f"{_FN}.crea_ordine_da_offerta",
     )
 
+    repo = OrdiniRepository()
+
+    # Idempotenza 1:1 (univocità offerta→ordine): un'offerta genera al massimo un
+    # ordine (specchio applicativo dell'UNIQUE parziale
+    # uq_ordini_v_documento_origine_offerta + della guard data-driven
+    # can_genera_ordine). Fail-fast PARLANTE prima di lavorare; l'UNIQUE resta la
+    # rete sulla race concorrente (mappata in _UNIQUE_CONSTRAINTS).
+    ordine_esistente = repo.get_ordine_by_documento_origine(
+        "OFFERTA", int(offerta_id),
+    )
+    ErrorManager.require(
+        ordine_esistente is None,
+        code="E_ORD_OFFERTA_GIA_CONVERTITA",
+        message="Un ordine è già stato generato da questa offerta.",
+        detail=(
+            f"offerta_id={offerta_id}, "
+            f"ordine_id={ordine_esistente.get('id') if ordine_esistente else None}"
+        ),
+        function_name=f"{_FN}.crea_ordine_da_offerta",
+    )
+
     righe = off_repo.list_righe_espanse(offerta_id)
 
     header = {
@@ -554,7 +582,6 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
         "data": date.today().isoformat(),
     }
 
-    repo = OrdiniRepository()
     with transaction.atomic():
         ordine_id, numero = _crea_testata_ordine_da_origine(
             header, "OFFERTA", offerta_id,

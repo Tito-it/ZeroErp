@@ -1583,6 +1583,19 @@ class ErrorPolicyRegistry:
                 "generare un ordine."
             ),
         ),
+        # Univocità 1:1 offerta→ordine (reversal parziale di A1, solo OFFERTA):
+        # un'offerta genera al massimo un ordine. Sollevato dal guard BE
+        # (ordini_service.crea_ordine_da_offerta) e, come rete sulla race, dalla
+        # violazione dell'UNIQUE parziale uq_ordini_v_documento_origine_offerta.
+        # Specchio applicativo della guard data-driven can_genera_ordine in
+        # script.fn_available_actions_offerta (il bottone sparisce a conversione
+        # avvenuta; questo errore copre il click concorrente cross-tab).
+        "E_ORD_OFFERTA_GIA_CONVERTITA": ErrorPolicy(
+            code="E_ORD_OFFERTA_GIA_CONVERTITA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Un ordine è già stato generato da questa offerta.",
+        ),
         # Codice sollevato da vendite.fn_crea_revisione_preventivo quando esiste
         # gia' una revisione in DRAFT per lo stesso numero. Conflitto di stato:
         # l'utente deve completare/annullare la DRAFT esistente prima di crearne

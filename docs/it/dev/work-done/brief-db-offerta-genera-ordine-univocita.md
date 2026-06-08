@@ -1,6 +1,11 @@
 # Brief DB — Univocità `offerta → ordine` (1:1) + azione `genera_ordine` data-driven
 
-> **Stato**: 🟡 **APERTO** — pronto per il team DB su `dev/db-tid`.
+> **Stato**: ⛔ **SUPERATO / CHIUSO (2026-06-08)** — questo è il *draft iniziale*.
+> Il documento autoritativo, consegnato dal team DB e cablato BE/FE, è
+> [brief-db-univocita-offerta-ordine.md](brief-db-univocita-offerta-ordine.md)
+> (pgTAP 15/15 + BE/FE verdi). Conservato solo per storico; **non** è la fonte.
+>
+> ~~**Stato**: 🟡 **APERTO** — pronto per il team DB su `dev/db-tid`.~~
 >
 > **Owner concettuale**: Tid (Michele Carlo Titini).
 > **Data brief**: 2026-06-07.
@@ -31,7 +36,7 @@
 
 `vendite.ordini` traccia l'origine via `documento_origine_tipo`
 (`'PREVENTIVO'`/`'OFFERTA'`) + `documento_origine_id`, **senza UNIQUE** (scelta
-A1 in [analisi-ordini-vendita.md](analisi-ordini-vendita.md) §1.bis, per
+A1 in [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md) §1.bis, per
 consentire riordini/consegne parziali). Verificato su doc DB
 [`vendite/tabelle/ordini.md`](../../dbzero/vendite/tabelle/ordini.md): i due
 CHECK presenti sono `chk_ordini_documento_origine_tipo` (vocabolario) e
@@ -169,7 +174,7 @@ voluto e ratificato da Tid (2026-06-07): per le offerte vale 1:1 di testata.
 `PREVENTIVO` **non** è toccato (resta multi-ordine come da A1: riordini/consegne
 parziali).
 
-→ L'agente BE aggiornerà [analisi-ordini-vendita.md](analisi-ordini-vendita.md)
+→ L'agente BE aggiornerà [analisi-ordini-vendita.md](../work-in-progress/analisi-ordini-vendita.md)
 §1.bis con un addendum che documenta l'asimmetria `OFFERTA` (1:1) vs
 `PREVENTIVO` (1:N). Non è competenza del team DB.
 
