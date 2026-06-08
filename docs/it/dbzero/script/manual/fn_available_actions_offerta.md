@@ -26,7 +26,7 @@ Differenze rispetto al preventivo:
   nessun contratto + nessun ordine generati dall'offerta) e sono quindi
   **mutuamente esclusive** — un'offerta ne genera al massimo una: la prima
   generazione disabilita anche l'altra. Vedi
-  [brief-db-univocita-offerta-ordine §10](/dev/work-in-progress/brief-db-univocita-offerta-ordine).
+  [brief-db-univocita-offerta-ordine §10](/dev/work-done/brief-db-univocita-offerta-ordine).
 
 > **Vedi anche**
 >

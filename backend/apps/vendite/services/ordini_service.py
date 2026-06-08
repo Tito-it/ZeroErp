@@ -572,6 +572,27 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
         function_name=f"{_FN}.crea_ordine_da_offerta",
     )
 
+    # Mutua esclusività offerta → (contratto XOR ordine): se l'offerta ha già
+    # generato un CONTRATTO non può generare anche un ordine (e viceversa, lato
+    # DB in fn_push_offerta_a_contratto → E_OFFERTA_ORDINE_GIA_GENERATO). Specchio
+    # applicativo della capability `can_genera_ordine` (reason
+    # OFFERTA_CONTRATTO_GIA_GENERATO) + guard BE di questa direzione, lasciato
+    # qui dal team DB perché crea_ordine_da_offerta è orchestrato in BE, non in una
+    # singola fn DB. `contratto_id` è già nel dettaglio (LEFT JOIN), niente query.
+    ErrorManager.require(
+        testata.get("contratto_id") is None,
+        code="E_OFFERTA_CONTRATTO_GIA_GENERATO",
+        message=(
+            "Questa offerta ha già generato un contratto: "
+            "non può generare anche un ordine."
+        ),
+        detail=(
+            f"offerta_id={offerta_id}, "
+            f"contratto_id={testata.get('contratto_id')}"
+        ),
+        function_name=f"{_FN}.crea_ordine_da_offerta",
+    )
+
     righe = off_repo.list_righe_espanse(offerta_id)
 
     header = {

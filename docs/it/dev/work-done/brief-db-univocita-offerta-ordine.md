@@ -421,19 +421,28 @@ Quando entrambe le azioni speciali sono soppresse, `available_actions = []`
 | 4 | `db/pgtap/script/test-fn-available-actions-offerta-v1.sql` | test 8 e 12 aggiornati: la presenza di un documento sopprime **entrambe** le azioni + `available_actions=[]`. |
 | 5 | `db/pgtap/vendite/offerte_commerciali/test_fn_push_offerta_a_contratto.sql` | nuovo test 9: push su offerta con ordine → `E_OFFERTA_ORDINE_GIA_GENERATO`. `plan(9)`. |
 
-### 10.6 Da fare (fuori scope DB)
+### 10.6 Cablaggio BE/FE (✅ fatto 2026-06-08)
 
-- **BE livello C**: guard in `crea_ordine_da_offerta` che fallisce se esiste già
-  un contratto dall'offerta (specchio di B). Mappare a un codice dedicato.
-- **FE**: i due bottoni già data-driven da `available_actions` spariscono
-  insieme a conversione avvenuta; dialog parlante sul reason cross
-  (push bloccato da ordine e viceversa).
-- **Doc auto-gen**: rigenerare `dbzero/script/funzioni/fn_available_actions_offerta.md`
-  e `dbzero/vendite/funzioni/fn_push_offerta_a_contratto.md` dopo l'apply.
+- **BE livello C — FATTO**: guard in `crea_ordine_da_offerta` che fallisce se
+  esiste già un contratto dall'offerta (specchio del guard DB lato push). Riusa
+  `testata.contratto_id` (LEFT JOIN già nel dettaglio, nessuna query) e solleva
+  `E_OFFERTA_CONTRATTO_GIA_GENERATO` (id=462, lo stesso codice della direzione
+  opposta — risolve a 400 via `ErrorPolicyRegistry.resolve`, non registrato come
+  da convenzione `E_OFFERTA_*`). Test `test_crea_ordine_da_offerta_con_contratto_bloccato`
+  (suite 29/29 verdi).
+- **FE — nessuna modifica**: i due bottoni sono già data-driven da
+  `available_actions`; con la capability XOR spariscono insieme a conversione
+  avvenuta. Il caso cross in race è coperto dai guard (DB lato push, BE lato
+  ordine) e mostrato come toast parlante.
+- **Doc**: `api_offerte.md` aggiornata (endpoint genera-ordine + matrice reason
+  capability con `OFFERTA_CONTRATTO_GIA_GENERATO`).
+- **Doc auto-gen** (competenza team DB): rigenerare
+  `dbzero/script/funzioni/fn_available_actions_offerta.md` e
+  `dbzero/vendite/funzioni/fn_push_offerta_a_contratto.md` dopo l'apply.
 
 ---
 
 *Brief DB — univocità offerta→ordine (1:1 permanente) + azione `genera_ordine`
-data-driven. **DB consegnato 2026-06-08 (pgTAP 15/15).** Mutua esclusività
-contratto/ordine in §10 (rev. 2026-06-08). Il caso preventivo è in
-[brief-preventivi-ordini.md](../work-in-progress/brief-preventivi-ordini.md). Resta BE/FE §7.*
+data-driven. **CHIUSO 2026-06-08**: DB (pgTAP 15/15) + mutua esclusività
+contratto/ordine (§10) + cablaggio BE/FE verde. Il caso preventivo è in
+[brief-preventivi-ordini.md](../work-in-progress/brief-preventivi-ordini.md).*

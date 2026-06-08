@@ -124,6 +124,18 @@ provenienza/tracciabilità.
   provenienza in modo esplicito, senza UNIQUE → **più ordini da una stessa origine**;
   costo equivalente (memoria `feedback_no_quick_fix_soluzione_assoluta` +
   `feedback_simmetria_modello_no_meta_scope`).
+- **(A1-bis) — REVERSAL PARZIALE per `OFFERTA` (RATIFICATA Tid, 2026-06-07/08)**:
+  il «senza UNIQUE» resta valido per `PREVENTIVO` (**1:N** — riordini/consegne
+  parziali, modello split per riga in
+  [brief-preventivi-ordini.md](brief-preventivi-ordini.md)), ma **NON** per
+  `OFFERTA`. L'offerta è una condizione quadro **atomica** (nessuna riga
+  selezionabile) → genera **al massimo UN ordine** (1:1 di testata), imposto da
+  un **UNIQUE parziale** `uq_ordini_v_documento_origine_offerta`
+  `WHERE documento_origine_tipo = 'OFFERTA'` + guard BE
+  `E_ORD_OFFERTA_GIA_CONVERTITA`. Inoltre contratto e ordine generati da
+  un'offerta sono **mutuamente esclusivi** (XOR permanente, recupero = nuova
+  offerta): vedi
+  [brief-db-univocita-offerta-ordine.md](../work-done/brief-db-univocita-offerta-ordine.md).
 - **Nota di confine**: A *abilita* la conversione preventivo/offerta→ordine (oggi
   inesistente) ma **non** la implementa in questo scheletro — la conversione è uno
   step successivo (§7.4). Qui si predispone solo la colonna + la valorizzazione in
@@ -221,7 +233,8 @@ Changeset additivo/correttivo (additive+nullable → no impatto trigger/RLS):
 - **A — link origine (A1 ratificata, §1.bis)**: FK tipizzata dedicata
   `documento_origine_tipo` (vocabolario PREVENTIVO/OFFERTA — enum o lookup, scelta DB)
   + `documento_origine_id bigint`, **entrambe nullable, senza UNIQUE** (più ordini da
-  una stessa origine). **NON** riusare `config.sorgenti`/`sorgente_*` (A2 scartata:
+  una stessa origine — **eccetto `OFFERTA`**, 1:1 con UNIQUE parziale per il reversal
+  A1-bis §1.bis). **NON** riusare `config.sorgenti`/`sorgente_*` (A2 scartata:
   l'UQ `uq_ordini_v_sorgente_fk` imporrebbe l'1:1 e lo `scope` PUSH_* ha altra
   semantica — vedi [db-brief §1.A](../work-done/db-brief-ordini-vendita.md)). Riferimento
   polimorfo (preventivo *o* offerta secondo il tipo): integrità garantita alla

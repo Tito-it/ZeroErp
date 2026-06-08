@@ -422,6 +422,26 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
         # Guard prima del lavoro: nessuna espansione righe.
         off_cls.return_value.list_righe_espanse.assert_not_called()
 
+    @patch(_REPO)
+    @patch(_OFF_REPO)
+    def test_crea_ordine_da_offerta_con_contratto_bloccato(
+        self, off_cls, ord_cls,
+    ) -> None:
+        # Mutua esclusività XOR: offerta ACCETTATA che ha già generato un
+        # contratto non può generare un ordine → E_OFFERTA_CONTRATTO_GIA_GENERATO.
+        off_cls.return_value.get_offerta.return_value = {
+            "stato_codice_interno": "ACCETTATA",
+            "billing_account_id": 10, "utility_id": 5,
+            "emittente_fiscale_id": 3, "valuta_id": 1,
+            "contratto_id": 42,
+        }
+        # Nessun ordine ancora: il blocco arriva dal contratto, non dall'idempotenza.
+        ord_cls.return_value.get_ordine_by_documento_origine.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_offerta(55)
+        self.assertEqual(cm.exception.code, "E_OFFERTA_CONTRATTO_GIA_GENERATO")
+        off_cls.return_value.list_righe_espanse.assert_not_called()
+
     def test_overrides_da_componenti_coercion(self) -> None:
         from apps.vendite.services.ordini_service import _overrides_da_componenti
         # lista di dict (jsonb già parsato da psycopg)
