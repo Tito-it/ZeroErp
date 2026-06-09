@@ -30,7 +30,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260603-03-update-trgfn-listini-righe-comp-guard-coerenza-bom-remove-guard5
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

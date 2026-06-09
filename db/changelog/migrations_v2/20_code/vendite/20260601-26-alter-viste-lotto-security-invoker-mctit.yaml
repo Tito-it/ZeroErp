@@ -22,7 +22,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-26-alter-viste-lotto-security-invoker
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         SET (security_invoker = on) sulle 9 viste DEFINER che leggono le

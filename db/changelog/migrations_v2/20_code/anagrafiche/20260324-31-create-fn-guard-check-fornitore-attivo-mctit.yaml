@@ -14,7 +14,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260324-31-create-fn-guard-check-fornitore-attivo
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Crea fn_guard_fornitore_attivo (fail-fast, raise) e
               fn_check_fornitore_attivo (puro boolean).

@@ -14,7 +14,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-09-update-fn-preventivo-riga-componenti-init-modello-unificato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

@@ -13,7 +13,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-24-fix-fn-resolve-prezzo-listino
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_resolve_prezzo_listino: 8x E_GENERICO → E_PARAMETRO_INVALIDO (6) +
               E_PREZZO_LISTINO_NON_TROVATO (1) + E_PREZZO_LISTINO_AMBIGUO (1).

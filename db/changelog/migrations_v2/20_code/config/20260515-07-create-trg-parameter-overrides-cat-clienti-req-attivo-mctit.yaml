@@ -18,7 +18,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260515-07-create-trg-parameter-overrides-cat-clienti-req-attivo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

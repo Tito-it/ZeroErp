@@ -15,7 +15,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260422-06-01-create-trgfn-preventivi-guard-transizione-approvazione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea funzione trigger vendite.trgfn_preventivi_guard_transizione_approvazione.
@@ -117,7 +117,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260422-06-02-create-trg-preventivi-guard-transizione-approvazione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE OF stato_doc_preventivo_id su vendite.preventivi.

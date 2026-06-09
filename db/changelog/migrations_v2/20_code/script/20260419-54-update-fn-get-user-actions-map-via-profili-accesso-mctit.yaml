@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-54-update-fn-get-user-actions-map-via-profili-accesso
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiornamento successivo di script.fn_get_user_actions_map (§4.8.5

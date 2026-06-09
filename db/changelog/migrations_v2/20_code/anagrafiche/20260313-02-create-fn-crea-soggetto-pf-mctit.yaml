@@ -19,7 +19,7 @@ databaseChangeLog:
       id: 20260313-02-create-fn-crea-soggetto-pf
       author: mctit
       comment: "Building block: crea soggetto PF (natura PR) + contatto default. Lookup tipo_soggetto_dettaglio_id e stato_id da codice. Guard CF univoco. Riusabile da orchestratori."
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

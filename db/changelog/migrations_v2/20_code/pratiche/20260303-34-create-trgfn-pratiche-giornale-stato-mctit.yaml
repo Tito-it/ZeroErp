@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-34-create-trgfn-pratiche-giornale-stato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Logga STATO_CAMBIATO nel giornale su UPDATE stato pratica."
       changes:
         - sql:

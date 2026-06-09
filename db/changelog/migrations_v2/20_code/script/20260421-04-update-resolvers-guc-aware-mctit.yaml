@@ -30,7 +30,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260421-04-01-update-fn-resolve-livello-area-guc-aware
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         fn_resolve_livello_area: early return BLOCCATO se GUC
@@ -150,7 +150,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260421-04-02-update-fn-check-azione-processo-guc-aware
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         fn_check_azione_processo: early return false se GUC
@@ -269,7 +269,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260421-04-03-update-fn-get-user-permissions-map-guc-aware
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         fn_get_user_permissions_map: gate GUC via pre-calcolo
@@ -405,7 +405,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260421-04-04-update-fn-get-user-actions-map-guc-aware
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         fn_get_user_actions_map: gate GUC via pre-calcolo

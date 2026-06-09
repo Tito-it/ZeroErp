@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-16-create-trg-fatture-scadenze-guard-emittente-scope
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggancia il write-guard scope emittente a vendite.fatture_scadenze

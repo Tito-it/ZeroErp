@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-09-create-fn-has-identita-attiva
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea helper script.fn_has_identita_attiva(auth_user_id, ruolo_applicativo)

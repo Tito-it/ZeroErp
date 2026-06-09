@@ -21,7 +21,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260608-02-update-fn-check-prerequisiti-flusso-esito-aware
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         fn_check_prerequisiti_flusso ora filtra anche sull'esito del flusso
         prerequisito (template_flussi_prerequisiti.esito_richiesto). NULL =

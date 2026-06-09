@@ -16,7 +16,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260402-08-recreate-fn-get-indirizzi-by-soggetto
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea fn_get_indirizzi_by_soggetto e fn_get_indirizzo_by_soggetto
         droppate dalla migration 20260402-01.

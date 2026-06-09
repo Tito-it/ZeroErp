@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-14-update-fn-get-user-profile-no-ruolo-sistema
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Fase 7 step 3 (2026-04-29): rimuove la chiave 'ruolo_sistema'

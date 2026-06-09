@@ -25,7 +25,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260424-02-01-create-fn-listini-versioni-close-scadute
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

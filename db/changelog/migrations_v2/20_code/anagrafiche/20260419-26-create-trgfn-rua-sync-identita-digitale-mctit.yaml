@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-26-create-trgfn-rua-sync-identita-digitale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger-ponte TEMPORANEO (§4.6.D.4 WIP, aggiunta 2026-04-19):

@@ -37,7 +37,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-35-update-fn-resolve-prezzo-listino-v2-bundle-prioritario
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Fix bug bi-layer fn_resolve_prezzo_listino_v2: bundle-prioritario su STADIO 1b e 2.

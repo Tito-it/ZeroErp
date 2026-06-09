@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-35-create-trgfn-pratiche-giornale-assegnazione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Logga ASSEGNAZIONE_CAMBIATA nel giornale su UPDATE risorsa/UO."
       changes:
         - sql:

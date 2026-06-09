@@ -18,7 +18,7 @@ databaseChangeLog:
       id: 20260313-03-create-fn-crea-risorsa-umana
       author: mctit
       comment: "Building block: crea risorsa_umana + bridge auth_user (opzionale). Usa fn_get_or_create_soggetto_ruolo(RIS_UMANA). Guard UO/qualifica attiva. Riusabile da orchestratori."
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

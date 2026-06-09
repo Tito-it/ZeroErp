@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-28-update-fn-contratto-riga-componenti-init-fix-jsonb-exists
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

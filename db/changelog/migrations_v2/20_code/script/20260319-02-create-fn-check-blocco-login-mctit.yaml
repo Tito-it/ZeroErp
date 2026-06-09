@@ -18,7 +18,7 @@ databaseChangeLog:
             Verifica blocco temporaneo login per utente.
             Se bloccato_fino_a scaduto: reset automatico.
             Se attivo: errore E_UTENTE_BLOCCATO con minuti rimanenti.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

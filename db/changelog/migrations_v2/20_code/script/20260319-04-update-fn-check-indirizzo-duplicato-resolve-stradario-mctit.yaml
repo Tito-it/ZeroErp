@@ -21,7 +21,7 @@ databaseChangeLog:
             Aggiunge risoluzione stradario_id da stradario_generale_id + comune_id
             + codice_postale_id. Se p_stradario_id IS NULL, cerca nella tabella
             config.stradario con la combinazione. DROP vecchia firma.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

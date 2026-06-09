@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-10-update-fn-get-ruolo-sistema-deprecation-warning
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         PR-DB-7.1 — deprecation warning su script.fn_get_ruolo_sistema

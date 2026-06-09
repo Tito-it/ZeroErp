@@ -16,7 +16,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-02-fix-trgfn-emittenti-fiscali-guard-attivo
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_emittenti_fiscali_guard_attivo: E_GENERICO →
               E_EMITTENTE_DISATTIVAZIONE_BLOCCATA. %TYPE su DECLARE.
@@ -82,7 +82,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-02-fix-trgfn-emittenti-fiscali-default-guard
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_emittenti_fiscali_default_guard: E_GENERICO →
               E_EMITTENTE_DEFAULT_SINGLETON.
@@ -154,7 +154,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-02-fix-trgfn-resellers-guard-attivo
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_resellers_guard_attivo: E_GENERICO →
               E_RESELLER_DISATTIVAZIONE_BLOCCATA.

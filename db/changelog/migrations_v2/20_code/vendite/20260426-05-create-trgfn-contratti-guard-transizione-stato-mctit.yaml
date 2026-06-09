@@ -36,7 +36,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260426-05-01-create-trgfn-contratti-guard-transizione-stato
       author: mctit
-      runOnChange: true
+      runOnChange: false
 
       comment: >
         Funzione trigger vendite.trgfn_contratti_guard_transizione_stato. Lookup
@@ -147,7 +147,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260426-05-02-create-trg-contratti-a10-guard-transizione-stato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Trigger BEFORE UPDATE OF stato_doc_contratto_id su vendite.contratti,
         fase _a10_ (guard). UPDATE OF <col> per scattare solo a transizione

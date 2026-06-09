@@ -10,7 +10,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260306-22-create-trgfn-guard-transizione-flussi
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Trigger function guard: blocca transizioni di stato non ammesse
               per i flussi pratica, consultando config.transizioni_stati_flussi_pratiche.

@@ -21,7 +21,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260402-09-recreate-vw-indirizzi-dettaglio-chain
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea fn_search_indirizzi_dettaglio, vw_pdp,
         vw_istanze_utilities_dettaglio e

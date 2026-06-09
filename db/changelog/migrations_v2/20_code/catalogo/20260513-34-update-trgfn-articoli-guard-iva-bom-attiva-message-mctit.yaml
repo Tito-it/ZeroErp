@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-34-01-update-trgfn-articoli-guard-iva-bom-attiva-message
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Migliora messaggio E_BOM_IVA_DISCORDANTE in trgfn_articoli_guard_iva_bom_attiva:

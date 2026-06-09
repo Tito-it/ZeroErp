@@ -14,7 +14,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-14-fix-fn-get-valuta-id
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_get_valuta_id: 1x E_GENERICO → E_CONFIG_MANCANTE.
           changes:
@@ -65,7 +65,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-14-fix-fn-group-attivita-fatturabili
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_group_attivita_fatturabili: 2x E_GENERICO →
               E_PARAMETRO_INVALIDO + E_VALORE_MANCANTE.
@@ -140,7 +140,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-14-fix-fn-list-attivita-sorgenti-abilitate
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_list_attivita_sorgenti_abilitate: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:

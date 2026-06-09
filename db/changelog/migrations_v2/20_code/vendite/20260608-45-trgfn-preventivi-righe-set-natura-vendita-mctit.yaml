@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260608-45-trgfn-preventivi-righe-set-natura-vendita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums: [ANY]
       failOnError: true
       comment: >

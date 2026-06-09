@@ -30,7 +30,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260408-03-update-trgfn-prevent-deactivate-if-children-rename-ref-col
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Refactor trigger function BLOCK: rinomina pk_col -> ref_col,
         aggiunge 5° arg parent_attivo_col (rispetta override),

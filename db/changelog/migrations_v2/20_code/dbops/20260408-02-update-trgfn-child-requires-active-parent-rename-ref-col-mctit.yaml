@@ -18,7 +18,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260408-02-update-trgfn-child-requires-active-parent-rename-ref-col
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Rinomina interna pk_col -> ref_col nella trigger function REQUIRE.
         Chiarisce che il 5° arg e' la colonna referenziata dalla FK,

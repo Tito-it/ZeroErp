@@ -20,7 +20,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260507-05-create-vw-clienti-lista
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Vista anagrafiche.vw_clienti_lista: join flat di clienti con
         soggetti (via istanze_utilities), billing_account, utilities

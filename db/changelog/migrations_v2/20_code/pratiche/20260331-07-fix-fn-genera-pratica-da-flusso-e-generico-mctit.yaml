@@ -16,7 +16,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-07-fix-fn-genera-pratica-da-flusso
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_genera_pratica_da_flusso: 5x E_GENERICO →
               E_PARAMETRO_INVALIDO, E_VALORE_MANCANTE, E_CODICE.

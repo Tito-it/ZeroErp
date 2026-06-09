@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-42-create-trgfn-allegati-flussi-giornale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Logga ALLEGATO_AGGIUNTO nel giornale su INSERT allegato flusso."
       changes:
         - sql:

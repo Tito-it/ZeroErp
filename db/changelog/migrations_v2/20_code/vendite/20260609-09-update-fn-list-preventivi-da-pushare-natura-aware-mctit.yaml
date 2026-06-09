@@ -36,7 +36,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260609-09-update-fn-list-preventivi-da-pushare-natura-aware
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums: [ANY]
       failOnError: true
       comment: >

@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260420-09-update-fn-scope-ba-ownership-ruolo-aware
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Update di script.fn_scope_ba_ownership con filtro esplicito su

@@ -33,7 +33,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260428-08-create-fn-riattiva-articolo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

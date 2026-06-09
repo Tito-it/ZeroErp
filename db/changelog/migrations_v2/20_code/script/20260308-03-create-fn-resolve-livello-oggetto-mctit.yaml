@@ -10,7 +10,7 @@ databaseChangeLog:
       id: 20260308-03-create-fn-resolve-livello-oggetto
       author: mctit
       comment: "Sposta fn_resolve_livello_oggetto da config a script (schema corretto per funzioni riusabili cross-dominio)"
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

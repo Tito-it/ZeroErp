@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-12-create-trg-offerte-commerciali-guard-emittente-scope
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggancia il write-guard scope emittente a vendite.offerte_commerciali

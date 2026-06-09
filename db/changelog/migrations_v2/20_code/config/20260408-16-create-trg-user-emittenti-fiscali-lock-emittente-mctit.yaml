@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260408-16-create-trg-user-emittenti-fiscali-lock-emittente
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

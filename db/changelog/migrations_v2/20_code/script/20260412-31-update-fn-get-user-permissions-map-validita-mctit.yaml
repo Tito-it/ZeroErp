@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260412-31-update-fn-get-user-permissions-map-validita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Filtro temporale override aree nella mappa permessi set-based:
         da doppio confronto valido_dal/valido_al a validita @> CURRENT_DATE.

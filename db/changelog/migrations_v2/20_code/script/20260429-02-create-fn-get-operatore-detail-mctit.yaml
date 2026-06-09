@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-02-create-fn-get-operatore-detail
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea script.fn_get_operatore_detail(p_auth_user_id) RETURNS

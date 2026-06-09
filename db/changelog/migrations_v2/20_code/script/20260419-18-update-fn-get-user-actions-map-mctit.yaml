@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-18-update-fn-get-user-actions-map
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor script.fn_get_user_actions_map per usare il nuovo modello

@@ -33,7 +33,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-26-01-update-fn-push-offerta-a-contratto-add-componenti
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiorna fn_push_offerta_a_contratto (rev3): copia

@@ -16,7 +16,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260514-03-update-fn-apply-automazione-overlap-temporal-unique
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Aggiunge variabile v_temporal_unique_exists e relativo check:
         se sulla tabella target esiste gia' un UNIQUE (WITHOUT OVERLAPS) che

@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260403-13-create-vw-preventivi-pratiche
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

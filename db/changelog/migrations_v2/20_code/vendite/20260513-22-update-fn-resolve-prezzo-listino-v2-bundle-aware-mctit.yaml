@@ -19,7 +19,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-22-update-fn-resolve-prezzo-listino-v2-bundle-aware
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Rende fn_resolve_prezzo_listino_v2 bundle-aware: aggiunto parametro opzionale

@@ -53,7 +53,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260525-02-create-fn-push-offerta-a-contratto
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

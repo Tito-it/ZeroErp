@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260408-12-create-fn-resolve-emittente-for-user
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

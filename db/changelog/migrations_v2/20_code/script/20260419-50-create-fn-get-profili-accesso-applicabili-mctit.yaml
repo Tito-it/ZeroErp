@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-50-create-fn-get-profili-accesso-applicabili
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea script.fn_get_profili_accesso_applicabili(p_auth_user_id)

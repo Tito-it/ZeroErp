@@ -32,7 +32,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260610-04-update-fn-push-preventivo-a-ordine-usa-vista
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums: [ANY]
       failOnError: true
       comment: >

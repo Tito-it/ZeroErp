@@ -22,7 +22,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260515-08-update-fn-get-parameter-full-categoria-cliente
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

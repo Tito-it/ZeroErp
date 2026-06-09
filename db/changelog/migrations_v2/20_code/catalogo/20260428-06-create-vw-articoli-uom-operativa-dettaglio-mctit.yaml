@@ -32,7 +32,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260428-06-create-vw-articoli-uom-operativa-dettaglio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

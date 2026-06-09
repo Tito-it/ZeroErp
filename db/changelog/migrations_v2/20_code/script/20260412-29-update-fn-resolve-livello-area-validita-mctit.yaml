@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260412-29-update-fn-resolve-livello-area-validita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Filtro temporale override aree: da doppio confronto
         valido_dal/valido_al a operatore containment sulla colonna

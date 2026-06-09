@@ -33,7 +33,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20260526-01-create-fn-available-actions-offerta
-      runOnChange: true
+      runOnChange: false
       author: mctit
       comment: >
         Crea script.fn_available_actions_offerta(p_offerta_id BIGINT) RETURNS jsonb.

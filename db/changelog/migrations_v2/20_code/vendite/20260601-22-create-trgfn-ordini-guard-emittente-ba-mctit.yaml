@@ -17,7 +17,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-22-create-trgfn-ordini-guard-emittente-ba
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

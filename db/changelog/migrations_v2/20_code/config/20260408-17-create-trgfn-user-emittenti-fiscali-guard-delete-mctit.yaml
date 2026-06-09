@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260408-17-create-trgfn-user-emittenti-fiscali-guard-delete
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

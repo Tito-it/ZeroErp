@@ -34,7 +34,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260516-01-update-fn-resolve-prezzo-listino-v2-bozza-non-operativa
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Bug A fix: fn_resolve_prezzo_listino_v2 — lookup listini_versioni ora filtra

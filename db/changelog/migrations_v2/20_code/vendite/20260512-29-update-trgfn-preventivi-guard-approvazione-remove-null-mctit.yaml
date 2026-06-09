@@ -14,7 +14,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-29-update-trgfn-preventivi-guard-approvazione-remove-null
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

@@ -10,7 +10,7 @@ databaseChangeLog:
       id: 20260309-02-create-fn-get-user-profile
       author: mctit
       comment: "Funzione profilo utente completo: dato auth_user_id restituisce JSONB con blocchi utente, risorse_umane, soggetto ed emittente. Dipende da fn_get_soggetto_dati_by_ruolo."
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

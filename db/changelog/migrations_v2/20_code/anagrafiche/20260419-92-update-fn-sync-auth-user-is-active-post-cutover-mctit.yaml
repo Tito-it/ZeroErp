@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-92-update-fn-sync-auth-user-is-active-post-cutover
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       failOnError: true
       comment: >

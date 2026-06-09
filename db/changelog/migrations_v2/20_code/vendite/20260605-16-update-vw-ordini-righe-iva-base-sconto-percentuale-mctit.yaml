@@ -25,7 +25,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260605-16-update-vw-ordini-righe-iva-base-sconto-percentuale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       failOnError: true

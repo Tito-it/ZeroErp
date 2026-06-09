@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260407-06-trg-articoli-protect-uom-id-upd
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

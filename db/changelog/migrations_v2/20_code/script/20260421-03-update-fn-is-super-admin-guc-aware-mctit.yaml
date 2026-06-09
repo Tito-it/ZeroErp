@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260421-03-update-fn-is-super-admin-guc-aware
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Rende script.fn_is_super_admin context-aware leggendo la GUC

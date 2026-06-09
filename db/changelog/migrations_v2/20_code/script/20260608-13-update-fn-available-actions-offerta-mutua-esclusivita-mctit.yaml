@@ -35,7 +35,7 @@ databaseChangeLog:
 
     - changeSet:
           id: 20260608-13-update-fn-available-actions-offerta-mutua-esclusivita
-          runOnChange: true
+          runOnChange: false
           validCheckSums:
               - ANY
           author: mctit

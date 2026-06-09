@@ -14,7 +14,7 @@ databaseChangeLog:
       id: 20260312-01-update-fn-search-soggetti-universale-order
       author: mctit
       comment: "Rimuove vecchia firma a 5 parametri (integer[]). La funzione definitiva e' nella -02."
-      runOnChange: true
+      runOnChange: false
       failOnError: true
       changes:
         - sql:

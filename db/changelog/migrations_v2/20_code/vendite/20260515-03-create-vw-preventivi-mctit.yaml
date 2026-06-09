@@ -21,7 +21,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260515-03-create-vw-preventivi
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

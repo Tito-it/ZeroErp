@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-12-update-fn-resolve-livello-oggetto
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor script.fn_resolve_livello_oggetto per usare il nuovo

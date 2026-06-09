@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-23-update-fn-registra-tentativo-login
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor script.fn_registra_tentativo_login per scrivere su

@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-38-create-trgfn-flussi-giornale-stato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Logga FLUSSO_STATO_CAMBIATO nel giornale su UPDATE stato flusso."
       changes:
         - sql:

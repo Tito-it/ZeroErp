@@ -43,7 +43,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260605-09-create-fn-available-actions-ordine
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

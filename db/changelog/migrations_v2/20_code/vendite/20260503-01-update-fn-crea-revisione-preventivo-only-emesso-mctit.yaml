@@ -37,7 +37,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260503-01-update-fn-crea-revisione-preventivo-only-emesso
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

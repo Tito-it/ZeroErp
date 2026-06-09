@@ -15,7 +15,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260501-11-create-fn-check-utility-istanza-coerenza
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

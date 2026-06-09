@@ -18,7 +18,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-04-01-create-trgfn-listini-righe-guard-no-composito
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function vendite.trgfn_listini_righe_guard_no_composito.
@@ -89,7 +89,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-04-02-create-trg-listini-righe-guard-no-composito
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE INSERT su vendite.listini_righe, fase _a10_guard.

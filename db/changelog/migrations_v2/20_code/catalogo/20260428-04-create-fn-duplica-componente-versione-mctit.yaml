@@ -51,7 +51,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260428-04-create-fn-duplica-componente-versione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

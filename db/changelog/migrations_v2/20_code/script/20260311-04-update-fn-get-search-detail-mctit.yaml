@@ -17,7 +17,7 @@ databaseChangeLog:
       id: 20260311-04-update-fn-get-search-detail
       author: mctit
       comment: "Fix CASE codice_interno + integrazione fn_get_entita_ruolo_detail"
-      runOnChange: true
+      runOnChange: false
       failOnError: true
       changes:
         - sql:

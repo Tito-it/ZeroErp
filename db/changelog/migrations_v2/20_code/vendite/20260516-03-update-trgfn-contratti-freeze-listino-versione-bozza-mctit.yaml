@@ -31,7 +31,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260516-03-update-trgfn-contratti-freeze-listino-versione-bozza
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Bug A fix: trgfn_contratti_freeze_listino_versione — Branch B aggiunge

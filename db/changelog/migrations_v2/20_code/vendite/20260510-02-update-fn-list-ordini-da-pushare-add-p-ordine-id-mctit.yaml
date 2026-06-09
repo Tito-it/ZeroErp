@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260510-02-update-fn-list-ordini-da-pushare-add-p-ordine-id
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Estensione 2026-05 (coordinata): aggiunge p_ordine_id (opzionale) per uniformare la signature a fn_list_preventivi_da_pushare. Obbligatoria per non rompere il batch globale quando fetch_pushable_rows passa 4 args posizionali."
       changes:
         - sql:

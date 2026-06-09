@@ -19,7 +19,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-05-update-fn-contratto-riga-componenti-init-remove-fallback
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

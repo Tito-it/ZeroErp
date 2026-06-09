@@ -10,7 +10,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260430-02-create-fn-available-actions-contratto
           author: mctit
-          runOnChange: true
+          runOnChange: false
           validCheckSum: [ ANY ]
           comment: >
               Crea script.fn_available_actions_contratto(p_contratto_id BIGINT)

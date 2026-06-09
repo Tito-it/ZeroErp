@@ -25,7 +25,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260508-04-01-update-fn-ui-resolve-lista-config-etichetta-i18n
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: "Blocco F.2: fn_resolve_lista_config aggiunge etichetta_i18n_key al JSONB colonna"

@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-51-trigger-business-flussi
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Applica 4 trigger business su pratiche.flussi:
         guard prerequisiti, giornale insert, giornale stato, generazione.

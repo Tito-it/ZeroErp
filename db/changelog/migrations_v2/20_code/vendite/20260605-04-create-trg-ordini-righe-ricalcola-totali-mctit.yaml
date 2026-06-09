@@ -19,7 +19,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260605-04-create-trg-ordini-righe-ricalcola-totali
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       failOnError: true

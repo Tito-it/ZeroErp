@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260402-07-recreate-view-clienti-istanza-states
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea vista script.view_clienti_istanza_states droppata
         dalla migration 20260402-21 (ALTER codice CHAR->VARCHAR

@@ -38,7 +38,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260609-06-create-fn-push-preventivo-a-ordine
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums: [ANY]
       failOnError: true
       comment: >

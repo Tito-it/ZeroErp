@@ -16,7 +16,7 @@ databaseChangeLog:
       id: 20260311-03-create-fn-get-entita-ruolo-detail
       author: mctit
       comment: "Nuova funzione: dati entità specifici per tipo ruolo in JSONB"
-      runOnChange: true
+      runOnChange: false
       failOnError: true
       changes:
         - sql:

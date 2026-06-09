@@ -15,7 +15,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-16-fix-fn-list-commessa-attivita
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_list_commessa_attivita: 2x E_GENERICO →
               E_PARAMETRO_INVALIDO + E_VALORE_MANCANTE.
@@ -85,7 +85,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-16-fix-fn-list-consumi-da-pushare
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_list_consumi_da_pushare: 1x E_GENERICO → E_CODICE.
           changes:
@@ -157,7 +157,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-16-fix-fn-list-contratti-da-pushare
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_list_contratti_da_pushare: 1x E_GENERICO → E_CODICE.
           changes:
@@ -239,7 +239,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-16-fix-fn-list-ddt-da-pushare
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_list_ddt_da_pushare: 1x E_GENERICO → E_CODICE.
           changes:

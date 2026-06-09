@@ -34,7 +34,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260516-05-create-trgfn-contratti-righe-guard-esclusione-figlio-bundle
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         §6.1: guard ESCLUSIONE su figlio bundle vietata. Branch 1/2/3 identico

@@ -19,7 +19,7 @@ databaseChangeLog:
       comment: >
         Risolve codice_postale_id con fallback stradario -> comune
         (singolo CAP). STABLE, PARALLEL SAFE.
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

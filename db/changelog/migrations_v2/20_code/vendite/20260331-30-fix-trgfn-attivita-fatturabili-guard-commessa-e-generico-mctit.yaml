@@ -11,7 +11,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-30-fix-trgfn-attivita-fatturabili-guard-commessa
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_attivita_fatturabili_guard_commessa: 4x E_GENERICO →
               E_PARAMETRO_INVALIDO (1) + E_COMMESSA_ATTIVITA_NON_COERENTE (3).

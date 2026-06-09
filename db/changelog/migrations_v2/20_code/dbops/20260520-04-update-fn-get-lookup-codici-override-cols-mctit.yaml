@@ -33,7 +33,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260520-04-update-fn-get-lookup-codici-override-cols
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

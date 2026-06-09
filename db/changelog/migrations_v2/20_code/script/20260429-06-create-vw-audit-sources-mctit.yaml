@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-06-create-vw-audit-sources
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Vista pubblica script.vw_audit_sources (Fase 5 P1 2026-04-29).

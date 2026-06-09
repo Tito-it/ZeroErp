@@ -24,7 +24,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260420-04-01-create-trgfn-canale-origine-immutable
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea funzione trigger generica script.trgfn_canale_origine_immutable.
@@ -105,7 +105,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260420-04-02-create-trg-billing-account-canale-immutable
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE OF canale_origine su anagrafiche.billing_account.
@@ -148,7 +148,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260420-04-03-create-trg-vendite-ordini-canale-immutable
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE OF canale_origine su vendite.ordini. Nome
@@ -191,7 +191,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260420-04-04-create-trg-vendite-fatture-canale-immutable
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE OF canale_origine su vendite.fatture. Nome

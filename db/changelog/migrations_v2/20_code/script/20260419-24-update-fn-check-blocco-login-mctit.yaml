@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-24-update-fn-check-blocco-login
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor script.fn_check_blocco_login per leggere da identita_digitali

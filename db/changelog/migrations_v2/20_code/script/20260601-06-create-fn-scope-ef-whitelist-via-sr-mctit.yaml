@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-06-create-fn-scope-ef-whitelist-via-sr
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Adapter SR per lo scope EF_WHITELIST (brief RLS §1/§2): risolve la

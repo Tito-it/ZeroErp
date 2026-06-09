@@ -15,7 +15,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-09-fix-fn-create-fatturazione-lotto
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_create_fatturazione_lotto: 13x E_GENERICO → codici specifici.
               Semplificato JSONB context.
@@ -249,7 +249,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-09-fix-fn-emit-attivita-fatturabili-da-commessa
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_emit_attivita_fatturabili_da_commessa: 8x E_GENERICO → codici specifici.
           changes:
@@ -476,7 +476,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-09-fix-fn-genera-fondi-fattura-source
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_genera_fondi_fattura_source: 6x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:
@@ -608,7 +608,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-09-fix-fn-generate-fatture-righe
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_generate_fatture_righe: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:

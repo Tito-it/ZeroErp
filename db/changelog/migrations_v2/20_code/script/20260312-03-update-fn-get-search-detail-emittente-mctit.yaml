@@ -17,7 +17,7 @@ databaseChangeLog:
       id: 20260312-03-update-fn-get-search-detail-emittente
       author: mctit
       comment: "Filtro scope emittente su ramo CL via emittenti_fiscali_billing_account"
-      runOnChange: true
+      runOnChange: false
       failOnError: true
       changes:
         - sql:

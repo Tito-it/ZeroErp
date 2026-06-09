@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260408-18-create-fn-lookup-utilities-per-ba
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

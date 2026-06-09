@@ -24,7 +24,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260605-03-create-fn-ricalcola-totali-ordine
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       failOnError: true

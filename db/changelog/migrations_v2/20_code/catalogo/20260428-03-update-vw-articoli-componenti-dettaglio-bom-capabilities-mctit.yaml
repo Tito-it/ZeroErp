@@ -51,7 +51,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260428-03-update-vw-articoli-componenti-dettaglio-bom-capabilities
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

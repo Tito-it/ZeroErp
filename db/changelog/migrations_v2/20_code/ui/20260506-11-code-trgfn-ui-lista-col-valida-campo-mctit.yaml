@@ -26,7 +26,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260506-11-01-trgfn-ui-lista-col-valida-campo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: "Trigger BEFORE INSERT/UPDATE: valida che campo_sorgente esista in pg_catalog.pg_attribute"

@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-61-create-fn-scope-ba-ownership-via-fattura
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Helper BA_OWNERSHIP_VIA_FATTURA: wrapper che risolve il

@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260407-02-update-comment-fn-get-emittente-fiscale-id
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

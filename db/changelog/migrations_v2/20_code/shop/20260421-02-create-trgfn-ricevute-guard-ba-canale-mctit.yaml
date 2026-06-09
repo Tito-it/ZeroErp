@@ -28,7 +28,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260421-02-01-create-trgfn-shop-ricevute-guard-ba-canale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea trigger function shop.trgfn_ricevute_guard_ba_canale: verifica
@@ -132,7 +132,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260421-02-02-create-trg-shop-ricevute-guard-ba-canale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE INSERT + BEFORE UPDATE OF billing_account_id su

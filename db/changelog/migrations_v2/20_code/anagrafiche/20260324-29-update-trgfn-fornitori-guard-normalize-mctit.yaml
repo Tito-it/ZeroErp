@@ -14,7 +14,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260324-29-update-trgfn-fornitori-guard-normalize
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Estende trgfn_fornitori_guard_normalize con:
         1) Normalizzazione pec_email (lowercase, trim spazi).

@@ -35,7 +35,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260605-06-01-update-fn-offerta-eccezione-componenti-init-guard-esclusione
           author: mctit
-          runOnChange: true
+          runOnChange: false
           validCheckSums:
               - ANY
           comment: >

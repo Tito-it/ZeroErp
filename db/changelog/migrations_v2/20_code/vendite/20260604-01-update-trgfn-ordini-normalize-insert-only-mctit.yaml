@@ -21,7 +21,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260604-01-update-trgfn-ordini-normalize-insert-only
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

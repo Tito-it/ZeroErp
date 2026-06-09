@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260317-01-fix-trgfn-indirizzi-dettaglio-normalize-upper
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Aggiunge UPPER(BTRIM(...)) su estensione_civico, palazzina, scala, piano, interno
         nel trigger di normalizzazione. Rende il vincolo uq_indirizzi_dettaglio_norm

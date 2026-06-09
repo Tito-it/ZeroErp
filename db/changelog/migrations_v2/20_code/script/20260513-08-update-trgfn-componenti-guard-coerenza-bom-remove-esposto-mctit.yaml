@@ -19,7 +19,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-08-update-trgfn-componenti-guard-coerenza-bom-remove-esposto
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Rimozione guard esposto_in_fattura da trgfn_componenti_guard_coerenza_bom.

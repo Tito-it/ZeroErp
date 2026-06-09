@@ -12,7 +12,7 @@ databaseChangeLog:
       comment: >
         Fix bug fallback emittente unico: HAVING COUNT(*) = 1 senza GROUP BY
         produceva SQL semanticamente errato. Sostituito con subquery count + SELECT separato.
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

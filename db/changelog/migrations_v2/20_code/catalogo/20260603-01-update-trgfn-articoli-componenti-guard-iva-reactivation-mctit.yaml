@@ -28,7 +28,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260603-01-update-trgfn-articoli-componenti-guard-iva-reactivation
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Estende trgfn_articoli_componenti_guard_iva alla riattivazione: il

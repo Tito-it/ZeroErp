@@ -16,7 +16,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-20-fix-fn-resolve-commessa-prezzi
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               SKIP: fn_resolve_commessa_prezzi dipende da vendite.attivita_fatturabili_lotti
               che non esiste piu'. La funzione non viene rigenerata.
@@ -121,7 +121,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-20-fix-fn-resolve-fatturazione-pipeline-step
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_resolve_fatturazione_pipeline_step: 4x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:
@@ -184,7 +184,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-20-fix-fn-resolve-lotto-task-execution-mode
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_resolve_lotto_task_execution_mode: 4x E_GENERICO →
               E_PARAMETRO_INVALIDO (3) + E_CONFIG_MANCANTE (1).

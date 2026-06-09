@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-36-create-trgfn-pratiche-giornale-priorita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Logga PRIORITA_CAMBIATA nel giornale su UPDATE priorita pratica."
       changes:
         - sql:

@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260418-22-create-trgfn-identita-digitali-guard-coerenza
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Guard di coerenza tra ruolo_applicativo e soggetto_ruolo per la

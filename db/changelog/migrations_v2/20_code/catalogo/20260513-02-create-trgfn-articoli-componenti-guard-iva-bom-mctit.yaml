@@ -16,7 +16,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-02-01-create-trgfn-articoli-componenti-guard-iva-bom
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function catalogo.trgfn_articoli_componenti_guard_iva.
@@ -99,7 +99,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-02-02-create-trg-articoli-componenti-guard-iva-bom
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE INSERT su catalogo.articoli_componenti, fase _a10_guard.

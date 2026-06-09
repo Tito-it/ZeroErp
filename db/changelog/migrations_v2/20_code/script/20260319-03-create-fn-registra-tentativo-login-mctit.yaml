@@ -20,7 +20,7 @@ databaseChangeLog:
             Fallimento: incrementa. Se >= max: blocco temporaneo.
             Max e durata da config.parameters.
             Ritorna JSONB con stato.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

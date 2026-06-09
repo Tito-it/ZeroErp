@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260403-09-create-fn-crea-revisione-preventivo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

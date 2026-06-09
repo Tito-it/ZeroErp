@@ -29,7 +29,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260515-12-create-trg-contratti-righe-guard-aggiunta
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Step 2.2: trigger function + trigger guard AGGIUNTA fuori listino.

@@ -18,7 +18,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260502-01-create-fn-get-emittenti-scope-pk-ids
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

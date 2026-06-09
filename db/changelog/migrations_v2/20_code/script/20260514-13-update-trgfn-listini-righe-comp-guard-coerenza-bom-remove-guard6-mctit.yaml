@@ -24,7 +24,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260514-13-update-trgfn-listini-righe-comp-guard-coerenza-bom-remove-guard6
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Rimuove guard 6 (validita riga ⊆ BoM) da
         trgfn_listini_righe_comp_guard_coerenza_bom: ora gestito dalla

@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-17-create-trg-fatturazione-lotti-guard-emittente-scope
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggancia il write-guard scope emittente a vendite.fatturazione_lotti

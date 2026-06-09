@@ -30,7 +30,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260609-08-update-fn-available-actions-preventivo-genera-ordine
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums: [ANY]
       failOnError: true
       comment: >

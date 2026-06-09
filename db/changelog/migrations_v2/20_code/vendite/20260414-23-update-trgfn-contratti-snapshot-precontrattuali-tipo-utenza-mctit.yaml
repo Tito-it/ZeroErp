@@ -25,7 +25,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260414-23-update-trgfn-contratti-snapshot-precontrattuali-tipo-utenza
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       changes:

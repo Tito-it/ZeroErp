@@ -13,7 +13,7 @@ databaseChangeLog:
         Aggiunge codice_interno al RETURNS TABLE di fn_get_lookup_codici.
         Se la tabella ha la colonna codice_interno la restituisce, altrimenti NULL::text.
         Stesso pattern gia' usato per codice e attivo.
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

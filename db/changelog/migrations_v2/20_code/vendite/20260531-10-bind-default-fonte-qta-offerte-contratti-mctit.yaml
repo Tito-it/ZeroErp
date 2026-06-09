@@ -29,7 +29,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260531-10-01-bind-trg-offerte-eccezioni-default-fonte-qta
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >
@@ -70,7 +70,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260531-10-02-rebind-trg-contrighe-default-fonte-qta-generic
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

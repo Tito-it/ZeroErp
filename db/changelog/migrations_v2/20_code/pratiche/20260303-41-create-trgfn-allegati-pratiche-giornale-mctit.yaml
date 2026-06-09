@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-41-create-trgfn-allegati-pratiche-giornale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Logga ALLEGATO_AGGIUNTO nel giornale su INSERT allegato pratica."
       changes:
         - sql:

@@ -23,7 +23,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-19-01-create-trgfn-listini-righe-comp-guard-coerenza-bom
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function script.trgfn_listini_righe_comp_guard_coerenza_bom.
@@ -207,7 +207,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-19-02-create-trg-listrighe-comp-guard-coerenza-bom
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE INSERT OR UPDATE su vendite.listini_righe_componenti,

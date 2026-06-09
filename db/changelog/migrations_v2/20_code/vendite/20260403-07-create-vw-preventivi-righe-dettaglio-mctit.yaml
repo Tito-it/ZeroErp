@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260403-07-create-vw-preventivi-righe-dettaglio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

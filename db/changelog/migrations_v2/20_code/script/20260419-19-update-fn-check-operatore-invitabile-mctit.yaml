@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-19-update-fn-check-operatore-invitabile
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor script.fn_check_operatore_invitabile per usare il nuovo

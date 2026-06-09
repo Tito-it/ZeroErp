@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-23-create-trg-ordini-guard-emittente-scope
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggancia il write-guard scope emittente (RLS, simmetria scrittura) a

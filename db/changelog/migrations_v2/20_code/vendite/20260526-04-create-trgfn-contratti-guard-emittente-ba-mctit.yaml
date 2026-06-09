@@ -28,7 +28,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-04-create-trgfn-contratti-guard-emittente-ba
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

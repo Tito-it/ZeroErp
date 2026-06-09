@@ -22,7 +22,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-17-update-trgfn-preventivi-guard-transizione-approvazione-null
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

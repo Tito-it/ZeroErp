@@ -23,7 +23,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260502-06-01-create-trgfn-parameter-overrides-fk-surrogate-dispatch
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

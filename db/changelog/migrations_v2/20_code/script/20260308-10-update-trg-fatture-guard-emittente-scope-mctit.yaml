@@ -10,7 +10,7 @@ databaseChangeLog:
       id: 20260308-10-update-trg-fatture-guard-emittente-scope
       author: mctit
       comment: "Rebind trigger fatture guard emittente: config.trgfn → script.trgfn"
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

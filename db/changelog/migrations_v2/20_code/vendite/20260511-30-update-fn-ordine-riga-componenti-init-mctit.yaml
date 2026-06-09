@@ -20,7 +20,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-30-01-update-fn-ordine-riga-componenti-init
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiorna vendite.fn_ordine_riga_componenti_init: legge utility_id

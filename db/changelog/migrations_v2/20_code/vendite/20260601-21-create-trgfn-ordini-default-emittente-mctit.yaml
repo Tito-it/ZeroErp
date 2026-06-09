@@ -17,7 +17,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-21-create-trgfn-ordini-default-emittente
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

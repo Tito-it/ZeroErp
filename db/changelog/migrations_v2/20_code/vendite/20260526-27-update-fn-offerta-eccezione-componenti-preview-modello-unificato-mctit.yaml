@@ -83,7 +83,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260526-27-02-create-fn-offerta-eccezione-componenti-preview-modello-unificato
           author: mctit
-          runOnChange: true
+          runOnChange: false
           validCheckSums:
               - ANY
           comment: >

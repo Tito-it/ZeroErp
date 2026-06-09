@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-52-update-fn-check-azione-processo-via-profili-accesso
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiornamento successivo di script.fn_check_azione_processo (§4.8

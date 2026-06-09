@@ -30,7 +30,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260507-04-01-trgfn-ui-lista-preferenza-clear-preset-base-ts
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: "Trigger z90: azzera preset_base_data_update quando preset_base_id -> NULL"

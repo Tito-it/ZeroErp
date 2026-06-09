@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-31-create-fn-guard-prerequisiti-flusso
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Guard fail-fast: verifica prerequisiti e solleva eccezione via
         script.fn_log_and_raise_error se non soddisfatti.

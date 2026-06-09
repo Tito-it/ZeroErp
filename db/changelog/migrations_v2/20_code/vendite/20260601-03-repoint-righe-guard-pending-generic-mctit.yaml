@@ -36,7 +36,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-03-01-repoint-righe-guard-pending-generic
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >
