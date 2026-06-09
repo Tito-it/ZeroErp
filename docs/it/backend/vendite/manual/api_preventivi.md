@@ -291,6 +291,8 @@ Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
 - FE: azione **data-driven** «Genera ordine» su `PreventiviDrawer`, esposta dalla
   capability `genera_ordine` di `script.fn_available_actions_preventivo` (visibile
   solo con **residuo merce** non allocato), non più hardcoded su `ACCETTATO`.
+  L'azione apre il **`GeneraOrdineDialog`** (vedi §6d): l'operatore seleziona le
+  righe (preselezionate tutte) e la conferma invia `righe_ids`.
 - **Percorso pratica**: lo smistamento è orchestrato da `CONFERMA_VENDITA`
   (handler `vendita.push_preventivo`), che chiama la stessa primitiva passando
   `p_pratica_id` per l'aggancio `pratiche_sorgenti` (ordine `COLLEGATO`). Questo
@@ -299,6 +301,29 @@ Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
 > **Offerta → ordine**: non disponibile (l'offerta non ha righe materializzate,
 > solo eccezioni su listino). Prerequisito DB: brief
 > [db-brief-offerta-righe-espanse.md](../../../dev/work-done/db-brief-offerta-righe-espanse.md).
+
+---
+
+### 6d. Righe merce smistabili a ordine `GET /api/v1/vendite/preventivi/{id}/righe-smistabili-ordine/`
+
+Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righe
+**merce** del preventivo ancora da ordinare.
+
+- View `ApiPreventivoRigheSmistabiliOrdine` (area `vendite`, sola lettura) →
+  `preventivi_service.list_righe_smistabili_ordine` →
+  `PreventiviRepository.list_righe_smistabili_ordine`.
+- **Criterio** (identico al predicato di `fn_preventivo_ha_residuo_ordine` / al
+  loop di `fn_push_preventivo_a_ordine`): natura `destinazione_tipo='ORDINE'`,
+  riga attiva, **non ancora allocata** a un ordine (`NOT EXISTS` su
+  `ordini_righe.preventivo_riga_id`). Le righe restituite sono **esattamente**
+  quelle che lo smistamento copierebbe → niente sorprese tra anteprima e push.
+- Output `200`: `{ "data": [ { id, ordine, articolo_id, articolo_codice,
+  articolo_descrizione, descrizione, qta_operativa, uom_operativa_id, uom_codice,
+  prezzo_unitario, sconto_percentuale } ] }` (campi display via JOIN, no lookup
+  client-side). Lista **vuota** se non resta merce da ordinare.
+- Errori: `E_PREV_NOT_FOUND` (404) se il preventivo non esiste.
+- FE: `GeneraOrdineDialog.vue` (checkbox multi-selezione, preseleziona tutte) →
+  conferma `POST /genera-ordine/ {righe_ids}` (§6c).
 
 ---
 

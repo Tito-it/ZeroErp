@@ -62,7 +62,7 @@ function onCancel() {
     @save="onSave"
     @cancel="onCancel"
   >
-    <p class="app-dialog-hint">{{ t('preventivi.genera_ordine_hint') }}</p>
+    <p class="app-field-hint">{{ t('preventivi.genera_ordine_hint') }}</p>
     <DataTable
       :value="righe"
       v-model:selection="selected"

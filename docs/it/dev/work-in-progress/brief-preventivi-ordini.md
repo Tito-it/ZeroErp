@@ -206,10 +206,13 @@ Stato BE 2026-06-09 (parte 2, **NON committato** — `dev/backend-tid`):
    **data-driven** sulla capability `genera_ordine`. Supera la scelta D2/§6
    (disabilitare): la soluzione assoluta è la riconversione, non la disattivazione.
 
-**Residui** (non bloccanti): smistamento **riga-per-riga** (manca solo il dialog FE
-di selezione; endpoint/repo/fn DB già con `righe_ids`); fragilità [F1] lookup
-`INNER`→`LEFT JOIN` natura; coordinamento commessa multi-sorgente
-([brief-db-commesse-multi-sorgente.md](../work-done/brief-db-commesse-multi-sorgente.md) §4.2);
+5. ✅ **Smistamento riga-per-riga** — `GET /preventivi/<id>/righe-smistabili-ordine/`
+   (righe merce non allocate) + `GeneraOrdineDialog` FE (checkbox, preselezione
+   tutte) → `POST /genera-ordine/ {righe_ids}`. Smista tutte o un sottoinsieme.
+
+**Residui** (non bloccanti): fragilità [F1] lookup `INNER`→`LEFT JOIN` natura;
+coordinamento commessa multi-sorgente **chiuso**
+([brief-db-commesse-multi-sorgente.md](../work-done/brief-db-commesse-multi-sorgente.md));
 smoke UI E2E.
 
 ## 8. Log implementazione DB (2026-06-09)
