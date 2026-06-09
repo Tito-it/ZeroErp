@@ -78,6 +78,11 @@ const props = defineProps({
   // Readonly cumulativo: si somma all'inject del provider area (frontend-standards
   // §"Modalita' sola lettura", regola "drawer admin DEVE esporre prop readonly").
   readonly: { type: Boolean, default: false },
+  // Pratica collegata (percorso pratica-first PREVENTIVI): quando valorizzata,
+  // l'accettazione NON avviene dal drawer (azione → ACCETTATO nascosta) ma dal
+  // flusso APPROVAZIONE_CLIENTE (endpoint M2), che applica la politica di
+  // fatturazione dalla configurazione, non i campi scelti qui.
+  praticaId: { type: [Number, null], default: null },
 })
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const onClose = useDrawerClose(emit, 'cancelled')
@@ -734,8 +739,12 @@ const drawerActions = computed(() => {
   // `push_commessa` viene filtrato: il push ha una sezione dedicata
   // (PreventiviIntegrazione) con logica propria che il bottone drawer
   // duplicherebbe (scelta competenza, push parziale, log).
+  // Sul percorso pratica (praticaId valorizzato) l'accettazione e' guidata dal
+  // flusso APPROVAZIONE_CLIENTE (M2): nascondi l'azione → ACCETTATO dal drawer
+  // per non creare un secondo percorso con politica fatturazione divergente.
   const availableActionsHeader = (availableActions.value || [])
     .filter(a => a.key !== 'push_commessa')
+    .filter(a => !(props.praticaId && a.target_state === STATO_PREVENTIVO.ACCETTATO))
   const list = mapAvailableActionsToDrawerActions({
     availableActions: availableActionsHeader,
     t,

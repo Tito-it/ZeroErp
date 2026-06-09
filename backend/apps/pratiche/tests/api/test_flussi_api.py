@@ -26,7 +26,7 @@ Indice test eseguiti:
 """
 
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from django.test import Client, SimpleTestCase
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -148,7 +148,8 @@ class FlussiApiTests(JwtMockedApiTest):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        mock_avvia.assert_called_once_with(5)
+        # La view passa l'utente acting (p_user §8.5); username derivato dal Mock.
+        mock_avvia.assert_called_once_with(5, user=ANY)
 
     # Scopo: Verifica POST transizione generica via service.
     @patch(_AUTH, return_value=(Mock(), None))

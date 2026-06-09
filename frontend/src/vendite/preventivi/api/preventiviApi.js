@@ -174,3 +174,16 @@ export function generaPratica(preventivoId, payload) {
 export function listPratiche(preventivoId) {
   return api.get(`${BASE}/${preventivoId}/pratiche/`)
 }
+
+// PREVENTIVAZIONE (percorso pratica-first): aggancia il preventivo come ROOT a
+// una pratica. Idempotente. Fonte di verita' del legame preventivo↔pratica.
+export function collegaPratica(preventivoId, payload) {
+  return api.post(`${BASE}/${preventivoId}/collega-pratica/`, payload)
+}
+
+// M2 (§8.3): completa il flusso APPROVAZIONE_CLIENTE e, su esito POSITIVO,
+// accetta il preventivo ROOT della pratica. Body: {pratica_id, flusso_id, esito,
+// note_esito}. Il preventivo e' risolto lato BE dal legame ROOT.
+export function completaApprovazioneFlusso(payload) {
+  return api.post(`${BASE}/approvazione-flusso/`, payload)
+}

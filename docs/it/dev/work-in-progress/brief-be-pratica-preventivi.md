@@ -19,6 +19,28 @@
 
 ---
 
+## 0. Contratto DB verificato (analisi push 2026-06-08)
+
+Tutti i prerequisiti DB sono **consegnati e applicati**. Oggetti reali che
+l'handler userà (verificati contro changelog):
+
+| Oggetto DB | Identità reale | Uso BE |
+|---|---|---|
+| `tipi_prestazione` | `9002 PREVENTIVI_IMMEDIATA`, `9003 PREVENTIVI_DIFFERITA` | creazione pratica |
+| `template_flussi` CONFERMA | `9004` (IMM., `handler_params {"modalita_fatturazione":"IMMEDIATA"}`), `9008` (DIFF., `"DIFFERITA"`), entrambi `handler_id=9001` | dispatch |
+| `handler_flussi` | `9001 handler_key='vendita.push_preventivo'` | **chiave `HANDLER_MAP`** |
+| prerequisiti esito-aware | catena 10→20→30→40 con `esito_richiesto='POSITIVO'`; fn `fn_check_prerequisiti_flusso` esito-aware; guard `COMPLETATO⇒esito NOT NULL` | §8.3/§8.4 |
+| `pratiche.fn_log_evento_dominio(p_pratica_id, p_flusso_id, p_tipo_evento text, p_meta jsonb DEFAULT '{}') RETURNS bigint` | mappa `azione/dettaglio`, `origine='HANDLER'`, forza `DOMINIO_*` | C5 |
+| `vendite.fn_approva_commessa_attivita`, `vendite.fn_cambia_stato_commessa` | macchina commesse (✅) | C8 |
+| codici errore | `474` PARAM_MODALITA, `475` COMPETENZA_RICHIESTA, `476` PREVENTIVO_GIA_PUSHATO; `473` COMMESSA_NESSUNA_RIGA_APPROVATA | mappatura `ErrorManager` |
+| GRANT `competenze_flussi` | applicato | coda lavoro |
+
+> ⚠ **`config.modalita_fatturazione` NON esiste** (decisione modeling): la
+> validazione di `modalita_fatturazione` è **in codice** (C4). Lo confermano i
+> seed (`handler_params` JSONB) e l'assenza della tabella.
+
+---
+
 ## 1. Obiettivo BE
 
 Registrare il **primo handler reale** del motore pratiche
@@ -93,10 +115,12 @@ trigger applicativo: quando il flusso `CONFERMA` entra in `IN_CORSO`, chiamare
 
 ### C4 — Validazione `handler_params` (D-f)
 
-Validare con `ErrorManager.require` / `PayloadValidator`:
-`modalita_fatturazione ∈ {IMMEDIATA, DIFFERITA}` (lookup su
-`config.modalita_fatturazione`) → altrimenti
-`E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA`. Mai `KeyError` grezzo.
+Validare con `ErrorManager.require`: `modalita_fatturazione ∈ {IMMEDIATA,
+DIFFERITA}` — **set definito in codice** (la tabella `config.modalita_fatturazione`
+**non esiste**, decisione modeling: il valore vive in `handler_params` JSONB e si
+valida in codice). Fuori set o assente →
+`E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA` (codice DB id 474). Mai
+`KeyError` grezzo.
 
 ### C5 — Wrapper scrittura giornale di dominio
 
@@ -132,31 +156,36 @@ UNIQUE `(pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)`):
 - preventivo come `ROOT` (può già esistere se agganciato in `PREVENTIVAZIONE`);
 - commessa come `COLLEGATO`.
 
-### C7 — Riconciliazione politica sul percorso pratica (conseguenza decisione)
+### C7 — Riconciliazione politica sul percorso pratica → ✅ IMPLEMENTATO (c7-2)
 
 Il push esistente prende `fatturazione_immediata`/`competenza` dal preventivo.
-Sul percorso pratica **la config è autorevole**. L'handler deve garantire che la
-commessa riceva la politica da `handler_params`/`flussi.meta`, **non** dal valore
-d'accettazione. Due strade — **da decidere (verifica BE)**:
+Sul percorso pratica **la config è autorevole**. **Scelta finale: c7-2** —
+l'handler scrive `fatturazione_immediata` + `competenza_mese` **sul preventivo**
+(`update_preventivo`) **prima** del push; la pipeline esistente li propaga a
+testata/righe commessa senza modifiche.
 
-- **(c7-1)** parametrizzare il push: estendere `pr_run_commesse_push_one` (+
-  orchestratore + handler sorgente) con `fatturazione_immediata` +
-  `competenza_mese` espliciti che **sovrascrivono** la sorgente. **Verificato
-  (§8.6)**: questi parametri **oggi non esistono** — è un lavoro reale, non un
-  semplice passaggio di argomenti;
-- **(c7-2)** l'handler scrive `fatturazione_immediata`/`competenza` sul
-  preventivo **prima** del push, così la pipeline li propaga.
+**Inversione rispetto alla raccomandazione iniziale (c7-1), giustificata da due
+verifiche di codice (2026-06-08)**:
 
-> **Raccomandazione**: (c7-1) — parametri espliciti evitano di mutare lo stato
-> del preventivo come effetto collaterale e tengono l'handler l'unica fonte
-> autorevole. Il default dei parametri resta "leggi dalla sorgente" per non
-> rompere il push autonomo. Vedi §8.6 per il punto esatto di lettura.
+1. `fatturazione_immediata` e `competenza_mese` sono **colonne di testata di
+   `vendite.preventivi`**, già scritte all'accettazione
+   ([preventivi_service.py:572-577](../../../backend/apps/vendite/services/preventivi_service.py#L572))
+   e lette da `fn_list_preventivi_da_pushare`. Scriverle è il pattern esistente.
+2. **Nessun trigger di immutabilità** su `vendite.preventivi` blocca l'UPDATE di
+   un preventivo `ACCETTATO` (solo norm/default/guard-transizione/scope).
+
+→ c7-2 **non tocca il path di push condiviso** (niente threading attraverso
+`BaseSourceHandler`/orchestratore, usato anche dal cron batch): blast radius
+molto minore di c7-1. Sul percorso pratica non è un side-effect occulto: il
+dialog di accettazione (FE F1) non chiede quei campi, quindi la scrittura
+dell'handler è la **prima e unica** scrittura autorevole. §8.6 (c7-1) resta
+documentato come alternativa scartata.
 
 ---
 
 ## 4. Idempotenza (riuso, non riscrittura)
 
-L'idempotenza è **già garificata** a valle:
+L'idempotenza è **già garantita** a valle:
 - `commesse_sorgenti` ha UNIQUE `(sorgente_tipo_id, sorgente_uid, ruolo_link)` →
   un preventivo non genera due commesse;
 - la riga commessa è idempotente su `(commessa_id, segment_key)`.
@@ -185,8 +214,8 @@ execute(flusso_id, pratica_id, meta, handler_params):
   # TUTTO il corpo gira in UNA transazione atomica (vedi §8.1)
 
  1. modalita = handler_params["modalita_fatturazione"]
-    require modalita in lookup(config.modalita_fatturazione)
-        else E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA
+    require modalita in {IMMEDIATA, DIFFERITA}   # set in codice, NO lookup DB
+        else E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA   # (codice DB id 474)
 
  2. preventivo_id = meta["preventivo_id"]
     carica preventivo; verifica stato == ACCETTATO (id 4)
@@ -194,23 +223,29 @@ execute(flusso_id, pratica_id, meta, handler_params):
  3. competenza:
       IMMEDIATA → mese corrente; fatturazione_immediata = true
       DIFFERITA → meta["competenza_fatturazione"]
-                  else E_VENDITA_COMPETENZA_RICHIESTA
+                  else E_VENDITA_COMPETENZA_RICHIESTA           # (id 475)
                   fatturazione_immediata = false
 
  4. idempotenza alta: se commessa già esiste per questo preventivo
         (commesse_sorgenti / giornale DOMINIO_COMMESSA_CREATA)
         → riconosci e NON ricreare. Vedi §8.2 (idempotenza step-level):
           se commessa esiste ma NON è ancora PRONTA_FATTURAZIONE, riprendi
-          da dove serve; se già completata → E_VENDITA_PREVENTIVO_GIA_PUSHATO
+          da dove serve; se già completata → E_VENDITA_PREVENTIVO_GIA_PUSHATO  # (id 476)
 
  5. report = pr_run_commesse_push_one(            # NON push_a_commessa (vedi §8.1)
               sorgente_codice='PREVENTIVO',
               sorgente_uid=preventivo_id,
               fatturazione_immediata=<step 3>,    # param DA AGGIUNGERE (§8.6)
               competenza_mese=<step 3>)           # param DA AGGIUNGERE (§8.6)
-    # destinazione FISSA = commessa diretta (no split natura in questo brief)
+    # destinazione FISSA = commessa diretta (no split natura in questo brief — §9)
 
- 6. pratiche_sorgenti:
+ 6. fn_approva_commessa_attivita(commessa_id, NULL, user)   # righe → APPROVATA (idemp.)
+
+ 7. fn_cambia_stato_commessa(commessa_id, 'PRONTA_FATTURAZIONE', user)
+    # guard DB: ≥1 riga APPROVATA+NON_EMESSA (E_COMMESSA_NESSUNA_RIGA_APPROVATA id 473)
+    # idempotenza: se già PRONTA, NON richiamare (PRONTA→PRONTA non in matrice → §8.2)
+
+ 8. pratiche_sorgenti:
       upsert (pratica_id, PREVENTIVO, preventivo.uid, ROOT)   # idempotente
       upsert (pratica_id, COMMESSA,  commessa_id,   COLLEGATO)
 
@@ -218,7 +253,7 @@ execute(flusso_id, pratica_id, meta, handler_params):
     # try/except che ingoia (a differenza di push_a_commessa, §8.1). Non riusare
     # push_a_commessa proprio per non ereditare il swallow.
 
-10. giornale:
+10. giornale (fn DB pratiche.fn_log_evento_dominio, §0):
       log_evento_dominio(DOMINIO_COMMESSA_CREATA,
           meta={commessa_id, preventivo_id, competenza, modalita})
       log_evento_dominio(DOMINIO_PREVENTIVO_EVASO, meta={preventivo_id})
@@ -228,8 +263,8 @@ execute(flusso_id, pratica_id, meta, handler_params):
 
 A valle, senza altra logica: `fn_list_commesse_emittibili(p_competenza_mese)`
 includerà la commessa nel lotto giusto (mese corrente per IMMEDIATA, mese scelto
-per DIFFERITA) — **a condizione** che la commessa risulti emittibile (vedi
-domanda DB V9: se serve un passo di approvazione, l'handler lo invoca tra 5 e 8).
+per DIFFERITA): la commessa è ora `PRONTA_FATTURAZIONE` (step 7) con righe
+`APPROVATA`+`NON_EMESSA` (step 6) → soddisfa i requisiti di emittibilità.
 
 ---
 
@@ -318,25 +353,29 @@ Con i prerequisiti **esito-aware** (DB B-PREREQ), `CONFERMA` si abilita solo se
 dichiara che "completare `APPROVAZIONE_CLIENTE` POSITIVO" e "preventivo→`ACCETTATO`"
 sono **la stessa azione del dialog**.
 
-**Decisione — lo fa il BE, nella stessa azione di accettazione, atomico**: lo
-**stesso** metodo di servizio che porta il preventivo a `ACCETTATO` deve anche
-completare il flusso `APPROVAZIONE_CLIENTE` con esito `POSITIVO` (e `NEGATIVO` sul
-rifiuto), nella **stessa transazione**, quando il preventivo è collegato a una
-pratica `PREVENTIVI`.
+**Decisione finale (Tid 2026-06-08): M2 — il completamento del flusso GUIDA
+l'accettazione.** L'operatore completa `APPROVAZIONE_CLIENTE` (POSITIVO/NEGATIVO)
+dalla dashboard; il BE, nella **stessa transazione**, su POSITIVO porta il
+preventivo collegato a `ACCETTATO`. La policy di fatturazione è **neutra** qui
+(`False`/mese corrente): l'autorità sul percorso pratica è l'handler a `CONFERMA`
+(c7-2), non l'accettazione.
 
-Perché:
-- tiene vera e **atomica** l'equazione "accetto = completo il flusso": non possono
-  divergere;
-- il FE resta sottile: mostra il dialog esistente, chiama **un** endpoint (vedi
-  brief FE F1) — nessuna orchestrazione FE che si desincronizza;
-- un passo FE separato lascerebbe la finestra "preventivo `ACCETTATO` ma flusso
-  aperto" → `CONFERMA` bloccata e operatore confuso.
+Perché M2 (vs M1 = accept guida il flusso): è l'azione naturale nel contesto
+pratica, **non tocca** il dialog di accettazione standalone (percorso autonomo
+invariato), e la direzione delle dipendenze resta `vendite→pratiche`.
 
-⚠ Implementazione: il BE deve **risalire** dal preventivo alla pratica (via
-`pratiche_sorgenti` ROOT) e individuare il flusso `APPROVAZIONE_CLIENTE` da
-completare. Caso limite: più pratiche `PREVENTIVI` collegate → in v1 è di fatto
-una, ma mettere un **guard sull'ambiguità** (errore parlante, non scelta
-silenziosa).
+**✅ IMPLEMENTATO** (BE):
+- `preventivi_service.completa_approvazione_da_flusso(preventivo_id, *, flusso_id,
+  esito, note_esito, user)` — `@transaction.atomic`: `completa_flusso` (pratiche)
+  + su POSITIVO `cambia_stato(ACCETTATO, fatturazione neutra)`. Import lazy
+  `pratiche_service` (vendite→pratiche).
+- endpoint `POST /api/v1/vendite/preventivi/<id>/approvazione-flusso/`
+  (`ApiPreventivoApprovazioneFlusso`), body `{flusso_id, esito, note_esito}`. La
+  FE passa entrambi gli id (ha il contesto), niente risoluzione cross-schema.
+- NEGATIVO: solo completamento flusso (preventivo resta EMESSO) in v1.
+
+→ **FE**: per `APPROVAZIONE_CLIENTE` di una pratica `PREVENTIVI`, la FE chiama
+questo endpoint invece del generico `/flussi/<id>/stato/` (vedi brief FE F1).
 
 ### 8.4 `COMPLETATO ⇒ esito NOT NULL`: grep dei call site
 
@@ -403,19 +442,50 @@ così da "lavoro da stimare" a **3 punti precisi** + threading kwargs. ✅ nodo 
 
 ---
 
-## 7. Domande aperte BE (prima del piano)
+## 9. Semplificazione natura v1 (gap dichiarato — verificato 2026-06-08)
 
-1. **C3**: dispatch automatico su `IN_CORSO` (a) vs azione esplicita (b)?
-   (raccomandato a).
-2. **C7**: override politica via parametri push (c7-1) vs scrittura su preventivo
-   (c7-2)? Dipende da *dove* la pipeline legge `fatturazione_immediata`/
-   `competenza` oggi (verifica preliminare).
-3. **C2**: pattern di registrazione handler cross-app per evitare ciclo
-   `pratiche→vendite` (lazy import in `vendite/apps.py:ready()`?).
-4. **§4**: comportamento attuale dell'orchestratore sul ri-push (per il mapping
-   a errore semantico).
-5. **DB V9** (eredita dal brief DB): se la commessa necessita approvazione per
-   diventare emittibile, l'handler deve invocare quella funzione (step 5–8).
+Il push del 2026-06-08 ha consegnato `config.nature_vendita` (MERCE→ORDINE,
+SERVIZIO_UNA_TANTUM→COMMESSA, SERVIZIO_RICORRENTE→CONTRATTO) + colonne su
+`articoli` e `preventivi_righe` — **fuori dallo scope di questo brief**. Verifica
+dell'impatto sull'handler:
+
+- `preventivi_righe.natura_vendita_id` è **NULLABLE**, derivata da trigger
+  (`trgfn_preventivi_righe_set_natura_vendita`, da `articoli.natura_vendita_id`),
+  **nessun override operatore**;
+- **nessun vincolo NOT NULL, nessun guard a CONFERMA** che richieda natura;
+- i codici `E_VENDITA_RIGA_SENZA_NATURA` / `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`
+  **non sono stati consegnati**; la pipeline di push **non** instrada per natura.
+
+**Conseguenza v1 (consapevole)**: l'handler pusha **tutte** le righe → commessa
+diretta, ignorando `natura_vendita_id`. Una riga `SERVIZIO_RICORRENTE` (che il
+modello §11.0.1 dichiara "errore in preventivo") finirebbe **silenziosamente in
+commessa**, perché il guard che la bloccherebbe non esiste ancora.
+
+**Decisione**: si lascia come **gap dichiarato di v1** (coerente con "destinazione
+fissa = commessa, no split natura"). Lo split per natura + i guard
+(`E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`, ecc.) sono materia del **brief natura
+separato**, quando il DB esporrà i guard. L'handler v1 **non** li anticipa
+(eviterebbe di duplicare a mano una validazione che il modello vuole a DB).
+
+---
+
+## 7. Domande aperte BE — tutte chiuse
+
+1. ~~**C3** dispatch automatico vs esplicito~~ → **automatico su `IN_CORSO`**,
+   confluito nella transazione unica §8.2.
+2. ~~**C7** override policy~~ → **CHIUSO** (§8.6: 3 punti injection in Python).
+3. **C2** registrazione handler cross-app (lazy import in `vendite/apps.py:ready()`)
+   — pattern da fissare in apertura codice (è il primo handler, fa giurisprudenza).
+4. ~~**§4** ri-push~~ → da osservare in implementazione: mappare l'eventuale
+   unique-violation a `E_VENDITA_PREVENTIVO_GIA_PUSHATO` (id 476).
+5. ~~**DB V9** emittibilità commessa~~ → **CHIUSO** (macchina commesse consegnata,
+   §0/C8).
+6. ~~**§8.1-8.6**~~ → tutti **CHIUSI** (verificati/decisi). ~~§8.3~~ accoppiamento
+   accettazione↔flusso e ~~§8.5~~ `p_user`: decisi (BE atomico, param esplicito).
+
+Residuo reale per l'implementazione: solo **C2** (pattern registrazione) e la
+verifica runtime di §8.4 (grep `completa_flusso`/`cambia_stato` per il vincolo
+`COMPLETATO⇒esito`).
 
 ---
 

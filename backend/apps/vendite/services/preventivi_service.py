@@ -630,6 +630,92 @@ def list_revisioni(preventivo_id: int) -> list[dict[str, Any]]:
     return repo.list_revisioni(preventivo_id)
 
 
+# Scopo: M2 (brief BE §8.3) — accoppiamento "accettazione preventivo ↔
+#        completamento flusso APPROVAZIONE_CLIENTE". Sul percorso pratica il
+#        completamento del flusso GUIDA l'accettazione: completa il flusso
+#        (POSITIVO/NEGATIVO) e, in POSITIVO, porta il preventivo collegato a
+#        ACCETTATO nella STESSA transazione (i due non possono divergere; un
+#        fallimento dell'accettazione rolla anche il completamento del flusso).
+#        La policy di fatturazione qui e' NEUTRA (False / mese corrente):
+#        l'autorita' sul percorso pratica e' l'handler `vendita.push_preventivo`
+#        al flusso CONFERMA, che la sovrascrive dalla configurazione (c7-2).
+#        Esito NEGATIVO: solo completamento flusso (preventivo resta EMESSO,
+#        gestione manuale dell'operatore — v1).
+#        Direzione dipendenze vendite→pratiche (consentita); import lazy.
+@transaction.atomic
+def completa_approvazione_da_flusso(
+    pratica_id: int,
+    *,
+    flusso_id: int,
+    esito: str,
+    note_esito: str | None = None,
+    user: Any = None,
+) -> dict[str, Any]:
+    from apps.pratiche.services import pratiche_service
+
+    ErrorManager.require(
+        pratica_id > 0 and flusso_id > 0,
+        code="E_PREV_VALIDAZIONE",
+        message="pratica_id e flusso_id obbligatori e > 0.",
+        detail=f"pratica_id={pratica_id}, flusso_id={flusso_id}",
+        function_name=f"{_FN}.completa_approvazione_da_flusso",
+    )
+
+    # 1. Completa il flusso APPROVAZIONE_CLIENTE (guard transizione + vincolo
+    #    esito a DB). Esito obbligatorio (COMPLETATO ⇒ esito NOT NULL).
+    pratiche_service.completa_flusso(flusso_id, esito=esito, note_esito=note_esito)
+
+    # 2. Su POSITIVO: accetta il preventivo ROOT della pratica (policy neutra,
+    #    sovrascritta a CONFERMA dall'handler). Preventivo risolto dal legame
+    #    pratiche_sorgenti ROOT (creato a PREVENTIVAZIONE).
+    if esito != "POSITIVO":
+        return {"pratica_id": pratica_id, "flusso_esito": esito, "preventivo": None}
+
+    preventivo_id = PreventiviRepository().get_preventivo_id_by_pratica_root(pratica_id)
+    ErrorManager.require(
+        preventivo_id is not None,
+        code="E_VENDITA_PREVENTIVO_NON_COLLEGATO",
+        message="Nessun preventivo ROOT collegato alla pratica.",
+        detail=f"pratica_id={pratica_id}",
+        function_name=f"{_FN}.completa_approvazione_da_flusso",
+    )
+    result = cambia_stato(
+        preventivo_id,
+        "ACCETTATO",
+        fatturazione_immediata=False,
+        competenza_mese=date.today().replace(day=1),
+        user=user,
+    )
+    return {
+        "pratica_id": pratica_id, "preventivo_id": preventivo_id,
+        "flusso_esito": esito, "preventivo": result,
+    }
+
+
+# Scopo: Aggancia il preventivo come ROOT a una pratica (pratiche_sorgenti).
+#        Usato a PREVENTIVAZIONE sul percorso pratica-first. Idempotente.
+#        È la fonte di verità del legame preventivo↔pratica, da cui handler e
+#        M2 risolvono il preventivo. Direzione vendite→pratiche, import lazy.
+def collega_pratica(preventivo_id: int, *, pratica_id: int) -> dict[str, Any]:
+    from apps.pratiche.db.pratiche_repository import PraticheRepository
+
+    repo = PreventiviRepository()
+    prev = repo.get_preventivo(preventivo_id)
+    ErrorManager.require(
+        prev is not None,
+        code="E_PREV_NOT_FOUND",
+        message="Preventivo non trovato.",
+        detail=f"preventivo_id={preventivo_id}",
+        function_name=f"{_FN}.collega_pratica",
+    )
+    assert prev is not None
+    PraticheRepository().upsert_pratica_sorgente(
+        pratica_id=pratica_id, sorgente_codice="PREVENTIVO",
+        sorgente_uid=prev["uid"], ruolo_link="ROOT",
+    )
+    return {"preventivo_id": preventivo_id, "pratica_id": pratica_id, "uid": prev["uid"]}
+
+
 # ══════════════════════════════════════════════════════════
 #  SCRITTURE — Righe
 # ══════════════════════════════════════════════════════════

@@ -285,6 +285,25 @@ class ApiPraticaGiornale(DomainAPIView):
 # ================================================================== #
 
 
+class ApiPraticaPercorso(DomainAPIView):
+    area_funzionale = "pratiche"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PraticaPercorsoResponse",
+            fields={
+                "data": inline_serializer(name="PraticaPercorsoData", fields={
+                    "results": serializers.ListField(child=serializers.DictField()),
+                }),
+            },
+        )},
+    )
+    # Scopo: Percorso suggerito della pratica (template_flussi + stato di
+    # istanziazione di ciascuno) per la roadmap FE.
+    def get(self, request: Request, pratica_id: int) -> JsonResponse:
+        return success_response({"results": pratiche_service.get_percorso(pratica_id)})
+
+
 class ApiPraticaFlussiList(DomainAPIView):
     area_funzionale = "pratiche"
     @extend_schema(
@@ -399,7 +418,12 @@ class ApiPraticaFlussoStato(DomainAPIView):
                     note_esito=payload.get("note_esito"),
                 )
             elif nuovo_stato == "IN_CORSO":
-                pratiche_service.avvia_flusso(flusso_id)
+                # user acting (p_user §8.5): username se disponibile, altrimenti
+                # None → le fn DB ricadono su CURRENT_USER.
+                pratiche_service.avvia_flusso(
+                    flusso_id,
+                    user=getattr(request.user, "username", None) or None,
+                )
             else:
                 # Transizione generica via service (wrappata in @transaction.atomic).
                 pratiche_service.cambia_stato_flusso(flusso_id, nuovo_stato)

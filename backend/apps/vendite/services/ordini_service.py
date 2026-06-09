@@ -572,6 +572,27 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
         function_name=f"{_FN}.crea_ordine_da_offerta",
     )
 
+    # Mutua esclusività offerta → (contratto XOR ordine): se l'offerta ha già
+    # generato un CONTRATTO non può generare anche un ordine (e viceversa, lato
+    # DB in fn_push_offerta_a_contratto → E_OFFERTA_ORDINE_GIA_GENERATO). Specchio
+    # applicativo della capability `can_genera_ordine` (reason
+    # OFFERTA_CONTRATTO_GIA_GENERATO) + guard BE di questa direzione, lasciato
+    # qui dal team DB perché crea_ordine_da_offerta è orchestrato in BE, non in una
+    # singola fn DB. `contratto_id` è già nel dettaglio (LEFT JOIN), niente query.
+    ErrorManager.require(
+        testata.get("contratto_id") is None,
+        code="E_OFFERTA_CONTRATTO_GIA_GENERATO",
+        message=(
+            "Questa offerta ha già generato un contratto: "
+            "non può generare anche un ordine."
+        ),
+        detail=(
+            f"offerta_id={offerta_id}, "
+            f"contratto_id={testata.get('contratto_id')}"
+        ),
+        function_name=f"{_FN}.crea_ordine_da_offerta",
+    )
+
     righe = off_repo.list_righe_espanse(offerta_id)
 
     header = {
@@ -957,6 +978,33 @@ def push_a_commessa(ordine_id: int) -> dict[str, Any]:
         sorgente_codice="ORDINE_VENDITA",
         sorgente_uid=ordine_id,
     )
+
+    # Transizione automatica CONFERMATO → EVASO se il push è COMPLETATO (specchio
+    # 1:1 di preventivi_service.push_a_commessa). Rende l'invio a commessa UNICO:
+    # EVASO è terminale, il guard _STATI_PUSHABILI={CONFERMATO} blocca il re-push
+    # (E_ORD_STATO_TRANSIZIONE) e la capability nasconde il bottone (reason
+    # ORDINE_GIA_EVASO). La transizione è seedata con meta.manuale=false in
+    # config.transizioni_stati_ordini → non compare in available_actions.
+    # Se PARZIALE/ERRORE/SKIPPED l'ordine resta CONFERMATO: serve un ri-push per
+    # completare prima di evadere. Robustezza al deploy parziale: se il seed EVASO
+    # non è ancora atterrato, logga warning e prosegue — il push è già avvenuto,
+    # lo stato si allineerà al run successivo.
+    if report["stato"] == "COMPLETATO":
+        try:
+            stato_evaso_id = repo.get_stato_id_by_codice("EVASO")
+            if stato_evaso_id is not None:
+                repo.update_stato(ordine_id, int(stato_evaso_id))
+            else:
+                logging.getLogger(__name__).warning(
+                    "ordini.push.transizione_evaso_skipped ordine_id=%s "
+                    "reason=stato_evaso_assente", ordine_id,
+                )
+        except DatabaseError as exc:
+            logging.getLogger(__name__).warning(
+                "ordini.push.transizione_evaso_skipped ordine_id=%s reason=%s",
+                ordine_id, str(exc),
+            )
+
     return {
         "ordine_id": ordine_id,
         "stato": report["stato"],

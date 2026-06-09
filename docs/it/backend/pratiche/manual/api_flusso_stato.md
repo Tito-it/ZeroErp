@@ -8,9 +8,17 @@ Esporre via HTTP le transizioni di stato di un flusso: avvio (IN_CORSO), complet
 
 Endpoint di scrittura con ownership check. Smista la richiesta in base al valore di `nuovo_stato`:
 
-- `IN_CORSO` → `pratiche_service.avvia_flusso`
+- `IN_CORSO` → `pratiche_service.avvia_flusso` (passa l'utente acting)
 - `COMPLETATO` → `pratiche_service.completa_flusso` (con esito obbligatorio)
 - Altro → `pratiche_service.cambia_stato_flusso` (transizione generica)
+
+**Dispatch handler all'avvio**: se il flusso ha un `template_flusso_id` il cui
+template ha un `handler_id` (tabella `pratiche.handler_flussi`), `avvia_flusso`
+esegue l'handler (`dispatch_handler`) e, su successo, **completa** il flusso con
+esito `POSITIVO` — tutto in **una sola transazione** (IN_CORSO + execute +
+COMPLETATO). Su eccezione dell'handler l'intera transizione rolla (il flusso
+torna `DA_ESEGUIRE`, ri-eseguibile) e l'errore parlante propaga. Per i flussi
+senza handler, l'avvio porta solo a `IN_CORSO` (completamento manuale).
 
 La generazione automatica cross-pratica al completamento e' gestita dal trigger DB `trgfn_flussi_generazione`.
 
@@ -40,7 +48,7 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 
 - Ownership check prima di qualsiasi operazione.
 - Se `nuovo_stato = COMPLETATO`, `esito` e' obbligatorio e deve essere uno tra: `POSITIVO`, `NEGATIVO`, `PARZIALE`, `NON_APPLICABILE`.
-- Se `nuovo_stato = IN_CORSO`, il servizio transiziona direttamente senza parametri aggiuntivi.
+- Se `nuovo_stato = IN_CORSO`, il servizio transiziona a `IN_CORSO` e, se il flusso ha un handler, lo esegue e completa il flusso (vedi Contesto). L'utente acting è passato all'handler (`p_user` delle fn DB).
 - Per qualsiasi altro stato, il servizio delega a `cambia_stato_flusso` con validazione stato non vuoto.
 - Tutte le transizioni sono wrappate in `@transaction.atomic()`.
 - Al completamento con esito, il trigger DB `trgfn_flussi_generazione` verifica le regole di generazione automatica (`auto = true`) e crea nuove pratiche se applicabile.

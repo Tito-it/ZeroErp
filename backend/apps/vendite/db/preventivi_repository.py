@@ -556,6 +556,26 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, params)
             return cursor.rowcount > 0
 
+    # Scopo: Risolve l'id del preventivo agganciato come ROOT a una pratica
+    #        (pratiche_sorgenti, sorgente PREVENTIVO). Unica fonte di verita' del
+    #        legame preventivo↔pratica sul percorso pratica-first (creato a
+    #        PREVENTIVAZIONE). Ritorna None se nessun ROOT preventivo.
+    def get_preventivo_id_by_pratica_root(self, pratica_id: int) -> int | None:
+        sql = """
+            SELECT p.id
+            FROM pratiche.pratiche_sorgenti ps
+            JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
+            JOIN vendite.preventivi p ON p.uid::text = ps.sorgente_uid
+            WHERE ps.pratica_id = %s
+              AND s.codice_interno = 'PREVENTIVO'
+              AND ps.ruolo_link = 'ROOT'
+            LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id])
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
+
     # Scopo: Hard-delete preventivo. Usato dal flusso "abbandono bozza"
     #        (preventivi BOZZA orfani senza righe). I guard di dominio
     #        (stato BOZZA, zero righe, no pratiche/commesse collegate) sono

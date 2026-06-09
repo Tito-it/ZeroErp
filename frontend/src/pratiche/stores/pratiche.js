@@ -7,7 +7,7 @@ import {
   cambiaStatoPratica, assegnaPratica,
   sospendiPratica, riattivaPratica,
   fetchGiornale, fetchSospensioni,
-  fetchCodaLavoro, prendiInCaricoFlusso, listFlussi,
+  fetchCodaLavoro, prendiInCaricoFlusso, listFlussi, fetchPercorso,
 } from '../api/pratiche-api'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
@@ -198,6 +198,12 @@ export const usePraticheStore = defineStore('pratiche', () => {
     return res.data.data.results
   }
 
+  // Percorso suggerito (roadmap): template_flussi del tipo + stato istanziazione.
+  async function loadPercorso(praticaId) {
+    const res = await fetchPercorso(praticaId)
+    return res.data.data.results
+  }
+
   // --- Pratica selezionata nella dashboard ---
   const selectedPraticaId = ref(null)
 
@@ -207,7 +213,7 @@ export const usePraticheStore = defineStore('pratiche', () => {
     cambiaStato, assegna, sospendi, riattiva,
     loadGiornale, loadSospensioni,
     codaLavoro, codaLoading, loadCodaLavoro,
-    prendiInCarico, loadFlussi,
+    prendiInCarico, loadFlussi, loadPercorso,
     selectedPraticaId,
   }
 })

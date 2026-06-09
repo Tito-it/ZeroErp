@@ -9,7 +9,7 @@
 > **Data**: 2026-06-07 — decisioni ratificate 2026-06-08.
 >
 > **Perché esiste questo documento**: durante l'analisi dell'univocità
-> offerta→ordine ([brief-db-univocita-offerta-ordine.md](brief-db-univocita-offerta-ordine.md))
+> offerta→ordine ([brief-db-univocita-offerta-ordine.md](../work-done/brief-db-univocita-offerta-ordine.md))
 > è emerso che il preventivo **non** segue lo stesso modello dell'offerta. Tid ha
 > ricordato che *«non era previsto che il preventivo diventasse ordine ma
 > direttamente commessa»* — ed è confermato dal design iniziale: il preventivo va
@@ -195,4 +195,4 @@ bug. Opzioni, **da decidere con Tid**:
 
 *Documento di indirizzo — preventivo→ordine segue il modello a split di riga
 (anello3 §5.3), NON il 1:1 di testata dell'offerta. L'offerta è trattata in
-[brief-db-univocita-offerta-ordine.md](brief-db-univocita-offerta-ordine.md).*
+[brief-db-univocita-offerta-ordine.md](../work-done/brief-db-univocita-offerta-ordine.md).*

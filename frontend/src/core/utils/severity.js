@@ -268,12 +268,15 @@ export function statoOffertaSeverity(codice) {
 }
 
 // --- Mappa stati ordine di vendita ---
-// DRAFT=grigio (bozza), CONFERMATO/ALLOCATO/SPEDITO=azzurro (ciclo in corso),
+// DRAFT=grigio (bozza), CONFERMATO/EVASO/ALLOCATO/SPEDITO=azzurro (ciclo in corso),
 // CONSEGNATO/FATTURATO=verde (concluso), ANNULLATO=rosso.
+// EVASO = terminale post-push commessa (transizione automatica CONFERMATO→EVASO
+// BE-driven): info perche' la fattura e' ancora a valle (coerente con preventivo).
 // Allineato a config.stati_doc_ordini.codice_interno.
 export const STATO_ORDINE_MAP = {
   DRAFT: 'secondary',
   CONFERMATO: 'info',
+  EVASO: 'info',
   ALLOCATO: 'info',
   SPEDITO: 'info',
   CONSEGNATO: 'success',
