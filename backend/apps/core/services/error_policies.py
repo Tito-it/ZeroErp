@@ -1583,6 +1583,104 @@ class ErrorPolicyRegistry:
                 "generare un ordine."
             ),
         ),
+        # Univocità 1:1 offerta→ordine (reversal parziale di A1, solo OFFERTA):
+        # un'offerta genera al massimo un ordine. Sollevato dal guard BE
+        # (ordini_service.crea_ordine_da_offerta) e, come rete sulla race, dalla
+        # violazione dell'UNIQUE parziale uq_ordini_v_documento_origine_offerta.
+        # Specchio applicativo della guard data-driven can_genera_ordine in
+        # script.fn_available_actions_offerta (il bottone sparisce a conversione
+        # avvenuta; questo errore copre il click concorrente cross-tab).
+        "E_ORD_OFFERTA_GIA_CONVERTITA": ErrorPolicy(
+            code="E_ORD_OFFERTA_GIA_CONVERTITA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Un ordine è già stato generato da questa offerta.",
+        ),
+        # Mutua esclusività offerta → (contratto XOR ordine): la stessa offerta si
+        # materializza in UNA sola forma. Famiglia "già materializzato" = conflitto
+        # di stato → 409 uniforme (coerente con E_ORD_OFFERTA_GIA_CONVERTITA sopra).
+        # Entrambi i codici sono sollevati sia da DB (fn_push_offerta_a_contratto)
+        # sia da BE (guard incrociati): la registrazione qui fissa lo status, che
+        # altrimenti cadrebbe sul fallback 400 dei codici E_* non registrati.
+        #  - CONTRATTO_GIA_GENERATO: blocca la generazione ordine se esiste già un
+        #    contratto (guard BE crea_ordine_da_offerta) ED è il codice idempotenza
+        #    del push duplicato (fn_push_offerta_a_contratto, UNIQUE offerta_id).
+        #  - ORDINE_GIA_GENERATO: blocca il push a contratto se esiste già un ordine
+        #    (guard DB fn_push_offerta_a_contratto, mutua esclusività).
+        "E_OFFERTA_CONTRATTO_GIA_GENERATO": ErrorPolicy(
+            code="E_OFFERTA_CONTRATTO_GIA_GENERATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Questa offerta ha già generato un contratto.",
+        ),
+        "E_OFFERTA_ORDINE_GIA_GENERATO": ErrorPolicy(
+            code="E_OFFERTA_ORDINE_GIA_GENERATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Questa offerta ha già generato un ordine.",
+        ),
+        # Codici DB del flusso offerta (emissione/transizione/push/revisione) e del
+        # push a contratto. Senza registrazione cadevano sul fallback 400, mentre
+        # la convenzione del progetto per "operazione non ammessa nello stato /
+        # precondizione di transizione / overlap" è 409 (gemelli già registrati:
+        # E_ORD_STATO_TRANSIZIONE, E_PREV_STATO_TRANSIZIONE,
+        # E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA, E_VENDITE_*_OVERLAP). Registrati
+        # qui per fissare lo status corretto (il messaggio parlante DB vince
+        # comunque su user_message). Pulizia 2026-06-08.
+        "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO": ErrorPolicy(
+            code="E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Impossibile emettere: l'offerta non ha una versione di listino."
+            ),
+        ),
+        "E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA": ErrorPolicy(
+            code="E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Impossibile emettere: la versione di listino non è attiva."
+            ),
+        ),
+        "E_OFFERTA_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="E_OFFERTA_TRANSIZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato non ammessa per l'offerta.",
+        ),
+        "E_OFFERTA_REVISIONE_STATO_NON_AMMESSO": ErrorPolicy(
+            code="E_OFFERTA_REVISIONE_STATO_NON_AMMESSO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Revisione non ammessa nello stato corrente dell'offerta."
+            ),
+        ),
+        "E_OFFERTA_PUSH_STATO_NON_AMMESSO": ErrorPolicy(
+            code="E_OFFERTA_PUSH_STATO_NON_AMMESSO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Push a contratto non ammesso: l'offerta deve essere ACCETTATA."
+            ),
+        ),
+        "E_CONTRATTO_OVERLAP_ESISTENTE": ErrorPolicy(
+            code="E_CONTRATTO_OVERLAP_ESISTENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Esiste già un contratto attivo sovrapposto per questa utility."
+            ),
+        ),
+        # Date di successione incoerenti: dato semanticamente non processabile
+        # (non un conflitto di stato) → 422.
+        "E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA": ErrorPolicy(
+            code="E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message="Date di successione del contratto non valide.",
+        ),
         # Codice sollevato da vendite.fn_crea_revisione_preventivo quando esiste
         # gia' una revisione in DRAFT per lo stesso numero. Conflitto di stato:
         # l'utente deve completare/annullare la DRAFT esistente prima di crearne

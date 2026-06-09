@@ -141,6 +141,19 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["results"][0]["id"], 1)
 
+    # Scopo: il filtro natura (escludi_destinazione_tipi) è inoltrato al
+    # repository invariato (passthrough, filtro applicato in SQL).
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_lookup_articoli_escludi_destinazione(self, mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_lookup_articoli
+
+        mock_repo_cls.return_value.lookup_articoli.return_value = []
+
+        fn_lookup_articoli(search="art", escludi_destinazione_tipi=["CONTRATTO"])
+
+        kwargs = mock_repo_cls.return_value.lookup_articoli.call_args.kwargs
+        self.assertEqual(kwargs["escludi_destinazione_tipi"], ["CONTRATTO"])
+
     # Scopo: limit lookup articoli fuori range -> ServiceError.
     def test_fn_lookup_articoli_invalid_limit(self):
         from apps.catalogo.services.catalogo_service import fn_lookup_articoli

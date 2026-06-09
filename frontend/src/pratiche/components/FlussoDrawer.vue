@@ -8,7 +8,14 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
+import { completaApprovazioneFlusso } from '../../vendite/preventivi/api/preventiviApi'
 import { DRAWER_WIDTH, STATO_FLUSSO } from '../../core/constants'
+
+// Processo PREVENTIVI (percorso pratica-first): prefisso tipo_prestazione +
+// codici template che abilitano il ramo preventivo/M2.
+const TIPO_PREVENTIVI_PREFIX = 'PREVENTIVI'
+const TEMPLATE_PREVENTIVAZIONE = 'PREVENTIVAZIONE'
+const TEMPLATE_APPROVAZIONE_CLIENTE = 'APPROVAZIONE_CLIENTE'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import { displayTimestamp } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -28,9 +35,19 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   flusso: { type: Object, default: null },
   praticaId: { type: Number, default: null },
+  // Codice tipo_prestazione della pratica: discrimina il routing PREVENTIVI
+  // (es. APPROVAZIONE_CLIENTE → endpoint M2) da altri processi che riusano gli
+  // stessi codici template (es. OFFERTA_QUADRO).
+  tipoPrestazioneCodice: { type: String, default: '' },
 })
 
-const emit = defineEmits(['update:visible', 'saved'])
+const emit = defineEmits(['update:visible', 'saved', 'open-preventivo'])
+
+// È un processo PREVENTIVI (pratica-first) → abilita il ramo preventivo/M2.
+const isPreventivi = computed(
+  () => (props.tipoPrestazioneCodice || '').startsWith(TIPO_PREVENTIVI_PREFIX)
+)
+const templateCodice = computed(() => props.flusso?.template_flusso_codice || '')
 
 const esito = ref(null)
 const noteEsito = ref('')
@@ -69,6 +86,19 @@ const drawerActions = computed(() => {
       disabled: loading.value,
       command: onAvvia,
     },
+    // PREVENTIVAZIONE (pratica-first): apre il PreventivoDrawer collegato.
+    // L'aggancio ROOT preventivo↔pratica avviene al salvataggio (gestito dal
+    // parent, che ospita il drawer e chiama collega-pratica).
+    {
+      key: 'apri-preventivo',
+      kind: 'secondary',
+      label: t('pratiche.flusso_apri_preventivo'),
+      icon: 'pi pi-file-edit',
+      severity: 'secondary',
+      visible: isPreventivi.value && templateCodice.value === TEMPLATE_PREVENTIVAZIONE,
+      disabled: loading.value,
+      command: () => emit('open-preventivo', props.praticaId),
+    },
   ]
 })
 
@@ -82,16 +112,26 @@ async function onAvvia() {
 }
 
 // Scopo: Completa il flusso con esito obbligatorio.
+// Routing M2 (§8.3): per APPROVAZIONE_CLIENTE di una pratica PREVENTIVI, il
+// completamento guida l'accettazione del preventivo collegato → endpoint
+// vendite dedicato (preventivo risolto a BE dal ROOT). Altri flussi: generico.
 async function onCompleta() {
   if (!esito.value) return
-  const result = await execute(
-    () => cambiaStatoFlusso(props.praticaId, props.flusso.id, {
-      nuovo_stato: 'COMPLETATO',
-      esito: esito.value,
-      note_esito: noteEsito.value || null,
-    }),
-    { successMessage: t('pratiche.flusso_completato') }
-  )
+  const isApprovazioneM2 =
+    isPreventivi.value && templateCodice.value === TEMPLATE_APPROVAZIONE_CLIENTE
+  const action = isApprovazioneM2
+    ? () => completaApprovazioneFlusso({
+        pratica_id: props.praticaId,
+        flusso_id: props.flusso.id,
+        esito: esito.value,
+        note_esito: noteEsito.value || null,
+      })
+    : () => cambiaStatoFlusso(props.praticaId, props.flusso.id, {
+        nuovo_stato: 'COMPLETATO',
+        esito: esito.value,
+        note_esito: noteEsito.value || null,
+      })
+  const result = await execute(action, { successMessage: t('pratiche.flusso_completato') })
   if (result !== null) { emit('saved'); emit('update:visible', false) }
 }
 

@@ -32,6 +32,28 @@ La tabella `pratiche.template_flussi_prerequisiti` definisce il **grafo diretto 
 
 ---
 
+### Prerequisiti esito-aware (colonna `esito_richiesto`, da 2026-06-08)
+
+La colonna `esito_richiesto` (`varchar` nullable, CHECK sui valori dell'enum
+esito `POSITIVO/NEGATIVO/PARZIALE/NON_APPLICABILE`) condiziona l'abilitazione del
+passo successivo **anche all'esito** del flusso prerequisito, non solo al suo
+completamento:
+
+| `esito_richiesto` | Prerequisito soddisfatto se il flusso prerequisito e' COMPLETATO e... |
+|-------------------|----------------------------------------------------------------------|
+| `NULL` | ...con **qualsiasi** esito (comportamento storico, retro-compatibile). |
+| `POSITIVO` (o altro) | ...e `flussi.esito` coincide con il valore richiesto. |
+
+La verifica e' centralizzata in `pratiche.fn_check_prerequisiti_flusso` (filtra su
+`COMPLETATO` + esito). L'esito e' garantito sempre valorizzato sui flussi chiusi
+dal guard `trg_flussi_a10_guard_esito_completato_ins_upd` (vincolo
+`COMPLETATO => esito NOT NULL` su `pratiche.flussi`): cosi' un passo chiuso
+`NEGATIVO` non abilita un successivo che richiede `POSITIVO`. Tutti i prerequisiti
+storici hanno `esito_richiesto = NULL`: nessun workflow esistente cambia
+comportamento.
+
+---
+
 ### Esempio
 
 Per un tipo_prestazione "Allacciamento" con 3 step:

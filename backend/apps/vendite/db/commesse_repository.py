@@ -453,6 +453,77 @@ class CommesseRepository:
         assert row is not None
         return int(row[0])
 
+    def approva_commessa_attivita(
+        self,
+        *,
+        commessa_id: int,
+        righe_ids: list[int] | None = None,
+        user: str | None = None,
+    ) -> int:
+        """Porta le righe commessa BOZZA→APPROVATA (righe_ids NULL = tutte le
+        NON_EMESSA). Idempotente. Restituisce il numero di righe approvate.
+        Wrapper di vendite.fn_approva_commessa_attivita (macchina transizioni)."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT vendite.fn_approva_commessa_attivita(
+                    p_commessa_id => %s,
+                    p_righe_ids => %s,
+                    p_user => %s
+                )
+                """,
+                [commessa_id, righe_ids, user],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    def cambia_stato_commessa(
+        self,
+        *,
+        commessa_id: int,
+        nuovo_stato: str,
+        user: str | None = None,
+    ) -> dict[str, Any]:
+        """Transizione di stato sanzionata della testata commessa (guard di
+        matrice + guard di dominio a DB). Restituisce {commessa_id, stato_da,
+        stato_a}. Wrapper di vendite.fn_cambia_stato_commessa."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT commessa_id, stato_da, stato_a
+                FROM vendite.fn_cambia_stato_commessa(
+                    p_commessa_id => %s,
+                    p_nuovo_stato => %s,
+                    p_user => %s
+                )
+                """,
+                [commessa_id, nuovo_stato, user],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return {"commessa_id": int(row[0]), "stato_da": row[1], "stato_a": row[2]}
+
+    def get_commessa_id_by_sorgente(
+        self, *, sorgente_codice: str, sorgente_uid: str, ruolo_link: str = "ROOT",
+    ) -> int | None:
+        """commessa_id collegata a una sorgente via vendite.commesse_sorgenti,
+        o None. Risolve sorgente_tipo_id da config.sorgenti per codice_interno.
+        Usato per l'idempotenza del push preventivo→commessa."""
+        sql = """
+            SELECT cs.commessa_id
+            FROM vendite.commesse_sorgenti cs
+            JOIN config.sorgenti s ON s.id = cs.sorgente_tipo_id
+            WHERE s.codice_interno = %s
+              AND cs.sorgente_uid = %s
+              AND cs.ruolo_link = %s
+            LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [sorgente_codice, sorgente_uid, ruolo_link])
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
+
     def get_commessa_stato(self, commessa_id: int) -> CommessaStatoResult | None:
         """Stato e contatori della commessa in un round-trip."""
         with connection.cursor() as cursor:

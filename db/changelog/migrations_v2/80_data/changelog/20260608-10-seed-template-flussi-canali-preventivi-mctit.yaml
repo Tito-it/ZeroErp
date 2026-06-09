@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B5 (canali) — canali sui flussi ENTRATA delle pratiche PREVENTIVI.
+# I 4 flussi ENTRATA (RICHIESTA_CLIENTE e APPROVAZIONE_CLIENTE delle due
+# catene: id 9001, 9003, 9005, 9007) sono agganciati al canale WEB_CLIENTI
+# (config.canali_pratiche id=1), unico canale orientato al cliente.
+# I flussi INTERNA (PREVENTIVAZIONE, CONFERMA) non hanno canale.
+# FK: richiede template_flussi (20260608-08) e canali_pratiche (gia' seed).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260608-10-seed-template-flussi-canali-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260608-10-seed-template-flussi-canali-preventivi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: template_flussi_canali
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/template_flussi_canali.csv
+            tableName: template_flussi_canali
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: template_flusso_id, type: NUMERIC }
+              - column: { name: canale_id, type: NUMERIC }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Allineamento sequenza autoincrement post-seed (max id seed 9004).
+              SELECT setval(
+                  pg_get_serial_sequence('pratiche.template_flussi_canali', 'id'),
+                  GREATEST(COALESCE(MAX(id), 1), 1),
+                  true
+              ) FROM pratiche.template_flussi_canali;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM pratiche.template_flussi_canali
+               WHERE template_flusso_id IN (9001, 9003, 9005, 9007);

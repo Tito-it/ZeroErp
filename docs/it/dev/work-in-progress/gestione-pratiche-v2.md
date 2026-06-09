@@ -12,15 +12,15 @@
 
 ## Recap stato v1
 
-| Area | Stato | Gap |
-|------|-------|-----|
-| DB Schema | 20 migrazioni, 15+ tabelle | Manca collegamento ruolo/istanza |
-| DB Trigger/Funzioni | 34 migrazioni, tutte operative | OK |
-| Backend Repository | 2 file | list/get ritornano solo ID, mancano JOIN display |
-| Backend Service | 31 metodi | Manca guard pre/post-attivazione |
-| Backend API | 20 view, 19 endpoint | Dati incompleti per la UI |
-| Backend Test | 94 test OK | Coprono logica, non display fields |
-| Frontend | Store + SearchTable + Drawer + Flussi + Giornale | Non funzionante: mancano dati display dal backend |
+| Area                | Stato                                            | Gap                                               |
+| ------------------- | ------------------------------------------------ | ------------------------------------------------- |
+| DB Schema           | 20 migrazioni, 15+ tabelle                       | Manca collegamento ruolo/istanza                  |
+| DB Trigger/Funzioni | 34 migrazioni, tutte operative                   | OK                                                |
+| Backend Repository  | 2 file                                           | list/get ritornano solo ID, mancano JOIN display  |
+| Backend Service     | 31 metodi                                        | Manca guard pre/post-attivazione                  |
+| Backend API         | 20 view, 19 endpoint                             | Dati incompleti per la UI                         |
+| Backend Test        | 94 test OK                                       | Coprono logica, non display fields                |
+| Frontend            | Store + SearchTable + Drawer + Flussi + Giornale | Non funzionante: mancano dati display dal backend |
 
 ---
 
@@ -28,36 +28,36 @@
 
 ### Priorita' ALTA — Senza questi il frontend non funziona
 
-| # | Area | Descrizione | Stato |
-|---|------|-------------|-------|
-| **G1** | DB | Aggiungere `soggetto_ruolo_id` e `istanza_utility_id` a `pratiche.pratiche` | ✅ |
-| **G2** | DB | Trigger guard coerenza soggetto-ruolo-istanza | ✅ |
-| **G3** | DB | Codice pratica via `config.sistema_codici` (prefisso fisso standard) | ✅ |
-| **G4** | BE | Aggiornare `PraticaRow` TypedDict con nuovi campi display | ✅ |
-| **G5** | BE | Repository: JOIN display fields su list/get | ✅ |
-| **G6** | BE | Aggiornare `crea_pratica` per accettare soggetto_ruolo_id e istanza_utility_id | ✅ |
-| **G7** | BE | Guard pre/post-attivazione nel service | ✅ |
-| **G8** | FE | Aggiornare store/drawer/searchTable per i nuovi campi | ✅ |
+| #      | Area | Descrizione                                                                    | Stato |
+| ------ | ---- | ------------------------------------------------------------------------------ | ----- |
+| **G1** | DB   | Aggiungere `soggetto_ruolo_id` e `istanza_utility_id` a `pratiche.pratiche`    | ✅     |
+| **G2** | DB   | Trigger guard coerenza soggetto-ruolo-istanza                                  | ✅     |
+| **G3** | DB   | Codice pratica via `config.sistema_codici` (prefisso fisso standard)           | ✅     |
+| **G4** | BE   | Aggiornare `PraticaRow` TypedDict con nuovi campi display                      | ✅     |
+| **G5** | BE   | Repository: JOIN display fields su list/get                                    | ✅     |
+| **G6** | BE   | Aggiornare `crea_pratica` per accettare soggetto_ruolo_id e istanza_utility_id | ✅     |
+| **G7** | BE   | Guard pre/post-attivazione nel service                                         | ✅     |
+| **G8** | FE   | Aggiornare store/drawer/searchTable per i nuovi campi                          | ✅     |
 
 ### Priorita' MEDIA — Funzionalita' di dominio
 
-| # | Area | Descrizione | Stato |
-|---|------|-------------|-------|
-| **G9** | DB | Note pratiche/flussi — tabelle esistono, trigger giornale gia' operativi | ✅ (gia' in v1) |
-| **G10** | DB | Allegati pratiche/flussi — tabelle esistono, trigger giornale gia' operativi | ✅ (gia' in v1) |
-| **G11** | BE | Note pratiche/flussi — CRUD endpoint (tabelle esistono, API manca) | ✅ |
-| **G12** | BE | Allegati pratiche/flussi — CRUD endpoint (tabelle esistono, API manca) | ✅ |
-| **G13** | FE | Tab Note nel drawer pratica | ✅ |
-| **G14** | FE | Tab Allegati nel drawer pratica | ✅ |
+| #       | Area | Descrizione                                                                  | Stato          |
+| ------- | ---- | ---------------------------------------------------------------------------- | -------------- |
+| **G9**  | DB   | Note pratiche/flussi — tabelle esistono, trigger giornale gia' operativi     | ✅ (gia' in v1) |
+| **G10** | DB   | Allegati pratiche/flussi — tabelle esistono, trigger giornale gia' operativi | ✅ (gia' in v1) |
+| **G11** | BE   | Note pratiche/flussi — CRUD endpoint (tabelle esistono, API manca)           | ✅              |
+| **G12** | BE   | Allegati pratiche/flussi — CRUD endpoint (tabelle esistono, API manca)       | ✅              |
+| **G13** | FE   | Tab Note nel drawer pratica                                                  | ✅              |
+| **G14** | FE   | Tab Allegati nel drawer pratica                                              | ✅              |
 
 ### Priorita' BASSA — Automazioni e estensioni
 
-| # | Area | Descrizione | Stato |
-|---|------|-------------|-------|
-| **G15** | BE | pgAgent job riattivazione automatica sospensioni | da fare |
-| **G16** | BE | SLA alert (WARNING/CRITICO da calcoli_tempo) | da fare |
-| **G17** | DB | Tabelle estensione ext_* (Anello 3, quando servono) | futuro |
-| **G18** | BE | Handler concreti nel registry (quando i domini li usano) | futuro |
+| #       | Area | Descrizione                                              | Stato   |
+| ------- | ---- | -------------------------------------------------------- | ------- |
+| **G15** | BE   | pgAgent job riattivazione automatica sospensioni         | da fare |
+| **G16** | BE   | SLA alert (WARNING/CRITICO da calcoli_tempo)             | da fare |
+| **G17** | DB   | Tabelle estensione ext_* (Anello 3, quando servono)      | futuro  |
+| **G18** | BE   | Handler concreti nel registry (quando i domini li usano) | futuro  |
 
 ---
 
@@ -138,12 +138,12 @@ CREATE TRIGGER trg_pratiche_a10_guard_contesto_ins_upd
 
 **Messaggi errore** (aggiunti in `config.messaggi_errore.csv`):
 
-| Codice | ID | Messaggio |
-|--------|----|-----------|
-| `PRATICHE_ISTANZA_SENZA_RUOLO` | 304 | istanza_utility_id richiede soggetto_ruolo_id |
-| `PRATICHE_RUOLO_SENZA_SOGGETTO` | 305 | soggetto_ruolo_id richiede soggetto_id |
-| `PRATICHE_RUOLO_NON_COERENTE` | 306 | Il ruolo %s non appartiene al soggetto %s |
-| `PRATICHE_ISTANZA_NON_COERENTE` | 307 | L'istanza %s non appartiene al soggetto %s |
+| Codice                          | ID  | Messaggio                                     |
+| ------------------------------- | --- | --------------------------------------------- |
+| `PRATICHE_ISTANZA_SENZA_RUOLO`  | 304 | istanza_utility_id richiede soggetto_ruolo_id |
+| `PRATICHE_RUOLO_SENZA_SOGGETTO` | 305 | soggetto_ruolo_id richiede soggetto_id        |
+| `PRATICHE_RUOLO_NON_COERENTE`   | 306 | Il ruolo %s non appartiene al soggetto %s     |
+| `PRATICHE_ISTANZA_NON_COERENTE` | 307 | L'istanza %s non appartiene al soggetto %s    |
 
 > **Nota**: la validazione nel trigger DB e' la linea di difesa ultima.
 > Il service Python puo' fare le stesse verifiche per dare errori user-friendly,
@@ -323,12 +323,12 @@ create_nota_flusso(flusso_id, pratica_id, tipo_nota_codice, testo) -> int
 
 ### 3.2 API endpoint note
 
-| Metodo | URL | Descrizione |
-|--------|-----|-------------|
-| GET | `/pratiche/{id}/note/` | Lista note pratica |
-| POST | `/pratiche/{id}/note/` | Crea nota |
-| PATCH | `/pratiche/{id}/note/{nota_id}/` | Aggiorna nota |
-| DELETE | `/pratiche/{id}/note/{nota_id}/` | Elimina nota |
+| Metodo | URL                              | Descrizione        |
+| ------ | -------------------------------- | ------------------ |
+| GET    | `/pratiche/{id}/note/`           | Lista note pratica |
+| POST   | `/pratiche/{id}/note/`           | Crea nota          |
+| PATCH  | `/pratiche/{id}/note/{nota_id}/` | Aggiorna nota      |
+| DELETE | `/pratiche/{id}/note/{nota_id}/` | Elimina nota       |
 
 ### 3.3 Allegati (stessa struttura)
 
@@ -426,12 +426,12 @@ Fase 5 (Test)
 
 ## Riepilogo file migration DB
 
-| N. | STEP | Percorso | Tipo | Stato |
-|----|------|----------|------|-------|
-| 1 | 1.1 | `00_schema/pratiche/20260328-11-alter-pratiche-add-ruolo-istanza-mctit.yaml` | DDL | ✅ |
-| 2 | 1.2 | `20_code/pratiche/20260328-12-create-trgfn-pratiche-guard-contesto-mctit.yaml` | Trigger fn + trigger | ✅ |
-| 3 | 1.3 | `80_data/sql/config/sistema_codici.csv` — riga `pratica` (id=16, PRA) | Seed | ✅ |
-| 4 | 1.2 | `80_data/sql/config/messaggi_errore.csv` — 4 messaggi (id 304-307) | Seed | ✅ |
+| N.  | STEP | Percorso                                                                       | Tipo                 | Stato |
+| --- | ---- | ------------------------------------------------------------------------------ | -------------------- | ----- |
+| 1   | 1.1  | `00_schema/pratiche/20260328-11-alter-pratiche-add-ruolo-istanza-mctit.yaml`   | DDL                  | ✅     |
+| 2   | 1.2  | `20_code/pratiche/20260328-12-create-trgfn-pratiche-guard-contesto-mctit.yaml` | Trigger fn + trigger | ✅     |
+| 3   | 1.3  | `80_data/sql/config/sistema_codici.csv` — riga `pratica` (id=16, PRA)          | Seed                 | ✅     |
+| 4   | 1.2  | `80_data/sql/config/messaggi_errore.csv` — 4 messaggi (id 304-307)             | Seed                 | ✅     |
 
 ---
 
@@ -439,40 +439,40 @@ Fase 5 (Test)
 
 ### Esistenti (gia' operative, da sfruttare)
 
-| Funzione | Schema | Uso nel contesto |
-|----------|--------|------------------|
-| `script.fn_generate_codice()` | script | Generazione codice pratica (via sistema_codici) |
-| `script.fn_log_and_raise_error()` | script | Errori nel trigger guard contesto |
-| `pratiche.fn_check_prerequisiti_flusso()` | pratiche | Verifica prerequisiti flusso (invariata) |
-| `pratiche.fn_genera_pratica_da_flusso()` | pratiche | Generazione cross-pratica (invariata) |
-| `pratiche.fn_calcola_tempo_netto_da_a()` | pratiche | Calcolo tempo netto tra flussi (invariata) |
-| `pratiche.fn_valuta_tempo_esecuzione_da_a()` | pratiche | Valutazione SLA (OK/WARNING/CRITICO/SFORATO) |
-| `pratiche.trgfn_pratiche_guard_transizione()` | pratiche | Guard transizioni stato pratica |
-| `pratiche.trgfn_flussi_guard_transizione()` | pratiche | Guard transizioni stato flusso |
-| `pratiche.trgfn_flussi_guard_prerequisiti()` | pratiche | Guard prerequisiti flusso |
-| `pratiche.trgfn_flussi_generazione()` | pratiche | Generazione cross-pratica automatica |
-| `pratiche.trgfn_flussi_calcolo_tempo_completamento()` | pratiche | Calcolo tempo al completamento |
-| `pratiche.trgfn_sospensioni_propaga()` | pratiche | Propagazione sospensione ai flussi |
-| `pratiche.trgfn_sospensioni_riattiva()` | pratiche | Ripristino stati alla riattivazione |
-| `pratiche.trgfn_sospensioni_guard_coerenza_flusso()` | pratiche | Guard coerenza flusso/pratica |
-| `pratiche.trgfn_calcoli_tempo_guard_immutabili()` | pratiche | Guard campi immutabili calcoli |
-| `pratiche.trgfn_pratiche_giornale_ins()` | pratiche | Giornale: PRATICA_CREATA |
-| `pratiche.trgfn_pratiche_giornale_stato()` | pratiche | Giornale: STATO_CAMBIATO |
-| `pratiche.trgfn_pratiche_giornale_assegnazione()` | pratiche | Giornale: ASSEGNAZIONE_CAMBIATA |
-| `pratiche.trgfn_pratiche_giornale_priorita()` | pratiche | Giornale: PRIORITA_CAMBIATA |
-| `pratiche.trgfn_flussi_giornale_ins()` | pratiche | Giornale: FLUSSO_CREATO |
-| `pratiche.trgfn_flussi_giornale_stato()` | pratiche | Giornale: FLUSSO_STATO_CAMBIATO |
-| `pratiche.trgfn_note_pratiche_giornale()` | pratiche | Giornale: NOTA_AGGIUNTA (pratica) |
-| `pratiche.trgfn_note_flussi_giornale()` | pratiche | Giornale: NOTA_AGGIUNTA (flusso) |
-| `pratiche.trgfn_allegati_pratiche_giornale()` | pratiche | Giornale: ALLEGATO_AGGIUNTO (pratica) |
-| `pratiche.trgfn_allegati_flussi_giornale()` | pratiche | Giornale: ALLEGATO_AGGIUNTO (flusso) |
-| `pratiche.trgfn_sospensioni_giornale_ins()` | pratiche | Giornale: SOSPENSIONE_REGISTRATA |
-| `pratiche.trgfn_sospensioni_giornale_riattivazione()` | pratiche | Giornale: SOSPENSIONE_CHIUSA |
+| Funzione                                              | Schema   | Uso nel contesto                                |
+| ----------------------------------------------------- | -------- | ----------------------------------------------- |
+| `script.fn_generate_codice()`                         | script   | Generazione codice pratica (via sistema_codici) |
+| `script.fn_log_and_raise_error()`                     | script   | Errori nel trigger guard contesto               |
+| `pratiche.fn_check_prerequisiti_flusso()`             | pratiche | Verifica prerequisiti flusso (invariata)        |
+| `pratiche.fn_genera_pratica_da_flusso()`              | pratiche | Generazione cross-pratica (invariata)           |
+| `pratiche.fn_calcola_tempo_netto_da_a()`              | pratiche | Calcolo tempo netto tra flussi (invariata)      |
+| `pratiche.fn_valuta_tempo_esecuzione_da_a()`          | pratiche | Valutazione SLA (OK/WARNING/CRITICO/SFORATO)    |
+| `pratiche.trgfn_pratiche_guard_transizione()`         | pratiche | Guard transizioni stato pratica                 |
+| `pratiche.trgfn_flussi_guard_transizione()`           | pratiche | Guard transizioni stato flusso                  |
+| `pratiche.trgfn_flussi_guard_prerequisiti()`          | pratiche | Guard prerequisiti flusso                       |
+| `pratiche.trgfn_flussi_generazione()`                 | pratiche | Generazione cross-pratica automatica            |
+| `pratiche.trgfn_flussi_calcolo_tempo_completamento()` | pratiche | Calcolo tempo al completamento                  |
+| `pratiche.trgfn_sospensioni_propaga()`                | pratiche | Propagazione sospensione ai flussi              |
+| `pratiche.trgfn_sospensioni_riattiva()`               | pratiche | Ripristino stati alla riattivazione             |
+| `pratiche.trgfn_sospensioni_guard_coerenza_flusso()`  | pratiche | Guard coerenza flusso/pratica                   |
+| `pratiche.trgfn_calcoli_tempo_guard_immutabili()`     | pratiche | Guard campi immutabili calcoli                  |
+| `pratiche.trgfn_pratiche_giornale_ins()`              | pratiche | Giornale: PRATICA_CREATA                        |
+| `pratiche.trgfn_pratiche_giornale_stato()`            | pratiche | Giornale: STATO_CAMBIATO                        |
+| `pratiche.trgfn_pratiche_giornale_assegnazione()`     | pratiche | Giornale: ASSEGNAZIONE_CAMBIATA                 |
+| `pratiche.trgfn_pratiche_giornale_priorita()`         | pratiche | Giornale: PRIORITA_CAMBIATA                     |
+| `pratiche.trgfn_flussi_giornale_ins()`                | pratiche | Giornale: FLUSSO_CREATO                         |
+| `pratiche.trgfn_flussi_giornale_stato()`              | pratiche | Giornale: FLUSSO_STATO_CAMBIATO                 |
+| `pratiche.trgfn_note_pratiche_giornale()`             | pratiche | Giornale: NOTA_AGGIUNTA (pratica)               |
+| `pratiche.trgfn_note_flussi_giornale()`               | pratiche | Giornale: NOTA_AGGIUNTA (flusso)                |
+| `pratiche.trgfn_allegati_pratiche_giornale()`         | pratiche | Giornale: ALLEGATO_AGGIUNTO (pratica)           |
+| `pratiche.trgfn_allegati_flussi_giornale()`           | pratiche | Giornale: ALLEGATO_AGGIUNTO (flusso)            |
+| `pratiche.trgfn_sospensioni_giornale_ins()`           | pratiche | Giornale: SOSPENSIONE_REGISTRATA                |
+| `pratiche.trgfn_sospensioni_giornale_riattivazione()` | pratiche | Giornale: SOSPENSIONE_CHIUSA                    |
 
 ### Create in v2
 
-| Funzione | Schema | Scopo |
-|----------|--------|-------|
+| Funzione                                   | Schema   | Scopo                                   |
+| ------------------------------------------ | -------- | --------------------------------------- |
 | `pratiche.trgfn_pratiche_guard_contesto()` | pratiche | Guard coerenza soggetto-ruolo-istanza ✅ |
 
 > **Rimossi dal piano v2** (non necessari ora):
@@ -880,13 +880,13 @@ prima del test completo.
 
 ### 6.5 API necessarie per la dashboard
 
-| Metodo | Endpoint                                          | Descrizione                    | Funzione DB                    |
-| ------ | ------------------------------------------------- | ------------------------------ | ------------------------------ |
-| GET    | `/api/v1/pratiche/coda-lavoro/`                   | Coda lavoro operatore corrente | `fn_coda_lavoro_operatore`     |
-| POST   | `/api/v1/pratiche/flussi/{fid}/prendi-in-carico/` | Prendi in carico flusso        | `fn_prendi_in_carico_flusso`   |
-| GET    | `/api/v1/pratiche/competenze-flussi/`             | Lista competenze (admin)       | SELECT diretto                 |
-| POST   | `/api/v1/pratiche/competenze-flussi/`             | Crea competenza (admin)        | INSERT                         |
-| DELETE | `/api/v1/pratiche/competenze-flussi/{id}/`        | Rimuovi competenza (admin)     | DELETE                         |
+| Metodo | Endpoint                                          | Descrizione                    | Funzione DB                  |
+| ------ | ------------------------------------------------- | ------------------------------ | ---------------------------- |
+| GET    | `/api/v1/pratiche/coda-lavoro/`                   | Coda lavoro operatore corrente | `fn_coda_lavoro_operatore`   |
+| POST   | `/api/v1/pratiche/flussi/{fid}/prendi-in-carico/` | Prendi in carico flusso        | `fn_prendi_in_carico_flusso` |
+| GET    | `/api/v1/pratiche/competenze-flussi/`             | Lista competenze (admin)       | SELECT diretto               |
+| POST   | `/api/v1/pratiche/competenze-flussi/`             | Crea competenza (admin)        | INSERT                       |
+| DELETE | `/api/v1/pratiche/competenze-flussi/{id}/`        | Rimuovi competenza (admin)     | DELETE                       |
 
 L'endpoint coda-lavoro ricava `risorsa_umana_id` dall'utente autenticato (JWT → risorse_umane).
 
@@ -894,14 +894,14 @@ L'endpoint coda-lavoro ricava `risorsa_umana_id` dall'utente autenticato (JWT �
 
 ### 6.6 Riepilogo migration DB fase 6
 
-| #  | Oggetto                                                    | Tipo | Stato | Note                              |
-| -- | ---------------------------------------------------------- | ---- | ----- | --------------------------------- |
-| M1 | `ALTER pratiche.pratiche ADD COLUMN data_apertura`         | DDL  | ✅    | DATE nullable                     |
-| M2 | Trigger valorizzazione `data_apertura` (BOZZA → APERTA)  | Code | ✅    | Fase m50, immutabile, CURRENT_DATE |
-| M3 | `CREATE TABLE pratiche.competenze_flussi`                 | DDL  | ✅    | Con unique composite, FK rinominate |
-| M4 | `CREATE FUNCTION pratiche.fn_coda_lavoro_operatore(...)`  | Code | ✅    | CTE singola scansione, 3 livelli  |
-| M5 | `CREATE FUNCTION pratiche.fn_prendi_in_carico_flusso(...)` | Code | ✅    | FOR UPDATE + ROW_COUNT check      |
-| M7 | `CREATE FUNCTION pratiche.fn_prendi_in_carico_flusso(...)` | Code | Funzione PL/pgSQL |
+| #   | Oggetto                                                    | Tipo | Stato             | Note                                |
+| --- | ---------------------------------------------------------- | ---- | ----------------- | ----------------------------------- |
+| M1  | `ALTER pratiche.pratiche ADD COLUMN data_apertura`         | DDL  | ✅                 | DATE nullable                       |
+| M2  | Trigger valorizzazione `data_apertura` (BOZZA → APERTA)    | Code | ✅                 | Fase m50, immutabile, CURRENT_DATE  |
+| M3  | `CREATE TABLE pratiche.competenze_flussi`                  | DDL  | ✅                 | Con unique composite, FK rinominate |
+| M4  | `CREATE FUNCTION pratiche.fn_coda_lavoro_operatore(...)`   | Code | ✅                 | CTE singola scansione, 3 livelli    |
+| M5  | `CREATE FUNCTION pratiche.fn_prendi_in_carico_flusso(...)` | Code | ✅                 | FOR UPDATE + ROW_COUNT check        |
+| M7  | `CREATE FUNCTION pratiche.fn_prendi_in_carico_flusso(...)` | Code | Funzione PL/pgSQL |
 
 **Ordine**: M1 → M2 → M3 → M4 → M5
 
@@ -917,18 +917,18 @@ per i nuovi campi v2 e aggiunge gli endpoint per coda lavoro e competenze.
 
 ### Stato attuale backend v1
 
-| Componente | File | Righe | Stato |
-| ---------- | ---- | ----- | ----- |
-| Types | `types.py` | 189 | 11 TypedDict, da aggiornare |
-| Repository | `pratiche_repository.py` | 825 | 40+ metodi, SQL da riscrivere con JOIN display |
-| Repository gen. | `generazione_repository.py` | 94 | Completo, invariato |
-| Service | `pratiche_service.py` | 707 | 30+ metodi, da aggiornare per nuovi campi |
-| Service gen. | `generazione_service.py` | 87 | Completo, invariato |
-| Handler registry | `handler_registry.py` | 41 | Completo, invariato |
-| Views | `views.py` | 924 | 26 view, da aggiornare + nuove |
-| Routes | `urls_v1.py` | 70 | 36 path, da estendere |
-| Test API | `tests/api/` | 969 | 5 file, da aggiornare |
-| Test service | `tests/services/` | 557 | 5 file, da aggiornare |
+| Componente       | File                        | Righe | Stato                                          |
+| ---------------- | --------------------------- | ----- | ---------------------------------------------- |
+| Types            | `types.py`                  | 189   | 11 TypedDict, da aggiornare                    |
+| Repository       | `pratiche_repository.py`    | 825   | 40+ metodi, SQL da riscrivere con JOIN display |
+| Repository gen.  | `generazione_repository.py` | 94    | Completo, invariato                            |
+| Service          | `pratiche_service.py`       | 707   | 30+ metodi, da aggiornare per nuovi campi      |
+| Service gen.     | `generazione_service.py`    | 87    | Completo, invariato                            |
+| Handler registry | `handler_registry.py`       | 41    | Completo, invariato                            |
+| Views            | `views.py`                  | 924   | 26 view, da aggiornare + nuove                 |
+| Routes           | `urls_v1.py`                | 70    | 36 path, da estendere                          |
+| Test API         | `tests/api/`                | 969   | 5 file, da aggiornare                          |
+| Test service     | `tests/services/`           | 557   | 5 file, da aggiornare                          |
 
 ### Cosa NON cambia
 
@@ -945,53 +945,53 @@ per i nuovi campi v2 e aggiunge gli endpoint per coda lavoro e competenze.
 
 ### Fase A — Types (`types.py`)
 
-| # | Azione | Dettaglio |
-| - | ------ | --------- |
-| A1 | Aggiornare `PraticaRow` | Aggiungere: `soggetto_ruolo_id`, `istanza_utility_id`, `data_apertura`, campi display (tipo_prestazione_codice, tipo_prestazione_descrizione, stato_codice_interno, stato_descrizione, priorita_codice_interno, priorita_descrizione, soggetto_display, risorsa_umana_display, unita_organizzativa_descrizione) |
-| A2 | Aggiungere `CompetenzaFlussoRow` | TypedDict per `pratiche.competenze_flussi` |
-| A3 | Aggiungere `CodaLavoroRow` | TypedDict per risultato `fn_coda_lavoro_operatore` (livello, flusso_id, pratica_id, pratica_codice, ecc.) |
+| #   | Azione                           | Dettaglio                                                                                                                                                                                                                                                                                                       |
+| --- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | Aggiornare `PraticaRow`          | Aggiungere: `soggetto_ruolo_id`, `istanza_utility_id`, `data_apertura`, campi display (tipo_prestazione_codice, tipo_prestazione_descrizione, stato_codice_interno, stato_descrizione, priorita_codice_interno, priorita_descrizione, soggetto_display, risorsa_umana_display, unita_organizzativa_descrizione) |
+| A2  | Aggiungere `CompetenzaFlussoRow` | TypedDict per `pratiche.competenze_flussi`                                                                                                                                                                                                                                                                      |
+| A3  | Aggiungere `CodaLavoroRow`       | TypedDict per risultato `fn_coda_lavoro_operatore` (livello, flusso_id, pratica_id, pratica_codice, ecc.)                                                                                                                                                                                                       |
 
 ### Fase B — Repository (`pratiche_repository.py`)
 
-| # | Azione | Dettaglio |
-| - | ------ | --------- |
-| B1 | Riscrivere `list_pratiche` SQL | JOIN a tipi_prestazione, stati_pratiche, priorita_pratiche, soggetti, risorse_umane, unita_organizzative. Aggiungere campi v2 (soggetto_ruolo_id, istanza_utility_id, data_apertura) |
-| B2 | Riscrivere `get_pratica` SQL | Stessi JOIN di B1 per coerenza |
-| B3 | Riscrivere mapping row → dict | Usare `cursor.description` per named columns. Pattern: `cols = [d[0] for d in cursor.description]; dict(zip(cols, row))` |
-| B4 | Aggiornare `create_pratica` | Aggiungere `soggetto_ruolo_id`, `istanza_utility_id` nell'INSERT |
-| B5 | Aggiungere `list_coda_lavoro` | Chiama `SELECT * FROM pratiche.fn_coda_lavoro_operatore(p_risorsa_umana_id, p_emittente_fiscale_id)` |
-| B6 | Aggiungere `prendi_in_carico_flusso` | Chiama `SELECT pratiche.fn_prendi_in_carico_flusso(p_flusso_id, p_risorsa_umana_id)` |
-| B7 | Aggiungere CRUD `competenze_flussi` | `list_competenze(emittente_id)`, `create_competenza(data)`, `delete_competenza(id)` |
+| #   | Azione                               | Dettaglio                                                                                                                                                                            |
+| --- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| B1  | Riscrivere `list_pratiche` SQL       | JOIN a tipi_prestazione, stati_pratiche, priorita_pratiche, soggetti, risorse_umane, unita_organizzative. Aggiungere campi v2 (soggetto_ruolo_id, istanza_utility_id, data_apertura) |
+| B2  | Riscrivere `get_pratica` SQL         | Stessi JOIN di B1 per coerenza                                                                                                                                                       |
+| B3  | Riscrivere mapping row → dict        | Usare `cursor.description` per named columns. Pattern: `cols = [d[0] for d in cursor.description]; dict(zip(cols, row))`                                                             |
+| B4  | Aggiornare `create_pratica`          | Aggiungere `soggetto_ruolo_id`, `istanza_utility_id` nell'INSERT                                                                                                                     |
+| B5  | Aggiungere `list_coda_lavoro`        | Chiama `SELECT * FROM pratiche.fn_coda_lavoro_operatore(p_risorsa_umana_id, p_emittente_fiscale_id)`                                                                                 |
+| B6  | Aggiungere `prendi_in_carico_flusso` | Chiama `SELECT pratiche.fn_prendi_in_carico_flusso(p_flusso_id, p_risorsa_umana_id)`                                                                                                 |
+| B7  | Aggiungere CRUD `competenze_flussi`  | `list_competenze(emittente_id)`, `create_competenza(data)`, `delete_competenza(id)`                                                                                                  |
 
 ### Fase C — Service (`pratiche_service.py`)
 
-| # | Azione | Dettaglio |
-| - | ------ | --------- |
-| C1 | Aggiornare `crea_pratica` | Accettare `soggetto_ruolo_id`, `istanza_utility_id`. Guard coerenza contesto gia' presente — verificare allineamento con trigger DB |
-| C2 | Aggiungere `get_coda_lavoro` | Delega a repository. Ricava `risorsa_umana_id` dall'utente autenticato |
-| C3 | Aggiungere `prendi_in_carico` | Delega a repository con validazione parametri |
-| C4 | Aggiungere CRUD competenze | `list_competenze`, `crea_competenza`, `elimina_competenza` (operazioni admin) |
+| #   | Azione                        | Dettaglio                                                                                                                           |
+| --- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| C1  | Aggiornare `crea_pratica`     | Accettare `soggetto_ruolo_id`, `istanza_utility_id`. Guard coerenza contesto gia' presente — verificare allineamento con trigger DB |
+| C2  | Aggiungere `get_coda_lavoro`  | Delega a repository. Ricava `risorsa_umana_id` dall'utente autenticato                                                              |
+| C3  | Aggiungere `prendi_in_carico` | Delega a repository con validazione parametri                                                                                       |
+| C4  | Aggiungere CRUD competenze    | `list_competenze`, `crea_competenza`, `elimina_competenza` (operazioni admin)                                                       |
 
 ### Fase D — API Views (`views.py`) + Routes (`urls_v1.py`)
 
-| # | Azione | Dettaglio |
-| - | ------ | --------- |
-| D1 | Aggiornare `ApiPraticheList.post` | Accettare `soggetto_ruolo_id`, `istanza_utility_id` nel payload |
-| D2 | Aggiungere `ApiCodaLavoro` | `GET /api/v1/pratiche/coda-lavoro/` — coda lavoro operatore corrente |
-| D3 | Aggiungere `ApiPrendiInCarico` | `POST /api/v1/pratiche/flussi/{fid}/prendi-in-carico/` |
-| D4 | Aggiungere `ApiCompetenzeFlussiList` | `GET/POST /api/v1/pratiche/competenze-flussi/` (admin) |
-| D5 | Aggiungere `ApiCompetenzaFlussoDetail` | `DELETE /api/v1/pratiche/competenze-flussi/{id}/` (admin) |
-| D6 | Aggiungere route in `urls_v1.py` | 4 nuove path per D2-D5 |
+| #   | Azione                                 | Dettaglio                                                            |
+| --- | -------------------------------------- | -------------------------------------------------------------------- |
+| D1  | Aggiornare `ApiPraticheList.post`      | Accettare `soggetto_ruolo_id`, `istanza_utility_id` nel payload      |
+| D2  | Aggiungere `ApiCodaLavoro`             | `GET /api/v1/pratiche/coda-lavoro/` — coda lavoro operatore corrente |
+| D3  | Aggiungere `ApiPrendiInCarico`         | `POST /api/v1/pratiche/flussi/{fid}/prendi-in-carico/`               |
+| D4  | Aggiungere `ApiCompetenzeFlussiList`   | `GET/POST /api/v1/pratiche/competenze-flussi/` (admin)               |
+| D5  | Aggiungere `ApiCompetenzaFlussoDetail` | `DELETE /api/v1/pratiche/competenze-flussi/{id}/` (admin)            |
+| D6  | Aggiungere route in `urls_v1.py`       | 4 nuove path per D2-D5                                               |
 
 ### Fase E — Test
 
-| # | Azione | Dettaglio |
-| - | ------ | --------- |
-| E1 | Aggiornare test `crea_pratica` | Nuovi campi (soggetto_ruolo_id, istanza_utility_id) |
-| E2 | Aggiornare test API list/detail | Verificare campi display nella risposta |
-| E3 | Aggiungere test coda lavoro | Service + API (mock fn_coda_lavoro_operatore) |
-| E4 | Aggiungere test prendi in carico | Service + API (mock fn_prendi_in_carico_flusso) |
-| E5 | Aggiungere test competenze CRUD | Service + API |
+| #   | Azione                           | Dettaglio                                           |
+| --- | -------------------------------- | --------------------------------------------------- |
+| E1  | Aggiornare test `crea_pratica`   | Nuovi campi (soggetto_ruolo_id, istanza_utility_id) |
+| E2  | Aggiornare test API list/detail  | Verificare campi display nella risposta             |
+| E3  | Aggiungere test coda lavoro      | Service + API (mock fn_coda_lavoro_operatore)       |
+| E4  | Aggiungere test prendi in carico | Service + API (mock fn_prendi_in_carico_flusso)     |
+| E5  | Aggiungere test competenze CRUD  | Service + API                                       |
 
 ### Ordine di esecuzione
 
@@ -1031,3 +1031,351 @@ Fase E (test)
 ---
 
 *Piano di completamento — Gestione Pratiche v2 — ZeroERP (29 marzo 2026)*
+
+
+
+
+# Convenzione — Parametrizzazione delle Pratiche
+
+> **Stato**: convenzione stabile. Da citare ogni volta che nasce un nuovo
+> `tipo_prestazione` o un nuovo handler cross-dominio.
+>
+> **Data**: 2026-06-06
+>
+> **Destinatari**: analisti funzionali, sviluppatori backend/DB, chiunque
+> configuri un nuovo processo sul motore pratiche.
+>
+> **Perché esiste**: il motore pratiche è "un mondo aperto" — nasceranno
+> pratiche disparate, ognuna con parametri propri, di cui solo una parte è
+> prevedibile. Senza una regola, ogni pratica nuova porta una soluzione *ad
+> hoc* (una colonna qui, un campo lì, un controllo nel codice) e in due anni
+> la varietà diventa una palude di micro-decisioni incoerenti. Questa
+> convenzione fissa **dove** vive un parametro di processo e **quando** si
+> promuove da un livello all'altro, così che la varietà resti un catalogo e
+> non un caos.
+>
+> **Vedi anche**:
+>
+> * [Analisi Pratiche / Domini Anello 3](analisi-pratiche-domini-anello3.md) — §4 (4 livelli di configurabilità), §6.5 (soglia `meta` → `ext`), §6.8 (chiavi `meta`), §6.9 (idempotenza), §2.2 (Pattern B handler)
+> * [Gestione Pratiche v2](gestione-pratiche-v2.md) — motore Anello 2
+> * [Guida Gestione Pratiche](../guide/gestione-pratiche.md) — Contratto handler
+> * [sviluppo-concentrico.md](../sviluppo-concentrico.md) — §7 (l'astrazione si decanta dal dominio, non si decide a priori)
+
+---
+
+## 1. Il principio
+
+**I parametri di processo non sono codice. Sono dati, su tre livelli. La
+promozione da un livello all'altro segue una regola, non l'istinto del
+momento.**
+
+Il motore pratiche (Anello 2) non deve mai sapere cosa significhi un parametro
+di dominio (cos'è "fatturazione immediata", cos'è "natura ricorrente"). Sa solo
+trasportare dati. Il significato vive nel dominio chiamante (Anello 3), nei suoi
+handler e nelle sue tabelle di configurazione. Aggiungere una colonna tipizzata
+sul motore per un concetto di dominio è una violazione: sporca il nucleo con
+semantica che non gli appartiene.
+
+Corollario operativo: **l'operatore non decide le politiche, le subisce.** Una
+politica (immediata vs differita, soglia di approvazione, canale obbligatorio) è
+una scelta dell'azienda installatrice fatta in configurazione. Ciò che
+l'operatore decide a runtime sono solo i dati d'istanza che la politica gli
+chiede di fornire.
+
+---
+
+## 2. I tre livelli
+
+Per ogni parametro che emerge, prima di scrivere una riga di codice o di DDL, si
+risponde a una domanda: **di che natura è questo parametro?**
+
+### Livello 1 — `handler_params` (politica del template)
+
+Il parametro è una **scelta di politica**, fissa per quel tipo di processo,
+decisa in configurazione e invisibile all'operatore.
+
+* **Dove**: `pratiche.template_flussi.handler_params` (JSONB statico sul
+  template).
+* **Chi lo setta**: l'admin/configuratore, una volta, quando definisce il
+  template.
+* **Chi lo legge**: l'handler, all'avvio del flusso, via il parametro
+  `handler_params` del `Contratto handler`
+  (`execute(flusso_id, pratica_id, meta, handler_params)`).
+* **Regola d'oro**: se servono **due politiche diverse**, si fanno **due
+  template** (con due `handler_params`), esposti come due voci di menù — **non**
+  un toggle runtime per l'operatore. Coerente con manifesto §7: il secondo
+  template nasce solo quando un caso reale lo chiede.
+
+> Esempio: `modalita_fatturazione: IMMEDIATA | DIFFERITA` (vedi §6).
+
+### Livello 2 — `meta` (decisione d'istanza)
+
+Il parametro è una **decisione che cambia da pratica a pratica**, che qualcuno
+deve prendere mentre lavora.
+
+* **Dove**: `pratiche.flussi.meta` (per il singolo flusso) o
+  `pratiche.pratiche.meta` (per la testata). JSONB libero.
+* **Chi lo setta**: l'operatore a runtime, oppure un flusso precedente che
+  passa informazioni al successivo.
+* **Chi lo legge**: l'handler del flusso corrente; eventualmente la FE per
+  mostrare/nascondere campi.
+* **Costo**: zero. Nessuna migrazione. Nasce quando serve, sparisce quando non
+  serve più.
+
+> Esempio: `competenza_fatturazione: "2026-09-01"` — valorizzato dall'operatore
+> *solo* quando la politica del template è `DIFFERITA`.
+
+### Livello 3 — Tabella (struttura con vincoli)
+
+Il parametro ha **struttura propria**: più valori legati tra loro, una FK, un
+`UNIQUE`, un `CHECK`, un filtro per data, ricerche/aggregazioni.
+
+Due sotto-casi:
+
+* **`config.<tassonomia>`** — se è un **vocabolario** controllato (un insieme
+  chiuso di valori che l'admin sceglie da una Select, non digita a mano).
+  Esempio: `config.modalita_fatturazione`, `config.nature_vendita`.
+* **`pratiche.ext_<concetto>`** — se sono **dati propri della pratica** in un
+  contesto specifico, con colonne strutturate. Esempio (futuro):
+  `ext_appuntamento`, `ext_sopralluogo`.
+
+> **`ext_*` non duplica mai un'entità di dominio che vive già altrove.** Un
+> preventivo è `vendite.preventivi`, non `pratiche.ext_preventivo`: la pratica
+> lo cita con `pratiche_sorgenti` (Pattern A). Vedi
+> [analisi-anello3 §2.3](analisi-pratiche-domini-anello3.md).
+
+### Tabella riassuntiva
+
+| Natura del parametro                                  | Livello | Dove                             | Migrazione?  |
+| ----------------------------------------------------- | ------- | -------------------------------- | ------------ |
+| Politica fissa del processo, invisibile all'operatore | 1       | `template_flussi.handler_params` | No (seed)    |
+| Decisione d'istanza, variabile per pratica            | 2       | `flussi.meta` / `pratiche.meta`  | No           |
+| Vocabolario controllato                               | 3a      | `config.<tassonomia>`            | Sì (tabella) |
+| Dati strutturati propri della pratica                 | 3b      | `pratiche.ext_<concetto>`        | Sì (tabella) |
+
+---
+
+## 3. La regola di promozione (legge, non consiglio)
+
+La libertà del JSONB è seducente: la tentazione sarà tenere *tutto* in `meta`
+per non fare migrazioni. La regola §6.5 dell'analisi Anello 3 è il freno, e qui
+la si tratta come **legge vincolante**:
+
+| Dati propri nel contesto del legame                                          | Soluzione                                         |
+| ---------------------------------------------------------------------------- | ------------------------------------------------- |
+| 0-1 valori                                                                   | `meta` JSONB                                      |
+| 2-3 valori occasionali                                                       | `meta` JSONB, con commento sulla struttura attesa |
+| **4+ valori con vincoli a schema** (UNIQUE / CHECK / FK / indici di ricerca) | Promozione a tabella (`config.*` o `ext_*`)       |
+
+Due condizioni **entrambe necessarie** per promuovere a tabella:
+
+1. la soglia quantitativa sopra (4+ colonne con vincoli reali), **e**
+2. un **secondo caso d'uso identico** che chiede la stessa struttura.
+
+**La promozione la decide la realtà, due volte, non l'analista a priori.** Una
+richiesta strampalata che capita una sola volta vive in `meta` e non lascia
+cicatrici nello schema. Se torna identica una seconda volta, *allora* si è
+guadagnata una tabella. Questo è ciò che impedisce alle "richieste insensate" di
+sedimentare in schema permanente.
+
+La regola funziona anche al contrario, come **allarme**: un parametro che
+diventa centrale (lo filtri, lo aggreghi, ci fai report) e che è ancora in
+`meta` è un debito tecnico — `meta` non è indicizzabile né referenziabile in
+modo robusto. Quando un campo JSONB inizia a comparire nei `WHERE` e nei
+`GROUP BY`, è il segnale che la comodità è diventata un costo: si valuta la
+promozione.
+
+---
+
+## 4. Il guardiano del JSONB (addendum al Contratto handler)
+
+`handler_params` e `meta` sono JSONB: **il DB non ne valida la forma.** Questa è
+una falla strutturale nella difesa-in-profondità ("il DB è l'ultima linea"): per
+i dati liberi quella linea non esiste. L'unico guardiano possibile è l'handler.
+
+**Ogni handler DEVE validare i propri `handler_params` all'avvio**, prima di
+agire, sollevando un errore parlante registrato in `config.messaggi_errore.csv`:
+
+```python
+def execute(self, flusso_id, pratica_id, meta, handler_params):
+    modalita = handler_params.get("modalita_fatturazione")
+    if modalita not in ("IMMEDIATA", "DIFFERITA"):
+        raise ServiceError("E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA")
+    # ... prosegue solo se i parametri sono validi
+```
+
+Questo non è facoltativo né lasciato all'iniziativa: è **parte del Contratto
+handler**. Un handler senza validazione dei propri parametri è incompleto. Il
+costo di scrivere queste guard è ricorrente (una volta per handler) e va messo
+in conto come parte del "nasce un handler nuovo".
+
+Lo stesso vale per i valori `meta` che l'handler *richiede* per funzionare (es.
+`competenza_fatturazione` quando la politica è `DIFFERITA`): assenza o forma
+errata → errore semantico, non `KeyError` o comportamento silenzioso.
+
+---
+
+## 5. Il giornale rende la varietà un catalogo
+
+Questa è la sezione che spiega **perché** pratiche è il punto forte e non solo
+"un altro workflow engine".
+
+Cento tipi di pratica diversi, ognuno con parametri suoi, sarebbero
+ingovernabili se ognuno raccontasse la propria storia a modo suo. Non lo sono,
+a una condizione: **gli handler scrivono gli eventi di dominio nel giornale con
+le chiavi convenzionali di §6.8**, sempre la stessa chiave per lo stesso
+concetto.
+
+| Concetto                | Chiave `meta`       |
+| ----------------------- | ------------------- |
+| ID preventivo           | `preventivo_id`     |
+| ID ordine               | `ordine_id`         |
+| ID commessa             | `commessa_id`       |
+| ID contratto            | `contratto_id`      |
+| Competenza fatturazione | `competenza`        |
+| Righe coinvolte         | `righe_ids` (array) |
+
+Risultato: qualunque pratica, per quanto disparata, diventa interrogabile in
+modo **uniforme**. Un solo modo di leggere la storia di cento processi diversi:
+
+```sql
+SELECT pratica_id FROM pratiche.giornale WHERE meta->>'commessa_id' = '...';
+```
+
+Questo è il valore vendibile: non "abbiamo i workflow", ma *"qualunque cosa
+accada nel sistema lascia una traccia coerente e cercabile, e ne configuri di
+nuove senza chiamare lo sviluppatore"*. La disciplina sulle chiavi `meta` è ciò
+che trasforma la varietà da problema in feature.
+
+**Limite onesto** (coerente con [analisi-anello3 §3.4](analisi-pratiche-domini-anello3.md)):
+il giornale è backbone delle attività **nate dentro pratica**. È una proprietà
+condizionata alla configurazione menù dell'azienda, non intrinseca. Va
+dichiarata nella documentazione utente, non nascosta.
+
+---
+
+## 6. Caso lavorato — `modalita_fatturazione` (immediata / differita)
+
+Applicazione end-to-end della convenzione al primo caso reale: il processo
+preventivi. Livello modello (nomi, semantica, esempi); i DDL pronti sono
+deliverable di **Fase B**.
+
+### 6.1 La decisione, livello per livello
+
+* **È una politica** (l'azienda decide se i suoi preventivi fatturano subito o
+  a un periodo scelto, l'operatore non sceglie) → **Livello 1**
+  (`handler_params`).
+* **Ha valori controllati** (`IMMEDIATA` / `DIFFERITA`, e domani la stessa
+  tassonomia servirà all'offerta commerciale) → si appoggia a un **Livello 3a**
+  (`config.modalita_fatturazione`), così l'admin sceglie da una Select e non
+  edita JSON grezzo.
+* **Quando differita, serve un dato d'istanza** (quale periodo) → **Livello 2**
+  (`flussi.meta`).
+* **Due politiche → due template**, non un toggle runtime.
+
+### 6.2 `config.modalita_fatturazione` (Livello 3a, nuova tabella — Fase B)
+
+Vocabolario minimale. La colonna `richiede_periodo` è ciò che pilota
+dichiarativamente la FE e l'handler — aggiungere una modalità futura sarà una
+riga, non codice.
+
+```text
+codice       descrizione                         richiede_periodo
+───────────  ──────────────────────────────────  ────────────────
+IMMEDIATA    Fatturazione nel mese corrente       false
+DIFFERITA    Fatturazione a periodo scelto         true
+```
+
+### 6.3 I due template (Livello 1)
+
+Un solo `tipo_prestazione` `PREVENTIVI`, due template di processo identici nei
+flussi (`RICHIESTA_CLIENTE` → `PREVENTIVAZIONE` → `APPROVAZIONE_CLIENTE` →
+`CONFERMA`), che differiscono **solo** in `handler_params` del flusso
+`CONFERMA`:
+
+```json
+// template PREVENTIVI_IMMEDIATA, flusso CONFERMA
+{ "modalita_fatturazione": "IMMEDIATA" }
+
+// template PREVENTIVI_DIFFERITA, flusso CONFERMA
+{ "modalita_fatturazione": "DIFFERITA" }
+```
+
+Esposti come due voci di menù distinte (config menù §5.8). "L'operatore sceglie"
+= sceglie quale processo configurato aprire, non un campo di processo.
+
+### 6.4 Il dato d'istanza (Livello 2)
+
+Solo nel ramo differita, la FE — leggendo `richiede_periodo = true` dal blob
+capability — mostra il selettore periodo. La scelta finisce in:
+
+```json
+// flussi.meta del flusso CONFERMA, solo se DIFFERITA
+{ "competenza_fatturazione": "2026-09-01" }
+```
+
+### 6.5 L'handler `vendita.push_preventivo` — ramo fatturazione
+
+Dopo lo split per natura (riga → commessa diretta nel caso snello), l'handler
+gira **solo due manopole** sulla commessa. Nessuna logica di fatturazione nuova:
+lo strato commessa ha già `fatturazione_immediata`, `policy_fatturazione`,
+`competenza_mese`, e `fn_list_commesse_emittibili` filtra per stato emittibile
+**e** competenza.
+
+```text
+1. valida handler_params  → modalita ∈ {IMMEDIATA, DIFFERITA}  (§4)
+2. legge config.modalita_fatturazione[modalita].richiede_periodo
+3. determina la competenza:
+     IMMEDIATA  → competenza = mese corrente
+     DIFFERITA  → competenza = meta.competenza_fatturazione
+                  (assente/errata → E_VENDITA_COMPETENZA_RICHIESTA)
+4. push righe in commessa (fn_upsert_commessa_attivita, competenza_mese = competenza)
+5. porta la commessa a PRONTA_FATTURAZIONE  (stato emittibile)
+6. scrive in giornale: DOMINIO_COMMESSA_CREATA
+     meta = { commessa_id, righe_ids, preventivo_id, competenza }   (§5, §6.8)
+```
+
+Effetto a valle, automatico:
+
+* **Immediata** → competenza = mese corrente → il prossimo lotto del mese pesca
+  la commessa.
+* **Differita** → competenza = mese scelto → il lotto corrente la filtra fuori,
+  quello del mese giusto la prende.
+
+> "Differita" qui significa **differita a periodo scelto**, non *differita a
+> evento/consegna* — quella richiederebbe un flusso di esecuzione e farebbe
+> uscire la pratica dal "chiude alla conferma". Fuori dallo scope snello.
+
+### 6.6 Deliverable Fase B (DDL, non in questo documento)
+
+* `CREATE TABLE config.modalita_fatturazione` + seed 2 righe
+* seed `pratiche.tipi_prestazione` `PREVENTIVI`
+* seed `template_flussi` x4 + prerequisiti + canali, x2 template (immediata/differita)
+* seed `handler_flussi` `vendita.push_preventivo`
+* handler Python con validazione `handler_params` (§4) + ramo competenza (§6.5)
+* codici errore: `E_VENDITA_PARAM_MODALITA_FATTURAZIONE_INVALIDA`,
+  `E_VENDITA_COMPETENZA_RICHIESTA`
+* pgTAP: immediata → commessa competenza mese corrente PRONTA_FATTURAZIONE;
+  differita → commessa competenza scelta; idempotenza push (§6.9)
+
+---
+
+## 7. Checklist — nasce un tipo nuovo di pratica
+
+1. Per ogni parametro del processo, classificalo con la tabella §2 (politica →
+   `handler_params`; istanza → `meta`; struttura → tabella).
+2. Politiche multiple → template multipli, **mai** toggle runtime.
+3. Resta in `meta` finché non scattano **entrambe** le condizioni §3 (4+ colonne
+   con vincoli **e** secondo caso identico).
+4. Ogni handler valida i propri `handler_params` con errore parlante (§4).
+5. Ogni evento di dominio nel giornale usa le chiavi convenzionali §6.8 (§5).
+6. Ogni azione "una sorgente → una destinazione" è idempotente per costruzione
+   (vincolo DB + check applicativo + pgTAP — §6.9).
+7. Niente logica di dominio sul motore Anello 2: il significato vive
+   nell'handler e nelle tabelle del dominio chiamante.
+
+---
+
+*Convenzione di parametrizzazione delle pratiche — ZeroERP (2026-06-06).
+Documento vivo: si aggiorna quando un nuovo caso reale rivela un livello o una
+regola mancante.*

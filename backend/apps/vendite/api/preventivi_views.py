@@ -347,7 +347,9 @@ class ApiPreventivoRevisione(DomainAPIView):
 
 
 class ApiPreventivoGeneraOrdine(DomainAPIView):
-    """`POST /api/v1/vendite/preventivi/<id>/genera-ordine/` (conversione §7.4)."""
+    """`POST /api/v1/vendite/preventivi/<id>/genera-ordine/` — smistamento
+    MERCE → ordine (modello split D8). Body opzionale `{righe_ids: [..]}` per lo
+    smistamento selettivo; assente = tutte le righe merce residue."""
 
     area_funzionale = "vendite"
 
@@ -357,14 +359,82 @@ class ApiPreventivoGeneraOrdine(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Genera un ordine di vendita DRAFT da un preventivo ACCETTATO
-    #        (copia testata+righe+componenti + documento_origine). Delega a
+    # Scopo: Smista a un ordine DRAFT le righe MERCE di un preventivo ACCETTATO
+    #        (natura destinazione ORDINE), via fn_push_preventivo_a_ordine
+    #        (snapshot prezzi + BoM + link di riga, niente servizi). Delega a
     #        ordini_service (stesso app vendite). Ritorna {ordine_id, numero, ...}.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         from apps.vendite.services import ordini_service
 
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            return ordini_service.crea_ordine_da_preventivo(preventivo_id)
+            righe_ids = payload.get("righe_ids") or None
+            return ordini_service.crea_ordine_da_preventivo(
+                preventivo_id, righe_ids=righe_ids,
+            )
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiPreventivoApprovazioneFlusso(DomainAPIView):
+    """`POST /api/v1/vendite/preventivi/approvazione-flusso/` (M2, brief BE §8.3):
+    completa il flusso APPROVAZIONE_CLIENTE di una pratica PREVENTIVI e, in esito
+    POSITIVO, accetta il preventivo ROOT collegato, in un'unica transazione. Il
+    preventivo è risolto dal legame `pratiche_sorgenti` ROOT (la FE passa solo
+    pratica_id + flusso_id)."""
+
+    area_funzionale = "vendite"
+    post_permission = "cambia_stato_preventivi"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="PreventivoApprovazioneFlussoRequest",
+            fields={
+                "pratica_id": serializers.IntegerField(),
+                "flusso_id": serializers.IntegerField(),
+                "esito": serializers.CharField(),
+                "note_esito": serializers.CharField(required=False, allow_null=True),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="PreventivoApprovazioneFlussoResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Completa l'approvazione cliente dal flusso pratica (M2).
+    def post(self, request: Request) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return preventivi_service.completa_approvazione_da_flusso(
+                int(payload["pratica_id"]),
+                flusso_id=int(payload["flusso_id"]),
+                esito=str(payload["esito"]),
+                note_esito=payload.get("note_esito"),
+                user=request.user,
+            )
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiPreventivoCollegaPratica(DomainAPIView):
+    """`POST /api/v1/vendite/preventivi/<id>/collega-pratica/`: aggancia il
+    preventivo come ROOT a una pratica (pratiche_sorgenti). Usato a PREVENTIVAZIONE
+    sul percorso pratica-first. Idempotente."""
+
+    area_funzionale = "vendite"
+    post_permission = "cambia_stato_preventivi"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="PreventivoCollegaPraticaRequest",
+            fields={"pratica_id": serializers.IntegerField()},
+        ),
+        responses={200: inline_serializer(
+            name="PreventivoCollegaPraticaResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return preventivi_service.collega_pratica(
+                preventivo_id, pratica_id=int(payload["pratica_id"]),
+            )
         return handle_post_json(request, handler=_handler)
 
 

@@ -285,63 +285,38 @@ _SVC = "apps.vendite.services.ordini_service"
 
 
 class OrdiniConversioneUpstreamTests(SimpleTestCase):
-    """crea_ordine_da_preventivo (§7.4): orchestrazione, mapping, guard."""
+    """crea_ordine_da_preventivo (modello split D8): delega solo-merce alla
+    primitiva DB + ritorno numero. Stato/righe sono validati dalla fn DB."""
 
-    @patch("apps.vendite.services.ordini_service.gestisci_riga")
-    @patch("apps.vendite.services.ordini_service.crea_ordine")
     @patch(_REPO)
     @patch(_PREV_REPO)
-    def test_crea_ordine_da_preventivo_ok(
-        self, prev_cls, ord_cls, crea_mock, gestisci_mock,
-    ) -> None:
-        prev_cls.return_value.get_preventivo.return_value = {
-            "stato_codice_interno": "ACCETTATO",
-            "billing_account_id": 10, "utility_id": 5,
-            "emittente_fiscale_id": 3, "valuta_id": 1, "termine_pagamento_id": 2,
-        }
-        prev_cls.return_value.list_righe.return_value = [
-            {"attivo": True, "articolo_id": "A1", "quantita": "2",
-             "prezzo_unitario": "10", "sconto_percentuale": "5", "iva_id": 1},
-            {"attivo": False, "articolo_id": "A2"},  # riga inattiva → saltata
-        ]
-        crea_mock.return_value = {"id": 7, "uid": "u", "numero": "ORD7"}
+    def test_crea_ordine_da_preventivo_ok(self, prev_cls, ord_cls) -> None:
+        # La primitiva DB ritorna l'id ordine; la testata fornisce il numero.
+        prev_cls.return_value.push_a_ordine.return_value = 7
+        ord_cls.return_value.get_ordine.return_value = {"id": 7, "numero": "ORD7"}
 
-        with patch(_ATOMIC, return_value=nullcontext()):
-            out = ordini_service.crea_ordine_da_preventivo(99)
+        out = ordini_service.crea_ordine_da_preventivo(99)
 
+        # Delega solo-merce: nessuna pratica (standalone), nessun sottoinsieme.
+        prev_cls.return_value.push_a_ordine.assert_called_once_with(
+            99, righe_ids=None, pratica_id=None,
+        )
         self.assertEqual(out["ordine_id"], 7)
         self.assertEqual(out["numero"], "ORD7")
-        self.assertEqual(out["righe_create"], 1)
         self.assertEqual(out["documento_origine"], {"tipo": "PREVENTIVO", "id": 99})
-        # header mappato da preventivo
-        header = crea_mock.call_args.args[0]
-        self.assertEqual(header["billing_account_id"], 10)
-        self.assertEqual(header["termine_pagamento_id"], 2)
-        # provenienza valorizzata
-        ord_cls.return_value.set_documento_origine.assert_called_once_with(
-            7, "PREVENTIVO", 99,
+
+    @patch(_REPO)
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_righe_selettive(self, prev_cls, ord_cls) -> None:
+        # Smistamento selettivo: il sottoinsieme righe_ids arriva alla primitiva.
+        prev_cls.return_value.push_a_ordine.return_value = 8
+        ord_cls.return_value.get_ordine.return_value = {"id": 8, "numero": "ORD8"}
+
+        ordini_service.crea_ordine_da_preventivo(99, righe_ids=[11, 12])
+
+        prev_cls.return_value.push_a_ordine.assert_called_once_with(
+            99, righe_ids=[11, 12], pratica_id=None,
         )
-        # solo la riga attiva → 1 gestisci_riga; sconto_percentuale propagato 1:1
-        self.assertEqual(gestisci_mock.call_count, 1)
-        riga_payload = gestisci_mock.call_args.args[1]
-        self.assertEqual(riga_payload["articolo_id"], "A1")
-        self.assertEqual(riga_payload["sconto_percentuale"], "5")
-
-    @patch(_PREV_REPO)
-    def test_crea_ordine_da_preventivo_stato_non_convertibile(self, prev_cls) -> None:
-        prev_cls.return_value.get_preventivo.return_value = {
-            "stato_codice_interno": "EMESSO",
-        }
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_preventivo(99)
-        self.assertEqual(cm.exception.code, "E_ORD_ORIGINE_NON_CONVERTIBILE")
-
-    @patch(_PREV_REPO)
-    def test_crea_ordine_da_preventivo_non_trovato(self, prev_cls) -> None:
-        prev_cls.return_value.get_preventivo.return_value = None
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_preventivo(99)
-        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
 
 
 class OrdiniConversioneOffertaTests(SimpleTestCase):
@@ -367,6 +342,8 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
         off_cls.return_value.list_righe_espanse.return_value = [
             {"articolo_id": "A1"}, {"articolo_id": "A2"},
         ]
+        # Guard idempotenza 1:1: nessun ordine già nato da questa offerta.
+        ord_cls.return_value.get_ordine_by_documento_origine.return_value = None
 
         with patch(_ATOMIC, return_value=nullcontext()):
             out = ordini_service.crea_ordine_da_offerta(55)
@@ -400,6 +377,45 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             ordini_service.crea_ordine_da_offerta(55)
         self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+
+    @patch(_REPO)
+    @patch(_OFF_REPO)
+    def test_crea_ordine_da_offerta_gia_convertita(self, off_cls, ord_cls) -> None:
+        # Offerta ACCETTATA ma esiste già un ordine da questa offerta → guard
+        # fail-fast 1:1 (univocità offerta→ordine), prima di espandere le righe.
+        off_cls.return_value.get_offerta.return_value = {
+            "stato_codice_interno": "ACCETTATA",
+            "billing_account_id": 10, "utility_id": 5,
+            "emittente_fiscale_id": 3, "valuta_id": 1,
+        }
+        ord_cls.return_value.get_ordine_by_documento_origine.return_value = {
+            "id": 7, "numero": "ORD7",
+        }
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_offerta(55)
+        self.assertEqual(cm.exception.code, "E_ORD_OFFERTA_GIA_CONVERTITA")
+        # Guard prima del lavoro: nessuna espansione righe.
+        off_cls.return_value.list_righe_espanse.assert_not_called()
+
+    @patch(_REPO)
+    @patch(_OFF_REPO)
+    def test_crea_ordine_da_offerta_con_contratto_bloccato(
+        self, off_cls, ord_cls,
+    ) -> None:
+        # Mutua esclusività XOR: offerta ACCETTATA che ha già generato un
+        # contratto non può generare un ordine → E_OFFERTA_CONTRATTO_GIA_GENERATO.
+        off_cls.return_value.get_offerta.return_value = {
+            "stato_codice_interno": "ACCETTATA",
+            "billing_account_id": 10, "utility_id": 5,
+            "emittente_fiscale_id": 3, "valuta_id": 1,
+            "contratto_id": 42,
+        }
+        # Nessun ordine ancora: il blocco arriva dal contratto, non dall'idempotenza.
+        ord_cls.return_value.get_ordine_by_documento_origine.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_offerta(55)
+        self.assertEqual(cm.exception.code, "E_OFFERTA_CONTRATTO_GIA_GENERATO")
+        off_cls.return_value.list_righe_espanse.assert_not_called()
 
     def test_overrides_da_componenti_coercion(self) -> None:
         from apps.vendite.services.ordini_service import _overrides_da_componenti
@@ -437,3 +453,67 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
             ),
             {"u4": "7"},
         )
+
+
+class OrdiniPushCommessaTests(SimpleTestCase):
+    """push_a_commessa: transizione automatica CONFERMATO→EVASO (invio unico)."""
+
+    _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
+
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_completato_transita_a_evaso(self, ord_cls, mock_push_one) -> None:
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.count_righe_pushable.return_value = 2
+        repo.get_stato_id_by_codice.return_value = 8  # id EVASO
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
+        }
+        out = ordini_service.push_a_commessa(55)
+        self.assertEqual(out["stato"], "COMPLETATO")
+        repo.get_stato_id_by_codice.assert_called_once_with("EVASO")
+        repo.update_stato.assert_called_once_with(55, 8)
+
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_parziale_non_transita(self, ord_cls, mock_push_one) -> None:
+        # PARZIALE → ordine resta CONFERMATO (ri-push per completare): no EVASO.
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.count_righe_pushable.return_value = 2
+        mock_push_one.return_value = {
+            "stato": "PARZIALE", "push_log_id": 7, "durata_ms": 5, "handlers": [],
+        }
+        ordini_service.push_a_commessa(55)
+        repo.update_stato.assert_not_called()
+
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_seed_evaso_assente_soft(self, ord_cls, mock_push_one) -> None:
+        # Robustezza deploy parziale: EVASO non seedato → niente raise, niente update.
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.count_righe_pushable.return_value = 2
+        repo.get_stato_id_by_codice.return_value = None
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
+        }
+        out = ordini_service.push_a_commessa(55)  # non solleva
+        self.assertEqual(out["stato"], "COMPLETATO")
+        repo.update_stato.assert_not_called()
+
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_transizione_db_error_soft(self, ord_cls, mock_push_one) -> None:
+        # Se il trigger DB rifiuta la transizione → warning, non fa fallire il push.
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.count_righe_pushable.return_value = 2
+        repo.get_stato_id_by_codice.return_value = 8
+        repo.update_stato.side_effect = DatabaseError("transizione non ammessa")
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
+        }
+        out = ordini_service.push_a_commessa(55)  # non solleva
+        self.assertEqual(out["stato"], "COMPLETATO")

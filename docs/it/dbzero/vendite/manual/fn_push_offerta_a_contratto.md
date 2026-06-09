@@ -31,7 +31,7 @@
 
 ### 🎯 Scopo Principale
 
-(rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
+(rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 
 `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id, p_chiudi_contratto_esistente)`
 genera un **contratto DRAFT** da un'offerta commerciale **ACCETTATA**, copiando
@@ -60,6 +60,16 @@ il push aggiunge solo *lock*, *routing* e *rete di sicurezza*.
   la funzione fallisce con `E_OFFERTA_CONTRATTO_GIA_GENERATO` senza creare
   duplicati. La UNIQUE `uq_contratti_offerta_id` garantisce la protezione anche
   a livello strutturale.
+- **Mutua esclusività contratto/ordine (rev6, 2026-06-08)**: se l'offerta ha
+  già generato un **ordine** (`vendite.ordini` con `documento_origine_tipo =
+  'OFFERTA' AND documento_origine_id = p_offerta_id`), il push fallisce con
+  `E_OFFERTA_ORDINE_GIA_GENERATO`. Contratto e ordine sono **alternativi**:
+  un'offerta ne genera al massimo uno. È lo specchio write-path del guard di
+  capability [`fn_available_actions_offerta`](/dbzero/script/funzioni/fn_available_actions_offerta);
+  il guard speculare lato ordine (impedire l'ordine se esiste un contratto) vive
+  nel BE `crea_ordine_da_offerta`. Non esiste un vincolo strutturale incrociato
+  contratti↔ordini: la race cross-tab non è coperta (scelta esplicita,
+  [brief §10](/dev/work-done/brief-db-univocita-offerta-ordine)).
 - **Contratto creato in DRAFT**: l'auto-attivazione non è prevista in v1
   (§1.2 analisi). Il passaggio DRAFT → ATTIVO avviene separatamente.
 - **Copia 1:1 (§5.2 analisi)**:
@@ -166,6 +176,7 @@ chiave operativa; `sorgente_uid` è la chiave di integrazione cross-dominio.
 | `E_PARAMETRO_INVALIDO`              | `p_offerta_id` NULL o <= 0; offerta non trovata.                  |
 | `E_OFFERTA_PUSH_STATO_NON_AMMESSO`  | Stato offerta diverso da `ACCETTATA`.                             |
 | `E_OFFERTA_CONTRATTO_GIA_GENERATO`  | Esiste già un contratto con `offerta_id = p_offerta_id`.          |
+| `E_OFFERTA_ORDINE_GIA_GENERATO`     | Esiste già un ordine generato dall'offerta (`documento_origine ('OFFERTA', p_offerta_id)`) — mutua esclusività contratto/ordine (rev6). |
 | `E_CONTRATTO_OVERLAP_ESISTENTE`     | Esiste un contratto attivo sovrapposto e `p_chiudi_contratto_esistente = false` (caso B), oppure conflitto residuo intercettato dal backstop. |
 | `E_CONFIG_MANCANTE`                 | `DRAFT` non trovato in `stati_doc_contratti`; `OFFERTA_COMMERCIALE` o `CONTRATTO` non trovati in `config.sorgenti`. |
 

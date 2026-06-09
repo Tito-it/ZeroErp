@@ -1,8 +1,9 @@
 <script setup>
 // Scopo: Drawer offerta commerciale — testata + sezione utility inline +
-//        sub-drawer eccezioni + tab revisioni. State machine codificata FE
-//        (BOZZA/EMESSA/ACCETTATA/RIFIUTATA/ANNULLATA/SUPERATA) finche' il
-//        BE non espone `available_actions` come per contratti/preventivi.
+//        sub-drawer eccezioni + tab revisioni. Azioni di stato + speciali
+//        (push_contratto, genera_ordine) interamente data-driven da
+//        `available_actions` (script.fn_available_actions_offerta), come per
+//        contratti/preventivi.
 //
 // Pattern speculare a ContrattoDrawer (utility 1:1 inline in testata,
 // listino + variazione globale PERCENTUALE, validita range). Drawer 3 tab
@@ -66,7 +67,6 @@ import {
   STATI_OFFERTA_CON_DOCUMENTO,
   STATI_OFFERTA_SEGNALA_SCADENZA,
   STATI_OFFERTA_TERMINALI,
-  STATO_OFFERTA,
 } from '../constants'
 import { useOfferteStore } from '../stores/offerte'
 import OffertaEccezioniDrawer from './OffertaEccezioniDrawer.vue'
@@ -514,6 +514,8 @@ function reloadRevisioni() {
 //   - crea_revisione        -> confirmAction + chiamata store
 //   - push_contratto        -> OffertaPushDialog (con guard proattivo
 //     contratto_id per la race-condition cross-tab)
+//   - genera_ordine         -> confirmAction + store.generaOrdine (conversione
+//     §7.4; la fn DB espone l'azione solo se nessun ordine già generato)
 // `requires_motivazione` arriva dalla fn DB ma non viene letta qui: la
 // motivazione obbligatoria e' enforced dal dialog esito + dal BE
 // (motivazione_rifiuto NOT NULL su RIFIUTATA/ANNULLATA).
@@ -557,6 +559,18 @@ function onActionDispatch(action) {
         return
       }
       pushDialogVisible.value = true
+      return
+    case 'genera_ordine':
+      // Conversione §7.4: la fn DB non ritorna l'azione se un ordine e' gia'
+      // nato da questa offerta (idempotenza 1:1). requires_confirm=true →
+      // confermiamo prima di generare; la race concorrente e' coperta dal
+      // guard BE (E_ORD_OFFERTA_GIA_CONVERTITA) + UNIQUE parziale.
+      confirmAction({
+        header: t('vendite.offerte.genera_ordine_titolo'),
+        message: t('vendite.offerte.genera_ordine_messaggio'),
+        acceptLabel: t('vendite.offerte.genera_ordine_conferma'),
+        onAccept: onGeneraOrdine,
+      })
       return
     default:
       // Action key sconosciuta: log + no-op. Capita se il BE aggiunge un'azione
@@ -701,41 +715,33 @@ async function onGeneraOrdine() {
     notify.success(
       t('vendite.offerte.ordine_generato', { numero: result.numero }),
     )
+    // Ricarica le capability: ora `can_genera_ordine` è false (ordine 1:1
+    // generato) → l'azione sparisce dalla barra, come per push_contratto.
+    await refreshDetail()
   } catch (err) {
     notify.error(extractApiError(err, t('vendite.offerte.errore_generico')))
   }
 }
 
 // Barra azioni del drawer: composizione di
-//   1) Transizioni di stato data-driven dal BE
+//   1) Transizioni di stato + azioni speciali data-driven dal BE
 //      (script.fn_available_actions_offerta, mapped 1:1 in azioni
-//      `kind:'state'` con label/icona/severity dal jsonb).
-//   2) Azione statica `genera-ordine` su offerta ACCETTATA (conversione §7.4).
-//   3) Manage action `manage-eccezioni` per il sub-drawer eccezioni
+//      `kind:'state'` con label/icona/severity dal jsonb). Include
+//      `genera_ordine` (conversione §7.4), che la fn espone solo se
+//      ACCETTATA e nessun ordine già generato (idempotenza 1:1): il bottone
+//      sparisce a conversione avvenuta come per `push_contratto`.
+//   2) Manage action `manage-eccezioni` per il sub-drawer eccezioni
 //      (master-detail inline). Allineato al pattern ContrattoDrawer:
 //      l'eccezione vive in un sub-drawer dedicato col proprio CRUD, non
 //      in una tab del drawer principale (UX UI 2026-05-26).
-//   4) Manage action `manage-note` per il sub-drawer note partizionate.
+//   3) Manage action `manage-note` per il sub-drawer note partizionate.
 const drawerActions = computed(() => {
   if (!isEdit.value || !detail.value) return []
   const eccCount = detail.value.eccezioni?.length ?? 0
-  const generaOrdineAction = (
-    !parentReadonly.value && stato.value === STATO_OFFERTA.ACCETTATA
-      ? [{
-          key: 'genera-ordine',
-          kind: 'state',
-          label: t('vendite.offerte.azione_genera_ordine'),
-          icon: NAV_ICONS.ORDINI,
-          severity: 'info',
-          command: onGeneraOrdine,
-        }]
-      : []
-  )
   return [
-    ...generaOrdineAction,
     // Read-only puro (permesso LETTURA / pannello split): niente azioni di
-    // stato (emetti/accetta/rifiuta/push/revisione). Restano i pannelli
-    // gestisci-eccezioni/note (sub-drawer in sola lettura).
+    // stato (emetti/accetta/rifiuta/push/genera_ordine/revisione). Restano i
+    // pannelli gestisci-eccezioni/note (sub-drawer in sola lettura).
     ...mapAvailableActionsToDrawerActions({
       availableActions,
       t,

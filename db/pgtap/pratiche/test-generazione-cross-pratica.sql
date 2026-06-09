@@ -31,6 +31,12 @@ VALUES (
     true
   ),
   (
+    'IN_CORSO',
+    'IN_CORSO',
+    'In corso',
+    true
+  ),
+  (
     'COMPLETATO',
     'COMPLETATO',
     'Completato',
@@ -70,6 +76,13 @@ SELECT (
       AND attivo = true
     LIMIT 1
   ) AS stato_da_eseguire_id,
+  (
+    SELECT id
+    FROM config.stati_flussi_pratiche
+    WHERE codice_interno = 'IN_CORSO'
+      AND attivo = true
+    LIMIT 1
+  ) AS stato_in_corso_id,
   (
     SELECT id
     FROM config.stati_flussi_pratiche
@@ -247,11 +260,18 @@ WHERE tipo_prestazione_id = (
 -- =========================================================
 -- 4) UPDATE flusso → COMPLETATO: pratica target generata
 -- =========================================================
+-- Percorso valido per la matrice transizioni: DA_ESEGUIRE -> IN_CORSO -> COMPLETATO.
+UPDATE pratiche.flussi
+SET stato_id = (SELECT stato_in_corso_id FROM tmp_gen_refs)
+WHERE id = (SELECT flusso_id FROM tmp_gen_flusso);
+-- esito obbligatorio per COMPLETATO (guard trg_flussi_a10_guard_esito_completato).
+-- La regola auto=true ha esito_richiesto NULL: 'POSITIVO' genera comunque.
 UPDATE pratiche.flussi
 SET stato_id = (
     SELECT stato_completato_id
     FROM tmp_gen_refs
-  )
+  ),
+  esito = 'POSITIVO'
 WHERE id = (
     SELECT flusso_id
     FROM tmp_gen_flusso
@@ -381,11 +401,17 @@ WHERE tipo_prestazione_id = (
     SELECT tp_id
     FROM tmp_gen_tp_dest
   );
+-- Percorso valido per la matrice transizioni: DA_ESEGUIRE -> IN_CORSO -> COMPLETATO.
+UPDATE pratiche.flussi
+SET stato_id = (SELECT stato_in_corso_id FROM tmp_gen_refs)
+WHERE id = (SELECT flusso_id FROM tmp_gen_flusso2);
+-- esito obbligatorio per COMPLETATO; regola auto=false: nessuna generazione.
 UPDATE pratiche.flussi
 SET stato_id = (
     SELECT stato_completato_id
     FROM tmp_gen_refs
-  )
+  ),
+  esito = 'POSITIVO'
 WHERE id = (
     SELECT flusso_id
     FROM tmp_gen_flusso2

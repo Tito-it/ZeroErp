@@ -341,6 +341,9 @@ non ancora compilato).
     "can_push_contratto": false,
     "can_push_contratto_reason": "OFFERTA_NON_ACCETTATA",
     "can_push_contratto_reason_key": "vendite.offerte.push_reason.non_accettata",
+    "can_genera_ordine": false,
+    "can_genera_ordine_reason": "OFFERTA_NON_ACCETTATA",
+    "can_genera_ordine_reason_key": "vendite.offerte.push_reason.non_accettata",
     "non_editable_fields": [
       "codice", "uid", "revisione_numero", "revisione_padre_id",
       "stato_doc_offerta_id", "data_emissione", "data_accettazione",
@@ -371,11 +374,17 @@ non ancora compilato).
   `mapAvailableActionsToDrawerActions`); `can_edit_testata` /
   `can_edit_eccezioni` / `can_edit_utility` flag editabilita';
   `can_change_state` true se almeno un'azione disponibile;
-  `can_create_revisione` / `can_push_contratto` flag per azioni
-  speciali non-cambio-stato; `can_push_contratto_reason` +
+  `can_create_revisione` / `can_push_contratto` / `can_genera_ordine`
+  flag per azioni speciali non-cambio-stato. Le due materializzazioni sono
+  **mutuamente esclusive** (XOR): ognuna è abilitata solo se non esiste né un
+  contratto né un ordine generati dall'offerta. `can_push_contratto_reason` +
   `can_push_contratto_reason_key` coppia stabile reason-code +
-  chiave i18n quando il push non e' ammesso (`OFFERTA_NON_ACCETTATA`
-  o `OFFERTA_CONTRATTO_GIA_GENERATO`); `non_editable_fields[]` lista
+  chiave i18n quando il push non e' ammesso (`OFFERTA_NON_ACCETTATA`,
+  `OFFERTA_CONTRATTO_GIA_GENERATO` o `OFFERTA_ORDINE_GIA_GENERATO`); analoga coppia
+  `can_genera_ordine_reason` + `can_genera_ordine_reason_key` per la
+  generazione ordine (`OFFERTA_NON_ACCETTATA`, `OFFERTA_ORDINE_GIA_GENERATO` o
+  `OFFERTA_CONTRATTO_GIA_GENERATO`) — l'azione `genera_ordine` compare in
+  `available_actions` solo se `can_genera_ordine`; `non_editable_fields[]` lista
   immutabili (sempre + workflow-dipendenti, lista lunga fuori BOZZA);
   `stato_codice` discriminante macchina (equivalente a
   `stato_codice_interno`, esposto anche dalla fn DB).
@@ -653,14 +662,38 @@ valorizzando `documento_origine = ('OFFERTA', offerta_id)` sull'ordine.
   congelato; composito = componenti via `componenti_overrides` → il trigger DB
   ricompone il prezzo padre dai prezzi negoziati.
 - **Testata**: BA, utility, emittente, valuta (l'offerta non ha termine/modalità
-  pagamento). Provenienza senza UNIQUE → **più ordini** da una stessa offerta.
+  pagamento).
+- **Univocità 1:1 (rev. 2026-06-07)**: un'offerta genera **al massimo un ordine**
+  (l'offerta è una condizione quadro atomica, non ha righe selezionabili).
+  Guard BE fail-fast `E_ORD_OFFERTA_GIA_CONVERTITA` (409) + rete strutturale
+  UNIQUE parziale `uq_ordini_v_documento_origine_offerta` (mappata via
+  `map_integrity_error` allo stesso codice per la race concorrente). È il
+  **reversal parziale di A1** «senza UNIQUE», solo per `OFFERTA` (`PREVENTIVO`
+  resta 1:N). Specchio della guard data-driven `can_genera_ordine`.
+- **Mutua esclusività `contratto` XOR `ordine` (rev. 2026-06-08)**: un'offerta
+  `ACCETTATA` si materializza in **una sola** forma a valle — o contratto o
+  ordine, mai entrambi, in modo **permanente** (anche se annullato; il recupero è
+  una **nuova offerta**). Lato ordine: guard BE fail-fast
+  `E_OFFERTA_CONTRATTO_GIA_GENERATO` se l'offerta ha già un contratto
+  (`testata.contratto_id` dal LEFT JOIN, nessuna query nuova). Lato contratto: il
+  guard è a DB in `fn_push_offerta_a_contratto` → `E_OFFERTA_ORDINE_GIA_GENERATO`.
+  La capability riflette già l'XOR: `can_push_contratto`/`can_genera_ordine` sono
+  abilitate solo se non esiste né l'una né l'altra materializzazione.
 - Output `200`: `{ "ordine_id": int, "numero": str, "righe_create": int,
   "documento_origine": {"tipo": "OFFERTA", "id": int} }`.
 - Errori: `E_VENDITE_NOT_FOUND` (404) se inesistente; `E_ORD_ORIGINE_NON_CONVERTIBILE`
-  (409) se non `ACCETTATA`.
-- FE: azione «Genera ordine» su `OffertaDrawer` (gated su `ACCETTATA`).
-- Prerequisito DB atterrato: brief
-  [db-brief-offerta-righe-espanse.md](../../../dev/work-done/db-brief-offerta-righe-espanse.md).
+  (409) se non `ACCETTATA`; `E_ORD_OFFERTA_GIA_CONVERTITA` (409) se un ordine è
+  già stato generato da questa offerta; `E_OFFERTA_CONTRATTO_GIA_GENERATO` (409)
+  se l'offerta ha già generato un **contratto** (mutua esclusività XOR).
+- FE: azione «Genera ordine» **data-driven** da `available_actions` (key
+  `genera_ordine`, esposta dalla fn solo se `can_genera_ordine`): compare in
+  `ACCETTATA` senza ordine e **sparisce a conversione avvenuta** (come
+  `push_contratto`); confirm prima della generazione (`requires_confirm`).
+- Prerequisiti DB atterrati: brief
+  [db-brief-offerta-righe-espanse.md](../../../dev/work-done/db-brief-offerta-righe-espanse.md)
+  (righe espanse) e
+  [brief-db-univocita-offerta-ordine.md](../../../dev/work-done/brief-db-univocita-offerta-ordine.md)
+  (univocità 1:1 + azione `genera_ordine`).
 
 ### Eccezioni
 
@@ -863,14 +896,15 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 | `E_VENDITE_NOT_FOUND`                               | 404                 | Service: offerta/eccezione/utility non trovata; ownership URL                                          | —                                                   |
 | `E_VENDITE_DUPLICATO`                               | 409                 | UNIQUE `uq_offerte_commerciali_codice` / `uq_offerte_commerciali_uid` / `uq_offerte_commerciali_utilities_offerta_id` / `uq_offerte_eccezioni_one_eccezione_per_articolo` / `uq_offerte_eccezioni_one_aggiunta_per_articolo` | —                                                   |
 | `E_VENDITE_FK`                                      | 400                 | FK su BA/emittente/istanza/utility/listino/articolo/uom/tipo/classe utenza                              | —                                                   |
-| `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`        | 422                 | DB P0001 — `BOZZA -> EMESSA` con `listino_versione_id` NULL                                            | `trgfn_offerte_commerciali_guard_transizione`        |
-| `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`   | 422                 | DB P0001 — `BOZZA -> EMESSA` con versione listino non in stato `ATTIVA`                                 | `trgfn_offerte_commerciali_guard_transizione`        |
-| `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`                 | 422                 | DB P0001 — transizione non presente in `config.stati_doc_offerte_transizioni` (es. EMESSA -> ANNULLATA, EMESSA -> BOZZA, qualsiasi uscita da stato terminale) | `trgfn_offerte_commerciali_guard_transizione`        |
-| `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`             | 422                 | DB P0001 — `crea_revisione` da stato != EMESSA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_crea_revisione_offerta`                          |
-| `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                  | 422                 | DB P0001 — `push_a_contratto` da stato ≠ ACCETTATA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_push_offerta_a_contratto`                        |
-| `E_OFFERTA_CONTRATTO_GIA_GENERATO`                  | 422                 | DB P0001 — push idempotente (pattern A): doppia invocazione su stessa offerta. UNIQUE `uq_contratti_offerta_id` garantisce protezione strutturale | `fn_push_offerta_a_contratto`                        |
-| `E_CONFIG_MANCANTE`                                 | 422                 | DB P0001 — `OFFERTA_COMMERCIALE` o `CONTRATTO` non trovati in `config.sorgenti`; stato `DRAFT` non in `config.stati_doc_contratti`. Errore di configurazione sistema | `fn_push_offerta_a_contratto`                        |
-| `E_CONTRATTO_OVERLAP_ESISTENTE`                     | 422                 | DB P0001 — push con contratto attivo sovrapposto e `chiudi_esistente=false`. Il FE legge il conflitto via `contratto-sovrapposto/` e richiama con `chiudi_esistente=true` | `fn_push_offerta_a_contratto` / `fn_contratto_sovrapposto` |
+| `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`        | 409                 | DB P0001 — `BOZZA -> EMESSA` con `listino_versione_id` NULL                                            | `trgfn_offerte_commerciali_guard_transizione`        |
+| `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`   | 409                 | DB P0001 — `BOZZA -> EMESSA` con versione listino non in stato `ATTIVA`                                 | `trgfn_offerte_commerciali_guard_transizione`        |
+| `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`                 | 409                 | DB P0001 — transizione non presente in `config.stati_doc_offerte_transizioni` (es. EMESSA -> ANNULLATA, EMESSA -> BOZZA, qualsiasi uscita da stato terminale) | `trgfn_offerte_commerciali_guard_transizione`        |
+| `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`             | 409                 | DB P0001 — `crea_revisione` da stato != EMESSA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_crea_revisione_offerta`                          |
+| `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                  | 409                 | DB P0001 — `push_a_contratto` da stato ≠ ACCETTATA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_push_offerta_a_contratto`                        |
+| `E_OFFERTA_CONTRATTO_GIA_GENERATO`                  | 409                 | Conflitto "già materializzato" (registrato in `error_policies`): push idempotente (pattern A, UNIQUE `uq_contratti_offerta_id`) **e** mutua esclusività XOR — blocca la generazione ordine se l'offerta ha già un contratto | `fn_push_offerta_a_contratto` / `crea_ordine_da_offerta` (guard BE) |
+| `E_OFFERTA_ORDINE_GIA_GENERATO`                     | 409                 | Mutua esclusività XOR (registrato in `error_policies`): blocca il push a contratto se l'offerta ha già generato un ordine | `fn_push_offerta_a_contratto` (guard DB)             |
+| `E_CONFIG_MANCANTE`                                 | 500                 | DB P0001 — `OFFERTA_COMMERCIALE` o `CONTRATTO` non trovati in `config.sorgenti`; stato `DRAFT` non in `config.stati_doc_contratti`. Errore di configurazione sistema | `fn_push_offerta_a_contratto`                        |
+| `E_CONTRATTO_OVERLAP_ESISTENTE`                     | 409                 | DB P0001 — push con contratto attivo sovrapposto e `chiudi_esistente=false`. Il FE legge il conflitto via `contratto-sovrapposto/` e richiama con `chiudi_esistente=true` | `fn_push_offerta_a_contratto` / `fn_contratto_sovrapposto` |
 | `E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA`             | 422                 | DB P0001 — successione con date incoerenti: il contratto esistente inizia dopo la decorrenza del nuovo (chiusura produrrebbe `valido_al < valido_dal`) | `fn_chiudi_contratto_per_successione`                |
 
 I codici `E_OFFERTA_*` sollevati dai trigger sono **propagati al client come

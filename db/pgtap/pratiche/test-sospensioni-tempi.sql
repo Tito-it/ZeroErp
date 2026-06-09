@@ -401,7 +401,7 @@ WHERE id = (SELECT flusso_id FROM tmp_st_flusso_da);
 
 SELECT lives_ok(
   format(
-    'UPDATE pratiche.flussi SET stato_id = %s, data_fine = now() WHERE id = %s',
+    'UPDATE pratiche.flussi SET stato_id = %s, esito = ''POSITIVO'', data_fine = now() WHERE id = %s',
     (SELECT sf_completato FROM tmp_st_refs),
     (SELECT flusso_id FROM tmp_st_flusso_da)),
   '15. Calcolo tempo: flusso_da COMPLETATO'
@@ -431,7 +431,7 @@ WHERE id = (SELECT flusso_id FROM tmp_st_flusso_a);
 
 SELECT lives_ok(
   format(
-    'UPDATE pratiche.flussi SET stato_id = %s, data_fine = now() WHERE id = %s',
+    'UPDATE pratiche.flussi SET stato_id = %s, esito = ''POSITIVO'', data_fine = now() WHERE id = %s',
     (SELECT sf_completato FROM tmp_st_refs),
     (SELECT flusso_id FROM tmp_st_flusso_a)),
   '17. Calcolo tempo: flusso_a COMPLETATO'

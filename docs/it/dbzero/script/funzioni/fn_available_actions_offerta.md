@@ -17,35 +17,37 @@ AS $function$
 --   Capability dell'offerta commerciale per il detail API (pattern
 --   data-driven capability layer, specchio di fn_available_actions_preventivo).
 --   Calcola le transizioni manuali disponibili leggendo la matrice
---   config.stati_doc_offerte_transizioni (campo meta: action_key /
---   label_key / severity / icon / requires_confirm / requires_motivazione
---   / manuale). Aggiunge hardcoded le azioni speciali non-cambio-stato:
+--   config.stati_doc_offerte_transizioni (campo meta) e aggiunge hardcoded
+--   le azioni speciali non-cambio-stato:
 --     - crea_revisione (solo EMESSA): produce rev.N+1 in BOZZA.
---     - push_contratto (solo ACCETTATA senza contratto generato):
---       genera un contratto DRAFT.
---   Restituisce anche i flag can_* usati dai drawer Vue per
---   abilitare/disabilitare azioni e campi senza ricalcolare logica
---   in Python o nel frontend.
---
---   Struttura meta attesa su ogni transizione (seed CSV 20260524-22):
---     action_key:           chiave azione (es. 'emetti', 'annulla')
---     label_key:            chiave i18n per il label del bottone
---     severity:             severity PrimeVue (info/success/danger)
---     icon:                 classe PrimeIcons (es. 'pi pi-send')
---     requires_confirm:     boolean - richiede dialog di conferma
---     requires_motivazione: boolean - richiede campo motivazione
---     manuale:              boolean - false esclude dalla lista UI
---
+--     - push_contratto / genera_ordine (solo ACCETTATA, MUTUAMENTE
+--       ESCLUSIVE): un'offerta ACCETTATA genera al massimo UNO tra
+--       contratto e ordine. Stessa condizione di abilitazione per
+--       entrambe (ACCETTATA + nessun contratto + nessun ordine);
+--       la prima generazione disabilita anche l'altra capability.
+--       Check cross-dominio su vendite.contratti.offerta_id e
+--       vendite.ordini.documento_origine_*. "Esiste" = qualsiasi
+--       stato (anche ANNULLATA): l'esclusivita' e' permanente.
 --   Fallback sicuro: NULL se l'offerta non esiste (gestito BE come 404).
 DECLARE
     v_stato_id    vendite.offerte_commerciali.stato_doc_offerta_id%TYPE;
     v_stato_cod   config.stati_doc_offerte.codice_interno%TYPE;
     v_actions     jsonb;
     v_can_edit    boolean;
+    v_can_rev     boolean;
+    -- Mutua esclusivita' contratto/ordine: presenza dei due documenti
+    -- + flag di abilitazione condiviso dalle due capability.
+    v_has_contratto boolean;
+    v_has_ordine    boolean;
+    v_enabled       boolean;
+    -- push_contratto: capability + reason machine-readable + chiave i18n.
     v_can_push    boolean;
     v_push_reason     text;
     v_push_reason_key text;
-    v_can_rev     boolean;
+    -- genera_ordine: capability + reason machine-readable + chiave i18n.
+    v_can_ordine        boolean;
+    v_ordine_reason     text;
+    v_ordine_reason_key text;
 
     -- Campi sempre immutabili: gestiti dal trigger di transizione stato.
     -- Includono i timestamp valorizzati automaticamente e i campi identita'.
@@ -74,7 +76,7 @@ DECLARE
         'requires_motivazione', false
     );
 
-    -- Azione speciale hardcoded: push_contratto (ACCETTATA senza contratto).
+    -- Azione speciale hardcoded: push_contratto (ACCETTATA, esclusiva).
     -- Non e' una transizione di stato: genera un contratto DRAFT
     -- tramite vendite.fn_push_offerta_a_contratto (1:1 eccezioni + utility).
     c_action_push_contratto CONSTANT jsonb := jsonb_build_object(
@@ -83,6 +85,19 @@ DECLARE
         'label_key',          'vendite.offerte.azione_push_contratto',
         'severity',           'success',
         'icon',               'pi pi-arrow-right',
+        'requires_confirm',   true,
+        'requires_motivazione', false
+    );
+
+    -- Azione speciale hardcoded: genera_ordine (ACCETTATA, esclusiva).
+    -- Non e' una transizione di stato: genera un ordine da questa offerta
+    -- (1:1, brief univocita offerta->ordine). L'offerta resta ACCETTATA.
+    c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
+        'key',                'genera_ordine',
+        'target_state',       NULL,
+        'label_key',          'vendite.offerte.azione_genera_ordine',
+        'severity',           'info',
+        'icon',               'pi pi-shopping-cart',
         'requires_confirm',   true,
         'requires_motivazione', false
     );
@@ -100,11 +115,10 @@ BEGIN
     END IF;
 
     -- Transizioni manuali disponibili per lo stato corrente.
-    -- COALESCE su meta.manuale: se assente si assume manuale = true
-    --   (compatibile con seed senza campo esplicito manuale=true).
+    -- COALESCE su meta.manuale: se assente si assume manuale = true.
     -- COALESCE su requires_confirm / requires_motivazione: default false.
     -- Filtro defense-in-depth: esclude righe con action_key o label_key
-    --   mancanti (paralle con ck_transizioni_stati_prev_meta_ui dei preventivi).
+    --   mancanti.
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -130,40 +144,71 @@ BEGIN
       AND t.meta ? 'label_key';
 
     -- Aggiunge crea_revisione hardcoded: solo in EMESSA (addendum A2).
-    -- In EMESSA il cliente non ha ancora deciso: la revisione permette
-    -- di ritrattare le condizioni senza perdere la tracciabilita'.
     v_can_rev := (v_stato_cod = 'EMESSA');
     IF v_can_rev THEN
         v_actions := v_actions || jsonb_build_array(c_action_crea_revisione);
     END IF;
 
-    -- can_push_contratto: ACCETTATA + nessun contratto gia' generato.
-    -- Check cross-dominio su vendite.contratti.offerta_id (UNIQUE idempotenza
-    -- pattern A). A differenza di can_push_commessa del preventivo (solo stato),
-    -- qui il check cross-dominio e' in v1 perche' l'idempotenza e' strutturale
-    -- e il caso "contratto gia' generato" e' atteso nel normale flusso operativo.
-    IF v_stato_cod = 'ACCETTATA' THEN
-        IF NOT EXISTS (
-            SELECT 1 FROM vendite.contratti WHERE offerta_id = p_offerta_id
-        ) THEN
-            v_can_push        := true;
-            v_push_reason     := NULL;
-            v_push_reason_key := NULL;
-            -- push_contratto appare in available_actions solo quando abilitato.
-            v_actions := v_actions || jsonb_build_array(c_action_push_contratto);
-        ELSE
-            v_can_push        := false;
-            v_push_reason     := 'OFFERTA_CONTRATTO_GIA_GENERATO';
-            v_push_reason_key := 'offerte.push_reason.gia_generato';
-        END IF;
+    -- MUTUA ESCLUSIVITA' contratto/ordine.
+    -- Presenza dei due documenti generati dall'offerta (qualsiasi stato:
+    -- l'esclusivita' e' permanente). Check cross-dominio:
+    --   - vendite.contratti.offerta_id (UNIQUE idempotenza pattern A)
+    --   - vendite.ordini.documento_origine_* (UNIQUE parziale
+    --     uq_ordini_v_documento_origine_offerta).
+    SELECT EXISTS (
+        SELECT 1 FROM vendite.contratti WHERE offerta_id = p_offerta_id
+    ) INTO v_has_contratto;
+
+    SELECT EXISTS (
+        SELECT 1 FROM vendite.ordini
+         WHERE documento_origine_tipo = 'OFFERTA'
+           AND documento_origine_id   = p_offerta_id
+    ) INTO v_has_ordine;
+
+    -- Condizione di abilitazione CONDIVISA dalle due capability:
+    -- ACCETTATA + nessun contratto + nessun ordine. "both-or-neither":
+    -- finche' nulla e' stato generato entrambe sono esposte; generato
+    -- uno dei due, entrambe spariscono.
+    v_enabled := (v_stato_cod = 'ACCETTATA'
+                  AND NOT v_has_contratto
+                  AND NOT v_has_ordine);
+
+    -- can_push_contratto: reason own-doc first -> contratto > ordine > non accettata.
+    v_can_push := v_enabled;
+    IF v_enabled THEN
+        v_push_reason     := NULL;
+        v_push_reason_key := NULL;
+        -- push_contratto appare in available_actions solo quando abilitato.
+        v_actions := v_actions || jsonb_build_array(c_action_push_contratto);
+    ELSIF v_has_contratto THEN
+        v_push_reason     := 'OFFERTA_CONTRATTO_GIA_GENERATO';
+        v_push_reason_key := 'offerte.push_reason.gia_generato';
+    ELSIF v_has_ordine THEN
+        v_push_reason     := 'OFFERTA_ORDINE_GIA_GENERATO';
+        v_push_reason_key := 'offerte.push_reason.ordine_gia_generato';
     ELSE
-        v_can_push        := false;
         v_push_reason     := 'OFFERTA_NON_ACCETTATA';
         v_push_reason_key := 'offerte.push_reason.non_accettata';
     END IF;
 
+    -- can_genera_ordine: speculare. reason own-doc first -> ordine > contratto > non accettata.
+    v_can_ordine := v_enabled;
+    IF v_enabled THEN
+        v_ordine_reason     := NULL;
+        v_ordine_reason_key := NULL;
+        v_actions := v_actions || jsonb_build_array(c_action_genera_ordine);
+    ELSIF v_has_ordine THEN
+        v_ordine_reason     := 'OFFERTA_ORDINE_GIA_GENERATO';
+        v_ordine_reason_key := 'offerte.push_reason.ordine_gia_generato';
+    ELSIF v_has_contratto THEN
+        v_ordine_reason     := 'OFFERTA_CONTRATTO_GIA_GENERATO';
+        v_ordine_reason_key := 'offerte.push_reason.gia_generato';
+    ELSE
+        v_ordine_reason     := 'OFFERTA_NON_ACCETTATA';
+        v_ordine_reason_key := 'offerte.push_reason.non_accettata';
+    END IF;
+
     -- Editabilita': solo in BOZZA.
-    -- Testata, eccezioni e utility 1:1 sono tutti bloccati fuori BOZZA.
     v_can_edit := (v_stato_cod = 'BOZZA');
 
     RETURN jsonb_build_object(
@@ -176,6 +221,9 @@ BEGIN
         'can_push_contratto',            v_can_push,
         'can_push_contratto_reason',     v_push_reason,
         'can_push_contratto_reason_key', v_push_reason_key,
+        'can_genera_ordine',             v_can_ordine,
+        'can_genera_ordine_reason',      v_ordine_reason,
+        'can_genera_ordine_reason_key',  v_ordine_reason_key,
         'non_editable_fields',           CASE WHEN v_can_edit
                                              THEN c_sempre_non_edit
                                              ELSE c_sempre_non_edit || c_non_edit_extra END,
@@ -185,7 +233,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_offerta(p_offerta_id bigint)
-IS 'Capability offerta commerciale per detail API: available_actions (da matrice transizioni + azioni speciali hardcoded), can_edit_*, can_push_contratto, can_create_revisione, non_editable_fields. Pattern data-driven capability layer (specchio fn_available_actions_preventivo). rev 2026-05-26.';
+IS 'Capability offerta commerciale per detail API: available_actions (da matrice transizioni + azioni speciali hardcoded crea_revisione/push_contratto/genera_ordine), can_edit_*, can_push_contratto, can_genera_ordine, can_create_revisione, non_editable_fields. push_contratto e genera_ordine sono MUTUAMENTE ESCLUSIVE (un''offerta ACCETTATA genera al massimo uno tra contratto e ordine). Pattern data-driven capability layer. rev 2026-06-08 (mutua esclusivita, supersede 20260607-08).';
 ```
 
 ---

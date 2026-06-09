@@ -12,6 +12,7 @@
 - [api_flusso_stato](manual/api_flusso_stato.md) — Esporre via HTTP le transizioni di stato di un flusso: avvio (IN_CORSO), completamento (COMPLETATO con esito) e transizioni generiche (SOSPESO, ANNULLATO, ecc.).
 - [api_formule_tempo](manual/api_formule_tempo.md) — Esporre via HTTP le formule tempo attive per un tipo prestazione.
 - [api_genera_pratica](manual/api_genera_pratica.md) — Esporre via HTTP la generazione manuale di una nuova pratica da un flusso applicando una regola di generazione.
+- [api_percorso](manual/api_percorso.md) — Restituisce il **percorso suggerito** di una pratica = i template_flussi del suo tipo_prestazione (in ordine), ciascuno con lo stato di istanziazione. Alimenta la roadmap FE (PraticaPercorso.vue).
 - [api_pratica_assegnazione](manual/api_pratica_assegnazione.md) — Esporre via HTTP l'assegnazione di una pratica a risorsa umana e/o unita' organizzativa.
 - [api_pratica_calcoli_tempo](manual/api_pratica_calcoli_tempo.md) — Esporre via HTTP i calcoli tempo (prestazione da/a) di una pratica.
 - [api_pratica_detail](manual/api_pratica_detail.md) — Esporre via HTTP il dettaglio e l'aggiornamento di una singola pratica.

@@ -1,0 +1,56 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260608-44-alter-preventivi-righe-add-natura-vendita-mctit.yaml
+
+  - changeSet:
+      id: 20260608-44-alter-preventivi-righe-add-natura-vendita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ADD COLUMN vendite.preventivi_righe.natura_vendita_id (FK
+        config.nature_vendita). Snapshot CONGELATO ereditato dall'articolo:
+        valorizzato dal trigger di derivazione (changeSet 20260608-45), MAI
+        dall'operatore (no override). NULLABLE finche' gli articoli non sono
+        tutti classificati (segue articoli.natura_vendita_id NOT NULL).
+        Indice FK delegato a dbops.apply_fk_index_policy (90_end).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: preventivi_righe }
+          - tableExists: { schemaName: config, tableName: nature_vendita }
+          - not:
+              - columnExists:
+                  schemaName: vendite
+                  tableName: preventivi_righe
+                  columnName: natura_vendita_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  ADD COLUMN natura_vendita_id BIGINT NULL;
+
+              ALTER TABLE vendite.preventivi_righe
+                  ADD CONSTRAINT fk_prevrighe_nature_vendita
+                  FOREIGN KEY (natura_vendita_id)
+                  REFERENCES config.nature_vendita (id)
+                  ON UPDATE CASCADE
+                  ON DELETE NO ACTION;
+
+              COMMENT ON COLUMN vendite.preventivi_righe.natura_vendita_id IS
+                  'Natura commerciale della riga (snapshot congelato dall''articolo '
+                  'all''inserimento, via trgfn_preventivi_righe_set_natura_vendita). '
+                  'Determina la destinazione dello split: righe con natura '
+                  'destinazione_tipo=ORDINE vanno a ordine. Non impostabile '
+                  'dall''operatore (no override).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  DROP CONSTRAINT IF EXISTS fk_prevrighe_nature_vendita;
+              ALTER TABLE vendite.preventivi_righe
+                  DROP COLUMN IF EXISTS natura_vendita_id;

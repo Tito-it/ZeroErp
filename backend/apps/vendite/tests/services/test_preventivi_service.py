@@ -22,6 +22,7 @@ Indice test eseguiti:
 10b) test_push_a_commessa_propaga_fatturazione_immediata — flag testata nel payload
 10c) test_push_a_commessa_parziale_propaga_e_non_evade — all-or-nothing: ServiceError, niente transizione
 10d) test_push_a_commessa_transizione_db_error_logged_no_raise — fallimento transizione e' soft (warning)
+10e) test_push_a_commessa_non_evade_con_residuo_merce — gate EVASO D6: residuo merce → resta ACCETTATO
 11) test_push_a_commessa_stato_non_ammesso — guard su stato BOZZA
 12) test_push_a_commessa_nessuna_riga — guard nessuna riga eleggibile
 13) test_genera_pratica_ok — genera pratica da ACCETTATO via BB crea_pratica
@@ -1063,6 +1064,8 @@ class TestPreventiviService(unittest.TestCase):
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
         }
         self.mock_repo.count_righe_pushable.return_value = 3
+        # Gate EVASO (D6): nessun residuo merce → la transizione scatta.
+        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
         mock_push_one.return_value = {
             "stato": "COMPLETATO",
             "dry_run": False,
@@ -1129,6 +1132,7 @@ class TestPreventiviService(unittest.TestCase):
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
         }
         self.mock_repo.count_righe_pushable.return_value = 1
+        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
         self.mock_repo.cambia_stato.side_effect = DatabaseError(
             "transizione ACCETTATO->EVASO non ammessa"
         )
@@ -1157,6 +1161,7 @@ class TestPreventiviService(unittest.TestCase):
             "fatturazione_immediata": True,
         }
         self.mock_repo.count_righe_pushable.return_value = 1
+        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "dry_run": False,
             "push_log_id": 7, "durata_ms": 5, "handlers": [],
@@ -1165,6 +1170,29 @@ class TestPreventiviService(unittest.TestCase):
         result = push_a_commessa(1)
 
         self.assertTrue(result["fatturazione_immediata"])
+
+    # Scopo: Gate EVASO (D6). Preventivo misto: il push commessa (natura-aware)
+    # invia i soli servizi, ma resta residuo MERCE da portare a ordine →
+    # NON evadere. Il preventivo resta ACCETTATO, push comunque COMPLETATO.
+    @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
+    def test_push_a_commessa_non_evade_con_residuo_merce(self, mock_push_one):
+        from apps.vendite.services.preventivi_service import push_a_commessa
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
+        }
+        self.mock_repo.count_righe_pushable.return_value = 2
+        self.mock_repo.preventivo_ha_residuo_ordine.return_value = True
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "dry_run": False,
+            "push_log_id": 8, "durata_ms": 6, "handlers": [],
+        }
+
+        result = push_a_commessa(1)
+
+        self.assertEqual(result["stato"], "COMPLETATO")
+        # Residuo merce presente → niente transizione a EVASO.
+        self.mock_repo.cambia_stato.assert_not_called()
 
     # Scopo: Verifica guard su stato non ACCETTATO.
     def test_push_a_commessa_stato_non_ammesso(self):

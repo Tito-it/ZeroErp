@@ -31,6 +31,11 @@ AS $function$
 -- Regole:
 --   - stato ACCETTATA obbligatorio; qualsiasi altro -> errore.
 --   - nessun contratto con offerta_id = p_offerta_id deve esistere.
+--   - MUTUA ESCLUSIVITA' (rev6, 2026-06-08): nessun ordine generato
+--     dall'offerta deve esistere (documento_origine ('OFFERTA', id)).
+--     Contratto e ordine sono alternativi: l'offerta ne genera al
+--     massimo uno. Specchio del guard lato capability
+--     script.fn_available_actions_offerta.
 --   - contratto creato in DRAFT; auto-attivazione NON prevista.
 --   - emittente_fiscale_id copiato 1:1 dall'offerta.
 --   - eccezioni: loop per-eccezione (mapping eccezione.id->riga.id),
@@ -114,6 +119,25 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_push_offerta_a_contratto',
             'E_OFFERTA_CONTRATTO_GIA_GENERATO',
+            jsonb_build_object('offerta_id', p_offerta_id),
+            NULL::uuid,
+            p_offerta_id::text
+        );
+    END IF;
+
+    -- Guard mutua esclusivita': ordine gia' generato per questa offerta?
+    -- Contratto e ordine sono ALTERNATIVI: un'offerta ne genera al
+    -- massimo uno. Check cross-dominio su vendite.ordini.documento_origine_*
+    -- ('OFFERTA', id). Specchio del guard lato capability
+    -- script.fn_available_actions_offerta (20260608-12).
+    IF EXISTS (
+        SELECT 1 FROM vendite.ordini
+         WHERE documento_origine_tipo = 'OFFERTA'
+           AND documento_origine_id   = p_offerta_id
+    ) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_push_offerta_a_contratto',
+            'E_OFFERTA_ORDINE_GIA_GENERATO',
             jsonb_build_object('offerta_id', p_offerta_id),
             NULL::uuid,
             p_offerta_id::text
@@ -438,7 +462,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint, p_chiudi_contratto_esistente boolean)
-IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev5 (2026-06-01): trasporta 1:1 stato_approvazione_prezzo + pratica_approvazione_prezzo_id anche sulle RIGHE (oltre che sui componenti), cosi'' l''approvazione L3 dell''offerta non va riapprovata sul contratto. Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti (advisory lock + overlap + routing + backstop). Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO).';
+IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev6 (2026-06-08): guard di mutua esclusivita'' offerta->contratto/ordine (E_OFFERTA_ORDINE_GIA_GENERATO) — un''offerta genera al massimo uno tra contratto e ordine. Rev5 (2026-06-01): trasporta 1:1 stato_approvazione_prezzo + pratica_approvazione_prezzo_id anche sulle RIGHE (oltre che sui componenti). Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti (advisory lock + overlap + routing + backstop). Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO).';
 ```
 
 ---

@@ -301,6 +301,43 @@ class PraticheRepository:
             cursor.execute(sql, [flusso_id])
             return row_to_dict(cursor)
 
+    # Scopo: Percorso suggerito della pratica = template_flussi del suo
+    #        tipo_prestazione (in ordine), LEFT JOIN i flussi gia' istanziati.
+    #        Ogni riga: lo step (codice/sequenza/obbligatorio/has_handler) +,
+    #        se istanziato, flusso_id/stato/esito. Alimenta la roadmap FE (i
+    #        flussi NON sono materializzati alla creazione: si creano
+    #        progressivamente, §6 brief FE).
+    def get_percorso_pratica(self, pratica_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                tf.id AS template_flusso_id,
+                tf.codice AS template_flusso_codice,
+                tf.descrizione AS template_flusso_descrizione,
+                tf.sequenza,
+                tf.obbligatorio,
+                tf.direzione,
+                (tf.handler_id IS NOT NULL) AS has_handler,
+                f.id AS flusso_id,
+                sf.codice_interno AS stato_codice_interno,
+                f.esito
+            FROM pratiche.pratiche p
+            JOIN pratiche.template_flussi tf
+              ON tf.tipo_prestazione_id = p.tipo_prestazione_id AND tf.attivo
+            LEFT JOIN LATERAL (
+                SELECT ff.id, ff.stato_id, ff.esito
+                FROM pratiche.flussi ff
+                WHERE ff.pratica_id = p.id AND ff.template_flusso_id = tf.id
+                ORDER BY ff.id DESC
+                LIMIT 1
+            ) f ON true
+            LEFT JOIN config.stati_flussi_pratiche sf ON sf.id = f.stato_id
+            WHERE p.id = %s
+            ORDER BY tf.sequenza, tf.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id])
+            return rows_to_list(cursor)
+
     # Scopo: Inserisce un nuovo flusso. Il trigger DB valida i prerequisiti.
     def create_flusso(self, data: dict[str, Any]) -> int:
         sql = """
@@ -413,6 +450,76 @@ class PraticheRepository:
             result = rows_to_list(cursor)
 
         return result, total_count
+
+    # Scopo: Scrive un evento di dominio DOMINIO_* sul giornale via la fn DB
+    # dedicata (append-only, origine='HANDLER', forma DOMINIO_* garantita dal
+    # CHECK chk_giornale_azione). Unico canale applicativo di scrittura.
+    def log_evento_dominio(
+        self, *, pratica_id: int, flusso_id: int | None,
+        tipo_evento: str, meta: dict[str, Any] | None = None,
+    ) -> int:
+        sql = """
+            SELECT pratiche.fn_log_evento_dominio(
+                p_pratica_id => %s,
+                p_flusso_id => %s,
+                p_tipo_evento => %s,
+                p_meta => %s::jsonb
+            )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id, flusso_id, tipo_evento, json.dumps(meta or {})])
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    # -- SORGENTI --------------------------------------------------------
+
+    # Scopo: Aggancia (idempotente) una sorgente alla pratica. Risolve il
+    # sorgente_tipo_id da config.sorgenti per codice_interno (no id hardcoded).
+    # ON CONFLICT sulla UNIQUE (pratica_id, sorgente_tipo_id, sorgente_uid,
+    # ruolo_link): la seconda chiamata e' un no-op.
+    def upsert_pratica_sorgente(
+        self, *, pratica_id: int, sorgente_codice: str, sorgente_uid: str,
+        ruolo_link: str = "ROOT", sorgente_riga: int | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        sql = """
+            INSERT INTO pratiche.pratiche_sorgenti (
+                pratica_id, sorgente_tipo_id, sorgente_uid,
+                sorgente_riga, ruolo_link, meta
+            )
+            SELECT %s, s.id, %s, %s, %s, %s::jsonb
+            FROM config.sorgenti s
+            WHERE s.codice_interno = %s
+            ON CONFLICT (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+            DO NOTHING
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                pratica_id, sorgente_uid, sorgente_riga, ruolo_link,
+                json.dumps(meta or {}), sorgente_codice,
+            ])
+            ErrorManager.require(
+                cursor.rowcount > 0 or self._sorgente_link_exists(
+                    pratica_id, sorgente_codice, sorgente_uid, ruolo_link,
+                ),
+                code="E_PRATICA_SORGENTE_TIPO_INVALIDO",
+                message=f"Codice sorgente '{sorgente_codice}' non in config.sorgenti",
+            )
+
+    def _sorgente_link_exists(
+        self, pratica_id: int, sorgente_codice: str, sorgente_uid: str, ruolo_link: str,
+    ) -> bool:
+        sql = """
+            SELECT 1
+            FROM pratiche.pratiche_sorgenti ps
+            JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
+            WHERE ps.pratica_id = %s AND s.codice_interno = %s
+              AND ps.sorgente_uid = %s AND ps.ruolo_link = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id, sorgente_codice, sorgente_uid, ruolo_link])
+            return cursor.fetchone() is not None
 
     # -- CANALI ----------------------------------------------------------
 

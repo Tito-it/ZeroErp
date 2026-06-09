@@ -160,7 +160,17 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 - Per variabili PL/pgSQL che riflettono colonne, usare `%TYPE` della colonna (es. `v_uom_base_id catalogo.unita_misura.id%TYPE`)
 - Nei blocchi SQL di funzioni/trigger inserire commenti sintetici sullo scopo e sulle regole principali.
 - In script complessi con molti filtri/parametri, e per evitare duplicazioni di logica, e` consentito usare SQL dinamico (con attenzione alla sicurezza).
-- Quando serve capire struttura o campi di tabelle/funzioni, leggere prima la documentazione in `<schema>/tabelle` e `<schema>/funzioni`, evitando di partire dalle migrations.
+- **REGOLA OBBLIGATORIA — DDL/definizioni dalla doc auto-gen, MAI dagli YAML.** Per
+  capire o **modificare** una tabella/funzione/trigger ESISTENTE, prendere la
+  definizione corrente SEMPRE dalla documentazione auto-generata in
+  `docs/it/dbzero/<schema>/tabelle/<nome>.md` e `docs/it/dbzero/<schema>/funzioni/<nome>.md`
+  (riflette l'oggetto **vivo** nel DB). **NON** ricostruire il DDL/corpo da un file
+  YAML di migration: i changeSet `runOnChange: true` (funzioni/trigger) vengono
+  superati da changeSet successivi con numerazione più alta, quindi un singolo YAML
+  è spesso **stale**. Per un `CREATE OR REPLACE` di una funzione esistente: copiare
+  il corpo dalla doc auto-gen, applicarvi sopra la modifica, e creare un nuovo file
+  con numerazione successiva. Partire dallo YAML rischia di **regredire** silenziosamente
+  le revisioni intermedie.
 - Nelle funzioni SQL, per parametri numerici di tipo ID applicare guard di validazione esplicita: errore se `NULL` o `<= 0` (non normalizzare silenziosamente).
 
 ## Trigger Conventions

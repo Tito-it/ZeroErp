@@ -22,3 +22,11 @@ class VenditeConfig(AppConfig):
             ordine_document_context_builder,
             preventivo_document_context_builder,
         )
+
+        # Registra gli handler flusso del dominio vendite nel registry pratiche.
+        # Lazy qui (non a livello modulo) per non creare la dipendenza di import
+        # pratiche→vendite: e' vendite a registrarsi su pratiche al boot.
+        from apps.pratiche.services.handler_registry import register_handler
+        from apps.vendite.handlers.push_preventivo_handler import PushPreventivoHandler
+
+        register_handler("vendita.push_preventivo", PushPreventivoHandler)

@@ -78,6 +78,11 @@ const props = defineProps({
   // Readonly cumulativo: si somma all'inject del provider area (frontend-standards
   // §"Modalita' sola lettura", regola "drawer admin DEVE esporre prop readonly").
   readonly: { type: Boolean, default: false },
+  // Pratica collegata (percorso pratica-first PREVENTIVI): quando valorizzata,
+  // l'accettazione NON avviene dal drawer (azione → ACCETTATO nascosta) ma dal
+  // flusso APPROVAZIONE_CLIENTE (endpoint M2), che applica la politica di
+  // fatturazione dalla configurazione, non i campi scelti qui.
+  praticaId: { type: [Number, null], default: null },
 })
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const onClose = useDrawerClose(emit, 'cancelled')
@@ -640,6 +645,15 @@ function onCambiaStato(action) {
     // `drawerActions`): questo branch e' difensivo.
     return
   }
+  if (action.key === 'genera_ordine') {
+    // Smistamento MERCE → ordine (modello split D8). Azione data-driven dal BE
+    // (visibile solo con residuo merce non allocato). Conferma + delega.
+    confirmAction({
+      message: t('preventivi.conferma_cambio_stato', { stato: t(action.label_key) }),
+      onAccept: onGeneraOrdine,
+    })
+    return
+  }
   // Transizione → EMESSO: dialog dedicato con anteprima documento + allegati.
   // L'endpoint /emetti/ (multipart) orchestra atomic state + genera + allegati
   // (refactor 2026-05-28). NB: il BE rifiuta la transizione via /stato/ con
@@ -706,6 +720,21 @@ function onNuovaRevisione() {
   })
 }
 
+// Smistamento MERCE → ordine (modello split D8): chiama l'endpoint
+// /genera-ordine/ (delega a fn_push_preventivo_a_ordine: solo righe merce,
+// snapshot prezzi + BoM + link di riga, niente servizi/ricorrenti). Notifica
+// col numero ordine, segnala alla lista ordini e ricarica il detail (la
+// capability sparisce quando non resta residuo merce).
+async function onGeneraOrdine() {
+  const result = await execute(
+    () => generaOrdineFromPreventivo(effectivePreventivoId.value),
+  )
+  if (result === null) return
+  notify.success(t('preventivi.ordine_generato', { numero: result.numero }))
+  emitDataChanged(TAB_ENTITIES.ORDINE, result.ordine_id)
+  await loadDetail()
+}
+
 // Azioni della testata preventivo consumate da DrawerActionsBar.
 // Read-only PURO (permesso LETTURA / pannello split / readonly forzato): le
 // azioni di stato (Accetta/Rifiuta/Annulla/revisione) — che abilitano un
@@ -714,18 +743,6 @@ function onNuovaRevisione() {
 // NON su `isReadonly`: quest'ultimo include il lock-di-stato post-DRAFT, ma in
 // stato post-DRAFT con operatore abilitato le transizioni devono restare
 // visibili. Il BE resta come difesa (defense-in-depth).
-// Conversione upstream (§7.4): genera un ordine DRAFT dal preventivo ACCETTATO
-// (BE copia testata+righe+componenti + documento_origine). Notifica col numero
-// ordine e segnala il cambiamento alla lista ordini (se aperta in un tab).
-async function onGeneraOrdine() {
-  const result = await execute(
-    () => generaOrdineFromPreventivo(effectivePreventivoId.value),
-  )
-  if (result === null) return
-  notify.success(t('preventivi.ordine_generato', { numero: result.numero }))
-  emitDataChanged(TAB_ENTITIES.ORDINE, result.ordine_id)
-}
-
 const drawerActions = computed(() => {
   if (!hasDetail.value) return []
   // Azioni di stato data-driven dal BE (`script.fn_available_actions_preventivo`,
@@ -734,28 +751,24 @@ const drawerActions = computed(() => {
   // `push_commessa` viene filtrato: il push ha una sezione dedicata
   // (PreventiviIntegrazione) con logica propria che il bottone drawer
   // duplicherebbe (scelta competenza, push parziale, log).
+  // Sul percorso pratica (praticaId valorizzato) l'accettazione e' guidata dal
+  // flusso APPROVAZIONE_CLIENTE (M2): nascondi l'azione → ACCETTATO dal drawer
+  // per non creare un secondo percorso con politica fatturazione divergente.
   const availableActionsHeader = (availableActions.value || [])
     .filter(a => a.key !== 'push_commessa')
+    .filter(a => !(props.praticaId && a.target_state === STATO_PREVENTIVO.ACCETTATO))
   const list = mapAvailableActionsToDrawerActions({
     availableActions: availableActionsHeader,
     t,
     onAction: onCambiaStato,
     readonly: props.readonly || parentReadonly.value,
   })
-  // Conversione upstream → ordine (§7.4): azione statica (non data-driven),
-  // disponibile su preventivo ACCETTATO, nascosta in readonly puro.
-  const readonlyPuro = props.readonly || parentReadonly.value
-  if (!readonlyPuro
-      && detail.value?.stato_codice_interno === STATO_PREVENTIVO.ACCETTATO) {
-    list.push({
-      key: 'genera-ordine',
-      kind: 'state',
-      label: t('preventivi.azione_genera_ordine'),
-      icon: NAV_ICONS.ORDINI,
-      severity: 'info',
-      command: onGeneraOrdine,
-    })
-  }
+  // `genera_ordine`: NON più copia-tutto 1:1 (modello sbagliato, D2/§7.4
+  // brief-preventivi-ordini.md). È ora un'azione DATA-DRIVEN dal BE
+  // (script.fn_available_actions_preventivo, esposta solo con residuo righe
+  // MERCE non allocate). Fluisce nel mapper come le altre e il dispatch in
+  // `onCambiaStato` la instrada a `onGeneraOrdine` → smistamento merce-only via
+  // fn_push_preventivo_a_ordine (snapshot prezzi + BoM + link di riga).
   list.push({
     key: 'manage-note',
     kind: 'manage',

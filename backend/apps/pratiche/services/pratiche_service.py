@@ -248,9 +248,13 @@ def crea_flusso(
     })
 
 
-# Scopo: Transizione flusso DA_ESEGUIRE → IN_CORSO.
+# Scopo: Transizione flusso DA_ESEGUIRE → IN_CORSO; se il template ha un handler
+# lo esegue e completa il flusso, tutto in UNA transazione (§8.2 del brief BE:
+# IN_CORSO + execute + COMPLETATO non possono divergere). Su eccezione
+# dell'handler l'intera transizione rolla (flusso torna DA_ESEGUIRE, ri-eseguibile)
+# e l'errore parlante propaga all'operatore.
 @transaction.atomic()
-def avvia_flusso(flusso_id: int) -> None:
+def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] | None:
     ErrorManager.require(
         flusso_id > 0,
         code="E_INVALID_ID",
@@ -260,6 +264,20 @@ def avvia_flusso(flusso_id: int) -> None:
 
     repo = PraticheRepository()
     repo.update_stato_flusso(flusso_id, "IN_CORSO")
+
+    # Dispatch handler (None se il flusso non ha handler → resta IN_CORSO,
+    # completamento manuale dall'operatore).
+    # NB sui prerequisiti: il guard esito-aware e' un trigger BEFORE INSERT sui
+    # flussi → scatta alla CREAZIONE del flusso, non qui. Un flusso CONFERMA
+    # esiste solo se APPROVAZIONE_CLIENTE era COMPLETATO+POSITIVO. La difesa a
+    # runtime, all'avvio, e' il check "preventivo ACCETTATO" dentro l'handler.
+    # Concorrenza: l'UPDATE di stato sopra prende il lock di riga del flusso →
+    # due avvii concorrenti sullo stesso flusso si serializzano (no doppio push).
+    result = dispatch_handler(flusso_id, user=user)
+    if result is not None:
+        # Handler eseguito con successo → completa il flusso (esito POSITIVO).
+        repo.update_stato_flusso(flusso_id, "COMPLETATO", esito="POSITIVO")
+    return result
 
 
 # Scopo: Completa un flusso con esito e note.
@@ -335,10 +353,22 @@ def get_canali_disponibili(template_flusso_id: int) -> list[dict[str, Any]]:
     return repo.get_canali_flusso(template_flusso_id)
 
 
+# Scopo: Percorso suggerito della pratica (template_flussi del tipo + stato
+# istanziazione di ciascuno). Alimenta la roadmap FE.
+def get_percorso(pratica_id: int) -> list[dict[str, Any]]:
+    ErrorManager.require(
+        pratica_id > 0,
+        code="E_INVALID_ID",
+        message="pratica_id deve essere > 0",
+    )
+    assert pratica_id > 0
+    return PraticheRepository().get_percorso_pratica(pratica_id)
+
+
 # Scopo: Invoca l'handler Django configurato per il flusso.
 # Obiettivo: dispatch automatico se il template flusso ha un handler_key.
 # Perimetro: lookup handler dal registry, invocazione execute().
-def dispatch_handler(flusso_id: int) -> dict[str, Any] | None:
+def dispatch_handler(flusso_id: int, *, user: str | None = None) -> dict[str, Any] | None:
     ErrorManager.require(
         flusso_id > 0,
         code="E_INVALID_ID",
@@ -376,6 +406,7 @@ def dispatch_handler(flusso_id: int) -> dict[str, Any] | None:
         pratica_id=flusso["pratica_id"],
         meta=flusso["meta"],
         handler_params=handler_params,
+        user=user,
     )
 
 

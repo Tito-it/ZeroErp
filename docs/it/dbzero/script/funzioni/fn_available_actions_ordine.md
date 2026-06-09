@@ -19,17 +19,24 @@ AS $function$
 --   _offerta / _contratto: legge le transizioni manuali disponibili
 --   da config.transizioni_stati_ordini (matrice 20260605-08).
 --
---   Grafo transizioni manuali (enforcement: trgfn_ordini_guard_transizione):
+--   Grafo transizioni (enforcement: trgfn_ordini_guard_transizione):
 --     DRAFT      -> CONFERMATO (conferma, manuale)   attivo=true
 --     DRAFT      -> ANNULLATO  (annulla,  manuale)   attivo=true
 --     CONFERMATO -> ANNULLATO  (annulla,  manuale)   attivo=FALSE (non esposta)
+--     CONFERMATO -> EVASO      (automatica, manuale=false) attivo=true
+--       -> NON esposta in available_actions (filtro manuale + action_key):
+--          e' un effetto automatico invocato dal BE dopo il push commessa.
+--     EVASO: stato terminale (nessuna transizione in uscita).
 --     Stati a valle (ALLOCATO/SPEDITO/...) fuori matrice (no driver).
 --
 --   push_commessa: azione applicativa (NON transizione di stato:
 --     l'ordine resta CONFERMATO). Appesa a mano come push_commessa
 --     dei preventivi. Eleggibile se stato=CONFERMATO e almeno una
 --     riga risulta pushabile (riuso fn_list_ordini_da_pushare).
---     Quando off, valorizza can_push_commessa_reason/_reason_key.
+--     Quando off, valorizza can_push_commessa_reason/_reason_key:
+--       CONFERMATO senza righe -> ORDINE_NESSUNA_RIGA_PUSHABILE
+--       EVASO (gia' pushato)   -> ORDINE_GIA_EVASO
+--       altri stati            -> ORDINE_NON_CONFERMATO
 --
 --   Editabilita':
 --     DRAFT: testata + righe (can_edit_*=true). non_editable solo
@@ -72,6 +79,8 @@ BEGIN
     -- Transizioni manuali disponibili per lo stato corrente.
     -- Pattern identico a fn_available_actions_preventivo/offerta/contratto.
     -- Filtri: attivo, manuale (default true se assente), guard meta keys.
+    -- La transizione automatica CONFERMATO->EVASO (manuale=false, senza
+    -- action_key) e' esclusa da questi filtri: non diventa bottone.
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -112,6 +121,12 @@ BEGIN
             v_push_reason     := 'ORDINE_NESSUNA_RIGA_PUSHABILE';
             v_push_reason_key := 'ordini.push_commessa_reason.nessuna_riga_pushabile';
         END IF;
+    ELSIF v_stato_cod = 'EVASO' THEN
+        -- Ordine gia' propagato a commessa (stato terminale): il push
+        -- non si ripete. Reason dedicato (piu' preciso del generico
+        -- ORDINE_NON_CONFERMATO) per tooltip/diagnostica FE.
+        v_push_reason     := 'ORDINE_GIA_EVASO';
+        v_push_reason_key := 'ordini.push_commessa_reason.gia_evaso';
     ELSE
         v_push_reason     := 'ORDINE_NON_CONFERMATO';
         v_push_reason_key := 'ordini.push_commessa_reason.non_confermato';
@@ -148,7 +163,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
-IS 'Capability ordine di vendita per detail API: available_actions (da config.transizioni_stati_ordini, pattern data-driven) + push_commessa (azione applicativa hardcoded, riuso fn_list_ordini_da_pushare), can_change_state, can_edit_testata/righe, can_push_commessa(+reason/_reason_key), non_editable_fields, stato_codice. Sostituisce il calcolo hardcoded in ordini_service.py. rev 2026-06-05.';
+IS 'Capability ordine di vendita per detail API: available_actions (da config.transizioni_stati_ordini, pattern data-driven) + push_commessa (azione applicativa hardcoded, riuso fn_list_ordini_da_pushare), can_change_state, can_edit_testata/righe, can_push_commessa(+reason/_reason_key: ORDINE_NESSUNA_RIGA_PUSHABILE / ORDINE_GIA_EVASO / ORDINE_NON_CONFERMATO), non_editable_fields, stato_codice. Sostituisce il calcolo hardcoded in ordini_service.py. rev 2026-06-08 (reason EVASO).';
 ```
 
 ---

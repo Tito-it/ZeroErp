@@ -7,23 +7,29 @@
 
 """
 Indice test eseguiti:
-1) HandlerRegistryTests.test_handler_map_vuota_per_default
+1) HandlerRegistryTests.test_handler_vendite_registrato_al_boot
 2) HandlerRegistryTests.test_get_handler_chiave_mancante
 3) HandlerRegistryTests.test_get_handler_chiave_registrata
+4) HandlerRegistryTests.test_register_handler
 """
 
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
-from apps.pratiche.services.handler_registry import HANDLER_MAP, get_handler
+from apps.pratiche.services.handler_registry import (
+    HANDLER_MAP,
+    get_handler,
+    register_handler,
+)
 
 
 class HandlerRegistryTests(SimpleTestCase):
 
-    # Scopo: Verifica che HANDLER_MAP sia vuoto di default (nessun handler registrato).
-    def test_handler_map_vuota_per_default(self):
-        self.assertEqual(len(HANDLER_MAP), 0)
+    # Scopo: il primo handler reale (vendita.push_preventivo) e' registrato al
+    # boot da apps/vendite/apps.py:ready() — non piu' registry vuoto.
+    def test_handler_vendite_registrato_al_boot(self):
+        self.assertIn("vendita.push_preventivo", HANDLER_MAP)
 
     # Scopo: Verifica che get_handler ritorni None per chiave non registrata.
     def test_get_handler_chiave_mancante(self):
@@ -40,3 +46,13 @@ class HandlerRegistryTests(SimpleTestCase):
         with patch.dict(HANDLER_MAP, {"FAKE_HANDLER": _FakeHandler}):
             result = get_handler("FAKE_HANDLER")
             self.assertIs(result, _FakeHandler)
+
+    # Scopo: register_handler popola la mappa (usato da AppConfig.ready()).
+    def test_register_handler(self):
+        class _FakeHandler:
+            def execute(self, flusso_id, pratica_id, meta, handler_params, user=None):
+                return {}
+
+        with patch.dict(HANDLER_MAP, {}, clear=False):
+            register_handler("FAKE_REG", _FakeHandler)
+            self.assertIs(get_handler("FAKE_REG"), _FakeHandler)

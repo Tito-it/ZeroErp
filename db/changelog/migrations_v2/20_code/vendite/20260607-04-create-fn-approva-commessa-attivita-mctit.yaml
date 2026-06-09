@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CREATE vendite.fn_approva_commessa_attivita
+#   Porta le righe commesse_attivita da stato_approvazione BOZZA ad APPROVATA.
+#   E' il prerequisito di riga per l'emissione: fn_emit_attivita_fatturabili_
+#   da_commessa emette solo righe APPROVATA, e il guard transizione
+#   ->PRONTA_FATTURAZIONE (20260607-02) richiede almeno una riga APPROVATA.
+#
+#   Chiamata dall'handler vendita.push_preventivo PRIMA di
+#   fn_cambia_stato_commessa(...,'PRONTA_FATTURAZIONE'): il preventivo
+#   accettato e' l'autorizzazione, le righe nascono confermate.
+#
+# Granularita': p_righe_ids opzionale (NULL = tutte le righe NON_EMESSA della
+#   commessa). Idempotente: le righe gia' APPROVATA non rientrano nel WHERE.
+#   Ritorna il numero di righe portate ad APPROVATA.
+# Dipendenze: vendite.commesse, vendite.commesse_attivita,
+#   script.fn_log_and_raise_error. Codici in 20260607-06.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260607-04-create-fn-approva-commessa-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20260607-04-create-fn-approva-commessa-attivita
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids,
+        p_user) RETURNS integer. Porta le righe commesse_attivita BOZZA->
+        APPROVATA (NULL=tutte le NON_EMESSA). Idempotente. Prerequisito di riga
+        per l'emissione e per la transizione testata ->PRONTA_FATTURAZIONE.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: commesse_attivita
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_approva_commessa_attivita(
+                p_commessa_id  vendite.commesse.id%TYPE,
+                p_righe_ids    bigint[] DEFAULT NULL,
+                p_user         vendite.commesse_attivita.user_update%TYPE DEFAULT NULL
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: approvazione righe commessa (BOZZA -> APPROVATA).
+              --   p_righe_ids NULL = tutte le righe NON_EMESSA della commessa.
+              --   Idempotente: salta le righe gia' APPROVATA. Ritorna il numero
+              --   di righe effettivamente approvate.
+              DECLARE
+                v_approvate integer := 0;
+              BEGIN
+                -- Guard: la commessa deve esistere.
+                IF NOT EXISTS (SELECT 1 FROM vendite.commesse WHERE id = p_commessa_id) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_approva_commessa_attivita',
+                    'E_COMMESSA_NON_TROVATA',
+                    jsonb_build_object('p_commessa_id', p_commessa_id),
+                    NULL::uuid,
+                    coalesce(p_commessa_id::text, 'NULL')
+                  );
+                END IF;
+
+                UPDATE vendite.commesse_attivita ca
+                   SET stato_approvazione = 'APPROVATA',
+                       user_update = COALESCE(p_user, CURRENT_USER)
+                 WHERE ca.commessa_id = p_commessa_id
+                   AND ca.stato_approvazione = 'BOZZA'
+                   AND ca.stato_emissione = 'NON_EMESSA'
+                   AND (p_righe_ids IS NULL OR ca.id = ANY(p_righe_ids));
+
+                GET DIAGNOSTICS v_approvate = ROW_COUNT;
+                RETURN v_approvate;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_approva_commessa_attivita(bigint, bigint[], text)
+              IS 'Approva righe commessa (stato_approvazione BOZZA->APPROVATA, solo '
+                 'NON_EMESSA). p_righe_ids NULL = tutte. Idempotente. Prerequisito di '
+                 'riga per emissione e per testata ->PRONTA_FATTURAZIONE. rev 2026-06-07.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_approva_commessa_attivita(bigint, bigint[], text);

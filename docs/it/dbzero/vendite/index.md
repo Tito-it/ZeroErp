@@ -77,12 +77,15 @@
 - [stati_commessa](tabelle/stati_commessa.md) — (latest review 26-02-2026)   `vendite.stati_commessa` e` la lookup centrale degli stati lifecycle della commessa.
 - [tipi_doc_fiscale_registri](tabelle/tipi_doc_fiscale_registri.md) — (latest review 27-01-2026) La tabella **`vendite.tipi_doc_fiscale_registri`** definisce il mapping **tipo documento fiscale → registro di fatturazione**, necessario per la numerazione e la contabilizzazione dei documenti.
 - [tipi_fondi_fattura](tabelle/tipi_fondi_fattura.md) — (latest review 10-02-2026)   `vendite.tipi_fondi_fattura` definisce il **catalogo delle tipologie di fondo fattura** (addebiti/accrediti fatture precedenti, canone RAI, ecc.). Serve a normalizzare i motivi di addebito/accredito extra rispetto alle righe standard.
+- [transizioni_stati_commessa](tabelle/transizioni_stati_commessa.md) — (rev 2026-06-07) `vendite.transizioni_stati_commessa` definisce la **matrice delle transizioni ammesse** tra gli stati della commessa. Pattern identico a `config.transizioni_stati_ordini` / `config.transizioni_stati_preventivi`, ma collocato in schema `vendite` perché lì vive la tabella stati di riferimento `vendite.stati_commessa` (a differenza di preventivi/ordini, i cui stati sono in `config.stati_doc_*`).
 
 ## ⚙️ Funzioni
 - [fn_applica_fondi_fattura](funzioni/fn_applica_fondi_fattura.md) — La funzione **`vendite.fn_applica_fondi_fattura()`** applica i fondi fattura in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in `vendite.fatture_fondi_fattura` e aggiornando la `source` a stato `ASSEGNATO`.
+- [fn_approva_commessa_attivita](funzioni/fn_approva_commessa_attivita.md) — (rev 2026-06-07) `vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)` porta le righe `commesse_attivita` da `stato_approvazione = 'BOZZA'` a `'APPROVATA'`.
 - [fn_assign_numero_fattura](funzioni/fn_assign_numero_fattura.md) — (latest review 09-02-2026) La funzione **`vendite.fn_assign_numero_fattura()`** assegna il progressivo in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
 - [fn_batch_upsert_commessa_attivita](funzioni/fn_batch_upsert_commessa_attivita.md) — (latest review 15-04-2026)
 - [fn_build_fattura_key](funzioni/fn_build_fattura_key.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_build_fattura_key()`** costruisce la **chiave logica** di aggregazione documento a partire da una riga di `attivita_fatturabili`.
+- [fn_cambia_stato_commessa](funzioni/fn_cambia_stato_commessa.md) — (rev 2026-06-07) `vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)` è l'**entrypoint sanzionato (DB-first)** per cambiare lo stato di una commessa: risolve il codice stato in id, esegue l'`UPDATE` e ritorna lo stato da/a.
 - [fn_cambia_stato_preventivo](funzioni/fn_cambia_stato_preventivo.md) — (latest review 03-04-2026) `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato, p_user)` esegue la **transizione di stato** di un preventivo vendita, validando la transizione tramite la matrice configurabile `config.transizioni_stati_preventivi`.
 - [fn_cancel_lotto_task_run](funzioni/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
 - [fn_chiudi_contratto_per_successione](funzioni/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
@@ -142,9 +145,11 @@
 - [fn_ordine_riga_componenti_init](funzioni/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](funzioni/fn_ordine_riga_componenti_preview.md)
 - [fn_prepare_sdi_payload](funzioni/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
+- [fn_preventivo_ha_residuo_ordine](funzioni/fn_preventivo_ha_residuo_ordine.md)
 - [fn_preventivo_riga_componenti_init](funzioni/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](funzioni/fn_preventivo_riga_componenti_preview.md)
-- [fn_push_offerta_a_contratto](funzioni/fn_push_offerta_a_contratto.md) — (rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
+- [fn_push_offerta_a_contratto](funzioni/fn_push_offerta_a_contratto.md) — (rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
+- [fn_push_preventivo_a_ordine](funzioni/fn_push_preventivo_a_ordine.md)
 - [fn_reset_fondi_fattura](funzioni/fn_reset_fondi_fattura.md) — La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura applicati ad una **fattura figlia**:
 - [fn_reset_lotto_draft](funzioni/fn_reset_lotto_draft.md) — (latest review 09-02-2026)   La funzione **`vendite.fn_reset_lotto_draft()`** effettua il **rollback tecnico** di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati dal draft e ripristinando le righe di `attivita_fatturabili`.
 - [fn_reset_lotto_fattura_draft](funzioni/fn_reset_lotto_fattura_draft.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_reset_lotto_fattura_draft()`** effettua il reset tecnico di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**, senza annullare il lotto.
@@ -184,6 +189,7 @@
 - [trgfn_attivita_fatturabili_lotti_gen_codice](funzioni/trgfn_attivita_fatturabili_lotti_gen_codice.md)
 - [trgfn_attivita_fatturabili_normalize](funzioni/trgfn_attivita_fatturabili_normalize.md) — (latest review 21/01/2026) La funzione `vendite.trgfn_attivita_fatturabili_normalize()` applica una **normalizzazione minima** su `vendite.attivita_fatturabili` per garantire coerenza **temporale** e **tecnica** dei dati prima della scrittura.
 - [trgfn_attivita_norm_competenza_mese](funzioni/trgfn_attivita_norm_competenza_mese.md) — (latest review 29-01-2026)   La funzione **`vendite.trgfn_attivita_norm_competenza_mese()`** normalizza `competenza_mese` al **primo giorno del mese**.
+- [trgfn_commesse_guard_transizione](funzioni/trgfn_commesse_guard_transizione.md) — (rev 2026-06-07)
 - [trgfn_contratti_default_emittente](funzioni/trgfn_contratti_default_emittente.md) — (rev 2026-05-26)
 - [trgfn_contratti_default_valuta](funzioni/trgfn_contratti_default_valuta.md)
 - [trgfn_contratti_freeze_listino_versione](funzioni/trgfn_contratti_freeze_listino_versione.md) — Il modello unificato prevede che un contratto ATTIVO abbia una versione listino **fissa e immutabile**: dal momento dell'attivazione il resolver prezzi legge sempre quella versione, anche se il listino ha versioni successive. Questo garantisce stabilità del pricing per tutta la durata del contratto.
@@ -251,6 +257,7 @@
 - [trgfn_preventivi_righe_componenti_guard_pending](funzioni/trgfn_preventivi_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta che è stata proposta. Cambi a prezzo, quantita' o articolo durante la fase di approvazione renderebbero la decisione ambigua. - **Coerenza con il guard L3 esistente** — `trgfn_preventivi_guard_transizione_approvazione` blocca la transizione ad ACCETTATO se qualsiasi componente è PENDING. Insieme garantiscono che nessuna decisione commerciale avvenga con prezzi incerti sui componenti BoM CASO A. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura: se `preventivi_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_preventivi_righe_guard_pending](funzioni/trgfn_preventivi_righe_guard_pending.md) — (latest revision 22-04-2026, Sprint E listini v5 §14.6)
 - [trgfn_preventivi_righe_ricalcola_totali](funzioni/trgfn_preventivi_righe_ricalcola_totali.md) — (latest review 03-04-2026) `vendite.trgfn_preventivi_righe_ricalcola_totali()` e' la trigger function **STATEMENT-level** che mantiene i totali testata preventivo sempre coerenti con le righe. Invoca `vendite.fn_ricalcola_totali_preventivo()` **una sola volta per ogni preventivo_id coinvolto**, anche in caso di operazioni bulk (es. copia righe in revisione).
+- [trgfn_preventivi_righe_set_natura_vendita](funzioni/trgfn_preventivi_righe_set_natura_vendita.md)
 - [trgfn_promo_articoli_guard_data_driven](funzioni/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
 

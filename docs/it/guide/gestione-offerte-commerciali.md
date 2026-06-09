@@ -80,6 +80,12 @@ In breve: il preventivo è una proposta di **vendita puntuale**, l'offerta è un
 proposta di **relazione duratura**. Per questo l'offerta è strutturalmente gemella
 del contratto, non del preventivo.
 
+> **Gli articoli a servizio ricorrente partono da qui.** Un articolo ricorrente
+> (canone/abbonamento) **non** può essere messo su un preventivo (verrebbe
+> rifiutato): la ricorrenza si avvia dall'offerta commerciale, che genera il
+> contratto. L'offerta è quindi il punto d'ingresso unico per la fornitura
+> ricorrente. Vedi [Gestione preventivi §2.2](gestione-preventivi.md).
+
 ---
 
 ## 2. Le entità in gioco

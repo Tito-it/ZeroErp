@@ -505,6 +505,24 @@ Sequenza minimale, prerequisiti lineari (configurabili per varianti future):
 
 ### 5.3 Il flusso `CONFERMA_VENDITA`: split e idempotenza
 
+> ⚠️ **AGGIORNAMENTO — decisioni ratificate (Tid, 2026-06-08/09), prevalgono su questa prosa.**
+> Fonte autorevole: [brief-preventivi-ordini.md §0](brief-preventivi-ordini.md).
+>
+> 1. **Natura ricorrente (MODALITÀ A — blocco vero):** un articolo con
+>    `destinazione_tipo = 'CONTRATTO'` (oggi `SERVIZIO_RICORRENTE`) **non può stare
+>    su un preventivo**. La ricorrenza si avvia solo da **offerta→contratto**. Il
+>    preventivo ha quindi **solo due destinazioni: ORDINE e COMMESSA**. Decade la
+>    parte di §5.3.1 secondo cui le righe ricorrenti «possono essere marcate come
+>    non smistate automaticamente e gestite manualmente»: sono **bloccate
+>    all'inserimento riga** (`E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`), non gestite a valle.
+> 2. **Nessun override operatore sulla natura:** la natura è proprietà intrinseca
+>    dell'articolo, ereditata e **congelata** sulla riga. Decade la parte di §5.3.2
+>    su «oppure sovrascritta manualmente dall'operatore».
+> 3. **Riga senza natura:** prevenuta a monte da `catalogo.articoli.natura_vendita_id`
+>    NOT NULL (+ backfill), non dalla «sospensione/Opzione 3» di §5.3.2.
+> 4. **Idempotenza:** a livello **riga** (link `ordini_righe.preventivo_riga_id` +
+>    UNIQUE parziale), non di testata: §5.3.3 (UNIQUE su `sorgente_uid`) è **deprecata**.
+
 Questa sezione è divisa in tre sottosezioni che descrivono i tre aspetti
 critici del flusso 40:
 
@@ -542,14 +560,14 @@ Per le righe destinate a **commessa diretta**: l'handler chiama
 `push_a_commessa` esistente (preventivo→commessa con sottoinsieme di
 righe).
 
-Per le righe destinate a **contratto** (ricorrenza): handler dedicato da
-definire quando il caso emergerà concretamente (asse offerta commerciale →
-contratto, vedi documento di analisi separato). In v1 dell'integrazione,
-righe di natura ricorrente possono essere marcate come "non smistate
-automaticamente" e gestite manualmente dall'operatore.
+Per le righe destinate a **contratto** (ricorrenza): ~~handler dedicato da
+definire... righe marcate come non smistate e gestite manualmente~~.
+**SUPERATO (MODALITÀ A, vedi banner §5.3):** le righe ricorrenti **non entrano
+nel preventivo** — sono bloccate all'inserimento (`E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`).
+La ricorrenza si avvia da **offerta→contratto**, non dal preventivo.
 
-Nessuna delle destinazioni è "speciale": tutte sono casi normali. L'handler
-le produce in base allo split delle righe.
+Le destinazioni del preventivo sono quindi **due** (ORDINE, COMMESSA): nessuna è
+"speciale", l'handler le produce in base allo split delle righe.
 
 #### 5.3.2 Preventivi misti: natura come proprietà di riga (**decisione aperta**)
 
@@ -612,11 +630,11 @@ introduzione nuova tassonomia) è il **primo deliverable di Fase B**, prima
 del brief DB dell'handler.
 
 **Granularità della natura**: vincolata a livello di riga di preventivo.
-Può essere derivata automaticamente dall'articolo associato alla riga (se
-l'articolo ha natura definita), oppure sovrascritta manualmente
-dall'operatore in casi specifici. La derivazione vs override è una
-decisione operativa che si chiude in Fase B sulla base di come l'entità
-natura verrà strutturata.
+**CHIUSA (vedi banner §5.3):** è **derivata e congelata** dall'articolo
+(snapshot all'inserimento, come i prezzi), **senza override operatore** — la riga
+non può discostarsi dalla classificazione dell'articolo. L'articolo senza natura
+è prevenuto a monte da `catalogo.articoli.natura_vendita_id` NOT NULL (+ backfill),
+quindi non esiste la riga «non auto-classificabile» dell'Opzione 3 qui sopra.
 
 #### 5.3.3 Idempotenza dell'azione push preventivo→ordine
 
@@ -717,7 +735,7 @@ multipli analoghi per ciascuna destinazione):
 | Tempo | Evento giornale                                                                    | Note                                             |
 | ----- | ---------------------------------------------------------------------------------- | ------------------------------------------------ |
 | t0    | `PRATICA_CREATA` (`VENDITA_STANDARD`)                                              | Operatore avvia                                  |
-| t0+ε  | `FLUSSO_CREATO` x4                                                                 | Tutti i flussi 10-40 instanziati alla creazione  |
+| t0+ε  | `FLUSSO_CREATO` x4                                                                 | Flussi 10-40 instanziati (vedi nota ⚠ sotto)     |
 | t1    | `FLUSSO_STATO_CAMBIATO` su RICHIESTA_CLIENTE → COMPLETATO                          | Esito POSITIVO                                   |
 | t2    | `DOMINIO_PREVENTIVO_CREATO` (in `meta`: `preventivo_id`, `numero PRV-...`)         | Handler manuale o trigger derivato               |
 | t3    | `FLUSSO_STATO_CAMBIATO` su PREVENTIVAZIONE → COMPLETATO                            | Esito POSITIVO (preventivo EMESSO)               |
@@ -726,6 +744,31 @@ multipli analoghi per ciascuna destinazione):
 | t6    | `DOMINIO_ORDINE_CREATO` (in `meta`: `ordine_id`, `anno_serie_numero`, `righe_ids`) | Effetto handler ramo "ordine"                    |
 | t7    | `FLUSSO_STATO_CAMBIATO` su CONFERMA_VENDITA → COMPLETATO                           | Esito POSITIVO                                   |
 | t8    | `STATO_CAMBIATO` su pratica → CHIUSA                                               | Trigger su tutti i flussi obbligatori completati |
+
+> **⚠ Nota correttiva (2026-06-07)** — Il passo `t0+ε` (`FLUSSO_CREATO ×4` —
+> "tutti i flussi instanziati alla creazione") è **errato**, e per un motivo di
+> modello, non solo di implementazione. Materializzare tutti i flussi alla
+> creazione **non è il comportamento voluto**: un flusso può dipendere da una
+> scelta fatta (o no) in un flusso precedente → i percorsi sono **condizionali**,
+> quindi pre-crearli tutti confonderebbe l'operatore e sarebbe scorretto.
+>
+> **Modello corretto**: `template_flussi` descrive il **percorso suggerito** (gli
+> N step in ordine di esecuzione). All'operatore si mostra **visivamente quel
+> percorso** (roadmap/stepper ordinato), anche per gli step futuri; i flussi
+> concreti si **eseguono/istanziano progressivamente**, e le **regole di
+> prerequisito — già esistenti** (`trgfn_flussi_guard_prerequisiti` /
+> `fn_check_prerequisiti_flusso`, da `template_flussi_prerequisiti`) — bloccano
+> con errore il tentativo di eseguire uno step non ancora abilitato. La testata
+> pratica porta solo stati-contenitore (`BOZZA/APERTA → SOSPESA/CHIUSA/ANNULLATA`);
+> l'avanzamento reale lo raccontano i flussi e i loro stati. Coerente: il codice
+> attuale (`crea_pratica`) **non** materializza i flussi alla creazione, ed è
+> giusto così. Vedi stessa correzione in §11.1.7.
+>
+> Stessa cautela per il passo `t8` ("`pratica → CHIUSA` per trigger su tutti i
+> flussi obbligatori completati"): la guida (`gestione-pratiche.md`) descrive
+> `CHIUSA` come **transizione esplicita** da `APERTA`, e non risulta un trigger
+> di auto-chiusura su completamento dei flussi. Da verificare/realizzare se si
+> vuole la chiusura automatica.
 
 In un caso misto (preventivo 3+1+1 di §5.3.2), tra t5 e t7 compaiono
 multipli eventi di dominio:
@@ -1123,6 +1166,41 @@ E, §8.5) se l'uso reale mostra divergenza dai default.
 ## 8. Roadmap incrementale di validazione
 
 Quattro fasi successive. Ogni fase chiude prima di iniziare la successiva.
+
+> **⚠ Stato di avanzamento (2026-06-08) — primo consumatore consegnato in
+> sottoinsieme focalizzato.** La roadmap §8.2-§8.4 descrive la **visione ampia**
+> (`VENDITA_STANDARD` con split per `natura_vendita` → ordine + commessa +
+> contratto). Il **primo giro implementato** è un **sottoinsieme deliberato e più
+> stretto**: pratica **`PREVENTIVI`** (immediata/differita) → **commessa diretta**
+> (nessuno split natura, niente ordine/contratto). Tracciato in tre brief
+> dedicati:
+> [brief-db-pratica-preventivi.md](brief-db-pratica-preventivi.md),
+> [brief-be-pratica-preventivi.md](brief-be-pratica-preventivi.md),
+> [brief-fe-pratica-preventivi.md](brief-fe-pratica-preventivi.md).
+>
+> - **Fase B (DB)** — ✅ **CONSEGNATA** (2026-06-08): seed `PREVENTIVI_IMMEDIATA/_DIFFERITA`
+>   + 8 `template_flussi` + handler_flussi `vendita.push_preventivo`, motore
+>   prerequisiti **esito-aware** (guard `COMPLETATO⇒esito`), `fn_log_evento_dominio`
+>   (`DOMINIO_*`), macchina transizioni commesse, codici errore, GRANT. **Più**
+>   `config.nature_vendita` come groundwork (non ancora attiva nel routing, §9 del
+>   brief BE). **Non** consegnati (rinviati): `fn_push_preventivo_a_ordine`, split
+>   per natura, `uq_ordini_da_preventivo`.
+> - **Fase C (BE)** — ✅ **CONSEGNATA** (2026-06-08): handler `vendita.push_preventivo`
+>   (atomico, idempotente, policy via c7-2), registrazione `HANDLER_MAP` lazy,
+>   dispatch su `IN_CORSO` in transazione unica, accoppiamento accettazione↔flusso
+>   **M2** (`completa_approvazione_da_flusso` + endpoint `approvazione-flusso`).
+>   9 test unitari verdi + 837 regressione verde.
+> - **Fase D (FE)** — ✅ **CONSEGNATA** (2026-06-08, build+lint verdi): roadmap
+>   percorso da `template_flussi` (`PraticaPercorso.vue` + endpoint
+>   `GET /pratiche/<id>/percorso/`, creazione flussi **template-bound**);
+>   PREVENTIVAZIONE (apri+collega preventivo ROOT); F1 routing
+>   `APPROVAZIONE_CLIENTE`→M2; accept dialog nascosto sul percorso pratica.
+>   Revisione critica + cleanup dead code applicati. **Residuo**: smoke UI E2E
+>   runtime. Vedi brief FE.
+>
+> Le voci §8.2/§8.3 sotto restano la **specifica della visione ampia** (split
+> natura): si riprenderanno in un secondo giro, dopo la validazione del
+> sottoinsieme PREVENTIVI.
 
 ### 8.1 Fase A — Chiusura decisioni di modello (questa analisi)
 
@@ -1608,8 +1686,18 @@ distinte ma collegabili a livello cliente.
 | `canale_origine_id`       | TELEFONO                                                         |
 
 Trigger: codice pratica `PRA-0001234` assegnato; stato `BOZZA`; giornale registra
-`PRATICA_CREATA`. I 4 flussi vengono istanziati automaticamente in
-`pratiche.flussi` con stato `DA_ESEGUIRE`.
+`PRATICA_CREATA`. Il **percorso suggerito** dei 4 flussi (da `template_flussi`)
+viene mostrato all'operatore in ordine di esecuzione; i flussi concreti si
+istanziano/eseguono **progressivamente**, non tutti in blocco alla creazione.
+
+> **⚠ Nota correttiva (2026-06-07)** — "istanziati automaticamente alla
+> creazione" sarebbe **inesatto e indesiderato**: pre-creare tutti i flussi è
+> sbagliato perché un flusso può dipendere da scelte fatte nei flussi precedenti
+> (percorsi condizionali). Modello corretto: il `template_flussi` è la **mappa**
+> mostrata come roadmap; l'esecuzione è **progressiva**, governata dalle regole
+> di prerequisito già esistenti (`trgfn_flussi_guard_prerequisiti`). Il codice
+> attuale (`crea_pratica`) non materializza i flussi alla creazione, ed è
+> coerente con questo modello. Vedi §5.5.
 
 **t1 — Alice avanza alla stato APERTA**, e completa `RICHIESTA_CLIENTE`
 inserendo nota "richiesta perseguibile, prepariamo preventivo entro venerdì" →
