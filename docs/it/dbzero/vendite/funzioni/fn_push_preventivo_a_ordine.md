@@ -75,18 +75,13 @@ BEGIN
 
     v_fatt_trigger := COALESCE(p_fatturazione_trigger, 'CONFERMATO');
 
-    -- 3) Conta le righe RESIDUE da smistare a ORDINE:
-    --    natura destinazione ORDINE, attive, nel sottoinsieme richiesto,
-    --    non gia' allocate a un ordine (idempotenza di riga, D5).
+    -- 3) Conta le righe RESIDUE da smistare a ORDINE leggendo la
+    --    vista-predicato unica (MERCE + ATTIVA + non gia' allocata),
+    --    ristretta al sottoinsieme richiesto (D5 idempotenza di riga).
     SELECT count(*) INTO v_n_residue
-      FROM vendite.preventivi_righe pr
-      JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
-     WHERE pr.preventivo_id = p_preventivo_id
-       AND COALESCE(pr.attivo, TRUE) IS TRUE
-       AND nv.destinazione_tipo = 'ORDINE'
-       AND (p_righe_ids IS NULL OR pr.id = ANY(p_righe_ids))
-       AND NOT EXISTS (SELECT 1 FROM vendite.ordini_righe orr
-                        WHERE orr.preventivo_riga_id = pr.id);
+      FROM vendite.vw_preventivi_righe_smistabili_ordine v
+     WHERE v.preventivo_id = p_preventivo_id
+       AND (p_righe_ids IS NULL OR v.id = ANY(p_righe_ids));
 
     IF v_n_residue = 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -111,24 +106,21 @@ BEGIN
         'PREVENTIVO', p_preventivo_id)
     RETURNING id INTO v_ordine_id;
 
-    -- 5) Copia le righe residue (snapshot prezzi). riga_nr progressivo;
-    --    quantita derivata dal trigger qta_from_operativa; link di riga
-    --    preventivo_riga_id (ancora idempotenza).
+    -- 5) Copia le righe residue (snapshot prezzi) dalla vista-predicato.
+    --    La INNER JOIN a catalogo.articoli e' PROIEZIONE: serve
+    --    is_composito e, come oggi, scarta righe senza articolo.
+    --    riga_nr progressivo; quantita derivata dal trigger
+    --    qta_from_operativa; link di riga preventivo_riga_id (idempotenza).
     FOR v_riga IN
-        SELECT pr.id AS riga_id, pr.articolo_id, pr.descrizione,
-               pr.prezzo_unitario, pr.sconto_percentuale, pr.iva_id,
-               pr.qta_operativa, pr.uom_operativa_id, pr.factor_to_base,
+        SELECT v.id AS riga_id, v.articolo_id, v.descrizione,
+               v.prezzo_unitario, v.sconto_percentuale, v.iva_id,
+               v.qta_operativa, v.uom_operativa_id, v.factor_to_base,
                a.is_composito,
-               row_number() OVER (ORDER BY pr.ordine NULLS LAST, pr.id) AS rn
-          FROM vendite.preventivi_righe pr
-          JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
-          JOIN catalogo.articoli a ON a.id = pr.articolo_id
-         WHERE pr.preventivo_id = p_preventivo_id
-           AND COALESCE(pr.attivo, TRUE) IS TRUE
-           AND nv.destinazione_tipo = 'ORDINE'
-           AND (p_righe_ids IS NULL OR pr.id = ANY(p_righe_ids))
-           AND NOT EXISTS (SELECT 1 FROM vendite.ordini_righe orr
-                            WHERE orr.preventivo_riga_id = pr.id)
+               row_number() OVER (ORDER BY v.ordine NULLS LAST, v.id) AS rn
+          FROM vendite.vw_preventivi_righe_smistabili_ordine v
+          JOIN catalogo.articoli a ON a.id = v.articolo_id
+         WHERE v.preventivo_id = p_preventivo_id
+           AND (p_righe_ids IS NULL OR v.id = ANY(p_righe_ids))
          ORDER BY rn
     LOOP
         INSERT INTO vendite.ordini_righe (
@@ -191,7 +183,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[], p_pratica_id bigint, p_fatturazione_trigger character varying)
-IS 'Ramo ORDINE dello split preventivo (brief-preventivi-ordini.md D8). Copia il sottoinsieme di righe con natura destinazione_tipo=ORDINE verso un nuovo ordine DRAFT (documento_origine=PREVENTIVO), snapshot prezzi + BoM via fn_ordine_riga_componenti_init, idempotenza di riga via ordini_righe.preventivo_riga_id. p_pratica_id opzionale (pratiche_sorgenti ROOT+COLLEGATO). EVASO non gestito qui.';
+IS 'Ramo ORDINE dello split preventivo (brief-preventivi-ordini.md D8). Copia il sottoinsieme di righe con natura destinazione_tipo=ORDINE verso un nuovo ordine DRAFT (documento_origine=PREVENTIVO), snapshot prezzi + BoM via fn_ordine_riga_componenti_init, idempotenza di riga via ordini_righe.preventivo_riga_id. Predicato righe smistabili dalla vista unica vw_preventivi_righe_smistabili_ordine. p_pratica_id opzionale (pratiche_sorgenti ROOT+COLLEGATO). EVASO non gestito qui.';
 ```
 
 ---

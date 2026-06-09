@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.vw_preventivi_righe_smistabili_ordine — SORGENTE UNICA (DB-first) del
+# "predicato di smistamento": quali righe di un preventivo sono MERCE ancora da
+# portare in un ordine. Il predicato e' uno solo, definito QUI, e cattura le 3
+# condizioni:
+#   1) MERCE          -> natura con destinazione_tipo = 'ORDINE'
+#   2) ATTIVA         -> COALESCE(attivo, TRUE) IS TRUE
+#   3) NON gia' ordinata -> nessuna ordini_righe.preventivo_riga_id = pr.id
+#
+# Motivazione (consolidamento). Lo stesso predicato era ripetuto in piu' punti
+# (fn_preventivo_ha_residuo_ordine, fn_push_preventivo_a_ordine in COUNT+SELECT,
+# e una futura query del dialog di selezione lato BE). Tre copie della stessa
+# regola: una manutenzione fatta solo su alcune le fa divergere (il dialog mostra
+# una riga che la copia poi salta -> "riga che sparisce"). Centralizzando il
+# predicato in questa vista i consumatori la RICHIAMANO invece di ri-scriverla:
+# unica fonte di verita', un solo punto da cambiare.
+#
+# Grana = preventivi_righe. La vista NON filtra per preventivo ne per sottoinsieme
+# di righe: i consumatori aggiungono i propri filtri sopra
+#   - per preventivo:        WHERE preventivo_id = :id
+#   - smistamento parziale:  AND id = ANY(:righe_ids)
+#
+# Consumatori (DB):
+#   - vendite.fn_preventivo_ha_residuo_ordine  -> EXISTS sulla vista (20260610-03)
+#   - vendite.fn_push_preventivo_a_ordine       -> COUNT + SELECT sulla vista
+#     (20260610-04). La JOIN a catalogo.articoli per is_composito resta nel push
+#     (proiezione, non predicato): la vista espone articolo_id, il push decide
+#     come usarlo.
+# Consumatore futuro (BE, FUORI SCOPE DB): il dialog di selezione righe leggera'
+#   SELECT ... FROM vendite.vw_preventivi_righe_smistabili_ordine WHERE preventivo_id = %s
+#
+# Nota di perimetro: il predicato NON include articolo_id IS NOT NULL (coerente
+# col comportamento attuale di fn_residuo/COUNT). Il push richiede comunque un
+# articolo valido (INNER JOIN catalogo.articoli) -> l'allineamento pieno
+# dialog/copia su questo bordo arriva col NOT NULL su preventivi_righe.articolo_id
+# (backfill gia' tracciato, fuori scope).
+#
+# security_invoker = on: la vista eredita i privilegi del chiamante (coerente con
+# le altre viste applicative vendite).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260610-02-create-vw-preventivi-righe-smistabili-ordine-mctit.yaml
+
+  - changeSet:
+      id: 20260610-02-create-vw-preventivi-righe-smistabili-ordine
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        Crea vendite.vw_preventivi_righe_smistabili_ordine: sorgente unica del
+        predicato di smistamento righe-merce preventivo->ordine (MERCE + ATTIVA +
+        non gia' ordinata). Consumata da fn_preventivo_ha_residuo_ordine e
+        fn_push_preventivo_a_ordine.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: preventivi_righe
+            - tableExists:
+                schemaName: config
+                tableName: nature_vendita
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini_righe
+                columnName: preventivo_riga_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_ordine
+              WITH (security_invoker = on) AS
+                  -- Predicato unico delle righe-merce "smistabili" verso un ordine.
+                  -- I consumatori filtrano per preventivo_id (ed eventualmente per
+                  -- id, per lo smistamento parziale).
+                  SELECT pr.preventivo_id,
+                         pr.id,
+                         pr.natura_vendita_id,
+                         pr.articolo_id,
+                         pr.descrizione,
+                         pr.prezzo_unitario,
+                         pr.sconto_percentuale,
+                         pr.iva_id,
+                         pr.qta_operativa,
+                         pr.uom_operativa_id,
+                         pr.factor_to_base,
+                         pr.ordine
+                    FROM vendite.preventivi_righe pr
+                    JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+                   WHERE COALESCE(pr.attivo, TRUE) IS TRUE          -- 2) ATTIVA
+                     AND nv.destinazione_tipo = 'ORDINE'            -- 1) MERCE
+                     AND NOT EXISTS (                                -- 3) NON gia' ordinata
+                         SELECT 1 FROM vendite.ordini_righe orr
+                          WHERE orr.preventivo_riga_id = pr.id);
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_smistabili_ordine
+              IS 'Sorgente unica (DB-first) del predicato di smistamento: righe-merce di un preventivo ancora da portare in un ordine (natura destinazione_tipo=ORDINE, attive, non ancora allocate a una ordini_righe.preventivo_riga_id). Grana = preventivi_righe; i consumatori filtrano per preventivo_id ed eventualmente per id (smistamento parziale). Consumata da fn_preventivo_ha_residuo_ordine e fn_push_preventivo_a_ordine; predisposta per il dialog BE di selezione righe.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_preventivi_righe_smistabili_ordine;
