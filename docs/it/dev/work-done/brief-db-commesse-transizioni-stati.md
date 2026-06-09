@@ -8,7 +8,7 @@
 > applicati, pgTAP verdi. Vedi §0.
 >
 > **Origine**: prerequisito **V9** del
-> [brief-db-pratica-preventivi.md](brief-db-pratica-preventivi.md). La verifica
+> [brief-db-pratica-preventivi.md](../work-in-progress/brief-db-pratica-preventivi.md). La verifica
 > critica (2026-06-07) ha trovato che il ramo commessa→fattura è **dormiente**:
 > la commessa nasce in `BOZZA` e **nessuna** funzione/trigger la porta a
 > `PRONTA_FATTURAZIONE`, né le righe ad `APPROVATA`. Le commesse — a differenza
@@ -73,7 +73,7 @@ In scope:
    fanno `UPDATE` diretto di stato.
 
 **Esplicitamente NON in scope**: l'handler `vendita.push_preventivo` (è BE, vedi
-[brief-be](brief-be-pratica-preventivi.md)); la scelta immediata/differita (vive
+[brief-be](../work-in-progress/brief-be-pratica-preventivi.md)); la scelta immediata/differita (vive
 in `handler_params`, non qui); `fn_available_actions_commessa` per la UI (utile
 ma rinviabile — vedi §7).
 
@@ -163,7 +163,7 @@ passare la commessa per gli stati intermedi quando nasce già confermata.
 
 L'handler, dopo aver creato commessa + righe via il push esistente, chiude la
 sequenza con due chiamate (lo step "approvazione + emittibilità" tra i punti 6 e
-7 dello pseudo-flow del [brief BE §5](brief-be-pratica-preventivi.md)):
+7 dello pseudo-flow del [brief BE §5](../work-in-progress/brief-be-pratica-preventivi.md)):
 
 ```text
 fn_approva_commessa_attivita(commessa_id)                  # righe → APPROVATA

@@ -262,26 +262,39 @@ Nuovo endpoint 2026-05-28. Mirror di `GET /api/v1/vendite/offerte/<id>/revisioni
 
 ---
 
-### 6c. Genera ordine da preventivo `POST /api/v1/vendite/preventivi/{id}/genera-ordine/`
+### 6c. Genera ordine da preventivo (smistamento MERCE) `POST /api/v1/vendite/preventivi/{id}/genera-ordine/`
 
-Conversione upstream (§7.4 analisi-ordini-vendita): crea un **ordine di vendita
-DRAFT** dal preventivo, copiando testata + righe + componenti BoM e valorizzando
-`documento_origine = ('PREVENTIVO', preventivo_id)` sull'ordine.
+**Modello split per natura** (brief [brief-preventivi-ordini.md](../../../dev/work-in-progress/brief-preventivi-ordini.md) D8 — sostituisce il vecchio copia-tutto 1:1).
+Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
+(natura con `destinazione_tipo='ORDINE'`), valorizzando `documento_origine =
+('PREVENTIVO', preventivo_id)` sull'ordine.
 
 - View `ApiPreventivoGeneraOrdine` (area `vendite`) → delega a
-  `ordini_service.crea_ordine_da_preventivo(preventivo_id)` (stesso app vendite).
-- **Precondizione**: preventivo in stato **`ACCETTATO`**.
-- **Copia**: testata (BA, utility, valuta, termine pagamento, emittente);
-  righe 1:1 con **prezzi congelati** (`sconto_percentuale` propagato 1:1 — dal
-  rename DB 2026-06-05 anche l'ordine usa lo stesso nome colonna);
-  componenti compositi **ri-inizializzati ai prezzi correnti** (struttura copiata,
-  prezzi risolti all'ordine — caveat v1). Provenienza senza UNIQUE → **più ordini**
-  da uno stesso preventivo (riordini).
-- Output `200`: `{ "ordine_id": int, "numero": str, "righe_create": int,
+  `ordini_service.crea_ordine_da_preventivo(preventivo_id, righe_ids)`, che a sua
+  volta delega alla **primitiva DB** `vendite.fn_push_preventivo_a_ordine`.
+- **Body JSON** (opzionale): `{ "righe_ids": [int, ...] }` — sottoinsieme di
+  righe da smistare (smistamento selettivo). **Assente** = tutte le righe MERCE
+  residue.
+- **Cosa fa la fn DB** (non più orchestrazione Python):
+  - copia **solo** le righe natura `ORDINE` (i **servizi una-tantum** vanno a
+    commessa via push commessa; il **ricorrente** è bloccato a monte, D9);
+  - **snapshot prezzi** + componenti BoM (`fn_ordine_riga_componenti_init`);
+  - scrive il **link di riga** `ordini_righe.preventivo_riga_id` → **idempotenza
+    di riga**: una riga merce finisce su **al massimo un** ordine (le righe già
+    allocate sono **saltate**, D5). Niente più doppio-ordine del vecchio copia-tutto.
+- **Precondizione / guard** (validati **dalla fn DB**, non più in Python):
+  stato `ACCETTATO` → altrimenti `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO`;
+  almeno una riga merce residua → altrimenti `E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE`.
+- Output `200`: `{ "ordine_id": int, "numero": str,
   "documento_origine": {"tipo": "PREVENTIVO", "id": int} }`.
-- Errori: `E_PREV_NOT_FOUND` (404) se inesistente; `E_ORD_ORIGINE_NON_CONVERTIBILE`
-  (409) se non `ACCETTATO`.
-- FE: azione «Genera ordine» su `PreventiviDrawer` (gated su `ACCETTATO`).
+  (Il campo `righe_create` non è più ritornato: il conteggio vive a DB.)
+- FE: azione **data-driven** «Genera ordine» su `PreventiviDrawer`, esposta dalla
+  capability `genera_ordine` di `script.fn_available_actions_preventivo` (visibile
+  solo con **residuo merce** non allocato), non più hardcoded su `ACCETTATO`.
+- **Percorso pratica**: lo smistamento è orchestrato da `CONFERMA_VENDITA`
+  (handler `vendita.push_preventivo`), che chiama la stessa primitiva passando
+  `p_pratica_id` per l'aggancio `pratiche_sorgenti` (ordine `COLLEGATO`). Questo
+  endpoint è il percorso **standalone** (fuori-pratica, `p_pratica_id=NULL`).
 
 > **Offerta → ordine**: non disponibile (l'offerta non ha righe materializzate,
 > solo eccezioni su listino). Prerequisito DB: brief
@@ -630,6 +643,8 @@ Errori comuni di tutta la sezione: `E_DOCUMENTI_VALIDATION` (400/422), `E_DOCUME
 | `E_DOC_COMPONENTE_LISTINO_MANCANTE` | 422 | Resolver fallito per un componente senza override esplicito. L'operatore deve aggiungere il prezzo manuale in `componenti_overrides` (richiede `prezzo_override_manuale`) o l'admin deve configurare il listino bundle/standalone per quel componente |
 | `E_DOCUMENTI_VALIDATION` | 400/422 | Endpoint §5b + §18: emittente non risolto, sorgente PREVENTIVO non attiva, template assente/non applicabile, MIME allegato non ammesso, size oltre limite. Sollevato da `apps.documenti.api.contesto_helpers.resolve_contesto_documentale` o da `DocumentGenerationService` |
 | `E_DOCUMENTI_NOT_FOUND` | 404 | Endpoint §5b + §18: preventivo o documento atteso non trovato dal resolver di contesto |
+| `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` | 409 | §6c genera-ordine: preventivo non `ACCETTATO`. Sollevato dalla fn DB `fn_push_preventivo_a_ordine` |
+| `E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE` | 422 | §6c genera-ordine: nessuna riga **merce** residua da smistare (nessuna riga natura `ORDINE`, o tutte già allocate a un ordine — idempotenza di riga). Sollevato dalla fn DB `fn_push_preventivo_a_ordine` |
 
 ## Integrazione pricing v5
 

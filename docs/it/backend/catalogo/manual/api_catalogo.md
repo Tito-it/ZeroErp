@@ -265,7 +265,11 @@ da stringa generico di `/core/parameters/defaults/`.
 | `voce_utility` | bool | No | Filtro utility |
 | `attivo` | bool | No | Default API `true` |
 | `is_composito` | bool | No | Filtro composti |
+| `is_solo_componente` | bool | No | Filtro articoli usabili solo come componente BoM |
+| `escludi_destinazione` | string (CSV) | No | Esclude gli articoli la cui **natura** ha una `destinazione_tipo` tra quelle elencate (`ORDINE` / `COMMESSA` / `CONTRATTO`). Filtro **data-driven sulla destinazione**, non sul codice natura. Es. `escludi_destinazione=CONTRATTO` per non proporre articoli ricorrenti sulle righe di un **preventivo** (difesa in profondità del blocco DB D9, modello split per natura). Valori normalizzati a maiuscolo; token vuoti ignorati. |
 | `limit` | int | No | Default `20`, max `50` |
+
+> **Nota natura (split per natura)**: il filtro fa JOIN `catalogo.articoli → config.nature_vendita` (`natura_vendita_id`, NOT NULL post-D3) e applica `destinazione_tipo <> ALL(escluse)`. Senza il parametro il lookup è invariato (nessun JOIN natura). Usato dal FE `ArticoloLookup` via prop `escludiDestinazione` (riga preventivo passa `['CONTRATTO']`).
 
 #### Output specifico
 

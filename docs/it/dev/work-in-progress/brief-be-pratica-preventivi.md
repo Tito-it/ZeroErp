@@ -2,7 +2,7 @@
 
 > **Tipo documento**: brief backend (Django). Prerequisito: deliverable DB del
 > [brief-db-pratica-preventivi.md](brief-db-pratica-preventivi.md) +
-> [brief-db-commesse-transizioni-stati.md](brief-db-commesse-transizioni-stati.md).
+> [brief-db-commesse-transizioni-stati.md](../work-done/brief-db-commesse-transizioni-stati.md).
 > Coerente con [feedback_be_fe_attende_prerequisiti_db]: **non** anticipare codice
 > che dipende da oggetti DB non ancora consegnati.
 > [brief-db-pratica-preventivi.md](brief-db-pratica-preventivi.md) — **✅ CONSEGNATI
@@ -135,7 +135,7 @@ e `DOMINIO_PREVENTIVO_EVASO`.
 
 ### C8 — Approvazione righe + transizione commessa (era V9 aperto, ora concreto)
 
-Le funzioni del [brief commesse](brief-db-commesse-transizioni-stati.md) (✅
+Le funzioni del [brief commesse](../work-done/brief-db-commesse-transizioni-stati.md) (✅
 implementate) vanno cablate come metodi repository + chiamate dall'handler tra il
 push e l'aggancio sorgenti (vedi §5):
 

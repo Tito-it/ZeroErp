@@ -38,6 +38,10 @@ const FILTRO_VALORI_VALIDI = Object.freeze(['qualsiasi', 'escludi', 'solo'])
 const props = defineProps({
   modelValue: { type: Object, default: null },
   filtri: { type: Object, default: () => ({}) },
+  // Esclusione natura per DESTINAZIONE (data-driven, non per codice): array di
+  // destinazioni da non proporre — es. ['CONTRATTO'] sulle righe preventivo per
+  // non offrire articoli ricorrenti (difesa in profondità del blocco DB D9).
+  escludiDestinazione: { type: Array, default: () => [] },
   soloAttivi: { type: Boolean, default: true },
   placeholder: { type: String, default: null },
   disabled: { type: Boolean, default: false }
@@ -84,6 +88,11 @@ function _buildLookupParams(query) {
   const params = { search: query, attivo: props.soloAttivi, limit: 20 }
   for (const [chiave, valore] of Object.entries(filtriValidati.value)) {
     params[FILTRI_TRI_STATO[chiave]] = (valore === 'solo')
+  }
+  // Esclusione natura per destinazione: CSV inviato al BE come `escludi_destinazione`.
+  const escludi = (props.escludiDestinazione || []).filter(Boolean)
+  if (escludi.length) {
+    params.escludi_destinazione = escludi.join(',')
   }
   return params
 }

@@ -1745,10 +1745,20 @@ def push_a_commessa(preventivo_id: int) -> dict[str, Any]:
     # docs/it/dev/work-in-progress/brief-db-stato-preventivo-evaso.md).
     # Se PARZIALE/ERRORE/SKIPPED il preventivo resta ACCETTATO:
     # serve un ri-push per completare prima di poter evadere.
+    #
+    # Gate EVASO (D6, brief-preventivi-ordini.md §5/§7.2): nel modello split
+    # la lista di push e' natura-aware (solo righe destinazione COMMESSA), quindi
+    # su un preventivo misto qui passano i soli servizi. EVASO significa "tutte
+    # le righe smistate" → NON evadere finche' resta residuo MERCE da portare a
+    # ordine (lo verifica fn_preventivo_ha_residuo_ordine). Lo smistamento merce
+    # avviene via fn_push_preventivo_a_ordine / orchestratore CONFERMA_VENDITA.
+    #
     # Robustezza al deploy parziale: se la fn DB rifiuta la transizione
     # (es. seed non ancora atterrato), logga warning e prosegue — il
     # push e' gia' avvenuto, lo stato si allineera' al re-run successivo.
-    if report["stato"] == "COMPLETATO":
+    if report["stato"] == "COMPLETATO" and not repo.preventivo_ha_residuo_ordine(
+        preventivo_id
+    ):
         try:
             repo.cambia_stato(preventivo_id, "EVASO", "django_api")
         except DatabaseError as exc:

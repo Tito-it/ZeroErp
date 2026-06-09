@@ -347,7 +347,9 @@ class ApiPreventivoRevisione(DomainAPIView):
 
 
 class ApiPreventivoGeneraOrdine(DomainAPIView):
-    """`POST /api/v1/vendite/preventivi/<id>/genera-ordine/` (conversione §7.4)."""
+    """`POST /api/v1/vendite/preventivi/<id>/genera-ordine/` — smistamento
+    MERCE → ordine (modello split D8). Body opzionale `{righe_ids: [..]}` per lo
+    smistamento selettivo; assente = tutte le righe merce residue."""
 
     area_funzionale = "vendite"
 
@@ -357,14 +359,18 @@ class ApiPreventivoGeneraOrdine(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Genera un ordine di vendita DRAFT da un preventivo ACCETTATO
-    #        (copia testata+righe+componenti + documento_origine). Delega a
+    # Scopo: Smista a un ordine DRAFT le righe MERCE di un preventivo ACCETTATO
+    #        (natura destinazione ORDINE), via fn_push_preventivo_a_ordine
+    #        (snapshot prezzi + BoM + link di riga, niente servizi). Delega a
     #        ordini_service (stesso app vendite). Ritorna {ordine_id, numero, ...}.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         from apps.vendite.services import ordini_service
 
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            return ordini_service.crea_ordine_da_preventivo(preventivo_id)
+            righe_ids = payload.get("righe_ids") or None
+            return ordini_service.crea_ordine_da_preventivo(
+                preventivo_id, righe_ids=righe_ids,
+            )
         return handle_post_json(request, handler=_handler)
 
 
