@@ -48,7 +48,7 @@ databaseChangeLog:
       id: 20260502-15-update-vw-preventivi-list-soggetto-via-istanza
       author: mctit
 
-      runOnChange: true
+      runOnChange: false
 
       validCheckSums:
         - ANY
@@ -84,8 +84,8 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             sql: |
-              
-              DROP VIEW vendite.vw_preventivi_list;
+
+              DROP VIEW IF EXISTS vendite.vw_preventivi_list;
 
               -- ==========================================================
               -- Vista: vendite.vw_preventivi_list (rev3: soggetto via istanza)
