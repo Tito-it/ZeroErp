@@ -355,14 +355,19 @@ class CatalogoRepository:
         # destinazione CONTRATTO (ricorrente) non è ammessa sul preventivo (D9).
         # Il filtro è sulla DESTINAZIONE, non sul codice natura (coerente col
         # guard DB data-driven). JOIN dalla base `catalogo.articoli` perché la
-        # vista non espone la natura; INNER safe: articoli.natura_vendita_id è
-        # NOT NULL (D3).
+        # vista non espone la natura. **LEFT JOIN + NULL-tolerant**: un articolo
+        # con natura NULL (pregresso/anomalia) NON viene nascosto silenziosamente
+        # dal picker — viene escluso solo se la sua destinazione è tra quelle
+        # vietate. Coerente col "NULL = include" di fn_list_preventivi_da_pushare.
         if escludi_destinazione_tipi:
             join_clause = (
-                " JOIN catalogo.articoli art ON art.id = a.id"
-                " JOIN config.nature_vendita nv ON nv.id = art.natura_vendita_id"
+                " LEFT JOIN catalogo.articoli art ON art.id = a.id"
+                " LEFT JOIN config.nature_vendita nv ON nv.id = art.natura_vendita_id"
             )
-            conditions.append("nv.destinazione_tipo <> ALL(%s::text[])")
+            conditions.append(
+                "(nv.destinazione_tipo IS NULL"
+                " OR nv.destinazione_tipo <> ALL(%s::text[]))"
+            )
             params.append(list(escludi_destinazione_tipi))
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""

@@ -543,6 +543,24 @@ class CommesseRepository:
             total_emesse=int(row[2]),
         )
 
+    def get_commessa_stato_codice(self, commessa_id: int) -> str | None:
+        """`codice_interno` dello stato corrente della testata commessa, o None
+        se inesistente. Usato dall'orchestratore CONFERMA_VENDITA per lo skip
+        idempotente della transizione a PRONTA_FATTURAZIONE quando una commessa
+        multi-sorgente è già stata portata pronta da una sorgente precedente."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT sc.codice_interno
+                  FROM vendite.commesse c
+                  JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
+                 WHERE c.id = %s
+                """,
+                [commessa_id],
+            )
+            row = cursor.fetchone()
+        return row[0] if row else None
+
     # --- Gruppo 2: Attività commessa ---
 
     def upsert_attivita(self, inp: CommessaAttivitaInput) -> UpsertAttivitaResult:

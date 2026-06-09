@@ -64,10 +64,17 @@ export function creaRevisione(id) {
   return api.post(`${BASE}/${id}/revisione/`, {})
 }
 
-// Conversione upstream (§7.4): genera un ordine di vendita DRAFT da un
-// preventivo ACCETTATO (copia testata+righe+componenti + documento_origine).
-export function generaOrdineFromPreventivo(id) {
-  return api.post(`${BASE}/${id}/genera-ordine/`, {})
+// Smistamento MERCE → ordine (modello split D8): righe merce non ancora
+// allocate, da mostrare nel dialog di selezione.
+export function listRigheSmistabiliOrdine(id) {
+  return api.get(`${BASE}/${id}/righe-smistabili-ordine/`)
+}
+
+// Smistamento MERCE → ordine: crea un ordine DRAFT dalle righe merce scelte.
+// `righeIds` opzionale: assente/null = tutte le righe merce residue.
+export function generaOrdineFromPreventivo(id, righeIds = null) {
+  const body = righeIds && righeIds.length ? { righe_ids: righeIds } : {}
+  return api.post(`${BASE}/${id}/genera-ordine/`, body)
 }
 
 export function listRevisioni(id) {

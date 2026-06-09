@@ -97,7 +97,7 @@ non scatta).
 - L'ordine generato resta **DRAFT**: ha un ciclo proprio (ordine→DDT→fattura),
   confermato separatamente. Solo la **commessa** va a `PRONTA_FATTURAZIONE`.
 - **Coordinamento futuro** (commessa multi-sorgente, brief
-  [brief-db-commesse-multi-sorgente.md](../../../dev/work-in-progress/brief-db-commesse-multi-sorgente.md)):
+  [brief-db-commesse-multi-sorgente.md](../../../dev/work-done/brief-db-commesse-multi-sorgente.md)):
   alla consegna B, `cambia_stato_commessa(PRONTA)` va reso idempotente (commessa
   già PRONTA portata da altra sorgente). Oggi non raggiungibile.
 
