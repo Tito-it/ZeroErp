@@ -114,6 +114,27 @@ controlli L1/L2/L3 di autorizzazione che vedremo in §6.
 Per gli articoli **compositi** (kit, bundle) la riga è solo la "testata" del
 gruppo: i prezzi reali stanno nei componenti BoM (§5).
 
+#### Quali articoli possono stare su un preventivo
+
+Sul preventivo puoi mettere **merce** e **servizi una tantum**. **Non** puoi
+inserire articoli a **servizio ricorrente** (canone/abbonamento): se ci provi, il
+sistema rifiuta la riga con un messaggio che ti invita a usare l'**offerta
+commerciale**. Il motivo è semplice — la ricorrenza ha un suo ciclo di vita
+([offerta → contratto → fatturazione periodica](gestione-offerte-commerciali.md))
+che non passa dal preventivo. Ogni articolo porta con sé questa "natura" dal
+catalogo, e l'operatore non può cambiarla sulla riga.
+
+> **Come funziona sotto il cofano.** Ogni articolo ha una *natura di vendita*
+> (`catalogo.articoli.natura_vendita_id` → `config.nature_vendita`) con una
+> *destinazione*: `MERCE → ordine`, `SERVIZIO_UNA_TANTUM → commessa`,
+> `SERVIZIO_RICORRENTE → contratto`. Quando aggiungi una riga, un trigger
+> (`trgfn_preventivi_righe_set_natura_vendita`) copia e **congela** la natura
+> dall'articolo sulla riga. Se la destinazione è `CONTRATTO`, il trigger blocca
+> subito l'inserimento con l'errore `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`: il
+> blocco è *data-driven* (vale per qualunque natura mappata a contratto) e scatta
+> all'inserimento, non alla conferma. Le destinazioni operative del preventivo
+> sono quindi solo **ordine** e **commessa**.
+
 ### 2.3 Componenti BoM `preventivi_righe_componenti`
 
 Quando una riga punta a un articolo `is_composito = TRUE`, il sistema crea

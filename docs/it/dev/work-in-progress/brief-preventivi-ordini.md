@@ -1,12 +1,12 @@
 # Brief — `preventivo → ordine`: modello a split di riga (NON 1:1 di testata)
 
-> **Stato**: 🟡 **DECISIONI RATIFICATE — IMPLEMENTAZIONE NON AVVIATA**. Le scelte
-> aperte (modello idempotenza, natura di riga, accoppiamento pratica, EVASO,
-> link di riga, scope) sono chiuse: vedi §0. Resta da scrivere il changeSet DB.
-> Nessun codice BE/FE/DB toccato finora.
+> **Stato**: 🟢 **RAMO ORDINE IMPLEMENTATO A DB (2026-06-09)**. Le decisioni (§0)
+> sono chiuse; il ramo merce→ordine è a terra e testato. Restano fuori scope DB
+> l'orchestratore `CONFERMA_VENDITA` (BE), il gate EVASO (BE, primitiva DB pronta)
+> e il filtro catalogo FE/BE. Dettaglio in §8 (log implementazione).
 >
 > **Owner concettuale**: Tid (Michele Carlo Titini).
-> **Data**: 2026-06-07 — decisioni ratificate 2026-06-08.
+> **Data**: 2026-06-07 — decisioni ratificate 2026-06-08 — DB implementato 2026-06-09.
 >
 > **Perché esiste questo documento**: durante l'analisi dell'univocità
 > offerta→ordine ([brief-db-univocita-offerta-ordine.md](../work-done/brief-db-univocita-offerta-ordine.md))
@@ -25,12 +25,11 @@
 
 ## 0. Decisioni ratificate (Tid, 2026-06-08)
 
-Tutte verificate contro lo schema attuale: **niente** di quanto segue è ancora
-implementato a DB (`fn_push_preventivo_a_ordine`, colonna link di riga, UNIQUE
-parziale per `PREVENTIVO`, azione `genera_ordine` sulla fn preventivo, flusso
-`CONFERMA_VENDITA`). L'unico precedente a terra è la UNIQUE parziale **offerta**
-(`uq_ordini_v_documento_origine_offerta`), che è il modello *opposto* e **non**
-si replica sul preventivo.
+Tutte verificate contro lo schema attuale. **Stato implementazione: ramo ordine a
+DB (2026-06-09), vedi §8.** Restano da fare l'orchestratore `CONFERMA_VENDITA` e
+il gate EVASO (lato BE). La UNIQUE parziale **offerta**
+(`uq_ordini_v_documento_origine_offerta`) è il modello *opposto* e **non** si
+replica sul preventivo (sul preventivo l'idempotenza è di riga, §3).
 
 | # | Tema | Decisione |
 | --- | --- | --- |
@@ -41,7 +40,8 @@ si replica sul preventivo.
 | **D5 (C)** | Riga già allocata | **Skip** silenzioso delle righe già allocate (l'ordine si crea con le sole residue); **errore semantico solo se TUTTE** già allocate. Più ergonomico del "errore propagato" di anello3 v1. |
 | **D6 (D)** | Stato `EVASO` | Ridefinito **"nessun residuo smistabile"** (qualunque destinazione), resta terminale. Correggere `push_a_commessa`: **non** evade più se restano righe-merce non portate a ordine (oggi lo fa — incoerenza da chiudere). |
 | **D7 (E)** | Link di riga | **FK tipizzata** `vendite.ordini_righe.preventivo_riga_id` → `vendite.preventivi_righe` + **UNIQUE parziale** (àncora hard dell'idempotenza). Testata resta polimorfica `documento_origine_*` per la provenienza. Asimmetria voluta: link di riga è solo-preventivo, testata è multi-sorgente. |
-| **D8 (F)** | Scope v1 | Solo **ramo ordine**. `push_a_commessa` esiste già; ramo **contratto** rimandato (handler futuro / smistamento manuale). |
+| **D8 (F)** | Scope v1 | Solo **ramo ordine**. `push_a_commessa` esiste già; ramo **contratto NON esiste sul preventivo** (vedi D9). |
+| **D9** | Natura ricorrente sul preventivo | **MODALITÀ A — blocco vero (ratificata Tid 2026-06-09).** Un articolo la cui natura ha `destinazione_tipo = 'CONTRATTO'` (oggi `SERVIZIO_RICORRENTE`) **non può essere messo su un preventivo**: la ricorrenza viaggia solo su **offerta→contratto**. Blocco **fail-fast all'inserimento riga** (trigger `trgfn_preventivi_righe_set_natura_vendita`, guard data-driven su `destinazione_tipo`), **non** a CONFERMA, con `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`. Scartata la modalità B (ricorrente come destinazione valida ma «non smistata automaticamente» di anello3 §5.3.1). Difesa in profondità: + filtro catalogo BE/FE (non propone nature CONTRATTO sul preventivo) — fuori scope DB. Supera la prosa di anello3 §5.3.1/§5.3.2 (smistamento manuale / override operatore). |
 
 **Conseguenza sulla capability:** `genera_ordine` (o "smista vendita") appare su
 `fn_available_actions_preventivo` finché **restano righe di natura `MERCE` non
@@ -89,15 +89,23 @@ operative**, **smistando le righe per natura**:
 
 ```
                          ┌── righe MERCE ───────────→ ORDINE   (fn_push_preventivo_a_ordine)
-preventivo ACCETTATO ────┼── righe SERVIZIO una-tantum → COMMESSA (push_a_commessa, già esistente)
-                         └── righe RICORRENTI ───────→ CONTRATTO (handler futuro)
+preventivo ACCETTATO ────┴── righe SERVIZIO una-tantum → COMMESSA (push_a_commessa, già esistente)
+
+   righe RICORRENTI ──✗── NON AMMESSE sul preventivo (bloccate all'inserimento, D9)
+                          → la ricorrenza si avvia da offerta→contratto, non da preventivo
 ```
+
+> **Modalità A (D9):** il ramo CONTRATTO **non parte dal preventivo**. Un articolo
+> ricorrente non può proprio entrare in una riga di preventivo (blocco a monte,
+> all'inserimento). Le sole destinazioni del preventivo sono ORDINE e COMMESSA.
 
 Caratteristiche chiave del modello (testuali dal documento):
 
 - **Una sorgente, 0..N destinazioni** — ciascuna corrisponde al **sottoinsieme
-  di righe** del preventivo con natura corrispondente. *"Nessuna destinazione è
-  speciale: tutte sono casi normali."*
+  di righe** del preventivo con natura corrispondente. Le destinazioni del
+  preventivo sono **ORDINE e COMMESSA**: il CONTRATTO è escluso a monte (D9, le
+  righe ricorrenti non entrano nel preventivo). La frase di anello3 *"nessuna
+  destinazione è speciale"* va letta in questo perimetro ristretto.
 - Funzione DB prevista (*"da scrivere"*):
   `vendite.fn_push_preventivo_a_ordine(p_preventivo_id, p_righe_ids, p_pratica_id, p_fatturazione_trigger)`
   — copia **il sottoinsieme di righe** (`p_righe_ids`) e componenti BoM
@@ -183,13 +191,29 @@ bug. Opzioni, **da decidere con Tid**:
 
 ## 7. Prossimi passi
 
-1. Decidere §6 (tappabuchi) con Tid.
-2. Quando si affronta lo split: aprire un workstream `CONFERMA_VENDITA` che
-   includa `fn_push_preventivo_a_ordine(p_righe_ids)` + legame/idempotenza di
-   riga §4 + riconciliazione `EVASO` §5 + aggancio pratica. Riprendere
-   [analisi-pratiche-domini-anello3.md §5.3](analisi-pratiche-domini-anello3.md)
-   come specifica di partenza (in particolare la *decisione aperta* §5.3.2 sulla
-   natura come proprietà di riga).
+1. **Orchestratore `CONFERMA_VENDITA` (BE)** che invochi `fn_push_preventivo_a_ordine`
+   per le righe merce e `push_a_commessa` per i servizi una-tantum.
+2. **Gate `EVASO` (BE)** che consumi `vendite.fn_preventivo_ha_residuo_ordine` (§8):
+   `push_a_commessa` non deve evadere se restano righe merce non ordinate (D6).
+3. **Filtro catalogo FE/BE**: non proporre nature `CONTRATTO` (ricorrenti) sul
+   preventivo (difesa in profondità del blocco DB).
+4. Disattivare il tappabuchi `crea_ordine_da_preventivo` copia-tutto (§6 / D2).
+
+## 8. Log implementazione DB (2026-06-09)
+
+Modalità A ratificata (D9: ricorrente bloccata sul preventivo). Tutto applicato e
+testato (pgTAP), salvo `20260609-07/08` da applicare:
+
+| Migration | Cosa |
+| --- | --- |
+| `20260609-01/02` | Blocco fail-fast ricorrente all'inserimento riga (`E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`, guard data-driven `destinazione_tipo='CONTRATTO'` nel trgfn set-natura). |
+| `20260609-03/04` | `catalogo.articoli.natura_vendita_id` backfill NULL→MERCE + `DEFAULT` MERCE + `NOT NULL` (D3). DML/DDL splittati per pending trigger events. |
+| `20260609-05` | Codici errore push ordine (`E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO`, `E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE`). |
+| `20260609-06` | **`vendite.fn_push_preventivo_a_ordine`** (D1/D4/D5/D7/D8): split righe ORDINE→ordine DRAFT `documento_origine=PREVENTIVO`, snapshot prezzi, BoM via `fn_ordine_riga_componenti_init`, idempotenza di riga `ordini_righe.preventivo_riga_id`, pratica opzionale. |
+| `20260609-07` | `vendite.fn_preventivo_ha_residuo_ordine` — predicato residuo merce, condiviso capability + gate EVASO. |
+| `20260609-08` | Capability/azione `genera_ordine` in `script.fn_available_actions_preventivo` (additivo). |
+
+Fuori scope DB: orchestratore `CONFERMA_VENDITA`, gate `EVASO`, filtro catalogo (BE/FE).
 
 ---
 

@@ -1,0 +1,134 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Aggiorna vendite.trgfn_preventivi_righe_set_natura_vendita aggiungendo il
+# GUARD di MODALITA' A (brief-preventivi-ordini.md D9): un articolo la cui natura
+# ha destinazione_tipo = 'CONTRATTO' (oggi SERVIZIO_RICORRENTE) NON puo' essere
+# inserito su un preventivo. La ricorrenza viaggia solo su offerta->contratto.
+#
+# Il blocco e' DATA-DRIVEN (legge config.nature_vendita.destinazione_tipo, non
+# hardcoda il codice della natura) e fail-fast ALL'INSERIMENTO riga, non a
+# CONFERMA: l'operatore scopre subito che quell'articolo va sull'offerta.
+#
+# La funzione resta "set + guard": deriva/congela la natura dall'articolo come
+# prima (sovrascrivendo sempre NEW.natura_vendita_id, nessun override operatore)
+# e, nella stessa lettura articolo->natura, blocca le righe a destinazione
+# CONTRATTO. Un solo lookup, nessuna logica duplicata.
+#
+# NOTA: 20260608-45 (creazione originale del trigger) e' gia' mergiato su
+# Tito-dev e NON va modificato. Questo file lo aggiorna via runOnChange.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260609-02-update-trgfn-preventivi-righe-guard-natura-ricorrente-mctit.yaml
+
+  - changeSet:
+      id: 20260609-02-update-trgfn-preventivi-righe-guard-natura-ricorrente
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        GUARD MODALITA' A: blocca l'inserimento su preventivo di righe la cui
+        natura articolo ha destinazione_tipo='CONTRATTO' (ricorrenza), con
+        E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA. Estende la funzione set-natura
+        senza cambiarne la derivazione/congelamento (no override operatore).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: vendite
+              tableName: preventivi_righe
+              columnName: natura_vendita_id
+          - columnExists:
+              schemaName: catalogo
+              tableName: articoli
+              columnName: natura_vendita_id
+          - tableExists:
+              schemaName: config
+              tableName: nature_vendita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_destinazione    config.nature_vendita.destinazione_tipo%TYPE;
+                  v_articolo_codice catalogo.articoli.codice%TYPE;
+              BEGIN
+                  -- Natura ereditata e CONGELATA dall'articolo: la riga non puo'
+                  -- discostarsi dalla classificazione dell'articolo. Qualunque
+                  -- valore fornito dal chiamante in NEW.natura_vendita_id viene
+                  -- sovrascritto (NO override operatore). Se l'articolo non e'
+                  -- ancora classificato (natura_vendita_id NULL, transitorio
+                  -- pre-backfill) la riga resta NULL e non e' smistabile finche'
+                  -- non si classifica.
+                  -- Stessa lettura recupera la destinazione_tipo della natura per
+                  -- il guard MODALITA' A: un solo lookup articolo->natura.
+                  SELECT a.natura_vendita_id, a.codice, nv.destinazione_tipo
+                    INTO NEW.natura_vendita_id, v_articolo_codice, v_destinazione
+                    FROM catalogo.articoli a
+                    LEFT JOIN config.nature_vendita nv
+                           ON nv.id = a.natura_vendita_id
+                   WHERE a.id = NEW.articolo_id;
+
+                  -- GUARD MODALITA' A (brief-preventivi-ordini.md D9): la
+                  -- ricorrenza (destinazione_tipo = 'CONTRATTO') non puo' stare
+                  -- su un preventivo. Blocco fail-fast all'inserimento riga.
+                  -- Data-driven: qualunque natura mappata a CONTRATTO e' bloccata,
+                  -- senza hardcodare il codice della natura.
+                  IF v_destinazione = 'CONTRATTO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA',
+                          jsonb_build_object(
+                              'articolo_id',       NEW.articolo_id,
+                              'articolo_codice',   v_articolo_codice,
+                              'natura_vendita_id', NEW.natura_vendita_id,
+                              'destinazione_tipo', v_destinazione
+                          ),
+                          NEW.tx_id,
+                          coalesce(v_articolo_codice, NEW.articolo_id::text)
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a10_set_natura_vendita_ins_upd
+                  ON vendite.preventivi_righe;
+              CREATE TRIGGER trg_preventivi_righe_a10_set_natura_vendita_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id
+                  ON vendite.preventivi_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristina la sola derivazione/congelamento (senza guard), come 20260608-45.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  SELECT a.natura_vendita_id
+                    INTO NEW.natura_vendita_id
+                    FROM catalogo.articoli a
+                   WHERE a.id = NEW.articolo_id;
+                  RETURN NEW;
+              END;
+              $function$;

@@ -29,7 +29,7 @@
 | note_id | bigint | YES |  |
 | is_solo_componente | boolean | NO | false |
 | listino_tipologia_id | smallint | YES |  |
-| natura_vendita_id | bigint | YES |  |
+| natura_vendita_id | bigint | NO | 1 |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

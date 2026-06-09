@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Backfill catalogo.articoli.natura_vendita_id NULL -> MERCE (brief-preventivi-ordini.md
+# D3): ogni articolo deve avere una natura di vendita, cosi' una riga e' sempre
+# smistabile e una riga "senza natura" e' prevenuta a monte.
+#
+# La natura NON e' derivabile automaticamente da alcun attributo esistente di
+# articoli (tipo_voce/listino_tipologia non distinguono merce/servizio/ricorrenza).
+# Regola CONSERVATIVA (no produzione, riclassifica manuale per i casi dubbi),
+# stesso pattern del backfill listino_tipologia (20260414-15):
+#   - articoli senza natura -> MERCE (destinazione ORDINE, ramo v1).
+#   - servizi una tantum / ricorrenti vanno riclassificati manualmente da Tid.
+#
+# Fase 80_data (non 00_schema): il backfill dipende dal seed di
+# config.nature_vendita (20260608-42), che gira nello stesso 80_data prima di
+# questo file (ordinamento per nome).
+#
+# SOLO DML qui: il SET DEFAULT MERCE e il SET NOT NULL (DDL) sono nel changeSet
+# gemello 20260609-04. Devono stare in una transazione SEPARATA perche'
+# l'UPDATE lascia eventi trigger in sospeso su catalogo.articoli (RI/audit) che
+# PostgreSQL non scarica fino al commit; un ALTER TABLE nella stessa transazione
+# fallisce con "non e' possibile effettuare ALTER TABLE ... ha eventi trigger in
+# sospeso". Liquibase fa commit tra un changeSet e l'altro: cosi' gli eventi si
+# scaricano e l'ALTER del -04 gira su una tabella pulita (stesso motivo per cui
+# il backfill listino_tipologia 20260414-15 contiene solo l'UPDATE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260609-03-backfill-notnull-articoli-natura-vendita-mctit.yaml
+
+  - changeSet:
+      id: 20260609-03-backfill-notnull-articoli-natura-vendita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Backfill catalogo.articoli.natura_vendita_id NULL -> MERCE (D3).
+        Conservativo: servizi/ricorrenti da riclassificare manualmente.
+        Idempotente. SET DEFAULT/NOT NULL nel changeSet gemello 20260609-04.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: catalogo
+              tableName: articoli
+              columnName: natura_vendita_id
+          - tableExists:
+              schemaName: config
+              tableName: nature_vendita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $BACKFILL$
+              DECLARE
+                  v_merce_id config.nature_vendita.id%TYPE;
+                  v_updated  integer;
+              BEGIN
+                  -- Id della natura MERCE risolto a runtime (no hardcode).
+                  SELECT id INTO v_merce_id
+                    FROM config.nature_vendita
+                   WHERE codice_interno = 'MERCE'
+                     AND attivo IS TRUE;
+
+                  IF v_merce_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'Natura MERCE non trovata in config.nature_vendita: '
+                          'seed 20260608-42 non applicato o MERCE non attiva.';
+                  END IF;
+
+                  -- Backfill conservativo: gli articoli non classificati -> MERCE.
+                  UPDATE catalogo.articoli
+                     SET natura_vendita_id = v_merce_id
+                   WHERE natura_vendita_id IS NULL;
+                  GET DIAGNOSTICS v_updated = ROW_COUNT;
+                  RAISE NOTICE 'Backfill articoli.natura_vendita_id: % articoli senza natura -> MERCE.', v_updated;
+              END
+              $BACKFILL$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Backfill dati non reversibile in modo significativo (non si puo'
+              -- distinguere chi era NULL prima). Il DROP DEFAULT/NOT NULL e' nel
+              -- rollback del changeSet gemello 20260609-04.
+              SELECT 1;

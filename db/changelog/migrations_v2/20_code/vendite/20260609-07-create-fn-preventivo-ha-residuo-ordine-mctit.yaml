@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_preventivo_ha_residuo_ordine — predicato unico (DB-first) per il
+# residuo MERCE di un preventivo: TRUE se esiste almeno una riga attiva di natura
+# destinazione_tipo='ORDINE' NON ancora allocata a un ordine (link di riga
+# ordini_righe.preventivo_riga_id assente).
+#
+# Sorgente di verita' condivisa da:
+#   - script.fn_available_actions_preventivo (capability can_genera_ordine, 20260609-08);
+#   - il gate dello stato EVASO (brief-preventivi-ordini.md D6): il preventivo NON
+#     deve evadere finche' restano righe-merce non portate a ordine. La correzione
+#     di push_a_commessa che CONSUMA questo predicato e' lato BE / orchestratore
+#     CONFERMA_VENDITA (fuori scope DB): un guard "duro" qui romperebbe il flusso
+#     attuale (push_a_commessa pusha ancora tutte le righe, articoli tutti MERCE
+#     post-backfill). Qui si fornisce solo la primitiva pura.
+#
+# Nota: COMMESSA e CONTRATTO non rientrano nel predicato — le righe COMMESSA sono
+# gestite da push_a_commessa stesso; le RICORRENTI (CONTRATTO) non entrano nel
+# preventivo (MODALITA' A, 20260609-02).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260609-07-create-fn-preventivo-ha-residuo-ordine-mctit.yaml
+
+  - changeSet:
+      id: 20260609-07-create-fn-preventivo-ha-residuo-ordine
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        Crea vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id) RETURNS
+        boolean: TRUE se restano righe natura ORDINE non allocate. Predicato
+        condiviso da capability genera_ordine e gate EVASO (D6).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: nature_vendita
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini_righe
+                columnName: preventivo_riga_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_preventivo_ha_residuo_ordine(
+                  p_preventivo_id vendite.preventivi.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Residuo MERCE: riga attiva con natura destinazione ORDINE
+                  -- non ancora collegata a una riga d'ordine (idempotenza di riga).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.preventivi_righe pr
+                        JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+                       WHERE pr.preventivo_id = p_preventivo_id
+                         AND COALESCE(pr.attivo, TRUE) IS TRUE
+                         AND nv.destinazione_tipo = 'ORDINE'
+                         AND NOT EXISTS (
+                             SELECT 1 FROM vendite.ordini_righe orr
+                              WHERE orr.preventivo_riga_id = pr.id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_preventivo_ha_residuo_ordine(vendite.preventivi.id%TYPE)
+              IS 'TRUE se il preventivo ha righe natura ORDINE (merce) non ancora allocate a un ordine. Predicato condiviso: capability can_genera_ordine + gate stato EVASO (D6, brief-preventivi-ordini.md). Non considera COMMESSA (gestita da push_a_commessa) ne CONTRATTO (non ammesso sul preventivo).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_preventivo_ha_residuo_ordine(vendite.preventivi.id%TYPE);
