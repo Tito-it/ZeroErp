@@ -1,12 +1,53 @@
 # Brief FE — Pratica `PREVENTIVI` (dashboard + flusso + accettazione)
 
 > **Tipo documento**: brief frontend (Vue 3 / PrimeVue / Pinia). Prerequisiti:
-> deliverable DB applicati e BE dell'handler funzionante
-> ([brief-be-pratica-preventivi.md](brief-be-pratica-preventivi.md)).
+> deliverable DB **✅ applicati (2026-06-08)** + BE dell'handler funzionante
+> ([brief-be-pratica-preventivi.md](brief-be-pratica-preventivi.md)). Il FE parte
+> **dopo** il BE (handler + endpoint accetta-preventivo che completa il flusso).
 >
 > **Data**: 2026-06-06 · **Rev. critica**: 2026-06-08 (allineamento split DB:
 > accoppiamento accettazione↔flusso F1, abilitazione esito-aware §6) · **Stato**:
 > pronto, riscontri FE risolti
+>
+> **✅ Stato implementazione (2026-06-08)** — consegnato (build+lint FE verdi):
+> - **PREVENTIVAZIONE (testa)**: `FlussoDrawer` mostra "Apri preventivo collegato"
+>   per il flusso `PREVENTIVAZIONE` di una pratica `PREVENTIVI_*` → la dashboard
+>   ospita `PreventiviDrawer` (create) e, al primo `saved`, chiama `collega-pratica`
+>   (aggancio ROOT idempotente, guard con flag).
+> - **F1 (M2)**: `FlussoDrawer` instrada il "Completa" di `APPROVAZIONE_CLIENTE`
+>   (solo pratiche `PREVENTIVI_*`, discriminato da `tipoPrestazioneCodice`)
+>   sull'endpoint `POST /vendite/preventivi/approvazione-flusso/`.
+> - **F2 (CONFERMA)**: funziona col bottone "Avvia" esistente (il BE esegue
+>   l'handler; errori parlanti via toast `useApiHandler`). Nessuna modifica.
+> - **i18n**: `flusso_apri_preventivo`, `preventivo_collegato` (it+en).
+>
+> **Gap chiusi (2026-06-08)**:
+> - **§6 roadmap — ✅ FATTO** (ed era *foundational*, non polish: il "Nuovo flusso"
+>   esistente creava flussi **senza** `template_flusso_id` → niente codice/handler,
+>   il workflow non poteva funzionare). Nuovo componente `PraticaPercorso.vue`
+>   (sostituisce `PraticaFlussiPanel` in dashboard): mostra il percorso da
+>   `template_flussi` (endpoint `GET /pratiche/<id>/percorso/`), ogni step con
+>   stato; "Crea ed esegui" crea il flusso **template-bound** (guard prerequisiti
+>   esito-aware a DB), "Apri" apre l'esistente.
+> - **Accept dialog nascosto — ✅ FATTO**: `PreventiviDrawer` prop `praticaId` →
+>   filtra l'azione → `ACCETTATO` sul percorso pratica (accetta dal flusso M2).
+>
+> **Gap residuo**: smoke **UI E2E** runtime (serve app+DB seedato+auth+una pratica
+> reale). Smoke **BE runtime** fatto: nuove query SQL (percorso, resolver ROOT,
+> commessa-lookup) validate contro schema reale; 9 unit + 837 regressione verdi;
+> FE build+lint verdi.
+>
+> **Revisione critica FE (2026-06-08) — fix applicati**:
+> - **BE percorso**: `LEFT JOIN` → `LEFT JOIN LATERAL` (ultimo flusso per
+>   template) per evitare step duplicati nella roadmap se esistono più flussi per
+>   lo stesso template.
+> - **Anti doppio-click**: prop `busy` su `PraticaPercorso` (guard + `pointer-events`),
+>   cablata da `percorsoBusy` nella dashboard.
+> - **Hardcoded**: `'COMPLETATO'` → `STATO_FLUSSO.COMPLETATO`; `'PREVENTIVI'` →
+>   `TIPO_PREVENTIVI_PREFIX`.
+> - **Clarity**: `loadFlussiForPratica` → `loadPercorsoPratica`.
+> - **Cleanup dead code**: eliminati `PraticaFlussiPanel.vue` + `useFlussiFilter.js`
+>   (orfani dopo la sostituzione con `PraticaPercorso`).
 >
 > **Tesi centrale**: il FE è **quasi tutto già pronto**. La dashboard pratiche,
 > il `FlussoDrawer`, il giornale, l'API client e il tab "Pratiche collegate" sul
@@ -75,13 +116,22 @@ preventivo deve **anche** chiudere il flusso `APPROVAZIONE_CLIENTE` con esito
 `POSITIVO` (e `NEGATIVO` su rifiuto). Senza, il preventivo risulta `ACCETTATO`
 ma il flusso resta aperto e `CONFERMA` non parte.
 
-**✅ Deciso (Tid 2026-06-08)**: lo fa il **BE**, nella stessa azione di
-accettazione e in transazione (brief BE §8.3). Conseguenza FE: **nessun lavoro di
-orchestrazione** — il FE mostra il dialog esistente e chiama **un** endpoint
-("accetta preventivo"); il completamento del flusso `APPROVAZIONE_CLIENTE` avviene
-lato BE. Il FE non deve completare il flusso da sé (eviterebbe la desync ma è
-proprio ciò che spostiamo nel BE). Resta solo l'eventuale refresh della pratica
-in vista per riflettere lo stato aggiornato.
+**✅ Deciso e implementato BE (Tid 2026-06-08): M2** — il **completamento del
+flusso** `APPROVAZIONE_CLIENTE` guida l'accettazione (brief BE §8.3). Conseguenza
+FE concreta: per il flusso `APPROVAZIONE_CLIENTE` di una pratica `PREVENTIVI`, il
+`FlussoDrawer`, al "Completa" con esito POSITIVO/NEGATIVO, chiama l'endpoint
+dedicato **`POST /vendite/preventivi/<id>/approvazione-flusso/`** (body
+`{flusso_id, esito, note_esito}`) **invece** del generico
+`/pratiche/<id>/flussi/<id>/stato/`. Il BE, in transazione, completa il flusso e
+(su POSITIVO) accetta il preventivo. La FE deve:
+- riconoscere il flusso `APPROVAZIONE_CLIENTE` (template codice) di una pratica
+  `PREVENTIVI_*` e instradare sull'endpoint vendite;
+- avere il `preventivo_id` collegato (da `flussi.meta.preventivo_id` o dalle
+  sorgenti pratica) per costruire l'URL.
+
+Il dialog di accettazione standalone del `PreventivoDrawer` (percorso autonomo)
+**resta invariato** con i suoi campi fatturazione. Sul percorso pratica i campi
+fatturazione **non** compaiono: la policy è della pratica (handler a CONFERMA).
 
 ### F2 — `FlussoDrawer`: esito handler + stato `IN_CORSO`/`ERRORE`/`SOSPESO`
 

@@ -730,6 +730,16 @@ Decisione §8.3: **stesso pattern attuale di preventivi/offerte = push singolo**
 - **FE**: dialog «push a commessa» clone 1:1 di
   [OffertaPushDialog.vue](../../../../frontend/src/vendite/offerte/components/dialogs/OffertaPushDialog.vue)
   (pattern idempotenza: seconda push fallisce con errore controllato).
+- **Idempotenza via stato `EVASO` — ✅ CABLATA (2026-06-08)**: l'idempotenza
+  «seconda push fallisce» era specificata qui ma non implementata (l'ordine
+  restava `CONFERMATO` e il push era ripetibile all'infinito, no-op silenzioso).
+  Risolto come per il preventivo ([brief-db-stato-preventivo-evaso.md](../work-done/brief-db-stato-preventivo-evaso.md)):
+  nuovo stato terminale **`EVASO`** (DB, team) + transizione auto
+  `CONFERMATO→EVASO` (`meta.manuale=false`); `ordini_service.push_a_commessa`
+  fa `update_stato(EVASO)` su esito `COMPLETATO` (specchio
+  `preventivi_service`). Da `EVASO` il guard `_STATI_PUSHABILI={CONFERMATO}`
+  blocca il re-push (`E_ORD_STATO_TRANSIZIONE`) e la capability nasconde il
+  bottone (reason `ORDINE_GIA_EVASO`). FE invariato (data-driven + `loadDetail`).
 - **Nota architetturale** (tensione segnalata da Tid): la capacità **batch**
   resta a DB (`fn_list_ordini_da_pushare` senza `p_ordine_id` +
   `fatturazione_trigger`), ma la UX adottata in tutta la famiglia è il **push

@@ -29,6 +29,7 @@ from apps.pratiche.api.views import (
     ApiPraticaFlussoSospendi,
     ApiPraticaFlussoStato,
     ApiPraticaGiornale,
+    ApiPraticaPercorso,
     ApiPraticaNotaDetail,
     ApiPraticaNoteList,
     ApiPraticaRiattiva,
@@ -63,6 +64,7 @@ urlpatterns = [
     path("<int:pratica_id>/allegati/", ApiPraticaAllegatiList.as_view(), name="pratiche-allegati-list"),
     path("<int:pratica_id>/allegati/<int:allegato_id>/", ApiPraticaAllegatoDetail.as_view(), name="pratiche-allegato-detail"),
     # --- Flussi ---
+    path("<int:pratica_id>/percorso/", ApiPraticaPercorso.as_view(), name="pratiche-percorso"),
     path("<int:pratica_id>/flussi/", ApiPraticaFlussiList.as_view(), name="pratiche-flussi-list"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/", ApiPraticaFlussoDetail.as_view(), name="pratiche-flusso-detail"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/stato/", ApiPraticaFlussoStato.as_view(), name="pratiche-flusso-stato"),

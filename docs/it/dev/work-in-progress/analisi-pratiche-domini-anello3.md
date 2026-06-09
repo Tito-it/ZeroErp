@@ -1149,6 +1149,41 @@ E, §8.5) se l'uso reale mostra divergenza dai default.
 
 Quattro fasi successive. Ogni fase chiude prima di iniziare la successiva.
 
+> **⚠ Stato di avanzamento (2026-06-08) — primo consumatore consegnato in
+> sottoinsieme focalizzato.** La roadmap §8.2-§8.4 descrive la **visione ampia**
+> (`VENDITA_STANDARD` con split per `natura_vendita` → ordine + commessa +
+> contratto). Il **primo giro implementato** è un **sottoinsieme deliberato e più
+> stretto**: pratica **`PREVENTIVI`** (immediata/differita) → **commessa diretta**
+> (nessuno split natura, niente ordine/contratto). Tracciato in tre brief
+> dedicati:
+> [brief-db-pratica-preventivi.md](brief-db-pratica-preventivi.md),
+> [brief-be-pratica-preventivi.md](brief-be-pratica-preventivi.md),
+> [brief-fe-pratica-preventivi.md](brief-fe-pratica-preventivi.md).
+>
+> - **Fase B (DB)** — ✅ **CONSEGNATA** (2026-06-08): seed `PREVENTIVI_IMMEDIATA/_DIFFERITA`
+>   + 8 `template_flussi` + handler_flussi `vendita.push_preventivo`, motore
+>   prerequisiti **esito-aware** (guard `COMPLETATO⇒esito`), `fn_log_evento_dominio`
+>   (`DOMINIO_*`), macchina transizioni commesse, codici errore, GRANT. **Più**
+>   `config.nature_vendita` come groundwork (non ancora attiva nel routing, §9 del
+>   brief BE). **Non** consegnati (rinviati): `fn_push_preventivo_a_ordine`, split
+>   per natura, `uq_ordini_da_preventivo`.
+> - **Fase C (BE)** — ✅ **CONSEGNATA** (2026-06-08): handler `vendita.push_preventivo`
+>   (atomico, idempotente, policy via c7-2), registrazione `HANDLER_MAP` lazy,
+>   dispatch su `IN_CORSO` in transazione unica, accoppiamento accettazione↔flusso
+>   **M2** (`completa_approvazione_da_flusso` + endpoint `approvazione-flusso`).
+>   9 test unitari verdi + 837 regressione verde.
+> - **Fase D (FE)** — ✅ **CONSEGNATA** (2026-06-08, build+lint verdi): roadmap
+>   percorso da `template_flussi` (`PraticaPercorso.vue` + endpoint
+>   `GET /pratiche/<id>/percorso/`, creazione flussi **template-bound**);
+>   PREVENTIVAZIONE (apri+collega preventivo ROOT); F1 routing
+>   `APPROVAZIONE_CLIENTE`→M2; accept dialog nascosto sul percorso pratica.
+>   Revisione critica + cleanup dead code applicati. **Residuo**: smoke UI E2E
+>   runtime. Vedi brief FE.
+>
+> Le voci §8.2/§8.3 sotto restano la **specifica della visione ampia** (split
+> natura): si riprenderanno in un secondo giro, dopo la validazione del
+> sottoinsieme PREVENTIVI.
+
 ### 8.1 Fase A — Chiusura decisioni di modello (questa analisi)
 
 - ✅ Analisi pubblicata (questo documento)

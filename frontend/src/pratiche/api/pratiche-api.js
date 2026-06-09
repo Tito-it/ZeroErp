@@ -56,6 +56,12 @@ export function fetchCalcoliTempo(praticaId, params = {}) {
   return api.get(`${BASE}/${praticaId}/calcoli-tempo/`, { params })
 }
 
+// --- Percorso (roadmap: template_flussi del tipo + stato istanziazione) ---
+
+export function fetchPercorso(praticaId) {
+  return api.get(`${BASE}/${praticaId}/percorso/`)
+}
+
 // --- Flussi CRUD ---
 
 export function listFlussi(praticaId, params = {}) {

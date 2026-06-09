@@ -368,6 +368,70 @@ class ApiPreventivoGeneraOrdine(DomainAPIView):
         return handle_post_json(request, handler=_handler)
 
 
+class ApiPreventivoApprovazioneFlusso(DomainAPIView):
+    """`POST /api/v1/vendite/preventivi/approvazione-flusso/` (M2, brief BE §8.3):
+    completa il flusso APPROVAZIONE_CLIENTE di una pratica PREVENTIVI e, in esito
+    POSITIVO, accetta il preventivo ROOT collegato, in un'unica transazione. Il
+    preventivo è risolto dal legame `pratiche_sorgenti` ROOT (la FE passa solo
+    pratica_id + flusso_id)."""
+
+    area_funzionale = "vendite"
+    post_permission = "cambia_stato_preventivi"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="PreventivoApprovazioneFlussoRequest",
+            fields={
+                "pratica_id": serializers.IntegerField(),
+                "flusso_id": serializers.IntegerField(),
+                "esito": serializers.CharField(),
+                "note_esito": serializers.CharField(required=False, allow_null=True),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="PreventivoApprovazioneFlussoResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Completa l'approvazione cliente dal flusso pratica (M2).
+    def post(self, request: Request) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return preventivi_service.completa_approvazione_da_flusso(
+                int(payload["pratica_id"]),
+                flusso_id=int(payload["flusso_id"]),
+                esito=str(payload["esito"]),
+                note_esito=payload.get("note_esito"),
+                user=request.user,
+            )
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiPreventivoCollegaPratica(DomainAPIView):
+    """`POST /api/v1/vendite/preventivi/<id>/collega-pratica/`: aggancia il
+    preventivo come ROOT a una pratica (pratiche_sorgenti). Usato a PREVENTIVAZIONE
+    sul percorso pratica-first. Idempotente."""
+
+    area_funzionale = "vendite"
+    post_permission = "cambia_stato_preventivi"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="PreventivoCollegaPraticaRequest",
+            fields={"pratica_id": serializers.IntegerField()},
+        ),
+        responses={200: inline_serializer(
+            name="PreventivoCollegaPraticaResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return preventivi_service.collega_pratica(
+                preventivo_id, pratica_id=int(payload["pratica_id"]),
+            )
+        return handle_post_json(request, handler=_handler)
+
+
 class ApiPreventivoRevisioniList(DomainAPIView):
     area_funzionale = "vendite"
 

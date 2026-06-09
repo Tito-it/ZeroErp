@@ -90,6 +90,9 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     @patch(f"{_SVC}.PraticheRepository")
     def test_avvia_flusso_ok(self, MockRepo):
         repo = MockRepo.return_value
+        # Flusso senza handler (template None): avvia esegue solo IN_CORSO;
+        # dispatch_handler ritorna None e non completa il flusso.
+        repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=None)
 
         pratiche_service.avvia_flusso(1)
 
@@ -167,7 +170,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(result, {"risultato": "ok"})
         handler_instance.execute.assert_called_once_with(
             flusso_id=1, pratica_id=1, meta={"chiave": "valore"},
-            handler_params={"invio_sms": True},
+            handler_params={"invio_sms": True}, user=None,
         )
 
     # Scopo: Verifica dispatch con template_flusso_id None → ritorna None.

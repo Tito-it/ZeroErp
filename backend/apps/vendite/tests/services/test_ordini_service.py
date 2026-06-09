@@ -478,3 +478,67 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
             ),
             {"u4": "7"},
         )
+
+
+class OrdiniPushCommessaTests(SimpleTestCase):
+    """push_a_commessa: transizione automatica CONFERMATO→EVASO (invio unico)."""
+
+    _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
+
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_completato_transita_a_evaso(self, ord_cls, mock_push_one) -> None:
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.count_righe_pushable.return_value = 2
+        repo.get_stato_id_by_codice.return_value = 8  # id EVASO
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
+        }
+        out = ordini_service.push_a_commessa(55)
+        self.assertEqual(out["stato"], "COMPLETATO")
+        repo.get_stato_id_by_codice.assert_called_once_with("EVASO")
+        repo.update_stato.assert_called_once_with(55, 8)
+
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_parziale_non_transita(self, ord_cls, mock_push_one) -> None:
+        # PARZIALE → ordine resta CONFERMATO (ri-push per completare): no EVASO.
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.count_righe_pushable.return_value = 2
+        mock_push_one.return_value = {
+            "stato": "PARZIALE", "push_log_id": 7, "durata_ms": 5, "handlers": [],
+        }
+        ordini_service.push_a_commessa(55)
+        repo.update_stato.assert_not_called()
+
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_seed_evaso_assente_soft(self, ord_cls, mock_push_one) -> None:
+        # Robustezza deploy parziale: EVASO non seedato → niente raise, niente update.
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.count_righe_pushable.return_value = 2
+        repo.get_stato_id_by_codice.return_value = None
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
+        }
+        out = ordini_service.push_a_commessa(55)  # non solleva
+        self.assertEqual(out["stato"], "COMPLETATO")
+        repo.update_stato.assert_not_called()
+
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_transizione_db_error_soft(self, ord_cls, mock_push_one) -> None:
+        # Se il trigger DB rifiuta la transizione → warning, non fa fallire il push.
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.count_righe_pushable.return_value = 2
+        repo.get_stato_id_by_codice.return_value = 8
+        repo.update_stato.side_effect = DatabaseError("transizione non ammessa")
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
+        }
+        out = ordini_service.push_a_commessa(55)  # non solleva
+        self.assertEqual(out["stato"], "COMPLETATO")
