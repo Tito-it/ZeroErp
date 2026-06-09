@@ -6,3 +6,4 @@ id,codice_interno,codice,descrizione,attivo,ordine,meta
 6,ANNULLATO,ANNULLATO,Annullato,t,60,{}
 7,FATTURATO,FATTURATO,Fatturato,t,70,{}
 1,DRAFT,DRAFT,Bozza,t,10,{}
+8,EVASO,EVASO,Evaso,t,25,{}

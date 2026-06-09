@@ -31,5 +31,13 @@
 | uq_nature_vendita_codice | `CREATE UNIQUE INDEX uq_nature_vendita_codice ON config.nature_vendita USING btree (codice)` |
 | uq_nature_vendita_codice_interno | `CREATE UNIQUE INDEX uq_nature_vendita_codice_interno ON config.nature_vendita USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_nature_vendita_a10_articoli_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'articoli', 'natura_vendita_id', 'id', 'attivo')` |
+| trg_nature_vendita_a10_preventivi_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe', 'natura_vendita_id', 'id', 'attivo')` |
+| trg_nature_vendita_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_nature_vendita_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

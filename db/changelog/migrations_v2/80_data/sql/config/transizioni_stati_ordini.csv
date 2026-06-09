@@ -2,3 +2,4 @@ id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_u
 1,1,2,t,"{""action_key"":""conferma"",""label_key"":""vendite.ordini.azione_conferma"",""severity"":""info"",""icon"":""pi pi-check"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-06-05 00:00:00+02,SEED,2026-06-05 00:00:00+02,SEED
 2,1,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.ordini.azione_annulla"",""severity"":""danger"",""icon"":""pi pi-times"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-05 00:00:00+02,SEED,2026-06-05 00:00:00+02,SEED
 3,2,6,f,"{""action_key"":""annulla"",""label_key"":""vendite.ordini.azione_annulla"",""severity"":""danger"",""icon"":""pi pi-times"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-06-05 00:00:00+02,SEED,2026-06-05 00:00:00+02,SEED
+4,2,8,t,"{""manuale"":false}",2026-06-08 00:00:00+02,SEED,2026-06-08 00:00:00+02,SEED
