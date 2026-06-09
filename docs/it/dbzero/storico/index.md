@@ -64,8 +64,6 @@
 - [profili_accesso_aree](tabelle/profili_accesso_aree.md)
 - [profili_accesso_azioni](tabelle/profili_accesso_azioni.md)
 - [profili_accesso_bindings](tabelle/profili_accesso_bindings.md)
-- [profili_reparto_aree](tabelle/profili_reparto_aree.md)
-- [profili_reparto_azioni](tabelle/profili_reparto_azioni.md)
 - [psp](tabelle/psp.md)
 - [registri_fatturazione](tabelle/registri_fatturazione.md)
 - [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md)
