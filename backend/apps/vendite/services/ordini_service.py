@@ -349,7 +349,8 @@ def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 # ══════════════════════════════════════════════════════════
 
 # Stati del documento di origine che ammettono la generazione di un ordine.
-_STATI_PREVENTIVO_CONVERTIBILI: frozenset[str] = frozenset({"ACCETTATO"})
+# Il preventivo NON usa più una whitelist Python: stato ammesso e "nessuna riga
+# merce" sono validati dalla fn DB fn_push_preventivo_a_ordine (modello split).
 _STATI_OFFERTA_CONVERTIBILI: frozenset[str] = frozenset({"ACCETTATA"})
 
 
@@ -372,80 +373,40 @@ def _crea_testata_ordine_da_origine(
     return ordine_id, creato.get("numero")
 
 
-# Scopo: Mappa una riga preventivo nel payload riga ordine (whitelist
-#        _CREATE_KEYS_RIGA). Dal rename 2026-06-05 entrambi usano
-#        `sconto_percentuale` (mapping ora identità). Il prezzo unitario è copiato "congelato"
-#        (la riga non-composita non viene ri-prezzata); per le righe composite
-#        gestisci_riga re-inizializza i componenti ai prezzi correnti (la
-#        struttura BoM è copiata, i prezzi componente sono risolti all'ordine —
-#        scelta v1 documentata, vedi analisi §7.4).
-def _riga_payload_da_preventivo(r: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "articolo_id": r.get("articolo_id"),
-        "descrizione": r.get("descrizione"),
-        "quantita": r.get("quantita"),
-        "qta_operativa": r.get("qta_operativa"),
-        "uom_operativa_id": r.get("uom_operativa_id"),
-        "factor_to_base": r.get("factor_to_base"),
-        "prezzo_unitario": r.get("prezzo_unitario"),
-        "sconto_percentuale": r.get("sconto_percentuale"),
-        "iva_id": r.get("iva_id"),
-        "meta": r.get("meta") if isinstance(r.get("meta"), dict) else None,
-    }
-
-
-# Scopo: Genera un nuovo ordine in DRAFT da un preventivo ACCETTATO, copiando
-#        testata (cliente/utility/valuta/termine/emittente) + righe (1:1, prezzi
-#        congelati) + componenti BoM (struttura, ri-prezzati), e valorizzando
-#        documento_origine = (PREVENTIVO, preventivo_id). Predisposto da A1: il
-#        link non ha UNIQUE → da uno stesso preventivo si possono generare più
-#        ordini (riordini). Orchestrazione Python (riusa crea_ordine + gestisci_riga
-#        come il normale flusso di creazione ordine), tutto in una transazione.
-def crea_ordine_da_preventivo(preventivo_id: int) -> dict[str, Any]:
+# Scopo: Smistamento MERCE → ordine da un preventivo ACCETTATO (modello split,
+#        brief-preventivi-ordini.md D8). NON più copia-tutto 1:1: delega alla
+#        primitiva DB vendite.fn_push_preventivo_a_ordine (via
+#        PreventiviRepository.push_a_ordine), che:
+#          - copia SOLO le righe con natura destinazione_tipo='ORDINE' (i servizi
+#            una-tantum vanno a commessa via push_a_commessa; il ricorrente è
+#            bloccato a monte, D9);
+#          - mantiene lo snapshot prezzi + componenti BoM;
+#          - SCRIVE il link di riga ordini_righe.preventivo_riga_id → idempotenza
+#            di riga (la stessa merce non finisce su due ordini: niente più
+#            doppio-ordine del vecchio copia-tutto).
+#        Stato ammesso e "nessuna riga merce residua" sono validati dalla fn DB
+#        (E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO /
+#        E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE) → nessun guard duplicato qui.
+#        p_pratica_id=NULL: uso standalone (fuori-pratica); sul percorso pratica
+#        lo smistamento è orchestrato da CONFERMA_VENDITA. `righe_ids` opzionale:
+#        None = tutte le righe merce residue (D2 "preseleziona tutte"); un
+#        sottoinsieme abilita lo smistamento selettivo (utility futura).
+def crea_ordine_da_preventivo(
+    preventivo_id: int, righe_ids: list[int] | None = None,
+) -> dict[str, Any]:
     # Import locale: evita accoppiamento a livello di modulo tra i due domini
     # (entrambi in apps.vendite) e qualunque rischio di import circolare.
     from apps.vendite.db.preventivi_repository import PreventiviRepository
 
-    prev_repo = PreventiviRepository()
-    testata = prev_repo.get_preventivo(preventivo_id)
-    ErrorManager.require(
-        testata is not None,
-        code="E_PREV_NOT_FOUND",
-        message="Preventivo non trovato.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.crea_ordine_da_preventivo",
+    ordine_id = PreventiviRepository().push_a_ordine(
+        preventivo_id, righe_ids=righe_ids, pratica_id=None,
     )
-    assert testata is not None
-    ErrorManager.require(
-        testata.get("stato_codice_interno") in _STATI_PREVENTIVO_CONVERTIBILI,
-        code="E_ORD_ORIGINE_NON_CONVERTIBILE",
-        message="Il preventivo deve essere ACCETTATO per generare un ordine.",
-        detail=f"stato={testata.get('stato_codice_interno')}",
-        function_name=f"{_FN}.crea_ordine_da_preventivo",
-    )
-
-    righe = [r for r in prev_repo.list_righe(preventivo_id) if r.get("attivo", True)]
-
-    header = {
-        "billing_account_id": testata.get("billing_account_id"),
-        "utility_id": testata.get("utility_id"),
-        "emittente_fiscale_id": testata.get("emittente_fiscale_id"),
-        "valuta_id": testata.get("valuta_id"),
-        "termine_pagamento_id": testata.get("termine_pagamento_id"),
-        "data": date.today().isoformat(),
-    }
-
-    with transaction.atomic():
-        ordine_id, numero = _crea_testata_ordine_da_origine(
-            header, "PREVENTIVO", preventivo_id,
-        )
-        for r in righe:
-            gestisci_riga(ordine_id, _riga_payload_da_preventivo(r))
-
+    # Numero ordine per il messaggio FE (lettura leggera post-creazione).
+    testata = OrdiniRepository().get_ordine(ordine_id)
+    numero = testata.get("numero") if testata else None
     return {
         "ordine_id": ordine_id,
         "numero": numero,
-        "righe_create": len(righe),
         "documento_origine": {"tipo": "PREVENTIVO", "id": int(preventivo_id)},
     }
 

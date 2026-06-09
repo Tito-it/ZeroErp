@@ -1000,6 +1000,71 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             row = cursor.fetchone()
             return row[0] if row else 0
 
+    # Scopo: Ramo MERCE dello split preventivo (brief-preventivi-ordini.md D8):
+    #        delega a vendite.fn_push_preventivo_a_ordine. Copia le righe con
+    #        natura destinazione_tipo='ORDINE' ancora residue verso un nuovo
+    #        ordine DRAFT (snapshot prezzi + BoM), con idempotenza A LIVELLO RIGA
+    #        (ordini_righe.preventivo_riga_id). Se `pratica_id` e' valorizzato la
+    #        fn DB aggancia anche pratiche_sorgenti (preventivo ROOT + ordine
+    #        COLLEGATO). Ritorna l'id dell'ordine creato.
+    #        Solleva E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE se non resta merce
+    #        da smistare: il caller deve invocarla solo quando
+    #        `preventivo_ha_residuo_ordine()` e' True.
+    def push_a_ordine(
+        self,
+        preventivo_id: int,
+        *,
+        righe_ids: list[int] | None = None,
+        pratica_id: int | None = None,
+        fatturazione_trigger: str | None = None,
+    ) -> int:
+        # p_righe_ids NULL → tutte le righe merce residue; una lista → solo quel
+        # sottoinsieme (smistamento selettivo). Cast espliciti per evitare
+        # ambiguita' di tipo sui NULL non tipizzati.
+        sql = """
+            SELECT vendite.fn_push_preventivo_a_ordine(
+                %s, %s::bigint[], %s::bigint, %s::varchar
+            ) AS ordine_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(
+                sql,
+                [preventivo_id, righe_ids, pratica_id, fatturazione_trigger],
+            )
+            row = cursor.fetchone()
+            assert row is not None and row[0] is not None
+            return int(row[0])
+
+    # Scopo: Predicato residuo MERCE (D6) — TRUE se restano righe natura
+    #        destinazione_tipo='ORDINE' non ancora allocate a un ordine.
+    #        Condiviso tra il dispatch del ramo ordine (decide se invocare
+    #        push_a_ordine) e il gate EVASO (evadi solo a residuo nullo).
+    def preventivo_ha_residuo_ordine(self, preventivo_id: int) -> bool:
+        sql = "SELECT vendite.fn_preventivo_ha_residuo_ordine(%s) AS residuo"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [preventivo_id])
+            row = cursor.fetchone()
+            return bool(row[0]) if row else False
+
+    # Scopo: TRUE se esiste gia' almeno un ordine generato da questo preventivo
+    #        (riga ordine collegata via preventivo_riga_id). Usato dal guard di
+    #        idempotenza natura-completo dell'handler per distinguere "gia'
+    #        smistato" (artefatti presenti) da "preventivo vuoto" quando non
+    #        resta nulla da smistare.
+    def exists_ordine_da_preventivo(self, preventivo_id: int) -> bool:
+        sql = """
+            SELECT EXISTS (
+                SELECT 1
+                  FROM vendite.ordini_righe orr
+                  JOIN vendite.preventivi_righe pr ON pr.id = orr.preventivo_riga_id
+                 WHERE pr.preventivo_id = %s
+            ) AS esiste
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [preventivo_id])
+            row = cursor.fetchone()
+            return bool(row[0]) if row else False
+
     # Scopo: Stato fatturazione aggregato del preventivo (per badge UI).
     # Usa la vista DB che fa il join via segment_key e filtra per sorgente PREVENTIVO.
     def stato_fatturazione(self, preventivo_id: int) -> PreventivoStatoFatturazioneRow | None:

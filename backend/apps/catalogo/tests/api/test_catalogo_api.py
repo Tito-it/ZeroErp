@@ -178,6 +178,33 @@ class CatalogoApiTests(JwtMockedApiTest):
         self.assertEqual(kwargs["limit"], 15)
         self.assertTrue(kwargs["attivo"])
 
+    # Scopo: il CSV `escludi_destinazione` viene normalizzato (uppercase, no
+    # vuoti) e passato al service come lista di destinazioni natura da escludere
+    # (difesa in profondità split per natura: niente CONTRATTO sul preventivo).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.catalogo.api.views.fn_lookup_articoli")
+    def test_lookup_articoli_escludi_destinazione(self, mocked_lookup, _mock_auth):
+        mocked_lookup.return_value = _LOOKUP_RESPONSE
+
+        response = self.client.get(
+            "/api/v1/catalogo/articoli/lookup/?search=art&escludi_destinazione=contratto,%20ordine"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        kwargs = mocked_lookup.call_args.kwargs
+        self.assertEqual(kwargs["escludi_destinazione_tipi"], ["CONTRATTO", "ORDINE"])
+
+    # Scopo: senza il parametro la lista esclusioni è None (nessun filtro natura).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.catalogo.api.views.fn_lookup_articoli")
+    def test_lookup_articoli_senza_escludi_destinazione(self, mocked_lookup, _mock_auth):
+        mocked_lookup.return_value = _LOOKUP_RESPONSE
+
+        response = self.client.get("/api/v1/catalogo/articoli/lookup/?search=art")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(mocked_lookup.call_args.kwargs["escludi_destinazione_tipi"])
+
     # Scopo: limit lookup articoli fuori range -> 400 dal service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.catalogo.api.views.fn_lookup_articoli")

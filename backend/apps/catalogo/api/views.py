@@ -604,6 +604,17 @@ class ApiArticoliLookup(DomainAPIView):
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_composito", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_solo_componente", type=bool, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="escludi_destinazione",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "CSV di destinazioni natura da escludere (ORDINE/COMMESSA/"
+                    "CONTRATTO). Es. 'CONTRATTO' per non proporre articoli "
+                    "ricorrenti sulle righe di un preventivo (difesa in profondità)."
+                ),
+            ),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
         ],
         responses={
@@ -619,11 +630,21 @@ class ApiArticoliLookup(DomainAPIView):
         search = qp_str(qp.get("search"))
         require_min_search_length(search, field_name="search")
 
+        # CSV → lista di destinazioni natura da escludere (uppercase, no vuoti).
+        # Filtro data-driven sulla DESTINAZIONE (non sul codice natura).
+        escludi_raw = qp_str(qp.get("escludi_destinazione"))
+        escludi_destinazione_tipi = (
+            [t.strip().upper() for t in escludi_raw.split(",") if t.strip()]
+            if escludi_raw
+            else None
+        )
+
         data = fn_lookup_articoli(
             search=search,
             attivo=qp_bool(qp.get("attivo"), True),
             is_composito=qp_bool_optional(request.query_params.get("is_composito"), "is_composito"),
             is_solo_componente=qp_bool_optional(request.query_params.get("is_solo_componente"), "is_solo_componente"),
+            escludi_destinazione_tipi=escludi_destinazione_tipi,
             limit=qp_int_strict(qp.get("limit"), "limit", 20),
         )
         return success_response(data)

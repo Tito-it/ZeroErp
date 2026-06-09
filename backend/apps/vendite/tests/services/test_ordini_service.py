@@ -285,63 +285,38 @@ _SVC = "apps.vendite.services.ordini_service"
 
 
 class OrdiniConversioneUpstreamTests(SimpleTestCase):
-    """crea_ordine_da_preventivo (§7.4): orchestrazione, mapping, guard."""
+    """crea_ordine_da_preventivo (modello split D8): delega solo-merce alla
+    primitiva DB + ritorno numero. Stato/righe sono validati dalla fn DB."""
 
-    @patch("apps.vendite.services.ordini_service.gestisci_riga")
-    @patch("apps.vendite.services.ordini_service.crea_ordine")
     @patch(_REPO)
     @patch(_PREV_REPO)
-    def test_crea_ordine_da_preventivo_ok(
-        self, prev_cls, ord_cls, crea_mock, gestisci_mock,
-    ) -> None:
-        prev_cls.return_value.get_preventivo.return_value = {
-            "stato_codice_interno": "ACCETTATO",
-            "billing_account_id": 10, "utility_id": 5,
-            "emittente_fiscale_id": 3, "valuta_id": 1, "termine_pagamento_id": 2,
-        }
-        prev_cls.return_value.list_righe.return_value = [
-            {"attivo": True, "articolo_id": "A1", "quantita": "2",
-             "prezzo_unitario": "10", "sconto_percentuale": "5", "iva_id": 1},
-            {"attivo": False, "articolo_id": "A2"},  # riga inattiva → saltata
-        ]
-        crea_mock.return_value = {"id": 7, "uid": "u", "numero": "ORD7"}
+    def test_crea_ordine_da_preventivo_ok(self, prev_cls, ord_cls) -> None:
+        # La primitiva DB ritorna l'id ordine; la testata fornisce il numero.
+        prev_cls.return_value.push_a_ordine.return_value = 7
+        ord_cls.return_value.get_ordine.return_value = {"id": 7, "numero": "ORD7"}
 
-        with patch(_ATOMIC, return_value=nullcontext()):
-            out = ordini_service.crea_ordine_da_preventivo(99)
+        out = ordini_service.crea_ordine_da_preventivo(99)
 
+        # Delega solo-merce: nessuna pratica (standalone), nessun sottoinsieme.
+        prev_cls.return_value.push_a_ordine.assert_called_once_with(
+            99, righe_ids=None, pratica_id=None,
+        )
         self.assertEqual(out["ordine_id"], 7)
         self.assertEqual(out["numero"], "ORD7")
-        self.assertEqual(out["righe_create"], 1)
         self.assertEqual(out["documento_origine"], {"tipo": "PREVENTIVO", "id": 99})
-        # header mappato da preventivo
-        header = crea_mock.call_args.args[0]
-        self.assertEqual(header["billing_account_id"], 10)
-        self.assertEqual(header["termine_pagamento_id"], 2)
-        # provenienza valorizzata
-        ord_cls.return_value.set_documento_origine.assert_called_once_with(
-            7, "PREVENTIVO", 99,
+
+    @patch(_REPO)
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_righe_selettive(self, prev_cls, ord_cls) -> None:
+        # Smistamento selettivo: il sottoinsieme righe_ids arriva alla primitiva.
+        prev_cls.return_value.push_a_ordine.return_value = 8
+        ord_cls.return_value.get_ordine.return_value = {"id": 8, "numero": "ORD8"}
+
+        ordini_service.crea_ordine_da_preventivo(99, righe_ids=[11, 12])
+
+        prev_cls.return_value.push_a_ordine.assert_called_once_with(
+            99, righe_ids=[11, 12], pratica_id=None,
         )
-        # solo la riga attiva → 1 gestisci_riga; sconto_percentuale propagato 1:1
-        self.assertEqual(gestisci_mock.call_count, 1)
-        riga_payload = gestisci_mock.call_args.args[1]
-        self.assertEqual(riga_payload["articolo_id"], "A1")
-        self.assertEqual(riga_payload["sconto_percentuale"], "5")
-
-    @patch(_PREV_REPO)
-    def test_crea_ordine_da_preventivo_stato_non_convertibile(self, prev_cls) -> None:
-        prev_cls.return_value.get_preventivo.return_value = {
-            "stato_codice_interno": "EMESSO",
-        }
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_preventivo(99)
-        self.assertEqual(cm.exception.code, "E_ORD_ORIGINE_NON_CONVERTIBILE")
-
-    @patch(_PREV_REPO)
-    def test_crea_ordine_da_preventivo_non_trovato(self, prev_cls) -> None:
-        prev_cls.return_value.get_preventivo.return_value = None
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_preventivo(99)
-        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
 
 
 class OrdiniConversioneOffertaTests(SimpleTestCase):

@@ -325,11 +325,13 @@ class CatalogoRepository:
         attivo: bool | None,
         is_composito: bool | None,
         is_solo_componente: bool | None = None,
+        escludi_destinazione_tipi: list[str] | None = None,
         limit: int,
     ) -> list[dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 50))
         conditions: list[str] = []
         params: list[Any] = []
+        join_clause = ""
 
         _append_ilike_search(
             conditions=conditions,
@@ -347,6 +349,21 @@ class CatalogoRepository:
         if is_solo_componente is not None:
             conditions.append("a.is_solo_componente = %s")
             params.append(is_solo_componente)
+        # Filtro natura data-driven (difesa in profondità del modello split per
+        # natura, brief-preventivi-ordini.md §7.3): esclude gli articoli la cui
+        # natura ha una destinazione vietata sul documento chiamante — es. la
+        # destinazione CONTRATTO (ricorrente) non è ammessa sul preventivo (D9).
+        # Il filtro è sulla DESTINAZIONE, non sul codice natura (coerente col
+        # guard DB data-driven). JOIN dalla base `catalogo.articoli` perché la
+        # vista non espone la natura; INNER safe: articoli.natura_vendita_id è
+        # NOT NULL (D3).
+        if escludi_destinazione_tipi:
+            join_clause = (
+                " JOIN catalogo.articoli art ON art.id = a.id"
+                " JOIN config.nature_vendita nv ON nv.id = art.natura_vendita_id"
+            )
+            conditions.append("nv.destinazione_tipo <> ALL(%s::text[])")
+            params.append(list(escludi_destinazione_tipi))
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -366,6 +383,7 @@ class CatalogoRepository:
                     a.iva_descrizione,
                     a.iva_aliquota_iva
                 FROM catalogo.vw_articoli_dettaglio a
+                {join_clause}
                 {where_clause}
                 ORDER BY a.codice ASC
                 LIMIT %s

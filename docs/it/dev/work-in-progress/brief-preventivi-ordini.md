@@ -191,13 +191,26 @@ bug. Opzioni, **da decidere con Tid**:
 
 ## 7. Prossimi passi
 
-1. **Orchestratore `CONFERMA_VENDITA` (BE)** che invochi `fn_push_preventivo_a_ordine`
-   per le righe merce e `push_a_commessa` per i servizi una-tantum.
-2. **Gate `EVASO` (BE)** che consumi `vendite.fn_preventivo_ha_residuo_ordine` (§8):
-   `push_a_commessa` non deve evadere se restano righe merce non ordinate (D6).
-3. **Filtro catalogo FE/BE**: non proporre nature `CONTRATTO` (ricorrenti) sul
-   preventivo (difesa in profondità del blocco DB).
-4. Disattivare il tappabuchi `crea_ordine_da_preventivo` copia-tutto (§6 / D2).
+Stato BE 2026-06-09 (parte 2, **NON committato** — `dev/backend-tid`):
+
+1. ✅ **Orchestratore `CONFERMA_VENDITA` (BE)** — `push_preventivo_handler.py`
+   riscritto: split merce→`fn_push_preventivo_a_ordine` / servizi→push commessa,
+   idempotenza natura-completa (ancora ACCETTATO→EVASO + idempotenza di riga DB).
+2. ✅ **Gate `EVASO` (BE)** — `preventivo_ha_residuo_ordine` consumato sia
+   dall'orchestratore sia da `push_a_commessa` standalone (non evade con residuo merce).
+3. ✅ **Filtro catalogo BE/FE** — lookup articoli `escludi_destinazione` (data-driven
+   su `destinazione_tipo`) + FE `ArticoloLookup.escludiDestinazione=['CONTRATTO']`.
+4. ✅ **Tappabuchi `crea_ordine_da_preventivo`** — **riconvertito** (non più
+   copia-tutto): delega a `fn_push_preventivo_a_ordine` (solo merce + link di riga,
+   niente doppio-ordine), `righe_ids` opzionale; bottone FE «Genera ordine» ora
+   **data-driven** sulla capability `genera_ordine`. Supera la scelta D2/§6
+   (disabilitare): la soluzione assoluta è la riconversione, non la disattivazione.
+
+**Residui** (non bloccanti): smistamento **riga-per-riga** (manca solo il dialog FE
+di selezione; endpoint/repo/fn DB già con `righe_ids`); fragilità [F1] lookup
+`INNER`→`LEFT JOIN` natura; coordinamento commessa multi-sorgente
+([brief-db-commesse-multi-sorgente.md](brief-db-commesse-multi-sorgente.md) §4.2);
+smoke UI E2E.
 
 ## 8. Log implementazione DB (2026-06-09)
 
@@ -212,7 +225,7 @@ testato (pgTAP), salvo `20260609-07/08` da applicare:
 | `20260609-06` | **`vendite.fn_push_preventivo_a_ordine`** (D1/D4/D5/D7/D8): split righe ORDINE→ordine DRAFT `documento_origine=PREVENTIVO`, snapshot prezzi, BoM via `fn_ordine_riga_componenti_init`, idempotenza di riga `ordini_righe.preventivo_riga_id`, pratica opzionale. |
 | `20260609-07` | `vendite.fn_preventivo_ha_residuo_ordine` — predicato residuo merce, condiviso capability + gate EVASO. |
 | `20260609-08` | Capability/azione `genera_ordine` in `script.fn_available_actions_preventivo` (additivo). |
-| `20260609-09` | `fn_list_preventivi_da_pushare` **natura-aware**: il push commessa include solo righe `destinazione_tipo='COMMESSA'` (natura NULL = pregresso, inclusa), esclude la merce → niente doppio routing. Prerequisito dell'orchestratore. Vedi [brief-db-fn-list-preventivi-natura-aware.md](brief-db-fn-list-preventivi-natura-aware.md). |
+| `20260609-09` | `fn_list_preventivi_da_pushare` **natura-aware**: il push commessa include solo righe `destinazione_tipo='COMMESSA'` (natura NULL = pregresso, inclusa), esclude la merce → niente doppio routing. Prerequisito dell'orchestratore. Vedi [brief-db-fn-list-preventivi-natura-aware.md](../work-done/brief-db-fn-list-preventivi-natura-aware.md). |
 
 Fuori scope DB: orchestratore `CONFERMA_VENDITA`, gate `EVASO`, filtro catalogo (BE/FE).
 

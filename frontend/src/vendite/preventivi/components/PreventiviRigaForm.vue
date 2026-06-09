@@ -424,6 +424,7 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
       <label>{{ t('preventivi.riga_articolo') }} <span v-if="!isEdit">*</span></label>
       <ArticoloLookup :model-value="articoloObj" :disabled="isEdit"
         :filtri="{ soloComponenti: 'escludi' }"
+        :escludi-destinazione="['CONTRATTO']"
         :placeholder="t('preventivi.riga_cerca_articolo')" @select="onArticoloSelect" />
     </div>
 

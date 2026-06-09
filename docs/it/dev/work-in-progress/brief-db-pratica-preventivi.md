@@ -185,7 +185,7 @@ brief "non esiste come stato" era errata). L'emittibilità è quindi uno **stato
 2. **Brief commesse separato** (proprio changelog + pgTAP): è prerequisito di
    questo brief, **non** un suo deliverable. L'handler `vendita.push_preventivo`
    si limita a invocarlo (vedi §7.1). → scritto in
-   [brief-db-commesse-transizioni-stati.md](brief-db-commesse-transizioni-stati.md)
+   [brief-db-commesse-transizioni-stati.md](../work-done/brief-db-commesse-transizioni-stati.md)
    e ✅ **IMPLEMENTATO (2026-06-08)**: `vendite.transizioni_stati_commessa` +
    `trgfn_commesse_guard_transizione` + `fn_cambia_stato_commessa` +
    `fn_approva_commessa_attivita` (`20260607-01..06`), pgTAP verdi. Il
