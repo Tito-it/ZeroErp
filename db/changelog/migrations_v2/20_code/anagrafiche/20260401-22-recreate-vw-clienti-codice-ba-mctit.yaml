@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260401-22-recreate-vw-clienti-codice-ba
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea vista anagrafiche.vw_clienti_codice_ba droppata
         dalla migration 20260401-21 (ALTER codice_interno CHAR->VARCHAR).

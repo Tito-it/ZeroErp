@@ -24,7 +24,7 @@ databaseChangeLog:
       id: 20260311-08-create-trgfn-tipi-ruoli-guard-entita-ref
       author: mctit
       comment: "Trigger guard: valida entita_tabella e entita_colonna_codice in tipi_ruoli"
-      runOnChange: true
+      runOnChange: false
       failOnError: true
       changes:
         - sql:

@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260421-05-update-fn-get-user-profile-ruolo-guc-aware
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Rende il campo top-level ruolo_applicativo del JSONB ritornato

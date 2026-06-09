@@ -36,7 +36,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260531-11-bind-trg-offerte-eccezioni-qta-from-operativa
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

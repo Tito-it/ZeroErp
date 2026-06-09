@@ -12,7 +12,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260329-12-create-trgfn-pratiche-set-data-apertura
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Trigger function + trigger BEFORE UPDATE OF stato_id su pratiche.pratiche.
               Valorizza data_apertura = NOW() alla transizione BOZZA → APERTA.

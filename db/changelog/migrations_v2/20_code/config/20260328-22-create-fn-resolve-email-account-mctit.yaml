@@ -18,7 +18,7 @@ databaseChangeLog:
               Risolve account SMTP per invio email.
               Fallback: account del reparto -> account SISTEMA.
               Ritorna JSONB con dati connessione.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

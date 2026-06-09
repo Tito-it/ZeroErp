@@ -20,7 +20,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260502-14-create-vw-preventivi-riepilogo-iva-dettaglio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

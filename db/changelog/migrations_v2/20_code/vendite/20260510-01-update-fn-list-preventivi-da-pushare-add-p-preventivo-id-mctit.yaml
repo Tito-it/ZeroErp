@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260510-01-update-fn-list-preventivi-da-pushare-add-p-preventivo-id
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Estensione 2026-05: aggiunge p_preventivo_id (opzionale) per push commessa di un singolo preventivo da UI (pulsante 'Push commessa' drawer preventivo)."
       changes:
         - sql:

@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-09-update-fn-change-user-emittenti-scope-use-log-and-raise
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Allinea script.fn_change_user_emittenti_scope (Fase 2 P1)

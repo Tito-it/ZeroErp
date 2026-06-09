@@ -9,7 +9,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20260430-01-create-fn-available-actions-preventivo
-      runOnChange: true
+      runOnChange: false
       author: mctit
       comment: >
         Crea script.fn_available_actions_preventivo(p_preventivo_id BIGINT)

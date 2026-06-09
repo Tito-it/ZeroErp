@@ -17,7 +17,7 @@ databaseChangeLog:
         Elimina il loop su config.azioni_processo e calcola la mappa
         JSONB in una sola query, leggendo una sola volta ruolo_sistema
         e unita_organizzativa_id.
-      runOnChange: true
+      runOnChange: false
       preConditions:
         - onFail: HALT
         - tableExists:

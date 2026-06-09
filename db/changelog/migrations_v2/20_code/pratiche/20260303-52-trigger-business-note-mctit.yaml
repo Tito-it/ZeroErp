@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-52-trigger-business-note
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Applica trigger giornale su pratiche.note_pratiche e
         pratiche.note_flussi (AFTER INSERT).

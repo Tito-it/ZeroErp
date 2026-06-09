@@ -10,7 +10,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260306-12-create-trgfn-sospensioni-guard-coerenza
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Trigger function + trigger BEFORE INSERT/UPDATE OF flusso_id:
               verifica che flusso_id appartenga alla stessa pratica_id della sospensione.

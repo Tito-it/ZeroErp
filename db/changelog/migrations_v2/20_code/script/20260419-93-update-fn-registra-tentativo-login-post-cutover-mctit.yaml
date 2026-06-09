@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-93-update-fn-registra-tentativo-login-post-cutover
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         FIX post-cutover §13.3 (bug dimenticato): la migration -23 faceva

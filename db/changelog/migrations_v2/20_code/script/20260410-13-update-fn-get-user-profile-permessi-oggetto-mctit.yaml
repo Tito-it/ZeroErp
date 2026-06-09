@@ -15,7 +15,7 @@ databaseChangeLog:
         Aggiunge chiave permessi_oggetto al JSONB di fn_get_user_profile.
         Chiama fn_get_user_object_permissions_map(p_auth_user_id).
         Retrocompatibile: nuova chiave, nessuna rimossa.
-      runOnChange: true
+      runOnChange: false
       preConditions:
         - onFail: HALT
         - tableExists:

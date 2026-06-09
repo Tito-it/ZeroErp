@@ -23,7 +23,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260519-09-alter-trg-contratti-righe-qta-from-operativa-fonte-col
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiunge TG_ARGV[3]='fonte_quantita_attesa' al trigger qta_from_operativa

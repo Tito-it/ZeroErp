@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-31-update-fn-ddt-riga-componenti-init-default-attivo-true
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260408-13-create-fn-check-user-can-create-ba
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

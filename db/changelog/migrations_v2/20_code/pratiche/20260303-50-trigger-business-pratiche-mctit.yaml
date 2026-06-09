@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-50-trigger-business-pratiche
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Applica 4 trigger business su pratiche.pratiche:
         giornale insert, stato, assegnazione, priorita.

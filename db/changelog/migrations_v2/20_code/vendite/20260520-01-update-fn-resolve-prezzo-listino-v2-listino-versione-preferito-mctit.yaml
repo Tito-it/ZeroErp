@@ -35,7 +35,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260520-01-update-fn-resolve-prezzo-listino-v2-listino-versione-preferito
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         fn_resolve_prezzo_listino_v2: aggiunge 9° param p_listino_versione_id_preferito

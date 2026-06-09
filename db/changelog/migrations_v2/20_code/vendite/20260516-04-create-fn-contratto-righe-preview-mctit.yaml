@@ -45,7 +45,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260516-04-create-fn-contratto-righe-preview
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Bug B fix: fn_contratto_righe_preview — preview completa righe contratto

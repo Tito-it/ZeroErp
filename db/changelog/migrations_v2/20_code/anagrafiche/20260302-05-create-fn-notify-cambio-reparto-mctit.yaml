@@ -13,7 +13,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260302-05-create-fn-notify-cambio-reparto
           author: mctit
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

@@ -40,7 +40,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-02-01-create-script-trgfn-righe-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

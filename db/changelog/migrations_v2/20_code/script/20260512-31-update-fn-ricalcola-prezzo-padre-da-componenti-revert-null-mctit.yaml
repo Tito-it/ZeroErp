@@ -16,7 +16,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-31-update-fn-ricalcola-prezzo-padre-da-componenti-revert-null
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

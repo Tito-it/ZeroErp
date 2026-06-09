@@ -19,7 +19,7 @@ databaseChangeLog:
       id: 20260312-06-create-fn-crea-operatore
       author: mctit
       comment: "Orchestratore creazione operatore: chiama fn_crea_auth_user, fn_crea_soggetto_pf, fn_crea_risorsa_umana. Nessuna logica duplicata, solo validazione coerenza e sequenza."
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

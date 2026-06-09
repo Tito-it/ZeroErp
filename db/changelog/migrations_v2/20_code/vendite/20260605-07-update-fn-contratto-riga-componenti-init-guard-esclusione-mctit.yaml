@@ -34,7 +34,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260605-07-01-update-fn-contratto-riga-componenti-init-guard-esclusione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

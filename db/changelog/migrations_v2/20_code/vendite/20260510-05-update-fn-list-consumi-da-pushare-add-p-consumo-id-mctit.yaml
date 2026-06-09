@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260510-05-update-fn-list-consumi-da-pushare-add-p-consumo-id
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Estensione 2026-05 (coordinata): aggiunge p_consumo_id (opzionale) per uniformare la signature a fn_list_preventivi_da_pushare. Obbligatoria per non rompere il batch globale quando fetch_pushable_rows passa 4 args posizionali."
       changes:
         - sql:

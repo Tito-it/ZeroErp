@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260403-10-create-fn-ricalcola-totali-preventivo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

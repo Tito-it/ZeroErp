@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-44-create-fn-contratto-riga-componenti-preview
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: Preview componenti BoM CASO A per drawer riga contratto. Allineato a 20260512-41.

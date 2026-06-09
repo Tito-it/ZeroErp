@@ -28,7 +28,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260423-02-01-update-fn-get-messaggio-fallback-lingua
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiorna script.fn_get_messaggio: fallback su lingua='it' quando
@@ -131,7 +131,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260423-02-02-update-fn-log-and-raise-error-fallback-lingua
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiorna script.fn_log_and_raise_error: il blocco "3) Recupera

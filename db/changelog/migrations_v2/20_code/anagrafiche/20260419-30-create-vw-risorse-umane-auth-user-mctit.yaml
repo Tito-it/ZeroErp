@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-30-create-vw-risorse-umane-auth-user
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea vista anagrafiche.vw_risorse_umane_auth_user (§4.6.F.1 WIP

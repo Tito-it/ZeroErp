@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260418-62-create-fn-scope-fornitore-ownership
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Scope policy FORNITORE_OWNERSHIP: un'identita FORNITORE_PORTALE puo

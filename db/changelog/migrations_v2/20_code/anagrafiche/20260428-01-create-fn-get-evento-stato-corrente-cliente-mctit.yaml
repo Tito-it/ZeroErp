@@ -41,7 +41,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260428-01-01-create-fn-get-evento-stato-corrente-cliente
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

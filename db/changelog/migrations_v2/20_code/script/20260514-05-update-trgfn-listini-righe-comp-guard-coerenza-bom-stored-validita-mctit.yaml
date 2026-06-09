@@ -16,7 +16,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260514-05-update-trgfn-listini-righe-comp-guard-coerenza-bom-stored-validita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Aggiorna guards 6+7 di trgfn_listini_righe_comp_guard_coerenza_bom:
         sostituisce NEW.validita con daterange(NEW.valido_dal, NEW.valido_al, '[]')

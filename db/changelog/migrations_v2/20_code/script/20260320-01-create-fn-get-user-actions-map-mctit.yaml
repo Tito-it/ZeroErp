@@ -20,7 +20,7 @@ databaseChangeLog:
             Loop su config.azioni_processo attive, chiama
             fn_check_azione_processo per ognuna.
             Ritorna JSONB {codename: true/false}.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

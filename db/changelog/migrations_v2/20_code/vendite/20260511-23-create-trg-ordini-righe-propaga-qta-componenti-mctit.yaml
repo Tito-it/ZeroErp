@@ -24,7 +24,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-23-01-trg-ordrighe-z90-propaga-qta-componenti
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         AFTER UPDATE OF quantita su vendite.ordini_righe _z90_:

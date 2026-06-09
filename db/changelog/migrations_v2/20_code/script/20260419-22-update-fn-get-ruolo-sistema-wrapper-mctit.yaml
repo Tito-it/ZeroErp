@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-22-update-fn-get-ruolo-sistema-wrapper
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Deprecazione script.fn_get_ruolo_sistema (§4.6.C.1 WIP multi-face-auth).

@@ -17,7 +17,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-20-01-create-trgfn-listini-righe-comp-guard-immutabilita-v5
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function vendite.trgfn_listini_righe_comp_guard_immutabilita_v5.
@@ -131,7 +131,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-20-02-create-trg-listrighe-comp-guard-immutabilita-v5
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE INSERT OR UPDATE OR DELETE su vendite.listini_righe_componenti,

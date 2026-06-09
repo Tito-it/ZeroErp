@@ -14,7 +14,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-29-fix-trgfn-fatturazione-lotti-guard-stato
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_fatturazione_lotti_guard_stato: 2x E_GENERICO →
               E_LOTTO_PARAMETRO_NON_COERENTE.
@@ -82,7 +82,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-29-fix-trgfn-fatture-guard-stato
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_fatture_guard_stato: 3x E_GENERICO →
               E_LOTTO_PARAMETRO_NON_COERENTE.
@@ -153,7 +153,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-29-fix-trgfn-logs-guard-delete
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_logs_guard_delete: 1x E_GENERICO → E_DELETE_NOT_ALLOWED.
           changes:

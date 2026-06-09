@@ -10,7 +10,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260306-23-update-trgfn-guard-transizione-pratiche
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix firma fn_log_and_raise_error: usa la firma completa a 6 parametri
               (area, function_name, error_code, context jsonb, tx_id, VARIADIC valori).

@@ -10,7 +10,7 @@ databaseChangeLog:
       id: 20260308-11-update-trg-vendite-movimenti-guard-emittente-scope
       author: mctit
       comment: "Rebind trigger vendite_movimenti guard emittente: config.trgfn → script.trgfn"
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

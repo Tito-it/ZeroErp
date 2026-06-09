@@ -16,7 +16,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260402-10-recreate-fn-get-indirizzi-by-ruolo-e-indirizzo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea fn_get_indirizzi_by_ruolo e fn_get_indirizzo
         droppate dalla migration 20260402-01. %TYPE su firme.

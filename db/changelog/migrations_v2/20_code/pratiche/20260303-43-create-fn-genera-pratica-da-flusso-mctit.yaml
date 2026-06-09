@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-43-create-fn-genera-pratica-da-flusso
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Genera una nuova pratica a partire da un flusso completato,
         secondo la regola configurata in regole_generazione.

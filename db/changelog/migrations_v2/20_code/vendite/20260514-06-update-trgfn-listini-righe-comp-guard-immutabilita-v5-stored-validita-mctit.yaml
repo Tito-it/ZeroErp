@@ -19,7 +19,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260514-06-update-trgfn-listini-righe-comp-guard-immutabilita-v5-stored-validita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Aggiorna il check UPDATE di trgfn_listini_righe_comp_guard_immutabilita_v5:
         sostituisce NEW.validita IS DISTINCT FROM OLD.validita con i check su

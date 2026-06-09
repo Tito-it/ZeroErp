@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260324-28-trigger-fornitori-require-attivo-fk
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Trigger CONSTRAINT DEFERRABLE su anagrafiche.fornitori per
         impedire l'uso di record disattivati nelle FK:

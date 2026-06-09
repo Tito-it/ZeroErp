@@ -15,7 +15,7 @@ databaseChangeLog:
       id: 20260310-04-create-fn-search-soggetti-universale
       author: mctit
       comment: "Ricerca universale soggetti per tipo ruolo (livello 1). ILIKE + pg_trgm, paginazione LIMIT/OFFSET + COUNT(*) OVER(), hard cap 10.000. Utility aggregate per clienti."
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

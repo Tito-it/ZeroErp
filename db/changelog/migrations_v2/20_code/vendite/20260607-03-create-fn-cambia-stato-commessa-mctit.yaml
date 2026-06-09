@@ -31,7 +31,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260607-03-create-fn-cambia-stato-commessa
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

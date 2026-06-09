@@ -16,7 +16,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260327-02-fix-fn-crea-soggetto-pf-pg-tipo-contatto
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_crea_soggetto_pf e fn_crea_soggetto_pg: aggiunge
               p_tipo_contatto_id per l'INSERT in contatti
@@ -228,7 +228,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260327-02-02-fix-fn-crea-soggetto-pf-pg-tipo-contatto
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_crea_soggetto_pf e fn_crea_soggetto_pg: aggiunge
               p_tipo_contatto_id per l'INSERT in contatti

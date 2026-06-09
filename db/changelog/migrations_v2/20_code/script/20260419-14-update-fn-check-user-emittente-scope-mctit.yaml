@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-14-update-fn-check-user-emittente-scope
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor script.fn_check_user_emittente_scope per usare il nuovo

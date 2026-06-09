@@ -17,7 +17,7 @@ databaseChangeLog:
               Elimina token scaduti o utilizzati da piu' di N giorni.
               Ritorna il numero di record eliminati.
               Eseguibile come job pgAgent notturno.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

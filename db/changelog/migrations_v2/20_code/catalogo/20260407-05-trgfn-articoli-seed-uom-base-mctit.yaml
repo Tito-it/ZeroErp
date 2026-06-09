@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260407-05-trgfn-articoli-seed-uom-base
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

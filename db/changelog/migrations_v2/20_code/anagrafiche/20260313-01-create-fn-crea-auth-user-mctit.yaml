@@ -16,7 +16,7 @@ databaseChangeLog:
       id: 20260313-01-create-fn-crea-auth-user
       author: mctit
       comment: "Building block: crea auth_user con guard unicita' username/email. Riusabile da orchestratori (operatore, admin, ecc.)."
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

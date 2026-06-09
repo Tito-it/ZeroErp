@@ -15,7 +15,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-17-fix-fn-list-fatturazione-pipeline-steps
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_list_fatturazione_pipeline_steps: 3x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:
@@ -61,7 +61,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-17-fix-fn-list-lotto-task-runs
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_list_lotto_task_runs: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:
@@ -105,7 +105,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-17-fix-fn-list-ordini-da-pushare
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_list_ordini_da_pushare: 1x E_GENERICO → E_CODICE.
           changes:
@@ -184,7 +184,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-17-fix-fn-list-preventivi-da-pushare
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_list_preventivi_da_pushare: 1x E_GENERICO → E_CODICE.
           changes:

@@ -26,7 +26,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260604-02-create-fn-espandi-listino-versione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

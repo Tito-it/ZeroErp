@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260403-12-create-vw-preventivi-stato-fatturazione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

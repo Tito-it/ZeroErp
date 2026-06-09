@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-34-update-fn-ddt-riga-componenti-init-overrides
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

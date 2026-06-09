@@ -22,7 +22,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-13-update-fn-preventivo-riga-componenti-init-force-manuale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

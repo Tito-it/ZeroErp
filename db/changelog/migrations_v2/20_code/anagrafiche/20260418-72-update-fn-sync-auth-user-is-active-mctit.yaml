@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260418-72-update-fn-sync-auth-user-is-active
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       failOnError: true
       comment: >

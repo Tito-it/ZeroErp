@@ -35,7 +35,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-15-02-create-fn-ddt-riga-componenti-preview-modello-unificato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

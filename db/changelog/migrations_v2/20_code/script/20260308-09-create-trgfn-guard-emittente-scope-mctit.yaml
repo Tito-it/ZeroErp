@@ -10,7 +10,7 @@ databaseChangeLog:
       id: 20260308-09-create-trgfn-guard-emittente-scope
       author: mctit
       comment: "Sposta trgfn_guard_emittente_scope da config a script (schema corretto per funzioni riusabili cross-dominio)"
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

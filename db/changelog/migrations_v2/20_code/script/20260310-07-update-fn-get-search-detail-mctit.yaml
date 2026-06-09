@@ -17,7 +17,7 @@ databaseChangeLog:
       id: 20260310-07-update-fn-get-search-detail
       author: mctit
       comment: "Aggiunto fallback indirizzo: CLIENTE usa istanza, poi fn_get_indirizzo(RES). FORNITORE/generico usano fn_get_indirizzo per indirizzo default."
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

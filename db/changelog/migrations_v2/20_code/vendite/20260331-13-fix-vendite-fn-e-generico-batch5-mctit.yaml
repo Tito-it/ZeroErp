@@ -15,7 +15,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-13-fix-fn-get-pipeline-task-policy
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_get_pipeline_task_policy: 3x E_GENERICO →
               E_PARAMETRO_INVALIDO (2) + E_CONFIG_MANCANTE (1).
@@ -61,7 +61,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-13-fix-fn-get-registro-id
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_get_registro_id: 2x E_GENERICO →
               E_PARAMETRO_INVALIDO + E_CONFIG_MANCANTE.
@@ -120,7 +120,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-13-fix-fn-get-tipo-doc-fiscale-id
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_get_tipo_doc_fiscale_id: 2x E_GENERICO →
               E_PARAMETRO_INVALIDO + E_CODICE.
@@ -162,7 +162,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-13-fix-fn-get-totale-fondi-fattura
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_get_totale_fondi_fattura: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:

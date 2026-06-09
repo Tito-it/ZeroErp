@@ -13,7 +13,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260302-03-create-fn-sync-auth-user-expired
           author: mctit
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

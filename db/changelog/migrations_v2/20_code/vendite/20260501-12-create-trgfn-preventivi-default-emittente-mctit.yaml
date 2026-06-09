@@ -14,7 +14,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260501-12-create-trgfn-preventivi-default-emittente
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

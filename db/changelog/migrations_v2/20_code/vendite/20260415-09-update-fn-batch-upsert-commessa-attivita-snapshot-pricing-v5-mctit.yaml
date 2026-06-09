@@ -27,7 +27,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260415-09-update-fn-batch-upsert-commessa-attivita-snapshot-pricing-v5
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Batch upsert: estrae e propaga le 8 chiavi snapshot pricing v5
         al single-upsert (allineamento alla firma 20260415-08).

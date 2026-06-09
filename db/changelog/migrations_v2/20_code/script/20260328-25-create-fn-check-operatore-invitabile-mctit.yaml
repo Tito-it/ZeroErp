@@ -18,7 +18,7 @@ databaseChangeLog:
           comment: >
               Verifica se un operatore e' invitabile: utente attivo,
               con email, mai loggato. Ritorna JSONB con esito e motivo.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

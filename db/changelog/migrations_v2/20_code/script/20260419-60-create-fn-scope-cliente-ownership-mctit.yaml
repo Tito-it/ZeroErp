@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-60-create-fn-scope-cliente-ownership
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Scope policy CLIENTE_OWNERSHIP: un'identita cliente (CLIENTE_PORTALE o

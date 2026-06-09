@@ -47,7 +47,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260531-04-01-update-fn-push-offerta-a-contratto-successione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

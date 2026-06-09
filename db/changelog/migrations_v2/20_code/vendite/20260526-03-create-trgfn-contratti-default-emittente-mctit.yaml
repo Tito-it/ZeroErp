@@ -24,7 +24,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-03-create-trgfn-contratti-default-emittente
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

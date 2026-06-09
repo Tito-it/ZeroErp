@@ -45,7 +45,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260518-02-create-trgfn-contratti-righe-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Simmetria L3: trgfn_contratti_righe_guard_pending + trigger

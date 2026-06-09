@@ -10,7 +10,7 @@ databaseChangeLog:
       id: 20260308-08-create-fn-get-override-scaduti
       author: mctit
       comment: "Sposta fn_get_override_scaduti da config a script (schema corretto per funzioni riusabili cross-dominio)"
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

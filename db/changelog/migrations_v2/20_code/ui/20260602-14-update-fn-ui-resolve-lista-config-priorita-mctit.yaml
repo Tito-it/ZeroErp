@@ -31,7 +31,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260602-14-update-fn-ui-resolve-lista-config-priorita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       failOnError: true

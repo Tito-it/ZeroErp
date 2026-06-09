@@ -20,7 +20,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260412-37-create-trgfn-listini-righe-guard-stato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Guard stato versione su UPDATE/DELETE di vendite.listini_righe.
         BOZZA = passa, ATTIVA = solo se non propagata, CHIUSA = blocca.

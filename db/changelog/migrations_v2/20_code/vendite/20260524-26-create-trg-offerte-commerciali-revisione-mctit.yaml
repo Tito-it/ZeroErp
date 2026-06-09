@@ -39,7 +39,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260524-26-create-trg-offerte-commerciali-revisione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

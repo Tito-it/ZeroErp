@@ -17,7 +17,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260412-05-create-trgfn-set-validita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Trigger function generica cross-schema: calcola la colonna
         validita (daterange) da valido_dal / valido_al.

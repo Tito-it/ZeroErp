@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260402-05-recreate-vw-articoli-dettaglio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea vista catalogo.vw_articoli_dettaglio droppata dalla
         migration 20260402-21 (ALTER codice CHAR->VARCHAR).

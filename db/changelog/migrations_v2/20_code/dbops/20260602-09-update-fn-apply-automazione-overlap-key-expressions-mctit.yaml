@@ -23,7 +23,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260602-09-update-fn-apply-automazione-overlap-key-expressions
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         fn_apply_automazione_overlap: supporta chiavi su espressione (key_expressions)
         appese alle key_columns. Guard "no key" solo se entrambe vuote.

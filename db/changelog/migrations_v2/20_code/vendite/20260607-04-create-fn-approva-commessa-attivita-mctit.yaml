@@ -29,7 +29,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260607-04-create-fn-approva-commessa-attivita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

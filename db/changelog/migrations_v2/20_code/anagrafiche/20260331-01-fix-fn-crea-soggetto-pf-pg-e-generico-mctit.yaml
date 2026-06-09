@@ -15,7 +15,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-01-fix-fn-crea-soggetto-pf-e-generico
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_crea_soggetto_pf: sostituisce E_GENERICO con E_CODICE
               per lookup stato (config.stati) e tipo soggetto dettaglio
@@ -205,7 +205,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-01-fix-fn-crea-soggetto-pg-e-generico
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_crea_soggetto_pg: sostituisce E_GENERICO con E_CODICE
               per lookup stato (config.stati). Nessuna modifica alla logica.
@@ -501,7 +501,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-01-fix-fn-get-or-create-indirizzo-dettaglio-e-generico
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_get_or_create_indirizzo_dettaglio: sostituisce E_GENERICO
               con E_CODICE per lookup stradario fallito. Nessuna modifica alla logica.
@@ -629,7 +629,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-01-fix-trgfn-clienti-sync-utility-from-ba-e-generico
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_clienti_sync_utility_from_ba: sostituisce 3 E_GENERICO
               con codici specifici: E_CODICE (utility non trovata),

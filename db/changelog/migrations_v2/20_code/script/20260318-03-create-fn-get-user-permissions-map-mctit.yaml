@@ -103,7 +103,7 @@ databaseChangeLog:
               Mappa permessi utente per tutte le aree funzionali attive.
               Loop su config.aree_funzionali, chiama fn_resolve_livello_area
               per ciascuna. Ritorna JSONB {schema_db: livello}. STABLE.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

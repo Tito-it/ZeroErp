@@ -50,7 +50,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260427-01-01-create-trgfn-promo-articoli-guard-data-driven
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >
@@ -258,7 +258,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260427-01-02-create-trg-promo-articoli-a10-guard-data-driven
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

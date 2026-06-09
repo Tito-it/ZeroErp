@@ -23,7 +23,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260529-04-create-trgfn-contratti-default-valuta
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

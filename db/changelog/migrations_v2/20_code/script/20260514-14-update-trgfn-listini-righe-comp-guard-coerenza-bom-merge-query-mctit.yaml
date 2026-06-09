@@ -22,7 +22,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260514-14-update-trgfn-listini-righe-comp-guard-coerenza-bom-merge-query
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ottimizzazione: fonde le due query DB di trgfn_listini_righe_comp_guard_coerenza_bom
         in una singola SELECT con LEFT JOIN listini_versioni. Elimina un round-trip

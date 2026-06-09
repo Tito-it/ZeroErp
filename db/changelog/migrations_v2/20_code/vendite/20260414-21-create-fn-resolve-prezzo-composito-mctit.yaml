@@ -26,7 +26,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260414-21-create-fn-resolve-prezzo-composito
           author: mctit
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     dbms: postgresql

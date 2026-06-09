@@ -30,7 +30,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260521-02-create-trgfn-contratti-sync-is-abortito-snapshot
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Step 2/3: crea trgfn_contratti_sync_is_abortito_snapshot e il trigger

@@ -21,7 +21,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260506-10-01-trgfn-ui-lista-def-valida-vista
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: "Trigger BEFORE INSERT/UPDATE: valida che vista_sql esista in pg_catalog"

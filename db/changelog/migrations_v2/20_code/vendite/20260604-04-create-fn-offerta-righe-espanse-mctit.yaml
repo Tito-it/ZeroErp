@@ -33,7 +33,12 @@ databaseChangeLog:
   - changeSet:
       id: 20260604-04-create-fn-offerta-righe-espanse
       author: mctit
-      runOnChange: true
+      # runOnChange:false — definizione INTERMEDIA (pre-rename sconto_perc).
+      # Gira una volta sul 1o apply (schema vecchio); NON deve ri-spararsi
+      # sul ci-apply (2o apply) contro lo schema gia' rinominato a
+      # sconto_percentuale. La definizione canonica post-rename e'
+      # 20260605-17 (runOnChange:true).
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

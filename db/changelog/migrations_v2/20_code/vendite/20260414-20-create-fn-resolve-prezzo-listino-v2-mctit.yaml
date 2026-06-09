@@ -29,7 +29,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260414-20-create-fn-resolve-prezzo-listino-v2
           author: mctit
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     dbms: postgresql

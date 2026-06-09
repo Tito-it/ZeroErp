@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260430-03-create-fn-capability-promo-articolo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea script.fn_capability_promo_articolo(p_promo_id BIGINT)

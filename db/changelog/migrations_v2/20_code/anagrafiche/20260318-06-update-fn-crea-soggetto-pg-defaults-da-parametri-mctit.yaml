@@ -21,7 +21,7 @@ databaseChangeLog:
             p_socio_unico ('SU'), p_liquidazione ('LN').
             I default sono risolti internamente da config.parameters.
             Python passa NULL se l'utente non specifica il valore.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

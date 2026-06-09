@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-32-create-trgfn-flussi-guard-prerequisiti
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Trigger function wrapper per guard prerequisiti.
         BEFORE INSERT su flussi: se il flusso ha un template, verifica

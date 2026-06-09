@@ -35,7 +35,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-02-update-fn-ui-resolve-lista-config-preset-aggiornato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       failOnError: true

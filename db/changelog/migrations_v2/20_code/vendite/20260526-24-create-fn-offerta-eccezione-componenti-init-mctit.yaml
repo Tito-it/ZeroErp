@@ -39,7 +39,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260526-24-01-create-fn-offerta-eccezione-componenti-init
           author: mctit
-          runOnChange: true
+          runOnChange: false
           validCheckSum: [ANY]
           comment: >
               Crea vendite.fn_offerta_eccezione_componenti_init.

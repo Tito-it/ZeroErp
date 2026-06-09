@@ -17,7 +17,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-03-update-fn-ordine-riga-componenti-init-remove-fallback
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

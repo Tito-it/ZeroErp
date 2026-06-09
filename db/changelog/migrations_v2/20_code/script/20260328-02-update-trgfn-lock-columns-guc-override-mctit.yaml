@@ -15,7 +15,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260328-02-update-trgfn-lock-columns-guc-override
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Aggiunge GUC override zeroerp.allow_lock_columns_override
         a script.trgfn_lock_columns. Se impostata a 'on' nella

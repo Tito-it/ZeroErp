@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-37-create-trgfn-flussi-giornale-ins
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Logga FLUSSO_CREATO nel giornale su INSERT flusso."
       changes:
         - sql:

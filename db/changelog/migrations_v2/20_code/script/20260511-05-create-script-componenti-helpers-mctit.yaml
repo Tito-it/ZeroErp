@@ -30,7 +30,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-05-01-create-fn-ricalcola-prezzo-padre-da-componenti
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Funzione generica script.fn_ricalcola_prezzo_padre_da_componenti.
@@ -89,7 +89,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-05-02-create-trgfn-componenti-ricalcola-padre
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function AFTER INS/UPD/DLT su _righe_componenti.
@@ -157,7 +157,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-05-03-create-trgfn-componenti-guard-coerenza-bom
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function BEFORE INSERT OR UPDATE: valida coerenza BoM CASO A.
@@ -309,7 +309,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-05-04-create-trgfn-componenti-propaga-qta
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function AFTER UPDATE OF quantita su riga padre.
@@ -371,7 +371,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-05-05-create-trgfn-componenti-calcola-quantita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function BEFORE INSERT/UPDATE su _righe_componenti:

@@ -20,7 +20,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260410-01-01-create-fn-check-ba-visible-for-emittenti
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >
@@ -108,7 +108,7 @@ databaseChangeLog:
       id: 20260410-01-02-update-fn-search-soggetti-universale-is-default
       author: mctit
       comment: "Filtro scope emittente: aggiunge fallback is_default=true per gestore globale (allineamento a clienti_repository)"
-      runOnChange: true
+      runOnChange: false
       failOnError: true
       changes:
         - sql:

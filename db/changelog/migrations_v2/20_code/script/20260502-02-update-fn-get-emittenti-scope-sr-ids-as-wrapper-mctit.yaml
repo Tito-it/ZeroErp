@@ -16,7 +16,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260502-02-update-fn-get-emittenti-scope-sr-ids-as-wrapper
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

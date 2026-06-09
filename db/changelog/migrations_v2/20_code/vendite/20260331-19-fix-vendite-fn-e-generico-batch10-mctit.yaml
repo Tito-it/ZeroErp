@@ -15,7 +15,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-19-fix-fn-prepare-sdi-payload
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_prepare_sdi_payload: 4x E_GENERICO → codici specifici.
           changes:
@@ -102,7 +102,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-19-fix-fn-reset-fondi-fattura
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_reset_fondi_fattura: 2x E_GENERICO →
               E_PARAMETRO_INVALIDO + E_CONFIG_MANCANTE.
@@ -179,7 +179,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-19-fix-fn-reset-lotto-draft
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_reset_lotto_draft: 7x E_GENERICO → codici specifici.
           changes:
@@ -275,7 +275,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-19-fix-fn-reset-lotto-fattura-draft
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_reset_lotto_fattura_draft: 7x E_GENERICO → codici specifici.
           changes:

@@ -17,7 +17,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-07-01-create-trgfn-prevrighe-comp-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea vendite.trgfn_preventivi_righe_componenti_guard_pending.

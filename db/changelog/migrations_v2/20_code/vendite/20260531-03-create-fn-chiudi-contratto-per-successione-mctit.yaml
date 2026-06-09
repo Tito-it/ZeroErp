@@ -35,7 +35,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260531-03-01-create-fn-chiudi-contratto-per-successione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

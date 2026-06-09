@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-51-update-fn-resolve-livello-area-via-profili-accesso
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiornamento successivo di script.fn_resolve_livello_area (§4.8

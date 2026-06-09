@@ -17,7 +17,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-41-create-fn-preventivo-riga-componenti-preview
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

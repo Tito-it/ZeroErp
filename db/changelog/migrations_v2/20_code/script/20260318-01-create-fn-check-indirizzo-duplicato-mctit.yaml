@@ -20,7 +20,7 @@ databaseChangeLog:
         Check duplicato indirizzo. Costruisce stringa normalizzata via
         fn_build_indirizzo_normalizzato, cerca match prefix su
         indirizzi_dettaglio, ritorna exact_match. STABLE.
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

@@ -17,7 +17,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-05-01-create-trgfn-articoli-guard-listino-se-composito
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function catalogo.trgfn_articoli_guard_listino_se_composito.
@@ -92,7 +92,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-05-02-create-trg-articoli-guard-listino-se-composito
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE OF is_composito su catalogo.articoli, fase _a10_guard.

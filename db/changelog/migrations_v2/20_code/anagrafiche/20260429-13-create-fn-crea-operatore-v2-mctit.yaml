@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-13-create-fn-crea-operatore-v2
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Chunk A Fase 7 (2026-04-29): nuova

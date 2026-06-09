@@ -21,7 +21,7 @@ databaseChangeLog:
             Il default e' risolto internamente da config.parameters
             (code = soggetto_default_stato_iso2). Python passa NULL
             se l'utente non specifica lo stato.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

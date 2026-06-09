@@ -29,7 +29,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260515-14-create-trg-contratti-lock-post-attivazione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Step 2.3/2: lock post-attivazione pricing testata (contratti) e eccezioni (contratti_righe).

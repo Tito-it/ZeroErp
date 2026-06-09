@@ -15,7 +15,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-12-fix-fn-get-or-create-lotto
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_get_or_create_lotto: 17x E_GENERICO → codici specifici.
               Semplificato JSONB context (rimossi scope/severity/code ridondanti).

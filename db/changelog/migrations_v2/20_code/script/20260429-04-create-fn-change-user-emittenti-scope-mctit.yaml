@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-04-create-fn-change-user-emittenti-scope
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea script.fn_change_user_emittenti_scope(p_auth_user_id,

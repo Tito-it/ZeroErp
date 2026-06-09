@@ -19,7 +19,7 @@ databaseChangeLog:
         Se la tabella non ha codice, usa COALESCE(codice_interno, id::text)
         come fallback. Risolve errore su config.sistema_codici che ha
         codice_interno ma non codice.
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

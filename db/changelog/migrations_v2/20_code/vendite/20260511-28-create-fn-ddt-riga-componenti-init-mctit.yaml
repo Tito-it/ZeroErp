@@ -33,7 +33,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-28-01-create-fn-ddt-riga-componenti-init
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea vendite.fn_ddt_riga_componenti_init.

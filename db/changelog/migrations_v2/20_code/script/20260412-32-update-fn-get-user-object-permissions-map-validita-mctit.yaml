@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260412-32-update-fn-get-user-object-permissions-map-validita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Filtro temporale override oggetti nella mappa permessi:
         da doppio confronto valido_dal/valido_al a validita @> CURRENT_DATE.

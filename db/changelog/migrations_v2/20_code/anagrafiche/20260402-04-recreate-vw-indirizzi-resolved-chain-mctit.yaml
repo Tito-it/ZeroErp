@@ -18,7 +18,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260402-04-recreate-vw-indirizzi-resolved-chain
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea catena viste indirizzi resolved droppata dalla
         migration 20260402-21 (ALTER codice CHAR->VARCHAR).

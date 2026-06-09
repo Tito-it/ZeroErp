@@ -24,7 +24,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260524-11-update-vw-fornitori-dettaglio-add-id-fiscale-univoco
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

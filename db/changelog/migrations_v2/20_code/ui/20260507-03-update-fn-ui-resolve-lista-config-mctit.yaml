@@ -36,7 +36,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260507-03-01-update-fn-ui-resolve-lista-config
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: "DB-3+DB-4: fn_resolve_lista_config GUC-aware + cascata preset di ruolo deterministica"

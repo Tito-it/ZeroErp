@@ -33,7 +33,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-24-01-create-fn-ordine-riga-componenti-init
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea vendite.fn_ordine_riga_componenti_init.

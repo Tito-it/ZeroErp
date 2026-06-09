@@ -18,7 +18,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-39-01-create-trgfn-ddtrighe-comp-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea vendite.trgfn_ddt_righe_componenti_guard_pending.
@@ -108,7 +108,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-39-02-trg-ddtrighe-comp-a10-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE UPDATE: guard L3 PENDING su ddt_righe_componenti.

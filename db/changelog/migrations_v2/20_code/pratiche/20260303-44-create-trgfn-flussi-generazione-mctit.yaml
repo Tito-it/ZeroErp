@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-44-create-trgfn-flussi-generazione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         AFTER UPDATE su flussi: se lo stato diventa COMPLETATO, cerca regole
         matching in regole_generazione con auto = true e invoca

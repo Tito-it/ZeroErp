@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-21-update-fn-get-user-profile
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor script.fn_get_user_profile per usare il nuovo modello

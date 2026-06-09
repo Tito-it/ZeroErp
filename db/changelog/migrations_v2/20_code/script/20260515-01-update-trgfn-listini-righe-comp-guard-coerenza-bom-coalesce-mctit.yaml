@@ -32,7 +32,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260515-01-update-trgfn-listini-righe-comp-guard-coerenza-bom-coalesce
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

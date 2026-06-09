@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-10-extend-trgfn-guard-emittente-scope-fiscale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Estende script.trgfn_guard_emittente_scope con la modalita' 'fiscale'

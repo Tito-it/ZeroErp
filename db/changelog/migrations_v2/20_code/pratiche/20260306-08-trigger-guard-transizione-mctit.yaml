@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260306-08-trigger-guard-transizione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Applica 2 trigger BEFORE UPDATE OF stato_id (fase _a10_ guard)
         su pratiche.pratiche e pratiche.flussi per bloccare transizioni

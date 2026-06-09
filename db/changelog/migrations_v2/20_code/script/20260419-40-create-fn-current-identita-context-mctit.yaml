@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-40-create-fn-current-identita-context
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea script.fn_current_identita_context() RETURNS TABLE

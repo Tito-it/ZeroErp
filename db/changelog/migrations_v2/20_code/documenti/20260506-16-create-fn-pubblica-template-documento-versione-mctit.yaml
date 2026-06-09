@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260506-16-create-fn-pubblica-template-documento-versione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Crea documenti.fn_pubblica_template_documento_versione: comando DB atomico
         per pubblicare una versione BOZZA e auto-chiudere/obsoletare le versioni

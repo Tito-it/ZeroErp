@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-53-trigger-business-allegati
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Applica trigger giornale su pratiche.allegati_pratiche e
         pratiche.allegati_flussi (AFTER INSERT).

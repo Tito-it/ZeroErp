@@ -22,7 +22,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260608-05-create-fn-log-evento-dominio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         fn_log_evento_dominio(p_pratica_id, p_flusso_id, p_tipo_evento,
         p_meta): unico canale applicativo append-only per gli eventi

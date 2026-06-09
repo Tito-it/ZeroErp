@@ -17,7 +17,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-12-update-fn-contratto-riga-componenti-init-modello-unificato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

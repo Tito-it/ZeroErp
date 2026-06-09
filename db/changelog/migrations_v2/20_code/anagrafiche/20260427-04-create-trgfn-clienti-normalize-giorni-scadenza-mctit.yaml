@@ -36,7 +36,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260427-04-01-create-trgfn-clienti-normalize-giorni-scadenza
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Funzione anagrafiche.trgfn_clienti_normalize_giorni_scadenza.
         Asimmetrica come gemella fornitori: normalize silenzioso per payload
@@ -119,7 +119,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260427-04-02-create-trg-clienti-normalize-giorni-scadenza
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Trigger BEFORE INSERT OR UPDATE OF tipo_gg_scadenza_ft,
         nr_giorni_scadenza su anagrafiche.clienti. Niente fase _a10_ (riservata

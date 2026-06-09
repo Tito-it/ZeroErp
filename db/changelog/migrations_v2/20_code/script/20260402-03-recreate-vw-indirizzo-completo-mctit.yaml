@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260402-03-recreate-vw-indirizzo-completo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea vista script.vw_indirizzo_completo droppata dalla
         migration 20260402-21 (ALTER codice CHAR->VARCHAR).

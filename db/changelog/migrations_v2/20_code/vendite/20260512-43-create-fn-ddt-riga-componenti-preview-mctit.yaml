@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-43-create-fn-ddt-riga-componenti-preview
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: Preview componenti BoM CASO A per drawer riga DDT. Allineato a 20260512-41.

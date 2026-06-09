@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260317-03-create-fn-build-indirizzo-normalizzato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Funzione standalone che centralizza TUTTA la logica di normalizzazione
         degli indirizzi: lookup via_norm, UPPER+BTRIM, prefisso '/',

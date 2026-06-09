@@ -25,7 +25,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260514-09-update-trgfn-articoli-componenti-block-modifica-struttura-stored-validita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Rimuove il check "NEW.validita IS DISTINCT FROM OLD.validita" dal guard
         trgfn_articoli_componenti_block_modifica_struttura: dopo migrazione a

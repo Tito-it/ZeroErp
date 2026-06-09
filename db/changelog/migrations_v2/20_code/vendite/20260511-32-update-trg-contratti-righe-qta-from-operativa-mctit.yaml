@@ -22,7 +22,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-32-01-update-trg-contratti-righe-qta-from-operativa
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Ricrea trigger qta_from_operativa su contratti_righe con

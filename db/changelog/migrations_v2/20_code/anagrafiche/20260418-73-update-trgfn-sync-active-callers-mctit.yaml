@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260418-73-update-trgfn-sync-active-callers
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       failOnError: true
       comment: >

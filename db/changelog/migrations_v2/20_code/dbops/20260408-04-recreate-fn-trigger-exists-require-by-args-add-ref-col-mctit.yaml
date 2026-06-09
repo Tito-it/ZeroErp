@@ -16,7 +16,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260408-04-recreate-fn-trigger-exists-require-by-args-add-ref-col
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea fn_trigger_exists_require_by_args con parametro aggiuntivo
         p_parent_ref_col per matchare l'invocazione a 5 args della trgfn

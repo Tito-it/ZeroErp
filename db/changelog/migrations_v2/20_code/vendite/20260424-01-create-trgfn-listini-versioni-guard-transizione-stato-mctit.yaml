@@ -38,7 +38,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260424-01-01-create-trgfn-listini-versioni-guard-transizione-stato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >
@@ -140,7 +140,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260424-01-02-create-trg-listini-versioni-a10-guard-transizione-stato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

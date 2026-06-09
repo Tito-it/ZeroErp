@@ -9,7 +9,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260407-09-create-guard-emittenti-fiscali-utilities-required
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Rende obbligatoria almeno una configurazione utility attiva per ogni
         emittente fiscale attivo.

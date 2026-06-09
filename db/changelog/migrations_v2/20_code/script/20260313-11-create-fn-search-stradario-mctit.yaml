@@ -18,7 +18,7 @@ databaseChangeLog:
           id: 20260313-11-create-fn-search-stradario
           author: mctit
           comment: "Ricerca vie (stradario) per autocomplete frontend. JOIN stradario -> stradario_generale -> toponomastica + comuni -> province + codici_postali. Filtra per comune e/o testo. STABLE, PARALLEL SAFE."
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

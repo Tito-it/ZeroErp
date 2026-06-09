@@ -39,7 +39,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260502-11-create-fn-ricalcola-riepilogo-iva-preventivo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260418-21-update-trgfn-rua-guard-persona-fisica
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor del trigger guard "persona fisica pura" su

@@ -20,7 +20,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260502-04-01-create-fn-check-parameter-fk-surrogate
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >
