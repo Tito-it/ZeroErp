@@ -112,10 +112,13 @@ BEGIN
    AND pr.quantita > 0
    AND pr.prezzo_unitario >= 0
   JOIN catalogo.articoli a ON a.id = pr.articolo_id
+  -- Natura di riga: LEFT JOIN per non perdere le righe a natura NULL.
   LEFT JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
   WHERE p.billing_account_id IS NOT NULL
     AND p.utility_id IS NOT NULL
     AND (v_stato_accettato_id IS NULL OR p.stato_doc_preventivo_id = v_stato_accettato_id)
+    -- SOLO righe destinate a COMMESSA (natura NULL = pregresso -> COMMESSA).
+    -- La merce (ORDINE) e' esclusa: va su fn_push_preventivo_a_ordine.
     AND (pr.natura_vendita_id IS NULL OR nv.destinazione_tipo = 'COMMESSA')
     AND (p_competenza_mese IS NULL
          OR date_trunc('month', COALESCE(p.validita_dal, p.data))::date = p_competenza_mese)

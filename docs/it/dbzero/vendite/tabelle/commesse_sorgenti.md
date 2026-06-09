@@ -25,16 +25,15 @@
 | FOREIGN KEY | fk_commesse_sorgenti_commessa | commessa_id |
 | FOREIGN KEY | fk_commesse_sorgenti_tipo | sorgente_tipo_id |
 | PRIMARY KEY | pk_commesse_sorgenti | id |
-| UNIQUE | uq_commesse_sorgenti_commessa_ruolo | commessa_id, ruolo_link |
-| UNIQUE | uq_commesse_sorgenti_src_uid_ruolo | sorgente_tipo_id, sorgente_uid, ruolo_link |
+| UNIQUE | uq_commesse_sorgenti_src_uid | sorgente_tipo_id, sorgente_uid |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_commesse_sorgenti_commessa | `CREATE INDEX ix_commesse_sorgenti_commessa ON vendite.commesse_sorgenti USING btree (commessa_id)` |
 | pk_commesse_sorgenti | `CREATE UNIQUE INDEX pk_commesse_sorgenti ON vendite.commesse_sorgenti USING btree (id)` |
-| uq_commesse_sorgenti_commessa_ruolo | `CREATE UNIQUE INDEX uq_commesse_sorgenti_commessa_ruolo ON vendite.commesse_sorgenti USING btree (commessa_id, ruolo_link)` |
-| uq_commesse_sorgenti_src_uid_ruolo | `CREATE UNIQUE INDEX uq_commesse_sorgenti_src_uid_ruolo ON vendite.commesse_sorgenti USING btree (sorgente_tipo_id, sorgente_uid, ruolo_link)` |
+| uq_commesse_sorgenti_commessa_root | `CREATE UNIQUE INDEX uq_commesse_sorgenti_commessa_root ON vendite.commesse_sorgenti USING btree (commessa_id) WHERE ((ruolo_link)::text = 'ROOT'::text)` |
+| uq_commesse_sorgenti_src_uid | `CREATE UNIQUE INDEX uq_commesse_sorgenti_src_uid ON vendite.commesse_sorgenti USING btree (sorgente_tipo_id, sorgente_uid)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

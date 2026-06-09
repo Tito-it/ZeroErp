@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Commessa multi-sorgente (brief commessa ROOT+COLLEGATO, 2026-06-09): una
+# commessa puo' aggregare N sorgenti (1 ROOT primaria + N COLLEGATO contributori),
+# perche' piu' ordini legittimi dello stesso cliente/utility/periodo convergono
+# DIMENSIONALMENTE sulla stessa commessa (la commessa E' l'unita' di aggregazione
+# del fatturabile). In v1 il bridge ammetteva solo ROOT e una sola riga per
+# commessa -> la 2a sorgente falliva con E_COMMESSA_ROOT_CONFLITTO.
+#
+# Tre modifiche di vincolo su vendite.commesse_sorgenti:
+#   1) CHECK ruolo_link: {ROOT} -> {ROOT, COLLEGATO}.
+#   2) "una sola ROOT per commessa": da UNIQUE (commessa_id, ruolo_link) a UNIQUE
+#      PARZIALE su (commessa_id) WHERE ruolo_link='ROOT'. Resta una sola ROOT, ma
+#      si ammettono N COLLEGATO. NB: e' un INDICE unique parziale, non un
+#      constraint (i partial unique non sono constraint): la doc auto-gen lo
+#      elenchera' sotto "Indici", non "Vincoli", e non e' referenziabile via
+#      ON CONFLICT ON CONSTRAINT.
+#   3) "una sorgente in una sola commessa" (decisione DB-first, brief 2.3): da
+#      UNIQUE (sorgente_tipo_id, sorgente_uid, ruolo_link) a UNIQUE
+#      (sorgente_tipo_id, sorgente_uid) SENZA ruolo_link. Cosi' una sorgente non
+#      puo' essere ROOT di una commessa e COLLEGATO di un'altra: appartiene a UNA
+#      commessa, in UN ruolo. L'invariante vive a DB, non nell'applicativo.
+#
+# Nessun backfill dati: le righe esistenti sono tutte ROOT (v1), una per commessa
+# -> soddisfano gia' i nuovi vincoli. L'ordine che oggi fallisce NON ha riga nel
+# bridge (e' respinto), quindi niente da migrare.
+#
+# La nuova logica di assegnazione ruolo e di errore vive in
+# vendite.fn_link_commessa_sorgente (20260609-11); il nuovo codice errore
+# E_COMMESSA_SORGENTE_ALTRA_COMMESSA (id 482) e' una riga in
+# 80_data/sql/config/messaggi_errore.csv, caricata dagli upsert loadUpdateData
+# esistenti (runOnChange su CSV).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260609-10-alter-commesse-sorgenti-multi-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260609-10-alter-commesse-sorgenti-multi-sorgente
+      author: mctit
+      failOnError: true
+      comment: >
+        Commesse_sorgenti multi-sorgente: CHECK ruolo {ROOT,COLLEGATO}, "una sola
+        ROOT" come unique parziale, "una sorgente=una commessa" come unique
+        globale (tipo,uid) senza ruolo_link.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: commesse_sorgenti
+          - columnExists:
+              schemaName: vendite
+              tableName: commesse_sorgenti
+              columnName: ruolo_link
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- 1) CHECK ruolo: ammetti anche COLLEGATO.
+              ALTER TABLE vendite.commesse_sorgenti
+                  DROP CONSTRAINT chk_commesse_sorgenti_ruolo;
+              ALTER TABLE vendite.commesse_sorgenti
+                  ADD CONSTRAINT chk_commesse_sorgenti_ruolo
+                  CHECK (ruolo_link IN ('ROOT', 'COLLEGATO'));
+
+              -- 2) "una sola ROOT per commessa": unique PARZIALE (indice).
+              ALTER TABLE vendite.commesse_sorgenti
+                  DROP CONSTRAINT uq_commesse_sorgenti_commessa_ruolo;
+              CREATE UNIQUE INDEX uq_commesse_sorgenti_commessa_root
+                  ON vendite.commesse_sorgenti (commessa_id)
+                  WHERE ruolo_link = 'ROOT';
+
+              -- 3) "una sorgente in una sola commessa": unique globale su
+              --    (tipo, uid), senza ruolo_link.
+              ALTER TABLE vendite.commesse_sorgenti
+                  DROP CONSTRAINT uq_commesse_sorgenti_src_uid_ruolo;
+              ALTER TABLE vendite.commesse_sorgenti
+                  ADD CONSTRAINT uq_commesse_sorgenti_src_uid
+                  UNIQUE (sorgente_tipo_id, sorgente_uid);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse_sorgenti
+                  DROP CONSTRAINT uq_commesse_sorgenti_src_uid;
+              ALTER TABLE vendite.commesse_sorgenti
+                  ADD CONSTRAINT uq_commesse_sorgenti_src_uid_ruolo
+                  UNIQUE (sorgente_tipo_id, sorgente_uid, ruolo_link);
+
+              DROP INDEX IF EXISTS vendite.uq_commesse_sorgenti_commessa_root;
+              ALTER TABLE vendite.commesse_sorgenti
+                  ADD CONSTRAINT uq_commesse_sorgenti_commessa_ruolo
+                  UNIQUE (commessa_id, ruolo_link);
+
+              ALTER TABLE vendite.commesse_sorgenti
+                  DROP CONSTRAINT chk_commesse_sorgenti_ruolo;
+              ALTER TABLE vendite.commesse_sorgenti
+                  ADD CONSTRAINT chk_commesse_sorgenti_ruolo
+                  CHECK (ruolo_link IN ('ROOT'));

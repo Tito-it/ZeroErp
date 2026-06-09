@@ -15,7 +15,7 @@
 -- 9) Commessa creata
 -- 10) Link ROOT inserito
 -- 11) Link ROOT idempotente (stesso id)
--- 12) Link ROOT mismatch bloccato
+-- 12) Seconda sorgente diversa sulla stessa commessa -> COLLEGATO (multi-sorgente)
 -- 13) Upsert commessa_attivita insert
 -- 14) Upsert commessa_attivita update stesso segment_key
 -- 15) Override documento su commessa_attivita (listino_versione_id + prezzo_bloccato)
@@ -259,19 +259,23 @@ SELECT is(
   'Link ROOT idempotente (stesso id)'
 );
 
-SELECT throws_ok(
-  $$
-    SELECT vendite.fn_link_commessa_sorgente(
-      p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
-      p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
-      p_sorgente_uid => 'SRC-MISMATCH',
-      p_sorgente_riga => 1,
-      p_meta => '{}'::jsonb
-    );
-  $$,
-  'P0001',
-  NULL,
-  'Link ROOT mismatch bloccato'
+-- Commessa multi-sorgente (brief 2026-06-09): una 2a sorgente DIVERSA sulla
+-- stessa commessa non e' piu' un conflitto, ma il flusso normale -> COLLEGATO.
+CREATE TEMP TABLE tmp_link_core_collegato AS
+SELECT vendite.fn_link_commessa_sorgente(
+  p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
+  p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
+  p_sorgente_uid => ('SRC-COLL-' || substr(md5(clock_timestamp()::text), 1, 12))::text,
+  p_sorgente_riga => 2,
+  p_meta => '{}'::jsonb
+) AS link_id;
+
+SELECT is(
+  (SELECT cs.ruolo_link
+     FROM vendite.commesse_sorgenti cs
+    WHERE cs.id = (SELECT link_id FROM tmp_link_core_collegato)),
+  'COLLEGATO',
+  'Seconda sorgente diversa sulla stessa commessa -> COLLEGATO (multi-sorgente)'
 );
 
 CREATE TEMP TABLE tmp_upsert_core AS
