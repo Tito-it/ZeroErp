@@ -3,8 +3,10 @@
 > **Tipo**: brief operativo **per il team commesse** (canale `dev/db-tid`).
 > Spiega *cosa* fare e *perché*; **non contiene DDL/SQL** (lo scrive il team DB).
 >
-> **Stato**: 🟡 **APERTO** — decisione di modello ratificata, implementazione DB
-> da avviare.
+> **Stato**: 🟢 **CHIUSO (2026-06-09)** — DB opzione B consegnato+pushato (commit
+> `806fe749c`, migrations `20260609-10` schema + `20260609-11`
+> `fn_link_commessa_sorgente`) **+ fix BE §4.2 fatto** (idempotenza transizione
+> PRONTA nell'handler, NON ancora committato). Vedi §7 (log).
 >
 > **Owner concettuale**: Tid (Michele Carlo Titini). **Data brief**: 2026-06-09.
 >
@@ -71,6 +73,14 @@ problema.**
 
 ## 2. Cosa serve a DB (logica, opzione B)
 
+> ✅ **CONSEGNATO 2026-06-09** (commit `806fe749c`, migrations `20260609-10/11`).
+> §2.1 (CHECK `{ROOT, COLLEGATO}`), §2.2 (UNIQUE ROOT parziale) e §2.4 (fn_link
+> auto-ruolo) implementati come da brief. **§2.3 adottato nella forma rigida**:
+> unicità `(sorgente_tipo_id, sorgente_uid)` senza `ruolo_link` → una sorgente sta
+> in **una sola** commessa; il tentativo di agganciarla a un'altra solleva il
+> **nuovo** errore `E_COMMESSA_SORGENTE_ALTRA_COMMESSA` (non più
+> `E_COMMESSA_ROOT_CONFLITTO`, che resta solo per la 2ª-ROOT esplicita).
+
 ### 2.1 CHECK ruolo → `{ROOT, COLLEGATO}`
 Estendere `chk_commesse_sorgenti_ruolo` per ammettere anche `COLLEGATO`
 (specchio di `chk_pratiche_sorgenti_ruolo`).
@@ -123,55 +133,56 @@ chiamante non cambia):
 - **EVASO ordine** (cablato 2026-06-08): il secondo ordine ora **passa** (push
   COMPLETATO come COLLEGATO) → transita anch'esso a `EVASO`. Coerente.
 
-## 4. Lato BE (verifica + 1 fix da fare A CONSEGNA, competenza agente BE)
+## 4. Lato BE (1 fix DA FARE — la consegna B la rende ora raggiungibile)
 
-Atteso **nessun cambio strutturale** sul *delega-e-basta*: gli orchestratori
-delegano a `fn_link_commessa_sorgente` (che ora auto-assegna il ruolo) e l'esito
-non è più `E_COMMESSA_ROOT_CONFLITTO` → il push non fallisce più `PARZIALE`. Il
-pattern `COLLEGATO` è già in uso (`pratiche_sorgenti`).
+Il *delega-e-basta* è confermato **invariato**: i percorsi che spingono in
+commessa delegano a `fn_link_commessa_sorgente` (ora auto-ruolo) → l'aggancio di
+una 2ª sorgente non fallisce più (diventa `COLLEGATO`). Nessun guard applicativo
+assume «1 sorgente = 1 commessa».
 
-### 4.1 Chi è soggetto a questo bug (oggi)
-Tutti i percorsi che spingono in commessa passano da `fn_link_commessa_sorgente`,
-quindi **tutti** oggi sono soggetti a `E_COMMESSA_ROOT_CONFLITTO` su collisione
-dimensionale, **non solo l'ordine**:
+### 4.1 Chi sblocca la fix B
+Sull'aggancio sorgente: **tutti** i percorsi push-commessa
+(`ordini_service.push_a_commessa`, `preventivi_service.push_a_commessa`,
+orchestratore `CONFERMA_VENDITA`) — la collisione dimensionale ora produce un
+`COLLEGATO` invece di `E_COMMESSA_ROOT_CONFLITTO`. ✅ Nessuna modifica BE per
+questo.
 
-- `vendite.ordini_service.push_a_commessa` (ordine→commessa) — il caso del bug
-  originale;
-- `vendite.preventivi_service.push_a_commessa` (preventivo→commessa, servizi);
-- l'orchestratore **`CONFERMA_VENDITA`** (`push_preventivo_handler`, ramo
-  servizi) — anche due preventivi stesso BA/utility/periodo collidono.
+### 4.2 Fix BE — `cambia_stato_commessa(PRONTA)` idempotente (1 SOLO call-site) — ✅ FATTO
 
-→ La fix B sblocca **tutti** questi, non serve toccarli per il *delega*.
+> ✅ **Implementato 2026-06-09** (NON committato). Handler `CONFERMA_VENDITA`,
+> ramo servizi: `approva_commessa_attivita` resta incondizionato (idempotente);
+> la transizione a `PRONTA_FATTURAZIONE` parte **solo se** `get_commessa_stato_codice`
+> ≠ `PRONTA_FATTURAZIONE` (nuovo getter repo). **Scelta di merito**: gli stati
+> "oltre" anomali (`CHIUSA`/`ANNULLATA`) **non** sono silenziati — la transizione
+> viene tentata e fallisce forte (non si evade un preventivo su commessa
+> chiusa/annullata). Test: `test_commessa_gia_pronta_skip_transizione`.
 
-### 4.2 Fix BE da fare INSIEME alla consegna B — `cambia_stato_commessa(PRONTA)` idempotente
-**Regressione resa raggiungibile dalla multi-sorgente** (oggi mascherata: la 2ª
-sorgente viene bloccata *prima* da `E_COMMESSA_ROOT_CONFLITTO`). Con B, una
-sorgente può agganciarsi a una commessa **già `PRONTA_FATTURAZIONE`** (portata lì
-da una sorgente precedente). I percorsi che dopo il push fanno, incondizionato:
+**Correzione vs prima stesura**: verificato sul codice — l'unico percorso che
+porta la commessa a `PRONTA_FATTURAZIONE` è l'orchestratore **`CONFERMA_VENDITA`**
+([`push_preventivo_handler.py`](../../../backend/apps/vendite/handlers/push_preventivo_handler.py),
+ramo servizi: `approva_commessa_attivita` + `cambia_stato_commessa(PRONTA)`). I
+due `push_a_commessa` standalone (preventivi **e** ordini) **non** transitano la
+commessa (pushano righe + evadono il documento sorgente). → il fix riguarda **solo
+l'handler**.
 
-```
-approva_commessa_attivita(...) ; cambia_stato_commessa(PRONTA_FATTURAZIONE)
-```
+**Regressione resa raggiungibile da B** (prima mascherata: la 2ª sorgente era
+bloccata *prima*, sull'aggancio). Scenario: due preventivi con stesse dimensioni
+(BA/utility/periodo/policy) confermati in sequenza → il 2° handler trova la
+commessa **già `PRONTA_FATTURAZIONE`** (portata lì dal 1°) e
+`cambia_stato_commessa(PRONTA)` fallisce su `PRONTA→PRONTA` (matrice senza
+`da=a`). `fn_cambia_stato_commessa` **non** è idempotente (fa l'UPDATE, il trigger
+`trgfn_commesse_guard_transizione` blocca).
 
-falliscono sulla transizione `PRONTA→PRONTA` (matrice senza `PRONTA→PRONTA`,
-CHECK `da≠a`) — stesso tipo di problema di §8.2 del brief pratica-preventivi.
-
-**Specifica**: rendere la transizione a `PRONTA_FATTURAZIONE` **idempotente**
-(skip se la commessa è già `PRONTA_FATTURAZIONE`/oltre) nei punti che la invocano:
-
-- `apps/vendite/handlers/push_preventivo_handler.py` (ramo servizi);
-- `apps/vendite/services/preventivi_service.py::push_a_commessa`;
-- `apps/vendite/services/ordini_service.py::push_a_commessa`.
-
-Equivalente lato DB: `fn_cambia_stato_commessa` no-op (o ammessa) su
-`PRONTA→PRONTA` — da decidere col team se la guardia vive a DB o BE (preferenza:
-guard applicativo a monte, BE, blast radius minimo). **Non urgente prima della
-consegna B**: oggi il caso non è raggiungibile (il conflitto ROOT lo previene).
+**Specifica fix** (handler, ramo servizi): leggere lo stato corrente della
+commessa e transitare a `PRONTA_FATTURAZIONE` **solo se non già** PRONTA/oltre
+(skip idempotente); l'`approva_commessa_attivita` resta (approva le nuove righe
+COLLEGATO). In alternativa, gemella a DB (`fn_cambia_stato_commessa` no-op su
+stato-uguale) — da decidere col team; preferenza guard BE (blast radius minimo).
 
 ### 4.3 Verifica residua
-Nessun altro guard applicativo deve assumere «1 sorgente = 1 commessa».
+Nessun altro guard applicativo deve assumere «1 sorgente = 1 commessa». ✅ Verificato.
 
-## 5. pgTAP (suggeriti)
+## 5. pgTAP (suggeriti) — ✅ coperti dalla consegna
 - ROOT presente + **seconda sorgente diversa** → INSERT `COLLEGATO`, **niente**
   `E_COMMESSA_ROOT_CONFLITTO`.
 - **N COLLEGATO** sulla stessa commessa ammessi (≥2).
@@ -179,7 +190,7 @@ Nessun altro guard applicativo deve assumere «1 sorgente = 1 commessa».
 - Tentata **seconda ROOT** esplicita → ancora bloccata.
 - Attività delle due sorgenti **entrambe presenti** nella commessa (segment_key
   distinti).
-- (Se adottato §2.3) stessa sorgente su due commesse → bloccata.
+- §2.3 adottato: stessa sorgente su due commesse → `E_COMMESSA_SORGENTE_ALTRA_COMMESSA`.
 
 ## 6. Note / fuori scope
 - **Fatturazione**: B abilita l'aggregazione *N ordini → 1 commessa → 1
@@ -192,8 +203,15 @@ Nessun altro guard applicativo deve assumere «1 sorgente = 1 commessa».
 - Questo brief è **solo `commesse_sorgenti`** + `fn_link_commessa_sorgente`. Non
   tocca il resolver, né il modello pratiche (già a posto), né la pipeline fattura.
 
+## 7. Log implementazione
+
+| Quando | Cosa |
+| --- | --- |
+| 2026-06-09 (DB) | **Consegnato** (`806fe749c`). `20260609-10`: `chk_commesse_sorgenti_ruolo` → `{ROOT, COLLEGATO}`, UNIQUE ROOT **parziale**, UNIQUE sorgente `(sorgente_tipo_id, sorgente_uid)` senza ruolo (§2.3). `20260609-11`: `fn_link_commessa_sorgente` **auto-ruolo** (lock commessa, idempotente, `COLLEGATO` se ROOT già presente) + nuovo errore `E_COMMESSA_SORGENTE_ALTRA_COMMESSA`. pgTAP §5 coperti. |
+| 2026-06-09 (BE) | ✅ **FATTO** §4.2 (NON committato): skip idempotente di `cambia_stato_commessa(PRONTA)` nell'handler `CONFERMA_VENDITA` quando la commessa è già `PRONTA_FATTURAZIONE` (nuovo `CommesseRepository.get_commessa_stato_codice`). `CHIUSA`/`ANNULLATA` falliscono forte (deliberato). Test `test_commessa_gia_pronta_skip_transizione`. Brief ora **chiuso**. |
+
 ---
 
 *Brief DB — commessa multi-sorgente (ROOT + COLLEGATO). Specchio di
-`pratiche_sorgenti`. Pronto per il team commesse su `dev/db-tid`. A consegna,
-l'agente BE verifica il cablaggio (atteso no-op) e rieseguibilità push.*
+`pratiche_sorgenti`. **DB consegnato 2026-06-09** (`806fe749c`); resta il fix BE
+§4.2 (idempotenza transizione PRONTA nell'handler).*

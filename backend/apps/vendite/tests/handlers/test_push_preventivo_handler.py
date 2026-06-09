@@ -14,6 +14,7 @@ Indice test eseguiti:
  1) test_mix_immediata_ok — merce+servizi, IMMEDIATA: ordine + commessa + EVASO
  2) test_differita_ok — servizi, DIFFERITA: policy false + mese da meta
  3) test_solo_servizi_ok — niente merce: nessun push ordine, commessa + EVASO
+ 3b) test_commessa_gia_pronta_skip_transizione — multi-sorgente: skip PRONTA→PRONTA
  4) test_solo_merce_ok — niente servizi: push ordine, nessuna commessa, EVASO
  5) test_differita_senza_competenza — E_VENDITA_COMPETENZA_RICHIESTA (ramo commessa)
  6) test_solo_merce_differita_no_competenza — competenza NON richiesta se merce-only
@@ -64,6 +65,7 @@ class PushPreventivoHandlerTests(SimpleTestCase):
         ordine_id=5501,
         commessa_id=7701,
         ordine_pregresso=False,
+        commessa_stato="BOZZA",
     ):
         prev_repo = MockPrev.return_value
         prev_repo.get_preventivo_id_by_pratica_root.return_value = preventivo_root
@@ -75,6 +77,8 @@ class PushPreventivoHandlerTests(SimpleTestCase):
         # get_commessa_id_by_sorgente: nel ramo commessa ritorna la commessa
         # creata; nel guard (righe_commessa==0) ritorna l'eventuale pregresso.
         MockComm.return_value.get_commessa_id_by_sorgente.return_value = commessa_id
+        # Stato commessa per lo skip idempotente della transizione a PRONTA.
+        MockComm.return_value.get_commessa_stato_codice.return_value = commessa_stato
         return PushPreventivoHandler().execute(
             flusso_id=1, pratica_id=2, meta=meta, handler_params=handler_params,
             user="alice",
@@ -136,6 +140,23 @@ class PushPreventivoHandlerTests(SimpleTestCase):
         self.assertTrue(res["evaso"])
         # Giornale: commessa + evaso (no ordine).
         self.assertEqual(MockPrat.return_value.log_evento_dominio.call_count, 2)
+
+    # 3b) Commessa multi-sorgente GIÀ pronta → skip idempotente della transizione
+    #     (brief-db-commesse-multi-sorgente.md §4.2): approva sempre le nuove
+    #     righe, ma NON ri-transita PRONTA→PRONTA. Nessun errore, EVASO regolare.
+    def test_commessa_gia_pronta_skip_transizione(self, MockPrev, MockComm, MockPrat, mock_push):
+        res = self._run(
+            MockPrev, MockComm,
+            meta={}, handler_params={"modalita_fatturazione": "IMMEDIATA"},
+            residuo=(False, False), righe_commessa=2,
+            commessa_stato="PRONTA_FATTURAZIONE",
+        )
+        comm = MockComm.return_value
+        # Righe approvate comunque (idempotente), ma transizione SALTATA.
+        comm.approva_commessa_attivita.assert_called_once()
+        comm.cambia_stato_commessa.assert_not_called()
+        self.assertEqual(res["commessa_id"], 7701)
+        self.assertTrue(res["evaso"])
 
     # 4) Solo merce: push ordine, nessuna commessa, EVASO.
     def test_solo_merce_ok(self, MockPrev, MockComm, MockPrat, mock_push):

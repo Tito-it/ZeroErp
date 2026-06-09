@@ -27,6 +27,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoApprovazioneFlusso,
     ApiPreventivoCollegaPratica,
     ApiPreventivoGeneraOrdine,
+    ApiPreventivoRigheSmistabiliOrdine,
     ApiPreventivoGeneraPratica,
     ApiPreventivoIndirizzi,
     ApiPreventivoPratiche,
@@ -81,7 +82,12 @@ urlpatterns = [
         ApiPreventivoEmetti.as_view(),
         name="vendite-preventivi-emetti",
     ),
-    # Conversione upstream → ordine (§7.4)
+    # Smistamento MERCE → ordine (modello split D8)
+    path(
+        "<int:preventivo_id>/righe-smistabili-ordine/",
+        ApiPreventivoRigheSmistabiliOrdine.as_view(),
+        name="vendite-preventivi-righe-smistabili-ordine",
+    ),
     path(
         "<int:preventivo_id>/genera-ordine/",
         ApiPreventivoGeneraOrdine.as_view(),

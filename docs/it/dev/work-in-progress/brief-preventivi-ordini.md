@@ -209,7 +209,7 @@ Stato BE 2026-06-09 (parte 2, **NON committato** — `dev/backend-tid`):
 **Residui** (non bloccanti): smistamento **riga-per-riga** (manca solo il dialog FE
 di selezione; endpoint/repo/fn DB già con `righe_ids`); fragilità [F1] lookup
 `INNER`→`LEFT JOIN` natura; coordinamento commessa multi-sorgente
-([brief-db-commesse-multi-sorgente.md](brief-db-commesse-multi-sorgente.md) §4.2);
+([brief-db-commesse-multi-sorgente.md](../work-done/brief-db-commesse-multi-sorgente.md) §4.2);
 smoke UI E2E.
 
 ## 8. Log implementazione DB (2026-06-09)

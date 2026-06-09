@@ -374,6 +374,25 @@ class ApiPreventivoGeneraOrdine(DomainAPIView):
         return handle_post_json(request, handler=_handler)
 
 
+class ApiPreventivoRigheSmistabiliOrdine(DomainAPIView):
+    """`GET /api/v1/vendite/preventivi/<id>/righe-smistabili-ordine/` — righe
+    MERCE (natura destinazione ORDINE) non ancora allocate. Alimenta il dialog
+    di smistamento riga-per-riga preventivo→ordine."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PreventivoRigheSmistabiliOrdineResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Righe merce smistabili a ordine (per il dialog "Genera ordine").
+    def get(self, request: Request, preventivo_id: int) -> JsonResponse:
+        data = preventivi_service.list_righe_smistabili_ordine(preventivo_id)
+        return success_response(data)
+
+
 class ApiPreventivoApprovazioneFlusso(DomainAPIView):
     """`POST /api/v1/vendite/preventivi/approvazione-flusso/` (M2, brief BE §8.3):
     completa il flusso APPROVAZIONE_CLIENTE di una pratica PREVENTIVI e, in esito

@@ -49,6 +49,7 @@ import { SORGENTE_CODES } from '../../../documenti/constants'
 import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import PreventivoEmissioneDialog from './dialogs/PreventivoEmissioneDialog.vue'
+import GeneraOrdineDialog from './dialogs/GeneraOrdineDialog.vue'
 import Drawer from 'primevue/drawer'
 import AppDialog from '../../../core/components/AppDialog.vue'
 import DatePicker from 'primevue/datepicker'
@@ -584,6 +585,9 @@ const acceptDialogVisible = ref(false)
 // (refactor 2026-05-28, mirror del flusso offerta `ApiOffertaEmetti`).
 const emissioneDialogVisible = ref(false)
 const emissioneLoading = ref(false)
+// Dialog smistamento merce→ordine (modello split D8).
+const generaOrdineDialogVisible = ref(false)
+const generaOrdineLoading = ref(false)
 const acceptForm = ref({
   fatturazione_immediata: false,
   // Default 1° del mese corrente: scelta sensata se l'operatore conferma "non
@@ -647,11 +651,9 @@ function onCambiaStato(action) {
   }
   if (action.key === 'genera_ordine') {
     // Smistamento MERCE → ordine (modello split D8). Azione data-driven dal BE
-    // (visibile solo con residuo merce non allocato). Conferma + delega.
-    confirmAction({
-      message: t('preventivi.conferma_cambio_stato', { stato: t(action.label_key) }),
-      onAccept: onGeneraOrdine,
-    })
+    // (visibile solo con residuo merce non allocato). Apre il dialog di
+    // selezione righe: la conferma vera è il Save del dialog.
+    generaOrdineDialogVisible.value = true
     return
   }
   // Transizione → EMESSO: dialog dedicato con anteprima documento + allegati.
@@ -720,16 +722,20 @@ function onNuovaRevisione() {
   })
 }
 
-// Smistamento MERCE → ordine (modello split D8): chiama l'endpoint
-// /genera-ordine/ (delega a fn_push_preventivo_a_ordine: solo righe merce,
-// snapshot prezzi + BoM + link di riga, niente servizi/ricorrenti). Notifica
-// col numero ordine, segnala alla lista ordini e ricarica il detail (la
-// capability sparisce quando non resta residuo merce).
-async function onGeneraOrdine() {
+// Smistamento MERCE → ordine (modello split D8): callback @confirm del
+// GeneraOrdineDialog. Riceve il sottoinsieme di righe merce scelte e chiama
+// l'endpoint /genera-ordine/ (delega a fn_push_preventivo_a_ordine: solo righe
+// merce, snapshot prezzi + BoM + link di riga, niente servizi/ricorrenti).
+// Notifica col numero ordine, segnala alla lista ordini e ricarica il detail
+// (la capability sparisce quando non resta residuo merce).
+async function onGeneraOrdineConferma({ righeIds }) {
+  generaOrdineLoading.value = true
   const result = await execute(
-    () => generaOrdineFromPreventivo(effectivePreventivoId.value),
+    () => generaOrdineFromPreventivo(effectivePreventivoId.value, righeIds),
   )
+  generaOrdineLoading.value = false
   if (result === null) return
+  generaOrdineDialogVisible.value = false
   notify.success(t('preventivi.ordine_generato', { numero: result.numero }))
   emitDataChanged(TAB_ENTITIES.ORDINE, result.ordine_id)
   await loadDetail()
@@ -1050,6 +1056,16 @@ const drawerActions = computed(() => {
     :preventivo="detail"
     :loading="emissioneLoading"
     @confirm="handleEmissioneConferma"
+  />
+
+  <!-- Dialog smistamento merce→ordine: seleziona le righe merce da portare a
+       un nuovo ordine DRAFT (preselezionate tutte). -->
+  <GeneraOrdineDialog
+    v-if="effectivePreventivoId"
+    v-model:visible="generaOrdineDialogVisible"
+    :preventivo-id="effectivePreventivoId"
+    :loading="generaOrdineLoading"
+    @confirm="onGeneraOrdineConferma"
   />
 
   <!-- Dialog accettazione preventivo (transizione EMESSO → ACCETTATO).

@@ -234,12 +234,28 @@ class PushPreventivoHandler:
                 )
                 assert commessa_id is not None
 
-                # Righe → APPROVATA, poi testata → PRONTA_FATTURAZIONE (ordine
-                # vincolante: il guard DB richiede >=1 riga APPROVATA+NON_EMESSA).
+                # Righe → APPROVATA (idempotente: approva le nuove righe, anche
+                # COLLEGATO, senza toccare quelle già approvate).
                 commesse_repo.approva_commessa_attivita(commessa_id=commessa_id, user=user)
-                commesse_repo.cambia_stato_commessa(
-                    commessa_id=commessa_id, nuovo_stato=_STATO_COMMESSA_PRONTA, user=user,
-                )
+
+                # Testata → PRONTA_FATTURAZIONE, con SKIP IDEMPOTENTE se la
+                # commessa è GIÀ pronta (commessa multi-sorgente, brief
+                # brief-db-commesse-multi-sorgente.md §4.2): col modello
+                # commesse_sorgenti ROOT+COLLEGATO una commessa dimensionalmente
+                # condivisa può essere stata portata a PRONTA_FATTURAZIONE da una
+                # sorgente precedente (es. un altro preventivo confermato con
+                # stesse BA/utility/periodo). `fn_cambia_stato_commessa` non è
+                # idempotente (UPDATE + guard di matrice DB senza `da=a`): una
+                # 2ª transizione PRONTA→PRONTA fallirebbe. Leggo lo stato e
+                # transito solo se NON già pronta.
+                # NB: gli stati "oltre" anomali (CHIUSA/ANNULLATA) NON sono
+                # silenziati di proposito — la transizione viene tentata e il
+                # guard DB fallisce forte: non si evade un preventivo su una
+                # commessa chiusa/annullata.
+                if commesse_repo.get_commessa_stato_codice(commessa_id) != _STATO_COMMESSA_PRONTA:
+                    commesse_repo.cambia_stato_commessa(
+                        commessa_id=commessa_id, nuovo_stato=_STATO_COMMESSA_PRONTA, user=user,
+                    )
 
                 # Aggancio pratiche_sorgenti (idempotente): preventivo ROOT,
                 # commessa COLLEGATO. sorgente_uid: preventivo→uid, commessa→id.
