@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ONE-SHOT: drop dei trigger ATTIVO orfani lasciati dal DROP del
+# modello legacy profili_reparto_* (changeSet 20260505-02).
+#
+# Why: i trigger "prevent_deactivate_if_children" / "child_requires_
+# active_parent" NON sono scritti a mano: li genera a runtime
+# dbops.fn_run_automations_attivo scansionando le FK, e li piazza
+# SUL PADRE (config.unita_organizzative / azioni_processo /
+# aree_funzionali). Il legame con la tabella figlia e' solo una
+# stringa passata alla trigger function generica: NON e' una
+# dipendenza tracciata nel catalogo PostgreSQL. Percio' il
+# DROP TABLE config.profili_reparto_* CASCADE (20260505-02) rimuove
+# figlia + FK ma lascia i trigger lato padre come ORFANI: alla prima
+# UPDATE che disattiva un padre, la trigger function interroga una
+# tabella inesistente e l'operazione fallisce a runtime.
+#
+# Sequenza su DB vergine (autogen ordina per data globale):
+#   04-08  20260408-07  cleanup+rerun automations -> ricrea i trigger
+#                       (le profili_reparto_* esistono ancora)
+#   05-05  20260505-02  DROP TABLE profili_reparto_* -> li orfana
+#   06-10  QUESTO       drop mirato degli orfani residui
+# L'automation NON li ricreera' mai piu': la FK sorgente non esiste.
+#
+# Scoped: ILIKE '%profili_reparto%' sui tgargs (via pg_get_triggerdef)
+# tocca SOLO gli orfani profili_reparto, non i trigger ATTIVO validi.
+# Auto-verificante: se non ci sono orfani, droppa 0 (no-op innocuo,
+# es. su DB dove il cleanup e' gia' stato fatto a mano).
+#
+# One-shot: nessun runOnChange / runAlways. Gira una volta in sequenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260610-01-drop-orphan-triggers-attivo-profili-reparto-mctit.yaml
+
+  - changeSet:
+      id: 20260610-01-drop-orphan-triggers-attivo-profili-reparto
+      author: mctit
+      comment: >
+        Drop dei trigger ATTIVO orfani (prevent_deactivate_if_children /
+        child_requires_active_parent) rimasti su unita_organizzative,
+        azioni_processo, aree_funzionali dopo il DROP delle tabelle
+        legacy config.profili_reparto_* (20260505-02). CASCADE non li
+        rimuove perche' il riferimento alla figlia e' una stringa, non
+        una dipendenza di catalogo. Idempotente.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $cleanup$
+              DECLARE
+                r    record;
+                v_n  integer := 0;
+              BEGIN
+                FOR r IN
+                  SELECT
+                    n.nspname AS schema_name,
+                    c.relname AS table_name,
+                    t.tgname  AS trigger_name
+                  FROM pg_trigger t
+                  JOIN pg_class c     ON c.oid = t.tgrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  JOIN pg_proc p      ON p.oid = t.tgfoid
+                  WHERE NOT t.tgisinternal
+                    AND p.proname IN (
+                      'trgfn_prevent_deactivate_if_children',
+                      'trgfn_child_requires_active_parent'
+                    )
+                    AND pg_get_triggerdef(t.oid) ILIKE '%profili_reparto%'
+                  ORDER BY n.nspname, c.relname, t.tgname
+                LOOP
+                  EXECUTE format(
+                    'DROP TRIGGER IF EXISTS %I ON %I.%I',
+                    r.trigger_name, r.schema_name, r.table_name
+                  );
+                  v_n := v_n + 1;
+                  RAISE NOTICE 'Dropped orphan trigger % on %.%',
+                    r.trigger_name, r.schema_name, r.table_name;
+                END LOOP;
+
+                RAISE NOTICE 'Cleanup orfani profili_reparto: % trigger droppati', v_n;
+              END
+              $cleanup$;
