@@ -44,6 +44,11 @@ databaseChangeLog:
         Restringe la guard di stato: revisione ammessa solo da EMESSO.
         Rimuove ACCETTATO (che ora e' stato terminale "in attesa di push
         commessa", non rivisitabile). Stessa firma, body modificato.
+      # NB: niente sqlCheck su dati di config.stati_doc_preventivi qui.
+      # Questo changeSet vive in 20_code, che gira PRIMA di 80_data (dove
+      # viene seedato 'EMESSO'): su DB vergine (CI) la sqlCheck darebbe
+      # COUNT=0 -> HALT. Si validano solo le tabelle (oggetti 00_schema,
+      # gia' presenti). La presenza dello stato e' garantita a runtime.
       preConditions:
         - onFail: HALT
         - and:
@@ -53,11 +58,6 @@ databaseChangeLog:
             - tableExists:
                 schemaName: config
                 tableName: stati_doc_preventivi
-            - sqlCheck:
-                expectedResult: 1
-                sql: |
-                  SELECT COUNT(*) FROM config.stati_doc_preventivi
-                   WHERE codice = 'EMESSO' AND attivo IS TRUE;
       changes:
         - sql:
             dbms: postgresql
