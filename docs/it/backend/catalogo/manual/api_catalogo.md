@@ -269,7 +269,7 @@ da stringa generico di `/core/parameters/defaults/`.
 | `escludi_destinazione` | string (CSV) | No | Esclude gli articoli la cui **natura** ha una `destinazione_tipo` tra quelle elencate (`ORDINE` / `COMMESSA` / `CONTRATTO`). Filtro **data-driven sulla destinazione**, non sul codice natura. Es. `escludi_destinazione=CONTRATTO` per non proporre articoli ricorrenti sulle righe di un **preventivo** (difesa in profondità del blocco DB D9, modello split per natura). Valori normalizzati a maiuscolo; token vuoti ignorati. |
 | `limit` | int | No | Default `20`, max `50` |
 
-> **Nota natura (split per natura)**: il filtro fa JOIN `catalogo.articoli → config.nature_vendita` (`natura_vendita_id`, NOT NULL post-D3) e applica `destinazione_tipo <> ALL(escluse)`. Senza il parametro il lookup è invariato (nessun JOIN natura). Usato dal FE `ArticoloLookup` via prop `escludiDestinazione` (riga preventivo passa `['CONTRATTO']`).
+> **Nota natura (split per natura)**: il filtro fa `LEFT JOIN catalogo.articoli → config.nature_vendita` (`natura_vendita_id`) e applica `(destinazione_tipo IS NULL OR destinazione_tipo <> ALL(escluse))` — **NULL-tolerant**: un articolo con natura NULL non viene nascosto, è escluso solo se la sua destinazione è tra quelle vietate (coerente col "NULL = include" di `fn_list_preventivi_da_pushare`). Senza il parametro il lookup è invariato (nessun JOIN natura). Usato dal FE `ArticoloLookup` via prop `escludiDestinazione` (riga preventivo passa `['CONTRATTO']`).
 
 #### Output specifico
 

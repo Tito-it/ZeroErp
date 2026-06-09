@@ -133,6 +133,16 @@ class TestPreventiviApiViews(JwtMockedApiTest):
         )
         self.assertIn(response.status_code, [200, 401, 403])
 
+    # Scopo: Verifica GET righe smistabili a ordine (dialog smistamento merce).
+    def test_righe_smistabili_ordine_200(self):
+        self.mock_svc.list_righe_smistabili_ordine.return_value = [
+            {"id": 10, "articolo_codice": "ART1", "qta_operativa": "2"},
+        ]
+        response = self.client.get(
+            "/api/v1/vendite/preventivi/1/righe-smistabili-ordine/"
+        )
+        self.assertIn(response.status_code, [200, 401, 403])
+
     # Scopo: Verifica POST push commessa.
     def test_push_commessa_200(self):
         self.mock_svc.push_a_commessa.return_value = {"righe_pushate": 3}

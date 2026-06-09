@@ -1290,6 +1290,28 @@ class TestPreventiviService(unittest.TestCase):
             get_preventivo(999)
         self.assertEqual(ctx.exception.code, "E_PREV_NOT_FOUND")
 
+    # Scopo: righe smistabili a ordine — guard NOT_FOUND + delega al repository.
+    def test_list_righe_smistabili_ordine_not_found(self):
+        from apps.vendite.services.preventivi_service import (
+            list_righe_smistabili_ordine,
+        )
+
+        self.mock_repo.get_preventivo.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            list_righe_smistabili_ordine(999)
+        self.assertEqual(ctx.exception.code, "E_PREV_NOT_FOUND")
+
+    def test_list_righe_smistabili_ordine_ok(self):
+        from apps.vendite.services.preventivi_service import (
+            list_righe_smistabili_ordine,
+        )
+
+        self.mock_repo.get_preventivo.return_value = {"id": 1}
+        self.mock_repo.list_righe_smistabili_ordine.return_value = [{"id": 10}]
+        out = list_righe_smistabili_ordine(1)
+        self.assertEqual(out, [{"id": 10}])
+        self.mock_repo.list_righe_smistabili_ordine.assert_called_once_with(1)
+
     # Scopo: Verifica che get_preventivo includa capabilities + righe_count + indirizzi
     #        senza embeddare le righe (Fase 3.F6 refactor frontend vendite: il FE
     #        legge le righe via endpoint /righe/ autonomo).

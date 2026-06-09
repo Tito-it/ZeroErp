@@ -254,6 +254,24 @@ def list_righe(preventivo_id: int) -> list[dict[str, Any]]:
     return repo.list_righe(preventivo_id)
 
 
+# Scopo: Righe MERCE smistabili a ordine (natura destinazione_tipo='ORDINE' non
+#        ancora allocate). Alimenta il dialog di smistamento riga-per-riga
+#        preventivo→ordine: il FE preseleziona tutte e invia il sottoinsieme
+#        scelto a POST /genera-ordine/ {righe_ids}. Le righe sono esattamente
+#        quelle che lo smistamento copierebbe (stesso predicato del residuo).
+def list_righe_smistabili_ordine(preventivo_id: int) -> list[dict[str, Any]]:
+    repo = PreventiviRepository()
+    testata = repo.get_preventivo(preventivo_id)
+    ErrorManager.require(
+        testata is not None,
+        code="E_PREV_NOT_FOUND",
+        message="Preventivo non trovato.",
+        detail=f"preventivo_id={preventivo_id}",
+        function_name=f"{_FN}.list_righe_smistabili_ordine",
+    )
+    return repo.list_righe_smistabili_ordine(preventivo_id)
+
+
 # Scopo: Riepilogo IVA aggregato del preventivo (una riga per aliquota +
 #        eventuali natura/esigibilita/split). Calcolo fiscalmente corretto
 #        gia' applicato in DB via fn_ricalcola_riepilogo_iva_preventivo:

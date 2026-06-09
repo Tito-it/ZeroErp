@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_preventivo_ha_residuo_ordine — CONSOLIDAMENTO PREDICATO.
+# Supera 20260609-07: il predicato inline (3 condizioni) e' ora delegato alla
+# vista-sorgente-unica vendite.vw_preventivi_righe_smistabili_ordine (20260610-02).
+# La funzione diventa un semplice EXISTS sulla vista: stesso risultato, ma una
+# sola definizione del predicato condivisa con fn_push_preventivo_a_ordine.
+#
+# Comportamento INVARIATO: TRUE sse esiste >=1 riga-merce (natura ORDINE) attiva
+# e non ancora allocata a un ordine. Resta il predicato condiviso da:
+#   - capability can_genera_ordine (script.fn_available_actions_preventivo);
+#   - gate stato EVASO (brief-preventivi-ordini.md D6).
+#
+# MAI modificato in place 20260609-07 (changelog gia' pushato): nuovo changeSet
+# runOnChange con numerazione successiva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260610-03-update-fn-preventivo-ha-residuo-ordine-usa-vista-mctit.yaml
+
+  - changeSet:
+      id: 20260610-03-update-fn-preventivo-ha-residuo-ordine-usa-vista
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        fn_preventivo_ha_residuo_ordine ora delega alla vista-predicato unica
+        vw_preventivi_righe_smistabili_ordine (consolidamento). Comportamento
+        invariato (EXISTS sulle righe-merce non allocate).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_preventivi_righe_smistabili_ordine
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_preventivo_ha_residuo_ordine(
+                  p_preventivo_id vendite.preventivi.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Residuo MERCE: delega alla vista-predicato unica
+                  -- (DB-first). Nessun predicato duplicato qui.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.vw_preventivi_righe_smistabili_ordine v
+                       WHERE v.preventivo_id = p_preventivo_id
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_preventivo_ha_residuo_ordine(vendite.preventivi.id%TYPE)
+              IS 'TRUE se il preventivo ha righe natura ORDINE (merce) non ancora allocate a un ordine. Predicato condiviso (vista vw_preventivi_righe_smistabili_ordine): capability can_genera_ordine + gate stato EVASO (D6, brief-preventivi-ordini.md). Non considera COMMESSA (gestita da push_a_commessa) ne CONTRATTO (non ammesso sul preventivo).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_preventivo_ha_residuo_ordine(vendite.preventivi.id%TYPE);

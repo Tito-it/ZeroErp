@@ -2218,6 +2218,10 @@
     "gestisci_note": "Manage notes",
     "azione_genera_ordine": "Generate order",
     "ordine_generato": "Order {numero} generated from the quote.",
+    "genera_ordine_titolo": "Generate order from goods lines",
+    "genera_ordine_conferma": "Generate order",
+    "genera_ordine_hint": "Select the goods lines to move into a new order. Already-ordered lines are not shown; services do not belong here.",
+    "genera_ordine_nessuna_riga": "No goods lines to order.",
     "pdf": {
       "label_anteprima": "Preview",
       "tooltip_anteprima": "Preview PDF (not saved)",

@@ -26,6 +26,8 @@ databaseChangeLog:
       author: mctit
       runOnChange: false
       failOnError: true
+      validCheckSums:
+        - ANY
       comment: >
         Backfill emittente_fiscale_id su preventivi storici. Catena
         user_insert -> BA-derived -> gestore globale. Idempotente
@@ -53,13 +55,25 @@ databaseChangeLog:
               --   Riferimento django.auth_user fully qualified (no %TYPE su
               --   tabelle django, vedi linee guida progetto).
               -- ==========================================================
-              UPDATE vendite.preventivi p
-                 SET emittente_fiscale_id = script.fn_resolve_emittente_for_user(au.id::integer)
-                FROM django.auth_user au
-               WHERE au.username = p.user_insert
-                 AND au.is_active = true
-                 AND p.emittente_fiscale_id IS NULL
-                 AND script.fn_resolve_emittente_for_user(au.id::integer) IS NOT NULL;
+              -- django.auth_user e' gestita da Django: su CI / DB senza
+              -- "manage.py migrate" la relazione non esiste. Guard con
+              -- to_regclass per no-op sicuro (su DB vergine non ci sono
+              -- comunque preventivi storici da convertire). Convenzione:
+              -- riferimenti django.* sempre guardati / in plpgsql.
+              DO $step1$
+              BEGIN
+                IF to_regclass('django.auth_user') IS NOT NULL THEN
+                  UPDATE vendite.preventivi p
+                     SET emittente_fiscale_id = script.fn_resolve_emittente_for_user(au.id::integer)
+                    FROM django.auth_user au
+                   WHERE au.username = p.user_insert
+                     AND au.is_active = true
+                     AND p.emittente_fiscale_id IS NULL
+                     AND script.fn_resolve_emittente_for_user(au.id::integer) IS NOT NULL;
+                ELSE
+                  RAISE NOTICE 'django.auth_user assente: skip Step 1 user-derived (CI/DB senza Django).';
+                END IF;
+              END $step1$;
 
               -- ==========================================================
               -- Step 2: BA-derived per i residui (operatore non piu' risolvibile

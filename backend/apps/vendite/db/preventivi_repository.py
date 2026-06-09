@@ -1035,6 +1035,44 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             assert row is not None and row[0] is not None
             return int(row[0])
 
+    # Scopo: Righe MERCE smistabili a ordine — il sottoinsieme che alimenta il
+    #        dialog di smistamento riga-per-riga (preventivo→ordine). Stesso
+    #        predicato di `fn_preventivo_ha_residuo_ordine` / del FOR loop di
+    #        `fn_push_preventivo_a_ordine`: natura destinazione_tipo='ORDINE',
+    #        riga attiva, NON ancora allocata a un ordine (idempotenza di riga).
+    #        Campi display via JOIN (no lookup client-side). Le righe restituite
+    #        sono esattamente quelle che `push_a_ordine` copierebbe.
+    def list_righe_smistabili_ordine(self, preventivo_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                pr.id,
+                pr.ordine,
+                pr.articolo_id,
+                a.codice            AS articolo_codice,
+                a.descrizione       AS articolo_descrizione,
+                pr.descrizione,
+                pr.qta_operativa,
+                pr.uom_operativa_id,
+                um.codice           AS uom_codice,
+                pr.prezzo_unitario,
+                pr.sconto_percentuale
+              FROM vendite.preventivi_righe pr
+              JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+              LEFT JOIN catalogo.articoli a    ON a.id  = pr.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id = pr.uom_operativa_id
+             WHERE pr.preventivo_id = %s
+               AND COALESCE(pr.attivo, TRUE) IS TRUE
+               AND nv.destinazione_tipo = 'ORDINE'
+               AND NOT EXISTS (
+                   SELECT 1 FROM vendite.ordini_righe orr
+                    WHERE orr.preventivo_riga_id = pr.id
+               )
+             ORDER BY pr.ordine NULLS LAST, pr.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [preventivo_id])
+            return rows_to_list(cursor)
+
     # Scopo: Predicato residuo MERCE (D6) — TRUE se restano righe natura
     #        destinazione_tipo='ORDINE' non ancora allocate a un ordine.
     #        Condiviso tra il dispatch del ramo ordine (decide se invocare

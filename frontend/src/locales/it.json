@@ -2224,6 +2224,10 @@
     "gestisci_note": "Gestisci note",
     "azione_genera_ordine": "Genera ordine",
     "ordine_generato": "Ordine {numero} generato dal preventivo.",
+    "genera_ordine_titolo": "Genera ordine dalle righe merce",
+    "genera_ordine_conferma": "Genera ordine",
+    "genera_ordine_hint": "Seleziona le righe merce da portare in un nuovo ordine. Le righe già ordinate non compaiono; i servizi non rientrano qui.",
+    "genera_ordine_nessuna_riga": "Nessuna riga merce da ordinare.",
     "pdf": {
       "label_anteprima": "Anteprima",
       "tooltip_anteprima": "Anteprima PDF (non viene salvata)",
