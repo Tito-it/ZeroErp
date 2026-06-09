@@ -24,6 +24,9 @@ BEGIN
   --
   -- Regole:
   --   - stato documento ACCETTATO
+  --   - SOLO righe natura destinazione_tipo='COMMESSA' (natura NULL
+  --     trattata come COMMESSA: pregresso pre-trigger). La merce
+  --     (ORDINE) va su fn_push_preventivo_a_ordine, non qui.
   --   - esclude righe gia` EMESSA in commessa (via NOT EXISTS)
   --   - riga attivo = true, quantita > 0, prezzo >= 0
   --   - prezzo_bloccato = fatturazione_immediata
@@ -36,6 +39,7 @@ BEGIN
   --   - uom_id: UoM canonica da catalogo.articoli (JOIN su pr.articolo_id).
   --     La colonna preventivi_righe.uom_id e` droppata (non usare).
   --   - uom_operativa_id: UoM di inserimento operatore (dalla riga).
+  --   - natura: LEFT JOIN per non perdere righe a natura NULL.
   -- =========================================================
 
   IF p_preventivo_id IS NOT NULL AND p_preventivo_id <= 0 THEN
@@ -108,9 +112,11 @@ BEGIN
    AND pr.quantita > 0
    AND pr.prezzo_unitario >= 0
   JOIN catalogo.articoli a ON a.id = pr.articolo_id
+  LEFT JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
   WHERE p.billing_account_id IS NOT NULL
     AND p.utility_id IS NOT NULL
     AND (v_stato_accettato_id IS NULL OR p.stato_doc_preventivo_id = v_stato_accettato_id)
+    AND (pr.natura_vendita_id IS NULL OR nv.destinazione_tipo = 'COMMESSA')
     AND (p_competenza_mese IS NULL
          OR date_trunc('month', COALESCE(p.validita_dal, p.data))::date = p_competenza_mese)
     AND (p_billing_account_id IS NULL OR p.billing_account_id = p_billing_account_id)
@@ -126,7 +132,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_preventivo_id bigint)
-IS 'Lista righe preventivo eligible al push su commessa (stato ACCETTATO). uom_id da catalogo.articoli (canonica). p_preventivo_id opzionale: NULL=batch globale, NOT NULL=UI push singolo. Filtri in AND. Esclude EMESSA via NOT EXISTS.';
+IS 'Lista righe preventivo eligible al push su commessa (stato ACCETTATO). NATURA-AWARE (rev 09-06-2026): solo righe con natura destinazione_tipo=COMMESSA (natura NULL = pregresso, inclusa); la merce (ORDINE) va su fn_push_preventivo_a_ordine. uom_id da catalogo.articoli (canonica). p_preventivo_id opzionale: NULL=batch globale, NOT NULL=UI push singolo. Filtri in AND. Esclude EMESSA via NOT EXISTS.';
 ```
 
 ---
