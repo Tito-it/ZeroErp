@@ -212,6 +212,7 @@ testato (pgTAP), salvo `20260609-07/08` da applicare:
 | `20260609-06` | **`vendite.fn_push_preventivo_a_ordine`** (D1/D4/D5/D7/D8): split righe ORDINE→ordine DRAFT `documento_origine=PREVENTIVO`, snapshot prezzi, BoM via `fn_ordine_riga_componenti_init`, idempotenza di riga `ordini_righe.preventivo_riga_id`, pratica opzionale. |
 | `20260609-07` | `vendite.fn_preventivo_ha_residuo_ordine` — predicato residuo merce, condiviso capability + gate EVASO. |
 | `20260609-08` | Capability/azione `genera_ordine` in `script.fn_available_actions_preventivo` (additivo). |
+| `20260609-09` | `fn_list_preventivi_da_pushare` **natura-aware**: il push commessa include solo righe `destinazione_tipo='COMMESSA'` (natura NULL = pregresso, inclusa), esclude la merce → niente doppio routing. Prerequisito dell'orchestratore. Vedi [brief-db-fn-list-preventivi-natura-aware.md](brief-db-fn-list-preventivi-natura-aware.md). |
 
 Fuori scope DB: orchestratore `CONFERMA_VENDITA`, gate `EVASO`, filtro catalogo (BE/FE).
 
