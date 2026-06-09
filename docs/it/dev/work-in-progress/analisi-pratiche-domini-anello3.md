@@ -505,6 +505,24 @@ Sequenza minimale, prerequisiti lineari (configurabili per varianti future):
 
 ### 5.3 Il flusso `CONFERMA_VENDITA`: split e idempotenza
 
+> ⚠️ **AGGIORNAMENTO — decisioni ratificate (Tid, 2026-06-08/09), prevalgono su questa prosa.**
+> Fonte autorevole: [brief-preventivi-ordini.md §0](brief-preventivi-ordini.md).
+>
+> 1. **Natura ricorrente (MODALITÀ A — blocco vero):** un articolo con
+>    `destinazione_tipo = 'CONTRATTO'` (oggi `SERVIZIO_RICORRENTE`) **non può stare
+>    su un preventivo**. La ricorrenza si avvia solo da **offerta→contratto**. Il
+>    preventivo ha quindi **solo due destinazioni: ORDINE e COMMESSA**. Decade la
+>    parte di §5.3.1 secondo cui le righe ricorrenti «possono essere marcate come
+>    non smistate automaticamente e gestite manualmente»: sono **bloccate
+>    all'inserimento riga** (`E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`), non gestite a valle.
+> 2. **Nessun override operatore sulla natura:** la natura è proprietà intrinseca
+>    dell'articolo, ereditata e **congelata** sulla riga. Decade la parte di §5.3.2
+>    su «oppure sovrascritta manualmente dall'operatore».
+> 3. **Riga senza natura:** prevenuta a monte da `catalogo.articoli.natura_vendita_id`
+>    NOT NULL (+ backfill), non dalla «sospensione/Opzione 3» di §5.3.2.
+> 4. **Idempotenza:** a livello **riga** (link `ordini_righe.preventivo_riga_id` +
+>    UNIQUE parziale), non di testata: §5.3.3 (UNIQUE su `sorgente_uid`) è **deprecata**.
+
 Questa sezione è divisa in tre sottosezioni che descrivono i tre aspetti
 critici del flusso 40:
 
@@ -542,14 +560,14 @@ Per le righe destinate a **commessa diretta**: l'handler chiama
 `push_a_commessa` esistente (preventivo→commessa con sottoinsieme di
 righe).
 
-Per le righe destinate a **contratto** (ricorrenza): handler dedicato da
-definire quando il caso emergerà concretamente (asse offerta commerciale →
-contratto, vedi documento di analisi separato). In v1 dell'integrazione,
-righe di natura ricorrente possono essere marcate come "non smistate
-automaticamente" e gestite manualmente dall'operatore.
+Per le righe destinate a **contratto** (ricorrenza): ~~handler dedicato da
+definire... righe marcate come non smistate e gestite manualmente~~.
+**SUPERATO (MODALITÀ A, vedi banner §5.3):** le righe ricorrenti **non entrano
+nel preventivo** — sono bloccate all'inserimento (`E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`).
+La ricorrenza si avvia da **offerta→contratto**, non dal preventivo.
 
-Nessuna delle destinazioni è "speciale": tutte sono casi normali. L'handler
-le produce in base allo split delle righe.
+Le destinazioni del preventivo sono quindi **due** (ORDINE, COMMESSA): nessuna è
+"speciale", l'handler le produce in base allo split delle righe.
 
 #### 5.3.2 Preventivi misti: natura come proprietà di riga (**decisione aperta**)
 
@@ -612,11 +630,11 @@ introduzione nuova tassonomia) è il **primo deliverable di Fase B**, prima
 del brief DB dell'handler.
 
 **Granularità della natura**: vincolata a livello di riga di preventivo.
-Può essere derivata automaticamente dall'articolo associato alla riga (se
-l'articolo ha natura definita), oppure sovrascritta manualmente
-dall'operatore in casi specifici. La derivazione vs override è una
-decisione operativa che si chiude in Fase B sulla base di come l'entità
-natura verrà strutturata.
+**CHIUSA (vedi banner §5.3):** è **derivata e congelata** dall'articolo
+(snapshot all'inserimento, come i prezzi), **senza override operatore** — la riga
+non può discostarsi dalla classificazione dell'articolo. L'articolo senza natura
+è prevenuto a monte da `catalogo.articoli.natura_vendita_id` NOT NULL (+ backfill),
+quindi non esiste la riga «non auto-classificabile» dell'Opzione 3 qui sopra.
 
 #### 5.3.3 Idempotenza dell'azione push preventivo→ordine
 

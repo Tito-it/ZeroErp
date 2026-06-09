@@ -21,6 +21,8 @@ AS $function$
 --   non-cambio-stato (pattern fn_available_actions_offerta):
 --     - crea_revisione (solo EMESSO): produce rev.N+1 in BOZZA.
 --     - push_commessa (solo ACCETTATO): avvia commessa vendita.
+--     - genera_ordine (ACCETTATO + residuo righe ORDINE): smista la
+--       merce verso un ordine (fn_push_preventivo_a_ordine).
 --   Restituisce anche i flag can_* usati dai drawer Vue per
 --   abilitare/disabilitare azioni e campi senza ricalcolare logica
 --   in Python o nel frontend.
@@ -36,14 +38,17 @@ AS $function$
 --
 --   Fallback sicuro: NULL se il preventivo non esiste.
 DECLARE
-    v_stato_id        vendite.preventivi.stato_doc_preventivo_id%TYPE;
-    v_stato_cod       config.stati_doc_preventivi.codice_interno%TYPE;
-    v_actions         jsonb;
-    v_can_edit        boolean;
-    v_can_push        boolean;
-    v_can_rev         boolean;
-    v_push_reason     text;
-    v_push_reason_key text;
+    v_stato_id          vendite.preventivi.stato_doc_preventivo_id%TYPE;
+    v_stato_cod         config.stati_doc_preventivi.codice_interno%TYPE;
+    v_actions           jsonb;
+    v_can_edit          boolean;
+    v_can_push          boolean;
+    v_can_rev           boolean;
+    v_push_reason       text;
+    v_push_reason_key   text;
+    v_can_ordine        boolean;
+    v_ordine_reason     text;
+    v_ordine_reason_key text;
     -- Due famiglie di immutabilita':
     -- (a) c_sempre_non_edit: campi immutabili dal create
     --     indipendentemente dallo stato (regola di dominio).
@@ -76,6 +81,20 @@ DECLARE
         'label_key',            'preventivi.azione_push_commessa',
         'severity',             'info',
         'icon',                 'pi pi-arrow-right',
+        'requires_motivazione', false,
+        'requires_confirm',     true
+    );
+
+    -- Azione speciale hardcoded: genera_ordine (ACCETTATO + residuo
+    -- righe natura ORDINE non allocate). Non e' una transizione di
+    -- stato: smista la merce verso un ordine (fn_push_preventivo_a_ordine).
+    -- icon pi pi-shopping-cart: coerente con fn_available_actions_offerta.
+    c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
+        'key',                  'genera_ordine',
+        'target_state',         NULL,
+        'label_key',            'preventivi.azione_genera_ordine',
+        'severity',             'info',
+        'icon',                 'pi pi-shopping-cart',
         'requires_confirm',     true,
         'requires_motivazione', false
     );
@@ -129,6 +148,11 @@ BEGIN
     v_can_push := (v_stato_cod = 'ACCETTATO');
     v_can_rev  := (v_stato_cod = 'EMESSO');
 
+    -- can_genera_ordine: ACCETTATO + residuo righe natura ORDINE non
+    -- allocate (predicato unico condiviso con il gate EVASO, D6).
+    v_can_ordine := (v_stato_cod = 'ACCETTATO')
+        AND vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id);
+
     -- Appende crea_revisione hardcoded: solo in EMESSO.
     IF v_can_rev THEN
         v_actions := v_actions || jsonb_build_array(c_action_crea_revisione);
@@ -137,6 +161,11 @@ BEGIN
     -- Appende push_commessa hardcoded: solo in ACCETTATO.
     IF v_can_push THEN
         v_actions := v_actions || jsonb_build_array(c_action_push_commessa);
+    END IF;
+
+    -- Appende genera_ordine hardcoded: ACCETTATO + residuo ORDINE.
+    IF v_can_ordine THEN
+        v_actions := v_actions || jsonb_build_array(c_action_genera_ordine);
     END IF;
 
     -- Reason code (machine-readable) + chiave i18n associata.
@@ -151,6 +180,18 @@ BEGIN
         v_push_reason_key := 'preventivi.push_commessa_reason.non_accettato';
     END IF;
 
+    IF v_can_ordine THEN
+        v_ordine_reason     := NULL;
+        v_ordine_reason_key := NULL;
+    ELSIF v_stato_cod <> 'ACCETTATO' THEN
+        v_ordine_reason     := 'PREVENTIVO_NON_ACCETTATO';
+        v_ordine_reason_key := 'preventivi.genera_ordine_reason.non_accettato';
+    ELSE
+        -- ACCETTATO ma nessuna riga merce residua (nessuna o gia' allocate).
+        v_ordine_reason     := 'PREVENTIVO_NESSUNA_RIGA_ORDINE';
+        v_ordine_reason_key := 'preventivi.genera_ordine_reason.nessuna_riga';
+    END IF;
+
     RETURN jsonb_build_object(
         'available_actions',            v_actions,
         'can_edit_testata',             v_can_edit,
@@ -158,6 +199,9 @@ BEGIN
         'can_push_commessa',            v_can_push,
         'can_push_commessa_reason',     v_push_reason,
         'can_push_commessa_reason_key', v_push_reason_key,
+        'can_genera_ordine',            v_can_ordine,
+        'can_genera_ordine_reason',     v_ordine_reason,
+        'can_genera_ordine_reason_key', v_ordine_reason_key,
         'can_create_revisione',         v_can_rev,
         'non_editable_fields',          CASE WHEN v_can_edit
                                             THEN c_sempre_non_edit
@@ -168,7 +212,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
-IS 'Capability preventivo per detail API: available_actions (da matrice transizioni + azioni hardcoded crea_revisione/push_commessa), can_edit_*, can_push_commessa, can_create_revisione, non_editable_fields. rev 03-05-2026: can_create_revisione solo da EMESSO. rev 11-05-2026: WHERE guard meta ?''action_key'' + ?''label_key''. rev 28-05-2026: append hardcoded crea_revisione (EMESSO) e push_commessa (ACCETTATO) in available_actions (pattern offerta).';
+IS 'Capability preventivo per detail API: available_actions (da matrice transizioni + azioni hardcoded crea_revisione/push_commessa/genera_ordine), can_edit_*, can_push_commessa, can_genera_ordine, can_create_revisione, non_editable_fields. rev 03-05-2026: can_create_revisione solo da EMESSO. rev 11-05-2026: WHERE guard meta ?''action_key'' + ?''label_key''. rev 28-05-2026: append hardcoded crea_revisione (EMESSO) e push_commessa (ACCETTATO). rev 09-06-2026: append hardcoded genera_ordine (ACCETTATO + residuo righe ORDINE non allocate, via fn_preventivo_ha_residuo_ordine) + flag can_genera_ordine.';
 ```
 
 ---

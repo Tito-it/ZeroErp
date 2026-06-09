@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Rende catalogo.articoli.natura_vendita_id OBBLIGATORIA (brief-preventivi-ordini.md
+# D3): SET DEFAULT MERCE + SET NOT NULL. Gemello DDL del backfill 20260609-03.
+#
+# Perche' anche un DEFAULT (e non solo NOT NULL): il BE che crea articoli NON
+# viene toccato in questo giro (scope solo DB) e ~15 test pgTAP inseriscono
+# articoli senza natura. Senza DEFAULT, NOT NULL romperebbe BE/seed/test. Con il
+# DEFAULT MERCE i nuovi articoli partono da MERCE e si classificano esplicitamente.
+#
+# Perche' una transazione SEPARATA dal backfill 20260609-03: l'UPDATE del -03
+# lascia eventi trigger in sospeso su catalogo.articoli (RI/audit) che PostgreSQL
+# scarica solo al commit. Un ALTER TABLE nella stessa transazione dell'UPDATE
+# fallisce con "non e' possibile effettuare ALTER TABLE ... ha eventi trigger in
+# sospeso". Liquibase fa commit tra i changeSet: questo -04 gira quindi su una
+# tabella senza eventi pendenti.
+#
+# Fase 80_data: il DEFAULT viene impostato all'id MERCE risolto a runtime dal
+# seed config.nature_vendita (20260608-42), via EXECUTE format (robusto rispetto
+# all'id assegnato dal seed). Deve girare dopo il backfill -03 (nessun NULL
+# residuo) altrimenti SET NOT NULL fallisce fail-fast.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260609-04-alter-articoli-natura-vendita-default-notnull-mctit.yaml
+
+  - changeSet:
+      id: 20260609-04-alter-articoli-natura-vendita-default-notnull
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        SET DEFAULT MERCE (id risolto a runtime) e SET NOT NULL su
+        catalogo.articoli.natura_vendita_id (D3). Transazione separata dal
+        backfill 20260609-03 (eventi trigger in sospeso). Idempotente.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: catalogo
+              tableName: articoli
+              columnName: natura_vendita_id
+          - tableExists:
+              schemaName: config
+              tableName: nature_vendita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $DDL$
+              DECLARE
+                  v_merce_id config.nature_vendita.id%TYPE;
+              BEGIN
+                  -- Id della natura MERCE risolto a runtime (no hardcode).
+                  SELECT id INTO v_merce_id
+                    FROM config.nature_vendita
+                   WHERE codice_interno = 'MERCE'
+                     AND attivo IS TRUE;
+
+                  IF v_merce_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'Natura MERCE non trovata in config.nature_vendita: '
+                          'seed 20260608-42 non applicato o MERCE non attiva.';
+                  END IF;
+
+                  -- 1) DEFAULT MERCE: i nuovi articoli partono da MERCE finche'
+                  --    non si classificano esplicitamente (necessario perche' il
+                  --    BE non passa ancora la natura). Idempotente.
+                  EXECUTE format(
+                      'ALTER TABLE catalogo.articoli ALTER COLUMN natura_vendita_id SET DEFAULT %s',
+                      v_merce_id
+                  );
+
+                  -- 2) NOT NULL (D3): ogni articolo ha sempre una natura.
+                  --    Idempotente (no-op se gia' NOT NULL). Fail-fast se il
+                  --    backfill 20260609-03 ha lasciato NULL residui.
+                  EXECUTE 'ALTER TABLE catalogo.articoli ALTER COLUMN natura_vendita_id SET NOT NULL';
+              END
+              $DDL$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli ALTER COLUMN natura_vendita_id DROP NOT NULL;
+              ALTER TABLE catalogo.articoli ALTER COLUMN natura_vendita_id DROP DEFAULT;
