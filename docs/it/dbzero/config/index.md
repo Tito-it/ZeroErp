@@ -43,8 +43,6 @@
 - [profili_accesso_aree](tabelle/profili_accesso_aree.md) — (latest revision 04-05-2026 — modello legacy `profili_reparto_aree` dismesso)
 - [profili_accesso_azioni](tabelle/profili_accesso_azioni.md) — (latest revision 04-05-2026 — modello legacy `profili_reparto_azioni` dismesso)
 - [profili_accesso_bindings](tabelle/profili_accesso_bindings.md) — (latest revision 18-04-2026)
-- [profili_reparto_aree](tabelle/profili_reparto_aree.md)
-- [profili_reparto_azioni](tabelle/profili_reparto_azioni.md)
 - [province](tabelle/province.md) — * **Elenco delle province**   Contiene tutte le province di uno stato (es. in Italia: RM, MI, FI), con sigla e nome descrittivo.
 - [qualifiche](tabelle/qualifiche.md) — La tabella **`config.qualifiche`** definisce il catalogo delle mansioni/posizioni assegnabili alle risorse (es. Amministratore, Dipendente, Consulente). Serve per distinguere la funzione operativa della persona all'interno dell'organizzazione.
 - [regioni](tabelle/regioni.md) — * **Elenco delle regioni**   Comprende tutte le regioni appartenenti a uno stato (es. in Italia: `Lazio`, `Campania`, `Sicilia`), con collegamento al rispettivo `stato_id` in **`config.stati`**.
