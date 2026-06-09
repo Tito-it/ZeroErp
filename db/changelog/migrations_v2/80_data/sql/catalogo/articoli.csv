@@ -1,3 +1,1 @@
 id,codice,descrizione,descrizione_breve,uom_id,tipo_voce_id,gruppo_voce_id,spesa_id,iva_id,attivo,data_insert,user_insert,data_update,user_update
-00000000-0000-0000-0000-000000000101,ART_TEST_BASE,Articolo Test UoM Base,Art Test Base,1,9001,9001,9001,16,t,2026-01-14 10:00:00+01,seed,2026-01-14 10:00:00+01,seed
-00000000-0000-0000-0000-000000000102,ART_TEST_FALLBACK,Articolo Test UoM Fallback,Art Test Fallback,14,9001,9001,9001,16,t,2026-01-14 10:00:00+01,seed,2026-01-14 10:00:00+01,seed
