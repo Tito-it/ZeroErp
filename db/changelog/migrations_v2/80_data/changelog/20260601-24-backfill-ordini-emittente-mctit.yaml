@@ -24,6 +24,8 @@ databaseChangeLog:
       author: mctit
       runOnChange: false
       failOnError: true
+      validCheckSums:
+        - ANY
       comment: >
         Backfill emittente_fiscale_id su ordini storici. Catena
         user_insert -> BA-derived -> gestore globale. Idempotente
@@ -47,13 +49,25 @@ databaseChangeLog:
               -- Step 1: user_insert -> django.auth_user.id -> resolve_emittente_for_user
               --   Coerente col modello user-derived dei nuovi ordini.
               -- ==========================================================
-              UPDATE vendite.ordini o
-                 SET emittente_fiscale_id = script.fn_resolve_emittente_for_user(au.id::integer)
-                FROM django.auth_user au
-               WHERE au.username = o.user_insert
-                 AND au.is_active = true
-                 AND o.emittente_fiscale_id IS NULL
-                 AND script.fn_resolve_emittente_for_user(au.id::integer) IS NOT NULL;
+              -- django.auth_user e' gestita da Django: su CI / DB senza
+              -- "manage.py migrate" la relazione non esiste. Guard con
+              -- to_regclass per no-op sicuro (su DB vergine non ci sono
+              -- comunque ordini storici da convertire). Convenzione:
+              -- riferimenti django.* sempre guardati / in plpgsql.
+              DO $step1$
+              BEGIN
+                IF to_regclass('django.auth_user') IS NOT NULL THEN
+                  UPDATE vendite.ordini o
+                     SET emittente_fiscale_id = script.fn_resolve_emittente_for_user(au.id::integer)
+                    FROM django.auth_user au
+                   WHERE au.username = o.user_insert
+                     AND au.is_active = true
+                     AND o.emittente_fiscale_id IS NULL
+                     AND script.fn_resolve_emittente_for_user(au.id::integer) IS NOT NULL;
+                ELSE
+                  RAISE NOTICE 'django.auth_user assente: skip Step 1 user-derived (CI/DB senza Django).';
+                END IF;
+              END $step1$;
 
               -- ==========================================================
               -- Step 2: BA-derived per i residui con BA valorizzato.
