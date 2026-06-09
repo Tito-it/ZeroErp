@@ -23,7 +23,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260608-03-create-trgfn-flussi-guard-esito-completato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Guard: blocca il passaggio di un flusso a stato COMPLETATO senza
         esito valorizzato (COMPLETATO => esito NOT NULL).

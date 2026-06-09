@@ -52,7 +52,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260610-02-create-vw-preventivi-righe-smistabili-ordine
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums: [ANY]
       failOnError: true
       comment: >

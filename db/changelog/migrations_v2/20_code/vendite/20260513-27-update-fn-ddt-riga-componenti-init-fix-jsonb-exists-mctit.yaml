@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-27-update-fn-ddt-riga-componenti-init-fix-jsonb-exists
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

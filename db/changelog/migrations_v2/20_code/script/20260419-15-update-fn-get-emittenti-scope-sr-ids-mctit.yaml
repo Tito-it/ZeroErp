@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-15-update-fn-get-emittenti-scope-sr-ids
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor script.fn_get_emittenti_scope_sr_ids per usare il nuovo

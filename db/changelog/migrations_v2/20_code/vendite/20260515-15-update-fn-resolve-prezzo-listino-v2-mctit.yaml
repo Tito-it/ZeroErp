@@ -43,7 +43,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260515-15-update-fn-resolve-prezzo-listino-v2
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Step 2.4: fn_resolve_prezzo_listino_v2 — STADIO 1 con tipo_eccezione

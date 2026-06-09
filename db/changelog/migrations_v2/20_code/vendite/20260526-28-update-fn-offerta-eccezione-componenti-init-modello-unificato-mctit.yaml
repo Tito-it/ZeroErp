@@ -38,7 +38,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260526-28-01-update-fn-offerta-eccezione-componenti-init-modello-unificato
           author: mctit
-          runOnChange: true
+          runOnChange: false
           validCheckSums:
               - ANY
           comment: >

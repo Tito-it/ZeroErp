@@ -10,7 +10,7 @@ databaseChangeLog:
       id: 20260308-04-create-fn-check-azione-processo
       author: mctit
       comment: "Sposta fn_check_azione_processo da config a script (schema corretto per funzioni riusabili cross-dominio)"
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

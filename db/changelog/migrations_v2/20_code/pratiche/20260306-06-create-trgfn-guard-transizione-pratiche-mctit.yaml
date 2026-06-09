@@ -10,7 +10,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260306-06-create-trgfn-guard-transizione-pratiche
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Trigger function guard: blocca transizioni di stato non ammesse
               per le pratiche, consultando config.transizioni_stati_pratiche.

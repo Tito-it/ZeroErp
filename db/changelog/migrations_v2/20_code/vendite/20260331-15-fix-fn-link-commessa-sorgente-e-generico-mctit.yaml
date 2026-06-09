@@ -12,7 +12,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-15-fix-fn-link-commessa-sorgente
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_link_commessa_sorgente: 7x E_GENERICO → codici specifici.
               E_COMMESSA_ROOT_CONFLITTO per ROOT con chiave diversa e unique_violation.

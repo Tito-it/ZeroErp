@@ -14,7 +14,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260412-03-update-fn-seed-automazione-overlap-range-col
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Aggiunge detection colonna daterange nativa nella funzione seed.
         Se la tabella ha una colonna 'validita' di tipo daterange (o tstzrange),

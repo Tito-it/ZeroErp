@@ -12,7 +12,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-22-fix-fn-resolve-lotto-utility-emittente
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_resolve_lotto_utility_emittente: 7x E_GENERICO → codici specifici.
           changes:

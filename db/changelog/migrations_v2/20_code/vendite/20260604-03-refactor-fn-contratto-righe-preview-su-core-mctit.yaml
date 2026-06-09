@@ -27,7 +27,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260604-03-refactor-fn-contratto-righe-preview-su-core
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

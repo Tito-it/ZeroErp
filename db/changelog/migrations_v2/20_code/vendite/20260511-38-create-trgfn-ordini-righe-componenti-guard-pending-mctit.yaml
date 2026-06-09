@@ -18,7 +18,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-38-01-create-trgfn-ordrighe-comp-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea vendite.trgfn_ordini_righe_componenti_guard_pending.
@@ -109,7 +109,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-38-02-trg-ordrighe-comp-a10-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE UPDATE: guard L3 PENDING su ordini_righe_componenti.

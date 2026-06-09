@@ -16,7 +16,7 @@ databaseChangeLog:
         Mappa override oggetto attivi per utente.
         Legge config.user_override_oggetti filtrando la validita'
         temporale e ritorna JSONB {app_label.model_name: livello}.
-      runOnChange: true
+      runOnChange: false
       preConditions:
         - onFail: HALT
         - tableExists:

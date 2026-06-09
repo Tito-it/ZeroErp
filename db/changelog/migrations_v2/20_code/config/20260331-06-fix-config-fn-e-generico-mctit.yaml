@@ -15,7 +15,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-06-fix-fn-get-stati-doc-fiscale
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_get_stati_doc_fiscale: E_GENERICO → E_PARAMETRO_INVALIDO
               per target non valido (deve essere LOTTO o FATTURA).
@@ -103,7 +103,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-06-fix-trgfn-tipi-ruoli-guard-entita-ref
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_tipi_ruoli_guard_entita_ref: 3x E_GENERICO →
               E_TIPI_RUOLI_ENTITA_INVALIDA per tutti i guard strutturali.
@@ -230,7 +230,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-06-fix-trgfn-stati-doc-fiscale-chiude-lotto-guard
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_stati_doc_fiscale_chiude_lotto_guard: E_GENERICO →
               E_CHIUDE_LOTTO_SINGLETON. Il codice era gia' nel context JSONB
@@ -287,7 +287,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-06-fix-fn-get-aliquota-iva
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_get_aliquota_iva: 2x E_GENERICO →
               E_PARAMETRO_INVALIDO (p_iva_id mancante) +

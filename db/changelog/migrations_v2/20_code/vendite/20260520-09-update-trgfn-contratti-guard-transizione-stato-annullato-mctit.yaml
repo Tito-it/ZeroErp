@@ -28,7 +28,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260520-09-update-trgfn-contratti-guard-transizione-stato-annullato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Guard transizioni contratti: aggiunge DRAFT->ANNULLATO (sempre ammessa).

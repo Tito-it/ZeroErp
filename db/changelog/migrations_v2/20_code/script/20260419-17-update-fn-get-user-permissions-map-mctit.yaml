@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-17-update-fn-get-user-permissions-map
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor script.fn_get_user_permissions_map per usare il nuovo

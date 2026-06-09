@@ -21,7 +21,7 @@ databaseChangeLog:
       id: 20260313-15-update-fn-crea-operatore-indirizzi
       author: mctit
       comment: "Aggiunto p_comune_nascita_id, p_indirizzo_resid_dettaglio_id, p_indirizzo_domfisc_dettaglio_id a fn_crea_operatore. DROP vecchia firma 13 params per evitare overload."
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

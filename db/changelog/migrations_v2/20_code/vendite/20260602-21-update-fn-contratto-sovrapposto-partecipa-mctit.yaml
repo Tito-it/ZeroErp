@@ -20,7 +20,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260602-21-update-fn-contratto-sovrapposto-partecipa
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

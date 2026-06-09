@@ -24,7 +24,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-05-update-fn-push-offerta-a-contratto-add-emittente
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

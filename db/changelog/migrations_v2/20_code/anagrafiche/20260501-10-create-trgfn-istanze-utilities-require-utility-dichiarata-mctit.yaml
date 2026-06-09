@@ -16,7 +16,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260501-10-create-trgfn-istanze-utilities-require-utility-dichiarata
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

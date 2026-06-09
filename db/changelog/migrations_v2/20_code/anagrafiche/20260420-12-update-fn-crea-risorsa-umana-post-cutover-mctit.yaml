@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-90-update-fn-crea-risorsa-umana-post-cutover
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Cutover §13.3 WIP multi-face-auth (pre-step): aggiorna

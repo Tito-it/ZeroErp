@@ -15,7 +15,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-23-update-vw-articoli-dettaglio-has-componenti
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiunge has_componenti_alla_data BOOLEAN a vw_articoli_dettaglio.

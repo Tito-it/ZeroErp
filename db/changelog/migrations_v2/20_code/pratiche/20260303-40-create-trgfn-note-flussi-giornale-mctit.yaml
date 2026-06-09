@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-40-create-trgfn-note-flussi-giornale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Logga NOTA_AGGIUNTA nel giornale su INSERT nota flusso."
       changes:
         - sql:

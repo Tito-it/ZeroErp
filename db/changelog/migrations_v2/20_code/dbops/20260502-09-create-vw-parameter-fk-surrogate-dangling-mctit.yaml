@@ -33,7 +33,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260502-09-create-vw-parameter-fk-surrogate-dangling
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

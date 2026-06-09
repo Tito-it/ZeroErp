@@ -14,7 +14,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-03-fix-trgfn-guard-utility-tipo-ruolo-by-cols
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_guard_utility_tipo_ruolo_by_cols: E_GENERICO → E_CODICE
               per lookup soggetto_ruolo_id fallito.
@@ -144,7 +144,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-03-fix-fn-get-search-detail
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_get_search_detail: E_GENERICO → E_CODICE
               per lookup tipo_ruolo_id fallito su config.tipi_ruoli.

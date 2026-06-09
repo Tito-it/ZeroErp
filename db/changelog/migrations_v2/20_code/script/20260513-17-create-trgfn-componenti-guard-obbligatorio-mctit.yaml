@@ -20,7 +20,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-17-01-create-trgfn-componenti-guard-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function script.trgfn_componenti_guard_obbligatorio.
@@ -93,7 +93,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-17-02-create-trg-prevrighe-comp-guard-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE OF attivo su vendite.preventivi_righe_componenti,
@@ -134,7 +134,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-17-03-create-trg-ordrighe-comp-guard-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE OF attivo su vendite.ordini_righe_componenti,
@@ -175,7 +175,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-17-04-create-trg-ddtrighe-comp-guard-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE OF attivo su vendite.ddt_righe_componenti,
@@ -216,7 +216,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-17-05-create-trg-contrighe-comp-guard-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE OF attivo su vendite.contratti_righe_componenti,

@@ -10,7 +10,7 @@ databaseChangeLog:
       id: 20260309-01-create-fn-get-soggetto-dati-by-ruolo
       author: mctit
       comment: "Funzione generica: dato un soggetto_ruolo_id restituisce dati anagrafici soggetto + dati societari (se presenti). Modello basato su vw_soggetti_ruoli_dettaglio + vw_dati_societari."
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

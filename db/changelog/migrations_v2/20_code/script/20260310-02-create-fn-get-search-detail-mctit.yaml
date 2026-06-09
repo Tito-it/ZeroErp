@@ -15,7 +15,7 @@ databaseChangeLog:
       id: 20260310-02-create-fn-get-search-detail
       author: mctit
       comment: "Dettaglio soggetto per tipo ruolo (livello 2 ricerca universale). JSONB con sezioni per CLIENTE (istanza, utility, stato, indirizzo), FORNITORE (codice, attivo), generico (meta). Ampliabile."
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

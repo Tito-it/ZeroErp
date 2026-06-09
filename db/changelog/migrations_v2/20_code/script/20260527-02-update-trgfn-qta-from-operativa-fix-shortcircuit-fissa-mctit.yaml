@@ -24,7 +24,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260527-02-update-trgfn-qta-from-operativa-fix-shortcircuit-fissa
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

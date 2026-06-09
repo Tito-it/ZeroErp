@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260407-01-create-fn-get-emittente-fiscale-pk
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

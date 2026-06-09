@@ -10,7 +10,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260306-17-create-trgfn-calcoli-tempo-guard-immutabili
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Guard immutabilita': blocca UPDATE su pratica_id, flusso_da_id, flusso_a_id,
               formula_tempo_id, giorni_formula, data_inizio_calcolo in calcoli_tempo.

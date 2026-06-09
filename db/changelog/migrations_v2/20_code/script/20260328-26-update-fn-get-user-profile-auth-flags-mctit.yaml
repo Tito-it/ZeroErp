@@ -19,7 +19,7 @@ databaseChangeLog:
           comment: >
               Aggiunge chiave deve_cambiare_password al JSONB di fn_get_user_profile.
               Letta da risorse_umane_auth_user. Retrocompatibile.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

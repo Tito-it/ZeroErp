@@ -17,7 +17,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260328-12-create-trgfn-pratiche-guard-contesto
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Trigger function + trigger BEFORE INSERT/UPDATE OF soggetto_id,
               soggetto_ruolo_id, istanza_utility_id: valida coerenza gerarchica

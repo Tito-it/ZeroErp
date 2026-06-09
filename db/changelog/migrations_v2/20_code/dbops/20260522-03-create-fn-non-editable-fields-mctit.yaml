@@ -33,7 +33,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260522-03-create-fn-non-editable-fields
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea dbops.fn_non_editable_fields(text,text,text) RETURNS text[].

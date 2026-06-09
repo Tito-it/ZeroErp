@@ -16,7 +16,7 @@ databaseChangeLog:
           id: 20260313-12-create-fn-get-or-create-indirizzo-dettaglio
           author: mctit
           comment: "Building block: upsert indirizzo dettaglio (civico). Cerca per chiave naturale (stradario_id + civico + estensione + palazzina + scala + piano + interno), crea se non esiste. Gestisce race condition con unique_violation retry."
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

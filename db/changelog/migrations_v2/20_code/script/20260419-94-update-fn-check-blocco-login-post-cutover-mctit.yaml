@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-94-update-fn-check-blocco-login-post-cutover
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         FIX post-cutover §13.3 (bug dimenticato): la migration -24

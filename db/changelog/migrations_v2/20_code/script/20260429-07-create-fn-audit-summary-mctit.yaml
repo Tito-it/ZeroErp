@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-07-create-fn-audit-summary
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea script.fn_audit_summary(p_audit_source_code, p_storico_id)

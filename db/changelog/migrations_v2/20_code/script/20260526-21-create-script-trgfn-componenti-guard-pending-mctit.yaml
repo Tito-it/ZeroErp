@@ -32,7 +32,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260526-21-01-create-script-trgfn-componenti-guard-pending
           author: mctit
-          runOnChange: true
+          runOnChange: false
           validCheckSum: [ANY]
           comment: >
               Crea script.trgfn_componenti_guard_pending().

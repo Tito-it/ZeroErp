@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260418-75-create-trgfn-identita-digitali-sync-auth-user-active
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       failOnError: true
       comment: >

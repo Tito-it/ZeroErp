@@ -24,7 +24,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260508-02-update-vw-clienti-lista-add-id-fiscale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: "Aggiunge id_fiscale_univoco_cf_piva a vw_clienti_lista per supportare

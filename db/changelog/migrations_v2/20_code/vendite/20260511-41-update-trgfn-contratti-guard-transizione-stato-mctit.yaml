@@ -30,7 +30,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-41-01-update-trgfn-contratti-guard-transizione-stato
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiorna vendite.trgfn_contratti_guard_transizione_stato:

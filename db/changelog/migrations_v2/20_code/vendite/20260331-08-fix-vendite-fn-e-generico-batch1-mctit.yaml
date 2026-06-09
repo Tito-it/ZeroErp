@@ -17,7 +17,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-08-fix-fn-applica-fondi-fattura
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_applica_fondi_fattura: 7x E_GENERICO → E_PARAMETRO_INVALIDO.
               Semplificato JSONB context.
@@ -155,7 +155,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-08-fix-fn-assign-numero-fattura
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_assign_numero_fattura: 2x E_GENERICO →
               E_PARAMETRO_INVALIDO + E_VALORE_MANCANTE.
@@ -247,7 +247,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-08-fix-fn-build-fattura-key
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_build_fattura_key: 2x E_GENERICO →
               E_PARAMETRO_INVALIDO + E_VALORE_MANCANTE.
@@ -340,7 +340,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-08-fix-fn-close-giornaliero-lotto
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_close_giornaliero_lotto: 4x E_GENERICO →
               E_PARAMETRO_INVALIDO (2) + E_VALORE_MANCANTE +

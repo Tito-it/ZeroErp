@@ -31,7 +31,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-37-01-create-fn-contratto-riga-componenti-init
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea vendite.fn_contratto_riga_componenti_init.

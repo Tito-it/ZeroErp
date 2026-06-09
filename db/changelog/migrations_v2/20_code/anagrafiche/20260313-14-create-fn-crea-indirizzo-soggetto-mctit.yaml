@@ -17,7 +17,7 @@ databaseChangeLog:
       id: 20260313-14-create-fn-crea-indirizzo-soggetto
       author: mctit
       comment: "Building block creazione indirizzo soggetto. Supporta modalita' normalizzata (via indirizzo_dettaglio_id) e libera (indirizzo_libero). Guard XOR, lookup tipo_indirizzo da codice_interno, guard completezza libero."
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

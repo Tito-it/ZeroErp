@@ -19,7 +19,7 @@ databaseChangeLog:
         2) risolve whitelist/fallback emittente in un solo blocco SQL
            prioritizzato
         3) mantiene invariati guard, payload JSONB e dipendenze funzionali.
-      runOnChange: true
+      runOnChange: false
       preConditions:
         - onFail: HALT
         # NB: NON aggiungere tableExists su django.auth_user.

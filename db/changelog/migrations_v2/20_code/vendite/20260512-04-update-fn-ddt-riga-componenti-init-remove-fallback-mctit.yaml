@@ -17,7 +17,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-04-update-fn-ddt-riga-componenti-init-remove-fallback
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

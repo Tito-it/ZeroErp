@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260412-30-update-fn-resolve-livello-oggetto-validita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Filtro temporale override oggetti: da doppio confronto
         valido_dal/valido_al a validita @> CURRENT_DATE.

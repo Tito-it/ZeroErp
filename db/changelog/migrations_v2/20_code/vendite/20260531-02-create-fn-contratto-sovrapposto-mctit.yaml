@@ -38,7 +38,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260531-02-01-create-fn-contratto-sovrapposto
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

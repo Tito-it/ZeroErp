@@ -22,7 +22,7 @@ databaseChangeLog:
           comment: >
               Risolve template email per codice, reparto, tipo prestazione e lingua.
               Catena di fallback a 5 livelli per specializzazione progressiva.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

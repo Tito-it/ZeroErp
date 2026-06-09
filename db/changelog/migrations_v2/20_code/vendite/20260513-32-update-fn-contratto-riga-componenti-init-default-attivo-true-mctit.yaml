@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-32-update-fn-contratto-riga-componenti-init-default-attivo-true
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

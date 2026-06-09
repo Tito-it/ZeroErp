@@ -29,7 +29,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-04-01-update-fn-resolve-prezzo-composito-add-origine
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Estende vendite.fn_resolve_prezzo_composito: aggiunge origine_prezzo

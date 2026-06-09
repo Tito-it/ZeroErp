@@ -19,7 +19,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260325-04-recreate-indirizzi-chain-istanza
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea catena indirizzi con istanza_utility_id (bigint).
         Viste espongono solo istanza_utility_id, niente utility_codice.

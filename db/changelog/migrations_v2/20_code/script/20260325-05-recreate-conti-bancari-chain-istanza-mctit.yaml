@@ -18,7 +18,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260325-05-recreate-conti-bancari-chain-istanza
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea catena conti bancari con istanza_utility_id (bigint).
         Vista flat con istanza_utility_id, senza utility_codice.

@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260402-06-recreate-vw-diag-v-clienti-links
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea vista dbops.vw_diag_v_clienti_links droppata dalla
         migration 20260402-21 (ALTER codice CHAR->VARCHAR).

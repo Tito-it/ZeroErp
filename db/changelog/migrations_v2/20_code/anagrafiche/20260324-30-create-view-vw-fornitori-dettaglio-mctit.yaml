@@ -14,7 +14,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260324-30-create-view-vw-fornitori-dettaglio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Vista consolidata fornitori con join su soggetto, stato,
         modalita/termini pagamento, valuta. Pattern allineato a

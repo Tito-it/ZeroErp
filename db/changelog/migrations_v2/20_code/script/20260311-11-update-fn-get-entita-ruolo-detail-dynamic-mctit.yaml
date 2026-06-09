@@ -18,7 +18,7 @@ databaseChangeLog:
       id: 20260311-11-update-fn-get-entita-ruolo-detail-dynamic
       author: mctit
       comment: "fn_get_entita_ruolo_detail dinamica: usa entita_tabella da tipi_ruoli, elimina CASE hardcoded"
-      runOnChange: true
+      runOnChange: false
       failOnError: true
       changes:
         - sql:

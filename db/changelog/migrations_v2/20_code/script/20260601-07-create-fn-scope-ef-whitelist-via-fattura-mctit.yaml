@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-07-create-fn-scope-ef-whitelist-via-fattura
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Adapter "via fattura" per lo scope EF_WHITELIST (brief RLS §2/§4):

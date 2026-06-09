@@ -19,7 +19,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-07-01-create-trgfn-componenti-check-prezzo-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function script.trgfn_componenti_check_prezzo_obbligatorio.
@@ -93,7 +93,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-07-02-create-trg-prevrighe-comp-check-prezzo-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE INSERT OR UPDATE su vendite.preventivi_righe_componenti,
@@ -134,7 +134,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-07-03-create-trg-ordrighe-comp-check-prezzo-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE INSERT OR UPDATE su vendite.ordini_righe_componenti,
@@ -175,7 +175,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-07-04-create-trg-ddtrighe-comp-check-prezzo-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE INSERT OR UPDATE su vendite.ddt_righe_componenti,
@@ -216,7 +216,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-07-05-create-trg-contrighe-comp-check-prezzo-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE INSERT OR UPDATE su vendite.contratti_righe_componenti,

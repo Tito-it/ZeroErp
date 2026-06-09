@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260418-61-create-fn-scope-ba-ownership
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Scope policy BA_OWNERSHIP: un'identita cliente (CLIENTE_PORTALE o

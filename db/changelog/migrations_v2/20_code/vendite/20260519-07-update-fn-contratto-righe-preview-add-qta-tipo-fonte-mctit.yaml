@@ -31,7 +31,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260519-07-update-fn-contratto-righe-preview-add-qta-tipo-fonte
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Estende fn_contratto_righe_preview: +4 colonne (quantita, qta_operativa,

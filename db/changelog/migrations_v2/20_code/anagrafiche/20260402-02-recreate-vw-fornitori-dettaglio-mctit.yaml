@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260402-02-recreate-vw-fornitori-dettaglio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea vista anagrafiche.vw_fornitori_dettaglio droppata
         dalla migration 20260402-21 (ALTER codice CHAR->VARCHAR).

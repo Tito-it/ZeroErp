@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-16-update-fn-get-emittenti-scope
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor minimale di script.fn_get_emittenti_scope (§4.6.B.7 WIP).

@@ -22,7 +22,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260602-07-update-fn-apply-automazione-overlap-where-predicate
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         fn_apply_automazione_overlap: aggiunge la coda WHERE (where_predicate) al
         constraint EXCLUDE quando la colonna where_predicate e' valorizzata.

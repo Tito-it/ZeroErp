@@ -38,7 +38,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260502-13-update-vw-preventivi-righe-dettaglio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

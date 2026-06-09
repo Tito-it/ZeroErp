@@ -31,7 +31,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260609-07-create-fn-preventivo-ha-residuo-ordine
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums: [ANY]
       failOnError: true
       comment: >

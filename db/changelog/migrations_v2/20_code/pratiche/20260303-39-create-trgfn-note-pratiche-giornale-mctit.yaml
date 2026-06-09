@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-39-create-trgfn-note-pratiche-giornale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Logga NOTA_AGGIUNTA nel giornale su INSERT nota pratica."
       changes:
         - sql:

@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260317-04-update-trgfn-indirizzi-dettaglio-normalize-use-fn
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Trigger semplificato: chiama fn_build_indirizzo_normalizzato
         e assegna tutti i campi calcolati. Zero logica nel trigger.

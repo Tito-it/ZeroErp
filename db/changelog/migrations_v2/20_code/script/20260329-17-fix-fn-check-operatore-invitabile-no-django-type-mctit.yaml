@@ -16,7 +16,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260329-17-fix-fn-check-operatore-invitabile-no-django-type
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Ricrea fn_check_operatore_invitabile con tipi espliciti
               per le variabili django.auth_user (BOOLEAN, VARCHAR(254),

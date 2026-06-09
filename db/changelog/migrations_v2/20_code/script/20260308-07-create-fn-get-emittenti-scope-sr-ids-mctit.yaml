@@ -10,7 +10,7 @@ databaseChangeLog:
       id: 20260308-07-create-fn-get-emittenti-scope-sr-ids
       author: mctit
       comment: "Sposta fn_get_emittenti_scope_sr_ids da config a script (schema corretto per funzioni riusabili cross-dominio)"
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

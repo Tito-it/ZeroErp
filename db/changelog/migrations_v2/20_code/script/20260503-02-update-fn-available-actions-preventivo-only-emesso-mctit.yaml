@@ -27,7 +27,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20260503-02-update-fn-available-actions-preventivo-only-emesso
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       author: mctit

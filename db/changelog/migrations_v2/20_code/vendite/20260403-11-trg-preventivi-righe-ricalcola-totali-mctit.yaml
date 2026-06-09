@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260403-11-trg-preventivi-righe-ricalcola-totali
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

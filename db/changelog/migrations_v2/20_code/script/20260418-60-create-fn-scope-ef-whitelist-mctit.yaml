@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260418-60-create-fn-scope-ef-whitelist
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Scope policy EF_WHITELIST: implementa la logica legacy di whitelist

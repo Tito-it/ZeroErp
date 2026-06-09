@@ -24,7 +24,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-09-01-trg-prevrighe-z90-propaga-qta-componenti
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         AFTER UPDATE OF quantita su vendite.preventivi_righe _z90_:

@@ -17,7 +17,7 @@ databaseChangeLog:
       id: 20260410-02-update-fn-get-search-detail-is-default
       author: mctit
       comment: "Filtro scope emittente ramo CL: aggiunge fallback is_default=true per gestore globale"
-      runOnChange: true
+      runOnChange: false
       failOnError: true
       changes:
         - sql:

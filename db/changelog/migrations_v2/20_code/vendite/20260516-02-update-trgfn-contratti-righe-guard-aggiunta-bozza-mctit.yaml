@@ -26,7 +26,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260516-02-update-trgfn-contratti-righe-guard-aggiunta-bozza
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Bug A fix: trgfn_contratti_righe_guard_aggiunta_fuori_listino — Branch 2

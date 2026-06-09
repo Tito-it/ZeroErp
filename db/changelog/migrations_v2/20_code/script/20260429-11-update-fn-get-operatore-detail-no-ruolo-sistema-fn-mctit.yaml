@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-11-update-fn-get-operatore-detail-no-ruolo-sistema-fn
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Fase 7 (2026-04-29): rimuove la chiamata interna a

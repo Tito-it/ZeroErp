@@ -29,7 +29,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260415-14-update-fn-resolve-prezzo-listino-v2-classe-da-contratto
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

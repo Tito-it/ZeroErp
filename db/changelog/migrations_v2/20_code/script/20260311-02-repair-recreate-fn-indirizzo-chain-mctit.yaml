@@ -21,7 +21,7 @@ databaseChangeLog:
       id: 20260311-02-repair-recreate-fn-indirizzo-chain
       author: mctit
       comment: "Repair: ricrea catena funzioni indirizzo perse dal CASCADE di 20260311-01"
-      runOnChange: true
+      runOnChange: false
       failOnError: true
       changes:
         - sql:

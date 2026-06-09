@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260514-34-update-fn-apply-automazione-overlap-merge-constraint-checks
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ottimizzazione: fonde le 3 query pg_constraint in una singola SELECT con
         CROSS JOIN LATERAL. Una scan del catalogo, pg_get_constraintdef() invocato

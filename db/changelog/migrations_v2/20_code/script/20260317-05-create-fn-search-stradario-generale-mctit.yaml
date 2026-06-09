@@ -18,7 +18,7 @@ databaseChangeLog:
           id: 20260317-05-create-fn-search-stradario-generale
           author: mctit
           comment: "Ricerca vie su stradario_generale per autocomplete via nuova. JOIN stradario_generale -> toponomastica. Filtra per testo e/o tipo strada. STABLE, PARALLEL SAFE."
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

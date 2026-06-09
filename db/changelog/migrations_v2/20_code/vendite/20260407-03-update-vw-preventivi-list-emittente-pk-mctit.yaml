@@ -14,7 +14,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260407-03-update-vw-preventivi-list-emittente-pk
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

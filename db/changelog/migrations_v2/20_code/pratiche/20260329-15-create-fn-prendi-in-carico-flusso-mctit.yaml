@@ -12,7 +12,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260329-15-create-fn-prendi-in-carico-flusso
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Funzione che assegna un flusso non assegnato all'operatore,
               verificando competenza attiva. Operazione atomica: guard + UPDATE.

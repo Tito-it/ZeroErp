@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-25-update-fn-crea-risorsa-umana
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor anagrafiche.fn_crea_risorsa_umana (§4.6.D.3 WIP).

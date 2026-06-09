@@ -20,7 +20,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260414-16-create-trgfn-listini-righe-guard-tipologia
           author: mctit
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     dbms: postgresql
@@ -95,7 +95,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260414-16-trg-listini-righe-guard-tipologia
           author: mctit
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     dbms: postgresql

@@ -40,7 +40,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260528-01-create-vw-offerte-commerciali-list
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

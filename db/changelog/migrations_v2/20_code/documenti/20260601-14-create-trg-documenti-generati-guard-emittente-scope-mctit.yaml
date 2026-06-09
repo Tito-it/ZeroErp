@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-14-create-trg-documenti-generati-guard-emittente-scope
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggancia il write-guard scope emittente a documenti.documenti_generati

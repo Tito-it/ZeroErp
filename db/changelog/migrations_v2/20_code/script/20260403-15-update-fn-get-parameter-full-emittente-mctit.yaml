@@ -25,7 +25,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260403-15b-create-fn-get-parameter-full-emittente
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Nuova firma di fn_get_parameter_full con p_emittente_fiscale_id (bigint)
         al posto di p_tenant_id (integer). Catena priorita':

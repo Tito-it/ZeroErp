@@ -11,7 +11,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-31-fix-fn-set-arrotondamento-scope
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_set_arrotondamento_scope: 6x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:

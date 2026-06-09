@@ -33,7 +33,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260502-12-update-fn-ricalcola-totali-preventivo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

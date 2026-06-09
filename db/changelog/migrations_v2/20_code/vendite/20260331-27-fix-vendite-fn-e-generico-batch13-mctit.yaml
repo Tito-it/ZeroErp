@@ -15,7 +15,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-27-fix-fn-ricalcola-riepilogo-iva-fattura
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_ricalcola_riepilogo_iva_fattura: 3x E_GENERICO →
               E_PARAMETRO_INVALIDO + E_FATTURA_NON_TROVATA + E_PARAMETRO_INVALIDO (stato).
@@ -90,7 +90,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-27-fix-fn-ricalcola-totali-fattura
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_ricalcola_totali_fattura: 2x E_GENERICO →
               E_PARAMETRO_INVALIDO + E_CONFIG_MANCANTE.
@@ -194,7 +194,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-27-fix-fn-select-attivita-fatturabili
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_select_attivita_fatturabili: 3x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:
@@ -273,7 +273,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-27-fix-fn-sync-fattura-critical
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_sync_fattura_critical: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:

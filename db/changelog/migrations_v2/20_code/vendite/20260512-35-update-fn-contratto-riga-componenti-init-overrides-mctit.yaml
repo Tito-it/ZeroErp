@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-35-update-fn-contratto-riga-componenti-init-overrides
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

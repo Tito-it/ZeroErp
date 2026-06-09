@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-68-create-fn-check-almeno-un-super-admin-attivo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Helper anti-lockout SUPER_ADMIN (13.3.6 WIP multi-face-auth):

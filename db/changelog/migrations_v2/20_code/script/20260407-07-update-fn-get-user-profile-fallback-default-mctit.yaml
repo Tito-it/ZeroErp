@@ -22,7 +22,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260407-07-update-fn-get-user-profile-fallback-default
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

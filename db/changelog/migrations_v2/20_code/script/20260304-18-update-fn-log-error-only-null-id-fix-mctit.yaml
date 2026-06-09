@@ -12,7 +12,7 @@ databaseChangeLog:
       comment: >
         Fix fn_log_error_only: recupera id da MESSAGGIO_NON_DEFINITO in fallback;
         skip INSERT se messaggio_errore_id resta NULL (colonna NOT NULL).
-      runOnChange: true
+      runOnChange: false
       changes:
         - sql:
             splitStatements: false

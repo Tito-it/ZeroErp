@@ -42,7 +42,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260607-09-cleanup-fn-emit-drop-lotto-attivita
           author: mctit
-          runOnChange: true
+          runOnChange: false
           validCheckSums:
               - ANY
           comment: >

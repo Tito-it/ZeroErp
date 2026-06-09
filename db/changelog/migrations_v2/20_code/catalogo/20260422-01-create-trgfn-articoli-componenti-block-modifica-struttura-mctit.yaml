@@ -26,7 +26,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260422-01-01-create-trgfn-articoli-componenti-block-modifica-struttura
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea trigger function catalogo.trgfn_articoli_componenti_block_modifica_struttura.
@@ -180,7 +180,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260422-01-02-create-trg-articoli-componenti-block-modifica-struttura
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE OR DELETE su catalogo.articoli_componenti.

@@ -16,7 +16,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-03-01-create-trgfn-articoli-guard-iva-bom-attiva
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger function catalogo.trgfn_articoli_guard_iva_bom_attiva.
@@ -128,7 +128,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260513-03-02-create-trg-articoli-guard-iva-bom-attiva
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE OF iva_id su catalogo.articoli, fase _a10_guard.

@@ -26,7 +26,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-08-01-trg-prevrighe-comp-a10-guard-bom
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE INSERT OR UPDATE: verifica coerenza BoM CASO A tramite
@@ -76,7 +76,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-08-02-trg-prevrighe-comp-a10-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE UPDATE: guard L3 — blocca campi struttura quando
@@ -113,7 +113,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-08-03-trg-prevrighe-comp-m50-calcola-quantita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE INSERT OR UPDATE _m50_: imposta quantita =
@@ -155,7 +155,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-08-04-trg-prevrighe-comp-audit
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE INSERT OR UPDATE: audit data_update/user_update tramite
@@ -183,7 +183,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-08-05-trg-prevrighe-comp-tx-id
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE INSERT OR UPDATE: genera/recupera tx_id di sessione
@@ -211,7 +211,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-08-06-trg-prevrighe-comp-a10-articoli-attivo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         AFTER INSERT OR UPDATE: verifica che l'articolo componente
@@ -241,7 +241,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-08-07-trg-prevrighe-comp-a10-iva-attivo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         AFTER INSERT OR UPDATE: verifica che iva_id sia attivo in
@@ -271,7 +271,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-08-08-trg-prevrighe-comp-z90-ricalcola-padre
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         AFTER INSERT OR UPDATE OR DELETE _z90_: ricalcola prezzo_unitario

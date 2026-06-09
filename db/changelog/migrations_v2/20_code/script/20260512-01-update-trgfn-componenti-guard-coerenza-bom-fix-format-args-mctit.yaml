@@ -36,7 +36,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-01-update-trgfn-componenti-guard-coerenza-bom-fix-format-args
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

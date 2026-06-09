@@ -13,7 +13,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-04-fix-fn-guard-utility-tipo-ruolo
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_guard_utility_tipo_ruolo: E_GENERICO →
               E_UTILITY_RUOLO_NON_AMMESSO. %TYPE sui parametri.

@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260419-20-update-fn-get-setup-status
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Refactor script.fn_get_setup_status per usare il nuovo modello

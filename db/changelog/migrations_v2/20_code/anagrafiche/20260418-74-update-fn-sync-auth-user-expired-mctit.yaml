@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260418-74-update-fn-sync-auth-user-expired
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       failOnError: true
       comment: >

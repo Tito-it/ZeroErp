@@ -10,7 +10,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260303-30-create-fn-check-prerequisiti-flusso
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Pure check (fn_check_*): verifica se i prerequisiti di un template
         flusso sono soddisfatti per una pratica. Ritorna una riga per ogni

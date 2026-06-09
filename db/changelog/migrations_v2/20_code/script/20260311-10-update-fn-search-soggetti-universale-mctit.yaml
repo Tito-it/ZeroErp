@@ -17,7 +17,7 @@ databaseChangeLog:
       id: 20260311-10-update-fn-search-soggetti-universale
       author: mctit
       comment: "Ricerca per codice soggetto + codice entita' dinamico da tipi_ruoli.entita_tabella"
-      runOnChange: true
+      runOnChange: false
       failOnError: true
       changes:
         - sql:

@@ -14,7 +14,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260329-14-create-fn-coda-lavoro-operatore
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Funzione STABLE che restituisce la coda di lavoro di un operatore
               in tre livelli di priorita': flussi assegnati, per competenza,

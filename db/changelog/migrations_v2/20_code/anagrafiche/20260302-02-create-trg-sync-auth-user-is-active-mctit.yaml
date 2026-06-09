@@ -13,7 +13,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260302-02-create-trg-sync-auth-user-is-active
           author: mctit
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

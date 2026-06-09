@@ -41,7 +41,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260408-06-recreate-fn-run-automations-attivo-fk-ref-col
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         BUG FIX: usa la colonna referenziata dalla FK (confkey[1]) invece
         della PK del padre. Genera trigger BLOCK e REQUIRE con la colonna

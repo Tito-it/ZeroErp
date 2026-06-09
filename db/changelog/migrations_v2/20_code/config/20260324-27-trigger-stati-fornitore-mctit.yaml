@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260324-27-trigger-stati-fornitore
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Trigger standard su config.stati_fornitore:
         1) Lock codice_interno (immutabile dopo creazione).

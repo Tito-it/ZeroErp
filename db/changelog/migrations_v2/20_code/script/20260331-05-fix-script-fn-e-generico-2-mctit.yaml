@@ -15,7 +15,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-05-fix-trgfn-delete-block-by-guc
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix trgfn_delete_block_by_guc: 2x E_GENERICO →
               ERRORE_PARAMETRI (argomenti mancanti) +
@@ -92,7 +92,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-05-fix-fn-get-entita-ruolo-detail
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_get_entita_ruolo_detail: E_GENERICO → E_CODICE
               per lookup soggetto_ruolo_id fallito. %TYPE sui parametri.

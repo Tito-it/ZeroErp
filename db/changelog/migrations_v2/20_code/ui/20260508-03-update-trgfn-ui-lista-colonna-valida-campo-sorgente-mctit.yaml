@@ -26,7 +26,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260508-03-update-trgfn-ui-lista-colonna-valida-campo-sorgente
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: "Aggiorna il trigger: ammette campo_sorgente NULL o '' per colonne calcolate FE (es. sosp_riatt)"

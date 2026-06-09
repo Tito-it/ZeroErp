@@ -32,7 +32,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260515-13-create-trg-contratti-freeze-listino-versione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Step 2.3/1: freeze listino_versione_id su DRAFT→ATTIVO + guard negoziato puro

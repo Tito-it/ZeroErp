@@ -30,7 +30,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260609-02-update-trgfn-preventivi-righe-guard-natura-ricorrente
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums: [ANY]
       failOnError: true
       comment: >

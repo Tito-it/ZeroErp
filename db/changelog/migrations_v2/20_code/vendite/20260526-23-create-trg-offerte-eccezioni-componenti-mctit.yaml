@@ -54,7 +54,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-01-trg-oce-comp-a10-guard-bom
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE INSERT OR UPDATE: guard coerenza BoM CASO A su
@@ -104,7 +104,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-02-trg-oce-comp-a10-guard-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE UPDATE OF attivo: blocca disattivazione di componenti
@@ -137,7 +137,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-03-trg-oce-comp-a10-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE UPDATE: guard L3 PENDING su offerte_commerciali_eccezioni_componenti.
@@ -181,7 +181,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-04-trg-oce-comp-a10-prezzo-obbligatorio
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE INSERT OR UPDATE OF prezzo_unitario, articolo_componente_id:
@@ -216,7 +216,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-05-trg-oce-comp-m50-calcola-quantita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE INSERT OR UPDATE _m50_: imposta quantita =
@@ -258,7 +258,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-06-trg-oce-comp-audit
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE INSERT OR UPDATE: audit data_update/user_update tramite
@@ -286,7 +286,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-07-trg-oce-comp-tx-id
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE INSERT OR UPDATE: genera/recupera tx_id di sessione
@@ -314,7 +314,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-08-trg-oce-comp-a10-articoli-attivo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         AFTER INSERT OR UPDATE: verifica che l'articolo componente
@@ -344,7 +344,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-09-trg-oce-comp-a10-iva-attivo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         AFTER INSERT OR UPDATE: verifica che iva_id sia attivo in
@@ -374,7 +374,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-10-trg-oce-comp-z90-ricalcola-padre
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         AFTER INSERT OR UPDATE OR DELETE _z90_: ricalcola prezzo_unitario
@@ -417,7 +417,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-11-trg-offerte-eccezioni-z90-propaga-qta-componenti
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         AFTER UPDATE OF quantita su offerte_commerciali_eccezioni (padre):
@@ -464,7 +464,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260526-23-12-upd-trg-contrighe-comp-guard-pending-to-generic
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiorna trg_contratti_righe_componenti_a10_guard_pending_upd per

@@ -32,7 +32,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-11-01-create-fn-preventivo-riga-componenti-init
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea vendite.fn_preventivo_riga_componenti_init.

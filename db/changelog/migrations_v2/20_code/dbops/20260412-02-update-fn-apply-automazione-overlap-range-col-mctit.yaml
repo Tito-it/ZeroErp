@@ -14,7 +14,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260412-02-update-fn-apply-automazione-overlap-range-col
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Dual codepath per colonna daterange nativa: se range_col IS NOT NULL
         il vincolo EXCLUDE usa la colonna direttamente (%I WITH &&),

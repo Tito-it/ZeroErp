@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-15-update-fn-ddt-riga-componenti-init-force-manuale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

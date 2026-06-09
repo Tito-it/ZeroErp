@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-01-create-fn-check-ultimo-super-admin-attivo
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Helper boolean parametrico per il drawer Operatore (P1

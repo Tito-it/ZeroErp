@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260408-14-create-trgfn-billing-account-guard-admin-globale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

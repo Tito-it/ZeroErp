@@ -15,7 +15,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-28-fix-fn-start-lotto-task-run
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_start_lotto_task_run: 3x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:
@@ -75,7 +75,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-28-fix-fn-sync-contabili-fondo-fattura
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_sync_contabili_fondo_fattura: 3x E_GENERICO →
               E_PARAMETRO_INVALIDO + E_CONFIG_MANCANTE (2).
@@ -193,7 +193,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-28-fix-fn-sync-lotto-fatture-stato
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_sync_lotto_fatture_stato: 4x E_GENERICO →
               E_PARAMETRO_INVALIDO (2) + E_LOTTO_NON_TROVATO (1) + E_PARAMETRO_INVALIDO (1).
@@ -273,7 +273,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-28-fix-fn-sync-pagamento-fondo-fattura
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_sync_pagamento_fondo_fattura: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
               Wrapper deprecato.

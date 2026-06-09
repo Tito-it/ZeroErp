@@ -14,7 +14,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260329-16-fix-fn-prendi-in-carico-race-condition
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix race condition in fn_prendi_in_carico_flusso:
               aggiunge SELECT ... FOR UPDATE sulla riga flusso per evitare

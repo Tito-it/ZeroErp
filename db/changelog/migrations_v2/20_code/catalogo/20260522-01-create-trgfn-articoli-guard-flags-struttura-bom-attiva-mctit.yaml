@@ -37,7 +37,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260522-01-create-trgfn-articoli-guard-flags-struttura-bom-attiva
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Guard BEFORE UPDATE OF is_composito, is_solo_componente, requires_serial

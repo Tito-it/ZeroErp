@@ -27,7 +27,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-10-01-update-trgfn-preventivi-guard-transizione-approvazione
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiorna vendite.trgfn_preventivi_guard_transizione_approvazione:

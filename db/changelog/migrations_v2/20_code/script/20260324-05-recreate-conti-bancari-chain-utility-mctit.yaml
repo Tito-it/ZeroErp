@@ -16,7 +16,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260324-05-recreate-conti-bancari-chain-utility
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea catena conti bancari con utility_id. La vista diventa flat
         (espone tutte le candidate senza DISTINCT ON). La funzione implementa

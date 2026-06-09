@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260418-40-create-trgfn-profili-accesso-bindings-guard-coerenza
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Guard di coerenza tra tipo del profilo e tipo del binding su

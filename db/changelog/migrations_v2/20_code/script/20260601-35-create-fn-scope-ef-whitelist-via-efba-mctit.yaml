@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260601-35-create-fn-scope-ef-whitelist-via-efba
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Adapter via_efba per lo scope EF_WHITELIST su anagrafiche.billing_account

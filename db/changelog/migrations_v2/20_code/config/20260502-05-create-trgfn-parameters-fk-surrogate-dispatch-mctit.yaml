@@ -28,7 +28,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260502-05-01-create-trgfn-parameters-fk-surrogate-dispatch
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

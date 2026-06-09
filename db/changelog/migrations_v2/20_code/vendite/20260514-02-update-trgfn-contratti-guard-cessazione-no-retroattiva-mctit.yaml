@@ -32,7 +32,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260514-02-update-trgfn-contratti-guard-cessazione-no-retroattiva
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Fix guard cessazione retroattiva contratti. ATTIVO->CESSATO manuale

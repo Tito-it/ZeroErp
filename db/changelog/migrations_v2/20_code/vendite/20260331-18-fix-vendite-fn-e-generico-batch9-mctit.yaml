@@ -17,7 +17,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-18-fix-fn-log-commessa-push-run
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_log_commessa_push_run: 3x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:
@@ -71,7 +71,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-18-fix-fn-log-lotto-esito-fatture
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_log_lotto_esito_fatture: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:
@@ -120,7 +120,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-18-fix-fn-log-pipeline-fase
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_log_pipeline_fase: 3x E_GENERICO →
               E_PARAMETRO_INVALIDO (2) + E_VALORE_MANCANTE (1).
@@ -182,7 +182,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-18-fix-fn-numera-fattura-opz-emessa
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_numera_fattura_opz_emessa: 2x E_GENERICO → E_PARAMETRO_INVALIDO.
               Nota: E_FATTURA_NON_TROVATA gia' usata correttamente — aggiunto al CSV (id 140).

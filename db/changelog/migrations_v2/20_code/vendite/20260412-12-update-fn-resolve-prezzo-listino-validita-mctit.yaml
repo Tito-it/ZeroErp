@@ -14,7 +14,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260412-12-update-fn-resolve-prezzo-listino-validita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Sostituisce i filtri temporali da doppio confronto su valido_dal/valido_al
         a operatore containment (@>) sulla colonna validita nativa.

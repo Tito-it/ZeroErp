@@ -41,7 +41,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260603-05-create-vw-preventivi-lista
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       failOnError: true

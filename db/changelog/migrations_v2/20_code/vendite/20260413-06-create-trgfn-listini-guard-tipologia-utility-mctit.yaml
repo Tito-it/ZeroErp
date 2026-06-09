@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260413-06-create-trgfn-listini-guard-tipologia-utility
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Guard defense-in-depth: verifica ammissibilita` della coppia
         (utility_id, tipologia_id) nella matrice config. Scatta solo

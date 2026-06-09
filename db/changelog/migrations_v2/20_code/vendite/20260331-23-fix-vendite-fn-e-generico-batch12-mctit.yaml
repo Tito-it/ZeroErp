@@ -17,7 +17,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-23-fix-fn-resolve-termini-pagamento
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_resolve_termini_pagamento: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
               Solo guard iniziale — corpo invariato.
@@ -106,7 +106,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-23-fix-fn-ricalcola-fattura
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_ricalcola_fattura: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
           changes:
@@ -138,7 +138,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260331-23-fix-fn-ricalcola-riepiloghi-iva-lotto
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Fix fn_ricalcola_riepiloghi_iva_lotto: 2x E_GENERICO → E_PARAMETRO_INVALIDO.
               Corpo invariato (batch loop).

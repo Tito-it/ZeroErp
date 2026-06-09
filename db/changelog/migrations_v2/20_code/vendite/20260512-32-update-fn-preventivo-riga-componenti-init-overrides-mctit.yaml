@@ -23,7 +23,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260512-32-update-fn-preventivo-riga-componenti-init-overrides
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

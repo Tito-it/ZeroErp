@@ -21,7 +21,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260602-20-update-trgfn-contratti-sync-snapshots
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         trgfn_contratti_sync_is_abortito_snapshot ora sincronizza anche
         is_draft_snapshot da config.stati_doc_contratti.is_bozza.

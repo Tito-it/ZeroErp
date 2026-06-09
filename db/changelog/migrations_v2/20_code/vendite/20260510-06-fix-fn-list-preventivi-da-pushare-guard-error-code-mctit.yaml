@@ -13,7 +13,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260510-06-fix-fn-list-preventivi-da-pushare-guard-error-code
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: "Fix 2026-05: sostituisce E_VALIDAZIONE (non registrato) con E_PUSH_SORGENTE_ID_INVALIDO nel guard p_preventivo_id di fn_list_preventivi_da_pushare. Allinea anche sorgente IS NULL a E_CODICE (pattern coerente con le altre fn_list)."
       changes:
         - sql:

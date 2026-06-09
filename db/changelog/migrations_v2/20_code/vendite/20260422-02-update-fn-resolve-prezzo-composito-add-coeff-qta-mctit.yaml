@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260422-02-update-fn-resolve-prezzo-composito-add-coeff-qta
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ ANY ]
       comment: >
         Estende vendite.fn_resolve_prezzo_composito esponendo la colonna

@@ -25,7 +25,7 @@ databaseChangeLog:
             Flusso B (valorizzato): associa soggetto PF esistente.
             Guard condizionali: cognome/nome/CF obbligatori solo in flusso A.
             DROP vecchia firma 16 params per evitare overload.
-          runOnChange: true
+          runOnChange: false
           changes:
               - sql:
                     splitStatements: false

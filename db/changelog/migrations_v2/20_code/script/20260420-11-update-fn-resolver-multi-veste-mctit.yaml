@@ -33,7 +33,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260420-11-01-update-fn-is-super-admin-operatore-only
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Filtra la fn_is_super_admin su ruolo_applicativo='OPERATORE'.
@@ -132,7 +132,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260420-11-02-update-fn-get-profili-accesso-applicabili-veste-aware
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Aggiunge parametro opzionale p_ruolo_applicativo (DEFAULT NULL) a

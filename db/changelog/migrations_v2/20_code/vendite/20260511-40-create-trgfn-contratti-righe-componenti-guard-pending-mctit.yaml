@@ -18,7 +18,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-40-01-create-trgfn-contrighe-comp-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea vendite.trgfn_contratti_righe_componenti_guard_pending.
@@ -108,7 +108,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260511-40-02-trg-contrighe-comp-a10-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         BEFORE UPDATE: guard L3 PENDING su contratti_righe_componenti.

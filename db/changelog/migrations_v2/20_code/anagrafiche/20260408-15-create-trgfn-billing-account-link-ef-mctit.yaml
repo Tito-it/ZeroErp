@@ -12,7 +12,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260408-15-create-trgfn-billing-account-link-ef
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

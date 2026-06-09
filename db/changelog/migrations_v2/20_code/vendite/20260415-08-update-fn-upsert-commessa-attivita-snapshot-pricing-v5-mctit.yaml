@@ -28,7 +28,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260415-08-update-fn-upsert-commessa-attivita-snapshot-pricing-v5
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

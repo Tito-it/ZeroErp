@@ -4,7 +4,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260429-19-update-vw-risorse-umane-auth-user-no-ruolo-sistema
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Fase 7 step 8b (2026-04-29): rimuove la colonna calcolata

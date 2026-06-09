@@ -18,7 +18,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260603-02-recreate-trg-articoli-componenti-guard-iva-ins-upd
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Ricrea il trigger della guardia IVA come BEFORE INSERT OR UPDATE OF attivo

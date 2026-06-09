@@ -25,7 +25,12 @@ databaseChangeLog:
   - changeSet:
       id: 20260605-01-create-vw-ordini-righe-iva-base
       author: mctit
-      runOnChange: true
+      # runOnChange:false — definizione INTERMEDIA (pre-rename sconto_perc).
+      # Gira una volta sul 1o apply (schema vecchio) per soddisfare le
+      # dipendenze di 20260605-02/03; NON deve ri-spararsi sul ci-apply
+      # (2o apply) contro lo schema gia' rinominato a sconto_percentuale.
+      # La definizione canonica post-rename e' 20260605-16 (runOnChange:true).
+      runOnChange: false
       validCheckSums:
         - ANY
       failOnError: true

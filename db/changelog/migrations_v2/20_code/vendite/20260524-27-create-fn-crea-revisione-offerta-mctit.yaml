@@ -58,7 +58,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260524-27-create-fn-crea-revisione-offerta
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

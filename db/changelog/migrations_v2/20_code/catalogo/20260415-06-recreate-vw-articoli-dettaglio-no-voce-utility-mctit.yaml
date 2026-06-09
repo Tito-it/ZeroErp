@@ -14,7 +14,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260415-06-recreate-vw-articoli-dettaglio-no-voce-utility
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum:
         - ANY
       comment: >

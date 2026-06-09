@@ -21,7 +21,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260422-07-01-create-trgfn-preventivi-righe-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Crea funzione trigger vendite.trgfn_preventivi_righe_guard_pending.
@@ -136,7 +136,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260422-07-02-create-trg-preventivi-righe-guard-pending
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSum: [ANY]
       comment: >
         Trigger BEFORE UPDATE su vendite.preventivi_righe. Fase _a10_

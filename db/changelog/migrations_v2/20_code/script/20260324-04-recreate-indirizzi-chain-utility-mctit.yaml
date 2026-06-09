@@ -17,7 +17,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260324-04-recreate-indirizzi-chain-utility
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Ricrea catena indirizzi con utility_id: viste resolved (base, ruolo,
         soggetto, all) e funzioni (by_ruolo, by_soggetto, indirizzo_by_soggetto,

@@ -11,7 +11,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260412-33-update-fn-get-user-actions-map-validita
       author: mctit
-      runOnChange: true
+      runOnChange: false
       comment: >
         Filtro temporale override azioni nella mappa azioni set-based:
         da doppio confronto valido_dal/valido_al a validita @> CURRENT_DATE.

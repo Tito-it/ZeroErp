@@ -40,7 +40,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260528-05-update-fn-available-actions-contratto
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

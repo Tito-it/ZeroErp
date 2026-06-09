@@ -279,7 +279,7 @@ databaseChangeLog:
     - changeSet:
           id: 20260325-06-02-recreate-contatti-chain-istanza
           author: mctit
-          runOnChange: true
+          runOnChange: false
           comment: >
               Ricrea fn_get_contatti e fn_get_contatto_default con
               istanza_utility_id (bigint). Cascata 3 livelli:

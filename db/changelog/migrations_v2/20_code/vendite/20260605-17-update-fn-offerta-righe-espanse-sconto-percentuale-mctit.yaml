@@ -20,7 +20,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260605-17-update-fn-offerta-righe-espanse-sconto-percentuale
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: >

@@ -33,7 +33,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260506-12-01-fn-ui-resolve-lista-config
       author: mctit
-      runOnChange: true
+      runOnChange: false
       validCheckSums:
         - ANY
       comment: "Funzione principale di risoluzione configurazione lista per utente"
