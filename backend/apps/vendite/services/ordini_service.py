@@ -972,6 +972,9 @@ def push_a_commessa(ordine_id: int) -> dict[str, Any]:
         "push_log_id": report["push_log_id"],
         "durata_ms": report["durata_ms"],
         "handlers": report["handlers"],
+        # Commesse toccate dal push (gia' rese emittibili dal ponte in
+        # pr_run_commesse_push_one): il FE puo' navigare/ispezionare.
+        "commesse_ids": report.get("commesse_ids", []),
         "righe_pushable": righe_count,
         "fatturazione_trigger": testata.get("fatturazione_trigger"),
     }

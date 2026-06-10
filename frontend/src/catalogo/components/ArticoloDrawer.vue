@@ -77,7 +77,7 @@ function defaultForm() {
   return {
     codice: '', descrizione: '', descrizione_breve: '',
     uom_id: null, tipo_voce_id: null, gruppo_voce_id: null,
-    listino_tipologia_id: null,
+    listino_tipologia_id: null, natura_vendita_id: null,
     spesa_id: null, iva_id: null,
     conto_contabile_vendita_id: null, conto_contabile_acquisto_id: null,
     is_composito: false, is_solo_componente: false,
@@ -145,6 +145,7 @@ async function loadDetail() {
     tipo_voce_id: data.tipo_voce_id,
     gruppo_voce_id: data.gruppo_voce_id,
     listino_tipologia_id: data.listino_tipologia_id,
+    natura_vendita_id: data.natura_vendita_id,
     spesa_id: data.spesa_id,
     iva_id: data.iva_id,
     conto_contabile_vendita_id: data.conto_contabile_vendita_id,
@@ -197,6 +198,8 @@ async function handleSave() {
       tipo_voce_id: f.tipo_voce_id,
       gruppo_voce_id: f.gruppo_voce_id,
       listino_tipologia_id: f.listino_tipologia_id,
+      // NOT NULL a DB: in EDIT il valore arriva sempre dal detail, mai null.
+      natura_vendita_id: f.natura_vendita_id,
       spesa_id: f.spesa_id,
       iva_id: f.iva_id,
       conto_contabile_vendita_id: f.conto_contabile_vendita_id,
@@ -219,6 +222,9 @@ async function handleSave() {
       tipo_voce_id: f.tipo_voce_id,
       gruppo_voce_id: f.gruppo_voce_id,
       listino_tipologia_id: f.listino_tipologia_id,
+      // NOT NULL a DB con DEFAULT MERCE: si invia solo se scelta esplicita
+      // (null esplicito verrebbe rifiutato dal BE).
+      ...(f.natura_vendita_id != null ? { natura_vendita_id: f.natura_vendita_id } : {}),
       spesa_id: f.spesa_id,
       iva_id: f.iva_id,
       conto_contabile_vendita_id: f.conto_contabile_vendita_id,
@@ -386,6 +392,12 @@ const drawerActions = computed(() => {
           <div class="form-field">
             <label>{{ t('catalogo.field_spesa') }}</label>
             <LookupSelect v-model="form.spesa_id" rel="vendite.articoli_spesa" :placeholder="t('catalogo.select_spesa')" show-clear />
+          </div>
+          <div class="form-field">
+            <label>{{ t('catalogo.field_natura_vendita') }}</label>
+            <!-- NOT NULL a DB (default MERCE): niente show-clear -->
+            <LookupSelect v-model="form.natura_vendita_id" rel="config.nature_vendita" :placeholder="t('catalogo.select_natura_vendita')" />
+            <small class="text-color-secondary mt-025">{{ t('catalogo.hint_natura_vendita') }}</small>
           </div>
         </div>
 

@@ -29,6 +29,7 @@ View: `ApiCommessaStato` `ApiCommessaStato` (`apps.vendite.api.views`).
 {
   "data": {
     "commessa_id": 1,
+    "stato_codice_interno": "PRONTA_FATTURAZIONE",
     "total_attivita": 10,
     "total_approvate": 8,
     "total_emesse": 5
@@ -36,6 +37,10 @@ View: `ApiCommessaStato` `ApiCommessaStato` (`apps.vendite.api.views`).
   "meta": { ... }
 }
 ```
+
+`stato_codice_interno` (2026-06-10): codice stato della testata
+(`vendite.stati_commessa.codice_interno`) — permette a FE/smoke di verificare
+l'esito del ponte di emittibilità post-push senza una seconda chiamata.
 
 - `400`: `commessa_id` non valido (`E_COMMESSA_VALIDATION`)
 - `404`: commessa non trovata (`E_COMMESSA_NOT_FOUND`)

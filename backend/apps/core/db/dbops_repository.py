@@ -44,6 +44,7 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.listini_tipologie",
         "config.modalita_addebito_trasporto",
         "config.modalita_pagamento",
+        "config.nature_vendita",
         "config.note_stili",
         "config.priorita_pratiche",
         "config.profili_accesso",

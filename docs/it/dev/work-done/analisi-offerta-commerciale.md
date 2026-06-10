@@ -1,14 +1,16 @@
 # Analisi — Offerta commerciale come dominio separato
 
-> **Stato**: DECISIONI DI MODELLO §5 CHIUSE (sessione 2026-05-23). Resta da
-> scrivere il brief DB operativo. Nessun codice ancora toccato.
+> **Stato**: ✅ CHIUSO. Decisioni di modello §5 chiuse (2026-05-23); il brief DB
+> operativo è stato scritto e il dominio offerta è **implementato BE+FE** (piano
+> [analisi-offerta-commerciale-be-fe.md](analisi-offerta-commerciale-be-fe.md),
+> CHIUSO). Documento promosso a `work-done` (riferimento di modello storico).
 >
 > **Scope**: introdurre un'entità `offerta_commerciale` (proposta di condizioni
 > quadro) come predecessore tracciato del contratto, distinta dal preventivo
 > (proposta di transazione puntuale).
 >
 > **Origine**: sessione 2026-05-15 nel contesto del refactor contratti
-> ([`refactor-contratti-modalita.md`](../work-done/refactor-contratti-modalita.md)). Discutendo il
+> ([`refactor-contratti-modalita.md`](refactor-contratti-modalita.md)). Discutendo il
 > modello prezzi dei preventivi (snapshot riga-per-riga) vs contratti (snapshot della
 > versione listino, decisione §3-bis-A) è emersa la domanda: "ma forse il preventivo più
 > che in un contratto dovrebbe andare in un'offerta commerciale o sbaglio?".
@@ -22,7 +24,7 @@
 >
 > **Riferimento incrociato chiave**: questo dominio è il prerequisito dell'asse
 > `OFFERTA_QUADRO` descritto in
-> [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md)
+> [analisi-pratiche-domini-anello3.md](../work-in-progress/analisi-pratiche-domini-anello3.md)
 > §11.2 (ossatura pratica già predisposta, in attesa di questo dominio). Vedi §9.
 
 ---
@@ -149,7 +151,7 @@ In sintesi:
 ## 4. Riepilogo simmetria dei due assi
 
 Il modello commerciale di ZeroERP tiene **strutturalmente separati** due assi (coerente con
-[analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md)
+[analisi-pratiche-domini-anello3.md](../work-in-progress/analisi-pratiche-domini-anello3.md)
 §11.0.1):
 
 | Asse                     | Sorgente            | Destinazione      | Snapshot                 | Natura riga ammessa                  |
@@ -350,7 +352,7 @@ complessità all'offerta.
 > "un seed" è in realtà l'introduzione di una nuova tassonomia + una colonna
 > `contratti.causale_cessazione_id` + il retrofitting del meccanismo di cessazione
 > esistente per leggerla. È **scope creep** rispetto al brief offerta (vedi
-> [analisi-offerta-commerciale-db.md](../work-done/analisi-offerta-commerciale-db.md) §2.4 nota
+> [analisi-offerta-commerciale-db.md](analisi-offerta-commerciale-db.md) §2.4 nota
 > "Causale RECESSO rimossa dal brief offerta").
 >
 > **Decisione conseguente**: in v1 il recesso si gestisce con i meccanismi di
@@ -456,12 +458,12 @@ separazione dei due assi ribadita in §2.1 e §4.
 
 ## 9. Riferimenti incrociati
 
-- [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md)
+- [analisi-pratiche-domini-anello3.md](../work-in-progress/analisi-pratiche-domini-anello3.md)
   — asse `OFFERTA_QUADRO` (§11.2, ossatura pratica in attesa di questo dominio); separazione
   dei due assi commerciali (§11.0.1); idempotenza cross-dominio (§6.9).
-- [`refactor-contratti-modalita.md`](../work-done/refactor-contratti-modalita.md) — refactor
+- [`refactor-contratti-modalita.md`](refactor-contratti-modalita.md) — refactor
   contratti corrente; questa analisi è uscita dalla sua §3-bis-A.
-- [`recap-contratti-post-componenti.md`](../work-done/recap-contratti-post-componenti.md) — recap
+- [`recap-contratti-post-componenti.md`](recap-contratti-post-componenti.md) — recap
   bug contratti post-componenti, contesto operativo.
 - `api_preventivi.md` — modello preventivi esistente, riferimento per pattern riusabile.
 - `push_a_commessa` ([preventivi_service.py:1910](../../../../backend/apps/vendite/services/preventivi_service.py#L1910)) —

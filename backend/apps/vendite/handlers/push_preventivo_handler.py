@@ -47,7 +47,6 @@ _MODALITA_AMMESSE = frozenset({MODALITA_IMMEDIATA, MODALITA_DIFFERITA})
 
 _STATO_PREVENTIVO_ACCETTATO = "ACCETTATO"
 _STATO_PREVENTIVO_EVASO = "EVASO"
-_STATO_COMMESSA_PRONTA = "PRONTA_FATTURAZIONE"
 
 _SORGENTE_PREVENTIVO = "PREVENTIVO"
 _SORGENTE_COMMESSA = "COMMESSA"
@@ -218,9 +217,14 @@ class PushPreventivoHandler:
                     fatturazione_immediata=fatturazione_immediata,
                     competenza_mese=competenza_mese,
                 )
+                # Il ponte di emittibilita` (righe APPROVATA + testata
+                # PRONTA_FATTURAZIONE, skip idempotente multi-sorgente) e`
+                # dentro pr_run_commesse_push_one: vale per OGNI percorso di
+                # push, non solo per la pratica.
                 pr_run_commesse_push_one(
                     sorgente_codice=_SORGENTE_PREVENTIVO,
                     sorgente_uid=preventivo_id,
+                    user=user,
                 )
                 commessa_id = commesse_repo.get_commessa_id_by_sorgente(
                     sorgente_codice=_SORGENTE_PREVENTIVO, sorgente_uid=preventivo_uid,
@@ -233,29 +237,6 @@ class PushPreventivoHandler:
                     function_name=f"{_FN}.execute",
                 )
                 assert commessa_id is not None
-
-                # Righe → APPROVATA (idempotente: approva le nuove righe, anche
-                # COLLEGATO, senza toccare quelle già approvate).
-                commesse_repo.approva_commessa_attivita(commessa_id=commessa_id, user=user)
-
-                # Testata → PRONTA_FATTURAZIONE, con SKIP IDEMPOTENTE se la
-                # commessa è GIÀ pronta (commessa multi-sorgente, brief
-                # brief-db-commesse-multi-sorgente.md §4.2): col modello
-                # commesse_sorgenti ROOT+COLLEGATO una commessa dimensionalmente
-                # condivisa può essere stata portata a PRONTA_FATTURAZIONE da una
-                # sorgente precedente (es. un altro preventivo confermato con
-                # stesse BA/utility/periodo). `fn_cambia_stato_commessa` non è
-                # idempotente (UPDATE + guard di matrice DB senza `da=a`): una
-                # 2ª transizione PRONTA→PRONTA fallirebbe. Leggo lo stato e
-                # transito solo se NON già pronta.
-                # NB: gli stati "oltre" anomali (CHIUSA/ANNULLATA) NON sono
-                # silenziati di proposito — la transizione viene tentata e il
-                # guard DB fallisce forte: non si evade un preventivo su una
-                # commessa chiusa/annullata.
-                if commesse_repo.get_commessa_stato_codice(commessa_id) != _STATO_COMMESSA_PRONTA:
-                    commesse_repo.cambia_stato_commessa(
-                        commessa_id=commessa_id, nuovo_stato=_STATO_COMMESSA_PRONTA, user=user,
-                    )
 
                 # Aggancio pratiche_sorgenti (idempotente): preventivo ROOT,
                 # commessa COLLEGATO. sorgente_uid: preventivo→uid, commessa→id.

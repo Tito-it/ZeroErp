@@ -24,7 +24,10 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.listini_repository import ListiniRepository
-from apps.vendite.services.commesse_push_orchestrator import CommessaPushOrchestrator
+from apps.vendite.services.commesse_push_orchestrator import (
+    CommessaPushOrchestrator,
+    PushReport,
+)
 from apps.vendite.services.commesse_source_handlers import (
     BaseSourceHandler,
     HandlerContratti,
@@ -51,6 +54,54 @@ _HANDLER_REGISTRY: dict[str, type[BaseSourceHandler]] = {
 # COMPLETATO e SKIPPED NON sono qui: il primo e' successo, il secondo non
 # ha tentato scritture (lock concorrente).
 _STATI_PUSH_FALLIMENTO = frozenset({"PARZIALE", "ERRORE"})
+
+_STATO_PUSH_COMPLETATO = "COMPLETATO"
+
+_STATO_COMMESSA_PRONTA = "PRONTA_FATTURAZIONE"
+
+
+def _commesse_ids_da_report(report: PushReport) -> list[int]:
+    """Unione ordinata delle commesse toccate da tutti gli handler del run."""
+    ids: set[int] = set()
+    for h in report.handlers:
+        ids.update(h.commesse_ids)
+    return sorted(ids)
+
+
+# Scopo: Ponte di emittibilita` post-push — righe APPROVATA + testata
+#        PRONTA_FATTURAZIONE per una commessa toccata da un push riuscito.
+def _rendi_commessa_emittibile(
+    repo: CommesseRepository,
+    *,
+    commessa_id: int,
+    user: str | None = None,
+) -> None:
+    """Regola di modello (V9, generalizzata dal handler pratica al push):
+    le viste `fn_list_*_da_pushare` ammettono SOLO documenti sorgente gia`
+    autorizzati (preventivo ACCETTATO, ordine CONFERMATO, contratto ATTIVO,
+    DDT, consumi) — il push e` quindi esso stesso l'autorizzazione delle
+    attivita` generate. Senza questo ponte la commessa resta BOZZA/BOZZA e
+    il ramo commessa→fattura e` dormiente (fn_list_commesse_emittibili non
+    la vede mai).
+
+    Idempotente sulle righe (fn_approva approva solo le NON_EMESSA in BOZZA)
+    e skip-idempotente sulla testata: una commessa multi-sorgente puo` essere
+    GIA` PRONTA_FATTURAZIONE da un push precedente e fn_cambia_stato_commessa
+    non ammette transizioni `da=a`. Stati anomali (CHIUSA/ANNULLATA) NON sono
+    silenziati di proposito: la transizione viene tentata e il guard DB
+    fallisce forte — non si pusha su una commessa chiusa/annullata.
+
+    Granularita` singola deliberata: il batch deve poter isolare il fallimento
+    di una commessa senza perdere il ponte sulle altre (best-effort), il push
+    singolo itera e lascia propagare (all-or-nothing).
+    """
+    repo.approva_commessa_attivita(commessa_id=commessa_id, user=user)
+    if repo.get_commessa_stato_codice(commessa_id) != _STATO_COMMESSA_PRONTA:
+        repo.cambia_stato_commessa(
+            commessa_id=commessa_id,
+            nuovo_stato=_STATO_COMMESSA_PRONTA,
+            user=user,
+        )
 
 
 def _build_handlers(repo: CommesseRepository) -> list[BaseSourceHandler]:
@@ -92,12 +143,29 @@ def pr_run_commesse_push(
 
     orch = CommessaPushOrchestrator(repo, handlers)
     report = orch.run(source_types=source_types, dry_run=dry_run)
+
+    # Ponte emittibilita` batch: best-effort per-commessa, coerente con la
+    # semantica per-riga del batch (1 commessa rotta non blocca le altre).
+    # Gli errori finiscono nel report, non sollevano.
+    commesse_ids = _commesse_ids_da_report(report)
+    emittibilita_errors: list[str] = []
+    if not dry_run:
+        for commessa_id in commesse_ids:
+            try:
+                with transaction.atomic():
+                    _rendi_commessa_emittibile(repo, commessa_id=commessa_id)
+            except Exception as exc:  # noqa: BLE001 — best-effort, report-driven
+                emittibilita_errors.append(
+                    f"commessa_id={commessa_id}: {type(exc).__name__}: {exc}"
+                )
     return {
         "stato": report.stato,
         "dry_run": report.dry_run,
         "push_log_id": report.push_log_id,
         "durata_ms": report.durata_ms,
         "handlers": [r.as_dict() | {"handler_name": r.handler_name} for r in report.handlers],
+        "commesse_ids": commesse_ids,
+        "emittibilita_errors": emittibilita_errors,
     }
 
 
@@ -121,6 +189,7 @@ def pr_run_commesse_push_one(
     sorgente_codice: str,
     sorgente_uid: int,
     dry_run: bool = False,
+    user: str | None = None,
 ) -> dict:
     """Entrypoint servizio Python: push commesse di un singolo documento sorgente."""
     repo = CommesseRepository()
@@ -180,12 +249,22 @@ def pr_run_commesse_push_one(
                 },
                 function_name="vendite.commesse_service.pr_run_commesse_push_one",
             )
+
+        # Ponte emittibilita`: stessa transazione del push (all-or-nothing —
+        # se la commessa non puo` diventare emittibile il push intero rolla,
+        # coerente con la semantica del push singolo). COMPLETATO only:
+        # SKIPPED non ha scritto nulla, dry-run non deve scrivere.
+        commesse_ids = _commesse_ids_da_report(report)
+        if not dry_run and report.stato == _STATO_PUSH_COMPLETATO:
+            for commessa_id in commesse_ids:
+                _rendi_commessa_emittibile(repo, commessa_id=commessa_id, user=user)
     return {
         "stato": report.stato,
         "dry_run": report.dry_run,
         "push_log_id": report.push_log_id,
         "durata_ms": report.durata_ms,
         "handlers": [r.as_dict() | {"handler_name": r.handler_name} for r in report.handlers],
+        "commesse_ids": commesse_ids,
     }
 
 
@@ -240,7 +319,13 @@ def fn_get_commessa_stato(*, commessa_id: int) -> dict:
             log_to_db=True,
         )
     assert stato is not None  # raise_error è NoReturn — aiuta il type checker
-    return {"commessa_id": commessa_id, **dict(stato)}
+    return {
+        "commessa_id": commessa_id,
+        # Stato testata: permette a FE/smoke di verificare l'esito del ponte
+        # di emittibilita` (PRONTA_FATTURAZIONE) senza una seconda chiamata.
+        "stato_codice_interno": repo.get_commessa_stato_codice(commessa_id),
+        **dict(stato),
+    }
 
 
 # Scopo: Restituisce la lista paginata delle attività di una commessa.

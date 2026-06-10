@@ -1074,6 +1074,7 @@ const drawerActions = computed(() => {
        competenza al mese corrente. -->
   <AppDialog v-model:visible="acceptDialogVisible" :closable="false"
     :header="t('preventivi.accetta_titolo')" width="sm"
+    :readonly="props.readonly || parentReadonly"
     :save-label="t('preventivi.accetta_conferma')"
     :save-disabled="!acceptForm.fatturazione_immediata && !acceptForm.competenza_mese"
     @save="confirmAcceptDialog">

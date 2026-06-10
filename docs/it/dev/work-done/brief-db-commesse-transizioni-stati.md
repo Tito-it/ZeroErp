@@ -8,7 +8,7 @@
 > applicati, pgTAP verdi. Vedi §0.
 >
 > **Origine**: prerequisito **V9** del
-> [brief-db-pratica-preventivi.md](../work-in-progress/brief-db-pratica-preventivi.md). La verifica
+> [brief-db-pratica-preventivi.md](brief-db-pratica-preventivi.md). La verifica
 > critica (2026-06-07) ha trovato che il ramo commessa→fattura è **dormiente**:
 > la commessa nasce in `BOZZA` e **nessuna** funzione/trigger la porta a
 > `PRONTA_FATTURAZIONE`, né le righe ad `APPROVATA`. Le commesse — a differenza
