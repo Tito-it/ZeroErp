@@ -641,6 +641,26 @@ def _extract_articolo_payload(
         if field_value is not _MISSING:
             data[field_name] = field_value
 
+    # natura_vendita_id e' NOT NULL a livello DDL (DEFAULT 1 = MERCE): opzionale
+    # nel payload, ma se presente deve essere un id valido (> 0), mai null —
+    # decide l'instradamento post-accettazione (ordine/commessa/contratto).
+    natura_value = _extract_nullable_int(
+        payload,
+        "natura_vendita_id",
+        function_name=function_name,
+    )
+    if natura_value is not _MISSING:
+        ErrorManager.require(
+            isinstance(natura_value, int) and natura_value > 0,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload articolo non valido.",
+            detail="natura_vendita_id non puo' essere null: indica una natura valida.",
+            context={"field": "natura_vendita_id"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        data["natura_vendita_id"] = natura_value
+
     meta = _extract_meta(payload, function_name=function_name)
     if meta is not _MISSING:
         data["meta"] = meta

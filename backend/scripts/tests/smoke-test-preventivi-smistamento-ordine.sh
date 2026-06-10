@@ -3,19 +3,25 @@
 # Smoke test locale — Smistamento MERCE preventivo → ordine (modello split D8).
 # Uso: ./scripts/tests/smoke-test-preventivi-smistamento-ordine.sh [password]
 #
-# Copre il ramo MERCE→ORDINE end-to-end contro DB+API reali (ciò che gli unit
-# test mockano): vista vw_preventivi_righe_smistabili_ordine, endpoint
-# righe-smistabili-ordine + genera-ordine (fn_push_preventivo_a_ordine),
-# idempotenza di riga, filtro catalogo natura.
+# Copre i due rami dello split per natura end-to-end contro DB+API reali (ciò
+# che gli unit test mockano):
+#  - MERCE→ORDINE: vista vw_preventivi_righe_smistabili_ordine, endpoint
+#    righe-smistabili-ordine + genera-ordine (fn_push_preventivo_a_ordine),
+#    idempotenza di riga, filtro catalogo natura;
+#  - SERVIZIO→COMMESSA su preventivo MISTO (2026-06-10): articolo servizio
+#    creato via API (natura_vendita_id amministrabile, opzione A), push-commessa
+#    natura-aware (il servizio non appare tra le righe-smistabili-ordine), gate
+#    EVASO D6 (resta ACCETTATO con residuo merce; EVASO solo a smistamento
+#    completo), idempotenza re-push.
 #
-# NON coperto (richiede prerequisiti assenti dal seed):
-#  - ramo SERVIZIO→COMMESSA e orchestratore CONFERMA_VENDITA: serve un articolo
-#    con natura destinazione_tipo='COMMESSA' (il seed ha solo MERCE) + una pratica;
+# NON coperto:
+#  - orchestratore CONFERMA_VENDITA (serve una pratica PREVENTIVI: giro UI E2E);
 #  - multi-sorgente (skip PRONTA idempotente): serve 2 preventivi stesse dimensioni.
-#  → smoke dedicati una volta seedato un articolo SERVIZIO_UNA_TANTUM.
 #
 # Auto-diagnosi: se EMESSO/ACCETTATO falliscono per prerequisiti documentali
 # (template/emittente), i passi split vengono SALTATI con diagnosi, non crashano.
+# Idempotenza setup: l'articolo servizio è riusato per codice fisso
+# (SMOKE-SERV-UT), creato solo se assente — nessun residuo che si accumula.
 # ------------------------------------------------------------
 # Indice:
 #  0) Autenticazione JWT
@@ -26,6 +32,14 @@
 #  5) POST genera-ordine {righe_ids} → ordine creato (ordine_id + numero)
 #  6) GET righe-smistabili-ordine → vuota (riga ora allocata: idempotenza)
 #  7) POST genera-ordine di nuovo → errore "nessuna riga ordine" (idempotenza)
+#  8) Crea/riusa articolo SERVIZIO_UNA_TANTUM (natura_vendita_id=2 via API)
+#  9) Crea preventivo MISTO (riga merce + riga servizio) → ACCETTATO
+# 10) GET righe-smistabili-ordine → SOLO la riga merce (servizio escluso)
+# 11) POST push-commessa → COMPLETATO + commesse_ids; stato resta ACCETTATO
+#     (gate EVASO D6: residuo merce)
+# 12) POST genera-ordine → merce smistata
+# 13) POST push-commessa di nuovo → COMPLETATO (idempotente) + stato EVASO
+#     (gate D6 soddisfatto: nessun residuo)
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -72,14 +86,16 @@ except Exception:
 }
 
 do_curl() {
-    local method="$1" url="$2" data="${3:-}"
+    # Arg 4 opzionale: header extra (es. "Idempotency-Key: ...").
+    local method="$1" url="$2" data="${3:-}" extra_header="${4:-}"
     if [[ "$method" == "GET" ]]; then
         curl -s -w '\n%{http_code}' -H "Authorization: Bearer ${TOKEN:-none}" \
             "${BASE_URL}${url}" > "$TMPFILE" 2>/dev/null
     else
         curl -s -w '\n%{http_code}' -X "$method" \
             -H "Authorization: Bearer ${TOKEN:-none}" \
-            -H "Content-Type: application/json" -d "$data" \
+            -H "Content-Type: application/json" \
+            ${extra_header:+-H "$extra_header"} -d "$data" \
             "${BASE_URL}${url}" > "$TMPFILE" 2>/dev/null
     fi
     LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
@@ -244,10 +260,114 @@ if [[ "$SPLIT_OK" == "1" ]]; then
     fi
 fi
 
+# --- 8. Articolo SERVIZIO_UNA_TANTUM (riuso per codice fisso, crea se assente) ---
+echo ""; echo "-- 8. Crea/riusa articolo servizio (natura SERVIZIO_UNA_TANTUM) --"
+SERV_CODICE="SMOKE-SERV-UT"
+SERV_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+    "${BASE_URL}/api/v1/catalogo/articoli/?search=${SERV_CODICE}&page_size=5" 2>/dev/null | python3 -c "
+import sys, json
+try:
+    r = json.load(sys.stdin).get('data',{}).get('results',[])
+    print(next((x['id'] for x in r if x.get('codice') == '${SERV_CODICE}'), ''))
+except Exception: print('')
+" 2>/dev/null)
+if [[ -n "$SERV_ID" ]]; then
+    log_ok "articolo servizio riusato (codice $SERV_CODICE)"
+else
+    # uom_id obbligatoria: riusa quella dell'articolo merce (GET detail).
+    do_curl GET "/api/v1/catalogo/articoli/${ARTICOLO_ID}/"
+    UOM_ID=$(json_get "$LAST_BODY" "data.uom_id")
+    if [[ -z "$UOM_ID" ]]; then
+        log_fail "uom_id non ricavabile dall'articolo merce: impossibile creare il servizio"
+    else
+        do_curl POST "/api/v1/catalogo/articoli/" \
+            "{\"codice\": \"$SERV_CODICE\", \"descrizione\": \"Servizio una tantum (smoke)\", \"uom_id\": ${UOM_ID}, \"iva_id\": 16, \"natura_vendita_id\": 2}"
+        if check "POST crea articolo servizio (natura_vendita_id=2)" 200 "data.id"; then
+            SERV_ID="$EXTRACTED"
+        else
+            SERV_ID=""  # EXTRACTED stale dal passo precedente: mai riusarlo
+        fi
+    fi
+fi
+log_info "articolo servizio id = $SERV_ID"
+
+# --- 9..13. Preventivo MISTO: split servizio→commessa + gate EVASO ---
+MISTO_OK=0
+if [[ -n "$SERV_ID" && "$SPLIT_OK" == "1" ]]; then
+    echo ""; echo "-- 9. Crea preventivo MISTO (merce + servizio) → ACCETTATO --"
+    do_curl POST "/api/v1/vendite/preventivi/" "$PREV_PAYLOAD"
+    if check "POST crea preventivo misto" 200 "data.id"; then
+        PREV2_ID="$EXTRACTED"; log_info "preventivo_id (misto) = $PREV2_ID"
+        do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/righe/" \
+            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"3\", \"prezzo_unitario\": \"100.00\", \"iva_id\": 16}"
+        check "POST riga merce" 200 "data.id" || true
+        RIGA_MERCE2_ID="$EXTRACTED"
+        do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/righe/" \
+            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"50.00\", \"iva_id\": 16}"
+        check "POST riga servizio" 200 "data.id" || true
+        curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
+            -F "x=" "${BASE_URL}/api/v1/vendite/preventivi/${PREV2_ID}/emetti/" > "$TMPFILE" 2>/dev/null
+        LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+        if [[ "$LAST_STATUS" == "200" ]]; then
+            log_ok "POST /emetti/ → EMESSO"
+            do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/stato/" \
+                '{"nuovo_stato": "ACCETTATO", "fatturazione_immediata": true}'
+            if check "POST /stato/ → ACCETTATO" 200; then MISTO_OK=1; fi
+        else
+            log_skip "EMESSO (misto) HTTP $LAST_STATUS — salto i passi misto"
+        fi
+    fi
+fi
+
+if [[ "$MISTO_OK" == "1" ]]; then
+    echo ""; echo "-- 10. righe-smistabili-ordine (attesa: SOLO la riga merce) --"
+    do_curl GET "/api/v1/vendite/preventivi/${PREV2_ID}/righe-smistabili-ordine/"
+    check "GET righe-smistabili-ordine (misto)" 200 || true
+    NM=$(json_len "$LAST_BODY")
+    [[ "$NM" -eq 1 ]] && log_ok "Righe smistabili = 1 (servizio escluso dal filtro natura)" \
+        || log_fail "Attesa 1 riga smistabile (solo merce), trovate $NM"
+
+    echo ""; echo "-- 11. push-commessa (attesa: COMPLETATO, stato resta ACCETTATO) --"
+    do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/push-commessa/" '{}' \
+        "Idempotency-Key: smoke-push-$(date +%s%N)"
+    if check "POST push-commessa" 200 "data.stato"; then
+        PUSH_STATO="$EXTRACTED"
+        COMMESSE=$(json_get "$LAST_BODY" "data.commesse_ids.0")
+        [[ "$PUSH_STATO" == "COMPLETATO" ]] && log_ok "push COMPLETATO" || log_fail "push atteso COMPLETATO, trovato '$PUSH_STATO'"
+        [[ -n "$COMMESSE" ]] && log_ok "commessa creata (id=$COMMESSE)" || log_fail "commesse_ids vuoto nel report push"
+    fi
+    do_curl GET "/api/v1/vendite/preventivi/${PREV2_ID}/"
+    ST=$(json_get "$LAST_BODY" "data.stato_codice_interno")
+    [[ "$ST" == "ACCETTATO" ]] && log_ok "stato = ACCETTATO (gate EVASO D6: residuo merce)" \
+        || log_fail "gate EVASO violato: atteso ACCETTATO con residuo merce, trovato '$ST'"
+
+    echo ""; echo "-- 12. genera-ordine (smista la merce residua) --"
+    do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/genera-ordine/" '{}'
+    if check "POST genera-ordine (misto)" 200 "data.ordine_id"; then
+        log_info "ordine_id = $EXTRACTED"
+    fi
+
+    echo ""; echo "-- 13. re-push-commessa (attesa: idempotente + stato EVASO) --"
+    # Key NUOVA: una key già usata farebbe replay della response cached invece
+    # di rieseguire il push (e il gate EVASO non verrebbe esercitato).
+    do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/push-commessa/" '{}' \
+        "Idempotency-Key: smoke-repush-$(date +%s%N)"
+    if check "POST re-push-commessa" 200 "data.stato"; then
+        [[ "$EXTRACTED" == "COMPLETATO" ]] && log_ok "re-push idempotente COMPLETATO" \
+            || log_fail "re-push atteso COMPLETATO, trovato '$EXTRACTED'"
+    fi
+    do_curl GET "/api/v1/vendite/preventivi/${PREV2_ID}/"
+    ST2=$(json_get "$LAST_BODY" "data.stato_codice_interno")
+    [[ "$ST2" == "EVASO" ]] && log_ok "stato = EVASO (smistamento completo, gate D6 soddisfatto)" \
+        || log_fail "atteso EVASO a smistamento completo, trovato '$ST2'"
+elif [[ "$SPLIT_OK" == "1" ]]; then
+    log_skip "Passi misto saltati (articolo servizio non disponibile)"
+fi
+
 # --- Nota copertura ---
 echo ""
-log_info "Ramo SERVIZIO→COMMESSA / multi-sorgente NON coperto: serve un articolo"
-log_info "natura destinazione_tipo='COMMESSA' (seed assente). Vedi header."
+log_info "NON coperto: orchestratore CONFERMA_VENDITA (serve pratica, giro UI E2E)"
+log_info "e multi-sorgente (2 preventivi stesse dimensioni). Vedi header."
 
 # --- Summary ---
 echo ""
