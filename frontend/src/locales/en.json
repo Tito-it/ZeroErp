@@ -1755,7 +1755,7 @@
       "conferma_ordine_messaggio": "Confirm the order? After confirmation the lines can no longer be edited.",
       "ordine_confermato": "Order confirmed",
       "push_commessa_messaggio": "Send the order to job for billing?",
-      "push_commessa_ok": "Order sent to job ({righe} lines, log #{push_log_id}).",
+      "push_commessa_ok": "Order sent to job ({righe} lines).",
       "push_commessa_ok_generico": "Order sent to job.",
       "push_commessa_parziale": "Partial push ({righe} lines, log #{push_log_id}).",
       "push_commessa_errore": "Push failed: {primo_errore}",

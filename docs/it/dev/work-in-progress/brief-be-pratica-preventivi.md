@@ -1,11 +1,11 @@
 # Brief BE — Pratica `PREVENTIVI` (handler `vendita.push_preventivo`)
 
 > **Tipo documento**: brief backend (Django). Prerequisito: deliverable DB del
-> [brief-db-pratica-preventivi.md](brief-db-pratica-preventivi.md) +
+> [brief-db-pratica-preventivi.md](../work-done/brief-db-pratica-preventivi.md) +
 > [brief-db-commesse-transizioni-stati.md](../work-done/brief-db-commesse-transizioni-stati.md).
 > Coerente con [feedback_be_fe_attende_prerequisiti_db]: **non** anticipare codice
 > che dipende da oggetti DB non ancora consegnati.
-> [brief-db-pratica-preventivi.md](brief-db-pratica-preventivi.md) — **✅ CONSEGNATI
+> [brief-db-pratica-preventivi.md](../work-done/brief-db-pratica-preventivi.md) — **✅ CONSEGNATI
 > e applicati (2026-06-08)**: seed catalogo, `handler_params` (JSONB, **nessuna**
 > tabella `config.modalita_fatturazione`), `fn_log_evento_dominio`, GRANT, codici
 > errore, motore prerequisiti esito-aware, macchina transizioni commesse (V9). Il

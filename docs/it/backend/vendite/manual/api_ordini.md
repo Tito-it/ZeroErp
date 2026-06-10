@@ -222,6 +222,20 @@ Push del singolo ordine `CONFERMATO` via `fn_list_ordini_da_pushare(…, p_ordin
 + orchestratore (`pr_run_commesse_push_one`, sorgente `ORDINE_VENDITA`) →
 `attivita_fatturabili`. Guard: stato `CONFERMATO` + righe eleggibili.
 
+**Ponte emittibilità (2026-06-10)**: a push `COMPLETATO`, nella stessa
+transazione, ogni commessa toccata viene resa **emittibile** — attività
+`BOZZA → APPROVATA` (`fn_approva_commessa_attivita`) + testata
+`→ PRONTA_FATTURAZIONE` (`fn_cambia_stato_commessa`, skip idempotente se già
+pronta da una sorgente precedente). Regola di modello: il documento pushato è
+già autorizzato (ordine `CONFERMATO`), quindi il push è esso stesso
+l'autorizzazione delle attività generate. Il ponte vive in
+`pr_run_commesse_push_one` e vale per ogni percorso (preventivi standalone,
+ordini, handler pratica; il batch `pr_run_commesse_push` lo applica
+best-effort per commessa con errori in `emittibilita_errors`).
+
+La response espone `commesse_ids` (commesse toccate dal push), oltre a
+`stato`/`push_log_id`/`handlers`/`righe_pushable`/`fatturazione_trigger`.
+
 ### Righe
 
 | Metodo / Path | Scopo |

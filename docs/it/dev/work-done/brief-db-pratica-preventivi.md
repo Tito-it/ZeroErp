@@ -6,12 +6,18 @@
 > **risolti** contro lo schema reale: ogni V-point riporta FOUND/MISSING con
 > nomi e firme verificati.
 >
-> **Data**: 2026-06-06 · **Stato**: VERIFICATO, pronto per stima/applicazione DB
+> **Data**: 2026-06-06 · **Stato**: 🟢 **IMPLEMENTATO A DB (2026-06-08)** —
+> commit `58169e9ed`: tutti i deliverable consegnati (B4-B7 seed catalogo,
+> B-PREREQ motore esito-aware, B-NEW `fn_log_evento_dominio` + CHECK regex
+> `DOMINIO_*`, B-GRANT `competenze_flussi`, B9 codici `E_VENDITA_*`), pgTAP
+> verdi. Prerequisito V9 (macchina transizioni commesse) consegnato nello
+> stesso commit. Cantiere applicativo a valle committato (`327140116`,
+> handler `vendita.push_preventivo` BE+FE).
 >
 > **Sorgente**: Brief Fase B — Pratica PREVENTIVI (questo turno) +
-> [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md) §11 +
-> [gestione-pratiche-v2.md](gestione-pratiche-v2.md) +
-> [sviluppo-push-singolo-preventivo.md](sviluppo-push-singolo-preventivo.md)
+> [analisi-pratiche-domini-anello3.md](../work-in-progress/analisi-pratiche-domini-anello3.md) §11 +
+> [gestione-pratiche-v2.md](../work-in-progress/gestione-pratiche-v2.md) +
+> [sviluppo-push-singolo-preventivo.md](../work-in-progress/sviluppo-push-singolo-preventivo.md)
 >
 > **Decisione di prodotto (Tid, 2026-06-06)**: la politica immediata/differita
 > vive **in configurazione** (modello "Brief Fase B come scritto"): due
@@ -185,7 +191,7 @@ brief "non esiste come stato" era errata). L'emittibilità è quindi uno **stato
 2. **Brief commesse separato** (proprio changelog + pgTAP): è prerequisito di
    questo brief, **non** un suo deliverable. L'handler `vendita.push_preventivo`
    si limita a invocarlo (vedi §7.1). → scritto in
-   [brief-db-commesse-transizioni-stati.md](../work-done/brief-db-commesse-transizioni-stati.md)
+   [brief-db-commesse-transizioni-stati.md](brief-db-commesse-transizioni-stati.md)
    e ✅ **IMPLEMENTATO (2026-06-08)**: `vendite.transizioni_stati_commessa` +
    `trgfn_commesse_guard_transizione` + `fn_cambia_stato_commessa` +
    `fn_approva_commessa_attivita` (`20260607-01..06`), pgTAP verdi. Il

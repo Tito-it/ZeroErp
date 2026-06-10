@@ -1760,7 +1760,7 @@
       "conferma_ordine_messaggio": "Confermare l'ordine? Dopo la conferma le righe non saranno più modificabili.",
       "ordine_confermato": "Ordine confermato",
       "push_commessa_messaggio": "Inviare l'ordine a commessa per la fatturazione?",
-      "push_commessa_ok": "Ordine inviato a commessa ({righe} righe, log #{push_log_id}).",
+      "push_commessa_ok": "Ordine inviato a commessa ({righe} righe).",
       "push_commessa_ok_generico": "Ordine inviato a commessa.",
       "push_commessa_parziale": "Push parziale ({righe} righe, log #{push_log_id}).",
       "push_commessa_errore": "Push fallito: {primo_errore}",

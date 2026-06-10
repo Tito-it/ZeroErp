@@ -15,7 +15,7 @@
 >
 > **Ambito**: **solo offerta commerciale**. Il caso `preventivo → ordine` ha un
 > modello *diverso* (split per natura di riga, orchestrato dalla pratica) ed è
-> trattato in un documento dedicato: [brief-preventivi-ordini.md](../work-in-progress/brief-preventivi-ordini.md).
+> trattato in un documento dedicato: [brief-preventivi-ordini.md](brief-preventivi-ordini.md).
 > **Non** applicare nulla di questo brief al preventivo.
 >
 > **Origine**: bug operativo segnalato da Tid. Da un'offerta `ACCETTATA`,
@@ -445,4 +445,4 @@ Quando entrambe le azioni speciali sono soppresse, `available_actions = []`
 *Brief DB — univocità offerta→ordine (1:1 permanente) + azione `genera_ordine`
 data-driven. **CHIUSO 2026-06-08**: DB (pgTAP 15/15) + mutua esclusività
 contratto/ordine (§10) + cablaggio BE/FE verde. Il caso preventivo è in
-[brief-preventivi-ordini.md](../work-in-progress/brief-preventivi-ordini.md).*
+[brief-preventivi-ordini.md](brief-preventivi-ordini.md).*

@@ -56,6 +56,7 @@ function onCancel() {
     @update:visible="$emit('update:visible', $event)"
     :header="t('preventivi.genera_ordine_titolo')"
     width="lg"
+    :readonly="false"
     :loading="loading"
     :save-disabled="loadingRighe || selected.length === 0"
     :save-label="t('preventivi.genera_ordine_conferma')"

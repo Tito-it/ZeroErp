@@ -70,6 +70,10 @@ class HandlerResult:
     updated: int = 0
     skipped: int = 0
     errors: list[str] = field(default_factory=list)
+    # Commesse toccate dal run (create o riusate): alimentano il ponte di
+    # emittibilita` post-push in commesse_service e l'esposizione API — i soli
+    # contatori non permettevano di risalire alla commessa dal documento sorgente.
+    commesse_ids: set[int] = field(default_factory=set)
 
     def as_dict(self) -> dict[str, Any]:
         """Serializza per commesse_push_log.risultato (JSONB)."""
@@ -78,6 +82,7 @@ class HandlerResult:
             "updated": self.updated,
             "skipped": self.skipped,
             "errors": self.errors,
+            "commesse_ids": sorted(self.commesse_ids),
         }
 
 
@@ -391,6 +396,10 @@ class BaseSourceHandler(ABC):
 
                     for exp in expanded:
                         pending_inputs.append(self._build_attivita_input(commessa_id, exp))
+
+                # Fuori dal savepoint: la commessa e` tracciata solo se la riga
+                # e` atterrata (un rollback non deve produrre id fantasma).
+                result.commesse_ids.add(commessa_id)
 
             except Exception as exc:
                 msg = f"Errore riga segment_key={row.segment_key}: {type(exc).__name__}: {exc}"

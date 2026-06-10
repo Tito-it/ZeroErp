@@ -264,7 +264,7 @@ Nuovo endpoint 2026-05-28. Mirror di `GET /api/v1/vendite/offerte/<id>/revisioni
 
 ### 6c. Genera ordine da preventivo (smistamento MERCE) `POST /api/v1/vendite/preventivi/{id}/genera-ordine/`
 
-**Modello split per natura** (brief [brief-preventivi-ordini.md](../../../dev/work-in-progress/brief-preventivi-ordini.md) D8 — sostituisce il vecchio copia-tutto 1:1).
+**Modello split per natura** (brief [brief-preventivi-ordini.md](../../../dev/work-done/brief-preventivi-ordini.md) D8 — sostituisce il vecchio copia-tutto 1:1).
 Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
 (natura con `destinazione_tipo='ORDINE'`), valorizzando `documento_origine =
 ('PREVENTIVO', preventivo_id)` sull'ordine.

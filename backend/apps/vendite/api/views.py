@@ -506,6 +506,7 @@ class ApiCommessaStato(DomainAPIView):
                         name="VenditeCommessaStatoData",
                         fields={
                             "commessa_id": serializers.IntegerField(),
+                            "stato_codice_interno": serializers.CharField(allow_null=True),
                             "total_attivita": serializers.IntegerField(),
                             "total_approvate": serializers.IntegerField(),
                             "total_emesse": serializers.IntegerField(),

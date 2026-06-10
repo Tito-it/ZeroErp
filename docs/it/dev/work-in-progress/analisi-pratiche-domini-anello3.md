@@ -34,7 +34,7 @@
 >   tipi_prestazione, template_flussi, handler, generazione cross-pratica
 > - [crm-ticketing-pratiche.md](crm-ticketing-pratiche.md) — pattern già aperto
 >   per assistenza/CRM, qui generalizzato
-> - [analisi-offerta-commerciale.md](analisi-offerta-commerciale.md)
+> - [analisi-offerta-commerciale.md](../work-done/analisi-offerta-commerciale.md)
 >   — futuro asse `offerta_commerciale → contratto`, distinto da preventivo→ordine
 > - [pratiche_sorgenti](../../dbzero/pratiche/manual/pratiche_sorgenti.md) — tabella
 >   ponte M:N esistente
@@ -506,7 +506,7 @@ Sequenza minimale, prerequisiti lineari (configurabili per varianti future):
 ### 5.3 Il flusso `CONFERMA_VENDITA`: split e idempotenza
 
 > ⚠️ **AGGIORNAMENTO — decisioni ratificate (Tid, 2026-06-08/09), prevalgono su questa prosa.**
-> Fonte autorevole: [brief-preventivi-ordini.md §0](brief-preventivi-ordini.md).
+> Fonte autorevole: [brief-preventivi-ordini.md §0](../work-done/brief-preventivi-ordini.md).
 >
 > 1. **Natura ricorrente (MODALITÀ A — blocco vero):** un articolo con
 >    `destinazione_tipo = 'CONTRATTO'` (oggi `SERVIZIO_RICORRENTE`) **non può stare
@@ -1174,7 +1174,7 @@ Quattro fasi successive. Ogni fase chiude prima di iniziare la successiva.
 > stretto**: pratica **`PREVENTIVI`** (immediata/differita) → **commessa diretta**
 > (nessuno split natura, niente ordine/contratto). Tracciato in tre brief
 > dedicati:
-> [brief-db-pratica-preventivi.md](brief-db-pratica-preventivi.md),
+> [brief-db-pratica-preventivi.md](../work-done/brief-db-pratica-preventivi.md),
 > [brief-be-pratica-preventivi.md](brief-be-pratica-preventivi.md),
 > [brief-fe-pratica-preventivi.md](brief-fe-pratica-preventivi.md).
 >
@@ -1321,7 +1321,7 @@ fase F il motore si può promuovere a contratto stabile.
 - [Manuale vendite.ordini](../../dbzero/vendite/manual/ordini.md)
 - [gestione-pratiche-v2.md](gestione-pratiche-v2.md)
 - [crm-ticketing-pratiche.md](crm-ticketing-pratiche.md)
-- [analisi-offerta-commerciale.md](analisi-offerta-commerciale.md)
+- [analisi-offerta-commerciale.md](../work-done/analisi-offerta-commerciale.md)
 - [pratiche_sorgenti manual](../../dbzero/pratiche/manual/pratiche_sorgenti.md)
 
 ### 9.2 Tabelle/funzioni DB di interesse
@@ -1398,7 +1398,7 @@ da §5.3.2.
 **Nota architetturale critica — perché 3 valori ma solo 2 ammessi**:
 
 Il modello commerciale di ZeroErp (vedi
-[analisi-offerta-commerciale.md](analisi-offerta-commerciale.md)
+[analisi-offerta-commerciale.md](../work-done/analisi-offerta-commerciale.md)
 §2) tiene **strutturalmente separati** due assi:
 
 - **Preventivo → Ordine / Commessa** = proposta di transazione puntuale,
@@ -1830,7 +1830,7 @@ procede normalmente come §11.1.7.
 > l'asse "offerta commerciale → contratto". Il dominio
 > `vendite.offerte_commerciali` (tabelle, service, view, drawer) **non esiste
 > oggi in ZeroErp**: è in stato di analisi iniziale APERTA, vedi
-> [analisi-offerta-commerciale.md](analisi-offerta-commerciale.md)
+> [analisi-offerta-commerciale.md](../work-done/analisi-offerta-commerciale.md)
 > §7.
 >
 > Per coerenza con il manifesto §III bis (non disegnare astrazioni che il
