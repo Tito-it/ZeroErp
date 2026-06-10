@@ -312,11 +312,13 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 - View `ApiPreventivoRigheSmistabiliOrdine` (area `vendite`, sola lettura) →
   `preventivi_service.list_righe_smistabili_ordine` →
   `PreventiviRepository.list_righe_smistabili_ordine`.
-- **Criterio** (identico al predicato di `fn_preventivo_ha_residuo_ordine` / al
-  loop di `fn_push_preventivo_a_ordine`): natura `destinazione_tipo='ORDINE'`,
-  riga attiva, **non ancora allocata** a un ordine (`NOT EXISTS` su
-  `ordini_righe.preventivo_riga_id`). Le righe restituite sono **esattamente**
-  quelle che lo smistamento copierebbe → niente sorprese tra anteprima e push.
+- **Criterio**: legge dalla **vista** `vendite.vw_preventivi_righe_smistabili_ordine`
+  — la **fonte unica** del predicato (natura `destinazione_tipo='ORDINE'`, riga
+  attiva, **non ancora allocata** a un ordine), consumata anche da
+  `fn_preventivo_ha_residuo_ordine` e `fn_push_preventivo_a_ordine`
+  (consolidamento DB 2026-06-10). Le righe restituite sono quindi **esattamente**
+  quelle che lo smistamento copierebbe → niente sorprese tra anteprima e push, e
+  nessuna regola duplicata lato BE.
 - Output `200`: `{ "data": [ { id, ordine, articolo_id, articolo_codice,
   articolo_descrizione, descrizione, qta_operativa, uom_operativa_id, uom_codice,
   prezzo_unitario, sconto_percentuale } ] }` (campi display via JOIN, no lookup

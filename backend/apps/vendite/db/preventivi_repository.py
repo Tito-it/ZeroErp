@@ -1036,38 +1036,33 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             return int(row[0])
 
     # Scopo: Righe MERCE smistabili a ordine — il sottoinsieme che alimenta il
-    #        dialog di smistamento riga-per-riga (preventivo→ordine). Stesso
-    #        predicato di `fn_preventivo_ha_residuo_ordine` / del FOR loop di
-    #        `fn_push_preventivo_a_ordine`: natura destinazione_tipo='ORDINE',
-    #        riga attiva, NON ancora allocata a un ordine (idempotenza di riga).
-    #        Campi display via JOIN (no lookup client-side). Le righe restituite
-    #        sono esattamente quelle che `push_a_ordine` copierebbe.
+    #        dialog di smistamento riga-per-riga (preventivo→ordine). Legge dalla
+    #        **vista** `vendite.vw_preventivi_righe_smistabili_ordine`, FONTE
+    #        UNICA del predicato (natura destinazione ORDINE, riga attiva, NON
+    #        allocata), consumata anche da `fn_preventivo_ha_residuo_ordine` e
+    #        `fn_push_preventivo_a_ordine` (consolidamento DB 2026-06-10): le
+    #        righe restituite sono **esattamente** quelle che `push_a_ordine`
+    #        copierebbe, senza ri-scrivere il predicato qui. La vista non espone i
+    #        campi display → JOIN articolo/uom solo per codice/descrizione.
     def list_righe_smistabili_ordine(self, preventivo_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT
-                pr.id,
-                pr.ordine,
-                pr.articolo_id,
+                s.id,
+                s.ordine,
+                s.articolo_id,
                 a.codice            AS articolo_codice,
                 a.descrizione       AS articolo_descrizione,
-                pr.descrizione,
-                pr.qta_operativa,
-                pr.uom_operativa_id,
+                s.descrizione,
+                s.qta_operativa,
+                s.uom_operativa_id,
                 um.codice           AS uom_codice,
-                pr.prezzo_unitario,
-                pr.sconto_percentuale
-              FROM vendite.preventivi_righe pr
-              JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
-              LEFT JOIN catalogo.articoli a    ON a.id  = pr.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = pr.uom_operativa_id
-             WHERE pr.preventivo_id = %s
-               AND COALESCE(pr.attivo, TRUE) IS TRUE
-               AND nv.destinazione_tipo = 'ORDINE'
-               AND NOT EXISTS (
-                   SELECT 1 FROM vendite.ordini_righe orr
-                    WHERE orr.preventivo_riga_id = pr.id
-               )
-             ORDER BY pr.ordine NULLS LAST, pr.id
+                s.prezzo_unitario,
+                s.sconto_percentuale
+              FROM vendite.vw_preventivi_righe_smistabili_ordine s
+              LEFT JOIN catalogo.articoli a    ON a.id  = s.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id = s.uom_operativa_id
+             WHERE s.preventivo_id = %s
+             ORDER BY s.ordine NULLS LAST, s.id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
