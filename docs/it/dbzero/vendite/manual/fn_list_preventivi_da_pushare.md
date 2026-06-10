@@ -53,6 +53,33 @@ la funzione restituisce 0 righe — coerente con il NOT EXISTS del batch.
 
 ---
 
+### Competenza e periodo
+
+> **Aggiornato:** 2026-06-10 — migration `20260610-06`
+
+I campi di competenza alimentano `commesse_attivita` (colonne **NOT NULL**) e
+sono derivati così:
+
+| Campo | Derivazione | Note |
+| --- | --- | --- |
+| `competenza_dal` | `COALESCE(validita_dal, competenza_mese, data)` | mai NULL |
+| `competenza_al` | `GREATEST(competenza_dal, COALESCE(validita_al, validita_dal, competenza_mese, data))` | garantisce `dal ≤ al` |
+| `competenza_mese` | `COALESCE(competenza_mese, date_trunc('month', COALESCE(validita_dal, data)))` | la **policy** `preventivi.competenza_mese` vince sul derivato |
+
+* **`competenza_dal/al`** = periodo attività (validità del preventivo o, in sua
+  mancanza, data documento). Un preventivo ACCETTATO **senza validità** è
+  legittimo: i fallback evitano il crash NOT NULL sul push.
+* **`competenza_mese`** = mese di fatturazione. Se la colonna di policy
+  `preventivi.competenza_mese` è valorizzata (accettazione DIFFERITA, o handler
+  pratica `vendita.push_preventivo`), è **autorevole**; altrimenti fallback al
+  mese derivato da validità/data (pregresso).
+* Periodo e mese di fatturazione sono **indipendenti**: una riga DIFFERITA può
+  avere periodo a giugno e mese di fatturazione a settembre.
+* Il filtro `p_competenza_mese` usa la **stessa espressione** di `competenza_mese`,
+  così lista e filtro restano coerenti.
+
+---
+
 ### 📦 Output (alto livello)
 
 Restituisce per ogni riga candidata:
