@@ -24,7 +24,10 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.listini_repository import ListiniRepository
-from apps.vendite.services.commesse_push_orchestrator import CommessaPushOrchestrator
+from apps.vendite.services.commesse_push_orchestrator import (
+    CommessaPushOrchestrator,
+    PushReport,
+)
 from apps.vendite.services.commesse_source_handlers import (
     BaseSourceHandler,
     HandlerContratti,
@@ -52,10 +55,12 @@ _HANDLER_REGISTRY: dict[str, type[BaseSourceHandler]] = {
 # ha tentato scritture (lock concorrente).
 _STATI_PUSH_FALLIMENTO = frozenset({"PARZIALE", "ERRORE"})
 
+_STATO_PUSH_COMPLETATO = "COMPLETATO"
+
 _STATO_COMMESSA_PRONTA = "PRONTA_FATTURAZIONE"
 
 
-def _commesse_ids_da_report(report: Any) -> list[int]:
+def _commesse_ids_da_report(report: PushReport) -> list[int]:
     """Unione ordinata delle commesse toccate da tutti gli handler del run."""
     ids: set[int] = set()
     for h in report.handlers:
@@ -64,11 +69,11 @@ def _commesse_ids_da_report(report: Any) -> list[int]:
 
 
 # Scopo: Ponte di emittibilita` post-push — righe APPROVATA + testata
-#        PRONTA_FATTURAZIONE per ogni commessa toccata da un push riuscito.
-def _rendi_commesse_emittibili(
+#        PRONTA_FATTURAZIONE per una commessa toccata da un push riuscito.
+def _rendi_commessa_emittibile(
     repo: CommesseRepository,
     *,
-    commesse_ids: list[int],
+    commessa_id: int,
     user: str | None = None,
 ) -> None:
     """Regola di modello (V9, generalizzata dal handler pratica al push):
@@ -85,15 +90,18 @@ def _rendi_commesse_emittibili(
     non ammette transizioni `da=a`. Stati anomali (CHIUSA/ANNULLATA) NON sono
     silenziati di proposito: la transizione viene tentata e il guard DB
     fallisce forte — non si pusha su una commessa chiusa/annullata.
+
+    Granularita` singola deliberata: il batch deve poter isolare il fallimento
+    di una commessa senza perdere il ponte sulle altre (best-effort), il push
+    singolo itera e lascia propagare (all-or-nothing).
     """
-    for commessa_id in commesse_ids:
-        repo.approva_commessa_attivita(commessa_id=commessa_id, user=user)
-        if repo.get_commessa_stato_codice(commessa_id) != _STATO_COMMESSA_PRONTA:
-            repo.cambia_stato_commessa(
-                commessa_id=commessa_id,
-                nuovo_stato=_STATO_COMMESSA_PRONTA,
-                user=user,
-            )
+    repo.approva_commessa_attivita(commessa_id=commessa_id, user=user)
+    if repo.get_commessa_stato_codice(commessa_id) != _STATO_COMMESSA_PRONTA:
+        repo.cambia_stato_commessa(
+            commessa_id=commessa_id,
+            nuovo_stato=_STATO_COMMESSA_PRONTA,
+            user=user,
+        )
 
 
 def _build_handlers(repo: CommesseRepository) -> list[BaseSourceHandler]:
@@ -145,7 +153,7 @@ def pr_run_commesse_push(
         for commessa_id in commesse_ids:
             try:
                 with transaction.atomic():
-                    _rendi_commesse_emittibili(repo, commesse_ids=[commessa_id])
+                    _rendi_commessa_emittibile(repo, commessa_id=commessa_id)
             except Exception as exc:  # noqa: BLE001 — best-effort, report-driven
                 emittibilita_errors.append(
                     f"commessa_id={commessa_id}: {type(exc).__name__}: {exc}"
@@ -247,8 +255,9 @@ def pr_run_commesse_push_one(
         # coerente con la semantica del push singolo). COMPLETATO only:
         # SKIPPED non ha scritto nulla, dry-run non deve scrivere.
         commesse_ids = _commesse_ids_da_report(report)
-        if not dry_run and report.stato == "COMPLETATO":
-            _rendi_commesse_emittibili(repo, commesse_ids=commesse_ids, user=user)
+        if not dry_run and report.stato == _STATO_PUSH_COMPLETATO:
+            for commessa_id in commesse_ids:
+                _rendi_commessa_emittibile(repo, commessa_id=commessa_id, user=user)
     return {
         "stato": report.stato,
         "dry_run": report.dry_run,
