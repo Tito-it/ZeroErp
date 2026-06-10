@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Update catalogo.vw_articoli_dettaglio: espone la natura di vendita.
+#
+# Why: brief DB 2026-06-10. catalogo.articoli.natura_vendita_id (NOT NULL,
+# DEFAULT 1=MERCE, FK config.nature_vendita) instrada il modello split per
+# natura (ordine/commessa/contratto) post-accettazione, ma non era proiettato
+# dalla vista che alimenta list/detail articoli (CatalogoRepository). Senza la
+# colonna nel detail il Select "Natura di vendita" dell'ArticoloDrawer (EDIT)
+# non puo' inizializzare il valore corrente -> rischio reset silenzioso al
+# DEFAULT MERCE. Decisione Tid: opzione A (natura mutabile, nessun lock).
+#
+# Decodifica natura: chiave naturale stabile codice_interno (linee-guida-sql
+# §6b), descrizione e destinazione_tipo (hint UX routing). Nomi uniformati al
+# prefisso natura_vendita_* coerente con le altre decodifiche della vista.
+#
+# LEFT JOIN per coerenza con le altre decodifiche (uom, tipologia, gruppo,
+# spesa, iva): la FK e' NOT NULL + trigger child_requires_active_parent (natura
+# sempre valorizzata e attiva), ma la vista non deve perdere righe su una
+# decodifica.
+#
+# CREATE OR REPLACE ammesso: le 4 colonne natura sono aggiunte IN FONDO alla
+# select list (PostgreSQL consente append, non riordino). Nessun DROP: nessun
+# oggetto DB dipende da questa vista.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260610-05-update-vw-articoli-dettaglio-natura-vendita-mctit.yaml
+
+  - changeSet:
+      id: 20260610-05-update-vw-articoli-dettaglio-natura-vendita
+      author: mctit
+      runOnChange: false
+      comment: >
+        Aggiunge la decodifica natura di vendita a catalogo.vw_articoli_dettaglio
+        (natura_vendita_id + codice_interno + descrizione + destinazione_tipo).
+        LEFT JOIN config.nature_vendita, colonne in fondo (CREATE OR REPLACE).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli
+                columnName: natura_vendita_id
+            - tableExists:
+                schemaName: config
+                tableName: nature_vendita
+            - columnExists:
+                schemaName: config
+                tableName: nature_vendita
+                columnName: destinazione_tipo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_dettaglio AS
+              SELECT a.id,
+                  a.codice,
+                  a.descrizione,
+                  a.descrizione_breve,
+                  a.uom_id,
+                  a.tipo_voce_id,
+                  a.gruppo_voce_id,
+                  a.spesa_id,
+                  a.iva_id,
+                  a.conto_contabile_vendita_id,
+                  a.conto_contabile_acquisto_id,
+                  a.is_composito,
+                  a.is_solo_componente,
+                  a.requires_serial,
+                  a.listino_tipologia_id,
+                  a.meta,
+                  a.user_insert,
+                  a.user_update,
+                  a.data_insert,
+                  a.data_update,
+                  a.tx_id,
+                  a.storicizza,
+                  a.attivo,
+                  a.note_target_tipo,
+                  a.note_id,
+                  u.id AS uom_ref_id,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  t.id AS tipologia_ref_id,
+                  t.codice AS tipologia_codice,
+                  t.descrizione AS tipologia_descrizione,
+                  g.id AS gruppo_ref_id,
+                  g.codice AS gruppo_codice,
+                  g.descrizione AS gruppo_descrizione,
+                  s.id AS spesa_ref_id,
+                  s.codice AS spesa_codice,
+                  s.descrizione AS spesa_descrizione,
+                  i.id AS iva_ref_id,
+                  i.codice AS iva_codice,
+                  i.descrizione AS iva_descrizione,
+                  i.aliquota_iva AS iva_aliquota_iva,
+                  lt.codice AS tipologia_listino_codice,
+                  lt.descrizione AS tipologia_listino_descrizione,
+                  (a.is_composito AND (NOT a.is_solo_componente)) AS puo_gestire_bom,
+                      CASE
+                          WHEN (a.is_composito AND (NOT a.is_solo_componente)) THEN NULL::text
+                          WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
+                          ELSE 'ARTICOLO_NON_COMPOSITO'::text
+                      END AS motivo_non_gestibile_bom,
+                  (a.is_composito AND (EXISTS ( SELECT 1
+                         FROM catalogo.articoli_componenti ac
+                        WHERE ((ac.prodotto_id = a.id) AND (ac.validita @> CURRENT_DATE) AND (ac.attivo = true))))) AS has_componenti_alla_data,
+                  -- Natura di vendita (decodifica stabile via codice_interno)
+                  a.natura_vendita_id,
+                  nv.codice_interno    AS natura_vendita_codice_interno,
+                  nv.descrizione       AS natura_vendita_descrizione,
+                  nv.destinazione_tipo AS natura_vendita_destinazione_tipo
+                 FROM catalogo.articoli a
+                   LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id))
+                   LEFT JOIN vendite.articoli_tipologie t ON ((t.id = a.tipo_voce_id))
+                   LEFT JOIN vendite.articoli_gruppi g ON ((g.id = a.gruppo_voce_id))
+                   LEFT JOIN vendite.articoli_spesa s ON ((s.id = a.spesa_id))
+                   LEFT JOIN config.iva i ON ((i.id = a.iva_id))
+                   LEFT JOIN config.listini_tipologie lt ON ((lt.id = a.listino_tipologia_id))
+                   LEFT JOIN config.nature_vendita nv ON ((nv.id = a.natura_vendita_id));

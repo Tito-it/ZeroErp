@@ -10,13 +10,14 @@ Approfondimenti tabelle:
 > [vendite.articoli_gruppi](/dbzero/vendite/tabelle/articoli_gruppi)    
 > [vendite.articoli_spesa](/dbzero/vendite/tabelle/articoli_spesa)    
 > [config.iva](/dbzero/config/tabelle/iva)    
+> [config.nature_vendita](/dbzero/config/tabelle/nature_vendita)    
 
 ---
 ### 🎯 Scopo Principale
 (latest review 14-01-26)
 La vista **`catalogo.vw_articoli_dettaglio`** espone i dati dell’articolo con le
-anagrafiche di supporto (unita misura, tipologie, gruppi, spese e iva), evitando
-join ripetitivi in applicazione.
+anagrafiche di supporto (unita misura, tipologie, gruppi, spese, iva e natura di
+vendita), evitando join ripetitivi in applicazione.
 
 Restituisce **una riga per articolo**.
 
@@ -30,7 +31,8 @@ La vista parte da `catalogo.articoli` e aggiunge:
 * join a `vendite.articoli_tipologie` per tipologia articolo;
 * join a `vendite.articoli_gruppi` per gruppo merceologico;
 * join a `vendite.articoli_spesa` per voce di spesa;
-* join a `config.iva` per dati IVA (codice/descrizione/aliquota).
+* join a `config.iva` per dati IVA (codice/descrizione/aliquota);
+* join a `config.nature_vendita` per la natura di vendita (codice_interno/descrizione/destinazione_tipo).
 
 ---
 
@@ -44,6 +46,7 @@ La vista parte da `catalogo.articoli` e aggiunge:
 | `gruppo_voce_id` + `gruppo_codice`, `gruppo_descrizione`       | Gruppo merceologico.                   |
 | `spesa_id` + `spesa_codice`, `spesa_descrizione`               | Voce di spesa.                         |
 | `iva_id` + `iva_codice`, `iva_descrizione`, `iva_aliquota_iva` | Dati IVA.                              |
+| `natura_vendita_id` + `natura_vendita_codice_interno`, `natura_vendita_descrizione`, `natura_vendita_destinazione_tipo` | Natura di vendita: instradamento split post-accettazione (`destinazione_tipo` = ORDINE/COMMESSA/CONTRATTO). |
 | `attivo`, `storicizza`, `tx_id`                                | Stato e tracciamento.                  |
 | `is_solo_componente`                                           | Articolo utilizzabile solo come componente. |
 
