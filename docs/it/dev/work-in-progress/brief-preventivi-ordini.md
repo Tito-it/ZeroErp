@@ -210,15 +210,19 @@ Stato BE 2026-06-09 (parte 2, **NON committato** — `dev/backend-tid`):
    (righe merce non allocate) + `GeneraOrdineDialog` FE (checkbox, preselezione
    tutte) → `POST /genera-ordine/ {righe_ids}`. Smista tutte o un sottoinsieme.
 
-**Residui** (non bloccanti): fragilità [F1] lookup `INNER`→`LEFT JOIN` natura;
-coordinamento commessa multi-sorgente **chiuso**
-([brief-db-commesse-multi-sorgente.md](../work-done/brief-db-commesse-multi-sorgente.md));
-smoke UI E2E.
+Chiusi inoltre: **[F1]** lookup natura `INNER`→`LEFT JOIN` NULL-tolerant;
+**coordinamento commessa multi-sorgente**
+([brief-db-commesse-multi-sorgente.md](../work-done/brief-db-commesse-multi-sorgente.md),
+skip idempotente `cambia_stato_commessa(PRONTA)` nell'handler); **consolidamento
+predicato** righe-smistabili nella vista `vw_preventivi_righe_smistabili_ordine`
+(fonte unica, §8).
 
-## 8. Log implementazione DB (2026-06-09)
+**Residuo** (non bloccante): **smoke UI E2E** del giro PREVENTIVI mai eseguito.
+
+## 8. Log implementazione DB (2026-06-09 → 06-10)
 
 Modalità A ratificata (D9: ricorrente bloccata sul preventivo). Tutto applicato e
-testato (pgTAP), salvo `20260609-07/08` da applicare:
+testato (pgTAP):
 
 | Migration | Cosa |
 | --- | --- |
@@ -229,8 +233,12 @@ testato (pgTAP), salvo `20260609-07/08` da applicare:
 | `20260609-07` | `vendite.fn_preventivo_ha_residuo_ordine` — predicato residuo merce, condiviso capability + gate EVASO. |
 | `20260609-08` | Capability/azione `genera_ordine` in `script.fn_available_actions_preventivo` (additivo). |
 | `20260609-09` | `fn_list_preventivi_da_pushare` **natura-aware**: il push commessa include solo righe `destinazione_tipo='COMMESSA'` (natura NULL = pregresso, inclusa), esclude la merce → niente doppio routing. Prerequisito dell'orchestratore. Vedi [brief-db-fn-list-preventivi-natura-aware.md](../work-done/brief-db-fn-list-preventivi-natura-aware.md). |
+| `20260610-02` | **`vendite.vw_preventivi_righe_smistabili_ordine`** — vista FONTE UNICA del predicato righe-merce smistabili (natura ORDINE, attiva, non allocata). Risolve la duplicazione del predicato. |
+| `20260610-03/04` | `fn_preventivo_ha_residuo_ordine` e `fn_push_preventivo_a_ordine` **rifattorizzate per consumare la vista** (comportamento invariato). Anche `PreventiviRepository.list_righe_smistabili_ordine` (BE) legge dalla vista. |
 
-Fuori scope DB: orchestratore `CONFERMA_VENDITA`, gate `EVASO`, filtro catalogo (BE/FE).
+Fuori scope DB (fatto lato BE, vedi §7): orchestratore `CONFERMA_VENDITA`, gate
+`EVASO`, filtro catalogo, smistamento riga-per-riga, idempotenza commessa
+multi-sorgente.
 
 ---
 
