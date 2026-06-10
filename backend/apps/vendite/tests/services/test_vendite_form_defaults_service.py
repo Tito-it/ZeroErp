@@ -92,11 +92,20 @@ class TestContrattoFormDefaults(TestCase):
         self.assertEqual(result["default_data"], date.today().isoformat())
         self.assertEqual(result["default_valido_dal"], date.today().isoformat())
 
+    @patch(f"{_MOD}.resolve_valuta_default", return_value={})
     @patch(_BA_REPO)
     @patch(_PARAM)
-    def test_contratto_con_ba_popola_categoria(self, mock_param_cls, mock_ba_repo_cls):
+    def test_contratto_con_ba_popola_categoria(
+        self, mock_param_cls, mock_ba_repo_cls, _mock_resolve,
+    ):
         # Scopo: Con BA, categoria_cliente_id_snapshot e utility/istanza
         #        sono popolati dal lookup BA.
+        # Resolver valuta mockato: con valuta_id=None nel lookup il livello 2
+        # istanzierebbe un BillingAccountRepository REALE dentro valuta_resolver
+        # (il patch _BA_REPO copre solo il modulo service) -> query DB su
+        # fn_get_emittente_fiscale_pk(10), che in CI fallisce (nessun EF
+        # default seedato per BA 10). La catena valuta e' gia' coperta da
+        # test_valuta_resolver (single source of truth).
         mock_param_cls.return_value.get_defaults.return_value = {
             "VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG": "0",
             "VENDITE_CONTRATTO_DEFAULT_DATA_LEAD_GG": "0",
