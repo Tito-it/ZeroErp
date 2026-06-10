@@ -189,6 +189,11 @@ jobs:
         working-directory: ./backend
         env:
           DJANGO_REQUEST_LOG_ENABLED: "0"
+          # Allineato a manage-test.sh: neutralizza SearchBurstRateThrottle
+          # (default 30/min). La LocMemCache non viene resettata tra
+          # SimpleTestCase e il counter persiste tra test ravvicinati sugli
+          # endpoint is_search_endpoint=True -> 429 falsi positivi.
+          DJANGO_API_SEARCH_THROTTLE_RATE: "100000/min"
         run: |
           source .venv/bin/activate
           python manage.py test
