@@ -15,6 +15,19 @@ from apps.core.db._helpers import row_to_dict, rows_to_list
 from apps.core.services.error_manager import ErrorManager
 
 
+# Scopo: Coercion difensiva jsonb -> dict. psycopg puo' restituire un jsonb
+# come str (nessun adapter automatico): senza coerce, un isinstance(dict)
+# scarterebbe SILENZIOSAMENTE la configurazione (bug handler_params={} sul
+# dispatch CONFERMA, trovato dallo smoke pratica 2026-06-11).
+def coerce_jsonb_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {}
+    return value if isinstance(value, dict) else {}
+
+
 _PRATICHE_ORDER_COLS = {
     "codice", "descrizione", "data_apertura", "data_scadenza", "data_insert",
     "tipo_prestazione_descrizione", "stato_descrizione",
@@ -888,8 +901,7 @@ class PraticheRepository:
             row = cursor.fetchone()
         if not row:
             return None
-        handler_params = row[1] if isinstance(row[1], dict) else {}
-        return str(row[0]), handler_params
+        return str(row[0]), coerce_jsonb_dict(row[1])
 
     # -- TIPO PRESTAZIONE ------------------------------------------------
 

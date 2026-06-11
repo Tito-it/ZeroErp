@@ -505,22 +505,29 @@ class CommesseRepository:
         return {"commessa_id": int(row[0]), "stato_da": row[1], "stato_a": row[2]}
 
     def get_commessa_id_by_sorgente(
-        self, *, sorgente_codice: str, sorgente_uid: str, ruolo_link: str = "ROOT",
+        self, *, sorgente_codice: str, sorgente_uid: str,
+        ruolo_link: str | None = None,
     ) -> int | None:
         """commessa_id collegata a una sorgente via vendite.commesse_sorgenti,
         o None. Risolve sorgente_tipo_id da config.sorgenti per codice_interno.
-        Usato per l'idempotenza del push preventivo→commessa."""
+        Usato per l'idempotenza del push preventivo→commessa.
+
+        ruolo_link=None (default) = QUALUNQUE ruolo: col modello commessa
+        multi-sorgente (auto-ruolo DB) la prima sorgente e' ROOT ma le
+        successive che confluiscono nella stessa commessa sono COLLEGATO —
+        filtrare per ROOT nasconderebbe il link di un preventivo confluito
+        (bug trovato dallo smoke pratica CONFERMA, 2026-06-11)."""
         sql = """
             SELECT cs.commessa_id
             FROM vendite.commesse_sorgenti cs
             JOIN config.sorgenti s ON s.id = cs.sorgente_tipo_id
             WHERE s.codice_interno = %s
               AND cs.sorgente_uid = %s
-              AND cs.ruolo_link = %s
+              AND (%s::text IS NULL OR cs.ruolo_link = %s)
             LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [sorgente_codice, sorgente_uid, ruolo_link])
+            cursor.execute(sql, [sorgente_codice, sorgente_uid, ruolo_link, ruolo_link])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 

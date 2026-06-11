@@ -23,6 +23,8 @@ Indice test eseguiti:
 12) PraticheServiceFlussiTests.test_dispatch_handler_info_none
 13) PraticheServiceFlussiTests.test_dispatch_handler_key_non_trovata
 14) PraticheServiceFlussiTests.test_get_canali_disponibili_ok
+15) PraticheServiceFlussiTests.test_dispatch_handler_meta_jsonb_str
+16) PraticheServiceFlussiTests.test_coerce_jsonb_dict
 """
 
 from unittest.mock import MagicMock, patch
@@ -172,6 +174,44 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             flusso_id=1, pratica_id=1, meta={"chiave": "valore"},
             handler_params={"invio_sms": True}, user=None,
         )
+
+    # Scopo: Regressione bug smoke 2026-06-11 — psycopg puo' restituire i
+    # jsonb come str: meta del flusso str deve arrivare all'handler come dict
+    # (l'handler fa meta.get). Il coerce di handler_params vive nel repo
+    # (get_handler_info), quello del meta nel dispatch.
+    @patch("apps.pratiche.services.handler_registry.get_handler")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_dispatch_handler_meta_jsonb_str(self, MockRepo, mock_get_handler):
+        repo = MockRepo.return_value
+        flusso = _mock_flusso_row(1, template_flusso_id=10)
+        flusso["meta"] = '{"competenza_fatturazione": "2026-09-01"}'
+        repo.get_flusso.return_value = flusso
+        repo.get_handler_info.return_value = (
+            "vendita.push_preventivo", {"modalita_fatturazione": "IMMEDIATA"},
+        )
+
+        handler_instance = MagicMock()
+        handler_instance.execute.return_value = {"risultato": "ok"}
+        mock_get_handler.return_value = MagicMock(return_value=handler_instance)
+
+        pratiche_service.dispatch_handler(1)
+
+        handler_instance.execute.assert_called_once_with(
+            flusso_id=1, pratica_id=1,
+            meta={"competenza_fatturazione": "2026-09-01"},
+            handler_params={"modalita_fatturazione": "IMMEDIATA"}, user=None,
+        )
+
+    # Scopo: Coercion jsonb difensiva — str valida -> dict; str invalida,
+    # None, list -> {} (mai scartare un dict, mai propagare non-dict).
+    def test_coerce_jsonb_dict(self):
+        from apps.pratiche.db.pratiche_repository import coerce_jsonb_dict
+
+        self.assertEqual(coerce_jsonb_dict('{"a": 1}'), {"a": 1})
+        self.assertEqual(coerce_jsonb_dict({"a": 1}), {"a": 1})
+        self.assertEqual(coerce_jsonb_dict("non-json"), {})
+        self.assertEqual(coerce_jsonb_dict(None), {})
+        self.assertEqual(coerce_jsonb_dict([1, 2]), {})
 
     # Scopo: Verifica dispatch con template_flusso_id None → ritorna None.
     @patch(f"{_SVC}.PraticheRepository")
