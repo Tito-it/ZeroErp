@@ -869,6 +869,11 @@ class PraticheRepository:
     def resolve_stato_flusso(self, codice_interno: str) -> int:
         return self._resolve_stato("config.stati_flussi_pratiche", codice_interno, "flusso")
 
+    # Scopo: Risolve l'ID di una priorita' pratica da codice_interno
+    #        (default NORMALE in crea_pratica — mai id hardcodato).
+    def resolve_priorita_pratica(self, codice_interno: str) -> int:
+        return self._resolve_stato("config.priorita_pratiche", codice_interno, "priorita")
+
     # -- HANDLER KEY -----------------------------------------------------
 
     # Scopo: Recupera l'handler_key dal template flusso (via handler_flussi).
@@ -1030,6 +1035,10 @@ class PraticheRepository:
     # Usato dal guard pre/post-attivazione in crea_pratica.
     # La query attraversa: clienti → billing_account → istanze_utilities.
     def ha_ba_attivo(self, soggetto_id: str, emittente_fiscale_id: int) -> bool:
+        # Scope emittente via fn ufficiale sul BA: l'istanza NON ha un
+        # emittente (la relazione vive su billing_account -> efba, fallback
+        # gestore default incapsulato nella fn, che ritorna la PK reale
+        # dell'EF — feedback_emittente_pk_vs_soggetto_ruolo).
         sql = """
             SELECT EXISTS (
                 SELECT 1
@@ -1037,7 +1046,7 @@ class PraticheRepository:
                 JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
                 JOIN anagrafiche.istanze_utilities iu ON iu.id = cl.istanza_utility_id
                 WHERE iu.soggetto_id = %s::uuid
-                  AND iu.emittente_fiscale_id = %s
+                  AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) = %s
                   AND cl.data_attivazione IS NOT NULL
                   AND cl.data_chiusura IS NULL
             )

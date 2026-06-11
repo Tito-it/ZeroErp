@@ -773,7 +773,9 @@ soggetto_ruolo_id)` in una selezione sola.
         "ragione_sociale_completa": "Azienda ConTutto",
         "id_fiscale": "01234567890",
         "soggetto_codice": "SOG-00042",
-        "n_istanze": 1
+        "n_istanze": 1,
+        "istanza_unica_id": 197,
+        "istanza_unica_codice": "IFO-0000051"
       },
       {
         "soggetto_id": "b2c3d4e5-...",
@@ -794,9 +796,17 @@ soggetto_ruolo_id)` in una selezione sola.
 
 Note:
 
-- `n_istanze` = numero di `istanze_utilities` del soggetto: il FE lo usa per
-  decidere se proporre il campo "Istanza utility" (lookup
-  `/anagrafiche/istanze-utility/lookup/?soggetto_id=...`).
+- `n_istanze`: perimetro per riga — righe "senza ruolo" = tutte le istanze
+  del soggetto; righe con ruolo = SOLO le istanze legate a quel ruolo via
+  `clienti` (le forniture del cliente/BA; per i ruoli non-CL e' 0). Il FE lo
+  usa per decidere se proporre il campo "Istanza utility" (lookup
+  `/anagrafiche/istanze-utility/lookup/?soggetto_id=...&soggetto_ruolo_id=...`,
+  filtrato con lo stesso perimetro).
+- `istanza_unica_id` / `istanza_unica_codice`: valorizzati SOLO se il
+  conteggio di cui sopra e' 1 — per il ruolo CL il FE auto-deriva l'istanza e
+  nasconde il picker (pattern preventivi "istanza da BA"); con piu' istanze
+  restano NULL e la scelta e' dell'operatore (combo ristretta alle forniture
+  del cliente).
 - Scope emittente sul ruolo CL: stesso comportamento della lista ruoli (un
   operatore scoped vede il CL solo se il soggetto ha un cliente su un BA dei
   suoi emittenti). Le righe "senza ruolo" non sono scoped.

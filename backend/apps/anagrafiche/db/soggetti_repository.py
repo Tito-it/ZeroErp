@@ -65,13 +65,40 @@ _RUOLO_CL_SCOPE_SQL = """(
                  )
                )"""
 
-# Scopo: contatore istanze del soggetto per le righe lookup contesto pratica
-#        (search + restore by-id ne condividono la proiezione). `{ref}` =
-#        espressione che identifica il soggetto nel contesto chiamante
-#        (es. "s.id", "m.soggetto_id").
-_N_ISTANZE_SUBQUERY_TPL = """(SELECT COUNT(*)
-                          FROM anagrafiche.istanze_utilities iu
-                         WHERE iu.soggetto_id = {ref})::int"""
+# Scopo: info istanze per le righe lookup contesto pratica (search +
+#        restore by-id ne condividono la proiezione): conteggio + istanza
+#        "unica" derivabile (id/codice valorizzati SOLO se il conteggio e' 1
+#        — pattern preventivi "istanza auto-derivata"). Perimetro per riga:
+#        - riga "senza ruolo" ({sr_ref} NULL): tutte le istanze del soggetto;
+#        - riga con ruolo: SOLO le istanze legate a quel ruolo via clienti
+#          (le forniture del cliente/BA) — coerente col filtro
+#          `soggetto_ruolo_id` del lookup istanze, evita derivazioni/scelte
+#          su istanze estranee al rapporto. Per i ruoli non-CL il conteggio
+#          e' 0 (clienti vive solo sul ramo CL).
+#        `{soggetto_ref}` / `{sr_ref}` = espressioni del contesto chiamante
+#        (es. "s.id"/"sr.id", "m.soggetto_id"/"m.soggetto_ruolo_id",
+#        "s.id"/"NULL::bigint"). Da usare come
+#        `LEFT JOIN LATERAL ({tpl}) ist ON true` + `_ISTANZE_INFO_SELECT`.
+_ISTANZE_INFO_LATERAL_TPL = """(
+                   SELECT COUNT(*)::int AS n_istanze,
+                          MAX(iu.id) AS _unica_id,
+                          MAX(iu.codice) AS _unica_codice
+                     FROM anagrafiche.istanze_utilities iu
+                    WHERE iu.soggetto_id = {soggetto_ref}
+                      AND (
+                            {sr_ref} IS NULL
+                         OR EXISTS (
+                              SELECT 1
+                                FROM anagrafiche.clienti cl
+                               WHERE cl.istanza_utility_id = iu.id
+                                 AND cl.soggetto_ruolo_id = {sr_ref}
+                            )
+                          )
+               )"""
+
+_ISTANZE_INFO_SELECT = """ist.n_istanze,
+       CASE WHEN ist.n_istanze = 1 THEN ist._unica_id END AS istanza_unica_id,
+       CASE WHEN ist.n_istanze = 1 THEN ist._unica_codice END AS istanza_unica_codice"""
 
 # Lunghezza minima della search bar soggetti (resolver). Esposto via
 # config-resolver al frontend per evitare cablato duplicato. Costante
@@ -741,8 +768,9 @@ class SoggettiRepository:
         count_sql = cte + "SELECT COUNT(*) FROM matches"  # noqa: S608
         data_sql = cte + f"""
             SELECT m.*,
-                   {_N_ISTANZE_SUBQUERY_TPL.format(ref="m.soggetto_id")} AS n_istanze
+                   {_ISTANZE_INFO_SELECT}
               FROM matches m
+              LEFT JOIN LATERAL {_ISTANZE_INFO_LATERAL_TPL.format(soggetto_ref="m.soggetto_id", sr_ref="m.soggetto_ruolo_id")} ist ON true
              ORDER BY m.ragione_sociale_completa ASC NULLS LAST,
                       m.ruolo_codice ASC NULLS FIRST,
                       m.soggetto_ruolo_id ASC NULLS FIRST
@@ -780,10 +808,11 @@ class SoggettiRepository:
                        s.ragione_sociale_completa,
                        s.id_fiscale_univoco_cf_piva AS id_fiscale,
                        s.codice AS soggetto_codice,
-                       {_N_ISTANZE_SUBQUERY_TPL.format(ref="s.id")} AS n_istanze
+                       {_ISTANZE_INFO_SELECT}
                   FROM anagrafiche.soggetti_ruoli sr
                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
                   JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
+                  LEFT JOIN LATERAL {_ISTANZE_INFO_LATERAL_TPL.format(soggetto_ref="s.id", sr_ref="sr.id")} ist ON true
                  WHERE sr.id = %s
             """  # noqa: S608
             params: list[Any] = [soggetto_ruolo_id]
@@ -796,8 +825,9 @@ class SoggettiRepository:
                        s.ragione_sociale_completa,
                        s.id_fiscale_univoco_cf_piva AS id_fiscale,
                        s.codice AS soggetto_codice,
-                       {_N_ISTANZE_SUBQUERY_TPL.format(ref="s.id")} AS n_istanze
+                       {_ISTANZE_INFO_SELECT}
                   FROM anagrafiche.soggetti s
+                  LEFT JOIN LATERAL {_ISTANZE_INFO_LATERAL_TPL.format(soggetto_ref="s.id", sr_ref="NULL::bigint")} ist ON true
                  WHERE s.id = %s::uuid
             """  # noqa: S608
             params = [soggetto_id]

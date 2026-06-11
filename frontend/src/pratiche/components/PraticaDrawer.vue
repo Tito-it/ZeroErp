@@ -21,7 +21,8 @@ import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoRuoloLookup from '../../core/components/SoggettoRuoloLookup.vue'
 import IstanzaUtilityLookup from '../../core/components/IstanzaUtilityLookup.vue'
-import { getSoggettoRuoloLookupById } from '../../core/apiCore'
+import { getSoggettoRuoloLookupById, lookupCodici } from '../../core/apiCore'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import PraticaFlussiTab from './PraticaFlussiTab.vue'
 import PraticaNoteTab from './PraticaNoteTab.vue'
 import PraticaAllegatiTab from './PraticaAllegatiTab.vue'
@@ -73,14 +74,37 @@ const resolverVisible = ref(false)
 const contestoSelezionato = ref(null)
 const istanzaSelezionata = ref(null)
 
-// Campo istanza proposto solo se il soggetto selezionato ne possiede.
-const mostraCampoIstanza = computed(
-  () => (contestoSelezionato.value?.n_istanze ?? 0) > 0,
-)
+// Solo il ruolo CLIENTE ha istanze (la catena istanza -> BA -> cliente vive
+// sul ramo CL); per gli altri ruoli il campo istanza non ha senso.
+const TIPO_RUOLO_CLIENTE = 'CL'
 
-// Cambio contesto → l'istanza selezionata appartiene al soggetto precedente.
+// Istanza auto-derivata (pattern preventivi "istanza da BA"): cliente con
+// UNA sola istanza -> niente picker, hint informativo, payload automatico.
+const istanzaDerivata = computed(() => {
+  const c = contestoSelezionato.value
+  return (c?.ruolo_codice === TIPO_RUOLO_CLIENTE && c?.istanza_unica_id) || null
+})
+
+// Picker istanza visibile solo quando la scelta e' davvero dell'operatore:
+// - ruolo diverso da CL -> mai (solo il cliente ha istanze);
+// - CL con istanza unica -> mai (auto-derivata, vedi hint);
+// - CL multi-istanza o prospect "senza ruolo" -> visibile se ne possiede.
+const mostraCampoIstanza = computed(() => {
+  const c = contestoSelezionato.value
+  if (!c) return false
+  if (c.ruolo_codice && c.ruolo_codice !== TIPO_RUOLO_CLIENTE) return false
+  if (istanzaDerivata.value) return false
+  return (c.n_istanze ?? 0) > 0
+})
+
+// Cambio contesto (soggetto O ruolo) → reset istanza: quella selezionata
+// apparteneva alla riga precedente e con ruolo non-CL il campo sparisce ma
+// NON deve restare nel payload.
 watch(contestoSelezionato, (next, prev) => {
-  if (next?.soggetto_id !== prev?.soggetto_id) istanzaSelezionata.value = null
+  if (next?.soggetto_id !== prev?.soggetto_id
+      || next?.soggetto_ruolo_id !== prev?.soggetto_ruolo_id) {
+    istanzaSelezionata.value = null
+  }
 })
 
 // Scopo: dopo creazione/selezione soggetto dal resolver (percorso secondario,
@@ -123,8 +147,31 @@ watch(() => props.visible, async (val) => {
     populateFormFromDetail(d)
   } else {
     resetForm()
+    await preselectPrioritaDefault()
   }
 })
+
+// Scopo: default priorita' NORMALE in creazione, risolto per codice_interno
+// dal lookup (mai id hardcodato — feedback_no_hardcoded_ids). Il BE applica
+// comunque lo stesso default se il campo arriva vuoto: qui serve solo a
+// renderlo VISIBILE all'operatore nel form. Cache useGlobalLookup con la
+// STESSA chiave/fetch della LookupSelect del form (rel + page_size 200):
+// la preselezione non aggiunge round-trip.
+const prioritaLookup = useGlobalLookup(
+  'config.priorita_pratiche',
+  () => lookupCodici('config.priorita_pratiche', { page_size: 200 }),
+)
+
+async function preselectPrioritaDefault() {
+  if (form.value.priorita_id != null) return
+  try {
+    await prioritaLookup.load()
+    form.value.priorita_id =
+      prioritaLookup.items.value.find(r => r.codice_interno === 'NORMALE')?.id ?? null
+  } catch {
+    // Lookup fallito: il campo resta vuoto, il BE applica il default.
+  }
+}
 
 async function reloadDetail() {
   if (!props.praticaId) return
@@ -254,7 +301,9 @@ async function onSave() {
         : null,
       soggetto_id: contestoSelezionato.value?.soggetto_id || null,
       soggetto_ruolo_id: contestoSelezionato.value?.soggetto_ruolo_id || null,
-      istanza_utility_id: istanzaSelezionata.value?.id || null,
+      // Priorita': scelta esplicita dell'operatore, poi l'auto-derivata
+      // (cliente con istanza unica, picker nascosto).
+      istanza_utility_id: istanzaSelezionata.value?.id || istanzaDerivata.value || null,
     }
     const result = await execute(
       () => store.create(payload),
@@ -266,7 +315,9 @@ async function onSave() {
 
 const canSave = computed(() => {
   if (isEdit.value) return true
-  return !!form.value.tipo_prestazione_id && !!form.value.priorita_id
+  // Priorita' non piu' bloccante: pre-selezionata NORMALE all'apertura e
+  // comunque difesa dal default BE se il lookup di preselezione fallisse.
+  return !!form.value.tipo_prestazione_id
 })
 
 const onClose = useDrawerClose(emit, 'cancelled')
@@ -309,16 +360,34 @@ const onClose = useDrawerClose(emit, 'cancelled')
               text size="small" @click="resolverVisible = true" />
           </div>
 
-          <!-- Istanza utility (opzionale — solo se il soggetto ne possiede).
-               Aggancio pre-contrattuale: per i prospect senza ruolo e' il
-               perno naturale della pratica (richiede_pdp=true). -->
+          <!-- Istanza utility: visibile solo quando la scelta e' dell'operatore
+               (CL multi-istanza o prospect senza ruolo). Cliente con istanza
+               unica -> auto-derivata con hint (pattern preventivi "istanza da
+               BA"); ruoli non-CL -> nessuna istanza. -->
           <div v-if="mostraCampoIstanza" class="form-field">
             <label>{{ t('pratiche.field_istanza') }}</label>
+            <!-- Con ruolo selezionato (CL multi-istanza) la combo e' ristretta
+                 alle sole forniture del cliente; per il prospect senza ruolo
+                 resta filtrata sul soggetto. -->
             <IstanzaUtilityLookup
               v-model="istanzaSelezionata"
               :soggetto-id="contestoSelezionato.soggetto_id"
+              :soggetto-ruolo-id="contestoSelezionato.soggetto_ruolo_id"
             />
-            <small class="text-color-secondary">{{ t('pratiche.istanza_hint') }}</small>
+            <!-- Hint contestuale: per il cliente multi-istanza la scelta
+                 della fornitura e' il punto, non un opzionale generico. -->
+            <small class="text-color-secondary">
+              {{ contestoSelezionato.ruolo_codice === TIPO_RUOLO_CLIENTE
+                ? t('pratiche.istanza_scegli_fornitura', { n: contestoSelezionato.n_istanze })
+                : t('pratiche.istanza_hint') }}
+            </small>
+          </div>
+          <div v-else-if="istanzaDerivata" class="form-field">
+            <label>{{ t('pratiche.field_istanza') }}</label>
+            <div class="app-field-hint">
+              <i class="pi pi-link" style="margin-right: 0.4rem;"></i>
+              {{ t('pratiche.istanza_derivata', { codice: contestoSelezionato.istanza_unica_codice }) }}
+            </div>
           </div>
 
           <!-- Dati pratica -->
@@ -332,7 +401,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             />
           </div>
           <div class="form-field">
-            <label>{{ t('pratiche.col_priorita') }} *</label>
+            <label>{{ t('pratiche.col_priorita') }}</label>
             <LookupSelect
               v-model="form.priorita_id"
               rel="config.priorita_pratiche"

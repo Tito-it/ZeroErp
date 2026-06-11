@@ -90,7 +90,7 @@ class ApiPraticheList(DomainAPIView):
             fields={
                 "emittente_fiscale_id": serializers.IntegerField(),
                 "tipo_prestazione_id": serializers.IntegerField(),
-                "priorita_id": serializers.IntegerField(),
+                "priorita_id": serializers.IntegerField(required=False, allow_null=True),
                 "soggetto_id": serializers.UUIDField(required=False, allow_null=True),
                 "risorsa_umana_id": serializers.IntegerField(required=False, allow_null=True),
                 "unita_organizzativa_id": serializers.IntegerField(required=False, allow_null=True),
@@ -114,7 +114,8 @@ class ApiPraticheList(DomainAPIView):
             pratica_id = pratiche_service.crea_pratica(
                 emittente_fiscale_id=int(payload["emittente_fiscale_id"]),
                 tipo_prestazione_id=int(payload["tipo_prestazione_id"]),
-                priorita_id=int(payload["priorita_id"]),
+                # Opzionale: assente -> default NORMALE risolto dal service.
+                priorita_id=optional_int(payload, "priorita_id"),
                 soggetto_id=str(payload["soggetto_id"]) if payload.get("soggetto_id") else None,
                 soggetto_ruolo_id=optional_int(payload, "soggetto_ruolo_id"),
                 istanza_utility_id=optional_int(payload, "istanza_utility_id"),

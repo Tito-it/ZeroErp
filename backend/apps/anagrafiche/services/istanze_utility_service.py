@@ -36,16 +36,22 @@ class IstanzeUtilityService:
         q: str,
         utility_id: int | None = None,
         soggetto_id: str | None = None,
+        soggetto_ruolo_id: int | None = None,
         emittente_ids: list[int] | None = None,
         limit: int = _DEFAULT_LIMIT,
     ) -> dict[str, Any]:
         function_name = "anagrafiche.istanze_utility_service.search_lookup"
         cleaned_q = q.strip() if isinstance(q, str) else ""
+        # Con un perimetro contestuale (soggetto e/o ruolo) il set e' gia'
+        # ristretto e bounded: q vuota e' ammessa cosi' la tendina puo'
+        # listare le istanze al click senza digitazione (drawer pratiche).
+        # Senza perimetro resta la soglia minima (ricerca globale).
+        ha_perimetro = bool(soggetto_id) or soggetto_ruolo_id is not None
         ErrorManager.require(
-            len(cleaned_q) >= _MIN_QUERY_LENGTH,
+            ha_perimetro or len(cleaned_q) >= _MIN_QUERY_LENGTH,
             code="E_ANAG_VALIDAZIONE",
             message="Parametro di ricerca troppo corto.",
-            detail=f"q deve avere almeno {_MIN_QUERY_LENGTH} caratteri.",
+            detail=f"q deve avere almeno {_MIN_QUERY_LENGTH} caratteri (salvo filtro soggetto/ruolo).",
             context={"q_len": len(cleaned_q)},
             function_name=function_name,
             log_to_db=False,
@@ -62,6 +68,7 @@ class IstanzeUtilityService:
             q=cleaned_q,
             utility_id=utility_id,
             soggetto_id=soggetto_id,
+            soggetto_ruolo_id=soggetto_ruolo_id,
             emittente_ids=emittente_ids,
             limit=effective_limit,
         )

@@ -10,12 +10,15 @@
 Indice test eseguiti:
  1) test_search_lookup_ok — ricerca valida con risultati
  2) test_search_lookup_query_too_short — q < 2 char rifiutata
- 3) test_search_lookup_query_empty — q vuota rifiutata
+ 3) test_search_lookup_query_empty — q vuota rifiutata (senza perimetro)
  4) test_search_lookup_whitespace_trimmed — spazi rimossi
  5) test_search_lookup_limit_cap — limit > 50 capped a 50
  6) test_search_lookup_limit_default — limit None/0 usa default 20
  7) test_search_lookup_utility_filter_passed — utility_id propagato al repo
  8) test_search_lookup_soggetto_filter_passed — soggetto_id propagato al repo
+ 8b) test_search_lookup_soggetto_ruolo_filter_passed — soggetto_ruolo_id propagato
+ 8c) test_search_lookup_q_vuota_con_perimetro_ok — q vuota OK con perimetro
+ 8d) test_search_lookup_q_vuota_senza_perimetro_bloccata — q vuota vietata senza
  9) test_search_lookup_emittente_scope_passed — scope sr_ids propagato
 10) test_search_lookup_no_results — zero risultati
 11) test_get_lookup_by_id_ok — restore istanza esistente
@@ -134,6 +137,37 @@ class TestIstanzeUtilitySearchLookup(TestCase):
         IstanzeUtilityService().search_lookup(q="Rossi", soggetto_id=soggetto_uuid)
         _, kwargs = repo.search_lookup.call_args
         self.assertEqual(kwargs["soggetto_id"], soggetto_uuid)
+
+    @patch(_REPO)
+    def test_search_lookup_soggetto_ruolo_filter_passed(self, mock_repo):
+        """soggetto_ruolo_id propagato al repo (forniture del cliente/BA)."""
+        repo = mock_repo.return_value
+        repo.search_lookup.return_value = ([], 0)
+        from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService
+        IstanzeUtilityService().search_lookup(q="Rossi", soggetto_ruolo_id=64)
+        _, kwargs = repo.search_lookup.call_args
+        self.assertEqual(kwargs["soggetto_ruolo_id"], 64)
+
+    @patch(_REPO)
+    def test_search_lookup_q_vuota_con_perimetro_ok(self, mock_repo):
+        """q vuota AMMESSA con perimetro soggetto/ruolo (tendina al click
+        senza digitazione nel drawer pratiche)."""
+        repo = mock_repo.return_value
+        repo.search_lookup.return_value = ([], 0)
+        from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService
+        result = IstanzeUtilityService().search_lookup(q="", soggetto_ruolo_id=64)
+        self.assertEqual(result["total_count"], 0)
+        _, kwargs = repo.search_lookup.call_args
+        self.assertEqual(kwargs["q"], "")
+
+    @patch(_REPO)
+    def test_search_lookup_q_vuota_senza_perimetro_bloccata(self, mock_repo):
+        """q vuota SENZA perimetro resta vietata (ricerca globale unbounded)."""
+        from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService
+        with self.assertRaises(ServiceError) as ctx:
+            IstanzeUtilityService().search_lookup(q="")
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_repo.return_value.search_lookup.assert_not_called()
 
     @patch(_REPO)
     def test_search_lookup_emittente_scope_passed(self, mock_repo):

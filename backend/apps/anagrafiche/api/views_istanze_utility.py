@@ -44,10 +44,12 @@ class IstanzaUtilityLookupView(DomainAPIView):
             OpenApiParameter(
                 name="q",
                 type=str,
-                required=True,
+                required=False,
                 description=(
-                    "Termine di ricerca (min 2 char). Matcha codice istanza, "
-                    "ragione sociale soggetto, indirizzo normalizzato."
+                    "Termine di ricerca (min 2 char; puo' essere vuoto se "
+                    "presente un filtro soggetto_id/soggetto_ruolo_id). "
+                    "Matcha codice istanza, ragione sociale soggetto, "
+                    "indirizzo normalizzato."
                 ),
             ),
             OpenApiParameter(
@@ -65,6 +67,15 @@ class IstanzaUtilityLookupView(DomainAPIView):
                 type=str,
                 required=False,
                 description="UUID soggetto. Filtra istanze del solo soggetto.",
+            ),
+            OpenApiParameter(
+                name="soggetto_ruolo_id",
+                type=int,
+                required=False,
+                description=(
+                    "Filtra le sole istanze legate a quel ruolo via clienti "
+                    "(forniture del cliente/BA selezionato)."
+                ),
             ),
             OpenApiParameter(
                 name="limit",
@@ -91,6 +102,11 @@ class IstanzaUtilityLookupView(DomainAPIView):
         raw_soggetto = request.query_params.get("soggetto_id")
         soggetto_id: str | None = raw_soggetto if raw_soggetto else None
 
+        raw_sr = request.query_params.get("soggetto_ruolo_id")
+        soggetto_ruolo_id: int | None = None
+        if raw_sr is not None and raw_sr != "":
+            soggetto_ruolo_id = qp_int_strict(raw_sr, "soggetto_ruolo_id", 0)
+
         raw_limit = request.query_params.get("limit")
         limit_kwargs: dict = {}
         if raw_limit is not None and raw_limit != "":
@@ -106,6 +122,7 @@ class IstanzaUtilityLookupView(DomainAPIView):
             q=q,
             utility_id=utility_id,
             soggetto_id=soggetto_id,
+            soggetto_ruolo_id=soggetto_ruolo_id,
             emittente_ids=emittente_ids,
             **limit_kwargs,
         )

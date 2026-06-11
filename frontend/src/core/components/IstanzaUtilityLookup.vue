@@ -29,11 +29,21 @@ const props = defineProps({
   utilityId: { type: Number, default: null },
   // Filtro soggetto (UUID). Restringe la ricerca al solo soggetto.
   soggettoId: { type: String, default: null },
+  // Filtro ruolo (soggetto_ruolo_id). Restringe alle sole istanze legate a
+  // quel ruolo via clienti (le forniture del cliente/BA selezionato) —
+  // evita l'aggancio a istanze del soggetto estranee al rapporto cliente.
+  soggettoRuoloId: { type: Number, default: null },
   placeholder: { type: String, default: null },
   disabled: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:modelValue', 'select', 'clear'])
+
+// Perimetro contestuale attivo: stessi predicati usati nel build dei params
+// (soggettoId truthy — '' non conta — e soggettoRuoloId valorizzato).
+function hasPerimetro() {
+  return Boolean(props.soggettoId) || props.soggettoRuoloId != null
+}
 
 // Hint "affina la ricerca" (total_count > limit). BB condiviso (B6).
 const { totalCount, limitShown, onResponse } = useAutocompleteRefineHint()
@@ -42,9 +52,13 @@ const ac = useServerAutocomplete(async (query) => {
   const params = { q: query }
   if (props.utilityId != null) params.utility_id = props.utilityId
   if (props.soggettoId) params.soggetto_id = props.soggettoId
+  if (props.soggettoRuoloId != null) params.soggetto_ruolo_id = props.soggettoRuoloId
   return await lookupIstanzeUtility(params)
 }, {
-  minLength: 2,
+  // Con perimetro soggetto/ruolo il set e' gia' ristretto: la tendina lista
+  // le istanze al click senza obbligare a digitare (il BE accetta q vuota
+  // solo in presenza del perimetro). Senza perimetro resta search-first.
+  minLength: () => (hasPerimetro() ? 0 : 2),
   transform: (res) => {
     const data = res.data.data || {}
     const results = data.results || []
