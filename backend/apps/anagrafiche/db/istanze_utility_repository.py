@@ -31,6 +31,9 @@ from apps.core.db._helpers import escape_ilike, row_to_dict, rows_to_list
 #   automaticamente. Stessa fn usata dal trigger DB
 #   trgfn_preventivi_guard_utility_istanza_coerenza.
 # - soggetto_id: filtro diretto su iu.soggetto_id
+# - soggetto_ruolo_id: solo le istanze legate a quel ruolo via clienti
+#   (combo ristretta alle forniture del cliente/BA selezionato — evita
+#   l'aggancio errato a istanze del soggetto estranee al rapporto cliente)
 # - scope emittente: catena via BA della stessa istanza. Le istanze totalmente
 #   orfane (no BA) sono visibili solo ad admin globale / superuser.
 _LOOKUP_WHERE = """
@@ -44,6 +47,15 @@ _LOOKUP_WHERE = """
          OR script.fn_check_utility_istanza_coerenza(iu.id, %s)
           )
       AND (%s::uuid IS NULL OR iu.soggetto_id = %s)
+      AND (
+            %s::bigint IS NULL
+         OR EXISTS (
+              SELECT 1
+                FROM anagrafiche.clienti cl
+               WHERE cl.istanza_utility_id = iu.id
+                 AND cl.soggetto_ruolo_id = %s
+            )
+          )
       AND (
             %s::bigint[] IS NULL
          OR EXISTS (
@@ -127,6 +139,7 @@ class IstanzeUtilityRepository:
         q: str,
         utility_id: int | None,
         soggetto_id: str | None,
+        soggetto_ruolo_id: int | None = None,
         emittente_ids: list[int] | None,
         limit: int,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -138,11 +151,13 @@ class IstanzeUtilityRepository:
 
         # Parametri condivisi tra count e data query (stessa clausola WHERE).
         # Layout (post refactor con fn_check_utility_istanza_coerenza):
-        #   3 ILIKE + 2 utility_id (cast IS NULL + fn arg) + 2 soggetto + 2 scope
+        #   3 ILIKE + 2 utility_id (cast IS NULL + fn arg) + 2 soggetto
+        #   + 2 soggetto_ruolo + 2 scope
         where_params = [
             search_pattern, search_pattern, search_pattern,
             utility_id, utility_id,
             soggetto_id, soggetto_id,
+            soggetto_ruolo_id, soggetto_ruolo_id,
             scope_array, scope_array,
         ]
 

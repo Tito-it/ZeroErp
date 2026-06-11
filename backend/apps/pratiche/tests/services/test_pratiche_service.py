@@ -13,6 +13,7 @@ Indice test eseguiti:
 3) PraticheServiceTests.test_crea_pratica_errore_emittente_zero
 4) PraticheServiceTests.test_crea_pratica_errore_tipo_prestazione_zero
 5) PraticheServiceTests.test_crea_pratica_errore_priorita_zero
+5b) PraticheServiceTests.test_crea_pratica_priorita_default_normale
 6) PraticheServiceTests.test_crea_pratica_prospect_puro_istanza_senza_ruolo
 6b) PraticheServiceTests.test_crea_pratica_errore_istanza_senza_soggetto
 7) PraticheServiceTests.test_crea_pratica_errore_ruolo_senza_soggetto
@@ -30,6 +31,7 @@ Indice test eseguiti:
 19) PraticheServiceTests.test_crea_pratica_guard_post_attivazione_ok
 20) PraticheServiceTests.test_crea_pratica_guard_post_attivazione_rifiuto
 21) PraticheServiceTests.test_crea_pratica_guard_pre_attivazione_rifiuto
+21b) PraticheServiceTests.test_crea_pratica_guard_saltato_se_flag_uguali_false
 22) PraticheServiceTests.test_crea_pratica_guard_universale_bypass
 """
 
@@ -137,6 +139,25 @@ class PraticheServiceTests(SimpleTestCase):
                 priorita_id=0,
             )
         self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")
+
+    # Scopo: priorita_id assente → default NORMALE risolto per codice_interno
+    #        (mai id hardcodato).
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_pratica_priorita_default_normale(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_tipo_prestazione_attivazione.return_value = {"pre_attivazione": True, "post_attivazione": True}
+        repo.resolve_stato_pratica.return_value = 1
+        repo.resolve_priorita_pratica.return_value = 2
+        repo.create_pratica.return_value = 62
+
+        result = pratiche_service.crea_pratica(
+            emittente_fiscale_id=10,
+            tipo_prestazione_id=5,
+        )
+        self.assertEqual(result, 62)
+        repo.resolve_priorita_pratica.assert_called_once_with("NORMALE")
+        call_data = repo.create_pratica.call_args[0][0]
+        self.assertEqual(call_data["priorita_id"], 2)
 
     # Scopo: Verifica creazione con contesto anagrafico completo (soggetto + ruolo + istanza).
     @patch(f"{_SVC}.PraticheRepository")
@@ -314,6 +335,29 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(items[0]["tx_id"], "abc-123")
 
     # --- Guard pre/post-attivazione ---
+
+    # Scopo: Tipo con pre/post ENTRAMBI false (es. PREVENTIVI_*) = ammesso
+    #        indipendentemente dallo stato BA (anello3 §11.1.3): il guard
+    #        viene SALTATO (ha_ba_attivo mai chiamato). Bug 2026-06-11: la
+    #        vecchia condizione trattava false/false come "mai ammessa".
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_pratica_guard_saltato_se_flag_uguali_false(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_tipo_prestazione_attivazione.return_value = {
+            "pre_attivazione": False, "post_attivazione": False
+        }
+        repo.resolve_stato_pratica.return_value = 1
+        repo.create_pratica.return_value = 61
+
+        result = pratiche_service.crea_pratica(
+            emittente_fiscale_id=10,
+            tipo_prestazione_id=9003,
+            priorita_id=2,
+            soggetto_id="aaa-bbb-ccc",
+            soggetto_ruolo_id=64,
+        )
+        self.assertEqual(result, 61)
+        repo.ha_ba_attivo.assert_not_called()
 
     # Scopo: Tipo post-attivazione + soggetto con BA attivo → OK.
     @patch(f"{_SVC}.PraticheRepository")
