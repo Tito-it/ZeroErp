@@ -3,22 +3,24 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: trigger guard contesto anagrafico su pratiche.pratiche
---       (trgfn_pratiche_guard_contesto)
+--       (trgfn_pratiche_guard_contesto) — MODELLO A DUE RAMI
+--       (soggetto->ruolo, soggetto->istanza, indipendenti).
 --
 -- Indice test:
 -- 0) Precondizioni (provisioning + verifica)
 -- 1) INSERT pratica interna (tutti NULL) — OK
 -- 2) INSERT con soggetto_id solo — OK
 -- 3) INSERT con soggetto_ruolo_id senza soggetto_id — ERRORE
--- 4) INSERT con istanza_utility_id senza soggetto_ruolo_id — ERRORE
--- 5) INSERT con soggetto_ruolo_id non appartenente a soggetto_id — ERRORE
--- 6) INSERT con istanza_utility_id non appartenente a soggetto_id — ERRORE
--- 7) INSERT con catena coerente soggetto + ruolo — OK
--- 8) INSERT con catena coerente soggetto + ruolo + istanza — OK
--- 9) UPDATE che rompe coerenza (rimuove soggetto_id ma lascia ruolo) — ERRORE
--- 10) Cleanup
+-- 4) INSERT con soggetto_id + istanza_utility_id, SENZA ruolo (prospect puro) — OK
+-- 5) INSERT con istanza_utility_id senza soggetto_id — ERRORE (regola sostitutiva)
+-- 6) INSERT con soggetto_ruolo_id non appartenente a soggetto_id — ERRORE
+-- 7) INSERT con istanza_utility_id non appartenente a soggetto_id — ERRORE
+-- 8) INSERT con catena coerente soggetto + ruolo — OK
+-- 9) INSERT con catena coerente soggetto + ruolo + istanza — OK
+-- 10) UPDATE che rompe coerenza (rimuove soggetto_id ma lascia ruolo) — ERRORE
+-- 11) Cleanup
 -- ------------------------------------------------------------
-SELECT plan(11);
+SELECT plan(12);
 -- =========================================================
 -- 0) Precondizioni: recupera riferimenti
 -- =========================================================
@@ -185,9 +187,11 @@ SELECT throws_ok(
     '3. Ruolo senza soggetto — ERRORE'
   );
 -- =========================================================
--- 4) istanza_utility_id senza soggetto_ruolo_id — ERRORE
+-- 4) soggetto_id + istanza_utility_id, SENZA ruolo (prospect puro) — OK
+--    Caso pre-contrattuale utilities: l'istanza pende dal soggetto, il ruolo
+--    CLIENTE non e' ancora nato. Prima della 20260611-01 questo era ERRORE.
 -- =========================================================
-SELECT throws_ok(
+SELECT lives_ok(
     format(
       'INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, soggetto_ruolo_id, istanza_utility_id, stato_id, priorita_id)
           VALUES (%s, %s, %L, NULL, %s, %s, %s)',
@@ -216,12 +220,42 @@ SELECT throws_ok(
         FROM tmp_gc_refs
       )
     ),
-    NULL,
-    NULL,
-    '4. Istanza senza ruolo — ERRORE'
+    '4. Istanza + soggetto, senza ruolo (prospect puro) — OK'
   );
 -- =========================================================
--- 5) soggetto_ruolo_id non appartenente a soggetto_id — ERRORE
+-- 5) istanza_utility_id senza soggetto_id — ERRORE (regola sostitutiva)
+-- =========================================================
+SELECT throws_ok(
+    format(
+      'INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, soggetto_ruolo_id, istanza_utility_id, stato_id, priorita_id)
+          VALUES (%s, %s, NULL, NULL, %s, %s, %s)',
+      (
+        SELECT emittente_id
+        FROM tmp_gc_refs
+      ),
+      (
+        SELECT tp_id
+        FROM tmp_gc_tp
+      ),
+      (
+        SELECT istanza_id
+        FROM tmp_gc_sogg
+      ),
+      (
+        SELECT st_bozza
+        FROM tmp_gc_refs
+      ),
+      (
+        SELECT priorita_id
+        FROM tmp_gc_refs
+      )
+    ),
+    NULL,
+    NULL,
+    '5. Istanza senza soggetto — ERRORE'
+  );
+-- =========================================================
+-- 6) soggetto_ruolo_id non appartenente a soggetto_id — ERRORE
 -- =========================================================
 SELECT throws_ok(
     format(
@@ -254,10 +288,10 @@ SELECT throws_ok(
     ),
     NULL,
     NULL,
-    '5. Ruolo non del soggetto — ERRORE'
+    '6. Ruolo non del soggetto — ERRORE'
   );
 -- =========================================================
--- 6) istanza_utility_id non appartenente a soggetto_id — ERRORE
+-- 7) istanza_utility_id non appartenente a soggetto_id — ERRORE
 -- =========================================================
 SELECT throws_ok(
     format(
@@ -294,10 +328,10 @@ SELECT throws_ok(
     ),
     NULL,
     NULL,
-    '6. Istanza non del soggetto — ERRORE'
+    '7. Istanza non del soggetto — ERRORE'
   );
 -- =========================================================
--- 7) Catena coerente soggetto + ruolo — OK
+-- 8) Catena coerente soggetto + ruolo — OK
 -- =========================================================
 SELECT lives_ok(
     format(
@@ -328,10 +362,10 @@ SELECT lives_ok(
         FROM tmp_gc_refs
       )
     ),
-    '7. Catena soggetto + ruolo coerente — OK'
+    '8. Catena soggetto + ruolo coerente — OK'
   );
 -- =========================================================
--- 8) Catena coerente soggetto + ruolo + istanza — OK
+-- 9) Catena coerente soggetto + ruolo + istanza — OK
 -- =========================================================
 SELECT lives_ok(
     format(
@@ -366,12 +400,12 @@ SELECT lives_ok(
         FROM tmp_gc_refs
       )
     ),
-    '8. Catena soggetto + ruolo + istanza coerente — OK'
+    '9. Catena soggetto + ruolo + istanza coerente — OK'
   );
 -- =========================================================
--- 9) UPDATE che rompe coerenza — ERRORE
+-- 10) UPDATE che rompe coerenza — ERRORE
 -- =========================================================
--- Prendi la pratica del test 7 (soggetto + ruolo)
+-- Prendi una pratica con soggetto + ruolo (senza istanza)
 CREATE TEMP TABLE tmp_gc_pratica_upd AS
 SELECT id AS pratica_id
 FROM pratiche.pratiche
@@ -392,10 +426,10 @@ SELECT throws_ok(
     ),
     NULL,
     NULL,
-    '9. UPDATE rimuove soggetto_id ma lascia ruolo — ERRORE'
+    '10. UPDATE rimuove soggetto_id ma lascia ruolo — ERRORE'
   );
 -- =========================================================
--- 10) Cleanup
+-- 11) Cleanup
 -- =========================================================
 DELETE FROM pratiche.giornale
 WHERE pratica_id IN (
@@ -413,6 +447,6 @@ WHERE tipo_prestazione_id = (
   );
 DELETE FROM pratiche.tipi_prestazione
 WHERE codice_interno = 'TEST_GC';
-SELECT pass('10. Cleanup completato');
+SELECT pass('11. Cleanup completato');
 SELECT *
 FROM finish();
