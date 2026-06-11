@@ -20,9 +20,10 @@ La tabella `pratiche.flussi` contiene le **istanze operative dei flussi** di una
 ### Ruolo nel processo
 
 * Ogni pratica ha uno o piu' flussi che ne compongono il workflow.
-* I flussi con `template_flusso_id NOT NULL` sono istanze di template configurati; quelli con `NULL` sono step manuali.
-* Al completamento (stato → COMPLETATO), l'`esito` viene registrato e puo' attivare la **generazione cross-pratica** (se esistono regole matching con `auto = true`).
-* I **prerequisiti** (configurati in `template_flussi_prerequisiti`) sono verificati dal trigger guard BEFORE INSERT (DB-5).
+* I flussi con `template_flusso_id NOT NULL` sono istanze di template configurati; quelli con `NULL` sono step manuali (bypassano i guard prerequisiti e ripetibilita').
+* Al completamento (transizione stato → COMPLETATO), l'`esito` viene registrato e puo' attivare la **generazione cross-pratica** (se esistono regole matching con `auto = true`).
+* I **prerequisiti** (configurati in `template_flussi_prerequisiti`, esito-aware) sono verificati dal trigger guard BEFORE INSERT: e' il meccanismo che esprime anche i **bivi condizionali** (D4).
+* La **ripetibilita'** (`template_flussi.ripetibilita`, D3) e' verificata dal guard BEFORE INSERT `trg_flussi_a10_guard_ripetibilita_ins`: governa quante istanze dello stesso template possono nascere nella stessa pratica (l'ultima istanza = `MAX(id)`, escluse le ANNULLATO).
 
 ---
 

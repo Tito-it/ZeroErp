@@ -33,7 +33,7 @@ def crea_pratica(
     soggetto_id: str | None = None,
     soggetto_ruolo_id: int | None = None,
     istanza_utility_id: int | None = None,
-    priorita_id: int,
+    priorita_id: int | None = None,
     risorsa_umana_id: int | None = None,
     unita_organizzativa_id: int | None = None,
     canale_origine_id: int | None = None,
@@ -53,12 +53,15 @@ def crea_pratica(
         message="tipo_prestazione_id obbligatorio e > 0",
     )
     assert tipo_prestazione_id > 0
-    ErrorManager.require(
-        priorita_id > 0,
-        code="E_PRATICA_VALIDATION",
-        message="priorita_id obbligatorio e > 0",
-    )
-    assert priorita_id > 0
+    # Priorita' opzionale: se assente si applica il default NORMALE risolto
+    # per codice_interno (mai id hardcodato — feedback_no_hardcoded_ids).
+    if priorita_id is not None:
+        ErrorManager.require(
+            priorita_id > 0,
+            code="E_PRATICA_VALIDATION",
+            message="priorita_id deve essere > 0",
+        )
+        assert priorita_id > 0
 
     # Validazione coerenza contesto anagrafico (stesse regole del trigger DB,
     # qui per dare errori user-friendly via ServiceError). Modello a due rami
@@ -80,10 +83,14 @@ def crea_pratica(
         )
 
     # Guard pre/post-attivazione: verifica ammissibilita' tipo prestazione
-    # in base allo stato del billing_account del soggetto.
+    # in base allo stato del billing_account del soggetto. Semantica flag
+    # (analisi-pratiche-domini-anello3 §11.1.3): pre/post UGUALI (true/true
+    # ma anche false/false, es. tipi PREVENTIVI_*) = ammessa
+    # indipendentemente dallo stato BA -> guard saltato. Il check scatta
+    # solo quando UNO dei due flag e' false (tipo vincolato a una fase).
     repo = PraticheRepository()
     tipo_att = repo.get_tipo_prestazione_attivazione(tipo_prestazione_id)
-    if soggetto_id is not None and not (tipo_att["pre_attivazione"] and tipo_att["post_attivazione"]):
+    if soggetto_id is not None and tipo_att["pre_attivazione"] != tipo_att["post_attivazione"]:
         ha_ba = repo.ha_ba_attivo(soggetto_id, emittente_fiscale_id)
         if not tipo_att["pre_attivazione"] and not ha_ba:
             raise ServiceError(
@@ -96,8 +103,10 @@ def crea_pratica(
                 message="Tipo prestazione ammesso solo prima dell'attivazione cliente (pre-attivazione).",
             )
 
-    # Risolve stato iniziale BOZZA.
+    # Risolve stato iniziale BOZZA + default priorita' NORMALE se assente.
     stato_id = repo.resolve_stato_pratica("BOZZA")
+    if priorita_id is None:
+        priorita_id = repo.resolve_priorita_pratica("NORMALE")
     return repo.create_pratica({
         "emittente_fiscale_id": emittente_fiscale_id,
         "tipo_prestazione_id": tipo_prestazione_id,

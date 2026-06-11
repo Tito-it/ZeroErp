@@ -17,9 +17,10 @@ La tabella `pratiche.regole_generazione` configura le **regole di generazione cr
 
 ### Ruolo nel processo
 
-* Al completamento di un flusso (stato → COMPLETATO), il trigger `trgfn_flussi_generazione` (DB-5) cerca regole matching con `auto = true` e genera le pratiche target.
-* Per regole con `auto = false`, l'operatore puo' attivare la generazione manualmente via API.
-* La pratica generata ha `flusso_origine_id` impostato al flusso che l'ha generata — tracciabilita' completa.
+* Alla **transizione** di un flusso a COMPLETATO, il trigger `trgfn_flussi_generazione` cerca regole matching con `auto = true` e genera le pratiche target (idempotente dalla rev 2026-06-11: niente doppioni su UPDATE ripetuti).
+* Per regole con `auto = false`, l'operatore puo' attivare la generazione manualmente via API — il dedup in `fn_genera_pratica_da_flusso` garantisce comunque **un solo figlio per (flusso, tipo destinazione)** (cintura: indice `uq_pratiche_flusso_origine_tipo`).
+* La pratica generata porta la **genealogia completa**: `pratica_padre_id` (pratica sorgente) + `flusso_origine_id` (flusso generatore), ed eredita il **contesto** (`soggetto_ruolo_id`, `istanza_utility_id`) — ricade quindi nelle lenti D1.
+* Se la regola dichiara `template_flusso_dest_id`, la figlia nasce con il **flusso iniziale** gia' creato in DA_ESEGUIRE.
 
 ---
 
@@ -29,7 +30,7 @@ La tabella `pratiche.regole_generazione` configura le **regole di generazione cr
 |---------|------|
 | `template_flusso_origine_id` | Il flusso che, al completamento, attiva la regola. |
 | `tipo_prestazione_dest_id` | Il tipo di pratica da generare. |
-| `template_flusso_dest_id` | Il flusso iniziale della pratica generata (nullable: NULL = nessun flusso auto). |
+| `template_flusso_dest_id` | Il flusso iniziale della pratica generata (nullable: NULL = nessun flusso auto). Il template indicato deve essere **senza prerequisiti** (la figlia nasce vuota): altrimenti la generazione fallisce fail-fast. |
 | `esito_richiesto` | CHECK (POSITIVO, NEGATIVO, QUALSIASI). Se NULL, la regola si attiva per qualsiasi esito. |
 | `auto` | Se true, generazione automatica al completamento. Se false, solo su richiesta manuale. |
 

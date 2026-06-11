@@ -7,7 +7,9 @@ import { ref, onUnmounted } from 'vue'
 /**
  * @param {Function} searchFn - Funzione che riceve (query) e ritorna Promise axios
  * @param {Object} options
- * @param {number} options.minLength - Lunghezza minima query (default: 2)
+ * @param {number|Function} options.minLength - Lunghezza minima query (default: 2).
+ *   Puo' essere una funzione per soglie dinamiche (es. 0 quando il lookup ha
+ *   gia' un perimetro contestuale e deve listare al click della tendina).
  * @param {number} options.debounceMs - Debounce in ms (default: 300)
  * @param {Function} options.transform - Trasforma risposta (default: r => r.data.data.results)
  * @param {Function} options.onResponse - Callback opzionale con la response completa (per leggere total_count, meta, ecc.)
@@ -29,7 +31,8 @@ export function useServerAutocomplete(searchFn, options = {}) {
     clearTimeout(debounceTimer)
     noResults.value = false
 
-    if (!query || query.length < minLength) {
+    const effectiveMin = typeof minLength === 'function' ? minLength() : minLength
+    if ((query || '').length < effectiveMin) {
       suggestions.value = []
       // Notifica anche sul path "troppo corto" per consentire ai consumer
       // di azzerare metadati stale (es. total_count del footer "affina").

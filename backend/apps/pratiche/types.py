@@ -40,6 +40,7 @@ class PraticaRow(TypedDict):
     priorita_codice_interno: str
     priorita_descrizione: str
     soggetto_display: str | None
+    soggetto_id_fiscale: str | None
     risorsa_umana_display: str | None
     unita_organizzativa_descrizione: str | None
 
@@ -66,6 +67,11 @@ class FlussoRow(TypedDict):
     stato_descrizione: str
     template_flusso_codice: str | None
     template_flusso_descrizione: str | None
+    # Contesto pratica (header standard drawer esecuzione flussi)
+    pratica_codice: str | None
+    pratica_data_apertura: str | None
+    pratica_soggetto_display: str | None
+    pratica_soggetto_id_fiscale: str | None
 
 
 # -- Tabella pratiche.giornale --

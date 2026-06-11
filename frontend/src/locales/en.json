@@ -2229,7 +2229,6 @@
     "azione_genera_ordine": "Generate order",
     "ordine_generato": "Order {numero} generated from the quote.",
     "genera_ordine_titolo": "Generate order from goods lines",
-    "genera_ordine_conferma": "Generate order",
     "genera_ordine_hint": "Select the goods lines to move into a new order. Already-ordered lines are not shown; services do not belong here.",
     "genera_ordine_nessuna_riga": "No goods lines to order.",
     "pdf": {
@@ -2613,6 +2612,8 @@
     "field_contesto": "Subject / role",
     "field_istanza": "Utility instance",
     "istanza_hint": "Optional — links the case to a specific instance (pre-contract)",
+    "istanza_derivata": "Instance {codice} automatically derived from the customer",
+    "istanza_scegli_fornitura": "The customer has {n} instances: choose the supply this case refers to",
     "nuovo_soggetto": "New subject",
     "section_soggetto": "Subject",
     "section_dati": "Case details",

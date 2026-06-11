@@ -3,15 +3,20 @@
 > **Tipo documento**: brief operativo **per il team DB** (`dev/db-tid`). Spiega
 > *cosa* fare e *perché*; niente DDL pronto.
 >
-> **Data**: 2026-06-11 · **Stato**: 🟢 FATTO (DB) — consegnato su `dev/db-tid`,
-> pgTAP verde (eseguito da Tid). Vedi §6 «Consegna DB». Resta aperto solo il
-> cantiere BE/FE (§5).
+> **Data**: 2026-06-11 · **Stato**: 🟢 **COMPLETO (DB + BE + FE)** — DB
+> consegnato su `dev/db-tid` con pgTAP verde (§6); cantiere BE/FE §5 chiuso
+> in giornata: lookup `soggetti-ruoli` (search + restore by-id), BB
+> `SoggettoRuoloLookup` + campo istanza nel `PraticaDrawer`, service pratiche
+> allineato al guard nuovo (la replica applicativa della vecchia regola 1
+> avrebbe continuato a bloccare il prospect puro). Verificato end-to-end su
+> DB reale: pratica con `soggetto_ruolo_id NULL` + `istanza_utility_id`
+> creata e validata (poi rimossa). 404 test anagrafiche + 137 pratiche verdi.
 >
 > **Impatto**: blocca l'aggancio di una pratica a un'istanza utility di un
 > prospect puro (soggetto con istanza ma senza alcun ruolo) — che nel mondo
 > utilities è il caso **normale**, non l'eccezione. Prerequisito del cantiere
 > FE "selezione contesto pratica a 3 livelli" (residuo §4.3 di
-> [gestione-pratiche-v2.md](gestione-pratiche-v2.md)).
+> [gestione-pratiche-v2.md](../work-in-progress/gestione-pratiche-v2.md)).
 
 ## 1. Il bug di modello (verificato)
 

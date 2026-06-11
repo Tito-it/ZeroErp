@@ -77,13 +77,15 @@ SELECT id AS tp_id FROM ins;
 
 CREATE TEMP TABLE tmp_ea_tf AS
 WITH ins AS (
-  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo)
+  -- ripetibilita='SEMPRE': il test crea piu' istanze degli stessi template
+  -- nella stessa pratica (esiti diversi); il default SE_NON_POSITIVO le vieterebbe.
+  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo, ripetibilita)
   VALUES
-    ((SELECT tp_id FROM tmp_ea_tp), 'TF_EA_A', 'Template A (richiede B esito POSITIVO)', true),
-    ((SELECT tp_id FROM tmp_ea_tp), 'TF_EA_B', 'Template B (prerequisito esito-aware)', true),
-    ((SELECT tp_id FROM tmp_ea_tp), 'TF_EA_C', 'Template C (richiede D, esito qualsiasi)', true),
-    ((SELECT tp_id FROM tmp_ea_tp), 'TF_EA_D', 'Template D (prerequisito retro-compat)', true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+    ((SELECT tp_id FROM tmp_ea_tp), 'TF_EA_A', 'Template A (richiede B esito POSITIVO)', true, 'SEMPRE'),
+    ((SELECT tp_id FROM tmp_ea_tp), 'TF_EA_B', 'Template B (prerequisito esito-aware)', true, 'SEMPRE'),
+    ((SELECT tp_id FROM tmp_ea_tp), 'TF_EA_C', 'Template C (richiede D, esito qualsiasi)', true, 'SEMPRE'),
+    ((SELECT tp_id FROM tmp_ea_tp), 'TF_EA_D', 'Template D (prerequisito retro-compat)', true, 'SEMPRE')
+  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
   RETURNING id, codice
 )
 SELECT

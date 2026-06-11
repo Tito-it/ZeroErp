@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B (4/4) — trigger guard ripetibilita' su pratiche.flussi.
+#
+# Enforcement a DB della regola D3: il controllo scatta alla CREAZIONE
+# di una nuova istanza di flusso (BEFORE INSERT, stesso punto dei
+# prerequisiti) e vale per qualunque chiamante (BE, fn DB, SQL
+# diretto). Trigger separato da trg_flussi_a10_guard_prerequisiti_ins
+# per separazione di responsabilita'; ordine lessicografico:
+# ..._guard_prerequisiti_ins < ..._guard_ripetibilita_ins (prima i
+# prerequisiti, poi la ripetibilita' — entrambi fase _a10_).
+# I flussi manuali (template_flusso_id NULL) bypassano il controllo,
+# come per i prerequisiti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260611-06-create-trgfn-flussi-guard-ripetibilita-mctit.yaml
+
+  - changeSet:
+      id: 20260611-06-create-trgfn-flussi-guard-ripetibilita
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        trgfn_flussi_guard_ripetibilita + trigger
+        trg_flussi_a10_guard_ripetibilita_ins (BEFORE INSERT su
+        pratiche.flussi): enforcement della regola di ripetibilita'
+        del template per qualunque chiamante.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_ripetibilita()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Wrapper trigger per guard ripetibilita' (D3).
+                --   Solo per flussi template-based (template_flusso_id
+                --   NOT NULL): i flussi manuali bypassano, come per i
+                --   prerequisiti.
+                -- =========================================================
+
+                IF NEW.template_flusso_id IS NOT NULL THEN
+                  PERFORM pratiche.fn_guard_ripetibilita_flusso(
+                    NEW.pratica_id,
+                    NEW.template_flusso_id
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_ripetibilita()
+              IS 'BEFORE INSERT su flussi: verifica la regola di ripetibilita'' del template per flussi template-based.';
+
+              DROP TRIGGER IF EXISTS trg_flussi_a10_guard_ripetibilita_ins
+                ON pratiche.flussi;
+
+              CREATE TRIGGER trg_flussi_a10_guard_ripetibilita_ins
+                BEFORE INSERT ON pratiche.flussi
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_flussi_guard_ripetibilita();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_flussi_a10_guard_ripetibilita_ins
+                ON pratiche.flussi;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_flussi_guard_ripetibilita();

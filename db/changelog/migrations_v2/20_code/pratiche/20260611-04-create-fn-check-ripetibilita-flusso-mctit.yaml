@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B (2/4) — fn_check_ripetibilita_flusso: check puro (boolean, no
+# raise) della regola di ripetibilita' (template_flussi.ripetibilita,
+# 20260611-03).
+#
+# Semantica ratificata (analisi-pratiche-workflow-v2.md §7.C):
+#   - "ultima istanza" = MAX(f.id) tra le istanze dello stesso
+#     template nella pratica, ESCLUSE le ANNULLATO (un'istanza
+#     annullata non consuma la ripetibilita'). NON si usa f.sequenza:
+#     e' la posizione nel template, non la recency.
+#   - SE_NON_POSITIVO blocca anche con ultima istanza ancora aperta
+#     (DA_ESEGUIRE/IN_CORSO/SOSPESO/ERRORE): ammette una nuova istanza
+#     solo se l'ultima e' COMPLETATO con esito diverso da POSITIVO.
+#
+# Consumatori: fn_guard_ripetibilita_flusso (20260611-05) e, lato BE,
+# il percorso pratica per pilotare il bottone "Ripeti" (ripetibile
+# adesso si'/no) senza duplicare la logica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260611-04-create-fn-check-ripetibilita-flusso-mctit.yaml
+
+  - changeSet:
+      id: 20260611-04-create-fn-check-ripetibilita-flusso
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        fn_check_ripetibilita_flusso: true se una nuova istanza del
+        template e' ammessa nella pratica secondo la regola
+        ripetibilita (MAI/SE_NON_POSITIVO/SEMPRE). Ultima istanza =
+        MAX(id) escluse le ANNULLATO.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_check_ripetibilita_flusso(
+                  p_pratica_id         pratiche.flussi.pratica_id%TYPE,
+                  p_template_flusso_id pratiche.flussi.template_flusso_id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_ripetibilita   pratiche.template_flussi.ripetibilita%TYPE;
+                  v_ultimo_stato   config.stati_flussi_pratiche.codice_interno%TYPE;
+                  v_ultimo_esito   pratiche.flussi.esito%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Verifica se una NUOVA istanza del template flusso e'
+                --   ammessa nella pratica, secondo la regola di
+                --   ripetibilita' del template.
+                --   Funzione fn_check_*: puro boolean, no raise.
+                --
+                -- Regole (D3, ratifica 2026-06-11):
+                --   - ultima istanza = MAX(id) per (pratica, template),
+                --     escluse le istanze ANNULLATO
+                --   - MAI: ammessa solo se non esiste alcuna istanza
+                --   - SE_NON_POSITIVO: ammessa se non esiste istanza,
+                --     oppure se l'ultima e' COMPLETATO con esito diverso
+                --     da POSITIVO (un'istanza ancora aperta blocca)
+                --   - SEMPRE: sempre ammessa
+                -- =========================================================
+
+                -- Regola dichiarata sul template; template inesistente:
+                -- nessun blocco qui (ci pensa la FK su pratiche.flussi).
+                SELECT tf.ripetibilita
+                  INTO v_ripetibilita
+                  FROM pratiche.template_flussi tf
+                 WHERE tf.id = p_template_flusso_id;
+
+                IF NOT FOUND OR v_ripetibilita = 'SEMPRE' THEN
+                  RETURN true;
+                END IF;
+
+                -- Ultima istanza non annullata (recency = MAX(id), non sequenza).
+                SELECT sfp.codice_interno, f.esito
+                  INTO v_ultimo_stato, v_ultimo_esito
+                  FROM pratiche.flussi f
+                  JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
+                 WHERE f.pratica_id         = p_pratica_id
+                   AND f.template_flusso_id = p_template_flusso_id
+                   AND sfp.codice_interno  <> 'ANNULLATO'
+                 ORDER BY f.id DESC
+                 LIMIT 1;
+
+                -- Nessuna istanza precedente: la prima e' sempre ammessa.
+                IF NOT FOUND THEN
+                  RETURN true;
+                END IF;
+
+                -- MAI: esiste gia' un'istanza valida -> mai ripetibile.
+                IF v_ripetibilita = 'MAI' THEN
+                  RETURN false;
+                END IF;
+
+                -- SE_NON_POSITIVO: ripetibile solo se l'ultima istanza e'
+                -- chiusa (COMPLETATO) con esito non positivo. Un'istanza
+                -- ancora aperta o chiusa POSITIVO blocca la ripetizione.
+                RETURN v_ultimo_stato = 'COMPLETATO'
+                       AND v_ultimo_esito IS DISTINCT FROM 'POSITIVO';
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_check_ripetibilita_flusso(bigint, integer)
+              IS 'Pure check: true se una nuova istanza del template e'' ammessa nella pratica secondo template_flussi.ripetibilita (MAI/SE_NON_POSITIVO/SEMPRE). Ultima istanza = MAX(id), escluse ANNULLATO; SE_NON_POSITIVO blocca anche istanza ancora aperta.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_check_ripetibilita_flusso(bigint, integer);

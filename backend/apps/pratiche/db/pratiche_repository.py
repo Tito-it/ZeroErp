@@ -54,6 +54,7 @@ class PraticheRepository:
         pp.codice_interno AS priorita_codice_interno,
         pp.descrizione AS priorita_descrizione,
         s.ragione_sociale_completa AS soggetto_display,
+        s.id_fiscale_univoco_cf_piva AS soggetto_id_fiscale,
         sru.ragione_sociale_completa AS risorsa_umana_display,
         uo.descrizione AS unita_organizzativa_descrizione
     """
@@ -281,12 +282,18 @@ class PraticheRepository:
         sf.codice_interno AS stato_codice_interno,
         sf.descrizione AS stato_descrizione,
         tf.codice AS template_flusso_codice,
-        tf.descrizione AS template_flusso_descrizione
+        tf.descrizione AS template_flusso_descrizione,
+        p.codice AS pratica_codice,
+        p.data_apertura AS pratica_data_apertura,
+        s.ragione_sociale_completa AS pratica_soggetto_display,
+        s.id_fiscale_univoco_cf_piva AS pratica_soggetto_id_fiscale
     """
 
     _FLUSSO_JOINS = """
         JOIN config.stati_flussi_pratiche sf ON sf.id = f.stato_id
         LEFT JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+        JOIN pratiche.pratiche p ON p.id = f.pratica_id
+        LEFT JOIN anagrafiche.soggetti s ON s.id = p.soggetto_id
     """
 
     # Scopo: Restituisce i flussi di una pratica ordinati per sequenza, con display fields.
@@ -869,6 +876,11 @@ class PraticheRepository:
     def resolve_stato_flusso(self, codice_interno: str) -> int:
         return self._resolve_stato("config.stati_flussi_pratiche", codice_interno, "flusso")
 
+    # Scopo: Risolve l'ID di una priorita' pratica da codice_interno
+    #        (default NORMALE in crea_pratica — mai id hardcodato).
+    def resolve_priorita_pratica(self, codice_interno: str) -> int:
+        return self._resolve_stato("config.priorita_pratiche", codice_interno, "priorita")
+
     # -- HANDLER KEY -----------------------------------------------------
 
     # Scopo: Recupera l'handler_key dal template flusso (via handler_flussi).
@@ -1030,6 +1042,10 @@ class PraticheRepository:
     # Usato dal guard pre/post-attivazione in crea_pratica.
     # La query attraversa: clienti → billing_account → istanze_utilities.
     def ha_ba_attivo(self, soggetto_id: str, emittente_fiscale_id: int) -> bool:
+        # Scope emittente via fn ufficiale sul BA: l'istanza NON ha un
+        # emittente (la relazione vive su billing_account -> efba, fallback
+        # gestore default incapsulato nella fn, che ritorna la PK reale
+        # dell'EF — feedback_emittente_pk_vs_soggetto_ruolo).
         sql = """
             SELECT EXISTS (
                 SELECT 1
@@ -1037,7 +1053,7 @@ class PraticheRepository:
                 JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
                 JOIN anagrafiche.istanze_utilities iu ON iu.id = cl.istanza_utility_id
                 WHERE iu.soggetto_id = %s::uuid
-                  AND iu.emittente_fiscale_id = %s
+                  AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) = %s
                   AND cl.data_attivazione IS NOT NULL
                   AND cl.data_chiusura IS NULL
             )

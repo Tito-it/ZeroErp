@@ -1147,6 +1147,47 @@ const drawerActions = computed(() => [
 
 ---
 
+## Header contesto pratica — `PraticaContextHeader` (drawer esecuzione flussi)
+
+**Regola**: ogni drawer aperto per l'**esecuzione di un flusso** di pratica
+(`FlussoDrawer` generico e qualsiasi futuro drawer dedicato a un template
+flusso, es. `RICHIESTA_CLIENTE` della pratica PREVENTIVI) espone in alto il
+building block **`PraticaContextHeader`**
+(`src/pratiche/components/PraticaContextHeader.vue`), con il set minimo
+identico ovunque:
+
+- **numero pratica** (Tag; fallback `#id` se il codice manca)
+- **soggetto** (`ragione_sociale_completa`)
+- **data di apertura** della pratica
+- **id fiscale univoco** (CF/P.IVA)
+
+L'operatore deve riconoscere a colpo d'occhio *su quale pratica e per quale
+soggetto* sta lavorando, qualunque sia il flusso. Il BB e' un wrapper di
+`DrawerContextHeader`: il drawer di flusso non ricostruisce items/label, passa
+solo i campi del payload BE (i flussi espongono `pratica_codice`,
+`pratica_data_apertura`, `pratica_soggetto_display`,
+`pratica_soggetto_id_fiscale` come display fields via JOIN).
+
+```html
+<PraticaContextHeader
+  :codice="flusso.pratica_codice"
+  :pratica-id="flusso.pratica_id"
+  :soggetto="flusso.pratica_soggetto_display"
+  :data-apertura="flusso.pratica_data_apertura"
+  :id-fiscale="flusso.pratica_soggetto_id_fiscale"
+>
+  <template #status>
+    <Tag :value="stato" :severity="statoFlussoSeverity(stato)" />
+  </template>
+</PraticaContextHeader>
+```
+
+La `DrawerActionsBar` (sezione precedente) vive subito sotto questo header.
+Informazioni aggiuntive specifiche del flusso vanno **sotto**, mai al posto
+del set minimo.
+
+---
+
 ## Tag stato e severity (standard cromatico)
 
 Le severity PrimeVue (`Tag`, `Badge`) seguono una convenzione fissa in tutta l'app.
