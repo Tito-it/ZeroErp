@@ -9,13 +9,26 @@
 ---
 ### 🎯 Scopo Principale
 
-Guard: valida la coerenza gerarchica del contesto anagrafico sulla pratica.
-La catena soggetto → ruolo → istanza deve essere coerente:
+Guard: valida la coerenza del contesto anagrafico sulla pratica nel **modello a
+due rami**, pendenti indipendentemente dal soggetto:
 
-- Non si puo' avere un'istanza senza ruolo
-- Non si puo' avere un ruolo senza soggetto
+```text
+soggetto ──→ soggetto_ruolo      (pratiche su ruoli: cliente attivo, fornitore, …)
+        └──→ istanza_utility     (pratiche pre-contrattuali: nessun ruolo richiesto)
+```
+
+Regole:
+
+- Un ruolo non può esistere senza soggetto
+- Un'istanza non può esistere senza soggetto
 - Il ruolo deve appartenere al soggetto indicato
 - L'istanza deve appartenere al soggetto indicato
+
+**Istanza senza ruolo è ammessa** (prospect puro): nel dominio utilities
+l'istanza nasce *prima* del contratto, in fase pre-contrattuale il soggetto non
+ha ancora il ruolo CLIENTE — che arriva a valle, con la nascita del billing
+account (`ClienteService` / `fn_get_or_create_soggetto_ruolo`). Imporre il ruolo
+all'aggancio dell'istanza sarebbe un ruolo CL prematuro.
 
 Tutti i campi sono opzionali: una pratica interna ha tutti NULL.
 
@@ -34,10 +47,16 @@ RETURNS trigger LANGUAGE plpgsql
 
 | # | Regola | Condizione errore |
 |---|--------|-------------------|
-| 1 | Istanza richiede ruolo | `istanza_utility_id NOT NULL AND soggetto_ruolo_id IS NULL` |
-| 2 | Ruolo richiede soggetto | `soggetto_ruolo_id NOT NULL AND soggetto_id IS NULL` |
+| 1 | Ruolo richiede soggetto | `soggetto_ruolo_id NOT NULL AND soggetto_id IS NULL` |
+| 2 | Istanza richiede soggetto | `istanza_utility_id NOT NULL AND soggetto_id IS NULL` |
 | 3 | Ruolo deve appartenere al soggetto | `soggetti_ruoli.soggetto_id <> pratiche.soggetto_id` |
 | 4 | Istanza deve appartenere al soggetto | `istanze_utilities.soggetto_id <> pratiche.soggetto_id` |
+
+> **Nota** (dalla `20260611-01`): la vecchia regola «istanza richiede ruolo» è
+> stata **rimossa**. L'istanza pende direttamente dal soggetto, non dal ruolo
+> (`istanze_utilities.soggetto_id` è FK NOT NULL al soggetto). La regola 2
+> (istanza → soggetto) è formalmente coperta anche dalla regola 4 quando
+> `soggetto_id IS NULL`, ma è esplicitata per restituire un messaggio chiaro.
 
 ---
 
@@ -53,10 +72,13 @@ RETURNS trigger LANGUAGE plpgsql
 
 | Codice | ID | Messaggio |
 |--------|----|-----------|
-| `PRATICHE_ISTANZA_SENZA_RUOLO` | 304 | istanza_utility_id richiede soggetto_ruolo_id |
 | `PRATICHE_RUOLO_SENZA_SOGGETTO` | 305 | soggetto_ruolo_id richiede soggetto_id |
+| `PRATICHE_ISTANZA_SENZA_SOGGETTO` | 308 | istanza_utility_id richiede soggetto_id |
 | `PRATICHE_RUOLO_NON_COERENTE` | 306 | Il ruolo %s non appartiene al soggetto %s |
 | `PRATICHE_ISTANZA_NON_COERENTE` | 307 | L'istanza %s non appartiene al soggetto %s |
+
+> `PRATICHE_ISTANZA_SENZA_RUOLO` (304) è **deprecato** (non più sollevato dalla
+> `20260611-01`): la riga resta in `config.messaggi_errore` come orfana.
 
 ---
 

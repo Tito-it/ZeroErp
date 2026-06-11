@@ -3,8 +3,9 @@
 > **Tipo documento**: brief operativo **per il team DB** (`dev/db-tid`). Spiega
 > *cosa* fare e *perché*; niente DDL pronto.
 >
-> **Data**: 2026-06-11 · **Stato**: 🔴 APERTO — bug di modello confermato da
-> Tid (dominio utilities) e verificato su schema/dati reali.
+> **Data**: 2026-06-11 · **Stato**: 🟢 FATTO (DB) — consegnato su `dev/db-tid`,
+> pgTAP verde (eseguito da Tid). Vedi §6 «Consegna DB». Resta aperto solo il
+> cantiere BE/FE (§5).
 >
 > **Impatto**: blocca l'aggancio di una pratica a un'istanza utility di un
 > prospect puro (soggetto con istanza ma senza alcun ruolo) — che nel mondo
@@ -140,5 +141,49 @@ Alla consegna si sblocca il completamento del residuo §4.3 pratiche v2:
   lookup esistente `IstanzaUtilityLookupView` filtrato per soggetto — il
   salvataggio col solo ramo istanza richiede QUESTO brief consegnato.
 
+## 6. Consegna DB (2026-06-11) — FATTO
+
+Implementato su `dev/db-tid` come **rilassamento** (nessuna ALTER, nessuna
+sanatoria dati). pgTAP eseguito da Tid: **verde**.
+
+**Deliverable:**
+
+- `20_code/pratiche/20260611-01-update-trgfn-pratiche-guard-contesto-istanza-senza-ruolo-mctit.yaml`
+  — `CREATE OR REPLACE` del guard (corpo preso dalla doc auto-gen, `%TYPE`
+  mantenuti). Trigger invariato (stesso elenco colonne): nessun `DROP/CREATE
+  TRIGGER`. Rollback ricrea la versione `20260328-12` (no `DROP FUNCTION`:
+  dipendenza dal trigger).
+- `80_data/sql/config/messaggi_errore.csv` + upsert
+  `80_data/changelog/20260611-02-upsert-messaggi-errore-pratiche-istanza-soggetto-mctit.yaml`
+  — nuovo codice `PRATICHE_ISTANZA_SENZA_SOGGETTO` (id **308**).
+- `db/pgtap/pratiche/test-guard-contesto-pratica.sql` — `plan(12)`: il vecchio
+  caso «istanza senza ruolo → ERRORE» diventa «istanza + soggetto senza ruolo
+  (prospect puro) → OK»; aggiunto «istanza senza soggetto → ERRORE».
+- `docs/it/dbzero/pratiche/manual/trgfn_pratiche_guard_contesto.md` — aggiornata
+  al modello a due rami.
+- `migrations_v2/changelog-autogen.yaml` — rigenerato (registra `20260611-01`).
+
+**Regole del guard dopo la consegna:**
+
+1. `soggetto_ruolo_id` NOT NULL → `soggetto_id` obbligatorio
+   (`PRATICHE_RUOLO_SENZA_SOGGETTO`, 305)
+2. `istanza_utility_id` NOT NULL → `soggetto_id` obbligatorio
+   (`PRATICHE_ISTANZA_SENZA_SOGGETTO`, 308) — **sostituisce** la vecchia regola 1
+3. `soggetto_ruolo_id` deve appartenere a `soggetto_id` (306) — invariata
+4. `istanza_utility_id` deve appartenere a `soggetto_id` (307) — invariata
+
+**Decisioni rispetto al §3 del brief:**
+
+- Codice errore: scelto **nuovo 308**, *non* riuso del 305 (semantica diversa:
+  ruolo vs istanza, avrebbe inquinato log/causa/soluzione).
+- `PRATICHE_ISTANZA_SENZA_RUOLO` (304): **deprecato**, riga lasciata orfana in
+  `config.messaggi_errore` (`loadUpdateData` è upsert per id, rimuoverla dal CSV
+  non cancellerebbe comunque la riga in DB).
+- Nota di modello: la regola 2 (`istanza ⇒ soggetto`) è formalmente già coperta
+  dalla regola 4 quando `soggetto_id IS NULL` (perché
+  `istanze_utilities.soggetto_id` è NOT NULL); è stata comunque esplicitata
+  **prima** della regola 4 per restituire un messaggio chiaro («manca il
+  soggetto») invece del fuorviante «istanza non coerente con soggetto NULL».
+
 *Brief DB — guard contesto pratiche, istanza senza ruolo — ZeroERP
-(2026-06-11). Da passare a `dev/db-tid`.*
+(2026-06-11). Consegnato su `dev/db-tid`.*
