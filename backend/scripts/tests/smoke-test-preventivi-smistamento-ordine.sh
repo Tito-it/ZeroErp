@@ -14,9 +14,13 @@
 #    EVASO D6 (resta ACCETTATO con residuo merce; EVASO solo a smistamento
 #    completo), idempotenza re-push.
 #
-# NON coperto:
-#  - orchestratore CONFERMA_VENDITA (serve una pratica PREVENTIVI: giro UI E2E);
-#  - multi-sorgente (skip PRONTA idempotente): serve 2 preventivi stesse dimensioni.
+#  - multi-sorgente (passo 14, 2026-06-11): secondo preventivo servizio-only
+#    stesse dimensioni → confluisce nella STESSA commessa (auto-ruolo
+#    COLLEGATO + skip PRONTA idempotente).
+#
+# NON coperto qui:
+#  - orchestratore CONFERMA_VENDITA → smoke dedicato
+#    smoke-test-pratica-preventivi-conferma.sh (giro pratica end-to-end).
 #
 # Auto-diagnosi: se EMESSO/ACCETTATO falliscono per prerequisiti documentali
 # (template/emittente), i passi split vengono SALTATI con diagnosi, non crashano.
@@ -40,6 +44,9 @@
 # 12) POST genera-ordine → merce smistata
 # 13) POST push-commessa di nuovo → COMPLETATO (idempotente) + stato EVASO
 #     (gate D6 soddisfatto: nessun residuo)
+# 14) Multi-sorgente: secondo preventivo servizio-only stesse dimensioni →
+#     push → CONFLUISCE nella STESSA commessa (auto-ruolo COLLEGATO, skip
+#     PRONTA idempotente), nessun errore
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -364,10 +371,48 @@ elif [[ "$SPLIT_OK" == "1" ]]; then
     log_skip "Passi misto saltati (articolo servizio non disponibile)"
 fi
 
+# --- 14. Multi-sorgente: secondo preventivo → stessa commessa ---
+if [[ "$MISTO_OK" == "1" && -n "${COMMESSE:-}" ]]; then
+    echo ""; echo "-- 14. Multi-sorgente: 2° preventivo servizio-only → stessa commessa --"
+    do_curl POST "/api/v1/vendite/preventivi/" "$PREV_PAYLOAD"
+    if check "POST crea preventivo servizio-only" 200 "data.id"; then
+        PREV3_ID="$EXTRACTED"
+        do_curl POST "/api/v1/vendite/preventivi/${PREV3_ID}/righe/" \
+            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"30.00\", \"iva_id\": 16}"
+        check "POST riga servizio" 200 || true
+        curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
+            -F "x=" "${BASE_URL}/api/v1/vendite/preventivi/${PREV3_ID}/emetti/" > "$TMPFILE" 2>/dev/null
+        LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+        if [[ "$LAST_STATUS" == "200" ]]; then
+            do_curl POST "/api/v1/vendite/preventivi/${PREV3_ID}/stato/" \
+                '{"nuovo_stato": "ACCETTATO", "fatturazione_immediata": true}'
+            check "POST → ACCETTATO" 200 || true
+            do_curl POST "/api/v1/vendite/preventivi/${PREV3_ID}/push-commessa/" '{}' \
+                "Idempotency-Key: smoke-multisorg-$(date +%s%N)"
+            if check "POST push-commessa (2° preventivo)" 200 "data.stato"; then
+                [[ "$EXTRACTED" == "COMPLETATO" ]] && log_ok "push COMPLETATO (skip PRONTA idempotente)" \
+                    || log_fail "push atteso COMPLETATO, trovato '$EXTRACTED'"
+                COMMESSA2=$(json_get "$LAST_BODY" "data.commesse_ids.0")
+                if [[ -n "$COMMESSA2" && "$COMMESSA2" == "$COMMESSE" ]]; then
+                    log_ok "CONFLUITO nella stessa commessa (id=$COMMESSA2, multi-sorgente)"
+                else
+                    log_fail "attesa commessa $COMMESSE (stesse dimensioni), trovata '$COMMESSA2'"
+                fi
+            fi
+            do_curl GET "/api/v1/vendite/preventivi/${PREV3_ID}/"
+            ST3=$(json_get "$LAST_BODY" "data.stato_codice_interno")
+            [[ "$ST3" == "EVASO" ]] && log_ok "2° preventivo EVASO (solo servizi, no residuo)" \
+                || log_fail "atteso EVASO, trovato '$ST3'"
+        else
+            log_skip "EMESSO (2° preventivo) HTTP $LAST_STATUS — salto multi-sorgente"
+        fi
+    fi
+fi
+
 # --- Nota copertura ---
 echo ""
-log_info "NON coperto: orchestratore CONFERMA_VENDITA (serve pratica, giro UI E2E)"
-log_info "e multi-sorgente (2 preventivi stesse dimensioni). Vedi header."
+log_info "NON coperto qui: orchestratore CONFERMA_VENDITA → vedi smoke dedicato"
+log_info "smoke-test-pratica-preventivi-conferma.sh (giro pratica end-to-end)."
 
 # --- Summary ---
 echo ""

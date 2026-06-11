@@ -2675,7 +2675,6 @@
     "esito_parziale": "Partial",
     "esito_non_applicabile": "Not applicable",
     "competenze_flussi": "Flow competences",
-    "eseguire_ricerca": "Search to display practices",
     "visualizzazione_pratica": "Viewing practice code: {codice}"
   },
   "ai": {

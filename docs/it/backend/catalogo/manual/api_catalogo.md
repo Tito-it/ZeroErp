@@ -141,6 +141,7 @@ il motivo via tooltip i18n (chiavi `catalogo.motivo_*`).
 | `is_solo_componente` | bool | No | Usabile solo come componente |
 | `requires_serial` | bool | No | Richiede seriale |
 | `voce_utility` | bool | No | Articolo utility |
+| `natura_vendita_id` | int | No | Natura di vendita (FK `config.nature_vendita`): decide l'instradamento post-accettazione del modello split (ORDINE/COMMESSA/CONTRATTO). Se omesso → default DB `MERCE`. **Mai null esplicito** (colonna NOT NULL): risponde `E_CATALOGO_VALIDATION` |
 | `meta` | object | No | Metadati liberi |
 
 ### 1.3 Dettaglio articolo
@@ -164,6 +165,12 @@ immutabilita' (Fase 5):
   pilotare i `:disabled` invece di cablare regole.
 - `puo_gestire_bom: bool`, `motivo_non_gestibile_bom: string | null` —
   Fase 6: capability di gestione BoM (vedi §1.1).
+- Natura di vendita (2026-06-10, da `vw_articoli_dettaglio`):
+  `natura_vendita_id`, `natura_vendita_codice_interno`,
+  `natura_vendita_descrizione`, `natura_vendita_destinazione_tipo`
+  (`ORDINE` / `COMMESSA` / `CONTRATTO`). Il FE inizializza il Select
+  "Natura di vendita" del drawer da `natura_vendita_id`; gli stessi campi
+  sono disponibili anche nelle righe della lista (§1.1).
 
 ### 1.4 Aggiorna articolo
 
@@ -176,6 +183,10 @@ immutabilita' (Fase 5):
 
 - `codice` e `uom_id` sono immutabili a livello API (vedi
   `non_editable_fields` nel detail).
+- `natura_vendita_id` e' **mutabile** (decisione 2026-06-10, opzione A):
+  cambiarla vale solo per le righe documento future — le righe esistenti
+  hanno lo snapshot di natura preso all'inserimento riga. Mai null
+  esplicito (NOT NULL a DB): `E_CATALOGO_VALIDATION`.
 - `attivo` non e' modificabile via PATCH (Fase 7): risponde
   `E_CATALOGO_VALIDATION` con detail "usa gli endpoint /disattiva/ o
   /riattiva/". La transizione di stato passa solo dagli endpoint

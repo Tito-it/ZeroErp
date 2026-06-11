@@ -6,7 +6,7 @@
 #
 annotated-types==0.7.0
     # via pydantic
-anthropic==0.107.1
+anthropic==0.109.1
     # via -r ../requirements.in
 anyio==4.13.0
     # via
@@ -32,7 +32,7 @@ cffi==2.0.0
     # via
     #   cryptography
     #   weasyprint
-cryptography==48.0.0
+cryptography==48.0.1
     # via -r ../requirements.in
 cssselect2==0.9.0
     # via weasyprint
@@ -158,5 +158,5 @@ webencodings==0.5.1
     #   cssselect2
     #   tinycss2
     #   tinyhtml5
-zopfli==0.4.2
+zopfli==0.4.3
     # via fonttools

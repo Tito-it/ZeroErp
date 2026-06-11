@@ -124,8 +124,16 @@ La FK composita `(billing_account_id, istanza_utility_id)` su `clienti` garantis
 **Pre-contrattuale** (il contratto arriva dopo):
 
 ```text
-Soggetto → Istanza → Billing Account → [pausa] → Ruolo CLIENTE → Cliente
+Soggetto → Istanza → [pausa, anche indefinita] → Ruolo CLIENTE + Billing Account → Cliente
 ```
+
+La pausa sta **dopo l'istanza**: e l'unica entita che puo esistere da sola in
+fase precontrattuale (richiede il solo soggetto). Il billing account NON puo
+precedere il ruolo CLIENTE: `billing_account` richiede `soggetto_ruolo_id`
+NOT NULL, quindi ruolo CL e BA nascono insieme (il ruolo via
+`fn_get_or_create_soggetto_ruolo`), solo quando si arriva a fatturare.
+Un'istanza puo legittimamente restare in pausa per sempre senza che il
+soggetto acquisisca mai il ruolo CLIENTE.
 
 **Attivazione diretta** (il contratto c'e gia):
 
