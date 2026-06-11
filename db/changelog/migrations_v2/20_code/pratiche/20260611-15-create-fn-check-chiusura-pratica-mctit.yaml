@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C (1/2) — fn_check_chiusura_pratica: semantica di chiusura rispetto
+# ai flussi obbligatori e ai rami condizionali (D4, ratifica
+# 2026-06-11; analisi-pratiche-workflow-v2 §7.D).
+#
+# Per ogni template attivo del tipo prestazione della pratica calcola:
+#   completato   = esiste un'istanza COMPLETATO (qualsiasi esito:
+#                  uno step eseguito con esito NEGATIVO e' comunque
+#                  stato fatto)
+#   percorribile = tutti i prerequisiti del template sono soddisfatti
+#                  (esito-aware, fn_check_prerequisiti_flusso). Un ramo
+#                  reso non percorribile dall'esito del predecessore
+#                  (ramo morto) risulta percorribile=false.
+#   bloccante    = obbligatorio AND NOT completato AND percorribile
+#
+# Semantica: "obbligatorio" vincola la chiusura SOLO se il suo
+# percorso e' attivabile. Il ramo morto di un bivio non blocca mai;
+# uno step a valle di un predecessore non eseguito non blocca (se il
+# predecessore e' obbligatorio, blocca gia' lui).
+#
+# Consumatori: trgfn_pratiche_guard_chiusura_flussi (20260611-16) e,
+# lato BE, il percorso pratica per la resa del ramo
+# (percorribile / completato / ramo chiuso) senza duplicare logica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260611-15-create-fn-check-chiusura-pratica-mctit.yaml
+
+  - changeSet:
+      id: 20260611-15-create-fn-check-chiusura-pratica
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        fn_check_chiusura_pratica: per ogni template del tipo
+        prestazione calcola completato/percorribile/bloccante.
+        Bloccante = obbligatorio non completato e ancora percorribile
+        (il ramo morto di un bivio non blocca la chiusura).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- RETURNS TABLE: ricreazione necessaria se cambia la firma di output.
+              DROP FUNCTION IF EXISTS pratiche.fn_check_chiusura_pratica(bigint);
+
+              CREATE FUNCTION pratiche.fn_check_chiusura_pratica(
+                  p_pratica_id pratiche.flussi.pratica_id%TYPE
+              )
+              RETURNS TABLE(
+                  template_flusso_id pratiche.template_flussi.id%TYPE,
+                  codice             pratiche.template_flussi.codice%TYPE,
+                  obbligatorio       pratiche.template_flussi.obbligatorio%TYPE,
+                  completato         boolean,
+                  percorribile       boolean,
+                  bloccante          boolean
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Fotografia dei template flusso della pratica ai fini
+                --   della chiusura: eseguito? ancora percorribile?
+                --   blocca la transizione a CHIUSA?
+                --   Funzione fn_check_*: puro report, no raise.
+                -- =========================================================
+
+                RETURN QUERY
+                SELECT
+                  tf.id,
+                  tf.codice,
+                  tf.obbligatorio,
+                  -- Eseguito: almeno un'istanza COMPLETATO (qualsiasi esito).
+                  EXISTS (
+                    SELECT 1
+                      FROM pratiche.flussi f
+                      JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
+                     WHERE f.pratica_id         = p_pratica_id
+                       AND f.template_flusso_id = tf.id
+                       AND sfp.codice_interno   = 'COMPLETATO'
+                  ) AS fl_completato,
+                  -- Percorribile: nessun prerequisito insoddisfatto
+                  -- (esito-aware). Il ramo morto risulta false.
+                  NOT EXISTS (
+                    SELECT 1
+                      FROM pratiche.fn_check_prerequisiti_flusso(p_pratica_id, tf.id) pr
+                     WHERE NOT pr.soddisfatto
+                  ) AS fl_percorribile,
+                  -- Bloccante: obbligatorio, non eseguito, ancora percorribile.
+                  (
+                    tf.obbligatorio
+                    AND NOT EXISTS (
+                      SELECT 1
+                        FROM pratiche.flussi f
+                        JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
+                       WHERE f.pratica_id         = p_pratica_id
+                         AND f.template_flusso_id = tf.id
+                         AND sfp.codice_interno   = 'COMPLETATO'
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1
+                        FROM pratiche.fn_check_prerequisiti_flusso(p_pratica_id, tf.id) pr
+                       WHERE NOT pr.soddisfatto
+                    )
+                  ) AS fl_bloccante
+                FROM pratiche.template_flussi tf
+                JOIN pratiche.pratiche p ON p.tipo_prestazione_id = tf.tipo_prestazione_id
+                WHERE p.id = p_pratica_id
+                  AND tf.attivo = true;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_check_chiusura_pratica(bigint)
+              IS 'Pure check: per ogni template attivo del tipo prestazione della pratica ritorna completato (istanza COMPLETATO, qualsiasi esito), percorribile (prerequisiti esito-aware soddisfatti) e bloccante (obbligatorio non completato ancora percorribile). Il ramo morto di un bivio non blocca. Consumato dal guard di chiusura e dal percorso BE.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_check_chiusura_pratica(bigint);

@@ -73,12 +73,14 @@ SELECT id AS tp_id FROM ins;
 -- Template flusso
 CREATE TEMP TABLE tmp_cl_tf AS
 WITH ins AS (
-  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, direzione, attivo)
+  -- ripetibilita='SEMPRE': il test crea piu' istanze dello stesso template
+  -- nella stessa pratica (livelli coda); il default SE_NON_POSITIVO le vieterebbe.
+  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, direzione, attivo, ripetibilita)
   VALUES (
     (SELECT tp_id FROM tmp_cl_tp),
-    'TEST_CL_STEP', 'Step test coda lavoro', 10, false, 'INTERNA', true
+    'TEST_CL_STEP', 'Step test coda lavoro', 10, false, 'INTERNA', true, 'SEMPRE'
   )
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
   RETURNING id
 )
 SELECT id AS tf_id FROM ins;

@@ -2,264 +2,175 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: generazione cross-pratica
---       Completamento flusso con regola auto=true → nuova pratica generata
---       Regola auto=false → nessuna generazione automatica
+-- Test: generazione cross-pratica (rev 2026-06-11, D-fix
+--       analisi-pratiche-workflow-v2 §7.B).
+--       Completamento flusso con regola auto=true -> pratica figlia
+--       con genealogia completa (pratica_padre_id + flusso_origine_id),
+--       contesto propagato, flusso iniziale da template_flusso_dest_id,
+--       generazione IDEMPOTENTE (trigger su transizione + dedup fn +
+--       indice uq_pratiche_flusso_origine_tipo).
 --
 -- Indice test:
--- 0) Precondizioni (provisioning + verifica)
--- 1) Setup: 2 tipi_prestazione (sorgente, destinazione), template, pratica
--- 2) Setup regola generazione con auto=true
--- 3) INSERT flusso su pratica sorgente
--- 4) UPDATE flusso → COMPLETATO: pratica target generata
--- 5) Verifica pratica generata: flusso_origine_id corretto
--- 6) Verifica pratica generata: emittente, soggetto, priorita ereditati
--- 7) Regola auto=false: nessuna generazione automatica
--- 8) Cleanup
+-- 0)  Precondizioni (provisioning + verifica)
+-- 1)  Setup: tipi prestazione, template (src SEMPRE + dest iniziale), pratica, regola auto
+-- 2)  UPDATE flusso -> COMPLETATO: una pratica figlia generata
+-- 3)  Figlia: flusso_origine_id corretto
+-- 4)  Figlia: pratica_padre_id = pratica sorgente (fix-2)
+-- 5)  Figlia: emittente, soggetto, priorita ereditati
+-- 6)  Figlia: contesto soggetto_ruolo_id propagato (fix-4; skip se sorgente senza ruolo)
+-- 7)  Figlia: flusso iniziale creato da template_flusso_dest_id in DA_ESEGUIRE (fix-3)
+-- 8)  Idempotenza trigger: UPDATE su flusso gia' COMPLETATO non genera doppioni
+-- 9)  Idempotenza fn: chiamata diretta ritorna la figlia esistente, nessun doppione
+-- 10) Regola auto=false: nessuna generazione automatica
+-- 11) Cleanup
 -- ------------------------------------------------------------
-SELECT plan(6);
+SELECT plan(11);
 -- =========================================================
 -- 0) Precondizioni: provisioning config data (idempotente)
 -- =========================================================
 INSERT INTO config.stati_pratiche (codice, codice_interno, descrizione, attivo)
 VALUES ('BOZZA', 'BOZZA', 'Bozza', true) ON CONFLICT (codice_interno) DO NOTHING;
 INSERT INTO config.stati_flussi_pratiche (codice, codice_interno, descrizione, attivo)
-VALUES (
-    'DA_ESEGUIRE',
-    'DA_ESEGUIRE',
-    'Da eseguire',
-    true
-  ),
-  (
-    'IN_CORSO',
-    'IN_CORSO',
-    'In corso',
-    true
-  ),
-  (
-    'COMPLETATO',
-    'COMPLETATO',
-    'Completato',
-    true
-  ) ON CONFLICT (codice_interno) DO NOTHING;
-INSERT INTO config.priorita_pratiche (
-    codice,
-    codice_interno,
-    descrizione,
-    sequenza,
-    attivo
-  )
+VALUES
+  ('DA_ESEGUIRE', 'DA_ESEGUIRE', 'Da eseguire', true),
+  ('IN_CORSO', 'IN_CORSO', 'In corso', true),
+  ('COMPLETATO', 'COMPLETATO', 'Completato', true)
+ON CONFLICT (codice_interno) DO NOTHING;
+INSERT INTO config.priorita_pratiche (codice, codice_interno, descrizione, sequenza, attivo)
 VALUES ('NORMALE', 'NORMALE', 'Normale', 20, true) ON CONFLICT (codice_interno) DO NOTHING;
+
 CREATE TEMP TABLE tmp_gen_refs AS
-SELECT (
-    SELECT id
-    FROM anagrafiche.emittenti_fiscali
-    WHERE attivo = true
-    LIMIT 1
-  ) AS emittente_id,
-  (
-    SELECT id
-    FROM anagrafiche.soggetti
-    LIMIT 1
+SELECT
+  (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true LIMIT 1) AS emittente_id,
+  (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'BOZZA' AND attivo = true LIMIT 1) AS stato_bozza_id,
+  (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE' AND attivo = true LIMIT 1) AS stato_da_eseguire_id,
+  (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'IN_CORSO' AND attivo = true LIMIT 1) AS stato_in_corso_id,
+  (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'COMPLETATO' AND attivo = true LIMIT 1) AS stato_completato_id,
+  (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE' AND attivo = true LIMIT 1) AS priorita_normale_id;
+
+-- Contesto sorgente: preferisce un soggetto con ruolo (per il test fix-4);
+-- fallback su un soggetto qualunque (ruolo NULL -> test 6 in skip).
+-- Unica riga coerente: ruolo e soggetto della STESSA riga di soggetti_ruoli
+-- (il guard contesto verifica l'appartenenza ruolo->soggetto).
+CREATE TEMP TABLE tmp_gen_sogg AS
+WITH ruolo AS (
+  SELECT sr.id AS ruolo_id, sr.soggetto_id
+    FROM anagrafiche.soggetti_ruoli sr
+   ORDER BY sr.id
+   LIMIT 1
+)
+SELECT
+  COALESCE(
+    (SELECT soggetto_id FROM ruolo),
+    (SELECT s.id FROM anagrafiche.soggetti s LIMIT 1)
   ) AS soggetto_id,
-  (
-    SELECT id
-    FROM config.stati_pratiche
-    WHERE codice_interno = 'BOZZA'
-      AND attivo = true
-    LIMIT 1
-  ) AS stato_bozza_id,
-  (
-    SELECT id
-    FROM config.stati_flussi_pratiche
-    WHERE codice_interno = 'DA_ESEGUIRE'
-      AND attivo = true
-    LIMIT 1
-  ) AS stato_da_eseguire_id,
-  (
-    SELECT id
-    FROM config.stati_flussi_pratiche
-    WHERE codice_interno = 'IN_CORSO'
-      AND attivo = true
-    LIMIT 1
-  ) AS stato_in_corso_id,
-  (
-    SELECT id
-    FROM config.stati_flussi_pratiche
-    WHERE codice_interno = 'COMPLETATO'
-      AND attivo = true
-    LIMIT 1
-  ) AS stato_completato_id,
-  (
-    SELECT id
-    FROM config.priorita_pratiche
-    WHERE codice_interno = 'NORMALE'
-      AND attivo = true
-    LIMIT 1
-  ) AS priorita_normale_id;
+  (SELECT ruolo_id FROM ruolo) AS ruolo_id;
+
 SELECT ok(
-    (
-      SELECT emittente_id IS NOT NULL
-        AND soggetto_id IS NOT NULL
+    (SELECT emittente_id IS NOT NULL
         AND stato_bozza_id IS NOT NULL
         AND stato_da_eseguire_id IS NOT NULL
         AND stato_completato_id IS NOT NULL
         AND priorita_normale_id IS NOT NULL
-      FROM tmp_gen_refs
-    ),
+       FROM tmp_gen_refs)
+    AND (SELECT soggetto_id IS NOT NULL FROM tmp_gen_sogg),
     '0. Precondizioni soddisfatte'
-  );
+);
 -- =========================================================
--- 1) Setup: 2 tipi_prestazione, template, pratica sorgente
+-- 1) Setup: tipi, template, pratica sorgente, regola auto
 -- =========================================================
 CREATE TEMP TABLE tmp_gen_tp_src AS WITH ins AS (
   INSERT INTO pratiche.tipi_prestazione (codice, codice_interno, descrizione, attivo)
-  VALUES (
-      'TEST_GEN_SRC',
-      'TEST_GEN_SRC',
-      'Tipo sorgente test generazione',
-      true
-    ) ON CONFLICT (codice_interno) DO
-  UPDATE
-  SET descrizione = EXCLUDED.descrizione
+  VALUES ('TEST_GEN_SRC', 'TEST_GEN_SRC', 'Tipo sorgente test generazione', true)
+  ON CONFLICT (codice_interno) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 )
-SELECT id AS tp_id
-FROM ins;
+SELECT id AS tp_id FROM ins;
+
 CREATE TEMP TABLE tmp_gen_tp_dest AS WITH ins AS (
   INSERT INTO pratiche.tipi_prestazione (codice, codice_interno, descrizione, attivo)
-  VALUES (
-      'TEST_GEN_DEST',
-      'TEST_GEN_DEST',
-      'Tipo destinazione test generazione',
-      true
-    ) ON CONFLICT (codice_interno) DO
-  UPDATE
-  SET descrizione = EXCLUDED.descrizione
+  VALUES ('TEST_GEN_DEST', 'TEST_GEN_DEST', 'Tipo destinazione test generazione', true)
+  ON CONFLICT (codice_interno) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 )
-SELECT id AS tp_id
-FROM ins;
+SELECT id AS tp_id FROM ins;
+
+-- Template sorgente: ripetibilita='SEMPRE' (il test crea due istanze
+-- dello stesso template; il default SE_NON_POSITIVO le vieterebbe).
 CREATE TEMP TABLE tmp_gen_tf AS WITH ins AS (
-  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo)
-  VALUES (
-      (
-        SELECT tp_id
-        FROM tmp_gen_tp_src
-      ),
-      'TF_GEN_SRC',
-      'Template sorgente generazione',
-      true
-    ) ON CONFLICT (tipo_prestazione_id, codice) DO
-  UPDATE
-  SET descrizione = EXCLUDED.descrizione
+  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo, ripetibilita)
+  VALUES ((SELECT tp_id FROM tmp_gen_tp_src), 'TF_GEN_SRC', 'Template sorgente generazione', true, 'SEMPRE')
+  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
   RETURNING id
 )
-SELECT id AS tf_id
-FROM ins;
+SELECT id AS tf_id FROM ins;
+
+-- Template iniziale della figlia (fix-3): senza prerequisiti.
+CREATE TEMP TABLE tmp_gen_tf_dest AS WITH ins AS (
+  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, attivo)
+  VALUES ((SELECT tp_id FROM tmp_gen_tp_dest), 'TF_GEN_DEST_INIT', 'Step iniziale pratica generata', 10, true)
+  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  RETURNING id
+)
+SELECT id AS tf_id FROM ins;
+
 CREATE TEMP TABLE tmp_gen_pratica AS WITH ins AS (
   INSERT INTO pratiche.pratiche (
-      emittente_fiscale_id,
-      tipo_prestazione_id,
-      soggetto_id,
-      stato_id,
-      priorita_id
-    )
+      emittente_fiscale_id, tipo_prestazione_id, soggetto_id, soggetto_ruolo_id,
+      stato_id, priorita_id
+  )
   VALUES (
-      (
-        SELECT emittente_id
-        FROM tmp_gen_refs
-      ),
-      (
-        SELECT tp_id
-        FROM tmp_gen_tp_src
-      ),
-      (
-        SELECT soggetto_id
-        FROM tmp_gen_refs
-      ),
-      (
-        SELECT stato_bozza_id
-        FROM tmp_gen_refs
-      ),
-      (
-        SELECT priorita_normale_id
-        FROM tmp_gen_refs
-      )
-    )
+      (SELECT emittente_id FROM tmp_gen_refs),
+      (SELECT tp_id FROM tmp_gen_tp_src),
+      (SELECT soggetto_id FROM tmp_gen_sogg),
+      (SELECT ruolo_id FROM tmp_gen_sogg),
+      (SELECT stato_bozza_id FROM tmp_gen_refs),
+      (SELECT priorita_normale_id FROM tmp_gen_refs)
+  )
   RETURNING id
 )
-SELECT id AS pratica_id
-FROM ins;
-SELECT ok(
-    (
-      SELECT pratica_id IS NOT NULL
-      FROM tmp_gen_pratica
-    ),
-    '1. Setup completato: pratica sorgente creata'
-  );
--- =========================================================
--- 2) Setup regola generazione con auto=true
--- =========================================================
+SELECT id AS pratica_id FROM ins;
+
+-- Regola auto=true con flusso iniziale dichiarato (fix-3).
 CREATE TEMP TABLE tmp_gen_regola AS WITH ins AS (
   INSERT INTO pratiche.regole_generazione (
-      template_flusso_origine_id,
-      tipo_prestazione_dest_id,
-      auto,
-      attivo,
-      descrizione
-    )
+      template_flusso_origine_id, tipo_prestazione_dest_id,
+      template_flusso_dest_id, auto, attivo, descrizione
+  )
   VALUES (
-      (
-        SELECT tf_id
-        FROM tmp_gen_tf
-      ),
-      (
-        SELECT tp_id
-        FROM tmp_gen_tp_dest
-      ),
-      true,
-      true,
-      'Regola test generazione auto'
-    )
+      (SELECT tf_id FROM tmp_gen_tf),
+      (SELECT tp_id FROM tmp_gen_tp_dest),
+      (SELECT tf_id FROM tmp_gen_tf_dest),
+      true, true, 'Regola test generazione auto'
+  )
   RETURNING id
 )
-SELECT id AS regola_id
-FROM ins;
+SELECT id AS regola_id FROM ins;
+
+SELECT ok(
+    (SELECT pratica_id IS NOT NULL FROM tmp_gen_pratica)
+    AND (SELECT regola_id IS NOT NULL FROM tmp_gen_regola),
+    '1. Setup completato: pratica sorgente e regola create'
+);
 -- =========================================================
--- 3) INSERT flusso su pratica sorgente
+-- 2) UPDATE flusso -> COMPLETATO: una figlia generata
 -- =========================================================
 CREATE TEMP TABLE tmp_gen_flusso AS WITH ins AS (
   INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
   VALUES (
-      (
-        SELECT pratica_id
-        FROM tmp_gen_pratica
-      ),
-      (
-        SELECT tf_id
-        FROM tmp_gen_tf
-      ),
-      (
-        SELECT stato_da_eseguire_id
-        FROM tmp_gen_refs
-      )
-    )
+      (SELECT pratica_id FROM tmp_gen_pratica),
+      (SELECT tf_id FROM tmp_gen_tf),
+      (SELECT stato_da_eseguire_id FROM tmp_gen_refs)
+  )
   RETURNING id
 )
-SELECT id AS flusso_id
-FROM ins;
--- Conta pratiche prima della generazione
+SELECT id AS flusso_id FROM ins;
+
 CREATE TEMP TABLE tmp_gen_count_before AS
 SELECT count(*) AS cnt
 FROM pratiche.pratiche
-WHERE tipo_prestazione_id = (
-    SELECT tp_id
-    FROM tmp_gen_tp_dest
-  );
--- =========================================================
--- 4) UPDATE flusso → COMPLETATO: pratica target generata
--- =========================================================
+WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_gen_tp_dest);
+
 -- Percorso valido per la matrice transizioni: DA_ESEGUIRE -> IN_CORSO -> COMPLETATO.
 UPDATE pratiche.flussi
 SET stato_id = (SELECT stato_in_corso_id FROM tmp_gen_refs)
@@ -267,240 +178,210 @@ WHERE id = (SELECT flusso_id FROM tmp_gen_flusso);
 -- esito obbligatorio per COMPLETATO (guard trg_flussi_a10_guard_esito_completato).
 -- La regola auto=true ha esito_richiesto NULL: 'POSITIVO' genera comunque.
 UPDATE pratiche.flussi
-SET stato_id = (
-    SELECT stato_completato_id
-    FROM tmp_gen_refs
-  ),
-  esito = 'POSITIVO'
-WHERE id = (
-    SELECT flusso_id
-    FROM tmp_gen_flusso
-  );
+SET stato_id = (SELECT stato_completato_id FROM tmp_gen_refs),
+    esito = 'POSITIVO'
+WHERE id = (SELECT flusso_id FROM tmp_gen_flusso);
+
 SELECT is(
-    (
-      SELECT (
-          count(*) - (
-            SELECT cnt
-            FROM tmp_gen_count_before
-          )
-        )::integer
-      FROM pratiche.pratiche
-      WHERE tipo_prestazione_id = (
-          SELECT tp_id
-          FROM tmp_gen_tp_dest
-        )
-    ),
+    (SELECT (count(*) - (SELECT cnt FROM tmp_gen_count_before))::integer
+       FROM pratiche.pratiche
+      WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_gen_tp_dest)),
     1,
-    '2. Pratica target generata dopo completamento flusso'
-  );
+    '2. Pratica figlia generata dopo completamento flusso'
+);
 -- =========================================================
--- 5) Verifica pratica generata: flusso_origine_id corretto
+-- 3) Figlia: flusso_origine_id corretto
 -- =========================================================
 CREATE TEMP TABLE tmp_gen_pratica_target AS
 SELECT id AS pratica_id,
+  pratica_padre_id,
   flusso_origine_id,
   emittente_fiscale_id,
   soggetto_id,
+  soggetto_ruolo_id,
+  istanza_utility_id,
   priorita_id
 FROM pratiche.pratiche
-WHERE tipo_prestazione_id = (
-    SELECT tp_id
-    FROM tmp_gen_tp_dest
-  )
-  AND flusso_origine_id = (
-    SELECT flusso_id
-    FROM tmp_gen_flusso
-  )
+WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_gen_tp_dest)
+  AND flusso_origine_id = (SELECT flusso_id FROM tmp_gen_flusso)
 LIMIT 1;
+
 SELECT is(
-    (
-      SELECT flusso_origine_id
-      FROM tmp_gen_pratica_target
-    ),
-    (
-      SELECT flusso_id
-      FROM tmp_gen_flusso
-    ),
-    '3. Pratica generata ha flusso_origine_id corretto'
-  );
+    (SELECT flusso_origine_id FROM tmp_gen_pratica_target),
+    (SELECT flusso_id FROM tmp_gen_flusso),
+    '3. Figlia: flusso_origine_id corretto'
+);
 -- =========================================================
--- 6) Verifica pratica generata: emittente, soggetto, priorita ereditati
+-- 4) Figlia: pratica_padre_id = pratica sorgente (fix-2)
+-- =========================================================
+SELECT is(
+    (SELECT pratica_padre_id FROM tmp_gen_pratica_target),
+    (SELECT pratica_id FROM tmp_gen_pratica),
+    '4. Figlia: pratica_padre_id valorizzato con la pratica sorgente'
+);
+-- =========================================================
+-- 5) Figlia: emittente, soggetto, priorita ereditati
 -- =========================================================
 SELECT ok(
-    (
-      SELECT t.emittente_fiscale_id = (
-          SELECT emittente_id
-          FROM tmp_gen_refs
-        )
-        AND t.soggetto_id = (
-          SELECT soggetto_id
-          FROM tmp_gen_refs
-        )
-        AND t.priorita_id = (
-          SELECT priorita_normale_id
-          FROM tmp_gen_refs
-        )
-      FROM tmp_gen_pratica_target t
+    (SELECT t.emittente_fiscale_id = (SELECT emittente_id FROM tmp_gen_refs)
+        AND t.soggetto_id = (SELECT soggetto_id FROM tmp_gen_sogg)
+        AND t.priorita_id = (SELECT priorita_normale_id FROM tmp_gen_refs)
+       FROM tmp_gen_pratica_target t),
+    '5. Figlia: eredita emittente, soggetto, priorita dalla sorgente'
+);
+-- =========================================================
+-- 6) Figlia: contesto soggetto_ruolo_id propagato (fix-4)
+--    (skip se nel DB di test non esiste un soggetto con ruolo)
+-- =========================================================
+SELECT CASE
+  WHEN (SELECT ruolo_id FROM tmp_gen_sogg) IS NULL THEN
+    skip('6. Nessun soggetto con ruolo nel DB di test: propagazione contesto non verificabile', 1)
+  ELSE
+    is(
+      (SELECT soggetto_ruolo_id FROM tmp_gen_pratica_target),
+      (SELECT ruolo_id FROM tmp_gen_sogg),
+      '6. Figlia: soggetto_ruolo_id propagato dalla sorgente (lente D1 coerente)'
+    )
+END;
+-- =========================================================
+-- 7) Figlia: flusso iniziale da template_flusso_dest_id (fix-3)
+-- =========================================================
+SELECT ok(
+    (SELECT EXISTS (
+       SELECT 1
+         FROM pratiche.flussi f
+         JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
+        WHERE f.pratica_id = (SELECT pratica_id FROM tmp_gen_pratica_target)
+          AND f.template_flusso_id = (SELECT tf_id FROM tmp_gen_tf_dest)
+          AND sfp.codice_interno = 'DA_ESEGUIRE'
+    )),
+    '7. Figlia: flusso iniziale creato da template_flusso_dest_id in DA_ESEGUIRE'
+);
+-- =========================================================
+-- 8) Idempotenza trigger: UPDATE su flusso gia' COMPLETATO
+--    non genera doppioni (stesso stato + ritocco note_esito)
+-- =========================================================
+UPDATE pratiche.flussi
+SET stato_id = (SELECT stato_completato_id FROM tmp_gen_refs),
+    note_esito = 'ritocco post-completamento'
+WHERE id = (SELECT flusso_id FROM tmp_gen_flusso);
+
+SELECT is(
+    (SELECT count(*)::integer
+       FROM pratiche.pratiche
+      WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_gen_tp_dest)
+        AND flusso_origine_id = (SELECT flusso_id FROM tmp_gen_flusso)),
+    1,
+    '8. Idempotenza trigger: UPDATE su flusso completato non rigenera la figlia'
+);
+-- =========================================================
+-- 9) Idempotenza fn: chiamata diretta ritorna la figlia esistente
+-- =========================================================
+SELECT is(
+    pratiche.fn_genera_pratica_da_flusso(
+      (SELECT flusso_id FROM tmp_gen_flusso),
+      (SELECT regola_id FROM tmp_gen_regola)
     ),
-    '4. Pratica generata eredita emittente, soggetto, priorita dalla sorgente'
-  );
+    (SELECT pratica_id FROM tmp_gen_pratica_target),
+    '9. Idempotenza fn: chiamata diretta ritorna la figlia esistente (nessun doppione)'
+);
 -- =========================================================
--- 7) Regola auto=false: nessuna generazione automatica
+-- 10) Regola auto=false: nessuna generazione automatica
 -- =========================================================
-CREATE TEMP TABLE tmp_gen_regola_noauto AS WITH ins AS (
-  INSERT INTO pratiche.regole_generazione (
-      template_flusso_origine_id,
-      tipo_prestazione_dest_id,
-      auto,
-      attivo,
-      descrizione,
-      esito_richiesto
-    )
-  VALUES (
-      (
-        SELECT tf_id
-        FROM tmp_gen_tf
-      ),
-      (
-        SELECT tp_id
-        FROM tmp_gen_tp_dest
-      ),
-      false,
-      true,
-      'Regola test generazione NON auto',
-      'POSITIVO'
-    )
+-- Regola non-auto con esito specifico su un SECONDO tipo destinazione
+-- dedicato, per isolare il conteggio dalla regola auto gia' attiva.
+CREATE TEMP TABLE tmp_gen_tp_dest2 AS WITH ins AS (
+  INSERT INTO pratiche.tipi_prestazione (codice, codice_interno, descrizione, attivo)
+  VALUES ('TEST_GEN_DEST2', 'TEST_GEN_DEST2', 'Tipo destinazione 2 test generazione', true)
+  ON CONFLICT (codice_interno) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 )
-SELECT id AS regola_id
-FROM ins;
+SELECT id AS tp_id FROM ins;
+
+INSERT INTO pratiche.regole_generazione (
+    template_flusso_origine_id, tipo_prestazione_dest_id, auto, attivo, descrizione, esito_richiesto
+)
+VALUES (
+    (SELECT tf_id FROM tmp_gen_tf),
+    (SELECT tp_id FROM tmp_gen_tp_dest2),
+    false, true, 'Regola test generazione NON auto', 'POSITIVO'
+);
+
 CREATE TEMP TABLE tmp_gen_flusso2 AS WITH ins AS (
   INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
   VALUES (
-      (
-        SELECT pratica_id
-        FROM tmp_gen_pratica
-      ),
-      (
-        SELECT tf_id
-        FROM tmp_gen_tf
-      ),
-      (
-        SELECT stato_da_eseguire_id
-        FROM tmp_gen_refs
-      )
-    )
+      (SELECT pratica_id FROM tmp_gen_pratica),
+      (SELECT tf_id FROM tmp_gen_tf),
+      (SELECT stato_da_eseguire_id FROM tmp_gen_refs)
+  )
   RETURNING id
 )
-SELECT id AS flusso_id
-FROM ins;
-CREATE TEMP TABLE tmp_gen_count_before2 AS
-SELECT count(*) AS cnt
-FROM pratiche.pratiche
-WHERE tipo_prestazione_id = (
-    SELECT tp_id
-    FROM tmp_gen_tp_dest
-  );
+SELECT id AS flusso_id FROM ins;
+
 -- Percorso valido per la matrice transizioni: DA_ESEGUIRE -> IN_CORSO -> COMPLETATO.
 UPDATE pratiche.flussi
 SET stato_id = (SELECT stato_in_corso_id FROM tmp_gen_refs)
 WHERE id = (SELECT flusso_id FROM tmp_gen_flusso2);
--- esito obbligatorio per COMPLETATO; regola auto=false: nessuna generazione.
 UPDATE pratiche.flussi
-SET stato_id = (
-    SELECT stato_completato_id
-    FROM tmp_gen_refs
-  ),
-  esito = 'POSITIVO'
-WHERE id = (
-    SELECT flusso_id
-    FROM tmp_gen_flusso2
-  );
+SET stato_id = (SELECT stato_completato_id FROM tmp_gen_refs),
+    esito = 'POSITIVO'
+WHERE id = (SELECT flusso_id FROM tmp_gen_flusso2);
+
 SELECT is(
-    (
-      SELECT (
-          count(*) - (
-            SELECT cnt
-            FROM tmp_gen_count_before2
-          )
-        )::integer
-      FROM pratiche.pratiche
-      WHERE tipo_prestazione_id = (
-          SELECT tp_id
-          FROM tmp_gen_tp_dest
-        )
-    ),
-    1,
-    '5. Regola auto=false non genera pratica (solo auto=true genera)'
-  );
+    (SELECT count(*)::integer
+       FROM pratiche.pratiche
+      WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_gen_tp_dest2)),
+    0,
+    '10. Regola auto=false non genera pratica (solo auto=true genera)'
+);
 -- =========================================================
--- 8) Cleanup
+-- 11) Cleanup (resiliente: gestisce orfani da run precedenti)
 -- =========================================================
--- Cleanup resiliente (gestisce orfani da run precedenti falliti)
--- 1) Pratiche generate (tipo dest) e relativi giornale
+-- 1) Pratiche generate (tipi dest): giornale, flussi, pratiche
 DELETE FROM pratiche.giornale
 WHERE pratica_id IN (
-    SELECT id
-    FROM pratiche.pratiche
-    WHERE tipo_prestazione_id = (
-        SELECT tp_id
-        FROM tmp_gen_tp_dest
-      )
-  );
+    SELECT id FROM pratiche.pratiche
+    WHERE tipo_prestazione_id IN (
+        (SELECT tp_id FROM tmp_gen_tp_dest), (SELECT tp_id FROM tmp_gen_tp_dest2))
+);
+DELETE FROM pratiche.flussi
+WHERE pratica_id IN (
+    SELECT id FROM pratiche.pratiche
+    WHERE tipo_prestazione_id IN (
+        (SELECT tp_id FROM tmp_gen_tp_dest), (SELECT tp_id FROM tmp_gen_tp_dest2))
+);
 DELETE FROM pratiche.pratiche
-WHERE tipo_prestazione_id = (
-    SELECT tp_id
-    FROM tmp_gen_tp_dest
-  );
+WHERE tipo_prestazione_id IN (
+    (SELECT tp_id FROM tmp_gen_tp_dest), (SELECT tp_id FROM tmp_gen_tp_dest2));
 -- 2) Flussi, giornale e pratiche sorgente
 DELETE FROM pratiche.giornale
 WHERE pratica_id IN (
-    SELECT id
-    FROM pratiche.pratiche
-    WHERE tipo_prestazione_id = (
-        SELECT tp_id
-        FROM tmp_gen_tp_src
-      )
-  );
+    SELECT id FROM pratiche.pratiche
+    WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_gen_tp_src)
+);
 DELETE FROM pratiche.flussi
 WHERE pratica_id IN (
-    SELECT id
-    FROM pratiche.pratiche
-    WHERE tipo_prestazione_id = (
-        SELECT tp_id
-        FROM tmp_gen_tp_src
-      )
-  );
+    SELECT id FROM pratiche.pratiche
+    WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_gen_tp_src)
+);
 DELETE FROM pratiche.pratiche
-WHERE tipo_prestazione_id = (
-    SELECT tp_id
-    FROM tmp_gen_tp_src
-  );
+WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_gen_tp_src);
 -- 3) Regole generazione
 DELETE FROM pratiche.regole_generazione
 WHERE template_flusso_origine_id IN (
-    SELECT id
-    FROM pratiche.template_flussi
-    WHERE tipo_prestazione_id = (
-        SELECT tp_id
-        FROM tmp_gen_tp_src
-      )
-  );
+    SELECT id FROM pratiche.template_flussi
+    WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_gen_tp_src)
+);
 -- 4) Template e tipi prestazione
 DELETE FROM pratiche.template_flussi
-WHERE tipo_prestazione_id = (
-    SELECT tp_id
-    FROM tmp_gen_tp_src
-  );
+WHERE tipo_prestazione_id IN (
+    (SELECT tp_id FROM tmp_gen_tp_src),
+    (SELECT tp_id FROM tmp_gen_tp_dest),
+    (SELECT tp_id FROM tmp_gen_tp_dest2));
 DELETE FROM pratiche.tipi_prestazione
-WHERE id = (
-    SELECT tp_id
-    FROM tmp_gen_tp_src
-  );
-DELETE FROM pratiche.tipi_prestazione
-WHERE id = (
-    SELECT tp_id
-    FROM tmp_gen_tp_dest
-  );
-SELECT *
-FROM finish();
+WHERE id IN (
+    (SELECT tp_id FROM tmp_gen_tp_src),
+    (SELECT tp_id FROM tmp_gen_tp_dest),
+    (SELECT tp_id FROM tmp_gen_tp_dest2));
+
+SELECT * FROM finish();

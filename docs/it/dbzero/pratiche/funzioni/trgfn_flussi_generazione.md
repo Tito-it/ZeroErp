@@ -19,17 +19,25 @@ BEGIN
   -- =========================================================
   -- Scopo:
   --   Generazione automatica cross-pratica.
-  --   Quando un flusso passa a COMPLETATO, cerca regole di
+  --   Quando un flusso TRANSITA a COMPLETATO, cerca regole di
   --   generazione con auto = true e template_flusso_origine
   --   corrispondente, e invoca fn_genera_pratica_da_flusso
   --   per ciascuna regola matching.
   --
   -- Regole:
-  --   - Controlla codice_interno dello stato nuovo
-  --   - Solo se COMPLETATO e flusso template-based
+  --   - Scatta solo alla transizione di stato (idempotenza:
+  --     un UPDATE che non cambia stato_id non genera nulla;
+  --     il dedup in fn_genera_pratica_da_flusso copre anche
+  --     il doppio evento residuo)
+  --   - Solo se nuovo stato COMPLETATO e flusso template-based
   --   - Filtra per esito_richiesto (NULL = qualsiasi esito)
   --   - Ignora regole non attive o con auto = false
   -- =========================================================
+
+  -- Idempotenza: genera solo alla TRANSIZIONE di stato.
+  IF OLD.stato_id IS NOT DISTINCT FROM NEW.stato_id THEN
+    RETURN NEW;
+  END IF;
 
   -- Verifica se il nuovo stato e' COMPLETATO
   SELECT sfp.codice_interno
@@ -58,7 +66,7 @@ BEGIN
          OR rg.esito_richiesto = NEW.esito
        )
   LOOP
-    -- Genera la pratica target
+    -- Genera la pratica target (dedup interno alla fn)
     PERFORM pratiche.fn_genera_pratica_da_flusso(
       NEW.id,
       v_regola.id
@@ -70,7 +78,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.trgfn_flussi_generazione()
-IS 'AFTER UPDATE su flussi: genera pratiche cross-pratica quando flusso diventa COMPLETATO.';
+IS 'AFTER UPDATE OF stato_id su flussi: genera pratiche cross-pratica solo alla transizione a COMPLETATO (idempotente; dedup in fn_genera_pratica_da_flusso).';
 ```
 
 ---
