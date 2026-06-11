@@ -38,6 +38,8 @@ Indice test eseguiti:
 28) CatalogoServiceTests.test_fn_create_componente_self_reference
 26) CatalogoServiceTests.test_fn_create_articolo_listino_tipologia_id_ok
 27) CatalogoServiceTests.test_fn_update_articolo_listino_tipologia_id_invalid
+27b) CatalogoServiceTests.test_fn_create_articolo_natura_vendita_id_ok
+27c) CatalogoServiceTests.test_fn_update_articolo_natura_vendita_id_null_invalid
 28) CatalogoServiceTests.test_fn_create_componente_esposto_in_fattura_ok
 29) CatalogoServiceTests.test_fn_list_uom_rounding_modes_ok
 30) CatalogoServiceTests.test_fn_list_uom_rounding_modes_coverage
@@ -694,6 +696,59 @@ class CatalogoServiceTests(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
         self.assertIn("listino_tipologia_id", ctx.exception.detail or "")
+
+    # Scopo: create articolo con natura_vendita_id -> campo propagato al repo
+    # (modello split per natura: instradamento ordine/commessa/contratto).
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_articolo_natura_vendita_id_ok(
+        self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls
+    ):
+        from apps.catalogo.services.catalogo_service import fn_create_articolo
+
+        repo = mock_repo_cls.return_value
+        repo.create_articolo.return_value = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
+        repo.get_articolo.return_value = {
+            "id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+            "codice": "SERV-001",
+            "descrizione": "Servizio una tantum demo",
+            "natura_vendita_id": 2,
+        }
+        mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
+        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
+
+        fn_create_articolo(
+            {
+                "codice": "SERV-001",
+                "descrizione": "Servizio una tantum demo",
+                "uom_id": 1,
+                "natura_vendita_id": 2,
+            }
+        )
+
+        repo.create_articolo.assert_called_once_with(
+            {
+                "codice": "SERV-001",
+                "descrizione": "Servizio una tantum demo",
+                "uom_id": 1,
+                "natura_vendita_id": 2,
+            }
+        )
+
+    # Scopo: update articolo con natura_vendita_id null -> validazione (colonna
+    # NOT NULL: la natura si puo' cambiare ma mai azzerare).
+    def test_fn_update_articolo_natura_vendita_id_null_invalid(self):
+        from apps.catalogo.services.catalogo_service import fn_update_articolo
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_update_articolo(
+                "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+                {"natura_vendita_id": None},
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertIn("natura_vendita_id", ctx.exception.detail or "")
 
     # Scopo: create componente con esposto_in_fattura -> flag propagato al repo (BoM v5).
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")

@@ -1017,8 +1017,8 @@ aperti.
 
 ## Riferimenti
 
-- Modello: [analisi-offerta-commerciale](/dev/work-in-progress/analisi-offerta-commerciale)
+- Modello: [analisi-offerta-commerciale](/dev/work-done/analisi-offerta-commerciale)
 - Brief DB: [analisi-offerta-commerciale-db](/dev/work-done/analisi-offerta-commerciale-db)
-- Piano BE+FE: [analisi-offerta-commerciale-be-fe](/dev/work-in-progress/analisi-offerta-commerciale-be-fe)
+- Piano BE+FE: [analisi-offerta-commerciale-be-fe](/dev/work-done/analisi-offerta-commerciale-be-fe)
 - Manuale service: [offerte_service](/backend/vendite/manual/offerte_service)
 - API contratto (specchio strutturale): [api_contratti](/backend/vendite/manual/api_contratti)

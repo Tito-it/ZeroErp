@@ -15,7 +15,6 @@ import InputText from 'primevue/inputtext'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
-import SearchHint from '../../core/components/SearchHint.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -34,7 +33,7 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 const statoFilter = ref(null)
 const prioritaFilter = ref(null)
 
-// Filtro data: default anno corrente - 1 (dal store)
+// Filtro data sempre attivo: default inizio mese precedente (dal store)
 const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
 const dataAFilter = ref(null)
 const pageActions = computed(() => [
@@ -79,7 +78,6 @@ function onDataAChange() {
 function onRowClick(event) { emit('row-click', event.data) }
 
 useTabFreshness(store, TAB_ENTITIES.PRATICA)
-// La lista parte vuota — l'operatore deve cercare o applicare un filtro.
 
 // Scopo: calcolo dinamico altezza scroll DataTable.
 // Desktop (>=1280px): calcola altezza dal viewport reale meno area flussi.
@@ -99,11 +97,10 @@ function recalcScrollHeight() {
   tableScrollHeight.value = Math.max(available, 150) + 'px'
 }
 
-// La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
+// Lista eager: carica subito col filtro data sempre attivo (default inizio
+// mese precedente impostato dallo store).
 onMounted(() => {
-  if (searchText.value) {
-    store.fetchList()
-  }
+  store.fetchList()
   recalcScrollHeight()
   window.addEventListener('resize', recalcScrollHeight)
 })
@@ -163,11 +160,7 @@ onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
       </PageActionsBar>
     </div>
 
-    <!-- Placeholder: nessuna ricerca effettuata -->
-    <SearchHint v-if="!store.hasSearched && !store.loading" :message="t('pratiche.eseguire_ricerca')" />
-
     <DataTable
-      v-show="store.hasSearched || store.loading"
       :value="store.items"
       :loading="store.loading"
       v-bind="paginatorProps"

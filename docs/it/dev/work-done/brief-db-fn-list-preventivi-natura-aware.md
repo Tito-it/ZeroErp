@@ -13,7 +13,7 @@
 > (alternativa rimandata).
 >
 > **Origine**: chiusura del modello a split per natura (rif.
-> [brief-preventivi-ordini.md](../work-in-progress/brief-preventivi-ordini.md) §7, §8).
+> [brief-preventivi-ordini.md](brief-preventivi-ordini.md) §7, §8).
 
 ## 1. Il problema (verificato)
 

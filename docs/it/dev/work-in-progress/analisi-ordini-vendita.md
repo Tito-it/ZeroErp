@@ -127,7 +127,7 @@ provenienza/tracciabilità.
 - **(A1-bis) — REVERSAL PARZIALE per `OFFERTA` (RATIFICATA Tid, 2026-06-07/08)**:
   il «senza UNIQUE» resta valido per `PREVENTIVO` (**1:N** — riordini/consegne
   parziali, modello split per riga in
-  [brief-preventivi-ordini.md](brief-preventivi-ordini.md)), ma **NON** per
+  [brief-preventivi-ordini.md](../work-done/brief-preventivi-ordini.md)), ma **NON** per
   `OFFERTA`. L'offerta è una condizione quadro **atomica** (nessuna riga
   selezionabile) → genera **al massimo UN ordine** (1:1 di testata), imposto da
   un **UNIQUE parziale** `uq_ordini_v_documento_origine_offerta`
@@ -746,11 +746,26 @@ Decisione §8.3: **stesso pattern attuale di preventivi/offerte = push singolo**
   singolo manuale**. «Per ora si fa lo stesso»; un eventuale ripensamento
   batch-vs-singolo riguarderebbe l'intera famiglia, non solo ordini.
 
-### 7.3 A valle — nessun lavoro
-`attivita_fatturabili` → pipeline lotto → fatture → PDF/SDI: **interamente
-esistente e collaudato** (PROJECT_CONTEXT «Pipeline fatturazione»). Lo scheletro
-ordine + conferma chiude quindi un **giro vendita→fattura end-to-end** riusando
-~90% di codice.
+### 7.3 A valle — ponte emittibilità (gap trovato e chiuso 2026-06-10)
+
+`attivita_fatturabili` → pipeline lotto → fatture → PDF/SDI: esistente e
+collaudato (PROJECT_CONTEXT «Pipeline fatturazione»). **Ma** la frase storica
+"a valle nessun lavoro" era falsa per il **ponte**: la commessa nata dal push
+ordine restava `BOZZA` con attività `BOZZA` (le fn `fn_approva_commessa_attivita`
+e `fn_cambia_stato_commessa` erano invocate solo dal handler pratica
+`vendita.push_preventivo`) → `fn_list_commesse_emittibili` non la vedeva mai e
+il ramo commessa→fattura era **dormiente** su questo percorso (stesso gap V9
+dei preventivi, risolto solo sul ramo pratica).
+
+**Chiuso 2026-06-10** (BE, fn DB già esistenti): il ponte è centralizzato in
+`commesse_service` (`_rendi_commesse_emittibili`) e scatta in
+`pr_run_commesse_push_one` a push `COMPLETATO` (stessa transazione,
+all-or-nothing) e nel batch `pr_run_commesse_push` (best-effort per commessa,
+errori in `emittibilita_errors`). Il handler pratica delega (ponte rimosso dal
+handler). Gli handler tracciano `commesse_ids` nel report → esposto nelle
+response push (ordini/preventivi/batch) e `stato_codice_interno` aggiunto a
+`GET /commesse/<id>/stato/`. Smoke: `smoke-test-ordini-giro-commessa.sh`
+passo 8 verifica `PRONTA_FATTURAZIONE` + approvate ≥ 1.
 
 ### 7.4 A monte — conversione preventivo/offerta → ordine
 

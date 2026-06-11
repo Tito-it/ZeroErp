@@ -13,7 +13,8 @@ Indice test eseguiti:
 3) PraticheServiceTests.test_crea_pratica_errore_emittente_zero
 4) PraticheServiceTests.test_crea_pratica_errore_tipo_prestazione_zero
 5) PraticheServiceTests.test_crea_pratica_errore_priorita_zero
-6) PraticheServiceTests.test_crea_pratica_errore_istanza_senza_ruolo
+6) PraticheServiceTests.test_crea_pratica_prospect_puro_istanza_senza_ruolo
+6b) PraticheServiceTests.test_crea_pratica_errore_istanza_senza_soggetto
 7) PraticheServiceTests.test_crea_pratica_errore_ruolo_senza_soggetto
 8) PraticheServiceTests.test_aggiorna_pratica_ok
 9) PraticheServiceTests.test_aggiorna_pratica_non_trovata
@@ -158,14 +159,36 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(call_data["soggetto_ruolo_id"], 100)
         self.assertEqual(call_data["istanza_utility_id"], 200)
 
-    # Scopo: Verifica errore se istanza_utility_id presente senza soggetto_ruolo_id.
-    def test_crea_pratica_errore_istanza_senza_ruolo(self):
+    # Scopo: Prospect puro (soggetto + istanza, NESSUN ruolo) → ammesso.
+    #        Modello a due rami (brief-db-pratiche-guard-contesto-istanza,
+    #        consegna 20260611-01): l'istanza non richiede il ruolo.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_pratica_prospect_puro_istanza_senza_ruolo(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_tipo_prestazione_attivazione.return_value = {"pre_attivazione": True, "post_attivazione": True}
+        repo.resolve_stato_pratica.return_value = 1
+        repo.create_pratica.return_value = 51
+
+        result = pratiche_service.crea_pratica(
+            emittente_fiscale_id=10,
+            tipo_prestazione_id=5,
+            priorita_id=2,
+            soggetto_id="aaa-bbb-ccc",
+            istanza_utility_id=200,
+        )
+        self.assertEqual(result, 51)
+        call_data = repo.create_pratica.call_args[0][0]
+        self.assertIsNone(call_data["soggetto_ruolo_id"])
+        self.assertEqual(call_data["istanza_utility_id"], 200)
+
+    # Scopo: Verifica errore se istanza_utility_id presente senza soggetto_id
+    #        (regola sostitutiva del modello a due rami).
+    def test_crea_pratica_errore_istanza_senza_soggetto(self):
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.crea_pratica(
                 emittente_fiscale_id=10,
                 tipo_prestazione_id=5,
                 priorita_id=2,
-                soggetto_id="aaa-bbb-ccc",
                 istanza_utility_id=200,
             )
         self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")

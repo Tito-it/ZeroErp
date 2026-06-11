@@ -1337,6 +1337,9 @@
     "field_listino_tipologia": "Pricelist type",
     "select_listino_tipologia": "Select pricelist type...",
     "hint_listino_tipologia": "Determines which pricelists the item can be inserted in",
+    "field_natura_vendita": "Sales nature",
+    "select_natura_vendita": "Default: Goods",
+    "hint_natura_vendita": "Determines the post-acceptance destination: order (goods), job (one-time service) or contract (recurring)",
     "field_spesa": "Expense type",
     "field_iva": "VAT",
     "field_composito": "Composite",
@@ -1449,6 +1452,13 @@
     "pdp_label": "PDP",
     "utility_label": "Utility",
     "select_ba": "Select billing account..."
+  },
+  "soggetto_ruolo_lookup": {
+    "search_placeholder": "Search by business name, tax code or VAT...",
+    "no_results": "No subject found",
+    "senza_ruolo": "No role",
+    "n_istanze": "{n} instances",
+    "refine_hint": "Showing {shown} of {total}. Refine your search to see more results."
   },
   "istanza_utility": {
     "search_placeholder": "Search instance by code, business name or address...",
@@ -1755,7 +1765,7 @@
       "conferma_ordine_messaggio": "Confirm the order? After confirmation the lines can no longer be edited.",
       "ordine_confermato": "Order confirmed",
       "push_commessa_messaggio": "Send the order to job for billing?",
-      "push_commessa_ok": "Order sent to job ({righe} lines, log #{push_log_id}).",
+      "push_commessa_ok": "Order sent to job ({righe} lines).",
       "push_commessa_ok_generico": "Order sent to job.",
       "push_commessa_parziale": "Partial push ({righe} lines, log #{push_log_id}).",
       "push_commessa_errore": "Push failed: {primo_errore}",
@@ -2600,11 +2610,13 @@
     "select_tipo_prestazione": "Select type...",
     "select_priorita": "Select priority...",
     "field_descrizione": "Description",
-    "field_ruolo": "Subject role",
+    "field_contesto": "Subject / role",
+    "field_istanza": "Utility instance",
+    "istanza_hint": "Optional — links the case to a specific instance (pre-contract)",
+    "nuovo_soggetto": "New subject",
     "section_soggetto": "Subject",
     "section_dati": "Case details",
     "soggetto_opzionale": "Optional — without a subject the case is internal",
-    "select_ruolo": "Select role...",
     "tab_dati": "Details",
     "tab_flussi": "Flows",
     "tab_giornale": "Journal",
@@ -2672,7 +2684,6 @@
     "esito_parziale": "Partial",
     "esito_non_applicabile": "Not applicable",
     "competenze_flussi": "Flow competences",
-    "eseguire_ricerca": "Search to display practices",
     "visualizzazione_pratica": "Viewing practice code: {codice}"
   },
   "ai": {

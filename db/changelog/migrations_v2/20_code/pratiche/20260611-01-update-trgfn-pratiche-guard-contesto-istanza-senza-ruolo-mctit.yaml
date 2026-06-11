@@ -1,0 +1,251 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# pratiche.trgfn_pratiche_guard_contesto — FIX MODELLO: due rami indipendenti.
+# Supera 20260328-12 (catena lineare soggetto -> ruolo -> istanza, errata).
+#
+# Bug di modello (dominio utilities): anagrafiche.istanze_utilities.soggetto_id
+# e' FK diretta al soggetto (NOT NULL) e l'istanza nasce PRIMA del contratto.
+# Un prospect puro (istanza, zero ruoli) e' il caso normale in fase
+# pre-contrattuale: il ruolo CLIENTE + billing account nascono a valle, solo
+# all'emissione fattura (ClienteService / fn_get_or_create_soggetto_ruolo).
+# La vecchia regola 1 (istanza => ruolo obbligatorio) rendeva la pratica non
+# agganciabile all'istanza, o costringeva a un ruolo CL prematuro.
+#
+# Modello corretto a due rami, pendenti indipendentemente dal soggetto:
+#     soggetto -> soggetto_ruolo     (pratiche su ruoli)
+#     soggetto -> istanza_utility    (pratiche pre-contrattuali, nessun ruolo)
+#
+# Modifica (rilassamento, nessuna sanatoria dati — nessuna riga viola il nuovo
+# guard):
+#   - RIMOSSA regola 1 (istanza => ruolo): codice PRATICHE_ISTANZA_SENZA_RUOLO
+#     (304) non piu' sollevato.
+#   - AGGIUNTA regola sostitutiva: istanza => soggetto obbligatorio, con nuovo
+#     codice PRATICHE_ISTANZA_SENZA_SOGGETTO (308, seed 20260611-02). Messaggio
+#     chiaro: senza questa, il caso istanza+soggetto NULL cadeva comunque sotto
+#     regola 4 (istanza non coerente) con soggetto NULL — fuorviante.
+#   - Regole appartenenza (ruolo->soggetto, istanza->soggetto) invariate.
+#
+# Trigger trg_pratiche_a10_guard_contesto_ins_upd INVARIATO (stesso elenco
+# colonne): solo CREATE OR REPLACE della funzione, nessun DROP/CREATE TRIGGER.
+#
+# MAI modificato in place 20260328-12 (changelog gia' pushato): nuovo changeSet
+# con numerazione successiva. Corpo di partenza dalla doc auto-gen
+# docs/it/dbzero/pratiche/funzioni/trgfn_pratiche_guard_contesto.md.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260611-01-update-trgfn-pratiche-guard-contesto-istanza-senza-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20260611-01-update-trgfn-pratiche-guard-contesto-istanza-senza-ruolo
+      author: mctit
+      runOnChange: false
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        trgfn_pratiche_guard_contesto: modello a due rami. Rimossa regola
+        istanza=>ruolo (prospect puro ammesso), aggiunta regola
+        istanza=>soggetto (PRATICHE_ISTANZA_SENZA_SOGGETTO). Appartenenze
+        ruolo/istanza al soggetto invariate.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_contesto()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: validare la coerenza del contesto anagrafico sulla pratica
+              --        nel modello a DUE RAMI indipendenti dal soggetto:
+              --            soggetto -> soggetto_ruolo   (pratiche su ruoli)
+              --            soggetto -> istanza_utility  (pratiche pre-contrattuali)
+              --        L'istanza puo' essere agganciata senza alcun ruolo
+              --        (prospect puro): l'istanza nasce prima del contratto, il
+              --        ruolo CLIENTE arriva a valle con il billing account.
+              --        Tutti i campi sono opzionali (pratica interna = tutti NULL).
+              -- Regole:
+              --   1. soggetto_ruolo_id NOT NULL -> soggetto_id obbligatorio
+              --   2. istanza_utility_id NOT NULL -> soggetto_id obbligatorio
+              --   3. soggetto_ruolo_id deve appartenere a soggetto_id
+              --   4. istanza_utility_id deve appartenere a soggetto_id
+              DECLARE
+                  v_soggetto_id_ruolo   anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_soggetto_id_istanza anagrafiche.istanze_utilities.soggetto_id%TYPE;
+              BEGIN
+                  -- Regola 1: ruolo richiede soggetto (ramo ruolo)
+                  IF NEW.soggetto_ruolo_id IS NOT NULL AND NEW.soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_pratiche_guard_contesto',
+                          'PRATICHE_RUOLO_SENZA_SOGGETTO',
+                          jsonb_build_object(
+                              'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                          ),
+                          NULL::uuid,
+                          NEW.soggetto_ruolo_id::text
+                      );
+                  END IF;
+
+                  -- Regola 2: istanza richiede soggetto (ramo istanza, indipendente
+                  --           dal ruolo). Sostituisce la vecchia regola istanza=>ruolo.
+                  IF NEW.istanza_utility_id IS NOT NULL AND NEW.soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_pratiche_guard_contesto',
+                          'PRATICHE_ISTANZA_SENZA_SOGGETTO',
+                          jsonb_build_object(
+                              'istanza_utility_id', NEW.istanza_utility_id
+                          ),
+                          NULL::uuid,
+                          NEW.istanza_utility_id::text
+                      );
+                  END IF;
+
+                  -- Regola 3: ruolo deve appartenere al soggetto
+                  IF NEW.soggetto_ruolo_id IS NOT NULL THEN
+                      SELECT sr.soggetto_id INTO v_soggetto_id_ruolo
+                        FROM anagrafiche.soggetti_ruoli sr
+                       WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                      IF v_soggetto_id_ruolo IS NULL
+                         OR v_soggetto_id_ruolo IS DISTINCT FROM NEW.soggetto_id THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'pratiche',
+                              'pratiche.trgfn_pratiche_guard_contesto',
+                              'PRATICHE_RUOLO_NON_COERENTE',
+                              jsonb_build_object(
+                                  'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+                                  'soggetto_id', NEW.soggetto_id,
+                                  'soggetto_id_ruolo', v_soggetto_id_ruolo
+                              ),
+                              NULL::uuid,
+                              NEW.soggetto_ruolo_id::text,
+                              NEW.soggetto_id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Regola 4: istanza deve appartenere al soggetto
+                  IF NEW.istanza_utility_id IS NOT NULL THEN
+                      SELECT iu.soggetto_id INTO v_soggetto_id_istanza
+                        FROM anagrafiche.istanze_utilities iu
+                       WHERE iu.id = NEW.istanza_utility_id;
+
+                      IF v_soggetto_id_istanza IS NULL
+                         OR v_soggetto_id_istanza IS DISTINCT FROM NEW.soggetto_id THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'pratiche',
+                              'pratiche.trgfn_pratiche_guard_contesto',
+                              'PRATICHE_ISTANZA_NON_COERENTE',
+                              jsonb_build_object(
+                                  'istanza_utility_id', NEW.istanza_utility_id,
+                                  'soggetto_id', NEW.soggetto_id,
+                                  'soggetto_id_istanza', v_soggetto_id_istanza
+                              ),
+                              NULL::uuid,
+                              NEW.istanza_utility_id::text,
+                              NEW.soggetto_id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_guard_contesto()
+                IS 'Guard: coerenza contesto anagrafico su pratiche, modello a due rami (soggetto->ruolo, soggetto->istanza). L''istanza e'' agganciabile senza ruolo (prospect puro pre-contrattuale).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina la versione 20260328-12 (catena lineare con regola
+              -- istanza=>ruolo). Non si fa DROP FUNCTION: la funzione e' usata dal
+              -- trigger trg_pratiche_a10_guard_contesto_ins_upd (dipendenza).
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_contesto()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_soggetto_id_ruolo   anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_soggetto_id_istanza anagrafiche.istanze_utilities.soggetto_id%TYPE;
+              BEGIN
+                  IF NEW.istanza_utility_id IS NOT NULL AND NEW.soggetto_ruolo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_pratiche_guard_contesto',
+                          'PRATICHE_ISTANZA_SENZA_RUOLO',
+                          jsonb_build_object('istanza_utility_id', NEW.istanza_utility_id),
+                          NULL::uuid,
+                          'istanza_utility_id richiede soggetto_ruolo_id'
+                      );
+                  END IF;
+
+                  IF NEW.soggetto_ruolo_id IS NOT NULL AND NEW.soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_pratiche_guard_contesto',
+                          'PRATICHE_RUOLO_SENZA_SOGGETTO',
+                          jsonb_build_object('soggetto_ruolo_id', NEW.soggetto_ruolo_id),
+                          NULL::uuid,
+                          NEW.soggetto_ruolo_id::text
+                      );
+                  END IF;
+
+                  IF NEW.soggetto_ruolo_id IS NOT NULL THEN
+                      SELECT sr.soggetto_id INTO v_soggetto_id_ruolo
+                        FROM anagrafiche.soggetti_ruoli sr
+                       WHERE sr.id = NEW.soggetto_ruolo_id;
+                      IF v_soggetto_id_ruolo IS NULL
+                         OR v_soggetto_id_ruolo IS DISTINCT FROM NEW.soggetto_id THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'pratiche',
+                              'pratiche.trgfn_pratiche_guard_contesto',
+                              'PRATICHE_RUOLO_NON_COERENTE',
+                              jsonb_build_object(
+                                  'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+                                  'soggetto_id', NEW.soggetto_id,
+                                  'soggetto_id_ruolo', v_soggetto_id_ruolo
+                              ),
+                              NULL::uuid,
+                              NEW.soggetto_ruolo_id::text,
+                              NEW.soggetto_id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  IF NEW.istanza_utility_id IS NOT NULL THEN
+                      SELECT iu.soggetto_id INTO v_soggetto_id_istanza
+                        FROM anagrafiche.istanze_utilities iu
+                       WHERE iu.id = NEW.istanza_utility_id;
+                      IF v_soggetto_id_istanza IS NULL
+                         OR v_soggetto_id_istanza IS DISTINCT FROM NEW.soggetto_id THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'pratiche',
+                              'pratiche.trgfn_pratiche_guard_contesto',
+                              'PRATICHE_ISTANZA_NON_COERENTE',
+                              jsonb_build_object(
+                                  'istanza_utility_id', NEW.istanza_utility_id,
+                                  'soggetto_id', NEW.soggetto_id,
+                                  'soggetto_id_istanza', v_soggetto_id_istanza
+                              ),
+                              NULL::uuid,
+                              NEW.istanza_utility_id::text,
+                              NEW.soggetto_id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;

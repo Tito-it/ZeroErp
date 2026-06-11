@@ -26,6 +26,17 @@ def rows_to_list(cursor) -> list[dict[str, Any]]:
     return [dict(zip(cols, row)) for row in cursor.fetchall()]
 
 
+def escape_ilike(value: str) -> str:
+    """Escapa i metacaratteri ILIKE (`%`, `_`, `\\`) nel termine di ricerca.
+
+    Senza escape l'input utente agisce da wildcard (es. cercare "BA_123" o
+    "50%" matcha oltre l'atteso). L'escape del backslash va fatto per primo.
+    Regola del 2: estratto dai lookup billing_account / istanze_utility /
+    soggetti-ruoli che lo duplicavano localmente.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def fetchone_scalar(cursor) -> Any:
     """Ritorna il primo valore della riga corrente (fetchone), riga garantita.
 

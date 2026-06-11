@@ -64,6 +64,8 @@ from apps.anagrafiche.api.views_soggetti import (
     SoggettiExportView,
     SoggettiIndirizziDetailView,
     SoggettiIndirizziView,
+    SoggettiRuoliLookupByIdView,
+    SoggettiRuoliLookupView,
     SoggettiRuoliView,
     SoggettiView,
 )
@@ -167,6 +169,11 @@ urlpatterns = [
     path("soggetti/genera-cf/", GeneraCFView.as_view(), name="anagrafiche-genera-cf"),
     path("soggetti/export/", SoggettiExportView.as_view(), name="anagrafiche-soggetti-export"),
     # Soggetti — CRUD
+    # Soggetti-ruoli — lookup ricco per selezione contesto pratica (una riga
+    # per ruolo + riga "senza ruolo" per i prospect puri). PRIMA delle rotte
+    # <str:soggetto_id> per evitare il match del path parametrico.
+    path("soggetti-ruoli/lookup/", SoggettiRuoliLookupView.as_view(), name="anagrafiche-soggetti-ruoli-lookup"),
+    path("soggetti-ruoli/lookup-by-id/", SoggettiRuoliLookupByIdView.as_view(), name="anagrafiche-soggetti-ruoli-lookup-by-id"),
     path("soggetti/", SoggettiView.as_view(), name="anagrafiche-soggetti-list"),
     path("soggetti/<str:soggetto_id>/", SoggettiDetailView.as_view(), name="anagrafiche-soggetti-detail"),
     path("soggetti/<str:soggetto_id>/contatti/", SoggettiContattiView.as_view(), name="anagrafiche-soggetti-contatti"),

@@ -6,7 +6,7 @@ Handler flusso `vendita.push_preventivo` — orchestratore **CONFERMA_VENDITA**,
 primo handler reale del motore pratiche. Al passaggio del flusso `CONFERMA` in
 `IN_CORSO` **smista per natura** le righe del preventivo `ACCETTATO` verso le
 destinazioni operative (modello split, brief
-[brief-preventivi-ordini.md](../../../dev/work-in-progress/brief-preventivi-ordini.md)):
+[brief-preventivi-ordini.md](../../../dev/work-done/brief-preventivi-ordini.md)):
 
 - righe **MERCE** (natura `destinazione_tipo='ORDINE'`) → **ordine DRAFT** via
   `fn_push_preventivo_a_ordine` (idempotenza di riga, BoM, snapshot prezzi);

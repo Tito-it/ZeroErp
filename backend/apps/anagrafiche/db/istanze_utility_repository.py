@@ -16,7 +16,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import escape_ilike, row_to_dict, rows_to_list
 
 # Scopo: Clausole WHERE condivise tra query count e query data del lookup
 # istanze. Mantenere allineate le due query: qualsiasi nuovo filtro va aggiunto qui.
@@ -108,10 +108,8 @@ _LOOKUP_SELECT_COLUMNS = """
 """
 
 
-# Scopo: Effettua l'escape dei caratteri wildcard ILIKE (\, %, _) per evitare
-# match indesiderati quando l'utente cerca stringhe contenenti tali caratteri.
-def _escape_ilike(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+# Escape wildcard ILIKE centralizzato in core/db/_helpers.escape_ilike
+# (regola del 2: era duplicato qui e in billing_account_repository).
 
 
 class IstanzeUtilityRepository:
@@ -133,7 +131,7 @@ class IstanzeUtilityRepository:
         limit: int,
     ) -> tuple[list[dict[str, Any]], int]:
         # Pattern ILIKE su 3 colonne (codice, ragione sociale, indirizzo).
-        search_pattern = f"%{_escape_ilike(q)}%"
+        search_pattern = f"%{escape_ilike(q)}%"
 
         # Scope emittente: lista sr_ids autorizzati, None = bypass (superuser/admin globale).
         scope_array = emittente_ids if emittente_ids is not None else None

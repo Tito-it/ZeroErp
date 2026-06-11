@@ -1,7 +1,11 @@
 # Piano BE + FE — Dominio Offerta Commerciale
 
-> **Stato**: piano in attesa di completamento brief DB. Nessun codice ancora
-> scritto.
+> **Stato**: ✅ CHIUSO (rev. 2026-05-26g) — dominio offerta commerciale
+> completo BE + FE, tutti gli step §8 atterrati. 42/42 test BE verdi,
+> 1351/1351 complessivi, build vite verde, eslint pulito. Follow-up residui
+> (non bloccanti): smoke UI manuale §5.3, cross-link pratiche
+> `OFFERTA_QUADRO` (§7), guida operatore, seed permessi `OFFERTA_GESTISCI`
+> (§2.3).
 >
 > **Revisione 2026-05-24a**: allineato alle correzioni del brief DB
 > (B1/B2/B3/I1/I2/I3/I4) e alla conferma di modello sulla utility.
@@ -76,8 +80,9 @@
 >
 > - Modello: [analisi-offerta-commerciale.md](analisi-offerta-commerciale.md)
 >   (decisioni §5 chiuse 2026-05-23)
-> - Brief DB: [brief-db-offerta-commerciale.md](brief-db-offerta-commerciale.md)
->   (revisione 2026-05-24, correzioni B1/B2/B3/I1/I2/I3/I4)
+> - Brief DB: [analisi-offerta-commerciale-db.md](analisi-offerta-commerciale-db.md)
+>   (ex `brief-db-offerta-commerciale.md`; revisione 2026-05-24, correzioni
+>   B1/B2/B3/I1/I2/I3/I4 — chiuso, step 1-9 applicati)
 >
 > **Prerequisito di applicabilità**: il piano BE può partire solo dopo che il
 > team DB ha chiuso almeno gli step 1-3 del brief DB (sorgenti, tabelle, ALTER

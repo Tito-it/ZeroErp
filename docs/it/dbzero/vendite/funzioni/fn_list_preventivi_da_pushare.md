@@ -32,6 +32,16 @@ BEGIN
   --   - prezzo_bloccato = fatturazione_immediata
   --   - tipo_commessa target: REALE, policy: DA_DOCUMENTO
   --
+  -- Competenza (rev 10-06-2026, brief competenza):
+  --   - competenza_dal/al NON nulli (commesse_attivita NOT NULL):
+  --     fallback validita -> competenza_mese -> data. GREATEST su
+  --     competenza_al garantisce dal<=al anche con validita_dal
+  --     NULL + validita_al valorizzato.
+  --   - competenza_mese: policy p.competenza_mese autorevole, con
+  --     fallback al derivato validita/data per il pregresso.
+  --   - competenza_dal/al = periodo attivita'; competenza_mese =
+  --     mese di fatturazione (policy). Indipendenti per costruzione.
+  --
   -- Estensione 2026-05: p_preventivo_id (opzionale):
   --   NULL = lista globale batch; NOT NULL = singolo preventivo UI-driven.
   --
@@ -76,12 +86,16 @@ BEGIN
     p.billing_account_id,
     p.utility_id,
     anagrafiche.fn_get_emittente_fiscale_id(p.billing_account_id) AS emittente_soggetto_ruolo_id,
-    p.validita_dal                                                AS competenza_dal,
-    p.validita_al                                                 AS competenza_al,
+    -- competenza_dal/al NOT NULL-safe (brief competenza 10-06-2026)
+    COALESCE(p.validita_dal, p.competenza_mese, p.data)           AS competenza_dal,
+    GREATEST(
+      COALESCE(p.validita_dal, p.competenza_mese, p.data),
+      COALESCE(p.validita_al, p.validita_dal, p.competenza_mese, p.data)
+    )                                                             AS competenza_al,
     p.fatturazione_immediata,
     v_sorgente_tipo_id                                            AS sorgente_tipo_id,
     p.uid::text                                                   AS sorgente_uid,
-    ('PREV:' || p.uid::text || ':R:' || pr.id::text)::varchar    AS segment_key,
+    ('PREV:' || p.uid::text || ':R:' || pr.id::text)::varchar     AS segment_key,
     pr.articolo_id,
     p.istanza_utility_id,
     COALESCE(p.validita_dal, p.data)                             AS data_attivita,
@@ -91,7 +105,11 @@ BEGIN
     pr.qta_operativa,
     pr.uom_operativa_id,
     COALESCE(pr.factor_to_base, 1::numeric)                      AS factor_to_base,
-    date_trunc('month', COALESCE(p.validita_dal, p.data))::date  AS competenza_mese,
+    -- competenza_mese: policy autorevole, fallback al derivato (pregresso)
+    COALESCE(
+      p.competenza_mese,
+      date_trunc('month', COALESCE(p.validita_dal, p.data))::date
+    )                                                             AS competenza_mese,
     pr.prezzo_unitario                                            AS prezzo_snapshot,
     COALESCE(p.fatturazione_immediata, false)                    AS prezzo_bloccato,
     'FIXED'::varchar                                              AS pricing_mode,
@@ -120,8 +138,12 @@ BEGIN
     -- SOLO righe destinate a COMMESSA (natura NULL = pregresso -> COMMESSA).
     -- La merce (ORDINE) e' esclusa: va su fn_push_preventivo_a_ordine.
     AND (pr.natura_vendita_id IS NULL OR nv.destinazione_tipo = 'COMMESSA')
+    -- Filtro allineato alla stessa espressione del SELECT competenza_mese.
     AND (p_competenza_mese IS NULL
-         OR date_trunc('month', COALESCE(p.validita_dal, p.data))::date = p_competenza_mese)
+         OR COALESCE(
+              p.competenza_mese,
+              date_trunc('month', COALESCE(p.validita_dal, p.data))::date
+            ) = p_competenza_mese)
     AND (p_billing_account_id IS NULL OR p.billing_account_id = p_billing_account_id)
     AND (p_preventivo_id IS NULL OR p.id = p_preventivo_id)
     AND NOT EXISTS (
@@ -135,7 +157,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_preventivo_id bigint)
-IS 'Lista righe preventivo eligible al push su commessa (stato ACCETTATO). NATURA-AWARE (rev 09-06-2026): solo righe con natura destinazione_tipo=COMMESSA (natura NULL = pregresso, inclusa); la merce (ORDINE) va su fn_push_preventivo_a_ordine. uom_id da catalogo.articoli (canonica). p_preventivo_id opzionale: NULL=batch globale, NOT NULL=UI push singolo. Filtri in AND. Esclude EMESSA via NOT EXISTS.';
+IS 'Lista righe preventivo eligible al push su commessa (stato ACCETTATO). NATURA-AWARE (rev 09-06-2026): solo righe con natura destinazione_tipo=COMMESSA (natura NULL = pregresso, inclusa); la merce (ORDINE) va su fn_push_preventivo_a_ordine. uom_id da catalogo.articoli (canonica). COMPETENZA (rev 10-06-2026): competenza_dal/al NOT NULL-safe (COALESCE validita/competenza_mese/data + GREATEST dal<=al), competenza_mese policy-aware (COALESCE(competenza_mese, derivato)); filtro WHERE allineato. p_preventivo_id opzionale: NULL=batch globale, NOT NULL=UI push singolo. Filtri in AND. Esclude EMESSA via NOT EXISTS.';
 ```
 
 ---

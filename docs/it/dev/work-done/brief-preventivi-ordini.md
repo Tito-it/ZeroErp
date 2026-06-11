@@ -9,7 +9,7 @@
 > **Data**: 2026-06-07 — decisioni ratificate 2026-06-08 — DB implementato 2026-06-09.
 >
 > **Perché esiste questo documento**: durante l'analisi dell'univocità
-> offerta→ordine ([brief-db-univocita-offerta-ordine.md](../work-done/brief-db-univocita-offerta-ordine.md))
+> offerta→ordine ([brief-db-univocita-offerta-ordine.md](brief-db-univocita-offerta-ordine.md))
 > è emerso che il preventivo **non** segue lo stesso modello dell'offerta. Tid ha
 > ricordato che *«non era previsto che il preventivo diventasse ordine ma
 > direttamente commessa»* — ed è confermato dal design iniziale: il preventivo va
@@ -18,7 +18,7 @@
 > **murerebbe** questo modello. Da qui un documento separato.
 >
 > **Fonte autorevole del modello**:
-> [analisi-pratiche-domini-anello3.md §5.3](analisi-pratiche-domini-anello3.md)
+> [analisi-pratiche-domini-anello3.md §5.3](../work-in-progress/analisi-pratiche-domini-anello3.md)
 > (flusso `CONFERMA_VENDITA`).
 
 ---
@@ -66,7 +66,7 @@ Ma il codice attuale è un **tappabuchi** che *contraddice* il design:
   (rename `sconto_percentuale`→`sconto_perc`, componenti BoM re-init). Endpoint
   `POST /api/v1/vendite/preventivi/<id>/genera-ordine/`. Non passa per la
   pratica, non smista per natura, non registra `pratiche_sorgenti`. (Realizzato
-  2026-06-04, vedi [analisi-ordini-vendita.md §7.4](analisi-ordini-vendita.md).)
+  2026-06-04, vedi [analisi-ordini-vendita.md §7.4](../work-in-progress/analisi-ordini-vendita.md).)
 - Il bottone "Genera ordine" è **hardcoded** su `stato = ACCETTATO` in
   [`PreventiviDrawer.vue`](../../../../frontend/src/vendite/preventivi/components/PreventiviDrawer.vue).
 - `documento_origine` su `vendite.ordini` è **senza UNIQUE** (A1).
@@ -164,7 +164,7 @@ ancora smistate** (residuo a livello riga, non "esiste un ordine").
 
 `EVASO` oggi è impostato dal **push a commessa** quando completa, ed è
 **terminale** (nessuna transizione in uscita — vedi
-[brief-db-stato-preventivo-evaso.md](../work-done/brief-db-stato-preventivo-evaso.md)).
+[brief-db-stato-preventivo-evaso.md](brief-db-stato-preventivo-evaso.md)).
 Nel modello a split, `EVASO` va ridefinito come *"tutte le righe smistate"*
 (qualunque destinazione), non *"pushato a commessa"*. Va riconciliato quando si
 implementa `CONFERMA_VENDITA`: oggi `push_a_commessa` evade il preventivo anche
@@ -212,12 +212,17 @@ Stato BE 2026-06-09 (parte 2, **NON committato** — `dev/backend-tid`):
 
 Chiusi inoltre: **[F1]** lookup natura `INNER`→`LEFT JOIN` NULL-tolerant;
 **coordinamento commessa multi-sorgente**
-([brief-db-commesse-multi-sorgente.md](../work-done/brief-db-commesse-multi-sorgente.md),
+([brief-db-commesse-multi-sorgente.md](brief-db-commesse-multi-sorgente.md),
 skip idempotente `cambia_stato_commessa(PRONTA)` nell'handler); **consolidamento
 predicato** righe-smistabili nella vista `vw_preventivi_righe_smistabili_ordine`
 (fonte unica, §8).
 
-**Residuo** (non bloccante): **smoke UI E2E** del giro PREVENTIVI mai eseguito.
+**Smoke** (2026-06-10): ✅ **smoke di integrazione BE/DB merce→ordine ESEGUITO e
+verde** — `backend/scripts/tests/smoke-test-preventivi-smistamento-ordine.sh`
+(lookup filtro natura, righe-smistabili dalla vista, genera-ordine, idempotenza di
+riga). Ramo servizi→commessa/multi-sorgente non coperto dallo smoke (serve un
+articolo seed natura `COMMESSA`). **Smoke UI a carico di Tid** (passata manuale sul
+dialog/drawer). Con questo il cantiere preventivo→ordine è **funzionalmente chiuso**.
 
 ## 8. Log implementazione DB (2026-06-09 → 06-10)
 
@@ -232,7 +237,7 @@ testato (pgTAP):
 | `20260609-06` | **`vendite.fn_push_preventivo_a_ordine`** (D1/D4/D5/D7/D8): split righe ORDINE→ordine DRAFT `documento_origine=PREVENTIVO`, snapshot prezzi, BoM via `fn_ordine_riga_componenti_init`, idempotenza di riga `ordini_righe.preventivo_riga_id`, pratica opzionale. |
 | `20260609-07` | `vendite.fn_preventivo_ha_residuo_ordine` — predicato residuo merce, condiviso capability + gate EVASO. |
 | `20260609-08` | Capability/azione `genera_ordine` in `script.fn_available_actions_preventivo` (additivo). |
-| `20260609-09` | `fn_list_preventivi_da_pushare` **natura-aware**: il push commessa include solo righe `destinazione_tipo='COMMESSA'` (natura NULL = pregresso, inclusa), esclude la merce → niente doppio routing. Prerequisito dell'orchestratore. Vedi [brief-db-fn-list-preventivi-natura-aware.md](../work-done/brief-db-fn-list-preventivi-natura-aware.md). |
+| `20260609-09` | `fn_list_preventivi_da_pushare` **natura-aware**: il push commessa include solo righe `destinazione_tipo='COMMESSA'` (natura NULL = pregresso, inclusa), esclude la merce → niente doppio routing. Prerequisito dell'orchestratore. Vedi [brief-db-fn-list-preventivi-natura-aware.md](brief-db-fn-list-preventivi-natura-aware.md). |
 | `20260610-02` | **`vendite.vw_preventivi_righe_smistabili_ordine`** — vista FONTE UNICA del predicato righe-merce smistabili (natura ORDINE, attiva, non allocata). Risolve la duplicazione del predicato. |
 | `20260610-03/04` | `fn_preventivo_ha_residuo_ordine` e `fn_push_preventivo_a_ordine` **rifattorizzate per consumare la vista** (comportamento invariato). Anche `PreventiviRepository.list_righe_smistabili_ordine` (BE) legge dalla vista. |
 
@@ -244,4 +249,4 @@ multi-sorgente.
 
 *Documento di indirizzo — preventivo→ordine segue il modello a split di riga
 (anello3 §5.3), NON il 1:1 di testata dell'offerta. L'offerta è trattata in
-[brief-db-univocita-offerta-ordine.md](../work-done/brief-db-univocita-offerta-ordine.md).*
+[brief-db-univocita-offerta-ordine.md](brief-db-univocita-offerta-ordine.md).*

@@ -16,7 +16,7 @@ from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
-from apps.pratiche.db.pratiche_repository import PraticheRepository
+from apps.pratiche.db.pratiche_repository import PraticheRepository, coerce_jsonb_dict
 
 # -- PRATICHE --------------------------------------------------------
 
@@ -61,12 +61,16 @@ def crea_pratica(
     assert priorita_id > 0
 
     # Validazione coerenza contesto anagrafico (stesse regole del trigger DB,
-    # qui per dare errori user-friendly via ServiceError).
+    # qui per dare errori user-friendly via ServiceError). Modello a due rami
+    # dal soggetto (brief-db-pratiche-guard-contesto-istanza, consegna
+    # 20260611-01): l'istanza NON richiede il ruolo — il prospect puro ha
+    # solo istanze, il ruolo CL nasce col BA. Entrambi i rami richiedono il
+    # soggetto.
     if istanza_utility_id is not None:
         ErrorManager.require(
-            soggetto_ruolo_id is not None,
+            soggetto_id is not None,
             code="E_PRATICA_VALIDATION",
-            message="istanza_utility_id richiede soggetto_ruolo_id",
+            message="istanza_utility_id richiede soggetto_id",
         )
     if soggetto_ruolo_id is not None:
         ErrorManager.require(
@@ -404,7 +408,10 @@ def dispatch_handler(flusso_id: int, *, user: str | None = None) -> dict[str, An
     return handler.execute(
         flusso_id=flusso_id,
         pratica_id=flusso["pratica_id"],
-        meta=flusso["meta"],
+        # Coerce difensivo: jsonb puo' arrivare come str da psycopg; l'handler
+        # fa meta.get(...) e si aspetta SEMPRE un dict (stesso fix di
+        # handler_params in get_handler_info).
+        meta=coerce_jsonb_dict(flusso["meta"]),
         handler_params=handler_params,
         user=user,
     )

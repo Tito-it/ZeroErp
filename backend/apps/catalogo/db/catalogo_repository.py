@@ -39,6 +39,7 @@ ARTICOLI_CREATE_COLUMNS: dict[str, str] = {
     "is_solo_componente": "bool",
     "requires_serial": "bool",
     "listino_tipologia_id": "int",
+    "natura_vendita_id": "int",
     "meta": "jsonb",
 }
 
@@ -94,6 +95,11 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     "a.iva_aliquota_iva",
     "a.tipologia_listino_codice",
     "a.tipologia_listino_descrizione",
+    # Natura di vendita (modello split: instradamento ordine/commessa/contratto).
+    "a.natura_vendita_id",
+    "a.natura_vendita_codice_interno",
+    "a.natura_vendita_descrizione",
+    "a.natura_vendita_destinazione_tipo",
     # Capability BoM (Fase 6): true se l'articolo puo' avere distinta base.
     # motivo_non_gestibile_bom: 'ARTICOLO_SOLO_COMPONENTE' | 'ARTICOLO_NON_COMPOSITO' | NULL.
     "a.puo_gestire_bom",

@@ -14,7 +14,7 @@ Indice test eseguiti:
  1) test_mix_immediata_ok — merce+servizi, IMMEDIATA: ordine + commessa + EVASO
  2) test_differita_ok — servizi, DIFFERITA: policy false + mese da meta
  3) test_solo_servizi_ok — niente merce: nessun push ordine, commessa + EVASO
- 3b) test_commessa_gia_pronta_skip_transizione — multi-sorgente: skip PRONTA→PRONTA
+ 3b) test_ponte_emittibilita_delegato_al_push — ponte approva+PRONTA delegato al push
  4) test_solo_merce_ok — niente servizi: push ordine, nessuna commessa, EVASO
  5) test_differita_senza_competenza — E_VENDITA_COMPETENZA_RICHIESTA (ramo commessa)
  6) test_solo_merce_differita_no_competenza — competenza NON richiesta se merce-only
@@ -99,11 +99,13 @@ class PushPreventivoHandlerTests(SimpleTestCase):
         _, kw = prev.update_preventivo.call_args
         self.assertTrue(kw["fatturazione_immediata"])
         self.assertEqual(kw["competenza_mese"], date.today().replace(day=1))
-        mock_push.assert_called_once_with(sorgente_codice="PREVENTIVO", sorgente_uid=4711)
-        comm.approva_commessa_attivita.assert_called_once_with(commessa_id=7701, user="alice")
-        comm.cambia_stato_commessa.assert_called_once_with(
-            commessa_id=7701, nuovo_stato="PRONTA_FATTURAZIONE", user="alice",
+        mock_push.assert_called_once_with(
+            sorgente_codice="PREVENTIVO", sorgente_uid=4711, user="alice",
         )
+        # Il ponte di emittibilita' (approva righe + PRONTA_FATTURAZIONE) vive
+        # dentro pr_run_commesse_push_one: il handler NON lo replica.
+        comm.approva_commessa_attivita.assert_not_called()
+        comm.cambia_stato_commessa.assert_not_called()
         # Sorgenti commessa (ROOT preventivo + COLLEGATO commessa); l'ordine lo
         # aggancia la fn DB.
         self.assertEqual(prat.upsert_pratica_sorgente.call_count, 2)
@@ -141,10 +143,11 @@ class PushPreventivoHandlerTests(SimpleTestCase):
         # Giornale: commessa + evaso (no ordine).
         self.assertEqual(MockPrat.return_value.log_evento_dominio.call_count, 2)
 
-    # 3b) Commessa multi-sorgente GIÀ pronta → skip idempotente della transizione
-    #     (brief-db-commesse-multi-sorgente.md §4.2): approva sempre le nuove
-    #     righe, ma NON ri-transita PRONTA→PRONTA. Nessun errore, EVASO regolare.
-    def test_commessa_gia_pronta_skip_transizione(self, MockPrev, MockComm, MockPrat, mock_push):
+    # 3b) Il ponte emittibilita' (approva + PRONTA con skip idempotente
+    #     multi-sorgente) e' DELEGATO a pr_run_commesse_push_one — il handler
+    #     non tocca mai direttamente lo stato commessa. Lo skip PRONTA→PRONTA
+    #     e' coperto in test_commesse_service (ponte centralizzato).
+    def test_ponte_emittibilita_delegato_al_push(self, MockPrev, MockComm, MockPrat, mock_push):
         res = self._run(
             MockPrev, MockComm,
             meta={}, handler_params={"modalita_fatturazione": "IMMEDIATA"},
@@ -152,9 +155,11 @@ class PushPreventivoHandlerTests(SimpleTestCase):
             commessa_stato="PRONTA_FATTURAZIONE",
         )
         comm = MockComm.return_value
-        # Righe approvate comunque (idempotente), ma transizione SALTATA.
-        comm.approva_commessa_attivita.assert_called_once()
+        comm.approva_commessa_attivita.assert_not_called()
         comm.cambia_stato_commessa.assert_not_called()
+        mock_push.assert_called_once_with(
+            sorgente_codice="PREVENTIVO", sorgente_uid=4711, user="alice",
+        )
         self.assertEqual(res["commessa_id"], 7701)
         self.assertTrue(res["evaso"])
 

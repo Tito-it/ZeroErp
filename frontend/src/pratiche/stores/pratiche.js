@@ -21,8 +21,13 @@ export const usePraticheStore = defineStore('pratiche', () => {
   const loading = ref(false)
   const hasSearched = ref(false)
 
-  // Default data_da: 1 gennaio anno corrente - 1
-  const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
+  // Default data_da: primo giorno del mese precedente. Le pratiche sono una
+  // coda di lavoro: l'orizzonte operativo e' recente, il pregresso si
+  // raggiunge allargando il DatePicker in toolbar (filtro sempre visibile).
+  const _dataDa = new Date()
+  _dataDa.setDate(1)
+  _dataDa.setMonth(_dataDa.getMonth() - 1)
+  const defaultDataDa = `${_dataDa.getFullYear()}-${String(_dataDa.getMonth() + 1).padStart(2, '0')}-01`
 
   const filters = ref({
     search: '',
@@ -38,32 +43,14 @@ export const usePraticheStore = defineStore('pratiche', () => {
   })
 
   // Scopo: Carica lista paginata pratiche con filtri.
-  // Regola: la search testuale richiede minimo 3 caratteri.
-  // Se la search viene svuotata e non ci sono filtri attivi, torna allo stato iniziale.
+  // Lista eager col filtro data SEMPRE attivo (data_da default = inizio mese
+  // precedente): carica sempre, senza richiedere una ricerca. La search
+  // testuale si applica solo da 3 caratteri; con 1-2 caratteri non rifetcha
+  // (i risultati correnti restano, niente flicker durante la digitazione).
   async function fetchList() {
     const f = filters.value
     const searchTerm = (f.search || '').trim()
-    const hasFilters = f.stato_id != null || f.priorita_id != null
-      || f.risorsa_umana_id != null || f.data_a != null
-
-    // Search con meno di 3 caratteri e nessun filtro attivo → svuota i
-    // risultati precedenti (coerenza UX: niente dati obsoleti visibili).
-    if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
-      if (hasSearched.value) {
-        items.value = []
-        totalRecords.value = 0
-        hasSearched.value = false
-      }
-      return
-    }
-    if (!searchTerm && !hasFilters && !hasSearched.value) {
-      return
-    }
-    // Search svuotata senza filtri → torna a stato vuoto
-    if (!searchTerm && !hasFilters) {
-      items.value = []
-      totalRecords.value = 0
-      hasSearched.value = false
+    if (searchTerm.length > 0 && searchTerm.length < 3) {
       return
     }
 

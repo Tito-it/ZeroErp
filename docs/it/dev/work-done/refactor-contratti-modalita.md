@@ -791,7 +791,7 @@ dettaglio cronologico.
   continua a nascere direttamente dall'operatore. Il modello §3-bis-A (snapshot della
   versione listino) è preparato per ricevere in futuro un push da un'eventuale entità
   `offerta_commerciale`, ma non la richiede oggi. Per il ragionamento di dominio e le
-  opzioni considerate vedi [`analisi-offerta-commerciale.md`](../work-in-progress/analisi-offerta-commerciale.md).
+  opzioni considerate vedi [`analisi-offerta-commerciale.md`](analisi-offerta-commerciale.md).
 - Documenti prodotti:
   - ✅ [`brief-db-refactor-contratti-completo.md`](brief-db-refactor-contratti-completo.md)
     — brief DB completo Fase 1 + Fase 2 a step incrementali, per passaggio al team DB su

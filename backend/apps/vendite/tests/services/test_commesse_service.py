@@ -24,6 +24,10 @@ Indice test eseguiti:
 13b) CommesseServiceTests.test_pr_run_commesse_push_one_errore_solleva_all_or_nothing
 13c) CommesseServiceTests.test_pr_run_commesse_push_one_skipped_passa_dritto
 13d) CommesseServiceTests.test_pr_run_commesse_push_one_dry_run_parziale_non_solleva
+13e) CommesseServiceTests.test_pr_run_commesse_push_one_ponte_emittibilita
+13f) CommesseServiceTests.test_pr_run_commesse_push_one_ponte_skip_se_gia_pronta
+13g) CommesseServiceTests.test_pr_run_commesse_push_one_dry_run_non_attiva_ponte
+13h) CommesseServiceTests.test_pr_run_commesse_push_batch_ponte_best_effort
 14) CommesseServiceTests.test_variazione_eccezionale_ok
 12) CommesseServiceTests.test_variazione_eccezionale_commessa_stato_bloccato
 13) CommesseServiceTests.test_variazione_eccezionale_riga_fatturata_bloccata
@@ -158,6 +162,127 @@ class CommesseServiceTests(TestCase):
         self.assertEqual(result["push_log_id"], 11)
         self.assertEqual(result["durata_ms"], 80)
         self.assertEqual(result["handlers"][0]["handler_name"], "HandlerPreventivi")
+
+    # --- Ponte emittibilita' post-push (V9 generalizzato) ---
+
+    def _push_one_con_commesse(self, mock_build, mock_orch_cls, *, commesse_ids,
+                               dry_run=False, stato="COMPLETATO"):
+        """Setup comune: handler PREVENTIVO attivo + report con commesse toccate."""
+        handler_mock = MagicMock()
+        handler_mock.sorgente_codice = "PREVENTIVO"
+        mock_build.return_value = [handler_mock]
+        report = PushReport(
+            dry_run=dry_run,
+            stato=stato,
+            handlers=[HandlerResult(
+                handler_name="HandlerPreventivi", created=2,
+                commesse_ids=set(commesse_ids),
+            )],
+            push_log_id=11,
+            durata_ms=80,
+        )
+        mock_orch_cls.return_value.run.return_value = report
+
+    # Scopo: push singolo COMPLETATO → ogni commessa toccata viene resa
+    # emittibile (righe APPROVATA + testata PRONTA_FATTURAZIONE) nella stessa
+    # transazione, e le commesse sono esposte nel payload di ritorno.
+    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_one_ponte_emittibilita(self, mock_build, mock_repo_cls, mock_orch_cls):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+        mock_repo = MagicMock()
+        mock_repo_cls.return_value = mock_repo
+        mock_repo.get_commessa_stato_codice.return_value = "BOZZA"
+        self._push_one_con_commesse(mock_build, mock_orch_cls, commesse_ids={7701})
+
+        result = pr_run_commesse_push_one(
+            sorgente_codice="PREVENTIVO", sorgente_uid=42, user="alice",
+        )
+
+        mock_repo.approva_commessa_attivita.assert_called_once_with(
+            commessa_id=7701, user="alice",
+        )
+        mock_repo.cambia_stato_commessa.assert_called_once_with(
+            commessa_id=7701, nuovo_stato="PRONTA_FATTURAZIONE", user="alice",
+        )
+        self.assertEqual(result["commesse_ids"], [7701])
+
+    # Scopo: commessa multi-sorgente GIA' PRONTA → approva comunque le nuove
+    # righe ma NON ri-transita PRONTA→PRONTA (fn_cambia_stato non ammette da=a).
+    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_one_ponte_skip_se_gia_pronta(self, mock_build, mock_repo_cls, mock_orch_cls):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+        mock_repo = MagicMock()
+        mock_repo_cls.return_value = mock_repo
+        mock_repo.get_commessa_stato_codice.return_value = "PRONTA_FATTURAZIONE"
+        self._push_one_con_commesse(mock_build, mock_orch_cls, commesse_ids={7701})
+
+        pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=42)
+
+        mock_repo.approva_commessa_attivita.assert_called_once()
+        mock_repo.cambia_stato_commessa.assert_not_called()
+
+    # Scopo: dry-run non scrive → ponte NON attivato (nessuna approvazione,
+    # nessuna transizione), ma le commesse simulate restano nel report.
+    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_one_dry_run_non_attiva_ponte(self, mock_build, mock_repo_cls, mock_orch_cls):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+        mock_repo = MagicMock()
+        mock_repo_cls.return_value = mock_repo
+        self._push_one_con_commesse(
+            mock_build, mock_orch_cls, commesse_ids={7701}, dry_run=True,
+        )
+
+        result = pr_run_commesse_push_one(
+            sorgente_codice="PREVENTIVO", sorgente_uid=42, dry_run=True,
+        )
+
+        mock_repo.approva_commessa_attivita.assert_not_called()
+        mock_repo.cambia_stato_commessa.assert_not_called()
+        self.assertEqual(result["commesse_ids"], [7701])
+
+    # Scopo: batch best-effort — una commessa che fallisce il ponte finisce in
+    # emittibilita_errors senza bloccare le altre ne' far fallire il run.
+    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_batch_ponte_best_effort(self, mock_build, mock_repo_cls, mock_orch_cls):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push
+
+        mock_repo = MagicMock()
+        mock_repo_cls.return_value = mock_repo
+        mock_repo.get_commessa_stato_codice.return_value = "BOZZA"
+        # La commessa 1 fallisce l'approvazione, la 2 passa.
+        mock_repo.approva_commessa_attivita.side_effect = [
+            RuntimeError("guard DB"), 1,
+        ]
+        mock_build.return_value = []
+        report = PushReport(
+            dry_run=False,
+            stato="COMPLETATO",
+            handlers=[HandlerResult(handler_name="HandlerA", commesse_ids={1, 2})],
+            push_log_id=10,
+            durata_ms=120,
+        )
+        mock_orch_cls.return_value.run.return_value = report
+
+        result = pr_run_commesse_push(dry_run=False)
+
+        self.assertEqual(result["commesse_ids"], [1, 2])
+        self.assertEqual(len(result["emittibilita_errors"]), 1)
+        self.assertIn("commessa_id=1", result["emittibilita_errors"][0])
+        # La commessa 2 e' stata comunque portata a PRONTA.
+        mock_repo.cambia_stato_commessa.assert_called_once_with(
+            commessa_id=2, nuovo_stato="PRONTA_FATTURAZIONE", user=None,
+        )
 
     # Scopo: codice sorgente non riconosciuto → ServiceError validazione.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")

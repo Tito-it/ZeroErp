@@ -1337,6 +1337,9 @@
     "field_listino_tipologia": "Tipologia listino",
     "select_listino_tipologia": "Seleziona tipologia listino...",
     "hint_listino_tipologia": "Determina in quali listini l'articolo puo' essere inserito",
+    "field_natura_vendita": "Natura di vendita",
+    "select_natura_vendita": "Predefinita: Merce",
+    "hint_natura_vendita": "Decide la destinazione post-accettazione: ordine (merce), commessa (servizio una tantum) o contratto (ricorrente)",
     "field_spesa": "Tipo Spesa",
     "field_iva": "IVA",
     "field_composito": "Composito",
@@ -1454,6 +1457,13 @@
     "pdp_label": "PDP",
     "utility_label": "Utility",
     "select_ba": "Seleziona billing account..."
+  },
+  "soggetto_ruolo_lookup": {
+    "search_placeholder": "Cerca per ragione sociale, CF o P.IVA...",
+    "no_results": "Nessun soggetto trovato",
+    "senza_ruolo": "Senza ruolo",
+    "n_istanze": "{n} istanze",
+    "refine_hint": "Mostrati {shown} di {total}. Affina la ricerca per vedere altri risultati."
   },
   "istanza_utility": {
     "search_placeholder": "Cerca istanza per codice, ragione sociale o indirizzo...",
@@ -1760,7 +1770,7 @@
       "conferma_ordine_messaggio": "Confermare l'ordine? Dopo la conferma le righe non saranno più modificabili.",
       "ordine_confermato": "Ordine confermato",
       "push_commessa_messaggio": "Inviare l'ordine a commessa per la fatturazione?",
-      "push_commessa_ok": "Ordine inviato a commessa ({righe} righe, log #{push_log_id}).",
+      "push_commessa_ok": "Ordine inviato a commessa ({righe} righe).",
       "push_commessa_ok_generico": "Ordine inviato a commessa.",
       "push_commessa_parziale": "Push parziale ({righe} righe, log #{push_log_id}).",
       "push_commessa_errore": "Push fallito: {primo_errore}",
@@ -2606,11 +2616,13 @@
     "select_tipo_prestazione": "Seleziona tipo...",
     "select_priorita": "Seleziona priorita'...",
     "field_descrizione": "Descrizione",
-    "field_ruolo": "Ruolo soggetto",
+    "field_contesto": "Soggetto / ruolo",
+    "field_istanza": "Istanza utility",
+    "istanza_hint": "Opzionale — aggancia la pratica a una specifica istanza (pre-contrattuale)",
+    "nuovo_soggetto": "Nuovo soggetto",
     "section_soggetto": "Soggetto",
     "section_dati": "Dati pratica",
     "soggetto_opzionale": "Opzionale — senza soggetto la pratica e' interna",
-    "select_ruolo": "Seleziona ruolo...",
     "tab_dati": "Dati",
     "tab_flussi": "Flussi",
     "tab_giornale": "Giornale",
@@ -2678,7 +2690,6 @@
     "esito_parziale": "Parziale",
     "esito_non_applicabile": "Non applicabile",
     "competenze_flussi": "Competenze flussi",
-    "eseguire_ricerca": "Eseguire una ricerca per visualizzare le pratiche",
     "visualizzazione_pratica": "Visualizzazione pratica codice: {codice}"
   },
   "ai": {

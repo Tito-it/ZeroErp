@@ -54,14 +54,19 @@ SELECT a.id,
         END AS motivo_non_gestibile_bom,
     (a.is_composito AND (EXISTS ( SELECT 1
            FROM catalogo.articoli_componenti ac
-          WHERE ((ac.prodotto_id = a.id) AND (ac.validita @> CURRENT_DATE) AND (ac.attivo = true))))) AS has_componenti_alla_data
-   FROM ((((((catalogo.articoli a
+          WHERE ((ac.prodotto_id = a.id) AND (ac.validita @> CURRENT_DATE) AND (ac.attivo = true))))) AS has_componenti_alla_data,
+    a.natura_vendita_id,
+    nv.codice_interno AS natura_vendita_codice_interno,
+    nv.descrizione AS natura_vendita_descrizione,
+    nv.destinazione_tipo AS natura_vendita_destinazione_tipo
+   FROM (((((((catalogo.articoli a
      LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
      LEFT JOIN vendite.articoli_tipologie t ON ((t.id = a.tipo_voce_id)))
      LEFT JOIN vendite.articoli_gruppi g ON ((g.id = a.gruppo_voce_id)))
      LEFT JOIN vendite.articoli_spesa s ON ((s.id = a.spesa_id)))
      LEFT JOIN config.iva i ON ((i.id = a.iva_id)))
-     LEFT JOIN config.listini_tipologie lt ON ((lt.id = a.listino_tipologia_id)));
+     LEFT JOIN config.listini_tipologie lt ON ((lt.id = a.listino_tipologia_id)))
+     LEFT JOIN config.nature_vendita nv ON ((nv.id = a.natura_vendita_id)));
 ```
 
 
