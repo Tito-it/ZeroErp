@@ -1453,6 +1453,13 @@
     "utility_label": "Utility",
     "select_ba": "Select billing account..."
   },
+  "soggetto_ruolo_lookup": {
+    "search_placeholder": "Search by business name, tax code or VAT...",
+    "no_results": "No subject found",
+    "senza_ruolo": "No role",
+    "n_istanze": "{n} instances",
+    "refine_hint": "Showing {shown} of {total}. Refine your search to see more results."
+  },
   "istanza_utility": {
     "search_placeholder": "Search instance by code, business name or address...",
     "no_results": "No utility instance found",
@@ -2603,11 +2610,13 @@
     "select_tipo_prestazione": "Select type...",
     "select_priorita": "Select priority...",
     "field_descrizione": "Description",
-    "field_ruolo": "Subject role",
+    "field_contesto": "Subject / role",
+    "field_istanza": "Utility instance",
+    "istanza_hint": "Optional — links the case to a specific instance (pre-contract)",
+    "nuovo_soggetto": "New subject",
     "section_soggetto": "Subject",
     "section_dati": "Case details",
     "soggetto_opzionale": "Optional — without a subject the case is internal",
-    "select_ruolo": "Select role...",
     "tab_dati": "Details",
     "tab_flussi": "Flows",
     "tab_giornale": "Journal",

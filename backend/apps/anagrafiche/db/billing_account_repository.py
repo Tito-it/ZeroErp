@@ -16,7 +16,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import rows_to_list
+from apps.core.db._helpers import escape_ilike, rows_to_list
 
 # Scopo: Clausole WHERE condivise tra query count e query data del lookup BA.
 # Mantenere allineate le due query: qualsiasi nuovo filtro va aggiunto qui.
@@ -95,11 +95,8 @@ _LOOKUP_SELECT_COLUMNS = """
 """
 
 
-# Scopo: Effettua l'escape dei caratteri wildcard ILIKE (\, %, _) per evitare
-# match indesiderati quando l'utente cerca stringhe contenenti tali caratteri
-# (es. "BA_123" o "50%"). L'escape di backslash va fatto per primo.
-def _escape_ilike(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+# Escape wildcard ILIKE centralizzato in core/db/_helpers.escape_ilike
+# (regola del 2: era duplicato qui e in istanze_utility_repository).
 
 
 class BillingAccountRepository:
@@ -122,7 +119,7 @@ class BillingAccountRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         # Pattern ILIKE su 4 colonne in OR per ricerca testuale.
         # Escape wildcard per evitare match indesiderati su '%' e '_' nei dati utente.
-        search_pattern = f"%{_escape_ilike(q)}%"
+        search_pattern = f"%{escape_ilike(q)}%"
 
         # Scope emittente: lista di ruoli emittente autorizzati, None = bypass (superuser).
         # Una lista vuota significa "operatore senza emittenti autorizzati": in quel caso

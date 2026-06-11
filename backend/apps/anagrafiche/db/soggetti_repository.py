@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import escape_ilike, row_to_dict, rows_to_list
 from apps.core.db.parameter_repository import ParameterRepository
 
 from django.db import connection
@@ -23,6 +23,55 @@ _SOGGETTI_ORDER_COLS = {
     "codice", "ragione_sociale_completa", "codice_fiscale", "partita_iva",
     "tipo_descrizione", "date_insert",
 }
+
+# Scopo: clausola scope emittente sul ruolo CL (regola del 2: usata da
+#        get_soggetto_ruoli e search_ruoli_lookup; una terza variante inline
+#        vive nella jsonb_agg di list_soggetti). Un ruolo CL e' visibile a un
+#        operatore scoped solo se il soggetto ha un cliente il cui BA e'
+#        agganciato a uno dei suoi emittenti, o al gestore default per BA
+#        senza aggancio esplicito. Richiede alias `sr` (soggetti_ruoli) e
+#        `tr` (tipi_ruoli) nel contesto chiamante. 3 parametri posizionali:
+#        emittente_ids, emittente_ids, emittente_ids (NULL = bypass admin).
+_RUOLO_CL_SCOPE_SQL = """(
+                 %s::bigint[] IS NULL
+                 OR COALESCE(tr.codice_interno, tr.codice) != 'CL'
+                 OR EXISTS (
+                     SELECT 1
+                       FROM anagrafiche.clienti cl
+                       JOIN anagrafiche.billing_account ba
+                         ON ba.id = cl.billing_account_id
+                      WHERE cl.soggetto_ruolo_id = sr.id
+                        AND (
+                              EXISTS (
+                                  SELECT 1
+                                    FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                   WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
+                                     AND efba.billing_account_id = ba.id
+                              )
+                           OR (
+                                EXISTS (
+                                    SELECT 1
+                                      FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                     WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
+                                       AND efba.is_default = true
+                                )
+                                AND NOT EXISTS (
+                                    SELECT 1
+                                      FROM anagrafiche.emittenti_fiscali_billing_account efba2
+                                     WHERE efba2.billing_account_id = ba.id
+                                )
+                              )
+                            )
+                 )
+               )"""
+
+# Scopo: contatore istanze del soggetto per le righe lookup contesto pratica
+#        (search + restore by-id ne condividono la proiezione). `{ref}` =
+#        espressione che identifica il soggetto nel contesto chiamante
+#        (es. "s.id", "m.soggetto_id").
+_N_ISTANZE_SUBQUERY_TPL = """(SELECT COUNT(*)
+                          FROM anagrafiche.istanze_utilities iu
+                         WHERE iu.soggetto_id = {ref})::int"""
 
 # Lunghezza minima della search bar soggetti (resolver). Esposto via
 # config-resolver al frontend per evitare cablato duplicato. Costante
@@ -49,7 +98,9 @@ class SoggettiRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = order_by if order_by in _SOGGETTI_ORDER_COLS else "ragione_sociale_completa"
         direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
-        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        # escape_ilike: senza, una search contenente %/_ agisce da wildcard
+        # (stesso fix dei lookup BA/istanze/soggetti-ruoli).
+        search_pattern = f"%{escape_ilike(search.strip())}%" if search and search.strip() else None
         sql = f"""
             SELECT s.id, s.codice, s.ragione_sociale_completa, s.codice_fiscale,
                    s.partita_iva, s.id_fiscale_univoco_cf_piva,
@@ -614,50 +665,145 @@ class SoggettiRepository:
     def get_soggetto_ruoli(
         self, soggetto_id: str, emittente_ids: list[int] | None = None,
     ) -> list[dict[str, Any]]:
-        sql = """
+        sql = f"""
             SELECT sr.id, sr.tipo_ruolo_id,
                    COALESCE(tr.codice_interno, tr.codice) AS ruolo_codice,
                    tr.descrizione AS ruolo_descrizione
               FROM anagrafiche.soggetti_ruoli sr
               JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
              WHERE sr.soggetto_id = %s::uuid
-               AND (
-                 %s::bigint[] IS NULL
-                 OR COALESCE(tr.codice_interno, tr.codice) != 'CL'
-                 OR EXISTS (
-                     SELECT 1
-                       FROM anagrafiche.clienti cl
-                       JOIN anagrafiche.billing_account ba
-                         ON ba.id = cl.billing_account_id
-                      WHERE cl.soggetto_ruolo_id = sr.id
-                        AND (
-                              EXISTS (
-                                  SELECT 1
-                                    FROM anagrafiche.emittenti_fiscali_billing_account efba
-                                   WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
-                                     AND efba.billing_account_id = ba.id
-                              )
-                           OR (
-                                EXISTS (
-                                    SELECT 1
-                                      FROM anagrafiche.emittenti_fiscali_billing_account efba
-                                     WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
-                                       AND efba.is_default = true
-                                )
-                                AND NOT EXISTS (
-                                    SELECT 1
-                                      FROM anagrafiche.emittenti_fiscali_billing_account efba2
-                                     WHERE efba2.billing_account_id = ba.id
-                                )
-                              )
-                            )
-                 )
-               )
+               AND {_RUOLO_CL_SCOPE_SQL}
              ORDER BY tr.descrizione
-        """
+        """  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_id, emittente_ids, emittente_ids, emittente_ids])
             return rows_to_list(cursor)
+
+    # Scopo: Lookup ricco per la selezione contesto pratica — una riga per
+    #        soggetto_ruolo + una riga "senza ruolo" per i soggetti privi di
+    #        qualunque ruolo (prospect puri: hanno solo istanze, il ruolo CL
+    #        nasce col BA — vedi guide/generazione-cliente.md). `n_istanze`
+    #        permette al FE di decidere se proporre il campo istanza.
+    def search_ruoli_lookup(
+        self,
+        *,
+        q: str,
+        tipo_ruolo: str | None,
+        emittente_ids: list[int] | None,
+        limit: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        search_pattern = f"%{escape_ilike(q)}%"
+        # Filtro tipo_ruolo: esclude per definizione le righe "senza ruolo"
+        # (secondo ramo della UNION gated su tipo_ruolo IS NULL).
+        cte = f"""
+            WITH matches AS (
+                SELECT s.id AS soggetto_id,
+                       sr.id AS soggetto_ruolo_id,
+                       COALESCE(tr.codice_interno, tr.codice) AS ruolo_codice,
+                       tr.descrizione AS ruolo_descrizione,
+                       s.ragione_sociale_completa,
+                       s.id_fiscale_univoco_cf_piva AS id_fiscale,
+                       s.codice AS soggetto_codice
+                  FROM anagrafiche.soggetti s
+                  JOIN anagrafiche.soggetti_ruoli sr ON sr.soggetto_id = s.id
+                  JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
+                 WHERE (s.ragione_sociale_completa ILIKE %s
+                        OR s.codice_fiscale ILIKE %s
+                        OR s.partita_iva ILIKE %s)
+                   AND (%s::text IS NULL
+                        OR COALESCE(tr.codice_interno, tr.codice) = %s::text)
+                   AND {_RUOLO_CL_SCOPE_SQL}
+                UNION ALL
+                SELECT s.id, NULL::bigint, NULL::varchar, NULL::varchar,
+                       s.ragione_sociale_completa,
+                       s.id_fiscale_univoco_cf_piva,
+                       s.codice
+                  FROM anagrafiche.soggetti s
+                 WHERE (s.ragione_sociale_completa ILIKE %s
+                        OR s.codice_fiscale ILIKE %s
+                        OR s.partita_iva ILIKE %s)
+                   AND %s::text IS NULL
+                   AND NOT EXISTS (
+                       SELECT 1
+                         FROM anagrafiche.soggetti_ruoli sr2
+                        WHERE sr2.soggetto_id = s.id
+                   )
+            )
+        """  # noqa: S608
+        where_params = [
+            search_pattern, search_pattern, search_pattern,
+            tipo_ruolo, tipo_ruolo,
+            emittente_ids, emittente_ids, emittente_ids,
+            search_pattern, search_pattern, search_pattern,
+            tipo_ruolo,
+        ]
+
+        count_sql = cte + "SELECT COUNT(*) FROM matches"  # noqa: S608
+        data_sql = cte + f"""
+            SELECT m.*,
+                   {_N_ISTANZE_SUBQUERY_TPL.format(ref="m.soggetto_id")} AS n_istanze
+              FROM matches m
+             ORDER BY m.ragione_sociale_completa ASC NULLS LAST,
+                      m.ruolo_codice ASC NULLS FIRST,
+                      m.soggetto_ruolo_id ASC NULLS FIRST
+             LIMIT %s
+        """  # noqa: S608
+
+        with connection.cursor() as cursor:
+            cursor.execute(count_sql, where_params)
+            row = cursor.fetchone()
+            assert row is not None
+            total_count = int(row[0])
+
+            cursor.execute(data_sql, where_params + [limit])
+            rows = rows_to_list(cursor)
+
+        return rows, total_count
+
+    # Scopo: Restore by-id per l'AutoComplete (feedback_autocomplete_restore):
+    #        ricostruisce la riga lookup gia' selezionata quando un form riapre
+    #        in edit. Due chiavi alternative: soggetto_ruolo_id per le righe
+    #        ruolo, soggetto_id per le righe "senza ruolo" (riga a ruolo NULL,
+    #        indipendentemente dai ruoli che il soggetto possiede).
+    def get_ruolo_lookup_by_id(
+        self,
+        *,
+        soggetto_ruolo_id: int | None = None,
+        soggetto_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        if soggetto_ruolo_id is not None:
+            sql = f"""
+                SELECT s.id AS soggetto_id,
+                       sr.id AS soggetto_ruolo_id,
+                       COALESCE(tr.codice_interno, tr.codice) AS ruolo_codice,
+                       tr.descrizione AS ruolo_descrizione,
+                       s.ragione_sociale_completa,
+                       s.id_fiscale_univoco_cf_piva AS id_fiscale,
+                       s.codice AS soggetto_codice,
+                       {_N_ISTANZE_SUBQUERY_TPL.format(ref="s.id")} AS n_istanze
+                  FROM anagrafiche.soggetti_ruoli sr
+                  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                  JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
+                 WHERE sr.id = %s
+            """  # noqa: S608
+            params: list[Any] = [soggetto_ruolo_id]
+        else:
+            sql = f"""
+                SELECT s.id AS soggetto_id,
+                       NULL::bigint AS soggetto_ruolo_id,
+                       NULL::varchar AS ruolo_codice,
+                       NULL::varchar AS ruolo_descrizione,
+                       s.ragione_sociale_completa,
+                       s.id_fiscale_univoco_cf_piva AS id_fiscale,
+                       s.codice AS soggetto_codice,
+                       {_N_ISTANZE_SUBQUERY_TPL.format(ref="s.id")} AS n_istanze
+                  FROM anagrafiche.soggetti s
+                 WHERE s.id = %s::uuid
+            """  # noqa: S608
+            params = [soggetto_id]
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return row_to_dict(cursor)
 
     # Scopo: Verifica se un CF esiste gia' in anagrafica. Ritorna soggetto trovato o None.
     def find_by_codice_fiscale(self, codice_fiscale: str) -> dict[str, Any] | None:

@@ -1458,6 +1458,13 @@
     "utility_label": "Utility",
     "select_ba": "Seleziona billing account..."
   },
+  "soggetto_ruolo_lookup": {
+    "search_placeholder": "Cerca per ragione sociale, CF o P.IVA...",
+    "no_results": "Nessun soggetto trovato",
+    "senza_ruolo": "Senza ruolo",
+    "n_istanze": "{n} istanze",
+    "refine_hint": "Mostrati {shown} di {total}. Affina la ricerca per vedere altri risultati."
+  },
   "istanza_utility": {
     "search_placeholder": "Cerca istanza per codice, ragione sociale o indirizzo...",
     "no_results": "Nessuna istanza utility trovata",
@@ -2609,11 +2616,13 @@
     "select_tipo_prestazione": "Seleziona tipo...",
     "select_priorita": "Seleziona priorita'...",
     "field_descrizione": "Descrizione",
-    "field_ruolo": "Ruolo soggetto",
+    "field_contesto": "Soggetto / ruolo",
+    "field_istanza": "Istanza utility",
+    "istanza_hint": "Opzionale — aggancia la pratica a una specifica istanza (pre-contrattuale)",
+    "nuovo_soggetto": "Nuovo soggetto",
     "section_soggetto": "Soggetto",
     "section_dati": "Dati pratica",
     "soggetto_opzionale": "Opzionale — senza soggetto la pratica e' interna",
-    "select_ruolo": "Seleziona ruolo...",
     "tab_dati": "Dati",
     "tab_flussi": "Flussi",
     "tab_giornale": "Giornale",
