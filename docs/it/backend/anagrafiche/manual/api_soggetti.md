@@ -735,6 +735,93 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -d '{"codice_ruolo": "FOR"}'
 ```
 
+### 9.3 Lookup ricco soggetti-ruoli (selezione contesto pratica)
+
+Ricerca cross-dominio per autocomplete: restituisce **una riga per
+`soggetto_ruolo`** ("Rossi Srl — Cliente", "Rossi Srl — Fornitore" come
+opzioni distinte) piu' **una riga "senza ruolo"** (`soggetto_ruolo_id` e
+`ruolo_codice` NULL) per i soggetti privi di qualunque ruolo — i prospect
+puri delle utility, che hanno solo istanze (il ruolo CL nasce col BA, vedi
+[guide/generazione-cliente.md](../../../guide/generazione-cliente.md)).
+Consumato dal drawer pratiche per valorizzare `(soggetto_id,
+soggetto_ruolo_id)` in una selezione sola.
+
+| | |
+|---|---|
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/anagrafiche/soggetti-ruoli/lookup/` |
+
+### Query params
+
+| Param | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `q` | string | Si | Termine di ricerca (min 2 char). Matcha ragione sociale, CF, P.IVA |
+| `tipo_ruolo` | string | No | Filtra per codice tipo ruolo (`CL`, `FO`, ...). Esclude le righe "senza ruolo" |
+| `limit` | int | No | Max risultati (default 20, max 50) |
+
+### Risposta (200)
+
+```json
+{
+  "data": {
+    "results": [
+      {
+        "soggetto_id": "a1b2c3d4-...",
+        "soggetto_ruolo_id": 165,
+        "ruolo_codice": "CL",
+        "ruolo_descrizione": "Cliente",
+        "ragione_sociale_completa": "Azienda ConTutto",
+        "id_fiscale": "01234567890",
+        "soggetto_codice": "SOG-00042",
+        "n_istanze": 1
+      },
+      {
+        "soggetto_id": "b2c3d4e5-...",
+        "soggetto_ruolo_id": null,
+        "ruolo_codice": null,
+        "ruolo_descrizione": null,
+        "ragione_sociale_completa": "Prospect Senza Ruolo",
+        "id_fiscale": "PRSPCT80A01H501U",
+        "soggetto_codice": "SOG-00043",
+        "n_istanze": 2
+      }
+    ],
+    "total_count": 2,
+    "limit": 20
+  }
+}
+```
+
+Note:
+
+- `n_istanze` = numero di `istanze_utilities` del soggetto: il FE lo usa per
+  decidere se proporre il campo "Istanza utility" (lookup
+  `/anagrafiche/istanze-utility/lookup/?soggetto_id=...`).
+- Scope emittente sul ruolo CL: stesso comportamento della lista ruoli (un
+  operatore scoped vede il CL solo se il soggetto ha un cliente su un BA dei
+  suoi emittenti). Le righe "senza ruolo" non sono scoped.
+- Endpoint di ricerca (`is_search_endpoint`): throttling dedicato, JWT.
+
+### 9.4 Restore by-id del lookup
+
+Ricostruisce la riga lookup gia' selezionata quando un form riapre in edit
+(pattern restore AutoComplete, gemello di `billing-account/<id>/lookup/`).
+Chiavi **alternative** in query string — esattamente una delle due:
+
+| | |
+|---|---|
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/anagrafiche/soggetti-ruoli/lookup-by-id/` |
+
+| Param | Tipo | Descrizione |
+|---|---|---|
+| `soggetto_ruolo_id` | int | Restore di una riga ruolo |
+| `soggetto_id` | string (UUID) | Restore di una riga "senza ruolo" |
+
+Risposta: stessa shape della riga di `results` in 9.3 (incl. `n_istanze`).
+Errori: `E_ANAG_VALIDAZIONE` (zero o due chiavi, UUID malformato, id non
+positivo), `E_ANAG_NOT_FOUND` (record inesistente).
+
 ---
 
 ## 10. Validazione CF e P.IVA

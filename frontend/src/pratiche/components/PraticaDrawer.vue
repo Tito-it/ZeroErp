@@ -12,14 +12,16 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
-import { DRAWER_WIDTH, STATO_PRATICA, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, STATO_PRATICA } from '../../core/constants'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
-import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
+import SoggettoRuoloLookup from '../../core/components/SoggettoRuoloLookup.vue'
+import IstanzaUtilityLookup from '../../core/components/IstanzaUtilityLookup.vue'
+import { getSoggettoRuoloLookupById } from '../../core/apiCore'
 import PraticaFlussiTab from './PraticaFlussiTab.vue'
 import PraticaNoteTab from './PraticaNoteTab.vue'
 import PraticaAllegatiTab from './PraticaAllegatiTab.vue'
@@ -28,7 +30,6 @@ import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
-import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
@@ -63,35 +64,42 @@ function defaultForm() {
   }
 }
 
-// Selezione soggetto e ruolo (solo creazione)
+// Selezione contesto anagrafico (solo creazione): lookup ricco a una riga
+// per soggetto+ruolo (+ riga "senza ruolo" per i prospect puri) + istanza
+// utility opzionale a valle. Modello a due rami (brief
+// brief-db-pratiche-guard-contesto-istanza): il ruolo CL nasce col BA, le
+// pratiche pre-contrattuali si agganciano a soggetto+istanza senza ruolo.
 const resolverVisible = ref(false)
-const soggettoSelezionato = ref(null)
-const ruoloSelezionato = ref(null)
+const contestoSelezionato = ref(null)
+const istanzaSelezionata = ref(null)
 
-// Ruoli disponibili dal soggetto selezionato
-const ruoliDisponibili = computed(() => {
-  if (!soggettoSelezionato.value?.ruoli) return []
-  return soggettoSelezionato.value.ruoli.map(r => ({
-    value: r.soggetto_ruolo_id,
-    label: r.descrizione || r.codice
-  }))
+// Campo istanza proposto solo se il soggetto selezionato ne possiede.
+const mostraCampoIstanza = computed(
+  () => (contestoSelezionato.value?.n_istanze ?? 0) > 0,
+)
+
+// Cambio contesto → l'istanza selezionata appartiene al soggetto precedente.
+watch(contestoSelezionato, (next, prev) => {
+  if (next?.soggetto_id !== prev?.soggetto_id) istanzaSelezionata.value = null
 })
 
-function onSoggettoRicevuto(data) {
-  soggettoSelezionato.value = data
-  ruoloSelezionato.value = null
-}
-
-function clearSoggetto() {
-  soggettoSelezionato.value = null
-  ruoloSelezionato.value = null
+// Scopo: dopo creazione/selezione soggetto dal resolver (percorso secondario,
+// es. soggetto nuovo non ancora in anagrafica), ricostruisce la riga lookup
+// via restore by-id: per un soggetto appena creato e' la riga "senza ruolo"
+// con n_istanze reale.
+async function onSoggettoRicevuto(data) {
+  resolverVisible.value = false
+  if (!data?.id) return
+  // execute() unwrappa l'envelope: res e' direttamente la riga lookup.
+  const res = await execute(() => getSoggettoRuoloLookupById({ soggetto_id: data.id }))
+  if (res !== null) contestoSelezionato.value = res
 }
 
 function resetForm() {
   detail.value = null
   form.value = defaultForm()
-  soggettoSelezionato.value = null
-  ruoloSelezionato.value = null
+  contestoSelezionato.value = null
+  istanzaSelezionata.value = null
 }
 
 function populateFormFromDetail(d) {
@@ -244,8 +252,9 @@ async function onSave() {
       data_scadenza: form.value.data_scadenza
         ? toDateString(form.value.data_scadenza)
         : null,
-      soggetto_id: soggettoSelezionato.value?.id || null,
-      soggetto_ruolo_id: ruoloSelezionato.value || null,
+      soggetto_id: contestoSelezionato.value?.soggetto_id || null,
+      soggetto_ruolo_id: contestoSelezionato.value?.soggetto_ruolo_id || null,
+      istanza_utility_id: istanzaSelezionata.value?.id || null,
     }
     const result = await execute(
       () => store.create(payload),
@@ -286,31 +295,30 @@ const onClose = useDrawerClose(emit, 'cancelled')
       <template v-if="!isEdit">
         <div class="form-grid">
 
-          <!-- Soggetto (opzionale — pratica interna se non selezionato) -->
+          <!-- Contesto anagrafico (opzionale — pratica interna se vuoto):
+               lookup ricco a una riga per soggetto+ruolo, incl. riga
+               "senza ruolo" per i prospect puri. -->
           <h4>{{ t('pratiche.section_soggetto') }}</h4>
-          <div v-if="soggettoSelezionato" class="mb-3">
-            <SoggettoMessageBanner
-              :ragione-sociale="soggettoSelezionato.ragione_sociale"
-              :id-fiscale="soggettoSelezionato.cf || soggettoSelezionato.piva"
-            />
-            <Button :label="t('resolver.change')" :icon="MANAGE_ICONS.EDIT"
-              text size="small" class="mt-1" @click="clearSoggetto" />
-          </div>
-          <div v-else class="mb-3">
-            <Button :label="t('resolver.open')" icon="pi pi-search"
-              outlined class="w-full" @click="resolverVisible = true" />
+          <div class="form-field">
+            <label>{{ t('pratiche.field_contesto') }}</label>
+            <SoggettoRuoloLookup v-model="contestoSelezionato" class="w-full" />
             <small class="text-color-secondary">{{ t('pratiche.soggetto_opzionale') }}</small>
           </div>
+          <div class="mb-3">
+            <Button :label="t('pratiche.nuovo_soggetto')" icon="pi pi-user-plus"
+              text size="small" @click="resolverVisible = true" />
+          </div>
 
-          <!-- Ruolo (opzionale — visibile solo se soggetto selezionato e ha ruoli) -->
-          <div v-if="soggettoSelezionato && ruoliDisponibili.length > 0" class="form-field">
-            <label>{{ t('pratiche.field_ruolo') }}</label>
-            <Select
-              v-model="ruoloSelezionato"
-              :options="ruoliDisponibili"
-              option-label="label" option-value="value"
-              class="w-full" :placeholder="t('pratiche.select_ruolo')" show-clear
+          <!-- Istanza utility (opzionale — solo se il soggetto ne possiede).
+               Aggancio pre-contrattuale: per i prospect senza ruolo e' il
+               perno naturale della pratica (richiede_pdp=true). -->
+          <div v-if="mostraCampoIstanza" class="form-field">
+            <label>{{ t('pratiche.field_istanza') }}</label>
+            <IstanzaUtilityLookup
+              v-model="istanzaSelezionata"
+              :soggetto-id="contestoSelezionato.soggetto_id"
             />
+            <small class="text-color-secondary">{{ t('pratiche.istanza_hint') }}</small>
           </div>
 
           <!-- Dati pratica -->

@@ -31,6 +31,14 @@ Indice test eseguiti:
 21) test_resolve_filtri_export_label_completo — DEF-1 mapping con search+tipo
 22) test_resolve_filtri_export_label_fallback_id — descrizione mancante → id=N
 23) test_resolve_filtri_export_label_vuoto — nessun filtro → dict vuoto
+24) test_search_ruoli_lookup_ok — happy path + normalizzazione tipo_ruolo upper
+25) test_search_ruoli_lookup_q_troppo_corta — q < 2 char → E_ANAG_VALIDAZIONE
+26) test_search_ruoli_lookup_limit_cap — limit oltre il max → cap a 50
+27) test_by_id_ruolo_ok — restore riga ruolo via soggetto_ruolo_id
+28) test_by_id_senza_ruolo_ok — restore riga "senza ruolo" via soggetto_id
+29) test_by_id_chiavi_entrambe_o_nessuna — 0 o 2 chiavi → E_ANAG_VALIDAZIONE
+30) test_by_id_uuid_malformato — soggetto_id non-UUID → E_ANAG_VALIDAZIONE
+31) test_by_id_not_found — record inesistente → E_ANAG_NOT_FOUND
 """
 
 from unittest import TestCase
@@ -465,3 +473,114 @@ class TestResolveFiltriExportLabel(TestCase):
 
         self.assertEqual(result, {})
         mock_repo.return_value.get_tipo_soggetto_dettaglio_descrizione.assert_not_called()
+
+
+class TestSearchRuoliLookup(TestCase):
+    """Test lookup ricco soggetti-ruoli (selezione contesto pratica)."""
+
+    @patch(SOGG_REPO)
+    def test_search_ruoli_lookup_ok(self, mock_repo):
+        """Happy path: delega al repo con tipo_ruolo normalizzato upper."""
+        repo = mock_repo.return_value
+        repo.search_ruoli_lookup.return_value = (
+            [{
+                "soggetto_id": FAKE_UUID, "soggetto_ruolo_id": 7,
+                "ruolo_codice": "CL", "ruolo_descrizione": "Cliente",
+                "ragione_sociale_completa": "Rossi Mario",
+                "id_fiscale": "RSSMRA80A01H501U", "soggetto_codice": "SOG-1",
+                "n_istanze": 2,
+            }],
+            1,
+        )
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        result = SoggettiService().search_ruoli_lookup(
+            q="  rossi ", tipo_ruolo="cl", emittente_ids=[5],
+        )
+        self.assertEqual(result["total_count"], 1)
+        self.assertEqual(result["results"][0]["ruolo_codice"], "CL")
+        self.assertEqual(result["limit"], 20)
+        repo.search_ruoli_lookup.assert_called_once_with(
+            q="rossi", tipo_ruolo="CL", emittente_ids=[5], limit=20,
+        )
+
+    @patch(SOGG_REPO)
+    def test_search_ruoli_lookup_q_troppo_corta(self, mock_repo):
+        """q < 2 char solleva E_ANAG_VALIDAZIONE senza chiamare il repo."""
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError) as ctx:
+            SoggettiService().search_ruoli_lookup(q="r")
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_repo.return_value.search_ruoli_lookup.assert_not_called()
+
+    @patch(SOGG_REPO)
+    def test_search_ruoli_lookup_limit_cap(self, mock_repo):
+        """limit oltre il massimo viene cappato a 50."""
+        repo = mock_repo.return_value
+        repo.search_ruoli_lookup.return_value = ([], 0)
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        result = SoggettiService().search_ruoli_lookup(q="rossi", limit=999)
+        self.assertEqual(result["limit"], 50)
+        _, kwargs = repo.search_ruoli_lookup.call_args
+        self.assertEqual(kwargs["limit"], 50)
+
+
+class TestGetRuoliLookupById(TestCase):
+    """Test restore by-id del lookup contesto pratica."""
+
+    @patch(SOGG_REPO)
+    def test_by_id_ruolo_ok(self, mock_repo):
+        """Restore riga ruolo via soggetto_ruolo_id."""
+        repo = mock_repo.return_value
+        repo.get_ruolo_lookup_by_id.return_value = {
+            "soggetto_id": FAKE_UUID, "soggetto_ruolo_id": 165,
+            "ruolo_codice": "CL", "n_istanze": 1,
+        }
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        result = SoggettiService().get_ruoli_lookup_by_id(soggetto_ruolo_id=165)
+        self.assertEqual(result["ruolo_codice"], "CL")
+        repo.get_ruolo_lookup_by_id.assert_called_once_with(
+            soggetto_ruolo_id=165, soggetto_id=None,
+        )
+
+    @patch(SOGG_REPO)
+    def test_by_id_senza_ruolo_ok(self, mock_repo):
+        """Restore riga 'senza ruolo' via soggetto_id (UUID)."""
+        repo = mock_repo.return_value
+        repo.get_ruolo_lookup_by_id.return_value = {
+            "soggetto_id": FAKE_UUID, "soggetto_ruolo_id": None,
+            "ruolo_codice": None, "n_istanze": 2,
+        }
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        result = SoggettiService().get_ruoli_lookup_by_id(soggetto_id=FAKE_UUID)
+        self.assertIsNone(result["soggetto_ruolo_id"])
+
+    @patch(SOGG_REPO)
+    def test_by_id_chiavi_entrambe_o_nessuna(self, mock_repo):
+        """Zero o due chiavi → E_ANAG_VALIDAZIONE (esattamente una richiesta)."""
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError) as ctx:
+            SoggettiService().get_ruoli_lookup_by_id()
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        with self.assertRaises(ServiceError):
+            SoggettiService().get_ruoli_lookup_by_id(
+                soggetto_ruolo_id=1, soggetto_id=FAKE_UUID,
+            )
+        mock_repo.return_value.get_ruolo_lookup_by_id.assert_not_called()
+
+    @patch(SOGG_REPO)
+    def test_by_id_uuid_malformato(self, mock_repo):
+        """soggetto_id non-UUID → E_ANAG_VALIDAZIONE prima del repo."""
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError) as ctx:
+            SoggettiService().get_ruoli_lookup_by_id(soggetto_id="non-un-uuid")
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_repo.return_value.get_ruolo_lookup_by_id.assert_not_called()
+
+    @patch(SOGG_REPO)
+    def test_by_id_not_found(self, mock_repo):
+        """Record inesistente → E_ANAG_NOT_FOUND."""
+        mock_repo.return_value.get_ruolo_lookup_by_id.return_value = None
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError) as ctx:
+            SoggettiService().get_ruoli_lookup_by_id(soggetto_ruolo_id=999)
+        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")

@@ -15,7 +15,12 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params
+from apps.core.api.payload_validators import (
+    optional_int,
+    paginated_envelope,
+    parse_list_params,
+    qp_int_optional,
+)
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -245,6 +250,127 @@ class SoggettiIndirizziDetailView(DomainAPIView):
 # =================================================================
 # Ruoli soggetto
 # =================================================================
+
+class SoggettiRuoliLookupView(DomainAPIView):
+    """GET lookup ricco soggetti-ruoli per la selezione contesto pratica.
+
+    Una riga per soggetto_ruolo ("Rossi Srl — Cliente", "Rossi Srl —
+    Fornitore") + una riga "senza ruolo" per i soggetti privi di qualunque
+    ruolo (prospect puri: hanno solo istanze, il ruolo CL nasce col BA —
+    guide/generazione-cliente.md). `n_istanze` per riga pilota il campo
+    istanza nel drawer pratiche.
+    """
+
+    # Lookup cross-dominio: consumato dal drawer pratiche. Stesso pattern dei
+    # lookup BA/istanze (skip_area_check + JWT + throttling search + scope
+    # emittente sul ruolo CL lato repository).
+    skip_area_check = True
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="q",
+                type=str,
+                required=True,
+                description="Termine di ricerca (min 2 char). Matcha ragione sociale, CF, P.IVA.",
+            ),
+            OpenApiParameter(
+                name="tipo_ruolo",
+                type=str,
+                required=False,
+                description="Filtra per codice tipo ruolo (CL, FO, ...). Esclude le righe 'senza ruolo'.",
+            ),
+            OpenApiParameter(
+                name="limit",
+                type=int,
+                required=False,
+                description="Numero massimo risultati (default 20, max 50).",
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="SoggettiRuoliLookupResp",
+            fields={
+                "data": serializers.DictField(),
+                "meta": serializers.DictField(required=False),
+            },
+        )},
+    )
+    # Scopo: GET lookup contesto pratica — scope emittente + delega a service.
+    def get(self, request: Request) -> JsonResponse:
+        q = request.query_params.get("q", "")
+        tipo_ruolo = request.query_params.get("tipo_ruolo") or None
+
+        raw_limit = request.query_params.get("limit")
+        limit_kwargs: dict = {}
+        if raw_limit is not None and raw_limit != "":
+            parsed_limit = qp_int_optional(raw_limit, "limit")
+            if parsed_limit is not None:
+                limit_kwargs["limit"] = parsed_limit
+
+        cache: dict = {}
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache=cache)
+
+        result = SoggettiService().search_ruoli_lookup(
+            q=q,
+            tipo_ruolo=tipo_ruolo,
+            emittente_ids=emittente_ids,
+            **limit_kwargs,
+        )
+        return success_response(result)
+
+
+class SoggettiRuoliLookupByIdView(DomainAPIView):
+    """GET restore by-id del lookup contesto pratica.
+
+    Ricostruisce la riga lookup gia' selezionata quando un form riapre in
+    edit (pattern feedback_autocomplete_restore, gemello di
+    BillingAccountLookupByIdView). Chiavi alternative in query string:
+    `soggetto_ruolo_id` (riga ruolo) oppure `soggetto_id` (riga "senza
+    ruolo") — esattamente una delle due.
+    """
+
+    # Lookup cross-dominio (restore): stesso ragionamento della search.
+    # Solo lettura di un record gia' selezionato in precedenza.
+    skip_area_check = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="soggetto_ruolo_id",
+                type=int,
+                required=False,
+                description="Restore di una riga ruolo. Alternativo a soggetto_id.",
+            ),
+            OpenApiParameter(
+                name="soggetto_id",
+                type=str,
+                required=False,
+                description="Restore di una riga 'senza ruolo' (UUID soggetto). Alternativo a soggetto_ruolo_id.",
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="SoggettiRuoliLookupByIdResp",
+            fields={
+                "data": serializers.DictField(),
+                "meta": serializers.DictField(required=False),
+            },
+        )},
+    )
+    # Scopo: GET restore riga lookup — parsing chiavi alternative + delega.
+    def get(self, request: Request) -> JsonResponse:
+        raw_sr_id = request.query_params.get("soggetto_ruolo_id")
+        soggetto_ruolo_id = None
+        if raw_sr_id is not None and raw_sr_id != "":
+            soggetto_ruolo_id = qp_int_optional(raw_sr_id, "soggetto_ruolo_id")
+        soggetto_id = request.query_params.get("soggetto_id") or None
+
+        result = SoggettiService().get_ruoli_lookup_by_id(
+            soggetto_ruolo_id=soggetto_ruolo_id,
+            soggetto_id=soggetto_id,
+        )
+        return success_response(result)
+
 
 class SoggettiRuoliView(DomainAPIView):
     """GET lista ruoli, POST assegna ruolo."""

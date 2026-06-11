@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from apps.core.api.payload_validators import optional_int
@@ -36,6 +37,12 @@ from apps.anagrafiche.services.contatti_service import (
     missing_required_fields,
 )
 from apps.core.services.service_errors import ServiceError
+
+
+# Limiti lookup contesto pratica (mirror billing_account_service).
+_LOOKUP_MIN_QUERY_LENGTH = 2
+_LOOKUP_DEFAULT_LIMIT = 20
+_LOOKUP_MAX_LIMIT = 50
 
 
 class SoggettiService:
@@ -249,6 +256,118 @@ class SoggettiService:
     ) -> list[dict[str, Any]]:
         self._require_soggetto_exists(soggetto_id)
         return self._repo.get_soggetto_ruoli(soggetto_id, emittente_ids)
+
+    # Scopo: Lookup ricco contesto pratica — una riga per soggetto_ruolo +
+    #        riga "senza ruolo" per i prospect puri (solo istanze, nessun
+    #        ruolo). Mirror del pattern BillingAccountService.search_lookup.
+    def search_ruoli_lookup(
+        self,
+        *,
+        q: str,
+        tipo_ruolo: str | None = None,
+        emittente_ids: list[int] | None = None,
+        limit: int = _LOOKUP_DEFAULT_LIMIT,
+    ) -> dict[str, Any]:
+        function_name = "anagrafiche.soggetti_service.search_ruoli_lookup"
+        cleaned_q = q.strip() if isinstance(q, str) else ""
+        ErrorManager.require(
+            len(cleaned_q) >= _LOOKUP_MIN_QUERY_LENGTH,
+            code="E_ANAG_VALIDAZIONE",
+            message="Parametro di ricerca troppo corto.",
+            detail=f"q deve avere almeno {_LOOKUP_MIN_QUERY_LENGTH} caratteri.",
+            context={"q_len": len(cleaned_q)},
+            function_name=function_name,
+            log_to_db=False,
+        )
+        cleaned_tipo = tipo_ruolo.strip().upper() if tipo_ruolo else None
+
+        # Cap di sicurezza sul limit — default 20, max 50.
+        if limit is None or limit <= 0:
+            effective_limit = _LOOKUP_DEFAULT_LIMIT
+        else:
+            effective_limit = min(int(limit), _LOOKUP_MAX_LIMIT)
+
+        results, total_count = self._repo.search_ruoli_lookup(
+            q=cleaned_q,
+            tipo_ruolo=cleaned_tipo,
+            emittente_ids=emittente_ids,
+            limit=effective_limit,
+        )
+        return {
+            "results": results,
+            "total_count": total_count,
+            "limit": effective_limit,
+        }
+
+    # Scopo: Restore by-id del lookup contesto pratica
+    #        (feedback_autocomplete_restore). Esattamente UNA delle due chiavi:
+    #        soggetto_ruolo_id (riga ruolo) o soggetto_id (riga "senza ruolo").
+    def get_ruoli_lookup_by_id(
+        self,
+        *,
+        soggetto_ruolo_id: int | None = None,
+        soggetto_id: str | None = None,
+    ) -> dict[str, Any]:
+        function_name = "anagrafiche.soggetti_service.get_ruoli_lookup_by_id"
+        ErrorManager.require(
+            (soggetto_ruolo_id is not None) != (soggetto_id is not None),
+            code="E_ANAG_VALIDAZIONE",
+            message="Chiave di restore non valida.",
+            detail="Indicare esattamente uno tra soggetto_ruolo_id e soggetto_id.",
+            context={
+                "soggetto_ruolo_id": soggetto_ruolo_id,
+                "soggetto_id": soggetto_id,
+            },
+            function_name=function_name,
+            log_to_db=False,
+        )
+        if soggetto_ruolo_id is not None:
+            valid_id = (
+                isinstance(soggetto_ruolo_id, int)
+                and not isinstance(soggetto_ruolo_id, bool)
+                and soggetto_ruolo_id > 0
+            )
+            ErrorManager.require(
+                valid_id,
+                code="E_ANAG_VALIDAZIONE",
+                message="soggetto_ruolo_id non valido.",
+                detail="soggetto_ruolo_id deve essere un intero positivo.",
+                context={"soggetto_ruolo_id": soggetto_ruolo_id},
+                function_name=function_name,
+                log_to_db=False,
+            )
+        else:
+            # Formato UUID validato qui: un malformato esploderebbe sul cast
+            # ::uuid del repository con un errore DB non parlante.
+            try:
+                uuid.UUID(str(soggetto_id))
+            except (ValueError, TypeError):
+                ErrorManager.raise_error(
+                    code="E_ANAG_VALIDAZIONE",
+                    message="soggetto_id non valido.",
+                    detail="soggetto_id deve essere un UUID.",
+                    context={"soggetto_id": soggetto_id},
+                    function_name=function_name,
+                    log_to_db=False,
+                )
+        result = self._repo.get_ruolo_lookup_by_id(
+            soggetto_ruolo_id=soggetto_ruolo_id,
+            soggetto_id=soggetto_id,
+        )
+        ErrorManager.require(
+            result is not None,
+            code="E_ANAG_NOT_FOUND",
+            message="Contesto soggetto/ruolo non trovato.",
+            detail=f"soggetto_ruolo_id={soggetto_ruolo_id}, soggetto_id={soggetto_id}",
+            context={
+                "soggetto_ruolo_id": soggetto_ruolo_id,
+                "soggetto_id": soggetto_id,
+            },
+            function_name=function_name,
+            log_to_db=False,
+        )
+        assert result is not None
+        return result
 
     # Scopo: Assegna ruolo a soggetto (idempotente).
     def assign_ruolo(self, soggetto_id: str, payload: dict[str, Any]) -> dict[str, Any]:

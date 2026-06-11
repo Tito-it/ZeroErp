@@ -170,3 +170,20 @@ export function lookupIstanzeUtility(params = {}) {
 export function getIstanzaUtilityLookupById(id) {
   return api.get(`/anagrafiche/istanze-utility/${id}/lookup/`)
 }
+
+// --- Soggetti-ruoli lookup (selezione contesto pratica) ---
+
+// Scopo: Cerca soggetti-ruoli per autocomplete: una riga per soggetto_ruolo
+//        + riga "senza ruolo" per i prospect puri (solo istanze, nessun ruolo).
+//        Backend: GET /api/v1/anagrafiche/soggetti-ruoli/lookup/
+//        Ricerca su ragione sociale, CF, P.IVA. Scope emittente sul ruolo CL.
+export function lookupSoggettiRuoli(params = {}) {
+  return api.get('/anagrafiche/soggetti-ruoli/lookup/', { params })
+}
+
+// Scopo: Restore by-id della riga lookup (riapertura form in edit).
+//        Backend: GET /api/v1/anagrafiche/soggetti-ruoli/lookup-by-id/
+//        Chiavi alternative: { soggetto_ruolo_id } oppure { soggetto_id }.
+export function getSoggettoRuoloLookupById(params = {}) {
+  return api.get('/anagrafiche/soggetti-ruoli/lookup-by-id/', { params })
+}
