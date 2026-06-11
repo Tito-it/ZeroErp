@@ -467,6 +467,14 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 
 ---
 
+## Componenti Dominio Pratiche (`src/pratiche/components/`)
+
+| Componente | File | Descrizione |
+| --- | --- | --- |
+| `PraticaContextHeader` | [PraticaContextHeader.vue](../../../../frontend/src/pratiche/components/PraticaContextHeader.vue) | **Building block 2026-06-11 — header standard contesto pratica per i drawer di ESECUZIONE FLUSSI** (`FlussoDrawer` e futuri drawer dedicati per flusso, es. `RICHIESTA_CLIENTE` della pratica PREVENTIVI). Set minimo identico su ogni drawer di flusso: numero pratica (Tag, fallback `#id`), soggetto (`ragione_sociale_completa`), data apertura pratica, id fiscale univoco (CF/P.IVA). Wrapper di `DrawerContextHeader`: i drawer di flusso non ricostruiscono items/label/formatting. Props display-only: `codice`, `praticaId`, `soggetto`, `dataApertura`, `idFiscale`. Slot `#status` per il Tag stato a destra. I dati arrivano dal payload BE del flusso (`pratica_codice`, `pratica_data_apertura`, `pratica_soggetto_display`, `pratica_soggetto_id_fiscale` — display fields via JOIN in `_FLUSSO_SELECT`). |
+
+---
+
 ## Componenti Dominio Vendite (`src/vendite/components/`)
 
 ### Wrapper select per enum di dominio (Fase 2 refactor frontend)

@@ -54,6 +54,7 @@ class PraticheRepository:
         pp.codice_interno AS priorita_codice_interno,
         pp.descrizione AS priorita_descrizione,
         s.ragione_sociale_completa AS soggetto_display,
+        s.id_fiscale_univoco_cf_piva AS soggetto_id_fiscale,
         sru.ragione_sociale_completa AS risorsa_umana_display,
         uo.descrizione AS unita_organizzativa_descrizione
     """
@@ -281,12 +282,18 @@ class PraticheRepository:
         sf.codice_interno AS stato_codice_interno,
         sf.descrizione AS stato_descrizione,
         tf.codice AS template_flusso_codice,
-        tf.descrizione AS template_flusso_descrizione
+        tf.descrizione AS template_flusso_descrizione,
+        p.codice AS pratica_codice,
+        p.data_apertura AS pratica_data_apertura,
+        s.ragione_sociale_completa AS pratica_soggetto_display,
+        s.id_fiscale_univoco_cf_piva AS pratica_soggetto_id_fiscale
     """
 
     _FLUSSO_JOINS = """
         JOIN config.stati_flussi_pratiche sf ON sf.id = f.stato_id
         LEFT JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+        JOIN pratiche.pratiche p ON p.id = f.pratica_id
+        LEFT JOIN anagrafiche.soggetti s ON s.id = p.soggetto_id
     """
 
     # Scopo: Restituisce i flussi di una pratica ordinati per sequenza, con display fields.
