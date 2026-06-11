@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B (3/4) — fn_guard_ripetibilita_flusso: guard fail-fast sulla regola
+# di ripetibilita'. Delega il check a fn_check_ripetibilita_flusso
+# (20260611-04) e, se la regola vieta, solleva
+# PRATICHE_FLUSSO_NON_RIPETIBILE (id=483, riga in messaggi_errore.csv:
+# i changeset upsert runOnChange esistenti la ricaricano) con contesto
+# parlante (regola del template + stato/esito dell'ultima istanza).
+# Pattern simmetrico a fn_guard_prerequisiti_flusso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260611-05-create-fn-guard-ripetibilita-flusso-mctit.yaml
+
+  - changeSet:
+      id: 20260611-05-create-fn-guard-ripetibilita-flusso
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        fn_guard_ripetibilita_flusso: fail-fast se la regola di
+        ripetibilita' del template vieta una nuova istanza nella
+        pratica (PRATICHE_FLUSSO_NON_RIPETIBILE).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_guard_ripetibilita_flusso(
+                  p_pratica_id         pratiche.flussi.pratica_id%TYPE,
+                  p_template_flusso_id pratiche.flussi.template_flusso_id%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_codice         pratiche.template_flussi.codice%TYPE;
+                  v_ripetibilita   pratiche.template_flussi.ripetibilita%TYPE;
+                  v_ultimo_stato   config.stati_flussi_pratiche.codice_interno%TYPE;
+                  v_ultimo_esito   pratiche.flussi.esito%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Guard fail-fast (fn_guard_*): solleva errore se la
+                --   regola di ripetibilita' del template vieta una nuova
+                --   istanza nella pratica.
+                --
+                -- Dipendenze:
+                --   - pratiche.fn_check_ripetibilita_flusso()
+                --   - script.fn_log_and_raise_error()
+                --   - config.messaggi_errore: PRATICHE_FLUSSO_NON_RIPETIBILE
+                -- =========================================================
+
+                IF pratiche.fn_check_ripetibilita_flusso(p_pratica_id, p_template_flusso_id) THEN
+                  RETURN;
+                END IF;
+
+                -- Contesto per il messaggio: regola + ultima istanza valida.
+                SELECT tf.codice, tf.ripetibilita
+                  INTO v_codice, v_ripetibilita
+                  FROM pratiche.template_flussi tf
+                 WHERE tf.id = p_template_flusso_id;
+
+                SELECT sfp.codice_interno, f.esito
+                  INTO v_ultimo_stato, v_ultimo_esito
+                  FROM pratiche.flussi f
+                  JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
+                 WHERE f.pratica_id         = p_pratica_id
+                   AND f.template_flusso_id = p_template_flusso_id
+                   AND sfp.codice_interno  <> 'ANNULLATO'
+                 ORDER BY f.id DESC
+                 LIMIT 1;
+
+                PERFORM script.fn_log_and_raise_error(
+                  'pratiche',
+                  'pratiche.fn_guard_ripetibilita_flusso',
+                  'PRATICHE_FLUSSO_NON_RIPETIBILE',
+                  jsonb_build_object(
+                    'pratica_id', p_pratica_id,
+                    'template_flusso_id', p_template_flusso_id,
+                    'template_codice', v_codice,
+                    'ripetibilita', v_ripetibilita,
+                    'ultima_istanza_stato', v_ultimo_stato,
+                    'ultima_istanza_esito', v_ultimo_esito
+                  ),
+                  NULL::uuid,
+                  coalesce(v_codice, p_template_flusso_id::text),
+                  coalesce(v_ripetibilita, '?'),
+                  concat(coalesce(v_ultimo_stato, '?'),
+                         coalesce('/' || v_ultimo_esito, ''))
+                );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_guard_ripetibilita_flusso(bigint, integer)
+              IS 'Guard fail-fast: solleva PRATICHE_FLUSSO_NON_RIPETIBILE se la regola di ripetibilita'' del template vieta una nuova istanza nella pratica.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_guard_ripetibilita_flusso(bigint, integer);

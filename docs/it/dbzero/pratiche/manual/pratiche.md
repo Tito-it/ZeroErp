@@ -20,10 +20,10 @@ La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione p
 ### Ruolo nel processo
 
 * Ogni pratica ha un **tipo_prestazione** che ne determina i template flussi disponibili.
-* Lo **stato** governa le transizioni del ciclo di vita (BOZZA → APERTA → CHIUSA).
-* L'**assegnazione** (risorsa umana / unita' organizzativa) definisce chi lavora la pratica.
-* La **gerarchia** (`pratica_padre_id`) consente sotto-pratiche.
-* La **tracciabilita' cross-pratica** (`flusso_origine_id`) collega la pratica al flusso che l'ha generata.
+* Lo **stato** governa le transizioni del ciclo di vita (BOZZA → APERTA → CHIUSA). La transizione a **CHIUSA** e' inoltre vincolata ai flussi obbligatori percorribili non completati (guard `trg_pratiche_a10_guard_chiusura_flussi_upd`, D4 — il ramo morto di un bivio non blocca).
+* Il **contesto anagrafico** a due rami (`soggetto_id` → `soggetto_ruolo_id` **oppure** `soggetto_id` → `istanza_utility_id`) classifica la pratica nelle lenti canoniche D1: RUOLO / ISTANZA / SOGGETTO / INTERNA (tutti NULL). Lettura canonica: [fn_lista_pratiche_per_contesto](/dbzero/pratiche/funzioni/fn_lista_pratiche_per_contesto); coerenza garantita da `trgfn_pratiche_guard_contesto`.
+* L'**assegnazione** (risorsa umana / unita' organizzativa) definisce chi lavora la pratica — ortogonale al contesto cliente (le pratiche interne sono "contesto vuoto + assegnazione", D2).
+* La **genealogia cross-pratica** (`pratica_padre_id` + `flusso_origine_id`) collega la pratica generata alla pratica e al flusso che l'hanno generata — entrambe valorizzate da `fn_genera_pratica_da_flusso`.
 * Ogni evento significativo viene registrato nel **giornale**.
 
 ---
@@ -33,13 +33,23 @@ La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione p
 | Colonna | Note |
 |---------|------|
 | `emittente_fiscale_id` | BIGINT NOT NULL. FK a `anagrafiche.emittenti_fiscali` — identita' fiscale che gestisce la pratica. |
-| `soggetto_id` | UUID nullable. FK a `anagrafiche.soggetti` — il soggetto interessato dalla pratica. |
-| `pratica_padre_id` | BIGINT nullable. Self-reference per gerarchia. ON DELETE SET NULL. |
-| `flusso_origine_id` | BIGINT nullable. FK a `pratiche.flussi` — tracciabilita' cross-pratica. Impostato dalla funzione `fn_genera_pratica_da_flusso` (DB-5). ON DELETE SET NULL. |
+| `soggetto_id` | UUID nullable. FK a `anagrafiche.soggetti` — il soggetto interessato dalla pratica. NULL = pratica interna. |
+| `soggetto_ruolo_id` | BIGINT nullable. FK a `anagrafiche.soggetti_ruoli` — contesto ruolo (ramo 1). Richiede `soggetto_id` coerente (guard contesto). |
+| `istanza_utility_id` | BIGINT nullable. FK a `anagrafiche.istanze_utilities` — contesto istanza/utility (ramo 2, indipendente dal ruolo: prospect puro ammesso). Richiede `soggetto_id` coerente. |
+| `pratica_padre_id` | BIGINT nullable. Self-reference per gerarchia/genealogia. Valorizzata da `fn_genera_pratica_da_flusso` per le pratiche generate (rev 2026-06-11). ON DELETE SET NULL. |
+| `flusso_origine_id` | BIGINT nullable. FK a `pratiche.flussi` — il flusso che ha generato la pratica. Impostato da `fn_genera_pratica_da_flusso`. ON DELETE SET NULL. |
 | `canale_origine_id` | INTEGER nullable. FK a `config.canali_pratiche` — da quale sorgente esterna e' arrivata la richiesta. NULL = creata internamente. |
-| `solo_interna` | BOOLEAN DEFAULT false. Se true, la pratica non espone flussi su canali esterni. |
-| `codice` | TEXT nullable. Codice pratica generato da trigger (DB-5). |
+| `codice` | TEXT nullable. Codice pratica generato da trigger. |
 | `data_scadenza` | DATE nullable. Scadenza prevista per la pratica. |
+
+---
+
+### Indici notevoli
+
+| Indice | Note |
+|--------|------|
+| `uq_pratiche_flusso_origine_tipo` | UNIQUE parziale su `(flusso_origine_id, tipo_prestazione_id)` WHERE `flusso_origine_id IS NOT NULL` — anti doppio-figlio della generazione cross-pratica. |
+| `ix_pratiche_soggetto_ruolo_id`, `ix_pratiche_istanza_utility_id` | Parziali (NOT NULL), via `dbops.fk_index_policy` — supporto alle lenti per contesto. |
 
 ---
 

@@ -21,11 +21,13 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | handler_params | jsonb | NO | '{}'::jsonb |
+| ripetibilita | character varying | NO | 'SE_NON_POSITIVO'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_template_flussi_direzione |  |
+| CHECK | chk_template_flussi_ripetibilita |  |
 | FOREIGN KEY | fk_template_flussi_handler | handler_id |
 | FOREIGN KEY | fk_template_flussi_tipo_prestazione | tipo_prestazione_id |
 | PRIMARY KEY | pk_pratiche_template_flussi | id |

@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-fix (3/3) — idempotenza del trigger di generazione cross-pratica
+# (analisi-pratiche-workflow-v2 §7.B, bug latente).
+#
+# Prima: trg_flussi_z90_generazione_upd era AFTER UPDATE (qualsiasi
+# colonna) e trgfn_flussi_generazione controllava solo lo stato NUOVO.
+# Conseguenza: ogni UPDATE su un flusso gia' COMPLETATO (es. correzione
+# note_esito) rigenerava una pratica figlia.
+#
+# Ora, doppia difesa:
+#   1) il trigger scatta solo su UPDATE OF stato_id;
+#   2) la funzione genera solo alla TRANSIZIONE di stato
+#      (OLD.stato_id IS DISTINCT FROM NEW.stato_id) verso COMPLETATO.
+# Terza difesa (gia' attiva): dedup in fn_genera_pratica_da_flusso
+# (20260611-10) + indice uq_pratiche_flusso_origine_tipo (20260611-09).
+#
+# Corpo di partenza dalla doc auto-gen
+# docs/it/dbzero/pratiche/funzioni/trgfn_flussi_generazione.md.
+# MAI modificato in place 20260303-44: nuovo file con DROP/CREATE
+# del trigger (cambia l'evento: serve la ricreazione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260611-11-update-trgfn-flussi-generazione-idempotente-mctit.yaml
+
+  - changeSet:
+      id: 20260611-11-update-trgfn-flussi-generazione-idempotente
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        trgfn_flussi_generazione: genera solo alla transizione di
+        stato verso COMPLETATO (OLD IS DISTINCT FROM NEW); trigger
+        ricreato come AFTER UPDATE OF stato_id.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_generazione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_codice_interno config.stati_flussi_pratiche.codice_interno%TYPE;
+                v_regola         RECORD;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Generazione automatica cross-pratica.
+                --   Quando un flusso TRANSITA a COMPLETATO, cerca regole di
+                --   generazione con auto = true e template_flusso_origine
+                --   corrispondente, e invoca fn_genera_pratica_da_flusso
+                --   per ciascuna regola matching.
+                --
+                -- Regole:
+                --   - Scatta solo alla transizione di stato (idempotenza:
+                --     un UPDATE che non cambia stato_id non genera nulla;
+                --     il dedup in fn_genera_pratica_da_flusso copre anche
+                --     il doppio evento residuo)
+                --   - Solo se nuovo stato COMPLETATO e flusso template-based
+                --   - Filtra per esito_richiesto (NULL = qualsiasi esito)
+                --   - Ignora regole non attive o con auto = false
+                -- =========================================================
+
+                -- Idempotenza: genera solo alla TRANSIZIONE di stato.
+                IF OLD.stato_id IS NOT DISTINCT FROM NEW.stato_id THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Verifica se il nuovo stato e' COMPLETATO
+                SELECT sfp.codice_interno
+                  INTO v_codice_interno
+                  FROM config.stati_flussi_pratiche sfp
+                 WHERE sfp.id = NEW.stato_id;
+
+                IF v_codice_interno <> 'COMPLETATO' THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Solo flussi template-based
+                IF NEW.template_flusso_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Cerca regole matching
+                FOR v_regola IN
+                  SELECT rg.id
+                    FROM pratiche.regole_generazione rg
+                   WHERE rg.template_flusso_origine_id = NEW.template_flusso_id
+                     AND rg.auto = true
+                     AND rg.attivo = true
+                     AND (
+                       rg.esito_richiesto IS NULL
+                       OR rg.esito_richiesto = NEW.esito
+                     )
+                LOOP
+                  -- Genera la pratica target (dedup interno alla fn)
+                  PERFORM pratiche.fn_genera_pratica_da_flusso(
+                    NEW.id,
+                    v_regola.id
+                  );
+                END LOOP;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_flussi_generazione()
+              IS 'AFTER UPDATE OF stato_id su flussi: genera pratiche cross-pratica solo alla transizione a COMPLETATO (idempotente; dedup in fn_genera_pratica_da_flusso).';
+
+              -- Ricreazione trigger: l'evento cambia da UPDATE a UPDATE OF stato_id.
+              DROP TRIGGER IF EXISTS trg_flussi_z90_generazione_upd
+                ON pratiche.flussi;
+
+              CREATE TRIGGER trg_flussi_z90_generazione_upd
+                AFTER UPDATE OF stato_id ON pratiche.flussi
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_flussi_generazione();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino versione precedente: vedi 20260303-44 (trigger
+              -- AFTER UPDATE senza OF, funzione senza check transizione).
+              SELECT 1;

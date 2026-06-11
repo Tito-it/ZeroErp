@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-fix (1/3) — cintura strutturale anti doppio-figlio per la
+# generazione cross-pratica (analisi-pratiche-workflow-v2 §7.B).
+#
+# Indice UNIQUE parziale su (flusso_origine_id, tipo_prestazione_id):
+# uno stesso flusso non puo' generare due pratiche dello stesso tipo.
+# Resta legittimo che un flusso generi pratiche di tipi DIVERSI
+# (regole multiple). La prima difesa e' il dedup applicativo in
+# fn_genera_pratica_da_flusso (20260611-10); questo indice rende il
+# doppione impossibile anche per scritture fuori dal motore.
+#
+# Pre-bonifica: il bug di idempotenza (trigger su ogni UPDATE di
+# flusso COMPLETATO) puo' aver gia' creato doppioni in sviluppo;
+# si tengono i figli con id minimo (i primi generati) e si scartano
+# i successivi, solo se privi di flussi e di giornale derivato non
+# eliminabile. In sviluppo non risultano consumatori: la DELETE e'
+# limitata ai duplicati esatti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260611-09-create-uq-pratiche-flusso-origine-tipo-mctit.yaml
+
+  - changeSet:
+      id: 20260611-09-create-uq-pratiche-flusso-origine-tipo
+      author: mctit
+      comment: >
+        Indice UNIQUE parziale uq_pratiche_flusso_origine_tipo su
+        pratiche.pratiche(flusso_origine_id, tipo_prestazione_id):
+        max una pratica generata per (flusso, tipo destinazione).
+        Bonifica preventiva dei doppioni da bug idempotenza.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Bonifica doppioni pregressi (bug idempotenza trigger):
+              -- tiene il figlio con id minimo per (flusso_origine, tipo).
+              DELETE FROM pratiche.giornale g
+               WHERE g.pratica_id IN (
+                 SELECT p.id
+                   FROM pratiche.pratiche p
+                  WHERE p.flusso_origine_id IS NOT NULL
+                    AND p.id NOT IN (
+                      SELECT min(p2.id)
+                        FROM pratiche.pratiche p2
+                       WHERE p2.flusso_origine_id IS NOT NULL
+                       GROUP BY p2.flusso_origine_id, p2.tipo_prestazione_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM pratiche.flussi f WHERE f.pratica_id = p.id
+                    )
+               );
+
+              DELETE FROM pratiche.pratiche p
+               WHERE p.flusso_origine_id IS NOT NULL
+                 AND p.id NOT IN (
+                   SELECT min(p2.id)
+                     FROM pratiche.pratiche p2
+                    WHERE p2.flusso_origine_id IS NOT NULL
+                    GROUP BY p2.flusso_origine_id, p2.tipo_prestazione_id
+                 )
+                 AND NOT EXISTS (
+                   SELECT 1 FROM pratiche.flussi f WHERE f.pratica_id = p.id
+                 );
+
+              -- Cintura strutturale: max un figlio per (flusso, tipo dest).
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_pratiche_flusso_origine_tipo
+                ON pratiche.pratiche (flusso_origine_id, tipo_prestazione_id)
+                WHERE flusso_origine_id IS NOT NULL;
+
+              COMMENT ON INDEX pratiche.uq_pratiche_flusso_origine_tipo IS
+                'Anti doppio-figlio della generazione cross-pratica: uno stesso flusso non genera due pratiche dello stesso tipo. Dedup applicativo in fn_genera_pratica_da_flusso.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS pratiche.uq_pratiche_flusso_origine_tipo;

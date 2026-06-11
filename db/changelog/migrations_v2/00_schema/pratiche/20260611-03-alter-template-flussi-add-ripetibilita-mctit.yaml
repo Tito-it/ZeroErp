@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B (1/4) — regola di ripetibilita' sul template flusso (D3,
+# analisi-pratiche-workflow-v2.md ratificata 2026-06-11).
+#
+# Aggiunge pratiche.template_flussi.ripetibilita con tre valori:
+#   MAI             = una sola istanza non annullata, sempre
+#                     (es. CONFERMA: il push del preventivo e' unico)
+#   SE_NON_POSITIVO = nuova istanza ammessa solo se l'ultima istanza
+#                     (MAX(id), escluse le ANNULLATO) e' COMPLETATO
+#                     con esito diverso da POSITIVO. Blocca anche se
+#                     l'ultima istanza e' ancora aperta (DA_ESEGUIRE/
+#                     IN_CORSO/SOSPESO/ERRORE): niente doppioni vivi.
+#   SEMPRE          = ripetibile liberamente (comportamento storico)
+#
+# Default SE_NON_POSITIVO ("se e' andata male riprovo, se e' andata
+# bene e' fatta"): il default con NOT NULL backfilla i template
+# esistenti. Il controllo runtime vive nel guard BEFORE INSERT su
+# pratiche.flussi (fn_check/fn_guard 20260611-04/05, trigger -06);
+# la classificazione dei template PREVENTIVI (CONFERMA=MAI) e' nel
+# CSV template_flussi.csv, ricaricato dal changeset runOnChange
+# esistente 20260608-08 (nessun nuovo seed necessario).
+# %TYPE non ammesso in ADD COLUMN DDL: tipo esplicito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260611-03-alter-template-flussi-add-ripetibilita-mctit.yaml
+
+  - changeSet:
+      id: 20260611-03-alter-template-flussi-add-ripetibilita
+      author: mctit
+      comment: >
+        Aggiunge ripetibilita (MAI/SE_NON_POSITIVO/SEMPRE, default
+        SE_NON_POSITIVO) a pratiche.template_flussi: regola di governo
+        delle istanze ripetute dello stesso flusso nella stessa pratica.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Regola di ripetibilita' del flusso (configurazione, non codice).
+              ALTER TABLE pratiche.template_flussi
+                ADD COLUMN ripetibilita character varying(20) NOT NULL
+                DEFAULT 'SE_NON_POSITIVO';
+
+              ALTER TABLE pratiche.template_flussi
+                ADD CONSTRAINT chk_template_flussi_ripetibilita
+                CHECK (ripetibilita IN ('MAI', 'SE_NON_POSITIVO', 'SEMPRE'));
+
+              COMMENT ON COLUMN pratiche.template_flussi.ripetibilita IS
+                'Regola di ripetibilita'' delle istanze nella stessa pratica. MAI = una sola istanza non annullata; SE_NON_POSITIVO (default) = nuova istanza solo se l''ultima e'' COMPLETATO con esito diverso da POSITIVO (blocca anche istanza ancora aperta); SEMPRE = libera. Enforcement: trg_flussi_a10_guard_ripetibilita_ins.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.template_flussi
+                DROP CONSTRAINT IF EXISTS chk_template_flussi_ripetibilita;
+              ALTER TABLE pratiche.template_flussi
+                DROP COLUMN IF EXISTS ripetibilita;

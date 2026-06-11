@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# A — lente canonica per contesto (D1, ratifica 2026-06-11).
+#
+# fn_lista_pratiche_per_contesto e' il punto unico di verita' delle
+# tre lenti "pratiche di X" (analisi-pratiche-workflow-v2 §7.A):
+#   - p_soggetto_ruolo_id  -> pratiche del ruolo (drawer cliente, tab)
+#   - p_istanza_utility_id -> pratiche dell'istanza (viste utenze)
+#   - p_solo_interne=true  -> pratiche interne (soggetto_id IS NULL)
+#   - nessuna lente        -> tutte le pratiche dell'emittente
+# Le lenti sono mutuamente alternative: piu' di una valorizzata ->
+# PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI (484, riga in
+# messaggi_errore.csv: i changeset upsert runOnChange la ricaricano).
+#
+# La colonna calcolata "contesto" classifica ogni pratica nel bucket
+# canonico: RUOLO / ISTANZA / SOGGETTO (solo soggetto, senza ruolo ne'
+# istanza) / INTERNA. Ogni vista applicativa "pratiche di..." deve
+# passare da qui, mai ricostruzioni ad hoc (decisione D1).
+# Indici di supporto: fk_index_policy 20260611-14 (soggetto_ruolo_id,
+# istanza_utility_id), applicati da dbops.apply_fk_index_policy (90_end).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260611-12-create-fn-lista-pratiche-per-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20260611-12-create-fn-lista-pratiche-per-contesto
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        fn_lista_pratiche_per_contesto: lente canonica D1 (ruolo /
+        istanza / interne / tutte) sulla lista pratiche, con guard di
+        mutua esclusivita' dei parametri e bucket contesto calcolato.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- RETURNS TABLE: ricreazione necessaria se cambia la firma di output.
+              DROP FUNCTION IF EXISTS pratiche.fn_lista_pratiche_per_contesto(bigint, bigint, bigint, boolean);
+
+              CREATE FUNCTION pratiche.fn_lista_pratiche_per_contesto(
+                  p_emittente_fiscale_id pratiche.pratiche.emittente_fiscale_id%TYPE,
+                  p_soggetto_ruolo_id    pratiche.pratiche.soggetto_ruolo_id%TYPE DEFAULT NULL,
+                  p_istanza_utility_id   pratiche.pratiche.istanza_utility_id%TYPE DEFAULT NULL,
+                  p_solo_interne         boolean DEFAULT false
+              )
+              RETURNS TABLE(
+                  pratica_id               pratiche.pratiche.id%TYPE,
+                  codice                   pratiche.pratiche.codice%TYPE,
+                  descrizione              pratiche.pratiche.descrizione%TYPE,
+                  contesto                 text,
+                  tipo_prestazione_codice  pratiche.tipi_prestazione.codice%TYPE,
+                  stato_codice             config.stati_pratiche.codice_interno%TYPE,
+                  priorita_codice          config.priorita_pratiche.codice_interno%TYPE,
+                  soggetto_id              pratiche.pratiche.soggetto_id%TYPE,
+                  soggetto_ragione_sociale anagrafiche.soggetti.ragione_sociale_completa%TYPE,
+                  soggetto_ruolo_id        pratiche.pratiche.soggetto_ruolo_id%TYPE,
+                  istanza_utility_id       pratiche.pratiche.istanza_utility_id%TYPE,
+                  risorsa_umana_id         pratiche.pratiche.risorsa_umana_id%TYPE,
+                  unita_organizzativa_id   pratiche.pratiche.unita_organizzativa_id%TYPE,
+                  data_apertura            pratiche.pratiche.data_apertura%TYPE,
+                  data_scadenza            pratiche.pratiche.data_scadenza%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Lista pratiche per contesto anagrafico — lente canonica
+                --   D1. Tre lenti mutuamente alternative (ruolo / istanza /
+                --   interne); nessuna lente = tutte le pratiche
+                --   dell'emittente. Bucket "contesto" calcolato per il
+                --   raggruppamento FE: RUOLO / ISTANZA / SOGGETTO / INTERNA.
+                -- =========================================================
+
+                -- Guard: emittente obbligatorio (segregazione multi-company).
+                IF p_emittente_fiscale_id IS NULL OR p_emittente_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.fn_lista_pratiche_per_contesto',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro', 'p_emittente_fiscale_id',
+                                       'valore', p_emittente_fiscale_id),
+                    NULL::uuid,
+                    'p_emittente_fiscale_id obbligatorio e > 0'
+                  );
+                END IF;
+
+                -- Guard: lenti mutuamente alternative (al massimo una).
+                IF (p_soggetto_ruolo_id IS NOT NULL)::int
+                   + (p_istanza_utility_id IS NOT NULL)::int
+                   + p_solo_interne::int > 1 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.fn_lista_pratiche_per_contesto',
+                    'PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI',
+                    jsonb_build_object(
+                      'soggetto_ruolo_id', p_soggetto_ruolo_id,
+                      'istanza_utility_id', p_istanza_utility_id,
+                      'solo_interne', p_solo_interne
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  p.id,
+                  p.codice,
+                  p.descrizione,
+                  -- Bucket canonico del contesto (D1): un solo valore per pratica.
+                  CASE
+                    WHEN p.soggetto_ruolo_id IS NOT NULL THEN 'RUOLO'
+                    WHEN p.istanza_utility_id IS NOT NULL THEN 'ISTANZA'
+                    WHEN p.soggetto_id IS NOT NULL THEN 'SOGGETTO'
+                    ELSE 'INTERNA'
+                  END,
+                  tp.codice,
+                  sp.codice_interno,
+                  pp.codice_interno,
+                  p.soggetto_id,
+                  sog.ragione_sociale_completa,
+                  p.soggetto_ruolo_id,
+                  p.istanza_utility_id,
+                  p.risorsa_umana_id,
+                  p.unita_organizzativa_id,
+                  p.data_apertura,
+                  p.data_scadenza
+                FROM pratiche.pratiche p
+                JOIN pratiche.tipi_prestazione tp ON tp.id = p.tipo_prestazione_id
+                JOIN config.stati_pratiche sp     ON sp.id = p.stato_id
+                JOIN config.priorita_pratiche pp  ON pp.id = p.priorita_id
+                LEFT JOIN anagrafiche.soggetti sog ON sog.id = p.soggetto_id
+                WHERE p.emittente_fiscale_id = p_emittente_fiscale_id
+                  -- Lente ruolo: pratiche del ruolo soggetto indicato.
+                  AND (p_soggetto_ruolo_id IS NULL
+                       OR p.soggetto_ruolo_id = p_soggetto_ruolo_id)
+                  -- Lente istanza: pratiche dell'istanza utility indicata.
+                  AND (p_istanza_utility_id IS NULL
+                       OR p.istanza_utility_id = p_istanza_utility_id)
+                  -- Lente interne: nessun contesto cliente (soggetto NULL;
+                  -- il guard contesto garantisce ruolo/istanza NULL a cascata).
+                  AND (NOT p_solo_interne OR p.soggetto_id IS NULL)
+                ORDER BY
+                  pp.sequenza DESC,
+                  p.data_scadenza NULLS LAST,
+                  p.id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_lista_pratiche_per_contesto(bigint, bigint, bigint, boolean)
+              IS 'Lente canonica D1: lista pratiche per contesto (ruolo soggetto / istanza utility / interne / tutte), lenti mutuamente alternative. Bucket contesto calcolato: RUOLO/ISTANZA/SOGGETTO/INTERNA. Ogni vista "pratiche di X" passa da qui.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_lista_pratiche_per_contesto(bigint, bigint, bigint, boolean);

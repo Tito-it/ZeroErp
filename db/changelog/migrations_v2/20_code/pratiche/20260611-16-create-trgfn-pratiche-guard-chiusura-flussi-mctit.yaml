@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C (2/2) — guard di chiusura pratica rispetto ai flussi obbligatori
+# (D4, ratifica 2026-06-11).
+#
+# Prima di questa migration la chiusura era governata SOLO dalla
+# matrice transizioni: una pratica poteva chiudere anche con flussi
+# obbligatorio=true mai eseguiti (nessun controllo, non per design —
+# analisi-pratiche-workflow-v2 §7.D). Ora:
+#
+#   - transizione a CHIUSA bloccata se esistono template bloccanti
+#     (obbligatorio, non completato, ancora percorribile) ->
+#     PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI (485, riga in
+#     messaggi_errore.csv: i changeset upsert runOnChange la ricaricano);
+#   - il ramo morto di un bivio (prerequisito esito-aware non piu'
+#     soddisfacibile) NON blocca: percorribile=false;
+#   - ANNULLATA resta libera (si annulla anche una pratica a meta').
+#
+# Impatto sui test esistenti verificato: i tipi prestazione dei
+# pgTAP che chiudono pratiche non hanno template obbligatori
+# (test-transizioni-stati: nessun template; coda-lavoro:
+# obbligatorio=false). La catena PREVENTIVI (tutti obbligatori)
+# chiude solo a giro completo — comportamento voluto.
+#
+# Fase _a10_ su UPDATE OF stato_id; convive con
+# trg_pratiche_a10_guard_transizione_upd (matrice), che valida la
+# transizione di stato in se'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260611-16-create-trgfn-pratiche-guard-chiusura-flussi-mctit.yaml
+
+  - changeSet:
+      id: 20260611-16-create-trgfn-pratiche-guard-chiusura-flussi
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        trgfn_pratiche_guard_chiusura_flussi + trigger BEFORE UPDATE
+        OF stato_id: blocca la transizione a CHIUSA con flussi
+        obbligatori non completati ancora percorribili (il ramo morto
+        di un bivio non blocca).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_chiusura_flussi()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_codice_a       config.stati_pratiche.codice_interno%TYPE;
+                  v_bloccanti      text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Blocca la transizione a CHIUSA se esistono flussi
+                --   obbligatori non completati e ancora percorribili
+                --   (fn_check_chiusura_pratica). Il ramo morto di un bivio
+                --   non blocca; ANNULLATA non passa di qui (stato diverso).
+                -- =========================================================
+
+                -- Nessuna transizione: niente da validare.
+                IF OLD.stato_id = NEW.stato_id THEN
+                    RETURN NEW;
+                END IF;
+
+                -- Solo verso CHIUSA.
+                SELECT sp.codice_interno
+                  INTO v_codice_a
+                  FROM config.stati_pratiche sp
+                 WHERE sp.id = NEW.stato_id;
+
+                IF v_codice_a IS DISTINCT FROM 'CHIUSA' THEN
+                    RETURN NEW;
+                END IF;
+
+                -- Template bloccanti: obbligatori, non completati, percorribili.
+                SELECT string_agg(c.codice, ', ' ORDER BY c.codice)
+                  INTO v_bloccanti
+                  FROM pratiche.fn_check_chiusura_pratica(NEW.id) c
+                 WHERE c.bloccante;
+
+                IF v_bloccanti IS NOT NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                        'pratiche',
+                        'pratiche.trgfn_pratiche_guard_chiusura_flussi',
+                        'PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI',
+                        jsonb_build_object(
+                            'pratica_id', NEW.id,
+                            'flussi_bloccanti', v_bloccanti
+                        ),
+                        NULL::uuid,
+                        v_bloccanti
+                    );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_guard_chiusura_flussi()
+              IS 'BEFORE UPDATE OF stato_id: blocca la transizione a CHIUSA con flussi obbligatori non completati ancora percorribili (fn_check_chiusura_pratica). Il ramo morto di un bivio non blocca la chiusura.';
+
+              DROP TRIGGER IF EXISTS trg_pratiche_a10_guard_chiusura_flussi_upd
+                ON pratiche.pratiche;
+
+              CREATE TRIGGER trg_pratiche_a10_guard_chiusura_flussi_upd
+                BEFORE UPDATE OF stato_id ON pratiche.pratiche
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_chiusura_flussi();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_pratiche_a10_guard_chiusura_flussi_upd
+                ON pratiche.pratiche;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_pratiche_guard_chiusura_flussi();

@@ -19,9 +19,11 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 ### Ruolo nel processo
 
 * Quando viene creata una pratica di un dato tipo, i flussi vengono istanziati dai template configurati.
-* I template definiscono l'**ordine** (`sequenza`), l'**obbligatorieta'** e la **direzione** del flusso.
+* I template definiscono l'**ordine** (`sequenza`), l'**obbligatorieta'**, la **direzione** e la **ripetibilita'** del flusso.
 * I template con `handler_id NOT NULL` sono automatizzati; quelli con `handler_id NULL` sono manuali.
 * I prerequisiti tra template sono definiti nella tabella `template_flussi_prerequisiti` (DAG).
+* La regola di **ripetibilita'** (D3) governa quante istanze dello stesso template possono nascere nella stessa pratica: enforcement a DB nel guard `trg_flussi_a10_guard_ripetibilita_ins` ([fn_check_ripetibilita_flusso](/dbzero/pratiche/funzioni/fn_check_ripetibilita_flusso)).
+* L'**obbligatorieta'** vincola la chiusura della pratica (D4): un template `obbligatorio = true` non completato e ancora percorribile blocca la transizione a CHIUSA ([fn_check_chiusura_pratica](/dbzero/pratiche/funzioni/fn_check_chiusura_pratica)). Il ramo morto di un bivio non blocca.
 
 ---
 
@@ -30,8 +32,9 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 | Colonna | Note |
 |---------|------|
 | `sequenza` | INTEGER DEFAULT 0. Ordine di esecuzione nel workflow. |
-| `obbligatorio` | BOOLEAN DEFAULT false. Se true, il flusso deve essere completato per chiudere la pratica. |
+| `obbligatorio` | BOOLEAN DEFAULT false. Se true, il flusso deve essere completato per chiudere la pratica — solo se ancora percorribile: il ramo morto di un bivio non blocca (guard `trg_pratiche_a10_guard_chiusura_flussi_upd`). |
 | `direzione` | VARCHAR(10) CHECK (ENTRATA, USCITA, INTERNA) DEFAULT 'INTERNA'. Caratterizza il flusso rispetto all'esterno: ENTRATA = dall'esterno verso il gestionale, USCITA = dal gestionale verso l'esterno, INTERNA = operazione interna. |
+| `ripetibilita` | VARCHAR(20) CHECK (MAI, SE_NON_POSITIVO, SEMPRE) DEFAULT 'SE_NON_POSITIVO'. Regola di ripetibilita' delle istanze nella stessa pratica: `MAI` = una sola istanza non annullata (es. CONFERMA); `SE_NON_POSITIVO` = nuova istanza solo se l'ultima e' COMPLETATO con esito diverso da POSITIVO (un'istanza ancora aperta blocca — es. APPUNTAMENTO andato male si rifa'); `SEMPRE` = libera (es. contatto telefonico). |
 | `handler_params` | JSONB DEFAULT '{}'. Parametri operativi passati all'handler Django in fase di esecuzione (es. `{"stampa_foglio": true, "invio_sms_conferma": true}`). Distinto da `meta` che contiene metadati generici. |
 
 ---
@@ -40,6 +43,7 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 
 * **UQ composito**: `(tipo_prestazione_id, codice)` — codice univoco per tipo_prestazione.
 * **CHECK direzione**: solo valori ENTRATA, USCITA, INTERNA.
+* **CHECK ripetibilita**: solo valori MAI, SE_NON_POSITIVO, SEMPRE.
 * **FK handler_id nullable**: NULL = step manuale, NOT NULL = step automatizzato.
 
 ---
