@@ -61,12 +61,16 @@ def crea_pratica(
     assert priorita_id > 0
 
     # Validazione coerenza contesto anagrafico (stesse regole del trigger DB,
-    # qui per dare errori user-friendly via ServiceError).
+    # qui per dare errori user-friendly via ServiceError). Modello a due rami
+    # dal soggetto (brief-db-pratiche-guard-contesto-istanza, consegna
+    # 20260611-01): l'istanza NON richiede il ruolo — il prospect puro ha
+    # solo istanze, il ruolo CL nasce col BA. Entrambi i rami richiedono il
+    # soggetto.
     if istanza_utility_id is not None:
         ErrorManager.require(
-            soggetto_ruolo_id is not None,
+            soggetto_id is not None,
             code="E_PRATICA_VALIDATION",
-            message="istanza_utility_id richiede soggetto_ruolo_id",
+            message="istanza_utility_id richiede soggetto_id",
         )
     if soggetto_ruolo_id is not None:
         ErrorManager.require(
