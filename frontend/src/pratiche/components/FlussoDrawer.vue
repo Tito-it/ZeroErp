@@ -17,10 +17,9 @@ const TIPO_PREVENTIVI_PREFIX = 'PREVENTIVI'
 const TEMPLATE_PREVENTIVAZIONE = 'PREVENTIVAZIONE'
 const TEMPLATE_APPROVAZIONE_CLIENTE = 'APPROVAZIONE_CLIENTE'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
-import { displayTimestamp } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import PraticaContextHeader from './PraticaContextHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
@@ -157,19 +156,22 @@ const onClose = useDrawerClose(emit)
     <div v-if="flusso" class="app-drawer-content">
       <template v-if="contentReady">
 
-      <!-- Refactor UI drawer 2026-05-22 (Fase 3.A): header info + barra
-           azioni state in alto, simmetrici a contratti/preventivi.
-           "Completa con esito" resta inline come transizione con dati
-           di processo (richiede form esito obbligatorio). -->
-      <DrawerEntityHeader>
-        <Tag :value="flusso.pratica_codice || `#${flusso.pratica_id}`" severity="secondary" />
-        <span v-if="flusso.data_insert" class="app-drawer-header-muted">
-          {{ displayTimestamp(flusso.data_insert) }}
-        </span>
+      <!-- Header standard contesto pratica (BB PraticaContextHeader):
+           numero pratica + soggetto + data apertura + id fiscale, identico
+           su ogni drawer di esecuzione flusso. "Completa con esito" resta
+           inline come transizione con dati di processo (form esito
+           obbligatorio). -->
+      <PraticaContextHeader
+        :codice="flusso.pratica_codice"
+        :pratica-id="flusso.pratica_id"
+        :soggetto="flusso.pratica_soggetto_display"
+        :data-apertura="flusso.pratica_data_apertura"
+        :id-fiscale="flusso.pratica_soggetto_id_fiscale"
+      >
         <template #status>
           <Tag :value="stato" :severity="statoFlussoSeverity(stato)" />
         </template>
-      </DrawerEntityHeader>
+      </PraticaContextHeader>
 
       <DrawerActionsBar :actions="drawerActions" />
 
