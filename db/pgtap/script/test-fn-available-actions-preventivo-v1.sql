@@ -3,12 +3,14 @@
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_preventivo — meta transizioni e filtro manuale
 -- ------------------------------------------------------------
--- Indice test (1..7):
+-- Indice test (1..7) — rev 12-06-2026 (allineamento: ACCETTATO→ANNULLATO
+-- disattivata dal 22-05; capability push/ordine gated dal residuo):
 -- 1) Preventivo inesistente → NULL
--- 2) Preventivo ACCETTATO → 1 sola azione (ANNULLATO; EVASO escluso perché manuale=false)
--- 3) Preventivo ACCETTATO, azione ANNULLATO → key='annulla' valorizzato (regressione bug meta={})
--- 4) Preventivo ACCETTATO, azione ANNULLATO → label_key='preventivi.azione_annulla' valorizzato
--- 5) Preventivo ACCETTATO → can_push_commessa=true, can_edit_testata=false
+-- 2) Preventivo ACCETTATO (senza righe/BA) → 0 azioni (annulla solo da DRAFT;
+--    EVASO automatico escluso; push/genera gated dal residuo)
+-- 3) Preventivo DRAFT, azione ANNULLATO → key='annulla' valorizzato (regressione bug meta={})
+-- 4) Preventivo DRAFT, azione ANNULLATO → label_key='preventivi.azione_annulla' valorizzato
+-- 5) Preventivo ACCETTATO senza BA/righe → can_push_commessa=false, reason SENZA_BILLING_ACCOUNT
 -- 6) Preventivo DRAFT → 2 azioni manuali (emetti + annulla)
 -- 7) Preventivo DRAFT → tutte le azioni hanno key valorizzato (nessun null da meta={})
 -- ------------------------------------------------------------
@@ -107,8 +109,10 @@ SELECT is(
 );
 
 -- ============================================================
--- TEST 2) Preventivo ACCETTATO → 1 sola azione (ANNULLATO)
---         La transizione ACCETTATO→EVASO (manuale=false) deve essere esclusa
+-- TEST 2) Preventivo ACCETTATO (senza righe/BA) → 0 azioni
+--         ACCETTATO→ANNULLATO disattivata (22-05: annulla solo da DRAFT);
+--         ACCETTATO→EVASO esclusa (manuale=false); push_commessa e
+--         genera_ordine non appese (nessun residuo su fixture vuota).
 -- ============================================================
 SELECT is(
   (SELECT jsonb_array_length(
@@ -116,42 +120,58 @@ SELECT is(
          )
      FROM tmp_prev_aa_accettato p
   ),
-  1,
-  'fn_available_actions_preventivo ACCETTATO: 1 azione (EVASO automatico escluso)'
+  0,
+  'fn_available_actions_preventivo ACCETTATO senza righe/BA: 0 azioni'
 );
 
 -- ============================================================
--- TEST 3) Preventivo ACCETTATO → azione ha key='annulla' valorizzato
+-- TEST 3) Preventivo DRAFT → azione 'annulla' con key valorizzato
 --         Regressione diretta del bug meta={}: la CSV aveva meta vuoto
--- ============================================================
-SELECT is(
-  (SELECT script.fn_available_actions_preventivo(p.id)->'available_actions'->0->>'key'
-     FROM tmp_prev_aa_accettato p
-  ),
-  'annulla',
-  'fn_available_actions_preventivo ACCETTATO: key=''annulla'' valorizzato (regressione meta={})'
-);
-
--- ============================================================
--- TEST 4) Preventivo ACCETTATO → azione ha label_key valorizzato
--- ============================================================
-SELECT is(
-  (SELECT script.fn_available_actions_preventivo(p.id)->'available_actions'->0->>'label_key'
-     FROM tmp_prev_aa_accettato p
-  ),
-  'preventivi.azione_annulla',
-  'fn_available_actions_preventivo ACCETTATO: label_key=''preventivi.azione_annulla'' valorizzato'
-);
-
--- ============================================================
--- TEST 5) Preventivo ACCETTATO → can_push_commessa=true, can_edit_testata=false
+--         (spostata su DRAFT: da ACCETTATO l'annullo non e' piu' ammesso)
 -- ============================================================
 SELECT ok(
-  (SELECT (script.fn_available_actions_preventivo(p.id)->>'can_push_commessa')::boolean IS TRUE
+  (SELECT EXISTS (
+     SELECT 1
+       FROM tmp_prev_aa_draft p,
+            jsonb_array_elements(
+              script.fn_available_actions_preventivo(p.id)->'available_actions'
+            ) AS elem
+      WHERE elem->>'key' = 'annulla'
+  )),
+  'fn_available_actions_preventivo DRAFT: azione key=''annulla'' presente (regressione meta={})'
+);
+
+-- ============================================================
+-- TEST 4) Preventivo DRAFT → azione 'annulla' con label_key valorizzato
+-- ============================================================
+SELECT ok(
+  (SELECT EXISTS (
+     SELECT 1
+       FROM tmp_prev_aa_draft p,
+            jsonb_array_elements(
+              script.fn_available_actions_preventivo(p.id)->'available_actions'
+            ) AS elem
+      WHERE elem->>'key' = 'annulla'
+        AND elem->>'label_key' = 'preventivi.azione_annulla'
+  )),
+  'fn_available_actions_preventivo DRAFT: label_key=''preventivi.azione_annulla'' valorizzato'
+);
+
+-- ============================================================
+-- TEST 5) Preventivo ACCETTATO senza billing account ne' righe →
+--         can_push_commessa=false (rev 12-06-2026: capability con
+--         residuo + testata) con reason SENZA_BILLING_ACCOUNT,
+--         can_edit_testata=false. I casi positivi (misto, righe
+--         eleggibili) sono in test-fn-preventivo-ha-residuo-commessa-v1.
+-- ============================================================
+SELECT ok(
+  (SELECT (script.fn_available_actions_preventivo(p.id)->>'can_push_commessa')::boolean IS FALSE
+      AND (script.fn_available_actions_preventivo(p.id)->>'can_push_commessa_reason')
+          = 'PREVENTIVO_SENZA_BILLING_ACCOUNT'
       AND (script.fn_available_actions_preventivo(p.id)->>'can_edit_testata')::boolean IS FALSE
      FROM tmp_prev_aa_accettato p
   ),
-  'fn_available_actions_preventivo ACCETTATO: can_push_commessa=true, can_edit_testata=false'
+  'fn_available_actions_preventivo ACCETTATO senza BA/righe: can_push_commessa=false, reason SENZA_BILLING_ACCOUNT'
 );
 
 -- ============================================================

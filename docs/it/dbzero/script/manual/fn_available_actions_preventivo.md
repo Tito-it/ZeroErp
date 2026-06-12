@@ -53,21 +53,43 @@ script.fn_available_actions_preventivo(
     ],
     "can_edit_testata":             true,    // true solo in DRAFT
     "can_edit_righe":               true,    // true solo in DRAFT
-    "can_push_commessa":            false,   // true solo in ACCETTATO
+    "can_push_commessa":            false,   // ACCETTATO + residuo servizi (rev 12-06-2026)
     "can_push_commessa_reason":     "PREVENTIVO_NON_ACCETTATO",         // reason code machine-readable; null se can_push=true
     "can_push_commessa_reason_key": "preventivi.push_commessa_reason.non_accettato", // chiave i18n associata; null se can_push=true
+    "can_genera_ordine":            false,   // ACCETTATO + residuo merce (rev 09-06-2026)
+    "can_genera_ordine_reason":     "PREVENTIVO_NON_ACCETTATO",
+    "can_genera_ordine_reason_key": "preventivi.genera_ordine_reason.non_accettato",
     "can_create_revisione":         false,   // true solo in EMESSO
     "non_editable_fields":          ["utility_id"],  // sempre presente; vedi dettaglio sotto
     "stato_codice":                 "DRAFT"  // codice_interno stato corrente
 }
 ```
 
-### Coppia `can_push_commessa_reason` / `can_push_commessa_reason_key`
+### Coppie `can_*_reason` / `can_*_reason_key`
 
-- **`can_push_commessa_reason`** = reason code stabile machine-readable, usato in log e da BE per logica condizionale (es. `'PREVENTIVO_NON_ACCETTATO'`).
-- **`can_push_commessa_reason_key`** = chiave i18n pronta per `$t()` lato FE (es. `'preventivi.push_commessa_reason.non_accettato'`).
+- **`reason`** = reason code stabile machine-readable, usato in log e da BE per logica condizionale.
+- **`reason_key`** = chiave i18n pronta per `$t()` lato FE.
 
-Le due chiavi sono sempre coerenti (entrambe `null` quando `can_push_commessa=true`, entrambe valorizzate altrimenti). In Fase 3 saranno aggiunti nuovi reason cross-dominio (commesse già pushate, approvazioni pendenti); il BE usa il reason, il FE traduce via key.
+Le due chiavi sono sempre coerenti (entrambe `null` quando la capability è
+`true`, entrambe valorizzate altrimenti). Il BE usa il reason, il FE traduce
+via key.
+
+**Reason di `can_push_commessa`** (rev 12-06-2026, brief smistamento — ordine
+di verifica: stato → testata → righe, la reason racconta il primo ostacolo da
+rimuovere):
+
+| Reason | Key | Quando |
+|---|---|---|
+| `PREVENTIVO_NON_ACCETTATO` | `preventivi.push_commessa_reason.non_accettato` | Fuori stato ACCETTATO |
+| `PREVENTIVO_SENZA_BILLING_ACCOUNT` | `preventivi.push_commessa_reason.senza_billing_account` | Testata incompleta (BA o utility NULL): il fix è compilarla, non "mancano righe" |
+| `PREVENTIVO_NESSUNA_RIGA_COMMESSA` | `preventivi.push_commessa_reason.nessuna_riga` | Nessun residuo servizi (nessuna riga o tutte già EMESSE) |
+
+**Reason di `can_genera_ordine`** (rev 09-06-2026):
+
+| Reason | Key | Quando |
+|---|---|---|
+| `PREVENTIVO_NON_ACCETTATO` | `preventivi.genera_ordine_reason.non_accettato` | Fuori stato ACCETTATO |
+| `PREVENTIVO_NESSUNA_RIGA_ORDINE` | `preventivi.genera_ordine_reason.nessuna_riga` | Nessun residuo merce (nessuna riga o tutte già allocate) |
 
 ### Dettaglio `non_editable_fields`
 
@@ -93,7 +115,7 @@ Risultato per stato:
 |---|---|---|
 | `DRAFT` | `emetti`, `annulla` | Da matrice transizioni |
 | `EMESSO` | `accetta`, `rifiuta`, `crea_revisione` | `crea_revisione` hardcoded (rev 28-05-2026) |
-| `ACCETTATO` | `push_commessa` | Hardcoded, gate solo stato in v1 (rev 28-05-2026) |
+| `ACCETTATO` | `push_commessa` (se residuo servizi), `genera_ordine` (se residuo merce) | Hardcoded, gate con residuo per ramo (rev 09/12-06-2026): su preventivo solo-merce appare solo `genera_ordine`, su solo-servizi solo `push_commessa` |
 | `ANNULLATO` / `RIFIUTATO` / `SCADUTO` | `[]` | Terminali |
 
 La transizione `EMESSO → SCADUTO` è **automatica** (job notturno) e
@@ -118,26 +140,32 @@ fatturazione, push commessa).
 3. **Azioni speciali hardcoded** — aggiunte in coda a `v_actions` (pattern
    `fn_available_actions_offerta`, rev 28-05-2026):
    - `crea_revisione` se `v_stato_cod = 'EMESSO'`: `target_state null`, `icon pi pi-clone`.
-   - `push_commessa` se `v_stato_cod = 'ACCETTATO'`: `target_state null`, `icon pi pi-arrow-right`.
+   - `push_commessa` se `v_can_push` (ACCETTATO + residuo servizi): `icon pi pi-arrow-right`.
+   - `genera_ordine` se `v_can_ordine` (ACCETTATO + residuo merce): `icon pi pi-shopping-cart`.
    Il FE distingue queste azioni dal `key` e usa routing speciale nel drawer.
-4. **Capability derivate** — calcolate da `v_stato_cod` con semplici confronti:
+4. **Capability derivate**:
    - `can_edit_testata / can_edit_righe = (stato = 'DRAFT')`
-   - `can_push_commessa = (stato = 'ACCETTATO')`
+   - `can_push_commessa = (stato = 'ACCETTATO') AND vendite.fn_preventivo_ha_residuo_commessa(id)` *(rev 12-06-2026)*
+   - `can_genera_ordine = (stato = 'ACCETTATO') AND vendite.fn_preventivo_ha_residuo_ordine(id)` *(rev 09-06-2026)*
    - `can_create_revisione = (stato = 'EMESSO')`
    - `non_editable_fields`: costante ridotta in DRAFT, allargata altrove.
 5. **Build JSONB** — `jsonb_build_object` con tutte le chiavi.
 
-> **Nota Fase 3** — `can_push_commessa` è derivato dallo stato soltanto.
-> Il check cross-dominio (righe già in commessa con `stato_emissione=EMESSA`)
-> è rinviato a Fase 3 e sarà aggiunto senza modificare il contratto API.
+> **Nota** — la "Fase 3" anticipata nelle revisioni precedenti è stata
+> completata (rev 12-06-2026, brief-db-smistamento-preventivi.md): entrambe
+> le capability di smistamento usano il check cross-dominio con residuo via
+> le funzioni `fn_preventivo_ha_residuo_*` (predicato unico condiviso con le
+> viste smistabili e il Pannello Smistamento), senza modifiche al contratto API.
 
 ## Dipendenze
 
 | Oggetto | Tipo | Ruolo |
 |---|---|---|
-| `vendite.preventivi` | tabella | sorgente stato e ID |
+| `vendite.preventivi` | tabella | sorgente stato, testata (BA/utility) e ID |
 | `config.stati_doc_preventivi` | tabella | risoluzione `codice_interno` |
 | `config.transizioni_stati_preventivi` | tabella | matrice transizioni + meta UI |
+| `vendite.fn_preventivo_ha_residuo_commessa` | funzione | gate `can_push_commessa` (rev 12-06-2026) |
+| `vendite.fn_preventivo_ha_residuo_ordine` | funzione | gate `can_genera_ordine` (rev 09-06-2026) |
 | `20260430-60-update-transizioni-stati-preventivi-meta-ui-mctit` | migration 80_data | popola `meta` con `label_key`/`severity`/`icon`/`manuale` |
 
 ## Note operative

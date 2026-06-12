@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_list_preventivi_da_pushare`
 
 ```sql
-CREATE FUNCTION fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_preventivo_id bigint)
+CREATE FUNCTION fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_preventivo_id bigint, p_righe_ids bigint[])
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_preventivo_id bigint DEFAULT NULL::bigint)
+CREATE OR REPLACE FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_preventivo_id bigint DEFAULT NULL::bigint, p_righe_ids bigint[] DEFAULT NULL::bigint[])
  RETURNS TABLE(preventivo_id bigint, preventivo_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, tipo_consumo character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint)
  LANGUAGE plpgsql
 AS $function$
@@ -24,11 +24,12 @@ BEGIN
   --
   -- Regole:
   --   - stato documento ACCETTATO
-  --   - SOLO righe natura destinazione_tipo='COMMESSA' (natura NULL
-  --     trattata come COMMESSA: pregresso pre-trigger). La merce
-  --     (ORDINE) va su fn_push_preventivo_a_ordine, non qui.
-  --   - esclude righe gia` EMESSA in commessa (via NOT EXISTS)
-  --   - riga attivo = true, quantita > 0, prezzo >= 0
+  --   - predicato di riga dalla vista unica
+  --     vw_preventivi_righe_smistabili_commessa (rev 12-06-2026):
+  --     riga attiva, quantita > 0, prezzo >= 0, natura NULL
+  --     (pregresso) o destinazione_tipo='COMMESSA', non gia'
+  --     EMESSA in commessa. La merce (ORDINE) va su
+  --     fn_push_preventivo_a_ordine, non qui.
   --   - prezzo_bloccato = fatturazione_immediata
   --   - tipo_commessa target: REALE, policy: DA_DOCUMENTO
   --
@@ -44,12 +45,14 @@ BEGIN
   --
   -- Estensione 2026-05: p_preventivo_id (opzionale):
   --   NULL = lista globale batch; NOT NULL = singolo preventivo UI-driven.
+  -- Estensione 2026-06-12: p_righe_ids (opzionale, brief smistamento):
+  --   sottoinsieme righe del pannello; richiede p_preventivo_id.
+  --   Righe non eleggibili nel sottoinsieme: skip silenzioso (D5).
   --
   -- NOTE:
   --   - uom_id: UoM canonica da catalogo.articoli (JOIN su pr.articolo_id).
   --     La colonna preventivi_righe.uom_id e` droppata (non usare).
   --   - uom_operativa_id: UoM di inserimento operatore (dalla riga).
-  --   - natura: LEFT JOIN per non perdere righe a natura NULL.
   -- =========================================================
 
   IF p_preventivo_id IS NOT NULL AND p_preventivo_id <= 0 THEN
@@ -58,6 +61,16 @@ BEGIN
       jsonb_build_object('parametro', 'p_preventivo_id', 'valore', p_preventivo_id),
       NULL::uuid,
       'p_preventivo_id', p_preventivo_id::text
+    );
+  END IF;
+
+  -- Sottoinsieme righe: ha senso solo sul push singolo UI-driven.
+  IF p_righe_ids IS NOT NULL AND p_preventivo_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_list_preventivi_da_pushare', 'E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO',
+      jsonb_build_object('parametro', 'p_righe_ids', 'valore', p_righe_ids),
+      NULL::uuid,
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 
@@ -98,20 +111,20 @@ BEGIN
     ('PREV:' || p.uid::text || ':R:' || pr.id::text)::varchar     AS segment_key,
     pr.articolo_id,
     p.istanza_utility_id,
-    COALESCE(p.validita_dal, p.data)                             AS data_attivita,
+    COALESCE(p.validita_dal, p.data)                              AS data_attivita,
     -- uom_id canonica da catalogo.articoli (fix bug proiezione NULL)
     a.uom_id,
     pr.quantita,
     pr.qta_operativa,
     pr.uom_operativa_id,
-    COALESCE(pr.factor_to_base, 1::numeric)                      AS factor_to_base,
+    COALESCE(pr.factor_to_base, 1::numeric)                       AS factor_to_base,
     -- competenza_mese: policy autorevole, fallback al derivato (pregresso)
     COALESCE(
       p.competenza_mese,
       date_trunc('month', COALESCE(p.validita_dal, p.data))::date
     )                                                             AS competenza_mese,
     pr.prezzo_unitario                                            AS prezzo_snapshot,
-    COALESCE(p.fatturazione_immediata, false)                    AS prezzo_bloccato,
+    COALESCE(p.fatturazione_immediata, false)                     AS prezzo_bloccato,
     'FIXED'::varchar                                              AS pricing_mode,
     'NORMALE'::varchar                                            AS tipo_movimento,
     'CONGUAGLIO'::varchar                                         AS tipo_consumo,
@@ -124,20 +137,15 @@ BEGIN
     )                                                             AS meta,
     v_tipo_doc_fiscale_id                                         AS tipo_doc_fiscale_id
   FROM vendite.preventivi p
-  JOIN vendite.preventivi_righe pr
-    ON pr.preventivo_id = p.id
-   AND pr.attivo IS TRUE
-   AND pr.quantita > 0
-   AND pr.prezzo_unitario >= 0
+  -- Predicato di riga dalla vista unica (eleggibilita' condivisa
+  -- con capability e pannello smistamento).
+  JOIN vendite.vw_preventivi_righe_smistabili_commessa v
+    ON v.preventivo_id = p.id
+  JOIN vendite.preventivi_righe pr ON pr.id = v.id
   JOIN catalogo.articoli a ON a.id = pr.articolo_id
-  -- Natura di riga: LEFT JOIN per non perdere le righe a natura NULL.
-  LEFT JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
   WHERE p.billing_account_id IS NOT NULL
     AND p.utility_id IS NOT NULL
     AND (v_stato_accettato_id IS NULL OR p.stato_doc_preventivo_id = v_stato_accettato_id)
-    -- SOLO righe destinate a COMMESSA (natura NULL = pregresso -> COMMESSA).
-    -- La merce (ORDINE) e' esclusa: va su fn_push_preventivo_a_ordine.
-    AND (pr.natura_vendita_id IS NULL OR nv.destinazione_tipo = 'COMMESSA')
     -- Filtro allineato alla stessa espressione del SELECT competenza_mese.
     AND (p_competenza_mese IS NULL
          OR COALESCE(
@@ -146,18 +154,16 @@ BEGIN
             ) = p_competenza_mese)
     AND (p_billing_account_id IS NULL OR p.billing_account_id = p_billing_account_id)
     AND (p_preventivo_id IS NULL OR p.id = p_preventivo_id)
-    AND NOT EXISTS (
-      SELECT 1 FROM vendite.commesse_attivita ca
-      WHERE ca.segment_key = 'PREV:' || p.uid::text || ':R:' || pr.id::text
-        AND ca.stato_emissione = 'EMESSA'
-    )
+    -- Sottoinsieme righe del pannello (skip silenzioso delle non
+    -- eleggibili: gia' escluse dalla vista).
+    AND (p_righe_ids IS NULL OR pr.id = ANY(p_righe_ids))
   ORDER BY p.id, pr.id
   LIMIT p_limit;
-END
+END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_preventivo_id bigint)
-IS 'Lista righe preventivo eligible al push su commessa (stato ACCETTATO). NATURA-AWARE (rev 09-06-2026): solo righe con natura destinazione_tipo=COMMESSA (natura NULL = pregresso, inclusa); la merce (ORDINE) va su fn_push_preventivo_a_ordine. uom_id da catalogo.articoli (canonica). COMPETENZA (rev 10-06-2026): competenza_dal/al NOT NULL-safe (COALESCE validita/competenza_mese/data + GREATEST dal<=al), competenza_mese policy-aware (COALESCE(competenza_mese, derivato)); filtro WHERE allineato. p_preventivo_id opzionale: NULL=batch globale, NOT NULL=UI push singolo. Filtri in AND. Esclude EMESSA via NOT EXISTS.';
+COMMENT ON FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_preventivo_id bigint, p_righe_ids bigint[])
+IS 'Righe preventivo pronte per il push su commessa (stato ACCETTATO, testata completa; predicato di riga dalla vista unica vw_preventivi_righe_smistabili_commessa). p_preventivo_id: push singolo UI-driven. p_righe_ids (rev 12-06-2026, brief smistamento): sottoinsieme righe del pannello, richiede p_preventivo_id (E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO), righe non eleggibili skippate in silenzio (D5). NULL = batch invariato.';
 ```
 
 ---
