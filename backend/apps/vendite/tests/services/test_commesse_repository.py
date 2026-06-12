@@ -20,6 +20,8 @@ Indice test eseguiti:
 11) CommesseRepositoryUnitTests.test_get_push_log_returns_none_when_not_found
 12) CommesseRepositoryUnitTests.test_fetch_pushable_rows_calls_correct_fn
 13) CommesseRepositoryUnitTests.test_fetch_pushable_rows_unknown_sorgente_raises
+13b) CommesseRepositoryUnitTests.test_fetch_pushable_rows_righe_ids_preventivo
+13c) CommesseRepositoryUnitTests.test_fetch_pushable_rows_righe_ids_sorgente_non_supportata
 14) CommesseRepositoryUnitTests.test_fetch_pushable_rows_maps_shared_columns
 15) CommesseRepositoryUnitTests.test_get_or_create_commessa_uses_defaults
 16) CommesseRepositoryUnitTests.test_validate_sorgente_map_ok
@@ -294,6 +296,28 @@ class CommesseRepositoryUnitTests(TestCase):
         repo = CommesseRepository()
         with self.assertRaises(Exception):
             repo.fetch_pushable_rows("SCONOSCIUTO")
+
+    # Scopo: righe_ids valorizzato su sorgente PREVENTIVO → chiamata fn a 5
+    # parametri con p_righe_ids in coda (smistamento selettivo, brief
+    # smistamento C). righe_ids=None → resta la chiamata a 4 parametri.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_fetch_pushable_rows_righe_ids_preventivo(self, mock_cursor_factory):
+        cur = _mock_cursor(fetchall=[], description=_ORDINI_COLS)
+        mock_cursor_factory.return_value = cur
+        repo = CommesseRepository()
+        repo.fetch_pushable_rows("PREVENTIVO", sorgente_uid=42, righe_ids=[7, 9])
+        sql, params = cur.execute.call_args[0]
+        self.assertIn("%s, %s, %s, %s, %s::bigint[]", sql)
+        self.assertEqual(params, [None, None, None, 42, [7, 9]])
+
+    # Scopo: righe_ids su sorgente che non lo supporta (fn a 4 parametri) →
+    # errore esplicito, niente chiamata SQL malformata.
+    def test_fetch_pushable_rows_righe_ids_sorgente_non_supportata(self):
+        repo = CommesseRepository()
+        with self.assertRaises(Exception):
+            repo.fetch_pushable_rows(
+                "ORDINE_VENDITA", sorgente_uid=42, righe_ids=[7],
+            )
 
     # Scopo: Verifica mapping colonne condivise in PushableRow.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")

@@ -388,7 +388,12 @@ except Exception: print('')
     if [[ -n "$REGOLA_ID" ]]; then
         do_curl POST "/api/v1/pratiche/${PRATICA_ID}/flussi/${FLUSSO_GEN_ID}/genera/" \
             "{\"regola_id\": ${REGOLA_ID}}"
-        if check "POST genera (regola $REGOLA_ID)" 200 "data.pratica_id"; then
+        if [[ "$LAST_STATUS" == "403" ]]; then
+            # Esito legittimo per un operatore di reparto: genera_pratica_manuale
+            # e' azione PERICOLOSA, abilitata ai profili di coordinamento
+            # (brief-db-azioni-processo-pratiche §4). Coperta dal run super admin.
+            log_skip "genera: azione non abilitata al profilo operatore (coerente col modello permessi)"
+        elif check "POST genera (regola $REGOLA_ID)" 200 "data.pratica_id"; then
             log_info "pratica generata = $EXTRACTED"
             PRATICA_GEN_ID="$EXTRACTED"
             do_curl GET "/api/v1/pratiche/${PRATICA_ID}/flussi/${FLUSSO_GEN_ID}/pratiche-generate/"

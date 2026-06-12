@@ -23,7 +23,7 @@ from apps.vendite.types import (
     PreventivoListRow,
     PreventivoPraticaRow,
     PreventivoRigaRow,
-    PreventivoStatoFatturazioneRow,
+    PreventivoSmistamentoRow,
 )
 
 
@@ -1098,17 +1098,66 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             row = cursor.fetchone()
             return bool(row[0]) if row else False
 
-    # Scopo: Stato fatturazione aggregato del preventivo (per badge UI).
-    # Usa la vista DB che fa il join via segment_key e filtra per sorgente PREVENTIVO.
-    def stato_fatturazione(self, preventivo_id: int) -> PreventivoStatoFatturazioneRow | None:
+    # Scopo: Predicato residuo COMMESSA (simmetrico a preventivo_ha_residuo_ordine,
+    #        brief-db-smistamento-preventivi.md A) — TRUE se restano righe natura
+    #        destinazione COMMESSA eleggibili al push non ancora EMESSE in
+    #        commessa E la testata e' completa (billing_account + utility: la fn
+    #        DB verifica anche i requisiti di testata del push). Condiviso tra
+    #        capability can_push_commessa e gate EVASO bi-ramo.
+    def preventivo_ha_residuo_commessa(self, preventivo_id: int) -> bool:
+        sql = "SELECT vendite.fn_preventivo_ha_residuo_commessa(%s) AS residuo"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [preventivo_id])
+            row = cursor.fetchone()
+            return bool(row[0]) if row else False
+
+    # Scopo: Aggregato smistamento per ramo (badge + progress X/Y del pannello).
+    # Legge vw_preventivi_smistamento (rename DB 2026-06-12 della vecchia
+    # vw_preventivi_stato_fatturazione, droppata): contatori natura-aware.
+    def stato_smistamento(self, preventivo_id: int) -> PreventivoSmistamentoRow | None:
         sql = """
             SELECT *
-            FROM vendite.vw_preventivi_stato_fatturazione
+            FROM vendite.vw_preventivi_smistamento
             WHERE preventivo_id = %s
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
             return row_to_dict(cursor)
+
+    # Scopo: Righe del Pannello Smistamento — una per riga attiva del preventivo,
+    #        con natura, destinazione effettiva e `stato_smistamento` autorevole
+    #        (RESIDUA/A_ORDINE/IN_COMMESSA/EMESSA_AF/FATTURATA). La vista espone
+    #        gia' descrizione/qta/prezzo di riga e i riferimenti ordine
+    #        (id+numero); JOIN solo per i display articolo/uom (regola display
+    #        fields via JOIN, no lookup client-side).
+    def list_righe_smistamento(self, preventivo_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                s.riga_id,
+                s.riga_ordine,
+                s.riga_descrizione,
+                s.articolo_id,
+                a.codice            AS articolo_codice,
+                s.quantita,
+                s.qta_operativa,
+                s.uom_operativa_id,
+                um.codice           AS uom_codice,
+                s.prezzo_unitario,
+                s.natura_vendita_id,
+                s.natura_vendita_codice,
+                s.destinazione_tipo,
+                s.stato_smistamento,
+                s.ordine_id,
+                s.ordine_numero
+              FROM vendite.vw_preventivi_smistamento_righe s
+              LEFT JOIN catalogo.articoli a      ON a.id  = s.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id = s.uom_operativa_id
+             WHERE s.preventivo_id = %s
+             ORDER BY s.riga_ordine NULLS LAST, s.riga_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [preventivo_id])
+            return rows_to_list(cursor)
 
     # ══════════════════════════════════════════════════════════
     #  INTEGRAZIONE — Pratiche

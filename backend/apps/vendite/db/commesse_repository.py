@@ -28,6 +28,13 @@ _SORGENTE_FN_MAP: dict[str, str] = {
     "DDT_VENDITA": "vendite.fn_list_ddt_da_pushare",
 }
 
+# Sorgenti la cui fn_list_*_da_pushare espone il 5o parametro `p_righe_ids`
+# (smistamento selettivo per sottoinsieme righe). Oggi solo PREVENTIVO
+# (brief-db-smistamento-preventivi.md C); aggiungere qui quando le altre fn
+# acquisiranno il parametro (sviluppo concentrico: la whitelist e' il punto
+# unico di espansione).
+_SORGENTE_SUPPORTA_RIGHE_IDS: frozenset[str] = frozenset({"PREVENTIVO"})
+
 # Nomi delle 26 colonne condivise da tutte le fn_list_*_da_pushare.
 # La colonna opzionale `riga_id` (presente in preventivi/ordini/contratti/ddt,
 # assente in consumi) e' aggiunta al col_map a runtime dentro
@@ -334,6 +341,7 @@ class CommesseRepository:
         billing_account_id: int | None = None,
         limit: int | None = None,
         sorgente_uid: int | None = None,
+        righe_ids: list[int] | None = None,
     ) -> list[PushableRow]:
         """Chiama fn_list_<sorgente>_da_pushare e restituisce PushableRow normalizzati."""
         fn_name = _SORGENTE_FN_MAP.get(sorgente_codice)
@@ -343,13 +351,32 @@ class CommesseRepository:
             message=f"Sorgente '{sorgente_codice}' non supportata per push",
         )
         assert fn_name is not None
+        # `righe_ids` (sottoinsieme righe, smistamento selettivo dal Pannello
+        # Smistamento): 5o parametro `p_righe_ids` disponibile solo sulle fn
+        # delle sorgenti in _SORGENTE_SUPPORTA_RIGHE_IDS (oggi PREVENTIVO,
+        # brief-db-smistamento-preventivi.md C). Guard esplicito: estendere la
+        # whitelist quando le altre fn acquisiranno il parametro.
+        ErrorManager.require(
+            righe_ids is None or sorgente_codice in _SORGENTE_SUPPORTA_RIGHE_IDS,
+            code="E_COMMESSA_VALIDATION",
+            message="Filtro righe non supportato per questa sorgente.",
+            detail=f"sorgente_codice={sorgente_codice} non supporta righe_ids",
+        )
+
+        # 4 param posizionali base (il 4o e' il filtro per id sorgente,
+        # DEFAULT NULL lato DB se omesso ma qui sempre passato) + 5o
+        # `p_righe_ids` SOLO quando valorizzato: le fn delle altre sorgenti
+        # hanno 4 parametri e il 5o le romperebbe.
+        placeholders = "%s, %s, %s, %s"
+        params: list = [competenza_mese, billing_account_id, limit, sorgente_uid]
+        if righe_ids is not None:
+            placeholders += ", %s::bigint[]"
+            params.append(righe_ids)
 
         with connection.cursor() as cursor:
             cursor.execute(
-                # 4 param posizionali: il 4o e' il filtro per id sorgente
-                # (DEFAULT NULL lato DB se omesso, ma qui lo passiamo sempre).
-                f"SELECT * FROM {fn_name}(%s, %s, %s, %s)",  # noqa: S608 — fn_name da whitelist
-                [competenza_mese, billing_account_id, limit, sorgente_uid],
+                f"SELECT * FROM {fn_name}({placeholders})",  # noqa: S608 — fn_name da whitelist
+                params,
             )
             # Costruisce mappa colonna → indice per estrarre solo le 25 condivise.
             col_names = [desc[0] for desc in cursor.description]

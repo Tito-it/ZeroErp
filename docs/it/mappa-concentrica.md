@@ -4,9 +4,9 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 29 maggio 2026 — Anello 3 (vendite): contratti passati al modello unificato (drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino all'attivazione, lock post-attivazione, stato ANNULLATO); nuovo documento **offerte commerciali** (proposta di condizioni quadro → push 1:1 a contratto) sviluppato DB+BE+FE con generazione PDF e allegati; componenti BoM compositi estesi a offerte; valuta su documenti vendite. Vedi [Gestione Offerte commerciali](guide/gestione-offerte-commerciali.md) e [Gestione Contratti](guide/gestione-contratti.md).*
+*Ultimo aggiornamento: 11 giugno 2026 — Anello 3 (vendite): **ordini di vendita** sviluppati end-to-end DB+BE+FE (CRUD, conferma, stato EVASO, stampa PDF, conversione preventivo/offerta→ordine, univocita' offerta→contratto XOR ordine); **pratica PREVENTIVI** eseguita end-to-end come primo consumatore reale del motore `pratiche` (handler `CONFERMA_VENDITA`, split per natura merce→ordine / servizi→commessa, smistamento riga-per-riga, commesse multi-sorgente) → Anello 2 `pratiche` passa a **validata con primo consumatore**; workflow pratiche v2 (ripetibilita', bivi condizionali, lenti contesto, guard chiusura). Vedi [analisi-pratiche-workflow-v2.md](dev/work-done/analisi-pratiche-workflow-v2.md) e [analisi-ordini-vendita.md](dev/work-in-progress/analisi-ordini-vendita.md).*
 >
-> *Aggiornamento precedente: 6 maggio 2026 — aggiunto componente `ui` in Anello 1 (metadato di presentazione: liste configurabili, personalizzazione colonne, preset per profilo/emittente). Stato allora: Da fare → **ora Operativo** (vedi tabelle Anello 1). Architettura completa in `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste.md`.*
+> *Aggiornamento precedente: 29 maggio 2026 — Anello 3 (vendite): contratti passati al modello unificato (drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino all'attivazione, lock post-attivazione, stato ANNULLATO); nuovo documento **offerte commerciali** (proposta di condizioni quadro → push 1:1 a contratto) sviluppato DB+BE+FE con generazione PDF e allegati; componenti BoM compositi estesi a offerte; valuta su documenti vendite. Vedi [Gestione Offerte commerciali](guide/gestione-offerte-commerciali.md) e [Gestione Contratti](guide/gestione-contratti.md).*
 
 ---
 
@@ -47,7 +47,7 @@
 
 **Regola fondamentale**: ogni anello dipende solo dagli anelli interni. Mai dipendenze inverse o laterali.
 
-## Aggiornamenti ricostruiti dal 26 aprile al 29 maggio 2026
+## Aggiornamenti ricostruiti dal 26 aprile all'11 giugno 2026
 
 Questa sezione registra solo evidenze presenti nel repository locale: commit e documentazione `docs/it/dev/work-done/` o `docs/it/dev/work-in-progress/`. Dove la documentazione indica test UI o working tree non ancora consolidato, lo stato resta esplicitamente marcato come tale.
 
@@ -66,6 +66,12 @@ Questa sezione registra solo evidenze presenti nel repository locale: commit e d
 | 24-27 maggio | Offerte commerciali (DB): testata + eccezioni delta-listino + componenti BoM + utility, 6 stati, `fn_push_offerta_a_contratto` idempotente, vista `is_attiva`, azioni data-driven | Nuovo documento pre-contrattuale in Anello 3 (vendite): la proposta di condizioni quadro che genera il contratto. |
 | 28-29 maggio | Offerte commerciali (BE+FE): risoluzione prezzo come contratti, generazione documento offerta con allegati, UI uniformata a contratti                | Offerta operativa end-to-end DB+BE+FE; in consolidamento/test UI.                                       |
 | 29 maggio    | Valuta su documenti vendite (`valuta_id` su offerte/contratti/preventivi, default da resolver gestore); guida offerte commerciali pubblicata          | Coerenza valuta cross-documento; documentazione di dominio allineata allo stato reale.                  |
+| 2 giugno     | Gate prezzi L1/L2/L3 esteso alle offerte (stesso orchestratore dei contratti); vincoli EXCLUDE anti-overlap ripristinati e governati dal framework `dbops.automazione_overlap` | Coerenza pricing cross-documento; Anello 0 consolida l'anti-overlap parametrico.                        |
+| 3-4 giugno   | Ordini di vendita DB+BE+FE: vista lista DEF-8, CRUD, conferma, stampa PDF (modulo stampa generico), conversione preventivo/offerta→ordine, lock cliente; regola del 2 su anagrafiche e core (estrazione BB); RLS ondata 2 (scrittura operatore) | Vendite chiude il documento ordine: il ciclo preventivo/offerta→ordine e' percorribile end-to-end.      |
+| 5 giugno     | Regola del 2 core FE/BE (factory `createCrudStore`, guard-versione, stack geografico); unificazione sconto righe ordini/fatture; riepilogo IVA documenti non fiscali esteso a ordini | Anello 0/1 frontend consolidano building block condivisi; meno duplicazione cross-dominio.              |
+| 8 giugno     | Univocita' offerta→(contratto XOR ordine) con status 409 coerenti; stato ordine EVASO con transizione automatica CONFERMATO→EVASO                     | Il downstream dell'offerta diventa mutuamente esclusivo; il ciclo ordine ha uno stato terminale data-driven. |
+| 9-10 giugno  | Pratica PREVENTIVI: handler `CONFERMA_VENDITA` BE+FE (commit `327140116`); `natura_vendita` su preventivi con split merce→ordine / servizi→commessa; smistamento merce→ordine riga-per-riga; commesse multi-sorgente (1 ROOT + N COLLEGATO); natura di vendita amministrabile da applicazione | Vendite diventa il primo consumatore reale del motore pratiche (Anello 2).                               |
+| 11-12 giugno | Workflow pratiche v2: ripetibilita' flussi, bivi condizionali, lenti contesto, guard chiusura; contesto pratica a 3 livelli (soggetto → ruolo → istanza derivata/filtrata); BB informazioni pratica; azioni di processo pratiche seedate | `pratiche` passa da "predisposta" a **validata con primo consumatore** (vedi Anello 2).                  |
 
 ### Natura degli anelli (post-aggiornamento manifesto §III bis)
 
@@ -201,7 +207,7 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 
 > **Natura: di servizio.** Motore trasversale che gli anelli esterni usano per tracciare, orchestrare e automatizzare.
 >
-> ⚠️ **Validazione esterna: in corso.** Per `pratiche`, il motore e' stato dichiarato Operativo su DB+BE+FE prima che un processo di Anello 3 lo consumasse realmente. Stato attuale: **predisposto, in attesa di validazione** dal primo consumatore reale (vendite). Vedi [Caso di studio: pratiche prima di vendite](#caso-di-studio-pratiche-prima-di-vendite). Per `documenti`, il primo consumatore reale e' `vendite.preventivi`, ma la validazione resta in test UI. Solo dopo che almeno due processi di Anello 3 avranno usato questi motori end-to-end le loro astrazioni si potranno considerare *contratti* nel senso del manifesto principio 1; fino a quel momento sono *proposte* (manifesto principio 7) e modificabili senza il rigore di un nucleo stabile.
+> ✅ **`pratiche`: validata con il primo consumatore (2026-06-12).** Il giro pratica PREVENTIVI (vendite) e' stato eseguito end-to-end runtime — handler `CONFERMA_VENDITA` con split per natura, giornale `DOMINIO_*`, gate EVASO, generazione cross-pratica, permessi da operatore reale — vedi `dev/work-in-progress/analisi-pratiche-domini-anello3.md` §8.5 (Fase E) e `dev/work-done/analisi-pratiche-workflow-v2.md` (estensione: ripetibilita', bivi condizionali, lenti contesto, guard chiusura). Stato attuale: **validata con primo consumatore (vendite), pronta per il secondo** (Fase F: candidata assistenza/CRM). Resta vero il principio: solo dopo il **secondo** consumatore le astrazioni si promuovono a *contratti* (manifesto principio 1); fino ad allora restano *proposte* (principio 7). Per `documenti`, il primo consumatore reale e' `vendite.preventivi`, ma la validazione resta in test UI.
 
 | Componente  | Tipo       | DB        | Backend   | Frontend   | Descrizione                                                                                                                                                          |
 | ----------- | ---------- | --------- | --------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -275,7 +281,7 @@ Piano v1 (storico): `docs/it/dev/work-done/piano-gestione-pratiche.md`
 
 | Componente    | Tipo       | DB        | Backend   | Descrizione                                                                                                                                                                   |
 | ------------- | ---------- | --------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi rev2, contratti, ordini, DDT, fatture, pipeline fatturazione, lotti, commesse, **listini v3**, generazione PDF preventivo via `documenti` in test UI |
+| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi rev2, offerte, contratti, **ordini operativi**, DDT, fatture, pipeline fatturazione, lotti, commesse multi-sorgente, **listini v3**, **pratica PREVENTIVI** (primo consumatore del motore `pratiche`), generazione PDF preventivo via `documenti` in test UI |
 | `acquisti`    | App Django | Operativo | Stub      | Ciclo passivo: richieste offerta, ordini, DDT, fatture                                                                                                                        |
 | `magazzino`   | App Django | Operativo | Stub      | Movimenti, giacenze, lotti, seriali                                                                                                                                           |
 | `pagamenti`   | App Django | Operativo | Stub      | Scadenze, riconciliazioni                                                                                                                                                     |
@@ -290,15 +296,15 @@ vendite ──────► config (stati_doc_fiscale, termini_pagamento)
               ► catalogo (articoli, UoM, listini)
               ► core (error_manager, endpoint_helpers)
               ► documenti (generazione/lista/download PDF preventivo)
-              ► pratiche (FUTURO — giornale, workflow)
+              ► pratiche (OPERATIVO — pratica PREVENTIVI: handler, giornale, azioni di processo)
 
 acquisti ─────► stesse dipendenze di vendite
               ► pratiche (FUTURO)
 ```
 
-### Integrazione futura con pratiche
+### Integrazione con pratiche
 
-`pratiche` e' operativo a livello DB+BE+FE, ma resta da validare come servizio consumato da processi di Anello 3. I processi di anello 3 potranno:
+`pratiche` e' stata validata dal primo consumatore reale: la pratica PREVENTIVI di `vendite` (giugno 2026) esercita creazione pratica, flussi con handler (`CONFERMA_VENDITA`), giornale `DOMINIO_*`, azioni di processo e generazione cross-pratica. Gli altri processi di Anello 3 potranno:
 
 1. **Creare pratiche** per i propri eventi (`pratiche_service.crea_pratica`)
 2. **Alimentare il giornale** con eventi di dominio (nuovo cliente → PRATICA_CREATA)
@@ -318,7 +324,9 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 | Runtime task tracing                    | Operativo                                                                     |
 | Builder XML SDI                         | In corso (payload pronto, generazione XML da fare)                            |
 | Persistenza esito SDI                   | Da fare                                                                       |
-| Commesse (push, orchestrator, handlers) | Operativo                                                                     |
+| Commesse (push, orchestrator, handlers) | Operativo — multi-sorgente (1 ROOT + N COLLEGATO), push idempotente           |
+| Ordini di vendita                       | Operativo — CRUD, lista DEF-8, conferma, EVASO automatico, stampa PDF, conversione preventivo/offerta→ordine, lock cliente (giugno 2026) |
+| Pratica PREVENTIVI (integrazione pratiche) | Operativo — handler `CONFERMA_VENDITA`, split per natura merce→ordine / servizi→commessa, smistamento riga-per-riga, gate EVASO (giugno 2026) |
 | Listini v3 (N2/N5/N6/N7/N8a)            | Operativo — Sprint B-v3 completato (aprile 2026)                              |
 | Pricing commesse (N5/N7/N7-sblocco)     | Operativo — riallineamento, variazione, sblocco                               |
 | Contratti (modello unificato)           | Operativo — drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino, lock post-attivazione, stato ANNULLATO |
@@ -341,7 +349,7 @@ anagrafiche      usa      -        -        -        -          -           -
 catalogo         usa      -        -        -        -          -           -
 pratiche         usa     usa      usa       -        -          -           -
 documenti        usa     usa      usa       -        -          -           -
-vendite          usa     usa      usa      usa    (futuro)     usa          -
+vendite          usa     usa      usa      usa      usa        usa          -
 acquisti         usa     usa      usa      usa    (futuro)   (futuro)      -
 magazzino        usa     usa      usa       -     (futuro)      -           -
 pagamenti        usa     usa       -        -     (futuro)      -           -
@@ -395,10 +403,10 @@ Lo schema corretto per anelli di servizio e':
 
 Pratiche e' costruita. Disfarla sarebbe spreco. La via realistica:
 
-- **Marcatura onesta**: pratiche resta Operativo a livello tecnico, ma nella mappa e' classificata "predisposta, validazione in corso con vendite" (vedi Anello 2).
-- **Prima integrazione concreta**: scegliere il primo evento di vendite che vale la pena tracciare in pratiche (probabilmente "ordine creato" o "preventivo accettato") e farlo end-to-end. Da li', osservare cosa serve davvero e cosa non serve.
-- **Riconciliazione con vendite-pipeline**: dopo la prima integrazione, decidere se i due motori si fondono, restano paralleli per scope diversi (single-process vs batch), o se uno assorbe l'altro. La decisione va **rinviata**, non presa adesso senza dati.
-- **Riserva di modifica**: finche' la validazione non e' completa, pratiche puo' essere modificata senza il rigore previsto per il nucleo (manifesto principio 1). I test attuali sono base di regressione, non sono contratto.
+- **Marcatura onesta**: ✅ percorso completato (2026-06-12) — pratiche e' passata da "predisposta" a **"validata con primo consumatore (vendite)"** (vedi Anello 2). La validazione ha confermato la lezione: l'uso reale ha scovato bug invisibili ai test (handler_params persi, fn di push con NOT NULL violabili, generazione non idempotente, azioni di processo mai seedate) che la "completezza tecnica" non aveva intercettato.
+- **Prima integrazione concreta**: ✅ fatta — pratica PREVENTIVI end-to-end (accettazione M2, handler CONFERMA_VENDITA, giornale, sorgenti).
+- **Riconciliazione con vendite-pipeline**: la decisione resta **rinviata** — i due motori convivono per scope diversi (pratica = processo singolo guidato dall'operatore; pipeline = batch fatturazione); il punto di contatto validato e' la commessa resa emittibile dal push.
+- **Riserva di modifica**: con UN consumatore validato la riserva si restringe ma non decade: le astrazioni si promuovono a contratto solo col **secondo** consumatore (Fase F). Fino ad allora pratiche resta modificabile con prudenza (i test — 144 BE + 43 pgTAP workflow v2 — sono base di regressione solida, non ancora contratto).
 
 ### Lezione metodologica
 
@@ -632,25 +640,24 @@ Riferimento implementazione: `docs/it/dev/work-done/automazione-chiusure-scadenz
 - **Gestione Soggetti**: backend + frontend completati — in fase di test UI
 - **Gestione Geografica**: operativo — UI da migliorare
 - **Gestione Clienti/Fornitori**: drawer end-to-end operativo, v2 (subentro/disdetta) pianificata
-- **Gestione Pratiche v2**: frontend operativo — in fase di test UI
+- **Gestione Pratiche v2**: validata con il primo consumatore reale (pratica PREVENTIVI, giugno 2026) — secondo consumatore (Fase F: candidata assistenza/CRM) da avviare
 - **Motore documentale parametrico**: end-to-end tecnico completato, suite manuale `sviluppo-documenti-test-ui.md` da eseguire/chiudere
 - **Integrazione AI v2**: evoluzione con contesto dinamico e nuovi tool — WIP
 - **Autenticazione 2FA**: fase 4 TOTP — WIP
-- **Permessi v2**: livello oggetto e granularita' fine — in corso (33 view gia' configurate)
+- **Permessi**: v2 (livello oggetto) completata — v3 (sotto-oggetti padre/figlio) in pianificazione
 - **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico — pianificato in WIP dedicato
 
 ### Breve termine
 
 - Test UI reali su Articoli, UoM, Pratiche, Soggetti, Clienti, Fornitori e motore documentale preventivo
-- Seed azioni processo per nuovi domini (catalogo, vendite) + prop `action` sui componenti
+- Smoke UI end-to-end del giro pratica PREVENTIVI (accettazione → smistamento → ordine/commessa)
+- Seed azioni processo per gli altri domini + prop `action` sui componenti (vendite/pratiche gia' seedate)
 - Upload file allegati pratiche (storage filesystem/object storage)
-- **Schema `ui` — Blocchi A+B**: DDL tabelle + trigger validazione + `fn_resolve_lista_config` (DB)
-- **Schema `ui` — Blocchi C+D**: app Django `ui`, 4 endpoint REST, `<ListaConfigurabile>` + modale personalizzazione (BE+FE)
-- **Schema `ui` — Blocco E**: seed catalogo `anagrafiche.clienti` + migrazione primo componente lista — validazione del nucleo su caso reale
 
 ### Medio termine
 
-- Integrazione `vendite` → `pratiche`: eventi di vendita generano pratiche con giornale
+- ~~Integrazione `vendite` → `pratiche`~~ — **FATTO** (giugno 2026): pratica PREVENTIVI end-to-end con handler e giornale
+- Secondo consumatore di `pratiche` (Fase F: candidata assistenza/CRM) — promozione delle astrazioni a contratti
 - Integrazione `anagrafiche` → `pratiche`: onboarding cliente/fornitore tracciato
 - Attivazione handler flusso per automazioni specifiche
 - pgAgent job riattivazione automatica sospensioni
@@ -674,4 +681,4 @@ Riferimento implementazione: `docs/it/dev/work-done/automazione-chiusure-scadenz
 
 ---
 
-*Mappa Concentrica — ZeroERP (4 maggio 2026)*
+*Mappa Concentrica — ZeroERP (11 giugno 2026)*

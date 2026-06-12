@@ -318,6 +318,56 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
             99, righe_ids=[11, 12], pratica_id=None,
         )
 
+    @patch(_REPO)
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_evade_senza_residui(self, prev_cls, ord_cls) -> None:
+        # Gate EVASO bi-ramo (§5b brief smistamento): smistata l'ultima merce e
+        # senza residuo servizi, il ramo ordine porta il preventivo a EVASO
+        # (prima lo faceva solo il push commessa: solo-merce restava ACCETTATO).
+        prev = prev_cls.return_value
+        prev.push_a_ordine.return_value = 7
+        prev.preventivo_ha_residuo_ordine.return_value = False
+        prev.preventivo_ha_residuo_commessa.return_value = False
+        ord_cls.return_value.get_ordine.return_value = {"id": 7, "numero": "ORD7"}
+
+        ordini_service.crea_ordine_da_preventivo(99)
+
+        prev.cambia_stato.assert_called_once_with(99, "EVASO", "django_api")
+
+    @patch(_REPO)
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_non_evade_con_residuo_commessa(self, prev_cls, ord_cls) -> None:
+        # Preventivo misto smistato solo sul ramo merce: restano servizi da
+        # pushare → niente EVASO, resta ACCETTATO.
+        prev = prev_cls.return_value
+        prev.push_a_ordine.return_value = 7
+        prev.preventivo_ha_residuo_ordine.return_value = False
+        prev.preventivo_ha_residuo_commessa.return_value = True
+        ord_cls.return_value.get_ordine.return_value = {"id": 7, "numero": "ORD7"}
+
+        ordini_service.crea_ordine_da_preventivo(99)
+
+        prev.cambia_stato.assert_not_called()
+
+    @patch(_REPO)
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_evaso_db_error_non_solleva(self, prev_cls, ord_cls) -> None:
+        # Robustezza al deploy parziale (stesso pattern di push_a_commessa):
+        # se la fn DB rifiuta la transizione, l'ordine e' gia' creato → warning
+        # loggato, la richiesta utente NON fallisce.
+        from django.db import DatabaseError
+
+        prev = prev_cls.return_value
+        prev.push_a_ordine.return_value = 7
+        prev.preventivo_ha_residuo_ordine.return_value = False
+        prev.preventivo_ha_residuo_commessa.return_value = False
+        prev.cambia_stato.side_effect = DatabaseError("transizione non ammessa")
+        ord_cls.return_value.get_ordine.return_value = {"id": 7, "numero": "ORD7"}
+
+        out = ordini_service.crea_ordine_da_preventivo(99)
+
+        self.assertEqual(out["ordine_id"], 7)
+
 
 class OrdiniConversioneOffertaTests(SimpleTestCase):
     """crea_ordine_da_offerta (§7.4): orchestrazione, override componenti, guard."""

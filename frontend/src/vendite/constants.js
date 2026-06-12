@@ -34,6 +34,27 @@ export const STATO_PREVENTIVO = Object.freeze({
   ANNULLATO: 'ANNULLATO',
 })
 
+// Destinazione effettiva di smistamento riga preventivo
+// (`config.nature_vendita.destinazione_tipo`, natura NULL = pregresso →
+// COMMESSA lato DB). Guida il ROUTING di "Smista selezionate" nel
+// PreventiviSmistamentoPanel: merce → ordine, servizi → commessa.
+export const DESTINAZIONE_SMISTAMENTO = Object.freeze({
+  ORDINE: 'ORDINE',
+  COMMESSA: 'COMMESSA',
+})
+
+// Stato autorevole di smistamento riga preventivo (colonna derivata
+// `stato_smistamento` di `vw_preventivi_smistamento_righe`). RESIDUA = non
+// smistata (unica selezionabile); A_ORDINE = stato finale ramo merce;
+// IN_COMMESSA/EMESSA_AF/FATTURATA = progressivi ramo commessa.
+export const STATO_SMISTAMENTO = Object.freeze({
+  RESIDUA: 'RESIDUA',
+  A_ORDINE: 'A_ORDINE',
+  IN_COMMESSA: 'IN_COMMESSA',
+  EMESSA_AF: 'EMESSA_AF',
+  FATTURATA: 'FATTURATA',
+})
+
 // Codici stato contratto (`config.stati_doc_contratti.codice_interno`).
 // DRAFT = bozza pre-attivazione; ATTIVO = contratto in vigore; CESSATO =
 // terminato (data fine raggiunta o cessazione manuale anticipata).

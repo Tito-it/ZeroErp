@@ -116,6 +116,7 @@ class CommessaPushOrchestrator:
         source_types: list[str] | None = None,
         dry_run: bool = False,
         sorgente_uid: int | None = None,
+        righe_ids: list[int] | None = None,
     ) -> PushReport:
         """Esegue il push per tutti gli handler (o per i source_types selezionati).
 
@@ -126,6 +127,9 @@ class CommessaPushOrchestrator:
             sorgente_uid — None = batch standard; valorizzato = push singolo
                            filtrato sulla riga sorgente del documento. Tipicamente
                            usato con `source_types=[<codice unico>]`.
+            righe_ids    — sottoinsieme righe del documento (smistamento selettivo);
+                           ha senso solo con sorgente_uid valorizzato e sorgenti
+                           che lo supportano (oggi PREVENTIVO).
 
         Restituisce PushReport con stato, risultati per handler e push_log_id.
         Se un altro run è già in corso restituisce PushReport con stato SKIPPED.
@@ -135,7 +139,8 @@ class CommessaPushOrchestrator:
 
         try:
             return self._run_locked(
-                source_types=source_types, dry_run=dry_run, sorgente_uid=sorgente_uid,
+                source_types=source_types, dry_run=dry_run,
+                sorgente_uid=sorgente_uid, righe_ids=righe_ids,
             )
         finally:
             self._release_lock()
@@ -146,13 +151,15 @@ class CommessaPushOrchestrator:
         source_types: list[str] | None,
         dry_run: bool,
         sorgente_uid: int | None = None,
+        righe_ids: list[int] | None = None,
     ) -> PushReport:
         """Logica di run effettiva, eseguita sotto advisory lock."""
         t0 = time.monotonic()
         results: list[HandlerResult] = []
 
-        # `sorgente_uid` propagato nel payload event_log per tracciabilita'
-        # del push singolo (correlation con la riga sorgente specifica).
+        # `sorgente_uid`/`righe_ids` propagati nel payload event_log per
+        # tracciabilita' del push singolo/selettivo (correlation con la riga
+        # sorgente specifica e il sottoinsieme scelto dall'operatore).
         self._repo.log_event(
             domain="COMMESSE",
             entity_type="TASK_RUN",
@@ -162,12 +169,15 @@ class CommessaPushOrchestrator:
                 "source_types": source_types,
                 "dry_run": dry_run,
                 "sorgente_uid": sorgente_uid,
+                "righe_ids": righe_ids,
             },
         )
 
         for handler in self._resolve_handlers(source_types):
             try:
-                result = handler.run(dry_run=dry_run, sorgente_uid=sorgente_uid)
+                result = handler.run(
+                    dry_run=dry_run, sorgente_uid=sorgente_uid, righe_ids=righe_ids,
+                )
             except Exception as exc:
                 result = HandlerResult(
                     handler_name=handler.name,

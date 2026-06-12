@@ -17,7 +17,7 @@
 #  8) Cambio stato BOZZA → EMESSO
 #  9) PATCH su EMESSO (409 atteso)
 # 10) Cambio stato EMESSO → ACCETTATO
-# 11) Stato fatturazione (GET)
+# 11) Smistamento (GET, shape {aggregato, righe})
 # 12) Push commessa (POST)
 # 13) Lista pratiche collegate (GET)
 # 14) DELETE riga (soft delete) — crea nuovo preventivo per test
@@ -233,11 +233,18 @@ else
         '{"nuovo_stato": "ACCETTATO"}'
     check "POST cambio stato ACCETTATO" 200
 
-    # --- 11. Stato fatturazione ---
+    # --- 11. Smistamento (sostituisce /stato-fatturazione/, 2026-06-12:
+    #         risposta annidata {aggregato, righe} dalle viste
+    #         vw_preventivi_smistamento + _righe) ---
     echo ""
-    echo "-- 11. Stato fatturazione --"
-    do_curl GET "/api/v1/vendite/preventivi/${PREV_ID}/stato-fatturazione/"
-    check "GET stato fatturazione" 200
+    echo "-- 11. Smistamento --"
+    do_curl GET "/api/v1/vendite/preventivi/${PREV_ID}/smistamento/"
+    check "GET smistamento" 200
+    if echo "$LAST_BODY" | grep -q '"aggregato"' && echo "$LAST_BODY" | grep -q '"righe"'; then
+        log_ok "GET smistamento: shape {aggregato, righe}"
+    else
+        log_fail "GET smistamento — attesi campi aggregato+righe, body: $(echo "$LAST_BODY" | head -c 200)"
+    fi
 
     # --- 12. Push commessa ---
     echo ""

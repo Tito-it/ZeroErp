@@ -2,8 +2,15 @@
 
 > **Tipo documento**: brief operativo **per il team DB** (`dev/db-tid`).
 >
-> **Data**: 2026-06-12 · **Stato**: ✅ **CHIUSO lato DB (2026-06-12)** — vedi
-> §4 per le decisioni e il deliverable. Resta il re-run smoke lato BE (§3).
+> **Data**: 2026-06-12 · **Stato**: ✅ **CHIUSO (2026-06-12, DB + verifica BE)**
+> — vedi §4 per le decisioni e il deliverable. §3 eseguito: abilitazioni dev
+> applicate (REPARTO_MKT → `cambia_stato_flusso` + `cambia_stato_pratica`,
+> quest'ultima oltre lo script §4 perché senza il giro si ferma ad APERTA) e
+> smoke rilanciato con **pochi/OPERATORE: 33 OK, 0 FAIL, 1 SKIP** (il SKIP è
+> `genera_pratica_manuale`, azione pericolosa non abilitata al reparto —
+> coerente col modello; coperta dal run super admin: 36 OK). ⚠ Residuo DB:
+> il `setval` di igiene sequence (§4) richiede i diritti owner — il ruolo
+> Django non può eseguirlo (`permesso negato per la sequenza`).
 
 ## 1. Il problema (verificato a DB)
 

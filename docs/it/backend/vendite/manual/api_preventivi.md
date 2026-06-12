@@ -273,8 +273,8 @@ Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
   `ordini_service.crea_ordine_da_preventivo(preventivo_id, righe_ids)`, che a sua
   volta delega alla **primitiva DB** `vendite.fn_push_preventivo_a_ordine`.
 - **Body JSON** (opzionale): `{ "righe_ids": [int, ...] }` — sottoinsieme di
-  righe da smistare (smistamento selettivo). **Assente** = tutte le righe MERCE
-  residue.
+  righe da smistare (smistamento selettivo). **Assente/null** = tutte le righe
+  MERCE residue; **lista vuota** = `E_PREV_VALIDAZIONE` (non degrada a "tutte").
 - **Cosa fa la fn DB** (non più orchestrazione Python):
   - copia **solo** le righe natura `ORDINE` (i **servizi una-tantum** vanno a
     commessa via push commessa; il **ricorrente** è bloccato a monte, D9);
@@ -288,11 +288,17 @@ Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
 - Output `200`: `{ "ordine_id": int, "numero": str,
   "documento_origine": {"tipo": "PREVENTIVO", "id": int} }`.
   (Il campo `righe_create` non è più ritornato: il conteggio vive a DB.)
-- FE: azione **data-driven** «Genera ordine» su `PreventiviDrawer`, esposta dalla
-  capability `genera_ordine` di `script.fn_available_actions_preventivo` (visibile
-  solo con **residuo merce** non allocato), non più hardcoded su `ACCETTATO`.
-  L'azione apre il **`GeneraOrdineDialog`** (vedi §6d): l'operatore seleziona le
-  righe (preselezionate tutte) e la conferma invia `righe_ids`.
+- FE: il ramo merce vive nel **Pannello Smistamento**
+  (`PreventiviSmistamentoPanel`, sostituisce il `GeneraOrdineDialog` dal
+  2026-06-12): l'operatore seleziona le righe residue (preselezionate tutte) e
+  «Smista selezionate» instrada per natura — le righe merce finiscono su questo
+  endpoint con `righe_ids`. La capability `genera_ordine` di
+  `script.fn_available_actions_preventivo` (gate su **residuo merce**) resta
+  esposta dal BE ma è filtrata dalla barra azioni del drawer.
+- **Gate EVASO bi-ramo** (§5b brief smistamento): dopo il push, se non resta
+  residuo su **nessun** ramo (`fn_preventivo_ha_residuo_ordine` +
+  `fn_preventivo_ha_residuo_commessa`), il service transita ACCETTATO→EVASO
+  (warning-tolerant al deploy parziale, come il gemello su push-commessa §13).
 - **Percorso pratica**: lo smistamento è orchestrato da `CONFERMA_VENDITA`
   (handler `vendita.push_preventivo`), che chiama la stessa primitiva passando
   `p_pratica_id` per l'aggancio `pratiche_sorgenti` (ordine `COLLEGATO`). Questo
@@ -324,8 +330,10 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   prezzo_unitario, sconto_percentuale } ] }` (campi display via JOIN, no lookup
   client-side). Lista **vuota** se non resta merce da ordinare.
 - Errori: `E_PREV_NOT_FOUND` (404) se il preventivo non esiste.
-- FE: `GeneraOrdineDialog.vue` (checkbox multi-selezione, preseleziona tutte) →
-  conferma `POST /genera-ordine/ {righe_ids}` (§6c).
+- FE: storicamente alimentava il `GeneraOrdineDialog`; dal 2026-06-12 il
+  pannello (`PreventiviSmistamentoPanel`) legge da `GET /smistamento/` (§14),
+  che copre **entrambi** i rami con lo stato per riga. L'endpoint resta per
+  usi mirati al solo ramo merce (stessa vista, stessa verità).
 
 ---
 
@@ -497,30 +505,67 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 - Metodo: `POST`
 - Path: `/api/v1/vendite/preventivi/{id}/push-commessa/`
 - Auth: `post_permission = "push_commessa_preventivi"`, `Idempotency-Key` obbligatoria
+- Body JSON (opzionale): `{ "righe_ids": [int, ...] }` — sottoinsieme di righe
+  **servizio** da pushare (smistamento selettivo dal Pannello Smistamento,
+  [brief-db-smistamento-preventivi.md](../../../dev/work-done/brief-db-smistamento-preventivi.md) C).
+  **Assente/null** = tutte le righe servizio eleggibili; **lista vuota** =
+  `E_PREV_VALIDAZIONE` (non degrada a "tutte" — stessa regola su
+  `/genera-ordine/`, helper `_parse_righe_ids`). Il filtro arriva alla fn DB
+  `fn_list_preventivi_da_pushare(p_righe_ids)` attraverso la catena
+  `push_a_commessa → pr_run_commesse_push_one → CommessaPushOrchestrator →
+  handler → CommesseRepository.fetch_pushable_rows` (5° parametro, supportato
+  dalla sola sorgente `PREVENTIVO` — whitelist `_SORGENTE_SUPPORTA_RIGHE_IDS`).
 - Regole: ammesso solo in stato ACCETTATO, verifica righe eleggibili via `fn_list_preventivi_da_pushare`
-- Output `200`: `{ "data": { "righe_pushable": 3, "preventivo_id": 1 } }`
+- **Gate EVASO bi-ramo** (D6 + brief smistamento §5b): a push `COMPLETATO`
+  transita ACCETTATO→EVASO **solo** se non resta residuo su **nessun** ramo
+  (`fn_preventivo_ha_residuo_ordine` **e** `fn_preventivo_ha_residuo_commessa`
+  entrambe false). Il check commessa non è ridondante: con `righe_ids`
+  COMPLETATO si riferisce al solo sottoinsieme. Lo **stesso gate** vive anche
+  sul ramo ordine (`ordini_service.crea_ordine_da_preventivo`) e nel handler
+  pratica `CONFERMA_VENDITA`.
+- Output `200`: report orchestrator `{ stato, push_log_id, durata_ms, handlers,
+  commesse_ids, righe_pushable, fatturazione_immediata }`
 - Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400)
-- TODO: orchestrazione completa push commessa (oggi solo discovery)
 
 ---
 
-### 14. Stato fatturazione
+### 14. Smistamento (Pannello Smistamento)
+
+Sostituisce il vecchio `GET /stato-fatturazione/` (viste DB rinominate e rifatte
+natura-aware il 2026-06-12: `vw_preventivi_smistamento` + `_righe`, le vecchie
+`vw_preventivi_stato_fatturazione*` sono droppate).
 
 - Metodo: `GET`
-- Path: `/api/v1/vendite/preventivi/{id}/stato-fatturazione/`
-- Output `200`:
+- Path: `/api/v1/vendite/preventivi/{id}/smistamento/`
+- View `ApiPreventivoSmistamento` → `preventivi_service.smistamento` →
+  `PreventiviRepository.stato_smistamento` + `list_righe_smistamento`
+- Output `200` (`aggregato` è **null** per preventivo senza righe attive — la
+  vista GROUP BY non produce la riga e il BE non fabbrica fallback):
+
 ```json
 {
   "data": {
-    "preventivo_uid": "...",
-    "righe_totali": 5,
-    "righe_in_commessa": 3,
-    "righe_emesse_af": 3,
-    "righe_fatturate": 1
+    "aggregato": {
+      "preventivo_id": 1, "righe_totali": 5, "righe_merce": 3,
+      "righe_servizi": 2, "righe_a_ordine": 2, "righe_in_commessa": 1,
+      "righe_emesse_af": 0, "righe_fatturate": 0, "righe_residue": 2
+    },
+    "righe": [
+      { "riga_id": 10, "riga_descrizione": "...", "articolo_codice": "ART1",
+        "qta_operativa": "2", "uom_codice": "PZ", "natura_vendita_codice": "MERCE",
+        "destinazione_tipo": "ORDINE", "stato_smistamento": "A_ORDINE",
+        "ordine_id": 7, "ordine_numero": "ORD-0007" }
+    ]
   }
 }
 ```
-- Regole: query cross-schema (commesse_sorgenti → commesse_attivita → attivita_fatturabili), filtrata per sorgente_tipo PREVENTIVO_VENDITA
+
+- Regole: `stato_smistamento` è la **colonna autorevole** per la UI
+  (`RESIDUA` / `A_ORDINE` / `IN_COMMESSA` / `EMESSA_AF` / `FATTURATA`); il
+  predicato `IN_COMMESSA` conta solo attività `stato_emissione='EMESSA'`
+  (allineato a capability e list-fn — fix della divergenza preesistente).
+  `righe_residue` alimenta il progress X/Y verso EVASO del pannello.
+- Errori: `E_PREV_NOT_FOUND` (404)
 
 ---
 

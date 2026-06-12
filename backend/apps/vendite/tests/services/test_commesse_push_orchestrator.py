@@ -22,6 +22,7 @@ Indice test eseguiti:
 12) CommessePushOrchestratorTests.test_run_emits_push_started_and_completed_events
 13) CommessePushOrchestratorTests.test_run_with_sorgente_uid_propagated_to_handlers_and_events
 14) CommessePushOrchestratorTests.test_run_without_sorgente_uid_passes_none_to_handlers
+15) CommessePushOrchestratorTests.test_run_with_righe_ids_propagated_to_handlers_and_events
 """
 
 from unittest import TestCase
@@ -154,8 +155,9 @@ class CommessePushOrchestratorTests(TestCase):
         call_kwargs = repo.log_push_run.call_args.kwargs
         self.assertTrue(call_kwargs["dry_run"])
         # `sorgente_uid=None` aggiunto alla signature handler.run dopo
-        # introduzione del push singolo (PR1 sviluppo-push-singolo-preventivo).
-        h.run.assert_called_once_with(dry_run=True, sorgente_uid=None)
+        # introduzione del push singolo (PR1 sviluppo-push-singolo-preventivo);
+        # `righe_ids=None` dopo lo smistamento selettivo (Pannello Smistamento).
+        h.run.assert_called_once_with(dry_run=True, sorgente_uid=None, righe_ids=None)
 
     # Scopo: push_log_id nel report corrisponde al valore restituito da log_push_run.
     def test_run_push_log_id_valorizzato(self):
@@ -261,8 +263,9 @@ class CommessePushOrchestratorTests(TestCase):
 
         orch.run(source_types=["PREVENTIVO"], sorgente_uid=42)
 
-        # Handler.run riceve dry_run=False + sorgente_uid=42.
-        h.run.assert_called_once_with(dry_run=False, sorgente_uid=42)
+        # Handler.run riceve dry_run=False + sorgente_uid=42 (+righe_ids=None:
+        # nessun filtro sottoinsieme righe in questo run).
+        h.run.assert_called_once_with(dry_run=False, sorgente_uid=42, righe_ids=None)
 
         # Payload event_log contiene sorgente_uid in entrambi gli eventi.
         event_calls = repo.log_event.call_args_list
@@ -280,4 +283,17 @@ class CommessePushOrchestratorTests(TestCase):
 
         orch.run()
 
-        h.run.assert_called_once_with(dry_run=False, sorgente_uid=None)
+        h.run.assert_called_once_with(dry_run=False, sorgente_uid=None, righe_ids=None)
+
+    # Scopo: righe_ids valorizzato (smistamento selettivo) → propagato a
+    # handler.run e nel payload event_log PUSH_STARTED.
+    def test_run_with_righe_ids_propagated_to_handlers_and_events(self):
+        repo = _mock_repo()
+        h = _mock_handler("HandlerPreventivi", _ok_result("HandlerPreventivi", sorgente_codice="PREVENTIVO"), sorgente_codice="PREVENTIVO")
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        orch.run(source_types=["PREVENTIVO"], sorgente_uid=42, righe_ids=[7, 9])
+
+        h.run.assert_called_once_with(dry_run=False, sorgente_uid=42, righe_ids=[7, 9])
+        started_payload = repo.log_event.call_args_list[0].kwargs["payload"]
+        self.assertEqual(started_payload["righe_ids"], [7, 9])

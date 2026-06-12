@@ -22,6 +22,7 @@ from apps.core.api.payload_validators import (
     qp_str,
 )
 from apps.core.api.success_responses import success_response
+from apps.core.services.error_manager import ErrorManager
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.services import preventivi_service
@@ -29,6 +30,26 @@ from apps.vendite.services import preventivi_service
 # Codice lista configurabile (catalogo ui.lista_definizione id=5). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
 _LISTA_CODICE_PREVENTIVI = "vendite.preventivi"
+
+
+# Scopo: normalizza `righe_ids` dal body degli endpoint di smistamento
+#        selettivo (genera-ordine, push-commessa). Assente/null = tutte le
+#        righe eleggibili (None). Lista vuota = errore esplicito: NON deve
+#        degradare silenziosamente a "tutte" (un client che intende "nessuna
+#        riga" otterrebbe il push completo).
+def _parse_righe_ids(payload: dict[str, object]) -> list[int] | None:
+    righe_ids = payload.get("righe_ids")
+    if righe_ids is None:
+        return None
+    ErrorManager.require(
+        isinstance(righe_ids, list) and len(righe_ids) > 0,
+        code="E_PREV_VALIDAZIONE",
+        message="righe_ids non valido: lista non vuota di id riga, "
+                "oppure omettere il campo per smistare tutte le righe.",
+        detail=f"righe_ids={righe_ids!r}",
+        function_name="apps.vendite.api.preventivi_views._parse_righe_ids",
+    )
+    return [int(r) for r in righe_ids]
 
 
 # ── Lista + Creazione ──
@@ -367,9 +388,8 @@ class ApiPreventivoGeneraOrdine(DomainAPIView):
         from apps.vendite.services import ordini_service
 
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            righe_ids = payload.get("righe_ids") or None
             return ordini_service.crea_ordine_da_preventivo(
-                preventivo_id, righe_ids=righe_ids,
+                preventivo_id, righe_ids=_parse_righe_ids(payload),
             )
         return handle_post_json(request, handler=_handler)
 
@@ -973,37 +993,55 @@ class ApiPreventivoPushCommessa(DomainAPIView):
     post_permission = "push_commessa_preventivi"
 
     @extend_schema(
+        request=inline_serializer(
+            name="PreventivoPushCommessaRequest",
+            fields={"righe_ids": serializers.ListField(
+                child=serializers.IntegerField(), required=False, allow_null=True,
+            )},
+        ),
         responses={200: inline_serializer(
             name="PreventivoPushCommessaResponse",
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Push preventivo in commessa per fatturazione via POST. Ritorna
+    # Scopo: Push preventivo in commessa per fatturazione via POST. Body
+    # opzionale `{righe_ids: [..]}` per lo smistamento selettivo (Pannello
+    # Smistamento); assente = tutte le righe servizio eleggibili. Ritorna
     # report dell'orchestrator: stato (COMPLETATO/PARZIALE/ERRORE), push_log_id,
     # durata_ms, handlers (dettaglio per handler con counters e errors), e
     # righe_pushable (diagnostico pre-push). Idempotency-Key obbligatoria
     # (write-once: evita doppio push su retry/click multipli).
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            return preventivi_service.push_a_commessa(preventivo_id)
+            return preventivi_service.push_a_commessa(
+                preventivo_id, righe_ids=_parse_righe_ids(payload),
+            )
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
-# ── Integrazione: stato fatturazione ──
+# ── Integrazione: smistamento (pannello) ──
 
 
-class ApiPreventivoStatoFatturazione(DomainAPIView):
+class ApiPreventivoSmistamento(DomainAPIView):
+    """`GET /api/v1/vendite/preventivi/<id>/smistamento/` — fonte dati del
+    Pannello Smistamento: aggregato per ramo (progress verso EVASO) + righe con
+    natura, destinazione e stato autorevole. Sostituisce il vecchio
+    `/stato-fatturazione/` (viste DB rinominate natura-aware, 2026-06-12)."""
+
     area_funzionale = "vendite"
 
     @extend_schema(
         responses={200: inline_serializer(
-            name="PreventivoStatoFatturazioneResponse",
-            fields={"data": serializers.DictField()},
+            name="PreventivoSmistamentoResponse",
+            fields={"data": inline_serializer(name="PreventivoSmistamentoData", fields={
+                "aggregato": serializers.DictField(),
+                "righe": serializers.ListField(child=serializers.DictField()),
+            })},
         )},
     )
-    # Scopo: Restituisce via GET lo stato fatturazione del preventivo.
+    # Scopo: Restituisce via GET lo smistamento del preventivo (aggregato + righe).
     def get(self, request: Request, preventivo_id: int) -> JsonResponse:
-        data = preventivi_service.stato_fatturazione(preventivo_id)
+        data = preventivi_service.smistamento(preventivo_id)
         return success_response(data)
 
 
