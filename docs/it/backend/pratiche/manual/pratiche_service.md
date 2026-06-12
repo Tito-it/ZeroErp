@@ -79,6 +79,26 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 - Le funzioni sospensione verificano unicita' sospensione attiva prima dell'INSERT.
 - `verifica_flusso_pratica(repo, pratica_id, flusso_id)`: helper **pubblico** per ownership check flusso/pratica. Usato internamente dal service (sospensioni, flussi) e dalle views API (alias `_get_flusso_verificato`). Unica fonte di verita' per la verifica esistenza + appartenenza flusso.
 
+### Workflow v2 (2026-06-12, analisi-pratiche-workflow-v2)
+
+- `cerca_pratiche`: lente di contesto canonica D1 — parametri
+  `soggetto_ruolo_id` / `istanza_utility_id` / `solo_interne` mutuamente
+  alternativi; due o piu' lenti → `ServiceError`
+  `PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI` (catalogo DB id 484,
+  fail-fast in Python; la fn `fn_lista_pratiche_per_contesto` resta la
+  difesa in profondita'). Nuovi filtri `priorita_id` / `risorsa_umana_id`
+  (fix: prima inviati dalla dashboard ma ignorati).
+- Traduzione errori guard DB via `_KNOWN_DB_ERROR_MARKERS` (substring sul
+  messaggio italiano, pattern di `lookup_service`): `crea_flusso` →
+  `PRATICHE_FLUSSO_NON_RIPETIBILE` (483, guard ripetibilita' D3);
+  `cambia_stato_pratica` → `PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI`
+  (485, guard chiusura D4). ⚠ I marker reggono perche' il catalogo ha solo
+  righe `it` per questi codici: aggiungendo traduzioni vanno estesi
+  (degrado sicuro: fallback `E_DATABASE`).
+- `dispatch_handler`: `meta` e `handler_params` passano da
+  `coerce_jsonb_dict` (psycopg puo' restituire jsonb come `str`; senza
+  coerce la configurazione andrebbe persa in silenzio — bug 2026-06-11).
+
 ## Dipendenze DB
 
 - `pratiche.pratiche` (CRUD via PraticheRepository)
@@ -94,6 +114,8 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 - `pratiche.competenze_flussi` (CRUD competenze via PraticheRepository)
 - `pratiche.fn_coda_lavoro_operatore` (coda lavoro operatore)
 - `pratiche.fn_prendi_in_carico_flusso` (presa in carico con FOR UPDATE)
+- `pratiche.fn_lista_pratiche_per_contesto` (lente contesto D1, semi-join in `list_pratiche`)
+- `pratiche.fn_check_ripetibilita_flusso` + `fn_check_chiusura_pratica` (percorso arricchito D3/D4)
 
 ## Note di migrazione
 

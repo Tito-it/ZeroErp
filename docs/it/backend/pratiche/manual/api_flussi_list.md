@@ -65,6 +65,11 @@ GET restituisce i flussi ordinati per sequenza dal repository. POST delega a `pr
 
 - `400`: `pratica_id` non valido (`E_INVALID_ID`), JSON non valido, prerequisiti non soddisfatti (errore DB)
 - `401`: JWT mancante o non valido
+- `409`: **flusso non ripetibile** (`PRATICHE_FLUSSO_NON_RIPETIBILE`, catalogo
+  DB id 483, workflow v2 D3): la regola `template_flussi.ripetibilita` vieta
+  una nuova istanza — `MAI` = esiste gia' un'istanza non annullata;
+  `SE_NON_POSITIVO` = l'ultima istanza (`MAX(id)`) e' ancora aperta oppure
+  chiusa con esito `POSITIVO`. `SEMPRE` non blocca mai.
 
 ## Regole
 
@@ -72,6 +77,12 @@ GET restituisce i flussi ordinati per sequenza dal repository. POST delega a `pr
 - POST: `pratica_id` deve essere > 0.
 - POST: lo stato iniziale `DA_ESEGUIRE` viene risolto da `config.stati_flussi_pratiche`.
 - POST: se il flusso ha un `template_flusso_id`, il trigger DB `trgfn_flussi_guard_prerequisiti` verifica che tutti i prerequisiti del template siano soddisfatti; in caso contrario l'INSERT fallisce con errore DB.
+- POST (2026-06-12, D3): il guard `trg_flussi_a10_guard_ripetibilita_ins`
+  applica la regola di ripetibilita' del template; il service traduce
+  l'errore DB nel codice parlante 483 via marker sul messaggio (vedi
+  `pratiche_service._KNOWN_DB_ERROR_MARKERS`). Il FE decide se proporre
+  "Ripeti" dal campo `ripetibile_adesso` del percorso (vedi
+  [api_percorso](api_percorso.md)).
 - POST: wrappato in `@transaction.atomic()`.
 - Endpoint v1 richiede JWT.
 

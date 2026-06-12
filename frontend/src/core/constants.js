@@ -211,6 +211,15 @@ export const STATO_FLUSSO = {
   ERRORE: 'ERRORE',
 }
 
+// Stato del ramo nel percorso pratica (workflow v2 D4, campo `ramo` del
+// GET /pratiche/<id>/percorso/ — vedi api_percorso.md).
+export const RAMO_STEP = {
+  COMPLETATO: 'COMPLETATO',
+  PERCORRIBILE: 'PERCORRIBILE',
+  FUTURO: 'FUTURO',
+  RAMO_CHIUSO: 'RAMO_CHIUSO',
+}
+
 // Codici interni stati preventivo vendita (codice_interno da config.stati_doc_preventivi)
 export const STATO_PREVENTIVO = {
   BOZZA: 'DRAFT',
