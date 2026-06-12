@@ -16,3 +16,11 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 15,11,documenti_asset_manage,"Gestione asset documentali (logo, firma, CSS, allegati)",f,t,{},2026-05-03 00:00:00+02,postgres,2026-05-03 00:00:00+02,postgres
 16,9,ui_preset_manage,Gestione preset personalizzazioni liste,f,t,{},2026-05-08 00:00:00+02,postgres,2026-05-08 00:00:00+02,postgres
 17,9,ui_permesso_manage,Gestione permessi colonne personalizzazioni liste,f,t,{},2026-05-08 00:00:00+02,postgres,2026-05-08 00:00:00+02,postgres
+18,12,cambia_stato_pratica,"Cambio stato pratica (apertura, chiusura, annullamento)",t,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
+19,12,assegna_pratica,Assegnazione pratica a risorsa umana / unita organizzativa,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
+20,12,cambia_stato_flusso,"Cambio stato flusso pratica (avvio, completamento con esito)",f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
+21,12,genera_pratica_manuale,Generazione manuale pratica da flusso (regole auto=false),t,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
+22,12,sospendi_pratica,Sospensione pratica,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
+23,12,riattiva_pratica,Riattivazione pratica sospesa,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
+24,12,sospendi_flusso,Sospensione flusso pratica,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
+25,12,riattiva_flusso,Riattivazione flusso pratica sospeso,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres

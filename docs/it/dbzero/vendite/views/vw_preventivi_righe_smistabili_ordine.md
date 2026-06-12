@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_preventivi_righe_smistabili_ordine.md" %}
 # 🔍 View `vw_preventivi_righe_smistabili_ordine`
 
 ```sql

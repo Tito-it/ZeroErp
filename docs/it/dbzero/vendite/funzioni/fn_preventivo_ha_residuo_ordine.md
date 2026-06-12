@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_preventivo_ha_residuo_ordine.md" %}
 # ⚙️ Funzione `fn_preventivo_ha_residuo_ordine`
 
 ```sql

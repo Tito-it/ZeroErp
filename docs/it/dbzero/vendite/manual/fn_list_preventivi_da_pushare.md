@@ -17,16 +17,21 @@ per l’handler di acquisizione.
 
 ### Regole principali
 
-* considera preventivi in stato documento `ACCETTATO`;
-* considera solo preventivi con `stato_commessa = LIBERO`;
-* include solo righe attive con quantità e prezzo validi;
-* esclude segmenti già emessi in `commesse_attivita` (idempotenza batch);
+* considera preventivi in stato documento `ACCETTATO`, con testata completa
+  (`billing_account_id` e `utility_id` NOT NULL);
+* **predicato di riga dalla vista unica**
+  [vw_preventivi_righe_smistabili_commessa](vw_preventivi_righe_smistabili_commessa.md)
+  *(rev 2026-06-12)*: righe attive con quantità e prezzo validi, natura NULL
+  (pregresso → COMMESSA) o `destinazione_tipo='COMMESSA'`, non già EMESSE in
+  commessa (idempotenza). La merce (`ORDINE`) è esclusa: va su
+  `fn_push_preventivo_a_ordine`;
 * costruisce `segment_key` deterministica (`PREV:{uid}:R:{riga_id}`);
 * supporta filtri opzionali:
   * `p_competenza_mese`
   * `p_billing_account_id`
   * `p_limit`
   * `p_preventivo_id` *(2026-05)* — vedi sezione dedicata
+  * `p_righe_ids` *(2026-06-12)* — vedi sezione dedicata
 
 ---
 
@@ -50,6 +55,30 @@ passa anche `p_billing_account_id` di un BA diverso da quello del preventivo, si
 
 **Idempotenza:** se il preventivo ha righe già in `commesse_attivita` con `stato_emissione = 'EMESSA'`,
 la funzione restituisce 0 righe — coerente con il NOT EXISTS del batch.
+
+---
+
+### Push per sottoinsieme righe (Pannello Smistamento)
+
+> **Aggiunto:** 2026-06-12 — migration `20260612-06` (brief-db-smistamento-preventivi.md, C)
+
+Il parametro `p_righe_ids bigint[]` (default `NULL`) consente lo smistamento
+**riga per riga** dal Pannello Smistamento, simmetrico al ramo ordine
+(`fn_push_preventivo_a_ordine.p_righe_ids`).
+
+| Valore | Comportamento |
+|--------|---------------|
+| `NULL` | Comportamento invariato (batch e push-tutto) |
+| valorizzato | Filtro aggiuntivo `pr.id = ANY(p_righe_ids)`; **richiede `p_preventivo_id`** |
+| valorizzato senza `p_preventivo_id` | Guard: solleva `E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO` (id 489) |
+
+Le righe del sottoinsieme **non eleggibili** (già in commessa, natura ORDINE,
+non attive) sono **skippate in silenzio** — coerente con D5: il "tutte già
+allocate → errore semantico" resta a carico del BE con il count eleggibili.
+
+> ⚠️ **Cambio firma 2026-06-12**: la firma a 4 parametri è stata **droppata**
+> (l'overload sarebbe ambiguo: tutti i parametri hanno DEFAULT). Le chiamate
+> posizionali esistenti restano valide (nuovo parametro in coda con DEFAULT).
 
 ---
 
