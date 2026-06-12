@@ -94,6 +94,11 @@ class PraticheRepository:
         stato_codice_interno: str | None = None,
         tipo_prestazione_id: int | None = None,
         soggetto_id: str | None = None,
+        soggetto_ruolo_id: int | None = None,
+        istanza_utility_id: int | None = None,
+        solo_interne: bool = False,
+        priorita_id: int | None = None,
+        risorsa_umana_id: int | None = None,
         search: str | None = None,
         data_da: str | None = None,
         data_a: str | None = None,
@@ -110,6 +115,20 @@ class PraticheRepository:
         conditions: list[str] = ["p.emittente_fiscale_id = %s"]
         params: list[Any] = [emittente_fiscale_id]
 
+        # Lente di contesto canonica (D1): la verita' del filtro vive nella fn
+        # DB fn_lista_pratiche_per_contesto (bucket ruolo/istanza/interne);
+        # qui si compone come semi-join per mantenere proiezione display,
+        # filtri e paginazione della lista standard.
+        if soggetto_ruolo_id is not None or istanza_utility_id is not None or solo_interne:
+            conditions.append("""p.id IN (
+                SELECT c.pratica_id
+                FROM pratiche.fn_lista_pratiche_per_contesto(%s, %s, %s, %s) c
+            )""")
+            params.extend([
+                emittente_fiscale_id, soggetto_ruolo_id,
+                istanza_utility_id, solo_interne,
+            ])
+
         if stato_codice_interno is not None:
             conditions.append("sp.codice_interno = %s")
             params.append(stato_codice_interno)
@@ -119,6 +138,12 @@ class PraticheRepository:
         if soggetto_id is not None:
             conditions.append("p.soggetto_id = %s")
             params.append(soggetto_id)
+        if priorita_id is not None:
+            conditions.append("p.priorita_id = %s")
+            params.append(priorita_id)
+        if risorsa_umana_id is not None:
+            conditions.append("p.risorsa_umana_id = %s")
+            params.append(risorsa_umana_id)
         if data_da:
             conditions.append("p.data_insert >= %s::date")
             params.append(data_da)
@@ -328,6 +353,17 @@ class PraticheRepository:
     #        flussi NON sono materializzati alla creazione: si creano
     #        progressivamente, §6 brief FE).
     def get_percorso_pratica(self, pratica_id: int) -> list[dict[str, Any]]:
+        # Arricchimento workflow v2 (D3/D4): per ogni step la fn DB dice se e'
+        # ripetibile ADESSO (regola template + ultima istanza) e lo stato del
+        # ramo da fn_check_chiusura_pratica (completato / percorribile /
+        # bloccante). `ramo` e' la sintesi per la resa FE:
+        #   COMPLETATO   → almeno un'istanza chiusa;
+        #   PERCORRIBILE → prerequisiti soddisfatti, eseguibile ora;
+        #   RAMO_CHIUSO  → un prerequisito e' stato DECISO (istanza COMPLETATO)
+        #                  ma mai con l'esito richiesto: il bivio ha preso
+        #                  l'altra strada (allo stato attuale: un retry del
+        #                  predecessore puo' riaprirlo);
+        #   FUTURO       → prerequisiti non ancora decisi (step a valle).
         sql = """
             SELECT
                 tf.id AS template_flusso_id,
@@ -339,10 +375,41 @@ class PraticheRepository:
                 (tf.handler_id IS NOT NULL) AS has_handler,
                 f.id AS flusso_id,
                 sf.codice_interno AS stato_codice_interno,
-                f.esito
+                f.esito,
+                pratiche.fn_check_ripetibilita_flusso(p.id, tf.id) AS ripetibile_adesso,
+                COALESCE(cc.completato, false) AS completato,
+                COALESCE(cc.percorribile, false) AS percorribile,
+                COALESCE(cc.bloccante, false) AS bloccante,
+                CASE
+                    WHEN COALESCE(cc.completato, false) THEN 'COMPLETATO'
+                    WHEN COALESCE(cc.percorribile, false) THEN 'PERCORRIBILE'
+                    -- RAMO_CHIUSO: un prerequisito NON soddisfatto (verita'
+                    -- esito-aware delegata alla fn DB, niente regole
+                    -- duplicate qui) il cui template e' pero' gia' stato
+                    -- DECISO (almeno un'istanza COMPLETATO) → il bivio ha
+                    -- preso l'altra strada. Senza prerequisiti decisi e'
+                    -- solo uno step FUTURO.
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM pratiche.fn_check_prerequisiti_flusso(p.id, tf.id) pr
+                        WHERE NOT pr.soddisfatto
+                          AND EXISTS (
+                              SELECT 1
+                              FROM pratiche.flussi pf
+                              JOIN config.stati_flussi_pratiche psf
+                                ON psf.id = pf.stato_id
+                              WHERE pf.pratica_id = p.id
+                                AND pf.template_flusso_id = pr.prerequisito_id
+                                AND psf.codice_interno = 'COMPLETATO'
+                          )
+                    ) THEN 'RAMO_CHIUSO'
+                    ELSE 'FUTURO'
+                END AS ramo
             FROM pratiche.pratiche p
             JOIN pratiche.template_flussi tf
               ON tf.tipo_prestazione_id = p.tipo_prestazione_id AND tf.attivo
+            LEFT JOIN pratiche.fn_check_chiusura_pratica(%s) cc
+              ON cc.template_flusso_id = tf.id
             LEFT JOIN LATERAL (
                 SELECT ff.id, ff.stato_id, ff.esito
                 FROM pratiche.flussi ff
@@ -355,7 +422,7 @@ class PraticheRepository:
             ORDER BY tf.sequenza, tf.id
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [pratica_id])
+            cursor.execute(sql, [pratica_id, pratica_id])
             return rows_to_list(cursor)
 
     # Scopo: Inserisce un nuovo flusso. Il trigger DB valida i prerequisiti.

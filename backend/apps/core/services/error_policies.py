@@ -742,6 +742,28 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Transizione di stato flusso non ammessa.",
         ),
+        # ── Pratiche workflow v2 (D1/D3/D4, analisi-pratiche-workflow-v2) ──
+        # Codici del catalogo DB (messaggi_errore 483/484/485) sollevati dai
+        # guard via script.fn_log_and_raise_error; il service li intercetta
+        # via marker e rilancia ServiceError con lo stesso codice del DB.
+        "PRATICHE_FLUSSO_NON_RIPETIBILE": ErrorPolicy(
+            code="PRATICHE_FLUSSO_NON_RIPETIBILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il flusso non e' ripetibile in questa pratica.",
+        ),
+        "PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI": ErrorPolicy(
+            code="PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Indicare una sola lente di contesto: ruolo soggetto, istanza utility o solo interne.",
+        ),
+        "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI": ErrorPolicy(
+            code="PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile chiudere la pratica: flussi obbligatori non completati.",
+        ),
         "E_SOSPENSIONI_FLUSSO_NON_COERENTE": ErrorPolicy(
             code="E_SOSPENSIONI_FLUSSO_NON_COERENTE",
             http_status=400,

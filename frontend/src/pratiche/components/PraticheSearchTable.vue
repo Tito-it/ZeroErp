@@ -15,6 +15,7 @@ import InputText from 'primevue/inputtext'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
+import ToggleSwitch from 'primevue/toggleswitch'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -30,8 +31,14 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
   defaultSortOrder: -1
 })
 
-const statoFilter = ref(null)
-const prioritaFilter = ref(null)
+// Init dallo store (persistente nella sessione, userScoped): al rientro in
+// dashboard i Select devono riflettere i filtri ancora attivi sulla lista
+// (stesso pattern di dataDaFilter; prima stato/priorita ripartivano null →
+// lista filtrata ma Select visivamente vuoti).
+const statoFilter = ref(store.filters.stato ?? null)
+const prioritaFilter = ref(store.filters.priorita_id ?? null)
+// Lente di contesto D1 (workflow v2): solo pratiche interne (senza soggetto).
+const soloInterneFilter = ref(store.filters.solo_interne || false)
 
 // Filtro data sempre attivo: default inizio mese precedente (dal store)
 const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
@@ -56,12 +63,19 @@ const pageActions = computed(() => [
 ])
 
 function onStatoChange() {
-  store.filters.stato_id = statoFilter.value
+  // value-field="codice": il BE filtra per codice_interno (param `stato`);
+  // per gli stati pratiche codice e codice_interno coincidono (seed).
+  store.filters.stato = statoFilter.value
   applyFilters()
 }
 
 function onPrioritaChange() {
   store.filters.priorita_id = prioritaFilter.value
+  applyFilters()
+}
+
+function onSoloInterneChange() {
+  store.filters.solo_interne = soloInterneFilter.value
   applyFilters()
 }
 
@@ -121,6 +135,7 @@ onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
         <LookupSelect
           v-model="statoFilter"
           rel="config.stati_pratiche"
+          value-field="codice"
           :placeholder="t('pratiche.filtro_stato')"
           show-clear
           @change="onStatoChange"
@@ -152,6 +167,13 @@ onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
           @date-select="onDataAChange"
           @clear-click="onDataAChange"
         />
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <ToggleSwitch v-model="soloInterneFilter" inputId="pratiche-solo-interne"
+            @change="onSoloInterneChange" />
+          <label for="pratiche-solo-interne" style="font-size: 0.85rem; cursor: pointer;">
+            {{ t('pratiche.filtro_solo_interne') }}
+          </label>
+        </div>
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>

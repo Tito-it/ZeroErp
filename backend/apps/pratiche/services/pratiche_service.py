@@ -12,11 +12,48 @@
 
 from typing import Any
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.pratiche.db.pratiche_repository import PraticheRepository, coerce_jsonb_dict
+
+# Marker → codice per i guard DB workflow v2 (fn_log_and_raise_error solleva
+# il solo testo localizzato, senza codice: substring-match sul messaggio,
+# pattern speculare a lookup_service._KNOWN_DB_ERROR_MARKERS). I codici sono
+# quelli del catalogo DB (messaggi_errore id 483/485).
+# ⚠ ASSUNZIONE: i marker sono sul testo ITALIANO e reggono perche' il
+# catalogo ha solo righe lingua='it' per questi codici (fn_get_messaggio fa
+# fallback a it). Se si aggiungono traduzioni, i marker vanno estesi o il
+# match fallisce silenziosamente (fallback E_DATABASE generico, mai falsi
+# positivi).
+_KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
+    ("PRATICHE_FLUSSO_NON_RIPETIBILE", "non e' ripetibile in questa pratica"),
+    (
+        "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
+        "flussi obbligatori non completati",
+    ),
+)
+
+
+# Scopo: Traduce i DatabaseError dei guard workflow v2 in ServiceError parlante
+# (codice del catalogo DB + policy registrata). Errori non riconosciuti
+# ripropagano al middleware (mapping E_DATABASE generico).
+def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
+    msg = str(exc)
+    for code, marker in _KNOWN_DB_ERROR_MARKERS:
+        if marker in msg:
+            diag = getattr(getattr(exc, "__cause__", None), "diag", None)
+            ErrorManager.raise_error(
+                code=code,
+                # message_primary = solo il RAISE, senza stack PL/pgSQL.
+                message=getattr(diag, "message_primary", None) or msg,
+                detail=getattr(diag, "message_detail", None),
+                hint=getattr(diag, "message_hint", None),
+                cause=exc,
+                function_name=function_name,
+            )
+    raise exc
 
 # -- PRATICHE --------------------------------------------------------
 
@@ -163,7 +200,14 @@ def cambia_stato_pratica(pratica_id: int, nuovo_stato: str) -> None:
     )
 
     repo = PraticheRepository()
-    repo.update_stato_pratica(pratica_id, nuovo_stato)
+    try:
+        repo.update_stato_pratica(pratica_id, nuovo_stato)
+    except DatabaseError as exc:
+        # Guard chiusura (D4, trg_pratiche_a10_guard_chiusura_flussi_upd) →
+        # PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI parlante.
+        _raise_known_db_error(
+            exc, function_name="pratiche_service.cambia_stato_pratica",
+        )
 
 
 # Scopo: Assegna una pratica a risorsa umana e/o unita' organizzativa.
@@ -198,6 +242,11 @@ def cerca_pratiche(
     stato_codice_interno: str | None = None,
     tipo_prestazione_id: int | None = None,
     soggetto_id: str | None = None,
+    soggetto_ruolo_id: int | None = None,
+    istanza_utility_id: int | None = None,
+    solo_interne: bool = False,
+    priorita_id: int | None = None,
+    risorsa_umana_id: int | None = None,
     search: str | None = None,
     data_da: str | None = None,
     data_a: str | None = None,
@@ -206,12 +255,36 @@ def cerca_pratiche(
     order_by: str = "data_insert",
     order_dir: str = "desc",
 ) -> tuple[list[dict[str, Any]], int]:
+    # Lente di contesto canonica (D1): al massimo UNA tra ruolo / istanza /
+    # interne. Fail-fast qui con lo stesso codice del guard DB (484) — la fn
+    # fn_lista_pratiche_per_contesto resta la difesa in profondita'.
+    lenti_attive = sum(
+        1 for attiva in (
+            soggetto_ruolo_id is not None,
+            istanza_utility_id is not None,
+            solo_interne,
+        ) if attiva
+    )
+    ErrorManager.require(
+        lenti_attive <= 1,
+        code="PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI",
+        message=(
+            "Parametri di contesto non ammessi: indicare al massimo una lente "
+            "tra ruolo soggetto, istanza utility e solo interne."
+        ),
+    )
+
     repo = PraticheRepository()
     return repo.list_pratiche(
         emittente_fiscale_id=emittente_fiscale_id,
         stato_codice_interno=stato_codice_interno,
         tipo_prestazione_id=tipo_prestazione_id,
         soggetto_id=soggetto_id,
+        soggetto_ruolo_id=soggetto_ruolo_id,
+        istanza_utility_id=istanza_utility_id,
+        solo_interne=solo_interne,
+        priorita_id=priorita_id,
+        risorsa_umana_id=risorsa_umana_id,
         search=search,
         data_da=data_da,
         data_a=data_a,
@@ -249,16 +322,22 @@ def crea_flusso(
     # Risolve stato iniziale DA_ESEGUIRE.
     repo = PraticheRepository()
     stato_id = repo.resolve_stato_flusso("DA_ESEGUIRE")
-    return repo.create_flusso({
-        "pratica_id": pratica_id,
-        "template_flusso_id": template_flusso_id,
-        "stato_id": stato_id,
-        "risorsa_umana_id": risorsa_umana_id,
-        "unita_organizzativa_id": unita_organizzativa_id,
-        "sequenza": sequenza,
-        "data_scadenza": data_scadenza,
-        "meta": meta or {},
-    })
+    try:
+        return repo.create_flusso({
+            "pratica_id": pratica_id,
+            "template_flusso_id": template_flusso_id,
+            "stato_id": stato_id,
+            "risorsa_umana_id": risorsa_umana_id,
+            "unita_organizzativa_id": unita_organizzativa_id,
+            "sequenza": sequenza,
+            "data_scadenza": data_scadenza,
+            "meta": meta or {},
+        })
+    except DatabaseError as exc:
+        # Guard ripetibilita' (D3, trg_flussi_a10_guard_ripetibilita_ins) →
+        # PRATICHE_FLUSSO_NON_RIPETIBILE parlante; altri errori al middleware.
+        _raise_known_db_error(exc, function_name="pratiche_service.crea_flusso")
+        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Transizione flusso DA_ESEGUIRE → IN_CORSO; se il template ha un handler

@@ -13,7 +13,14 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
-from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params, qp_int_strict, qp_str
+from apps.core.api.payload_validators import (
+    optional_int,
+    paginated_envelope,
+    parse_list_params,
+    qp_bool_optional,
+    qp_int_strict,
+    qp_str,
+)
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.pratiche.db.pratiche_repository import PraticheRepository
@@ -39,6 +46,11 @@ class ApiPraticheList(DomainAPIView):
             OpenApiParameter(name="stato", type=str, required=False, description="Filtro codice_interno stato pratica."),
             OpenApiParameter(name="tipo_prestazione_id", type=int, required=False, description="Filtro tipo prestazione."),
             OpenApiParameter(name="soggetto_id", type=str, required=False, description="Filtro UUID soggetto."),
+            OpenApiParameter(name="soggetto_ruolo_id", type=int, required=False, description="Lente contesto: pratiche del ruolo soggetto (esclusiva con istanza/interne)."),
+            OpenApiParameter(name="istanza_utility_id", type=int, required=False, description="Lente contesto: pratiche dell'istanza utility (esclusiva con ruolo/interne)."),
+            OpenApiParameter(name="solo_interne", type=bool, required=False, description="Lente contesto: solo pratiche interne, senza soggetto (esclusiva con ruolo/istanza)."),
+            OpenApiParameter(name="priorita_id", type=int, required=False, description="Filtro priorita' pratica."),
+            OpenApiParameter(name="risorsa_umana_id", type=int, required=False, description="Filtro operatore assegnato."),
             OpenApiParameter(name="limit", type=int, required=False, description="Righe per pagina (default 50, max 200)."),
             OpenApiParameter(name="offset", type=int, required=False, description="Offset paginazione (default 0)."),
         ],
@@ -66,6 +78,15 @@ class ApiPraticheList(DomainAPIView):
         stato = qp_str(qp.get("stato"))
         tipo_prestazione_id = optional_int({"v": qp.get("tipo_prestazione_id")}, "v")
         soggetto_id = qp_str(qp.get("soggetto_id"))
+        # Lente di contesto canonica (D1): mutua esclusivita' validata nel
+        # service (codice catalogo DB 484).
+        soggetto_ruolo_id = optional_int({"v": qp.get("soggetto_ruolo_id")}, "v")
+        istanza_utility_id = optional_int({"v": qp.get("istanza_utility_id")}, "v")
+        solo_interne = qp_bool_optional(qp.get("solo_interne"), "solo_interne") or False
+        # Fix 2026-06-12: la dashboard inviava priorita_id/risorsa_umana_id da
+        # sempre, ma la view non li leggeva (filtri silenziosamente ignorati).
+        priorita_id = optional_int({"v": qp.get("priorita_id")}, "v")
+        risorsa_umana_id = optional_int({"v": qp.get("risorsa_umana_id")}, "v")
         data_da = qp_str(qp.get("data_da"))
         data_a = qp_str(qp.get("data_a"))
 
@@ -74,6 +95,11 @@ class ApiPraticheList(DomainAPIView):
             stato_codice_interno=stato,
             tipo_prestazione_id=tipo_prestazione_id,
             soggetto_id=soggetto_id,
+            soggetto_ruolo_id=soggetto_ruolo_id,
+            istanza_utility_id=istanza_utility_id,
+            solo_interne=solo_interne,
+            priorita_id=priorita_id,
+            risorsa_umana_id=risorsa_umana_id,
             search=p["search"],
             data_da=data_da,
             data_a=data_a,

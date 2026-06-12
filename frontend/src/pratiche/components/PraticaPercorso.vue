@@ -7,7 +7,7 @@
 // abilitato → errore parlante (gestito dal parent via toast).
 import { useI18n } from 'vue-i18n'
 import { statoFlussoSeverity } from '../../core/utils/severity'
-import { STATO_FLUSSO } from '../../core/constants'
+import { RAMO_STEP, STATO_FLUSSO } from '../../core/constants'
 import Tag from 'primevue/tag'
 
 const { t } = useI18n()
@@ -28,10 +28,28 @@ function statoLabel(step) {
 function statoSev(step) {
   return step.flusso_id ? statoFlussoSeverity(step.stato_codice_interno) : 'secondary'
 }
+// Ramo morto (workflow v2 D4): il bivio ha preso l'altra strada. Solo resa
+// visiva: il click resta possibile (il guard prerequisiti a DB risponde con
+// errore parlante — nessuna regola duplicata lato FE).
+function isRamoChiuso(step) {
+  return step.ramo === RAMO_STEP.RAMO_CHIUSO
+}
+// Ripeti (workflow v2 D3): un'istanza esiste gia' E una nuova e' creabile
+// ORA. La decisione e' interamente del DB (fn_check_ripetibilita_flusso:
+// regola template + stato/esito dell'ultima istanza) — nessuna condizione
+// sullo stato qui, coprirebbe male i casi ANNULLATO/ERRORE che il flag
+// gia' considera.
+function canRipeti(step) {
+  return Boolean(step.flusso_id) && step.ripetibile_adesso === true
+}
 function onClick(step) {
   if (props.busy) return
   if (step.flusso_id) emit('open-flusso', step.flusso_id)
   else emit('create-flusso', step.template_flusso_id)
+}
+function onRipeti(step) {
+  if (props.busy) return
+  emit('create-flusso', step.template_flusso_id)
 }
 </script>
 
@@ -53,6 +71,7 @@ function onClick(step) {
               'percorso-step-done': step.stato_codice_interno === STATO_FLUSSO.COMPLETATO,
               'percorso-step-todo': !step.flusso_id,
               'percorso-step-busy': busy,
+              'percorso-step-ramo-chiuso': isRamoChiuso(step),
             }"
             @click="onClick(step)"
           >
@@ -71,9 +90,21 @@ function onClick(step) {
             <div v-if="step.esito" class="percorso-step-esito">
               {{ t('pratiche.flusso_esito') }}: <strong>{{ step.esito }}</strong>
             </div>
-            <div class="percorso-step-action">
+            <div v-if="isRamoChiuso(step)" class="percorso-step-action percorso-ramo-chiuso">
+              <i class="pi pi-ban" :title="t('pratiche.percorso_ramo_chiuso_hint')" />
+              {{ t('pratiche.percorso_ramo_chiuso') }}
+            </div>
+            <div v-else class="percorso-step-action">
               <i :class="step.flusso_id ? 'pi pi-folder-open' : 'pi pi-plus-circle'" />
               {{ step.flusso_id ? t('pratiche.percorso_apri') : t('pratiche.percorso_crea') }}
+              <span
+                v-if="canRipeti(step)"
+                class="percorso-ripeti"
+                :title="t('pratiche.percorso_ripeti_hint')"
+                @click.stop="onRipeti(step)"
+              >
+                <i class="pi pi-replay" /> {{ t('pratiche.percorso_ripeti') }}
+              </span>
             </div>
           </div>
           <i v-if="i < percorso.length - 1" class="pi pi-angle-right percorso-arrow" />
@@ -146,6 +177,9 @@ function onClick(step) {
 .percorso-step-done { opacity: 0.8; }
 .percorso-step-todo { border-style: dashed; }
 .percorso-step-busy { pointer-events: none; opacity: 0.6; }
+/* Ramo morto (D4): attenuato e tratteggiato fitto — visivamente "fuori
+   strada", ma resta cliccabile (guard parlante a DB). */
+.percorso-step-ramo-chiuso { opacity: 0.5; border-style: dotted; }
 
 .percorso-step-top {
   display: flex;
@@ -184,6 +218,18 @@ function onClick(step) {
   align-items: center;
   gap: 0.25rem;
 }
+
+.percorso-ramo-chiuso { color: var(--text-color-secondary); }
+
+.percorso-ripeti {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-weight: 600;
+}
+
+.percorso-ripeti:hover { text-decoration: underline; }
 
 .percorso-arrow {
   align-self: center;

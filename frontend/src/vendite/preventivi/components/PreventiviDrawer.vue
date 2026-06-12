@@ -129,6 +129,16 @@ const isReadonly = computed(
         && detail.value.stato_codice_interno !== 'DRAFT'),
 )
 provide(READONLY_KEY, isReadonly)
+// Readonly PURO: permesso LETTURA / readonly forzato / revisione superseded —
+// SENZA il lock-di-stato post-DRAFT. Distinzione necessaria per le sezioni
+// operative dentro il contenuto (es. PreventiviIntegrazione): in ACCETTATO il
+// drawer e' `app-readonly` per il lock-di-stato, ma il push a fatturazione e'
+// un'azione di processo legittima e deve restare cliccabile (escape); in
+// readonly puro invece e' una scrittura vietata e l'escape NON va applicato.
+// Stessa semantica del gate `drawerActions` (props.readonly || parentReadonly).
+const isReadonlyPuro = computed(
+  () => props.readonly || parentReadonly.value || isSuperseded.value,
+)
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
@@ -954,12 +964,19 @@ const drawerActions = computed(() => {
 
             <!-- Integrazione: visibile quando il backend conferma can_push_commessa.
                  Se non ammessa ma con reason i18n-ready, il Message hint e'
-                 mostrato nell'area banner in alto. -->
+                 mostrato nell'area banner in alto.
+                 `app-escape` condizionale: in ACCETTATO il contenuto drawer e'
+                 `app-readonly` (lock-di-stato) ma il push e' un'azione di
+                 processo che deve restare cliccabile; in readonly PURO
+                 (LETTURA/forzato/superseded) niente escape: il push e' una
+                 scrittura. -->
             <template v-if="contentReady && hasDetail">
               <template v-if="canPushCommessa">
                 <Divider />
-                <PreventiviIntegrazione :preventivo-id="effectivePreventivoId"
-                  @push-completato="loadDetail()" />
+                <div :class="{ 'app-escape': !isReadonlyPuro }">
+                  <PreventiviIntegrazione :preventivo-id="effectivePreventivoId"
+                    @push-completato="loadDetail()" />
+                </div>
               </template>
             </template>
 
