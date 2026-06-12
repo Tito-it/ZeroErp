@@ -7,7 +7,7 @@ import {
   cambiaStatoPreventivo, emettiPreventivo, creaRevisione, listRevisioni,
   listRighe, createRiga, updateRiga, deleteRiga, getRiepilogoIva,
   listIndirizzi, upsertIndirizzo,
-  pushCommessa, statoFatturazione, generaPratica, listPratiche,
+  pushCommessa, getSmistamento, generaPratica, listPratiche,
 } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
@@ -188,16 +188,18 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
 
   // --- Integrazione ---
 
-  // Scopo: Push preventivo in commessa per fatturazione.
-  async function inviaACommessa(preventivoId) {
-    const res = await pushCommessa(preventivoId)
+  // Scopo: Push preventivo in commessa per fatturazione. `righeIds` opzionale:
+  //        sottoinsieme righe servizio (smistamento selettivo); null = tutte.
+  async function inviaACommessa(preventivoId, righeIds = null) {
+    const res = await pushCommessa(preventivoId, righeIds)
     emitDataChanged(TAB_ENTITIES.PREVENTIVO, preventivoId)
     return res.data.data
   }
 
-  // Scopo: Carica stato fatturazione del preventivo.
-  async function loadStatoFatturazione(preventivoId) {
-    const res = await statoFatturazione(preventivoId)
+  // Scopo: Carica lo smistamento del preventivo (aggregato per ramo + righe
+  //        con stato autorevole) per il Pannello Smistamento.
+  async function loadSmistamento(preventivoId) {
+    const res = await getSmistamento(preventivoId)
     return res.data.data
   }
 
@@ -220,7 +222,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     cambiaStato, emetti, nuovaRevisione, loadRevisioni,
     loadRighe, addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
     loadIndirizzi, salvaIndirizzo,
-    inviaACommessa, loadStatoFatturazione,
+    inviaACommessa, loadSmistamento,
     creaPratica, loadPratiche,
   }
 }, {

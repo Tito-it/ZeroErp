@@ -61,6 +61,7 @@ class PushPreventivoHandlerTests(SimpleTestCase):
         self, MockPrev, MockComm, *, meta, handler_params, prev=None,
         preventivo_root=4711,
         residuo=(True, False),   # (discovery, gate EVASO)
+        residuo_commessa=False,  # gate EVASO bi-ramo (§5b brief smistamento)
         righe_commessa=2,
         ordine_id=5501,
         commessa_id=7701,
@@ -71,6 +72,7 @@ class PushPreventivoHandlerTests(SimpleTestCase):
         prev_repo.get_preventivo_id_by_pratica_root.return_value = preventivo_root
         prev_repo.get_preventivo.return_value = prev or _prev()
         prev_repo.preventivo_ha_residuo_ordine.side_effect = list(residuo)
+        prev_repo.preventivo_ha_residuo_commessa.return_value = residuo_commessa
         prev_repo.count_righe_pushable.return_value = righe_commessa
         prev_repo.push_a_ordine.return_value = ordine_id
         prev_repo.exists_ordine_da_preventivo.return_value = ordine_pregresso

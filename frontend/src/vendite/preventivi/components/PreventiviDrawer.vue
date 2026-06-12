@@ -28,9 +28,8 @@ import { useEmittenteFiscaleField } from '../../../core/composables/useEmittente
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { getPreventivoFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
-import { createPreventivo, getContestoPricing, generaOrdineFromPreventivo } from '../api/preventiviApi'
+import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
-import { useNotify } from '../../../core/composables/useNotify'
 import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
@@ -42,14 +41,13 @@ import { mapAvailableActionsToDrawerActions } from '../../../core/composables/us
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import PreventiviForm from './PreventiviForm.vue'
 import PreventiviRigheTable from './PreventiviRigheTable.vue'
-import PreventiviIntegrazione from './PreventiviIntegrazione.vue'
+import PreventiviSmistamentoPanel from './PreventiviSmistamentoPanel.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import PreventivoEmissioneDialog from './dialogs/PreventivoEmissioneDialog.vue'
-import GeneraOrdineDialog from './dialogs/GeneraOrdineDialog.vue'
 import Drawer from 'primevue/drawer'
 import AppDialog from '../../../core/components/AppDialog.vue'
 import DatePicker from 'primevue/datepicker'
@@ -70,7 +68,6 @@ const store = usePreventiviStore()
 const { execute, loading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const { emitDataChanged } = useTabEvents()
-const notify = useNotify()
 
 const props = defineProps({
   visible: Boolean,
@@ -131,10 +128,11 @@ const isReadonly = computed(
 provide(READONLY_KEY, isReadonly)
 // Readonly PURO: permesso LETTURA / readonly forzato / revisione superseded —
 // SENZA il lock-di-stato post-DRAFT. Distinzione necessaria per le sezioni
-// operative dentro il contenuto (es. PreventiviIntegrazione): in ACCETTATO il
-// drawer e' `app-readonly` per il lock-di-stato, ma il push a fatturazione e'
+// operative dentro il contenuto (PreventiviSmistamentoPanel): in ACCETTATO il
+// drawer e' `app-readonly` per il lock-di-stato, ma lo smistamento e'
 // un'azione di processo legittima e deve restare cliccabile (escape); in
-// readonly puro invece e' una scrittura vietata e l'escape NON va applicato.
+// readonly puro invece la scrittura e' vietata: il pannello riceve
+// `consuntivo=true` (niente selezione/azioni) e l'escape resta innocuo.
 // Stessa semantica del gate `drawerActions` (props.readonly || parentReadonly).
 const isReadonlyPuro = computed(
   () => props.readonly || parentReadonly.value || isSuperseded.value,
@@ -202,6 +200,13 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // `available_actions` (post brief DB 2026-05-28, mirror offerte).
 const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
 const pushCommessaReasonKey = computed(() => detail.value?.can_push_commessa_reason_key || null)
+// Pannello Smistamento visibile da ACCETTATO in poi (EVASO = consuntivo):
+// prima dell'accettazione non c'e' nulla da smistare e il pannello sarebbe
+// solo rumore (tutte RESIDUA, azioni rifiutate dal BE).
+const showSmistamento = computed(() => {
+  const stato = detail.value?.stato_codice_interno
+  return stato === STATO_PREVENTIVO.ACCETTATO || stato === STATO_PREVENTIVO.EVASO
+})
 // Per PreventiviForm passiamo l'array originale (no Set): il prop e' typed Array.
 // Quando il drawer ha gia' un detail (CREATE post auto-save bozza o EDIT classico)
 // blocchiamo lato UX il cambio di billing_account_id e istanza_utility_id: il
@@ -595,9 +600,6 @@ const acceptDialogVisible = ref(false)
 // (refactor 2026-05-28, mirror del flusso offerta `ApiOffertaEmetti`).
 const emissioneDialogVisible = ref(false)
 const emissioneLoading = ref(false)
-// Dialog smistamento merce→ordine (modello split D8).
-const generaOrdineDialogVisible = ref(false)
-const generaOrdineLoading = ref(false)
 const acceptForm = ref({
   fatturazione_immediata: false,
   // Default 1° del mese corrente: scelta sensata se l'operatore conferma "non
@@ -651,19 +653,12 @@ function onCambiaStato(action) {
     onNuovaRevisione()
     return
   }
-  if (action.key === 'push_commessa') {
-    // Il push verso commessa ha una sezione dedicata (PreventiviIntegrazione)
-    // con logica propria (scelta competenza, push parziale, log). L'azione
-    // viene esposta dal BE per coerenza modello ma il bottone drawer e'
-    // filtrato a monte (vedi `availableActionsHeader` nel computed
-    // `drawerActions`): questo branch e' difensivo.
-    return
-  }
-  if (action.key === 'genera_ordine') {
-    // Smistamento MERCE → ordine (modello split D8). Azione data-driven dal BE
-    // (visibile solo con residuo merce non allocato). Apre il dialog di
-    // selezione righe: la conferma vera è il Save del dialog.
-    generaOrdineDialogVisible.value = true
+  if (action.key === 'push_commessa' || action.key === 'genera_ordine') {
+    // Entrambi i rami dello smistamento vivono nel Pannello Smistamento
+    // (PreventiviSmistamentoPanel: selezione righe, routing per natura,
+    // progress EVASO). Le azioni restano esposte dal BE per coerenza modello
+    // ma i bottoni drawer sono filtrati a monte (vedi `availableActionsHeader`
+    // nel computed `drawerActions`): questo branch e' difensivo.
     return
   }
   // Transizione → EMESSO: dialog dedicato con anteprima documento + allegati.
@@ -732,22 +727,12 @@ function onNuovaRevisione() {
   })
 }
 
-// Smistamento MERCE → ordine (modello split D8): callback @confirm del
-// GeneraOrdineDialog. Riceve il sottoinsieme di righe merce scelte e chiama
-// l'endpoint /genera-ordine/ (delega a fn_push_preventivo_a_ordine: solo righe
-// merce, snapshot prezzi + BoM + link di riga, niente servizi/ricorrenti).
-// Notifica col numero ordine, segnala alla lista ordini e ricarica il detail
-// (la capability sparisce quando non resta residuo merce).
-async function onGeneraOrdineConferma({ righeIds }) {
-  generaOrdineLoading.value = true
-  const result = await execute(
-    () => generaOrdineFromPreventivo(effectivePreventivoId.value, righeIds),
-  )
-  generaOrdineLoading.value = false
-  if (result === null) return
-  generaOrdineDialogVisible.value = false
-  notify.success(t('preventivi.ordine_generato', { numero: result.numero }))
-  emitDataChanged(TAB_ENTITIES.ORDINE, result.ordine_id)
+// Scopo: callback @smistato del PreventiviSmistamentoPanel — almeno un ramo
+// dello smistamento e' andato a buon fine: ricarica il detail (la transizione
+// automatica ACCETTATO → EVASO e le capability si vedono solo dopo il reload)
+// e, se il ramo merce ha creato un ordine, notifica il tab ordini.
+async function onSmistato({ ordineId } = {}) {
+  if (ordineId) emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
   await loadDetail()
 }
 
@@ -764,14 +749,16 @@ const drawerActions = computed(() => {
   // Azioni di stato data-driven dal BE (`script.fn_available_actions_preventivo`,
   // post brief DB 2026-05-28). `crea_revisione` arriva qui come voce normale
   // con target_state=null; il dispatch e' su `action.key` in `onCambiaStato`.
-  // `push_commessa` viene filtrato: il push ha una sezione dedicata
-  // (PreventiviIntegrazione) con logica propria che il bottone drawer
-  // duplicherebbe (scelta competenza, push parziale, log).
+  // `push_commessa` e `genera_ordine` vengono filtrati: entrambi i rami dello
+  // smistamento vivono nel Pannello Smistamento (PreventiviSmistamentoPanel:
+  // selezione righe, routing per natura, progress EVASO) — un bottone header
+  // duplicherebbe il percorso. Le azioni restano esposte dal BE per coerenza
+  // modello (capability + gate residuo per ramo).
   // Sul percorso pratica (praticaId valorizzato) l'accettazione e' guidata dal
   // flusso APPROVAZIONE_CLIENTE (M2): nascondi l'azione → ACCETTATO dal drawer
   // per non creare un secondo percorso con politica fatturazione divergente.
   const availableActionsHeader = (availableActions.value || [])
-    .filter(a => a.key !== 'push_commessa')
+    .filter(a => a.key !== 'push_commessa' && a.key !== 'genera_ordine')
     .filter(a => !(props.praticaId && a.target_state === STATO_PREVENTIVO.ACCETTATO))
   const list = mapAvailableActionsToDrawerActions({
     availableActions: availableActionsHeader,
@@ -779,12 +766,6 @@ const drawerActions = computed(() => {
     onAction: onCambiaStato,
     readonly: props.readonly || parentReadonly.value,
   })
-  // `genera_ordine`: NON più copia-tutto 1:1 (modello sbagliato, D2/§7.4
-  // brief-preventivi-ordini.md). È ora un'azione DATA-DRIVEN dal BE
-  // (script.fn_available_actions_preventivo, esposta solo con residuo righe
-  // MERCE non allocate). Fluisce nel mapper come le altre e il dispatch in
-  // `onCambiaStato` la instrada a `onGeneraOrdine` → smistamento merce-only via
-  // fn_push_preventivo_a_ordine (snapshot prezzi + BoM + link di riga).
   list.push({
     key: 'manage-note',
     kind: 'manage',
@@ -962,22 +943,23 @@ const drawerActions = computed(() => {
               </template>
             </template>
 
-            <!-- Integrazione: visibile quando il backend conferma can_push_commessa.
-                 Se non ammessa ma con reason i18n-ready, il Message hint e'
-                 mostrato nell'area banner in alto.
-                 `app-escape` condizionale: in ACCETTATO il contenuto drawer e'
-                 `app-readonly` (lock-di-stato) ma il push e' un'azione di
-                 processo che deve restare cliccabile; in readonly PURO
-                 (LETTURA/forzato/superseded) niente escape: il push e' una
-                 scrittura. -->
-            <template v-if="contentReady && hasDetail">
-              <template v-if="canPushCommessa">
-                <Divider />
-                <div :class="{ 'app-escape': !isReadonlyPuro }">
-                  <PreventiviIntegrazione :preventivo-id="effectivePreventivoId"
-                    @push-completato="loadDetail()" />
-                </div>
-              </template>
+            <!-- Pannello Smistamento: da ACCETTATO in poi (in EVASO resta come
+                 consuntivo). Le capability per ramo (can_push_commessa /
+                 can_genera_ordine + reason) restano la difesa BE; il Message
+                 hint con la reason e' nell'area banner in alto.
+                 `app-escape`: in ACCETTATO il contenuto drawer e'
+                 `app-readonly` (lock-di-stato) ma lo smistamento e' un'azione
+                 di processo che deve restare cliccabile. In readonly PURO
+                 (LETTURA/forzato/superseded) e sul percorso pratica (smista
+                 l'orchestratore CONFERMA_VENDITA) il pannello e' `consuntivo`:
+                 niente selezione ne' azioni, l'escape resta innocuo. -->
+            <template v-if="contentReady && hasDetail && showSmistamento">
+              <Divider />
+              <div class="app-escape">
+                <PreventiviSmistamentoPanel :preventivo-id="effectivePreventivoId"
+                  :consuntivo="isReadonlyPuro || !!props.praticaId"
+                  @smistato="onSmistato" />
+              </div>
             </template>
 
             <!-- Documenti generati per il preventivo (Tranche M motore documentale).
@@ -1073,16 +1055,6 @@ const drawerActions = computed(() => {
     :preventivo="detail"
     :loading="emissioneLoading"
     @confirm="handleEmissioneConferma"
-  />
-
-  <!-- Dialog smistamento merce→ordine: seleziona le righe merce da portare a
-       un nuovo ordine DRAFT (preselezionate tutte). -->
-  <GeneraOrdineDialog
-    v-if="effectivePreventivoId"
-    v-model:visible="generaOrdineDialogVisible"
-    :preventivo-id="effectivePreventivoId"
-    :loading="generaOrdineLoading"
-    @confirm="onGeneraOrdineConferma"
   />
 
   <!-- Dialog accettazione preventivo (transizione EMESSO → ACCETTATO).

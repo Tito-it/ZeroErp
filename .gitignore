@@ -1,0 +1,6 @@
+# Output build documentazione (Zensical)
+.tmp/
+site-zensical/
+
+# Dipendenze Node (tooling root)
+node_modules/

@@ -23,6 +23,10 @@ Indice test eseguiti:
 10c) test_push_a_commessa_parziale_propaga_e_non_evade — all-or-nothing: ServiceError, niente transizione
 10d) test_push_a_commessa_transizione_db_error_logged_no_raise — fallimento transizione e' soft (warning)
 10e) test_push_a_commessa_non_evade_con_residuo_merce — gate EVASO D6: residuo merce → resta ACCETTATO
+10f) test_push_a_commessa_selettivo_non_evade_con_residuo_commessa — push righe_ids parziale: resta ACCETTATO
+10g) test_smistamento_ok — aggregato + righe dalle viste smistamento
+10h) test_smistamento_senza_righe_aggregato_none — aggregato None senza fallback
+10i) test_smistamento_not_found — 404 semantico
 11) test_push_a_commessa_stato_non_ammesso — guard su stato BOZZA
 12) test_push_a_commessa_nessuna_riga — guard nessuna riga eleggibile
 13) test_genera_pratica_ok — genera pratica da ACCETTATO via BB crea_pratica
@@ -1064,8 +1068,10 @@ class TestPreventiviService(unittest.TestCase):
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
         }
         self.mock_repo.count_righe_pushable.return_value = 3
-        # Gate EVASO (D6): nessun residuo merce → la transizione scatta.
+        # Gate EVASO bi-ramo (D6 + §5b): nessun residuo su nessun ramo →
+        # la transizione scatta.
         self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
+        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
         mock_push_one.return_value = {
             "stato": "COMPLETATO",
             "dry_run": False,
@@ -1076,10 +1082,12 @@ class TestPreventiviService(unittest.TestCase):
 
         result = push_a_commessa(1)
 
-        # Orchestrator chiamato con codice + uid corretti.
+        # Orchestrator chiamato con codice + uid corretti (righe_ids=None:
+        # push completo, nessun sottoinsieme selettivo).
         mock_push_one.assert_called_once_with(
             sorgente_codice="PREVENTIVO",
             sorgente_uid=1,
+            righe_ids=None,
         )
         # Payload completo: campi orchestrator + righe_pushable diagnostico
         # + flag fatturazione_immediata dalla testata (per hint UX FE).
@@ -1133,6 +1141,7 @@ class TestPreventiviService(unittest.TestCase):
         }
         self.mock_repo.count_righe_pushable.return_value = 1
         self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
+        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
         self.mock_repo.cambia_stato.side_effect = DatabaseError(
             "transizione ACCETTATO->EVASO non ammessa"
         )
@@ -1162,6 +1171,7 @@ class TestPreventiviService(unittest.TestCase):
         }
         self.mock_repo.count_righe_pushable.return_value = 1
         self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
+        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "dry_run": False,
             "push_log_id": 7, "durata_ms": 5, "handlers": [],
@@ -1193,6 +1203,85 @@ class TestPreventiviService(unittest.TestCase):
         self.assertEqual(result["stato"], "COMPLETATO")
         # Residuo merce presente → niente transizione a EVASO.
         self.mock_repo.cambia_stato.assert_not_called()
+
+    # Scopo: Gate EVASO bi-ramo (§5b brief smistamento). Push SELETTIVO
+    # (righe_ids sottoinsieme): COMPLETATO si riferisce al solo sottoinsieme,
+    # restano servizi non pushati → residuo commessa True → NON evadere.
+    @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
+    def test_push_a_commessa_selettivo_non_evade_con_residuo_commessa(self, mock_push_one):
+        from apps.vendite.services.preventivi_service import push_a_commessa
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
+        }
+        self.mock_repo.count_righe_pushable.return_value = 3
+        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
+        self.mock_repo.preventivo_ha_residuo_commessa.return_value = True
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "dry_run": False,
+            "push_log_id": 9, "durata_ms": 4, "handlers": [],
+        }
+
+        result = push_a_commessa(1, righe_ids=[10, 11])
+
+        # righe_ids propagato all'orchestrator.
+        mock_push_one.assert_called_once_with(
+            sorgente_codice="PREVENTIVO",
+            sorgente_uid=1,
+            righe_ids=[10, 11],
+        )
+        self.assertEqual(result["stato"], "COMPLETATO")
+        # Residuo commessa presente (sottoinsieme parziale) → resta ACCETTATO.
+        self.mock_repo.cambia_stato.assert_not_called()
+
+    # ── Smistamento (pannello) ──
+
+    # Scopo: smistamento() ritorna aggregato + righe dalla coppia di viste
+    # vw_preventivi_smistamento / _righe (fonte dati del Pannello Smistamento).
+    def test_smistamento_ok(self):
+        from apps.vendite.services.preventivi_service import smistamento
+
+        self.mock_repo.get_preventivo.return_value = {"id": 1, "uid": "abc"}
+        self.mock_repo.stato_smistamento.return_value = {
+            "preventivo_id": 1, "righe_totali": 3, "righe_merce": 2,
+            "righe_servizi": 1, "righe_a_ordine": 1, "righe_in_commessa": 0,
+            "righe_emesse_af": 0, "righe_fatturate": 0, "righe_residue": 2,
+        }
+        self.mock_repo.list_righe_smistamento.return_value = [
+            {"riga_id": 10, "destinazione_tipo": "ORDINE", "stato_smistamento": "A_ORDINE"},
+            {"riga_id": 11, "destinazione_tipo": "ORDINE", "stato_smistamento": "RESIDUA"},
+            {"riga_id": 12, "destinazione_tipo": "COMMESSA", "stato_smistamento": "RESIDUA"},
+        ]
+
+        result = smistamento(1)
+
+        self.assertEqual(result["aggregato"]["righe_residue"], 2)
+        self.assertEqual(len(result["righe"]), 3)
+        self.mock_repo.list_righe_smistamento.assert_called_once_with(1)
+
+    # Scopo: preventivo senza righe attive → aggregato None propagato cosi'
+    # com'e' (la vista GROUP BY non produce la riga; nessun fallback fabbricato
+    # che duplicherebbe lo schema della vista), righe = [].
+    def test_smistamento_senza_righe_aggregato_none(self):
+        from apps.vendite.services.preventivi_service import smistamento
+
+        self.mock_repo.get_preventivo.return_value = {"id": 1, "uid": "abc"}
+        self.mock_repo.stato_smistamento.return_value = None
+        self.mock_repo.list_righe_smistamento.return_value = []
+
+        result = smistamento(1)
+
+        self.assertIsNone(result["aggregato"])
+        self.assertEqual(result["righe"], [])
+
+    # Scopo: smistamento su preventivo inesistente → 404 semantico.
+    def test_smistamento_not_found(self):
+        from apps.vendite.services.preventivi_service import smistamento
+
+        self.mock_repo.get_preventivo.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            smistamento(999)
+        self.assertEqual(ctx.exception.code, "E_PREV_NOT_FOUND")
 
     # Scopo: Verifica guard su stato non ACCETTATO.
     def test_push_a_commessa_stato_non_ammesso(self):

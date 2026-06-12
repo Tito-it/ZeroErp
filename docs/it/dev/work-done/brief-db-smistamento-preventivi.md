@@ -1,8 +1,12 @@
 # Brief DB — Smistamento preventivi: simmetria capability + vista natura-aware + push commessa per riga
 
-> **Stato**: 🟢 **DELIVERABLE DB SCRITTI (2026-06-12)** — changeset
-> `20260612-02..06` + 3 pgTAP nuovi + 2 adeguati; in attesa di apply + run
-> pgTAP (lato Tid), poi BE/FE (§6).
+> **Stato**: 🟢 **COMPLETO end-to-end (2026-06-12)** — DB: changeset
+> `20260612-02..06` + pgTAP, applicati e mergiati (PR #842). **BE+FE (§6)
+> ESEGUITI in pari data** (branch `dev/backend-tid`): endpoint
+> `/smistamento/`, push commessa con `righe_ids`, gate EVASO bi-ramo su
+> entrambi i percorsi + handler pratica, `PreventiviSmistamentoPanel`
+> (sostituisce PreventiviIntegrazione + GeneraOrdineDialog). 2729 test BE +
+> ESLint/build FE verdi. Residuo: smoke UI E2E.
 > **Owner concettuale**: Tid (Michele Carlo Titini).
 > **Data**: 2026-06-12 — direzione "pannello smistamento strutturale" ratificata da Tid in sessione.
 > **Agg. 2026-06-12 (verifica critica contro il codice vivo)**: corretta la
@@ -13,7 +17,7 @@
 > censimento pgTAP esistenti impattati (§5), punto aperto gate EVASO (§5b).
 >
 > **Perché esiste questo documento**: completamento del modello split-per-natura
-> di [brief-preventivi-ordini.md](../work-done/brief-preventivi-ordini.md)
+> di [brief-preventivi-ordini.md](brief-preventivi-ordini.md)
 > (D1–D9, ramo ordine implementato 2026-06-09). Il ramo merce→ordine è
 > riga-per-riga (sottoinsieme `p_righe_ids`, vista smistabili, capability con
 > residuo); il ramo servizi→commessa è rimasto **tutto-o-niente** e la

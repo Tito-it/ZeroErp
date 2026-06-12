@@ -155,17 +155,26 @@ export function upsertIndirizzo(preventivoId, payload) {
 
 // Idempotency-Key obbligatoria lato BE (`require_idempotency_key=True` su
 // preventivi_views.py): push-commessa e' write-once, evitare doppio push
-// in caso di retry/click ripetuto.
-export function pushCommessa(preventivoId) {
+// in caso di retry/click ripetuto. `righeIds` opzionale: sottoinsieme righe
+// servizio (smistamento selettivo dal Pannello Smistamento); assente = tutte.
+export function pushCommessa(preventivoId, righeIds = null) {
+  const body = righeIds && righeIds.length ? { righe_ids: righeIds } : {}
   return api.post(
     `${BASE}/${preventivoId}/push-commessa/`,
-    {},
+    body,
     { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
-export function statoFatturazione(preventivoId) {
-  return api.get(`${BASE}/${preventivoId}/stato-fatturazione/`)
+// Smistamento del preventivo (Pannello Smistamento): aggregato per ramo +
+// righe con natura, destinazione e stato autorevole. Sostituisce il vecchio
+// /stato-fatturazione/ (viste DB natura-aware, 2026-06-12).
+// Risposta: { aggregato: { righe_totali, righe_merce, righe_servizi,
+//   righe_a_ordine, righe_in_commessa, righe_emesse_af, righe_fatturate,
+//   righe_residue }, righe: [{ riga_id, riga_descrizione, articolo_codice,
+//   destinazione_tipo, stato_smistamento, ordine_id, ordine_numero, ... }] }.
+export function getSmistamento(preventivoId) {
+  return api.get(`${BASE}/${preventivoId}/smistamento/`)
 }
 
 // Idempotency-Key obbligatoria lato BE (`require_idempotency_key=True`):

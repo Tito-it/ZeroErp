@@ -9,27 +9,11 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 ## Stato progetto
 
-> **Sviluppo attivo — backend e frontend operativi su domini core, catalogo, vendite, anagrafiche, pratiche e documenti.**
+> **Sviluppo attivo — DB, backend e frontend operativi sui domini core, anagrafiche, catalogo, vendite (preventivi, offerte, contratti, ordini), pratiche e documenti. Non ancora rilasciato per produzione.**
 >
-> DB e API backend operativi su 14 schemi. Frontend Vue operativo su: layout applicativo,
-> gestione soggetti (PF/PG/ENTE), gestione geografica (7 tab CRUD), pannello configurazione (67 tabelle),
-> amministrazione software (operatori, profili reparto, permessi, audit log),
-> gestione clienti/fornitori (drawer end-to-end con sotto-drawer),
-> gestione pratiche v2 (dashboard, flussi, note, allegati, giornale),
-> catalogo articoli (CRUD, UoM, BoM, note) **completato e riallineato ai contratti API**,
-> listini vendita v3 **completato** (pricing completo, rettifica controllata, alert scadenze,
-> variazione % massa, riallineamento/variazione prezzo commessa),
-> preventivi rev2 **completati** (emittente fiscale persistito, istanza obbligatoria, revisioni, riepilogo IVA),
-> contratti **modello unificato** (eccezioni delta-listino, snapshot versione listino all'attivazione, lock post-attivazione),
-> offerte commerciali **sviluppate DB+BE+FE** (proposta di condizioni quadro → push 1:1 a contratto, componenti BoM, generazione documento con allegati),
-> valuta su documenti vendite (offerte/contratti/preventivi),
-> motore documentale parametrico **completato tecnicamente e in test UI** (modelli, asset, render PDF WeasyPrint,
-> generazione/lista/download da preventivo),
-> migrazione `daterange` nativo PostgreSQL **completata** (18 tabelle, trigger generico, ottimizzazione backend),
-> impostazioni parametri di sistema con override personali ed emittente,
-> integrazione AI (11 tool: pratiche, soggetti, clienti, articoli, operatori),
-> autenticazione completa (email, token, reset pw, invito operatore).
-> Conteggio test da rigenerare dopo chiusura test UI documenti. Non ancora rilasciato per produzione.
+> La fotografia dettagliata e datata dello stato e` mantenuta in un'unica sezione:
+> [Stato dello Sviluppo](#stato-dello-sviluppo). Per la vista per anelli (dipendenze,
+> ordine di costruzione, stato per componente) vedere la [Mappa Concentrica](./mappa-concentrica.md).
 
 ---
 
@@ -153,7 +137,7 @@ Il modello e` pensato per supportare processi non lineari e gestione multi-repar
 
 ## Stato dello Sviluppo
 
-Fotografia sintetica (29 maggio 2026):
+Fotografia sintetica (11 giugno 2026):
 
 - Database core: operativo (14 schemi, 200+ tabelle, trigger, funzioni, viste, **daterange nativo**)
 - API backend: operativo; conteggio test complessivo da rigenerare dopo la chiusura della suite UI documenti
@@ -200,6 +184,24 @@ Fotografia sintetica (29 maggio 2026):
   - Guida: [gestione-offerte-commerciali.md](./guide/gestione-offerte-commerciali.md)
 - Valuta su documenti vendite: **completato a DB** (29 maggio 2026)
   - `valuta_id` su offerte/contratti/preventivi, default da resolver (catena billing account → gestore). Follow-up: resolver lato backend
+- Gate prezzi L1/L2/L3 esteso alle offerte: **completato** (2 giugno 2026)
+  - Stesso orchestratore dei contratti (`resolve_or_check_override_prezzo`); banner L2 e fix gap L1 sui componenti
+  - Riferimento: [refactor-prezzi.md](./dev/work-done/refactor-prezzi.md)
+- Ordini di vendita: **sviluppati DB+BE+FE** (3-8 giugno 2026)
+  - CRUD con lista configurabile, azioni data-driven, conferma, stato EVASO con transizione automatica
+  - Stampa PDF ordine (modulo stampa generico), riepilogo IVA, unificazione sconto righe
+  - Conversione upstream preventivo→ordine e offerta→ordine (prezzi negoziati, `fn_offerta_righe_espanse`); univocita' offerta→(contratto XOR ordine)
+  - Lock cliente post-creazione (`E_ORD_CLIENTE_IMMUTABILE`)
+  - Riferimenti: [analisi-ordini-vendita.md](./dev/work-in-progress/analisi-ordini-vendita.md), API: [api_ordini.md](./backend/vendite/manual/api_ordini.md)
+- Pratica PREVENTIVI — prima validazione del motore pratiche con consumatore reale: **completata** (9-12 giugno 2026)
+  - Handler `CONFERMA_VENDITA` con split per natura: merce→ordine (`fn_push_preventivo_a_ordine`), servizi/ricorrente→commessa; gate EVASO
+  - Smistamento merce→ordine riga-per-riga; commesse multi-sorgente (1 ROOT + N COLLEGATO) con push idempotente
+  - Workflow pratiche v2: ripetibilita' flussi, bivi condizionali, lenti contesto, guard chiusura; contesto pratica a 3 livelli (soggetto → ruolo → istanza)
+  - Natura di vendita amministrabile da applicazione (filtro catalogo per destinazione)
+  - Riferimenti: [analisi-pratiche-workflow-v2.md](./dev/work-done/analisi-pratiche-workflow-v2.md), [analisi-pratiche-domini-anello3.md](./dev/work-in-progress/analisi-pratiche-domini-anello3.md)
+- Regola del 2 — estrazione building block cross-dominio: **eseguita su core/anagrafiche FE+BE** (3-5 giugno 2026)
+  - Convergenza store Pinia su factory `createCrudStore`, famiglia guard-versione (`useFetchVersion`), stack geografico, util condivise
+  - Tracker: [regola-del-due-core-fe.md](./dev/work-done/regola-del-due-core-fe.md)
 - Motore documentale parametrico: **completato tecnicamente, test UI in corso** (4 maggio 2026)
   - Schema `documenti`, modelli documenti, versioni, asset documentali, documenti generati e file persistenti
   - Backend: render Jinja2 + WeasyPrint, storage parametrico, endpoint template/asset e endpoint preventivo `genera`/`anteprima`/`lista`/`download`
@@ -227,10 +229,11 @@ Fotografia sintetica (29 maggio 2026):
   - Gestione soggetti: PF/PG/ENTE end-to-end, ruoli, contatti, indirizzi, CF validator IT
   - Gestione geografica: 7 tab CRUD
   - Gestione clienti/fornitori: drawer con sotto-drawer contatti/indirizzi/conti
-  - Gestione pratiche v2: dashboard, flussi, note, allegati, giornale
+  - Gestione pratiche v2: dashboard, flussi, note, allegati, giornale; pratica PREVENTIVI operativa (contesto a 3 livelli, dialog accettazione, BB informazioni pratica)
   - Catalogo articoli: lista, drawer con 3 tab (UoM, BoM, note), `ArticoloLookup` BB cross-dominio
   - Listini v3: lista, drawer con versioni/associazioni, sub-drawer righe, test resolver, dialog variazione %, widget alert scadenze, dialog programma chiusura
   - Vendite preventivi: refactor data-driven, revisioni, riepilogo IVA e generazione PDF preventivo in test UI
+  - Vendite ordini: lista configurabile, drawer, conferma/EVASO, stampa PDF, conversione da preventivo/offerta
   - Configurazione documenti: modelli documenti e asset documentali con drawer/lista standard
   - Impostazioni parametri: lista multi-scope con drawer override (`PARAMETER_SCOPE` come unica fonte di verita')
   - Pannello configurazione: 67 tabelle CRUD generiche
@@ -289,10 +292,12 @@ Struttura essenziale:
 19. ~~Contratti modello unificato (eccezioni delta-listino, snapshot versione, lock post-attivazione)~~ — completato a DB, BE+FE in consolidamento
 20. ~~Offerte commerciali (proposta condizioni quadro → push 1:1 a contratto, componenti BoM, documento + allegati)~~ — sviluppate DB+BE+FE, in consolidamento
 21. ~~Valuta su documenti vendite (offerte/contratti/preventivi)~~ — completato a DB; resolver BE da fare
-22. Test UI reali su pratiche, clienti, fornitori, parametri e documenti — in corso
-23. **Rettifiche prezzi DB-L4** (motore delta, canali manuale/automatico, audit) — pianificato in WIP dedicato
-24. Permessi v2 (livello oggetto) — pianificato
-25. Integrazione vendite/pratiche e moduli verticali
+22. ~~Ordini di vendita (CRUD, conferma, EVASO, stampa PDF, conversioni preventivo/offerta→ordine)~~ — fatto (giugno 2026)
+23. ~~Integrazione vendite→pratiche: pratica PREVENTIVI end-to-end (primo consumatore reale del motore pratiche)~~ — fatto (giugno 2026); secondo consumatore pianificato
+24. Test UI reali su pratiche, clienti, fornitori, parametri e documenti — in corso
+25. **Rettifiche prezzi DB-L4** (motore delta, canali manuale/automatico, audit) — pianificato in WIP dedicato
+26. ~~Permessi v2 (livello oggetto)~~ — fatto; v3 (sotto-oggetti padre/figlio) in pianificazione
+27. Moduli verticali e integrazione pratiche sugli altri processi
 
 ---
 

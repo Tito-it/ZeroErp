@@ -390,7 +390,7 @@ def _crea_testata_ordine_da_origine(
 #        p_pratica_id=NULL: uso standalone (fuori-pratica); sul percorso pratica
 #        lo smistamento è orchestrato da CONFERMA_VENDITA. `righe_ids` opzionale:
 #        None = tutte le righe merce residue (D2 "preseleziona tutte"); un
-#        sottoinsieme abilita lo smistamento selettivo (utility futura).
+#        sottoinsieme abilita lo smistamento selettivo (Pannello Smistamento).
 def crea_ordine_da_preventivo(
     preventivo_id: int, righe_ids: list[int] | None = None,
 ) -> dict[str, Any]:
@@ -398,9 +398,26 @@ def crea_ordine_da_preventivo(
     # (entrambi in apps.vendite) e qualunque rischio di import circolare.
     from apps.vendite.db.preventivi_repository import PreventiviRepository
 
-    ordine_id = PreventiviRepository().push_a_ordine(
+    from apps.vendite.services._smistamento_gate_helpers import (
+        transiziona_a_evaso_se_smistato,
+    )
+
+    prev_repo = PreventiviRepository()
+    ordine_id = prev_repo.push_a_ordine(
         preventivo_id, righe_ids=righe_ids, pratica_id=None,
     )
+
+    # Gate EVASO bi-ramo nel BB condiviso (_smistamento_gate_helpers): anche
+    # il ramo ordine valuta l'evasione — prima la valutava solo il push
+    # commessa, quindi un preventivo solo-merce (o con la merce smistata per
+    # ultima) restava ACCETTATO per sempre. swallow_db_error=True: l'ordine e'
+    # gia' creato, su rifiuto della transizione si logga e si prosegue.
+    transiziona_a_evaso_se_smistato(
+        prev_repo, preventivo_id,
+        user="django_api", swallow_db_error=True,
+        log_label="ordini.genera_da_preventivo",
+    )
+
     # Numero ordine per il messaggio FE (lettura leggera post-creazione).
     testata = OrdiniRepository().get_ordine(ordine_id)
     numero = testata.get("numero") if testata else None

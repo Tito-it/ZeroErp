@@ -173,6 +173,23 @@ class CommesseSourceHandlersTests(TestCase):
         kwargs = repo.fetch_pushable_rows.call_args.kwargs
         self.assertIsNone(kwargs["sorgente_uid"])
 
+    # Scopo: righe_ids valorizzato (smistamento selettivo) → propagato a
+    # fetch_pushable_rows; omesso → None (push completo invariato).
+    def test_run_propaga_righe_ids_al_fetch_pushable_rows(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [_make_row()]
+        handler = HandlerPreventivi(repo)
+
+        handler.run(sorgente_uid=42, righe_ids=[7, 9])
+
+        kwargs = repo.fetch_pushable_rows.call_args.kwargs
+        self.assertEqual(kwargs["righe_ids"], [7, 9])
+
+        repo.fetch_pushable_rows.reset_mock()
+        handler.run(sorgente_uid=42)
+        kwargs = repo.fetch_pushable_rows.call_args.kwargs
+        self.assertIsNone(kwargs["righe_ids"])
+
     # Scopo: dry_run=True → nessuna chiamata batch_upsert, ma commessa creata e linked.
     def test_process_rows_dry_run_skippa_upsert(self):
         repo = _mock_repo()
