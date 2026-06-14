@@ -764,6 +764,30 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Impossibile chiudere la pratica: flussi obbligatori non completati.",
         ),
+        "PRATICHE_PREREQUISITI_NON_SODDISFATTI": ErrorPolicy(
+            code="PRATICHE_PREREQUISITI_NON_SODDISFATTI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Flusso non ancora eseguibile: prerequisiti non soddisfatti.",
+        ),
+        "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO": ErrorPolicy(
+            code="PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile creare un flusso: la pratica e' in stato terminale.",
+        ),
+        "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE": ErrorPolicy(
+            code="PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile modificare il flusso: la pratica e' in stato terminale.",
+        ),
+        "PRATICHE_CHIUSURA_FLUSSO_PREMATURO": ErrorPolicy(
+            code="PRATICHE_CHIUSURA_FLUSSO_PREMATURO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile completare il flusso di chiusura: restano altri flussi obbligatori da completare.",
+        ),
         "E_SOSPENSIONI_FLUSSO_NON_COERENTE": ErrorPolicy(
             code="E_SOSPENSIONI_FLUSSO_NON_COERENTE",
             http_status=400,

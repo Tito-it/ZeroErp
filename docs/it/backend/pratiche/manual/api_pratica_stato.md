@@ -45,6 +45,12 @@ Endpoint di scrittura che delega a `pratiche_service.cambia_stato_pratica`. Il s
   `fn_check_chiusura_pratica`); il service traduce l'errore DB nel codice
   parlante 485 via marker sul messaggio (vedi
   `pratiche_service._KNOWN_DB_ERROR_MARKERS`).
+- **Chiusura ora guidata dal workflow** (2026-06-14): la `CHIUSA` non e' piu'
+  un'azione manuale dell'operatore (pulsante "Chiudi" rimosso dal FE). La
+  pratica si auto-chiude al completamento dei flussi (trigger
+  `trgfn_flussi_autochiusura_pratica`, vedi [api_flusso_stato](api_flusso_stato.md)).
+  L'endpoint accetta ancora `CHIUSA` (transizione generica), ma non e' il
+  percorso normale di chiusura. `SOSPESA`/`ANNULLATA` restano azioni operatore.
 - Wrappato in `@transaction.atomic()`.
 - Permission: `cambia_stato_pratica` (area `pratiche`).
 - Endpoint v1 richiede JWT.

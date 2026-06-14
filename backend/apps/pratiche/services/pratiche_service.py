@@ -21,7 +21,7 @@ from apps.pratiche.db.pratiche_repository import PraticheRepository, coerce_json
 # Marker → codice per i guard DB workflow v2 (fn_log_and_raise_error solleva
 # il solo testo localizzato, senza codice: substring-match sul messaggio,
 # pattern speculare a lookup_service._KNOWN_DB_ERROR_MARKERS). I codici sono
-# quelli del catalogo DB (messaggi_errore id 483/485/490/491).
+# quelli del catalogo DB (messaggi_errore id 300/483/485/490/491/492).
 # ⚠ ASSUNZIONE: i marker sono sul testo ITALIANO e reggono perche' il
 # catalogo ha solo righe lingua='it' per questi codici (fn_get_messaggio fa
 # fallback a it). Se si aggiungono traduzioni, i marker vanno estesi o il
@@ -33,9 +33,15 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
         "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
         "flussi obbligatori non completati",
     ),
+    # Guard prerequisiti (D: flusso non ancora eseguibile): step cliccato in
+    # anticipo nel percorso → messaggio parlante invece di E_DATABASE generico.
+    ("PRATICHE_PREREQUISITI_NON_SODDISFATTI", "Prerequisiti non soddisfatti per il template flusso"),
     # Guard pratica terminale (CHIUSA/ANNULLATA): blocco creazione/modifica flussi.
     ("PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO", "Impossibile creare un flusso"),
     ("PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE", "Impossibile modificare il flusso"),
+    # Chiusura workflow-driven: il flusso di chiusura non puo' completarsi finche'
+    # restano altri obbligatori bloccanti.
+    ("PRATICHE_CHIUSURA_FLUSSO_PREMATURO", "Impossibile completare il flusso di chiusura"),
 )
 
 

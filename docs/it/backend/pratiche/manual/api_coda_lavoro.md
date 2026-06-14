@@ -65,6 +65,9 @@ Ogni flusso appare in un solo livello (quello piu' alto applicabile). Il campo `
 - `emittente_fiscale_id` obbligatorio per la segregazione multi-company.
 - Il risultato e' ordinato per: livello → priorita' (DESC) → scadenza (NULLS LAST) → sequenza.
 - La competenza dell'operatore e' definita nella tabella `pratiche.competenze_flussi`.
+- I flussi di **pratiche terminali** (stato senza transizioni di stato in uscita
+  attive, es. `CHIUSA`/`ANNULLATA`) sono **esclusi** dalla coda: sono lavoro
+  concluso, non da fare (allineato col guard `trgfn_flussi_guard_pratica_terminale`).
 
 ## Dipendenze DB
 
@@ -78,3 +81,4 @@ Ogni flusso appare in un solo livello (quello piu' alto applicabile). Il campo `
 
 - Funzione DB creata in migration `20260329-14-create-fn-coda-lavoro-operatore-mctit.yaml`.
 - Helper `get_risorsa_umana_id` in `apps/core/api/endpoint_helpers.py` con cache per-request.
+- (14 giugno 2026) `20260614-02`: la funzione esclude i flussi delle pratiche terminali.

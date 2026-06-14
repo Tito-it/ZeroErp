@@ -208,6 +208,22 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=10)
         self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO")
 
+    # Scopo: guard prerequisiti (flusso non ancora eseguibile) sulla creazione
+    # flusso → ServiceError parlante invece di E_DATABASE generico.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_flusso_prerequisiti_non_soddisfatti(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.resolve_stato_flusso.return_value = 1
+        repo.create_flusso.side_effect = DatabaseError(
+            "Prerequisiti non soddisfatti per il template flusso. Mancanti: APPROVAZIONE_CLIENTE.",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=10)
+        self.assertEqual(ctx.exception.code, "PRATICHE_PREREQUISITI_NON_SODDISFATTI")
+
     # Scopo: guard pratica terminale (491) sul cambio stato flusso (avvia/
     # completa/cambia_stato) → ServiceError parlante via marker.
     @patch(f"{_SVC}.PraticheRepository")
@@ -248,6 +264,36 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.cambia_stato_flusso(1, "SOSPESO")
         self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
+
+    # Scopo: guard chiusura workflow-driven — il flusso di chiusura non puo'
+    # completarsi finche' restano obbligatori bloccanti → ServiceError parlante.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_completa_flusso_chiusura_prematura(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_flusso.side_effect = DatabaseError(
+            "Impossibile completare il flusso di chiusura: restano altri flussi obbligatori da completare.",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.completa_flusso(1, esito="POSITIVO")
+        self.assertEqual(ctx.exception.code, "PRATICHE_CHIUSURA_FLUSSO_PREMATURO")
+
+    # Scopo: i codici workflow guard devono avere policy 409 (conflitto regola
+    # business), non finire nel default E_GENERICO (500). Regressione: codici
+    # mappati via marker ma non registrati in ErrorPolicyRegistry.
+    def test_workflow_guard_codes_hanno_policy_409(self):
+        from apps.core.services.error_policies import ErrorPolicyRegistry
+
+        for code in (
+            "PRATICHE_PREREQUISITI_NON_SODDISFATTI",
+            "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO",
+            "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
+            "PRATICHE_CHIUSURA_FLUSSO_PREMATURO",
+        ):
+            self.assertTrue(ErrorPolicyRegistry.has(code), f"{code} non registrato")
+            self.assertEqual(ErrorPolicyRegistry.resolve(code).http_status, 409, code)
 
     # Scopo: Regressione bug smoke 2026-06-11 — psycopg puo' restituire i
     # jsonb come str: meta del flusso str deve arrivare all'handler come dict

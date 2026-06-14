@@ -10,7 +10,7 @@ Endpoint di lettura e scrittura su `pratiche.pratiche`. La GET interroga il repo
 su 6 tabelle (tipi_prestazione, stati, priorita', soggetti, risorse_umane, unita_organizzative)
 per restituire dati pronti per la UI con display fields. La POST delega a
 `pratiche_service.crea_pratica` che valida il contesto anagrafico, risolve lo stato iniziale
-BOZZA e inserisce la pratica in transazione atomica.
+`APERTA` e inserisce la pratica in transazione atomica.
 
 ## Input
 
@@ -93,15 +93,15 @@ Envelope paginata standard (`paginated_envelope`):
         "canale_origine_id": null,
         "codice": "PRA-0000001",
         "descrizione": "Manutenzione caldaia",
-        "data_apertura": null,
+        "data_apertura": "2026-03-28",
         "data_scadenza": "2026-04-30",
         "meta": {},
         "data_insert": "2026-03-28T10:00:00+00:00",
         "user_insert": "operatore1",
         "tipo_prestazione_codice": "MANUTENZIONE",
         "tipo_prestazione_descrizione": "Manutenzione ordinaria",
-        "stato_codice_interno": "BOZZA",
-        "stato_descrizione": "Bozza",
+        "stato_codice_interno": "APERTA",
+        "stato_descrizione": "Aperta",
         "priorita_codice_interno": "NORMALE",
         "priorita_descrizione": "Normale",
         "soggetto_display": "Rossi Mario",
@@ -131,7 +131,9 @@ Envelope paginata standard (`paginated_envelope`):
 
 - `emittente_fiscale_id` obbligatorio su GET; se assente → 400.
 - Su POST, `emittente_fiscale_id`, `tipo_prestazione_id` e `priorita_id` devono essere > 0.
-- Lo stato iniziale della pratica e' `BOZZA`, risolto automaticamente da `config.stati_pratiche`.
+- Lo stato iniziale della pratica e' `APERTA`, risolto automaticamente da `config.stati_pratiche`
+  (la pratica nasce gia' aperta: lo stato `BOZZA` resta nel modello per un eventuale "salva
+  bozza" futuro). Il trigger DB valorizza `data_apertura` anche alla creazione diretta in `APERTA`.
 - Il codice pratica `PRA-NNNNNNN` e' generato dal trigger DB via `config.sistema_codici`.
 - Validazione contesto anagrafico (service + trigger DB guard):
   - `istanza_utility_id` richiede `soggetto_ruolo_id`
@@ -161,3 +163,4 @@ Envelope paginata standard (`paginated_envelope`):
 - Rimosso `solo_interna` (campo eliminato dal DB).
 - I display fields eliminano la necessita' di lookup client-side per le colonne lista.
 - v2.2 (1 aprile 2026): risposta GET allineata a `paginated_envelope` (aggiunto page, page_size, total_pages). Parsing via `parse_list_params`/`qp_int_strict`. Aggiunti parametri `data_da`, `data_a`, `order_by`, `order_dir`.
+- v2.3 (14 giugno 2026): la pratica nasce direttamente in stato `APERTA` (non piu' `BOZZA`); `data_apertura` valorizzato dal trigger anche alla creazione diretta in `APERTA` (oltre alla transizione `BOZZA → APERTA`). Lo stato `BOZZA` resta nel modello.

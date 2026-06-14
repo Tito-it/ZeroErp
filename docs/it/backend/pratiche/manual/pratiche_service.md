@@ -22,7 +22,7 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 
 | Funzione | Input | Output | Descrizione |
 |---|---|---|---|
-| `crea_pratica(...)` | emittente_fiscale_id, tipo_prestazione_id, priorita_id, ... | `int` (pratica_id) | Crea pratica con stato BOZZA |
+| `crea_pratica(...)` | emittente_fiscale_id, tipo_prestazione_id, priorita_id, ... | `int` (pratica_id) | Crea pratica con stato APERTA (la pratica nasce aperta) |
 | `aggiorna_pratica(pratica_id, data)` | pratica_id, dict campi | `None` | Aggiorna campi consentiti |
 | `cambia_stato_pratica(pratica_id, nuovo_stato)` | pratica_id, codice_interno stato | `None` | Transizione stato pratica |
 | `assegna_pratica(pratica_id, ...)` | pratica_id, risorsa_umana_id?, unita_organizzativa_id? | `None` | Assegna risorsa/UO |
