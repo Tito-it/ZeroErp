@@ -8,7 +8,7 @@
 #        Workflow:
 #        1) crea_richiesta_approvazione() - chiamata da preventivi_service
 #           quando l'utente preventiva oltre L2 con flag richiesta_approvazione=true.
-#           Crea pratica BOZZA -> APERTA, registra contesto violazione in meta,
+#           Crea pratica gia' APERTA, registra contesto violazione in meta,
 #           invia email al ruolo approver (best-effort).
 #        2) approva(riga_id) - endpoint POST /vendite/righe/<id>/approva-prezzo/
 #           verifica permesso azione approva_prezzo_override, UPDATE riga
@@ -69,7 +69,7 @@ EMAIL_TEMPLATE_CODICE = "APPROVAZIONE_PREZZO_RICHIESTA"
 PARAM_EMAIL_RECIPIENT = "VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL"
 
 # Stati workflow pratica L3.
-_STATO_PRATICA_INIZIALE = "APERTA"  # crea_pratica parte da BOZZA, transito immediato
+_STATO_PRATICA_INIZIALE = "APERTA"  # crea_pratica nasce gia' APERTA; usato anche come filtro lista
 _STATO_PRATICA_CHIUSURA = "CHIUSA"
 
 # Alias locali per leggibilita' nel modulo (i nomi STATO_APPROVAZIONE_* sono
@@ -261,7 +261,7 @@ def _get_priorita_default_id() -> int:
 
 
 # Scopo: orchestratore sorgente-agnostico della richiesta L3. Crea la
-#        pratica APPROVAZIONE_PREZZO (BOZZA -> APERTA), invia email
+#        pratica APPROVAZIONE_PREZZO (gia' APERTA), invia email
 #        best-effort all'approver, ritorna pratica_id. Per preventivi/contratti
 #        i caller pubblici `crea_richiesta_approvazione` e
 #        `crea_richiesta_approvazione_contratto` arrivano qui con il proprio
@@ -318,10 +318,8 @@ def _crea_richiesta_approvazione_impl(
         meta=meta,
     )
 
-    # Transito immediato BOZZA -> APERTA per renderla visibile nella coda
-    # approver. Se la transizione e' bloccata da un trigger di workflow,
-    # solleva: meglio fail-fast che lasciare pratica in BOZZA invisibile.
-    cambia_stato_pratica(pratica_id, _STATO_PRATICA_INIZIALE)
+    # La pratica nasce gia' APERTA (crea_pratica): visibile in coda approver
+    # senza transito aggiuntivo.
 
     # Email best-effort. Se template/recipient assenti -> log warning, no raise:
     # la pratica resta valida e visibile in coda anche senza email.

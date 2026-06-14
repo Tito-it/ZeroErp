@@ -2,11 +2,12 @@
 // Scopo: Drawer esecuzione flusso — avvio, completamento con esito, sospensione.
 // Riutilizzabile: riceve flusso via props, emette eventi per refresh.
 // Il contenuto e' dinamico: mostra azioni in base allo stato corrente del flusso.
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
 import { completaApprovazioneFlusso } from '../../vendite/preventivi/api/preventiviApi'
 import { DRAWER_WIDTH, STATO_FLUSSO } from '../../core/constants'
@@ -25,7 +26,6 @@ import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
-import Button from 'primevue/button'
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
@@ -38,6 +38,9 @@ const props = defineProps({
   // (es. APPROVAZIONE_CLIENTE → endpoint M2) da altri processi che riusano gli
   // stessi codici template (es. OFFERTA_QUADRO).
   tipoPrestazioneCodice: { type: String, default: '' },
+  // Pratica in stato terminale (CHIUSA/ANNULLATA): sola lettura. Il flusso si
+  // puo' consultare ma non avviare/completare e non si generano flussi a valle.
+  readonly: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['update:visible', 'saved', 'open-preventivo'])
@@ -60,6 +63,15 @@ const esitiOptions = computed(() => [
 
 const stato = computed(() => props.flusso?.stato_codice_interno || '')
 
+// Sola lettura "effettiva": readonly da permessi operatore (iniettato dalla
+// view via useReadonlyMode) OR pratica in stato terminale (prop readonly).
+// Ri-fornito ai figli (DrawerTitle/ReadonlyBadge, DrawerActionsBar) come da
+// convenzione useReadonlyMode, cosi' il badge "sola lettura" compare in alto e
+// le azioni si disattivano in entrambi i casi.
+const injectedReadonly = useInjectReadonly()
+const effectiveReadonly = computed(() => injectedReadonly.value || props.readonly)
+provide(READONLY_KEY, effectiveReadonly)
+
 // Deferimento contenuto: il drawer ha solo Select statico + Textarea, ma
 // applichiamo il pattern per coerenza con gli altri drawer entita'.
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
@@ -81,7 +93,7 @@ const drawerActions = computed(() => {
       label: t('pratiche.flusso_avvia'),
       icon: 'pi pi-play',
       severity: 'info',
-      visible: stato.value === STATO_FLUSSO.DA_ESEGUIRE,
+      visible: !effectiveReadonly.value && stato.value === STATO_FLUSSO.DA_ESEGUIRE,
       disabled: loading.value,
       command: onAvvia,
     },
@@ -94,7 +106,7 @@ const drawerActions = computed(() => {
       label: t('pratiche.flusso_apri_preventivo'),
       icon: 'pi pi-file-edit',
       severity: 'secondary',
-      visible: isPreventivi.value && templateCodice.value === TEMPLATE_PREVENTIVAZIONE,
+      visible: !effectiveReadonly.value && isPreventivi.value && templateCodice.value === TEMPLATE_PREVENTIVAZIONE,
       disabled: loading.value,
       command: () => emit('open-preventivo', props.praticaId),
     },
@@ -153,7 +165,7 @@ const onClose = useDrawerClose(emit)
       />
     </template>
 
-    <div v-if="flusso" class="app-drawer-content">
+    <div v-if="flusso" class="app-drawer-content" :class="{ 'app-readonly': effectiveReadonly }">
       <template v-if="contentReady">
 
       <!-- Header standard contesto pratica (BB PraticaContextHeader):
@@ -184,7 +196,7 @@ const onClose = useDrawerClose(emit)
       <!-- IN_CORSO: Form completamento con esito.
            Resta inline (transizione con dati di processo, non comprimibile
            a `command: () => void` del BB DrawerActionsBar). -->
-      <div v-if="stato === STATO_FLUSSO.IN_CORSO" class="flusso-actions">
+      <div v-if="stato === STATO_FLUSSO.IN_CORSO && !effectiveReadonly" class="flusso-actions">
         <h4>{{ t('pratiche.flusso_completa_con_esito') }}</h4>
         <div class="form-grid">
           <div class="form-field">
@@ -202,15 +214,6 @@ const onClose = useDrawerClose(emit)
             <Textarea v-model="noteEsito" class="w-full" rows="3" auto-resize />
           </div>
         </div>
-        <div class="flex justify-end mt-3">
-          <Button
-            :label="t('pratiche.flusso_completa')"
-            icon="pi pi-check" severity="success"
-            :loading="loading"
-            :disabled="!esito"
-            @click="onCompleta"
-          />
-        </div>
       </div>
 
       <!-- COMPLETATO: Mostra esito (readonly) -->
@@ -225,7 +228,18 @@ const onClose = useDrawerClose(emit)
         </div>
       </div>
 
-      <FormFooter close-only @cancel="onClose" />
+      <!-- Footer standard: in IN_CORSO il completamento esito usa il BB
+           FormFooter (Annulla + Salva), niente pulsante Chiudi separato.
+           Negli altri stati (Avvia in alto / COMPLETATO / sola lettura) resta
+           il solo Chiudi. -->
+      <FormFooter
+        v-if="stato === STATO_FLUSSO.IN_CORSO && !effectiveReadonly"
+        :loading="loading"
+        :disabled="!esito"
+        @save="onCompleta"
+        @cancel="onClose"
+      />
+      <FormFooter v-else close-only @cancel="onClose" />
       </template>
     </div>
   </Drawer>

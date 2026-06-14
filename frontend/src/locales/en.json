@@ -2650,6 +2650,7 @@
     "percorso_da_creare": "To create",
     "percorso_apri": "Open",
     "percorso_crea": "Create and run",
+    "percorso_non_disponibile": "Not available",
     "percorso_handler": "Automatic step (handler)",
     "percorso_ripeti": "Repeat",
     "percorso_ripeti_hint": "Create a new instance of this flow (the last one did not close positively)",
@@ -2696,7 +2697,8 @@
     "esito_parziale": "Partial",
     "esito_non_applicabile": "Not applicable",
     "competenze_flussi": "Flow competences",
-    "visualizzazione_pratica": "Viewing practice code: {codice}"
+    "visualizzazione_pratica": "Viewing practice code: {codice}",
+    "apri_scheda": "Open case sheet"
   },
   "ai": {
     "title": "AI Assistant",

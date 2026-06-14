@@ -111,7 +111,7 @@ class PraticheServiceTests(SimpleTestCase):
             priorita_id=2,
         )
         self.assertEqual(result, 42)
-        repo.resolve_stato_pratica.assert_called_once_with("BOZZA")
+        repo.resolve_stato_pratica.assert_called_once_with("APERTA")
         repo.create_pratica.assert_called_once()
 
     # Scopo: Verifica errore se emittente_fiscale_id <= 0.

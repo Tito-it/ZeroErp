@@ -18,6 +18,10 @@ const props = defineProps({
   praticaId: { type: Number, default: null },
   // Azione in corso (create/open): blocca i click per evitare doppia creazione.
   busy: { type: Boolean, default: false },
+  // Pratica in stato terminale (CHIUSA/ANNULLATA): sola lettura. Gli step "da
+  // creare" non sono cliccabili (niente nuovi flussi), i flussi esistenti
+  // restano apribili ma il drawer li mostra in sola lettura.
+  readonly: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['open-flusso', 'create-flusso'])
@@ -40,12 +44,18 @@ function isRamoChiuso(step) {
 // sullo stato qui, coprirebbe male i casi ANNULLATO/ERRORE che il flag
 // gia' considera.
 function canRipeti(step) {
-  return Boolean(step.flusso_id) && step.ripetibile_adesso === true
+  // Pratica terminale: niente ripetizione (creerebbe un nuovo flusso).
+  return !props.readonly && Boolean(step.flusso_id) && step.ripetibile_adesso === true
+}
+// Step "da creare" non cliccabile su pratica terminale: nessun nuovo flusso.
+function isStepCliccabile(step) {
+  return Boolean(step.flusso_id) || !props.readonly
 }
 function onClick(step) {
   if (props.busy) return
-  if (step.flusso_id) emit('open-flusso', step.flusso_id)
-  else emit('create-flusso', step.template_flusso_id)
+  if (step.flusso_id) { emit('open-flusso', step.flusso_id); return }
+  if (props.readonly) return
+  emit('create-flusso', step.template_flusso_id)
 }
 function onRipeti(step) {
   if (props.busy) return
@@ -72,6 +82,7 @@ function onRipeti(step) {
               'percorso-step-todo': !step.flusso_id,
               'percorso-step-busy': busy,
               'percorso-step-ramo-chiuso': isRamoChiuso(step),
+              'percorso-step-disabled': !isStepCliccabile(step),
             }"
             @click="onClick(step)"
           >
@@ -93,6 +104,10 @@ function onRipeti(step) {
             <div v-if="isRamoChiuso(step)" class="percorso-step-action percorso-ramo-chiuso">
               <i class="pi pi-ban" :title="t('pratiche.percorso_ramo_chiuso_hint')" />
               {{ t('pratiche.percorso_ramo_chiuso') }}
+            </div>
+            <div v-else-if="!isStepCliccabile(step)" class="percorso-step-action">
+              <i class="pi pi-lock" :title="t('pratiche.percorso_non_disponibile')" />
+              {{ t('pratiche.percorso_non_disponibile') }}
             </div>
             <div v-else class="percorso-step-action">
               <i :class="step.flusso_id ? 'pi pi-folder-open' : 'pi pi-plus-circle'" />
@@ -177,6 +192,9 @@ function onRipeti(step) {
 .percorso-step-done { opacity: 0.8; }
 .percorso-step-todo { border-style: dashed; }
 .percorso-step-busy { pointer-events: none; opacity: 0.6; }
+/* Step "da creare" su pratica terminale: non cliccabile (niente nuovi flussi). */
+.percorso-step-disabled { cursor: not-allowed; opacity: 0.5; }
+.percorso-step-disabled:hover { background: var(--surface-0); border-color: var(--surface-border); }
 /* Ramo morto (D4): attenuato e tratteggiato fitto — visivamente "fuori
    strada", ma resta cliccabile (guard parlante a DB). */
 .percorso-step-ramo-chiuso { opacity: 0.5; border-style: dotted; }
