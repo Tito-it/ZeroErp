@@ -44,6 +44,8 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 - `404`: flusso non trovato (`E_FLUSSO_NOT_FOUND`)
 - `409`: **pratica terminale** (`PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE`, catalogo DB id 491): transizione/modifica di un flusso di una pratica `CHIUSA`/`ANNULLATA`. Guard `trg_flussi_a10_guard_pratica_terminale_ins_upd`.
 - `409`: **chiusura prematura** (`PRATICHE_CHIUSURA_FLUSSO_PREMATURO`, catalogo DB id 492): il flusso "di chiusura" (`template_flussi.chiude_pratica`) non puo' essere completato finche' restano altri obbligatori bloccanti. Guard `trg_flussi_a10_guard_chiusura_prematura_upd`.
+- `409`: **transizione non ammessa** (`FLUSSI_TRANSIZIONE_NON_AMMESSA`, catalogo DB id 302): la coppia `(stato_da, stato_a)` non e' in `config.transizioni_stati_flussi_pratiche` (attiva). Guard `trgfn_flussi_guard_transizione`.
+- `409`: **esito obbligatorio** (`FLUSSI_ESITO_OBBLIGATORIO`, catalogo DB id 477): passaggio a `COMPLETATO` senza `esito` (raggiungibile solo via `cambia_stato_flusso`; `completa_flusso` valida l'esito a monte con `E_FLUSSO_VALIDATION`). Guard `trgfn_flussi_guard_esito_completato`.
 - `500`: stato non trovato in config (`E_CONFIG_MANCANTE`)
 
 ## Regole

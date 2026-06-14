@@ -21,7 +21,7 @@ from apps.pratiche.db.pratiche_repository import PraticheRepository, coerce_json
 # Marker → codice per i guard DB workflow v2 (fn_log_and_raise_error solleva
 # il solo testo localizzato, senza codice: substring-match sul messaggio,
 # pattern speculare a lookup_service._KNOWN_DB_ERROR_MARKERS). I codici sono
-# quelli del catalogo DB (messaggi_errore id 300/483/485/490/491/492).
+# quelli del catalogo DB (messaggi_errore id 300/301/302/477/483/485/490/491/492).
 # ⚠ ASSUNZIONE: i marker sono sul testo ITALIANO e reggono perche' il
 # catalogo ha solo righe lingua='it' per questi codici (fn_get_messaggio fa
 # fallback a it). Se si aggiungono traduzioni, i marker vanno estesi o il
@@ -42,6 +42,14 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
     # Chiusura workflow-driven: il flusso di chiusura non puo' completarsi finche'
     # restano altri obbligatori bloccanti.
     ("PRATICHE_CHIUSURA_FLUSSO_PREMATURO", "Impossibile completare il flusso di chiusura"),
+    # Guard transizione di stato (matrice config.transizioni_*): transizione non
+    # in matrice → 409 parlante invece di E_DATABASE 500. Guard di bordo: le
+    # transizioni valide non li toccano.
+    ("PRATICHE_TRANSIZIONE_NON_AMMESSA", "Transizione pratica non ammessa"),
+    ("FLUSSI_TRANSIZIONE_NON_AMMESSA", "Transizione flusso non ammessa"),
+    # Guard esito-aware: COMPLETATO richiede esito valorizzato (nessuna fase si
+    # chiude senza verdetto).
+    ("FLUSSI_ESITO_OBBLIGATORIO", "Esito obbligatorio per completare il flusso"),
 )
 
 
@@ -313,11 +321,17 @@ def cerca_pratiche(
 # Scopo: Crea un nuovo flusso per una pratica.
 # Il trigger DB valida i prerequisiti automaticamente (guard).
 # Se il trigger blocca l'INSERT, il DB solleva un errore gestito dal middleware.
+# Nota modello (workflow v2): ogni flusso e' template-driven — nasce sempre da un
+# template del percorso (FE PraticaPercorso) o dall'auto-generazione cross-pratica
+# (fn_genera_pratica_da_flusso, sempre con template_dest). Il vecchio "flusso
+# generico" senza template e' stato rimosso: template_flusso_id e' OBBLIGATORIO,
+# chiudiamo qui il path morto. I read-path (verifica_prerequisiti, canali) restano
+# tolleranti ai flussi legacy con template NULL eventualmente presenti a DB.
 @transaction.atomic()
 def crea_flusso(
     *,
     pratica_id: int,
-    template_flusso_id: int | None = None,
+    template_flusso_id: int,
     risorsa_umana_id: int | None = None,
     unita_organizzativa_id: int | None = None,
     sequenza: int = 0,
@@ -330,6 +344,12 @@ def crea_flusso(
         message="pratica_id deve essere > 0",
     )
     assert pratica_id > 0
+    ErrorManager.require(
+        template_flusso_id is not None and template_flusso_id > 0,
+        code="E_FLUSSO_VALIDATION",
+        message="template_flusso_id obbligatorio e > 0: un flusso nasce sempre da un template del percorso.",
+    )
+    assert template_flusso_id is not None and template_flusso_id > 0
 
     # Risolve stato iniziale DA_ESEGUIRE.
     repo = PraticheRepository()

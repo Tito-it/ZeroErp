@@ -197,7 +197,7 @@ Le transizioni di stato di pratiche e flussi sono governate da due tabelle di co
 * [`config.transizioni_stati_pratiche`](/dbzero/config/tabelle/transizioni_stati_pratiche) — definisce le coppie (stato_da, stato_a) ammesse per le pratiche
 * [`config.transizioni_stati_flussi_pratiche`](/dbzero/config/tabelle/transizioni_stati_flussi_pratiche) — definisce le coppie (stato_da, stato_a) ammesse per i flussi
 
-Un trigger BEFORE UPDATE su `pratiche.pratiche` e su `pratiche.flussi` verifica che la transizione richiesta sia presente nella tabella di configurazione. Se non lo e', il trigger rifiuta l'operazione con un errore esplicito (`E_PRATICHE_TRANSIZIONE_NON_AMMESSA` o `E_FLUSSI_TRANSIZIONE_NON_AMMESSA`).
+Un trigger BEFORE UPDATE su `pratiche.pratiche` e su `pratiche.flussi` verifica che la transizione richiesta sia presente nella tabella di configurazione. Se non lo e', il trigger rifiuta l'operazione con un errore esplicito (`PRATICHE_TRANSIZIONE_NON_AMMESSA` o `FLUSSI_TRANSIZIONE_NON_AMMESSA`).
 
 **Transizioni ammesse per le pratiche:**
 
@@ -246,6 +246,17 @@ BOZZA --> APERTA --> CHIUSA
 * Da BOZZA puo' passare ad **APERTA** o essere **ANNULLATA**
 * Da APERTA puo' essere **SOSPESA**, **CHIUSA** o **ANNULLATA**
 * Da SOSPESA puo' tornare **APERTA**
+
+> **Chiusura guidata dal workflow.** La transizione a **CHIUSA** non e' un'azione
+> manuale dell'operatore: la pratica si auto-chiude (trigger
+> `trgfn_flussi_autochiusura_pratica`) al completamento dei flussi. Per i tipi
+> prestazione che hanno un **flusso di chiusura** dedicato, la chiusura scatta al
+> completamento di quel flusso; altrimenti scatta quando non restano flussi
+> obbligatori bloccanti. Il flag che marca il flusso di chiusura e'
+> [`template_flussi.chiude_pratica`](/dbzero/pratiche/tabelle/template_flussi)
+> (al massimo un template di chiusura per tipo prestazione — indice unico
+> parziale `uq_template_flussi_chiusura`), configurabile dal **pannello di
+> configurazione** (`pratiche.template_flussi`).
 
 ### Flusso
 

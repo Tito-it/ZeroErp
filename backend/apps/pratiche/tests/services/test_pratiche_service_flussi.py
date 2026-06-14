@@ -86,8 +86,21 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # Scopo: Verifica errore se pratica_id <= 0.
     def test_crea_flusso_errore_pratica_id_zero(self):
         with self.assertRaises(ServiceError) as ctx:
-            pratiche_service.crea_flusso(pratica_id=0)
+            pratiche_service.crea_flusso(pratica_id=0, template_flusso_id=10)
         self.assertEqual(ctx.exception.code, "E_INVALID_ID")
+
+    # Scopo: workflow v2 — template_flusso_id obbligatorio (chiuso il path morto
+    # del vecchio "flusso generico"). None o <= 0 → E_FLUSSO_VALIDATION fail-fast.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_flusso_errore_template_obbligatorio(self, MockRepo):
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=None)  # type: ignore[arg-type]
+        self.assertEqual(ctx.exception.code, "E_FLUSSO_VALIDATION")
+        with self.assertRaises(ServiceError) as ctx2:
+            pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=0)
+        self.assertEqual(ctx2.exception.code, "E_FLUSSO_VALIDATION")
+        # Nessun INSERT tentato quando il guard scatta.
+        MockRepo.return_value.create_flusso.assert_not_called()
 
     # Scopo: Verifica transizione flusso DA_ESEGUIRE → IN_CORSO.
     @patch(f"{_SVC}.PraticheRepository")
@@ -280,6 +293,49 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             pratiche_service.completa_flusso(1, esito="POSITIVO")
         self.assertEqual(ctx.exception.code, "PRATICHE_CHIUSURA_FLUSSO_PREMATURO")
 
+    # Scopo: guard transizione flusso (matrice config) → ServiceError parlante
+    # invece di E_DATABASE 500 (gap ① allineamento marker+policy 2026-06-14).
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_cambia_stato_flusso_transizione_non_ammessa(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_flusso.side_effect = DatabaseError(
+            "Transizione flusso non ammessa: DA_ESEGUIRE -> COMPLETATO",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.cambia_stato_flusso(1, "COMPLETATO", esito="POSITIVO")
+        self.assertEqual(ctx.exception.code, "FLUSSI_TRANSIZIONE_NON_AMMESSA")
+
+    # Scopo: guard esito-aware — COMPLETATO senza esito → ServiceError parlante.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_cambia_stato_flusso_esito_obbligatorio(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_flusso.side_effect = DatabaseError(
+            "Esito obbligatorio per completare il flusso 42.",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.cambia_stato_flusso(1, "COMPLETATO")
+        self.assertEqual(ctx.exception.code, "FLUSSI_ESITO_OBBLIGATORIO")
+
+    # Scopo: guard transizione pratica (matrice config) → ServiceError parlante.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_cambia_stato_pratica_transizione_non_ammessa(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_pratica.side_effect = DatabaseError(
+            "Transizione pratica non ammessa: CHIUSA -> APERTA",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.cambia_stato_pratica(1, "APERTA")
+        self.assertEqual(ctx.exception.code, "PRATICHE_TRANSIZIONE_NON_AMMESSA")
+
     # Scopo: i codici workflow guard devono avere policy 409 (conflitto regola
     # business), non finire nel default E_GENERICO (500). Regressione: codici
     # mappati via marker ma non registrati in ErrorPolicyRegistry.
@@ -291,6 +347,9 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO",
             "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
             "PRATICHE_CHIUSURA_FLUSSO_PREMATURO",
+            "PRATICHE_TRANSIZIONE_NON_AMMESSA",
+            "FLUSSI_TRANSIZIONE_NON_AMMESSA",
+            "FLUSSI_ESITO_OBBLIGATORIO",
         ):
             self.assertTrue(ErrorPolicyRegistry.has(code), f"{code} non registrato")
             self.assertEqual(ErrorPolicyRegistry.resolve(code).http_status, 409, code)

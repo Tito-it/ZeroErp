@@ -26,7 +26,10 @@ Endpoint di scrittura che delega a `pratiche_service.cambia_stato_pratica`. Il s
 - `400`: `nuovo_stato` vuoto (`E_PRATICA_VALIDATION`), `pratica_id` non valido (`E_INVALID_ID`)
 - `401`: JWT mancante o non valido
 - `404`: pratica non trovata (`E_PRATICA_NOT_FOUND`)
-- `409`: transizione non in matrice (`E_PRATICHE_TRANSIZIONE_NON_AMMESSA`);
+- `409`: transizione non in matrice (`PRATICHE_TRANSIZIONE_NON_AMMESSA`,
+  catalogo DB id 301): la coppia `(stato_da, stato_a)` non e' in
+  `config.transizioni_stati_pratiche` (attiva). Guard
+  `trgfn_pratiche_guard_transizione`, tradotto via marker;
   **chiusura bloccata** (`PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI`,
   catalogo DB id 485, workflow v2 D4): la pratica sta andando a `CHIUSA` ma
   esistono template flussi `obbligatorio=true` ancora **percorribili**
