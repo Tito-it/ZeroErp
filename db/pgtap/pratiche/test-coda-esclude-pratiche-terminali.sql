@@ -58,6 +58,17 @@ WITH ins AS (
 )
 SELECT id AS tp_id FROM ins;
 
+-- Template non obbligatorio (il flusso e' template-driven; non obbligatorio
+-- per non innescare l'auto-chiusura al completamento).
+CREATE TEMP TABLE tmp_ct_tf AS
+WITH ins AS (
+  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo)
+  VALUES ((SELECT tp_id FROM tmp_ct_tp), 'TEST_CT_STEP', 'Step coda', 10, false, true)
+  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  RETURNING id
+)
+SELECT id AS tf_id FROM ins;
+
 CREATE TEMP TABLE tmp_ct_pratica AS
 WITH ins AS (
   INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
@@ -72,12 +83,12 @@ WITH ins AS (
 )
 SELECT id AS pratica_id FROM ins;
 
--- Flusso manuale (template NULL) assegnato all'operatore, se esiste una risorsa.
+-- Flusso (template-driven) assegnato all'operatore, se esiste una risorsa.
 CREATE TEMP TABLE tmp_ct_flusso AS
 WITH ins AS (
   INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id, risorsa_umana_id)
   SELECT (SELECT pratica_id FROM tmp_ct_pratica),
-         NULL,
+         (SELECT tf_id FROM tmp_ct_tf),
          (SELECT fl_da_eseguire FROM tmp_ct_refs),
          (SELECT risorsa_id FROM tmp_ct_refs)
   WHERE (SELECT risorsa_id FROM tmp_ct_refs) IS NOT NULL
@@ -140,6 +151,8 @@ DELETE FROM pratiche.flussi
  WHERE pratica_id IN (SELECT id FROM pratiche.pratiche
                        WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_ct_tp));
 DELETE FROM pratiche.pratiche
+ WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_ct_tp);
+DELETE FROM pratiche.template_flussi
  WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_ct_tp);
 DELETE FROM pratiche.tipi_prestazione
  WHERE codice_interno = 'TEST_CODA_TERM';
