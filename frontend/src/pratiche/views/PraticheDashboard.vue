@@ -5,10 +5,11 @@
 // Riusa: PraticheCodaLavoro, PraticheSearchTable, PraticaPercorso, PraticaDrawer, FlussoDrawer.
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Button from 'primevue/button'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS } from '../../core/constants'
+import { READONLY_DOMAINS, STATI_PRATICA_TERMINALI } from '../../core/constants'
 import { usePraticheStore } from '../stores/pratiche'
 import PraticheCodaLavoro from '../components/PraticheCodaLavoro.vue'
 import PraticheSearchTable from '../components/PraticheSearchTable.vue'
@@ -66,11 +67,37 @@ function onRowClick(data) {
   loadPercorsoPratica(data.id)
 }
 
+// Apre la scheda pratica (drawer edit) sulla pratica selezionata: e' qui che
+// vivono le azioni di stato (Apri/Sospendi/Chiudi/Annulla). Il row-click resta
+// dedicato alla selezione per la roadmap percorso; la scheda si apre da qui.
+// Passiamo solo l'id: il drawer rifa' la fetchDetail, indipendentemente dal
+// fatto che la riga provenga dalla SearchTable o dalla coda lavoro.
+function onApriScheda() {
+  if (!store.selectedPraticaId) return
+  drawer.editRow({ id: store.selectedPraticaId }, 'id')
+}
+
 // Codice della pratica selezionata (per barra contesto sopra flussi)
 const selectedPraticaCodice = computed(() => {
   if (!store.selectedPraticaId) return null
   const item = store.items.find(i => i.id === store.selectedPraticaId)
   return item?.codice || null
+})
+
+// Pratica selezionata in stato terminale (CHIUSA/ANNULLATA) → percorso e flussi
+// in sola lettura: niente nuovi step, flussi esistenti consultabili ma non
+// modificabili. La scheda pratica (PraticaDrawer) si auto-protegge dal proprio
+// dettaglio, qui copriamo percorso + drawer flusso che vivono nella dashboard.
+// Limite noto: lo stato si legge dalla riga in `store.items` (ricerca). Una
+// pratica selezionata dalla coda lavoro potrebbe non essere in `store.items`
+// (la coda non ritorna lo stato pratica) → readonly non rilevato in quel path.
+// La protezione robusta e' lato DB (vedi brief-db-pratiche-terminale-blocco-flussi):
+// l'annullamento chiude i flussi attivi → spariscono dalla coda; piu' il guard
+// che rifiuta comunque le operazioni su pratica terminale.
+const selectedPraticaReadonly = computed(() => {
+  if (!store.selectedPraticaId) return false
+  const item = store.items.find(i => i.id === store.selectedPraticaId)
+  return item ? STATI_PRATICA_TERMINALI.includes(item.stato_codice_interno) : false
 })
 
 // --- FlussoDrawer ---
@@ -223,6 +250,14 @@ onUnmounted(() => {
           <span v-if="selectedPraticaCodice" class="flussi-context-label">
             <i class="pi pi-folder-open" />
             {{ t('pratiche.visualizzazione_pratica', { codice: selectedPraticaCodice }) }}
+            <Button
+              :label="t('pratiche.apri_scheda')"
+              icon="pi pi-external-link"
+              text
+              size="small"
+              class="app-escape"
+              @click="onApriScheda"
+            />
           </span>
           <span v-else class="flussi-context-hint">
             {{ t('pratiche.flussi_panel_vuoto') }}
@@ -234,6 +269,7 @@ onUnmounted(() => {
             :loading="percorsoLoading"
             :pratica-id="store.selectedPraticaId"
             :busy="percorsoBusy"
+            :readonly="selectedPraticaReadonly"
             @open-flusso="onOpenFlussoById"
             @create-flusso="onCreateFlusso"
           />
@@ -259,6 +295,7 @@ onUnmounted(() => {
       :flusso="flussoSelezionato"
       :pratica-id="store.selectedPraticaId"
       :tipo-prestazione-codice="selectedPraticaTipo"
+      :readonly="selectedPraticaReadonly"
       @saved="onFlussoSaved"
       @open-preventivo="onOpenPreventivo"
     />

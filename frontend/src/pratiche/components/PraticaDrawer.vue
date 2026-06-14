@@ -3,16 +3,16 @@
 // In edit: 3 tab + bottoni azioni stato nel tab Dati.
 //          I campi display (stato_descrizione, soggetto_display, ecc.) arrivano dal backend.
 // In create: solo form creazione (no tab).
-import { ref, watch, computed, nextTick } from 'vue'
+import { ref, watch, computed, nextTick, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
-import { DRAWER_WIDTH, STATO_PRATICA } from '../../core/constants'
+import { DRAWER_WIDTH, STATO_PRATICA, STATI_PRATICA_TERMINALI } from '../../core/constants'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -138,9 +138,18 @@ function populateFormFromDetail(d) {
 // Stato corrente dalla risposta backend (campo display, no lookup)
 const statoCorrente = computed(() => detail.value?.stato_codice_interno || '')
 
+// Sola lettura su pratica in stato terminale (CHIUSA/ANNULLATA): non si modifica
+// nulla. Combina col readonly iniettato (area/parent) come da convenzione
+// useReadonlyMode e lo ri-fornisce ai figli (tab flussi/note/allegati: già
+// reattivi a useInjectReadonly), oltre alla classe CSS app-readonly sul content.
+const terminaleReadonly = computed(() =>
+  STATI_PRATICA_TERMINALI.includes(statoCorrente.value)
+)
+const effectiveReadonly = computed(() => isReadonly.value || terminaleReadonly.value)
+provide(READONLY_KEY, effectiveReadonly)
+
 watch(() => props.visible, async (val) => {
   if (!val) return
-  nextTick(() => { tabViewKey.value++ })
   if (isEdit.value && props.praticaId) {
     const d = await store.fetchDetail(props.praticaId)
     detail.value = d
@@ -213,6 +222,16 @@ function onAnnullaPratica() {
 // del drawer (pattern feedback_content_ready_after_show centralizzato in
 // useDrawerContentReady).
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
+
+// Fix ink bar TabView (PrimeVue legacy): il TabView monta solo quando
+// contentReady passa a true (a fine animazione, via @after-show). Il remount
+// correttivo dell'indicatore va quindi forzato DOPO quel primo render — non
+// nel watch su `visible`, dove il TabView non esiste ancora e l'incremento
+// andrebbe perso. Senza questo, al primo render l'ink bar prende la larghezza
+// piena e si corregge solo al primo cambio tab.
+watch(contentReady, (ready) => {
+  if (ready) nextTick(() => { tabViewKey.value++ })
+})
 
 // Azioni della testata pratica consumate da DrawerActionsBar (refactor UI
 // drawer 2026-05-22, Fase 3.A). 5 state actions condizionali per stato corrente
@@ -339,7 +358,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
       />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <div class="app-drawer-content" :class="{ 'app-readonly': effectiveReadonly }">
       <template v-if="contentReady">
 
       <!-- === CREAZIONE: form con soggetto/ruolo opzionali === -->

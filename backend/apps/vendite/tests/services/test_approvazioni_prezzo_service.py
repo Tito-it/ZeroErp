@@ -86,8 +86,8 @@ class CreaRichiestaApprovazioneTests(TestCase):
         self.assertEqual(crea_kwargs["priorita_id"], 2)
         self.assertEqual(crea_kwargs["soggetto_id"], "soggetto-uuid")
         self.assertEqual(crea_kwargs["istanza_utility_id"], 99)
-        # Transito immediato a APERTA per visibilita' coda.
-        mock_cambia_stato.assert_called_once_with(12345, "APERTA")
+        # La pratica nasce gia' APERTA da crea_pratica: nessun transito esplicito.
+        mock_cambia_stato.assert_not_called()
         # Email best-effort invocata (non solleva nemmeno se fallisce).
         mock_email.assert_called_once()
 

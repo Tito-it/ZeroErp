@@ -58,10 +58,13 @@ def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
 # -- PRATICHE --------------------------------------------------------
 
 
-# Scopo: Crea una nuova pratica con stato iniziale BOZZA.
+# Scopo: Crea una nuova pratica gia' in stato APERTA.
 # Obiettivo: entry point per creazione pratica da qualsiasi dominio.
 # Perimetro: risolve stato iniziale, delega INSERT al repository.
 # Risultato: ID della pratica creata.
+# Nota modello: la pratica nasce APERTA (niente passaggio per BOZZA) — lo stato
+#   BOZZA resta nel modello per un eventuale "salva bozza" esplicito futuro. Il
+#   trigger DB valorizza data_apertura anche alla creazione diretta in APERTA.
 @transaction.atomic()
 def crea_pratica(
     *,
@@ -140,8 +143,8 @@ def crea_pratica(
                 message="Tipo prestazione ammesso solo prima dell'attivazione cliente (pre-attivazione).",
             )
 
-    # Risolve stato iniziale BOZZA + default priorita' NORMALE se assente.
-    stato_id = repo.resolve_stato_pratica("BOZZA")
+    # Risolve stato iniziale APERTA + default priorita' NORMALE se assente.
+    stato_id = repo.resolve_stato_pratica("APERTA")
     if priorita_id is None:
         priorita_id = repo.resolve_priorita_pratica("NORMALE")
     return repo.create_pratica({
