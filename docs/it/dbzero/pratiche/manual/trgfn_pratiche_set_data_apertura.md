@@ -8,8 +8,10 @@
 ---
 ### 🎯 Scopo Principale
 
-Valorizza automaticamente `data_apertura` alla transizione BOZZA → APERTA.
-Immutabile: una volta valorizzata, non viene sovrascritta da transizioni successive.
+Valorizza automaticamente `data_apertura` quando la pratica entra in APERTA, sia
+per **creazione diretta** (INSERT con stato APERTA) sia per **transizione**
+BOZZA → APERTA su UPDATE. Immutabile: una volta valorizzata, non viene sovrascritta
+da transizioni successive (ne' da un valore esplicito gia' fornito all'INSERT).
 
 ---
 
@@ -24,21 +26,31 @@ RETURNS trigger LANGUAGE plpgsql
 
 ### Logica di funzionamento
 
+Lo stato APERTA viene risolto da `config.stati_pratiche.codice_interno` (mai hardcodato).
+
+**Ramo INSERT** (creazione diretta):
+
+1. Se `stato_id` = APERTA e `data_apertura` non e' stata fornita → valorizza `data_apertura = CURRENT_DATE`.
+2. Se `data_apertura` e' gia' fornita dal chiamante → preserva il valore (immutabilita' anche all'INSERT).
+3. Per qualsiasi altro stato all'INSERT (es. BOZZA) → nessuna azione (`data_apertura` resta NULL).
+
+**Ramo UPDATE** (transizione):
+
 1. Se `stato_id` non cambia → nessuna azione.
 2. Se `data_apertura` e' gia' valorizzata → preserva il valore originale (immutabilita').
-3. Risolve gli id degli stati BOZZA e APERTA da `config.stati_pratiche.codice_interno` (mai hardcodati).
-4. Se la transizione e' BOZZA → APERTA → valorizza `data_apertura = NOW()`.
-5. Per qualsiasi altra transizione → nessuna azione.
+3. Se la transizione e' BOZZA → APERTA → valorizza `data_apertura = CURRENT_DATE`.
+4. Per qualsiasi altra transizione → nessuna azione.
 
 ---
 
-### Trigger associato
+### Trigger associati
 
-| Nome | Fase | Evento | Tabella |
-|------|------|--------|---------|
+| Nome                                     | Fase   | Evento             | Tabella             |
+|------------------------------------------|--------|--------------------|---------------------|
+| `trg_pratiche_m50_set_data_apertura_ins` | BEFORE | INSERT             | `pratiche.pratiche` |
 | `trg_pratiche_m50_set_data_apertura_upd` | BEFORE | UPDATE OF stato_id | `pratiche.pratiche` |
 
-La fase `_m50_` e' intermedia: dopo i guard `_a10_` (transizione ammessa), prima dei trigger finali `_z90_` (giornale).
+La fase `_m50_` e' intermedia: dopo i guard `_a10_` (transizione ammessa, solo su UPDATE), prima dei trigger finali `_z90_` (giornale).
 
 ---
 

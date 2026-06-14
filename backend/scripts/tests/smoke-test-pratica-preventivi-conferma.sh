@@ -291,6 +291,7 @@ if [[ "$GIRO_OK" == "1" ]]; then
     echo ""; echo "-- 6. APPROVAZIONE_CLIENTE: bridge M2 -> preventivo ACCETTATO --"
     GIRO_OK=0
     if crea_e_avvia_flusso "$TPL_APPROVAZIONE" "APPROVAZIONE_CLIENTE"; then
+        FLUSSO_APPROVAZIONE_ID="$FLUSSO_ID"
         do_curl POST "/api/v1/vendite/preventivi/approvazione-flusso/" \
             "{\"pratica_id\": ${PRATICA_ID}, \"flusso_id\": ${FLUSSO_ID}, \"esito\": \"POSITIVO\"}"
         check "POST approvazione-flusso (M2, POSITIVO)" 200 || true
@@ -364,6 +365,57 @@ except Exception: print('?')
         # Anche il blocco alla creazione (guard DB) e' un esito idempotente valido.
         CODE=$(json_get "$LAST_BODY" "error.code")
         log_ok "ri-creazione flusso CONFERMA bloccata a monte (HTTP $LAST_STATUS, code=$CODE)"
+    fi
+fi
+
+# --- 10. Generazione cross-pratica (gated: serve una regola seedata) ---
+if [[ "${FLUSSO_APPROVAZIONE_ID:-}" != "" && "${FLUSSO_CONFERMA_ID:-}" != "" ]]; then
+    echo ""; echo "-- 10. Generazione cross-pratica (regole-generazione + genera + pratiche-generate) --"
+    REGOLA_ID=""
+    for FID in "$FLUSSO_APPROVAZIONE_ID" "$FLUSSO_CONFERMA_ID"; do
+        do_curl GET "/api/v1/pratiche/${PRATICA_ID}/flussi/${FID}/regole-generazione/"
+        [[ "$LAST_STATUS" != "200" ]] && continue
+        RID=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin).get('data', {})
+    rows = d.get('results', d) if isinstance(d, dict) else d
+    print(rows[0]['id'] if rows else '')
+except Exception: print('')
+" 2>/dev/null)
+        if [[ -n "$RID" ]]; then REGOLA_ID="$RID"; FLUSSO_GEN_ID="$FID"; break; fi
+    done
+    if [[ -n "$REGOLA_ID" ]]; then
+        do_curl POST "/api/v1/pratiche/${PRATICA_ID}/flussi/${FLUSSO_GEN_ID}/genera/" \
+            "{\"regola_id\": ${REGOLA_ID}}"
+        if [[ "$LAST_STATUS" == "403" ]]; then
+            # Esito legittimo per un operatore di reparto: genera_pratica_manuale
+            # e' azione PERICOLOSA, abilitata ai profili di coordinamento
+            # (brief-db-azioni-processo-pratiche §4). Coperta dal run super admin.
+            log_skip "genera: azione non abilitata al profilo operatore (coerente col modello permessi)"
+        elif check "POST genera (regola $REGOLA_ID)" 200 "data.pratica_id"; then
+            log_info "pratica generata = $EXTRACTED"
+            PRATICA_GEN_ID="$EXTRACTED"
+            do_curl GET "/api/v1/pratiche/${PRATICA_ID}/flussi/${FLUSSO_GEN_ID}/pratiche-generate/"
+            check "GET pratiche-generate" 200 || true
+            # Membership esatta via parse JSON (grep substring darebbe falsi
+            # positivi: ': 5' matcha anche ': 50').
+            FOUND=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin).get('data', {})
+    rows = d.get('results', d) if isinstance(d, dict) else d
+    print('si' if any(int(r.get('id', 0)) == int('$PRATICA_GEN_ID') for r in (rows or [])) else 'no')
+except Exception: print('no')
+" 2>/dev/null)
+            [[ "$FOUND" == "si" ]] && log_ok "pratica generata presente nell'elenco" \
+                || log_fail "pratica generata $PRATICA_GEN_ID assente da pratiche-generate"
+        fi
+    else
+        log_skip "nessuna regola_generazione per i flussi della catena: serve un seed"
+        log_info "di test (es. regola auto=false su APPROVAZIONE_CLIENTE) — richiesta al team DB."
+        do_curl GET "/api/v1/pratiche/${PRATICA_ID}/flussi/${FLUSSO_CONFERMA_ID}/pratiche-generate/"
+        check "GET pratiche-generate (vuoto, endpoint vivo)" 200 || true
     fi
 fi
 

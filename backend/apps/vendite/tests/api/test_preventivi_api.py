@@ -14,6 +14,9 @@ Indice test eseguiti:
 5) test_cambio_stato_200 — POST cambio stato OK
 6) test_add_riga_200 — POST aggiunta riga OK
 7) test_push_commessa_200 — POST push commessa OK
+7b) test_push_commessa_righe_ids_200 — POST push commessa selettivo (righe_ids al service)
+7b2) test_push_commessa_righe_ids_vuoto_422 — righe_ids=[] → errore validazione, no degrado a "tutte"
+7c) test_smistamento_200 — GET smistamento (aggregato + righe) OK
 8) test_list_componenti_riga_200 — GET componenti riga padre OK
 9) test_update_componente_200 — PATCH override prezzo componente OK
 10) test_delete_componente_200 — DELETE soft delete componente OK
@@ -152,6 +155,45 @@ class TestPreventiviApiViews(JwtMockedApiTest):
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="test-key-1",
         )
+        self.assertIn(response.status_code, [200, 401, 403])
+
+    # Scopo: POST push commessa con righe_ids (smistamento selettivo dal
+    # Pannello Smistamento): il sottoinsieme arriva al service come kwarg.
+    def test_push_commessa_righe_ids_200(self):
+        self.mock_svc.push_a_commessa.return_value = {"righe_pushate": 2}
+        response = self.client.post(
+            "/api/v1/vendite/preventivi/1/push-commessa/",
+            data='{"righe_ids": [10, 11]}',
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-2",
+        )
+        self.assertIn(response.status_code, [200, 401, 403])
+        if response.status_code == 200:
+            self.mock_svc.push_a_commessa.assert_called_once_with(
+                1, righe_ids=[10, 11],
+            )
+
+    # Scopo: righe_ids=[] (lista vuota) → errore esplicito di validazione,
+    # NON degrada a "tutte le righe" (contratto API: omettere il campo per
+    # il push completo). Il service non viene mai invocato.
+    def test_push_commessa_righe_ids_vuoto_422(self):
+        response = self.client.post(
+            "/api/v1/vendite/preventivi/1/push-commessa/",
+            data='{"righe_ids": []}',
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-3",
+        )
+        self.assertIn(response.status_code, [400, 422, 401, 403])
+        if response.status_code in (400, 422):
+            self.mock_svc.push_a_commessa.assert_not_called()
+
+    # Scopo: GET smistamento (Pannello Smistamento): aggregato + righe.
+    def test_smistamento_200(self):
+        self.mock_svc.smistamento.return_value = {
+            "aggregato": {"righe_totali": 2, "righe_residue": 1},
+            "righe": [{"riga_id": 10, "stato_smistamento": "RESIDUA"}],
+        }
+        response = self.client.get("/api/v1/vendite/preventivi/1/smistamento/")
         self.assertIn(response.status_code, [200, 401, 403])
 
     # ── Componenti BoM CASO A ──

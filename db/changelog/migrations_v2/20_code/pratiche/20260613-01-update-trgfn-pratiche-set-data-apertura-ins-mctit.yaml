@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Estende trgfn_pratiche_set_data_apertura a gestire l'INSERT:
+# una pratica creata direttamente in APERTA valorizza data_apertura
+# = CURRENT_DATE, oltre alla preesistente transizione BOZZA -> APERTA
+# su UPDATE. Aggiunge il trigger BEFORE INSERT; il trigger UPDATE
+# (trg_pratiche_m50_set_data_apertura_upd) resta invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/pratiche/20260613-01-update-trgfn-pratiche-set-data-apertura-ins-mctit.yaml
+
+    - changeSet:
+          id: 20260613-01-update-trgfn-pratiche-set-data-apertura-ins
+          author: mctit
+          runOnChange: false
+          comment: >
+              Estende pratiche.trgfn_pratiche_set_data_apertura a gestire TG_OP =
+              'INSERT' (creazione diretta in APERTA -> data_apertura = CURRENT_DATE
+              se non fornita dal chiamante), mantenendo invariata la logica UPDATE
+              (transizione BOZZA -> APERTA + immutabilita'). Aggiunge il trigger
+              BEFORE INSERT trg_pratiche_m50_set_data_apertura_ins. Il trigger
+              UPDATE esistente resta invariato.
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_set_data_apertura()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        -- Scopo: valorizzare data_apertura quando la pratica entra in APERTA,
+                        --   sia per creazione diretta (INSERT con stato APERTA) sia per
+                        --   transizione BOZZA -> APERTA su UPDATE.
+                        -- Regole:
+                        --   1. INSERT con stato APERTA e data_apertura non fornita -> CURRENT_DATE
+                        --   2. UPDATE: solo alla transizione BOZZA -> APERTA
+                        --   3. Immutabile: se data_apertura e' gia' valorizzata, preserva il valore
+                        --   4. Gli id degli stati vengono risolti da config.stati_pratiche
+                        --      tramite codice_interno, mai hardcodati
+                        DECLARE
+                            v_bozza_id  config.stati_pratiche.id%TYPE;
+                            v_aperta_id config.stati_pratiche.id%TYPE;
+                        BEGIN
+                            -- Stato APERTA: serve sia al ramo INSERT che al ramo UPDATE
+                            SELECT id INTO v_aperta_id
+                              FROM config.stati_pratiche
+                             WHERE codice_interno = 'APERTA';
+
+                            -- Ramo INSERT: creazione diretta in APERTA.
+                            -- Valorizza data_apertura solo se non gia' fornita dal chiamante
+                            -- (immutabilita' anche all'INSERT).
+                            IF TG_OP = 'INSERT' THEN
+                                IF NEW.data_apertura IS NULL AND NEW.stato_id = v_aperta_id THEN
+                                    NEW.data_apertura := CURRENT_DATE;
+                                END IF;
+                                RETURN NEW;
+                            END IF;
+
+                            -- Ramo UPDATE: logica preesistente invariata.
+                            -- Nessuna transizione: niente da fare
+                            IF OLD.stato_id = NEW.stato_id THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Immutabilita': se gia' valorizzata, preserva
+                            IF OLD.data_apertura IS NOT NULL THEN
+                                NEW.data_apertura := OLD.data_apertura;
+                                RETURN NEW;
+                            END IF;
+
+                            SELECT id INTO v_bozza_id
+                              FROM config.stati_pratiche
+                             WHERE codice_interno = 'BOZZA';
+
+                            -- Transizione BOZZA -> APERTA: valorizza data_apertura
+                            IF OLD.stato_id = v_bozza_id AND NEW.stato_id = v_aperta_id THEN
+                                NEW.data_apertura := CURRENT_DATE;
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION pratiche.trgfn_pratiche_set_data_apertura()
+                          IS 'BEFORE INSERT/UPDATE: valorizza data_apertura quando la pratica entra in APERTA (creazione diretta o transizione BOZZA -> APERTA). Immutabile dopo prima valorizzazione.';
+
+                        -- Trigger fase m50 (intermedia: dopo guard _a10_, prima di finale _z90_).
+                        -- Il trigger UPDATE esistente (trg_pratiche_m50_set_data_apertura_upd)
+                        -- non viene toccato: qui si aggiunge solo il gemello BEFORE INSERT.
+                        DROP TRIGGER IF EXISTS trg_pratiche_m50_set_data_apertura_ins
+                        ON pratiche.pratiche;
+
+                        CREATE TRIGGER trg_pratiche_m50_set_data_apertura_ins
+                        BEFORE INSERT
+                        ON pratiche.pratiche
+                        FOR EACH ROW
+                        EXECUTE FUNCTION pratiche.trgfn_pratiche_set_data_apertura();
+
+                        COMMENT ON TRIGGER trg_pratiche_m50_set_data_apertura_ins
+                        ON pratiche.pratiche
+                        IS 'Valorizza data_apertura alla creazione diretta in APERTA.';
+
+          rollback:
+              - sql:
+                    sql: |
+                        DROP TRIGGER IF EXISTS trg_pratiche_m50_set_data_apertura_ins ON pratiche.pratiche;
+
+                        CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_set_data_apertura()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        -- Scopo: valorizzare data_apertura alla transizione BOZZA -> APERTA.
+                        -- Regole:
+                        --   1. Solo alla transizione da BOZZA a APERTA
+                        --   2. Immutabile: se data_apertura e' gia' valorizzata, preserva il valore
+                        --   3. Gli id degli stati vengono risolti da config.stati_pratiche
+                        --      tramite codice_interno, mai hardcodati
+                        DECLARE
+                            v_bozza_id  config.stati_pratiche.id%TYPE;
+                            v_aperta_id config.stati_pratiche.id%TYPE;
+                        BEGIN
+                            -- Nessuna transizione: niente da fare
+                            IF OLD.stato_id = NEW.stato_id THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Immutabilita': se gia' valorizzata, preserva
+                            IF OLD.data_apertura IS NOT NULL THEN
+                                NEW.data_apertura := OLD.data_apertura;
+                                RETURN NEW;
+                            END IF;
+
+                            SELECT id INTO v_bozza_id
+                              FROM config.stati_pratiche
+                             WHERE codice_interno = 'BOZZA';
+
+                            SELECT id INTO v_aperta_id
+                              FROM config.stati_pratiche
+                             WHERE codice_interno = 'APERTA';
+
+                            IF OLD.stato_id = v_bozza_id AND NEW.stato_id = v_aperta_id THEN
+                                NEW.data_apertura := CURRENT_DATE;
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION pratiche.trgfn_pratiche_set_data_apertura()
+                          IS 'BEFORE UPDATE OF stato_id: valorizza data_apertura alla transizione BOZZA -> APERTA. Immutabile dopo prima valorizzazione.';

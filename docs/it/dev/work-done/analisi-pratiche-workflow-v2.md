@@ -1,9 +1,10 @@
 # Pratiche workflow v2 — analisi e decisioni
 
 > **Tipo documento**: analisi di modello (linguaggio volutamente semplice, con
-> esempi). **Data**: 2026-06-11 · **Stato**: ✅ **D1..D4 RATIFICATE da Tid il
-> 2026-06-11** — sviluppo DB in corso (questo branch, `dev/db-tid`); BE/FE
-> seguiranno nei rispettivi branch. **Agg. 2026-06-11**: aggiunta la
+> esempi). **Data**: 2026-06-11 · **Stato**: ✅ **CHIUSO END-TO-END
+> (2026-06-12)** — D1..D4 ratificate il 2026-06-11; DB consegnato (§9), BE+FE
+> consegnati e verificati runtime (§10), smoke verdi sia da super admin sia da
+> **operatore reale** (episodio permessi: vedi §10.3). **Agg. 2026-06-11**: aggiunta la
 > [§7 Analisi critica della parte DB](#7-analisi-critica-della-parte-db-verifica-contro-il-codice-vivo),
 > verifica delle affermazioni di modello contro il codice DB **vivo** (doc
 > auto-gen `dbzero/pratiche`). Alcune affermazioni di §5 sono risultate
@@ -14,9 +15,9 @@
 > D4 → guard di chiusura su `obbligatorio` con esclusione del ramo morto.
 >
 > **Origine**: riverifica dell'analisi iniziale
-> ([analisi-pratiche-domini-anello3](analisi-pratiche-domini-anello3.md),
-> [gestione-pratiche-v2](gestione-pratiche-v2.md),
-> [crm-ticketing-pratiche](crm-ticketing-pratiche.md)) rispetto a 5 esigenze
+> ([analisi-pratiche-domini-anello3](../work-in-progress/analisi-pratiche-domini-anello3.md),
+> [gestione-pratiche-v2](../work-in-progress/gestione-pratiche-v2.md),
+> [crm-ticketing-pratiche](../work-in-progress/crm-ticketing-pratiche.md)) rispetto a 5 esigenze
 > emerse il 2026-06-11, dopo la validazione runtime del giro pratica
 > PREVENTIVI. Scopo delle pratiche: **concentrare il più possibile le attività
 > al loro interno** — per riuscirci il motore deve diventare un vero workflow.
@@ -612,25 +613,73 @@ ripetibilità: `test-coda-lavoro-presa-carico.sql` e
   colonna `solo_interna` documentata ma inesistente nella tabella viva),
   `flussi` (guard ripetibilità, bivi).
 
-**Prossimi passi (BE, su `dev/backend-tid`)**: envelope per 483/484/485;
-percorso con `ripetibile adesso` (da `fn_check_ripetibilita_flusso`) e stato
-ramo `percorribile / completato / ramo chiuso` (da `fn_check_chiusura_pratica`);
-lista per contesto via `fn_lista_pratiche_per_contesto`; smoke generazione
-cross-pratica (endpoint `/genera/`, `/pratiche-generate/`).
+**Prossimi passi (BE, su `dev/backend-tid`)**: ✅ tutti eseguiti il 2026-06-12
+— vedi §10.
 
-⚠️ **Tech debt rilevato a margine**: `messaggi_errore.csv` ha id duplicati
-preesistenti (320: `E_UTENTE_NON_ATTIVO` / `FLUSSI_PRESA_CARICO_STATO_ERRATO`;
-321: `E_UTENTE_SCADUTO` / `FLUSSI_GIA_ASSEGNATO`) — con upsert `primaryKey: id`
-le coppie si sovrascrivono a vicenda: da bonificare con id nuovi.
+⚠️ **Tech debt rilevato a margine**: ✅ **RISOLTO (2026-06-12)** — bonifica in
+`877de19c4`: `FLUSSI_PRESA_CARICO_STATO_ERRATO` → id 486,
+`FLUSSI_GIA_ASSEGNATO` → id 487 (gli `E_UTENTE_*` conservano 320/321); CSV e
+DB vivo verificati senza duplicati su `(id, lingua)` e `(codice, lingua)`.
 
 ---
 
-*Analisi pratiche workflow v2 — ZeroERP (2026-06-11). **Decisioni D1..D4
-ratificate il 2026-06-11**, incluse le proposte operative di §7 (D3: ultima
-istanza = `MAX(id)`, blocco anche con istanza aperta; D1: lente a DB, coda non
-toccata; D4: guard chiusura su `obbligatorio` con esclusione ramo morto). La §7
-(analisi critica DB) ha verificato il modello contro il codice vivo: tema 5
-promosso da "esercizio" a "fix + esercizio" (4 buchi reali, idempotenza in
-testa). Deliverable DB (§9): **B → D-fix → A → C** consegnati, **applicati e
-con pgTAP tutti verdi il 2026-06-11**; doc auto-gen rigenerata e doc manuale
-allineata. Lato DB il lavoro è CHIUSO. BE/FE a seguire su `dev/backend-tid`.*
+## 10. Stato sviluppo BE/FE (2026-06-12) — ✅ CHIUSO E VERIFICATO RUNTIME
+
+### 10.1 Backend (`dev/backend-tid`)
+
+- **Envelope errori**: policy registrate per i codici catalogo DB
+  `PRATICHE_FLUSSO_NON_RIPETIBILE` (483, 409),
+  `PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI` (484, 400),
+  `PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI` (485, 409). I guard DB
+  sollevano solo il testo localizzato → traduzione via marker nel service
+  (`_KNOWN_DB_ERROR_MARKERS`, pattern lookup_service; assunzione it-only
+  documentata).
+- **Percorso arricchito** (`GET /pratiche/<id>/percorso/`): per step
+  `ripetibile_adesso`, `completato`/`percorribile`/`bloccante` e sintesi
+  `ramo` a 4 stati (`COMPLETATO`/`PERCORRIBILE`/`FUTURO`/`RAMO_CHIUSO` —
+  distinzione futuro/ramo-morto calcolata riusando
+  `fn_check_prerequisiti_flusso`, nessuna regola duplicata).
+- **Lista per contesto**: le 3 lenti D1 su `GET /pratiche/` (semi-join sulla
+  fn DB come punto di verità) + guard mutua esclusività fail-fast.
+- **Fix collaterale trovato**: i filtri dashboard `stato`/`priorita`/
+  `risorsa_umana` erano **silenziosamente ignorati** dal BE (nomi/formato
+  param sbagliati lato FE + filtri mancanti lato BE) — corretti entrambi i
+  lati e verificati runtime.
+- Doc API allineate: `api_pratiche_list`, `api_percorso`, `api_flussi_list`,
+  `api_pratica_stato`, `pratiche_service`. Test: 144 pratiche verdi.
+
+### 10.2 Frontend
+
+- `PraticaPercorso`: resa del **ramo chiuso** (attenuato, azione "Ramo
+  chiuso"; click sempre possibile — il guard parlante resta a DB) e azione
+  **"Ripeti"** quando `ripetibile_adesso` con istanza esistente (decisione
+  interamente DB-driven). Costante `RAMO_STEP` in `core/constants`.
+- Dashboard: toggle lente **"Solo interne"** (le lenti ruolo/istanza sono per
+  le viste embedded future, es. tab pratiche nel drawer soggetto).
+- i18n it/en; ESLint+build verdi.
+
+### 10.3 Verifica runtime e episodio permessi
+
+- Smoke `smoke-test-pratica-preventivi-conferma.sh`: **36 OK da super
+  admin** (generazione cross-pratica inclusa: regola seedata, pratica figlia
+  creata e listata). Casi costruiti dal vivo: bivio NEGATIVO → `RAMO_CHIUSO`
+  con retry D3; chiusura con ramo morto OK; 485 con messaggio parlante.
+- Il run **da operatore** (`pochi`) ha scoperto che le 8 azioni di processo
+  pratiche **non erano mai state seedate** (403 per ogni non-super-admin):
+  chiuso con
+  [brief-db-azioni-processo-pratiche](brief-db-azioni-processo-pratiche.md)
+  (azioni = dato di prodotto seedato, id 18–25; abilitazioni = dato di
+  installazione, INSERT una tantum su dev). Re-run da operatore: **33 OK,
+  0 FAIL, 1 SKIP** (generazione manuale = azione pericolosa non abilitata al
+  reparto, esito coerente col modello).
+- Residuo minore (DB, owner-only): `setval` di igiene sulla sequence
+  `azioni_processo` (annotato nel brief).
+
+---
+
+*Analisi pratiche workflow v2 — ZeroERP (2026-06-11 → 2026-06-12). Decisioni
+D1..D4 ratificate; deliverable DB (§9) e BE/FE (§10) consegnati e verificati
+runtime, smoke verdi da super admin e da operatore reale. **Il cantiere è
+CHIUSO end-to-end**; restano fuori scope le viste embedded per lente
+ruolo/istanza (tab pratiche nei drawer) e il primo consumatore reale della
+generazione automatica (ticket assistenza, Fase F).*

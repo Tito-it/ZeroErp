@@ -33,6 +33,10 @@ Indice test eseguiti:
 21) PraticheServiceTests.test_crea_pratica_guard_pre_attivazione_rifiuto
 21b) PraticheServiceTests.test_crea_pratica_guard_saltato_se_flag_uguali_false
 22) PraticheServiceTests.test_crea_pratica_guard_universale_bypass
+23) PraticheServiceTests.test_cerca_pratiche_lenti_contesto_esclusive
+24) PraticheServiceTests.test_cerca_pratiche_lente_ruolo_passata_al_repo
+25) PraticheServiceTests.test_cambia_stato_pratica_chiusura_bloccata_485
+26) PraticheServiceTests.test_cerca_pratiche_filtri_priorita_risorsa
 """
 
 from unittest.mock import MagicMock, patch
@@ -107,7 +111,7 @@ class PraticheServiceTests(SimpleTestCase):
             priorita_id=2,
         )
         self.assertEqual(result, 42)
-        repo.resolve_stato_pratica.assert_called_once_with("BOZZA")
+        repo.resolve_stato_pratica.assert_called_once_with("APERTA")
         repo.create_pratica.assert_called_once()
 
     # Scopo: Verifica errore se emittente_fiscale_id <= 0.
@@ -260,6 +264,65 @@ class PraticheServiceTests(SimpleTestCase):
         pratiche_service.cambia_stato_pratica(1, "APERTA")
 
         repo.update_stato_pratica.assert_called_once_with(1, "APERTA")
+
+    # Scopo: D1 — al massimo UNA lente di contesto (ruolo/istanza/interne):
+    # due lenti insieme → ServiceError col codice catalogo DB 484.
+    def test_cerca_pratiche_lenti_contesto_esclusive(self):
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.cerca_pratiche(
+                emittente_fiscale_id=1,
+                soggetto_ruolo_id=10,
+                istanza_utility_id=20,
+            )
+        self.assertEqual(
+            ctx.exception.code, "PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI",
+        )
+
+    # Scopo: D1 — la lente ruolo viene inoltrata al repository (la verita' del
+    # filtro vive nella fn DB fn_lista_pratiche_per_contesto, composta dal repo).
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_cerca_pratiche_lente_ruolo_passata_al_repo(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.list_pratiche.return_value = ([], 0)
+
+        pratiche_service.cerca_pratiche(emittente_fiscale_id=1, soggetto_ruolo_id=10)
+
+        kwargs = repo.list_pratiche.call_args.kwargs
+        self.assertEqual(kwargs["soggetto_ruolo_id"], 10)
+        self.assertIsNone(kwargs["istanza_utility_id"])
+        self.assertFalse(kwargs["solo_interne"])
+
+    # Scopo: Fix 2026-06-12 — priorita_id e risorsa_umana_id inoltrati al repo
+    # (prima la dashboard li inviava ma view/repo li ignoravano in silenzio).
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_cerca_pratiche_filtri_priorita_risorsa(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.list_pratiche.return_value = ([], 0)
+
+        pratiche_service.cerca_pratiche(
+            emittente_fiscale_id=1, priorita_id=3, risorsa_umana_id=7,
+        )
+
+        kwargs = repo.list_pratiche.call_args.kwargs
+        self.assertEqual(kwargs["priorita_id"], 3)
+        self.assertEqual(kwargs["risorsa_umana_id"], 7)
+
+    # Scopo: D4 — guard DB chiusura (messaggio 485) tradotto in ServiceError
+    # parlante via marker, non E_DATABASE generico.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_cambia_stato_pratica_chiusura_bloccata_485(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_pratica.side_effect = DatabaseError(
+            "Impossibile chiudere la pratica: flussi obbligatori non completati (APPUNTAMENTO).",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.cambia_stato_pratica(1, "CHIUSA")
+        self.assertEqual(
+            ctx.exception.code, "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
+        )
 
     # Scopo: Verifica errore se pratica_id <= 0 in cambio stato.
     def test_cambia_stato_pratica_errore_id_zero(self):

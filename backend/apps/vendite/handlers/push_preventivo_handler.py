@@ -36,6 +36,9 @@ from django.db import transaction
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.vendite.services._smistamento_gate_helpers import (
+    transiziona_a_evaso_se_smistato,
+)
 
 _FN = "apps.vendite.handlers.push_preventivo_handler"
 
@@ -46,7 +49,6 @@ MODALITA_DIFFERITA = "DIFFERITA"
 _MODALITA_AMMESSE = frozenset({MODALITA_IMMEDIATA, MODALITA_DIFFERITA})
 
 _STATO_PREVENTIVO_ACCETTATO = "ACCETTATO"
-_STATO_PREVENTIVO_EVASO = "EVASO"
 
 _SORGENTE_PREVENTIVO = "PREVENTIVO"
 _SORGENTE_COMMESSA = "COMMESSA"
@@ -249,13 +251,18 @@ class PushPreventivoHandler:
                     sorgente_uid=str(commessa_id), ruolo_link="COLLEGATO",
                 )
 
-            # 7. Gate EVASO (D6): evadi il preventivo SOLO se non resta residuo
-            #    merce. Dopo il push ordine tutte le righe merce sono allocate →
-            #    residuo False. Transizione ESPLICITA, senza swallow (a differenza
-            #    di push_a_commessa: qui un errore deve rollbackare la CONFERMA).
-            evaso = not prev_repo.preventivo_ha_residuo_ordine(preventivo_id)
-            if evaso:
-                prev_repo.cambia_stato(preventivo_id, _STATO_PREVENTIVO_EVASO, user or "handler")
+            # 7. Gate EVASO bi-ramo nel BB condiviso
+            #    (_smistamento_gate_helpers): evadi il preventivo SOLO se non
+            #    resta residuo su NESSUN ramo. Qui il push e' sempre completo
+            #    per ramo, ma il check esplicito copre anche i casi limite
+            #    (riga servizio non eleggibile rimasta fuori dal push).
+            #    swallow_db_error=False: a differenza dei percorsi standalone,
+            #    un errore sulla transizione deve rollbackare la CONFERMA.
+            evaso = transiziona_a_evaso_se_smistato(
+                prev_repo, preventivo_id,
+                user=user or "handler", swallow_db_error=False,
+                log_label="pratiche.conferma_vendita",
+            )
 
             # 8. Giornale di dominio (canale fn_log_evento_dominio, origine
             #    HANDLER): un evento per artefatto effettivamente prodotto.

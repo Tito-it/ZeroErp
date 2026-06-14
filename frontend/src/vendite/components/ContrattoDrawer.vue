@@ -957,13 +957,13 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
       <template v-if="isEdit && detail && detail.stato_codice !== 'DRAFT'">
         <h4 class="mt-3">{{ t('contratti.pdf.section_documenti') }}</h4>
-        <div class="app-escape">
-          <DocumentiGeneratiSorgenteList
-            sorgente-code="CONTRATTO"
-            :sorgente-id="props.contrattoId"
-            hide-header-when-empty
-          />
-        </div>
+        <!-- L'escape dal contenuto `app-readonly` e' ora applicato dal BB
+             stesso alla sua radice (azioni di sola lettura). -->
+        <DocumentiGeneratiSorgenteList
+          sorgente-code="CONTRATTO"
+          :sorgente-id="props.contrattoId"
+          hide-header-when-empty
+        />
       </template>
 
       <!-- Footer Salva/Annulla solo se editabile. La regola di dominio e':

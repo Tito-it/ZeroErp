@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Richiesta A.1 (brief-db-smistamento-preventivi.md) — vista unica
+# delle righe preventivo ELEGGIBILI al push commessa, gemella di
+# vw_preventivi_righe_smistabili_ordine (20260610-02) per il ramo
+# servizi. Capability (fn_preventivo_ha_residuo_commessa,
+# 20260612-03), list-fn e pannello smistamento leggono da qui la
+# stessa verita'.
+#
+# Predicato di RIGA identico a fn_list_preventivi_da_pushare:
+#   - riga attiva, quantita > 0, prezzo_unitario >= 0
+#   - natura NULL (pregresso, trattata COMMESSA) o
+#     destinazione_tipo = 'COMMESSA'
+#   - non gia' EMESSA in commessa (NOT EXISTS su commesse_attivita
+#     per segment_key 'PREV:<uid>:R:<riga_id>' con
+#     stato_emissione = 'EMESSA')
+# Le condizioni di TESTATA (billing_account/utility, stato ACCETTATO)
+# restano fuori dalla vista: le applica chi la consuma (fn residuo /
+# fn_list), come per il ramo ordine.
+#
+# security_invoker = on: la vista eredita i privilegi del chiamante
+# (coerente con vw_preventivi_righe_smistabili_ordine e policy RLS).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260612-02-create-vw-preventivi-righe-smistabili-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20260612-02-create-vw-preventivi-righe-smistabili-commessa
+      author: mctit
+      runOnChange: false
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        vw_preventivi_righe_smistabili_commessa: righe preventivo
+        eleggibili al push commessa (predicato di riga unico condiviso
+        con fn_list_preventivi_da_pushare), gemella della vista ordine.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_commessa
+              WITH (security_invoker = on) AS
+              SELECT
+                  pr.preventivo_id,
+                  pr.id,
+                  p.uid                      AS preventivo_uid,
+                  pr.natura_vendita_id,
+                  pr.articolo_id,
+                  pr.descrizione,
+                  pr.prezzo_unitario,
+                  pr.sconto_percentuale,
+                  pr.iva_id,
+                  pr.quantita,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.factor_to_base,
+                  pr.ordine
+              FROM vendite.preventivi_righe pr
+              JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+              -- Natura di riga: LEFT JOIN per non perdere le righe a natura
+              -- NULL (pregresso pre-trigger, trattata COMMESSA).
+              LEFT JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+              WHERE pr.attivo IS TRUE
+                AND pr.quantita > 0
+                AND pr.prezzo_unitario >= 0
+                AND (pr.natura_vendita_id IS NULL
+                     OR nv.destinazione_tipo = 'COMMESSA')
+                -- Idempotenza di riga: esclude le righe gia' EMESSA in commessa.
+                AND NOT EXISTS (
+                  SELECT 1
+                    FROM vendite.commesse_attivita ca
+                   WHERE ca.segment_key = 'PREV:' || p.uid::text || ':R:' || pr.id::text
+                     AND ca.stato_emissione = 'EMESSA'
+                );
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_smistabili_commessa IS
+                'Righe preventivo eleggibili al push commessa (servizi una tantum): attive, qta>0, prezzo>=0, natura NULL/COMMESSA, non gia'' EMESSA in commessa. Predicato di riga unico condiviso con fn_list_preventivi_da_pushare e fn_preventivo_ha_residuo_commessa; condizioni di testata a carico dei consumer. Gemella di vw_preventivi_righe_smistabili_ordine (brief-db-smistamento-preventivi.md A.1).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_preventivi_righe_smistabili_commessa;

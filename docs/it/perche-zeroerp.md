@@ -226,3 +226,7 @@ deve sempre poggiare su tre principi non negoziabili:
 **Chi porta buone idee è il benvenuto.**
 **Chi le realizza violando questi principi, no.**
 
+---
+
+{% include-markdown "signature-core.md" %}
+

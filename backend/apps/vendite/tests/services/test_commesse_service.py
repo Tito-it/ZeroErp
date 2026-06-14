@@ -151,11 +151,13 @@ class CommesseServiceTests(TestCase):
 
         result = pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=42)
 
-        # Orchestrator chiamato con i parametri attesi.
+        # Orchestrator chiamato con i parametri attesi (righe_ids=None:
+        # push completo, nessun sottoinsieme selettivo).
         mock_orch_cls.return_value.run.assert_called_once_with(
             source_types=["PREVENTIVO"],
             dry_run=False,
             sorgente_uid=42,
+            righe_ids=None,
         )
         # Payload coerente con pr_run_commesse_push (forma identica).
         self.assertEqual(result["stato"], "COMPLETATO")

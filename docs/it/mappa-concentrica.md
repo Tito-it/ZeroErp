@@ -4,9 +4,9 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 29 maggio 2026 — Anello 3 (vendite): contratti passati al modello unificato (drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino all'attivazione, lock post-attivazione, stato ANNULLATO); nuovo documento **offerte commerciali** (proposta di condizioni quadro → push 1:1 a contratto) sviluppato DB+BE+FE con generazione PDF e allegati; componenti BoM compositi estesi a offerte; valuta su documenti vendite. Vedi [Gestione Offerte commerciali](guide/gestione-offerte-commerciali.md) e [Gestione Contratti](guide/gestione-contratti.md).*
+*Ultimo aggiornamento: 11 giugno 2026 — Anello 3 (vendite): **ordini di vendita** sviluppati end-to-end DB+BE+FE (CRUD, conferma, stato EVASO, stampa PDF, conversione preventivo/offerta→ordine, univocita' offerta→contratto XOR ordine); **pratica PREVENTIVI** eseguita end-to-end come primo consumatore reale del motore `pratiche` (handler `CONFERMA_VENDITA`, split per natura merce→ordine / servizi→commessa, smistamento riga-per-riga, commesse multi-sorgente) → Anello 2 `pratiche` passa a **validata con primo consumatore**; workflow pratiche v2 (ripetibilita', bivi condizionali, lenti contesto, guard chiusura). Vedi [analisi-pratiche-workflow-v2.md](dev/work-done/analisi-pratiche-workflow-v2.md) e [analisi-ordini-vendita.md](dev/work-in-progress/analisi-ordini-vendita.md).*
 >
-> *Aggiornamento precedente: 6 maggio 2026 — aggiunto componente `ui` in Anello 1 (metadato di presentazione: liste configurabili, personalizzazione colonne, preset per profilo/emittente). Stato allora: Da fare → **ora Operativo** (vedi tabelle Anello 1). Architettura completa in `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste.md`.*
+> *Aggiornamenti precedenti: vedi [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 
 ---
 
@@ -47,27 +47,11 @@
 
 **Regola fondamentale**: ogni anello dipende solo dagli anelli interni. Mai dipendenze inverse o laterali.
 
-## Aggiornamenti ricostruiti dal 26 aprile al 29 maggio 2026
+## Cronologia aggiornamenti
 
-Questa sezione registra solo evidenze presenti nel repository locale: commit e documentazione `docs/it/dev/work-done/` o `docs/it/dev/work-in-progress/`. Dove la documentazione indica test UI o working tree non ancora consolidato, lo stato resta esplicitamente marcato come tale.
+La storia datata degli aggiornamenti (cosa e' atterrato, quando, con quale impatto sulla mappa) e' in [mappa-concentrica-changelog.md](dev/mappa-concentrica-changelog.md). Questo documento mostra solo lo **stato corrente** per anello, piu' le sezioni "Evoluzione prevista" (in corso / breve / medio termine).
 
-| Data         | Evidenza                                                                                                                                             | Impatto sulla mappa                                                                                    |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 26 aprile    | `dbops.automazione_chiusura_scadenze` chiuso come framework parametrico dopo due consumatori reali (`vendite.listini_versioni`, `vendite.contratti`) | Anello 0 cresce per uso osservato, non per astrazione preventiva.                                      |
-| 27 aprile    | Contratti: Profilo A, immutabilita' post-DRAFT, cessazione data-driven, righe-preview                                                                | Vendite rafforza il sottodominio contratti e consuma il framework di chiusura a scadenza.              |
-| 28 aprile    | Refactor frontend/backend catalogo completato Fasi 1-8, test BE 83/83 e build Vite verdi                                                             | Catalogo resta operativo ma con contratti API/metadata piu' maturi.                                    |
-| 29-30 aprile | Refactor amm-software completato per matrici, operatori, permessi, emittenti e policy admin                                                          | Anello 1 amministrativo consolidato; le matrici diventano riferimento UI per configurazioni complesse. |
-| 1 maggio     | Refactor vendite chiuso DB+BE+FE, modello documentato con 1406 test BE e build Vite verde                                                            | Vendite aggiornata a pattern data-driven per lookup, defaults, capability e azioni.                    |
-| 2 maggio     | Preventivi rev2 landed: `emittente_fiscale_id` persistito, `istanza_utility_id` obbligatoria, guard coerenza utility/istanza, 4 codici errore        | Preventivi diventano piu' rigorosi sul contesto emittente/utility.                                     |
-| 3 maggio     | Scenario preventivi 2.1 chiuso end-to-end, UI revisioni e riepilogo IVA                                                                              | Vendite avanzata su flusso preventivo operativo.                                                       |
-| 3-4 maggio   | Motore documentale parametrico: DB Fase A, backend Tranche A-K, frontend Tranche L-M; test UI dedicato avviato                                       | Nuovo componente `documenti` in Anello 2, operativo tecnicamente ma ancora in test UI.                 |
-| 13 maggio    | BoM modello unificato + simmetria listino; componenti BoM (CASO A) estesi a preventivi/ordini/ddt/contratti                                          | I documenti vendite condividono lo stesso modello componenti a 3 livelli (struttura, listino, documento). |
-| 15-21 maggio | Refactor contratti: modello unificato (drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino all'attivazione, lock post-attivazione, stato ANNULLATO + overlap parziale) | Il sottodominio contratti diventa simmetrico ai preventivi e pronto a ricevere l'offerta come sorgente. |
-| 24-27 maggio | Offerte commerciali (DB): testata + eccezioni delta-listino + componenti BoM + utility, 6 stati, `fn_push_offerta_a_contratto` idempotente, vista `is_attiva`, azioni data-driven | Nuovo documento pre-contrattuale in Anello 3 (vendite): la proposta di condizioni quadro che genera il contratto. |
-| 28-29 maggio | Offerte commerciali (BE+FE): risoluzione prezzo come contratti, generazione documento offerta con allegati, UI uniformata a contratti                | Offerta operativa end-to-end DB+BE+FE; in consolidamento/test UI.                                       |
-| 29 maggio    | Valuta su documenti vendite (`valuta_id` su offerte/contratti/preventivi, default da resolver gestore); guida offerte commerciali pubblicata          | Coerenza valuta cross-documento; documentazione di dominio allineata allo stato reale.                  |
-
-### Natura degli anelli (post-aggiornamento manifesto §III bis)
+## Natura degli anelli (post-aggiornamento manifesto §III bis)
 
 Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinzione non riguarda la direzione delle dipendenze (sempre verso l'interno), ma l'**ordine di costruzione** raccomandato.
 
@@ -140,7 +124,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | `amm-software` | App Django | Operativo | Operativo | Operativo | Gestione operatori, permessi riepilogo, profili reparto, audit log (solo ADMIN), drawer dedicato gestione permessi         |
 | `ui`           | App Django | Operativo | Operativo | Operativo | Metadato di presentazione: liste configurabili, preset per profilo/emittente/sistema, preferenze utente. Di servizio. Schema, app Django e componenti FE implementati (primi consumatori: liste clienti/fornitori). |
 
-> **Multi-Face Auth — COMPLETATO (22-04-2026):** `anagrafiche` usa il bridge generalizzato `identita_digitali` (SSO multi-veste, cutover 19-04-2026). `amm-software` supporta operatori, portale clienti/fornitori e shop B2C. **Infrastruttura auth predisposta per tutte le vesti; le API di dominio portale/shop (fatture, ordini, catalogo B2C) non sono ancora sviluppate e saranno affrontate quando il business lo richiedera'.** Dettaglio: `docs/it/dev/work-done/pr-b-shop-b2c-cambio-modello.md`. Guida: [architettura-multi-face-auth v2.0](guide/architettura-multi-face-auth.md).
+> **Multi-Face Auth — COMPLETATO (22-04-2026, agg. RLS operatori 04-06-2026):** `anagrafiche` usa il bridge generalizzato `identita_digitali` (SSO multi-veste, cutover 19-04-2026). `amm-software` supporta operatori, portale clienti/fornitori e shop B2C. **RLS attiva per gli operatori interni** con scope emittente fiscale: `ENABLE` su 10 tabelle documentali (fatture, scadenze, lotti fatturazione, ordini, preventivi, contratti, offerte commerciali, documenti generati, pratiche, billing account — 02-06-2026) e copertura scrittura `FOR ALL` + `WITH CHECK` (04-06-2026, migration `20260603-16..25`); lato BE reset GUC d'identita' fail-closed a inizio richiesta. **Infrastruttura auth predisposta per tutte le vesti; le policy RLS portale/shop restano dry-run e le API di dominio portale/shop (fatture, ordini, catalogo B2C) non sono ancora sviluppate — saranno affrontate quando il business lo richiedera'.** Dettaglio: `docs/it/dev/work-done/pr-b-shop-b2c-cambio-modello.md`, `analisi-attivazione-rls-operatori*.md`, `db-brief-rls-ondata2-insert-bloccati.md`. Guida: [architettura-multi-face-auth v2.0 §14](guide/architettura-multi-face-auth.md).
 
 ### Frontend Anello 1 — Stato dettagliato
 
@@ -201,7 +185,7 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 
 > **Natura: di servizio.** Motore trasversale che gli anelli esterni usano per tracciare, orchestrare e automatizzare.
 >
-> ⚠️ **Validazione esterna: in corso.** Per `pratiche`, il motore e' stato dichiarato Operativo su DB+BE+FE prima che un processo di Anello 3 lo consumasse realmente. Stato attuale: **predisposto, in attesa di validazione** dal primo consumatore reale (vendite). Vedi [Caso di studio: pratiche prima di vendite](#caso-di-studio-pratiche-prima-di-vendite). Per `documenti`, il primo consumatore reale e' `vendite.preventivi`, ma la validazione resta in test UI. Solo dopo che almeno due processi di Anello 3 avranno usato questi motori end-to-end le loro astrazioni si potranno considerare *contratti* nel senso del manifesto principio 1; fino a quel momento sono *proposte* (manifesto principio 7) e modificabili senza il rigore di un nucleo stabile.
+> ✅ **`pratiche`: validata con il primo consumatore (2026-06-12).** Il giro pratica PREVENTIVI (vendite) e' stato eseguito end-to-end runtime — handler `CONFERMA_VENDITA` con split per natura, giornale `DOMINIO_*`, gate EVASO, generazione cross-pratica, permessi da operatore reale — vedi `dev/work-in-progress/analisi-pratiche-domini-anello3.md` §8.5 (Fase E) e `dev/work-done/analisi-pratiche-workflow-v2.md` (estensione: ripetibilita', bivi condizionali, lenti contesto, guard chiusura). Stato attuale: **validata con primo consumatore (vendite), pronta per il secondo** (Fase F: candidata assistenza/CRM). Resta vero il principio: solo dopo il **secondo** consumatore le astrazioni si promuovono a *contratti* (manifesto principio 1); fino ad allora restano *proposte* (principio 7). Per `documenti`, il primo consumatore reale e' `vendite.preventivi`, ma la validazione resta in test UI.
 
 | Componente  | Tipo       | DB        | Backend   | Frontend   | Descrizione                                                                                                                                                          |
 | ----------- | ---------- | --------- | --------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -275,7 +259,7 @@ Piano v1 (storico): `docs/it/dev/work-done/piano-gestione-pratiche.md`
 
 | Componente    | Tipo       | DB        | Backend   | Descrizione                                                                                                                                                                   |
 | ------------- | ---------- | --------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi rev2, contratti, ordini, DDT, fatture, pipeline fatturazione, lotti, commesse, **listini v3**, generazione PDF preventivo via `documenti` in test UI |
+| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi rev2, offerte, contratti, **ordini operativi**, DDT, fatture, pipeline fatturazione, lotti, commesse multi-sorgente, **listini v3**, **pratica PREVENTIVI** (primo consumatore del motore `pratiche`), generazione PDF preventivo via `documenti` in test UI |
 | `acquisti`    | App Django | Operativo | Stub      | Ciclo passivo: richieste offerta, ordini, DDT, fatture                                                                                                                        |
 | `magazzino`   | App Django | Operativo | Stub      | Movimenti, giacenze, lotti, seriali                                                                                                                                           |
 | `pagamenti`   | App Django | Operativo | Stub      | Scadenze, riconciliazioni                                                                                                                                                     |
@@ -290,15 +274,15 @@ vendite ──────► config (stati_doc_fiscale, termini_pagamento)
               ► catalogo (articoli, UoM, listini)
               ► core (error_manager, endpoint_helpers)
               ► documenti (generazione/lista/download PDF preventivo)
-              ► pratiche (FUTURO — giornale, workflow)
+              ► pratiche (OPERATIVO — pratica PREVENTIVI: handler, giornale, azioni di processo)
 
 acquisti ─────► stesse dipendenze di vendite
               ► pratiche (FUTURO)
 ```
 
-### Integrazione futura con pratiche
+### Integrazione con pratiche
 
-`pratiche` e' operativo a livello DB+BE+FE, ma resta da validare come servizio consumato da processi di Anello 3. I processi di anello 3 potranno:
+`pratiche` e' stata validata dal primo consumatore reale: la pratica PREVENTIVI di `vendite` (giugno 2026) esercita creazione pratica, flussi con handler (`CONFERMA_VENDITA`), giornale `DOMINIO_*`, azioni di processo e generazione cross-pratica. Gli altri processi di Anello 3 potranno:
 
 1. **Creare pratiche** per i propri eventi (`pratiche_service.crea_pratica`)
 2. **Alimentare il giornale** con eventi di dominio (nuovo cliente → PRATICA_CREATA)
@@ -318,7 +302,9 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 | Runtime task tracing                    | Operativo                                                                     |
 | Builder XML SDI                         | In corso (payload pronto, generazione XML da fare)                            |
 | Persistenza esito SDI                   | Da fare                                                                       |
-| Commesse (push, orchestrator, handlers) | Operativo                                                                     |
+| Commesse (push, orchestrator, handlers) | Operativo — multi-sorgente (1 ROOT + N COLLEGATO), push idempotente           |
+| Ordini di vendita                       | Operativo — CRUD, lista DEF-8, conferma, EVASO automatico, stampa PDF, conversione preventivo/offerta→ordine, lock cliente (giugno 2026) |
+| Pratica PREVENTIVI (integrazione pratiche) | Operativo — handler `CONFERMA_VENDITA`, split per natura merce→ordine / servizi→commessa, smistamento riga-per-riga, gate EVASO (giugno 2026) |
 | Listini v3 (N2/N5/N6/N7/N8a)            | Operativo — Sprint B-v3 completato (aprile 2026)                              |
 | Pricing commesse (N5/N7/N7-sblocco)     | Operativo — riallineamento, variazione, sblocco                               |
 | Contratti (modello unificato)           | Operativo — drop modalità A/B/C, eccezioni `tipo_eccezione`, snapshot versione listino, lock post-attivazione, stato ANNULLATO |
@@ -341,7 +327,7 @@ anagrafiche      usa      -        -        -        -          -           -
 catalogo         usa      -        -        -        -          -           -
 pratiche         usa     usa      usa       -        -          -           -
 documenti        usa     usa      usa       -        -          -           -
-vendite          usa     usa      usa      usa    (futuro)     usa          -
+vendite          usa     usa      usa      usa      usa        usa          -
 acquisti         usa     usa      usa      usa    (futuro)   (futuro)      -
 magazzino        usa     usa      usa       -     (futuro)      -           -
 pagamenti        usa     usa       -        -     (futuro)      -           -
@@ -395,10 +381,10 @@ Lo schema corretto per anelli di servizio e':
 
 Pratiche e' costruita. Disfarla sarebbe spreco. La via realistica:
 
-- **Marcatura onesta**: pratiche resta Operativo a livello tecnico, ma nella mappa e' classificata "predisposta, validazione in corso con vendite" (vedi Anello 2).
-- **Prima integrazione concreta**: scegliere il primo evento di vendite che vale la pena tracciare in pratiche (probabilmente "ordine creato" o "preventivo accettato") e farlo end-to-end. Da li', osservare cosa serve davvero e cosa non serve.
-- **Riconciliazione con vendite-pipeline**: dopo la prima integrazione, decidere se i due motori si fondono, restano paralleli per scope diversi (single-process vs batch), o se uno assorbe l'altro. La decisione va **rinviata**, non presa adesso senza dati.
-- **Riserva di modifica**: finche' la validazione non e' completa, pratiche puo' essere modificata senza il rigore previsto per il nucleo (manifesto principio 1). I test attuali sono base di regressione, non sono contratto.
+- **Marcatura onesta**: ✅ percorso completato (2026-06-12) — pratiche e' passata da "predisposta" a **"validata con primo consumatore (vendite)"** (vedi Anello 2). La validazione ha confermato la lezione: l'uso reale ha scovato bug invisibili ai test (handler_params persi, fn di push con NOT NULL violabili, generazione non idempotente, azioni di processo mai seedate) che la "completezza tecnica" non aveva intercettato.
+- **Prima integrazione concreta**: ✅ fatta — pratica PREVENTIVI end-to-end (accettazione M2, handler CONFERMA_VENDITA, giornale, sorgenti).
+- **Riconciliazione con vendite-pipeline**: la decisione resta **rinviata** — i due motori convivono per scope diversi (pratica = processo singolo guidato dall'operatore; pipeline = batch fatturazione); il punto di contatto validato e' la commessa resa emittibile dal push.
+- **Riserva di modifica**: con UN consumatore validato la riserva si restringe ma non decade: le astrazioni si promuovono a contratto solo col **secondo** consumatore (Fase F). Fino ad allora pratiche resta modificabile con prudenza (i test — 144 BE + 43 pgTAP workflow v2 — sono base di regressione solida, non ancora contratto).
 
 ### Lezione metodologica
 
@@ -442,215 +428,33 @@ Riferimento implementazione: `docs/it/dev/work-done/automazione-chiusure-scadenz
 
 ---
 
-## Evoluzione prevista
+## Roadmap
 
-### Completato (marzo 2026)
-
-- ~~Completamento BE-1..BE-5 per `pratiche`~~ — **FATTO** (4 marzo 2026)
-- ~~Sospensioni, calcoli tempo, macchina a stati (BE-6..BE-7)~~ — **FATTO** (6 marzo 2026)
-- `pratiche` e' consumabile dagli anelli esterni (19 endpoint REST, 90 test unitari, 18 smoke test)
-- ~~Audit sessioni, request logging, token blacklist~~ — **FATTO** (6 marzo 2026)
-- Anello 0 traccia sessioni JWT, request API e supporta revoca token (19 test unitari)
-- ~~Frontend Sprint 1: layout applicativo~~ — **FATTO** (marzo 2026)
-  - AppLayout responsive (sidebar morfica, content tabs, breadcrumb, shortcut tastiera)
-  - Ricerca universale soggetti con dettaglio parametrico per ruolo
-- ~~Frontend Sprint 2: Amm. Software~~ — **FATTO** (marzo 2026)
-  - Lista operatori con filtri, creazione/modifica operatore, profili reparto
-  - Building block repository core (52 test)
-- ~~Frontend Sprint 3: Building block riutilizzabili~~ — **FATTO** (marzo 2026)
-  - SoggettoForm universale PF/PG/ENTE, AuthUserForm, ComuneAutocomplete, StradarioAutocomplete
-  - Composable core: useLookup, useServerAutocomplete, useSoggettoForm, useAuthUser
-  - CSS utility classes: app-page, app-datatable, form-grid, app-drawer-content
-- ~~Frontend Sprint 4: Gestione Geografica~~ — **FATTO** (15 marzo 2026)
-  - 7 tab CRUD: indirizzi, toponomastica, comuni, CAP, province, regioni, stati
-  - 21 endpoint API con autorizzazione area `anagrafiche`, 657 test backend
-  - Composable centralizzati: useSearchTable, useDrawerState, useTabFreshness, DrawerFooter, NewButton
-- ~~Frontend Sprint 5: Gestione Soggetti~~ — **FATTO** (15 marzo 2026)
-  - Soggetti PF/PG/ENTE end-to-end: 4 fasi, 3 building block, 11 endpoint, CF validator IT con omocodia
-  - Building block riutilizzabili: ContattoForm, IndirizzoSoggettoForm, DatiSocietariForm + composable
-  - Ruoli: assegnazione da drawer, lookup filtrato per natura, preparazione domini futuri
-  - Pannello config generico: 67 tabelle CRUD con drawer dinamico metadata-driven
-  - Code review: fix race condition watcher, cleanup timeout, eliminato doppio fetchList
-  - 686 test backend, 471 moduli frontend
-- ~~Frontend Sprint 6: Fix indirizzi + contatti soggetto~~ — **FATTO** (16 marzo 2026)
-  - Fix gestione contatti (combo unita' organizzative, validazione email/PEC)
-  - Fix gestione indirizzi soggetto (pre-populate replace, civico/estensione)
-- ~~Refactor v3: Riallineamento modello concentrico~~ — **FATTO** (18 marzo 2026)
-  - Logica duplicato centralizzata in `fn_check_indirizzo_duplicato` (DB)
-  - CAP risolto via `fn_resolve_codice_postale` (DB)
-  - `useIndirizzoBase.js` composable condiviso (elimina duplicazione IndirizzoDrawer/IndirizzoSoggettoForm)
-  - `via_obj` unificato (elimina stradario_obj + stradario_generale_obj)
-  - Default soggetti spostati da hardcode Python a `config.parameters` (DB source of truth)
-  - Ordinamento tabelle config funzionante (order_by/order_dir)
-  - 689 test backend
-- ~~Refactor v4: Completamento modello concentrico~~ — **FATTO** (18 marzo 2026)
-  - Auto-clone indirizzi spostato da frontend a backend (`_apply_auto_clone`)
-  - `_buildNominativo` spostato nel service Python
-  - `addressNotFound` centralizzato in `useIndirizzoBase`
-  - Payload replace semplificato (usa `indirizzo_dettaglio_id` diretto)
-- ~~Modalita' sola lettura~~ — **FATTO** (18 marzo 2026)
-  - Pattern protect provide/inject: 11 drawer, 3 view, 2 componenti core auto-hide
-  - DB: `fn_get_user_permissions_map`, `/me/` arricchito con `permessi_area`
-- ~~Documentazione API~~ — **FATTO** (18 marzo 2026)
-  - 57 endpoint documentati: soggetti, indirizzi, geo config, amm. software
-  - 3 doc esistenti aggiornate: lookup codici, user profile, api overview
-
-- ~~Frontend Sprint 7: Amm. Software completa + Permessi Livello 1+2~~ — **FATTO** (20 marzo 2026)
-  - Area Amm. Software: 4 pagine operative (operatori, profili reparto, permessi riepilogo, audit log)
-  - Refactor naming utenti→operatori su tutto lo stack (backend, frontend, test, doc, smoke test)
-  - Livello 1 consolidato: useReadonlyMode su tutte le view, app-readonly su tutti i drawer
-  - Livello 2 azioni processo: prop `action` su NewButton/DrawerFooter, composable useActionPermission
-  - DB: fn_get_user_actions_map + fn_get_user_profile arricchito con azioni_abilitate
-  - Costanti enum centralizzate in core/constants.js (RUOLO_SISTEMA, LIVELLO_ACCESSO)
-  - Helper severity riutilizzabili, useConfirmAction (confirmSave/Delete/Action), displayTimestamp
-  - Audit qualita': fix race condition, null safety, SQL validation, toast validazione
-  - Sort default: soggetti (ragione_sociale), operatori (cognome), audit (timestamp DESC)
-
-- ~~Frontend Split View (tab affiancate)~~ — **FATTO** (29 marzo 2026)
-  - Split view read-only via provide/inject (stessa sola lettura degli operatori LETTURA)
-  - Bottone "Affianca" sulla barra ContentTabs, Popover selettore tab
-  - Responsive: solo desktop >= 1280px, chiusura automatica sotto soglia
-- ~~Frontend Pratiche v2~~ — **FATTO** (29 marzo 2026)
-  - Lista con display fields (7 JOIN backend), filtri (stato, priorita', data_da/data_a, search)
-  - Drawer creazione con SoggettoResolver + selezione ruolo + cascata
-  - Drawer dettaglio con 5 tab: Dati (azioni stato), Flussi, Note, Allegati, Giornale
-  - Backend: 26 endpoint REST, 115 test Django, 25 smoke test
-  - Collegamento anagrafico 3 livelli: soggetto → ruolo → istanza (guard DB + service)
-  - Guard pre/post-attivazione tipo prestazione
-- ~~Topbar: logout, badge iniziali utente, icone coerenti~~ — **FATTO** (29 marzo 2026)
-- ~~Sidebar mobile: drawer collassato (solo icone)~~ — **FATTO** (29 marzo 2026)
-
-### Completato (aprile 2026)
-
-- ~~Integrazione AI v1~~ — **FATTO** (31 marzo 2026)
-  - Anello 4 — strato di interazione intelligente sopra le API esistenti
-  - 9 tool (6 lettura + 3 scrittura con conferma), widget flottante non modale
-  - Contesto documentale statico, multi-tool chaining, timeout 30s
-  - Shortcut Ctrl+., tema scuro, responsive, 61 test unitari
-- ~~Gestione Autenticazioni fasi 1-3~~ — **FATTO** (1 aprile 2026)
-  - Email building block: account multipli, template Jinja, log, risoluzione mittente per contesto
-  - Token monouso: creazione, validazione, consumo, invalidazione, crittografia Fernet
-  - Reset password self-service, invito operatore, cambio password obbligatorio al primo accesso
-  - Frontend: 5 pagine auth (login, reset, invito, cambio pw), 890 test backend
-  - Fase 4 (2FA TOTP) rimandata — pianificata in WIP
-- ~~Refactor E_GENERICO~~ — **FATTO** (2 aprile 2026)
-  - Deprecato codice errore generico `E_GENERICO` su tutto il DB
-  - Sostituito con codici specifici per schema: `E_PARAMETRO_INVALIDO`, `E_PREZZO_LISTINO_NON_TROVATO`, `E_PREZZO_LISTINO_AMBIGUO`, ecc.
-  - Tutte le funzioni PL/pgSQL ora usano codici identificabili per frontend/monitoring
-- ~~Gestione Clienti v1~~ — **FATTO** (marzo 2026)
-  - CRUD completo: creazione manuale, drawer con contatti/indirizzi/conti a 2 livelli
-  - Catena automatica: istanza fittizia + billing account + cliente
-  - 5 endpoint API, 29 test service, drawer frontend con sotto-drawer
-  - v2 (subentro, disdetta, BA parent/child) pianificata in WIP
-- ~~Gestione Articoli e Listini~~ — **FATTO** (3 aprile 2026)
-  - Catalogo: backend 3 repository (articoli, UoM, BoM) + 19 funzioni service + 19 endpoint API
-  - UoM CRUD: backend completo + frontend (lista, drawer, route)
-  - Listini: backend 19 metodi repository + 18 funzioni service + 18 endpoint API
-  - Frontend catalogo: ArticoliSearchTable, ArticoloDrawer (3 tab), UnitaMisuraView, ArticoloLookup BB
-  - Frontend listini: ListiniSearchTable, ListinoDrawer (2 tab), VersioneDrawer (righe prezzo), TestResolverDialog
-  - Building block: `LookupSelect` generico (29 Select sostituiti in 15 file), `ArticoloLookup` cross-dominio
-  - Severity centralizzate: `statoVersioneListinoSeverity`, `dominioListinoSeverity`
-  - 77 test backend, build frontend OK
-
-### Completato (5-7 aprile 2026)
-
-- ~~Catalogo Articoli~~ — **COMPLETATO E TESTATO** (5 aprile 2026)
-  - Backend + frontend chiusi, 49 test verdi, doc consolidata in `docs/it/dev/work-done/gestione-articoli.md`
-  - Building block prodotti: `ArticoloLookup.vue` cross-dominio + endpoint lookup
-- ~~Consolidamento WIP listini~~ — **FATTO** (6 aprile 2026)
-  - I due vecchi WIP `gestione-articoli-listini.md` + `gestione-listini.md` consolidati in sviluppo-listini.md (ora in `docs/it/dev/work-done/sviluppo-listini-v1.md`, superseded da `docs/it/dev/work-done/sviluppo-listini-v3.md`)
-  - Estratte rettifiche prezzi (DB-L4) in `docs/it/dev/work-in-progress/sviluppo-rettifiche.md`
-- ~~Drawer dedicato gestione permessi operatore~~ — **FATTO** (6 aprile 2026)
-  - `OperatorePermessiTab` reso riutilizzabile (watch su `authUserId`)
-  - Nuovo `OperatorePermessiDrawer.vue` richiamabile dalla riga lista operatori
-- ~~Parametri di sistema multi-scope~~ — **FATTO** (5-6 aprile 2026)
-  - Drawer override con selettore scope (Personale/Emittente) visibile solo agli admin
-  - Backend: `upsert_emittente_override` + check `IsAdminZeroERP`, fallback emittente "gestore di default"
-  - Fix constraint v3 (`uq_overrides_full_scope_v3`) e fn `get_emittente_fiscale_id_for_user` allineata a `script.fn_get_emittenti_scope`
-  - Costante condivisa `PARAMETER_SCOPE` come unica fonte di verita' frontend
-- ~~AI tool catalogo + billing account~~ — **FATTO** (7 aprile 2026)
-  - Nuovo `cerca_articoli` (dominio catalogo) — sblocca "cerca articolo X" via AI
-  - Nuovo `cerca_billing_account` (dominio anagrafiche) — wrappa la ricerca dedicata BA con scope emittente
-  - System prompt esteso con glossario di dominio italiano (cliente=BA, articolo=catalogo)
-  - Tool registrati totali: **11** (era 9)
-- ~~Logo brand ottimizzato~~ — **FATTO** (5 aprile 2026)
-  - Master 1640x1640 → versioni ottimizzate 512/256/32 px per frontend, favicon (PNG+ICO), docs
-
-### Completato (8-12 aprile 2026)
-
-- ~~Migrazione `daterange` nativo PostgreSQL~~ — **FATTO** (12 aprile 2026)
-  - Infrastruttura originale: `dbops.automazione_overlap` + `script.trgfn_set_validita()` (trigger generico, poi rimosso con PG18)
-  - Fase 1: 5 tabelle con GIST migrate (listini_versioni, listini_associazioni, uom_conversioni, contratti, articoli_componenti) + `fn_resolve_prezzo_listino` aggiornata
-  - Fase 2: 11 tabelle config/anagrafiche migrate + 5 funzioni permessi semplificate con `@>`
-  - Fase 3: 2 tabelle pratiche con `tstzrange`
-  - Backend: ottimizzazione query repository (`validita @>` al posto dei doppi confronti)
-  - Linee guida SQL: sezione 7b aggiunta
-  - Analisi: `docs/it/dev/work-done/migrazione-daterange.md`
-- ~~Listini v3 — Sprint B completo~~ — **FATTO** (12 aprile 2026)
-  - **N8a** Variazione % massa su BOZZA (backend + frontend dialog + 9 test)
-  - **N2** Alert scadenze versioni (backend + frontend widget badge + 2 test)
-  - **N6** Rettifica controllata riga ATTIVA non propagata (backend + trigger DB defense-in-depth + 4 test)
-  - **N5** Riallineamento prezzo commessa (backend + 3 test)
-  - **N7** Variazione prezzo eccezionale commessa + sblocco (backend + 6 test)
-  - Avviso UX programmazione chiusura versione ATTIVA (`ProgrammaChiusuraDialog.vue`)
-  - Documentazione: N3 lifecycle preventivo→commessa, N4 nota match_level 3, N8b guida "listino post-it"
-  - 2 doc API create/aggiornate, error policies registrate, 1231 test totali
-  - Analisi: `docs/it/dev/work-done/sviluppo-listini-v3.md`
-- ~~Emittenti fiscali CRUD + BA mapping + Utilities~~ — **FATTO** (8 aprile 2026)
-  - Admin CRUD + sub-resource mapping BA + matrice utilities slot/override
-  - BB `list_entity_utility_matrix` + `UtilityPerRuoloSelect`, validazione P.IVA
-- ~~Matrice utilities tipi ruolo~~ — **FATTO** (8 aprile 2026)
-  - CRUD admin `config.utilities_tipi_ruolo`, app config attivata, drawer tab usage
-- ~~Refactor operatore-emittenti 1-a-1~~ — **FATTO** (9 aprile 2026)
-  - `JwtAuditAuthentication` Option A pura, GUC session-scoped
-  - BE fasi 2-4 + FE completa + 7 fix critici review
-- ~~Refactor invariante univocita' listini~~ — **FATTO** (10 aprile 2026)
-  - Drop `priorita` da versioni e associazioni, constraint GIST cross-listino
-  - Permessi v2: 6 fasi, `model_permission` su 33 view, `IvaSelect`/`ContoContabileSelect`
-
-### Completato (26 aprile - 4 maggio 2026)
-
-- ~~Framework chiusura per scadenza~~ — **FATTO** (26 aprile 2026)
-  - `dbops.automazione_chiusura_scadenze`, `dbops.fn_apply_chiusura_scadenze()`, job pgAgent unico
-  - Promozione al nucleo dopo due consumatori reali: versioni listino e contratti
-- ~~Refactor catalogo~~ — **FATTO** (28 aprile 2026)
-  - Fasi 1-8 DB+BE+FE chiuse, lookup/defaults/capability spostati su contratti API/backend, 83/83 test BE e build Vite verdi
-- ~~Refactor amm-software~~ — **FATTO** (29-30 aprile 2026)
-  - Operatori/admin, permessi, emittenti fiscali e matrici riallineati ai building block e agli standard frontend
-- ~~Refactor vendite~~ — **FATTO** (1 maggio 2026)
-  - DB+BE+FE chiusi, lookup/form-defaults/capability/azioni data-driven; documentazione API aggiornata
-- ~~Preventivi rev2~~ — **FATTO** (2 maggio 2026)
-  - `emittente_fiscale_id` persistito e immutabile, `istanza_utility_id` obbligatoria, guard coerenza utility/istanza, errori strutturati
-- ~~Preventivi scenario 2.1~~ — **FATTO** (3 maggio 2026)
-  - Revisione preventivo, riepilogo IVA e test end-to-end documentati dai commit locali
-- ~~Motore documentale parametrico — DB/BE/FE~~ — **FATTO tecnico, test UI in corso** (4 maggio 2026)
-  - DB Fase A, backend Tranche A-K, frontend Tranche L-M
-  - Configurazione modelli documenti e asset documentali, render PDF WeasyPrint, generazione/lista/download PDF da preventivo
+> Solo lavori **in corso o previsti**. La storia di ciò che è stato completato
+> (cronologia datata e sprint pregressi) vive nel [changelog](dev/mappa-concentrica-changelog.md).
 
 ### In corso
 
 - **Gestione Soggetti**: backend + frontend completati — in fase di test UI
 - **Gestione Geografica**: operativo — UI da migliorare
 - **Gestione Clienti/Fornitori**: drawer end-to-end operativo, v2 (subentro/disdetta) pianificata
-- **Gestione Pratiche v2**: frontend operativo — in fase di test UI
+- **Gestione Pratiche v2**: validata con il primo consumatore reale (pratica PREVENTIVI, giugno 2026) — secondo consumatore (Fase F: candidata assistenza/CRM) da avviare
 - **Motore documentale parametrico**: end-to-end tecnico completato, suite manuale `sviluppo-documenti-test-ui.md` da eseguire/chiudere
 - **Integrazione AI v2**: evoluzione con contesto dinamico e nuovi tool — WIP
 - **Autenticazione 2FA**: fase 4 TOTP — WIP
-- **Permessi v2**: livello oggetto e granularita' fine — in corso (33 view gia' configurate)
+- **Permessi v3** (sotto-oggetti padre/figlio): in pianificazione (v2 a livello oggetto già operativa)
 - **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico — pianificato in WIP dedicato
 
 ### Breve termine
 
 - Test UI reali su Articoli, UoM, Pratiche, Soggetti, Clienti, Fornitori e motore documentale preventivo
-- Seed azioni processo per nuovi domini (catalogo, vendite) + prop `action` sui componenti
+- Smoke UI end-to-end del giro pratica PREVENTIVI (accettazione → smistamento → ordine/commessa)
+- Seed azioni processo per gli altri domini + prop `action` sui componenti (vendite/pratiche gia' seedate)
 - Upload file allegati pratiche (storage filesystem/object storage)
-- **Schema `ui` — Blocchi A+B**: DDL tabelle + trigger validazione + `fn_resolve_lista_config` (DB)
-- **Schema `ui` — Blocchi C+D**: app Django `ui`, 4 endpoint REST, `<ListaConfigurabile>` + modale personalizzazione (BE+FE)
-- **Schema `ui` — Blocco E**: seed catalogo `anagrafiche.clienti` + migrazione primo componente lista — validazione del nucleo su caso reale
 
 ### Medio termine
 
-- Integrazione `vendite` → `pratiche`: eventi di vendita generano pratiche con giornale
+- Secondo consumatore di `pratiche` (Fase F: candidata assistenza/CRM) — promozione delle astrazioni a contratti
 - Integrazione `anagrafiche` → `pratiche`: onboarding cliente/fornitore tracciato
 - Attivazione handler flusso per automazioni specifiche
 - pgAgent job riattivazione automatica sospensioni
@@ -669,9 +473,10 @@ Riferimento implementazione: `docs/it/dev/work-done/automazione-chiusure-scadenz
 2. **Cambio stato**: aggiornare la colonna Stato (Stub → DA FARE → Operativo)
 3. **Nuova dipendenza**: aggiungere nella matrice e verificare che rispetti la direzione degli anelli
 4. **Nuovo anello**: se emerge un livello intermedio, inserirlo e ri-numerare
+5. **Milestone datata**: aggiornare il paragrafo "Ultimo aggiornamento" in testa, spostando il precedente nel [changelog](dev/mappa-concentrica-changelog.md) — la storia vive li', non qui
 
 > La mappa deve riflettere la realta', non le intenzioni. Aggiornare solo quando qualcosa cambia concretamente.
 
 ---
 
-*Mappa Concentrica — ZeroERP (4 maggio 2026)*
+*Mappa Concentrica — ZeroERP (11 giugno 2026)*

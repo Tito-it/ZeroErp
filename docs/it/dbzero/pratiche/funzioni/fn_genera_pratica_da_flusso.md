@@ -117,11 +117,14 @@ BEGIN
         RETURN v_nuova_pratica_id;
     END IF;
 
-    -- Determina stato iniziale (BOZZA)
+    -- Determina stato iniziale (APERTA): la figlia auto-generata
+    -- e' un lavoro gia' avviato, nasce operativa (coerente con il
+    -- modello "la pratica nasce APERTA"). data_apertura viene
+    -- valorizzata dal trigger trg_pratiche_m50_set_data_apertura_ins.
     SELECT sp.id
       INTO v_stato_iniziale_id
       FROM config.stati_pratiche sp
-     WHERE sp.codice_interno = 'BOZZA'
+     WHERE sp.codice_interno = 'APERTA'
        AND sp.attivo = true
      LIMIT 1;
 
@@ -130,9 +133,9 @@ BEGIN
             'database',
             'fn_genera_pratica_da_flusso',
             'E_CODICE',
-            jsonb_build_object('codice_interno', 'BOZZA'),
+            jsonb_build_object('codice_interno', 'APERTA'),
             NULL::uuid,
-            'BOZZA', 'config.stati_pratiche'
+            'APERTA', 'config.stati_pratiche'
         );
     END IF;
 
@@ -208,7 +211,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_genera_pratica_da_flusso(p_flusso_id bigint, p_regola_id bigint)
-IS 'Genera pratica figlia da flusso completato secondo regola di generazione. Idempotente per (flusso, tipo dest): ritorna la figlia esistente. Copia emittente/soggetto/contesto/priorita; valorizza pratica_padre_id e flusso_origine_id; crea il flusso iniziale se la regola dichiara template_flusso_dest_id. Stato iniziale BOZZA.';
+IS 'Genera pratica figlia da flusso completato secondo regola di generazione. Idempotente per (flusso, tipo dest): ritorna la figlia esistente. Copia emittente/soggetto/contesto/priorita; valorizza pratica_padre_id e flusso_origine_id; crea il flusso iniziale se la regola dichiara template_flusso_dest_id. Stato iniziale APERTA (data_apertura dal trigger INSERT).';
 ```
 
 ---

@@ -25,6 +25,7 @@ Indice test eseguiti:
 14) PraticheServiceFlussiTests.test_get_canali_disponibili_ok
 15) PraticheServiceFlussiTests.test_dispatch_handler_meta_jsonb_str
 16) PraticheServiceFlussiTests.test_coerce_jsonb_dict
+17) PraticheServiceFlussiTests.test_crea_flusso_non_ripetibile_483
 """
 
 from unittest.mock import MagicMock, patch
@@ -174,6 +175,79 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             flusso_id=1, pratica_id=1, meta={"chiave": "valore"},
             handler_params={"invio_sms": True}, user=None,
         )
+
+    # Scopo: D3 — guard DB ripetibilita' (messaggio 483) sulla creazione
+    # flusso tradotto in ServiceError parlante via marker.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_flusso_non_ripetibile_483(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.resolve_stato_flusso.return_value = 1
+        repo.create_flusso.side_effect = DatabaseError(
+            "Il flusso CONFERMA non e' ripetibile in questa pratica (regola MAI; ultima istanza: COMPLETATO).",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=9004)
+        self.assertEqual(ctx.exception.code, "PRATICHE_FLUSSO_NON_RIPETIBILE")
+
+    # Scopo: guard pratica terminale (490) sulla creazione flusso → ServiceError
+    # parlante via marker.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_flusso_pratica_terminale_490(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.resolve_stato_flusso.return_value = 1
+        repo.create_flusso.side_effect = DatabaseError(
+            "Impossibile creare un flusso: la pratica e' in stato terminale (ANNULLATA).",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=10)
+        self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO")
+
+    # Scopo: guard pratica terminale (491) sul cambio stato flusso (avvia/
+    # completa/cambia_stato) → ServiceError parlante via marker.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_avvia_flusso_pratica_terminale_491(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_flusso.side_effect = DatabaseError(
+            "Impossibile modificare il flusso: la pratica e' in stato terminale (ANNULLATA).",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.avvia_flusso(1)
+        self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
+
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_completa_flusso_pratica_terminale_491(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_flusso.side_effect = DatabaseError(
+            "Impossibile modificare il flusso: la pratica e' in stato terminale (CHIUSA).",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.completa_flusso(1, esito="POSITIVO")
+        self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
+
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_cambia_stato_flusso_pratica_terminale_491(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_flusso.side_effect = DatabaseError(
+            "Impossibile modificare il flusso: la pratica e' in stato terminale (ANNULLATA).",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.cambia_stato_flusso(1, "SOSPESO")
+        self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
 
     # Scopo: Regressione bug smoke 2026-06-11 — psycopg puo' restituire i
     # jsonb come str: meta del flusso str deve arrivare all'handler come dict

@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Richiesta A.1 (brief-db-smistamento-preventivi.md) —
+# fn_preventivo_ha_residuo_commessa: gemella di
+# fn_preventivo_ha_residuo_ordine per il ramo servizi.
+#
+# TRUE se il push commessa avrebbe effetto: esistono righe eleggibili
+# (vista unica vw_preventivi_righe_smistabili_commessa, 20260612-02)
+# E la testata e' completa (billing_account_id e utility_id NOT NULL,
+# requisiti del predicato di fn_list_preventivi_da_pushare che il ramo
+# ordine non ha). Senza il check di testata la capability direbbe TRUE
+# su preventivi che il push non listerebbe mai (capability e push
+# divergenti — il difetto che il brief elimina).
+#
+# Consumatori: fn_available_actions_preventivo (capability
+# can_push_commessa, 20260612-04) e gate EVASO lato BE
+# (preventivi_service.py: "tutte le righe smistate" = nessun residuo
+# su entrambi i rami).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260612-03-create-fn-preventivo-ha-residuo-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20260612-03-create-fn-preventivo-ha-residuo-commessa
+      author: mctit
+      runOnChange: false
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        fn_preventivo_ha_residuo_commessa: TRUE se esistono righe
+        eleggibili al push commessa (vista unica) e la testata e'
+        completa (billing_account + utility). Gemella di
+        fn_preventivo_ha_residuo_ordine.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_preventivo_ha_residuo_commessa(
+                  p_preventivo_id vendite.preventivi.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   TRUE se il preventivo ha righe natura COMMESSA (o NULL,
+                --   pregresso) non ancora EMESSE in commessa E testata
+                --   completa (billing_account_id, utility_id): il push
+                --   commessa avrebbe effetto.
+                --   Funzione fn_*: puro boolean, no raise oltre il guard id.
+                -- =========================================================
+
+                -- Guard standard parametro id.
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_preventivo_ha_residuo_commessa',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro', 'p_preventivo_id',
+                                       'valore', p_preventivo_id),
+                    NULL::uuid,
+                    'p_preventivo_id obbligatorio e > 0'
+                  );
+                END IF;
+
+                RETURN EXISTS (
+                  SELECT 1
+                    FROM vendite.vw_preventivi_righe_smistabili_commessa v
+                    JOIN vendite.preventivi p ON p.id = v.preventivo_id
+                   WHERE v.preventivo_id = p_preventivo_id
+                     -- Requisiti di testata del push commessa (fn_list):
+                     -- senza, il push non listerebbe nulla.
+                     AND p.billing_account_id IS NOT NULL
+                     AND p.utility_id IS NOT NULL
+                );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_preventivo_ha_residuo_commessa(bigint)
+              IS 'TRUE se il preventivo ha righe natura COMMESSA (servizi; natura NULL = pregresso) non ancora EMESSE in commessa E testata completa (billing_account_id, utility_id NOT NULL). Predicato condiviso (vista vw_preventivi_righe_smistabili_commessa): capability can_push_commessa + gate EVASO lato BE. Gemella di fn_preventivo_ha_residuo_ordine; non considera ORDINE (gestita da fn_push_preventivo_a_ordine).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_preventivo_ha_residuo_commessa(bigint);

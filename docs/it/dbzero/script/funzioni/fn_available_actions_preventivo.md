@@ -20,7 +20,8 @@ AS $function$
 --   meta per i metadati UI). Aggiunge hardcoded le azioni speciali
 --   non-cambio-stato (pattern fn_available_actions_offerta):
 --     - crea_revisione (solo EMESSO): produce rev.N+1 in BOZZA.
---     - push_commessa (solo ACCETTATO): avvia commessa vendita.
+--     - push_commessa (ACCETTATO + residuo righe COMMESSA): avvia
+--       la commessa vendita per i servizi.
 --     - genera_ordine (ACCETTATO + residuo righe ORDINE): smista la
 --       merce verso un ordine (fn_push_preventivo_a_ordine).
 --   Restituisce anche i flag can_* usati dai drawer Vue per
@@ -40,6 +41,8 @@ AS $function$
 DECLARE
     v_stato_id          vendite.preventivi.stato_doc_preventivo_id%TYPE;
     v_stato_cod         config.stati_doc_preventivi.codice_interno%TYPE;
+    v_ba_id             vendite.preventivi.billing_account_id%TYPE;
+    v_utility_id        vendite.preventivi.utility_id%TYPE;
     v_actions           jsonb;
     v_can_edit          boolean;
     v_can_push          boolean;
@@ -72,9 +75,9 @@ DECLARE
         'requires_motivazione', false
     );
 
-    -- Azione speciale hardcoded: push_commessa (ACCETTATO).
-    -- Non e' una transizione di stato: avvia la commessa vendita.
-    -- Gate v1: solo stato ACCETTATO (no check cross-dominio in v1).
+    -- Azione speciale hardcoded: push_commessa (ACCETTATO +
+    -- residuo righe COMMESSA non emesse). Non e' una transizione
+    -- di stato: avvia la commessa vendita per i servizi.
     c_action_push_commessa CONSTANT jsonb := jsonb_build_object(
         'key',                  'push_commessa',
         'target_state',         NULL,
@@ -99,9 +102,10 @@ DECLARE
         'requires_motivazione', false
     );
 BEGIN
-    -- Recupera stato corrente del preventivo.
-    SELECT p.stato_doc_preventivo_id, sdp.codice_interno
-      INTO v_stato_id, v_stato_cod
+    -- Recupera stato corrente + testata (per la reason push_commessa).
+    SELECT p.stato_doc_preventivo_id, sdp.codice_interno,
+           p.billing_account_id, p.utility_id
+      INTO v_stato_id, v_stato_cod, v_ba_id, v_utility_id
       FROM vendite.preventivi p
       JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
      WHERE p.id = p_preventivo_id;
@@ -140,13 +144,18 @@ BEGIN
 
     -- Capability derivate dallo stato corrente.
     -- can_edit: solo DRAFT (allineato a _STATI_MODIFICABILI Python).
-    -- can_push_commessa: solo ACCETTATO (check cross-dominio in Fase 3).
     -- can_create_revisione: SOLO EMESSO (rev 03-05-2026: ACCETTATO
     --   chiude la negoziazione, non rivisitabile - allineato a
     --   vendite.fn_crea_revisione_preventivo).
     v_can_edit := (v_stato_cod = 'DRAFT');
-    v_can_push := (v_stato_cod = 'ACCETTATO');
     v_can_rev  := (v_stato_cod = 'EMESSO');
+
+    -- can_push_commessa: ACCETTATO + residuo righe COMMESSA non
+    -- emesse e testata completa (predicato unico condiviso:
+    -- vw_preventivi_righe_smistabili_commessa). Simmetrico a
+    -- can_genera_ordine (rev 12-06-2026, brief smistamento).
+    v_can_push := (v_stato_cod = 'ACCETTATO')
+        AND vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id);
 
     -- can_genera_ordine: ACCETTATO + residuo righe natura ORDINE non
     -- allocate (predicato unico condiviso con il gate EVASO, D6).
@@ -158,7 +167,7 @@ BEGIN
         v_actions := v_actions || jsonb_build_array(c_action_crea_revisione);
     END IF;
 
-    -- Appende push_commessa hardcoded: solo in ACCETTATO.
+    -- Appende push_commessa hardcoded: ACCETTATO + residuo COMMESSA.
     IF v_can_push THEN
         v_actions := v_actions || jsonb_build_array(c_action_push_commessa);
     END IF;
@@ -170,14 +179,25 @@ BEGIN
 
     -- Reason code (machine-readable) + chiave i18n associata.
     -- Coppia stabile reason/reason_key: il FE traduce via key,
-    -- il BE/log usa il reason. In Fase 3 si estendera' il CASE
-    -- per nuovi motivi (commesse pushate, approvazioni pendenti).
+    -- il BE/log usa il reason. Ordine di verifica: stato ->
+    -- testata -> righe (la reason racconta il PRIMO ostacolo
+    -- che l'operatore deve rimuovere).
     IF v_can_push THEN
         v_push_reason     := NULL;
         v_push_reason_key := NULL;
-    ELSE
+    ELSIF v_stato_cod <> 'ACCETTATO' THEN
         v_push_reason     := 'PREVENTIVO_NON_ACCETTATO';
         v_push_reason_key := 'preventivi.push_commessa_reason.non_accettato';
+    ELSIF v_ba_id IS NULL OR v_utility_id IS NULL THEN
+        -- Testata incompleta: il fix e' compilare BA/utility,
+        -- non "mancano righe".
+        v_push_reason     := 'PREVENTIVO_SENZA_BILLING_ACCOUNT';
+        v_push_reason_key := 'preventivi.push_commessa_reason.senza_billing_account';
+    ELSE
+        -- ACCETTATO, testata ok, ma nessuna riga servizi residua
+        -- (nessuna o gia' tutte EMESSE in commessa).
+        v_push_reason     := 'PREVENTIVO_NESSUNA_RIGA_COMMESSA';
+        v_push_reason_key := 'preventivi.push_commessa_reason.nessuna_riga';
     END IF;
 
     IF v_can_ordine THEN
@@ -212,7 +232,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
-IS 'Capability preventivo per detail API: available_actions (da matrice transizioni + azioni hardcoded crea_revisione/push_commessa/genera_ordine), can_edit_*, can_push_commessa, can_genera_ordine, can_create_revisione, non_editable_fields. rev 03-05-2026: can_create_revisione solo da EMESSO. rev 11-05-2026: WHERE guard meta ?''action_key'' + ?''label_key''. rev 28-05-2026: append hardcoded crea_revisione (EMESSO) e push_commessa (ACCETTATO). rev 09-06-2026: append hardcoded genera_ordine (ACCETTATO + residuo righe ORDINE non allocate, via fn_preventivo_ha_residuo_ordine) + flag can_genera_ordine.';
+IS 'Capability preventivo per detail API: available_actions (da matrice transizioni + azioni hardcoded crea_revisione/push_commessa/genera_ordine), can_edit_*, can_push_commessa, can_genera_ordine, can_create_revisione, non_editable_fields. rev 03-05-2026: can_create_revisione solo da EMESSO. rev 11-05-2026: WHERE guard meta ?''action_key'' + ?''label_key''. rev 28-05-2026: append hardcoded crea_revisione (EMESSO) e push_commessa (ACCETTATO). rev 09-06-2026: append hardcoded genera_ordine (ACCETTATO + residuo righe ORDINE, via fn_preventivo_ha_residuo_ordine) + flag can_genera_ordine. rev 12-06-2026: can_push_commessa simmetrico (ACCETTATO + fn_preventivo_ha_residuo_commessa), CASE reason esteso (non_accettato/senza_billing_account/nessuna_riga).';
 ```
 
 ---

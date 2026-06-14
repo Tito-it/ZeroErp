@@ -188,10 +188,17 @@ def pr_run_commesse_push_one(
     *,
     sorgente_codice: str,
     sorgente_uid: int,
+    righe_ids: list[int] | None = None,
     dry_run: bool = False,
     user: str | None = None,
 ) -> dict:
-    """Entrypoint servizio Python: push commesse di un singolo documento sorgente."""
+    """Entrypoint servizio Python: push commesse di un singolo documento sorgente.
+
+    `righe_ids` (opzionale): sottoinsieme righe del documento da pushare
+    (smistamento selettivo dal Pannello Smistamento,
+    brief-db-smistamento-preventivi.md C). None = tutte le eleggibili.
+    Supportato oggi dalla sola sorgente PREVENTIVO (guard nel repository).
+    """
     repo = CommesseRepository()
     handlers = _build_handlers(repo)
 
@@ -227,6 +234,7 @@ def pr_run_commesse_push_one(
             source_types=[sorgente_codice],
             dry_run=dry_run,
             sorgente_uid=sorgente_uid,
+            righe_ids=righe_ids,
         )
         if not dry_run and report.stato in _STATI_PUSH_FALLIMENTO:
             # Estrai il primo errore tra tutti gli handler per dare contesto

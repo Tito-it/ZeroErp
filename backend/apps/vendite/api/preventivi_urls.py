@@ -42,7 +42,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoRigaSuggerisciPrezzo,
     ApiPreventivoRigheList,
     ApiPreventivoStato,
-    ApiPreventivoStatoFatturazione,
+    ApiPreventivoSmistamento,
 )
 from apps.vendite.api.views_form_defaults import ApiPreventivoFormDefaults
 
@@ -179,11 +179,11 @@ urlpatterns = [
         ApiPreventivoPushCommessa.as_view(),
         name="vendite-preventivi-push-commessa",
     ),
-    # Integrazione: stato fatturazione
+    # Integrazione: smistamento (Pannello Smistamento — aggregato + righe)
     path(
-        "<int:preventivo_id>/stato-fatturazione/",
-        ApiPreventivoStatoFatturazione.as_view(),
-        name="vendite-preventivi-stato-fatturazione",
+        "<int:preventivo_id>/smistamento/",
+        ApiPreventivoSmistamento.as_view(),
+        name="vendite-preventivi-smistamento",
     ),
     # Integrazione: genera pratica
     path(

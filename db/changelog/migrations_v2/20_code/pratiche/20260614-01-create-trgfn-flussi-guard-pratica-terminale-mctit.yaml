@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Difesa lato DB: pratica in stato TERMINALE -> flussi congelati
+# (brief-db-pratica-terminale-blocco-flussi, 2026-06-14).
+#
+# Quando la pratica padre e' conclusa (stato terminale: nessuna
+# transizione di stato in uscita attiva in config.transizioni_stati_pratiche
+# -> oggi CHIUSA e ANNULLATA), i suoi flussi non sono piu' operabili:
+#   - INSERT: vietata la creazione di nuovi flussi sulla pratica
+#             -> PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO (490)
+#   - UPDATE: vietata ogni modifica del flusso (transizioni di stato,
+#             esito/note_esito, qualunque campo operativo)
+#             -> PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE (491)
+#   (messaggi seed: 20260614-02; runOnChange ricarica la CSV).
+#
+# Scelta implementativa "terminale = stato senza uscite":
+#   il concetto di stato terminale vive gia' nella matrice transizioni
+#   (uno stato non abbandonabile = pratica conclusa). Derivarlo da li'
+#   evita di hardcodare id/codici degli stati e si auto-mantiene se in
+#   futuro si aggiunge/rimuove uno stato terminale o una transizione.
+#
+# Vincolo rispettato: l'atto di rendere terminale la pratica NON passa
+#   di qui (questo guard e' su pratiche.flussi, non su pratiche.pratiche).
+#   Oggi non esiste alcuna cascata pratica->flussi alla terminazione
+#   (verificato): annullando/chiudendo una pratica i flussi non vengono
+#   toccati, quindi il guard non interferisce (criterio di accettazione 6).
+#
+# Fase _a10_ (guard), BEFORE INSERT OR UPDATE su pratiche.flussi (tutte
+# le colonne: il congelamento riguarda l'intera riga, non una colonna).
+# Convive con gli altri guard _a10_ del flusso (esito_completato,
+# prerequisiti, ripetibilita, transizione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260614-01-create-trgfn-flussi-guard-pratica-terminale-mctit.yaml
+
+  - changeSet:
+      id: 20260614-01-create-trgfn-flussi-guard-pratica-terminale
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_flussi_guard_pratica_terminale + trigger BEFORE INSERT OR
+        UPDATE: blocca creazione/modifica di flussi quando la pratica padre
+        e' in stato terminale (nessuna transizione di stato in uscita attiva).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_pratica_terminale()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: difesa lato DB. Una pratica in stato TERMINALE e' conclusa
+              --   e i suoi flussi sono congelati: ne' nuovi flussi (INSERT) ne'
+              --   modifiche a flussi esistenti (UPDATE: stato, esito, note_esito,
+              --   qualunque campo operativo).
+              -- Regole:
+              --   1. "Terminale" = stato pratica senza alcuna transizione di stato
+              --      in uscita attiva (config.transizioni_stati_pratiche). Nessun
+              --      id/codice hardcodato: la definizione si auto-mantiene.
+              --   2. Il guard e' su pratiche.flussi: la transizione della pratica
+              --      verso lo stato terminale (UPDATE su pratiche.pratiche) non
+              --      passa di qui e resta permessa.
+              --   3. Codice errore distinto per operazione (creazione vs modifica)
+              --      per messaggi utente piu' chiari lato BE/FE.
+              DECLARE
+                  v_stato_id      pratiche.pratiche.stato_id%TYPE;
+                  v_stato_codice  config.stati_pratiche.codice_interno%TYPE;
+              BEGIN
+                  -- Stato corrente della pratica padre (esiste sempre: FK fk_flussi_pratica).
+                  SELECT p.stato_id, sp.codice_interno
+                    INTO v_stato_id, v_stato_codice
+                    FROM pratiche.pratiche p
+                    JOIN config.stati_pratiche sp ON sp.id = p.stato_id
+                   WHERE p.id = NEW.pratica_id;
+
+                  -- Pratica ancora operabile (lo stato ha almeno una uscita attiva):
+                  -- nessun blocco.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM config.transizioni_stati_pratiche t
+                       WHERE t.stato_da_id = v_stato_id
+                         AND t.attivo
+                  ) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Pratica terminale: blocca con errore parlante.
+                  IF TG_OP = 'INSERT' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_flussi_guard_pratica_terminale',
+                          'PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO',
+                          jsonb_build_object(
+                              'pratica_id', NEW.pratica_id,
+                              'stato', v_stato_codice
+                          ),
+                          NEW.tx_id,
+                          v_stato_codice
+                      );
+                  ELSE
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_flussi_guard_pratica_terminale',
+                          'PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE',
+                          jsonb_build_object(
+                              'pratica_id', NEW.pratica_id,
+                              'flusso_id', NEW.id,
+                              'stato', v_stato_codice
+                          ),
+                          NEW.tx_id,
+                          v_stato_codice
+                      );
+                  END IF;
+
+                  RETURN NEW;  -- non raggiunto: fn_log_and_raise_error solleva.
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_pratica_terminale()
+              IS 'BEFORE INSERT OR UPDATE su flussi: blocca creazione/modifica di flussi se la pratica padre e'' in stato terminale (stato senza transizioni di stato in uscita attive). Non blocca la transizione della pratica a terminale (guard su flussi, non su pratiche).';
+
+              -- Trigger idempotente (DROP+CREATE per compatibilita' runOnChange).
+              DROP TRIGGER IF EXISTS trg_flussi_a10_guard_pratica_terminale_ins_upd
+                ON pratiche.flussi;
+
+              CREATE TRIGGER trg_flussi_a10_guard_pratica_terminale_ins_upd
+                BEFORE INSERT OR UPDATE
+                ON pratiche.flussi
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_flussi_guard_pratica_terminale();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_flussi_a10_guard_pratica_terminale_ins_upd
+                ON pratiche.flussi;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_flussi_guard_pratica_terminale();

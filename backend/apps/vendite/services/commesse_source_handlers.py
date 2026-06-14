@@ -321,8 +321,19 @@ class BaseSourceHandler(ABC):
     # Scopo: esegue la sincronizzazione della sorgente verso commesse_attivita.
     # `sorgente_uid` (opzionale) restringe l'esecuzione alla riga sorgente del
     # documento specifico (push singolo UI-driven); None = batch handler standard.
-    def run(self, *, dry_run: bool = False, sorgente_uid: int | None = None) -> HandlerResult:
-        return self._process_rows(dry_run=dry_run, sorgente_uid=sorgente_uid)
+    # `righe_ids` (opzionale, richiede sorgente_uid) restringe ulteriormente al
+    # sottoinsieme di righe scelto dall'operatore (smistamento selettivo dal
+    # Pannello Smistamento — brief-db-smistamento-preventivi.md C).
+    def run(
+        self,
+        *,
+        dry_run: bool = False,
+        sorgente_uid: int | None = None,
+        righe_ids: list[int] | None = None,
+    ) -> HandlerResult:
+        return self._process_rows(
+            dry_run=dry_run, sorgente_uid=sorgente_uid, righe_ids=righe_ids,
+        )
 
     # --- Logica condivisa ---
 
@@ -334,6 +345,7 @@ class BaseSourceHandler(ABC):
         billing_account_id=None,
         limit=None,
         sorgente_uid: int | None = None,
+        righe_ids: list[int] | None = None,
     ) -> HandlerResult:
         """Ciclo principale: fetch → get_or_create_commessa → link → upsert.
 
@@ -347,6 +359,7 @@ class BaseSourceHandler(ABC):
             billing_account_id=billing_account_id,
             limit=limit,
             sorgente_uid=sorgente_uid,
+            righe_ids=righe_ids,
         )
 
         # Cache locale: evita round-trip DB ripetuti per la stessa commessa.

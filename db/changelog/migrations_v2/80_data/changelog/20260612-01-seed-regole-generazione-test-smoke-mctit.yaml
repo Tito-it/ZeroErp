@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Prima regola di generazione cross-pratica seedata (tema 5,
+# analisi-pratiche-workflow-v2): regola di TEST per lo smoke BE.
+#
+#   origine:      template 9003 APPROVAZIONE_CLIENTE (PREVENTIVI_IMMEDIATA)
+#   esito:        NEGATIVO
+#   destinazione: tipo 9003 PREVENTIVI_DIFFERITA
+#   flusso dest:  template 9005 RICHIESTA_CLIENTE (primo step, senza
+#                 prerequisiti — esercita anche il flusso iniziale
+#                 della figlia, fix-3 di fn_genera_pratica_da_flusso)
+#   auto = false: la regola e' MANUALE — il trigger non la elabora,
+#                 quindi non inquina i giri pratica reali; lo smoke
+#                 la aggancia via endpoint /genera/ ed esercita la
+#                 generazione end-to-end (genealogia, contesto,
+#                 idempotenza, /pratiche-generate/).
+#
+# CSV nuovo (regole_generazione.csv): changeset necessario. Per le
+# righe future basta aggiungere righe al CSV (runOnChange).
+# Rispetta uq_pratiche_regole_gen_origine_dest_esito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260612-01-seed-regole-generazione-test-smoke-mctit.yaml
+
+  - changeSet:
+      id: 20260612-01-seed-regole-generazione-test-smoke
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed pratiche.regole_generazione: regola di test manuale
+        (auto=false) APPROVAZIONE_CLIENTE NEGATIVO -> PREVENTIVI_DIFFERITA
+        con flusso iniziale RICHIESTA_CLIENTE, per lo smoke /genera/.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: regole_generazione
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/regole_generazione.csv
+            tableName: regole_generazione
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: template_flusso_origine_id, type: NUMERIC }
+              - column: { name: tipo_prestazione_dest_id, type: NUMERIC }
+              - column: { name: template_flusso_dest_id, type: NUMERIC }
+              - column: { name: esito_richiesto, type: STRING }
+              - column: { name: auto, type: BOOLEAN }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: descrizione, type: STRING }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Allineamento sequenza autoincrement post-seed (id seed 9001).
+              SELECT setval(
+                  pg_get_serial_sequence('pratiche.regole_generazione', 'id'),
+                  GREATEST(COALESCE(MAX(id), 1), 1),
+                  true
+              ) FROM pratiche.regole_generazione;

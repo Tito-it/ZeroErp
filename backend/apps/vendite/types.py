@@ -312,13 +312,21 @@ class PreventivoIndirizzoRow(TypedDict):
     origine_soggetto_ruolo_id: int | None
 
 
-class PreventivoStatoFatturazioneRow(TypedDict):
+# Aggregato smistamento per ramo (vw_preventivi_smistamento, sostituisce la
+# vecchia vw_preventivi_stato_fatturazione — rename DB 2026-06-12,
+# brief-db-smistamento-preventivi.md B). `righe_in_commessa` ora conta solo
+# attivita' EMESSA (predicato allineato a capability e list-fn).
+class PreventivoSmistamentoRow(TypedDict):
     preventivo_id: int
     preventivo_uid: str
     righe_totali: int
+    righe_merce: int
+    righe_servizi: int
+    righe_a_ordine: int
     righe_in_commessa: int
     righe_emesse_af: int
     righe_fatturate: int
+    righe_residue: int
 
 
 class PreventivoPraticaRow(TypedDict):

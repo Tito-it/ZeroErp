@@ -1286,20 +1286,40 @@ contiene, nell'ordine:
 > reale, contro lo spirito concentrico. La validazione (Fase E) richiede UI
 > funzionante per essere significativa.
 
-### 8.5 Fase E — Validazione e decanto
+### 8.5 Fase E — Validazione e decanto — ✅ COMPLETATA (2026-06-10 → 2026-06-12)
 
-- Esecuzione end-to-end del processo: richiesta cliente → preventivo →
-  (split) → ordine + commessa + contratto → fatture, tutto sotto una
-  pratica
-- Test del caso misto 3+1+1 con operatori reali
-- Test del caso "azienda Beta": preventivi/ordini autonomi senza pratica
-- Estrazione del *vocabolario* che è effettivamente servito (cosa va
-  promosso al nucleo pratiche, cosa resta dominio vendite)
-- Rivalutazione decisioni provvisorie (es. `log_evento_dominio` helper vs
-  promozione a `config.tipi_eventi_giornale`)
-- Aggiornamento `mappa-concentrica.md`: `pratiche` da "predisposta, in
-  attesa di validazione" → "validata con primo consumatore (vendite),
-  pronto per secondo (assistenza/CRM/acquisti)"
+> **Esito**: validazione runtime end-to-end eseguita con smoke contro DB+API
+> reali (`smoke-test-pratica-preventivi-conferma.sh`,
+> `smoke-test-preventivi-smistamento-ordine.sh`,
+> `smoke-test-ordini-giro-commessa.sh`), sia da super admin (36 OK) sia da
+> **operatore reale** (33 OK, con seed delle azioni di processo pratiche —
+> prima mancanti — vedi `work-done/brief-db-azioni-processo-pratiche.md`).
+> La validazione ha scovato e chiuso bug reali a ogni livello (competenza
+> NOT NULL + policy `competenza_mese` ignorata nella fn di push; jsonb-as-str
+> su `handler_params`/`meta`; resolver commessa cieco al multi-sorgente; 4
+> buchi della generazione cross-pratica). In corsa la Fase E si è estesa col
+> cantiere **workflow v2** (ripetibilità, bivi, lenti contesto, guard
+> chiusura): vedi
+> [analisi-pratiche-workflow-v2](../work-done/analisi-pratiche-workflow-v2.md).
+
+- ✅ Esecuzione end-to-end sotto pratica: richiesta → preventivo misto →
+  (split per natura) → ordine + commessa emittibile; preventivo EVASO,
+  giornale `DOMINIO_*`, pratica chiudibile. (La fatturazione a valle —
+  pipeline lotto sulla commessa PRONTA — era già collaudata; il ramo
+  contratto resta fuori dal preventivo per modello: ricorrente → offerta.)
+- ✅ Caso misto merce+servizio validato (incluso multi-sorgente: 2 preventivi
+  → stessa commessa).
+- ✅ Caso "azienda Beta" (autonomi senza pratica): coperto dagli smoke di
+  smistamento standalone (genera-ordine + push-commessa con gate EVASO).
+- ✅ Operatori reali: giro completo con permessi da operatore (faccia
+  OPERATORE, azioni di processo seedate, abilitazioni come dato di
+  installazione).
+- ✅ Rivalutazione `log_evento_dominio`: helper **confermato** — i 3 tipi
+  evento `DOMINIO_*` in uso reale funzionano; la promozione a
+  `config.tipi_eventi_giornale` si rivaluta in Fase F quando un secondo
+  consumatore porterà nuovi tipi evento.
+- ✅ Aggiornamento `mappa-concentrica.md`: `pratiche` → "validata con primo
+  consumatore (vendite), pronta per il secondo".
 
 ### 8.6 Fase F — Secondo consumatore (manifesto §7)
 
@@ -1981,15 +2001,18 @@ anticipo per evitare migrazioni successive).
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
 | §1 Inquadramento                   | Stabile                                                                                                                                                         | —                                                 |
 | §2 Tre pattern                     | Stabile, contraddizione `ext_preventivo` risolta (rev. 19 maggio)                                                                                               | —                                                 |
-| §3 Giornale backbone               | Chiusa a default (helper applicativo provvisorio) + onestà sulla qualità condizionata                                                                           | Validazione Fase E                                |
+| §3 Giornale backbone               | Chiusa: helper validato in Fase E (3 tipi `DOMINIO_*` in uso reale); promozione a config rivalutata in Fase F                                                   | —                                                 |
 | §4 Configurabilità interna pratica | Stabile, esempio §4.5 marcato come didattico                                                                                                                    | —                                                 |
-| §5 Caso vendite                    | Decisioni 18 maggio chiuse + revisione 19 maggio: introdotti §5.3.2 (preventivi misti, decisione aperta), §5.3.3 (idempotenza), §5.8 (configurabilità attività) | Fase B brief DB con deliverable preliminari D0/D1 |
-| §6 Convenzioni                     | Stabile + nuova §6.9 (idempotenza trasversale)                                                                                                                  | Si consolida dopo §8.5                            |
-| §7 Decisioni prese                 | Sintesi 18 maggio + integrazione 19 maggio, distinzione chiuse vs aperte                                                                                        | Revisione a Fase E                                |
-| §8 Roadmap                         | Approvata + nota su parallelismo B/C/D                                                                                                                          | Avvio Fase B su OK Tid                            |
+| §5 Caso vendite                    | Chiusa: D0/D1 risolte (§11.0), split per natura consegnato e validato runtime (Fasi B/C/D + E)                                                                  | —                                                 |
+| §6 Convenzioni                     | Stabile + §6.9 (idempotenza trasversale); consolidata post-Fase E                                                                                               | —                                                 |
+| §7 Decisioni prese                 | Revisione Fase E fatta: decisioni confermate; estese da D1..D4 workflow v2 (ripetibilità, bivi, lenti contesto, guard chiusura)                                 | —                                                 |
+| §8 Roadmap                         | Fasi A→E **chiuse** (E completata 2026-06-12, vedi §8.5); motore esteso dal cantiere workflow v2                                                                | **Avvio Fase F** (secondo consumatore, su OK Tid) |
 
 ---
 
 *Analisi integrazione domini Anello 3 con motore pratiche — ZeroErp
-(2026-05-18, revisione critica 2026-05-19). Documento vivo, da aggiornare ad
-ogni Fase chiusa.*
+(2026-05-18, revisione critica 2026-05-19; **Fase E chiusa 2026-06-12**, vedi
+§8.5 e [analisi-pratiche-workflow-v2](../work-done/analisi-pratiche-workflow-v2.md)).
+Documento vivo, da aggiornare ad ogni Fase chiusa. Prossimo passo: Fase F —
+secondo consumatore (candidata: assistenza/ticketing,
+[crm-ticketing-pratiche](crm-ticketing-pratiche.md)).*

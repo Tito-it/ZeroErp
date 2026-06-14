@@ -17,7 +17,7 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
-from django.db import DatabaseError, transaction
+from django.db import transaction
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityRepository
@@ -32,6 +32,9 @@ from apps.vendite.services._pricing_gate_helpers import (
     validate_componenti_overrides_authorization,
 )
 from apps.core.services.value_normalizer import empty_to_none
+from apps.vendite.services._smistamento_gate_helpers import (
+    transiziona_a_evaso_se_smistato,
+)
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_attivazioni,
     normalize_componenti_overrides,
@@ -1720,7 +1723,11 @@ def delete_componente(
 # verso attivita_fatturabili (Fase 3) per preventivi `fatturazione_immediata=TRUE`
 # e' tracciato in PR2 (vedi WIP sviluppo-push-singolo-preventivo §9).
 # Idempotente via segment_key sul layer DB (lo gestisce fn_upsert_commessa_attivita).
-def push_a_commessa(preventivo_id: int) -> dict[str, Any]:
+# `righe_ids` (opzionale): sottoinsieme righe servizio da pushare (smistamento
+# selettivo dal Pannello Smistamento); None = tutte le eleggibili.
+def push_a_commessa(
+    preventivo_id: int, righe_ids: list[int] | None = None,
+) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = repo.get_preventivo(preventivo_id)
     ErrorManager.require(
@@ -1755,6 +1762,7 @@ def push_a_commessa(preventivo_id: int) -> dict[str, Any]:
     report = pr_run_commesse_push_one(
         sorgente_codice="PREVENTIVO",
         sorgente_uid=preventivo_id,
+        righe_ids=righe_ids,
     )
 
     # Transizione automatica ACCETTATO → EVASO se push completato.
@@ -1764,26 +1772,17 @@ def push_a_commessa(preventivo_id: int) -> dict[str, Any]:
     # Se PARZIALE/ERRORE/SKIPPED il preventivo resta ACCETTATO:
     # serve un ri-push per completare prima di poter evadere.
     #
-    # Gate EVASO (D6, brief-preventivi-ordini.md §5/§7.2): nel modello split
-    # la lista di push e' natura-aware (solo righe destinazione COMMESSA), quindi
-    # su un preventivo misto qui passano i soli servizi. EVASO significa "tutte
-    # le righe smistate" → NON evadere finche' resta residuo MERCE da portare a
-    # ordine (lo verifica fn_preventivo_ha_residuo_ordine). Lo smistamento merce
-    # avviene via fn_push_preventivo_a_ordine / orchestratore CONFERMA_VENDITA.
-    #
-    # Robustezza al deploy parziale: se la fn DB rifiuta la transizione
-    # (es. seed non ancora atterrato), logga warning e prosegue — il
-    # push e' gia' avvenuto, lo stato si allineera' al re-run successivo.
-    if report["stato"] == "COMPLETATO" and not repo.preventivo_ha_residuo_ordine(
-        preventivo_id
-    ):
-        try:
-            repo.cambia_stato(preventivo_id, "EVASO", "django_api")
-        except DatabaseError as exc:
-            logging.getLogger(__name__).warning(
-                "preventivi.push.transizione_evaso_skipped preventivo_id=%s reason=%s",
-                preventivo_id, str(exc),
-            )
+    # Gate EVASO bi-ramo nel BB condiviso (_smistamento_gate_helpers): il check
+    # residuo commessa non e' ridondante col report COMPLETATO — con `righe_ids`
+    # (push selettivo) COMPLETATO si riferisce al solo sottoinsieme scelto.
+    # swallow_db_error=True: il push e' gia' avvenuto, su rifiuto della
+    # transizione la richiesta utente non fallisce.
+    if report["stato"] == "COMPLETATO":
+        transiziona_a_evaso_se_smistato(
+            repo, preventivo_id,
+            user="django_api", swallow_db_error=True,
+            log_label="preventivi.push",
+        )
 
     return {
         "preventivo_id": preventivo_id,
@@ -1803,20 +1802,29 @@ def push_a_commessa(preventivo_id: int) -> dict[str, Any]:
     }
 
 
-# Scopo: Stato fatturazione del preventivo nel pipeline downstream.
-# Usa la vista aggregata vw_preventivi_stato_fatturazione (filtra per preventivo_id).
-def stato_fatturazione(preventivo_id: int) -> dict[str, Any]:
+# Scopo: Smistamento del preventivo per il Pannello Smistamento — aggregato per
+#        ramo (progress X/Y verso EVASO) + righe con natura, destinazione e
+#        `stato_smistamento` autorevole. Sostituisce il vecchio
+#        `stato_fatturazione` (viste DB rinominate/rifatte natura-aware,
+#        brief-db-smistamento-preventivi.md B). Una sola chiamata FE.
+def smistamento(preventivo_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
-    result = repo.stato_fatturazione(preventivo_id)
-    if result is None:
-        return {
-            "preventivo_id": preventivo_id,
-            "righe_totali": 0,
-            "righe_in_commessa": 0,
-            "righe_emesse_af": 0,
-            "righe_fatturate": 0,
-        }
-    return result
+    testata = repo.get_preventivo(preventivo_id)
+    ErrorManager.require(
+        testata is not None,
+        code="E_PREV_NOT_FOUND",
+        message="Preventivo non trovato.",
+        detail=f"preventivo_id={preventivo_id}",
+        function_name=f"{_FN}.smistamento",
+    )
+    # `aggregato` e' None per preventivo senza righe attive (la vista GROUP BY
+    # non produce la riga): si propaga cosi' com'e', senza fabbricare un
+    # fallback che duplicherebbe lo schema della vista (drift garantito alla
+    # prima colonna nuova). Il FE tratta null come "niente da smistare".
+    return {
+        "aggregato": repo.stato_smistamento(preventivo_id),
+        "righe": repo.list_righe_smistamento(preventivo_id),
+    }
 
 
 # ══════════════════════════════════════════════════════════

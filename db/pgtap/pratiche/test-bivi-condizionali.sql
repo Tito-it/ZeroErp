@@ -17,10 +17,10 @@
 -- 3) P1: NEGOZIAZIONE bloccata dai prerequisiti (ramo opposto)
 -- 4) P1: fn_check_chiusura — NEGOZIAZIONE ramo morto (percorribile=false, bloccante=false)
 -- 5) P1: chiusura vietata con CONFERMA obbligatoria non completata
--- 6) P1: completata CONFERMA, chiusura ammessa nonostante ramo morto obbligatorio
+-- 6) P1: completata CONFERMA, AUTO-chiusura (ramo morto obbligatorio non blocca)
 -- 7) P2 (esito NEGATIVO): NEGOZIAZIONE eseguibile (ramo coerente)
 -- 8) P2: CONFERMA bloccata dai prerequisiti (ramo opposto)
--- 9) P2: completata NEGOZIAZIONE, chiusura ammessa (CONFERMA e' ramo morto)
+-- 9) P2: completata NEGOZIAZIONE, AUTO-chiusura (CONFERMA e' ramo morto)
 -- 10) Cleanup
 -- ------------------------------------------------------------
 SELECT plan(10);
@@ -198,7 +198,10 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- 6) P1: completata CONFERMA, chiusura ammessa (ramo morto non blocca)
+-- 6) P1: completata CONFERMA -> AUTO-chiusura (ramo morto non blocca)
+--    Completato l'ultimo obbligatorio percorribile, l'auto-chiusura
+--    (trg_flussi_z90_autochiusura_pratica) porta la pratica a CHIUSA:
+--    il ramo morto NEGOZIAZIONE (non percorribile) non blocca (D4).
 -- =========================================================
 UPDATE pratiche.flussi SET stato_id = (SELECT sf_in_corso FROM tmp_bv_refs)
  WHERE pratica_id = (SELECT pratica_id FROM tmp_bv_p1)
@@ -207,11 +210,13 @@ UPDATE pratiche.flussi SET stato_id = (SELECT sf_completato FROM tmp_bv_refs), e
  WHERE pratica_id = (SELECT pratica_id FROM tmp_bv_p1)
    AND template_flusso_id = (SELECT tf_conf_id FROM tmp_bv_tf);
 
-SELECT lives_ok(
-  format('UPDATE pratiche.pratiche SET stato_id = %s WHERE id = %s',
-    (SELECT st_chiusa FROM tmp_bv_refs),
-    (SELECT pratica_id FROM tmp_bv_p1)),
-  '6. P1: chiusura ammessa con ramo morto obbligatorio mai eseguito (D4)'
+SELECT is(
+  (SELECT sp.codice_interno
+     FROM pratiche.pratiche p
+     JOIN config.stati_pratiche sp ON sp.id = p.stato_id
+    WHERE p.id = (SELECT pratica_id FROM tmp_bv_p1)),
+  'CHIUSA',
+  '6. P1: auto-chiusura al completamento di CONFERMA (ramo morto obbligatorio non blocca, D4)'
 );
 
 -- =========================================================
@@ -238,7 +243,7 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- 9) P2: completata NEGOZIAZIONE, chiusura ammessa
+-- 9) P2: completata NEGOZIAZIONE -> AUTO-chiusura (CONFERMA ramo morto)
 -- =========================================================
 UPDATE pratiche.flussi SET stato_id = (SELECT sf_in_corso FROM tmp_bv_refs)
  WHERE pratica_id = (SELECT pratica_id FROM tmp_bv_p2)
@@ -247,11 +252,13 @@ UPDATE pratiche.flussi SET stato_id = (SELECT sf_completato FROM tmp_bv_refs), e
  WHERE pratica_id = (SELECT pratica_id FROM tmp_bv_p2)
    AND template_flusso_id = (SELECT tf_nego_id FROM tmp_bv_tf);
 
-SELECT lives_ok(
-  format('UPDATE pratiche.pratiche SET stato_id = %s WHERE id = %s',
-    (SELECT st_chiusa FROM tmp_bv_refs),
-    (SELECT pratica_id FROM tmp_bv_p2)),
-  '9. P2: chiusura ammessa percorrendo il ramo opposto (CONFERMA e'' ramo morto)'
+SELECT is(
+  (SELECT sp.codice_interno
+     FROM pratiche.pratiche p
+     JOIN config.stati_pratiche sp ON sp.id = p.stato_id
+    WHERE p.id = (SELECT pratica_id FROM tmp_bv_p2)),
+  'CHIUSA',
+  '9. P2: auto-chiusura percorrendo il ramo opposto (CONFERMA e'' ramo morto)'
 );
 
 -- =========================================================

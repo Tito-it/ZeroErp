@@ -202,7 +202,13 @@ async function reload() {
 </script>
 
 <template>
-  <div class="documenti-sorgente-list">
+  <!-- `app-escape` alla radice: il BB vive tipicamente in drawer post-DRAFT
+       il cui contenuto e' `app-readonly` (pointer-events: none). Le azioni
+       qui sono tutte di lettura (download/espansione/refresh), lecite anche
+       in permesso LETTURA, quindi l'escape e' incondizionato. Evita che ogni
+       caller debba ricordarsi il wrapper (regola del 2: ContrattoDrawer lo
+       aveva, PreventiviDrawer no e la lista risultava non cliccabile). -->
+  <div class="documenti-sorgente-list app-escape">
     <div v-if="showListChrome" class="section-header">
       <h4>{{ t('documenti.lista.title') }}</h4>
       <Button

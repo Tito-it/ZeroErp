@@ -24,6 +24,18 @@ BOZZA e inserisce la pratica in transazione atomica.
   - `stato` (string, opzionale) — codice_interno stato pratica (es. `BOZZA`, `APERTA`)
   - `tipo_prestazione_id` (int, opzionale) — filtro tipo prestazione
   - `soggetto_id` (string UUID, opzionale) — filtro UUID soggetto
+  - **Lente di contesto canonica (D1, workflow v2)** — al massimo UNA tra:
+    - `soggetto_ruolo_id` (int, opzionale) — pratiche del ruolo soggetto
+    - `istanza_utility_id` (int, opzionale) — pratiche dell'istanza utility
+    - `solo_interne` (bool, opzionale) — solo pratiche interne (senza soggetto)
+
+    La verità del filtro vive in `pratiche.fn_lista_pratiche_per_contesto`
+    (semi-join sulla query display standard). Due o più lenti insieme →
+    `400 PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI` (catalogo DB id 484,
+    validato fail-fast nel service + guard nella fn).
+  - `priorita_id` (int, opzionale) — filtro priorità pratica (fix 2026-06-12:
+    prima inviato dalla dashboard ma ignorato dalla view)
+  - `risorsa_umana_id` (int, opzionale) — filtro operatore assegnato
   - `search` (string, opzionale) — ricerca ILIKE su codice, descrizione, ragione_sociale soggetto
   - `data_da` (string ISO date, opzionale) — filtro data inserimento da (>=)
   - `data_a` (string ISO date, opzionale) — filtro data inserimento a (<= fine giorno)

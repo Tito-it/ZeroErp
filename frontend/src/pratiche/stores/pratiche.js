@@ -31,9 +31,15 @@ export const usePraticheStore = defineStore('pratiche', () => {
 
   const filters = ref({
     search: '',
-    stato_id: null,
+    // Codice stato (es. 'APERTA'): il BE filtra per codice_interno via param
+    // `stato` (fix 2026-06-12: prima si inviava `stato_id`, ignorato dal BE).
+    stato: null,
     priorita_id: null,
     risorsa_umana_id: null,
+    // Lente di contesto canonica (D1, workflow v2): solo pratiche interne
+    // (senza soggetto). Esclusiva con le lenti ruolo/istanza (usate dalle
+    // viste embedded, non dalla dashboard).
+    solo_interne: false,
     data_da: defaultDataDa,
     data_a: null,
     limit: 10,
@@ -69,9 +75,10 @@ export const usePraticheStore = defineStore('pratiche', () => {
       }
       params.emittente_fiscale_id = emittenteId
       if (searchTerm.length >= 3) params.search = searchTerm
-      if (f.stato_id != null) params.stato_id = f.stato_id
+      if (f.stato) params.stato = f.stato
       if (f.priorita_id != null) params.priorita_id = f.priorita_id
       if (f.risorsa_umana_id != null) params.risorsa_umana_id = f.risorsa_umana_id
+      if (f.solo_interne) params.solo_interne = true
       if (f.data_da) params.data_da = f.data_da
       if (f.data_a) params.data_a = f.data_a
       params.limit = f.limit

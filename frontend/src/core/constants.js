@@ -201,6 +201,10 @@ export const STATO_PRATICA = {
   ANNULLATA: 'ANNULLATA',
 }
 
+// Stati terminali della pratica: nessuna transizione in uscita, nulla di
+// modificabile (scheda + flussi in sola lettura, niente creazione step).
+export const STATI_PRATICA_TERMINALI = [STATO_PRATICA.CHIUSA, STATO_PRATICA.ANNULLATA]
+
 // Codici interni stati flusso pratica (codice_interno da config.stati_flussi_pratiche)
 export const STATO_FLUSSO = {
   DA_ESEGUIRE: 'DA_ESEGUIRE',
@@ -209,6 +213,15 @@ export const STATO_FLUSSO = {
   SOSPESO: 'SOSPESO',
   ANNULLATO: 'ANNULLATO',
   ERRORE: 'ERRORE',
+}
+
+// Stato del ramo nel percorso pratica (workflow v2 D4, campo `ramo` del
+// GET /pratiche/<id>/percorso/ — vedi api_percorso.md).
+export const RAMO_STEP = {
+  COMPLETATO: 'COMPLETATO',
+  PERCORRIBILE: 'PERCORRIBILE',
+  FUTURO: 'FUTURO',
+  RAMO_CHIUSO: 'RAMO_CHIUSO',
 }
 
 // Codici interni stati preventivo vendita (codice_interno da config.stati_doc_preventivi)

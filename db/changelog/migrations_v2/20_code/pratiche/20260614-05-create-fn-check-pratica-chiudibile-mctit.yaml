@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Helper chiusura guidata dal workflow.
+# (brief-db-chiusura-pratica-workflow, 2026-06-14)
+#
+# fn_check_pratica_chiudibile: la pratica e' chiudibile (nessun
+# obbligatorio bloccante)? Riusa fn_check_chiusura_pratica. Il parametro
+# opzionale p_escludi_template_id permette di ignorare un template dal
+# calcolo dei bloccanti (il flusso di chiusura, valutato PRIMA del suo
+# stesso completamento dal guard 20260614-07).
+# fn_check_*: puro boolean, no raise.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260614-05-create-fn-check-pratica-chiudibile-mctit.yaml
+
+  - changeSet:
+      id: 20260614-05-create-fn-check-pratica-chiudibile
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_check_pratica_chiudibile(pratica, escludi_template?) -> boolean:
+        nessun obbligatorio bloccante in fn_check_chiusura_pratica.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_check_pratica_chiudibile(
+                  p_pratica_id          pratiche.pratiche.id%TYPE,
+                  p_escludi_template_id pratiche.template_flussi.id%TYPE DEFAULT NULL
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+              -- Scopo: fn_check_* puro (no raise). La pratica e' chiudibile se
+              --   non resta alcun template obbligatorio "bloccante" (obbligatorio,
+              --   non completato, ancora percorribile) in fn_check_chiusura_pratica.
+              -- p_escludi_template_id: se valorizzato, ignora quel template dai
+              --   bloccanti (usato dal guard pre-completamento per escludere il
+              --   flusso di chiusura stesso, non ancora COMPLETATO).
+                  SELECT NOT EXISTS (
+                      SELECT 1
+                        FROM pratiche.fn_check_chiusura_pratica(p_pratica_id) c
+                       WHERE c.bloccante
+                         AND (p_escludi_template_id IS NULL
+                              OR c.template_flusso_id <> p_escludi_template_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_check_pratica_chiudibile(
+                  pratiche.pratiche.id%TYPE,
+                  pratiche.template_flussi.id%TYPE
+              ) IS 'Pure check: la pratica e'' chiudibile (nessun obbligatorio bloccante in fn_check_chiusura_pratica). p_escludi_template_id ignora un template dal calcolo (es. il flusso di chiusura prima del suo completamento). Consumata da auto-chiusura e guard pre-completamento.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_check_pratica_chiudibile(
+                  pratiche.pratiche.id%TYPE,
+                  pratiche.template_flussi.id%TYPE
+              );

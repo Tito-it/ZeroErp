@@ -138,3 +138,7 @@ Lo Sviluppo Concentrico è una proposta pratica per far crescere sistemi ERP sen
 ---
 
 > *Zero complessità superflua. Crescita concentrica. Coerenza lungo tutti gli anelli.*
+
+---
+
+{% include-markdown "signature-core.md" %}

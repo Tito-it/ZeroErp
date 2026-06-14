@@ -54,11 +54,11 @@ LANGUAGE plpgsql
 3. **Recupera pratica sorgente**: copia `emittente_fiscale_id`, `soggetto_id`, `soggetto_ruolo_id`, `istanza_utility_id`, `priorita_id` (fix-4: senza la propagazione del contesto le figlie cadrebbero fuori dalle lenti D1).
 4. **Recupera regola**: legge `tipo_prestazione_dest_id` e `template_flusso_dest_id` dalla regola (deve essere attiva).
 5. **Idempotenza (fix-1)**: se esiste gia' una pratica con `flusso_origine_id = p_flusso_id` e `tipo_prestazione_id` di destinazione, **ritorna l'id esistente** (copre trigger auto, API `/genera/` e doppi eventi).
-6. **Stato iniziale**: cerca lo stato con `codice_interno = 'BOZZA'` in `config.stati_pratiche`.
+6. **Stato iniziale**: cerca lo stato con `codice_interno = 'APERTA'` in `config.stati_pratiche`. La figlia auto-generata e' un lavoro gia' avviato: nasce **operativa**, coerente con il modello "la pratica nasce APERTA" (`20260614-03`). La `data_apertura` viene valorizzata automaticamente dal trigger `trg_pratiche_m50_set_data_apertura_ins` all'INSERT.
 7. **Crea pratica target**: INSERT in `pratiche.pratiche` con:
    - `tipo_prestazione_id` dalla regola
    - `emittente_fiscale_id`, `soggetto_id`, `soggetto_ruolo_id`, `istanza_utility_id`, `priorita_id` dalla sorgente
-   - `stato_id` = BOZZA
+   - `stato_id` = APERTA
    - `pratica_padre_id` = pratica sorgente (fix-2)
    - `flusso_origine_id` = `p_flusso_id`
 8. **Flusso iniziale (fix-3)**: se la regola dichiara `template_flusso_dest_id`, crea il primo flusso della figlia in `DA_ESEGUIRE` con la `sequenza` del template. Il template destinazione deve essere **senza prerequisiti** (la figlia nasce vuota): in caso contrario il guard prerequisiti fa fallire la generazione — fail-fast voluto, e' un errore di seed della regola.
@@ -73,7 +73,7 @@ LANGUAGE plpgsql
 | `E_PARAMETRO_INVALIDO` | `p_flusso_id` o `p_regola_id` NULL o <= 0 |
 | `E_VALORE_MANCANTE` | Flusso non trovato |
 | `E_CODICE` | Regola non trovata o non attiva |
-| `E_CODICE` | Stato BOZZA (pratiche) o DA_ESEGUIRE (flussi) non configurato |
+| `E_CODICE` | Stato APERTA (pratiche) o DA_ESEGUIRE (flussi) non configurato |
 
 ---
 
