@@ -46,6 +46,8 @@
 |------|--------|--------|--------|
 | trg_flussi_a10_guard_esito_completato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_esito_completato()` |
 | trg_flussi_a10_guard_esito_completato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_esito_completato()` |
+| trg_flussi_a10_guard_pratica_terminale_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_pratica_terminale()` |
+| trg_flussi_a10_guard_pratica_terminale_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_pratica_terminale()` |
 | trg_flussi_a10_guard_prerequisiti_ins | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_prerequisiti()` |
 | trg_flussi_a10_guard_ripetibilita_ins | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_ripetibilita()` |
 | trg_flussi_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_transizione()` |
