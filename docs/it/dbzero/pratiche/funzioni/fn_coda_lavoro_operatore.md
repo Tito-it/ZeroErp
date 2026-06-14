@@ -59,6 +59,17 @@ flussi_base AS (
     JOIN stati_pendenti sf ON sf.id = f.stato_id
     JOIN pratiche.pratiche p ON p.id = f.pratica_id
     WHERE p.emittente_fiscale_id = p_emittente_fiscale_id
+      -- Escludi pratiche TERMINALI (concluse): i loro flussi sono
+      -- congelati dal guard trgfn_flussi_guard_pratica_terminale e
+      -- non sono lavoro da fare. "Terminale" = stato senza alcuna
+      -- transizione di stato in uscita attiva (stessa definizione
+      -- del guard: nessun id/codice hardcodato).
+      AND EXISTS (
+          SELECT 1
+            FROM config.transizioni_stati_pratiche t
+           WHERE t.stato_da_id = p.stato_id
+             AND t.attivo
+      )
 ),
 classificati AS (
     -- Classifica ogni flusso nel livello piu' alto applicabile
@@ -121,7 +132,7 @@ ORDER BY
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_coda_lavoro_operatore(p_risorsa_umana_id bigint, p_emittente_fiscale_id bigint)
-IS 'Coda di lavoro operatore su tre livelli: ASSEGNATO, COMPETENZA, REPARTO.';
+IS 'Coda di lavoro operatore su tre livelli: ASSEGNATO, COMPETENZA, REPARTO. Esclude i flussi di pratiche terminali (stato senza transizioni in uscita attive).';
 ```
 
 ---
