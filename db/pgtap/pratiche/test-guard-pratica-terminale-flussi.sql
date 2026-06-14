@@ -57,11 +57,11 @@ SELECT ok(
 );
 
 -- =========================================================
--- 1) Setup: tipo_prestazione + 2 pratiche create direttamente in APERTA.
---    Flussi MANUALI (template_flusso_id NULL): nessun template obbligatorio
---    -> la chiusura della pratica non e' vincolata; prerequisiti/ripetibilita
---    sono bypassati (guard template-driven). Resta sotto test solo il guard
---    "pratica terminale".
+-- 1) Setup: tipo_prestazione + 1 template (NON obbligatorio, ripetibile) + 2
+--    pratiche create direttamente in APERTA. Template non obbligatorio: la
+--    chiusura non e' vincolata e NON scatta l'auto-chiusura (gate "almeno un
+--    obbligatorio"); ripetibilita SEMPRE perche' il test crea piu' istanze.
+--    Resta sotto test solo il guard "pratica terminale".
 -- =========================================================
 CREATE TEMP TABLE tmp_pt_tp AS
 WITH ins AS (
@@ -71,6 +71,15 @@ WITH ins AS (
   RETURNING id
 )
 SELECT id AS tp_id FROM ins;
+
+CREATE TEMP TABLE tmp_pt_tf AS
+WITH ins AS (
+  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo, ripetibilita)
+  VALUES ((SELECT tp_id FROM tmp_pt_tp), 'TEST_PT_STEP', 'Step test', 10, false, true, 'SEMPRE')
+  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
+  RETURNING id
+)
+SELECT id AS tf_id FROM ins;
 
 -- Pratica 1 (percorso ANNULLATA)
 CREATE TEMP TABLE tmp_pt_pratica1 AS
@@ -114,8 +123,9 @@ SELECT ok(
 SELECT lives_ok(
   format(
     'INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
-     VALUES (%s, NULL, %s)',
+     VALUES (%s, %s, %s)',
     (SELECT pratica_id FROM tmp_pt_pratica1),
+    (SELECT tf_id FROM tmp_pt_tf),
     (SELECT fl_da_eseguire FROM tmp_pt_refs)
   ),
   '2. APERTA: INSERT flusso consentito (regressione)'
@@ -160,8 +170,9 @@ SELECT lives_ok(
 SELECT throws_ok(
   format(
     'INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
-     VALUES (%s, NULL, %s)',
+     VALUES (%s, %s, %s)',
     (SELECT pratica_id FROM tmp_pt_pratica1),
+    (SELECT tf_id FROM tmp_pt_tf),
     (SELECT fl_da_eseguire FROM tmp_pt_refs)
   ),
   NULL, NULL,
@@ -200,7 +211,7 @@ SELECT throws_ok(
 INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
 VALUES (
   (SELECT pratica_id FROM tmp_pt_pratica2),
-  NULL,
+  (SELECT tf_id FROM tmp_pt_tf),
   (SELECT fl_da_eseguire FROM tmp_pt_refs)
 );
 
@@ -226,8 +237,9 @@ SELECT lives_ok(
 SELECT throws_ok(
   format(
     'INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
-     VALUES (%s, NULL, %s)',
+     VALUES (%s, %s, %s)',
     (SELECT pratica_id FROM tmp_pt_pratica2),
+    (SELECT tf_id FROM tmp_pt_tf),
     (SELECT fl_da_eseguire FROM tmp_pt_refs)
   ),
   NULL, NULL,
@@ -257,6 +269,8 @@ DELETE FROM pratiche.flussi
  WHERE pratica_id IN (SELECT id FROM pratiche.pratiche
                        WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_pt_tp));
 DELETE FROM pratiche.pratiche
+ WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_pt_tp);
+DELETE FROM pratiche.template_flussi
  WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_pt_tp);
 DELETE FROM pratiche.tipi_prestazione
  WHERE codice_interno = 'TEST_PT';
