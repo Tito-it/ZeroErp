@@ -100,12 +100,14 @@ const drawerActions = computed(() => {
     // PREVENTIVAZIONE (pratica-first): apre il PreventivoDrawer collegato.
     // L'aggancio ROOT preventivo↔pratica avviene al salvataggio (gestito dal
     // parent, che ospita il drawer e chiama collega-pratica).
+    // kind:'manage' = apertura sub-drawer → inline su desktop, nel kebab solo su
+    // schermo piccolo (è l'azione principale dello step, non un'utility da
+    // nascondere sempre nel kebab come farebbe kind:'secondary').
     {
       key: 'apri-preventivo',
-      kind: 'secondary',
+      kind: 'manage',
       label: t('pratiche.flusso_apri_preventivo'),
       icon: 'pi pi-file-edit',
-      severity: 'secondary',
       visible: !effectiveReadonly.value && isPreventivi.value && templateCodice.value === TEMPLATE_PREVENTIVAZIONE,
       disabled: loading.value,
       command: () => emit('open-preventivo', props.praticaId),

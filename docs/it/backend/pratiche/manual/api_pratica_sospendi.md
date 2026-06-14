@@ -26,7 +26,7 @@ Endpoint di scrittura che delega a `pratiche_service.sospendi_pratica`. Il servi
 
 - `400`: motivo vuoto (`E_PRATICA_VALIDATION`), pratica gia' sospesa (`E_PRATICA_VALIDATION`), `pratica_id` non valido (`E_INVALID_ID`)
 - `401`: JWT mancante o non valido
-- `409`: transizione di stato non ammessa (`E_PRATICHE_TRANSIZIONE_NON_AMMESSA`)
+- `409`: transizione di stato non ammessa (`PRATICHE_TRANSIZIONE_NON_AMMESSA`)
 
 ## Regole
 

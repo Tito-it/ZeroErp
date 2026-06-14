@@ -43,6 +43,36 @@ _TYPE_MAP = {
 _cache: dict[str, list[dict[str, Any]]] = {}
 
 
+# Scopo: Normalizza il `column_default` di information_schema nel valore tipizzato
+# da usare come default del form di creazione. Restituisce None quando il default
+# non e' un literal riconoscibile (es. sequenze nextval(...), espressioni now(),
+# cast complessi): in quel caso il FE applica il proprio fallback.
+def _parse_column_default(raw_default: str | None, fe_type: str) -> Any:
+    if raw_default is None:
+        return None
+    # Strip cast esplicito (es. "'false'::boolean", "0::integer", "''::text").
+    val = raw_default.split("::", 1)[0].strip()
+    if fe_type == "boolean":
+        # Postgres puo' rappresentare il default come `false` o `'false'`.
+        unquoted = val[1:-1] if len(val) >= 2 and val[0] == "'" and val[-1] == "'" else val
+        if unquoted in ("true", "false"):
+            return unquoted == "true"
+        return None
+    if fe_type == "number":
+        try:
+            return int(val)
+        except ValueError:
+            try:
+                return float(val)
+            except ValueError:
+                return None
+    # text/date/json: prefill solo se literal stringa quotata, altrimenti None
+    # (evita di propagare espressioni SQL come now() nel form).
+    if len(val) >= 2 and val[0] == "'" and val[-1] == "'":
+        return val[1:-1]
+    return None
+
+
 class ConfigMetadataRepository:
     """Legge metadata colonne da information_schema per il CRUD generico config."""
 
@@ -68,12 +98,16 @@ class ConfigMetadataRepository:
             col_name = row[0]
             if col_name in _EXCLUDED_COLUMNS:
                 continue
+            fe_type = _TYPE_MAP.get(row[1], "text")
             columns.append({
                 "name": col_name,
-                "type": _TYPE_MAP.get(row[1], "text"),
+                "type": fe_type,
                 "db_type": row[1],
                 "nullable": row[2] == "YES",
                 "has_default": row[3] is not None,
+                # Default DB normalizzato (literal) per inizializzare il form di
+                # creazione; None se non e' un literal riconoscibile.
+                "default": _parse_column_default(row[3], fe_type),
                 "is_pk": col_name == "id",
             })
 

@@ -353,7 +353,7 @@ class ApiPraticaFlussiList(DomainAPIView):
         request=inline_serializer(
             name="FlussoCreateRequest",
             fields={
-                "template_flusso_id": serializers.IntegerField(required=False, allow_null=True),
+                "template_flusso_id": serializers.IntegerField(required=True, allow_null=False),
                 "risorsa_umana_id": serializers.IntegerField(required=False, allow_null=True),
                 "unita_organizzativa_id": serializers.IntegerField(required=False, allow_null=True),
                 "sequenza": serializers.IntegerField(required=False),
@@ -374,7 +374,10 @@ class ApiPraticaFlussiList(DomainAPIView):
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             flusso_id = pratiche_service.crea_flusso(
                 pratica_id=pratica_id,
-                template_flusso_id=optional_int(payload, "template_flusso_id"),
+                # Obbligatorio (workflow v2): il service fa il guard fail-fast
+                # E_FLUSSO_VALIDATION se assente/non valido. optional_int tollera
+                # il missing → None, che il guard del service rifiuta.
+                template_flusso_id=optional_int(payload, "template_flusso_id"),  # type: ignore[arg-type]
                 risorsa_umana_id=optional_int(payload, "risorsa_umana_id"),
                 unita_organizzativa_id=optional_int(payload, "unita_organizzativa_id"),
                 sequenza=int(payload.get("sequenza", 0)),
