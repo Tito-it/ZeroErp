@@ -22,10 +22,12 @@
 | user_update | text | NO | CURRENT_USER |
 | handler_params | jsonb | NO | '{}'::jsonb |
 | ripetibilita | character varying | NO | 'SE_NON_POSITIVO'::character varying |
+| chiude_pratica | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_template_flussi_chiusura_obbligatorio |  |
 | CHECK | chk_template_flussi_direzione |  |
 | CHECK | chk_template_flussi_ripetibilita |  |
 | FOREIGN KEY | fk_template_flussi_handler | handler_id |
@@ -38,6 +40,7 @@
 |------|-------------|
 | pk_pratiche_template_flussi | `CREATE UNIQUE INDEX pk_pratiche_template_flussi ON pratiche.template_flussi USING btree (id)` |
 | uq_pratiche_template_flussi_tipo_codice | `CREATE UNIQUE INDEX uq_pratiche_template_flussi_tipo_codice ON pratiche.template_flussi USING btree (tipo_prestazione_id, codice)` |
+| uq_template_flussi_chiusura | `CREATE UNIQUE INDEX uq_template_flussi_chiusura ON pratiche.template_flussi USING btree (tipo_prestazione_id) WHERE chiude_pratica` |
 
 ---
 {% include-markdown "signature-core.md" %}
