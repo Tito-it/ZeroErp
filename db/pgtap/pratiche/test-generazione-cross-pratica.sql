@@ -17,6 +17,7 @@
 -- 3)  Figlia: flusso_origine_id corretto
 -- 4)  Figlia: pratica_padre_id = pratica sorgente (fix-2)
 -- 5)  Figlia: emittente, soggetto, priorita ereditati
+-- 5b) Figlia: nasce APERTA con data_apertura valorizzata (20260614-03)
 -- 6)  Figlia: contesto soggetto_ruolo_id propagato (fix-4; skip se sorgente senza ruolo)
 -- 7)  Figlia: flusso iniziale creato da template_flusso_dest_id in DA_ESEGUIRE (fix-3)
 -- 8)  Idempotenza trigger: UPDATE su flusso gia' COMPLETATO non genera doppioni
@@ -24,12 +25,13 @@
 -- 10) Regola auto=false: nessuna generazione automatica
 -- 11) Cleanup
 -- ------------------------------------------------------------
-SELECT plan(11);
+SELECT plan(12);
 -- =========================================================
 -- 0) Precondizioni: provisioning config data (idempotente)
 -- =========================================================
 INSERT INTO config.stati_pratiche (codice, codice_interno, descrizione, attivo)
-VALUES ('BOZZA', 'BOZZA', 'Bozza', true) ON CONFLICT (codice_interno) DO NOTHING;
+VALUES ('BOZZA', 'BOZZA', 'Bozza', true),
+       ('APERTA', 'APERTA', 'Aperta', true) ON CONFLICT (codice_interno) DO NOTHING;
 INSERT INTO config.stati_flussi_pratiche (codice, codice_interno, descrizione, attivo)
 VALUES
   ('DA_ESEGUIRE', 'DA_ESEGUIRE', 'Da eseguire', true),
@@ -228,6 +230,18 @@ SELECT ok(
         AND t.priorita_id = (SELECT priorita_normale_id FROM tmp_gen_refs)
        FROM tmp_gen_pratica_target t),
     '5. Figlia: eredita emittente, soggetto, priorita dalla sorgente'
+);
+-- =========================================================
+-- 5b) Figlia: nasce APERTA con data_apertura valorizzata (20260614-03)
+--     La figlia auto-generata e' un lavoro avviato: nasce operativa,
+--     non in BOZZA. data_apertura impostata dal trigger INSERT.
+-- =========================================================
+SELECT ok(
+    (SELECT sp.codice_interno = 'APERTA' AND p.data_apertura = CURRENT_DATE
+       FROM pratiche.pratiche p
+       JOIN config.stati_pratiche sp ON sp.id = p.stato_id
+      WHERE p.id = (SELECT pratica_id FROM tmp_gen_pratica_target)),
+    '5b. Figlia: nasce APERTA con data_apertura = CURRENT_DATE'
 );
 -- =========================================================
 -- 6) Figlia: contesto soggetto_ruolo_id propagato (fix-4)

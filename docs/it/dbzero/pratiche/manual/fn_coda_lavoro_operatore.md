@@ -64,7 +64,7 @@ La priorita' tra livelli e' gestita da un `CASE WHEN`: un flusso assegnato all'o
 
 ### Logica di funzionamento
 
-1. **CTE `flussi_base`**: singola scansione di tutti i flussi pendenti (DA_ESEGUIRE o IN_CORSO) dell'emittente.
+1. **CTE `flussi_base`**: singola scansione di tutti i flussi pendenti (DA_ESEGUIRE o IN_CORSO) dell'emittente, **escluse le pratiche terminali**. Una pratica e' terminale quando non ha alcuna transizione di stato in uscita attiva in `config.transizioni_stati_pratiche` (oggi `CHIUSA`/`ANNULLATA`): i suoi flussi sono congelati dal guard `trgfn_flussi_guard_pratica_terminale` e non sono lavoro da fare, quindi non compaiono in coda (stessa definizione di "terminale" del guard, nessun id/codice hardcodato).
 2. **CTE `classificati`**: ogni flusso viene classificato nel livello piu' alto applicabile via `CASE WHEN`.
 3. **SELECT finale**: JOIN display fields (pratica, priorita', tipo prestazione, template, soggetto operatore) una sola volta sul risultato classificato. Filtra `WHERE livello IS NOT NULL` (esclude flussi non rilevanti per l'operatore).
 
