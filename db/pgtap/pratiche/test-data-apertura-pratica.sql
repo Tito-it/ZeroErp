@@ -12,9 +12,12 @@
 -- 3) APERTA → SOSPESA — data_apertura non cambia (immutabile)
 -- 4) SOSPESA → APERTA — data_apertura non cambia (immutabile)
 -- 5) Nuova pratica: BOZZA → ANNULLATA — data_apertura resta NULL
--- 6) Cleanup
+-- 6) INSERT diretto in APERTA (senza data_apertura) → data_apertura = CURRENT_DATE
+-- 7) INSERT diretto in APERTA con data_apertura esplicita → valore chiamante preservato (immutabilita' all'INSERT)
+-- 8) INSERT in BOZZA → data_apertura IS NULL (comportamento bozza invariato)
+-- 9) Cleanup
 -- ------------------------------------------------------------
-SELECT plan(7);
+SELECT plan(10);
 
 -- =========================================================
 -- 0) Precondizioni
@@ -141,13 +144,83 @@ SELECT is(
 );
 
 -- =========================================================
--- 6) Cleanup
+-- 6) INSERT diretto in APERTA (senza data_apertura) → CURRENT_DATE
+-- =========================================================
+CREATE TEMP TABLE tmp_da_pratica3 AS
+WITH ins AS (
+  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
+  VALUES (
+    (SELECT emittente_id FROM tmp_da_refs),
+    (SELECT tp_id FROM tmp_da_tp),
+    (SELECT soggetto_id FROM tmp_da_refs),
+    (SELECT st_aperta FROM tmp_da_refs),
+    (SELECT priorita_id FROM tmp_da_refs)
+  )
+  RETURNING id
+)
+SELECT id AS pratica_id FROM ins;
+
+SELECT is(
+  (SELECT data_apertura FROM pratiche.pratiche WHERE id = (SELECT pratica_id FROM tmp_da_pratica3)),
+  CURRENT_DATE,
+  '6. INSERT in APERTA senza data_apertura: data_apertura = CURRENT_DATE'
+);
+
+-- =========================================================
+-- 7) INSERT diretto in APERTA con data_apertura esplicita → preservata
+-- =========================================================
+CREATE TEMP TABLE tmp_da_pratica4 AS
+WITH ins AS (
+  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id, data_apertura)
+  VALUES (
+    (SELECT emittente_id FROM tmp_da_refs),
+    (SELECT tp_id FROM tmp_da_tp),
+    (SELECT soggetto_id FROM tmp_da_refs),
+    (SELECT st_aperta FROM tmp_da_refs),
+    (SELECT priorita_id FROM tmp_da_refs),
+    DATE '2020-01-15'
+  )
+  RETURNING id
+)
+SELECT id AS pratica_id FROM ins;
+
+SELECT is(
+  (SELECT data_apertura FROM pratiche.pratiche WHERE id = (SELECT pratica_id FROM tmp_da_pratica4)),
+  DATE '2020-01-15',
+  '7. INSERT in APERTA con data_apertura esplicita: valore chiamante preservato'
+);
+
+-- =========================================================
+-- 8) INSERT diretto in BOZZA → data_apertura IS NULL
+-- =========================================================
+CREATE TEMP TABLE tmp_da_pratica5 AS
+WITH ins AS (
+  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
+  VALUES (
+    (SELECT emittente_id FROM tmp_da_refs),
+    (SELECT tp_id FROM tmp_da_tp),
+    (SELECT soggetto_id FROM tmp_da_refs),
+    (SELECT st_bozza FROM tmp_da_refs),
+    (SELECT priorita_id FROM tmp_da_refs)
+  )
+  RETURNING id
+)
+SELECT id AS pratica_id FROM ins;
+
+SELECT is(
+  (SELECT data_apertura FROM pratiche.pratiche WHERE id = (SELECT pratica_id FROM tmp_da_pratica5)),
+  NULL::DATE,
+  '8. INSERT in BOZZA: data_apertura IS NULL (comportamento bozza invariato)'
+);
+
+-- =========================================================
+-- 9) Cleanup
 -- =========================================================
 -- Cancella prima giornale (FK verso pratiche), poi pratiche, poi tipo prestazione
 DELETE FROM pratiche.giornale WHERE pratica_id IN (SELECT id FROM pratiche.pratiche WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_da_tp));
 DELETE FROM pratiche.pratiche WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_da_tp);
 DELETE FROM pratiche.tipi_prestazione WHERE codice_interno = 'TEST_DA';
 
-SELECT pass('6. Cleanup completato');
+SELECT pass('9. Cleanup completato');
 
 SELECT * FROM finish();

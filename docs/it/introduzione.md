@@ -1,9 +1,4 @@
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Tito-it/Zero_logo/main/Logo%20Zero%20Erp.png" alt="Zero ERP Logo" width="250"/>
-</p>
-
-
 # Zero ERP - Open Source ERP Framework
 **Licenza: GPL v3**
 
