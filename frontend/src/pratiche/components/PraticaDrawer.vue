@@ -525,11 +525,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
           <!-- Tab Flussi -->
           <TabPanel :header="t('pratiche.tab_flussi')">
-            <PraticaFlussiTab
-              :pratica-id="props.praticaId"
-              :stato-codice-pratica="statoCorrente"
-              @refresh="reloadDetail"
-            />
+            <PraticaFlussiTab :pratica-id="props.praticaId" />
           </TabPanel>
 
           <!-- Tab Note -->

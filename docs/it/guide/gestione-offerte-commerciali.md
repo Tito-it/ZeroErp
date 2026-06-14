@@ -1,9 +1,12 @@
 # Guida — Gestione Offerte commerciali
 
-> **Ultima revisione**: 29 maggio 2026 — modello completo: eccezioni "delta del
+> **Ultima revisione**: 8 giugno 2026 — modello completo: eccezioni "delta del
 > listino" simmetriche ai contratti, componenti BoM (`offerte_commerciali_eccezioni_componenti`),
 > stato `ANNULLATA` + `motivazione_rifiuto`, azioni data-driven via
-> `fn_available_actions_offerta`, push a contratto idempotente, valuta da resolver.
+> `fn_available_actions_offerta`, push a contratto idempotente, valuta da resolver,
+> **generazione ordine da offerta ACCETTATA** (azione `genera_ordine`) e **mutua
+> esclusività contratto/ordine** (un'offerta accettata genera al massimo *uno* tra
+> contratto e ordine, in modo permanente).
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -51,8 +54,11 @@ Caratteristiche di base:
   esclusioni, articoli fuori listino) — esattamente come un contratto
 - ha un **ciclo di vita** con stati da bozza a emessa, fino all'accettazione o al
   rifiuto, e supporta **revisioni**
-- quando **accettata**, viene **spinta in un contratto** (push a contratto): nasce
-  un contratto in DRAFT che eredita 1:1 le sue condizioni
+- quando **accettata**, può prendere **una** di due strade alternative (mai
+  entrambe): essere **spinta in un contratto** (push a contratto) — nasce un
+  contratto in DRAFT che eredita 1:1 le condizioni, per la fornitura ricorrente —
+  oppure **generare un ordine** one-shot (azione `genera_ordine`), per una vendita
+  puntuale. Le due azioni sono **mutuamente esclusive**: vedi §1.1 e §8.bis
 
 Il numero documento è auto-generato (prefisso `OFC`, trigger
 `trgfn_offerte_commerciali_gen_codice`) e non modificabile.
@@ -65,6 +71,14 @@ Il legame è **1:1**: un'offerta accettata genera **un solo** contratto. Il lega
 è registrato sul contratto (colonna `contratti.offerta_id`, con vincolo di unicità),
 non sull'offerta — così la generazione è idempotente (vedi §8).
 
+> **Contratto OPPURE ordine — mai entrambi (XOR).** Da un'offerta ACCETTATA si può
+> generare *o* un contratto (fornitura ricorrente) *o* un ordine di vendita
+> one-shot, ma **al massimo uno dei due**. La semantica è "both-or-neither": finché
+> l'offerta è vergine, entrambe le azioni (`push_contratto` e `genera_ordine`) sono
+> disponibili; appena se ne usa una, **entrambe spariscono in modo permanente**
+> (vale anche se il documento generato viene poi annullato). Generare tutti e due
+> significherebbe fatturare due volte lo stesso oggetto. Vedi §8.bis.
+
 ### 1.2 Offerta commerciale vs preventivo
 
 Entrambi sono proposte al cliente, ma rispondono a esigenze diverse:
@@ -73,7 +87,7 @@ Entrambi sono proposte al cliente, ma rispondono a esigenze diverse:
 |---|---|---|
 | Cosa propone | Una transazione puntuale: articoli + quantità + prezzi, *adesso* | Condizioni quadro: listino + variazione + eccezioni |
 | Forma delle righe | Righe da ordinare (ogni riga è una voce con prezzo) | Eccezioni "delta del listino" (OVERRIDE / ESCLUSIONE / AGGIUNTA) |
-| Cosa genera l'accettazione | Una **commessa** → fattura una tantum | Un **contratto** in DRAFT → fornitura ricorrente |
+| Cosa genera l'accettazione | Una **commessa** → fattura una tantum | Un **contratto** in DRAFT (ricorrente) **oppure** un **ordine** one-shot — XOR |
 | "Fotografia" congelata | Prezzo riga-per-riga | Versione del listino (`listino_versione_id`) |
 
 In breve: il preventivo è una proposta di **vendita puntuale**, l'offerta è una
@@ -330,8 +344,10 @@ La funzione combina due fonti:
 
 - le **transizioni manuali** lette dalla configurazione
   (`config.stati_doc_offerte_transizioni`): `emetti`, `annulla`, `accetta`, `rifiuta`
-- due azioni **speciali**: `crea_revisione` (solo da EMESSA) e `push_contratto`
-  (solo da ACCETTATA e solo se il contratto non è già stato generato)
+- tre azioni **speciali**: `crea_revisione` (solo da EMESSA), `push_contratto` e
+  `genera_ordine` (entrambe solo da ACCETTATA e **mutuamente esclusive**: ciascuna
+  è disponibile solo se dall'offerta non è stato ancora generato né un contratto né
+  un ordine — vedi §8.bis)
 
 Per ogni azione la funzione restituisce i metadati per l'interfaccia (chiave di
 dispatch, stato target, etichetta i18n, icona, se serve conferma, se serve una
@@ -341,8 +357,9 @@ motivazione) e una serie di flag di capability:
 |---|---|
 | `can_edit_testata` / `can_edit_eccezioni` / `can_edit_utility` | l'offerta è in BOZZA |
 | `can_create_revisione` | l'offerta è EMESSA |
-| `can_push_contratto` | l'offerta è ACCETTATA **e** non esiste già un contratto generato |
-| `can_push_contratto_reason` | (se il push non è possibile) il motivo, es. `OFFERTA_CONTRATTO_GIA_GENERATO` |
+| `can_push_contratto` | l'offerta è ACCETTATA **e** non esiste già né un contratto né un ordine generati dall'offerta (XOR) |
+| `can_genera_ordine` | l'offerta è ACCETTATA **e** non esiste già né un contratto né un ordine generati dall'offerta (XOR) |
+| `can_push_contratto_reason` / `can_genera_ordine_reason` (+`_reason_key`) | (se l'azione non è possibile) il motivo, es. `OFFERTA_CONTRATTO_GIA_GENERATO` o `OFFERTA_ORDINE_GIA_GENERATO` |
 
 ---
 
@@ -375,6 +392,37 @@ che opera in transazione atomica.
 
 Il contratto nasce in **DRAFT**: il push non lo attiva. Da lì segue il proprio ciclo
 di vita (vedi [Gestione Contratti](/guide/gestione-contratti)).
+
+---
+
+## 8.bis Genera ordine — l'alternativa one-shot al contratto
+
+Quando l'offerta è in **ACCETTATA**, accanto al push a contratto è disponibile
+l'azione **genera ordine**: invece di avviare una fornitura ricorrente, trasforma
+l'offerta in un **ordine di vendita** one-shot (vendita puntuale).
+
+### Regole
+
+1. l'offerta deve essere in **ACCETTATA**;
+2. vale la **mutua esclusività XOR**: l'azione è disponibile solo se dall'offerta
+   non è ancora stato generato né un contratto né un ordine. La prima generazione
+   (contratto *o* ordine) disabilita **permanentemente** l'altra;
+3. la generazione ordine è **idempotente 1:1**: un secondo tentativo sulla stessa
+   offerta è rifiutato con `E_ORD_OFFERTA_GIA_CONVERTITA` (rete di sicurezza:
+   vincolo di unicità `uq_ordini_v_documento_origine_offerta`);
+4. se l'offerta ha già generato un contratto, la generazione ordine è bloccata con
+   `E_OFFERTA_CONTRATTO_GIA_GENERATO` (e, specularmente, il push a contratto su
+   un'offerta che ha già un ordine è bloccato con `E_OFFERTA_ORDINE_GIA_GENERATO`).
+
+### Cosa viene copiato
+
+L'ordine nasce in **DRAFT** ereditando le **righe espanse** dell'offerta (listino +
+variazione globale + eccezioni, con i componenti BoM), preservando i **prezzi
+negoziati/override**. Sull'ordine viene registrata l'origine
+(`documento_origine = ('OFFERTA', id)`). L'offerta resta **ACCETTATA**.
+
+Da lì l'ordine segue il proprio ciclo di vita (conferma, push a commessa); vedi
+[Gestione Ordini di vendita](/guide/gestione-ordini).
 
 ---
 
@@ -415,12 +463,14 @@ gestore → valuta predefinita del gestore*. Se nessuna valuta è risolvibile, s
    │ACCETTATA│  │ RIFIUTATA │
    └───┬────┘  │(terminale)│
        │       └───────────┘
-       │ push a contratto (idempotente)
-       │
-   ┌───▼──────────────────┐
-   │  Contratto in DRAFT   │
-   │  (eredita condizioni) │
-   └───────────────────────┘
+       │  bivio XOR — una sola delle due (entrambe se non già usate, poi sparisce l'altra)
+       ├──────────────────────────────┐
+       │ push a contratto              │ genera ordine
+       │                               │
+   ┌───▼──────────────────┐   ┌────────▼───────────────┐
+   │  Contratto in DRAFT   │   │  Ordine vendita DRAFT   │
+   │  (fornitura ricorrente)│   │  (vendita one-shot)     │
+   └───────────────────────┘   └─────────────────────────┘
 ```
 
 ---
@@ -475,7 +525,9 @@ Codici sollevati dal dominio offerte (registrati in `config.messaggi_errore`):
 | `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` | Transizione di stato non prevista in configurazione |
 | `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO` | "Crea revisione" da uno stato diverso da EMESSA |
 | `E_OFFERTA_PUSH_STATO_NON_AMMESSO` | Push a contratto da uno stato diverso da ACCETTATA |
-| `E_OFFERTA_CONTRATTO_GIA_GENERATO` | Push a contratto quando il contratto è già stato generato (idempotenza) |
+| `E_OFFERTA_CONTRATTO_GIA_GENERATO` | Push a contratto già generato (idempotenza) **oppure** tentativo di generare un ordine quando l'offerta ha già un contratto (mutua esclusività XOR) |
+| `E_OFFERTA_ORDINE_GIA_GENERATO` | Push a contratto quando l'offerta ha già generato un ordine (mutua esclusività XOR) |
+| `E_ORD_OFFERTA_GIA_CONVERTITA` | Secondo tentativo di generare un ordine dalla stessa offerta (univocità 1:1 offerta→ordine) |
 | `E_DOC_COMPOSITO_BOM_VUOTA` | Articolo composito senza componenti validi alla data |
 | `E_CONFIG_MANCANTE` | Configurazione mancante (valuta non risolvibile, stato/sorgente assenti) |
 
@@ -524,6 +576,8 @@ controlli equivalenti solo per dare messaggi parlanti prima del roundtrip.
 |---|---|
 | **Offerta commerciale** | Proposta di condizioni quadro a un cliente. Stati BOZZA → EMESSA → ACCETTATA → (push) contratto; oppure RIFIUTATA / ANNULLATA / SUPERATA |
 | **Push a contratto** | Generazione del contratto DRAFT dall'offerta ACCETTATA, idempotente, con copia 1:1 di eccezioni, componenti e utility |
+| **Genera ordine** | Generazione di un ordine di vendita one-shot DRAFT dall'offerta ACCETTATA (righe espanse, prezzi negoziati), **alternativa** al push a contratto |
+| **XOR contratto/ordine** | Da un'offerta ACCETTATA si genera al massimo *uno* tra contratto e ordine; la prima generazione disabilita l'altra in modo permanente |
 | **OVERRIDE / ESCLUSIONE / AGGIUNTA** | I tre tipi di eccezione al listino (prezzo personalizzato / articolo non disponibile / articolo fuori listino) |
 | **SUPERATA** | Stato terminale automatico: l'offerta è stata sostituita da una revisione successiva |
 | **ANNULLATA** | Ritiro interno prima dell'emissione (≠ RIFIUTATA, che è il "no" del cliente) |
