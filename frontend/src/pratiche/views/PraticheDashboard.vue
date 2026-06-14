@@ -142,6 +142,11 @@ async function onFlussoSaved() {
   flussoDrawerVisible.value = false
   if (store.selectedPraticaId) await loadPercorsoPratica(store.selectedPraticaId)
   await store.loadCodaLavoro()
+  // Il completamento di un flusso puo' aver auto-chiuso la pratica (APERTA →
+  // CHIUSA, trgfn_flussi_autochiusura_pratica): rinfresca la lista — senza
+  // resettare la pagina — cosi' lo stato in tabella e il readonly derivato
+  // (selectedPraticaReadonly) si aggiornano.
+  if (store.hasSearched) await store.fetchList()
 }
 
 // tipo_prestazione della pratica selezionata: discrimina il routing PREVENTIVI
