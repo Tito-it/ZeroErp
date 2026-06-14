@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Codice errore guard pre-completamento flusso di chiusura.
+# (brief-db-chiusura-pratica-workflow, 2026-06-14)
+# Aggiunge a config.messaggi_errore:
+#   PRATICHE_CHIUSURA_FLUSSO_PREMATURO (492) — sollevato da
+#   trgfn_flussi_guard_chiusura_prematura (20260614-07) quando si tenta di
+#   completare il flusso di chiusura con altri obbligatori ancora bloccanti.
+# Pattern loadUpdateData simmetrico a 20260608-11.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260614-08-upsert-messaggi-errore-chiusura-flusso-prematuro-mctit.yaml
+
+  - changeSet:
+      id: 20260614-08-upsert-messaggi-errore-chiusura-flusso-prematuro
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: messaggi_errore
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/messaggi_errore.csv
+            tableName: messaggi_errore
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: codice,    type: STRING }
+              - column: { name: lingua,    type: STRING }
+              - column: { name: messaggio, type: STRING }
+              - column: { name: id,        type: NUMERIC }
+              - column: { name: causa,     type: STRING }
+              - column: { name: soluzione, type: STRING }
